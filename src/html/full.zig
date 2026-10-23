@@ -300,6 +300,7 @@ pub const web_locks = @import("web_locks/root.zig");
 pub const embedder_scripts = @import("embedder_scripts.zig");
 /// HTML 6.4 user activation.
 pub const user_activation = @import("user_activation.zig");
+pub const close_watchers = @import("close_watchers.zig");
 
 // "same origin-domain" between the entry settings object and a Window (the
 // Location interface's security check).

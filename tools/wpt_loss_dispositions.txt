@@ -66,3 +66,11 @@ kind = user-ruling
 why = The WebSocket handshake is cross-SITE ({{hosts[alt][www]}}); its Set-Cookie has no SameSite attribute, which is Lax again under the restored Lax-by-default (revert d26c5f1ec8f + 387ac80b403), so a cross-site response may not store it - Chrome's behaviour. It passed only under the reverted None-by-default.
 date = 2026-10-20
 decision = the user chose "Restore Lax-by-default" for cookies without SameSite (Chrome's behaviour; +21 cookies/samesite subtests), in this session's SameSite question
+
+[xhr/send-redirect.htm]
+generation = 173
+kind = flake
+why = The (302, HEAD, redirect.py) subtest flips with no code involved: Codex row 87 ran three isolated pairs on identical product source (BASE 34,33,34; TIP 34,34,34 - tmp/plans/codex-wsregress-report.md), and rows 86, 105 and 112 recorded the same unreproduced loss on unrelated changes.
+pair.1 = base 34/34; tip 34/34
+pair.2 = base 33/34; tip 34/34
+pair.3 = base 34/34; tip 34/34

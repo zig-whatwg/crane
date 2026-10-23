@@ -9,6 +9,7 @@ const dom = @import("dom");
 const engine = @import("engine");
 const forms = @import("form_associated.zig");
 const focus = @import("focus.zig");
+const close_watchers = @import("close_watchers.zig");
 const layer = dom.top_layer;
 const Instance = runtime.Instance;
 const Mode = layer.Mode;
@@ -70,6 +71,68 @@ fn beforeToggle(element: *Instance, opening: bool, source: ?*Instance) !bool {
     const generation = runtime.SlabAllocator.generationOf(event);
     defer event.releaseIfUnwrapped(generation);
     return dom.fire_event.dispatchTrusted(element, event);
+}
+
+/// A popover's queued toggle event task (HTML 6.12 "queue a popover toggle
+/// event task", step 2): it keeps the element and the source until it runs,
+/// is cancelled or is dropped (dom.node_holds.ElementTask; WebKit's
+/// ToggleEventTask queues with queueTaskKeepingThisNodeAlive, Blink's
+/// HTMLElement::QueuePopoverToggleEvent posts WrapPersistent(this)).
+const PopoverToggle = struct {
+    /// The element (the task is queued given it) and the source.
+    pub const held_count = 2;
+    old_state: []const u8,
+    new_state: []const u8,
+
+    pub fn steps(self: *PopoverToggle, held: []const dom.node_holds.TaskHold) void {
+        // A teardown freed the element: nothing to fire at.
+        const element = held[0].get() orelse return;
+        // 2.1. Fire an event named toggle at element, using ToggleEvent,
+        // with the oldState attribute initialized to oldState, the newState
+        // attribute initialized to newState, and the source attribute
+        // initialized to source. 2.2 (set the tracker to null) happened when
+        // the task started: the tracker no longer names it.
+        fireToggle(element, self.old_state, self.new_state, held[1].get()) catch |err| {
+            std.log.scoped(.popover).warn("toggle not fired at a popover: {}", .{err});
+        };
+    }
+};
+
+/// The popover toggle task tracker is the queued PopoverToggle task given the
+/// element (`ToggleTask.pending`).
+const ToggleTask = dom.node_holds.ElementTask(PopoverToggle);
+
+/// HTML 6.12 "queue a popover toggle event task" given element, oldState,
+/// newState and source.
+fn queueToggleEventTask(element: *Instance, old_state_given: []const u8, new_state: []const u8, source: ?*Instance) void {
+    var old_state = old_state_given;
+    // 1. If element's popover toggle task tracker is not null:
+    if (ToggleTask.pending(element)) |tracker| {
+        // 1.1. Set oldState to element's popover toggle task tracker's old
+        // state.
+        old_state = tracker.payload.old_state;
+        // 1.2. Remove its task from its task queue. 1.3. Set the tracker to
+        // null.
+        tracker.cancel();
+    }
+    // 2. Queue an element task on the DOM manipulation task source given
+    // element. 3. Set the tracker to the just-queued task and oldState: the
+    // task is the tracker while it is pending.
+    _ = ToggleTask.queue(.{ element, source }, .{ .old_state = old_state, .new_state = new_state });
+}
+
+/// DOM "fire an event" named toggle: a trusted ToggleEvent in the element's
+/// realm, never cancelable.
+fn fireToggle(element: *Instance, old_state: []const u8, new_state: []const u8, source: ?*Instance) !void {
+    const event = try interfaces.ToggleEvent.call_constructor(element.ctx, runtime.DOMString.initInterned("toggle"), .passed(.{
+        .base = .{},
+        .oldState = runtime.DOMString.initInterned(old_state),
+        .newState = runtime.DOMString.initInterned(new_state),
+        .source = source,
+    }));
+    const generation = runtime.SlabAllocator.generationOf(event);
+    defer event.releaseIfUnwrapped(generation);
+    _ = try dom.fire_event.dispatchTrusted(element, event);
 }
 
 fn flatParent(node: *Instance) ?*Instance {
@@ -242,9 +305,14 @@ fn show(element: *Instance, throws: bool, source: ?*Instance, picker: bool) anye
         }
         if (!try validate(element, false, document, picker, throws)) return;
         restore = topmost(state, null) == null;
-        // TODO(dialog/CloseWatcher row after row 61): show step 15.10,
-        // establish the popover's close watcher. No private substitute.
+        // Step 15.10: set element's popover close watcher to the result of
+        // establishing a close watcher given element's relevant global
+        // object. The anonymous select picker keeps its own Escape handling
+        // (forms/select_picker.zig keyDown): it is no element's popover.
+        if (!picker) establishCloseWatcher(element);
     }
+    // A show that fails from here (out of memory) leaves no watcher behind.
+    errdefer if (!picker) destroyCloseWatcher(element);
     pin.keepPreviousFocus(document, focus.designatedAreaOf(document));
     const active = try state.pin(element);
     active.mode = effective;
@@ -261,8 +329,10 @@ fn show(element: *Instance, throws: bool, source: ?*Instance, picker: bool) anye
     // Steps 23–24. Focus listeners may hide/remove the active entry.
     if (picker) @import("forms/select_picker.zig").focusPicker(element) else focusingSteps(element);
     if (restore) if (state.findKind(element, picker)) |entry| entry.keepPreviousFocus(document, pin.previous_focus.get());
-    // TODO(unwrapped task holder, row 52 Q9 / row 61 Q3(c)): step 26,
-    // queue/coalesce the popover toggle event task. Never fire it inline.
+    // Step 26: queue a popover toggle event task given element, "closed",
+    // "open" and source. The anonymous select picker has no script-visible
+    // event target.
+    if (!picker) queueToggleEventTask(element, "closed", "open", source);
 }
 
 /// The fixed command-owner API suppresses exceptions, as HTML activation
@@ -333,14 +403,50 @@ fn hideImpl(element: *Instance, restore: bool, events: bool, throws: bool, sourc
     // No rendering transition: remove immediately after beforetoggle.
     if (state.findKind(element, picker)) |entry| state.remove(entry.id);
     if (state.hint_parent.get() == element or topmost(state, .hint) == null) state.setHintParent(null);
-    // TODO(unwrapped task holder, row 52 Q9 / row 61 Q3(c)): hide step18,
-    // queue the toggle task when fire is true.
+    // Hide step 18: if fireEvents is true (a nested hide made it false),
+    // queue a popover toggle event task given element, "open", "closed" and
+    // source.
+    if (fire and !picker) queueToggleEventTask(element, "open", "closed", source);
     // The anonymous picker uses HTML's generic restoration too (row61
     // Q19). A click-opened picker saved the select; showPicker() may have
     // saved another element. Do not add Blink's subsequent select focus.
     if (restore and focus_inside) if (pin.previous_focus.get()) |previous| focus.focusingSteps(previous, null, .other);
-    // TODO(dialog/CloseWatcher row after row 61): hide step21 destroys
-    // the watcher established by show step15.10.
+    // Step 21: if element's popover close watcher is not null, destroy it
+    // and set it to null.
+    if (!picker) destroyCloseWatcher(element);
+}
+
+fn destroyCloseWatcher(element: *Instance) void {
+    const window = close_watchers.relevantWindow(element) orelse return;
+    close_watchers.destroy(window, .popover, element);
+}
+
+/// Show step 15.10's close watcher, given the element: "cancelAction being
+/// to return true; closeAction being to hide a popover given element, true,
+/// true, false, and null; getEnabledState being to return true."
+const close_watcher_actions: close_watchers.Actions = .{
+    .cancel = &closeWatcherCancel,
+    .close = &closeWatcherClose,
+    .enabled = &closeWatcherEnabled,
+};
+
+fn closeWatcherCancel(_: *Instance, _: bool) bool {
+    return true;
+}
+
+fn closeWatcherClose(element: *Instance) void {
+    hide(element, true, true, false, null, false) catch {};
+}
+
+fn closeWatcherEnabled(_: *Instance) bool {
+    return true;
+}
+
+fn establishCloseWatcher(element: *Instance) void {
+    const window = close_watchers.relevantWindow(element) orelse return;
+    close_watchers.establish(window, .popover, element, &close_watcher_actions) catch |err| {
+        std.log.scoped(.popover).warn("popover close watcher not established: {}", .{err});
+    };
 }
 
 pub fn focusingSteps(subject: *Instance) void {

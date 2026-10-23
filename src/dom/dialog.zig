@@ -11,6 +11,7 @@ const Instance = runtime.Instance;
 pub const Implementation = struct {
     show_modal: *const fn (*Instance, ?*Instance) anyerror!void,
     close: *const fn (*Instance, webidl.Opt(runtime.DOMString), ?*Instance) anyerror!void,
+    request_close: *const fn (*Instance, webidl.Opt(runtime.DOMString), ?*Instance) anyerror!void,
     inert: *const fn (*Instance) ?bool,
 };
 // process-wide: immutable dialog hook function pointers installed at process start, identical for every Browser and thread
@@ -29,6 +30,13 @@ pub fn showModal(subject: *Instance, source: ?*Instance) !void {
 /// "Close the dialog", retaining absence of the invoker's value attribute.
 pub fn close(subject: *Instance, result: webidl.Opt(runtime.DOMString), source: ?*Instance) !void {
     try (implementation orelse return error.NotSupported).close(subject, result, source);
+}
+
+/// "Request to close the dialog", with the invoker supplied by command
+/// activation as the request close source element (HTML command steps,
+/// step 3); the IDL requestClose() passes null.
+pub fn requestClose(subject: *Instance, result: webidl.Opt(runtime.DOMString), source: ?*Instance) !void {
+    try (implementation orelse return error.NotSupported).request_close(subject, result, source);
 }
 
 /// Membership is independent of open, shared by selectors and popovers.

@@ -62,6 +62,7 @@
 //! docs/lessons/architecture-parser-holds-are-its-structures-and-detached-trees-are-rescued.md.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const log = std.log.scoped(.node_holds);
 const runtime = @import("runtime");
@@ -242,6 +243,339 @@ pub const MemberHold = struct {
         self.kept = false;
     }
 };
+
+// ============================================================================
+// Task holds: what a queued native task keeps
+// ============================================================================
+
+/// One platform object a queued native task - a record with no wrapper and no
+/// Instance owner - keeps until the task ends: refcount design 2.4's
+/// `GCReachableRef`, in shadow mode. WebKit's `Node::queueTaskKeepingNodeAlive`
+/// captures `GCReachableRef(node)` (Source/WebCore/dom/NodeInlines.h): a
+/// counted reference plus a keep of the node's wrapper, which
+/// `JSNodeOwner::isReachableFromOpaqueRoots` reads (GCReachableRefMap); Blink
+/// posts such a task with `WrapPersistent(element)`
+/// (HTMLElement::QueuePopoverToggleEvent).
+///
+/// A node is held twice over: a counted hold in its chain (`Hold`, with no
+/// holder: nothing to rescue on a removal) and ONE counted pending-activity
+/// keep of its wrapper (`engine.keepPlatformObjectAlive`). A node with no
+/// wrapper is wrapped first - the shadow-mode net `keepMember` uses, deleted
+/// with the chain in step 9b: the keep waits for a wrapper, and an unwrapped
+/// node whose wrapped ancestor root is collected goes with that tree (L1).
+/// Wrapped and kept, by L2 its wrapper keeps its tree wherever the node
+/// moves. A member that is not a node (a CloseWatcher) is kept, not counted.
+///
+/// Its ends are its owner's: `take` when the task is queued, `release`
+/// exactly once when it ends - after its steps when it runs, or when it is
+/// cancelled or dropped. It is not a raw pointer plus a generation: the hold
+/// KEEPS its member; the generation only answers for a free the collector
+/// does not make (the member's realm's end), as `Hold.get` does.
+pub const TaskHold = struct {
+    hold: Hold = .{},
+    /// The member when it is not a node, with its generation.
+    other: ?*runtime.Instance = null,
+    other_generation: u64 = 0,
+    /// Whether this hold took a pending-activity keep.
+    kept: bool = false,
+    state: enum(u8) { empty, held, released } = .empty,
+
+    /// Hold `member` (a node, or any platform object) until `release`.
+    pub fn take(self: *TaskHold, member: *runtime.Instance) void {
+        std.debug.assert(self.state != .held);
+        if (instance_bridge.getNodeBase(@ptrCast(member))) |base| {
+            self.hold.link(null, member, base);
+        } else {
+            self.other = member;
+            self.other_generation = runtime.SlabAllocator.generationOf(member);
+        }
+        self.state = .held;
+        if (!member.ctx.hasEngine()) return;
+        // The shadow-mode net: a node held by a keep must have a wrapper
+        // for the keep to keep anything. Made in its relevant realm, then
+        // kept, then the temporary hold let go.
+        const made: ?engine.Owned = if (self.other == null and !engine.hasWrapper(member))
+            engine.retainValue(member.ctx, .{ .instance = member }) catch null
+        else
+            null;
+        engine.keepPlatformObjectAlive(member);
+        if (made) |wrapper| wrapper.release();
+        self.kept = true;
+    }
+
+    /// The member, or null once it was freed outside the collector (its
+    /// realm's end) - a teardown net, never the behaviour: the hold is what
+    /// keeps it.
+    pub fn get(self: *const TaskHold) ?*runtime.Instance {
+        if (self.other) |member| {
+            if (runtime.SlabAllocator.generationOf(member) != self.other_generation) return null;
+            return member;
+        }
+        return self.hold.get();
+    }
+
+    /// Whether this hold holds a member now.
+    pub fn isHeld(self: *const TaskHold) bool {
+        return self.state == .held;
+    }
+
+    /// Let the member go: exactly once, at its owner's end. The keep ends
+    /// first, while the member is live - one freed at its realm's end took
+    /// its keep with its wrapper cache, so it is never released then - and
+    /// the counted hold after it. A hold never taken ends nothing.
+    pub fn release(self: *TaskHold) void {
+        switch (self.state) {
+            .empty => return,
+            .released => {
+                if (builtin.mode == .Debug) std.debug.panic("node_holds.TaskHold {*} released twice", .{self});
+                log.err("node_holds.TaskHold {*} released twice", .{self});
+                return;
+            },
+            .held => {},
+        }
+        if (self.kept) if (self.get()) |member| engine.releasePlatformObject(member);
+        self.kept = false;
+        self.hold.unlink();
+        self.other = null;
+        self.state = .released;
+    }
+};
+
+/// A Browser's queued element tasks (`ElementTask`): a supplement of its
+/// scope (runtime.BrowserScope, docs/instances.md rule 2), reached through
+/// the realm of the element a task targets. It is what HTML's toggle task
+/// trackers read (`ElementTask.pending`), and its counts are the books a test
+/// and the Browser's end check: every hold taken is released.
+///
+/// Element tasks are queued and run on the Browser's window agent thread,
+/// with its DOM; nothing here is touched from another thread.
+pub const ElementTasks = struct {
+    allocator: Allocator,
+    first: ?*Entry = null,
+    /// Task holds taken and released by the tasks of this Browser.
+    holds_taken: u64 = 0,
+    holds_released: u64 = 0,
+    /// Tasks queued, and tasks that ended (run, cancelled or dropped).
+    queued: u64 = 0,
+    ended: u64 = 0,
+
+    /// A queued task's link: its Payload's name, and whether it was
+    /// cancelled.
+    pub const Entry = struct {
+        kind: []const u8,
+        prev: ?*Entry = null,
+        next: ?*Entry = null,
+    };
+
+    pub fn init(allocator: Allocator) ElementTasks {
+        return .{ .allocator = allocator };
+    }
+
+    /// The scope's end, after the Browser's loop dropped every task it still
+    /// had: nothing may be left.
+    pub fn deinit(self: *ElementTasks) void {
+        if (self.first != null or self.holds_taken != self.holds_released) {
+            log.err("{d} element task holds taken, {d} released, at the Browser's end", .{ self.holds_taken, self.holds_released });
+        }
+    }
+
+    /// The tasks of the Browser `realm` belongs to, made on first use; null
+    /// for a realm with no Browser scope (a test realm).
+    pub fn of(realm: runtime.Context) ?*ElementTasks {
+        const scope = realm.browser_scope orelse return null;
+        return scope.of(ElementTasks) catch null;
+    }
+
+    /// The tasks of the Browser `realm` belongs to, if any were queued.
+    pub fn existingOf(realm: runtime.Context) ?*ElementTasks {
+        const scope = realm.browser_scope orelse return null;
+        return scope.existing(ElementTasks);
+    }
+
+    fn link(self: *ElementTasks, entry: *Entry) void {
+        entry.prev = null;
+        entry.next = self.first;
+        if (self.first) |head| head.prev = entry;
+        self.first = entry;
+    }
+
+    fn unlink(self: *ElementTasks, entry: *Entry) void {
+        if (entry.prev) |prev| prev.next = entry.next else self.first = entry.next;
+        if (entry.next) |next| next.prev = entry.prev;
+        entry.prev = null;
+        entry.next = null;
+    }
+};
+
+/// HTML "queue an element task" for a task that keeps the platform objects it
+/// will hand to script until it ends (WebKit `Node::queueTaskKeepingNodeAlive`),
+/// with both ends built in, so every hold is released exactly once.
+///
+/// `Payload` declares:
+///   * `held_count`: how many members the task holds; member 0 is the
+///     element the task is queued given;
+///   * `fn steps(payload: *Payload, held: []const TaskHold) void`: the task's
+///     steps, run as a task of the element's realm; `held[i].get()` reads a
+///     member (null only after a teardown - the task then skips it);
+///   * optionally `fn deinit(payload: *Payload) void`: what the payload owns.
+///
+/// The record goes when the task ends: when it runs (after its steps: the
+/// running task is the holder while they run script), when it is cancelled
+/// ("remove the task from its task queue": its holds end at once, and the
+/// loop still frees the record), or when the loop drops it (a document that
+/// can never be fully active again, the loop's end - which, for a Browser,
+/// comes after its realms ended and before its scope does).
+pub fn ElementTask(comptime Payload: type) type {
+    return struct {
+        const Self = @This();
+        pub const held_count: usize = Payload.held_count;
+        const kind: []const u8 = @typeName(Payload);
+
+        entry: ElementTasks.Entry = .{ .kind = kind },
+        /// The books of the Browser it was queued in; null for a realm with
+        /// no Browser scope.
+        tasks: ?*ElementTasks = null,
+        /// Whether `entry` is in `tasks`' list: until the task runs, is
+        /// cancelled or ends.
+        linked: bool = false,
+        holds: [held_count]TaskHold = [_]TaskHold{.{}} ** held_count,
+        payload: Payload,
+        allocator: Allocator,
+        cancelled: bool = false,
+
+        /// Queue the task given `members[0]`, the element, on its realm's event
+        /// loop, with its node document as the task's document. Whether it
+        /// was queued: false when the realm has no loop or memory ran out -
+        /// then nothing was taken and `payload` was deinitialized. A queued
+        /// task may already have ended when this returns (a closing loop
+        /// drops it at once), so the caller keeps no pointer to it: a
+        /// tracker reads `pending`.
+        pub fn queue(members: [held_count]?*runtime.Instance, payload: Payload) bool {
+            var owned = payload;
+            const element = members[0] orelse {
+                deinitPayload(&owned);
+                return false;
+            };
+            const loop = element.ctx.getOptionalEventLoop() orelse {
+                log.warn("{s} not queued: the element's realm has no event loop", .{kind});
+                deinitPayload(&owned);
+                return false;
+            };
+            const allocator = element.ctx.allocator;
+            const self = allocator.create(Self) catch {
+                log.warn("{s} not queued: out of memory", .{kind});
+                deinitPayload(&owned);
+                return false;
+            };
+            self.* = .{ .payload = owned, .allocator = allocator };
+            const tasks = ElementTasks.of(element.ctx);
+            for (members, &self.holds) |member, *slot| {
+                const value = member orelse continue;
+                slot.take(value);
+                if (tasks) |books| books.holds_taken += 1;
+            }
+            if (tasks) |books| {
+                books.link(&self.entry);
+                books.queued += 1;
+                self.tasks = books;
+                self.linked = true;
+            }
+            const document = interfaces.Node.get_ownerDocument(element) catch null;
+            // The handoff: from here the loop owns the record, which may be
+            // gone before queueTask returns.
+            loop.queueTask(.{
+                .callback = &run,
+                .context = self,
+                .drop = &drop,
+                .document = document,
+                .document_generation = if (document) |d| runtime.SlabAllocator.generationOf(d) else 0,
+            });
+            return true;
+        }
+
+        /// The task of this kind queued given `element` that has neither run
+        /// nor been cancelled: HTML's toggle task tracker for it.
+        pub fn pending(element: *runtime.Instance) ?*Self {
+            const tasks = ElementTasks.existingOf(element.ctx) orelse return null;
+            var current = tasks.first;
+            while (current) |entry| : (current = entry.next) {
+                if (!std.mem.eql(u8, entry.kind, kind)) continue;
+                const self: *Self = @fieldParentPtr("entry", entry);
+                if (self.holds[0].get() == element) return self;
+            }
+            return null;
+        }
+
+        /// HTML "remove the task from its task queue": the task will not
+        /// run, so what it holds goes now. The loop still has the record;
+        /// its run or drop frees it.
+        pub fn cancel(self: *Self) void {
+            if (self.cancelled) return;
+            self.cancelled = true;
+            self.leaveList();
+            self.releaseHolds();
+        }
+
+        /// The member at `index`, or null after a teardown.
+        pub fn held(self: *const Self, index: usize) ?*runtime.Instance {
+            return self.holds[index].get();
+        }
+
+        fn run(data: ?*anyopaque) void {
+            const self: *Self = @ptrCast(@alignCast(data orelse return));
+            defer self.end();
+            if (self.cancelled) return;
+            // The tracker forgets the task before its steps run, so a
+            // listener that queues another one starts from its own state
+            // (WebKit ToggleEventTask::queue exchanges its data out before
+            // dispatching: Source/WebCore/dom/ToggleEventTask.cpp).
+            self.leaveList();
+            const element = self.holds[0].get() orelse return;
+            // A realm retired by a navigation runs nothing.
+            if (element.ctx.engine_ctx == null) return;
+            engine.runTaskInRealm(element.ctx, steps, self) catch |err| {
+                log.warn("{s} not run: {}", .{ kind, err });
+            };
+        }
+
+        fn steps(data: ?*anyopaque) void {
+            const self: *Self = @ptrCast(@alignCast(data orelse return));
+            Payload.steps(&self.payload, &self.holds);
+        }
+
+        fn drop(data: ?*anyopaque) void {
+            const self: *Self = @ptrCast(@alignCast(data orelse return));
+            self.end();
+        }
+
+        fn leaveList(self: *Self) void {
+            if (!self.linked) return;
+            self.linked = false;
+            self.tasks.?.unlink(&self.entry);
+        }
+
+        fn releaseHolds(self: *Self) void {
+            for (&self.holds) |*slot| {
+                if (!slot.isHeld()) continue;
+                slot.release();
+                if (self.tasks) |books| books.holds_released += 1;
+            }
+        }
+
+        /// The task left the loop, run or not.
+        fn end(self: *Self) void {
+            self.leaveList();
+            self.releaseHolds();
+            if (self.tasks) |books| books.ended += 1;
+            deinitPayload(&self.payload);
+            self.allocator.destroy(self);
+        }
+
+        fn deinitPayload(payload: *Payload) void {
+            if (comptime @hasDecl(Payload, "deinit")) payload.deinit();
+        }
+    };
+}
 
 /// The edge slots a holder's rescues hang from, on its owner's wrapper.
 pub const root_slot: engine.TracedSlot = .{ .name = "node-holds:root" };

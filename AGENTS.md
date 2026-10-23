@@ -165,7 +165,7 @@ After every feature commit:
    without main's IndexedDB merge, made a generation 25,000 subtests lower than
    main's own sweep ([lesson](docs/lessons/workflow-a-branchs-wpt-run-replaces-mains-in-the-report.md)).
    **A sweep brings its result streams too:** concatenate its
-   `full/chunks/*/journal.shard*.wptreport.jsonl` into `journal.wptreport.jsonl` beside its
+   `full/chunks/*/journal*.wptreport.jsonl` into `journal.wptreport.jsonl` beside its
    `journal.jsonl`. The site's file pages list each subtest's status and failure message only from
    the stream beside the journal that supplied the file's counts; without it, every page shows
    counts alone (generations 83-111 did). Delete the previous sweep's stream when the next lands.
