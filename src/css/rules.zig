@@ -88,7 +88,7 @@ fn isDeclarationBlockRule(name: []const u8) bool {
 
 /// The at-rules whose block is a list of rules.
 fn isGroupRule(name: []const u8) bool {
-    for ([_][]const u8{ "media", "supports", "layer", "container", "scope", "starting-style", "document", "-moz-document" }) |group| {
+    for ([_][]const u8{ "media", "supports", "layer", "container", "scope", "starting-style", "document", "-moz-document", "keyframes", "-webkit-keyframes" }) |group| {
         if (std.mem.eql(u8, name, group)) return true;
     }
     return false;

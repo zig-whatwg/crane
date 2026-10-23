@@ -733,6 +733,7 @@ pub const Value = union(enum) {
     grid_areas: *@import("grid_tracks.zig").Areas,
     grid_flow: @import("grid_tracks.zig").Flow,
     caret_pair: *@import("ui_values.zig").CaretPair,
+    animation_list: *@import("animation_values.zig").List,
     alignment: @import("alignment.zig").Value,
     position_area: @import("position_area.zig").Area,
     try_fallbacks: struct { list: *@import("anchor_fallbacks.zig").Fallbacks, computed: bool = false },
@@ -766,6 +767,7 @@ pub const Value = union(enum) {
         if (self == .grid_tracks) return self.grid_tracks.ref();
         if (self == .grid_areas) return self.grid_areas.ref();
         if (self == .caret_pair) return self.caret_pair.ref();
+        if (self == .animation_list) return self.animation_list.ref();
         if (self == .pending) return self.pending.ref();
         if (self == .try_fallbacks) return self.try_fallbacks.list.ref();
         if (self.sharedText()) |t| t.ref();
@@ -781,6 +783,7 @@ pub const Value = union(enum) {
         if (self == .grid_tracks) return self.grid_tracks.unref();
         if (self == .grid_areas) return self.grid_areas.unref();
         if (self == .caret_pair) return self.caret_pair.unref();
+        if (self == .animation_list) return self.animation_list.unref();
         if (self == .pending) return self.pending.unref();
         if (self == .try_fallbacks) return self.try_fallbacks.list.unref();
         if (self.sharedText()) |t| t.unref();
@@ -815,6 +818,7 @@ pub const Value = union(enum) {
             .grid_areas => |areas| areas.eql(b.grid_areas),
             .grid_flow => |flow| std.meta.eql(flow, b.grid_flow),
             .caret_pair => |pair| pair.eql(b.caret_pair),
+            .animation_list => |list| list.eql(b.animation_list),
             .alignment => |a_value| a_value.eql(b.alignment),
             .position_area => |a_area| a_area.eql(b.position_area),
             .try_fallbacks => |f| f.computed == b.try_fallbacks.computed and f.list.eql(b.try_fallbacks.list),
@@ -837,6 +841,7 @@ pub const Value = union(enum) {
             .grid_line => |line| line.needsUnavailableMetrics(),
             .grid_tracks => |tracks| tracks.needsUnavailableMetrics(),
             .caret_pair => |pair| pair.needsUnavailableMetrics(),
+            .animation_list => |list| list.needsUnavailableMetrics(),
             .grid_areas,
             .grid_flow,
             .keyword,
@@ -866,6 +871,7 @@ pub const Value = union(enum) {
             .sizing_function => |s| s.argument.needsTreeCounts(),
             .grid_line => |line| line.needsTreeCounts(),
             .grid_tracks => |tracks| tracks.needsTreeCounts(),
+            .animation_list => |list| list.needsTreeCounts(),
             .grid_areas,
             .grid_flow,
             .keyword,
@@ -893,6 +899,7 @@ pub const Value = union(enum) {
             .sizing_function => |s| s.argument.needsRandomBase(),
             .grid_line => |line| line.needsRandomBase(),
             .grid_tracks => |tracks| tracks.needsRandomBase(),
+            .animation_list => |list| list.needsRandomBase(),
             .grid_areas,
             .grid_flow,
             .keyword,

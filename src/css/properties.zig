@@ -184,6 +184,18 @@ pub const Longhand = enum(u8) {
     writing_mode,
     z_index,
     // Row118: complete animation value lists (Q69).
+    animation_duration,
+    animation_timing_function,
+    animation_delay,
+    animation_iteration_count,
+    animation_direction,
+    animation_fill_mode,
+    animation_play_state,
+    animation_name,
+    animation_composition,
+    animation_timeline,
+    animation_range_start,
+    animation_range_end,
 
     // CSS Transforms 2 §5: individual components, without layout.
 
@@ -336,6 +348,7 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
 
 /// A longhand's grammar.
 pub const Grammar = enum {
+    animation_list,
     grid_line,
     grid_tracks,
     grid_areas,
@@ -401,6 +414,18 @@ const infos: [Longhand.count]Info = blk: {
     const medium_width = Value.kw(.medium);
     const defs = [_]Info{
         // Row118 animation properties; execution is outside this value layer.
+        .{ .longhand = .animation_duration, .inherited = false, .initial = Value.kw(.auto), .grammar = .animation_list },
+        .{ .longhand = .animation_timing_function, .inherited = false, .initial = Value.kw(.ease), .grammar = .animation_list },
+        .{ .longhand = .animation_delay, .inherited = false, .initial = .{ .number = 0 }, .grammar = .animation_list },
+        .{ .longhand = .animation_iteration_count, .inherited = false, .initial = .{ .number = 1 }, .grammar = .animation_list },
+        .{ .longhand = .animation_direction, .inherited = false, .initial = Value.kw(.normal), .grammar = .animation_list },
+        .{ .longhand = .animation_fill_mode, .inherited = false, .initial = Value.kw(.none), .grammar = .animation_list },
+        .{ .longhand = .animation_play_state, .inherited = false, .initial = Value.kw(.running), .grammar = .animation_list },
+        .{ .longhand = .animation_name, .inherited = false, .initial = Value.kw(.none), .grammar = .animation_list },
+        .{ .longhand = .animation_composition, .inherited = false, .initial = Value.kw(.replace), .grammar = .animation_list },
+        .{ .longhand = .animation_timeline, .inherited = false, .initial = Value.kw(.auto), .grammar = .animation_list },
+        .{ .longhand = .animation_range_start, .inherited = false, .initial = Value.kw(.normal), .grammar = .animation_list },
+        .{ .longhand = .animation_range_end, .inherited = false, .initial = Value.kw(.normal), .grammar = .animation_list },
 
         .{ .longhand = .grid_auto_columns, .inherited = false, .initial = Value.kw(.auto), .grammar = .grid_tracks },
         .{ .longhand = .grid_auto_rows, .inherited = false, .initial = Value.kw(.auto), .grammar = .grid_tracks },
@@ -604,6 +629,8 @@ pub const Shorthand = enum(u8) {
     place_self,
     position_try,
     white_space,
+    animation,
+    animation_range,
 
     pub fn name(self: Shorthand) []const u8 {
         return switch (self) {
@@ -659,6 +686,8 @@ pub const Shorthand = enum(u8) {
             .place_self => &.{ .align_self, .justify_self },
             .position_try => &.{ .position_try_order, .position_try_fallbacks },
             .white_space => &.{ .white_space_collapse, .text_wrap_mode },
+            .animation => &.{ .animation_duration, .animation_timing_function, .animation_delay, .animation_iteration_count, .animation_direction, .animation_fill_mode, .animation_play_state, .animation_name, .animation_timeline, .animation_range_start, .animation_range_end },
+            .animation_range => &.{ .animation_range_start, .animation_range_end },
         };
     }
 };
@@ -953,6 +982,7 @@ pub const Stream = struct {
 pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Allocator.Error!?Value {
     const def = l.info();
     switch (def.grammar) {
+        .animation_list => return .{ .animation_list = try @import("animation_values.zig").List.consume(options, l, stream) orelse return null },
         .grid_tracks => {
             const automatic = l == .grid_auto_columns or l == .grid_auto_rows;
             if (!automatic) if (takeKeyword(stream, &.{.none})) |k| return Value.kw(k);
@@ -1583,6 +1613,7 @@ fn append(options: ParseOptions, out: *std.ArrayList(Assignment), l: Longhand, v
 
 fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
     switch (s) {
+        .animation, .animation_range => return @import("animation_values.zig").consumeShorthand(options, s, stream, out),
         .grid_template, .grid => {
             const ls = s.longhands();
             try out.ensureUnusedCapacity(options.allocator, ls.len);
@@ -2022,6 +2053,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .length => |len| try values.appendLength(len, out, allocator),
         .number => |n| {
             try values.appendNumber(n, out, allocator);
+            if (l == .animation_delay) try out.append(allocator, 's');
         },
         .integer => |n| try out.print(allocator, "{d}", .{n}),
         .color => |c| try c.serializeSpecified(out, allocator),
@@ -2040,6 +2072,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .grid_areas => |areas| try areas.serialize(out, allocator),
         .grid_flow => |flow| try flow.serialize(out, allocator),
         .caret_pair => |pair| try pair.serialize(out, allocator),
+        .animation_list => |list| try list.serialize(out, allocator),
         .alignment => |a| try a.serialize(out, allocator),
         .position_area => |a| try a.serialize(out, allocator),
         .try_fallbacks => |f| try f.list.serialize(f.computed, out, allocator),
@@ -2093,6 +2126,7 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
     if (s == .all) return false;
     const ls = s.longhands();
     switch (s) {
+        .animation, .animation_range => return @import("animation_values.zig").serializeShorthand(s, vs, mode, out, allocator),
         .grid_template => return @import("grid_tracks.zig").serializeTemplate(.{ .rows = vs[0].value, .columns = vs[1].value, .areas = vs[2].value }, out, allocator),
         .grid => return @import("grid_tracks.zig").serializeGrid(.{
             .template = .{ .rows = vs[0].value, .columns = vs[1].value, .areas = vs[2].value },
@@ -2279,7 +2313,7 @@ fn expectInvalid(property: []const u8, text: []const u8) !void {
 test "lookup: supported properties, case-insensitive; others are unsupported" {
     try testing.expectEqual(Property{ .longhand = .margin_left }, lookup("MARGIN-LEFT").?);
     try testing.expectEqual(Property{ .shorthand = .margin }, lookup("margin").?);
-    try testing.expect(lookup("animation") == null);
+    try testing.expectEqual(Property{ .shorthand = .animation }, lookup("animation").?);
     try testing.expect(lookup("--x") == null);
     try testing.expectEqualStrings("border-block-end-color", Longhand.border_block_end_color.name());
 }

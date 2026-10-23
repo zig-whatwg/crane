@@ -84,6 +84,7 @@ pub const ComputedStyle = struct {
     pub fn serializeResolved(self: *const ComputedStyle, l: Longhand, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
         const v = self.get(l);
         // CSS Text4 §8.2's legacy resolved value: every computed zero is normal.
+        if (l == .animation_duration) return @import("animation_values.zig").serializeDurationResolved(v, self.get(.animation_timeline), out, allocator);
         if (l == .caret_color) return @import("ui_values.zig").serializeCaretResolved(v, .{ .scheme = self.used_color_scheme, .current = self.get(.color).color }, out, allocator);
         if (v == .color) {
             const color = try self.resolvedColor(l, allocator);

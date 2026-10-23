@@ -30,6 +30,95 @@ test "tree counting functions keep specified syntax and clone scalar counts" {
     }
 }
 
+test "cascade asks for counts once and only for a winning permitted value" {
+    if (comptime !@hasField(css.cascade.Context, "tree_counts")) return error.TreeProviderNotImplemented;
+    const Probe = struct {
+        calls: usize = 0,
+        fn get(raw: *anyopaque) css.math_values.TreeCounts {
+            const self: *@This() = @ptrCast(@alignCast(raw));
+            self.calls += 1;
+            return .{ .index = 3, .count = 8 };
+        }
+    };
+    var probe = Probe{};
+    const cases = .{
+        .{ "opacity:.5;left:2px", true, 0, "2px" },
+        .{ "left:calc(1px * sibling-index());left:2px", true, 0, "2px" },
+        .{ "left:calc(1px * sibling-index());top:calc(1px * sibling-count())", true, 1, "3px" },
+        .{ "left:calc(1px * sibling-index());top:calc(1px * sibling-count())", false, 0, "0px" },
+        .{ "left:max(1px,calc(1px * sibling-index()));animation-duration:calc(1s * sibling-count());grid-template-columns:repeat(sibling-index(),1px)", true, 1, "3px" },
+    };
+    inline for (cases) |c| {
+        probe.calls = 0;
+        var block = try css.declarations.DeclarationBlock.parse(.{ .allocator = testing.allocator }, c[0]);
+        defer block.deinit();
+        const style = try css.cascade.cascade(.{ .allocator = testing.allocator, .parent = null, .tree_counts = .{ .context = &probe, .get = Probe.get } }, &.{.{ .block = &block, .source = .{ .origin = .author, .tree_count_allowed = c[1] } }});
+        defer style.destroy();
+        try testing.expectEqual(@as(usize, c[2]), probe.calls);
+        var out: std.ArrayList(u8) = .empty;
+        defer out.deinit(testing.allocator);
+        try style.serializeResolved(.left, &out, testing.allocator);
+        try testing.expectEqualStrings(c[3], out.items);
+    }
+}
+
+test "tree counting inheritance keeps the parent's computed number" {
+    if (comptime !@hasField(css.cascade.Context, "tree_counts")) return error.TreeProviderNotImplemented;
+    const Probe = struct {
+        calls: usize = 0,
+        fn get(raw: *anyopaque) css.math_values.TreeCounts {
+            const self: *@This() = @ptrCast(@alignCast(raw));
+            self.calls += 1;
+            return .{ .index = 3, .count = 8 };
+        }
+    };
+    var probe = Probe{};
+    var block = try css.declarations.DeclarationBlock.parse(.{ .allocator = testing.allocator }, "font-size:calc(10px * sibling-index());animation-duration:calc(1s * sibling-count())");
+    defer block.deinit();
+    const parent = try css.cascade.cascade(.{ .allocator = testing.allocator, .parent = null, .tree_counts = .{ .context = &probe, .get = Probe.get } }, &.{.{ .block = &block, .source = .{ .origin = .author } }});
+    defer parent.destroy();
+    try testing.expectEqual(@as(usize, 1), probe.calls);
+    var inherited = try css.declarations.DeclarationBlock.parse(.{ .allocator = testing.allocator }, "animation-duration:inherit");
+    defer inherited.deinit();
+    const child = try css.cascade.cascade(.{ .allocator = testing.allocator, .parent = parent, .tree_counts = .{ .context = &probe, .get = Probe.get } }, &.{.{ .block = &inherited, .source = .{ .origin = .author } }});
+    defer child.destroy();
+    try testing.expectEqual(@as(usize, 1), probe.calls);
+    try testing.expectEqual(@as(f64, 30), child.get(.font_size).length.value);
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(testing.allocator);
+    try child.serializeResolved(.animation_duration, &out, testing.allocator);
+    try testing.expectEqualStrings("8s", out.items);
+}
+
+test "source scope follows each winning nested value independently" {
+    if (comptime !@hasField(css.cascade.Context, "tree_counts")) return error.TreeProviderNotImplemented;
+    const Probe = struct {
+        calls: usize = 0,
+        fn get(raw: *anyopaque) css.math_values.TreeCounts {
+            const self: *@This() = @ptrCast(@alignCast(raw));
+            self.calls += 1;
+            return .{ .index = 3, .count = 8 };
+        }
+    };
+    var probe = Probe{};
+    var inner = try css.declarations.DeclarationBlock.parse(.{ .allocator = testing.allocator }, "left:calc(1px * sibling-index());top:calc(1px * sibling-count());animation-duration:calc(1s * sibling-count())");
+    defer inner.deinit();
+    var outer = try css.declarations.DeclarationBlock.parse(.{ .allocator = testing.allocator }, "left:max(1px,calc(1px * sibling-index()));animation-duration:calc(1s * sibling-count())");
+    defer outer.deinit();
+    const style = try css.cascade.cascade(.{ .allocator = testing.allocator, .parent = null, .tree_counts = .{ .context = &probe, .get = Probe.get } }, &.{
+        .{ .block = &inner, .source = .{ .origin = .author } },
+        .{ .block = &outer, .source = .{ .origin = .author, .order = 1, .tree_count_allowed = false } },
+    });
+    defer style.destroy();
+    try testing.expectEqual(@as(usize, 1), probe.calls);
+    try testing.expectEqual(@as(f64, 1), style.get(.left).length.value);
+    try testing.expectEqual(@as(f64, 8), style.get(.top).length.value);
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(testing.allocator);
+    try style.serializeResolved(.animation_duration, &out, testing.allocator);
+    try testing.expectEqualStrings("0s", out.items);
+}
+
 test "tree counting math owns no provider during allocation failures" {
     try testing.checkAllAllocationFailures(testing.allocator, allocationFailure, .{});
 }
