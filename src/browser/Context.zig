@@ -51,60 +51,63 @@ threadlocal var timer_contexts: ?TimerMap = null;
 
 /// The window's map of active timers (HTML 8.6), by the id script holds.
 /// Every timer is a key it never saw - ids only grow - put when armed and
-/// removed when it runs its last time or is cleared, so std's map never
-/// grows and never clears its tombstones: before `guard` its free slots ran
-/// out (a 1,069-file runner sample: none free at capacity 8-16 in 219 of
-/// 1,272 samples) and every arm walked the whole table
-/// (src/infra/tombstones.zig). Every insert and removal goes through here,
-/// so the guard sees each one. Values are `*WindowTimerCallback`, their own
+/// removed when it runs its last time or is cleared: a
+/// runtime.native_timer.TimerIdMap, which rehashes its tombstones away
+/// (before its guard the free slots ran out: a 1,069-file runner sample
+/// found none free at capacity 8-16 in 219 of 1,272 samples, and every arm
+/// walked the whole table) and gives back what a burst took (lane
+/// timerheap1: 5,000 timers armed and cleared left 8,192 slots that every
+/// later window's end walked, clearWindowState). Every insert and removal
+/// goes through here. Values are `*WindowTimerCallback`, their own
 /// allocations; no iteration of the map runs script, so no insert - which
-/// only script makes (`scheduleTimer`) - meets a live iterator.
+/// only script makes (`scheduleTimer`), and before which alone the map is
+/// rehashed or rebuilt - meets a live iterator.
 const TimerMap = struct {
-    map: std.AutoHashMap(TimerId, *WindowTimerCallback),
-    guard: webidl.utils.tombstones.TombstoneGuard = .{},
+    ids: runtime.native_timer.TimerIdMap(*WindowTimerCallback) = .empty,
+    allocator: std.mem.Allocator,
 
-    const Map = std.AutoHashMap(TimerId, *WindowTimerCallback);
+    const Ids = runtime.native_timer.TimerIdMap(*WindowTimerCallback);
 
     fn init(allocator: std.mem.Allocator) TimerMap {
-        return .{ .map = Map.init(allocator) };
+        return .{ .allocator = allocator };
     }
 
     fn deinit(self: *TimerMap) void {
-        self.map.deinit();
+        self.ids.deinit(self.allocator);
     }
 
     fn put(self: *TimerMap, id: TimerId, wrapper: *WindowTimerCallback) !void {
-        self.guard.beforeInsert(&self.map);
-        try self.map.put(id, wrapper);
+        try self.ids.put(self.allocator, id, wrapper);
     }
 
     fn remove(self: *TimerMap, id: TimerId) bool {
-        if (!self.map.remove(id)) return false;
-        self.guard.noteRemoval(&self.map);
-        return true;
+        return self.ids.remove(id);
     }
 
-    fn fetchRemove(self: *TimerMap, id: TimerId) ?Map.KV {
-        const kv = self.map.fetchRemove(id) orelse return null;
-        self.guard.noteRemoval(&self.map);
-        return kv;
+    fn fetchRemove(self: *TimerMap, id: TimerId) ?Ids.KV {
+        return self.ids.fetchRemove(id);
     }
 
     fn get(self: *const TimerMap, id: TimerId) ?*WindowTimerCallback {
-        return self.map.get(id);
+        return self.ids.get(id);
     }
 
     fn count(self: *const TimerMap) usize {
-        return self.map.count();
+        return self.ids.count();
     }
 
-    fn iterator(self: *const TimerMap) Map.Iterator {
-        return self.map.iterator();
+    /// The slots a walk of the map reads (clearWindowState,
+    /// activeTimerHandles, the suspension and its resumption).
+    fn capacity(self: *const TimerMap) usize {
+        return self.ids.capacity();
+    }
+
+    fn iterator(self: *const TimerMap) Ids.Iterator {
+        return self.ids.iterator();
     }
 
     fn clearRetainingCapacity(self: *TimerMap) void {
-        self.map.clearRetainingCapacity();
-        self.guard.reset();
+        self.ids.clearRetainingCapacity();
     }
 };
 
@@ -442,7 +445,7 @@ test "a window's map of active timers keeps half its unused slots free while tim
         for (&ids, 0..) |*id, i| {
             id.* = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 60_000, &.{}, false));
             if (i == 0) {
-                const map = &timer_contexts.?.map;
+                const map = &timer_contexts.?.ids.map;
                 if (!webidl.utils.tombstones.slotCounts(map).halfOfUnusedFree()) starved += 1;
                 worst = @max(worst, webidl.utils.tombstones.meanMissProbe(map));
             }
@@ -450,11 +453,55 @@ test "a window's map of active timers keeps half its unused slots free while tim
         for (ids) |id| clearTimer(&realm, @intCast(id));
     }
     if (starved != 0 or worst > 8) {
-        const counts = webidl.utils.tombstones.slotCounts(&timer_contexts.?.map);
+        const counts = webidl.utils.tombstones.slotCounts(&timer_contexts.?.ids.map);
         std.debug.print("timer_contexts: {d} of 400 pages began with fewer than half the unused slots free; worst mean miss {d} (capacity {d}, live {d}, free {d})\n", .{ starved, worst, counts.capacity, counts.live, counts.free });
         return error.TombstonesFilledTheMap;
     }
     // The resident interval is still found after every rehash.
+    try std.testing.expect(timer_contexts.?.get(resident) != null);
+    try std.testing.expectEqual(@as(usize, 1), timer_contexts.?.count());
+}
+
+test "a window's map of active timers gives back what a burst of 5,000 took once the burst is gone" {
+    // Lane timerheap1: a map never gives capacity back by itself, and every
+    // window's end walks the whole of it (clearWindowState), as do unload
+    // (activeTimerHandles) and the back/forward cache's suspension - so one
+    // page's burst of timers made every later page's end walk its size.
+    const allocator = std.testing.allocator;
+    var realm = try runtime.ContextData.init(allocator, .{});
+    defer realm.deinit();
+    const saved_interface = current_timer_interface;
+    const saved_allocator = current_allocator;
+    const saved_contexts = timer_contexts;
+    defer {
+        current_timer_interface = saved_interface;
+        current_allocator = saved_allocator;
+        timer_contexts = saved_contexts;
+    }
+    const manager = try runtime.native_timer.NativeTimerManager.init(allocator);
+    defer manager.deinit();
+    current_timer_interface = manager.timerInterface();
+    current_allocator = allocator;
+    timer_contexts = TimerMap.init(allocator);
+    defer timer_contexts.?.deinit();
+
+    const resident: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 3_600_000, &.{}, true));
+    defer clearTimer(&realm, @intCast(resident));
+    for (0..16) |_| clearTimer(&realm, initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 60_000, &.{}, false));
+    const before = timer_contexts.?.capacity();
+
+    const burst = try allocator.alloc(i32, 5_000);
+    defer allocator.free(burst);
+    for (burst) |*id| id.* = initializeTimer(&realm, .{ .function = .{ .number = 3 } }, 60_000, &.{}, false);
+    for (burst) |id| clearTimer(&realm, id);
+    // The next timers the pages that follow set.
+    for (0..16) |_| clearTimer(&realm, initializeTimer(&realm, .{ .function = .{ .number = 4 } }, 60_000, &.{}, false));
+
+    const after = timer_contexts.?.capacity();
+    if (after > @max(before, 64)) {
+        std.debug.print("timer_contexts: capacity {d} after a burst of 5,000 had gone, against {d} before it\n", .{ after, before });
+        return error.BurstKeptItsCapacity;
+    }
     try std.testing.expect(timer_contexts.?.get(resident) != null);
     try std.testing.expectEqual(@as(usize, 1), timer_contexts.?.count());
 }
