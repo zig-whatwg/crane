@@ -187,6 +187,18 @@ class finalizer, the same way. Both answer `reactToPromise` with
 `NotSupported` today: no step and no `dropped` ever runs, and the data stays
 the caller's.
 
+**A realm's end frees the nodes no wrapper reached** - [wrap_tracking] only.
+An adapter that declares the capability marks every instance it binds an
+engine object to (`instance_lifecycle.markWrapped`), so the host can prove
+an unmarked node unreachable from script in any realm. The realm's end then
+(1) frees the realm's orphan roots (`runtime.orphan_roots.drain`, subtrees
+`dom.mutation.remove` left with no mark) before its objects are torn down, and
+(2) returns the slab slots of unmarked nodes its tree tore down after its last
+teardown phase (`CleanupCoordinator.releaseDeferredStorage`). V8 does both in
+`context_manager.removeContextByKey`. An adapter that declares
+`.unsupported` calls neither: `provablyUnwrapped` is false, nothing is
+recorded or handed over, and those nodes stay with their Browser as before.
+
 ### Errors
 
 `Error = { OperationFailed, ExceptionReported, OutOfMemory, TypeError, ExceptionPending, DataCloneError, NotSupported, MutedScriptError }`

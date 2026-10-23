@@ -1056,6 +1056,11 @@ pub fn removeContextByKey(key: usize, v8_ctx: ?*v8.Context) void {
             const cache: *@import("wrapper_cache.zig").WrapperCache = @ptrCast(@alignCast(cache_storage));
             cache.drainDeferred();
         }
+        // Then its orphans - subtrees its removals left with no wrapper
+        // reaching them, which no tree teardown and no collector reaches -
+        // under the same conditions (runtime.orphan_roots, [wrap_tracking]).
+        // They stayed until the Browser ended.
+        runtime.orphan_roots.drain(&entry.runtime_ctx);
     }
 
     if (state.contexts.fetchRemove(key)) |kv| {

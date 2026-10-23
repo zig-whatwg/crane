@@ -164,6 +164,19 @@ pub fn installHooks() void {
         .destroy_uninserted = &deinitNodeByType,
         .clone = &cloneANode,
     });
+    // A realm's end frees the orphans its removals recorded (dom.mutation's
+    // orphanRemoved), each through its own teardown as a tree frees a child.
+    runtime.orphan_roots.install(.{ .still_orphan = &stillOrphan, .free = &deinitNodeByType });
+}
+
+/// runtime.orphan_roots' check, for a recorded root whose generation and
+/// cleanup flags still name it: still parentless, and still reached by no
+/// wrapper - not wrapped since its removal, in any realm ([wrap_tracking]).
+fn stillOrphan(instance: *runtime.Instance) bool {
+    const internal = Registry.get(instance) orelse return false;
+    const node_base = internal.node_base orelse return false;
+    if (node_base.parent_node != null or node_base.bound_v8_wrapper != null) return false;
+    return runtime.instance_lifecycle.provablyUnwrapped(engine.capabilities.wrap_tracking != .unsupported, instance);
 }
 
 /// Node's own construction steps: the generated chain runs EventTarget's
