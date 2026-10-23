@@ -95,6 +95,11 @@ pub const URL = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = true;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_static_members = .{
+            .{ "createObjectURL", .{ "Window", "DedicatedWorker", "SharedWorker" } },
+            .{ "revokeObjectURL", .{ "Window", "DedicatedWorker", "SharedWorker" } },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -351,6 +356,7 @@ pub const URL = struct {
         return try URLImpl.call_static_canParse(instance, url, base);
     }
 
+    /// Extended attributes: [Exposed=(Window,DedicatedWorker,SharedWorker)]
     pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: runtime.JSValue) anyerror!runtime.DOMString {
         return try URLImpl.call_static_createObjectURL(instance, obj);
     }
@@ -359,6 +365,7 @@ pub const URL = struct {
         return try URLImpl.call_static_parse(instance, url, base);
     }
 
+    /// Extended attributes: [Exposed=(Window,DedicatedWorker,SharedWorker)]
     pub fn call_static_revokeObjectURL(instance: *runtime.Instance, url: runtime.DOMString) anyerror!void {
         return try URLImpl.call_static_revokeObjectURL(instance, url);
     }

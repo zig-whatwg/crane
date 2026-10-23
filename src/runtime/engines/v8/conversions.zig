@@ -444,6 +444,43 @@ pub fn requireByteString(comptime T: type, value: T) ConversionError!void {
     }
 }
 
+/// WebIDL 3.2.11 steps 2-3, after the ordinary owned string conversion.
+/// ByteString's elements are octets; USVString's identical Zig type remains
+/// UTF-8. Validate the whole value first so a TypeError leaves it unchanged.
+/// On allocation failure each part still has exactly one owned allocation,
+/// and the caller's ordinary converted-value cleanup remains valid.
+pub fn encodeByteStringOwned(comptime T: type, allocator: std.mem.Allocator, value: *T) ConversionError!void {
+    try requireByteString(T, value.*);
+    try encodeValidatedByteString(T, allocator, value);
+}
+
+fn encodeValidatedByteString(comptime T: type, allocator: std.mem.Allocator, value: *T) ConversionError!void {
+    switch (@typeInfo(T)) {
+        .optional => |optional| if (value.*) |*item| try encodeValidatedByteString(optional.child, allocator, item),
+        .pointer => |pointer| if (comptime pointer.size == .slice) {
+            if (comptime pointer.child == u8) {
+                // ASCII already has one byte per code unit: keep the owned
+                // conversion instead of allocating a second copy.
+                for (value.*) |byte| {
+                    if (byte >= 0x80) break;
+                } else return;
+                const encoded = @import("infra").bytes.isomorphicEncodeUtf8(allocator, value.*) catch |err| return switch (err) {
+                    error.OutOfMemory => ConversionError.OutOfMemory,
+                    else => ConversionError.TypeError,
+                };
+                allocator.free(value.*);
+                value.* = encoded;
+            } else {
+                for (@constCast(value.*)) |*item| try encodeValidatedByteString(pointer.child, allocator, item);
+            }
+        },
+        .@"struct" => if (comptime @hasField(T, "was_passed") and @hasField(T, "value")) {
+            if (value.was_passed) try encodeValidatedByteString(@FieldType(T, "value"), allocator, &value.value);
+        },
+        else => {},
+    }
+}
+
 /// WebIDL 3.2.14, object: "If V is not an Object, throw a TypeError" - for
 /// a value already converted as `any` (both are runtime.JSValue, so codegen
 /// marks the `object` positions: `object_arguments`, `object_members`). A
@@ -876,19 +913,14 @@ pub fn codeUnitsFitInByte(bytes: []const u8) bool {
 ///    where the value of each element is the value of the corresponding
 ///    element of x.
 ///
-/// Step 3's code units are held as UTF-8, as every Crane string is (each one
-/// above 0x7F as its two-byte form), not as one byte each: the impls read a
-/// ByteString as text. OWNED, as the `[]const u8` conversion's result is
-/// (`interface.freeConvertedArg`).
+/// Step 3's code units are held as raw bytes, one byte each. OWNED, as the
+/// ordinary string conversion's result is (`interface.freeConvertedArg`).
 pub fn fromV8ByteString(allocator: std.mem.Allocator, isolate: *v8.Isolate, context: *v8.Context, value: *v8.Value) ConversionError![]const u8 {
     // 1.
-    const x = try toStringBytes(allocator, isolate, context, value);
-    // 2.
-    if (!codeUnitsFitInByte(x)) {
-        if (x.len > 0) allocator.free(x);
-        return ConversionError.TypeError;
-    }
-    // 3.
+    var x: []const u8 = try toStringBytes(allocator, isolate, context, value);
+    errdefer if (x.len > 0) allocator.free(x);
+    // 2-3.
+    try encodeByteStringOwned([]const u8, allocator, &x);
     return x;
 }
 
@@ -2564,7 +2596,7 @@ pub fn fromV8ValueAs(
                 if (comptime isRestrictedMember(T, field.name)) try requireFinite(field.type, @field(result, field.name));
                 // A ByteString member (`byte_string_members`, RequestInit's
                 // method): a code unit above 0xFF is a TypeError, likewise.
-                if (comptime isByteStringMember(T, field.name)) try requireByteString(field.type, @field(result, field.name));
+                if (comptime isByteStringMember(T, field.name)) try encodeByteStringOwned(field.type, allocator, &@field(result, field.name));
                 // An `object` member (`object_members`, StructuredSerializeOptions'
                 // `transfer`): a value that is not an Object is a TypeError.
                 if (comptime isObjectMember(T, field.name)) try requireObject(field.type, @field(result, field.name));
@@ -2806,6 +2838,23 @@ pub fn newStringFromWtf8(isolate: *v8.Isolate, bytes: []const u8) ?*v8.Value {
     if (bytes.len == 0) return @ptrCast(v8.v8_String_Empty(isolate));
     if (value_operations.hasSurrogateCodePoint(bytes)) return value_operations.stringFromWtf8(isolate, bytes) catch null;
     return @ptrCast(v8.v8_String_NewFromUtf8(isolate, bytes.ptr, @intCast(bytes.len)));
+}
+
+/// WebIDL 3.2.11, ByteString to ECMAScript: byte n becomes code unit n.
+/// The IDL metadata selects this, never the Zig type (USVString is also a
+/// byte slice). The returned Global<Value> is the caller's, including null.
+pub fn byteStringToV8(comptime T: type, isolate: *v8.Isolate, value: T) ConversionError!*v8.Value {
+    if (@typeInfo(T) == .optional) {
+        if (value) |bytes| return byteStringToV8(@typeInfo(T).optional.child, isolate, bytes);
+        return v8.v8_Null(isolate) orelse ConversionError.OutOfMemory;
+    }
+    if (T != []const u8 and T != []u8) @compileError("ByteString result must be a byte slice");
+    if (value.len > std.math.maxInt(c_int)) return ConversionError.StringError;
+    var small: [256]u16 = undefined;
+    const units = if (value.len <= small.len) small[0..value.len] else try std.heap.page_allocator.alloc(u16, value.len);
+    defer if (value.len > small.len) std.heap.page_allocator.free(units);
+    for (value, units) |byte, *unit| unit.* = byte;
+    return v8.v8_Value_StringFromTwoByte(isolate, units.ptr, @intCast(units.len)) orelse ConversionError.StringError;
 }
 
 /// Convert Zig DOMString to V8 String (its code units kept: newStringFromWtf8).

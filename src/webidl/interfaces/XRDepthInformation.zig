@@ -72,6 +72,11 @@ pub const XRDepthInformation = struct {
             "projectionMatrix",
             "transform",
         };
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "projectionMatrix", .{"Window"} },
+            .{ "transform", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -212,10 +217,10 @@ pub const XRDepthInformation = struct {
         return try XRDepthInformationImpl.get_rawValueToMeters(instance);
     }
 
-    /// Extended attributes: [SecureContext]
+    /// Extended attributes: [SecureContext], [Exposed=Window]
     pub const get_projectionMatrix = mixins.XRViewGeometry.get_projectionMatrix;
 
-    /// Extended attributes: [SameObject], [SecureContext]
+    /// Extended attributes: [SameObject], [SecureContext], [Exposed=Window]
     pub fn get_transform(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance

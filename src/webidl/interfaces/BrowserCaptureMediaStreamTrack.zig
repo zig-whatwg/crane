@@ -86,6 +86,10 @@ pub const BrowserCaptureMediaStreamTrack = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "restrictTo", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -195,6 +199,7 @@ pub const BrowserCaptureMediaStreamTrack = struct {
         return try BrowserCaptureMediaStreamTrackImpl.call_cropTo(instance, cropTarget);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn call_restrictTo(instance: *runtime.Instance, restrictiontarget_param: ?*runtime.Instance) anyerror!runtime.JSValue {
         return try BrowserCaptureMediaStreamTrackImpl.call_restrictTo(instance, restrictiontarget_param);
     }

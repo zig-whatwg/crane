@@ -127,6 +127,11 @@ pub const ServiceWorkerRegistration = struct {
         pub const secure_context_members = .{
             "pushManager",
         };
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "cookies", .{ "ServiceWorker", "Window" } },
+            .{ "periodicSync", .{ "Window", "Worker" } },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -335,7 +340,7 @@ pub const ServiceWorkerRegistration = struct {
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [Exposed=(ServiceWorker,Window)]
     pub fn get_cookies(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -348,6 +353,7 @@ pub const ServiceWorkerRegistration = struct {
         return value;
     }
 
+    /// Extended attributes: [Exposed=(Window,Worker)]
     pub fn get_periodicSync(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ServiceWorkerRegistrationImpl.get_periodicSync(instance);
     }

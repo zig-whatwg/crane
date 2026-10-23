@@ -83,6 +83,11 @@ pub const PerformanceElementTiming = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "paintTime", .{"Window"} },
+            .{ "presentationTime", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -272,10 +277,12 @@ pub const PerformanceElementTiming = struct {
         return try PerformanceElementTimingImpl.get_url(instance);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_paintTime(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
         return try PerformanceElementTimingImpl.get_paintTime(instance);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_presentationTime(instance: *runtime.Instance) anyerror!?DOMHighResTimeStamp {
         return try PerformanceElementTimingImpl.get_presentationTime(instance);
     }

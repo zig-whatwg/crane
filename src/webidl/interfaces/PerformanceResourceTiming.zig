@@ -119,6 +119,10 @@ pub const PerformanceResourceTiming = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "serverTiming", .{ "Window", "Worker" } },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -439,6 +443,7 @@ pub const PerformanceResourceTiming = struct {
         return try PerformanceResourceTimingImpl.get_contentEncoding(instance);
     }
 
+    /// Extended attributes: [Exposed=(Window,Worker)]
     pub fn get_serverTiming(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PerformanceResourceTimingImpl.get_serverTiming(instance);
     }
@@ -447,4 +452,9 @@ pub const PerformanceResourceTiming = struct {
     pub fn call_toJSON(instance: *runtime.Instance) anyerror!PerformanceResourceTimingToJSON {
         return try PerformanceResourceTimingImpl.call_toJSON(instance);
     }
+
+    /// WebIDL ByteString results: each byte becomes the code unit of its value.
+    pub const byte_string_returns = .{
+        "get_nextHopProtocol",
+    };
 };

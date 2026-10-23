@@ -28,7 +28,7 @@
 //! (docs/instances.md: a Browser is one thread for its window agent plus one
 //! per worker). A document shares its origin only with documents its own
 //! agent makes; a worker, another Browser and every fetch get the
-//! serialization, never the record. So the count is a plain integer, and
+//! serialization and opaque identity by value, never the record. So the count is a plain integer, and
 //! builds with runtime safety check that every retain, release and domain
 //! change happens on the thread that made the record. Two Browsers on two
 //! threads never meet in one record, and there is no process-wide state.
@@ -57,6 +57,9 @@ pub const OriginRecord = struct {
     /// HTML "domain": null, or a host serialized, which the document.domain
     /// setter sets (`setDomain`). Owned.
     domain: ?[]const u8 = null,
+    /// HTML's opaque identity, exported lazily. The value can cross an
+    /// agent boundary; this record and its mutable domain cannot.
+    opaque_nonce: ?u128 = null,
     thread: ThreadCheck,
 
     /// A document's own origin, whose serialization is not known yet
@@ -109,6 +112,26 @@ pub const OriginRecord = struct {
         return std.mem.eql(u8, serialized, "null");
     }
 
+    /// A serialization alone cannot identify an opaque origin. Export a
+    /// stable nonzero nonce, as Blink SecurityOrigin's isolated copy does.
+    pub fn opaqueNonce(self: *OriginRecord, browser: ?*@import("runtime").BrowserScope) error{OutOfMemory}!?u128 {
+        self.thread.check();
+        if (!self.isOpaque()) return null;
+        if (self.opaque_nonce) |value| return value;
+        const scope = browser orelse return null;
+        self.opaque_nonce = (try scope.of(OpaqueNonces)).next();
+        return self.opaque_nonce;
+    }
+
+    /// Import into a newly created record on THIS thread. No origin
+    /// pointer, allocator or mutable domain is shared with the sender.
+    pub fn importOpaqueNonce(self: *OriginRecord, nonce: u128) void {
+        self.thread.check();
+        std.debug.assert(self.isOpaque() and nonce != 0);
+        std.debug.assert(self.opaque_nonce == null or self.opaque_nonce == nonce);
+        self.opaque_nonce = nonce;
+    }
+
     /// Record the serialization of a document's own origin, if it is not
     /// known yet. An origin's tuple never changes, so a later call keeps the
     /// first answer.
@@ -126,6 +149,30 @@ pub const OriginRecord = struct {
         const copy = try self.allocator.dupe(u8, domain);
         if (self.domain) |old| self.allocator.free(old);
         self.domain = copy;
+    }
+};
+
+/// A Browser owns one generator, shared under its own lock by its agents.
+/// OS entropy seeds a CSPRNG; no process-wide counter or address identity.
+const OpaqueNonces = struct {
+    random: std.Random.DefaultCsprng,
+    mutex: std.Io.Mutex = .init,
+
+    pub fn init(_: Allocator) OpaqueNonces {
+        var seed: [32]u8 = undefined;
+        @import("platform").fillRandom(&seed);
+        return .{ .random = .init(seed) };
+    }
+
+    pub fn deinit(_: *OpaqueNonces) void {}
+
+    fn next(self: *OpaqueNonces) u128 {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        while (true) {
+            const value = self.random.random().int(u128);
+            if (value != 0) return value;
+        }
     }
 };
 
@@ -168,6 +215,7 @@ pub fn sameOrigin(a: Origin, b: Origin) bool {
     // 1. "If A and B are the same opaque origin, then return true." One
     // record is one origin, opaque or not.
     if (a.record != null and a.record == b.record) return true;
+    if (sameOpaqueIdentity(a, b)) return true;
     // 2. "If A and B are both tuple origins and their schemes, hosts, and
     // port are identical, then return true." A serialization alone names
     // no opaque origin.
@@ -182,6 +230,7 @@ pub fn sameOriginDomain(a: Origin, b: Origin) bool {
     // record is one origin: for a tuple origin its scheme and domain are
     // identical too, so 2.1 or 2.2 holds.
     if (a.record != null and a.record == b.record) return true;
+    if (sameOpaqueIdentity(a, b)) return true;
     // 2. "If A and B are both tuple origins": the domains are the records'.
     return sameOriginDomainValues(a.serialized, a.domain(), b.serialized, b.domain());
 }
@@ -208,4 +257,12 @@ pub fn sameOriginDomainValues(a_origin: []const u8, a_domain: ?[]const u8, b_ori
 
 fn isOpaqueSerialization(serialized: []const u8) bool {
     return std.mem.eql(u8, serialized, "null");
+}
+
+fn sameOpaqueIdentity(a: Origin, b: Origin) bool {
+    if (!isOpaqueSerialization(a.serialized) or !isOpaqueSerialization(b.serialized)) return false;
+    const first = a.record orelse return false;
+    const second = b.record orelse return false;
+    const nonce = first.opaque_nonce orelse return false;
+    return nonce != 0 and nonce == second.opaque_nonce;
 }

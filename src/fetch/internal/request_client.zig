@@ -24,6 +24,7 @@ pub const RequestClient = struct {
     /// Null while the global does not know it yet: the request's origin
     /// then stays "client".
     origin: ?[]const u8 = null,
+    origin_nonce: ?u128 = null,
     /// BORROWED serialized top-level site, null for none or an opaque top-level origin.
     top_level_site: ?[]const u8 = null,
     /// What Referrer Policy's "determine request's referrer" takes as the
@@ -40,6 +41,9 @@ pub const RequestClient = struct {
     /// The user agent's blob URL store (a `file.BlobURLStore`), as the
     /// settings object reaches it: its Browser's. BORROWED, as the jar is.
     blob_url_store: ?*anyopaque = null,
+    /// Browser-local resolver. Returns an OWNED immutable entry; no global
+    /// resolver or realm is retained by the entry or the request.
+    capture_blob: ?*const fn (*anyopaque, []const u8) ?*request_mod.CapturedBlobEntry = null,
     /// The settings object's storage key for non-storage purposes,
     /// serialized (storage.StorageKey.serialize): what a blob: request
     /// obtains its blob for. BORROWED for the call.
@@ -93,7 +97,10 @@ pub fn populateRequestFromClient(request: *InternalRequest, client: RequestClien
     //    origin. (One the global does not know yet leaves it "client".)
     if (request.origin == .client) {
         if (client.origin) |origin| {
-            if (origin.len > 0) try request.setOrigin(origin);
+            if (origin.len > 0) {
+                try request.setOrigin(origin);
+                request.origin_nonce = client.origin_nonce;
+            }
         }
     }
     // 3. "If request's policy container is "client": if request's client is
@@ -137,6 +144,11 @@ pub fn populateRequestFromClient(request: *InternalRequest, client: RequestClien
     // key, and whether the client is a top-level Window fetching its own
     // creation URL (a blob URL never redirects).
     if (isBlobUrl(request.currentUrl())) {
+        if (!request.blob_url_captured) if (client.capture_blob) |capture| {
+            const entry = if (request.blob_url_store) |store| capture(store, request.currentUrl()) else null;
+            defer if (entry) |e| e.release();
+            request.setCapturedBlobEntry(entry);
+        };
         if (request.blob_storage_key == null) {
             if (client.storage_key) |key| try request.setBlobStorageKey(key);
         }

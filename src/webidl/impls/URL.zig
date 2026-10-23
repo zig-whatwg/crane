@@ -928,7 +928,7 @@ pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: runtime.JSV
 
     // Create the blob URL. Its entry's environment is the current settings
     // object - its realm - whose end removes it (`removeBlobURLEntries`).
-    const blob_url = try store.createObjectURL(blob_internal.blob_data, storage_key.value, @ptrCast(realm));
+    const blob_url = try store.createObjectURLWithOrigin(blob_internal.blob_data, storage_key.value, storage_key.origin_nonce, @ptrCast(realm));
 
     // Return as DOMString (take ownership of the allocated URL string)
     return runtime.DOMString.initOwned(blob_url);
@@ -959,14 +959,15 @@ fn blobURLStoreOf(realm: runtime.Context) ?*BlobURLStore {
 /// kind keeps none - its origin alone, "null" when it has no settings to ask:
 /// a key no environment with a storage key ever has, so its URLs resolve
 /// only for itself. `owned` is what to free, with `allocator`.
-const SettingsKey = struct { value: []const u8, owned: ?[]const u8 = null, allocator: std.mem.Allocator };
+const SettingsKey = struct { value: []const u8, owned: ?[]const u8 = null, allocator: std.mem.Allocator, origin_nonce: ?u128 = null };
 
 fn currentSettingsStorageKey(realm: runtime.Context) error{OutOfMemory}!SettingsKey {
     const none: SettingsKey = .{ .value = "null", .allocator = realm.allocator };
     const record = realm.getRealm() orelse return none;
     const raw = record.global_object orelse return none;
     const global: *runtime.Instance = @ptrCast(@alignCast(raw));
-    if (try @import("dom").global_settings.serializedStorageKeyOf(global)) |key| return .{ .value = key, .allocator = global.ctx.allocator };
+    const nonce = if (try @import("dom").global_settings.shareableOriginOf(global)) |origin| try origin.opaqueNonce(global.ctx.browserScope()) else null;
+    if (try @import("dom").global_settings.serializedStorageKeyOf(global)) |key| return .{ .value = key, .allocator = global.ctx.allocator, .origin_nonce = nonce };
     const settings = @import("dom").global_settings.of(global) orelse return none;
     const origin = settings.origin(global) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
@@ -976,7 +977,7 @@ fn currentSettingsStorageKey(realm: runtime.Context) error{OutOfMemory}!Settings
         global.ctx.allocator.free(origin);
         return none;
     }
-    return .{ .value = origin, .owned = origin, .allocator = global.ctx.allocator };
+    return .{ .value = origin, .owned = origin, .allocator = global.ctx.allocator, .origin_nonce = nonce };
 }
 
 /// revokeObjectURL static method (Blob URLs)

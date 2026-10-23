@@ -172,6 +172,11 @@ pub const overloads = .{
     } },
 };
 
+/// WebIDL ByteString results: each byte becomes the code unit of its value.
+pub const byte_string_returns = .{
+    "call_atob",
+};
+
 /// WebIDL: operations whose return type is a promise - an exception in
 /// their steps becomes a rejected promise.
 pub const promise_returning = .{

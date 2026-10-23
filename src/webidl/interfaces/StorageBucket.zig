@@ -77,6 +77,10 @@ pub const StorageBucket = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "persist", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(

@@ -45,6 +45,7 @@ pub fn abort(state: *XMLHttpRequestState) void {
     if (state.ready_state == .DONE) {
         state.ready_state = .UNSENT;
         state.setResponseToNetworkError();
+        state.clearCapturedBlob();
     }
 }
 

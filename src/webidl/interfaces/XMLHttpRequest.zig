@@ -124,6 +124,10 @@ pub const XMLHttpRequest = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = true;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "responseXML", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -449,5 +453,12 @@ pub const XMLHttpRequest = struct {
         .{ "call_getResponseHeader", 0b1 },
         .{ "call_open", 0b1 },
         .{ "call_open__1", 0b1 },
+    };
+
+    /// WebIDL ByteString results: each byte becomes the code unit of its value.
+    pub const byte_string_returns = .{
+        "get_statusText",
+        "call_getResponseHeader",
+        "call_getAllResponseHeaders",
     };
 };

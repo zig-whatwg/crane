@@ -109,7 +109,12 @@ test "a nested environment's key: the container's top-level site, and a cross-si
 
     const opaque_child = try nestedStorageKey(allocator, top, "null");
     defer allocator.free(opaque_child);
-    try std.testing.expectEqualStrings("null https://web-platform.test 1", opaque_child);
+    // Legacy navigation carries no opaque identity, so both nonces are absent.
+    // Streamnav's identity-aware nestedStorageKey (Q18) will change this case.
+    try std.testing.expectEqualStrings("null https://web-platform.test 1 - -", opaque_child);
+    const opaque_key = storage.StorageKey.parse(opaque_child).?;
+    try std.testing.expectEqual(null, opaque_key.origin_nonce);
+    try std.testing.expectEqual(null, opaque_key.top_level_nonce);
 }
 
 test "a blob URL's origin is the text between blob: and its last slash" {

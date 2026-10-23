@@ -323,7 +323,7 @@ fn evaluated(manager: *anyopaque, worker_id: u64, ok: bool, global: ?*runtime.In
 
 /// importScripts() in a service worker (6.3.2): the fetch hook's steps for
 /// `url`, on the worker's thread.
-fn importScript(manager_ptr: *anyopaque, worker_id: u64, ctx: runtime.Context, url: []const u8) error{ NetworkError, OutOfMemory }!worker_host.ImportedScript {
+fn importScript(manager_ptr: *anyopaque, worker_id: u64, ctx: runtime.Context, url: []const u8, entry: ?*fetch.internal.request.CapturedBlobEntry, captured: bool) error{ NetworkError, OutOfMemory }!worker_host.ImportedScript {
     const manager = managerOf(manager_ptr);
     const allocator = ctx.allocator;
     switch (try manager.importStep(worker_id, url)) {
@@ -346,6 +346,10 @@ fn importScript(manager_ptr: *anyopaque, worker_id: u64, ctx: runtime.Context, u
                 .kind = .imported_script,
                 .bypass_http_cache = plan.bypass_http_cache,
                 .origin = client.request.origin,
+                .origin_nonce = client.request.origin_nonce,
+                .storage_key = client.request.storage_key,
+                .blob_url_entry = entry,
+                .blob_url_captured = captured,
                 .policy_container = client.request.policy_container,
                 // Its violations go to the worker's own global, on this
                 // thread (CSP 2.4.2: the request's client's).

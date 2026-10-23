@@ -35,9 +35,12 @@ const clock = @import("clock");
 extern "c" fn getentropy(buf: [*]u8, len: usize) c_int;
 
 const BlobData = @import("blob_internals.zig").BlobData;
+const CapturedEntry = @import("blob_url").BlobURLEntry;
 
 /// Entry in the blob URL store.
 pub const BlobURLEntry = struct {
+    /// Owns the immutable payload and key. The fields below borrow them.
+    captured: *CapturedEntry,
     /// The blob's data: a reference of the entry's own (`BlobData.retain`),
     /// released when the entry leaves the store. The Blob object script made
     /// may be collected first.
@@ -137,10 +140,7 @@ pub const BlobURLStore = struct {
         while (it.next()) |entry| {
             // Free the UUID key
             self.allocator.free(entry.key_ptr.*);
-            // Free the storage key (the origin is a slice of it)
-            self.allocator.free(@constCast(entry.value_ptr.storage_key));
-            // The entry's reference to its blob's data.
-            entry.value_ptr.blob.deinit();
+            entry.value_ptr.captured.release();
         }
         self.entries.deinit();
     }
@@ -176,6 +176,12 @@ pub const BlobURLStore = struct {
     /// keeps `uuid` and its copy of the key, not this string. The mutable slice says so in
     /// the type, which is what lets `DOMString.initOwned` accept it.
     pub fn createObjectURL(self: *BlobURLStore, blob: *BlobData, storage_key: []const u8, environment: ?*const anyopaque) ![]u8 {
+        return self.createObjectURLWithOrigin(blob, storage_key, null, environment);
+    }
+
+    /// The settings object's opaque origin crosses threads only as a value.
+    /// The existing native API keeps its unknown-identity default.
+    pub fn createObjectURLWithOrigin(self: *BlobURLStore, blob: *BlobData, storage_key: []const u8, origin_nonce: ?u128, environment: ?*const anyopaque) ![]u8 {
         std.Io.Threaded.mutexLock(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const origin = originOfKey(storage_key);
@@ -188,9 +194,12 @@ pub const BlobURLStore = struct {
         const url = try std.fmt.allocPrint(self.allocator, "blob:{s}/{s}", .{ origin, uuid });
         errdefer self.allocator.free(url);
 
-        // Copy the key for storage; the origin is a slice of the copy.
-        const owned_key = try self.allocator.dupe(u8, storage_key);
-        errdefer self.allocator.free(owned_key);
+        const captured = try CapturedEntry.create(self.allocator, storage_key, origin_nonce, blob, .{
+            .retain = &retainPayload,
+            .release = &releasePayload,
+            .read = &readPayload,
+        });
+        errdefer captured.release();
 
         // Store the entry. It holds the blob for as long as it is in the
         // store: a reference of its own, which revoking releases - taken
@@ -199,14 +208,46 @@ pub const BlobURLStore = struct {
         // A rehash keeps the capacity just ensured.
         self.guard.beforeInsert(&self.entries);
         self.entries.putAssumeCapacity(uuid, .{
-            .blob = blob.retain(),
-            .storage_key = owned_key,
-            .origin = owned_key[0..origin.len],
+            .captured = captured,
+            .blob = blob,
+            .storage_key = captured.storage_key,
+            .origin = captured.origin,
             .environment = environment,
             .valid = true,
         });
 
         return url;
+    }
+
+    /// File API "resolve a blob URL": capture the complete URL, excluding
+    /// its fragment. Access is checked later by the retained entry's read.
+    pub fn capture(self: *BlobURLStore, url: []const u8) ?*CapturedEntry {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        const key = url[0 .. std.mem.indexOfScalar(u8, url, '#') orelse url.len];
+        const uuid = self.extractUUID(key) orelse return null;
+        const entry = self.entries.get(uuid) orelse return null;
+        if (!entry.valid or !matchesEntryURL(key, uuid, entry.origin)) return null;
+        return entry.captured.retain();
+    }
+
+    fn retainPayload(ptr: *anyopaque) void {
+        const blob: *BlobData = @ptrCast(@alignCast(ptr));
+        _ = blob.retain();
+    }
+
+    fn releasePayload(ptr: *anyopaque) void {
+        const blob: *BlobData = @ptrCast(@alignCast(ptr));
+        blob.deinit();
+    }
+
+    fn readPayload(ptr: *anyopaque, allocator: std.mem.Allocator) error{OutOfMemory}!CapturedEntry.Data {
+        // BlobData's bytes and MIME type are immutable; its atomic retained
+        // reference outlives this read even when another thread revokes.
+        const blob: *BlobData = @ptrCast(@alignCast(ptr));
+        const bytes = try allocator.dupe(u8, blob.bytes);
+        errdefer allocator.free(bytes);
+        return .{ .bytes = bytes, .content_type = try allocator.dupe(u8, blob.mime_type) };
     }
 
     /// Revoke a blob URL, for the current settings object whose storage key
@@ -286,10 +327,7 @@ pub const BlobURLStore = struct {
         const kv = self.entries.fetchRemove(uuid) orelse return;
         self.guard.noteRemoval(&self.entries);
         self.allocator.free(kv.key);
-        self.allocator.free(@constCast(kv.value.storage_key));
-        // The entry's reference to its blob's data: the last one frees it
-        // when the Blob object has already been collected.
-        kv.value.blob.deinit();
+        kv.value.captured.release();
     }
 
     /// Resolve a blob URL to its associated blob, for `access`.
@@ -319,7 +357,7 @@ pub const BlobURLStore = struct {
 
         // "Obtain a blob object" steps 1-3.
         switch (access) {
-            .environment => |storage_key| if (!std.mem.eql(u8, entry.storage_key, storage_key)) return null,
+            .environment => |storage_key| if (!legacyKeysEqual(entry.storage_key, storage_key)) return null,
             .top_level_navigation, .top_level_self_fetch => {},
         }
 
@@ -328,6 +366,36 @@ pub const BlobURLStore = struct {
         }
 
         return entry.blob.retain();
+    }
+
+    /// Navigation still supplies its pre-identity key until streamnav
+    /// carries captured entries (row 115 Q18). Preserve that path's old
+    /// comparison; fetch/Request/XHR/importScripts authorize through the
+    /// captured entry's strict read instead. A key carrying identity is
+    /// never reduced to its public serialization here.
+    fn legacyKeysEqual(entry_key: []const u8, request_key: []const u8) bool {
+        if (std.mem.eql(u8, entry_key, request_key)) return true;
+        // A reserved navigation client serializes an unknown opaque
+        // identity as "- -" now. That is the old public key, too; a
+        // request carrying either identity never takes this fallback.
+        const request_prefix = prefix: {
+            var spaces: usize = 0;
+            for (request_key, 0..) |byte, i| if (byte == ' ') {
+                spaces += 1;
+                if (spaces == 3) {
+                    if (!std.mem.eql(u8, request_key[i..], " - -")) return false;
+                    break :prefix request_key[0..i];
+                }
+            };
+            if (spaces != 2) return false;
+            break :prefix request_key;
+        };
+        var spaces: usize = 0;
+        for (entry_key, 0..) |byte, i| if (byte == ' ') {
+            spaces += 1;
+            if (spaces == 3) return std.mem.eql(u8, entry_key[0..i], request_prefix);
+        };
+        return spaces == 2 and std.mem.eql(u8, entry_key, request_prefix);
     }
 
     /// Generate a random UUID v4.

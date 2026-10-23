@@ -39,6 +39,20 @@ const interface = @import("interface.zig");
 /// binding is made from through this module).
 pub const generated_namespaces = @import("namespaces");
 
+/// Generated namespaces obey both [Exposed] and [SecureContext]. A small
+/// hand-written binding test with no metadata keeps its existing behavior.
+pub fn namespaceIsExposed(comptime Namespace: type, context: *v8.Context) bool {
+    if (@hasDecl(Namespace, "Meta") and @hasDecl(Namespace.Meta, "extended_attributes")) {
+        if (!interface.interfaceIsExposedInScope(Namespace, interface.realmExposureScope(context))) return false;
+        inline for (Namespace.Meta.extended_attributes) |attr| {
+            if (comptime std.mem.eql(u8, attr.name, "SecureContext")) {
+                if (!interface.realmIsSecureContext(context)) return false;
+            }
+        }
+    }
+    return true;
+}
+
 /// The realm a namespace operation that takes one (`runtime.Context`) is
 /// handed: the CURRENT realm - V8 enters the operation's creation context
 /// while the callback runs (current_realm.zig) - as WebIDL runs a namespace
@@ -270,6 +284,7 @@ pub fn V8Namespace(comptime Namespace: type) type {
             context: *v8.Context,
             name: []const u8,
         ) void {
+            if (!namespaceIsExposed(Namespace, context)) return;
             // Owned handles, released once the property is defined: the
             // namespace object and the global live in `context`, so a leaked
             // handle to either kept the whole context alive.
@@ -311,15 +326,24 @@ pub fn V8Namespace(comptime Namespace: type) type {
 
             // Register all methods at compile time
             inline for (all_methods) |method| {
-                registerMethod(isolate, object, method);
+                if (comptime !@hasDecl(Namespace, "Meta") or !@hasDecl(Namespace.Meta, "exposed_members")) {
+                    registerMethod(isolate, object, method);
+                } else if (interface.memberIsExposed(Namespace, method.name, false, interface.realmExposureScope(context))) {
+                    registerMethod(isolate, object, method);
+                }
             }
             // WebIDL 3.13.1: each regular attribute an accessor property -
             // [[Enumerable]] and [[Configurable]] true, a getter and no
             // setter (a namespace attribute is readonly).
             inline for (attributes) |attribute| {
-                if (v8.v8_String_NewFromUtf8(isolate, attribute.name.ptr, @intCast(attribute.name.len))) |name_str| {
-                    defer v8.v8_String_Dispose(name_str);
-                    _ = v8.v8_Object_SetAccessorProperty(object, context, name_str, comptime generateGetter(attribute), null);
+                install_attribute: {
+                    if (comptime @hasDecl(Namespace.Meta, "exposed_members")) {
+                        if (!interface.memberIsExposed(Namespace, attribute.name, false, interface.realmExposureScope(context))) break :install_attribute;
+                    }
+                    if (v8.v8_String_NewFromUtf8(isolate, attribute.name.ptr, @intCast(attribute.name.len))) |name_str| {
+                        defer v8.v8_String_Dispose(name_str);
+                        _ = v8.v8_Object_SetAccessorProperty(object, context, name_str, comptime generateGetter(attribute), null);
+                    }
                 }
             }
 

@@ -75,6 +75,11 @@ pub const LargestContentfulPaint = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "paintTime", .{"Window"} },
+            .{ "presentationTime", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -243,10 +248,12 @@ pub const LargestContentfulPaint = struct {
         return try LargestContentfulPaintImpl.get_element(instance);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_paintTime(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
         return try LargestContentfulPaintImpl.get_paintTime(instance);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_presentationTime(instance: *runtime.Instance) anyerror!?DOMHighResTimeStamp {
         return try LargestContentfulPaintImpl.get_presentationTime(instance);
     }

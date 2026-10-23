@@ -351,6 +351,10 @@ pub fn wrapInstanceAsV8Object(
         );
     }
 
+    // Realm-dependent non-configurable members cannot live on an isolate's
+    // shared template. The dispatcher has no work for all other interfaces.
+    @import("interface_bindings.zig").installConditionalUnforgeablesByName(interface_name, isolate, context, v8_object);
+
     // For legacy platform objects, wrap in a Proxy to ensure correct
     // [[OwnPropertyKeys]] enumeration order per WebIDL §3.9.6.
     const final_object = if (std.mem.eql(u8, interface_name, "Location")) blk: {

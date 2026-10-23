@@ -70,8 +70,8 @@ pub const FormData = struct {
 
         /// Iterable declaration (for Symbol.iterator support)
         pub const iterable = .{
-            .value_type = "runtime.USVString",
-            .key_type = "FormDataEntryValue",
+            .value_type = "FormDataEntryValue",
+            .key_type = "runtime.USVString",
         };
     };
 
