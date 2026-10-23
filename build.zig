@@ -540,6 +540,12 @@ fn buildImageCodecs(b: *std.Build, target: std.Build.ResolvedTarget, optimize: s
     jpeg_lib.root_module.addIncludePath(headers.getDirectory());
     jpeg_lib.root_module.addIncludePath(jpeg.path("src"));
     jpeg_lib.root_module.addConfigHeader(jpeg_version);
+    // jinclude.h's PUTENV_S calls setenv(), which glibc declares under
+    // -std=c11 only with a feature-test macro (setenv is POSIX, not ISO C).
+    // libjpeg-turbo's CMake build compiles with the compiler's default GNU
+    // dialect, which implies _DEFAULT_SOURCE; ask for it explicitly here.
+    // Apple's libc declares setenv unconditionally.
+    if (target.result.os.tag == .linux) jpeg_lib.root_module.addCMacro("_DEFAULT_SOURCE", "1");
     jpeg_lib.root_module.addCSourceFiles(.{ .root = jpeg.path("src"), .files = &jpeg_sources, .flags = &.{"-std=c11"} });
 
     const xml_headers = b.addWriteFiles();
