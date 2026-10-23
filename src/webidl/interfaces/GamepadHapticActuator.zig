@@ -60,6 +60,10 @@ pub const GamepadHapticActuator = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "pulse", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -181,6 +185,7 @@ pub const GamepadHapticActuator = struct {
         return try GamepadHapticActuatorImpl.call_playEffect(instance, @"type", params);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn call_pulse(instance: *runtime.Instance, value: f64, duration: f64) anyerror!runtime.JSValue {
         return try GamepadHapticActuatorImpl.call_pulse(instance, value, duration);
     }

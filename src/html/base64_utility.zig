@@ -15,6 +15,14 @@ pub const Error = error{ InvalidCharacterError, OutOfMemory };
 /// atob(data): the decoded bytes, isomorphic-decoded to a string and held
 /// as UTF-8. The caller owns the result.
 pub fn atob(allocator: std.mem.Allocator, data: []const u8) Error![]u8 {
+    const decoded = try atobBytes(allocator, data);
+    defer allocator.free(decoded);
+    return infra.bytes.isomorphicDecodeToUtf8(allocator, decoded) catch return error.OutOfMemory;
+}
+
+/// HTML atob's IDL ByteString result: each decoded byte is one code unit.
+/// Native callers that need UTF-8 text use atob above. Both results are owned.
+pub fn atobBytes(allocator: std.mem.Allocator, data: []const u8) Error![]u8 {
     // Step 1: Let decodedData be the result of running forgiving-base64
     // decode on data.
     const decoded = infra.base64.forgivingBase64Decode(allocator, data) catch |err| switch (err) {
@@ -23,10 +31,9 @@ pub fn atob(allocator: std.mem.Allocator, data: []const u8) Error![]u8 {
         error.InvalidBase64 => return error.InvalidCharacterError,
         error.OutOfMemory => return error.OutOfMemory,
     };
-    defer allocator.free(decoded);
     // Step 3: Return decodedData - bytes, which script sees as the code
     // units 0x00-0xFF.
-    return infra.bytes.isomorphicDecodeToUtf8(allocator, decoded) catch return error.OutOfMemory;
+    return decoded;
 }
 
 /// btoa(data): the base64 of data's code points as bytes. The caller owns

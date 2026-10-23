@@ -456,6 +456,53 @@ fn appendUniqueName(names: *std.ArrayList([]const u8), name: []const u8) !void {
     try names.append(std.heap.page_allocator, name);
 }
 
+/// WebIDL [Exposed]: an override belongs to this member, including an
+/// override inherited from its partial or mixin in the IR. An unlisted
+/// member has its host interface's exposure; a mixin's is intersected with
+/// that host by the binding. Tables use JS names, not delegate names.
+pub fn writeExposedMembers(writer: anytype, attributes: []const types.Attribute, operations: []const types.Operation, constants: []const types.Constant) !void {
+    inline for (.{ false, true }) |static| {
+        var names = std.ArrayList([]const u8).empty;
+        defer names.deinit(std.heap.page_allocator);
+        var entries: std.Io.Writer.Allocating = .init(std.heap.page_allocator);
+        defer entries.deinit();
+        for (attributes) |attr| {
+            if (attr.static == static) try writeMemberExposure(&entries.writer, &names, attr.name, attr.extAttrs);
+        }
+        for (operations) |op| {
+            const name = op.name orelse continue;
+            if (op.static == static) try writeMemberExposure(&entries.writer, &names, name, op.extAttrs);
+        }
+        // Constants occur on both the interface object and its prototype.
+        for (constants) |constant| try writeMemberExposure(&entries.writer, &names, constant.name, constant.extAttrs);
+        if (entries.written().len != 0) {
+            try writer.print("        /// Member-level [Exposed] overrides; unlisted members inherit the interface.\n        pub const {s} = .{{\n", .{if (static) "exposed_static_members" else "exposed_members"});
+            try writer.writeAll(entries.written());
+            try writer.writeAll("        };\n");
+        }
+    }
+}
+
+fn writeMemberExposure(writer: anytype, names: *std.ArrayList([]const u8), name: []const u8, attrs: []const types.ExtendedAttribute) !void {
+    for (names.items) |existing| if (std.mem.eql(u8, existing, name)) return;
+    for (attrs) |attr| {
+        if (!std.mem.eql(u8, attr.name, "Exposed")) continue;
+        const rhs = attr.rhs orelse continue;
+        try appendUniqueName(names, name);
+        try writer.print("            .{{ \"{s}\", .{{", .{name});
+        switch (rhs) {
+            .identifier => |identifier| try writer.print(" \"{s}\" ", .{identifier}),
+            .identifierList => |identifiers| for (identifiers, 0..) |identifier, i| {
+                if (i != 0) try writer.writeAll(",");
+                try writer.print(" \"{s}\"", .{identifier});
+            },
+            else => unreachable, // [Exposed] is an identifier or identifier list.
+        }
+        try writer.writeAll(" } },\n");
+        return;
+    }
+}
+
 /// Whether `op` is a regular operation - a method of the interface prototype.
 /// WebIDL 2.5.3: "If an operation has an identifier, then it is a regular
 /// operation" - a special one (getter, setter, deleter, stringifier) declared
@@ -1002,6 +1049,7 @@ pub fn writeMetadata(
 
     // Its [SecureContext] members, which a non-secure realm hides.
     try writeSecureContextMembers(writer, own_attributes_and_statics, own_operations);
+    try writeExposedMembers(writer, own_attributes_and_statics, own_operations, constants);
 
     // Generate iterable metadata if present
     if (iterable) |iter| {
@@ -1011,13 +1059,13 @@ pub fn writeMetadata(
 
         // Value type (always present)
         try writer.writeAll("            .value_type = \"");
-        try writeIDLType(writer, iter.keyType);
+        try writeIDLType(writer, iter.valueType orelse iter.keyType);
         try writer.writeAll("\",\n");
 
         // Key type (only for pair iterables)
-        if (iter.valueType) |val_type| {
+        if (iter.valueType != null) {
             try writer.writeAll("            .key_type = \"");
-            try writeIDLType(writer, val_type);
+            try writeIDLType(writer, iter.keyType);
             try writer.writeAll("\",\n");
         } else {
             try writer.writeAll("            .key_type = null,\n");
@@ -1036,13 +1084,13 @@ pub fn writeMetadata(
 
         // Value type (always present)
         try writer.writeAll("            .value_type = \"");
-        try writeIDLType(writer, async_iter.keyType);
+        try writeIDLType(writer, async_iter.valueType orelse async_iter.keyType);
         try writer.writeAll("\",\n");
 
         // Key type (only for pair async iterables)
-        if (async_iter.valueType) |val_type| {
+        if (async_iter.valueType != null) {
             try writer.writeAll("            .key_type = \"");
-            try writeIDLType(writer, val_type);
+            try writeIDLType(writer, async_iter.keyType);
             try writer.writeAll("\",\n");
         } else {
             try writer.writeAll("            .key_type = null,\n");
@@ -1114,7 +1162,7 @@ pub fn writeMetadata(
 }
 
 /// Write extended attribute value (RHS)
-fn writeExtendedAttributeValue(writer: anytype, rhs: types.ExtAttrRHS) !void {
+pub fn writeExtendedAttributeValue(writer: anytype, rhs: types.ExtAttrRHS) !void {
     switch (rhs) {
         .identifier => |id| {
             try writer.print(".{{ .identifier = \"{s}\" }}", .{id});
@@ -3816,6 +3864,65 @@ fn writeByteStringArguments(
     try writer.writeAll("    };\n\n");
 }
 
+/// A scalar ByteString result is a byte sequence, not UTF-8. Other string
+/// types share its Zig representation, so the IDL model names the delegates
+/// whose results need the byte-to-code-unit conversion. Sequence/record
+/// results are already JavaScript values made by the implementation.
+fn writeByteStringReturns(writer: anytype, attributes: []const types.Attribute, operations: []const types.Operation, model: ?*const ir.IR) !void {
+    const allocator = std.heap.page_allocator;
+    var names: std.ArrayList([]const u8) = .empty;
+    defer {
+        for (names.items) |name| allocator.free(name);
+        names.deinit(allocator);
+    }
+    for (attributes) |attr| {
+        if (!isScalarByteString(attr.idlType, model)) continue;
+        const sanitized = try sanitizeFunctionName(allocator, attr.name);
+        defer if (!std.mem.eql(u8, sanitized, attr.name)) allocator.free(sanitized);
+        const name = try std.fmt.allocPrint(allocator, "get_{s}{s}", .{ if (attr.static) "static_" else "", sanitized });
+        errdefer allocator.free(name);
+        try names.append(allocator, name);
+    }
+    const anonymous = try special_operations.anonymousFunctions(allocator, operations);
+    defer special_operations.freeAnonymous(allocator, anonymous);
+    for (anonymous) |entry| {
+        if (!isScalarByteString(entry.op.idlType, model)) continue;
+        const name = try allocator.dupe(u8, entry.function);
+        errdefer allocator.free(name);
+        try names.append(allocator, name);
+    }
+    const sets = try overload.groupOperationsByName(allocator, operations);
+    defer overload.freeOverloadSets(allocator, sets);
+    for (sets) |set| {
+        for (set.operations, 0..) |op, k| {
+            if (!isScalarByteString(op.idlType, model)) continue;
+            const op_name = op.name orelse continue;
+            const prefix = if (op.static) "call_static_" else "call_";
+            const name = if (k == 0)
+                try std.fmt.allocPrint(allocator, "{s}{s}", .{ prefix, op_name })
+            else
+                try std.fmt.allocPrint(allocator, "{s}{s}__{d}", .{ prefix, op_name, k });
+            errdefer allocator.free(name);
+            try names.append(allocator, name);
+        }
+    }
+    if (names.items.len == 0) return;
+    try writer.writeAll("    /// WebIDL ByteString results: each byte becomes the code unit of its value.\n    pub const byte_string_returns = .{\n");
+    for (names.items) |name| try writer.print("        \"{s}\",\n", .{name});
+    try writer.writeAll("    };\n\n");
+}
+
+fn isScalarByteString(idl_type: types.IDLType, model: ?*const ir.IR) bool {
+    var target = idl_type;
+    for (0..16) |_| {
+        if (target.unionTypes != null or target.generic != null or target.sequence != null or target.record != null) return false;
+        if (std.mem.eql(u8, target.type, "ByteString")) return true;
+        const m = model orelse return false;
+        target = (m.typedefs.get(target.type) orelse return false).idlType;
+    }
+    return false;
+}
+
 /// WebIDL 3.2.14 object: "If V is not an Object, throw a TypeError." Codegen
 /// types `object` as runtime.JSValue, as it types `any`, so the binding learns
 /// which arguments are `object` - or a sequence of `object` - from this
@@ -5225,6 +5332,7 @@ pub fn writeDelegateFunctions(
     // Which string arguments and attribute values are ByteStrings: a code
     // unit above 0xFF throws for them.
     try writeByteStringArguments(writer, own_attributes, overload_ops, options.model);
+    try writeByteStringReturns(writer, own_attributes, overload_ops, options.model);
     // Which arguments are `object`: a value that is not an Object throws.
     try writeObjectArguments(writer, overload_ops, options.model);
     // Which arguments and attribute values convert to an interface type, and

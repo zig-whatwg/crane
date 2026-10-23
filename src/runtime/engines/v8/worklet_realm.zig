@@ -41,7 +41,6 @@ const ffi = @import("ffi.zig");
 const context_manager = @import("context_manager.zig");
 const interface_bindings = @import("interface_bindings.zig");
 const worker_realm = @import("worker_realm.zig");
-const V8Namespace = @import("namespace.zig").V8Namespace;
 
 fn isolateOf(agent: *runtime.Agent) *ffi.Isolate {
     return @ptrCast(@alignCast(agent));
@@ -161,7 +160,7 @@ fn setUp(comptime Kind: type, isolate: *ffi.Isolate, context: *ffi.Context, opti
     // (Console Standard). CSS, TestUtils and the GPU namespaces are not
     // exposed to worklets, and WebAssembly is the engine's own.
     interface_bindings.installForScope(isolate, context, Kind.scope);
-    V8Namespace(@import("namespaces").console).registerGlobal(isolate, context, "console");
+    interface_bindings.registerNamespacesGeneric(@import("namespaces"), isolate, context);
 
     // The platform object behind the global, its prototype chain and its own
     // members - after the interface objects, whose prototypes it links.

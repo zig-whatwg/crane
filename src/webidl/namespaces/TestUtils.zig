@@ -10,6 +10,9 @@ pub const TestUtils = struct {
     pub const Meta = struct {
         pub const name = "TestUtils";
         pub const is_namespace = true;
+        pub const extended_attributes = .{
+            .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
+        };
         pub const BaseType = null;
         pub const MixinTypes = &.{};
 

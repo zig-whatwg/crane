@@ -161,6 +161,11 @@ pub const ServiceWorkerGlobalScope = struct {
             "onpush",
             "onpushsubscriptionchange",
         };
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "onpush", .{"ServiceWorker"} },
+            .{ "onpushsubscriptionchange", .{"ServiceWorker"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -521,25 +526,25 @@ pub const ServiceWorkerGlobalScope = struct {
         try event_handlers.setValue(EventHandler, instance, "onperiodicsync", value);
     }
 
-    /// Extended attributes: [SecureContext]
+    /// Extended attributes: [Exposed=ServiceWorker], [SecureContext]
     pub fn get_onpush(instance: *runtime.Instance) anyerror!EventHandler {
         if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_onpush")) return try ServiceWorkerGlobalScopeImpl.get_onpush(instance);
         return event_handlers.value(EventHandler, instance, "onpush");
     }
 
-    /// Extended attributes: [SecureContext]
+    /// Extended attributes: [Exposed=ServiceWorker], [SecureContext]
     pub fn set_onpush(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_onpush")) return try ServiceWorkerGlobalScopeImpl.set_onpush(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onpush", value);
     }
 
-    /// Extended attributes: [SecureContext]
+    /// Extended attributes: [Exposed=ServiceWorker], [SecureContext]
     pub fn get_onpushsubscriptionchange(instance: *runtime.Instance) anyerror!EventHandler {
         if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "get_onpushsubscriptionchange")) return try ServiceWorkerGlobalScopeImpl.get_onpushsubscriptionchange(instance);
         return event_handlers.value(EventHandler, instance, "onpushsubscriptionchange");
     }
 
-    /// Extended attributes: [SecureContext]
+    /// Extended attributes: [Exposed=ServiceWorker], [SecureContext]
     pub fn set_onpushsubscriptionchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         if (comptime @hasDecl(ServiceWorkerGlobalScopeImpl, "set_onpushsubscriptionchange")) return try ServiceWorkerGlobalScopeImpl.set_onpushsubscriptionchange(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onpushsubscriptionchange", value);

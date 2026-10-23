@@ -177,6 +177,10 @@ pub const XRSession = struct {
         pub const secure_context_members = .{
             "maxRenderLayers",
         };
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "maxRenderLayers", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -562,7 +566,7 @@ pub const XRSession = struct {
         return try XRSessionImpl.get_preferredReflectionFormat(instance);
     }
 
-    /// Extended attributes: [SecureContext]
+    /// Extended attributes: [SecureContext], [Exposed=Window]
     pub fn get_maxRenderLayers(instance: *runtime.Instance) anyerror!u32 {
         return try XRSessionImpl.get_maxRenderLayers(instance);
     }

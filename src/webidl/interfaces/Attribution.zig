@@ -69,6 +69,11 @@ pub const Attribution = struct {
             "saveImpression",
             "measureConversion",
         };
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "saveImpression", .{"Window"} },
+            .{ "measureConversion", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -178,12 +183,12 @@ pub const Attribution = struct {
         return try AttributionImpl.get_aggregationServices(instance);
     }
 
-    /// Extended attributes: [SecureContext]
+    /// Extended attributes: [SecureContext], [Exposed=Window]
     pub fn call_measureConversion(instance: *runtime.Instance, options: AttributionConversionOptions) anyerror!runtime.JSValue {
         return try AttributionImpl.call_measureConversion(instance, options);
     }
 
-    /// Extended attributes: [SecureContext]
+    /// Extended attributes: [SecureContext], [Exposed=Window]
     pub fn call_saveImpression(instance: *runtime.Instance, options: AttributionImpressionOptions) anyerror!runtime.JSValue {
         return try AttributionImpl.call_saveImpression(instance, options);
     }

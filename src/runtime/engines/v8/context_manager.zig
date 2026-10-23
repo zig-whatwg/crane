@@ -57,6 +57,10 @@ const node_document = @import("dom").node_document;
 
 /// Context mapping entry
 pub const ContextEntry = struct {
+    /// WebIDL global names are needed before the Realm/global object is
+    /// recorded. installForScope sets this before materializing interfaces;
+    /// Window contexts, including snapshot-restored ones, use the default.
+    exposure_scope: helpers.GlobalScope = .Window,
     /// V8 context pointer (key)
     v8_ctx: *v8.Context,
 

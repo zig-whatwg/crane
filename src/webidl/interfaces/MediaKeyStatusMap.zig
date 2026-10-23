@@ -61,8 +61,8 @@ pub const MediaKeyStatusMap = struct {
 
         /// Iterable declaration (for Symbol.iterator support)
         pub const iterable = .{
-            .value_type = "BufferSource",
-            .key_type = "MediaKeyStatus",
+            .value_type = "MediaKeyStatus",
+            .key_type = "BufferSource",
         };
     };
 

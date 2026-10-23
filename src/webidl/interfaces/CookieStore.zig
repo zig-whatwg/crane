@@ -84,6 +84,10 @@ pub const CookieStore = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "onchange", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(

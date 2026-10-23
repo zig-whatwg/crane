@@ -67,8 +67,8 @@ pub const StylePropertyMapReadOnly = struct {
 
         /// Iterable declaration (for Symbol.iterator support)
         pub const iterable = .{
-            .value_type = "runtime.USVString",
-            .key_type = "runtime.sequence(CSSStyleValue)",
+            .value_type = "runtime.sequence(CSSStyleValue)",
+            .key_type = "runtime.USVString",
         };
     };
 

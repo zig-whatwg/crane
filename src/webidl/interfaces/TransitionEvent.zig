@@ -70,6 +70,10 @@ pub const TransitionEvent = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = true;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "animation", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -202,6 +206,7 @@ pub const TransitionEvent = struct {
         return try TransitionEventImpl.get_pseudoElement(instance);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_animation(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try TransitionEventImpl.get_animation(instance);
     }

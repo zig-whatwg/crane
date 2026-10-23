@@ -469,6 +469,7 @@ pub fn registerAllTemplatesOnly(
     // object this realm now has; a realm restored from the snapshot would
     // otherwise keep the snapshot's Image, whose prototype is a stale one.
     registerLegacyFactoryFunctions(isolate, context);
+    registerLegacyInterfaceAliasesWithMode(isolate, context, objects);
 }
 
 /// The snapshot's Window interface object, which a restored realm keeps (see
@@ -549,9 +550,16 @@ pub fn installForScope(
     comptime scope: helpers.GlobalScope,
 ) void {
     @setEvalBranchQuota(200_000);
+    if (@import("context_manager.zig").getEntry(context)) |entry| entry.exposure_scope = scope;
     const iface_decls = @typeInfo(interfaces).@"struct".decls;
     const global = v8.v8_Context_Global(context) orelse return;
     defer v8.v8_Object_Dispose(global);
+    // V8 13.1 Genesis copies the default snapshot global's properties even
+    // when Context::New receives a different global template (see
+    // v8_wrapper.cpp, NewPlainGlobalContext). A worker must not retain the
+    // Window interface objects copied that way. Delete removes only own,
+    // configurable properties; it never changes the shared templates.
+    const from_snapshot = v8.v8_Isolate_IsFromSnapshot(isolate);
 
     inline for (iface_decls) |decl| {
         if (comptime shouldSkipInterface(decl.name)) continue;
@@ -585,9 +593,31 @@ pub fn installForScope(
             if (comptime helpers.isExposedIn(InterfaceType, scope)) {
                 const Binding = V8Interface(InterfaceType);
                 Binding.registerGlobalFast(isolate, context, global, decl.name);
+            } else if (from_snapshot) {
+                interface_mod.hideNames(isolate, context, global, .{decl.name});
+            }
+
+            // WebIDL's legacy Window names are properties of Window globals,
+            // including an alias whose interface is also exposed to workers.
+            if (comptime scope != .Window and @hasDecl(InterfaceType.Meta, "extended_attributes")) {
+                if (from_snapshot) {
+                    inline for (InterfaceType.Meta.extended_attributes) |attr| {
+                        if (comptime std.mem.eql(u8, attr.name, "LegacyWindowAlias") or
+                            std.mem.eql(u8, attr.name, "LegacyFactoryFunction"))
+                        {
+                            if (comptime @hasField(@TypeOf(attr.value), "identifier")) {
+                                interface_mod.hideNames(isolate, context, global, .{attr.value.identifier});
+                            } else if (comptime @hasField(@TypeOf(attr.value), "identifier_list")) {
+                                interface_mod.hideNames(isolate, context, global, attr.value.identifier_list);
+                            }
+                        }
+                    }
+                }
             }
         }
     }
+    // HTML's historical Document alias is defined in prose, not IDL.
+    if (scope != .Window and from_snapshot) interface_mod.hideNames(isolate, context, global, .{"HTMLDocument"});
 }
 
 /// Initialize ALL V8 interface bindings
@@ -912,6 +942,14 @@ pub fn registerLegacyInterfaceAliases(
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) void {
+    registerLegacyInterfaceAliasesWithMode(isolate, context, .eager);
+}
+
+fn registerLegacyInterfaceAliasesWithMode(
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    objects: InterfaceObjects,
+) void {
     @setEvalBranchQuota(200_000);
     // Every handle below is released: each points into `context`, and one
     // kept keeps the whole realm (docs/lessons/
@@ -951,7 +989,16 @@ pub fn registerLegacyInterfaceAliases(
                             break :blk "";
                         };
 
-                        if (alias_name.len > 0) defineAlias(isolate, context, global, Meta.name, alias_name);
+                        if (alias_name.len > 0) {
+                            if (objects == .lazy_follows and global_constructor_handler.isLazyInstallableInterface(Meta.name)) {
+                                // A lazy data property, not a JS accessor: its
+                                // descriptor is still writable/configurable,
+                                // non-enumerable and has no get/set members.
+                                global_constructor_handler.installLazy(isolate, context, global, alias_name);
+                            } else {
+                                defineAlias(isolate, context, global, Meta.name, alias_name);
+                            }
+                        }
                     }
                 }
             }
@@ -1004,88 +1051,91 @@ pub fn registerNamespacesGeneric(
     const iface_decls = @typeInfo(interfaces).@"struct".decls;
 
     inline for (ns_decls) |decl| {
-        const NamespaceType = @field(namespaces_mod, decl.name);
+        install_namespace: {
+            const NamespaceType = @field(namespaces_mod, decl.name);
 
-        // Only bind types that have Meta (actual namespaces), and never one the
-        // engine already defines - that would shadow it, and its
-        // [LegacyNamespace] interfaces with it.
-        if (@typeInfo(NamespaceType) == .@"struct" and @hasDecl(NamespaceType, "Meta") and
-            comptime !namespaceIsEngineProvided(decl.name))
-        {
-            // Use V8Namespace to create object with all methods bound
-            const NamespaceBinding = V8Namespace(NamespaceType);
-            NamespaceBinding.registerGlobal(isolate, context, decl.name);
+            // Only bind types that have Meta (actual namespaces), and never one the
+            // engine already defines - that would shadow it, and its
+            // [LegacyNamespace] interfaces with it.
+            if (@typeInfo(NamespaceType) == .@"struct" and @hasDecl(NamespaceType, "Meta") and
+                comptime !namespaceIsEngineProvided(decl.name))
+            {
+                if (!@import("namespace.zig").namespaceIsExposed(NamespaceType, context)) break :install_namespace;
+                // Use V8Namespace to create object with all methods bound
+                const NamespaceBinding = V8Namespace(NamespaceType);
+                NamespaceBinding.registerGlobal(isolate, context, decl.name);
 
-            // Get the namespace object we just created. Every handle here is
-            // owned and released: each points into `context`, and one leaked
-            // per namespace kept every context alive.
-            const global_obj = v8.v8_Context_Global(context);
-            defer if (global_obj) |g| v8.v8_Object_Dispose(g);
-            // Note: This should always succeed for valid comptime string literals
-            const ns_key_str = v8.v8_String_NewFromUtf8(isolate, decl.name.ptr, @intCast(decl.name.len)).?;
-            defer v8.v8_String_Dispose(ns_key_str);
-            const ns_obj_value = v8.v8_Object_Get(global_obj.?, context, @ptrCast(ns_key_str));
-            defer if (ns_obj_value) |v| v8.v8_Value_Dispose(v);
-            const ns_obj: ?*v8.Object = @ptrCast(ns_obj_value);
+                // Get the namespace object we just created. Every handle here is
+                // owned and released: each points into `context`, and one leaked
+                // per namespace kept every context alive.
+                const global_obj = v8.v8_Context_Global(context);
+                defer if (global_obj) |g| v8.v8_Object_Dispose(g);
+                // Note: This should always succeed for valid comptime string literals
+                const ns_key_str = v8.v8_String_NewFromUtf8(isolate, decl.name.ptr, @intCast(decl.name.len)).?;
+                defer v8.v8_String_Dispose(ns_key_str);
+                const ns_obj_value = v8.v8_Object_Get(global_obj.?, context, @ptrCast(ns_key_str));
+                defer if (ns_obj_value) |v| v8.v8_Value_Dispose(v);
+                const ns_obj: ?*v8.Object = @ptrCast(ns_obj_value);
 
-            // Attach interfaces with [LegacyNamespace=<this namespace>] as properties
-            const namespace_name = decl.name;
-            inline for (iface_decls) |iface_decl| {
-                // Skip interfaces in skip list
-                if (comptime shouldSkipInterface(iface_decl.name)) continue;
+                // Attach interfaces with [LegacyNamespace=<this namespace>] as properties
+                const namespace_name = decl.name;
+                inline for (iface_decls) |iface_decl| {
+                    // Skip interfaces in skip list
+                    if (comptime shouldSkipInterface(iface_decl.name)) continue;
 
-                const InterfaceType = @field(interfaces, iface_decl.name);
-                if (@typeInfo(InterfaceType) == .@"struct" and @hasDecl(InterfaceType, "Meta")) {
-                    // Check if this interface belongs to this namespace
-                    const belongs_here = comptime blk: {
-                        const Meta = InterfaceType.Meta;
-                        if (@hasDecl(Meta, "extended_attributes")) {
-                            const ext_attrs = Meta.extended_attributes;
-                            for (ext_attrs) |attr| {
-                                if (std.mem.eql(u8, attr.name, "LegacyNamespace")) {
-                                    const val = attr.value;
-                                    if (@hasField(@TypeOf(val), "identifier")) {
-                                        if (std.mem.eql(u8, val.identifier, namespace_name)) {
-                                            break :blk true;
+                    const InterfaceType = @field(interfaces, iface_decl.name);
+                    if (@typeInfo(InterfaceType) == .@"struct" and @hasDecl(InterfaceType, "Meta")) {
+                        // Check if this interface belongs to this namespace
+                        const belongs_here = comptime blk: {
+                            const Meta = InterfaceType.Meta;
+                            if (@hasDecl(Meta, "extended_attributes")) {
+                                const ext_attrs = Meta.extended_attributes;
+                                for (ext_attrs) |attr| {
+                                    if (std.mem.eql(u8, attr.name, "LegacyNamespace")) {
+                                        const val = attr.value;
+                                        if (@hasField(@TypeOf(val), "identifier")) {
+                                            if (std.mem.eql(u8, val.identifier, namespace_name)) {
+                                                break :blk true;
+                                            }
                                         }
                                     }
                                 }
                             }
+                            break :blk false;
+                        };
+
+                        if (belongs_here) {
+                            // Create the interface constructor
+                            const InterfaceBinding = V8Interface(InterfaceType);
+                            const template = InterfaceBinding.createTemplate(isolate);
+                            const constructor = v8.v8_FunctionTemplate_GetFunction(template, context);
+                            defer if (constructor) |c| v8.v8_Function_Dispose(c);
+
+                            // Attach as property: WebAssembly.Instance = constructor
+                            // Per WebIDL spec, namespace properties are non-writable, non-enumerable, non-configurable
+                            const iface_key = v8.v8_String_NewFromUtf8(isolate, iface_decl.name.ptr, @intCast(iface_decl.name.len));
+                            defer if (iface_key) |k| v8.v8_String_Dispose(k);
+                            _ = v8.v8_Object_DefineProperty(
+                                @ptrCast(ns_obj),
+                                context,
+                                @ptrCast(iface_key),
+                                @ptrCast(constructor),
+                                false, // writable
+                                false, // enumerable
+                                false, // configurable
+                            );
                         }
-                        break :blk false;
-                    };
-
-                    if (belongs_here) {
-                        // Create the interface constructor
-                        const InterfaceBinding = V8Interface(InterfaceType);
-                        const template = InterfaceBinding.createTemplate(isolate);
-                        const constructor = v8.v8_FunctionTemplate_GetFunction(template, context);
-                        defer if (constructor) |c| v8.v8_Function_Dispose(c);
-
-                        // Attach as property: WebAssembly.Instance = constructor
-                        // Per WebIDL spec, namespace properties are non-writable, non-enumerable, non-configurable
-                        const iface_key = v8.v8_String_NewFromUtf8(isolate, iface_decl.name.ptr, @intCast(iface_decl.name.len));
-                        defer if (iface_key) |k| v8.v8_String_Dispose(k);
-                        _ = v8.v8_Object_DefineProperty(
-                            @ptrCast(ns_obj),
-                            context,
-                            @ptrCast(iface_key),
-                            @ptrCast(constructor),
-                            false, // writable
-                            false, // enumerable
-                            false, // configurable
-                        );
                     }
                 }
-            }
 
-            // The namespace object stays an ordinary, extensible object
-            // (WebIDL 3.13.1: OrdinaryObjectCreate, then its attributes,
-            // operations and constants - each configurable). It used to be
-            // sealed here (v8_Object_PreventExtensions seals), which made
-            // every operation and attribute non-configurable; idlharness
-            // asserts Object.isExtensible(namespaceObject) and configurable
-            // members, as Chrome, Firefox and Safari have them.
+                // The namespace object stays an ordinary, extensible object
+                // (WebIDL 3.13.1: OrdinaryObjectCreate, then its attributes,
+                // operations and constants - each configurable). It used to be
+                // sealed here (v8_Object_PreventExtensions seals), which made
+                // every operation and attribute non-configurable; idlharness
+                // asserts Object.isExtensible(namespaceObject) and configurable
+                // members, as Chrome, Firefox and Safari have them.
+            }
         }
     }
 }
@@ -1406,6 +1456,20 @@ pub fn getOrCreateTemplateByName(
 /// fresh with all accessors correctly installed.
 ///
 /// Uses inline for to match interface name at runtime and create the appropriate template.
+pub inline fn installConditionalUnforgeablesByName(interface_name: []const u8, isolate: *v8.Isolate, context: *v8.Context, object: *v8.Object) void {
+    @setEvalBranchQuota(10_000_000);
+    inline for (@typeInfo(interfaces).@"struct".decls) |decl| {
+        const InterfaceType = @field(interfaces, decl.name);
+        if (@typeInfo(InterfaceType) != .@"struct" or !@hasDecl(InterfaceType, "Meta")) continue;
+        if (comptime interface_mod.hasConditionalUnforgeables(InterfaceType)) {
+            if (std.mem.eql(u8, decl.name, interface_name)) {
+                V8Interface(InterfaceType).installConditionalUnforgeables(isolate, context, object);
+                return;
+            }
+        }
+    }
+}
+
 pub fn createTemplateOnDemandByName(
     interface_name: []const u8,
     isolate: *v8.Isolate,
@@ -1476,11 +1540,27 @@ pub fn materializeInterfaceObjectByName(
         if (@hasDecl(InterfaceType.Meta, "is_mixin")) {
             if (InterfaceType.Meta.is_mixin) continue;
         }
-        if (std.mem.eql(u8, decl.name, interface_name)) {
+        if (std.mem.eql(u8, decl.name, interface_name) or legacyWindowAliasMatches(InterfaceType, interface_name)) {
             return V8Interface(InterfaceType).materializeInterfaceObject(isolate, context, decl.name);
         }
     }
     return null;
+}
+
+/// Resolve an installed alias through the per-context interface object, not
+/// a read of the target's global property: script may have deleted or replaced
+/// that property before its first read of the alias. Keep the identifier-list
+/// aliases out of this existing surface pending the geometry/SVG spec ruling.
+fn legacyWindowAliasMatches(comptime Interface: type, name: []const u8) bool {
+    if (comptime !@hasDecl(Interface.Meta, "extended_attributes")) return false;
+    inline for (Interface.Meta.extended_attributes) |attr| {
+        if (comptime std.mem.eql(u8, attr.name, "LegacyWindowAlias") and
+            @hasField(@TypeOf(attr.value), "identifier"))
+        {
+            if (std.mem.eql(u8, name, attr.value.identifier)) return true;
+        }
+    }
+    return false;
 }
 
 /// Register accessor properties directly on a prototype object by interface name.

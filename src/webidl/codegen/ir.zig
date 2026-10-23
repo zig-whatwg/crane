@@ -331,7 +331,7 @@ pub const IR = struct {
             try rest.append(self.allocator, member);
         }
         var trimmed = partial;
-        // A partial's [SecureContext] (and [IsolatedContext]) is its
+        // A partial's [Exposed], [SecureContext] and [IsolatedContext] are its
         // members', not the interface's (WebIDL 3.3.13: on a partial
         // interface it "indicates that ... the members declared on it" are
         // exposed only in a secure context). Merged into the interface, it
@@ -481,8 +481,9 @@ pub const IR = struct {
                 try ext_attrs.appendSlice(arena, merged.extAttrs);
                 for (occurrences, 0..) |occurrence, i| {
                     if (i == first or !occurrence.definition.isPartial()) continue;
-                    try members.appendSlice(arena, occurrence.definition.namespace.members);
-                    try appendMissingExtAttrs(arena, &ext_attrs, occurrence.definition.namespace.extAttrs);
+                    const partial = occurrence.definition.namespace;
+                    try members.appendSlice(arena, try withMemberScopedExtAttrs(arena, partial.members, partial.extAttrs));
+                    try appendMissingExtAttrs(arena, &ext_attrs, try withoutMemberScopedExtAttrs(arena, partial.extAttrs));
                 }
                 merged.members = members.items;
                 merged.extAttrs = ext_attrs.items;
@@ -610,7 +611,7 @@ fn dictionaryMemberNamed(members: []const types.DictionaryMember, name: []const 
 /// Extended attributes that, on a partial interface or an interface mixin,
 /// apply to the members it declares rather than to the interface (WebIDL
 /// 3.3.13 [SecureContext]; [IsolatedContext] the same way).
-pub const member_scoped_ext_attrs = [_][]const u8{ "SecureContext", "IsolatedContext" };
+pub const member_scoped_ext_attrs = [_][]const u8{ "Exposed", "SecureContext", "IsolatedContext" };
 
 fn isMemberScoped(name: []const u8) bool {
     for (member_scoped_ext_attrs) |scoped| {
