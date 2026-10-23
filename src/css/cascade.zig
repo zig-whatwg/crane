@@ -68,6 +68,19 @@ pub const Origin = enum(u4) {
 /// The implicit final layer of unlayered declarations.
 pub const unlayered: u16 = std.math.maxInt(u16);
 
+/// Plain identity for the tree scope where a value was declared. Zero is
+/// the document scope; this never holds a DOM object or a borrowed pointer.
+pub const TreeScopeRef = struct {
+    serial: u64 = 0,
+};
+
+/// The declaration metadata a computed value may need. Copy this out of
+/// candidates; their Source pointers are borrowed only during cascade().
+pub const ValueSource = struct {
+    tree_scope: TreeScopeRef = .{},
+    tree_count_allowed: bool = true,
+};
+
 /// Where a block of declarations enters the cascade.
 pub const Source = struct {
     origin: Origin,
@@ -82,6 +95,9 @@ pub const Source = struct {
     element_attached: bool = false,
     /// Shadow-including tree context depth (batch 2; 0 is the document).
     tree_depth: u16 = 0,
+    /// Whether this declaration may use Values 5 tree-counting inputs.
+    tree_count_allowed: bool = true,
+    tree_scope: TreeScopeRef = .{},
 };
 
 pub const Specificity = struct {
@@ -132,9 +148,9 @@ pub const Context = struct {
 const Candidate = struct {
     decl: *const Declaration,
     priority: u128,
-    origin: Origin,
-    layer: u16,
-    important: bool,
+    /// Borrowed from the caller's stable Matched slice. Candidates never
+    /// escape the synchronous cascade or enter an owned computed value.
+    source: *const Source,
 };
 
 /// Cascade 5 6.1's priority of a declaration from `source`.
@@ -158,21 +174,22 @@ fn priority(source: Source, important: bool) u128 {
     return (origin << 96) | (tree << 80) | (attached << 79) | (layer << 63) | (source.specificity.packed30() << 33) | source.order;
 }
 
-/// The cascade and the computed-value step for one element. The style is
-/// the caller's (`destroy`).
-pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*ComputedStyle {
-    const allocator = ctx.allocator;
+/// The caller finishes appending matched batches before this call, and
+/// keeps the slice and declaration blocks immutable until cascade returns.
+/// Like Blink's MatchResult/CascadeMap, candidates refer back to their
+/// matched declarations rather than duplicating all source data per property.
+fn collectCandidates(allocator: Allocator, matched: []const Matched) Allocator.Error!std.ArrayList(Candidate) {
     var candidates: std.ArrayList(Candidate) = .empty;
-    defer candidates.deinit(allocator);
-    for (matched) |m| {
+    errdefer candidates.deinit(allocator);
+    for (matched) |*m| {
+        std.debug.assert(@intFromPtr(&m.source) >= @intFromPtr(matched.ptr));
+        std.debug.assert(@intFromPtr(&m.source) + @sizeOf(Source) <= @intFromPtr(matched.ptr) + matched.len * @sizeOf(Matched));
         var it = m.block.typed();
         while (it.next()) |d| {
             try candidates.append(allocator, .{
                 .decl = d,
                 .priority = priority(m.source, d.important),
-                .origin = m.source.origin,
-                .layer = m.source.layer,
-                .important = d.important,
+                .source = &m.source,
             });
         }
     }
@@ -182,7 +199,15 @@ pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*Computed
             return a.priority > b.priority;
         }
     }.lessThan);
+    return candidates;
+}
 
+/// The cascade and the computed-value step for one element. The style is
+/// the caller's (`destroy`). Matched blocks must remain stable for this call.
+pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*ComputedStyle {
+    const allocator = ctx.allocator;
+    var candidates = try collectCandidates(allocator, matched);
+    defer candidates.deinit(allocator);
     var builder: Builder = .{ .ctx = ctx, .candidates = candidates.items };
     const style = try allocator.create(ComputedStyle);
     style.* = .{ .allocator = allocator, .values = computed_mod.initial_values };
@@ -223,7 +248,10 @@ const Builder = struct {
         while (true) {
             const winner = self.pick(l, &excluded) orelse return self.defaulted(l);
             switch (winner.decl.value) {
-                .value => |v| return .{ .value = v },
+                .value => |v| return .{ .value = .{ .value = v, .source = .{
+                    .tree_scope = winner.source.tree_scope,
+                    .tree_count_allowed = winner.source.tree_count_allowed,
+                } } },
                 .css_wide => |k| switch (k) {
                     .initial => return .{ .initial = {} },
                     .inherit => return .{ .inherit = {} },
@@ -232,8 +260,8 @@ const Builder = struct {
                     // ... author origin: Rolls back the cascaded value to the
                     // user level."
                     .revert => {
-                        if (winner.origin == .user_agent) return self.unset(l);
-                        excluded.revert_class_at_least = winner.origin.revertClass();
+                        if (winner.source.origin == .user_agent) return self.unset(l);
+                        excluded.revert_class_at_least = winner.source.origin.revertClass();
                     },
                     // "revert-layer: ... rolled back to the earlier layer, so
                     // that the specified value is calculated as if no rules
@@ -336,7 +364,7 @@ const Builder = struct {
                 // The root's color has no parent to inherit from: "the
                 // inherited value is the initial value" (Cascade 5 7.3.2),
                 // CanvasText in the root's own color scheme.
-                if (self.ctx.parent == null and l == .color) return self.computeValue(l, l.info().initial);
+                if (self.ctx.parent == null and l == .color) return self.computeValue(l, l.info().initial, .{});
                 const p = self.parentValue(l);
                 p.retain();
                 return p;
@@ -346,16 +374,20 @@ const Builder = struct {
             // white for `color: initial` under `only dark`; Firefox 144
             // black).
             .initial => if (l == .color) l.info().initial else computed_mod.initialComputed(l),
-            .value => |v| v,
+            .value => |v| v.value,
         };
-        return self.computeValue(l, v);
+        const source: ValueSource = switch (spec) {
+            .value => |specified_value| specified_value.source,
+            .initial, .inherit => .{},
+        };
+        return self.computeValue(l, v, source);
     }
 
     fn fontSize(self: *const Builder) f64 {
         return self.style.values[@intFromEnum(Longhand.font_size)].length.value;
     }
 
-    fn computeValue(self: *Builder, l: Longhand, v: Value) Allocator.Error!Value {
+    fn computeValue(self: *Builder, l: Longhand, v: Value, source: ValueSource) Allocator.Error!Value {
         if (v == .calculation) {
             const expression = try v.calculation.compute(self.ctx.allocator, self.mathContext(l));
             if (expression.computedNumber()) |number| {
@@ -373,7 +405,7 @@ const Builder = struct {
                         return .{ .calculation = expression };
                     },
                 };
-                return self.computeValue(l, scalar);
+                return self.computeValue(l, scalar, source);
             }
             return .{ .calculation = expression };
         }
@@ -386,7 +418,7 @@ const Builder = struct {
                     if (try v.content.compute(self.ctx.allocator, self.ctx.content_attributes)) |content| return .{ .content = content };
                     // A guaranteed-invalid attr() invalidates the entire
                     // non-inherited declaration at computed-value time.
-                    return self.computeValue(.content, Value.kw(.normal));
+                    return self.computeValue(.content, Value.kw(.normal), source);
                 }
                 if (v.isKeyword(.normal)) if (self.ctx.pseudo) |pseudo| {
                     if (std.mem.eql(u8, pseudo, "before") or std.mem.eql(u8, pseudo, "after")) return Value.kw(.none);
@@ -613,7 +645,7 @@ fn snapBorderWidth(px: f64) f64 {
 }
 
 const Specified = union(enum) {
-    value: Value,
+    value: struct { value: Value, source: ValueSource },
     initial,
     inherit,
 };
@@ -630,20 +662,20 @@ const Exclusions = struct {
     fn add(self: *Exclusions, c: Candidate) void {
         if (self.count == self.layers.len) {
             // Deeper than any real chain: discard the whole origin.
-            self.revert_class_at_least = @min(self.revert_class_at_least, c.origin.revertClass());
+            self.revert_class_at_least = @min(self.revert_class_at_least, c.source.origin.revertClass());
             return;
         }
-        self.layers[self.count] = .{ .origin = c.origin, .layer = c.layer, .important = c.important };
+        self.layers[self.count] = .{ .origin = c.source.origin, .layer = c.source.layer, .important = c.decl.important };
         self.count += 1;
     }
 
     fn excludes(self: *const Exclusions, c: Candidate) bool {
-        if (c.origin.revertClass() >= self.revert_class_at_least) return true;
+        if (c.source.origin.revertClass() >= self.revert_class_at_least) return true;
         for (self.layers[0..self.count]) |lv| {
-            if (lv.origin != c.origin or lv.layer != c.layer) continue;
+            if (lv.origin != c.source.origin or lv.layer != c.source.layer) continue;
             // An important level's revert-layer also passes the normal
             // declarations of its layer.
-            if (lv.important or !c.important) return true;
+            if (lv.important or !c.decl.important) return true;
         }
         return false;
     }
@@ -926,5 +958,149 @@ test "the element color scheme: normal is the page's, a list is resolved against
             std.debug.print("{s} page {s} preferred {s}\n", .{ case[0], @tagName(case[1]), @tagName(case[2]) });
             return err;
         };
+    }
+}
+
+const Cv1Cascade = @This();
+const cv1HasSourceApi = @hasDecl(Cv1Cascade, "TreeScopeRef") and
+    @hasDecl(Cv1Cascade, "ValueSource") and @hasDecl(Cv1Cascade, "collectCandidates");
+
+fn cv1SourceSpecified(matched: []const Matched, longhand: Longhand, mode: Keyword, direction: Keyword) !Specified {
+    var candidates = try Cv1Cascade.collectCandidates(testing.allocator, matched);
+    defer candidates.deinit(testing.allocator);
+    const builder = Builder{
+        .ctx = .{ .allocator = testing.allocator, .parent = null },
+        .candidates = candidates.items,
+        .writing_mode = mode,
+        .direction = direction,
+    };
+    return builder.specified(longhand);
+}
+
+test "cv1 source defaults to the document and permits tree counts" {
+    if (comptime !cv1HasSourceApi) return error.CascadeSourceApiNotImplemented;
+    const source: Source = .{ .origin = .author };
+    const value_source: Cv1Cascade.ValueSource = .{};
+    try testing.expectEqual(@as(u64, 0), source.tree_scope.serial);
+    try testing.expectEqual(@as(u64, 0), value_source.tree_scope.serial);
+    try testing.expect(source.tree_count_allowed);
+    try testing.expect(value_source.tree_count_allowed);
+}
+
+test "cv1 source candidate stays thirty two bytes" {
+    try testing.expectEqual(@as(usize, 32), @sizeOf(Candidate));
+}
+
+test "cv1 source metadata belongs to the winning declaration and is copied out of candidates" {
+    if (comptime !cv1HasSourceApi) return error.CascadeSourceApiNotImplemented;
+    var low = try TestBlock.make("opacity:.2");
+    defer low.deinit();
+    var high = try TestBlock.make("opacity:.8");
+    defer high.deinit();
+    var matched = [_]Matched{
+        .{ .block = &high.block, .source = .{ .origin = .author, .order = 2, .tree_scope = .{ .serial = 82 }, .tree_count_allowed = false } },
+        .{ .block = &low.block, .source = .{ .origin = .author, .order = 1, .tree_scope = .{ .serial = 17 } } },
+    };
+    const specified = try cv1SourceSpecified(&matched, .opacity, .horizontal_tb, .ltr);
+    matched[0].source.tree_scope.serial = 999;
+    try testing.expectEqual(@as(f64, 0.8), specified.value.value.number);
+    try testing.expectEqual(@as(u64, 82), specified.value.source.tree_scope.serial);
+    try testing.expect(!specified.value.source.tree_count_allowed);
+}
+
+test "cv1 source revert and revert layer carry the fallback declaration source" {
+    if (comptime !cv1HasSourceApi) return error.CascadeSourceApiNotImplemented;
+    var ua = try TestBlock.make("display:block;opacity:.1");
+    defer ua.deinit();
+    var low = try TestBlock.make("opacity:.4");
+    defer low.deinit();
+    var high = try TestBlock.make("display:revert;opacity:revert-layer");
+    defer high.deinit();
+    const matched = [_]Matched{
+        .{ .block = &ua.block, .source = .{ .origin = .user_agent, .tree_scope = .{ .serial = 3 } } },
+        .{ .block = &low.block, .source = .{ .origin = .author, .layer = 0, .tree_scope = .{ .serial = 4 }, .tree_count_allowed = false } },
+        .{ .block = &high.block, .source = .{ .origin = .author, .layer = 1, .tree_scope = .{ .serial = 5 } } },
+    };
+    const reverted = try cv1SourceSpecified(&matched, .display, .horizontal_tb, .ltr);
+    try testing.expectEqual(@as(u64, 3), reverted.value.source.tree_scope.serial);
+    const layered = try cv1SourceSpecified(&matched, .opacity, .horizontal_tb, .ltr);
+    try testing.expectEqual(@as(u64, 4), layered.value.source.tree_scope.serial);
+    try testing.expect(!layered.value.source.tree_count_allowed);
+}
+
+test "cv1 source logical remapping keeps the winning rule source" {
+    if (comptime !cv1HasSourceApi) return error.CascadeSourceApiNotImplemented;
+    var logical = try TestBlock.make("margin-inline-start:7px");
+    defer logical.deinit();
+    var physical = try TestBlock.make("margin-right:3px");
+    defer physical.deinit();
+    const matched = [_]Matched{
+        .{ .block = &logical.block, .source = .{ .origin = .author, .order = 2, .tree_scope = .{ .serial = 72 } } },
+        .{ .block = &physical.block, .source = .{ .origin = .author, .order = 1, .tree_scope = .{ .serial = 31 } } },
+    };
+    const specified = try cv1SourceSpecified(&matched, .margin_right, .horizontal_tb, .rtl);
+    try testing.expectEqual(@as(f64, 7), specified.value.value.length.value);
+    try testing.expectEqual(@as(u64, 72), specified.value.source.tree_scope.serial);
+}
+
+test "cv1 source initial and inherited defaults do not acquire the resetting rule source" {
+    if (comptime !cv1HasSourceApi) return error.CascadeSourceApiNotImplemented;
+    var block = try TestBlock.make("font-family:inherit;opacity:initial");
+    defer block.deinit();
+    const matched = [_]Matched{.{ .block = &block.block, .source = .{ .origin = .author, .tree_scope = .{ .serial = 29 }, .tree_count_allowed = false } }};
+    try testing.expect((try cv1SourceSpecified(&matched, .font_family, .horizontal_tb, .ltr)) == .inherit);
+    try testing.expect((try cv1SourceSpecified(&matched, .opacity, .horizontal_tb, .ltr)) == .initial);
+    try testing.expect((try cv1SourceSpecified(&.{}, .font_family, .horizontal_tb, .ltr)) == .inherit);
+    try testing.expect((try cv1SourceSpecified(&.{}, .opacity, .horizontal_tb, .ltr)) == .initial);
+}
+
+test "cv1 source borrows only after callers finish appending matched batches" {
+    if (comptime !cv1HasSourceApi) return error.CascadeSourceApiNotImplemented;
+    var first = try TestBlock.make("opacity:.2");
+    defer first.deinit();
+    var last = try TestBlock.make("opacity:.8");
+    defer last.deinit();
+    var matched: std.ArrayList(Matched) = .empty;
+    defer matched.deinit(testing.allocator);
+    try matched.appendSlice(testing.allocator, &.{.{ .block = &first.block, .source = .{ .origin = .author, .order = 1, .tree_scope = .{ .serial = 1 } } }});
+    // Force the second batch to move storage before any candidate borrows it.
+    try matched.ensureTotalCapacity(testing.allocator, matched.capacity + 32);
+    try matched.appendSlice(testing.allocator, &.{.{ .block = &last.block, .source = .{ .origin = .author, .order = 2, .tree_scope = .{ .serial = 2 } } }});
+    const specified = try cv1SourceSpecified(matched.items, .opacity, .horizontal_tb, .ltr);
+    try testing.expectEqual(@as(u64, 2), specified.value.source.tree_scope.serial);
+    const style = try cascade(.{ .allocator = testing.allocator, .parent = null }, matched.items);
+    defer style.destroy();
+    try expectResolved(style, .opacity, "0.8");
+}
+
+test "cv1 source inheritance retains parent values after declarations and parent style end" {
+    if (comptime !cv1HasSourceApi) return error.CascadeSourceApiNotImplemented;
+    try cv1SourceInheritanceRoundTrip(testing.allocator);
+}
+
+test "cv1 source candidate and inherited value allocation failures release everything" {
+    if (comptime !cv1HasSourceApi) return error.CascadeSourceApiNotImplemented;
+    try testing.checkAllAllocationFailures(testing.allocator, cv1SourceInheritanceRoundTrip, .{});
+}
+
+fn cv1SourceInheritanceRoundTrip(allocator: Allocator) !void {
+    inline for (.{ "font-family:inherit", "color:red" }) |text| {
+        const child = blk: {
+            var parent_block = try DeclarationBlock.parse(.{ .allocator = allocator }, "font-family:parent-scope");
+            defer parent_block.deinit();
+            const parent = try cascade(.{ .allocator = allocator, .parent = null }, &.{.{ .block = &parent_block, .source = .{ .origin = .author, .tree_scope = .{ .serial = 37 } } }});
+            defer parent.destroy();
+            var child_block = try DeclarationBlock.parse(.{ .allocator = allocator }, text);
+            defer child_block.deinit();
+            const result = try cascade(.{ .allocator = allocator, .parent = parent }, &.{.{ .block = &child_block, .source = .{ .origin = .author, .tree_scope = .{ .serial = 91 } } }});
+            errdefer result.destroy();
+            try testing.expectEqual(parent.get(.font_family).text, result.get(.font_family).text);
+            break :blk result;
+        };
+        defer child.destroy();
+        var out: std.ArrayList(u8) = .empty;
+        defer out.deinit(allocator);
+        try child.serializeResolved(.font_family, &out, allocator);
+        try testing.expectEqualStrings("parent-scope", out.items);
     }
 }
