@@ -1191,6 +1191,7 @@ const Platform = enum {
 /// this list only makes a typo fail before any compile starts.
 const platform_capability_names = [_][]const u8{
     "image_decoding",
+    "font_decoding",
     "brotli",
     "persistent_storage",
     "file_urls",
@@ -2624,6 +2625,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "testing_without_camera_clipboard", .platform = .testing, .without = &.{ "camera", "clipboard" } },
             .{ .name = "testing_without_brotli", .platform = .testing, .without = &.{"brotli"} },
             .{ .name = "testing_without_image_decoding", .platform = .testing, .without = &.{"image_decoding"} },
+            .{ .name = "testing_without_font_decoding", .platform = .testing, .without = &.{"font_decoding"} },
         };
         for (conformance_bindings) |binding| {
             const bound = platformBinding(b, target, .{

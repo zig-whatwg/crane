@@ -328,6 +328,11 @@ pub const Capabilities = struct {
     /// Every image is broken: HTML "update the image data" finds the image
     /// cannot be decoded and fires error.
     image_decoding: Support,
+    /// No web font loads (CSS Font Loading 2.2 step 5.2's failure), no face
+    /// has metrics - so cap, rcap, ex, ch and ic take CSS Values 4's
+    /// fallbacks - and the system font keywords take CSS Fonts 4 2.7's
+    /// initial values.
+    font_decoding: Support,
     /// NotSupportedError.
     webcodecs: Support,
     media_capabilities: Support,
@@ -1770,6 +1775,265 @@ pub const ImageError = error{
 pub inline fn decodeImage(allocator: std.mem.Allocator, mime: Str, bytes: Bytes, limits: ImageLimits) ImageError!DecodedImage {
     comptime gate(.image_decoding, "decodeImage");
     return impl.decodeImage(allocator, mime, bytes, limits);
+}
+
+// Font decoding [font_decoding] (decision 20). Crane runs CSS's font steps
+// above the protocol - the @font-face src list, CSS Font Loading, font
+// matching, the first available font; the platform turns font data into a
+// face's description and metrics, and says which faces it has. Nothing here
+// renders: the metrics are the ones CSS reads without layout (the ex, cap, ch
+// and ic units and font-size-adjust's ex-height, cap-height, ch-width,
+// ic-width and ic-height), plus the ascent, descent and line gap.
+//
+// Every platform sanitizes web font data before its font engine sees it, as
+// Blink and Gecko run the OpenType Sanitizer first (Blink's DecodeWebFont,
+// Gecko's gfxUserFontEntry::SanitizeOpenTypeData) and WebKit runs CoreText's
+// parser or its memory-safe one: the built-in platforms share kit/sfnt, so
+// which fonts load does not depend on the platform.
+//
+// A consumer, for example the cascade's first-available-font resolver:
+//
+//     if (platform.capabilities.font_decoding != .unsupported) {
+//         var face = platform.decodeFont(allocator, .from(bytes), .from(fragment), limits) catch |err| {
+//             // CSS Font Loading 2.2 step 5.2: the load fails.
+//             return err;
+//         };
+//         defer face.deinit(allocator);
+//         // CSS Values 4 ex: "a value of 0.5em must be assumed" without one.
+//         const ex = face.metrics.x_height.ratio(face.metrics.units_per_em) orelse 0.5;
+//     } else {
+//         // No font loads; every font-relative unit takes CSS's fallback.
+//     }
+
+/// The limits Crane sets on one web font (decision 20, decision 19's rule:
+/// the limits sit on Crane's side of the protocol). Larger data is `TooLarge`
+/// before anything is decompressed. Blink uses 128 MiB for both
+/// (web_font_decoder.cc kMaxDecompressedSize); Gecko's sanitizer output stops
+/// at 256 MiB (gfxOTSUtils.h); OTS refuses a file over 1 GiB, a decompressed
+/// sum over 300 MiB and a table over 150 MiB.
+pub const FontLimits = extern struct {
+    /// The resource as fetched.
+    max_bytes: u64,
+    /// The sfnt a WOFF or WOFF2 resource decompresses to.
+    max_sfnt_bytes: u64,
+};
+
+/// A face's slope, as the font reports it (OS/2 fsSelection ITALIC and
+/// OBLIQUE): CSS Fonts 4 2.4's font-style.
+pub const FontStyle = enum(u8) { normal = 0, italic = 1, oblique = 2 };
+
+/// A metric a font may lack, in font units. Absent means the font has no
+/// such table or glyph, and the caller applies CSS's fallback; a platform
+/// never reports a guessed value as present.
+pub const FontUnits = extern struct {
+    value: f32 = 0,
+    present: bool = false,
+
+    pub fn of(value: f32) FontUnits {
+        return .{ .value = value, .present = true };
+    }
+
+    /// The metric as a fraction of the em, null when absent - what the
+    /// font-relative units and font-size-adjust multiply by the font size.
+    pub fn ratio(self: FontUnits, units_per_em: u16) ?f32 {
+        if (!self.present or units_per_em == 0) return null;
+        return self.value / @as(f32, @floatFromInt(units_per_em));
+    }
+};
+
+/// One face's metrics, in font units (`units_per_em` to the em). Each
+/// optional metric names the CSS fallback its absence takes.
+pub const FontMetrics = extern struct {
+    units_per_em: u16,
+    /// Above the baseline, positive.
+    ascent: f32,
+    /// Below the baseline, positive.
+    descent: f32,
+    line_gap: f32,
+    /// The x-height: the ex unit and font-size-adjust's ex-height. Absent:
+    /// 0.5em (CSS Values 4 ex).
+    x_height: FontUnits,
+    /// The cap-height: the cap and rcap units and cap-height. Absent: the
+    /// font's ascent (CSS Values 4 cap).
+    cap_height: FontUnits,
+    /// The horizontal advance of U+0030 ZERO: the ch unit and ch-width.
+    /// Absent: 0.5em (CSS Values 4 ch).
+    zero_advance: FontUnits,
+    /// The vertical advance of U+0030, from vhea/vmtx: the ch unit when the
+    /// glyph is typeset upright. Absent: 1em (CSS Values 4 ch: "0.5em wide
+    /// by 1em tall").
+    zero_vertical_advance: FontUnits,
+    /// The horizontal advance of U+6C34 (水): the ic unit and ic-width.
+    /// Absent: 1em (CSS Values 4 ic).
+    ideographic_advance: FontUnits,
+    /// The vertical advance of U+6C34, from vhea/vmtx: ic-height, and the
+    /// ic unit typeset upright. Absent: 1em.
+    ideographic_vertical_advance: FontUnits,
+};
+
+/// One face: what it says it is and its metrics. The four names are the
+/// font's own (the name table's US English record, CSS Fonts 4 4.3.3.1,
+/// else its first): `family` name ID 16 or 1, `style_name` 17 or 2,
+/// `full_name` 4, `postscript_name` 6, each empty when the font has none.
+/// They borrow from `strings`, which is OWNED - one allocation, freed by
+/// `deinit` with the allocator the operation was given.
+pub const DecodedFont = extern struct {
+    family: Str,
+    style_name: Str,
+    full_name: Str,
+    postscript_name: Str,
+    /// OS/2 usWeightClass, clamped to 1-1000: CSS Fonts 4 2.2's font-weight.
+    weight: u16,
+    style: FontStyle,
+    /// Percent, from OS/2 usWidthClass by CSS Fonts 4 2.3's font-width
+    /// table (1 ultra-condensed 50% ... 9 ultra-expanded 200%).
+    stretch: f32,
+    metrics: FontMetrics,
+    /// `decodeFont` was given a PostScript name and this face has it. False
+    /// when no name was given, or none matched and the first face was used.
+    matched_name: bool = false,
+    strings: Bytes,
+
+    pub fn deinit(self: *DecodedFont, allocator: std.mem.Allocator) void {
+        allocator.free(self.strings.slice());
+        self.* = undefined;
+    }
+};
+
+/// Why a web font cannot be used. Every one fails the load.
+pub const FontError = error{
+    OutOfMemory,
+    /// The `font_decoding` capability is unsupported.
+    NotSupported,
+    /// Not a font format the platform reads: anything but an sfnt
+    /// (TrueType, OpenType, a collection), WOFF or WOFF2 - EOT, SVG fonts,
+    /// Type 1, garbage.
+    UnsupportedFormat,
+    /// A supported format that fails validation or that the platform's font
+    /// engine refuses, including data that ends early: a font is used whole
+    /// or not at all.
+    Corrupt,
+    /// The data, or the sfnt it declares, exceeds the limits.
+    TooLarge,
+};
+
+/// Decode one complete web font resource: validate it as the browsers'
+/// sanitizers do, and describe the face it holds. `bytes` is BORROWED.
+///
+/// A collection (an sfnt collection, or a WOFF2 one) yields one face, chosen
+/// by `postscript_name` - the URL fragment of the src that named it (CSS
+/// Fonts 4 4.3.2), empty for none: the face whose PostScript name equals it
+/// exactly, else the first face, with `matched_name` saying which happened.
+/// That is WebKit's behaviour (FontCustomPlatformDataCoreText.cpp
+/// extractFontCustomPlatformDataShared), decided mechanism by mechanism
+/// (golden rule 2): selecting the matching face is the spec's, which Blink
+/// (fragment ignored) and Gecko (collections rejected) split on; falling back
+/// to face 0 when none matches is Blink's and WebKit's. A single font is its
+/// own first face.
+///
+/// Stateless, synchronous, any thread. The result is OWNED (`deinit`).
+pub inline fn decodeFont(allocator: std.mem.Allocator, bytes: Bytes, postscript_name: Str, limits: FontLimits) FontError!DecodedFont {
+    comptime gate(.font_decoding, "decodeFont");
+    return impl.decodeFont(allocator, bytes, postscript_name, limits);
+}
+
+/// CSS Fonts 4 2.1.5's generic font families.
+pub const GenericFontFamily = enum(u8) {
+    serif = 0,
+    sans_serif = 1,
+    monospace = 2,
+    cursive = 3,
+    fantasy = 4,
+    system_ui = 5,
+    emoji = 6,
+    math = 7,
+    fangsong = 8,
+    ui_serif = 9,
+    ui_sans_serif = 10,
+    ui_monospace = 11,
+    ui_rounded = 12,
+};
+
+/// The face a caller wants from a family: CSS Fonts 4 5.2's font style
+/// matching is the platform's to apply within an installed family.
+pub const FontRequest = extern struct {
+    weight: u16 = 400,
+    style: FontStyle = .normal,
+    /// Percent.
+    stretch: f32 = 100,
+    /// The content language (BCP 47), empty for none: a platform may choose
+    /// its defaults per script, as browsers do.
+    language: Str = .{},
+};
+
+/// The face the platform maps a generic family to (CSS Fonts 4 2.1.5), or
+/// null when it maps none - as the ui-* families on "platforms without an
+/// appropriate system font". The result is OWNED (`deinit`). Stateless,
+/// synchronous, any thread.
+pub inline fn genericFontFace(allocator: std.mem.Allocator, generic: GenericFontFamily, request: FontRequest) FontError!?DecodedFont {
+    comptime gate(.font_decoding, "genericFontFace");
+    return impl.genericFontFace(allocator, generic, request);
+}
+
+/// The face of an installed family a font-family list names (CSS Fonts 4
+/// 5.1: family names match case-insensitively), the face within it nearest
+/// `request`; null when no such family is installed. The result is OWNED
+/// (`deinit`). Stateless, synchronous, any thread.
+pub inline fn installedFontFace(allocator: std.mem.Allocator, family: Str, request: FontRequest) FontError!?DecodedFont {
+    comptime gate(.font_decoding, "installedFontFace");
+    return impl.installedFontFace(allocator, family, request);
+}
+
+/// The installed face an @font-face src's local() names (CSS Fonts 4
+/// 4.3.3.1): the face whose full name (name ID 4) or PostScript name (6), in
+/// its US English record, is `face_name`; null when none is. The result is OWNED
+/// (`deinit`). Stateless, synchronous, any thread.
+pub inline fn localFontFace(allocator: std.mem.Allocator, face_name: Str) FontError!?DecodedFont {
+    comptime gate(.font_decoding, "localFontFace");
+    return impl.localFontFace(allocator, face_name);
+}
+
+/// CSS Fonts 4 2.7's system font keywords.
+pub const SystemFontKeyword = enum(u8) {
+    caption = 0,
+    icon = 1,
+    menu = 2,
+    message_box = 3,
+    small_caption = 4,
+    status_bar = 5,
+};
+
+/// A system font keyword's values. CSS Fonts 4 2.7: a property the
+/// platform has no preference for takes its initial value - an empty
+/// `family` (the user agent's default) and a zero `size` (medium) say so;
+/// style, weight and stretch are normal, 400 and 100% then. `family`
+/// borrows from `strings`, which is OWNED (`deinit`).
+pub const SystemFont = extern struct {
+    family: Str,
+    /// `family` is the platform's system UI face, the one system-ui maps
+    /// to: Crane may name it `system-ui` rather than a private name (such as
+    /// darwin's ".AppleSystemUIFont").
+    system_ui: bool,
+    /// CSS px; 0 for no preference.
+    size: f32,
+    style: FontStyle,
+    weight: u16,
+    /// Percent.
+    stretch: f32,
+    strings: Bytes,
+
+    pub fn deinit(self: *SystemFont, allocator: std.mem.Allocator) void {
+        allocator.free(self.strings.slice());
+        self.* = undefined;
+    }
+};
+
+/// The values of a system font keyword (CSS Fonts 4 2.7) for `language`
+/// (BCP 47, empty for none). The result is OWNED (`deinit`). Stateless,
+/// synchronous, any thread.
+pub inline fn systemFont(allocator: std.mem.Allocator, keyword: SystemFontKeyword, language: Str) FontError!SystemFont {
+    comptime gate(.font_decoding, "systemFont");
+    return impl.systemFont(allocator, keyword, language);
 }
 
 /// A Media Capabilities decoding configuration.
