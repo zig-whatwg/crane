@@ -728,6 +728,7 @@ pub const Value = union(enum) {
     content: *Content,
     calculation: *@import("math_values.zig").Expression,
     sizing_function: *SizingFunction,
+    grid_line: *@import("grid_values.zig").Line,
     grid_tracks: *@import("grid_tracks.zig").Tracks,
     grid_areas: *@import("grid_tracks.zig").Areas,
     grid_flow: @import("grid_tracks.zig").Flow,
@@ -760,6 +761,7 @@ pub const Value = union(enum) {
         if (self == .content) return self.content.ref();
         if (self == .calculation) return self.calculation.ref();
         if (self == .sizing_function) return self.sizing_function.ref();
+        if (self == .grid_line) return self.grid_line.ref();
         if (self == .grid_tracks) return self.grid_tracks.ref();
         if (self == .grid_areas) return self.grid_areas.ref();
         if (self == .pending) return self.pending.ref();
@@ -773,6 +775,7 @@ pub const Value = union(enum) {
         if (self == .content) return self.content.unref();
         if (self == .calculation) return self.calculation.unref();
         if (self == .sizing_function) return self.sizing_function.unref();
+        if (self == .grid_line) return self.grid_line.unref();
         if (self == .grid_tracks) return self.grid_tracks.unref();
         if (self == .grid_areas) return self.grid_areas.unref();
         if (self == .pending) return self.pending.unref();
@@ -804,6 +807,7 @@ pub const Value = union(enum) {
             .content => |c| c.eql(b.content),
             .calculation => |c| c.eql(b.calculation),
             .sizing_function => |s| s.argument.eql(b.sizing_function.argument),
+            .grid_line => |line| line.eql(b.grid_line),
             .grid_tracks => |tracks| tracks.eql(b.grid_tracks),
             .grid_areas => |areas| areas.eql(b.grid_areas),
             .grid_flow => |flow| std.meta.eql(flow, b.grid_flow),
@@ -826,6 +830,7 @@ pub const Value = union(enum) {
             .color => |c| c.needsUnavailableMetrics(geometry_length),
             .calculation => |c| c.needsUnavailableMetrics(geometry_length),
             .sizing_function => |s| s.argument.needsUnavailableMetrics(geometry_length),
+            .grid_line => |line| line.needsUnavailableMetrics(),
             .grid_tracks => |tracks| tracks.needsUnavailableMetrics(),
             .grid_areas,
             .grid_flow,
@@ -853,6 +858,7 @@ pub const Value = union(enum) {
             .color => |c| c.needsTreeCounts(),
             .calculation => |c| c.needsTreeCounts(),
             .sizing_function => |s| s.argument.needsTreeCounts(),
+            .grid_line => |line| line.needsTreeCounts(),
             .grid_tracks => |tracks| tracks.needsTreeCounts(),
             .grid_areas,
             .grid_flow,
@@ -878,6 +884,7 @@ pub const Value = union(enum) {
             .color => |c| c.needsRandomBase(),
             .calculation => |c| c.needsRandomBase(),
             .sizing_function => |s| s.argument.needsRandomBase(),
+            .grid_line => |line| line.needsRandomBase(),
             .grid_tracks => |tracks| tracks.needsRandomBase(),
             .grid_areas,
             .grid_flow,

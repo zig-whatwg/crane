@@ -103,6 +103,10 @@ pub const Longhand = enum(u8) {
     font_size,
     font_style,
     font_weight,
+    grid_column_end,
+    grid_column_start,
+    grid_row_end,
+    grid_row_start,
     grid_auto_columns,
     grid_auto_rows,
     grid_auto_flow,
@@ -317,6 +321,7 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
 
 /// A longhand's grammar.
 pub const Grammar = enum {
+    grid_line,
     grid_tracks,
     grid_areas,
     grid_flow,
@@ -383,6 +388,10 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .grid_template_columns, .inherited = false, .initial = Value.kw(.none), .grammar = .grid_tracks },
         .{ .longhand = .grid_template_rows, .inherited = false, .initial = Value.kw(.none), .grammar = .grid_tracks },
         .{ .longhand = .grid_template_areas, .inherited = false, .initial = Value.kw(.none), .grammar = .grid_areas },
+        .{ .longhand = .grid_column_end, .inherited = false, .initial = Value.kw(.auto), .grammar = .grid_line },
+        .{ .longhand = .grid_column_start, .inherited = false, .initial = Value.kw(.auto), .grammar = .grid_line },
+        .{ .longhand = .grid_row_end, .inherited = false, .initial = Value.kw(.auto), .grammar = .grid_line },
+        .{ .longhand = .grid_row_start, .inherited = false, .initial = Value.kw(.auto), .grammar = .grid_line },
         .{ .longhand = .align_content, .inherited = false, .initial = .{ .alignment = .{ .position = .normal } }, .grammar = .alignment },
         .{ .longhand = .align_items, .inherited = false, .initial = .{ .alignment = .{ .position = .normal } }, .grammar = .alignment },
         .{ .longhand = .align_self, .inherited = false, .initial = .{ .alignment = .{ .position = .auto } }, .grammar = .alignment },
@@ -538,6 +547,9 @@ pub const Shorthand = enum(u8) {
     border_style,
     border_top,
     border_width,
+    grid_area,
+    grid_column,
+    grid_row,
     grid_template,
     grid,
     inset,
@@ -588,6 +600,9 @@ pub const Shorthand = enum(u8) {
             .border_color => &.{ .border_top_color, .border_right_color, .border_bottom_color, .border_left_color },
             .border_style => &.{ .border_top_style, .border_right_style, .border_bottom_style, .border_left_style },
             .border_width => &.{ .border_top_width, .border_right_width, .border_bottom_width, .border_left_width },
+            .grid_area => &.{ .grid_row_start, .grid_column_start, .grid_row_end, .grid_column_end },
+            .grid_column => &.{ .grid_column_start, .grid_column_end },
+            .grid_row => &.{ .grid_row_start, .grid_row_end },
             .grid_template => &.{ .grid_template_rows, .grid_template_columns, .grid_template_areas },
             .grid => &.{ .grid_template_rows, .grid_template_columns, .grid_template_areas, .grid_auto_flow, .grid_auto_rows, .grid_auto_columns },
             .inset => &.{ .top, .right, .bottom, .left },
@@ -905,6 +920,10 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
             return .{ .grid_areas = try @import("grid_tracks.zig").Areas.consume(options, stream) orelse return null };
         },
         .grid_flow => return .{ .grid_flow = @import("grid_tracks.zig").Flow.consume(stream) orelse return null },
+        .grid_line => {
+            if (takeKeyword(stream, &.{.auto})) |k| return Value.kw(k);
+            return .{ .grid_line = try @import("grid_values.zig").Line.consume(options, stream) orelse return null };
+        },
         .alignment => return .{ .alignment = @import("alignment.zig").Value.consume(stream, std.meta.stringToEnum(@import("alignment.zig").Mode, @tagName(l)).?) orelse return null },
         .anchor_names, .anchor_scope => {
             if (takeKeyword(stream, &.{.none})) |k| return Value.kw(k);
@@ -1529,6 +1548,31 @@ fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *st
             }
             return true;
         },
+        .grid_area, .grid_column, .grid_row => {
+            // Grid 2 §8.4: row-start / column-start / row-end / column-end.
+            const grid = @import("grid_values.zig");
+            const ls = s.longhands();
+            var parsed: [4]Value = undefined;
+            var count: usize = 0;
+            defer for (parsed[0..count]) |value| value.release();
+            while (true) {
+                parsed[count] = try parseLonghand(options, ls[count], stream) orelse return false;
+                count += 1;
+                if (stream.atEnd()) break;
+                if (count == ls.len or !grid.slash(stream.next())) return false;
+            }
+            while (count < ls.len) : (count += 1) {
+                const source: usize = if (count == 3) 1 else 0;
+                parsed[count] = grid.omitted(parsed[source]);
+                parsed[count].retain();
+            }
+            try out.ensureUnusedCapacity(options.allocator, ls.len);
+            for (ls, parsed[0..count]) |l, value| {
+                value.retain();
+                out.appendAssumeCapacity(.{ .longhand = l, .value = .{ .value = value } });
+            }
+            return true;
+        },
         .place_content, .place_items, .place_self => {
             // Align3 §§5.2, 6.3, 7.3: consume each whole alignment, then
             // default the second from the first (baseline content → start).
@@ -1927,6 +1971,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
             try serializeValue(l, s.argument, out, allocator);
             try out.append(allocator, ')');
         },
+        .grid_line => |line| try line.serialize(out, allocator),
         .grid_tracks => |tracks| try tracks.serialize(out, allocator),
         .grid_areas => |areas| try areas.serialize(out, allocator),
         .grid_flow => |flow| try flow.serialize(out, allocator),
@@ -1990,6 +2035,20 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
             .auto_rows = vs[4].value,
             .auto_columns = vs[5].value,
         }, out, allocator),
+        .grid_area, .grid_column, .grid_row => {
+            const grid = @import("grid_values.zig");
+            var count = ls.len;
+            while (count > 1) {
+                const source: usize = if (count == 4) 1 else 0;
+                if (!vs[count - 1].value.eql(grid.omitted(vs[source].value))) break;
+                count -= 1;
+            }
+            for (ls[0..count], vs[0..count], 0..) |l, v, i| {
+                if (i != 0) try out.appendSlice(allocator, " / ");
+                try serializeValue(l, v.value, out, allocator);
+            }
+            return true;
+        },
         .position_try => {
             if (!vs[0].value.isKeyword(.normal)) {
                 try serializeValue(.position_try_order, vs[0].value, out, allocator);

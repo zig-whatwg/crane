@@ -514,6 +514,7 @@ const Builder = struct {
     }
 
     fn computeValue(self: *Builder, l: Longhand, v: Value, source: ValueSource) Allocator.Error!Value {
+        if (v == .grid_line) return .{ .grid_line = try v.grid_line.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         if (v == .grid_tracks) return .{ .grid_tracks = try v.grid_tracks.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         if (v == .color) {
             // Color4 §6.4: currentcolor in color inherits. Every other
