@@ -3164,9 +3164,16 @@ pub fn build(b: *std.Build) void {
     const install_crane_lib = b.addInstallArtifact(crane_lib, .{});
     const install_crane_exe = b.addInstallArtifact(crane_exe, .{});
 
-    // Make Zig compilation depend on V8 build
-    install_crane_lib.step.dependOn(&build_v8.step);
-    install_crane_exe.step.dependOn(&build_v8.step);
+    // Fetch and build V8 only when the static library these artifacts link is
+    // missing - a checkout bootstrapping V8 from source. With the prebuilt
+    // present (every artifact that links V8 links it, and only these two ran
+    // the scripts), fetch_v8 still cloned depot_tools, 772 MB, into a checkout
+    // without one: every `zig build crane` in a lane mirror on chat.
+    const v8_prebuilt_present = if (b.build_root.handle.access(b.graph.io, v8_dir ++ "/out/static/obj/libv8_monolith.a", .{})) true else |_| false;
+    if (!v8_prebuilt_present) {
+        install_crane_lib.step.dependOn(&build_v8.step);
+        install_crane_exe.step.dependOn(&build_v8.step);
+    }
 
     browser_step.dependOn(&install_crane_lib.step);
     browser_step.dependOn(&install_crane_exe.step);
