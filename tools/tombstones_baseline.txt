@@ -42,8 +42,6 @@ src/runtime/engines/v8/observable_array.zig Registry.states 1
 src/runtime/engines/v8/protocol_agents.zig agents 1
 src/runtime/engines/v8/protocol_modules.zig records 1
 src/runtime/engines/v8/shadow_realm.zig ShadowRealmCallbackData.tracked_realms 1
-src/runtime/engines/v8/wrapper_cache.zig WrapperCache.edges_before_wrap 1
-src/runtime/engines/v8/wrapper_cache.zig WrapperCache.pending_before_wrap 1
 src/runtime/internal_state.zig Registry.map 1
 src/selector/cache.zig SelectorQueryCache.entries 1
 src/service_worker/cache/store.zig Storage.handles 1
