@@ -23,6 +23,7 @@ const std = @import("std");
 const testing = std.testing;
 const runtime = @import("runtime");
 const protocol = @import("engine");
+const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const inline_task_loop = @import("inline_task_loop.zig");
 
@@ -219,4 +220,73 @@ test "an object made at a freed entry's address while a worker realm's wrapper c
 
 test "an object traced while a worker realm's wrapper cache is torn down is not put in it, and its maker frees it" {
     try expectMadeObjectFreed(.worker, .trace);
+}
+
+// ============================================================================
+// A worker global scope's lazily made Performance, freed by the scope only
+// while the slot still holds it
+// ============================================================================
+
+/// A TextEncoder vtable copy whose deinit counts (the object that takes a
+/// freed Performance's slot).
+const Reissued = struct {
+    var freed: usize = 0;
+    var vtable: runtime.VTable = undefined;
+
+    fn countingDeinit(instance: *runtime.Instance) void {
+        freed += 1;
+        interfaces.TextEncoder.vtable.deinit.?(instance);
+    }
+};
+
+test "a worker global scope's wrapped Performance freed before the scope's own teardown is left alone: its slot's next object is never freed by the scope" {
+    // The order the scope's guard is for: a worker's global scope is freed
+    // inside its realm's wrapper cache sweep, in hash order, so a wrapped
+    // Performance may be freed before the scope's deinit runs, and its slab
+    // slot handed out again. Forced here: the scope's Performance is made and
+    // wrapped, then freed first - its cache entry dropped and the object torn
+    // down, as the sweep does - its slot reissued, and only then the scope
+    // torn down.
+    const page = try Page.open(.window);
+    defer page.end();
+    const scope = try interfaces.DedicatedWorkerGlobalScope.initWith(std.heap.c_allocator, page.realm, .{ .url = "https://example.test/worker.js" });
+    const performance = try interfaces.WorkerGlobalScope.get_performance(scope);
+    try testing.expect(protocol.hasWrapper(performance));
+    const cache: *v8.wrapper_cache_mod.WrapperCache = @ptrCast(@alignCast(page.realm.getV8WrapperCacheStorage().?));
+    try testing.expect(cache.remove(performance));
+    runtime.Instance.deinit(performance);
+
+    Reissued.freed = 0;
+    Reissued.vtable = interfaces.TextEncoder.vtable;
+    Reissued.vtable.deinit = &Reissued.countingDeinit;
+    const reissued = try interfaces.TextEncoder.init(std.heap.c_allocator, page.realm);
+    reissued.vtable = &Reissued.vtable;
+    // The case: the slab hands the freed slot out again (last freed, first
+    // out).
+    try testing.expectEqual(@intFromPtr(performance), @intFromPtr(reissued));
+
+    runtime.Instance.deinit(scope);
+    // The scope's deinit left the slot's new object alone...
+    try testing.expectEqual(@as(usize, 0), Reissued.freed);
+    // ...which is still its maker's to free, once.
+    runtime.Instance.deinit(reissued);
+    try testing.expectEqual(@as(usize, 1), Reissued.freed);
+}
+
+test "a worker global scope frees the Performance it made that never got a wrapper" {
+    // What the guard frees: a Performance native code made through the
+    // scope's settings while no wrapper could be made for it.
+    const page = try Page.open(.window);
+    defer page.end();
+    const scope = try interfaces.DedicatedWorkerGlobalScope.initWith(std.heap.c_allocator, page.realm, .{ .url = "https://example.test/worker.js" });
+    const cache: *v8.wrapper_cache_mod.WrapperCache = @ptrCast(@alignCast(page.realm.getV8WrapperCacheStorage().?));
+    // No wrapper is made while the cache says it is torn down.
+    cache.is_tearing_down = true;
+    const performance = try interfaces.WorkerGlobalScope.get_performance(scope);
+    cache.is_tearing_down = false;
+    try testing.expect(!protocol.hasWrapper(performance));
+    const generation = runtime.SlabAllocator.generationOf(performance);
+    runtime.Instance.deinit(scope);
+    // Freed with the scope: its slot has moved on.
+    try testing.expect(runtime.SlabAllocator.generationOf(performance) != generation);
 }
