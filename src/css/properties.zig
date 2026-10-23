@@ -137,6 +137,7 @@ pub const Longhand = enum(u8) {
     justify_items,
     justify_self,
     left,
+    letter_spacing,
     line_height,
     margin_block_end,
     margin_block_start,
@@ -394,6 +395,7 @@ pub const Grammar = enum {
     font_family,
     font_size,
     font_weight,
+    letter_spacing,
     line_height,
     opacity,
     z_index,
@@ -539,6 +541,7 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .inset_inline_start, .inherited = false, .initial = Value.kw(.auto), .grammar = .length_percentage_auto, .logical = .{ .group = .inset, .side = .inline_start } },
         .{ .longhand = .left, .inherited = false, .initial = Value.kw(.auto), .grammar = .length_percentage_auto, .quirky_length = true },
         // CSS Text4 §8.2: normal computes to zero; percentages stay computed.
+        .{ .longhand = .letter_spacing, .inherited = true, .initial = Value.kw(.normal), .grammar = .letter_spacing },
         .{ .longhand = .line_height, .inherited = true, .initial = Value.kw(.normal), .grammar = .line_height, .quirky_length = true },
         .{ .longhand = .margin_block_end, .inherited = false, .initial = zero, .grammar = .length_percentage_auto, .logical = .{ .group = .margin, .side = .block_end } },
         .{ .longhand = .margin_block_start, .inherited = false, .initial = zero, .grammar = .length_percentage_auto, .logical = .{ .group = .margin, .side = .block_start } },
@@ -1134,6 +1137,10 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
             if (n < 1 or n > 1000) return null;
             _ = stream.next();
             return .{ .number = n };
+        },
+        .letter_spacing => {
+            if (takeKeyword(stream, &.{.normal})) |k| return Value.kw(k);
+            return lengthPercentage(options, stream, .{ .negative = true, .quirky = false });
         },
         .line_height => {
             if (takeKeyword(stream, &.{.normal})) |k| return Value.kw(k);

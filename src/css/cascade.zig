@@ -612,6 +612,7 @@ const Builder = struct {
             .font_size => return Value.px(self.computeFontSize(v)),
             .font_weight => return .{ .number = self.computeFontWeight(v) },
             // CSS Text4 §8.2: normal is zero in the computed value.
+            .letter_spacing => if (v.isKeyword(.normal)) return Value.px(0),
             .opacity => return .{ .number = std.math.clamp(v.number, 0, 1) },
             .line_height => switch (v) {
                 .length => |len| if (len.unit == .percent) return Value.px(len.value / 100 * self.fontSize()),

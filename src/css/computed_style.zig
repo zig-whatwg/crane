@@ -84,6 +84,8 @@ pub const ComputedStyle = struct {
     pub fn serializeResolved(self: *const ComputedStyle, l: Longhand, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
         const v = self.get(l);
         // CSS Text4 §8.2's legacy resolved value: every computed zero is normal.
+        if (l == .letter_spacing and v == .length and v.length.value == 0)
+            return out.appendSlice(allocator, "normal");
         if (l == .animation_duration) return @import("animation_values.zig").serializeDurationResolved(v, self.get(.animation_timeline), out, allocator);
         if (l == .caret_color) return @import("ui_values.zig").serializeCaretResolved(v, .{ .scheme = self.used_color_scheme, .current = self.get(.color).color }, out, allocator);
         if (v == .color) {
@@ -128,6 +130,7 @@ pub fn initialComputed(l: Longhand) Value {
         .outline_width => Value.px(3),
         .font_size => Value.px(16),
         .font_weight => .{ .number = 400 },
+        .letter_spacing => Value.px(0),
         // CanvasText with no element to take a color scheme from: the UA
         // default's (light). The cascade resolves it per element.
         .color => .{ .color = .{ .rgba = values.RgbaColor.black } },
