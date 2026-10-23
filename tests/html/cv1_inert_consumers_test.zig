@@ -67,6 +67,10 @@ test "modal UA interactivity escapes inherited inertness but keeps its own inert
     try helpers.onFreshThread(modal);
 }
 
+test "inertness filters bounded Selection only and invalidates after state changes" {
+    try helpers.onFreshThread(selection);
+}
+
 fn foreignAttribute() !void {
     const page = try helpers.Page.open();
     defer page.close();
