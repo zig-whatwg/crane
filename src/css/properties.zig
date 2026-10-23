@@ -198,6 +198,9 @@ pub const Longhand = enum(u8) {
     animation_range_end,
 
     // CSS Transforms 2 §5: individual components, without layout.
+    translate,
+    rotate,
+    scale,
 
     // CSS Flexbox 1 §7: values independent of flex layout.
 
@@ -349,6 +352,7 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
 /// A longhand's grammar.
 pub const Grammar = enum {
     animation_list,
+    individual_transform,
     grid_line,
     grid_tracks,
     grid_areas,
@@ -413,6 +417,9 @@ const infos: [Longhand.count]Info = blk: {
     const zero = Value.px(0);
     const medium_width = Value.kw(.medium);
     const defs = [_]Info{
+        .{ .longhand = .translate, .inherited = false, .initial = Value.kw(.none), .grammar = .individual_transform },
+        .{ .longhand = .rotate, .inherited = false, .initial = Value.kw(.none), .grammar = .individual_transform },
+        .{ .longhand = .scale, .inherited = false, .initial = Value.kw(.none), .grammar = .individual_transform },
         // Row118 animation properties; execution is outside this value layer.
         .{ .longhand = .animation_duration, .inherited = false, .initial = Value.kw(.auto), .grammar = .animation_list },
         .{ .longhand = .animation_timing_function, .inherited = false, .initial = Value.kw(.ease), .grammar = .animation_list },
@@ -982,6 +989,17 @@ pub const Stream = struct {
 pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Allocator.Error!?Value {
     const def = l.info();
     switch (def.grammar) {
+        .individual_transform => {
+            if (takeKeyword(stream, &.{.none})) |keyword| return Value.kw(keyword);
+            const transforms = @import("transform_values.zig");
+            const kind: transforms.Kind = switch (l) {
+                .translate => .translate,
+                .rotate => .rotate,
+                .scale => .scale,
+                else => unreachable,
+            };
+            return .{ .transform = try transforms.parse(options, stream, kind) orelse return null };
+        },
         .animation_list => return .{ .animation_list = try @import("animation_values.zig").List.consume(options, l, stream) orelse return null },
         .grid_tracks => {
             const automatic = l == .grid_auto_columns or l == .grid_auto_rows;
@@ -2073,6 +2091,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .grid_flow => |flow| try flow.serialize(out, allocator),
         .caret_pair => |pair| try pair.serialize(out, allocator),
         .animation_list => |list| try list.serialize(out, allocator),
+        .transform => |transform| try transform.serialize(out, allocator),
         .alignment => |a| try a.serialize(out, allocator),
         .position_area => |a| try a.serialize(out, allocator),
         .try_fallbacks => |f| try f.list.serialize(f.computed, out, allocator),
