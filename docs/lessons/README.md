@@ -9,6 +9,8 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Architecture: CSS Resource Equality Includes Its Source](architecture-css-resource-equality-must-include-provenance.md) - Identical serialized CSS URLs can require different requests, so value reuse must compare their retained provenance too.
+- [Architecture: Index a Cascade's Candidates Without Losing Their Order](architecture-index-cascade-candidates-without-losing-order.md) - A per-property fallback chain can reuse globally sorted candidate positions while preserving rollback and logical-property precedence.
 - [A realm's end silences its work before it frees its objects, and frees its global last](architecture-a-realms-end-silences-its-work-before-it-frees-its-objects.md) - Before a realm frees its objects, silence the work that reports to it, and free its global last. Terminating that work early is a different change: during a worker's end every notification becomes a synchronous drop callback. And when a freed read usually returns harmless garbage, count the freed reads, not the crashes.
 - [A sweep that destroys its entries must take each out of its map first](architecture-a-sweep-that-destroys-entries-must-take-each-out-of-its-map-first.md) - A walk that runs other code while it destroys entries must remove each entry from its container before destroying it - a destroyed entry left in a map will answer the next lookup at its key, and an address is a key the allocator reuses at once.
 - [Destroying a navigable ends its descendants' navigations too](architecture-destroying-a-navigable-ends-its-descendants-navigations-too.md) - When a navigable goes, every navigable inside it goes too, and so do their navigations in flight: end them where the documents are destroyed, or a late commit brings a document back into a navigable nobody owns.
@@ -357,6 +359,12 @@ A lane brief now carries the lessons chosen for its batch.
 - [A lazy namespace must cover native objects received first](architecture-a-lazy-namespace-must-cover-native-objects-received-first.md) - Lazy setup must preserve every observation path, including objects received before the namespace; put first-use triggers on those paths and never overwrite intervening user changes.
 
 ### Spec Compliance
+- [Spec Compliance: Cascade Order Includes Each Declaration](spec-compliance-cascade-order-includes-each-declaration.md) - Preserve declaration order inside a rule as the final cascade tie-break, especially when logical and physical properties map to the same computed slot.
+- [Spec Compliance: Color contrast conversion has an observable precision boundary](spec-compliance-color-contrast-has-a-precision-boundary.md) - Preserve CSS color data at its own precision, then follow the browser's numeric precision at an explicitly lossy destination.
+- [Spec Compliance: Convert Between sRGB Coordinates Directly](spec-compliance-convert-between-srgb-coordinates-directly.md) - HSL, HWB and sRGB conversions should use their direct coordinate algorithms, without an unnecessary XYZ round trip.
+- [Spec Compliance: Preserve Invalid Tokens Until Their Grammar Decides](spec-compliance-css-token-serialization-must-preserve-invalidity.md) - A generic CSS serializer must preserve malformed tokens so each consuming grammar can apply its own rejection or recovery rules.
+- [Spec Compliance: Gradient defaults depend on the value stage](spec-compliance-gradient-defaults-depend-on-the-value-stage.md) - Classify the original color graph separately for specified and computed gradient serialization.
+- [Spec Compliance: An Alias Must Express the Longhand's Initial Value](spec-compliance-an-alias-must-express-the-longhand-initial.md) - Choose a coherent parser and serializer for a legacy alias so its target's initial value round-trips through the alias grammar.
 - [When all three browsers ship one library, the library is the browsers](spec-compliance-when-all-three-browsers-ship-one-library-it-is-the-browsers.md) - Before ruling between spec and browsers, check whether they share an implementation (woff2): its source is the behaviour to match.
 - [Element reference associations and frozen arrays have different lifetimes](spec-compliance-element-reference-associations-and-frozen-arrays-have-different-lifetimes.md) - A weak association and a strong returned snapshot are different holders; model and test each lifetime independently.
 - [Stream authentication is independent of prompts](spec-compliance-stream-authentication-is-independent-of-prompts.md) - Separate replay eligibility from prompt availability, and compare only browsers that implement the feature.
@@ -626,6 +634,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Empty Legacy SVG Initializers Skip Parent State](codegen-empty-legacy-svg-initializers-skip-parent-state.md) - A correct type name is not proof of a correctly constructed object. Pin parent state before broadening a factory's interface map.
 
 ### Testing
+- [Testing: Allocation Failure Must Cover Owned Parser Output](testing-allocation-failure-must-cover-owned-parser-output.md) - Exercise allocation failure across parsing, ownership transfer and declaration storage, including every unconsumed item in a shorthand expansion.
 - [An allocation per element makes the allocation-failure sweep quadratic](testing-an-allocation-per-element-makes-the-failure-sweep-quadratic.md) - Allocate per input, never per element, in code that parses untrusted data; a slow allocation-failure sweep is counting allocations, not hanging.
 - [WPT testdriver selectors can test the wrong node](testing-wpt-testdriver-selectors-can-test-the-wrong-node.md) - Browser agreement validates the operation that actually ran, not necessarily the operation the test intended.
 - [Missing browser results may mean a test was replaced](testing-missing-browser-results-can-be-replaced-tests.md) - Test identity, observed behavior and implementer intent are three separate pieces of evidence. Keep all three explicit.
@@ -777,6 +786,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [Compare WPT results through the manifest](testing-compare-wpt-results-through-the-manifest.md) - A shared directory name is not a shared test population. Preserve source identity, URL identity and coverage before interpreting a pass-count difference.
 
 ### Debugging
+- [Debugging: Materialize coordinates before overwriting a vector](debugging-materialize-coordinates-before-overwriting-a-vector.md) - Compute every new coordinate from saved scalar inputs before assigning an aggregate back to its input vector.
+- [Debugging: Profile the WPT Worker, Not Its Supervisor](debugging-profile-the-wpt-worker-not-the-supervisor.md) - A WPT runner started with `--parallel=1` is still a supervisor; profile its actual test worker.
+- [Performance: A general sort reserves scratch before small-input branches](performance-a-general-sort-reserves-scratch-before-small-input-branches.md) - Profile a general sort's stack setup when a larger element type slows a hot path, even if nearly every input is tiny.
 - [Missing event handlers can start with the element factory](debugging-missing-event-handlers-can-start-with-the-element-factory.md) - Check the receiver's interface before debugging a getter that may never have been called.
 - [An idlharness type failure can be an impl stub](debugging-an-idlharness-type-failure-can-be-an-impl-stub.md) - Trace an idlharness failure through the generated member before deciding whether it is an exposure bug, an impl stub, or a missing prerequisite.
 - [An LRU list inside a hash map dangles after a rehash](debugging-an-lru-list-inside-a-hash-map-dangles-after-a-rehash.md) - Never keep a pointer to a hash map's value across a `put`: a list threaded through the values dangles at the first rehash. Heap-allocate the nodes and store pointers in the map.
@@ -853,6 +865,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Read the Linked V8 Patch Version](debugging-read-the-linked-v8-patch-version.md) - Measure the linked binary, then read its exact source tag before designing around an internal behavior.
 
 ### Workflow
+- [Workflow: A Partial WPT Submodule Replaces the Remote Fixture Tree](workflow-a-partial-wpt-submodule-replaces-the-remote-fixture-tree.md) - Keep an uninitialized lane WPT submodule empty when crane-remote supplies the shared fixture tree.
 - [V8 first-use queues affect persistent-handle probes](measurement-v8-first-use-queues-affect-persistent-handle-probes.md) - A one-time increase is a hypothesis to explain, not permission to loosen a leak assertion. Use an independent control and identify the allocation.
 - [A sweep chunk with one runner writes an unsharded stream](workflow-a-sweep-chunk-with-one-runner-writes-an-unsharded-stream.md) - A complete file journal does not prove the accompanying subtest stream is complete. Reconcile the passing counts, and check duplicate variants.
 - [Trial an instrumentation mode over the whole worklist before the gate](workflow-trial-an-instrumentation-mode-over-the-whole-worklist-before-the-gate.md) - A runner mode enters the gate sweep only after a full-worklist trial matches an unmodified sweep file for file; compare a generation with the previous one before pushing gh-pages.
