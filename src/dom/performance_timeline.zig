@@ -305,6 +305,10 @@ pub const Timeline = struct {
     /// The associated Document's navigation timing entry, while it has one
     /// (kept by the navigation buffer's edge).
     navigation_entry: ?*Instance = null,
+    /// The navigation entry's resource timing while its response's body is
+    /// still arriving (`NavigationRecord.body_arriving`), for
+    /// `navigationBodyEnded` to set up again with the body's sizes.
+    navigation_timing: ?ResourceTiming = null,
 
     pub fn init(allocator: std.mem.Allocator, owner: *Instance) Timeline {
         var buffers: std.EnumArray(EntryType, Buffer) = undefined;
@@ -330,6 +334,8 @@ pub const Timeline = struct {
     /// at the realm's end the collector frees them in no order, and their
     /// edges and registrations go with their wrappers.
     pub fn deinit(self: *Timeline) void {
+        if (self.navigation_timing) |*timing| timing.deinit();
+        self.navigation_timing = null;
         var it = self.buffers.iterator();
         while (it.next()) |kv| kv.value.entries.deinit(self.allocator);
         self.resource.secondary_buffer.deinit(self.allocator);
@@ -1400,6 +1406,10 @@ pub const NavigationRecord = struct {
     /// navigation but a back/forward traversal of a top-level traversable
     /// whose page was not restored from the back/forward cache.
     not_restored_reasons: ?*const NotRestoredReasons = null,
+    /// The response's body is still arriving - the document is parsed as
+    /// it comes: its sizes are not known yet, and `navigationBodyEnded`
+    /// gives them to the entry once it has arrived.
+    body_arriving: bool = false,
 };
 
 pub const NotRestoredReasons = @import("html_core").navigation.not_restored_reasons.NotRestoredReasons;
@@ -1471,6 +1481,29 @@ pub fn createNavigationTimingEntry(realm: runtime.Context, record: NavigationRec
     holdEntry(timeline.owner, entry);
     // 9. The document's navigation timing entry.
     timeline.navigation_entry = entry;
+    if (timeline.navigation_timing) |*stale| stale.deinit();
+    timeline.navigation_timing = null;
+    // Out of memory, the entry keeps the sizes it was made with.
+    if (record.body_arriving) timeline.navigation_timing = timing.clone(timeline.allocator) catch null;
+}
+
+/// The body of the response `realm`'s document was made from has arrived -
+/// all `encoded` bytes of it, `decoded` once its content codings are undone
+/// - after the document's navigation timing entry was made with it still
+/// arriving (`NavigationRecord.body_arriving`): the entry's body sizes are
+/// the body's (Resource Timing reads the response body info, which Fetch
+/// fills in at the end of the body; Blink's DocumentLoader::
+/// BodyLoadingFinished hands the final sizes to its navigation timing).
+pub fn navigationBodyEnded(realm: runtime.Context, encoded: u64, decoded: u64) void {
+    const timeline = timelineOf(realm) orelse return;
+    var timing = timeline.navigation_timing orelse return;
+    timeline.navigation_timing = null;
+    defer timing.deinit();
+    const entry = timeline.navigation_entry orelse return;
+    timing.encoded_body_size = encoded;
+    timing.decoded_body_size = decoded;
+    // Out of memory, the entry keeps the sizes it was made with.
+    setupResourceTiming(entry, &timing) catch {};
 }
 
 /// Navigation Timing 5 "queue the navigation timing entry" for `realm`'s

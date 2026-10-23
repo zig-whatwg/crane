@@ -455,6 +455,8 @@ fn parseHtmlForIframe(
                 .content_type = stream.content_type,
                 .parent_encoding = parent_encoding,
             } else null,
+            // The rest of the body, read as it arrives: the parser's now.
+            .body_stream = if (byte_stream) |stream| (if (stream.body) |handoff| handoff.take() else null) else null,
         },
     ) catch |err| {
         // The document stays - with whatever was parsed - as the frame's
@@ -1797,11 +1799,17 @@ fn startFetch(record: *Navigation) void {
         // The request's final referrer comes back with the result, for the
         // new document's referrer (fetchDone frees it with the result).
         // The navigation follows its redirects itself (`followManualRedirect`).
-        record.fetch = fetch_mod.algorithms.AsyncFetch.start(allocator, request, .{ .report_referrer = true, .follows_manual_redirects = true }, agentFetchesOf(record.integration), client) catch {
+        // The response comes at its headers, its body still arriving (HTML
+        // 7.5.1: the document is parsed as the bytes come - fetchDone).
+        record.fetch = fetch_mod.algorithms.AsyncFetch.startStreaming(allocator, request, .{ .report_referrer = true, .follows_manual_redirects = true }, agentFetchesOf(record.integration), client) catch {
             // The fetch owned the request, and freed it.
             record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);
         };
+        // Never paused for a reader behind: a response committed whole is
+        // read only once all of it has arrived (as `start` collected it),
+        // and a document's parser takes every chunk as it comes.
+        if (record.fetch) |f| f.pause_body = false;
         return;
     }
 
@@ -1951,16 +1959,28 @@ fn fetchGone(context: *anyopaque) void {
     endNavigation(id);
 }
 
-/// The navigation fetch answered (from the event loop's network step):
-/// keep the response and queue the task that commits it.
+/// The navigation fetch answered (from the event loop's network step), at
+/// the response's headers: keep the response and queue the task that commits
+/// it. An HTML document's response is committed with its body still arriving
+/// - the document's parser reads the rest as it comes (HTML 7.5.1 "load an
+/// HTML document"); every other response is committed whole, once its body
+/// has arrived (`bodyArrived`), as before.
 fn fetchDone(context: *anyopaque, outcome: fetch_mod.algorithms.FetchError!fetch_mod.algorithms.FetchResult) void {
     const id = @intFromPtr(context);
     var result = outcome catch null;
     defer if (result) |*r| r.deinit();
     const record = navigationById(id) orelse return;
     // "Create navigation params by fetching" step 21: a redirect the
-    // navigation follows by hand goes on to its next hop.
-    if (record.fetch) |f| if (result != null and f.hasNextManualRedirect()) return followManualRedirect(record, f);
+    // navigation follows by hand goes on to its next hop. Its response goes
+    // first: its body may still be arriving through its pipe, and letting the
+    // pipe go once the next hop's transfer has started would stop that
+    // transfer instead (AsyncFetch.stopProducing cancels the fetch's current
+    // one).
+    if (record.fetch) |f| if (result != null and f.hasNextManualRedirect()) {
+        result.?.deinit();
+        result = null;
+        return followManualRedirect(record, f);
+    };
     // "Create and initialize a Document object" step 3: creationURL is the
     // request's current URL - the last hop's - not the response's URL: a
     // service worker's response fetched from another URL still makes the
@@ -1969,7 +1989,45 @@ fn fetchDone(context: *anyopaque, outcome: fetch_mod.algorithms.FetchError!fetch
     // is that URL already.
     const current_url: ?[]u8 = if (record.fetch) |f| record.allocator.dupe(u8, f.requestCurrentUrl()) catch null else null;
     defer if (current_url) |u| record.allocator.free(u);
+    const handle = record.fetch;
     record.fetch = null;
+    // A body that has all arrived already - with the headers, or failed - is
+    // settled as AsyncFetch.start's settleCollected would have: its bytes,
+    // or a network error in place of the response. Out of memory, a network
+    // error.
+    if (result) |*r| if (!navigation_fetch.bodyArriving(r.response)) {
+        navigation_fetch.settleBody(r) catch {
+            r.deinit();
+            result = null;
+        };
+    };
+    if (result) |*r| if (navigation_fetch.bodyArriving(r.response)) {
+        if (!streamsIntoDocument(record.integration, r.response)) {
+            // Committed whole: the result waits for its body.
+            var waiting = navigation_fetch.NavigationFetchResult.init(record.allocator);
+            waiting.arriving = navigation_fetch.ArrivingResponse.create(record.allocator, r.*, current_url, .{ .context = @ptrFromInt(id), .notify = &bodyProgress }) catch null;
+            if (waiting.arriving != null) {
+                result = null;
+                record.response = waiting;
+                return;
+            }
+            waiting.deinit();
+            // Out of memory: committed as it is, with the bytes that came.
+        } else if (handle) |f| {
+            respond(record, r, current_url, f);
+            return;
+        }
+    };
+    if (result) |*r| respond(record, r, current_url, null) else respond(record, null, current_url, null);
+}
+
+/// The navigation's response from `result` (null: none), whose fetch's
+/// request ended at `current_url`: kept in the record, and the task that
+/// commits it queued. `streaming`, the fetch, when the response's body is
+/// still arriving and the document is parsed as it does: the body, and the
+/// rest of the fetch's life, go with the response to the document's parser.
+fn respond(record: *Navigation, result: ?*fetch_mod.algorithms.FetchResult, current_url: ?[]const u8, streaming: ?*fetch_mod.algorithms.AsyncFetch) void {
+    const id = record.id;
     record.response = if (result) |r|
         navigation_fetch.resultFromResponse(record.allocator, record.url, r.response, .{}) catch null
     else
@@ -1989,7 +2047,7 @@ fn fetchDone(context: *anyopaque, outcome: fetch_mod.algorithms.FetchError!fetch
     // The fetch's timing info goes with the response, for the new document's
     // navigation timing entry (its redirect count: the URLs past the first).
     if (record.response) |*response| {
-        if (result) |*r| {
+        if (result) |r| {
             response.timing = .{
                 .timing_info = r.timing_info,
                 // A cross-origin redirect makes the count 0 (HTML "create
@@ -2001,10 +2059,122 @@ fn fetchDone(context: *anyopaque, outcome: fetch_mod.algorithms.FetchError!fetch
             r.timing_info = fetch_mod.internal.FetchTimingInfo.init(r.timing_info.allocator);
         }
     }
+    // The body still arriving moves to the response, and the fetch with it:
+    // from here the body's holder - the navigation, then the document's
+    // parser - decides how long the fetch goes on. Out of memory, the
+    // document is the bytes that came.
+    if (streaming) |f| if (record.response) |*response| if (result) |r| {
+        if (streamBody(record, response, r, f)) |_| {} else |_| {}
+    };
     if (record.response == null) {
         record.response = navigation_fetch.networkErrorResult(record.allocator, record.url) catch return endNavigation(id);
     }
     queueNavigationTask(record.integration, id, &runCommit);
+}
+
+/// Move `result`'s arriving body, and its fetch `f`, into `response`.
+fn streamBody(record: *Navigation, response: *navigation_fetch.NavigationFetchResult, result: *fetch_mod.algorithms.FetchResult, f: *fetch_mod.algorithms.AsyncFetch) !void {
+    const body = result.response.body orelse return;
+    const pipe = body.pipe orelse return;
+    const streamed = try navigation_fetch.StreamedBody.create(record.allocator, pipe, .{ .context = @ptrFromInt(record.id), .alive = &fetchAlive });
+    const handoff = navigation_fetch.BodyHandoff.create(record.allocator, streamed) catch |err| {
+        // The pipe stays the response's: freeing it stops the transfer.
+        record.allocator.destroy(streamed);
+        return err;
+    };
+    // The fetch now outlives this record, whose reporters its request
+    // borrowed. A timing reporter is still needed at the body's end (Fetch's
+    // report timing steps): a copy the body keeps takes its place. The CSP
+    // checks that report through the record's are all behind it - they run
+    // before the response is handed over.
+    const request = f.job.request;
+    request.csp_violation_reporter = null;
+    if (record.timing_reporter) |reporter| {
+        const kept = KeptTimingReporter.create(record.allocator, reporter) catch |err| {
+            handoff.destroyEmpty();
+            record.allocator.destroy(streamed);
+            return err;
+        };
+        request.timing_reporter = kept.reporter.reporter();
+        streamed.kept = .{ .context = kept, .release = &KeptTimingReporter.release };
+    }
+    // The response's body no longer reads it: its deinit leaves it.
+    body.pipe = null;
+    streamed.adopt(f);
+    response.body_stream = handoff;
+}
+
+/// A navigation's timing reporter, kept by its streamed body for as long as
+/// the fetch may report the body's end (`StreamedBody.kept`).
+const KeptTimingReporter = struct {
+    allocator: std.mem.Allocator,
+    reporter: dom_module.performance_timeline.GuardedTimingReporter,
+
+    fn create(allocator: std.mem.Allocator, reporter: dom_module.performance_timeline.GuardedTimingReporter) !*KeptTimingReporter {
+        const self = try allocator.create(KeptTimingReporter);
+        self.* = .{ .allocator = allocator, .reporter = reporter };
+        return self;
+    }
+
+    fn release(context: *anyopaque) void {
+        const self: *KeptTimingReporter = @ptrCast(@alignCast(context));
+        self.allocator.destroy(self);
+    }
+};
+
+/// Whether the document `response` makes is an HTML document that is parsed
+/// as its body arrives (HTML 7.5.1 "load an HTML document"): a response that
+/// makes a document - not a network error, no 204/205, nothing handed to
+/// external software or downloaded - whose computed type is HTML. Everything
+/// else is committed whole, as before.
+fn streamsIntoDocument(integration: *IFrameIntegration, response: *fetch_mod.internal.InternalResponse) bool {
+    if (response.response_type == .@"error") return false;
+    if (!navigation_fetch.shouldNavigationProceed(response.status)) return false;
+    // A download, or a disposition it could be: committed whole, as before.
+    const disposition = response.header_list.get(integration.allocator, "Content-Disposition") catch return false;
+    if (disposition) |value| {
+        integration.allocator.free(value);
+        return false;
+    }
+    const content_type = navigation_fetch.extractedContentType(integration.allocator, &response.header_list) catch return false;
+    defer if (content_type) |value| integration.allocator.free(value);
+    const document_type = html_module.navigation.document_type;
+    const computed = document_type.essence(integration.allocator, content_type orelse "text/html") catch return false;
+    defer integration.allocator.free(computed);
+    return document_type.classify(computed) == .html;
+}
+
+/// A response committed whole hears its body's progress (from the network's
+/// turn of the loop, inside the body's producer: nothing is released here).
+/// Once the body has arrived, the task that goes on with it is queued.
+fn bodyProgress(context: *anyopaque) void {
+    const id = @intFromPtr(context);
+    const record = navigationById(id) orelse return;
+    const response = if (record.response) |*r| r else return;
+    const arriving = response.arriving orelse return;
+    if (arriving.queued or !arriving.arrived()) return;
+    arriving.queued = true;
+    queueNavigationTask(record.integration, id, &bodyArrived);
+}
+
+/// The body of a response committed whole has arrived: the navigation goes on
+/// as it did when the fetch handed over its response with all of its body
+/// (`AsyncFetch.start`).
+fn bodyArrived(context: ?*anyopaque) void {
+    const id = idOf(context);
+    const record = navigationById(id) orelse return;
+    const waiting = if (record.response) |*r| r else return;
+    const arriving = waiting.arriving orelse return;
+    waiting.arriving = null;
+    var taken = arriving.take();
+    defer taken.result.deinit();
+    defer if (taken.current_url) |u| record.allocator.free(u);
+    waiting.deinit();
+    record.response = null;
+    // As AsyncFetch.start's settleCollected: the bytes, or a network error
+    // for a body that failed. Out of memory, the bytes that came.
+    navigation_fetch.settleBody(&taken.result) catch {};
+    respond(record, &taken.result, taken.current_url, null);
 }
 
 /// CSP 4.2.4 over the navigation initiator's policy snapshot. The original
@@ -2878,6 +3048,9 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
                 // it into the timing info, HTTP fetch step 3.5.3).
                 .service_worker_timing = timing.timing_info.service_worker_timing_info,
                 .redirect_count = timing.redirect_count,
+                // A body still arriving: its sizes come at its end (the
+                // parser's navigationBodyEnded).
+                .body_arriving = response.body_stream != null,
                 // Step 11: the document's not restored reasons - a
                 // top-level traversable's, after a back/forward traversal.
                 // Null after a reload, though HTML keeps the document state

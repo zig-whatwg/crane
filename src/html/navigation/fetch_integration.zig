@@ -40,6 +40,17 @@ pub const NavigationFetchResult = struct {
     /// Response body (HTML content for documents)
     body: ?[]const u8,
 
+    /// The body, when it is still arriving and the navigation's document is
+    /// parsed as it arrives (HTML 7.5.1 "load an HTML document"): `body` is
+    /// then empty, and the document's parser takes it (`BodyHandoff.take`).
+    /// Owned, with the body until it is taken.
+    body_stream: ?*BodyHandoff = null,
+
+    /// A response whose body is still arriving and is committed whole: kept
+    /// here, as Fetch handed it over, until its body has arrived
+    /// (`awaitBody`). Owned.
+    arriving: ?*ArrivingResponse = null,
+
     /// Whether the fetch was successful (2xx status)
     ok: bool,
 
@@ -126,6 +137,10 @@ pub const NavigationFetchResult = struct {
         }
         if (self.timing) |*timing| timing.timing_info.deinit();
         self.timing = null;
+        if (self.body_stream) |handoff| handoff.destroy();
+        self.body_stream = null;
+        if (self.arriving) |arriving| arriving.destroy();
+        self.arriving = null;
     }
 
     fn isStaticString(s: []const u8) bool {
@@ -134,6 +149,208 @@ pub const NavigationFetchResult = struct {
         // and with high addresses as potentially static
         _ = s;
         return false; // For safety, always assume owned
+    }
+};
+
+/// A navigation response's body that the new document's parser reads as it
+/// arrives, and the fetch that fills it. One reader at a time holds it: the
+/// navigation's response until its commit, then the document's parser
+/// (`take`), which `release`s it when the body has ended or the parser stops.
+///
+/// The fetch lives exactly as long as someone reads its body. Its client,
+/// once the response is handed over, is this (`client`): the holder says
+/// whether it is still there - the navigation, then the parser - and a fetch
+/// whose holder is gone is terminated at the agent's next sweep, as Fetch
+/// terminates a fetch group whose document went. Letting the body go stops
+/// the transfer and terminates the fetch at once, so no fetch outlives the
+/// document that read it, nor its agent.
+///
+/// Design: Blink's DocumentLoader owns its body loader and stops it in
+/// StopLoading/DetachFromFrame; WebKit's DocumentLoader cancels its main
+/// resource loader the same way.
+pub const StreamedBody = struct {
+    allocator: Allocator,
+    /// The holder's reader of the body; null once let go.
+    pipe: ?*fetch.internal.BodyPipe,
+    /// The fetch filling the body, until it is over (`finished`) or was
+    /// terminated (`gone`). Null for a body with no fetch behind it.
+    fetch: ?*fetch.algorithms.AsyncFetch = null,
+    /// Who holds the body now, and whether it is still there.
+    holder: Holder,
+    /// What the fetch's request borrows from whoever started it, which must
+    /// last as long as the fetch does (a timing reporter at the end of the
+    /// body): released once the fetch can no longer reach it.
+    kept: ?Kept = null,
+
+    pub const Kept = struct {
+        context: *anyopaque,
+        release: *const fn (context: *anyopaque) void,
+    };
+
+    pub const Holder = struct {
+        context: *anyopaque,
+        alive: *const fn (context: *anyopaque) bool,
+    };
+
+    pub fn create(allocator: Allocator, pipe: *fetch.internal.BodyPipe, holder: Holder) !*StreamedBody {
+        const self = try allocator.create(StreamedBody);
+        self.* = .{ .allocator = allocator, .pipe = pipe, .holder = holder };
+        return self;
+    }
+
+    /// The fetch's client from now on: `fetch_handle`'s response has been
+    /// handed over, and its body is this one's.
+    pub fn adopt(self: *StreamedBody, fetch_handle: *fetch.algorithms.AsyncFetch) void {
+        self.fetch = fetch_handle;
+        fetch_handle.client = .{ .context = self, .done = &ignoreDone, .alive = &holderAlive, .gone = &fetchEnded, .finished = &fetchEnded };
+    }
+
+    /// `holder` holds the body from now on.
+    pub fn handTo(self: *StreamedBody, holder: Holder) void {
+        self.holder = holder;
+    }
+
+    /// The reader, the holder's to read from (BORROWED: `release` lets it go).
+    pub fn reader(self: *const StreamedBody) ?*fetch.internal.BodyPipe {
+        return self.pipe;
+    }
+
+    /// The holder is done with the body: its reader goes - a transfer still
+    /// arriving stops - and so does the fetch. Frees this.
+    pub fn release(self: *StreamedBody) void {
+        if (self.pipe) |pipe| {
+            self.pipe = null;
+            pipe.consumer = null;
+            pipe.release();
+        }
+        // Terminated, the fetch calls nothing back.
+        if (self.fetch) |handle| {
+            self.fetch = null;
+            handle.terminate();
+        }
+        // No fetch is left to reach what its request borrowed.
+        if (self.kept) |kept| kept.release(kept.context);
+        self.allocator.destroy(self);
+    }
+
+    fn ignoreDone(_: *anyopaque, outcome: fetch.algorithms.FetchError!fetch.algorithms.FetchResult) void {
+        // Delivered already: a fetch hands over one response.
+        var result = outcome catch return;
+        result.deinit();
+    }
+
+    fn holderAlive(context: *anyopaque) bool {
+        const self: *StreamedBody = @ptrCast(@alignCast(context));
+        return self.holder.alive(self.holder.context);
+    }
+
+    fn fetchEnded(context: *anyopaque) void {
+        const self: *StreamedBody = @ptrCast(@alignCast(context));
+        self.fetch = null;
+    }
+};
+
+/// Where a navigation's response keeps its streamed body until the document's
+/// parser takes it: the parser is reached through a commit that only reads
+/// the response, so the body moves out of this slot rather than out of the
+/// response.
+pub const BodyHandoff = struct {
+    allocator: Allocator,
+    body: ?*StreamedBody,
+
+    pub fn create(allocator: Allocator, body: *StreamedBody) !*BodyHandoff {
+        const self = try allocator.create(BodyHandoff);
+        self.* = .{ .allocator = allocator, .body = body };
+        return self;
+    }
+
+    /// The body, the caller's from now on (null once taken).
+    pub fn take(self: *BodyHandoff) ?*StreamedBody {
+        const body = self.body;
+        self.body = null;
+        return body;
+    }
+
+    fn destroy(self: *BodyHandoff) void {
+        if (self.body) |body| body.release();
+        self.allocator.destroy(self);
+    }
+
+    /// Free a handoff whose body was never handed over (its creator's
+    /// error path): the body is the creator's to free.
+    pub fn destroyEmpty(self: *BodyHandoff) void {
+        self.allocator.destroy(self);
+    }
+};
+
+/// Whether `response`'s body is still arriving: its bytes come through a
+/// pipe that has not ended.
+pub fn bodyArriving(response: *const InternalResponse) bool {
+    const body = response.body orelse return false;
+    const pipe = body.pipe orelse return false;
+    return pipe.state == .open;
+}
+
+/// The body of `response`, a streamed fetch's, as `AsyncFetch.start` would
+/// have handed it over once it arrived (its settleCollected): the bytes, or
+/// - for a body that failed - a network error in place of the response.
+pub fn settleBody(result: *fetch.algorithms.FetchResult) NavigationFetchError!void {
+    const body = result.response.body orelse return;
+    const pipe = body.pipe orelse return;
+    if (pipe.state == .errored) {
+        const replacement = fetch.internal.networkError(result.response.allocator) catch return NavigationFetchError.OutOfMemory;
+        result.response.deinit();
+        result.response = replacement;
+        return;
+    }
+    body.settlePipe() catch return NavigationFetchError.OutOfMemory;
+}
+
+/// A navigation response committed whole whose body is still arriving: the
+/// fetch's result as it was handed over, and the request's current URL then,
+/// until the body has arrived.
+pub const ArrivingResponse = struct {
+    allocator: Allocator,
+    result: fetch.algorithms.FetchResult,
+    current_url: ?[]u8,
+    /// The task that goes on once the body has arrived is queued.
+    queued: bool = false,
+
+    /// The fetch's `result` (taken) waits here for its body, and
+    /// `current_url` (copied). `consumer` hears the body's progress.
+    pub fn create(allocator: Allocator, result: fetch.algorithms.FetchResult, current_url: ?[]const u8, consumer: fetch.internal.body_pipe.Consumer) !*ArrivingResponse {
+        const self = try allocator.create(ArrivingResponse);
+        errdefer allocator.destroy(self);
+        const url = if (current_url) |u| try allocator.dupe(u8, u) else null;
+        self.* = .{ .allocator = allocator, .result = result, .current_url = url };
+        if (result.response.body) |body| if (body.pipe) |pipe| {
+            pipe.consumer = consumer;
+        };
+        return self;
+    }
+
+    /// Whether the body has arrived - ended, or failed.
+    pub fn arrived(self: *const ArrivingResponse) bool {
+        return !bodyArriving(self.result.response);
+    }
+
+    /// The result and the URL, the caller's from now on (the URL freed with
+    /// this allocator); frees this.
+    pub fn take(self: *ArrivingResponse) struct { result: fetch.algorithms.FetchResult, current_url: ?[]u8 } {
+        const result = self.result;
+        const current_url = self.current_url;
+        if (result.response.body) |body| if (body.pipe) |pipe| {
+            pipe.consumer = null;
+        };
+        self.allocator.destroy(self);
+        return .{ .result = result, .current_url = current_url };
+    }
+
+    fn destroy(self: *ArrivingResponse) void {
+        const allocator = self.allocator;
+        var taken = self.take();
+        taken.result.deinit();
+        if (taken.current_url) |u| allocator.free(u);
     }
 };
 

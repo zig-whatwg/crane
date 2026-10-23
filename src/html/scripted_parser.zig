@@ -54,6 +54,7 @@ const TreeBuilder = html_core.parser.TreeBuilder;
 const TreeNode = html_core.parser.TreeNode;
 const QuirksMode = html_core.parser.QuirksMode;
 const InputStreamManager = html_core.parser.document_write.InputStreamManager;
+const StreamedBody = html_core.navigation.fetch_integration.StreamedBody;
 
 // The adapter that builds the DOM as the tree builder builds its tree, and
 // the parser's script end-tag steps.
@@ -146,6 +147,14 @@ pub const ParseOptions = struct {
     /// of characters (document.open(), DOMParser), whose document keeps its
     /// encoding.
     byte_stream: ?ByteStream = null,
+
+    /// The rest of a navigation's response body, still arriving (HTML 7.5.1
+    /// "load an HTML document": the networking tasks fill the parser's input
+    /// byte stream as the bytes come). The parser takes it - it is the
+    /// body's reader from here, until the body ends or the parser stops -
+    /// and the input given with these options is empty. Implies a byte
+    /// stream: `byte_stream`'s Content-Type and parent encoding still apply.
+    body_stream: ?*StreamedBody = null,
 };
 
 /// What the encoding sniffing algorithm knows about a byte stream besides
@@ -167,7 +176,12 @@ const log = std.log.scoped(.scripted_parser);
 /// confidence, and what "change the encoding" needs to switch it.
 const ByteStreamDecoding = struct {
     allocator: Allocator,
-    bytes: []const u8,
+    /// The byte stream's bytes received so far - the parser's - which a
+    /// change of encoding decodes again from where the tokenizer is.
+    raw: *const std.ArrayListUnmanaged(u8),
+    /// The decoder of a body still arriving, which the next bytes go
+    /// through; null once every byte is decoded (complete input).
+    stream: ?encoding_sniffing.StreamDecoder = null,
     encoding: encoding_sniffing.Encoding,
     confidence: encoding_sniffing.Confidence,
     document: *runtime.Instance,
@@ -193,8 +207,9 @@ const ByteStreamDecoding = struct {
         // of the stream is decoded with the new one in place.
         const tokenizer = self.input_stream.tokenizer;
         const consumed = if (tokenizer) |t| t.nextInputPosition() else self.input_stream.buffer.items.len;
-        if (self.input_stream.buffer.items.len == self.decoded_len and consumed <= self.bytes.len and
-            encoding_sniffing.sameInterpretation(self.bytes[0..consumed], self.encoding, new))
+        const bytes = self.raw.items;
+        if (self.input_stream.buffer.items.len == self.decoded_len and consumed <= bytes.len and
+            encoding_sniffing.sameInterpretation(bytes[0..consumed], self.encoding, new))
         {
             const switched = blk: {
                 self.switchAt(consumed, new) catch |err| {
@@ -225,14 +240,19 @@ const ByteStreamDecoding = struct {
     /// input stream's characters from `at` on (whose offsets are the bytes'),
     /// then make `new` the document's encoding.
     fn switchAt(self: *ByteStreamDecoding, at: usize, new: encoding_sniffing.Encoding) !void {
-        const tail = try encoding_sniffing.decodeWith(self.allocator, self.bytes[at..], new);
-        defer self.allocator.free(tail);
+        // A body still arriving goes on through the new decoder, which has
+        // read every byte received so far; complete input ends here.
+        var decoder = encoding_sniffing.StreamDecoder.init(new);
+        var tail: std.ArrayListUnmanaged(u8) = .empty;
+        defer tail.deinit(self.allocator);
+        try decoder.decodeInto(self.allocator, &tail, self.raw.items[at..], self.stream == null);
         const stream = self.input_stream;
         stream.buffer.shrinkRetainingCapacity(at);
-        try stream.buffer.appendSlice(stream.allocator, tail);
+        try stream.buffer.appendSlice(stream.allocator, tail.items);
         stream.sync();
         self.decoded_len = stream.buffer.items.len;
         self.encoding = new;
+        if (self.stream != null) self.stream = decoder;
         try document_internals.setEncoding(self.document, encoding_sniffing.canonicalName(new));
     }
 };
@@ -269,8 +289,13 @@ pub const DocumentParser = struct {
     adapter: DomTreeAdapter,
     script_context: ParserScriptContext,
     base_url: []u8,
-    original_bytes: ?[]u8 = null,
+    /// The byte stream's bytes, kept while a change of encoding may decode
+    /// them again (`ByteStreamDecoding.raw`).
+    raw_bytes: std.ArrayListUnmanaged(u8) = .empty,
     byte_stream_decoding: ?ByteStreamDecoding = null,
+    /// The response body this navigation parser reads as it arrives, or null
+    /// for input given whole (`ParseOptions.body_stream`).
+    network: ?NetworkInput = null,
     owned_loader: ?OwnedScriptLoader = null,
     /// The parser holds the nodes its own structures name - the stack of
     /// open elements, the head and form element pointers - natively, with no
@@ -330,10 +355,10 @@ pub const DocumentParser = struct {
         const self = try createWithInput(allocator, ctx, document, decoded orelse html, options, false, &navigationFinished);
         errdefer self.release();
         if (sniffed) |result| {
-            self.original_bytes = try allocator.dupe(u8, html);
+            try self.raw_bytes.appendSlice(allocator, html);
             self.byte_stream_decoding = .{
                 .allocator = allocator,
-                .bytes = self.original_bytes.?,
+                .raw = &self.raw_bytes,
                 .encoding = result.encoding,
                 .confidence = result.confidence,
                 .document = document,
@@ -342,6 +367,49 @@ pub const DocumentParser = struct {
             };
             self.tree_builder.change_the_encoding = .{ .context = @ptrCast(&self.byte_stream_decoding.?), .change = &ByteStreamDecoding.change };
         }
+        return self;
+    }
+
+    /// A navigation parser that reads its input from `options.body_stream`
+    /// as the response body arrives (HTML 7.5.1 "load an HTML document").
+    /// Takes the body even when it fails. The parser is not script-created:
+    /// its insertion point is undefined. Its input is not complete until the
+    /// body ends, so the tokenizer suspends at the end of what has arrived
+    /// and "the end" waits for the body's end (the implied EOF).
+    ///
+    /// Design: Blink's DocumentLoader::BodyDataReceived ->
+    /// HTMLDocumentParser::AppendBytes and WebKit's DocumentLoader::
+    /// dataReceived -> DocumentWriter::addData hand each received chunk to
+    /// the document's parser; here the parser itself is the body's reader,
+    /// so the body, its decoding state and EOF share the parser's lifetime
+    /// (docs/lessons/architecture-complete-input-can-still-suspend-its-parser.md).
+    pub fn createStreaming(allocator: Allocator, ctx: runtime.Context, document: *runtime.Instance, options: ParseOptions) !*DocumentParser {
+        const body = options.body_stream orelse return error.InvalidInput;
+        var body_owned = true;
+        errdefer if (body_owned) body.release();
+        const pipe = body.reader() orelse return error.InvalidInput;
+        const stream = options.byte_stream orelse ByteStream{};
+        // The sniffing algorithm's inputs other than the bytes, resolved now:
+        // the slices they come from are the caller's.
+        const transport = if (stream.content_type) |ct| encoding_sniffing.transportEncoding(allocator, ct) else null;
+        const parent = if (stream.parent_encoding) |name| encoding_sniffing.lookup(name) else null;
+        const self = try createWithInput(allocator, ctx, document, "", options, false, &navigationFinished);
+        errdefer self.release();
+        self.input_stream.complete = false;
+        self.byte_stream_decoding = .{
+            .allocator = allocator,
+            .raw = &self.raw_bytes,
+            .stream = null,
+            .encoding = encoding_sniffing.default_encoding,
+            .confidence = .tentative,
+            .document = document,
+            .input_stream = &self.input_stream,
+            .decoded_len = 0,
+        };
+        self.network = .{ .body = body, .transport = transport, .parent = parent };
+        body_owned = false;
+        body.handTo(.{ .context = self, .alive = &NetworkInput.holds });
+        pipe.consumer = .{ .context = self, .notify = &NetworkInput.notify };
         return self;
     }
 
@@ -549,7 +617,8 @@ pub const DocumentParser = struct {
         self.input_stream.deinit();
         self.tokenizer.deinit();
         if (self.owned_loader) |*loader| loader.deinit();
-        if (self.original_bytes) |bytes| self.allocator.free(bytes);
+        self.releaseNetworkInput();
+        self.raw_bytes.deinit(self.allocator);
         self.allocator.free(self.base_url);
         self.allocator.destroy(self);
     }
@@ -566,6 +635,9 @@ pub const DocumentParser = struct {
         self.detached = true;
         self.input_stream.aborted = true;
         self.input_stream.insertion_point = null;
+        // HTML "abort a document": any further data received from the
+        // network is discarded - the body's transfer stops.
+        self.releaseNetworkInput();
     }
 
     /// Document's wrapper owns its kept-roots container. A collector
@@ -579,6 +651,8 @@ pub const DocumentParser = struct {
         self.detached = true;
         self.input_stream.aborted = true;
         self.input_stream.insertion_point = null;
+        // Releasing the body only cancels its transfer: native, no script.
+        self.releaseNetworkInput();
     }
 
     /// Whether this parser can still touch its Document's engine objects:
@@ -795,11 +869,209 @@ pub const DocumentParser = struct {
         self.on_finished(self.document, self);
     }
 
+    /// The networking task of a body still arriving: what has arrived goes
+    /// into the input byte stream, and the parser processes it (HTML 7.5.1
+    /// "load an HTML document"). Once the body has ended, the input is
+    /// complete: the parser processes the implied EOF, which runs "the end"
+    /// once no parsing-blocking script holds it. A parser that stopped (a
+    /// document.open, an abort, a destroyed document) lets the body go.
+    pub fn readNetworkInput(self: *DocumentParser) void {
+        self.retain();
+        defer self.release();
+        self.readArrived() catch |err| {
+            log.warn("navigation body: the parser stopped reading: {}", .{err});
+            self.releaseNetworkInput();
+            self.input_stream.complete = true;
+            self.finishIfPossible() catch {};
+        };
+    }
+
+    fn readArrived(self: *DocumentParser) !void {
+        const input = if (self.network) |*n| n else return;
+        const body = input.body orelse return;
+        const pipe = body.reader() orelse return;
+        if (self.trace_failure != null or self.detached or self.eof_processed or !self.isCurrent()) {
+            self.releaseNetworkInput();
+            return;
+        }
+        // Taking may let a paused transfer go on and deliver more.
+        while (pipe.hasBytes()) {
+            const bytes = try pipe.take();
+            defer pipe.allocator.free(bytes);
+            input.received += bytes.len;
+            try self.receiveBytes(bytes, false);
+        }
+        const ended = pipe.state != .open;
+        if (ended) {
+            // HTML 7.5.1: "When no more bytes are available", the implied
+            // EOF. A body that failed part-way ends the same way, with what
+            // arrived: Blink's DocumentLoader::BodyLoadingFinished finishes
+            // the parser on an error after data (FinishedLoading), and
+            // WebKit's DocumentLoader::mainReceivedError ->
+            // FrameLoader::receivedMainResourceError commits what was
+            // received; both then fire load.
+            self.releaseNetworkInput();
+            try self.receiveBytes("", true);
+            self.input_stream.complete = true;
+            // The navigation timing entry was made with the body arriving;
+            // its sizes are the body's now (fetch decoded any content coding,
+            // so both are what arrived, as for a body read whole).
+            dom.performance_timeline.navigationBodyEnded(self.ctx, input.received, input.received);
+        }
+        // A parsing-blocking script holds the parser: the bytes wait in the
+        // input stream until the script's ready task resumes it.
+        if (self.pump_depth != 0) return;
+        const internal = document_internals.getInternal(self.document) orelse return;
+        if (internal.scripts.pending_parsing_blocking_script != null) return;
+        if (ended) try self.finishIfPossible() else try self.pump();
+    }
+
+    /// The byte stream's next `bytes` (`last`: its end), decoded into the
+    /// input stream - after the encoding sniffing algorithm has decided the
+    /// encoding from enough of the stream's first bytes.
+    fn receiveBytes(self: *DocumentParser, bytes: []const u8, last: bool) !void {
+        const input = &self.network.?;
+        const decoding = &self.byte_stream_decoding.?;
+        var chars: std.ArrayListUnmanaged(u8) = .empty;
+        defer chars.deinit(self.allocator);
+        if (!input.sniffed) {
+            try self.raw_bytes.appendSlice(self.allocator, bytes);
+            if (!last and !input.enoughToSniff(self.raw_bytes.items)) return;
+            input.sniffed = true;
+            // HTML 13.2.3.2, over the bytes the wait collected.
+            const result = encoding_sniffing.sniff(self.raw_bytes.items, .{ .transport = input.transport, .parent = input.parent });
+            try document_internals.setEncoding(self.document, encoding_sniffing.canonicalName(result.encoding));
+            decoding.encoding = result.encoding;
+            decoding.confidence = result.confidence;
+            decoding.stream = encoding_sniffing.StreamDecoder.init(result.encoding);
+            // Encoding "decode" steps 1-2: a BOM is not part of the text.
+            const bom_len = encoding_sniffing.bomLength(self.raw_bytes.items);
+            try decoding.stream.?.decodeInto(self.allocator, &chars, self.raw_bytes.items[bom_len..], last);
+            if (result.confidence == .certain) {
+                // No change of encoding can come: the bytes are not needed.
+                self.raw_bytes.clearAndFree(self.allocator);
+            } else {
+                self.tree_builder.change_the_encoding = .{ .context = @ptrCast(decoding), .change = &ByteStreamDecoding.change };
+            }
+        } else {
+            if (decoding.confidence == .tentative) try self.raw_bytes.appendSlice(self.allocator, bytes);
+            try decoding.stream.?.decodeInto(self.allocator, &chars, bytes, last);
+        }
+        if (decoding.confidence == .certain and self.raw_bytes.items.len != 0) self.raw_bytes.clearAndFree(self.allocator);
+        if (last) decoding.stream = null;
+        if (chars.items.len == 0) return;
+        // Appended at the END of the input stream, past any insertion point:
+        // the network's characters follow whatever script wrote.
+        const stream = &self.input_stream;
+        const aligned = decoding.decoded_len == stream.buffer.items.len;
+        try stream.buffer.appendSlice(stream.allocator, chars.items);
+        if (aligned) decoding.decoded_len = stream.buffer.items.len;
+        stream.sync();
+    }
+
+    /// Stop reading the body: its transfer stops once no reader is left.
+    fn releaseNetworkInput(self: *DocumentParser) void {
+        const input = if (self.network) |*n| n else return;
+        const body = input.body orelse return;
+        input.body = null;
+        body.release();
+    }
+
     /// HTML 8.4.2 steps 4-6. EOF is explicit and can only be processed once.
     pub fn close(self: *DocumentParser) !void {
         self.input_stream.complete = true;
         try self.finishIfPossible();
     }
+};
+
+/// A navigation parser's response body, read as it arrives.
+const NetworkInput = struct {
+    /// The body and its reader; null once the body has ended or the parser
+    /// let it go (`StreamedBody.release`).
+    body: ?*StreamedBody,
+    /// The transport layer's encoding and a same-origin container
+    /// document's (the sniffing algorithm's steps 4 and 6).
+    transport: ?encoding_sniffing.Encoding,
+    parent: ?encoding_sniffing.Encoding,
+    /// A networking task to read the body is queued.
+    read_queued: bool = false,
+    /// The encoding sniffing algorithm has run: the bytes since go straight
+    /// through the decoder.
+    sniffed: bool = false,
+    /// The body's bytes received so far.
+    received: u64 = 0,
+
+    /// The prescan reads at most this many bytes (HTML 13.2.3.2 step 3:
+    /// the user agent may wait for them).
+    const prescan_window: usize = 1024;
+
+    /// Whether `bytes`, the stream's first, are enough for the encoding
+    /// sniffing algorithm. A BOM needs its three bytes; the transport
+    /// layer's encoding needs nothing more; otherwise the prescan's 1,024
+    /// bytes, or the end. Stated: HTML 13.2.3.2 step 3 also suggests giving
+    /// up waiting after 500 ms; Crane does not time the wait, as Blink's
+    /// TextResourceDecoder::CheckForMetaCharset buffers until its check has
+    /// seen enough, with no timer.
+    fn enoughToSniff(self: *const NetworkInput, bytes: []const u8) bool {
+        if (encoding_sniffing.mayStartBom(bytes)) return false;
+        if (encoding_sniffing.bomLength(bytes) != 0) return true;
+        if (self.transport != null) return true;
+        return bytes.len >= prescan_window;
+    }
+
+    /// Whether the parser still reads the body (its fetch's holder): not
+    /// once it stopped, nor once its realm ended - the agent's next sweep
+    /// then terminates the fetch.
+    fn holds(context: *anyopaque) bool {
+        const parser: *DocumentParser = @ptrCast(@alignCast(context));
+        if (parser.detached or parser.document_destroyed) return false;
+        return !parser.had_engine or parser.ctx.hasEngine();
+    }
+
+    /// The pipe has something new - from the network's turn of the loop,
+    /// where no script may run: queue the networking task that reads it,
+    /// once until it runs.
+    fn notify(context: *anyopaque) void {
+        const parser: *DocumentParser = @ptrCast(@alignCast(context));
+        const self = if (parser.network) |*input| input else return;
+        if (self.read_queued) return;
+        const loop = parser.ctx.getOptionalEventLoop() orelse return;
+        const task = parser.allocator.create(ReadTask) catch return;
+        task.* = .{ .parser = parser };
+        self.read_queued = true;
+        parser.retain();
+        // A global task on the networking task source given the document's
+        // relevant global (HTML 7.5.1): runnable while its document is
+        // fully active.
+        loop.queueTask(.{
+            .callback = &ReadTask.run,
+            .context = task,
+            .drop = &ReadTask.drop,
+            .document = parser.document,
+            .document_generation = parser.document_generation,
+        });
+    }
+
+    const ReadTask = struct {
+        parser: *DocumentParser,
+
+        fn run(context: ?*anyopaque) void {
+            const self: *ReadTask = @ptrCast(@alignCast(context.?));
+            const parser = self.parser;
+            parser.allocator.destroy(self);
+            defer parser.release();
+            if (parser.network) |*input| input.read_queued = false;
+            parser.readNetworkInput();
+        }
+
+        fn drop(context: ?*anyopaque) void {
+            const self: *ReadTask = @ptrCast(@alignCast(context.?));
+            const parser = self.parser;
+            parser.allocator.destroy(self);
+            if (parser.network) |*input| input.read_queued = false;
+            parser.release();
+        }
+    };
 };
 
 /// Parse an HTML document, building its DOM as it goes and running its
@@ -834,6 +1106,9 @@ pub fn parseHTMLWithScripting(
     options: ParseOptions,
 ) ParseError!*runtime.Instance {
     if (options.parser_canceled) |canceled| canceled.* = false;
+    // A body still arriving is this call's until its parser takes it.
+    var body_stream = options.body_stream;
+    defer if (body_stream) |pipe| pipe.release();
     // Step 1: Create DOM Document FIRST (before parsing), unless navigation
     // already did. It must exist before any DOM nodes are created.
     const owns_document = options.document == null;
@@ -857,7 +1132,11 @@ pub fn parseHTMLWithScripting(
     // The initiating call holds its own reference through callbacks. The
     // association acquires another, so either EOF or a reentrant open can
     // release Document's ownership without freeing this invocation's state.
-    const parser = DocumentParser.createComplete(allocator, ctx, document, html, options) catch return error.OutOfMemory;
+    const parser = (if (body_stream) |_| streaming: {
+        // createStreaming takes the body, failing or not.
+        body_stream = null;
+        break :streaming DocumentParser.createStreaming(allocator, ctx, document, options);
+    } else DocumentParser.createComplete(allocator, ctx, document, html, options)) catch return error.OutOfMemory;
     var initiating_owner = true;
     defer if (initiating_owner) parser.release();
     if (!dom.document_lifecycle.associateParser(document, parser)) return error.InvalidStateError;
@@ -884,6 +1163,8 @@ pub fn parseHTMLWithScripting(
     }
     parser.pump() catch return error.TreeBuilderError;
     parser.finishIfPossible() catch return error.TreeBuilderError;
+    // What of the body arrived before the parser existed.
+    if (parser.network != null) parser.readNetworkInput();
 
     // Actual EOF detaches normally; open/abort/destruction detach without
     // EOF. A returned loading document still owns its suspended parser.
