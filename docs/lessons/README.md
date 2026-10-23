@@ -350,6 +350,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A key transfer must preserve its allocator](architecture-a-key-transfer-must-preserve-its-allocator.md) - Preserve destination ownership and prove the real move path.
 - [A native timer must preserve document task suspension](architecture-a-native-timer-must-preserve-document-task-suspension.md) - Preserve inactive-document delivery and transfer task ownership exactly once.
 - [A queued native task holds its nodes with a TaskHold, and its tracker is a lookup, not a pointer](architecture-a-queued-native-task-holds-its-nodes-with-a-task-hold.md) - A task that will hand nodes to script holds them with a TaskHold from queueing to its one end, and whatever must find that task later looks it up - after the handoff the record is the loop's.
+- [A lazy namespace must cover native objects received first](architecture-a-lazy-namespace-must-cover-native-objects-received-first.md) - Lazy setup must preserve every observation path, including objects received before the namespace; put first-use triggers on those paths and never overwrite intervening user changes.
 
 ### Spec Compliance
 - [Element reference associations and frozen arrays have different lifetimes](spec-compliance-element-reference-associations-and-frozen-arrays-have-different-lifetimes.md) - A weak association and a strong returned snapshot are different holders; model and test each lifetime independently.
@@ -572,6 +573,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Nonvalidating XML Still Processes DTD Defaults](spec-compliance-nonvalidating-xml-still-processes-dtd-defaults.md) - Nonvalidating does not mean declaration-blind: syntax, defaults and normalization remain observable XML behavior.
 - [Source Inference Needs Browser Measurement](spec-compliance-source-inference-needs-browser-measurement.md) - Label source-based predictions as inferences until an actual browser run confirms them.
 - [XML Navigation and XHR Decode Differently](spec-compliance-xml-navigation-and-xhr-decode-differently.md) - Share encoding selection while preserving each consumer's required error mode.
+- [A Dictionary Forwarder Must Preserve Its Receiver](spec-compliance-a-dictionary-forwarder-must-preserve-its-receiver.md) - A property-forwarding adapter must preserve both the lookup target and the getter receiver; matching property values alone is insufficient.
 
 ### Codegen
 - [Unforgeable accessors must be installed on derived instances](codegen-unforgeable-accessors-must-be-installed-on-derived-instances.md) - An inherited WebIDL member still needs explicit instance installation when the engine template does not inherit that property representation.
@@ -840,6 +842,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [An aggregate assignment can overwrite its input](debugging-aggregate-assignment-can-overwrite-its-input.md) - Save dependent old fields before assigning an anonymous Zig aggregate.
 - [Measure a hot struct against allocator size classes](debugging-a-hot-struct-against-allocator-size-classes.md) - Compare the compiled request with its allocation bucket; a 16-byte field can cost 2 KiB.
 - [XML Parameter Entities Can Grow Their Own Table](debugging-xml-parameter-entities-can-grow-their-own-table.md) - Map entries are temporary across recursive registration, even when their names and text have stable storage.
+- [Private JS Adapters Must Not Steal Source Locations](debugging-private-js-adapters-must-not-steal-source-locations.md) - A transparent JavaScript adapter must preserve attribution as well as values, arguments and prototypes. Identify private frames by engine identity; never discard a user frame merely because its URL is empty or resembles an internal name.
+- [Read the Linked V8 Patch Version](debugging-read-the-linked-v8-patch-version.md) - Measure the linked binary, then read its exact source tag before designing around an internal behavior.
 
 ### Workflow
 - [V8 first-use queues affect persistent-handle probes](measurement-v8-first-use-queues-affect-persistent-handle-probes.md) - A one-time increase is a hypothesis to explain, not permission to loosen a leak assertion. Use an independent control and identify the allocation.
