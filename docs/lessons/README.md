@@ -364,6 +364,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A scheduler that walks its id map pays for its biggest moment forever](architecture-a-scheduler-that-walks-its-id-map-pays-its-biggest-moment-forever.md) - What is asked "what comes next" every turn needs a structure in that order - a heap with stored indices, as WebKit and Chromium keep timers - not a walk of its id map, which costs the table's high-water mark on every turn; a long-lived map whose size swings needs a shrink as well as a TombstoneGuard.
 
 ### Spec Compliance
+- [A reset-only member is not a shorthand component](spec-compliance-a-reset-only-member-is-not-a-shorthand-component.md) - Keep a shorthand reset set distinct from the components serialized by its grammar.
 - [CSS token payloads do not locate token starts](spec-compliance-css-token-payloads-do-not-locate-token-starts.md) - Keep actual source offsets with lookahead and parser marks.
 - [Currentcolor must survive filter inheritance](spec-compliance-currentcolor-must-survive-filter-inheritance.md) - Preserve symbolic currentcolor during computation and resolve it for the receiving element at CSSOM read time.
 - [Reusing a scalar parser must not inherit its quirks](spec-compliance-reusing-a-scalar-parser-must-not-inherit-its-quirks.md) - A component parser must receive its own grammar policy instead of inheriting a property's unitless quirks.
