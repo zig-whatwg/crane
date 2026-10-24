@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [A wrap mark must say when the last wrapper went - and a sweep must wait for a tree's root](architecture-a-wrap-mark-must-say-when-the-last-wrapper-went.md) - "Was it ever wrapped?" is the wrong proof once wrappers can die before their objects: track "is a wrapper bound now", clear it only when the adapter finalizes the last one, decide a tree-owned node's slot only after the walk that frees its root, and audit destructor-only frees by what they call - aliases hide them.
 - [An interface's deinit is a destructor, not a free](architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md) - A destructor chain is not a free: whoever tears down an object no wrapper owns must also return its storage - `runtime.Instance.deinit`, never `interfaces.X.deinit` alone - and a slot count per type per page, with a count of the torn-down ones, names such an owner at once.
 - [Architecture: CSS Resource Equality Includes Its Source](architecture-css-resource-equality-must-include-provenance.md) - Identical serialized CSS URLs can require different requests, so value reuse must compare their retained provenance too.
 - [Architecture: Index a Cascade's Candidates Without Losing Their Order](architecture-index-cascade-candidates-without-losing-order.md) - A per-property fallback chain can reuse globally sorted candidate positions while preserving rollback and logical-property precedence.

@@ -162,3 +162,47 @@ fn heldNodeOfOldDocument() !void {
 test "a node of a navigated frame's old document the parent holds keeps its slot and reads safely" {
     try helpers.onFreshThread(heldNodeOfOldDocument);
 }
+
+/// The WPT shape that does keep them (initial-empty-document/iframe-nosrc,
+/// srcdoc-history-entries): a frame on its initial empty document, its
+/// window read, navigated away twice through its src - each navigation
+/// retiring a realm whose document the deferred teardown queue frees later.
+const navigate_from_initial_empty =
+    \\globalThis.pending = 1;
+    \\const f = document.body.appendChild(document.createElement('iframe'));
+    \\void f.contentWindow.document.title;
+    \\let loads = 0;
+    \\f.onload = () => {
+    \\  void f.contentWindow.location.href;
+    \\  if (++loads === 1) f.src = 'about:blank?2';
+    \\  else { f.remove(); pending = 0; }
+    \\};
+    \\f.src = 'about:blank?1';
+;
+
+fn initialEmptyNavigated() !void {
+    var browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    defer browser.deinit();
+    var first: usize = 0;
+    for (0..4) |page_index| {
+        try browser.navigate("about:blank", .window);
+        const page = browser.current_context orelse return error.NoPage;
+        try page.loadHTML("<!doctype html><body></body>", .{ .base_url = "about:blank" });
+        try page.runScript(navigate_from_initial_empty);
+        try settle(browser);
+        try page.runScript("globalThis.pending = 1; TestUtils.gc(); TestUtils.gc(); setTimeout(() => { TestUtils.gc(); pending = 0; }, 0);");
+        try settle(browser);
+        try check(browser);
+        const now = count(browser, &document_parts);
+        if (page_index == 0) {
+            first = now;
+        } else if (now != first) {
+            std.debug.print("page {d}: the retired realms' html/head/body stayed: {d} -> {d}\n", .{ page_index + 1, first, now });
+            return error.PageStorageRetained;
+        }
+    }
+}
+
+test "a frame navigated away from its initial empty document gives back its old documents' slots" {
+    try helpers.onFreshThread(initialEmptyNavigated);
+}
