@@ -368,7 +368,6 @@ A lane brief now carries the lessons chosen for its batch.
 - [Native font status precedes its script promise](architecture-native-font-status-precedes-its-script-promise.md) - Preserve automatic outcomes until script requests the promise.
 
 ### Spec Compliance
-
 - [Preserve the owning property's quirks](spec-compliance-preserve-the-owning-propertys-quirks.md) - Route compatibility exceptions by the containing property, including its explicitly allowed exceptions.
 - [A reset-only member is not a shorthand component](spec-compliance-a-reset-only-member-is-not-a-shorthand-component.md) - Keep a shorthand reset set distinct from the components serialized by its grammar.
 - [CSS token payloads do not locate token starts](spec-compliance-css-token-payloads-do-not-locate-token-starts.md) - Keep actual source offsets with lookahead and parser marks.
