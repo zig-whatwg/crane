@@ -2,16 +2,17 @@
 //! back once their realm has retired - and a node of them the parent page
 //! still holds keeps its slot, and reads as a node of an inactive document.
 //!
-//! A frame's navigation retires its old realm. The old document is torn
-//! down later - by its realm's end, or by the deferred teardown queue once
-//! the collector took its wrapper - in a realm with no engine left. There,
-//! a torn-down node kept its slab slot: Node.deinitNodeByType could not ask
-//! a wrapper cache (the realm has none) and could not prove that no other
-//! realm wraps the node - so every page that navigated a frame kept the old
-//! documents' html, head and body until its Browser ended (the WPT
-//! browsing-the-web lists: 52 of each a pass of 42 files). The slot's wrap
-//! mark ([wrap_tracking]) is that proof, for every realm: a node no engine
-//! object reaches now gives its slot back; one the parent wraps keeps it.
+//! A GUARD, green before and after the lane's fixes: it was written for the
+//! WPT browsing-the-web lists' remaining html/head/body (unwrapped, torn
+//! down, kept: 52 of each a pass of 42 files after the lane's other fixes)
+//! on the hypothesis that a retired realm's nodes torn down outside a
+//! coordinated teardown keep their slots - and it does not reproduce that
+//! remainder, which comes from HTTP-loaded frames a native test cannot make.
+//! What it pins: a frame navigated twice per page leaves no document parts
+//! behind; a node of the first document the parent keeps keeps its slot and
+//! reads 'one' from its own inactive document; and impostors of the second
+//! document's types, made between the deferred teardown queue's slices that
+//! free that document, are never touched.
 //!
 //! One Browser per test, each on a thread of its own (tests/html is one
 //! executable; a Browser's agent belongs to the thread that made it), on
