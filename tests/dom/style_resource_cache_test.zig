@@ -89,8 +89,10 @@ test "used image selection excludes nested candidates until a typed selector cho
     const value = block.get(.background_image).?.value.value;
     const urls = value.resourceUrls();
     try std.testing.expectEqual(@as(usize, 4), urls.len);
+    const resource_loading = @import("dom").style.engine.resource_loading;
+    const image_text = resource_loading.backgroundImageText(value).?;
     for (urls, [_]bool{ true, false, false, true }) |url, expected| {
-        try std.testing.expectEqual(expected, @import("dom").style.engine.resource_loading.isSimpleImageOccurrence(value.sharedText().?.bytes, url.range));
+        try std.testing.expectEqual(expected, resource_loading.isSimpleImageOccurrence(image_text, url.range));
     }
 }
 

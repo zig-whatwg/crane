@@ -647,10 +647,22 @@ fn selectDocumentResources(state: *State) Allocator.Error!void {
     }
 }
 
+/// The serialized text a background-image value's `resourceUrls()` ranges
+/// index. Besides plain text, the typed layer list and single typed image
+/// (codex row 119's image values) keep that text beside their components.
+pub fn backgroundImageText(value: css.style_values.Value) ?[]const u8 {
+    return switch (value) {
+        .text => |t| t.bytes,
+        .layers => |v| v.text.bytes,
+        .image => |v| v.text.bytes,
+        else => null,
+    };
+}
+
 fn selectStyleResources(state: *State, style: *const css.computed_style.ComputedStyle) Allocator.Error!void {
     const background = style.get(.background_image);
-    if (background == .text) for (background.resourceUrls()) |occurrence| {
-        if (isSimpleImageOccurrence(background.text.bytes, occurrence.range)) try fetchImage(state, occurrence);
+    if (backgroundImageText(background)) |text| for (background.resourceUrls()) |occurrence| {
+        if (isSimpleImageOccurrence(text, occurrence.range)) try fetchImage(state, occurrence);
     };
     const content = style.get(.content);
     if (content == .content) {
