@@ -911,10 +911,14 @@ pub const Capabilities = struct {
     /// The adapter marks every instance it binds an engine object to - a
     /// wrapper, a constructed `this`, a realm's global object - with
     /// runtime.instance_lifecycle.markWrapped, on every path that binds one,
-    /// before any step of the bind can fail. So an instance without the mark
-    /// was never reachable from script in any realm, and the host frees what
-    /// only script could still have reached: at a realm's end, the slab slot
-    /// of a node its tree tore down (Node.deinitNodeByType), and the realm's
+    /// before any step of the bind can fail; and it marks the binding gone
+    /// (instance_lifecycle.markWrapperGone) only when it finalizes the LAST
+    /// engine object bound to an instance the host keeps - collected, no
+    /// other realm's wrapper, not a realm's global. So an instance without a
+    /// live mark is unreachable from script in every realm, now, and the host
+    /// frees what only script could still have reached: at a realm's end, the
+    /// slab slot of a node its tree tore down (Node.deinitNodeByType), a
+    /// child an owner frees whole (runtime.gc.releaseOwned), and the realm's
     /// orphans - subtrees removed while nothing wrapped them
     /// (runtime.orphan_roots). Unsupported: a missing mark proves nothing
     /// (instance_lifecycle.provablyUnwrapped's default) - a realm's end keeps
