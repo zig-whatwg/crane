@@ -495,7 +495,8 @@ pub fn build(options: BuildOptions, parsed: *const css.rules.Rule, position: Pos
         .qualified => {
             if (parsed.prelude.len == 0) return null;
             const prelude = try a.dupe(u8, parsed.prelude);
-            errdefer a.free(prelude);
+            var owns_prelude = true;
+            errdefer if (owns_prelude) a.free(prelude);
             var selectors = selector.parse(a, prelude) catch |err| switch (err) {
                 error.OutOfMemory => return error.OutOfMemory,
                 // "A style rule whose selector is invalid is dropped."
@@ -507,6 +508,8 @@ pub fn build(options: BuildOptions, parsed: *const css.rules.Rule, position: Pos
             errdefer selectors.deinit();
             var declarations = try DeclarationBlock.fromDeclarations(options.parse, parsed.declarations);
             errdefer declarations.deinit();
+            // make consumes the prelude even when its Rule allocation fails.
+            owns_prelude = false;
             return make(a, prelude, .{ .style = .{ .selectors = selectors, .block = declarations } });
         },
         .at_rule => {},
@@ -624,7 +627,7 @@ pub fn build(options: BuildOptions, parsed: *const css.rules.Rule, position: Pos
         var declarations = try DeclarationBlock.fromDeclarations(options.parse, parsed.declarations);
         errdefer declarations.deinit();
         const prelude = try a.dupe(u8, std.mem.trim(u8, parsed.prelude, " \t\n\r\x0c"));
-        errdefer a.free(prelude);
+        // make consumes the prelude, including allocation failure.
         return make(a, prelude, .{ .page = declarations });
     }
     return null;
