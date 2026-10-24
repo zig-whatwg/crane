@@ -130,3 +130,18 @@ why = A timing assertion (fetchStart marked after the worker activates / before 
 pair.1 = base 1/1; tip 1/1
 pair.2 = base 1/1; tip 0/1
 pair.3 = base 1/1; tip 1/1
+
+[editing/plaintext-only/insertText.html]
+generation = 178
+kind = user-ruling
+why = Lane editing1 (delete core) made delete real; the 8 lost rows (4 white-space variants x 2: "insertText a when <p><b>[AB]</b></p> and delete", "... [A]</b></p><p>B</p> and delete and move caret") passed before only because delete was a no-op and insertText replaced the still-selected text. Browsers re-apply the typing style (CSS state and value overrides), which Crane mocks; they return with the editing formatting batch (tmp/plans/lane-editing1-handoff.md, "The 28 lost subtests" table). Isolated on main-bbb64bb6e4 and main-90714cd44e: 35/35 passing both, so not this round.
+date = 2026-10-23
+decision = The user: "Merge now" for editing1 with its typing-style losses recorded as the user's ruling (memory editing-typing-style-ruling).
+
+[hr-time/timeOrigin.html]
+generation = 178
+kind = flake
+why = Sweep-only: the gen 178 sweep failed "Window and worker timeOrigins are close when created one after another" (assert_greater_than_equal: worker timeOrigin should be greater than the window's) under the 8-runner sweep's load. Isolated, one process each, frozen main-bbb64bb6e4 (base) vs main-90714cd44e (tip), integrator 2026-10-24: all 3/3.
+pair.1 = base 3/3; tip 3/3
+pair.2 = base 3/3; tip 3/3
+pair.3 = base 3/3; tip 3/3
