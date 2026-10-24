@@ -58,6 +58,9 @@ pub const InternalState = struct {
     /// only the teardown net: it reads null once a realm's teardown freed
     /// the element, never a freed or reissued object.
     source: ?KeptInstance = null,
+    /// One counted reference on the source (refcount step 5g), taken beside
+    /// the edge. SHADOW MODE: the edge keeps it until refcount step 9b.
+    source_hold: @import("dom").node_holds.RefHold = .{},
 
     fn clear(self: *InternalState) void {
         self.allocator.free(self.old_state);
@@ -96,6 +99,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         // An event freed without ever being wrapped lets the hold waiting
         // for its wrapper go; a collected one's edge went with the wrapper.
         if (internal.source != null) engine.forgetTracedChild(instance, source_slot);
+        internal.source_hold.release();
         internal.clear();
         internal.allocator.destroy(internal);
         state.own._internal = null;
@@ -122,6 +126,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     if (dict.source) |element| {
         internal.source = KeptInstance.of(element);
         engine.traceChild(instance, element, source_slot);
+        internal.source_hold.set(element);
     }
     return instance;
 }

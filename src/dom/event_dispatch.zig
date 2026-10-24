@@ -27,6 +27,8 @@ const runtime = @import("runtime");
 const engine = @import("engine");
 const infra = @import("infra");
 const KeptInstance = @import("custom_elements.zig").KeptInstance;
+const node_holds = @import("node_holds.zig");
+const NodeBase = @import("node_base.zig").NodeBase;
 
 /// One struct of an event's path (DOM 2.9 "append to an event path"), built
 /// by dom.event_path.
@@ -46,6 +48,21 @@ pub const PathItem = struct {
     /// recorded then, invoke finds it without walking back along the path
     /// (Blink keeps it per tree scope: TreeScopeEventContext::Target).
     target: *runtime.Instance,
+    /// Not the standard's either: the invocation target's tree node (null
+    /// for a Window or any other target that is not a node), recorded by
+    /// "append to an event path" for the hold below.
+    invocation_node: ?*NodeBase = null,
+    /// The path's counted references while dispatch runs (refcount step
+    /// 5g), WebKit's EventContext `RefPtr<Node> m_node` and `RefPtr<Node>
+    /// m_relatedTarget` (Source/WebCore/dom/EventContext.h): `hold` on the
+    /// invocation target, `related_hold` on the item's relatedTarget when it
+    /// differs from the previous item's. The shadow-adjusted target and
+    /// `target` are always some item's invocation target, held there. Taken
+    /// once the path is built (`EventState.holdPath`: an item never moves
+    /// after that) and let go when it is emptied (`clearPath`). SHADOW MODE:
+    /// counted only - they decide nothing yet.
+    hold: node_holds.RefHold = .{},
+    related_hold: node_holds.RefHold = .{},
 };
 
 /// Event's eventPhase values (DOM 2.2).
@@ -117,6 +134,21 @@ pub const EventState = struct {
     /// at them, and the getter then reads null, never a freed object.
     kept_related_target: ?KeptInstance = null,
 
+    /// One counted reference on the target the event keeps and one on its
+    /// relatedTarget (refcount step 5g): WebKit's Event holds
+    /// `RefPtr<EventTarget> m_target` (Source/WebCore/dom/Event.h), its
+    /// MouseEvent and FocusEvent `RefPtr<EventTarget> m_relatedTarget`.
+    /// Taken whether or not script has wrapped the event (`keepTarget`,
+    /// `keepRelatedTarget`); a target that is not a node is not counted
+    /// (decision D3). SHADOW MODE: the edges keep them until refcount step
+    /// 9b; these decide nothing yet.
+    target_hold: node_holds.RefHold = .{},
+    related_hold: node_holds.RefHold = .{},
+
+    /// Whether the path's holds are taken (`holdPath`): from then until
+    /// `clearPath` nothing may append to the path, whose items they live in.
+    path_held: bool = false,
+
     pub fn init(allocator: std.mem.Allocator) EventState {
         return .{
             .allocator = allocator,
@@ -129,6 +161,7 @@ pub const EventState = struct {
     /// the path and the touch target list. `event`'s edge to its target is
     /// the event's teardown to end (`forgetTarget`).
     pub fn deinit(self: *EventState) void {
+        self.releasePath();
         for (self.path.toSliceMut()) |*item| item.touch_target_list.deinit();
         self.path.deinit();
         self.touch_target_list.deinit();
@@ -153,6 +186,7 @@ pub const EventState = struct {
     /// sees the event wraps it, and the end of dispatch (`endDispatch`) draws
     /// the edge then.
     pub fn keepTarget(self: *EventState, event: *runtime.Instance) void {
+        self.target_hold.set(self.target);
         const target = self.target;
         if (target == self.traced_target) return;
         if (target) |t| {
@@ -170,6 +204,7 @@ pub const EventState = struct {
     pub fn forgetTarget(self: *EventState, event: *runtime.Instance) void {
         if (self.traced_target != null) engine.forgetTracedChild(event, target_slot);
         self.traced_target = null;
+        self.target_hold.release();
     }
 
     /// Set `event`'s relatedTarget to `related` and keep it: what the
@@ -199,6 +234,7 @@ pub const EventState = struct {
     /// the event, and the events that carry one - focus, mouse and drag
     /// events - are few, so nothing wraps a node per fired event.
     pub fn keepRelatedTarget(self: *EventState, event: *runtime.Instance) void {
+        self.related_hold.set(self.related_target);
         const related = self.related_target;
         const kept: ?*runtime.Instance = if (self.kept_related_target) |k| k.instance else null;
         if (related == kept) return;
@@ -215,6 +251,36 @@ pub const EventState = struct {
     pub fn forgetRelatedTarget(self: *EventState, event: *runtime.Instance) void {
         if (self.kept_related_target != null) engine.forgetTracedChild(event, related_target_slot);
         self.kept_related_target = null;
+        self.related_hold.release();
+    }
+
+    /// Take the path's holds (each item's `hold` and `related_hold`), once
+    /// dom.event_path has built it: the items stay where they are until
+    /// `clearPath` empties the path, which lets the holds go.
+    pub fn holdPath(self: *EventState) void {
+        std.debug.assert(!self.path_held);
+        var previous_related: ?*runtime.Instance = null;
+        for (self.path.toSliceMut()) |*item| {
+            item.hold.setNode(item.invocation_target, item.invocation_node);
+            if (item.related_target) |related| {
+                if (related != previous_related) item.related_hold.set(related);
+            }
+            previous_related = item.related_target;
+            // TODO(refcount 5g): each item's touch target list - always empty
+            // until a TouchEvent fills the event's (Touch is a stub) - takes
+            // its holds here when one can.
+        }
+        self.path_held = true;
+    }
+
+    /// Let the path's holds go, before the path is emptied or freed.
+    fn releasePath(self: *EventState) void {
+        if (!self.path_held) return;
+        for (self.path.toSliceMut()) |*item| {
+            item.hold.release();
+            item.related_hold.release();
+        }
+        self.path_held = false;
     }
 
     /// DOM 2.2 "set the canceled flag" given the event, whose cancelable
@@ -229,6 +295,7 @@ pub const EventState = struct {
     /// owns a touch target list, so clearing without releasing them leaks one
     /// list per path entry per dispatch.
     pub fn clearPath(self: *EventState) void {
+        self.releasePath();
         for (self.path.toSliceMut()) |*item| item.touch_target_list.deinit();
         self.path.clear();
     }

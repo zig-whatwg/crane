@@ -135,6 +135,8 @@ const Walk = struct {
     /// an item deeper than the depth-0 tree, and filled in for the depth-0
     /// tree's items once its root is reached (`resolveScope`).
     fn append(self: *Walk, invocation_target: *runtime.Instance, node: ?*NodeBase, shadow_adjusted: ?*runtime.Instance, slot_in_closed_tree: bool) !void {
+        // The items' holds live in them: none is taken while the path grows.
+        std.debug.assert(!self.state.path_held);
         var touch = infra.List(*runtime.Instance).init(self.allocator());
         errdefer touch.deinit();
         if (self.touch_targets.len > 0) try touch.appendSlice(self.touch_targets.toSlice());
@@ -154,6 +156,7 @@ const Walk = struct {
             .root_of_closed_tree = root_of_closed_tree,
             .slot_in_closed_tree = slot_in_closed_tree,
             .target = self.target,
+            .invocation_node = node,
         });
     }
 
@@ -359,6 +362,9 @@ pub fn build(state: *EventState, target: *runtime.Instance, input: Input) error{
             if (inShadowTree(touch_target)) break true;
         } else false;
 
+    // The path is built and grows no more: its nodes are held while
+    // dispatch runs (refcount step 5g), until step 9 empties it.
+    state.holdPath();
     return walk.result;
 }
 

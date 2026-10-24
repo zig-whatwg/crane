@@ -1248,6 +1248,15 @@ fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, st
         .activation_of = if (is_activation_event) &dom_module.activation.of else null,
     });
     const activation_target = built.activation_target;
+    // Dispatch holds activationTarget across steps 6.12-12: step 9 empties
+    // the path, which held it, before step 12 runs its activation behaviour
+    // (refcount step 5g; WebKit's EventDispatcher::dispatchEvent holds
+    // `Ref protectedNode` and its legacy pre-activation input in a
+    // `RefPtr` for the whole dispatch, Source/WebCore/dom/
+    // EventDispatcher.cpp). SHADOW MODE: counted only.
+    var activation_hold: dom_module.node_holds.RefHold = .{};
+    defer activation_hold.release();
+    if (activation_target) |at| activation_hold.set(at.target);
 
     // The path does not change while it runs: nothing appends to it until
     // step 9 empties it, and a listener can neither redispatch this event
