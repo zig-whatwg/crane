@@ -271,7 +271,13 @@ pub const Image = struct {
             .light_dark => |pair| {
                 // Color5 §7: choose at computed time BEFORE inheritance.
                 const chosen = pair[if (scheme == .dark) @as(usize, 1) else 0];
-                if (chosen.isKeyword(.none)) return .{ .image = try create(allocator, .{ .solid_color = values.Color.transparent }) };
+                if (chosen.isKeyword(.none)) {
+                    // Color5 §7 synthesizes image(transparent); Color4 §15.5
+                    // still computes its specified keyword to transparent black.
+                    const computed = try context.color(values.Color.transparent);
+                    defer computed.release();
+                    return .{ .image = try create(allocator, .{ .solid_color = computed }) };
+                }
                 return context.component(.list_style_image, chosen);
             },
             .image_set => |set| {
