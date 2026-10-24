@@ -102,13 +102,31 @@ pub fn deinit(instance: *runtime.Instance) void {
     // (GC-traced pointers), but we must handle the case where ports are never accessed.
     if (state.own._internal) |internal| {
         if (internal.initialized) {
-            // Clean up port1 only if it was never exposed to JavaScript
+            // A port never exposed to JavaScript is this channel's alone, and
+            // goes WHOLE with it (runtime.gc.releaseOwned): its destructor and
+            // its storage. Only the destructor ran here before - the
+            // interface's deinit, which leaves the slab slot and state block
+            // - so every port script never read stayed until its Browser
+            // ended (lane pageretention1). WebKit's MessageChannel holds a
+            // Ref<MessagePort> per port and Blink traces Member<MessagePort>:
+            // a full owning reference.
+            //
+            // Nothing else reaches the port's slot once its destructor ran.
+            // Its peer never points at it: the two ports share a
+            // dom.port_channels Channel, and what reaches THIS port is its own
+            // end's owner record (receiver + slab generation), which the
+            // destructor's End.discard clears under the channel's mutex,
+            // moving the end's epoch on - so a task already in flight, on any
+            // thread, finds no owner (Notify.run reads the owner under the
+            // lock, by epoch) - and every hook checks the generation besides
+            // (MessagePort.liveReceiver). Its pending-activity keep, its entry
+            // in its thread's list of ports and its event handlers go with the
+            // destructor too (MessagePort.deinit).
             if (!internal.port1_exposed) {
-                MessagePortInterface.deinit(state.own.port1);
+                runtime.gc.releaseOwned(state.own.port1);
             }
-            // Clean up port2 only if it was never exposed to JavaScript
             if (!internal.port2_exposed) {
-                MessagePortInterface.deinit(state.own.port2);
+                runtime.gc.releaseOwned(state.own.port2);
             }
         }
         internal.port1_edge.release(instance);

@@ -943,7 +943,7 @@ fn fireAt(
     // A listener can destroy the frame, which retires its native objects
     // even while wrappers are rooted. Context outlives realm teardown.
     if ((had_engine and !ctx.hasEngine()) or runtime.SlabAllocator.generationOf(event) != event_generation) return;
-    releaseEventIfUnwrapped(event, progress != null);
+    releaseEventIfUnwrapped(event);
 }
 
 /// Free an event nobody ever saw.
@@ -971,15 +971,17 @@ fn fireAt(
 /// `Window.zig` does the same thing for MessageEvent, but removes from the
 /// cache first and frees regardless - which is the version this deliberately
 /// does not copy.
-fn releaseEventIfUnwrapped(event: *runtime.Instance, is_progress_event: bool) void {
+///
+/// Freed WHOLE: its teardown and its storage (runtime.Instance.deinit). The
+/// interface's deinit alone - a destructor, not a free - returned the state
+/// it owned and left the event's slab slot and state block, so every XHR
+/// event no listener saw stayed until its Browser ended: a page of ten
+/// synchronous requests kept twenty Events and twenty ProgressEvents (lane
+/// pageretention1). The caller has checked the slot is still the event's.
+fn releaseEventIfUnwrapped(event: *runtime.Instance) void {
     // Wrapped => the engine owns it from here.
     if (engine.hasWrapper(event)) return;
-
-    if (is_progress_event) {
-        interfaces.ProgressEvent.deinit(event);
-    } else {
-        interfaces.Event.deinit(event);
-    }
+    runtime.Instance.deinit(event);
 }
 
 /// Fire readystatechange at this XHR.
