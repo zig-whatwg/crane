@@ -655,6 +655,7 @@ const Builder = struct {
             .layers => |value| return .{ .layers = try value.compute(self.ctx.allocator, l, ComponentContext.init(self, source)) },
             .image => |value| return value.compute(self.ctx.allocator, self.used_scheme, ComponentContext.init(self, source)),
             .cursor => |value| return .{ .cursor = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
+            .image_axis => |value| return .{ .image_axis = try value.compute(self.ctx.allocator, if (l == .background_position_x) 0 else 1, ComponentContext.init(self, source)) },
             else => {
                 v.retain();
                 return v;

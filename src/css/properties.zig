@@ -248,6 +248,13 @@ pub const Longhand = enum(u8) {
     position_visibility,
     interpolate_size,
     contain,
+    background_position_x,
+    background_position_y,
+    background_size,
+    background_repeat,
+    background_attachment,
+    background_origin,
+    background_clip,
 
     pub const count = @typeInfo(Longhand).@"enum".fields.len;
 
@@ -450,6 +457,7 @@ pub const Grammar = enum {
     image_position,
     mask,
     stroke_width,
+    background,
 };
 
 pub const Info = struct {
@@ -673,6 +681,13 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .mask_type, .inherited = false, .initial = .{ .image_keyword = .luminance }, .grammar = .mask },
         // CSS Backgrounds3 §5.1: one image, independently of border widths.
         .{ .longhand = .border_image_source, .inherited = false, .initial = Value.kw(.none), .grammar = .image },
+        .{ .longhand = .background_position_x, .inherited = false, .initial = .{ .length = .percent(0) }, .grammar = .background },
+        .{ .longhand = .background_position_y, .inherited = false, .initial = .{ .length = .percent(0) }, .grammar = .background },
+        .{ .longhand = .background_size, .inherited = false, .initial = Value.kw(.auto), .grammar = .background },
+        .{ .longhand = .background_repeat, .inherited = false, .initial = .{ .image_repeat = .{ .x = .repeat, .y = .repeat } }, .grammar = .background },
+        .{ .longhand = .background_attachment, .inherited = false, .initial = .{ .image_keyword = .scroll }, .grammar = .background },
+        .{ .longhand = .background_origin, .inherited = false, .initial = .{ .image_keyword = .padding_box }, .grammar = .background },
+        .{ .longhand = .background_clip, .inherited = false, .initial = .{ .image_keyword = .border_box }, .grammar = .background },
     };
     for (defs) |def| {
         const i = @intFromEnum(def.longhand);
@@ -741,6 +756,7 @@ pub const Shorthand = enum(u8) {
     marker,
     mask,
     mask_border,
+    background_position,
 
     pub fn name(self: Shorthand) []const u8 {
         return switch (self) {
@@ -753,7 +769,8 @@ pub const Shorthand = enum(u8) {
         return switch (self) {
             ._webkit_text_orientation => &.{.text_orientation},
             .all => &all_longhands,
-            .background => &.{ .background_image, .background_color },
+            .background => &@import("background_values.zig").longhands,
+            .background_position => &@import("background_values.zig").position_longhands,
             .border => &.{ .border_top_width, .border_right_width, .border_bottom_width, .border_left_width, .border_top_style, .border_right_style, .border_bottom_style, .border_left_style, .border_top_color, .border_right_color, .border_bottom_color, .border_left_color, .border_image_source },
             .border_block => &.{ .border_block_start_width, .border_block_end_width, .border_block_start_style, .border_block_end_style, .border_block_start_color, .border_block_end_color },
             .border_inline => &.{ .border_inline_start_width, .border_inline_end_width, .border_inline_start_style, .border_inline_end_style, .border_inline_start_color, .border_inline_end_color },
@@ -1275,6 +1292,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .image_position => return if (try @import("position_values.zig").parse(options, stream, .position)) |position| .{ .image_position = position } else null,
         .mask => return @import("mask_values.zig").parse(options, l, stream),
         .stroke_width => return @import("svg_paint.zig").parseStrokeWidth(options, stream),
+        .background => return @import("background_values.zig").parse(options, l, stream),
     }
 }
 
@@ -1911,6 +1929,7 @@ fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *st
         },
         .white_space => return whiteSpace(options, stream, out),
         .background => return background(options, stream, out),
+        .background_position => return @import("background_values.zig").parsePosition(options, stream, out),
         .marker => return @import("svg_paint.zig").parseMarker(options, stream, out),
         .mask => return @import("mask_values.zig").parseShorthand(options, stream, out),
         .mask_border => return @import("mask_values.zig").parseBorder(options, stream, out),
@@ -2076,85 +2095,9 @@ fn whiteSpace(options: ParseOptions, stream: *Stream, out: *std.ArrayList(Assign
     return true;
 }
 
-/// CSS Backgrounds 3 3.10 `background`: `<bg-layer>#, <final-bg-layer>`.
-/// Every component is parsed; only the images and the final layer's color
-/// are kept, the longhands Crane supports (stated).
+/// Backgrounds3 §2.12: preserve every component through the typed grammar.
 fn background(options: ParseOptions, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
-    var images: std.ArrayList(Value) = .empty;
-    defer {
-        for (images.items) |image| image.release();
-        images.deinit(options.allocator);
-    }
-    var color: ?Value = null;
-    defer if (color) |v| v.release();
-    while (true) {
-        var image: ?Value = null;
-        defer if (image) |v| v.release();
-        var seen = struct { position: bool = false, repeat: bool = false, attachment: bool = false, boxes: u8 = 0 }{};
-        var components: usize = 0;
-        while (!stream.atEnd() and stream.peek().token_type != .comma) {
-            components += 1;
-            if (image == null) if (try imageValue(options, stream)) |v| {
-                image = v;
-                continue;
-            };
-            if (color == null) {
-                const c = try colorValue(options, stream, Longhand.background_color.info());
-                if (c) |v| {
-                    color = v;
-                    continue;
-                }
-            }
-            if (!seen.position and backgroundPosition(stream)) {
-                seen.position = true;
-                // An optional `/ <bg-size>`.
-                const t = stream.peek();
-                if (t.token_type == .delim and std.mem.eql(u8, t.value, "/")) {
-                    _ = stream.next();
-                    if (!backgroundSize(stream)) return false;
-                }
-                continue;
-            }
-            if (!seen.repeat and backgroundRepeat(stream)) {
-                seen.repeat = true;
-                continue;
-            }
-            if (!seen.attachment and takeIdent(stream, &.{ "scroll", "fixed", "local" })) {
-                seen.attachment = true;
-                continue;
-            }
-            if (seen.boxes < 2 and takeIdent(stream, &.{ "border-box", "padding-box", "content-box", "text" })) {
-                seen.boxes += 1;
-                continue;
-            }
-            return false;
-        }
-        if (components == 0) {
-            return false;
-        }
-        // Q78: preserve the typed image and its candidates through this
-        // shorthand, before the full component expansion lands in d1b.
-        try images.append(options.allocator, image orelse Value.kw(.none));
-        image = null;
-        if (stream.peek().token_type == .comma) {
-            // Only the final layer may hold a color.
-            if (color != null) {
-                return false;
-            }
-            _ = stream.next();
-            continue;
-        }
-        break;
-    }
-    try out.ensureUnusedCapacity(options.allocator, 2);
-    const image_value: Value = if (images.items.len == 1) blk: {
-        images.items[0].retain();
-        break :blk images.items[0];
-    } else .{ .layers = try @import("image_layers.zig").Layers.create(options.allocator, .background_image, images.items) };
-    out.appendAssumeCapacity(.{ .longhand = .background_image, .value = .{ .value = image_value } });
-    out.appendAssumeCapacity(.{ .longhand = .background_color, .value = .{ .value = color orelse .{ .color = Color.transparent } } });
-    color = null;
-    return true;
+    return @import("background_values.zig").parseShorthand(options, stream, out);
 }
 
 fn takeIdent(stream: *Stream, names: []const []const u8) bool {
@@ -2274,6 +2217,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .image_keyword => |v| try out.appendSlice(allocator, v.name()),
         .image_repeat => |v| try v.serialize(out, allocator),
         .image => |v| try out.appendSlice(allocator, v.text.bytes),
+        .image_axis => |v| try v.serialize(out, allocator),
     }
 }
 
@@ -2427,30 +2371,11 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
             }
             return true;
         },
-        .background => {
-            // Crane keeps two of background's longhands; the others are
-            // their initial values.
-            const image = vs[0].value;
-            const color = vs[1].value;
-            const image_initial = image.isKeyword(.none);
-            const color_initial = color == .color and color.color.eql(Color.transparent);
-            if (mode == .computed) {
-                try serializeValue(.background_color, color, out, allocator);
-                try out.append(allocator, ' ');
-                try @import("resolved_urls.zig").serialize(.background_image, image, out, allocator);
-                return true;
-            }
-            if (image_initial and color_initial) {
-                try out.appendSlice(allocator, "none");
-                return true;
-            }
-            if (!image_initial) try serializeValue(.background_image, image, out, allocator);
-            if (!color_initial) {
-                if (!image_initial) try out.append(allocator, ' ');
-                try serializeValue(.background_color, color, out, allocator);
-            }
-            return true;
-        },
+        .background => return if (mode == .specified)
+            @import("background_values.zig").serialize(vs, out, allocator)
+        else
+            @import("background_values.zig").serializeComputed(vs, out, allocator),
+        .background_position => return @import("background_values.zig").serializePosition(vs, out, allocator),
         .marker => return @import("svg_paint.zig").serializeMarker(vs, mode, out, allocator),
         .mask => return @import("mask_values.zig").serialize(vs, mode, out, allocator),
         .mask_border => return @import("mask_values.zig").serializeBorder(vs, mode, out, allocator),
@@ -2778,7 +2703,7 @@ test "white-space and overflow" {
 
 test "background: every component parses, image and color are kept" {
     try expectSerialized("background", "green", "green");
-    try expectSerialized("background", "url(x.png) no-repeat center / cover red", "url(\"x.png\") red");
+    try expectSerialized("background", "url(x.png) no-repeat center / cover red", "url(\"x.png\") center center / cover no-repeat red");
     try expectSerialized("background", "url(a.png), url(b.png) blue", "url(\"a.png\"), url(\"b.png\") blue");
     try expectInvalid("background", "red, blue");
     try expectInvalid("background", "bogus");
