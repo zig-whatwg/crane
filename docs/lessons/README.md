@@ -9,7 +9,6 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
-
 - [Resource discovery must read parsed values](architecture-resource-discovery-must-read-parsed-values.md) - Update resource-interest prefilters with their consumers when a value representation changes.
 - [Share a counter only when both consumers need opaque identities](architecture-share-a-counter-only-when-both-consumers-need-opaque-identities.md) - Prove every consumer tolerates sequence gaps before reusing an owner-local identity counter.
 - [An interface's deinit is a destructor, not a free](architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md) - A destructor chain is not a free: whoever tears down an object no wrapper owns must also return its storage - `runtime.Instance.deinit`, never `interfaces.X.deinit` alone - and a slot count per type per page, with a count of the torn-down ones, names such an owner at once.
@@ -370,7 +369,6 @@ A lane brief now carries the lessons chosen for its batch.
 - [Native font status precedes its script promise](architecture-native-font-status-precedes-its-script-promise.md) - Preserve automatic outcomes until script requests the promise.
 
 ### Spec Compliance
-
 - [Preserve the owning property's quirks](spec-compliance-preserve-the-owning-propertys-quirks.md) - Route compatibility exceptions by the containing property, including its explicitly allowed exceptions.
 - [A reset-only member is not a shorthand component](spec-compliance-a-reset-only-member-is-not-a-shorthand-component.md) - Keep a shorthand reset set distinct from the components serialized by its grammar.
 - [CSS token payloads do not locate token starts](spec-compliance-css-token-payloads-do-not-locate-token-starts.md) - Keep actual source offsets with lookahead and parser marks.
@@ -954,3 +952,4 @@ A lane brief now carries the lessons chosen for its batch.
 - [Check the queue's routings before briefing a row](workflow-check-routings-before-briefing-a-row.md) - The blocking list says what fails; the queue says who owns it - read both before handing a row its targets.
 - [Probe list matching separately for a shorthand and its longhands](spec-compliance-probe-list-matching-separately-for-shorthand-and-longhands.md) - Vary list lengths independently and distinguish storage from each observable serialization boundary.
 - [An Empty Bash Array Can Stop a Measurement Launcher](workflow-a-tmux-launch-is-not-proof-a-runner-started.md) - Verify runner startup and make optional arguments safe for the host shell.
+- [A merge that adapts one reader of a changed type must find them all](workflow-a-merge-that-adapts-one-reader-of-a-changed-type-must-find-them-all.md) - A failing test names one reader; a changed type has as many readers as the grep finds.
