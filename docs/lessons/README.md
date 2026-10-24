@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [An interface's deinit is a destructor, not a free](architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md) - A destructor chain is not a free: whoever tears down an object no wrapper owns must also return its storage - `runtime.Instance.deinit`, never `interfaces.X.deinit` alone - and a slot count per type per page, with a count of the torn-down ones, names such an owner at once.
 - [Architecture: CSS Resource Equality Includes Its Source](architecture-css-resource-equality-must-include-provenance.md) - Identical serialized CSS URLs can require different requests, so value reuse must compare their retained provenance too.
 - [Architecture: Index a Cascade's Candidates Without Losing Their Order](architecture-index-cascade-candidates-without-losing-order.md) - A per-property fallback chain can reuse globally sorted candidate positions while preserving rollback and logical-property precedence.
 - [A realm's end silences its work before it frees its objects, and frees its global last](architecture-a-realms-end-silences-its-work-before-it-frees-its-objects.md) - Before a realm frees its objects, silence the work that reports to it, and free its global last. Terminating that work early is a different change: during a worker's end every notification becomes a synchronous drop callback. And when a freed read usually returns harmless garbage, count the freed reads, not the crashes.
@@ -364,6 +365,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A scheduler that walks its id map pays for its biggest moment forever](architecture-a-scheduler-that-walks-its-id-map-pays-its-biggest-moment-forever.md) - What is asked "what comes next" every turn needs a structure in that order - a heap with stored indices, as WebKit and Chromium keep timers - not a walk of its id map, which costs the table's high-water mark on every turn; a long-lived map whose size swings needs a shrink as well as a TombstoneGuard.
 
 ### Spec Compliance
+- [A reset-only member is not a shorthand component](spec-compliance-a-reset-only-member-is-not-a-shorthand-component.md) - Keep a shorthand reset set distinct from the components serialized by its grammar.
 - [CSS token payloads do not locate token starts](spec-compliance-css-token-payloads-do-not-locate-token-starts.md) - Keep actual source offsets with lookahead and parser marks.
 - [Currentcolor must survive filter inheritance](spec-compliance-currentcolor-must-survive-filter-inheritance.md) - Preserve symbolic currentcolor during computation and resolve it for the receiving element at CSSOM read time.
 - [Reusing a scalar parser must not inherit its quirks](spec-compliance-reusing-a-scalar-parser-must-not-inherit-its-quirks.md) - A component parser must receive its own grammar policy instead of inheriting a property's unitless quirks.
