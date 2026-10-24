@@ -949,3 +949,4 @@ A lane brief now carries the lessons chosen for its batch.
 - [Check the queue's routings before briefing a row](workflow-check-routings-before-briefing-a-row.md) - The blocking list says what fails; the queue says who owns it - read both before handing a row its targets.
 - [Probe list matching separately for a shorthand and its longhands](spec-compliance-probe-list-matching-separately-for-shorthand-and-longhands.md) - Vary list lengths independently and distinguish storage from each observable serialization boundary.
 - [An Empty Bash Array Can Stop a Measurement Launcher](workflow-a-tmux-launch-is-not-proof-a-runner-started.md) - Verify runner startup and make optional arguments safe for the host shell.
+- [A merge that adapts one reader of a changed type must find them all](workflow-a-merge-that-adapts-one-reader-of-a-changed-type-must-find-them-all.md) - A failing test names one reader; a changed type has as many readers as the grep finds.
