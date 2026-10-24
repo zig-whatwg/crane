@@ -65,6 +65,18 @@ fn openPage(browser: *browser_mod.Browser, script: []const u8) !void {
         return err;
     };
     _ = try browser.runEventLoopBlocking(50);
+    // A script whose work settles later sets `globalThis.pending` and clears
+    // it when that work is done. Wait for that, up to 10 s, rather than for a
+    // fixed time: a loaded machine overran a 30 ms timer and failed the page
+    // (fetches settled 20 of 40, 2 runs of 3 at load 40).
+    var waits: usize = 0;
+    while (try pagePending(page)) : (waits += 1) {
+        if (waits == 200) {
+            std.debug.print("page check failed: its work never settled\n", .{});
+            return error.PageCheckFailed;
+        }
+        _ = try browser.runEventLoopBlocking(50);
+    }
     try page.runScript("TestUtils.gc(); TestUtils.gc();");
     _ = try browser.runEventLoopBlocking(20);
     // The script's own check, made after its tasks ran: `globalThis.failed`
@@ -75,6 +87,13 @@ fn openPage(browser: *browser_mod.Browser, script: []const u8) !void {
         std.debug.print("page check failed: {s}\n", .{failed});
         return error.PageCheckFailed;
     }
+}
+
+/// Whether the page's script still has work settling (`globalThis.pending`).
+fn pagePending(page: anytype) !bool {
+    const pending = try page.evaluateScriptToString("String(globalThis.pending === true)", testing.allocator);
+    defer testing.allocator.free(pending);
+    return std.mem.eql(u8, pending, "true");
 }
 
 /// Open `pages` pages running `script` each, and require each page's
@@ -182,11 +201,11 @@ fn timeouts() !void {
     try churn(
         \\globalThis.kept = [];
         \\globalThis.timedOut = 0;
-        \\for (let i = 0; i < 20; ++i) AbortSignal.timeout(0).onabort = () => { ++timedOut; };
+        \\globalThis.pending = true;
+        \\for (let i = 0; i < 20; ++i) AbortSignal.timeout(0).onabort = () => { if (++timedOut === 20) globalThis.pending = false; };
         \\for (let i = 0; i < 20; ++i) AbortSignal.timeout(1000000);
         \\for (let i = 0; i < 5; ++i) kept.push(AbortSignal.timeout(1000000));
         \\for (let i = 0; i < 20; ++i) AbortSignal.abort('x');
-        \\setTimeout(() => { if (timedOut !== 20) globalThis.failed = 'timed out ' + timedOut; }, 20);
     , 4, 25);
 }
 
@@ -201,18 +220,19 @@ fn fetches() !void {
     try churn(
         \\globalThis.kept = [];
         \\globalThis.settled = 0;
+        \\globalThis.pending = true;
+        \\const done = () => { if (++settled === 40) globalThis.pending = false; };
         \\for (let i = 0; i < 20; ++i) {
         \\  const c = new AbortController();
         \\  const r = new Request('data:text/plain,x', { signal: c.signal });
         \\  if (i % 2) kept.push(r); else void r.signal.aborted;
         \\  new Request('data:text/plain,y');
-        \\  fetch('data:text/plain,z', { signal: c.signal }).then(() => ++settled, () => ++settled);
-        \\  fetch('data:text/plain,z', { signal: AbortSignal.abort() }).catch(() => ++settled);
+        \\  fetch('data:text/plain,z', { signal: c.signal }).then(done, done);
+        \\  fetch('data:text/plain,z', { signal: AbortSignal.abort() }).catch(done);
         \\}
         \\const late = new AbortController();
         \\kept.push(late);
         \\fetch('data:text/plain,w', { signal: late.signal });
-        \\setTimeout(() => { if (settled !== 40) globalThis.failed = 'settled ' + settled; }, 30);
     , 4, 11);
 }
 
