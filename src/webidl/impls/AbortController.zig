@@ -60,8 +60,28 @@ pub const InternalState = struct {
             // So a collected controller freed a signal script still held, and
             // a collected signal left the controller pointing into the slab.
         } else if (self.signal_link.isLive()) {
-            // Never handed out - nothing else will ever free it.
-            interfaces.AbortSignal.deinit(self.signal);
+            // No wrapper owns it, so this controller does, and frees it
+            // WHOLE: its teardown chain and its storage - its slab slot and
+            // state block (runtime.Instance.deinit). WebKit's controller
+            // holds a Ref<AbortSignal> and Blink's traces signal_: either
+            // reference is a full owning one.
+            //
+            // This used to run only the interface's destructor chain
+            // (`interfaces.AbortSignal.deinit`), which releases the state
+            // and never the slot - and nothing else would ever return it.
+            // testharness.js makes a controller per test and never reads its
+            // signal, so a WPT runner process kept one torn-down signal per
+            // subtest until its Browser ended: 14,463 after ten dom/ files
+            // (lane abortsig1).
+            //
+            // Two cases end here. Never wrapped: only this controller ever
+            // pointed at it (`get_signal`, its one exit, wraps it). Or
+            // wrapped, with its wrapper collected and that wrapper's
+            // teardown still to run (the same collection took this
+            // controller, or a walk holds teardowns): that teardown finds
+            // the slot no longer the one it was made for (its generation,
+            // wrapper_cache.slotReissued) and leaves whatever took it.
+            runtime.Instance.deinit(self.signal);
         }
         // Otherwise the wrapper cache has already freed it, and its slot may
         // hold something else by now.
@@ -85,7 +105,8 @@ pub fn init(
 
     // Create the associated AbortSignal
     const signal = try interfaces.AbortSignal.init(allocator, ctx);
-    errdefer interfaces.AbortSignal.deinit(signal);
+    // Its teardown and its storage: nothing else has it yet.
+    errdefer runtime.Instance.deinit(signal);
 
     internal.allocator = allocator;
     internal.signal = signal;
