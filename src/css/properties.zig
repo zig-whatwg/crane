@@ -242,6 +242,7 @@ pub const Longhand = enum(u8) {
     mask_border_repeat,
     stroke_width,
     mask_type,
+    border_image_source,
 
     pub const count = @typeInfo(Longhand).@"enum".fields.len;
 
@@ -660,6 +661,8 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .mask_border_repeat, .inherited = false, .initial = .{ .image_repeat = .{ .x = .stretch, .y = .stretch, .border = true } }, .grammar = .mask },
         .{ .longhand = .stroke_width, .inherited = true, .initial = Value.px(1), .grammar = .stroke_width },
         .{ .longhand = .mask_type, .inherited = false, .initial = .{ .image_keyword = .luminance }, .grammar = .mask },
+        // CSS Backgrounds3 §5.1: one image, independently of border widths.
+        .{ .longhand = .border_image_source, .inherited = false, .initial = Value.kw(.none), .grammar = .image },
     };
     for (defs) |def| {
         const i = @intFromEnum(def.longhand);
@@ -741,7 +744,7 @@ pub const Shorthand = enum(u8) {
             ._webkit_text_orientation => &.{.text_orientation},
             .all => &all_longhands,
             .background => &.{ .background_image, .background_color },
-            .border => &.{ .border_top_width, .border_right_width, .border_bottom_width, .border_left_width, .border_top_style, .border_right_style, .border_bottom_style, .border_left_style, .border_top_color, .border_right_color, .border_bottom_color, .border_left_color },
+            .border => &.{ .border_top_width, .border_right_width, .border_bottom_width, .border_left_width, .border_top_style, .border_right_style, .border_bottom_style, .border_left_style, .border_top_color, .border_right_color, .border_bottom_color, .border_left_color, .border_image_source },
             .border_block => &.{ .border_block_start_width, .border_block_end_width, .border_block_start_style, .border_block_end_style, .border_block_start_color, .border_block_end_color },
             .border_inline => &.{ .border_inline_start_width, .border_inline_end_width, .border_inline_start_style, .border_inline_end_style, .border_inline_start_color, .border_inline_end_color },
             .border_block_color => &.{ .border_block_start_color, .border_block_end_color },
@@ -1868,7 +1871,13 @@ fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *st
             const ls = s.longhands();
             return borderSide(options, ls[0], ls[1], ls[2], &.{ls[0]}, &.{ls[1]}, &.{ls[2]}, stream, out);
         },
-        .border => return borderSide(options, .border_top_width, .border_top_style, .border_top_color, Shorthand.border_width.longhands(), Shorthand.border_style.longhands(), Shorthand.border_color.longhands(), stream, out),
+        .border => {
+            if (!try borderSide(options, .border_top_width, .border_top_style, .border_top_color, Shorthand.border_width.longhands(), Shorthand.border_style.longhands(), Shorthand.border_color.longhands(), stream, out)) return false;
+            // Backgrounds3 §3.4: border resets the supported border-image
+            // components. Its side shorthands do not reset them.
+            try append(options, out, .border_image_source, Value.kw(.none));
+            return true;
+        },
         .border_block => return borderSide(options, .border_block_start_width, .border_block_start_style, .border_block_start_color, Shorthand.border_block_width.longhands(), Shorthand.border_block_style.longhands(), Shorthand.border_block_color.longhands(), stream, out),
         .border_inline => return borderSide(options, .border_inline_start_width, .border_inline_start_style, .border_inline_start_color, Shorthand.border_inline_width.longhands(), Shorthand.border_inline_style.longhands(), Shorthand.border_inline_color.longhands(), stream, out),
         .overflow => {
@@ -2367,8 +2376,10 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
         },
         .border_top, .border_right, .border_bottom, .border_left, .border_block_start, .border_block_end, .border_inline_start, .border_inline_end => return borderSideText(ls, vs, mode, out, allocator),
         .border, .border_block, .border_inline => {
+            // CSSOM §6.7.2: reset-only components must have initial values.
+            if (s == .border and !vs[12].value.isKeyword(.none)) return false;
             // Every side must agree: widths, then styles, then colors.
-            const sides = ls.len / 3;
+            const sides = if (s == .border) 4 else ls.len / 3;
             for (0..3) |group| {
                 const first = vs[group * sides].value;
                 for (1..sides) |k| if (!vs[group * sides + k].value.eql(first)) return false;
