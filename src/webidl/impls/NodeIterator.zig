@@ -113,6 +113,16 @@ pub const InternalState = struct {
     root_traced: bool = false,
     traced_reference: ?*runtime.Instance = null,
 
+    /// One counted reference each on the root, the reference and the
+    /// candidate (refcount step 5f): WebKit's NodeIteratorBase holds `const
+    /// Ref<Node> m_root` (Source/WebCore/dom/Traversal.h) and NodeIterator's
+    /// two NodePointers `RefPtr<Node> node` (dom/NodeIterator.h). Set with
+    /// the edges, in setUp, `setReference` and `setCandidate`. SHADOW MODE:
+    /// the edges keep the nodes until refcount step 9b.
+    root_hold: dom_module.node_holds.RefHold = .{},
+    reference_hold: dom_module.node_holds.RefHold = .{},
+    candidate_hold: dom_module.node_holds.RefHold = .{},
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -164,6 +174,7 @@ const candidate_slot: engine.TracedSlot = .{ .name = "candidate" };
 /// is not the root.
 fn setReference(instance: *runtime.Instance, internal: *InternalState, node: ?*runtime.Instance) void {
     internal.reference = node;
+    internal.reference_hold.set(node);
     const kept: ?*runtime.Instance = if (node == internal.root) null else node;
     if (kept == internal.traced_reference) return;
     internal.traced_reference = kept;
@@ -174,6 +185,7 @@ fn setReference(instance: *runtime.Instance, internal: *InternalState, node: ?*r
 /// Removals may move it while a filter runs; clear it on every traverse exit.
 fn setCandidate(instance: *runtime.Instance, internal: *InternalState, node: ?*runtime.Instance) void {
     internal.candidate = node;
+    internal.candidate_hold.set(node);
     const kept: ?*runtime.Instance = if (node == internal.root) null else node;
     if (kept == internal.traced_candidate) return;
     internal.traced_candidate = kept;
@@ -225,6 +237,9 @@ pub fn deinit(instance: *runtime.Instance) void {
         if (internal.root_traced) engine.forgetTracedChild(instance, root_slot);
         if (internal.traced_reference != null) engine.forgetTracedChild(instance, reference_slot);
         if (internal.traced_candidate != null) engine.forgetTracedChild(instance, candidate_slot);
+        internal.root_hold.release();
+        internal.reference_hold.release();
+        internal.candidate_hold.release();
         node_filter.release(internal.filter);
         internal.filter = null;
         internal.deinit();
@@ -245,6 +260,7 @@ fn setUp(
     const internal = getInternal(instance);
     // Step 2: Set iterator's root and iterator's reference to root.
     internal.root = root;
+    internal.root_hold.set(root);
     setReference(instance, internal, root);
     engine.traceChild(instance, root, root_slot);
     internal.root_traced = true;
@@ -426,6 +442,13 @@ fn filterNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!u1
 
     // Step 5: Set traverser's active flag
     internal.active_flag = true;
+
+    // The traversal holds `node` across the call, which runs script (refcount
+    // design 1.2: a stack frame across a step that can run script; WebKit's
+    // traversals keep `RefPtr<Node>` locals). SHADOW MODE: counted only.
+    var held: dom_module.node_holds.RefHold = .{};
+    held.set(node);
+    defer held.release();
 
     // Step 6: Let result be the return value of call a user object's operation
     // with filter's callback, "acceptNode", and « node ».
