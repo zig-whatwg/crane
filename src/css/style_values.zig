@@ -679,6 +679,7 @@ pub const SharedText = struct {
     allocator: Allocator,
     bytes: []u8,
     resource_urls: []const ResourceUrl = &.{},
+    image_kind: enum { generic, url, gradient, other } = .generic,
 
     const immortal: u32 = std.math.maxInt(u32);
 
@@ -790,6 +791,7 @@ pub const Value = union(enum) {
     layers: *@import("image_layers.zig").Layers,
     image_keyword: @import("image_keywords.zig").Keyword,
     image_repeat: @import("image_keywords.zig").Repeat,
+    image: *@import("image_values.zig").Image,
 
     /// Borrowed URL candidates in serialization order, valid while this
     /// value is retained. No sheet or document lookup is needed to use them.
@@ -801,6 +803,7 @@ pub const Value = union(enum) {
             .paint => |v| v.url.resourceUrls(),
             .filter => |v| v.text.resource_urls,
             .layers => |v| v.text.resource_urls,
+            .image => |v| v.text.resource_urls,
             else => &.{},
         };
     }
@@ -834,6 +837,7 @@ pub const Value = union(enum) {
         if (self == .image_size) return self.image_size.ref();
         if (self == .image_quad) return self.image_quad.ref();
         if (self == .layers) return self.layers.ref();
+        if (self == .image) return self.image.ref();
         if (self.sharedText()) |t| t.ref();
     }
 
@@ -860,6 +864,7 @@ pub const Value = union(enum) {
         if (self == .image_size) return self.image_size.unref();
         if (self == .image_quad) return self.image_quad.unref();
         if (self == .layers) return self.layers.unref();
+        if (self == .image) return self.image.unref();
         if (self.sharedText()) |t| t.unref();
     }
 
@@ -910,6 +915,7 @@ pub const Value = union(enum) {
             .layers => |v| v.eql(b.layers),
             .image_keyword => |v| v == b.image_keyword,
             .image_repeat => |v| std.meta.eql(v, b.image_repeat),
+            .image => |v| v.eql(b.image),
         };
     }
 
@@ -938,14 +944,14 @@ pub const Value = union(enum) {
             .display,
             .text_transform,
             .color_scheme,
-            .content,
             .alignment,
             .position_area,
             .try_fallbacks,
             .text,
             .pending, // Q88: inspect only the resolved, selected branch.
             => false,
-            .cursor => false,
+            .content => |v| v.needsUnavailableMetrics(geometry_length),
+            .cursor => |v| v.needsUnavailableMetrics(geometry_length),
             .indent => |v| v.offset.needsUnavailableMetrics(geometry_length),
             .image_keyword, .image_repeat => false,
             .paint => |v| v.needsUnavailableMetrics(geometry_length),
@@ -955,6 +961,7 @@ pub const Value = union(enum) {
             .image_size => |v| v.needsUnavailableMetrics(geometry_length),
             .image_quad => |v| v.needsUnavailableMetrics(geometry_length),
             .layers => |v| v.needsUnavailableMetrics(geometry_length),
+            .image => |v| v.needsUnavailableMetrics(geometry_length),
         };
     }
 
@@ -979,14 +986,14 @@ pub const Value = union(enum) {
             .display,
             .text_transform,
             .color_scheme,
-            .content,
             .alignment,
             .position_area,
             .try_fallbacks,
             .text,
             .pending, // Q88: inspect only the resolved, selected branch.
             => false,
-            .cursor => false,
+            .content => |v| v.needsTreeCounts(),
+            .cursor => |v| v.needsTreeCounts(),
             .indent => |v| v.offset.needsTreeCounts(),
             .image_keyword, .image_repeat => false,
             .paint => |v| v.needsTreeCounts(),
@@ -996,6 +1003,7 @@ pub const Value = union(enum) {
             .image_size => |v| v.needsTreeCounts(),
             .image_quad => |v| v.needsTreeCounts(),
             .layers => |v| v.needsTreeCounts(),
+            .image => |v| v.needsTreeCounts(),
         };
     }
 
@@ -1018,14 +1026,14 @@ pub const Value = union(enum) {
             .display,
             .text_transform,
             .color_scheme,
-            .content,
             .alignment,
             .position_area,
             .try_fallbacks,
             .text,
             .pending, // Q88: inspect only the resolved, selected branch.
             => false,
-            .cursor => false,
+            .content => |v| v.needsRandomBase(),
+            .cursor => |v| v.needsRandomBase(),
             .indent => |v| v.offset.needsRandomBase(),
             .image_keyword, .image_repeat => false,
             .paint => |v| v.needsRandomBase(),
@@ -1035,6 +1043,7 @@ pub const Value = union(enum) {
             .image_size => |v| v.needsRandomBase(),
             .image_quad => |v| v.needsRandomBase(),
             .layers => |v| v.needsRandomBase(),
+            .image => |v| v.needsRandomBase(),
         };
     }
 

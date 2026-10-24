@@ -1188,7 +1188,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
             return lengthPercentage(options, stream, .{ .negative = false, .percent = false, .quirky = def.quirky_length });
         },
         .color => return colorValue(options, stream, def),
-        .image => return imageValue(options, stream),
+        .image => return if (l == .background_image) @import("image_values.zig").parseList(options, l, stream) else imageValue(options, stream),
         .display => return displayValue(stream),
         .text_transform => return textTransformValue(stream),
         .color_scheme => return colorSchemeValue(options, stream),
@@ -1430,14 +1430,18 @@ fn advanceTo(stream: *Stream, rest: []const u8, tok: *const Tokenizer) void {
 
 const image_functions = [_][]const u8{ "linear-gradient", "radial-gradient", "conic-gradient", "repeating-linear-gradient", "repeating-radial-gradient", "repeating-conic-gradient", "image-set", "-webkit-image-set", "cross-fade", "image", "element", "paint", "-webkit-gradient", "-webkit-linear-gradient", "-webkit-radial-gradient", "-webkit-repeating-linear-gradient", "-webkit-repeating-radial-gradient" };
 
-/// <image> | none. A url() is resolved and kept as `url("...")`; any
-/// other image function is kept as written (stated).
+/// Images4: shared typed choices over the unchanged URL/raw leaf grammar.
 fn imageValue(options: ParseOptions, stream: *Stream) Allocator.Error!?Value {
     if (takeKeyword(stream, &.{.none})) |k| return Value.kw(k);
     return imageOnly(options, stream);
 }
 
 fn imageOnly(options: ParseOptions, stream: *Stream) Allocator.Error!?Value {
+    return @import("image_values.zig").parse(options, stream, .{});
+}
+
+/// The pre-existing URL and raw gradient parser; no choice is made here.
+pub fn parseImageLeaf(options: ParseOptions, stream: *Stream) Allocator.Error!?Value {
     const t = stream.peek();
     switch (t.token_type) {
         .url => {
@@ -1455,7 +1459,9 @@ fn imageOnly(options: ParseOptions, stream: *Stream) Allocator.Error!?Value {
                     return null;
                 }
                 const s = stream.next();
-                if (s.token_type != .string or stream.next().token_type != .right_paren) {
+                const closing = if (s.token_type == .string) stream.next().token_type else s.token_type;
+                // Syntax3 §5.5.10: EOF closes the quoted URL function.
+                if (s.token_type != .string or (closing != .right_paren and closing != .eof)) {
                     stream.restore(m);
                     return null;
                 }
@@ -1474,6 +1480,7 @@ fn imageOnly(options: ParseOptions, stream: *Stream) Allocator.Error!?Value {
                 const shared = try SharedText.create(options.allocator, text);
                 errdefer shared.unref();
                 shared.resource_urls = try resources.collect(options.allocator, text, options.url_resolver, options.resource_source);
+                shared.image_kind = if (std.mem.endsWith(u8, f, "gradient")) .gradient else .other;
                 return .{ .text = shared };
             }
             return null;
@@ -1482,7 +1489,7 @@ fn imageOnly(options: ParseOptions, stream: *Stream) Allocator.Error!?Value {
     }
 }
 
-fn urlValue(options: ParseOptions, raw: []const u8) Allocator.Error!Value {
+pub fn urlValue(options: ParseOptions, raw: []const u8) Allocator.Error!Value {
     const resolved: ?[]u8 = if (options.url_resolver) |r| r.resolve(r.context, options.allocator, raw) else null;
     defer if (resolved) |r| options.allocator.free(r);
     var out: std.ArrayList(u8) = .empty;
@@ -1492,7 +1499,9 @@ fn urlValue(options: ParseOptions, raw: []const u8) Allocator.Error!Value {
     try values.appendString(raw, &out, options.allocator);
     try out.append(options.allocator, ')');
     const url = values.ResourceUrl.describe(raw, resolved, options.url_resolver != null, options.resource_source, .{ .start = 0, .end = out.items.len });
-    return .{ .text = try SharedText.createWithResources(options.allocator, out.items, &.{url}) };
+    const shared = try SharedText.createWithResources(options.allocator, out.items, &.{url});
+    shared.image_kind = .url;
+    return .{ .text = shared };
 }
 
 /// CSS Display 4 section 2: the display grammar.
@@ -2059,14 +2068,13 @@ fn whiteSpace(options: ParseOptions, stream: *Stream, out: *std.ArrayList(Assign
 /// Every component is parsed; only the images and the final layer's color
 /// are kept, the longhands Crane supports (stated).
 fn background(options: ParseOptions, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
-    var images: std.ArrayList(u8) = .empty;
-    defer images.deinit(options.allocator);
-    var urls = resources.Builder{ .allocator = options.allocator };
-    defer urls.deinit();
-    var any_image = false;
+    var images: std.ArrayList(Value) = .empty;
+    defer {
+        for (images.items) |image| image.release();
+        images.deinit(options.allocator);
+    }
     var color: ?Value = null;
     defer if (color) |v| v.release();
-    var layers: usize = 0;
     while (true) {
         var image: ?Value = null;
         defer if (image) |v| v.release();
@@ -2112,16 +2120,10 @@ fn background(options: ParseOptions, stream: *Stream, out: *std.ArrayList(Assign
         if (components == 0) {
             return false;
         }
-        if (layers > 0) try images.appendSlice(options.allocator, ", ");
-        if (image) |v| {
-            try urls.append(v.resourceUrls(), images.items.len);
-            switch (v) {
-                .text => |t| try images.appendSlice(options.allocator, t.bytes),
-                else => try images.appendSlice(options.allocator, "none"),
-            }
-            if (v == .text) any_image = true;
-        } else try images.appendSlice(options.allocator, "none");
-        layers += 1;
+        // Q78: preserve the typed image and its candidates through this
+        // shorthand, before the full component expansion lands in d1b.
+        try images.append(options.allocator, image orelse Value.kw(.none));
+        image = null;
         if (stream.peek().token_type == .comma) {
             // Only the final layer may hold a color.
             if (color != null) {
@@ -2133,7 +2135,10 @@ fn background(options: ParseOptions, stream: *Stream, out: *std.ArrayList(Assign
         break;
     }
     try out.ensureUnusedCapacity(options.allocator, 2);
-    const image_value: Value = if (!any_image and layers == 1) Value.kw(.none) else .{ .text = try SharedText.createWithResources(options.allocator, images.items, urls.urls.items) };
+    const image_value: Value = if (images.items.len == 1) blk: {
+        images.items[0].retain();
+        break :blk images.items[0];
+    } else .{ .layers = try @import("image_layers.zig").Layers.create(options.allocator, .background_image, images.items) };
     out.appendAssumeCapacity(.{ .longhand = .background_image, .value = .{ .value = image_value } });
     out.appendAssumeCapacity(.{ .longhand = .background_color, .value = .{ .value = color orelse .{ .color = Color.transparent } } });
     color = null;
@@ -2254,6 +2259,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .layers => |v| try out.appendSlice(allocator, v.text.bytes),
         .image_keyword => |v| try out.appendSlice(allocator, v.name()),
         .image_repeat => |v| try v.serialize(out, allocator),
+        .image => |v| try out.appendSlice(allocator, v.text.bytes),
     }
 }
 
@@ -2790,8 +2796,6 @@ test "cursor sorts between content and direction" {
     try testing.expect(cursor_index < std.mem.indexOfScalar(Longhand, &lexicographic, .direction).?);
 }
 
-// Q71 follow-up: append inside properties.zig, where Stream's private
-// Mark/offset API can be tested without widening its public surface.
 test "ci1 stream offsets retain token starts across peek and mark restore" {
     const text = "  /* prefix */url( a.svg )  counter(item)";
     var stream = Stream.init(text);

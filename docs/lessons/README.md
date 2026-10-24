@@ -638,6 +638,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Empty Legacy SVG Initializers Skip Parent State](codegen-empty-legacy-svg-initializers-skip-parent-state.md) - A correct type name is not proof of a correctly constructed object. Pin parent state before broadening a factory's interface map.
 
 ### Testing
+- [Focused runs can miss an earlier stage fixture](testing-focused-runs-can-miss-an-earlier-stage-fixture.md) - Search every fixture that pins the old representation, preserve its ownership controls, and gate the complete changed tree.
 - [Check a control before assigning a staged failure](testing-check-a-control-before-assigning-a-staged-failure.md) - Inspect the first failed assertion before attributing every fixture failure to one missing consumer.
 - [Testing: Allocation Failure Must Cover Owned Parser Output](testing-allocation-failure-must-cover-owned-parser-output.md) - Exercise allocation failure across parsing, ownership transfer and declaration storage, including every unconsumed item in a shorthand expansion.
 - [An allocation per element makes the allocation-failure sweep quadratic](testing-an-allocation-per-element-makes-the-failure-sweep-quadratic.md) - Allocate per input, never per element, in code that parses untrusted data; a slow allocation-failure sweep is counting allocations, not hanging.

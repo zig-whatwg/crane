@@ -32,8 +32,8 @@ const cases = [_]Case{
     .{ .property = "marker-end", .input = "url(picture.svg)", .specified = "url(\"picture.svg\")", .computed = "url(\"https://old.test/css/picture.svg\")" },
     .{ .property = "clip-path", .input = "url(picture.svg)", .specified = "url(\"picture.svg\")", .computed = "url(\"https://old.test/css/picture.svg\")" },
     .{ .property = "filter", .input = "drop-shadow(currentcolor 1px 2px) url(picture.svg)", .specified = "drop-shadow(currentcolor 1px 2px) url(\"picture.svg\")", .computed = "drop-shadow(rgb(0, 0, 0) 1px 2px 0px) url(\"https://old.test/css/picture.svg\")" },
-    .{ .property = "background-image", .input = "image-set(url(\"a.png\") 1x, \"b.png\" 2x)", .specified = "image-set(url(\"a.png\") 1x, \"b.png\" 2x)", .computed = "image-set(url(\"https://old.test/css/a.png\") 1x, \"https://old.test/css/b.png\" 2x)" },
-    .{ .property = "content", .input = "\"prefix\" image-set(url(\"a.png\") 1x, \"b.png\" 2x)", .specified = "\"prefix\" image-set(url(\"a.png\") 1x, \"b.png\" 2x)", .computed = "\"prefix\" image-set(url(\"https://old.test/css/a.png\") 1x, \"https://old.test/css/b.png\" 2x)" },
+    .{ .property = "background-image", .input = "image-set(url(\"a.png\") 1x, \"b.png\" 2x)", .specified = "image-set(url(\"a.png\") 1x, url(\"b.png\") 2x)", .computed = "image-set(url(\"https://old.test/css/a.png\") 1dppx, url(\"https://old.test/css/b.png\") 2dppx)" },
+    .{ .property = "content", .input = "\"prefix\" image-set(url(\"a.png\") 1x, \"b.png\" 2x)", .specified = "\"prefix\" image-set(url(\"a.png\") 1x, url(\"b.png\") 2x)", .computed = "\"prefix\" image-set(url(\"https://old.test/css/a.png\") 1dppx, url(\"https://old.test/css/b.png\") 2dppx)" },
 };
 
 fn checkCase(allocator: Allocator, case: Case) !void {

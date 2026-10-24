@@ -118,6 +118,7 @@ pub const color_scheme = @import("color_scheme.zig");
 pub const resolved_urls = @import("resolved_urls.zig");
 pub const svg_presentation = @import("svg_presentation.zig");
 pub const image_layers = @import("image_layers.zig");
+pub const image_values = @import("image_values.zig");
 
 // ============================================================================
 // Tests

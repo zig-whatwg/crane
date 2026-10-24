@@ -23,8 +23,8 @@ const cases = [_]Case{
     .{ .property = "content", .input = "url(\"picture.svg\") 'tail'", .specified = "url(\"picture.svg\") \"tail\"", .computed = "url(\"https://old.test/css/picture.svg\") \"tail\"" },
     .{ .property = "cursor", .input = "url(first.cur) 1 2, url(second.cur), pointer", .specified = "url(\"first.cur\") 1 2, url(\"second.cur\"), pointer", .computed = "url(\"https://old.test/css/first.cur\") 1 2, url(\"https://old.test/css/second.cur\"), pointer" },
     .{ .property = "list-style-image", .input = "url(picture.svg)", .specified = "url(\"picture.svg\")", .computed = "url(\"https://old.test/css/picture.svg\")" },
-    .{ .property = "background-image", .input = "image-set(url(\"a.png\") 1x, \"b.png\" 2x)", .specified = "image-set(url(\"a.png\") 1x, \"b.png\" 2x)", .computed = "image-set(url(\"https://old.test/css/a.png\") 1x, \"https://old.test/css/b.png\" 2x)" },
-    .{ .property = "content", .input = "\"prefix\" image-set(url(\"a.png\") 1x, \"b.png\" 2x)", .specified = "\"prefix\" image-set(url(\"a.png\") 1x, \"b.png\" 2x)", .computed = "\"prefix\" image-set(url(\"https://old.test/css/a.png\") 1x, \"https://old.test/css/b.png\" 2x)" },
+    .{ .property = "background-image", .input = "image-set(url(\"a.png\") 1x, \"b.png\" 2x)", .specified = "image-set(url(\"a.png\") 1x, url(\"b.png\") 2x)", .computed = "image-set(url(\"https://old.test/css/a.png\") 1dppx, url(\"https://old.test/css/b.png\") 2dppx)" },
+    .{ .property = "content", .input = "\"prefix\" image-set(url(\"a.png\") 1x, \"b.png\" 2x)", .specified = "\"prefix\" image-set(url(\"a.png\") 1x, url(\"b.png\") 2x)", .computed = "\"prefix\" image-set(url(\"https://old.test/css/a.png\") 1dppx, url(\"https://old.test/css/b.png\") 2dppx)" },
 };
 
 fn checkCase(allocator: Allocator, case: Case) !void {
