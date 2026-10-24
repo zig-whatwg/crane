@@ -32,6 +32,11 @@ pub const ComputedStyle = struct {
     /// CSS Color Adjustment 1 2.2, the element color scheme: what its system
     /// colors were resolved against.
     used_color_scheme: color_scheme.Scheme = .light,
+    /// Grid 2 §9 / Display 4 §2.5: copied box ancestry facts, never a parent
+    /// style pointer. display:contents forwards its nearest principal box;
+    /// display:none suppresses all descendant boxes.
+    box_context: enum { suppressed, grid, other } = .other,
+    subgrid_ineligible: bool = false,
 
     /// A style whose every value is its longhand's initial value, computed
     /// (the root's parent; an element no rule styles).
@@ -83,6 +88,10 @@ pub const ComputedStyle = struct {
     /// CSSOM section 9: the resolved value of `l`, serialized into `out`.
     pub fn serializeResolved(self: *const ComputedStyle, l: Longhand, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
         const v = self.get(l);
+        // Grid 2 §§7.2.6, 9: only the resolved value of an ineligible
+        // subgrid becomes none. The computed track object is unchanged.
+        if ((l == .grid_template_columns or l == .grid_template_rows) and self.subgrid_ineligible and v == .grid_tracks and v.grid_tracks.subgrid)
+            return out.appendSlice(allocator, "none");
         // CSS Text4 §8.2's legacy resolved value: every computed zero is normal.
         if (l == .letter_spacing and v == .length and v.length.value == 0)
             return out.appendSlice(allocator, "normal");
@@ -136,6 +145,7 @@ pub fn initialComputed(l: Longhand) Value {
         // CanvasText with no element to take a color scheme from: the UA
         // default's (light). The cascade resolves it per element.
         .color => .{ .color = .{ .rgba = values.RgbaColor.black } },
+        .background_color => .{ .color = .{ .rgba = values.RgbaColor.transparent } },
         else => l.info().initial,
     };
 }

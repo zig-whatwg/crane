@@ -226,6 +226,8 @@ pub const Keyword = enum(u8) {
     context_fill,
     context_stroke,
     center,
+    numeric_only,
+    allow_keywords,
 
     /// The keyword's CSS spelling.
     pub fn name(self: Keyword) []const u8 {
@@ -482,6 +484,9 @@ pub const Display = struct {
 /// section 6.4), which a computed value keeps as the keyword.
 pub const Color = union(enum) {
     rgba: RgbaColor,
+    /// Allocation-free specified initial/reset spelling (Backgrounds 3 §2.10).
+    /// Authored RGBA and named colors keep their own representations.
+    transparent_keyword,
     /// Immutable owned CSS components, with precision and missingness intact.
     expression: *@import("color_values.zig").Expression,
     current,
@@ -500,7 +505,7 @@ pub const Color = union(enum) {
         name: *SharedText,
     };
 
-    pub const transparent: Color = .{ .rgba = RgbaColor.transparent };
+    pub const transparent: Color = .transparent_keyword;
     pub const black: Color = .{ .rgba = RgbaColor.black };
 
     /// Borrowed inputs; a computed result always owns the references it needs.
@@ -522,7 +527,7 @@ pub const Color = union(enum) {
     pub fn usesLegacyGradientInterpolation(self: Color, stage: GradientStage) bool {
         return switch (self) {
             .expression => |e| e.usesLegacyGradientInterpolation(stage),
-            .rgba, .current, .named, .system => true,
+            .rgba, .transparent_keyword, .current, .named, .system => true,
         };
     }
 
@@ -543,6 +548,7 @@ pub const Color = union(enum) {
         switch (self) {
             .expression => |e| try e.serialize(out, allocator),
             .rgba => |c| try serializeRgba(c, out, allocator),
+            .transparent_keyword => try out.appendSlice(allocator, "transparent"),
             .current => try out.appendSlice(allocator, "currentcolor"),
             .named => |n| try out.appendSlice(allocator, n.name.bytes),
             .system => |s| try out.appendSlice(allocator, s.keyword()),
@@ -569,6 +575,7 @@ pub const Color = union(enum) {
                 break :blk result;
             },
             .rgba => self,
+            .transparent_keyword => .{ .rgba = RgbaColor.transparent },
             .named => |n| .{ .rgba = n.rgba },
             .system => |s| .{ .rgba = s.color(context.scheme) },
         };
@@ -576,17 +583,25 @@ pub const Color = union(enum) {
 
     /// Aggregates forward this query without inspecting Color's variants.
     /// A future typed variant must explicitly describe its dependencies.
+    pub fn containsCurrentColor(self: Color) bool {
+        return switch (self) {
+            .current => true,
+            .expression => |e| e.containsCurrentColor(),
+            .rgba, .transparent_keyword, .named, .system => false,
+        };
+    }
+
     pub fn needsTreeCounts(self: Color) bool {
         return switch (self) {
             .expression => |e| e.needsTreeCounts(),
-            .rgba, .current, .named, .system => false,
+            .rgba, .transparent_keyword, .current, .named, .system => false,
         };
     }
 
     pub fn needsRandomBase(self: Color) bool {
         return switch (self) {
             .expression => |e| e.needsRandomBase(),
-            .rgba, .current, .named, .system => false,
+            .rgba, .transparent_keyword, .current, .named, .system => false,
         };
     }
 
@@ -594,7 +609,7 @@ pub const Color = union(enum) {
     pub fn needsUnavailableMetrics(self: Color, geometry_length: bool) bool {
         return switch (self) {
             .expression => |e| e.needsUnavailableMetrics(geometry_length),
-            .rgba, .current, .named, .system => false,
+            .rgba, .transparent_keyword, .current, .named, .system => false,
         };
     }
 
@@ -602,6 +617,7 @@ pub const Color = union(enum) {
         return switch (a) {
             .expression => |e| b == .expression and e.eql(b.expression),
             .current => b == .current,
+            .transparent_keyword => b == .transparent_keyword,
             .rgba => |x| switch (b) {
                 .rgba => |y| x.eql(y),
                 else => false,
@@ -620,6 +636,7 @@ pub const Color = union(enum) {
         return switch (self) {
             .expression => |e| e.bytes(),
             .rgba => |c| c,
+            .transparent_keyword => RgbaColor.transparent,
             .named => |n| n.rgba,
             .system => |s| s.color(.light),
             .current => null,
@@ -775,6 +792,8 @@ pub const Value = union(enum) {
     transform: *@import("transform_values.zig").Transform,
     alignment: @import("alignment.zig").Value,
     position_area: @import("position_area.zig").Area,
+    position_visibility: @import("position_visibility.zig").Value,
+    containment: @import("containment.zig").Value,
     try_fallbacks: struct { list: *@import("anchor_fallbacks.zig").Fallbacks, computed: bool = false },
     /// Kept as its serialization (a font-family list, an <image>).
     text: *SharedText,
@@ -896,6 +915,8 @@ pub const Value = union(enum) {
             .transform => |transform| transform.eql(b.transform),
             .alignment => |a_value| a_value.eql(b.alignment),
             .position_area => |a_area| a_area.eql(b.position_area),
+            .position_visibility => |v| std.meta.eql(v, b.position_visibility),
+            .containment => |v| std.meta.eql(v, b.containment),
             .try_fallbacks => |f| f.computed == b.try_fallbacks.computed and f.list.eql(b.try_fallbacks.list),
             .text => |t| t == b.text or std.mem.eql(u8, t.bytes, b.text.bytes),
             .pending => |pending| pending.eql(b.pending),
@@ -947,7 +968,7 @@ pub const Value = union(enum) {
             => false,
             .cursor => false,
             .indent => |v| v.offset.needsUnavailableMetrics(geometry_length),
-            .image_keyword, .image_repeat => false,
+            .image_keyword, .image_repeat, .position_visibility, .containment => false,
             .paint => |v| v.needsUnavailableMetrics(geometry_length),
             .filter => |v| v.needsUnavailableMetrics(geometry_length),
             .shape => |v| v.needsUnavailableMetrics(geometry_length),
@@ -988,7 +1009,7 @@ pub const Value = union(enum) {
             => false,
             .cursor => false,
             .indent => |v| v.offset.needsTreeCounts(),
-            .image_keyword, .image_repeat => false,
+            .image_keyword, .image_repeat, .position_visibility, .containment => false,
             .paint => |v| v.needsTreeCounts(),
             .filter => |v| v.needsTreeCounts(),
             .shape => |v| v.needsTreeCounts(),
@@ -1027,7 +1048,7 @@ pub const Value = union(enum) {
             => false,
             .cursor => false,
             .indent => |v| v.offset.needsRandomBase(),
-            .image_keyword, .image_repeat => false,
+            .image_keyword, .image_repeat, .position_visibility, .containment => false,
             .paint => |v| v.needsRandomBase(),
             .filter => |v| v.needsRandomBase(),
             .shape => |v| v.needsRandomBase(),

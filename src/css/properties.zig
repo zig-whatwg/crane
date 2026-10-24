@@ -243,6 +243,11 @@ pub const Longhand = enum(u8) {
     stroke_width,
     mask_type,
 
+    // Anchor Position 1 §6.6, Values 5 §11.3 and Contain 2 §2.
+    position_visibility,
+    interpolate_size,
+    contain,
+
     pub const count = @typeInfo(Longhand).@"enum".fields.len;
 
     /// The property name.
@@ -407,6 +412,8 @@ pub const Grammar = enum {
     position_anchor,
     position_area,
     position_try_fallbacks,
+    position_visibility,
+    containment,
     keywords,
     /// <length-percentage> | auto (margins, insets)
     length_percentage_auto,
@@ -616,6 +623,9 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .position_area, .inherited = false, .initial = Value.kw(.none), .grammar = .position_area },
         .{ .longhand = .position_try_fallbacks, .inherited = false, .initial = Value.kw(.none), .grammar = .position_try_fallbacks },
         .{ .longhand = .position_try_order, .inherited = false, .initial = Value.kw(.normal), .grammar = .keywords, .keywords = &.{ .normal, .most_width, .most_height, .most_block_size, .most_inline_size } },
+        .{ .longhand = .position_visibility, .inherited = false, .initial = .{ .position_visibility = .{ .anchor_visible = true } }, .grammar = .position_visibility },
+        .{ .longhand = .interpolate_size, .inherited = true, .initial = Value.kw(.numeric_only), .grammar = .keywords, .keywords = &.{ .numeric_only, .allow_keywords } },
+        .{ .longhand = .contain, .inherited = false, .initial = .{ .containment = .{} }, .grammar = .containment },
         .{ .longhand = .right, .inherited = false, .initial = Value.kw(.auto), .grammar = .length_percentage_auto, .quirky_length = true },
         // Writing Modes 4 §5.1: computed as specified, including horizontal boxes.
         .{ .longhand = .text_orientation, .inherited = true, .initial = Value.kw(.mixed), .grammar = .keywords, .keywords = &.{ .mixed, .upright, .sideways, .sideways_right } },
@@ -1145,6 +1155,8 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
             return .{ .position_area = @import("position_area.zig").Area.consume(stream) orelse return null };
         },
         .position_try_fallbacks => return positionTryFallbacks(options, stream),
+        .position_visibility => return .{ .position_visibility = @import("position_visibility.zig").Value.consume(stream) orelse return null },
+        .containment => return .{ .containment = @import("containment.zig").Value.consume(stream) orelse return null },
         .keywords => {
             const k = identKeyword(stream.peek()) orelse return null;
             for (def.keywords) |allowed| if (allowed == k) {
@@ -2231,6 +2243,8 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .transform => |transform| try transform.serialize(out, allocator),
         .alignment => |a| try a.serialize(out, allocator),
         .position_area => |a| try a.serialize(out, allocator),
+        .position_visibility => |v| try v.serialize(out, allocator),
+        .containment => |v| try v.serialize(out, allocator),
         .try_fallbacks => |f| try f.list.serialize(f.computed, out, allocator),
         .text => |t| try out.appendSlice(allocator, t.bytes),
         .pending => |pending| if (pending.property == .longhand) try out.appendSlice(allocator, pending.text),
