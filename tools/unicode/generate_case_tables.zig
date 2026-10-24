@@ -18,13 +18,16 @@ const Conditional = struct { value: Case, language: Language = .any, condition: 
 const Range = struct { start: u21, end: u21 };
 const Property = struct { start: u21, end: u21, ccc: u8, word: bool, letter: bool };
 const Wide = struct { cp: u21, full: u21 };
+const Fold = struct { cp: u21, mapping: Mapping };
 const Tables = struct {
     cases: std.AutoHashMapUnmanaged(u21, Case) = .empty,
+    folds: std.AutoHashMapUnmanaged(u21, Mapping) = .empty,
     conditional: std.ArrayList(Conditional) = .empty,
     properties: std.ArrayList(Property) = .empty,
     wide: std.ArrayList(Wide) = .empty,
     fn deinit(self: *Tables, a: Allocator) void {
         self.cases.deinit(a);
+        self.folds.deinit(a);
         self.conditional.deinit(a);
         self.properties.deinit(a);
         self.wide.deinit(a);
@@ -36,6 +39,7 @@ const inputs = [_]Input{
     .{ .name = "SpecialCasing.txt", .sha256 = "efc25faf19de21b92c1194c111c932e03d2a5eaf18194e33f1156e96de4c9588" },
     .{ .name = "DerivedCoreProperties.txt", .sha256 = "24c7fed1195c482faaefd5c1e7eb821c5ee1fb6de07ecdbaa64b56a99da22c08" },
     .{ .name = "PropList.txt", .sha256 = "130dcddcaadaf071008bdfce1e7743e04fdfbc910886f017d9f9ac931d8c64dd" },
+    .{ .name = "CaseFolding.txt", .sha256 = "ff8d8fefbf123574205085d6714c36149eb946d717a0c585c27f0f4ef58c4183" },
 };
 
 fn trim(text: []const u8) []const u8 {
@@ -57,6 +61,30 @@ fn parseMapping(text: []const u8) !Mapping {
 
 fn parseSimple(text: []const u8, fallback: Mapping) !Mapping {
     return if (text.len == 0) fallback else try parseMapping(text);
+}
+
+/// Unicode Default Caseless Matching uses full C/F mappings. S is the
+/// alternative simple mapping and T is locale-specific Turkic tailoring.
+fn parseCaseFolding(a: Allocator, tables: *Tables, text: []const u8) !void {
+    var lines = std.mem.splitScalar(u8, text, '\n');
+    while (lines.next()) |line| {
+        const content = trim(line[0 .. std.mem.indexOfScalar(u8, line, '#') orelse line.len]);
+        if (content.len == 0) continue;
+        var fields = std.mem.splitScalar(u8, content, ';');
+        const cp = try std.fmt.parseInt(u21, trim(fields.next().?), 16);
+        if (cp > 0x10ffff) return error.InvalidCodePoint;
+        const status = trim(fields.next() orelse return error.InvalidCaseFolding);
+        const mapping = try parseMapping(trim(fields.next() orelse return error.InvalidCaseFolding));
+        if (mapping.len == 0) return error.InvalidCaseFolding;
+        if (fields.next()) |rest| {
+            if (trim(rest).len != 0 or fields.next() != null) return error.InvalidCaseFolding;
+        }
+        if (std.mem.eql(u8, status, "S") or std.mem.eql(u8, status, "T")) continue;
+        if (!std.mem.eql(u8, status, "C") and !std.mem.eql(u8, status, "F")) return error.InvalidCaseFolding;
+        const entry = try tables.folds.getOrPut(a, cp);
+        if (entry.found_existing) return error.DuplicateCaseFolding;
+        entry.value_ptr.* = mapping;
+    }
 }
 
 fn appendProperty(a: Allocator, list: *std.ArrayList(Property), property: Property) !void {
@@ -224,6 +252,7 @@ pub fn main(init: std.process.Init) !void {
     defer tables.deinit(a);
     try parseUnicodeData(a, &tables, contents[0]);
     try parseSpecialCasing(a, &tables, contents[1]);
+    try parseCaseFolding(a, &tables, contents[4]);
     const cased = try parseProperty(a, contents[2], "Cased");
     defer a.free(cased);
     const ignorable = try parseProperty(a, contents[2], "Case_Ignorable");
@@ -242,6 +271,16 @@ pub fn main(init: std.process.Init) !void {
     }.less);
     std.mem.sort(Wide, tables.wide.items, {}, struct {
         fn less(_: void, lhs: Wide, rhs: Wide) bool {
+            return lhs.cp < rhs.cp;
+        }
+    }.less);
+    const folds = try a.alloc(Fold, tables.folds.count());
+    defer a.free(folds);
+    var fold_it = tables.folds.iterator();
+    i = 0;
+    while (fold_it.next()) |entry| : (i += 1) folds[i] = .{ .cp = entry.key_ptr.*, .mapping = entry.value_ptr.* };
+    std.mem.sort(Fold, folds, {}, struct {
+        fn less(_: void, lhs: Fold, rhs: Fold) bool {
             return lhs.cp < rhs.cp;
         }
     }.less);
@@ -273,6 +312,15 @@ pub fn main(init: std.process.Init) !void {
         for (table[1]) |range| try w.print(".{{ .start = 0x{X}, .end = 0x{X} }},\n", .{ range.start, range.end });
         try w.writeAll("};\n");
     }
+    // Append only: existing generated functions and tables stay identical.
+    try w.writeAll(fold_runtime_source);
+    try w.writeAll("\nconst folds = [_]Fold{\n");
+    for (folds) |entry| {
+        try w.print(".{{ .cp = 0x{X}, .mapping = ", .{entry.cp});
+        try writeMapping(w, entry.mapping);
+        try w.writeAll(" },\n");
+    }
+    try w.writeAll("};\n");
     const source = try a.dupeZ(u8, output.written());
     defer a.free(source);
     var tree = try std.zig.Ast.parse(a, source, .zig);
@@ -517,5 +565,93 @@ const license =
     \\//! not be used in advertising or otherwise to promote the sale, use or other
     \\//! dealings in these Data Files or Software without prior written
     \\//! authorization of the copyright holder.
+    \\
+;
+
+test "full folding accepts C and F while excluding S and Turkic T" {
+    var tables = Tables{};
+    defer tables.deinit(std.testing.allocator);
+    try parseCaseFolding(std.testing.allocator, &tables,
+        \\0049; C; 0069; # I
+        \\0049; T; 0131; # Turkic I
+        \\00DF; F; 0073 0073; # sharp s
+        \\0130; F; 0069 0307; # dotted I
+        \\0130; T; 0069;
+        \\1E9E; F; 0073 0073;
+        \\1E9E; S; 00DF;
+    );
+    try std.testing.expectEqual(@as(usize, 4), tables.folds.count());
+    try std.testing.expectEqual(@as(u21, 'i'), tables.folds.get(0x49).?.points[0]);
+    try std.testing.expectEqual(@as(u8, 2), tables.folds.get(0xdf).?.len);
+    try std.testing.expectEqual(@as(u21, 0x307), tables.folds.get(0x130).?.points[1]);
+    try std.testing.expectEqual(@as(u8, 2), tables.folds.get(0x1e9e).?.len);
+}
+
+test "folding parser validates records and rolls back allocations" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, struct {
+        fn exercise(a: Allocator) !void {
+            var tables = Tables{};
+            defer tables.deinit(a);
+            try parseCaseFolding(a, &tables, "0041; C; 0061;\n00DF; F; 0073 0073;\n");
+        }
+    }.exercise, .{});
+    var tables = Tables{};
+    defer tables.deinit(std.testing.allocator);
+    try std.testing.expectError(error.InvalidCaseFolding, parseCaseFolding(std.testing.allocator, &tables, "0041; X; 0061;\n"));
+    try std.testing.expectError(error.InvalidCaseFolding, parseCaseFolding(std.testing.allocator, &tables, "0041; C; ;\n"));
+    try std.testing.expectError(error.InvalidCodePoint, parseCaseFolding(std.testing.allocator, &tables, "110000; C; 0061;\n"));
+}
+
+const fold_runtime_source =
+    \\
+    \\const Fold = struct { cp: u21, mapping: Mapping };
+    \\/// Unicode 17 Default Caseless Matching: C/F mappings, with neither
+    \\/// normalization nor locale tailoring. Unknown codepoints are identity.
+    \\pub fn fold(cp: u21) Mapping {
+    \\    return if (pointIndex(Fold, &folds, cp)) |i| folds[i].mapping else Mapping.identity(cp);
+    \\}
+    \\
+    \\const FoldIterator = struct {
+    \\    input: std.unicode.Utf8Iterator,
+    \\    mapping: Mapping = .{},
+    \\    position: u8 = 0,
+    \\    fn next(self: *FoldIterator) ?u21 {
+    \\        if (self.position == self.mapping.len) {
+    \\            self.mapping = fold(self.input.nextCodepoint() orelse return null);
+    \\            self.position = 0;
+    \\        }
+    \\        const cp = self.mapping.points[self.position];
+    \\        self.position += 1;
+    \\        return cp;
+    \\    }
+    \\};
+    \\
+    \\/// CSS Fonts 4 §5.1: compare the full folded strings, including
+    \\/// expansions. This performs no allocations. Inputs must be UTF-8;
+    \\/// malformed strings do not compare equal, even to themselves.
+    \\pub fn eqlFold(lhs: []const u8, rhs: []const u8) bool {
+    \\    const left = std.unicode.Utf8View.init(lhs) catch return false;
+    \\    const right = std.unicode.Utf8View.init(rhs) catch return false;
+    \\    var a = FoldIterator{ .input = left.iterator() };
+    \\    var b = FoldIterator{ .input = right.iterator() };
+    \\    while (a.next()) |cp| {
+    \\        if (cp != (b.next() orelse return false)) return false;
+    \\    }
+    \\    return b.next() == null;
+    \\}
+    \\
+    \\test "default case folding expands and excludes normalization and Turkic tailoring" {
+    \\    try std.testing.expect(eqlFold("Straße", "STRASSE"));
+    \\    try std.testing.expect(eqlFold("ŉ", "ʼN"));
+    \\    try std.testing.expect(eqlFold("ﬃ", "FFI"));
+    \\    try std.testing.expect(eqlFold("Σ", "ς"));
+    \\    try std.testing.expect(eqlFold("I", "i"));
+    \\    try std.testing.expect(eqlFold("İ", "i\u{307}"));
+    \\    try std.testing.expect(!eqlFold("I", "ı"));
+    \\    try std.testing.expect(!eqlFold("İ", "i"));
+    \\    try std.testing.expect(!eqlFold("å", "a\u{30a}"));
+    \\    try std.testing.expect(!eqlFold("s", "ß"));
+    \\    try std.testing.expect(!eqlFold("\xff", "\xff"));
+    \\}
     \\
 ;
