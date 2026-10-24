@@ -2338,7 +2338,7 @@ pub fn get_permissionsPolicy(instance: *runtime.Instance) anyerror!*runtime.Inst
 pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const fonts = internal.fonts orelse blk: {
-        const made = interfaces.FontFaceSet.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+        const made = interfaces.FontFaceSet.initWith(internal.allocator, instance.ctx, .{ .font_document = instance }) catch return error.OutOfMemory;
         internal.fonts = made;
         internal.fonts_kept.made(made);
         break :blk made;
@@ -4246,6 +4246,9 @@ fn updateReadiness(instance: *runtime.Instance, readiness: enums.DocumentReadySt
     // Steps 1-2.
     if (internal.ready_state == readiness) return;
     internal.ready_state = readiness;
+    // Font Loading 3 §3.1: schedule an existing set's environment check.
+    // Readiness changes never create a font set or run its author reactions.
+    if (internal.fonts) |fonts| if (@import("dom").style.hooks.fontSetOf(fonts)) |set| set.environmentChanged();
     // Step 3: the load timing info's DOM complete or DOM interactive time,
     // the first time each comes - for the document its window shows (the
     // timeline keeps that document's load timing info; another document of

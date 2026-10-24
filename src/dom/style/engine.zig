@@ -59,6 +59,8 @@ const hooks = @import("hooks.zig");
 const sheet_mod = @import("sheet.zig");
 const ua_sheet = @import("ua_sheet.zig");
 const element_style = @import("element_style.zig");
+pub const resource_loading = @import("resource_loading.zig");
+pub const available_images = @import("available_images.zig");
 
 const ComputedStyle = css.computed_style.ComputedStyle;
 const MediaValues = css.media_queries.MediaValues;
@@ -224,8 +226,19 @@ pub const StyleEngine = struct {
         /// CSSOM's "last CSS style sheet set name" has no field: nothing
         /// selects a set (selectedStyleSheetSet left CSSOM), so it stays null.
         preferred_set_name: ?[]u8 = null,
+        /// Used style resources, absent on documents with no resource
+        /// values. Kept out of the embedded StyleEngine's size class.
+        resources: ?*resource_loading.State = null,
+        /// HTML's completed image cache is independent of CSS interest:
+        /// making it never schedules a style walk or a rendering turn.
+        images: ?*available_images.Cache = null,
 
         fn deinit(self: *Rare, allocator: Allocator) void {
+            if (self.resources) |resources| resources.destroy();
+            if (self.images) |images| {
+                images.deinit();
+                allocator.destroy(images);
+            }
             self.media_query_lists.deinit(allocator);
             self.adopting_roots.deinit(allocator);
             if (self.preferred_set_name) |name| allocator.free(name);
@@ -253,6 +266,31 @@ pub const StyleEngine = struct {
         rare.* = .{};
         self.rare = rare;
         return rare;
+    }
+
+    pub fn resourceState(self: *StyleEngine) ?*resource_loading.State {
+        return if (self.rare) |rare| rare.resources else null;
+    }
+
+    pub fn availableImages(self: *StyleEngine) ?*available_images.Cache {
+        return if (self.rare) |rare| rare.images else null;
+    }
+
+    pub fn ensureAvailableImages(self: *StyleEngine) Error!*available_images.Cache {
+        const rare = try self.ensureRare();
+        if (rare.images) |images| return images;
+        const images = try self.allocator.create(available_images.Cache);
+        images.* = available_images.Cache.init(self.allocator);
+        rare.images = images;
+        return images;
+    }
+
+    pub fn ensureResourceState(self: *StyleEngine, document: *runtime.Instance) Error!*resource_loading.State {
+        const rare = try self.ensureRare();
+        if (rare.resources) |resources| return resources;
+        const resources = try resource_loading.State.create(self.allocator, document);
+        rare.resources = resources;
+        return resources;
     }
 
     /// The shadow root `root` adopted style sheets.
@@ -312,6 +350,7 @@ pub const StyleEngine = struct {
     /// `element` (a style or link element of this document) may own a
     /// sheet. Idempotent.
     pub fn addOwner(self: *StyleEngine, element: *runtime.Instance) Error!void {
+        if (hooks.sheetOf(element)) |record| resource_loading.sheetChanged(record);
         for (self.owners.items) |o| if (o.element == element and o.live()) {
             self.sheetsChanged();
             return;
@@ -345,6 +384,7 @@ pub const StyleEngine = struct {
     /// flags: the active sheets are rebuilt when style is next read.
     pub fn sheetsChanged(self: *StyleEngine) void {
         self.sheets_version +%= 1;
+        if (self.resourceState()) |resources| resources.invalidate();
     }
 
     /// The active sheets, rebuilt first if anything they depend on moved.
@@ -980,8 +1020,11 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
     var names_storage: [32][]const u8 = undefined;
     var name_buffers: [32][48]u8 = undefined;
     var name_count: usize = 0;
+    const background_eligible = pseudo == null and is_html and resource_loading.hasBackgroundHint(local);
+    var background: ?[]const u8 = null;
     var it = data.attributeIterator();
     while (it.next()) |entry| {
+        if (background_eligible and entry.namespace_uri == null and std.mem.eql(u8, entry.local_name, "background")) background = entry.value;
         if (entry.namespace_uri != null or name_count == names_storage.len) continue;
         const n = entry.local_name;
         if (n.len > 48) continue;
@@ -1004,6 +1047,9 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
         if (quirks) try matchContents(res, &matcher, element, keys, ua.quirks, pseudo, is_html, quirks, .{ .origin = .user_agent, .order = 1 << 20 }, null, null);
         try matchContents(res, &matcher, element, keys, ua.hints, pseudo, is_html, quirks, .{ .origin = .presentational_hint }, null, .zero);
     }
+    if (background_eligible) if (try resource_loading.backgroundHint(element, state, background)) |hint| {
+        try res.matched.append(res.allocator, .{ .block = hint, .source = .{ .origin = .presentational_hint } });
+    };
 
     // The author origin (CSS Scoping 3): the sheets of the element's own
     // tree - the document's, or its shadow tree's - in that tree's context.
@@ -1165,9 +1211,9 @@ fn inlineBlock(element: *runtime.Instance, state: *ElementStyle, quirks: bool) E
 
 /// Parse `value` into the element's inline declaration block.
 pub fn reparseInline(element: *runtime.Instance, state: *ElementStyle, value: []const u8, quirks: bool) Error!void {
-    const document = interfaces.Node.get_ownerDocument(element) catch null;
-    var url_context: sheet_mod.UrlContext = .{ .instance = document orelse element, .base = "" };
-    const options: css.properties.ParseOptions = .{ .allocator = state.allocator, .quirks = quirks, .url_resolver = if (document != null) url_context.resolver() else null };
+    var context = try resource_loading.inlineParseContext(element, state.allocator, quirks, value);
+    defer context.deinit();
+    const options = context.options();
     if (state.inline_block) |*b| {
         try b.setCssText(options, value);
     } else {
@@ -1229,6 +1275,84 @@ pub fn hasComputedStyle(element: *runtime.Instance) Error!bool {
     return true;
 }
 
+/// Resource eligibility also excludes a slot's unused fallback subtree.
+/// Keep the shared flat-parent algorithm unchanged; these resource walks
+/// need the additional CSS Scoping 2.1 flattened-children rule.
+fn resourceFlatParent(node: *NodeBase) FlatParent {
+    var slotted = false;
+    const parent = flatParent(node, &slotted);
+    if (!slotted and parent == .element) {
+        if (slot_helpers.slotState(parent.element)) |slot| if (slot.hasAssignedNodes()) return .none;
+    }
+    return parent;
+}
+
+/// Firefox/Safari fetch descendant CSS images in skipped contents (liaison
+/// Q5 browser probe); all three exclude display:none and absent flat-tree
+/// nodes. This deliberately has its own walk so the generic rendered
+/// predicate's content-visibility rule does not change image requests.
+pub fn isCssImageResourceOrigin(element: *runtime.Instance) Error!bool {
+    const node = instance_bridge.getNodeBase(element) orelse return false;
+    if (node.node_type != NodeBase.ELEMENT_NODE or !node.is_connected) return false;
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return false;
+    if ((interfaces.Document.get_defaultView(document) catch null) == null) return false;
+    var current = node;
+    while (true) {
+        const instance = instanceOf(current) orelse return false;
+        const style = (try computedStyle(instance, null)) orelse return false;
+        if (style.display().box == .none) return false;
+        switch (resourceFlatParent(current)) {
+            .root => return true,
+            .none => return false,
+            .element => |parent| current = parent,
+        }
+    }
+}
+
+/// Font selection uses the style that text inherits in the flat tree:
+/// assigned text inherits from its slot; a shadow-root child from its host.
+/// Fonts inside skipped contents do not start loading (Chrome/Firefox,
+/// liaison Q5). An element's own box can render while its text is skipped.
+pub fn fontStyleForText(node: *NodeBase) Error!?*const ComputedStyle {
+    if (node.node_type != NodeBase.TEXT_NODE or !node.is_connected) return null;
+    // HTML 15.5.17: a textarea renders its current value, not its source
+    // children. The control consumer reads that value through the interface.
+    var ancestor = node.parent_node;
+    while (ancestor) |current| : (ancestor = current.parent_node) {
+        const instance = instanceOf(current) orelse continue;
+        if (instance.stateAs(interfaces.HTMLTextAreaElement.State) != null) return null;
+    }
+    const parent = switch (resourceFlatParent(node)) {
+        .element => |element| instanceOf(element) orelse return null,
+        .root, .none => return null,
+    };
+    if (!try isCssImageResourceOrigin(parent) or !try isBeingRenderedOrDelegating(parent)) return null;
+    const style = (try computedStyle(parent, null)) orelse return null;
+    return if (contentsSkipped(parent, style)) null else style;
+}
+
+/// Q62's control probe: only a rendered control's displayed text and
+/// first-available-font metrics request fonts, including empty controls.
+pub fn fontStyleForControl(element: *runtime.Instance) Error!?*const ComputedStyle {
+    if (!try isCssImageResourceOrigin(element) or !try isBeingRendered(element)) return null;
+    const style = (try computedStyle(element, null)) orelse return null;
+    return if (contentsSkipped(element, style)) null else style;
+}
+
+/// Generated text uses its originating element for flat-tree/contents
+/// eligibility, while font matching reads the pseudo-element's style.
+pub fn fontStyleForGeneratedText(element: *runtime.Instance, style: *const ComputedStyle) Error!?*const ComputedStyle {
+    if (!try isCssImageResourceOrigin(element) or !try isBeingRenderedOrDelegating(element)) return null;
+    const origin = (try computedStyle(element, null)) orelse return null;
+    return if (contentsSkipped(element, origin)) null else style;
+}
+
+fn contentsSkipped(_: *runtime.Instance, _: *const ComputedStyle) bool {
+    // TODO(row 118 content_visibility.zig): the integrator wires the pure
+    // applicability helper at merge (Q47); this branch has no longhand yet.
+    return false;
+}
+
 /// DOM "assign slottables" changed `slot`'s assigned nodes: every cached
 /// style of its document is resolved again (a slotted element inherits
 /// from its slot).
@@ -1237,6 +1361,7 @@ pub fn slotAssignmentChanged(slot: *NodeBase) void {
     const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return;
     const engine = hooks.engineOf(document) orelse return;
     engine.slot_version +%= 1;
+    if (engine.resourceState()) |resources| resources.invalidate();
 }
 
 /// The engine of `document`, for the owners' registration.
@@ -1268,6 +1393,39 @@ pub fn scopeSheets(scope: *runtime.Instance, out: *std.ArrayList(*SheetRecord), 
     }
     sortTreeOrder(owners.items);
     for (owners.items) |owner| try out.append(allocator, hooks.sheetOf(owner).?);
+}
+
+/// CSS Font Loading 3 §4.2: discover CSS-connected faces from the same
+/// active sheets that drive style. Imports precede their importing sheet;
+/// adopted sheets and each shadow scope retain the engine's existing order.
+/// `callback.visit(rule, root)` receives BORROWED pointers and must not
+/// mutate styles, sheets or rules. A rule kept beyond this call takes ref().
+/// The root labels declarations; this function makes no font lookup choice.
+pub fn visitFontRules(document: *runtime.Instance, callback: anytype) !void {
+    const engine = hooks.engineOf(document) orelse return;
+    const active = try engine.ensureActive(document);
+    try visitFontSheets(engine, document, active, active.sheets.items, document, callback);
+    for (active.scopes.items) |scope| {
+        const root = instanceOf(scope.root) orelse continue;
+        try visitFontSheets(engine, document, active, scope.sheets.items, root, callback);
+    }
+}
+
+fn visitFontSheets(engine: *StyleEngine, document: *runtime.Instance, active: *Active, sheets: []const ActiveSheet, root: *runtime.Instance, callback: anytype) !void {
+    const generation = engine.generation;
+    const sheets_version = engine.sheets_version;
+    const tree_version = if (builtin.mode == .Debug) refcount.treeVersion(document) else null;
+    for (sheets) |sheet| for (sheet.contents.font_rules.items) |entry| {
+        if (!sheet.contents.conditionHolds(entry.condition, &active.media)) continue;
+        try callback.visit(entry.rule, root);
+        if (builtin.mode == .Debug) {
+            // Check before reading the next borrowed index entry: a callback
+            // that edits/rebuilds a sheet could otherwise invalidate it.
+            std.debug.assert(engine.generation == generation and engine.sheets_version == sheets_version);
+            std.debug.assert(refcount.treeVersion(document) == tree_version);
+            std.debug.assert(active.contentsCurrent());
+        }
+    };
 }
 
 fn sortTreeOrder(items: []*runtime.Instance) void {

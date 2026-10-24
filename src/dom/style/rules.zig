@@ -150,7 +150,7 @@ pub const Data = union(Kind) {
         prefix: []u8,
         uri: []u8,
     },
-    font_face: DeclarationBlock,
+    font_face: @import("font_loading.zig").FontRule,
     page: DeclarationBlock,
 };
 
@@ -197,7 +197,8 @@ pub const Rule = struct {
                     child.unref();
                 }
             },
-            .font_face, .page => |*b| b.deinit(),
+            .font_face => |*font| font.deinit(),
+            .page => |*b| b.deinit(),
             .namespace => |n| {
                 a.free(n.prefix);
                 a.free(n.uri);
@@ -234,7 +235,8 @@ pub const Rule = struct {
     pub fn block(self: *Rule) ?*DeclarationBlock {
         return switch (self.data) {
             .style => |*s| &s.block,
-            .font_face, .page => |*b| b,
+            .font_face => |*font| &font.block,
+            .page => |*b| b,
             else => null,
         };
     }
@@ -347,7 +349,8 @@ pub const Rule = struct {
             },
             // "@font-face {", each descriptor, " }" (CSSOM leaves the
             // descriptors' serialization undefined: the block's own).
-            .font_face, .page => |*b| {
+            .font_face, .page => {
+                const b = self.block().?;
                 try out.appendSlice(allocator, if (self.data == .font_face) "@font-face {" else "@page");
                 if (self.data == .page) {
                     if (self.prelude.len != 0) {
@@ -499,17 +502,21 @@ pub fn build(options: BuildOptions, parsed: *const css.rules.Rule, position: Pos
             return make(a, try a.dupe(u8, prelude), .{ .layer_statement = .{ .names = owned } });
         }
         if (prelude.len != 0 and !isLayerName(prelude)) return null;
-        const layer_name: ?[]u8 = if (prelude.len == 0) null else try a.dupe(u8, prelude);
-        errdefer if (layer_name) |n| a.free(n);
-        const rule = try make(a, try a.dupe(u8, prelude), .{ .layer_block = .{ .name = layer_name } });
+        const rule = blk: {
+            const layer_name: ?[]u8 = if (prelude.len == 0) null else try a.dupe(u8, prelude);
+            errdefer if (layer_name) |n| a.free(n);
+            break :blk try make(a, try a.dupe(u8, prelude), .{ .layer_block = .{ .name = layer_name } });
+        };
         errdefer rule.unref();
         try buildChildren(options, rule, parsed.children);
         return rule;
     }
     if (std.mem.eql(u8, name, "media")) {
-        var list = try MediaQueryList.parse(a, parsed.prelude);
-        errdefer list.deinit();
-        const rule = try make(a, try a.dupe(u8, parsed.prelude), .{ .media = .{ .list = list } });
+        const rule = blk: {
+            var list = try MediaQueryList.parse(a, parsed.prelude);
+            errdefer list.deinit();
+            break :blk try make(a, try a.dupe(u8, parsed.prelude), .{ .media = .{ .list = list } });
+        };
         errdefer rule.unref();
         try buildChildren(options, rule, parsed.children);
         return rule;
@@ -522,16 +529,22 @@ pub fn build(options: BuildOptions, parsed: *const css.rules.Rule, position: Pos
         try buildChildren(options, rule, parsed.children);
         return rule;
     }
-    if (std.mem.eql(u8, name, "font-face") or std.mem.eql(u8, name, "page")) {
+    if (std.mem.eql(u8, name, "font-face")) {
         if (!parsed.has_block) return null;
-        // Descriptors are not properties: the block keeps them as
-        // unparsed read-back declarations (css.declarations), which the
-        // cascade ignores.
+        // CSS Fonts 4 §4.1: descriptors have their own grammar and no
+        // importance. The rule keeps source metadata after detachment.
+        var font = try @import("font_loading.zig").FontRule.fromDeclarations(options.parse, parsed.declarations);
+        errdefer font.deinit();
+        const prelude = try a.dupe(u8, std.mem.trim(u8, parsed.prelude, " \t\n\r\x0c"));
+        return make(a, prelude, .{ .font_face = font });
+    }
+    if (std.mem.eql(u8, name, "page")) {
+        if (!parsed.has_block) return null;
         var declarations = try DeclarationBlock.fromDeclarations(options.parse, parsed.declarations);
         errdefer declarations.deinit();
         const prelude = try a.dupe(u8, std.mem.trim(u8, parsed.prelude, " \t\n\r\x0c"));
         errdefer a.free(prelude);
-        return make(a, prelude, if (std.mem.eql(u8, name, "font-face")) .{ .font_face = declarations } else .{ .page = declarations });
+        return make(a, prelude, .{ .page = declarations });
     }
     return null;
 }

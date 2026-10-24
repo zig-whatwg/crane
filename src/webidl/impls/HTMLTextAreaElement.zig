@@ -95,7 +95,11 @@ const StateMap = struct {
     /// element that script never touches costs nothing at all.
     fn getOrPut(instance: *runtime.Instance) !*InternalState {
         const entry = try (try ensure(instance)).getOrPut(@intFromPtr(instance));
-        if (!entry.found_existing) entry.value_ptr.* = .{};
+        if (!entry.found_existing) {
+            // Style may predate this lazy state. Read its presence only on
+            // creation; later writes use the bit already held in this entry.
+            entry.value_ptr.* = .{ .has_style_state = dom.style.element_style.existingOf(instance) != null };
+        }
         return entry.value_ptr;
     }
 
@@ -136,6 +140,7 @@ fn resetAlgorithm(instance: *runtime.Instance) void {
     if (internal.raw_value) |value| if (internal.allocator) |allocator| allocator.free(value);
     internal.raw_value = null;
     internal.last_user_edit = false;
+    dom.style.engine.resource_loading.font_loading.controlValueChanged(instance, internal.has_style_state);
 }
 
 /// https://html.spec.whatwg.org/multipage/form-elements.html#concept-textarea-raw-value
@@ -163,6 +168,8 @@ pub const InternalState = struct {
     /// Owned by `allocator`. Non-null means the dirty value flag is set.
     raw_value: ?[]u8 = null,
     last_user_edit: bool = false,
+    /// Monotonic for this control; never copied from a cloned source.
+    has_style_state: bool = false,
     /// The allocator raw_value came from, recorded with it: final
     /// teardown's sweep has no element to ask.
     allocator: ?std.mem.Allocator = null,
@@ -235,6 +242,7 @@ fn editorText(instance: *runtime.Instance) !runtime.DOMString {
 fn userEdit(instance: *runtime.Instance, edit: dom.form_controls.UserEdit) !void {
     const internal = try StateMap.getOrPut(instance);
     try internal.setRawValue(instance.ctx.allocator, edit.text);
+    dom.style.engine.resource_loading.font_loading.controlValueChanged(instance, internal.has_style_state);
     // HTML 4.10.19.3–4: script value/setRangeText writes clear this marker.
     internal.last_user_edit = true;
     const previous_selection = internal.selection;
@@ -245,9 +253,18 @@ fn userEdit(instance: *runtime.Instance, edit: dom.form_controls.UserEdit) !void
         dom.selection.scheduleTextControlSelectionchange(instance, &selectionchangeScheduled) catch {};
 }
 
+/// Do not create lazy state just because the control was styled. Its
+/// first state creation records an already-existing ElementStyle itself.
+fn styleStateCreated(instance: *runtime.Instance) void {
+    if (!isTextArea(instance)) return;
+    const internal = StateMap.get(instance) orelse return;
+    internal.has_style_state = true;
+}
+
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    dom.style.hooks.install(.{ .textarea_style_state_created = &styleStateCreated });
     // The steps other code runs on textareas (each idempotent).
     dom.form_controls.install(.{ .is = &isTextArea, .reset = &resetAlgorithm, .validity_flags = &constraintFlags, .user_edit = &userEdit, .editor_text = &editorText });
     dom.teardown_sweeps.install(.element_types, &cleanupAllRemainingInternal);
@@ -587,6 +604,7 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
     if (!std.mem.eql(u8, old, now)) {
         const end = form_associated.utf16Length(now);
         internal.selection = .{ .start = end, .end = end, .direction = .none };
+        dom.style.engine.resource_loading.font_loading.controlValueChanged(instance, internal.has_style_state);
     }
 }
 
@@ -637,6 +655,7 @@ fn setRangeText(instance: *runtime.Instance, replacement: []const u8, range: ?[2
     // 2. Set the dirty value flag; 9-10 the relevant value changed.
     const internal = try StateMap.getOrPut(instance);
     try internal.setRawValue(allocator, result.value);
+    dom.style.engine.resource_loading.font_loading.controlValueChanged(instance, internal.has_style_state);
     // 14. Set the selection range with selection start and selection end.
     try setSelectionRange(instance, result.selection_start, result.selection_end, null);
 }

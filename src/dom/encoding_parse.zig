@@ -20,13 +20,19 @@ const sniffing = @import("html_core").parser.encoding_sniffing;
 /// node document (`node` itself when it is a Document): the serialized URL,
 /// owned by `node.ctx.allocator`, or null for failure.
 pub fn encodingParseAndSerialize(node: *runtime.Instance, input: []const u8) error{OutOfMemory}!?[]const u8 {
-    const allocator = node.ctx.allocator;
+    return encodingParseAndSerializeWithAllocator(node.ctx.allocator, node, input);
+}
+
+/// The same document-relative algorithm with parsing and returned-string
+/// storage owned by `allocator`. A call-local allocator is valid only while
+/// the returned URL is borrowed; copy it before a task or cache retains it.
+pub fn encodingParseAndSerializeWithAllocator(allocator: std.mem.Allocator, node: *runtime.Instance, input: []const u8) error{OutOfMemory}!?[]const u8 {
     // Step 4: the document base URL, which Node's baseURI serializes.
     const base = interfaces.Node.get_baseURI(node) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         else => "",
     };
-    defer if (base.len > 0) allocator.free(base);
+    defer if (base.len > 0) node.ctx.allocator.free(base);
     // Steps 1-2 and 5.
     return api_parser.encodingParseAndSerialize(allocator, input, base, documentEncoding(node));
 }

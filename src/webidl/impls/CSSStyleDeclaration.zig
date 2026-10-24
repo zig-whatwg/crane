@@ -145,10 +145,13 @@ fn writableBlock(internal: *InternalState) !?*DeclarationBlock {
     };
 }
 
-fn parseOptions(internal: *InternalState) properties.ParseOptions {
-    if (internal.kind == .inline_style) if (internal.inlineOwner()) |owner| return dom.style.inline_style.parseOptions(owner);
-    if (internal.kind == .rule) if (internal.rule) |r| return .{ .allocator = r.allocator, .quirks = if (r.sheet()) |s| s.mode.quirks else false };
-    return .{ .allocator = internal.allocator };
+fn parseOptions(instance: *runtime.Instance, internal: *InternalState, text: []const u8) std.mem.Allocator.Error!dom.style.engine.resource_loading.ParseContext {
+    if (internal.kind == .inline_style) if (internal.inlineOwner()) |owner| return dom.style.inline_style.parseOptions(owner, text);
+    if (internal.kind == .rule) if (internal.rule) |r| {
+        if (r.sheet()) |sheet| return dom.style.engine.resource_loading.ParseContext.forSheet(sheet, instance, text);
+        return .{ .parse = .{ .allocator = r.allocator } };
+    };
+    return .{ .parse = .{ .allocator = internal.allocator } };
 }
 
 /// After a change: a rule's sheet is compiled again; an inline block runs
@@ -197,9 +200,18 @@ pub fn get_cssText(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
 /// replaced by the parse of the value, and the style attribute updated.
 pub fn set_cssText(instance: *runtime.Instance, value: typedefs.CSSOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.kind == .rule) if (internal.rule) |rule| if (rule.kind() == .font_face) {
+        var context = try parseOptions(instance, internal, value.asSlice());
+        defer context.deinit();
+        try rule.data.font_face.setCssText(context.options(), value.asSlice());
+        try changed(internal);
+        return;
+    };
     if (internal.kind == .computed) return error.NoModificationAllowedError;
     const block = (try writableBlock(internal)) orelse return;
-    try block.setCssText(parseOptions(internal), value.asSlice());
+    var context = try parseOptions(instance, internal, value.asSlice());
+    defer context.deinit();
+    try block.setCssText(context.options(), value.asSlice());
     try changed(internal);
 }
 
@@ -243,6 +255,8 @@ pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!typedefs.CSSO
 /// getPropertyValue(property).
 pub fn call_getPropertyValue(instance: *runtime.Instance, property: typedefs.CSSOMString) anyerror!typedefs.CSSOMString {
     const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
+    if (internal.kind == .rule) if (internal.rule) |rule| if (rule.kind() == .font_face)
+        return ownedString(instance.ctx.allocator, dom.style.engine.resource_loading.font_loading.descriptorValue(rule.block().?, property.asSlice()));
     var out: std.ArrayList(u8) = .empty;
     defer out.deinit(internal.allocator);
     if (internal.kind == .computed) {
@@ -282,6 +296,7 @@ fn computedValue(internal: *InternalState, name: []const u8, out: *std.ArrayList
 /// getPropertyPriority(property): "important" or "".
 pub fn call_getPropertyPriority(instance: *runtime.Instance, property: typedefs.CSSOMString) anyerror!typedefs.CSSOMString {
     const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
+    if (internal.kind == .rule) if (internal.rule) |rule| if (rule.kind() == .font_face) return runtime.DOMString.initEmpty();
     if (internal.kind == .computed) return runtime.DOMString.initEmpty();
     const block = (try writableBlock(internal)) orelse return runtime.DOMString.initEmpty();
     return if (block.getPropertyPriority(property.asSlice())) runtime.DOMString.initInterned("important") else runtime.DOMString.initEmpty();
@@ -293,16 +308,31 @@ pub fn call_getPropertyPriority(instance: *runtime.Instance, property: typedefs.
 /// block."
 pub fn call_setProperty(instance: *runtime.Instance, property: typedefs.CSSOMString, value: typedefs.CSSOMString, priority: webidl.Opt(typedefs.CSSOMString)) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.kind == .rule) if (internal.rule) |rule| if (rule.kind() == .font_face) {
+        const priority_text = if (priority.wasPassed()) priority.getValue().asSlice() else "";
+        var context = try parseOptions(instance, internal, value.asSlice());
+        defer context.deinit();
+        if (try rule.data.font_face.setProperty(context.options(), property.asSlice(), value.asSlice(), priority_text)) try changed(internal);
+        return;
+    };
     if (internal.kind == .computed) return error.NoModificationAllowedError;
     const block = (try writableBlock(internal)) orelse return;
     const prio: []const u8 = if (priority.wasPassed()) priority.getValue().asSlice() else "";
-    if (try block.setProperty(parseOptions(internal), property.asSlice(), value.asSlice(), prio)) try changed(internal);
+    var context = try parseOptions(instance, internal, value.asSlice());
+    defer context.deinit();
+    if (try block.setProperty(context.options(), property.asSlice(), value.asSlice(), prio)) try changed(internal);
 }
 
 /// removeProperty(property): the readonly check, then 6.6.1's steps; the
 /// old value returned.
 pub fn call_removeProperty(instance: *runtime.Instance, property: typedefs.CSSOMString) anyerror!typedefs.CSSOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.kind == .rule) if (internal.rule) |rule| if (rule.kind() == .font_face) {
+        const previous = try internal.allocator.dupe(u8, dom.style.engine.resource_loading.font_loading.descriptorValue(rule.block().?, property.asSlice()));
+        defer internal.allocator.free(previous);
+        if (try rule.data.font_face.setProperty(.{ .allocator = internal.allocator }, property.asSlice(), "", "")) try changed(internal);
+        return ownedString(instance.ctx.allocator, previous);
+    };
     if (internal.kind == .computed) return error.NoModificationAllowedError;
     const block = (try writableBlock(internal)) orelse return runtime.DOMString.initEmpty();
     var old: std.ArrayList(u8) = .empty;

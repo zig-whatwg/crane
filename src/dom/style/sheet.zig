@@ -107,6 +107,10 @@ pub const SheetRecord = struct {
     /// The sheet's base URL ("style sheet base URL"): its location, or the
     /// node document's base URL when it has none.
     base_url: []u8 = &.{},
+    /// The fetched response's Referrer-Policy. Empty means the request
+    /// client's policy; embedded sheets have no response policy of their
+    /// own. Kept with the sheet after its owner is detached.
+    referrer_policy: @import("fetch").internal.ReferrerPolicy = .empty,
     /// CSSOM "origin-clean flag".
     origin_clean: bool = true,
     /// CSSOM "constructed flag", "disallow modification flag", and
@@ -141,6 +145,7 @@ pub const SheetRecord = struct {
         media: []const u8 = "",
         location: ?[]const u8 = null,
         base_url: []const u8 = "",
+        referrer_policy: @import("fetch").internal.ReferrerPolicy = .empty,
         origin_clean: bool = true,
         mode: ParseMode = .{},
     };
@@ -150,7 +155,7 @@ pub const SheetRecord = struct {
     pub fn create(allocator: Allocator, text: []const u8, options: Options) Allocator.Error!*SheetRecord {
         const self = try allocator.create(SheetRecord);
         errdefer allocator.destroy(self);
-        self.* = .{ .allocator = allocator, .owner_node = options.owner_node, .alternate = options.alternate, .origin_clean = options.origin_clean, .mode = options.mode };
+        self.* = .{ .allocator = allocator, .owner_node = options.owner_node, .alternate = options.alternate, .origin_clean = options.origin_clean, .mode = options.mode, .referrer_policy = options.referrer_policy };
         errdefer self.freeStrings();
         self.title = try allocator.dupe(u8, options.title);
         self.media_text = try allocator.dupe(u8, options.media);
@@ -184,6 +189,7 @@ pub const SheetRecord = struct {
         self.import_slots.deinit(self.allocator);
         if (self.rules) |*list| {
             for (list.items) |r| {
+                @import("font_loading.zig").disconnectRule(r);
                 r.parent_sheet = null;
                 r.unref();
             }
@@ -198,6 +204,7 @@ pub const SheetRecord = struct {
     /// sheet go: "Set the CSS style sheet's parent CSS style sheet, owner
     /// node and owner CSS rule to null." The caller then drops its hold.
     pub fn detach(self: *SheetRecord) void {
+        if (self.rules) |list| for (list.items) |rule| @import("font_loading.zig").disconnectRule(rule);
         self.owner_node = null;
         self.owner_rule = null;
     }
@@ -219,6 +226,7 @@ pub const SheetRecord = struct {
     /// What the sheet contributes changed.
     pub fn changed(self: *SheetRecord) void {
         self.contents_version +%= 1;
+        @import("resource_loading.zig").sheetChanged(self);
     }
 
     /// The media changed (the owner's media attribute, MediaList).
@@ -255,6 +263,30 @@ pub const SheetRecord = struct {
         return .{ .allocator = self.allocator, .quirks = self.mode.quirks, .url_resolver = context.resolver() };
     }
 
+    /// CSS Values 4 §4.5.4: the declaring sheet supplies referrer metadata.
+    /// Capture it at the parse, after a fetched sheet's response policy has
+    /// arrived. This owned reference lives through the synchronous parse;
+    /// each resulting URL keeps its own reference independently of the sheet.
+    pub fn resourceSource(self: *const SheetRecord, text: []const u8) Allocator.Error!?*css.style_values.ResourceSource {
+        if (!@import("resource_loading.zig").mayHaveResources(text)) return null;
+        return try css.style_values.ResourceSource.create(self.allocator, .{
+            .base_url = self.base_url,
+            .referrer = self.location,
+            .referrer_policy = switch (self.referrer_policy) {
+                .empty => "",
+                .no_referrer => "no-referrer",
+                .no_referrer_when_downgrade => "no-referrer-when-downgrade",
+                .same_origin => "same-origin",
+                .origin => "origin",
+                .strict_origin => "strict-origin",
+                .origin_when_cross_origin => "origin-when-cross-origin",
+                .strict_origin_when_cross_origin => "strict-origin-when-cross-origin",
+                .unsafe_url => "unsafe-url",
+            },
+            .origin_clean = self.origin_clean,
+        });
+    }
+
     /// The URL context for this sheet's url()s, the URL parser run on
     /// `instance`.
     pub fn urlContext(self: *const SheetRecord, instance: *runtime.Instance) UrlContext {
@@ -270,6 +302,10 @@ pub const SheetRecord = struct {
 
     pub fn rulesWith(self: *SheetRecord, options: css.properties.ParseOptions) Allocator.Error!*std.ArrayList(*Rule) {
         if (self.rules) |*list| return list;
+        const source = try self.resourceSource(self.text orelse "");
+        defer if (source) |value| value.unref();
+        var sourced = options;
+        sourced.resource_source = source;
         var list: std.ArrayList(*Rule) = .empty;
         errdefer {
             for (list.items) |r| r.unref();
@@ -280,7 +316,7 @@ pub const SheetRecord = struct {
             for (slots.items) |slot| if (slot) |r| r.unref();
             slots.deinit(self.allocator);
         }
-        try rules_mod.parseSheet(.{ .parse = options }, self.text orelse "", &list, &slots);
+        try rules_mod.parseSheet(.{ .parse = sourced }, self.text orelse "", &list, &slots);
         for (list.items) |r| r.parent_sheet = self;
         self.rules = list;
         self.import_slots = slots;
@@ -294,6 +330,7 @@ pub const SheetRecord = struct {
     pub fn setRules(self: *SheetRecord, new_rules: std.ArrayList(*Rule)) void {
         if (self.rules) |*list| {
             for (list.items) |r| {
+                @import("font_loading.zig").disconnectRule(r);
                 r.parent_sheet = null;
                 r.unref();
             }
@@ -391,6 +428,13 @@ pub const Condition = struct {
     parent: ?u32,
 };
 
+/// A CSS-connected font rule and its existing conditional-rule chain.
+/// The rule tree owns the rule; this index borrows it until recompilation.
+pub const FontRuleData = struct {
+    rule: *Rule,
+    condition: ?u32,
+};
+
 /// An @import rule, as the cascade substitutes its sheet.
 pub const ImportRule = struct {
     media: *const MediaQueryList,
@@ -404,6 +448,9 @@ pub const Contents = struct {
     allocator: Allocator,
     /// The style rules indexed, in order (the tree holds them).
     style_rules: std.ArrayList(*Rule) = .empty,
+    /// CSS Font Loading 3 §4.2: font faces in stylesheet order. Empty
+    /// until a font rule is compiled; ordinary sheets allocate nothing.
+    font_rules: std.ArrayList(FontRuleData) = .empty,
     rules: std.ArrayList(RuleData) = .empty,
     conditions: std.ArrayList(Condition) = .empty,
     /// The sheet's layer names, as dotted paths (anonymous layers get a
@@ -472,6 +519,7 @@ pub const Contents = struct {
     pub fn destroy(self: *Contents) void {
         const a = self.allocator;
         self.style_rules.deinit(a);
+        self.font_rules.deinit(a);
         self.rules.deinit(a);
         self.conditions.deinit(a);
         for (self.layers.items) |name| a.free(name);
@@ -565,8 +613,10 @@ const Compiler = struct {
                 const sub = try self.declareLayer(layer, l.name orelse "");
                 try self.ruleList(l.children.items, condition, sub);
             },
-            // Descriptors, not style rules.
-            .font_face, .page => {},
+            // CSS Font Loading 3 §4.2: @font-face is indexed in the same
+            // conditional context, but contributes no selector or layer rank.
+            .font_face => try self.contents.font_rules.append(self.contents.allocator, .{ .rule = rule, .condition = condition }),
+            .page => {},
         };
     }
 

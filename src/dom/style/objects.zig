@@ -96,6 +96,7 @@ pub fn parentObject(rule: *Rule, realm: runtime.Context) anyerror!?*runtime.Inst
 /// its parent's object no longer keeps its object, nor it its parent's, and
 /// it has no parents.
 pub fn ruleRemoved(rule: *Rule) void {
+    @import("font_loading.zig").disconnectRule(rule);
     if (rule.object.get()) |object| {
         const parent: ?*runtime.Instance = if (rule.parent_rule) |p| p.object.get() else if (rule.parent_sheet) |p| p.object.get() else null;
         if (parent) |p| {

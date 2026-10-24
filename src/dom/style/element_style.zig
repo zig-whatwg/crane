@@ -53,6 +53,23 @@ pub const PseudoCached = struct {
     cached: Cached,
 };
 
+/// HTML §15's dynamic background hint. Allocated only for the eight
+/// eligible HTML tags with a nonempty background attribute. The strings
+/// and typed value have no DOM/realm back link.
+pub const BackgroundHint = struct {
+    allocator: Allocator,
+    input: []u8,
+    source: *css.style_values.ResourceSource,
+    block: DeclarationBlock,
+
+    pub fn destroy(self: *BackgroundHint) void {
+        self.block.deinit();
+        self.source.unref();
+        self.allocator.free(self.input);
+        self.allocator.destroy(self);
+    }
+};
+
 pub const ElementStyle = struct {
     allocator: Allocator,
     /// The style attribute's declarations, once parsed.
@@ -63,6 +80,7 @@ pub const ElementStyle = struct {
     updating: bool = false,
     cached: ?Cached = null,
     pseudo: std.ArrayList(PseudoCached) = .empty,
+    background_hint: ?*BackgroundHint = null,
 
     pub const InlineState = enum {
         /// Parse the attribute's value on the next read.
@@ -81,9 +99,15 @@ pub const ElementStyle = struct {
 
     pub fn destroy(self: *ElementStyle) void {
         if (self.inline_block) |*block| block.deinit();
+        self.dropBackgroundHint();
         self.dropCache();
         self.pseudo.deinit(self.allocator);
         self.allocator.destroy(self);
+    }
+
+    pub fn dropBackgroundHint(self: *ElementStyle) void {
+        if (self.background_hint) |hint| hint.destroy();
+        self.background_hint = null;
     }
 
     /// Forget every cached style.
@@ -129,6 +153,7 @@ pub fn of(element: *runtime.Instance) ?*ElementStyle {
     if (slot.*) |found| return found;
     const made = ElementStyle.create(element.ctx.allocator) catch return null;
     slot.* = made;
+    hooks.controlStyleStateCreated(element);
     return made;
 }
 

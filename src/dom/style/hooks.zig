@@ -5,6 +5,7 @@
 //! here (AGENTS.md "The impls boundary").
 //!
 //! lint-impls: hook for Document, ShadowRoot, Element, HTMLStyleElement, HTMLLinkElement, ProcessingInstruction, MediaQueryList, StyleSheet, CSSRule
+//! lint-impls: hook for FontFace, FontFaceSet, HTMLInputElement, HTMLTextAreaElement
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -23,6 +24,10 @@ pub const Hooks = struct {
     media_values: ?*const fn (document: *runtime.Instance) css.media_queries.MediaValues = null,
     /// Element: the slot its style state lives in (its state holds it).
     element_style_slot: ?*const fn (element: *runtime.Instance) ?*?*element_style.ElementStyle = null,
+    /// Control owners remember their first style state without a lookup on
+    /// each later value write. Each callback rejects other receiver types.
+    input_style_state_created: ?*const fn (element: *runtime.Instance) void = null,
+    textarea_style_state_created: ?*const fn (element: *runtime.Instance) void = null,
     /// A style element: the CSS style sheet associated with it, if any.
     style_sheet_of: ?*const fn (element: *runtime.Instance) ?*sheet.SheetRecord = null,
     /// A link element: likewise.
@@ -44,6 +49,13 @@ pub const Hooks = struct {
     /// Document, ShadowRoot: the view of its adoptedStyleSheets each keeps.
     document_adopted_sheets: ?*const fn (scope: *runtime.Instance) ?*adopted.AdoptedSheets = null,
     shadow_root_adopted_sheets: ?*const fn (scope: *runtime.Instance) ?*adopted.AdoptedSheets = null,
+    /// SVG resource owners react to href/crossorigin through one namespace hook.
+    svg_image_resource_changed: ?*const fn (element: *runtime.Instance) void = null,
+    svg_use_resource_changed: ?*const fn (element: *runtime.Instance) void = null,
+    /// UA resource parsing, installed by SVGUseElement; not a script sink.
+    svg_parse_resource_document: ?*const fn (document: *runtime.Instance, bytes: []const u8, content_type: []const u8) anyerror!bool = null,
+    font_face_of: ?*const fn (face: *runtime.Instance) ?*@import("font_loading.zig").Face = null,
+    font_set_of: ?*const fn (set: *runtime.Instance) ?*@import("font_loading.zig").Set = null,
 };
 
 // process-wide: immutable function pointers that Document, Element, HTMLStyleElement and HTMLLinkElement install once at process start (crane.Process); each reads only the object it is given, so one serves every Browser and thread
@@ -71,6 +83,12 @@ pub fn mediaValues(document: *runtime.Instance) css.media_queries.MediaValues {
 pub fn elementStyleSlot(element: *runtime.Instance) ?*?*element_style.ElementStyle {
     const f = hooks.element_style_slot orelse return null;
     return f(element);
+}
+
+/// Called only after the first successful ElementStyle allocation.
+pub fn controlStyleStateCreated(element: *runtime.Instance) void {
+    if (hooks.input_style_state_created) |f| f(element);
+    if (hooks.textarea_style_state_created) |f| f(element);
 }
 
 /// The CSS style sheet `owner` - a style or a link element - is associated
@@ -110,4 +128,29 @@ pub fn adoptedSheetsOf(scope: *runtime.Instance) ?*adopted.AdoptedSheets {
 pub fn reportMediaQueryList(list: *runtime.Instance) void {
     const f = hooks.report_media_query_list orelse return;
     f(list);
+}
+
+pub fn svgImageResourceChanged(element: *runtime.Instance) void {
+    const f = hooks.svg_image_resource_changed orelse return;
+    f(element);
+}
+
+pub fn svgUseResourceChanged(element: *runtime.Instance) void {
+    const f = hooks.svg_use_resource_changed orelse return;
+    f(element);
+}
+
+pub fn svgParseResourceDocument(document: *runtime.Instance, bytes: []const u8, content_type: []const u8) !bool {
+    const f = hooks.svg_parse_resource_document orelse return error.InvalidState;
+    return try f(document, bytes, content_type);
+}
+
+pub fn fontFaceOf(face: *runtime.Instance) ?*@import("font_loading.zig").Face {
+    const f = hooks.font_face_of orelse return null;
+    return f(face);
+}
+
+pub fn fontSetOf(set: *runtime.Instance) ?*@import("font_loading.zig").Set {
+    const f = hooks.font_set_of orelse return null;
+    return f(set);
 }
