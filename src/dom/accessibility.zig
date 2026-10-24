@@ -579,14 +579,14 @@ const Name = struct {
                 if (oneOf(kind.asSlice(), .{ "button", "submit", "reset" })) {
                     if (attribute(node, "value")) |value| {
                         if (value.len > 0) return value;
-                    } else if (eq(kind.asSlice(), "submit")) return "Submit" else if (eq(kind.asSlice(), "reset")) return "Reset";
+                    } else if (eq(kind.asSlice(), "submit")) return @import("control_labels.zig").submit else if (eq(kind.asSlice(), "reset")) return @import("control_labels.zig").reset;
                 }
                 if (eq(kind.asSlice(), "image")) {
                     if (attribute(node, "alt")) |value| if (std.mem.trim(u8, value, spaces).len > 0) return value;
                     if (attribute(node, "title")) |value| if (value.len > 0) return value;
                     // HTML-AAM 4.1.3 permits a localized default. Chrome
                     // and Safari use Submit; Firefox uses Submit Query.
-                    return "Submit";
+                    return @import("control_labels.zig").submit;
                 }
                 if (oneOf(kind.asSlice(), .{ "text", "password", "number", "search", "tel", "email", "url" })) {
                     // HTML-AAM 4.1.1 steps 3-5 apply to number as well as

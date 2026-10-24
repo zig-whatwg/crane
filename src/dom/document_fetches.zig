@@ -22,7 +22,7 @@
 //! Spec: https://html.spec.whatwg.org/multipage/document-lifecycle.html#abort-a-document
 //! Spec: https://html.spec.whatwg.org/multipage/document-lifecycle.html#destroy-a-document
 //!
-//! lint-impls: hook for XMLHttpRequest, WindowOrWorkerGlobalScope, EventSource, HTMLScriptElement, HTMLImageElement, HTMLTrackElement, HTMLMediaElement, HTMLLinkElement, HTMLObjectElement, HTMLAnchorElement
+//! lint-impls: hook for XMLHttpRequest, WindowOrWorkerGlobalScope, EventSource, HTMLScriptElement, HTMLImageElement, HTMLTrackElement, HTMLMediaElement, HTMLLinkElement, HTMLObjectElement, HTMLAnchorElement, HTMLInputElement, SVGImageElement, SVGUseElement, FontFace, FontFaceSet
 const std = @import("std");
 const process_start = @import("process_start.zig");
 
@@ -83,10 +83,19 @@ pub const Owner = struct {
 };
 
 /// One slot per kind of fetch owner, with room to spare.
-const slot_count = 12;
+const slot_count = 20;
 pub const OwnerSlots = [slot_count]?Owner;
 // process-wide: owners install the same immutable hooks before Browsers or worker threads start
 var cancelers: OwnerSlots = .{null} ** slot_count;
+
+/// Read-only startup capacity check for the native integration tests.
+pub fn ownerCount() usize {
+    var filled: usize = 0;
+    for (cancelers) |owner| if (owner != null) {
+        filled += 1;
+    };
+    return filled;
+}
 
 /// Called by each owner's installHooks, once, at process start (process_start.zig).
 pub fn install(owner: Owner) void {

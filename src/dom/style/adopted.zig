@@ -76,6 +76,7 @@ fn setIndexedValue(owner: *runtime.Instance, index: usize, value: *runtime.Insta
 /// sheets change.
 fn changed(owner: *runtime.Instance, values: []const *runtime.Instance) void {
     const adopted = hooks.adoptedSheetsOf(owner) orelse return;
+    @import("font_loading.zig").adoptedSheetsChanged(owner, adopted.records.items, values);
     adopted.replace(values);
     const document = nodeDocumentOf(owner) orelse return;
     const e = hooks.engineOf(document) orelse return;
