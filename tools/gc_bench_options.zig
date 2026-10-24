@@ -55,6 +55,20 @@ pub fn cycleBody(args: []const [:0]const u8) []const u8 {
     return body orelse if (control) control_body else default_body;
 }
 
+/// Whether each batch's script is followed by turns of the page's event
+/// loop until it has nothing left to do (`--loop`): without it nothing a
+/// cycle queues - a timer, a port's message, a task - ever runs, since the
+/// batches are host scripts run back to back. With it the timers, messages
+/// and tasks a batch queued have all run before the next batch and before
+/// the reading, which is what a body measuring the loop needs (lane
+/// timerheap1's timer row: one 0 ms timer a turn).
+pub fn drivesLoop(args: []const [:0]const u8) bool {
+    for (args[@min(1, args.len)..]) |arg| {
+        if (std.mem.eql(u8, arg, "--loop")) return true;
+    }
+    return false;
+}
+
 /// Whether the cycle is gc_bench's own control run: `--control` with no
 /// `--body` overriding it.
 pub fn isControl(args: []const [:0]const u8) bool {
@@ -84,6 +98,18 @@ test "--body= replaces the statement, wherever it is and whatever else is given"
     try std.testing.expectEqualStrings("b;", cycleBody(&.{ "gc_bench", "--body=a;", "--body=b;" }));
     // An '=' inside the script is the script's.
     try std.testing.expectEqualStrings("x = 1;", cycleBody(&.{ "gc_bench", "--body=x = 1;" }));
+}
+
+test "--loop turns the event loop after each batch, wherever it is given; nothing else does" {
+    try std.testing.expect(!drivesLoop(&.{"gc_bench"}));
+    try std.testing.expect(!drivesLoop(&.{ "gc_bench", "10000", "5000", "--gc" }));
+    try std.testing.expect(drivesLoop(&.{ "gc_bench", "10000", "5000", "--loop" }));
+    try std.testing.expect(drivesLoop(&.{ "gc_bench", "--loop", "--body=setTimeout(() => {}, 0);" }));
+    // Inside a body it is the body's text, not the flag.
+    try std.testing.expect(!drivesLoop(&.{ "gc_bench", "--body=--loop" }));
+    // The program name is never read as a flag.
+    try std.testing.expect(!drivesLoop(&.{"--loop"}));
+    try std.testing.expect(!drivesLoop(&.{}));
 }
 
 test "an empty --body= is ignored" {

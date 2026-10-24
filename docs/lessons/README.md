@@ -360,6 +360,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A parsed blob URL holds its entry](architecture-a-parsed-blob-url-holds-its-entry.md) - Hold the object the algorithm resolved, rather than resolving its name again later.
 - [A shared worker needs its creator's network partition](architecture-a-shared-worker-needs-its-creators-network-partition.md) - A worker needs every consumer's partition input; an absent key is not a shared key.
 - [Reject invalid keys before map insertion](architecture-reject-invalid-keys-before-map-insertion.md) - Put validity checks at map entry points; do not use non-reflexive equality as the only rejection mechanism.
+- [A scheduler that walks its id map pays for its biggest moment forever](architecture-a-scheduler-that-walks-its-id-map-pays-its-biggest-moment-forever.md) - What is asked "what comes next" every turn needs a structure in that order - a heap with stored indices, as WebKit and Chromium keep timers - not a walk of its id map, which costs the table's high-water mark on every turn; a long-lived map whose size swings needs a shrink as well as a TombstoneGuard.
 
 ### Spec Compliance
 - [CSS token payloads do not locate token starts](spec-compliance-css-token-payloads-do-not-locate-token-starts.md) - Keep actual source offsets with lookahead and parser marks.

@@ -23,6 +23,11 @@
 //!                                       # the counters then read per call. The
 //!                                       # page is about:blank: no body, no
 //!                                       # documentElement.
+//!   zig build gc-bench -- 10000 5000 --loop "--body=..."
+//!                                       # the page's event loop turns after
+//!                                       # each batch until it is idle, so the
+//!                                       # timers and messages a body queues
+//!                                       # run (gc_bench_options.zig).
 //!
 //! ## Reading the output
 //!
@@ -330,6 +335,9 @@ pub fn main(init: std.process.Init) !void {
     // (`--body=<script>` replaces the statement, and the run is then not the
     // control: gc_bench_options.zig.)
     const control = options.isControl(args);
+    // `--loop` turns the page's event loop after each batch until it is idle
+    // (gc_bench_options.zig `drivesLoop`).
+    const drive_loop = options.drivesLoop(args);
     const body = options.cycleBody(args);
     // `--profile` names the allocation sites holding the most bytes MID-RUN. A
     // leak-checking allocator cannot do this: everything here is freed in bulk at
@@ -428,6 +436,11 @@ pub fn main(init: std.process.Init) !void {
         // has finished before the next reading.
         try page.runScript(source);
 
+        // What the batch queued - timers, port messages, tasks - runs now,
+        // turn after turn, until the loop has nothing left to do; bounded,
+        // so a body that keeps the loop busy forever still ends.
+        if (drive_loop) try browser.runEventLoop(loop_bound_ms);
+
         if (force_gc) {
             // Twice: one pass can leave objects that only become unreachable once
             // the first pass has cleared what referenced them, and a single
@@ -444,7 +457,7 @@ pub fn main(init: std.process.Init) !void {
         }
     }
 
-    report(samples.items, force_gc, control, body);
+    report(samples.items, force_gc, control, body, drive_loop);
     reportCounters(samples.items);
 
     if (profile) {
@@ -465,10 +478,14 @@ pub fn main(init: std.process.Init) !void {
     }
 }
 
-fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool, body: []const u8) void {
-    std.debug.print("\n=== Phase 6: {s}{s} ===\n\n", .{
+/// The longest `--loop` turns the event loop after one batch.
+const loop_bound_ms: u64 = 600_000;
+
+fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool, body: []const u8, loop_turned: bool) void {
+    std.debug.print("\n=== Phase 6: {s}{s}{s} ===\n\n", .{
         if (was_control) "plain JS object (CONTROL)" else if (std.mem.eql(u8, body, options.default_body)) "createElement + discard" else body,
         if (gc_was_forced) ", engine GC forced" else "",
+        if (loop_turned) ", event loop turned after each batch" else "",
     });
     std.debug.print("{s:>8}  {s:>11}  {s:>13}  {s:>12}  {s:>11}  {s:>10}\n", .{
         "cycle",   "resident MB", "since start",
