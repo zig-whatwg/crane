@@ -1735,12 +1735,18 @@ pub const WrapperCache = struct {
                 // Its teardown began under its live wrapper (markAsCleanedUp -
                 // a node its realm's tree tore down before this sweep), and
                 // PHASE 1 disarmed the finalizer that would have freed the
-                // storage it left: free it now, as the branch below does.
+                // storage it left. Inside the realm's coordinated teardown the
+                // coordinator returns it after the teardown's LAST phase
+                // (releaseDeferredStorage), not here: a teardown later in this
+                // sweep can still read it - a detached root reads its
+                // document, torn down with the realm's tree - and a slot
+                // returned now could be reissued under that read by an
+                // allocation the sweep makes. Outside one, it stays as it did.
                 // It used to stay until the Browser ended - every page's
                 // wrapped nodes kept their slots (lane unwrapped1).
                 if (!is_reused and runtime.instance_lifecycle.isCleanedUp(entry.instance) and
                     !wrappedElsewhere(entry.instance, self))
-                    runtime.gc.releaseStorage(entry.instance);
+                    runtime.cleanup_coordinator.deferStorageRelease(entry.instance, entry.original_generation);
                 if (is_iframe) {
                     log.debug("[wrapper_cache.deinit] SKIP_CLEANED iframe instance={*}", .{entry.instance});
                 }
