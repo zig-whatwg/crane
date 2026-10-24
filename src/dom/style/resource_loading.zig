@@ -525,6 +525,9 @@ fn ruleMayHaveResources(rule: *@import("rules.zig").Rule) bool {
             .value => |value| switch (value) {
                 .text => |text| if (mayHaveResources(text.bytes)) return true,
                 .content => |content| if (mayHaveResources(content.serialization)) return true,
+                // Values4 §4.5.4: typed values retain their resource URLs
+                // after CSSOM parsing discards the sheet's source text.
+                .layers, .image => if (value.resourceUrls().len != 0) return true,
                 else => {},
             },
             else => {},
