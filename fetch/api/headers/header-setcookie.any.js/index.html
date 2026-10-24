@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../fetch/"><code>fetch/</code></a></li><li><a href="../../../../fetch/api/"><code>api/</code></a></li><li><a href="../../../../fetch/api/headers/"><code>headers/</code></a></li><li aria-current="page"><code>header-<wbr>setcookie.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>header-<wbr>setcookie.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="fetch/api/headers/header-setcookie.any.js">
-<p class="figures-main"><span class="fg-pass">72</span><span class="fg-of"> / 72</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">96</span><span class="fg-of"> / 96</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/api/headers/header-setcookie.any.js"><code>fetch/<wbr>api/<wbr>headers/<wbr>header-<wbr>setcookie.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -89,6 +89,35 @@
 <li class="sub s-pass" id="s-50ef55d1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Adding Set-Cookie headers normalizes their value</span></div><a class="self" href="#s-50ef55d1" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-2c6358ac"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Adding invalid Set-Cookie headers throws</span></div><a class="self" href="#s-2c6358ac" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-ac070e66"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Set-Cookie is a forbidden response header</span></div><a class="self" href="#s-ac070e66" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/headers/header-setcookie.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>24</b> / 24</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-a4f177fe"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers.prototype.get combines set-cookie headers in order</span></div><a class="self" href="#s-a4f177fe" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-46e6876f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers iterator does not combine set-cookie headers</span></div><a class="self" href="#s-46e6876f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-230c6447"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers iterator does not special case set-cookie2 headers</span></div><a class="self" href="#s-230c6447" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-58f79373"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers iterator does not combine set-cookie &amp; set-cookie2 headers</span></div><a class="self" href="#s-58f79373" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9ea1a518"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers iterator preserves set-cookie ordering</span></div><a class="self" href="#s-9ea1a518" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2eb58a8a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers iterator preserves per header ordering, but sorts keys alphabetically</span></div><a class="self" href="#s-2eb58a8a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-980c236e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers iterator preserves per header ordering, but sorts keys alphabetically (and ignores value ordering)</span></div><a class="self" href="#s-980c236e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2dade77c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers iterator is correctly updated with set-cookie changes</span></div><a class="self" href="#s-2dade77c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e3ec0c9a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers iterator is correctly updated with set-cookie changes #2</span></div><a class="self" href="#s-e3ec0c9a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-47ac5f27"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers.prototype.has works for set-cookie</span></div><a class="self" href="#s-47ac5f27" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-30f928c5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers.prototype.append works for set-cookie</span></div><a class="self" href="#s-30f928c5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8956c4b6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers.prototype.set works for set-cookie</span></div><a class="self" href="#s-8956c4b6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-86a725cf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers.prototype.delete works for set-cookie</span></div><a class="self" href="#s-86a725cf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a486fb67"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers.prototype.getSetCookie with no headers present</span></div><a class="self" href="#s-a486fb67" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f230e80f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers.prototype.getSetCookie with one header</span></div><a class="self" href="#s-f230e80f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-40ffc364"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers.prototype.getSetCookie with one header created from an object</span></div><a class="self" href="#s-40ffc364" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dbf6959a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers.prototype.getSetCookie with multiple headers</span></div><a class="self" href="#s-dbf6959a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ec194ecc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers.prototype.getSetCookie with an empty header</span></div><a class="self" href="#s-ec194ecc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7ee32a32"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers.prototype.getSetCookie with two equal headers</span></div><a class="self" href="#s-7ee32a32" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-aaf5becc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers.prototype.getSetCookie ignores set-cookie2 headers</span></div><a class="self" href="#s-aaf5becc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e5ebf58a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers.prototype.getSetCookie preserves header ordering</span></div><a class="self" href="#s-e5ebf58a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bbf2efc0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Adding Set-Cookie headers normalizes their value</span></div><a class="self" href="#s-bbf2efc0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a6eb3968"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Adding invalid Set-Cookie headers throws</span></div><a class="self" href="#s-a6eb3968" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-76f9efde"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Set-Cookie is a forbidden response header</span></div><a class="self" href="#s-76f9efde" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

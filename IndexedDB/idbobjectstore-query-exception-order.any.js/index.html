@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../IndexedDB/"><code>IndexedDB/</code></a></li><li aria-current="page"><code>idbobjectstore-<wbr>query-<wbr>exception-<wbr>order.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>idbobjectstore-<wbr>query-<wbr>exception-<wbr>order.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="IndexedDB/idbobjectstore-query-exception-order.any.js">
-<p class="figures-main"><span class="fg-pass">36</span><span class="fg-of"> / 36</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">48</span><span class="fg-of"> / 48</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/IndexedDB/idbobjectstore-query-exception-order.any.js"><code>IndexedDB/<wbr>idbobjectstore-<wbr>query-<wbr>exception-<wbr>order.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -65,6 +65,23 @@
 <li class="sub s-pass" id="s-4346c8ce"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore.openCursor exception order: TransactionInactiveError vs. DataError</span></div><a class="self" href="#s-4346c8ce" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-7dbe7d8d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore.openKeyCursor exception order: InvalidStateError vs. TransactionInactiveError</span></div><a class="self" href="#s-7dbe7d8d" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-219b8fe8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore.openKeyCursor exception order: TransactionInactiveError vs. DataError</span></div><a class="self" href="#s-219b8fe8" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/idbobjectstore-query-exception-order.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>12</b> / 12</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-fe497218"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore.get exception order: InvalidStateError vs. TransactionInactiveError</span></div><a class="self" href="#s-fe497218" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-122d4058"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore.get exception order: TransactionInactiveError vs. DataError</span></div><a class="self" href="#s-122d4058" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9dcc1c6f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore.getAll exception order: InvalidStateError vs. TransactionInactiveError</span></div><a class="self" href="#s-9dcc1c6f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-399b7e10"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore.getAll exception order: TransactionInactiveError vs. DataError</span></div><a class="self" href="#s-399b7e10" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-91dd9a4f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore.getAllKeys exception order: InvalidStateError vs. TransactionInactiveError</span></div><a class="self" href="#s-91dd9a4f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-be6f4cd3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore.getAllKeys exception order: TransactionInactiveError vs. DataError</span></div><a class="self" href="#s-be6f4cd3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bf1dd8ad"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore.count exception order: InvalidStateError vs. TransactionInactiveError</span></div><a class="self" href="#s-bf1dd8ad" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b88701dd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore.count exception order: TransactionInactiveError vs. DataError</span></div><a class="self" href="#s-b88701dd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bd71f5a2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore.openCursor exception order: InvalidStateError vs. TransactionInactiveError</span></div><a class="self" href="#s-bd71f5a2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-749586d2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore.openCursor exception order: TransactionInactiveError vs. DataError</span></div><a class="self" href="#s-749586d2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c5493c09"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore.openKeyCursor exception order: InvalidStateError vs. TransactionInactiveError</span></div><a class="self" href="#s-c5493c09" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bec8146e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore.openKeyCursor exception order: TransactionInactiveError vs. DataError</span></div><a class="self" href="#s-bec8146e" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

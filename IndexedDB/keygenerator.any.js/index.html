@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../IndexedDB/"><code>IndexedDB/</code></a></li><li aria-current="page"><code>keygenerator.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>keygenerator.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="IndexedDB/keygenerator.any.js">
-<p class="figures-main"><span class="fg-pass">63</span><span class="fg-of"> / 63</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">84</span><span class="fg-of"> / 84</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/IndexedDB/keygenerator.any.js"><code>IndexedDB/<wbr>keygenerator.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -83,6 +83,32 @@
 <li class="sub s-pass" id="s-a4292b40"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">put() throws if key cannot be injected - single segment path</span></div><a class="self" href="#s-a4292b40" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-13c5a1b7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">put() throws if key cannot be injected - multi-segment path</span></div><a class="self" href="#s-13c5a1b7" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-b7783624"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Keygenerator overflow</span></div><a class="self" href="#s-b7783624" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/keygenerator.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>21</b> / 21</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-7f510f93"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Keygenerator - starts at one, and increments by one</span></div><a class="self" href="#s-7f510f93" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-708bd429"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Keygenerator - increments by one from last set key</span></div><a class="self" href="#s-708bd429" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3a81cb61"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Keygenerator - don&#39;t increment when new key is not bigger than current</span></div><a class="self" href="#s-3a81cb61" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a8bea928"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Keygenerator ConstraintError when using same id as already generated</span></div><a class="self" href="#s-a8bea928" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-715ad84b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Key generator vs. explicit key 53 bits</span></div><a class="self" href="#s-715ad84b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-55c4237a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Key generator vs. explicit key greater than 53 bits, less than 64 bits</span></div><a class="self" href="#s-55c4237a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3cb27335"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Key generator vs. explicit key greater than 53 bits, less than 64 bits (negative)</span></div><a class="self" href="#s-3cb27335" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f03021b4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Key generator vs. explicit key 63 bits</span></div><a class="self" href="#s-f03021b4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-128e96a0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Key generator vs. explicit key 63 bits (negative)</span></div><a class="self" href="#s-128e96a0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f379281b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Key generator vs. explicit key 64 bits</span></div><a class="self" href="#s-f379281b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-01c0874a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Key generator vs. explicit key 64 bits (negative)</span></div><a class="self" href="#s-01c0874a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-aba90ef1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Key generator vs. explicit key greater than 64 bits, but still finite</span></div><a class="self" href="#s-aba90ef1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1f8987d9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Key generator vs. explicit key greater than 64 bits, but still finite (negative)</span></div><a class="self" href="#s-1f8987d9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e3dba663"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Key generator vs. explicit key equal to Infinity</span></div><a class="self" href="#s-e3dba663" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a7a8f3c5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Key generator vs. explicit key equal to -Infinity</span></div><a class="self" href="#s-a7a8f3c5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2ec78dfa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Key is injected into value - single segment path</span></div><a class="self" href="#s-2ec78dfa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-df506360"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Key is injected into value - multi-segment path</span></div><a class="self" href="#s-df506360" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1d2adf91"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Key is injected into value - multi-segment path, partially populated</span></div><a class="self" href="#s-1d2adf91" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1e9970f9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">put() throws if key cannot be injected - single segment path</span></div><a class="self" href="#s-1e9970f9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-91727479"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">put() throws if key cannot be injected - multi-segment path</span></div><a class="self" href="#s-91727479" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a508c271"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Keygenerator overflow</span></div><a class="self" href="#s-a508c271" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../fetch/"><code>fetch/</code></a></li><li><a href="../../../../fetch/api/"><code>api/</code></a></li><li><a href="../../../../fetch/api/request/"><code>request/</code></a></li><li aria-current="page"><code>request-<wbr>cache-<wbr>default.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>request-<wbr>cache-<wbr>default.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="fetch/api/request/request-cache-default.any.js">
-<p class="figures-main"><span class="fg-pass">24</span><span class="fg-of"> / 24</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">32</span><span class="fg-of"> / 32</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/api/request/request-cache-default.any.js"><code>fetch/<wbr>api/<wbr>request/<wbr>request-<wbr>cache-<wbr>default.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -57,6 +57,19 @@
 <li class="sub s-pass" id="s-c3d0909f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Responses with the &quot;Cache-Control: no-store&quot; header are not stored in the cache with Last-Modified and stale response</span></div><a class="self" href="#s-c3d0909f" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-3bef72bd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Responses with the &quot;Cache-Control: no-store&quot; header are not stored in the cache with Etag and fresh response</span></div><a class="self" href="#s-3bef72bd" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-01d871e8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Responses with the &quot;Cache-Control: no-store&quot; header are not stored in the cache with Last-Modified and fresh response</span></div><a class="self" href="#s-01d871e8" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/request/request-cache-default.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>8</b> / 8</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-820bcd39"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">RequestCache &quot;default&quot; mode checks the cache for previously cached content and goes to the network for stale responses with Etag and stale response</span></div><a class="self" href="#s-820bcd39" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3ac1d54d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">RequestCache &quot;default&quot; mode checks the cache for previously cached content and goes to the network for stale responses with Last-Modified and stale response</span></div><a class="self" href="#s-3ac1d54d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-85dec301"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">RequestCache &quot;default&quot; mode checks the cache for previously cached content and avoids going to the network if a fresh response exists with Etag and fresh response</span></div><a class="self" href="#s-85dec301" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ffd10161"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">RequestCache &quot;default&quot; mode checks the cache for previously cached content and avoids going to the network if a fresh response exists with Last-Modified and fresh response</span></div><a class="self" href="#s-ffd10161" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-474a8587"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Responses with the &quot;Cache-Control: no-store&quot; header are not stored in the cache with Etag and stale response</span></div><a class="self" href="#s-474a8587" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-da3ca823"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Responses with the &quot;Cache-Control: no-store&quot; header are not stored in the cache with Last-Modified and stale response</span></div><a class="self" href="#s-da3ca823" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4bb70669"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Responses with the &quot;Cache-Control: no-store&quot; header are not stored in the cache with Etag and fresh response</span></div><a class="self" href="#s-4bb70669" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ed2be1bb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Responses with the &quot;Cache-Control: no-store&quot; header are not stored in the cache with Last-Modified and fresh response</span></div><a class="self" href="#s-ed2be1bb" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

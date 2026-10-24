@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../fetch/"><code>fetch/</code></a></li><li><a href="../../../../fetch/api/"><code>api/</code></a></li><li><a href="../../../../fetch/api/headers/"><code>headers/</code></a></li><li aria-current="page"><code>headers-<wbr>errors.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>headers-<wbr>errors.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="fetch/api/headers/headers-errors.any.js">
-<p class="figures-main"><span class="fg-pass">54</span><span class="fg-of"> / 54</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">72</span><span class="fg-of"> / 72</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/api/headers/headers-errors.any.js"><code>fetch/<wbr>api/<wbr>headers/<wbr>headers-<wbr>errors.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -77,6 +77,29 @@
 <li class="sub s-pass" id="s-6b561ba8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check headers append with an invalid value invalidĀ</span></div><a class="self" href="#s-6b561ba8" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-5efaea8e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers forEach throws if argument is not callable</span></div><a class="self" href="#s-5efaea8e" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-2fb6fd0f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers forEach loop should stop if callback is throwing exception</span></div><a class="self" href="#s-2fb6fd0f" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/headers/headers-errors.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>18</b> / 18</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-ff2e9523"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Create headers giving an array having one string as init argument</span></div><a class="self" href="#s-ff2e9523" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-33713154"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Create headers giving an array having three strings as init argument</span></div><a class="self" href="#s-33713154" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-264bd912"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Create headers giving bad header name as init argument</span></div><a class="self" href="#s-264bd912" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7aa868a6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Create headers giving bad header value as init argument</span></div><a class="self" href="#s-7aa868a6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-25c07cec"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check headers get with an invalid name invalidĀ</span></div><a class="self" href="#s-25c07cec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-582ea2dc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check headers get with an invalid name [object Object]</span></div><a class="self" href="#s-582ea2dc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ca707c3f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check headers delete with an invalid name invalidĀ</span></div><a class="self" href="#s-ca707c3f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9c1c345c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check headers delete with an invalid name [object Object]</span></div><a class="self" href="#s-9c1c345c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c5f580e3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check headers has with an invalid name invalidĀ</span></div><a class="self" href="#s-c5f580e3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2b3de3b2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check headers has with an invalid name [object Object]</span></div><a class="self" href="#s-2b3de3b2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-71bfe710"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check headers set with an invalid name invalidĀ</span></div><a class="self" href="#s-71bfe710" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-db41608e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check headers set with an invalid name [object Object]</span></div><a class="self" href="#s-db41608e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9364e4f5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check headers set with an invalid value invalidĀ</span></div><a class="self" href="#s-9364e4f5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2e9a65f9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check headers append with an invalid name invalidĀ</span></div><a class="self" href="#s-2e9a65f9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-887f1e2f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check headers append with an invalid name [object Object]</span></div><a class="self" href="#s-887f1e2f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-edbac1e2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check headers append with an invalid value invalidĀ</span></div><a class="self" href="#s-edbac1e2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-199a644e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers forEach throws if argument is not callable</span></div><a class="self" href="#s-199a644e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6fadf2ec"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Headers forEach loop should stop if callback is throwing exception</span></div><a class="self" href="#s-6fadf2ec" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../fetch/"><code>fetch/</code></a></li><li><a href="../../../../fetch/api/"><code>api/</code></a></li><li><a href="../../../../fetch/api/basic/"><code>basic/</code></a></li><li aria-current="page"><code>integrity.<wbr>sub.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>integrity.<wbr>sub.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="fetch/api/basic/integrity.sub.any.js">
-<p class="figures-main"><span class="fg-pass">36</span><span class="fg-of"> / 36</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">54</span><span class="fg-of"> / 54</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/api/basic/integrity.sub.any.js"><code>fetch/<wbr>api/<wbr>basic/<wbr>integrity.<wbr>sub.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -54,6 +54,29 @@
 <li class="sub s-pass" id="s-113cd63c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">CORS invalid integrity</span></div><a class="self" href="#s-113cd63c" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-89241879"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Empty string integrity for opaque response</span></div><a class="self" href="#s-89241879" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-97be3c00"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">SHA-* integrity for opaque response</span></div><a class="self" href="#s-97be3c00" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/basic/integrity.sub.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>18</b> / 18</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-0c5045d9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Empty string integrity</span></div><a class="self" href="#s-0c5045d9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-af0f2ae6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">SHA-256 integrity</span></div><a class="self" href="#s-af0f2ae6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-757fd931"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">SHA-384 integrity</span></div><a class="self" href="#s-757fd931" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-31098b56"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">SHA-512 integrity</span></div><a class="self" href="#s-31098b56" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1ad57a49"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">SHA-512 integrity with missing padding</span></div><a class="self" href="#s-1ad57a49" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-749f64d3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">SHA-512 integrity base64url encoded</span></div><a class="self" href="#s-749f64d3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ef9dfac3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">SHA-512 integrity base64url encoded with missing padding</span></div><a class="self" href="#s-ef9dfac3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7ac5c89f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid integrity</span></div><a class="self" href="#s-7ac5c89f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dc2899f6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Multiple integrities: valid stronger than invalid</span></div><a class="self" href="#s-dc2899f6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b80188b3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Multiple integrities: invalid stronger than valid</span></div><a class="self" href="#s-b80188b3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e110f5e1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Multiple integrities: invalid as strong as valid</span></div><a class="self" href="#s-e110f5e1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7c27100e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Multiple integrities: both are valid</span></div><a class="self" href="#s-7c27100e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1b208dd8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Multiple integrities: both are invalid</span></div><a class="self" href="#s-1b208dd8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b1e266b3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">CORS empty integrity</span></div><a class="self" href="#s-b1e266b3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-33943482"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">CORS SHA-512 integrity</span></div><a class="self" href="#s-33943482" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c00ab053"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">CORS invalid integrity</span></div><a class="self" href="#s-c00ab053" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b855c9e8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Empty string integrity for opaque response</span></div><a class="self" href="#s-b855c9e8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bccd3689"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">SHA-* integrity for opaque response</span></div><a class="self" href="#s-bccd3689" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

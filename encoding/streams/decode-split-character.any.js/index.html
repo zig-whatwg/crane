@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../encoding/"><code>encoding/</code></a></li><li><a href="../../../encoding/streams/"><code>streams/</code></a></li><li aria-current="page"><code>decode-<wbr>split-<wbr>character.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>decode-<wbr>split-<wbr>character.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="encoding/streams/decode-split-character.any.js">
-<p class="figures-main"><span class="fg-pass">33</span><span class="fg-of"> / 33</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">44</span><span class="fg-of"> / 44</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/encoding/streams/decode-split-character.any.js"><code>encoding/<wbr>streams/<wbr>decode-<wbr>split-<wbr>character.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -63,6 +63,22 @@
 <li class="sub s-pass" id="s-671bede7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">an empty chunk inside a code point split between chunks should not change the output; split point = 4</span></div><a class="self" href="#s-671bede7" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-67f7c809"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">an empty chunk inside a code point split between chunks should not change the output; split point = 5</span></div><a class="self" href="#s-67f7c809" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-1dd85645"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">an empty chunk inside a code point split between chunks should not change the output; split point = 6</span></div><a class="self" href="#s-1dd85645" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/encoding/streams/decode-split-character.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>11</b> / 11</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-40831ef7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a code point split between chunks should not be emitted until all bytes are available; split point = 2</span></div><a class="self" href="#s-40831ef7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5b514c01"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a code point split between chunks should not be emitted until all bytes are available; split point = 3</span></div><a class="self" href="#s-5b514c01" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ad6c8e31"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a code point split between chunks should not be emitted until all bytes are available; split point = 4</span></div><a class="self" href="#s-ad6c8e31" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-473a7c2a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a code point split between chunks should not be emitted until all bytes are available; split point = 5</span></div><a class="self" href="#s-473a7c2a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6275917f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a code point should be emitted as soon as all bytes are available</span></div><a class="self" href="#s-6275917f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fd8b7eb5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">an empty chunk inside a code point split between chunks should not change the output; split point = 1</span></div><a class="self" href="#s-fd8b7eb5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-47038ae4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">an empty chunk inside a code point split between chunks should not change the output; split point = 2</span></div><a class="self" href="#s-47038ae4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2cc61f92"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">an empty chunk inside a code point split between chunks should not change the output; split point = 3</span></div><a class="self" href="#s-2cc61f92" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0460ff1a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">an empty chunk inside a code point split between chunks should not change the output; split point = 4</span></div><a class="self" href="#s-0460ff1a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1dd4260d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">an empty chunk inside a code point split between chunks should not change the output; split point = 5</span></div><a class="self" href="#s-1dd4260d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b7a478ef"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">an empty chunk inside a code point split between chunks should not change the output; split point = 6</span></div><a class="self" href="#s-b7a478ef" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

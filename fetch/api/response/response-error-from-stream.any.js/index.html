@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../fetch/"><code>fetch/</code></a></li><li><a href="../../../../fetch/api/"><code>api/</code></a></li><li><a href="../../../../fetch/api/response/"><code>response/</code></a></li><li aria-current="page"><code>response-<wbr>error-<wbr>from-<wbr>stream.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>response-<wbr>error-<wbr>from-<wbr>stream.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="fetch/api/response/response-error-from-stream.any.js">
-<p class="figures-main"><span class="fg-pass">42</span><span class="fg-of"> / 42</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">56</span><span class="fg-of"> / 56</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/api/response/response-error-from-stream.any.js"><code>fetch/<wbr>api/<wbr>response/<wbr>response-<wbr>error-<wbr>from-<wbr>stream.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -69,6 +69,25 @@
 <li class="sub s-pass" id="s-288b0e91"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream pull() Error propagates to Response.formData() Promise</span></div><a class="self" href="#s-288b0e91" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-b58c2918"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream pull() Error propagates to Response.json() Promise</span></div><a class="self" href="#s-b58c2918" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-61dd8560"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream pull() Error propagates to Response.text() Promise</span></div><a class="self" href="#s-61dd8560" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/response/response-error-from-stream.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>14</b> / 14</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-948481f2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStreamDefaultReader Promise receives ReadableStream start() Error</span></div><a class="self" href="#s-948481f2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ec7e827c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStreamDefaultReader Promise receives ReadableStream pull() Error</span></div><a class="self" href="#s-ec7e827c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3f6d3b10"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream start() Error propagates to Response.arrayBuffer() Promise</span></div><a class="self" href="#s-3f6d3b10" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c0873c7a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream start() Error propagates to Response.blob() Promise</span></div><a class="self" href="#s-c0873c7a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-466b91d3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream start() Error propagates to Response.bytes() Promise</span></div><a class="self" href="#s-466b91d3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-beb5755d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream start() Error propagates to Response.formData() Promise</span></div><a class="self" href="#s-beb5755d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0ab80646"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream start() Error propagates to Response.json() Promise</span></div><a class="self" href="#s-0ab80646" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2e82069d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream start() Error propagates to Response.text() Promise</span></div><a class="self" href="#s-2e82069d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-94671b78"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream pull() Error propagates to Response.arrayBuffer() Promise</span></div><a class="self" href="#s-94671b78" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7bbff8a9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream pull() Error propagates to Response.blob() Promise</span></div><a class="self" href="#s-7bbff8a9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a4ade678"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream pull() Error propagates to Response.bytes() Promise</span></div><a class="self" href="#s-a4ade678" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f2e318d1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream pull() Error propagates to Response.formData() Promise</span></div><a class="self" href="#s-f2e318d1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8d895815"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream pull() Error propagates to Response.json() Promise</span></div><a class="self" href="#s-8d895815" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3f9bb051"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ReadableStream pull() Error propagates to Response.text() Promise</span></div><a class="self" href="#s-3f9bb051" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

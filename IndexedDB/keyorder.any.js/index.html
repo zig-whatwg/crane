@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../IndexedDB/"><code>IndexedDB/</code></a></li><li aria-current="page"><code>keyorder.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>keyorder.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="IndexedDB/keyorder.any.js">
-<p class="figures-main"><span class="fg-pass">72</span><span class="fg-of"> / 72</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">96</span><span class="fg-of"> / 96</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/IndexedDB/keyorder.any.js"><code>IndexedDB/<wbr>keyorder.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -89,6 +89,35 @@
 <li class="sub s-pass" id="s-c88ef346"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKey.cmp sort - Infinity inside arrays</span></div><a class="self" href="#s-c88ef346" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-21095c19"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Database readback sort - Test different stuff at once</span></div><a class="self" href="#s-21095c19" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-969fe4ca"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKey.cmp sort - Test different stuff at once</span></div><a class="self" href="#s-969fe4ca" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/keyorder.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>24</b> / 24</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-e054146c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Database readback sort - String &lt; Array</span></div><a class="self" href="#s-e054146c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fd3a7fa7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKey.cmp sort - String &lt; Array</span></div><a class="self" href="#s-fd3a7fa7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fcad5a8a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Database readback sort - float &lt; String</span></div><a class="self" href="#s-fcad5a8a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0f2ce5de"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKey.cmp sort - float &lt; String</span></div><a class="self" href="#s-0f2ce5de" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-687a38ed"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Database readback sort - float &lt; Date</span></div><a class="self" href="#s-687a38ed" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-07d4a309"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKey.cmp sort - float &lt; Date</span></div><a class="self" href="#s-07d4a309" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-59353d72"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Database readback sort - float &lt; Date &lt; String &lt; Array</span></div><a class="self" href="#s-59353d72" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d32144f7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKey.cmp sort - float &lt; Date &lt; String &lt; Array</span></div><a class="self" href="#s-d32144f7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ecd3a670"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Database readback sort - Date(1 sec ago) &lt; Date(now) &lt; Date(1 minute in future)</span></div><a class="self" href="#s-ecd3a670" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b9ac2a9b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKey.cmp sort - Date(1 sec ago) &lt; Date(now) &lt; Date(1 minute in future)</span></div><a class="self" href="#s-b9ac2a9b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ca75826b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Database readback sort - -1.1 &lt; 1 &lt; 1.01337 &lt; 1.013373 &lt; 2</span></div><a class="self" href="#s-ca75826b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-125df6f9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKey.cmp sort - -1.1 &lt; 1 &lt; 1.01337 &lt; 1.013373 &lt; 2</span></div><a class="self" href="#s-125df6f9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-323a8257"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Database readback sort - -Infinity &lt; -0.01 &lt; 0 &lt; Infinity</span></div><a class="self" href="#s-323a8257" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5273194f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKey.cmp sort - -Infinity &lt; -0.01 &lt; 0 &lt; Infinity</span></div><a class="self" href="#s-5273194f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bcbf0baa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Database readback sort - &quot;&quot; &lt; &quot;a&quot; &lt; &quot;ab&quot; &lt; &quot;b&quot; &lt; &quot;ba&quot;</span></div><a class="self" href="#s-bcbf0baa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b5a70415"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKey.cmp sort - &quot;&quot; &lt; &quot;a&quot; &lt; &quot;ab&quot; &lt; &quot;b&quot; &lt; &quot;ba&quot;</span></div><a class="self" href="#s-b5a70415" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5d29e6a8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Database readback sort - Arrays</span></div><a class="self" href="#s-5d29e6a8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-19acbaed"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKey.cmp sort - Arrays</span></div><a class="self" href="#s-19acbaed" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e7e14458"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Database readback sort - Array.length: 10,000 &lt; Array.length: 10,001</span></div><a class="self" href="#s-e7e14458" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-416a5bef"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKey.cmp sort - Array.length: 10,000 &lt; Array.length: 10,001</span></div><a class="self" href="#s-416a5bef" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ce2b9815"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Database readback sort - Infinity inside arrays</span></div><a class="self" href="#s-ce2b9815" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3f4012ff"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKey.cmp sort - Infinity inside arrays</span></div><a class="self" href="#s-3f4012ff" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c4074f0d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Database readback sort - Test different stuff at once</span></div><a class="self" href="#s-c4074f0d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6b5c72f1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKey.cmp sort - Test different stuff at once</span></div><a class="self" href="#s-6b5c72f1" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

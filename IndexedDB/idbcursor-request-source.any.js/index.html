@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../IndexedDB/"><code>IndexedDB/</code></a></li><li aria-current="page"><code>idbcursor-<wbr>request-<wbr>source.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>idbcursor-<wbr>request-<wbr>source.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="IndexedDB/idbcursor-request-source.any.js">
-<p class="figures-main"><span class="fg-pass">24</span><span class="fg-of"> / 24</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">32</span><span class="fg-of"> / 32</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/IndexedDB/idbcursor-request-source.any.js"><code>IndexedDB/<wbr>idbcursor-<wbr>request-<wbr>source.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -57,6 +57,19 @@
 <li class="sub s-pass" id="s-fb138075"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The source of the request from IDBObjectStore::delete() is the cursor itself</span></div><a class="self" href="#s-fb138075" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-85914023"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The source of the request from IDBIndex::update() is the cursor itself</span></div><a class="self" href="#s-85914023" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-4c63ee1c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The source of the request from IDBIndex::delete() is the cursor itself</span></div><a class="self" href="#s-4c63ee1c" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/idbcursor-request-source.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>8</b> / 8</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-df156433"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore::openCursor&#39;s request source must be the IDBObjectStore instance that opened the cursor</span></div><a class="self" href="#s-df156433" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e054cacc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore::openKeyCursor&#39;s request source must be the IDBObjectStore instance that opened the cursor</span></div><a class="self" href="#s-e054cacc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ba245195"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBIndex::openCursor&#39;s request source must be the IDBIndex instance that opened the cursor</span></div><a class="self" href="#s-ba245195" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-16ebe558"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBIndex::openKeyCursor&#39;s request source must be the IDBIndex instance that opened the cursor</span></div><a class="self" href="#s-16ebe558" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a2a3d9d2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The source of the request from IDBObjectStore::update() is the cursor itself</span></div><a class="self" href="#s-a2a3d9d2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b0992ff0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The source of the request from IDBObjectStore::delete() is the cursor itself</span></div><a class="self" href="#s-b0992ff0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-52c228b1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The source of the request from IDBIndex::update() is the cursor itself</span></div><a class="self" href="#s-52c228b1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-db0df365"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The source of the request from IDBIndex::delete() is the cursor itself</span></div><a class="self" href="#s-db0df365" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

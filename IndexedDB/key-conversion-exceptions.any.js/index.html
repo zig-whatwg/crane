@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../IndexedDB/"><code>IndexedDB/</code></a></li><li aria-current="page"><code>key-<wbr>conversion-<wbr>exceptions.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>key-<wbr>conversion-<wbr>exceptions.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="IndexedDB/key-conversion-exceptions.any.js">
-<p class="figures-main"><span class="fg-pass">81</span><span class="fg-of"> / 81</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">108</span><span class="fg-of"> / 108</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/IndexedDB/key-conversion-exceptions.any.js"><code>IndexedDB/<wbr>key-<wbr>conversion-<wbr>exceptions.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -95,6 +95,38 @@
 <li class="sub s-pass" id="s-92545272"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBIndex getAll() method with throwing/invalid keys</span></div><a class="self" href="#s-92545272" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-106f67f5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBIndex getAllKeys() method with throwing/invalid keys</span></div><a class="self" href="#s-106f67f5" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-5cf96515"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBIndex getAllRecords() method with throwing/invalid keys</span></div><a class="self" href="#s-5cf96515" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/key-conversion-exceptions.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>27</b> / 27</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-f762c7ca"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBFactory cmp() static with throwing/invalid keys</span></div><a class="self" href="#s-f762c7ca" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d4547002"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBCursor continue() method with throwing/invalid keys</span></div><a class="self" href="#s-d4547002" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d4fc1d6c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IndexedDB: Exceptions thrown during key conversion</span></div><a class="self" href="#s-d4fc1d6c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b8fc2e1b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBCursor update() method with throwing/invalid keys</span></div><a class="self" href="#s-b8fc2e1b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4d742528"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKeyRange only() static with throwing/invalid keys</span></div><a class="self" href="#s-4d742528" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-14d5db4e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKeyRange lowerBound() static with throwing/invalid keys</span></div><a class="self" href="#s-14d5db4e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cc203c46"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKeyRange upperBound() static with throwing/invalid keys</span></div><a class="self" href="#s-cc203c46" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4091c571"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBKeyRange bound() static with throwing/invalid keys</span></div><a class="self" href="#s-4091c571" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6c071cea"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore add() method with throwing/invalid keys</span></div><a class="self" href="#s-6c071cea" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3cd537f0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore put() method with throwing/invalid keys</span></div><a class="self" href="#s-3cd537f0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f5493212"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore delete() method with throwing/invalid keys</span></div><a class="self" href="#s-f5493212" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a10d5cf2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore get() method with throwing/invalid keys</span></div><a class="self" href="#s-a10d5cf2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-10d48339"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore getKey() method with throwing/invalid keys</span></div><a class="self" href="#s-10d48339" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c620b2af"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore count() method with throwing/invalid keys</span></div><a class="self" href="#s-c620b2af" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4da72f38"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore openCursor() method with throwing/invalid keys</span></div><a class="self" href="#s-4da72f38" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c674fa59"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore openKeyCursor() method with throwing/invalid keys</span></div><a class="self" href="#s-c674fa59" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dd1301c9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBIndex get() method with throwing/invalid keys</span></div><a class="self" href="#s-dd1301c9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0a893fa4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBIndex getKey() method with throwing/invalid keys</span></div><a class="self" href="#s-0a893fa4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d6edd178"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBIndex count() method with throwing/invalid keys</span></div><a class="self" href="#s-d6edd178" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d00fa806"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBIndex openCursor() method with throwing/invalid keys</span></div><a class="self" href="#s-d00fa806" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7e6bbab8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBIndex openKeyCursor() method with throwing/invalid keys</span></div><a class="self" href="#s-7e6bbab8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2ce09f65"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore getAll() method with throwing/invalid keys</span></div><a class="self" href="#s-2ce09f65" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4cd65110"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore getAllKeys() method with throwing/invalid keys</span></div><a class="self" href="#s-4cd65110" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e37cb8e2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBObjectStore getAllRecords() method with throwing/invalid keys</span></div><a class="self" href="#s-e37cb8e2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9aa041e8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBIndex getAll() method with throwing/invalid keys</span></div><a class="self" href="#s-9aa041e8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9632e426"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBIndex getAllKeys() method with throwing/invalid keys</span></div><a class="self" href="#s-9632e426" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-245f6f13"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBIndex getAllRecords() method with throwing/invalid keys</span></div><a class="self" href="#s-245f6f13" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

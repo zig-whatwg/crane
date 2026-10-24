@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../streams/"><code>streams/</code></a></li><li><a href="../../../streams/transform-streams/"><code>transform-<wbr>streams/</code></a></li><li aria-current="page"><code>lipfuzz.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>lipfuzz.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="streams/transform-streams/lipfuzz.any.js">
-<p class="figures-main"><span class="fg-pass">60</span><span class="fg-of"> / 60</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">80</span><span class="fg-of"> / 80</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/streams/transform-streams/lipfuzz.any.js"><code>streams/<wbr>transform-<wbr>streams/<wbr>lipfuzz.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -81,6 +81,31 @@
 <li class="sub s-pass" id="s-801689a0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testing &quot;{{quine}}&quot; (length 1)</span></div><a class="self" href="#s-801689a0" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-c620aeb9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testing &quot;{{bogusPartial}}&quot; (length 1)</span></div><a class="self" href="#s-c620aeb9" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-2f10fe35"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testing &quot;{{bogusPartial}}}&quot; (length 1)</span></div><a class="self" href="#s-2f10fe35" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/streams/transform-streams/lipfuzz.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>20</b> / 20</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-ae3eaf8d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testing &quot;&quot; (length 1)</span></div><a class="self" href="#s-ae3eaf8d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b2aaea2e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testing &quot;&quot; (length 0)</span></div><a class="self" href="#s-b2aaea2e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2aab17b3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testing &quot;{{in1}}&quot; (length 1)</span></div><a class="self" href="#s-2aab17b3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5ce18a17"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testing &quot;z{{in1}}&quot; (length 1)</span></div><a class="self" href="#s-5ce18a17" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-31c85967"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testing &quot;{{in1}}q&quot; (length 1)</span></div><a class="self" href="#s-31c85967" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-55fed75b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testing &quot;{{in1}}{{in1}&quot; (length 1)</span></div><a class="self" href="#s-55fed75b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b1af7684"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testing &quot;{{in1}}{{in1},}&quot; (length 2)</span></div><a class="self" href="#s-b1af7684" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-194da3ba"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testing &quot;{{in1,}}&quot; (length 2)</span></div><a class="self" href="#s-194da3ba" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b7a409ae"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testing &quot;{{,in1}}&quot; (length 2)</span></div><a class="self" href="#s-b7a409ae" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a2103523"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testing &quot;{,{in1}}&quot; (length 2)</span></div><a class="self" href="#s-a2103523" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-55ac517c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testing &quot;{{,in1}&quot; (length 2)</span></div><a class="self" href="#s-55ac517c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4abc686a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testing &quot;{&quot; (length 1)</span></div><a class="self" href="#s-4abc686a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-76c9935c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testing &quot;{,&quot; (length 2)</span></div><a class="self" href="#s-76c9935c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c25d6f1e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testing &quot;{,{,i,n,1,},}&quot; (length 7)</span></div><a class="self" href="#s-c25d6f1e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-98c5ef32"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testing &quot;{{in1}}{{in2}}{{in1}}&quot; (length 1)</span></div><a class="self" href="#s-98c5ef32" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b0ceef82"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testing &quot;{{wrong}}&quot; (length 1)</span></div><a class="self" href="#s-b0ceef82" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-85d082c9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testing &quot;{{wron,g}}&quot; (length 2)</span></div><a class="self" href="#s-85d082c9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d43a52cc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testing &quot;{{quine}}&quot; (length 1)</span></div><a class="self" href="#s-d43a52cc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a890c5a3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testing &quot;{{bogusPartial}}&quot; (length 1)</span></div><a class="self" href="#s-a890c5a3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-88e7dac3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">testing &quot;{{bogusPartial}}}&quot; (length 1)</span></div><a class="self" href="#s-88e7dac3" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

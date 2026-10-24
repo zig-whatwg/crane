@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../fetch/"><code>fetch/</code></a></li><li><a href="../../../../fetch/api/"><code>api/</code></a></li><li><a href="../../../../fetch/api/basic/"><code>basic/</code></a></li><li aria-current="page"><code>text-<wbr>utf8.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>text-<wbr>utf8.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="fetch/api/basic/text-utf8.any.js">
-<p class="figures-main"><span class="fg-pass">90</span><span class="fg-of"> / 90</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">120</span><span class="fg-of"> / 120</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/api/basic/text-utf8.any.js"><code>fetch/<wbr>api/<wbr>basic/<wbr>text-<wbr>utf8.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -101,6 +101,41 @@
 <li class="sub s-pass" id="s-a6ccebf5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-16 without BOM decoded as UTF-8 with fetched data (UTF-16 charset)</span></div><a class="self" href="#s-a6ccebf5" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-77140973"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-16 without BOM decoded as UTF-8 (Response object)</span></div><a class="self" href="#s-77140973" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-517fd676"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-16 without BOM decoded as UTF-8 (Request object)</span></div><a class="self" href="#s-517fd676" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/basic/text-utf8.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>30</b> / 30</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-8d764fe8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-8 with BOM with Request.text()</span></div><a class="self" href="#s-8d764fe8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e241b32e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-8 with BOM with Response.text()</span></div><a class="self" href="#s-e241b32e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a827ed6e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-8 with BOM with fetched data (UTF-8 charset)</span></div><a class="self" href="#s-a827ed6e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fd23c88d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-8 with BOM with fetched data (UTF-16 charset)</span></div><a class="self" href="#s-fd23c88d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-16280759"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-8 with BOM (Response object)</span></div><a class="self" href="#s-16280759" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-72566be1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-8 with BOM (Request object)</span></div><a class="self" href="#s-72566be1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-db63a543"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-8 without BOM with Request.text()</span></div><a class="self" href="#s-db63a543" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-be9f626d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-8 without BOM with Response.text()</span></div><a class="self" href="#s-be9f626d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-886c25d5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-8 without BOM with fetched data (UTF-8 charset)</span></div><a class="self" href="#s-886c25d5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5cc64ac4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-8 without BOM with fetched data (UTF-16 charset)</span></div><a class="self" href="#s-5cc64ac4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cf6ccd51"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-8 without BOM (Response object)</span></div><a class="self" href="#s-cf6ccd51" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-da54f125"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-8 without BOM (Request object)</span></div><a class="self" href="#s-da54f125" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9bc50be8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-16BE with BOM decoded as UTF-8 with Request.text()</span></div><a class="self" href="#s-9bc50be8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-038a9d21"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-16BE with BOM decoded as UTF-8 with Response.text()</span></div><a class="self" href="#s-038a9d21" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2d2d0873"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-16BE with BOM decoded as UTF-8 with fetched data (UTF-8 charset)</span></div><a class="self" href="#s-2d2d0873" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c3ec98d5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-16BE with BOM decoded as UTF-8 with fetched data (UTF-16 charset)</span></div><a class="self" href="#s-c3ec98d5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-23d30339"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-16BE with BOM decoded as UTF-8 (Response object)</span></div><a class="self" href="#s-23d30339" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7bff2fc6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-16BE with BOM decoded as UTF-8 (Request object)</span></div><a class="self" href="#s-7bff2fc6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d98d646c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-16LE with BOM decoded as UTF-8 with Request.text()</span></div><a class="self" href="#s-d98d646c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-497ce3cf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-16LE with BOM decoded as UTF-8 with Response.text()</span></div><a class="self" href="#s-497ce3cf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-191fffef"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-16LE with BOM decoded as UTF-8 with fetched data (UTF-8 charset)</span></div><a class="self" href="#s-191fffef" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5c6ffe43"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-16LE with BOM decoded as UTF-8 with fetched data (UTF-16 charset)</span></div><a class="self" href="#s-5c6ffe43" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-50d76c7b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-16LE with BOM decoded as UTF-8 (Response object)</span></div><a class="self" href="#s-50d76c7b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e43b2cd7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-16LE with BOM decoded as UTF-8 (Request object)</span></div><a class="self" href="#s-e43b2cd7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4f930e8b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-16 without BOM decoded as UTF-8 with Request.text()</span></div><a class="self" href="#s-4f930e8b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-388a8d39"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-16 without BOM decoded as UTF-8 with Response.text()</span></div><a class="self" href="#s-388a8d39" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-364067d0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-16 without BOM decoded as UTF-8 with fetched data (UTF-8 charset)</span></div><a class="self" href="#s-364067d0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dfc10133"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-16 without BOM decoded as UTF-8 with fetched data (UTF-16 charset)</span></div><a class="self" href="#s-dfc10133" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5a867eff"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-16 without BOM decoded as UTF-8 (Response object)</span></div><a class="self" href="#s-5a867eff" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8817b82a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">UTF-16 without BOM decoded as UTF-8 (Request object)</span></div><a class="self" href="#s-8817b82a" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

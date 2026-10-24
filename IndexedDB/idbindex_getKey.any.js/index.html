@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../IndexedDB/"><code>IndexedDB/</code></a></li><li aria-current="page"><code>idbindex_<wbr>getKey.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>idbindex_<wbr>getKey.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="IndexedDB/idbindex_getKey.any.js">
-<p class="figures-main"><span class="fg-pass">24</span><span class="fg-of"> / 24</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">32</span><span class="fg-of"> / 32</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/IndexedDB/idbindex_getKey.any.js"><code>IndexedDB/<wbr>idbindex_<wbr>getKey.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -57,6 +57,19 @@
 <li class="sub s-pass" id="s-23c28c30"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getKey() throws InvalidStateError when the index is deleted</span></div><a class="self" href="#s-23c28c30" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-5462e600"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getKey() throws TransactionInactiveError on aborted transaction</span></div><a class="self" href="#s-5462e600" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-734e4a69"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getKey() throws InvalidStateError on index deleted by aborted upgrade</span></div><a class="self" href="#s-734e4a69" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/idbindex_getKey.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>8</b> / 8</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-9f4c01a5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getKey() returns the record&#39;s primary key</span></div><a class="self" href="#s-9f4c01a5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0d3cf5fe"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getKey() returns the record&#39;s primary key where the index contains duplicate values</span></div><a class="self" href="#s-0d3cf5fe" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9ccde6cb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getKey() attempt to retrieve the primary key of a record that doesn&#39;t exist</span></div><a class="self" href="#s-9ccde6cb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7d0da875"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getKey() returns the key of the first record within the range</span></div><a class="self" href="#s-7d0da875" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e14639be"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getKey() throws DataError when using invalid key</span></div><a class="self" href="#s-e14639be" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4e121a42"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getKey() throws InvalidStateError when the index is deleted</span></div><a class="self" href="#s-4e121a42" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f40d4efe"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getKey() throws TransactionInactiveError on aborted transaction</span></div><a class="self" href="#s-f40d4efe" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1d0201fd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getKey() throws InvalidStateError on index deleted by aborted upgrade</span></div><a class="self" href="#s-1d0201fd" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

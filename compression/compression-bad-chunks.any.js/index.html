@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../compression/"><code>compression/</code></a></li><li aria-current="page"><code>compression-<wbr>bad-<wbr>chunks.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>compression-<wbr>bad-<wbr>chunks.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="compression/compression-bad-chunks.any.js">
-<p class="figures-main"><span class="fg-pass">84</span><span class="fg-of"> / 84</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">112</span><span class="fg-of"> / 112</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/compression/compression-bad-chunks.any.js"><code>compression/<wbr>compression-<wbr>bad-<wbr>chunks.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -97,6 +97,39 @@
 <li class="sub s-pass" id="s-08c42f9a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type array should error the stream for brotli</span></div><a class="self" href="#s-08c42f9a" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-48efd5cd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type SharedArrayBuffer should error the stream for brotli</span></div><a class="self" href="#s-48efd5cd" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-70e81762"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type shared Uint8Array should error the stream for brotli</span></div><a class="self" href="#s-70e81762" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/compression/compression-bad-chunks.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>28</b> / 28</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-6a9dc581"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type undefined should error the stream for deflate</span></div><a class="self" href="#s-6a9dc581" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d7c44c22"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type null should error the stream for deflate</span></div><a class="self" href="#s-d7c44c22" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-79e16264"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type numeric should error the stream for deflate</span></div><a class="self" href="#s-79e16264" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-212f9418"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type object, not BufferSource should error the stream for deflate</span></div><a class="self" href="#s-212f9418" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f618dae4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type array should error the stream for deflate</span></div><a class="self" href="#s-f618dae4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9adb2067"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type SharedArrayBuffer should error the stream for deflate</span></div><a class="self" href="#s-9adb2067" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-941d14ba"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type shared Uint8Array should error the stream for deflate</span></div><a class="self" href="#s-941d14ba" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-29509035"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type undefined should error the stream for deflate-raw</span></div><a class="self" href="#s-29509035" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f467e143"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type null should error the stream for deflate-raw</span></div><a class="self" href="#s-f467e143" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-81fd2e25"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type numeric should error the stream for deflate-raw</span></div><a class="self" href="#s-81fd2e25" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a1996719"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type object, not BufferSource should error the stream for deflate-raw</span></div><a class="self" href="#s-a1996719" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ee7f3808"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type array should error the stream for deflate-raw</span></div><a class="self" href="#s-ee7f3808" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e6e7d71a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type SharedArrayBuffer should error the stream for deflate-raw</span></div><a class="self" href="#s-e6e7d71a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5237aa96"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type shared Uint8Array should error the stream for deflate-raw</span></div><a class="self" href="#s-5237aa96" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e04c23fd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type undefined should error the stream for gzip</span></div><a class="self" href="#s-e04c23fd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-727165de"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type null should error the stream for gzip</span></div><a class="self" href="#s-727165de" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-34f5065a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type numeric should error the stream for gzip</span></div><a class="self" href="#s-34f5065a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a867ac7c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type object, not BufferSource should error the stream for gzip</span></div><a class="self" href="#s-a867ac7c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1c3ce877"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type array should error the stream for gzip</span></div><a class="self" href="#s-1c3ce877" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-26d07ef2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type SharedArrayBuffer should error the stream for gzip</span></div><a class="self" href="#s-26d07ef2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0e0fb3a1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type shared Uint8Array should error the stream for gzip</span></div><a class="self" href="#s-0e0fb3a1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-99fe9d53"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type undefined should error the stream for brotli</span></div><a class="self" href="#s-99fe9d53" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-71f7397b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type null should error the stream for brotli</span></div><a class="self" href="#s-71f7397b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a6073675"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type numeric should error the stream for brotli</span></div><a class="self" href="#s-a6073675" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e7885a7b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type object, not BufferSource should error the stream for brotli</span></div><a class="self" href="#s-e7885a7b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-62711c78"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type array should error the stream for brotli</span></div><a class="self" href="#s-62711c78" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a13378a4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type SharedArrayBuffer should error the stream for brotli</span></div><a class="self" href="#s-a13378a4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f95990ee"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">chunk of type shared Uint8Array should error the stream for brotli</span></div><a class="self" href="#s-f95990ee" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../IndexedDB/"><code>IndexedDB/</code></a></li><li aria-current="page"><code>idb-<wbr>binary-<wbr>key-<wbr>roundtrip.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>idb-<wbr>binary-<wbr>key-<wbr>roundtrip.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="IndexedDB/idb-binary-key-roundtrip.any.js">
-<p class="figures-main"><span class="fg-pass">48</span><span class="fg-of"> / 48</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">64</span><span class="fg-of"> / 64</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/IndexedDB/idb-binary-key-roundtrip.any.js"><code>IndexedDB/<wbr>idb-<wbr>binary-<wbr>key-<wbr>roundtrip.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -73,6 +73,27 @@
 <li class="sub s-pass" id="s-31f58865"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">DataView with explicit offset and length can be used to supply a binary key</span></div><a class="self" href="#s-31f58865" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-b1c10348"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Uint8Array with explicit offset can be used to supply a binary key</span></div><a class="self" href="#s-b1c10348" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-ae27a6f6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Uint8Array with explicit offset and length can be used to supply a binary key</span></div><a class="self" href="#s-ae27a6f6" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/idb-binary-key-roundtrip.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>16</b> / 16</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-75fbe63b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Binary keys can be supplied using the view type Uint8Array</span></div><a class="self" href="#s-75fbe63b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-334d5814"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Binary keys can be supplied using the view type Uint8ClampedArray</span></div><a class="self" href="#s-334d5814" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c0bc44af"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Binary keys can be supplied using the view type Int8Array</span></div><a class="self" href="#s-c0bc44af" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f0f64406"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Binary keys can be supplied using the view type Uint16Array</span></div><a class="self" href="#s-f0f64406" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0ffcea40"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Binary keys can be supplied using the view type Int16Array</span></div><a class="self" href="#s-0ffcea40" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-35d27c17"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Binary keys can be supplied using the view type Uint32Array</span></div><a class="self" href="#s-35d27c17" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-759a0b23"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Binary keys can be supplied using the view type Int32Array</span></div><a class="self" href="#s-759a0b23" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3b0bca13"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Binary keys can be supplied using the view type Float16Array</span></div><a class="self" href="#s-3b0bca13" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0d9a979a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Binary keys can be supplied using the view type Float32Array</span></div><a class="self" href="#s-0d9a979a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cd2f696c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Binary keys can be supplied using the view type Float64Array</span></div><a class="self" href="#s-cd2f696c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1d26d19a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ArrayBuffer can be used to supply a binary key</span></div><a class="self" href="#s-1d26d19a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-beba06c2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">DataView can be used to supply a binary key</span></div><a class="self" href="#s-beba06c2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7ebee45e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">DataView with explicit offset can be used to supply a binary key</span></div><a class="self" href="#s-7ebee45e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-830bb6d1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">DataView with explicit offset and length can be used to supply a binary key</span></div><a class="self" href="#s-830bb6d1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fb4eb5d6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Uint8Array with explicit offset can be used to supply a binary key</span></div><a class="self" href="#s-fb4eb5d6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-929ac889"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Uint8Array with explicit offset and length can be used to supply a binary key</span></div><a class="self" href="#s-929ac889" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

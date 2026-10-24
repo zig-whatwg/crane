@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../IndexedDB/"><code>IndexedDB/</code></a></li><li aria-current="page"><code>keypath_<wbr>invalid.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>keypath_<wbr>invalid.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="IndexedDB/keypath_invalid.any.js">
-<p class="figures-main"><span class="fg-pass">72</span><span class="fg-of"> / 72</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">96</span><span class="fg-of"> / 96</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/IndexedDB/keypath_invalid.any.js"><code>IndexedDB/<wbr>keypath_<wbr>invalid.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -89,6 +89,35 @@
 <li class="sub s-pass" id="s-b634a1d4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - &quot;*.*&quot;</span></div><a class="self" href="#s-b634a1d4" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-343b2aea"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - &quot;^m&quot;</span></div><a class="self" href="#s-343b2aea" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-86e53842"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - &quot;/m/&quot;</span></div><a class="self" href="#s-86e53842" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/keypath_invalid.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>24</b> / 24</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-8e9af22a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - &quot;j a&quot;</span></div><a class="self" href="#s-8e9af22a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c0468d78"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - &quot;.yo&quot;</span></div><a class="self" href="#s-c0468d78" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cc16ce37"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - &quot;yo,lo&quot;</span></div><a class="self" href="#s-cc16ce37" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-05b76999"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - []</span></div><a class="self" href="#s-05b76999" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-efd284c2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - [&quot;array with space&quot;]</span></div><a class="self" href="#s-efd284c2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c0c243a0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - multidimensional array (invalid toString)</span></div><a class="self" href="#s-c0c243a0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6936d13a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - &quot;3m&quot;</span></div><a class="self" href="#s-6936d13a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-56138ec8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - {toString-&gt;3m}</span></div><a class="self" href="#s-56138ec8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4e0f51de"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - &quot;my.1337&quot;</span></div><a class="self" href="#s-4e0f51de" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-65837acd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - &quot;..yo&quot;</span></div><a class="self" href="#s-65837acd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-467d3f15"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - &quot;y..o&quot;</span></div><a class="self" href="#s-467d3f15" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-97a585ab"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - &quot;y.o.&quot;</span></div><a class="self" href="#s-97a585ab" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-90640f21"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - &quot;y.o..&quot;</span></div><a class="self" href="#s-90640f21" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5f661a89"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - &quot;m.*&quot;</span></div><a class="self" href="#s-5f661a89" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-62317217"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - &quot;\&quot;m\&quot;&quot;</span></div><a class="self" href="#s-62317217" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b8d4835d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - &quot;m%&quot;</span></div><a class="self" href="#s-b8d4835d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a7226495"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - &quot;m/&quot;</span></div><a class="self" href="#s-a7226495" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3ba54813"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - &quot;m/a&quot;</span></div><a class="self" href="#s-3ba54813" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e6caf7d0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - &quot;m&amp;&quot;</span></div><a class="self" href="#s-e6caf7d0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0c0a16f1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - &quot;m!&quot;</span></div><a class="self" href="#s-0c0a16f1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f457ddfa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - &quot;*&quot;</span></div><a class="self" href="#s-f457ddfa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4f30f888"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - &quot;*.*&quot;</span></div><a class="self" href="#s-4f30f888" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4ccbcd79"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - &quot;^m&quot;</span></div><a class="self" href="#s-4ccbcd79" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8e487841"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid keyPath - &quot;/m/&quot;</span></div><a class="self" href="#s-8e487841" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

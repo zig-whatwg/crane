@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../fetch/"><code>fetch/</code></a></li><li><a href="../../../../fetch/api/"><code>api/</code></a></li><li><a href="../../../../fetch/api/response/"><code>response/</code></a></li><li aria-current="page"><code>response-<wbr>clone.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>response-<wbr>clone.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="fetch/api/response/response-clone.any.js">
-<p class="figures-main"><span class="fg-pass">63</span><span class="fg-of"> / 63</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">84</span><span class="fg-of"> / 84</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/api/response/response-clone.any.js"><code>fetch/<wbr>api/<wbr>response/<wbr>response-<wbr>clone.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -83,6 +83,32 @@
 <li class="sub s-pass" id="s-756ec0d5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response clone use structureClone for teed ReadableStreams (Float32Arraychunk)</span></div><a class="self" href="#s-756ec0d5" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-eaf582a1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response clone use structureClone for teed ReadableStreams (Float64Arraychunk)</span></div><a class="self" href="#s-eaf582a1" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-093a6314"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response clone use structureClone for teed ReadableStreams (DataViewchunk)</span></div><a class="self" href="#s-093a6314" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/response/response-clone.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>21</b> / 21</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-aa2310bf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check Response&#39;s clone with default values, without body</span></div><a class="self" href="#s-aa2310bf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b2425870"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check Response&#39;s clone has the expected attribute values</span></div><a class="self" href="#s-b2425870" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-88224951"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check original response&#39;s body after cloning</span></div><a class="self" href="#s-88224951" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-32b621c8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check cloned response&#39;s body</span></div><a class="self" href="#s-32b621c8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9bf8f0b1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cannot clone a disturbed response</span></div><a class="self" href="#s-9bf8f0b1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-32dffaf8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cloned responses should provide the same data</span></div><a class="self" href="#s-32dffaf8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-aac8a914"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cancelling stream should not affect cloned one</span></div><a class="self" href="#s-aac8a914" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-be44ef98"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response clone use structureClone for teed ReadableStreams (Int8Arraychunk)</span></div><a class="self" href="#s-be44ef98" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d7f02d2a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response clone use structureClone for teed ReadableStreams (Int16Arraychunk)</span></div><a class="self" href="#s-d7f02d2a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d8315e74"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response clone use structureClone for teed ReadableStreams (Int32Arraychunk)</span></div><a class="self" href="#s-d8315e74" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3225ae00"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response clone use structureClone for teed ReadableStreams (ArrayBufferchunk)</span></div><a class="self" href="#s-3225ae00" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b4e35976"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response clone use structureClone for teed ReadableStreams (Uint8Arraychunk)</span></div><a class="self" href="#s-b4e35976" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-35d63356"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response clone use structureClone for teed ReadableStreams (Uint8ClampedArraychunk)</span></div><a class="self" href="#s-35d63356" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9726df22"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response clone use structureClone for teed ReadableStreams (Uint16Arraychunk)</span></div><a class="self" href="#s-9726df22" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3563a4da"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response clone use structureClone for teed ReadableStreams (Uint32Arraychunk)</span></div><a class="self" href="#s-3563a4da" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e1ab71ec"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response clone use structureClone for teed ReadableStreams (BigInt64Arraychunk)</span></div><a class="self" href="#s-e1ab71ec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-75a45739"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response clone use structureClone for teed ReadableStreams (BigUint64Arraychunk)</span></div><a class="self" href="#s-75a45739" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7d2fe6db"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response clone use structureClone for teed ReadableStreams (Float16Arraychunk)</span></div><a class="self" href="#s-7d2fe6db" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9d26079d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response clone use structureClone for teed ReadableStreams (Float32Arraychunk)</span></div><a class="self" href="#s-9d26079d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0c08902d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response clone use structureClone for teed ReadableStreams (Float64Arraychunk)</span></div><a class="self" href="#s-0c08902d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dfe9886d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Check response clone use structureClone for teed ReadableStreams (DataViewchunk)</span></div><a class="self" href="#s-dfe9886d" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

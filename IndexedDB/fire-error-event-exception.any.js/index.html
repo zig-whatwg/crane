@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../IndexedDB/"><code>IndexedDB/</code></a></li><li aria-current="page"><code>fire-<wbr>error-<wbr>event-<wbr>exception.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>fire-<wbr>error-<wbr>event-<wbr>exception.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="IndexedDB/fire-error-event-exception.any.js">
-<p class="figures-main"><span class="fg-pass">51</span><span class="fg-of"> / 51</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">68</span><span class="fg-of"> / 68</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/IndexedDB/fire-error-event-exception.any.js"><code>IndexedDB/<wbr>fire-<wbr>error-<wbr>event-<wbr>exception.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -75,6 +75,28 @@
 <li class="sub s-pass" id="s-65c501ec"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Exception in error event listener on connection</span></div><a class="self" href="#s-65c501ec" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-50fa10d0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Exception in second error event listener on connection</span></div><a class="self" href="#s-50fa10d0" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-7bf5446b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Exception in first error event listener on connection, transaction active in second</span></div><a class="self" href="#s-7bf5446b" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/fire-error-event-exception.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>17</b> / 17</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-9d6b003f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Exception in error event handler on request</span></div><a class="self" href="#s-9d6b003f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e659c513"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Exception in error event handler on request, with preventDefault</span></div><a class="self" href="#s-e659c513" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4498e06a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Exception in error event listener on request</span></div><a class="self" href="#s-4498e06a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1adb23f7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Exception in error event listener (&quot;handleEvent&quot; lookup) on request</span></div><a class="self" href="#s-1adb23f7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-56a4ae3e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Exception in error event listener (non-callable &quot;handleEvent&quot;) on request</span></div><a class="self" href="#s-56a4ae3e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dbc5e823"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Exception in second error event listener on request</span></div><a class="self" href="#s-dbc5e823" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1fbf6cd4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Exception in first error event listener on request, transaction active in second</span></div><a class="self" href="#s-1fbf6cd4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-78f3f744"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Exception in error event handler on transaction</span></div><a class="self" href="#s-78f3f744" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-19646922"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Exception in error event handler on transaction, with preventDefault</span></div><a class="self" href="#s-19646922" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7edf9a92"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Exception in error event listener on transaction</span></div><a class="self" href="#s-7edf9a92" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-729b3024"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Exception in second error event listener on transaction</span></div><a class="self" href="#s-729b3024" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9781c483"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Exception in first error event listener on transaction, transaction active in second</span></div><a class="self" href="#s-9781c483" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-93ea1377"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Exception in error event handler on connection</span></div><a class="self" href="#s-93ea1377" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bf843887"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Exception in error event handler on connection, with preventDefault</span></div><a class="self" href="#s-bf843887" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-039ec9c6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Exception in error event listener on connection</span></div><a class="self" href="#s-039ec9c6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a8c87a4e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Exception in second error event listener on connection</span></div><a class="self" href="#s-a8c87a4e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b1066869"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Exception in first error event listener on connection, transaction active in second</span></div><a class="self" href="#s-b1066869" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

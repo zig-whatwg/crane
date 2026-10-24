@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../streams/"><code>streams/</code></a></li><li><a href="../../../streams/transform-streams/"><code>transform-<wbr>streams/</code></a></li><li aria-current="page"><code>terminate.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>terminate.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="streams/transform-streams/terminate.any.js">
-<p class="figures-main"><span class="fg-pass">18</span><span class="fg-of"> / 18</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">24</span><span class="fg-of"> / 24</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/streams/transform-streams/terminate.any.js"><code>streams/<wbr>transform-<wbr>streams/<wbr>terminate.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -53,6 +53,17 @@
 <li class="sub s-pass" id="s-0bfb7f5f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">controller.error() after controller.terminate() with queued chunk should error the readable</span></div><a class="self" href="#s-0bfb7f5f" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-ad8588db"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">controller.error() after controller.terminate() without queued chunk should do nothing</span></div><a class="self" href="#s-ad8588db" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-e6a22042"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">controller.terminate() inside flush() should not prevent writer.close() from succeeding</span></div><a class="self" href="#s-e6a22042" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/streams/transform-streams/terminate.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>6</b> / 6</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-9607b848"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">controller.terminate() should error pipeTo()</span></div><a class="self" href="#s-9607b848" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-820c79a8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">controller.terminate() should prevent remaining chunks from being processed</span></div><a class="self" href="#s-820c79a8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-22b26615"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">controller.enqueue() should throw after controller.terminate()</span></div><a class="self" href="#s-22b26615" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0bcec91d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">controller.error() after controller.terminate() with queued chunk should error the readable</span></div><a class="self" href="#s-0bcec91d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3888c789"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">controller.error() after controller.terminate() without queued chunk should do nothing</span></div><a class="self" href="#s-3888c789" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-402486c2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">controller.terminate() inside flush() should not prevent writer.close() from succeeding</span></div><a class="self" href="#s-402486c2" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

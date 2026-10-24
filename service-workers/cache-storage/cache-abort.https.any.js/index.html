@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../service-workers/"><code>service-<wbr>workers/</code></a></li><li><a href="../../../service-workers/cache-storage/"><code>cache-<wbr>storage/</code></a></li><li aria-current="page"><code>cache-<wbr>abort.<wbr>https.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>cache-<wbr>abort.<wbr>https.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="service-workers/cache-storage/cache-abort.https.any.js">
-<p class="figures-main"><span class="fg-pass">27</span><span class="fg-of"> / 27</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">36</span><span class="fg-of"> / 36</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/service-workers/cache-storage/cache-abort.https.any.js"><code>service-<wbr>workers/<wbr>cache-<wbr>storage/<wbr>cache-<wbr>abort.<wbr>https.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -59,6 +59,20 @@
 <li class="sub s-pass" id="s-c5b4ce6f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">addAll() on an already-aborted request should reject with AbortError</span></div><a class="self" href="#s-c5b4ce6f" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-36afbf0b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">addAll() synchronously followed by abort should reject with AbortError</span></div><a class="self" href="#s-36afbf0b" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-284cd064"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">addAll() followed by abort after headers received should reject with AbortError</span></div><a class="self" href="#s-284cd064" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-abort.https.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>9</b> / 9</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-60027426"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">put() on an already-aborted request should reject with AbortError</span></div><a class="self" href="#s-60027426" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a7034395"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">put() synchronously followed by abort should reject with AbortError</span></div><a class="self" href="#s-a7034395" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-52c98073"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">put() followed by abort after headers received should reject with AbortError</span></div><a class="self" href="#s-52c98073" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9ebc9209"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">add() on an already-aborted request should reject with AbortError</span></div><a class="self" href="#s-9ebc9209" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5e2482b1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">add() synchronously followed by abort should reject with AbortError</span></div><a class="self" href="#s-5e2482b1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b401233b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">add() followed by abort after headers received should reject with AbortError</span></div><a class="self" href="#s-b401233b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-294a3c65"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">addAll() on an already-aborted request should reject with AbortError</span></div><a class="self" href="#s-294a3c65" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1ecadadb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">addAll() synchronously followed by abort should reject with AbortError</span></div><a class="self" href="#s-1ecadadb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-14c55ba9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">addAll() followed by abort after headers received should reject with AbortError</span></div><a class="self" href="#s-14c55ba9" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

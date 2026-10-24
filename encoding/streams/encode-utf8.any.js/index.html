@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../encoding/"><code>encoding/</code></a></li><li><a href="../../../encoding/streams/"><code>streams/</code></a></li><li aria-current="page"><code>encode-<wbr>utf8.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>encode-<wbr>utf8.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="encoding/streams/encode-utf8.any.js">
-<p class="figures-main"><span class="fg-pass">57</span><span class="fg-of"> / 57</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">76</span><span class="fg-of"> / 76</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/encoding/streams/encode-utf8.any.js"><code>encoding/<wbr>streams/<wbr>encode-<wbr>utf8.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -79,6 +79,30 @@
 <li class="sub s-pass" id="s-c23a8a83"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a trailing empty chunk should be ignored</span></div><a class="self" href="#s-c23a8a83" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-2adf6aae"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a plain ASCII chunk should be converted</span></div><a class="self" href="#s-2adf6aae" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-c97ac7da"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">characters in the ISO-8859-1 range should be encoded correctly</span></div><a class="self" href="#s-c97ac7da" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/encoding/streams/encode-utf8.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>19</b> / 19</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-87080022"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">encoding one string of UTF-8 should give one complete chunk</span></div><a class="self" href="#s-87080022" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3886094c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a character split between chunks should be correctly encoded</span></div><a class="self" href="#s-3886094c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0bb6c32c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a character following one split between chunks should be correctly encoded</span></div><a class="self" href="#s-0bb6c32c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6e883693"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">two consecutive astral characters each split down the middle should be correctly reassembled</span></div><a class="self" href="#s-6e883693" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fa4cf52d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">two consecutive astral characters each split down the middle with an invalid surrogate in the middle should be correctly encoded</span></div><a class="self" href="#s-fa4cf52d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a3873943"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a stream ending in a leading surrogate should emit a replacement character as a final chunk</span></div><a class="self" href="#s-a3873943" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5695656d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">an unmatched surrogate at the end of a chunk followed by an astral character in the next chunk should be replaced with the replacement character at the start of the next output chunk</span></div><a class="self" href="#s-5695656d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-72bf2afb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">an unmatched surrogate at the end of a chunk followed by an ascii character in the next chunk should be replaced with the replacement character at the start of the next output chunk</span></div><a class="self" href="#s-72bf2afb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ed5547f1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">an unmatched surrogate at the end of a chunk followed by a plane 1 character split into two chunks should result in the encoded plane 1 character appearing in the last output chunk</span></div><a class="self" href="#s-ed5547f1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8461f0ff"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">two leading chunks should result in two replacement characters</span></div><a class="self" href="#s-8461f0ff" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ffe0aaca"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a non-terminal unpaired leading surrogate should immediately be replaced</span></div><a class="self" href="#s-ffe0aaca" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ce964af7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a terminal unpaired trailing surrogate should immediately be replaced</span></div><a class="self" href="#s-ce964af7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-04f18c7f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a leading surrogate chunk should be carried past empty chunks</span></div><a class="self" href="#s-04f18c7f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1bbab76b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a leading surrogate chunk should error when it is clear it didn&#39;t form a pair</span></div><a class="self" href="#s-1bbab76b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-452e9c33"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">an empty string should result in no output chunk</span></div><a class="self" href="#s-452e9c33" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-69ec5cc2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a leading empty chunk should be ignored</span></div><a class="self" href="#s-69ec5cc2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-81865f16"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a trailing empty chunk should be ignored</span></div><a class="self" href="#s-81865f16" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4e3c7e69"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">a plain ASCII chunk should be converted</span></div><a class="self" href="#s-4e3c7e69" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-35f84cf3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">characters in the ISO-8859-1 range should be encoded correctly</span></div><a class="self" href="#s-35f84cf3" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

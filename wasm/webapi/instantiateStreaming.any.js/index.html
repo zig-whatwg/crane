@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../wasm/"><code>wasm/</code></a></li><li><a href="../../../wasm/webapi/"><code>webapi/</code></a></li><li aria-current="page"><code>instantiateStreaming.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>instantiateStreaming.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="wasm/webapi/instantiateStreaming.any.js">
-<p class="figures-main"><span class="fg-pass">75</span><span class="fg-of"> / 75</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">100</span><span class="fg-of"> / 100</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/webapi/instantiateStreaming.any.js"><code>wasm/<wbr>webapi/<wbr>instantiateStreaming.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -91,6 +91,36 @@
 <li class="sub s-pass" id="s-e4eefccc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Multiple i64 arguments</span></div><a class="self" href="#s-e4eefccc" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-b25ce05a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">stray argument</span></div><a class="self" href="#s-b25ce05a" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-b00054b3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Synchronous options handling</span></div><a class="self" href="#s-b00054b3" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/wasm/webapi/instantiateStreaming.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>25</b> / 25</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-156ab170"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Empty module without imports argument</span></div><a class="self" href="#s-156ab170" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e1c412fe"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Empty module with undefined imports argument</span></div><a class="self" href="#s-e1c412fe" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b6c1d57d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Empty module with empty imports argument</span></div><a class="self" href="#s-b6c1d57d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e542da6d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">getter order for imports object</span></div><a class="self" href="#s-e542da6d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a34a6257"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">imports</span></div><a class="self" href="#s-a34a6257" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3356eaf1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">imports with empty module names</span></div><a class="self" href="#s-3356eaf1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bc54b3ac"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">imports with empty names</span></div><a class="self" href="#s-bc54b3ac" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2a10b04b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">exports with empty name: function</span></div><a class="self" href="#s-2a10b04b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b088de8f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">exports with empty name: table</span></div><a class="self" href="#s-b088de8f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5e10de08"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">exports with empty name: global</span></div><a class="self" href="#s-5e10de08" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b878c9b7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">No imports</span></div><a class="self" href="#s-b878c9b7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9f571027"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">exports and imports</span></div><a class="self" href="#s-9f571027" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ac708638"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">i64 exports and imports</span></div><a class="self" href="#s-ac708638" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2a9a10fd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">import with i32-returning function</span></div><a class="self" href="#s-2a9a10fd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8abe9baa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">import with function that takes and returns i32</span></div><a class="self" href="#s-8abe9baa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bf1abfbd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">import with i64-returning function</span></div><a class="self" href="#s-bf1abfbd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-260d21f4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">import with function that takes and returns i64</span></div><a class="self" href="#s-260d21f4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bd697958"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">import with i32-taking function</span></div><a class="self" href="#s-bd697958" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6cc8229e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">import with i64-taking function</span></div><a class="self" href="#s-6cc8229e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-eafdfddd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">export i64-returning function</span></div><a class="self" href="#s-eafdfddd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0d4e0a86"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">i32 mutable WebAssembly.Global import</span></div><a class="self" href="#s-0d4e0a86" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f263707c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">i64 mutable WebAssembly.Global import</span></div><a class="self" href="#s-f263707c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c77b90df"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Multiple i64 arguments</span></div><a class="self" href="#s-c77b90df" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3689cb14"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">stray argument</span></div><a class="self" href="#s-3689cb14" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-03dfcec5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Synchronous options handling</span></div><a class="self" href="#s-03dfcec5" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../IndexedDB/"><code>IndexedDB/</code></a></li><li aria-current="page"><code>idbfactory_<wbr>open.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>idbfactory_<wbr>open.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="IndexedDB/idbfactory_open.any.js">
-<p class="figures-main"><span class="fg-pass">87</span><span class="fg-of"> / 87</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">116</span><span class="fg-of"> / 116</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/IndexedDB/idbfactory_open.any.js"><code>IndexedDB/<wbr>idbfactory_<wbr>open.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -99,6 +99,40 @@
 <li class="sub s-pass" id="s-4d227bfa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBFactory.open() - error in upgradeneeded resets db</span></div><a class="self" href="#s-4d227bfa" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-f202b8fe"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBFactory.open() - second open&#39;s transaction is available to get objectStores</span></div><a class="self" href="#s-f202b8fe" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-6406aa52"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBFactory.open() - upgradeneeded gets VersionChangeEvent</span></div><a class="self" href="#s-6406aa52" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/idbfactory_open.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>29</b> / 29</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-edef3aa0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBFactory.open() - request has no source</span></div><a class="self" href="#s-edef3aa0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-67145da3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBFactory.open() - database &#39;name&#39; and &#39;version&#39; are correctly set</span></div><a class="self" href="#s-67145da3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ed355a0a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBFactory.open() - no version opens current database</span></div><a class="self" href="#s-ed355a0a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4d91cd84"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBFactory.open() - new database has default version</span></div><a class="self" href="#s-4d91cd84" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c3b917e1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBFactory.open() - new database is empty</span></div><a class="self" href="#s-c3b917e1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-34b723ec"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBFactory.open() - open database with a lower version than current</span></div><a class="self" href="#s-34b723ec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dcb8b516"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBFactory.open() - open database with a higher version than current</span></div><a class="self" href="#s-dcb8b516" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6b92fbef"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBFactory.open() - error in version change transaction aborts open</span></div><a class="self" href="#s-6b92fbef" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0ea9a8f5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling open() with version argument -1 should throw TypeError.</span></div><a class="self" href="#s-0ea9a8f5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-25a6cb31"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling open() with version argument -0.5 should throw TypeError.</span></div><a class="self" href="#s-25a6cb31" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2993a861"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling open() with version argument 0 should throw TypeError.</span></div><a class="self" href="#s-2993a861" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6755cca7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling open() with version argument 0.5 should throw TypeError.</span></div><a class="self" href="#s-6755cca7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bd41251e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling open() with version argument 0.8 should throw TypeError.</span></div><a class="self" href="#s-bd41251e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9bc863fb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling open() with version argument 9007199254740992 should throw TypeError.</span></div><a class="self" href="#s-9bc863fb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e43dd3bd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling open() with version argument NaN should throw TypeError.</span></div><a class="self" href="#s-e43dd3bd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-646d8b5a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling open() with version argument Infinity should throw TypeError.</span></div><a class="self" href="#s-646d8b5a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-998a20e1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling open() with version argument -Infinity should throw TypeError.</span></div><a class="self" href="#s-998a20e1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0f17b784"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling open() with version argument &quot;foo&quot; should throw TypeError.</span></div><a class="self" href="#s-0f17b784" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c126036b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling open() with version argument null should throw TypeError.</span></div><a class="self" href="#s-c126036b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c84c456e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling open() with version argument false should throw TypeError.</span></div><a class="self" href="#s-c84c456e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e57f3840"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling open() with version argument object should throw TypeError.</span></div><a class="self" href="#s-e57f3840" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d169961c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling open() with version argument object (second) should throw TypeError.</span></div><a class="self" href="#s-d169961c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-199b4220"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling open() with version argument object (third) should throw TypeError.</span></div><a class="self" href="#s-199b4220" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c6adaa8f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling open() with version argument 1.5 should not throw.</span></div><a class="self" href="#s-c6adaa8f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-45663a61"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling open() with version argument 9007199254740991 should not throw.</span></div><a class="self" href="#s-45663a61" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e75d30fa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling open() with version argument undefined should not throw.</span></div><a class="self" href="#s-e75d30fa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-41ae6026"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBFactory.open() - error in upgradeneeded resets db</span></div><a class="self" href="#s-41ae6026" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e2d147e7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBFactory.open() - second open&#39;s transaction is available to get objectStores</span></div><a class="self" href="#s-e2d147e7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6ddc1ad8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBFactory.open() - upgradeneeded gets VersionChangeEvent</span></div><a class="self" href="#s-6ddc1ad8" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

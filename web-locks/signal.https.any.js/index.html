@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../web-locks/"><code>web-<wbr>locks/</code></a></li><li aria-current="page"><code>signal.<wbr>https.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>signal.<wbr>https.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="web-locks/signal.https.any.js">
-<p class="figures-main"><span class="fg-pass">39</span><span class="fg-of"> / 39</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">52</span><span class="fg-of"> / 52</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-locks/signal.https.any.js"><code>web-<wbr>locks/<wbr>signal.<wbr>https.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -67,6 +67,24 @@
 <li class="sub s-pass" id="s-450b4e69"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Abort should process the next pending lock request</span></div><a class="self" href="#s-450b4e69" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-19dce2df"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Aborted promise should reject with the custom abort reason</span></div><a class="self" href="#s-19dce2df" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-a64b1fbf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Aborted promise should reject with the default abort reason</span></div><a class="self" href="#s-a64b1fbf" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/web-locks/signal.https.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>13</b> / 13</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-98461a7b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">The signal option must be an AbortSignal</span></div><a class="self" href="#s-98461a7b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-413b2eed"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Passing an already aborted signal aborts</span></div><a class="self" href="#s-413b2eed" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b8169dea"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Passing an already aborted signal rejects with the custom abort reason.</span></div><a class="self" href="#s-b8169dea" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0b283e09"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Passing an already aborted signal rejects with the default abort reason.</span></div><a class="self" href="#s-0b283e09" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d004312d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">An aborted request results in AbortError</span></div><a class="self" href="#s-d004312d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b954c82d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Abort after a timeout</span></div><a class="self" href="#s-b954c82d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-76387184"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Signal that is not aborted</span></div><a class="self" href="#s-76387184" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b5bd055a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Synchronously signaled abort</span></div><a class="self" href="#s-b5bd055a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-20ca507d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Abort signaled after lock granted</span></div><a class="self" href="#s-20ca507d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-949702e5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Abort signaled after lock released</span></div><a class="self" href="#s-949702e5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-46a252a9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Abort should process the next pending lock request</span></div><a class="self" href="#s-46a252a9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-376f3c16"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Aborted promise should reject with the custom abort reason</span></div><a class="self" href="#s-376f3c16" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-34d0ec8a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Aborted promise should reject with the default abort reason</span></div><a class="self" href="#s-34d0ec8a" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

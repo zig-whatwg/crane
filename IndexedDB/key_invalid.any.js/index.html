@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../IndexedDB/"><code>IndexedDB/</code></a></li><li aria-current="page"><code>key_<wbr>invalid.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>key_<wbr>invalid.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="IndexedDB/key_invalid.any.js">
-<p class="figures-main"><span class="fg-pass">103</span><span class="fg-of"> / 103</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">137</span><span class="fg-of"> / 137</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/IndexedDB/key_invalid.any.js"><code>IndexedDB/<wbr>key_<wbr>invalid.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -110,6 +110,45 @@
 <li class="sub s-pass" id="s-fb110817"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - array indirectly contains self</span></div><a class="self" href="#s-fb110817" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-1a69f47e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - array member contains self</span></div><a class="self" href="#s-1a69f47e" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-304503d8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - proxy of an array</span></div><a class="self" href="#s-304503d8" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/key_invalid.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>34</b> / 34</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-154deaa1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - true</span></div><a class="self" href="#s-154deaa1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6ace8a94"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - false</span></div><a class="self" href="#s-6ace8a94" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0d2a115e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - null</span></div><a class="self" href="#s-0d2a115e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7d160df7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - NaN</span></div><a class="self" href="#s-7d160df7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f50c4055"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - undefined</span></div><a class="self" href="#s-f50c4055" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-aea41982"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - undefined2</span></div><a class="self" href="#s-aea41982" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1332cefb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - function() {}</span></div><a class="self" href="#s-1332cefb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-073218a7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - {}</span></div><a class="self" href="#s-073218a7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cc7ff26d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - { obj: 1 }</span></div><a class="self" href="#s-cc7ff26d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-25677fe5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - Math</span></div><a class="self" href="#s-25677fe5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-74ebbf06"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - self</span></div><a class="self" href="#s-74ebbf06" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7286fd0f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - {length:0,constructor:Array}</span></div><a class="self" href="#s-7286fd0f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-aa285a7b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - Array clone’s instance</span></div><a class="self" href="#s-aa285a7b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-52db31ea"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - Array (object)</span></div><a class="self" href="#s-52db31ea" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c798fc8e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - String (object)</span></div><a class="self" href="#s-c798fc8e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-fc482ef7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - new String()</span></div><a class="self" href="#s-fc482ef7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-53eb5821"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - new Number()</span></div><a class="self" href="#s-53eb5821" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-56f6befa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - new Boolean()</span></div><a class="self" href="#s-56f6befa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c4414cfa"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - [{}]</span></div><a class="self" href="#s-c4414cfa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-428942d4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - [[], [], [], [[ Date ]]]</span></div><a class="self" href="#s-428942d4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9b895c78"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - [undefined]</span></div><a class="self" href="#s-9b895c78" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c059d8dc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - [,1]</span></div><a class="self" href="#s-c059d8dc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-410bfd4c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - new Date(NaN)</span></div><a class="self" href="#s-410bfd4c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-12c050db"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - new Date(Infinity)</span></div><a class="self" href="#s-12c050db" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1d68a86c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - /foo/</span></div><a class="self" href="#s-1d68a86c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-84d9249d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - new RegExp()</span></div><a class="self" href="#s-84d9249d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6dcf685b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - sparse array</span></div><a class="self" href="#s-6dcf685b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3a39f62b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - sparse array 2</span></div><a class="self" href="#s-3a39f62b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-54f615fc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - [[1], [3], [7], [[ sparse array ]]]</span></div><a class="self" href="#s-54f615fc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-71eece47"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - [1,2,3,,]</span></div><a class="self" href="#s-71eece47" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7e6606c3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - array directly contains self</span></div><a class="self" href="#s-7e6606c3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cc79bb48"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - array indirectly contains self</span></div><a class="self" href="#s-cc79bb48" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-27b65447"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - array member contains self</span></div><a class="self" href="#s-27b65447" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b49eaf6e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Invalid key - proxy of an array</span></div><a class="self" href="#s-b49eaf6e" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

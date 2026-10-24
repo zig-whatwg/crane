@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../IndexedDB/"><code>IndexedDB/</code></a></li><li aria-current="page"><code>idbcursor_<wbr>continue_<wbr>objectstore.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>idbcursor_<wbr>continue_<wbr>objectstore.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="IndexedDB/idbcursor_continue_objectstore.any.js">
-<p class="figures-main"><span class="fg-pass">24</span><span class="fg-of"> / 24</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">32</span><span class="fg-of"> / 32</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/IndexedDB/idbcursor_continue_objectstore.any.js"><code>IndexedDB/<wbr>idbcursor_<wbr>continue_<wbr>objectstore.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -57,6 +57,19 @@
 <li class="sub s-pass" id="s-fa427c3c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">If the cursor&#39;s source or effective object store has been deleted, the implementation MUST throw a DOMException of type InvalidStateError</span></div><a class="self" href="#s-fa427c3c" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-4cf6559f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Delete next element, and iterate to it</span></div><a class="self" href="#s-4cf6559f" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-57d8b04a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Add next element, and iterate to it</span></div><a class="self" href="#s-57d8b04a" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/idbcursor_continue_objectstore.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>8</b> / 8</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-1779999c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Iterate to the next record</span></div><a class="self" href="#s-1779999c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3b1087cd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Attempt to pass a key parameter is not a valid key</span></div><a class="self" href="#s-3b1087cd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-41f95e5b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Attempt to iterate to the previous record when the direction is set for the next record</span></div><a class="self" href="#s-41f95e5b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2930c8ec"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Attempt to iterate to the next record when the direction is set for the next record</span></div><a class="self" href="#s-2930c8ec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ac443b0e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Calling continue() should throws an exception TransactionInactiveError when the transaction is not active.</span></div><a class="self" href="#s-ac443b0e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c549274f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">If the cursor&#39;s source or effective object store has been deleted, the implementation MUST throw a DOMException of type InvalidStateError</span></div><a class="self" href="#s-c549274f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3f1d07cf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Delete next element, and iterate to it</span></div><a class="self" href="#s-3f1d07cf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5463c3fe"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Add next element, and iterate to it</span></div><a class="self" href="#s-5463c3fe" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

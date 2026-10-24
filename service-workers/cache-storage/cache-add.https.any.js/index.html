@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../service-workers/"><code>service-<wbr>workers/</code></a></li><li><a href="../../../service-workers/cache-storage/"><code>cache-<wbr>storage/</code></a></li><li aria-current="page"><code>cache-<wbr>add.<wbr>https.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>cache-<wbr>add.<wbr>https.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="service-workers/cache-storage/cache-add.https.any.js">
-<p class="figures-main"><span class="fg-pass">69</span><span class="fg-of"> / 69</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">92</span><span class="fg-of"> / 92</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/service-workers/cache-storage/cache-add.https.any.js"><code>service-<wbr>workers/<wbr>cache-<wbr>storage/<wbr>cache-<wbr>add.<wbr>https.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -87,6 +87,34 @@
 <li class="sub s-pass" id="s-c773acce"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.addAll should succeed when entries differ by vary header</span></div><a class="self" href="#s-c773acce" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-7cccbd10"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.addAll should reject when entries are duplicate by vary header</span></div><a class="self" href="#s-7cccbd10" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-6b64a383"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.addAll should reject when one entry has a vary header matching another entry</span></div><a class="self" href="#s-6b64a383" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/service-workers/cache-storage/cache-add.https.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>23</b> / 23</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-421501c4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.add called with no arguments</span></div><a class="self" href="#s-421501c4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d40b4cd9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.add called with relative URL specified as a string</span></div><a class="self" href="#s-d40b4cd9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3cb24383"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.add called with non-HTTP/HTTPS URL</span></div><a class="self" href="#s-3cb24383" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b9694e00"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.add called with Request object</span></div><a class="self" href="#s-b9694e00" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ac98dce1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.add called with POST request</span></div><a class="self" href="#s-ac98dce1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bee4bbdf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.add called twice with the same Request object</span></div><a class="self" href="#s-bee4bbdf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cccaa582"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.add with request with null body (not consumed)</span></div><a class="self" href="#s-cccaa582" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b77e3e4b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.add with 206 response</span></div><a class="self" href="#s-b77e3e4b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c63f2d3b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.addAll with 206 response</span></div><a class="self" href="#s-c63f2d3b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e569fd4b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.addAll with opaque-filtered 206 response</span></div><a class="self" href="#s-e569fd4b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3183cfd3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.add with request that results in a status of 404</span></div><a class="self" href="#s-3183cfd3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d63792c3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.add with request that results in a status of 500</span></div><a class="self" href="#s-d63792c3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e36c0b9e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.addAll with no arguments</span></div><a class="self" href="#s-e36c0b9e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a375053e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.addAll with a mix of valid and undefined arguments</span></div><a class="self" href="#s-a375053e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-32702b79"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.addAll with an empty array</span></div><a class="self" href="#s-32702b79" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c0824584"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.addAll with string URL arguments</span></div><a class="self" href="#s-c0824584" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a695fa01"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.addAll with Request arguments</span></div><a class="self" href="#s-a695fa01" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b395f4f1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.addAll with a mix of succeeding and failing requests</span></div><a class="self" href="#s-b395f4f1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8b49fdaf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.addAll called with the same Request object specified twice</span></div><a class="self" href="#s-8b49fdaf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-bf90d55c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.addAll should reject when entries differ only by fragment</span></div><a class="self" href="#s-bf90d55c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7b05c627"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.addAll should succeed when entries differ by vary header</span></div><a class="self" href="#s-7b05c627" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d0fcfbc3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.addAll should reject when entries are duplicate by vary header</span></div><a class="self" href="#s-d0fcfbc3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4a883711"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Cache.addAll should reject when one entry has a vary header matching another entry</span></div><a class="self" href="#s-4a883711" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../streams/"><code>streams/</code></a></li><li><a href="../../../streams/writable-streams/"><code>writable-<wbr>streams/</code></a></li><li aria-current="page"><code>general.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>general.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="streams/writable-streams/general.any.js">
-<p class="figures-main"><span class="fg-pass">48</span><span class="fg-of"> / 48</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">64</span><span class="fg-of"> / 64</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/streams/writable-streams/general.any.js"><code>streams/<wbr>writable-<wbr>streams/<wbr>general.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -73,6 +73,27 @@
 <li class="sub s-pass" id="s-ebba0fdf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ready promise should fire before closed on releaseLock</span></div><a class="self" href="#s-ebba0fdf" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-38797a60"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Subclassing WritableStream should work</span></div><a class="self" href="#s-38797a60" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-c6130ab0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">the locked getter should return true if the stream has a writer</span></div><a class="self" href="#s-c6130ab0" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/streams/writable-streams/general.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>16</b> / 16</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-96394512"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">desiredSize on a released writer</span></div><a class="self" href="#s-96394512" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6029cfeb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">desiredSize initial value</span></div><a class="self" href="#s-6029cfeb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-25b5cc79"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">desiredSize on a writer for a closed stream</span></div><a class="self" href="#s-25b5cc79" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2e47ea0f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">desiredSize on a writer for an errored stream</span></div><a class="self" href="#s-2e47ea0f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c759a9a3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ws.getWriter() on a closing WritableStream</span></div><a class="self" href="#s-c759a9a3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2dbe24b2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ws.getWriter() on a closed WritableStream</span></div><a class="self" href="#s-2dbe24b2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f7d281b0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ws.getWriter() on an aborted WritableStream</span></div><a class="self" href="#s-f7d281b0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1c584fc6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ws.getWriter() on an errored WritableStream</span></div><a class="self" href="#s-1c584fc6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d6c9a64f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">closed and ready on a released writer</span></div><a class="self" href="#s-d6c9a64f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cbb9e86f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WritableStream should call underlying sink methods as methods</span></div><a class="self" href="#s-cbb9e86f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6efdc186"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">methods should not not have .apply() or .call() called</span></div><a class="self" href="#s-6efdc186" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-22846602"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">WritableStream&#39;s strategy.size should not be called as a method</span></div><a class="self" href="#s-22846602" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-32503cda"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">redundant releaseLock() is no-op</span></div><a class="self" href="#s-32503cda" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-41cf6913"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">ready promise should fire before closed on releaseLock</span></div><a class="self" href="#s-41cf6913" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-648f26de"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Subclassing WritableStream should work</span></div><a class="self" href="#s-648f26de" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2e1fad79"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">the locked getter should return true if the stream has a writer</span></div><a class="self" href="#s-2e1fad79" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

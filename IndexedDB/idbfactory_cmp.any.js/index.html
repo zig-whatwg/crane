@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../IndexedDB/"><code>IndexedDB/</code></a></li><li aria-current="page"><code>idbfactory_<wbr>cmp.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>idbfactory_<wbr>cmp.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="IndexedDB/idbfactory_cmp.any.js">
-<p class="figures-main"><span class="fg-pass">36</span><span class="fg-of"> / 36</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">48</span><span class="fg-of"> / 48</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/IndexedDB/idbfactory_cmp.any.js"><code>IndexedDB/<wbr>idbfactory_<wbr>cmp.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -65,6 +65,23 @@
 <li class="sub s-pass" id="s-82dcfec3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Compare values of the same length</span></div><a class="self" href="#s-82dcfec3" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-2dd25f9c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Compare values of different lengths</span></div><a class="self" href="#s-2dd25f9c" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-adecd443"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Compare when values in the range of their minimal length are the same</span></div><a class="self" href="#s-adecd443" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/IndexedDB/idbfactory_cmp.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>12</b> / 12</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-eb26488b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBFactory.cmp() - compared keys return correct value</span></div><a class="self" href="#s-eb26488b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-837855df"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBFactory.cmp() - no argument</span></div><a class="self" href="#s-837855df" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7040e0cd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBFactory.cmp() - null</span></div><a class="self" href="#s-7040e0cd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7f0a6319"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">IDBFactory.cmp() - NaN</span></div><a class="self" href="#s-7f0a6319" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8494510f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Array vs. Binary</span></div><a class="self" href="#s-8494510f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8eb17d69"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Binary vs. String</span></div><a class="self" href="#s-8eb17d69" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-03599de3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">String vs. Date</span></div><a class="self" href="#s-03599de3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4114edac"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Date vs. Number</span></div><a class="self" href="#s-4114edac" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a878ed55"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Compare in unsigned octet values (in the range [0, 255])</span></div><a class="self" href="#s-a878ed55" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-64d27484"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Compare values of the same length</span></div><a class="self" href="#s-64d27484" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-78b453df"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Compare values of different lengths</span></div><a class="self" href="#s-78b453df" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6107dcf6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Compare when values in the range of their minimal length are the same</span></div><a class="self" href="#s-6107dcf6" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">

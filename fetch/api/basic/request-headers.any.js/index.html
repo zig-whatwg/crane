@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../fetch/"><code>fetch/</code></a></li><li><a href="../../../../fetch/api/"><code>api/</code></a></li><li><a href="../../../../fetch/api/basic/"><code>basic/</code></a></li><li aria-current="page"><code>request-<wbr>headers.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>request-<wbr>headers.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="fetch/api/basic/request-headers.any.js">
-<p class="figures-main"><span class="fg-pass">75</span><span class="fg-of"> / 75</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">100</span><span class="fg-of"> / 100</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-058d6bb58b</code>, <span class="nowrap">23 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/058d6bb58b"><code>058d6bb58b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c86fb40d16</code>, <span class="nowrap">24 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c86fb40d16"><code>c86fb40d16</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/api/basic/request-headers.any.js"><code>fetch/<wbr>api/<wbr>basic/<wbr>request-<wbr>headers.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -91,6 +91,36 @@
 <li class="sub s-pass" id="s-1d4944c2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with PUT and mode &quot;same-origin&quot; needs an Origin header</span></div><a class="self" href="#s-1d4944c2" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-fc49a062"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with TacO and mode &quot;same-origin&quot; needs an Origin header</span></div><a class="self" href="#s-fc49a062" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-d71fad4e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with TacO and mode &quot;cors&quot; needs an Origin header</span></div><a class="self" href="#s-d71fad4e" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/fetch/api/basic/request-headers.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>25</b> / 25</span></h3>
+<ol class="subtests">
+<li class="sub s-pass" id="s-b3f3f8ae"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with GET</span></div><a class="self" href="#s-b3f3f8ae" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d9317d6c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with HEAD</span></div><a class="self" href="#s-d9317d6c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ed151fa7"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with PUT without body</span></div><a class="self" href="#s-ed151fa7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1f7869d5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with PUT with body</span></div><a class="self" href="#s-1f7869d5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-18bab593"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST without body</span></div><a class="self" href="#s-18bab593" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d0bef245"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with text body</span></div><a class="self" href="#s-d0bef245" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f7b2c80b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with FormData body</span></div><a class="self" href="#s-f7b2c80b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1a33f12f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with URLSearchParams body</span></div><a class="self" href="#s-1a33f12f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3b6e9bde"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with Blob body</span></div><a class="self" href="#s-3b6e9bde" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6e45d976"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with ArrayBuffer body</span></div><a class="self" href="#s-6e45d976" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-43cfdbc6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with Uint8Array body</span></div><a class="self" href="#s-43cfdbc6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-29f42fae"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with Int8Array body</span></div><a class="self" href="#s-29f42fae" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cb2229b5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with Float16Array body</span></div><a class="self" href="#s-cb2229b5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-0b682490"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with Float32Array body</span></div><a class="self" href="#s-0b682490" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9bf6398e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with Float64Array body</span></div><a class="self" href="#s-9bf6398e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f0f30e9b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with DataView body</span></div><a class="self" href="#s-f0f30e9b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-eb13a648"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST with Blob body with mime type</span></div><a class="self" href="#s-eb13a648" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-dad0a6b4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with Chicken</span></div><a class="self" href="#s-dad0a6b4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d7ac94ae"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with Chicken with body</span></div><a class="self" href="#s-d7ac94ae" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-6afd0d23"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with GET and mode &quot;cors&quot; does not need an Origin header</span></div><a class="self" href="#s-6afd0d23" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-e4dfecac"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST and mode &quot;same-origin&quot; needs an Origin header</span></div><a class="self" href="#s-e4dfecac" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-67a0535f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with POST and mode &quot;no-cors&quot; needs an Origin header</span></div><a class="self" href="#s-67a0535f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-06d84445"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with PUT and mode &quot;same-origin&quot; needs an Origin header</span></div><a class="self" href="#s-06d84445" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-9177903e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with TacO and mode &quot;same-origin&quot; needs an Origin header</span></div><a class="self" href="#s-9177903e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ef45ca64"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Fetch with TacO and mode &quot;cors&quot; needs an Origin header</span></div><a class="self" href="#s-ef45ca64" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
