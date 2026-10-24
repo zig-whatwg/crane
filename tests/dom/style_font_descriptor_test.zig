@@ -141,6 +141,79 @@ test "font rule blocks keep descriptor ranges and ignore properties and importan
     try std.testing.expectEqualStrings("", fonts.descriptorValue(&block, "font-weight"));
 }
 
+test "unicode range declarations preserve source tokenization through lists and font rules" {
+    const allocator = std.testing.allocator;
+    const css = @import("dom").style.css;
+    // CSS Syntax 3 §5.5.6 step 8 reparses the original source with the
+    // descriptor-only unicode-range tokenization mode (§5.5.11).
+    const cases = [_]struct { text: []const u8, expected: []const u8 }{
+        .{ .text = "unicode-range: U+41", .expected = "U+41" },
+        .{ .text = "UNICODE-RANGE: U+0-7F /* c */", .expected = "U+0-7F" },
+        .{ .text = "unicode-r\\61nge: U+41, /* c */ U+42", .expected = "U+41, U+42" },
+        .{ .text = "unicode-range: U+41; color: red", .expected = "U+41" },
+        .{ .text = "UnIcOdE-RaNgE: u+0041-005a, U+4??", .expected = "U+41-5A, U+400-4FF" },
+        .{ .text = "unicode-\\72 ange: U+41", .expected = "U+41" },
+        .{ .text = "unicode-range: /* before */ U+41/**/,/* between */U+42 /* after */", .expected = "U+41, U+42" },
+        .{ .text = "unicode-range: U+41 !important; unicode-range: U+42", .expected = "U+42" },
+        .{ .text = "unicode-range: U+41 !/**/important", .expected = "" },
+        .{ .text = "unicode-range: U/**/+41", .expected = "" },
+        .{ .text = "unicode-range: U+/**/41", .expected = "" },
+        .{ .text = "unicode-range: U+4/**/1", .expected = "" },
+        .{ .text = "unicode-range: U+41-/**/42", .expected = "" },
+        .{ .text = "unicode-range: U+ 41", .expected = "" },
+        .{ .text = "unicode-range: \\55+41", .expected = "" },
+    };
+    for (cases) |case| {
+        var block = try fonts.descriptorBlock(allocator, case.text);
+        defer block.deinit();
+        try std.testing.expectEqualStrings(case.expected, fonts.descriptorValue(&block, "unicode-range"));
+
+        const source = try std.fmt.allocPrint(allocator, "@font-face {{{s}}}", .{case.text});
+        defer allocator.free(source);
+        var sheet = try css.rules.parseStyleSheetContents(allocator, source);
+        defer sheet.deinit();
+        try std.testing.expectEqual(@as(usize, 1), sheet.items.len);
+        var font = try fonts.FontRule.fromDeclarations(.{ .allocator = allocator }, sheet.items[0].declarations);
+        defer font.deinit();
+        try std.testing.expectEqualStrings(case.expected, fonts.descriptorValue(&font.block, "unicode-range"));
+    }
+}
+
+test "unicode range retokenization follows important removal and CSS whitespace trimming" {
+    const css = @import("dom").style.css;
+    const allocator = std.testing.allocator;
+    // CSS Syntax 3 §5.5.6 steps 6–8, Q103 addendum: the descriptor's
+    // special tokenization sees the value after !important is removed.
+    for ([_][]const u8{
+        "UNICODE-RANGE: \tU+0-7F /* c */ !important\r\n",
+        "unicode-r\\61nge: U+0-7F /* c */ !/**/IMPORTANT; color: red",
+    }) |source| {
+        const declarations = try css.rules.parseDeclarationList(allocator, source);
+        defer css.rules.freeDeclarationList(allocator, declarations);
+        try std.testing.expectEqualStrings("unicode-range", declarations[0].name);
+        try std.testing.expect(declarations[0].important);
+        try std.testing.expectEqualStrings("U+0-7F /* c */", declarations[0].value);
+        const parsed = (try fonts.parseUnicodeRanges(allocator, declarations[0].value)) orelse return error.MissingUnicodeRange;
+        defer allocator.free(parsed);
+        try std.testing.expectEqual(@as(usize, 1), parsed.len);
+        try std.testing.expectEqual(@as(u21, 0), parsed[0].first);
+        try std.testing.expectEqual(@as(u21, 0x7f), parsed[0].last);
+    }
+}
+
+test "unicode range declaration source allocation failures release partial rules" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, struct {
+        fn exercise(allocator: std.mem.Allocator) !void {
+            const css = @import("dom").style.css;
+            var sheet = try css.rules.parseStyleSheetContents(allocator, "@font-face {font-family: Range; src: url(range.woff2); unicode-range: /* before */ U+41-5A, U+4?? /* after */}");
+            defer sheet.deinit();
+            var font = try fonts.FontRule.fromDeclarations(.{ .allocator = allocator }, sheet.items[0].declarations);
+            defer font.deinit();
+            try std.testing.expectEqualStrings("U+41-5A, U+400-4FF", fonts.descriptorValue(&font.block, "unicode-range"));
+        }
+    }.exercise, .{});
+}
+
 test "font source declarations preserve CSS Syntax bad-url invalidity" {
     const a = std.testing.allocator;
     // Row 117 Q21: src/css/rules.zig currently serializes bad_url as url().

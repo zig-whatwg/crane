@@ -677,32 +677,22 @@ fn skippedFontText() !void {
     const page = browser.current_context orelse return error.NoPage;
     try page.loadHTML("<!doctype html><body><div style='content-visibility:hidden' id=parent>own text<span id=descendant>nested text</span></div></body>", .{ .base_url = "about:blank" });
     const realm = browser.getRealm() orelse return error.NoRealm;
-    const supported = comptime @hasField(dom.style.css.properties.Longhand, "content_visibility");
-    if (!supported) {
-        // DeclarationBlock parsing preserves unsupported properties for
-        // inline read-back; its computed style has no such longhand.
-        const raw = try browser.evaluateScript("document.getElementById('parent').style.getPropertyValue('content-visibility')");
-        defer raw.release();
-        const text = try engine.convertToDOMString(realm, raw.borrow(), std.testing.allocator);
-        defer std.testing.allocator.free(text);
-        try std.testing.expectEqualStrings("hidden", text);
-        const computed = try browser.evaluateScript("getComputedStyle(document.getElementById('parent')).getPropertyValue('content-visibility')");
-        defer computed.release();
-        const computed_text = try engine.convertToDOMString(realm, computed.borrow(), std.testing.allocator);
-        defer std.testing.allocator.free(computed_text);
-        try std.testing.expectEqualStrings("", computed_text);
-    }
+    const computed = try browser.evaluateScript("getComputedStyle(document.getElementById('parent')).getPropertyValue('content-visibility')");
+    defer computed.release();
+    const computed_text = try engine.convertToDOMString(realm, computed.borrow(), std.testing.allocator);
+    defer std.testing.allocator.free(computed_text);
+    try std.testing.expectEqualStrings("hidden", computed_text);
     inline for (.{ "parent", "descendant" }) |id| {
         const value = try browser.evaluateScript("document.getElementById('" ++ id ++ "').firstChild");
         defer value.release();
         const instance = engine.convertToPlatformObject(realm, value.borrow()) orelse return error.NoText;
-        try std.testing.expectEqual(supported, try dom.style.engine.fontStyleForText(dom.instance_bridge.getNodeBase(instance).?) == null);
+        try std.testing.expect(try dom.style.engine.fontStyleForText(dom.instance_bridge.getNodeBase(instance).?) == null);
     }
 }
 
-test "font text under skipped contents waits for row118 content visibility wiring" {
-    // Q47/Q55: the absent longhand leaves the parsed declaration uncomputed
-    // and both text styles eligible. Pin that exact gap; when row118's
-    // longhand lands, both must be skipped through its applicability helper.
+test "font text under skipped contents excludes own and descendant text" {
+    // Q47/Q55's target assertions are active after row118 e72b8c09:
+    // the container keeps its box, but its own and descendant text are
+    // skipped through the shared CSS Contain 2 applicability helper.
     try fresh(skippedFontText);
 }

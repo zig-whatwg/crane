@@ -1457,10 +1457,10 @@ pub fn fontStyleForGeneratedText(element: *runtime.Instance, style: *const Compu
     return if (contentsSkipped(element, origin)) null else style;
 }
 
-fn contentsSkipped(_: *runtime.Instance, _: *const ComputedStyle) bool {
-    // TODO(row 118 content_visibility.zig): the integrator wires the pure
-    // applicability helper at merge (Q47); this branch has no longhand yet.
-    return false;
+fn contentsSkipped(element: *runtime.Instance, style: *const ComputedStyle) bool {
+    // Q47 merge wiring: row118 e72b8c09 supplies CSS Contain 2 §4's
+    // applicability check, including the originating element's own text.
+    return @import("content_visibility.zig").contentsSkipped(element, style);
 }
 
 /// DOM "assign slottables" changed `slot`'s assigned nodes: every cached

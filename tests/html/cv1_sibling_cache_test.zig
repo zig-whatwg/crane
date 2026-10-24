@@ -10,6 +10,9 @@ const Before = struct {
     inline_block: @FieldType(state.ElementStyle, "inline_block"),
     inline_state: @FieldType(state.ElementStyle, "inline_state"),
     updating: bool,
+    // Row117 MERGE-MAIN REQUIRED ruling (2026-10-24): this independent
+    // field is present on both sides; the bound measures sibling_counts only.
+    background_hint: @FieldType(state.ElementStyle, "background_hint"),
     cached: @FieldType(state.ElementStyle, "cached"),
     pseudo: @FieldType(state.ElementStyle, "pseudo"),
 };

@@ -427,18 +427,19 @@ const Parser = struct {
     fn consumeDeclaration(self: *Parser) Allocator.Error!?Declaration {
         var list: std.ArrayList(Token) = .empty;
         defer list.deinit(self.allocator);
-        while (true) {
+        const source_end = while (true) {
             const t = self.peek();
             switch (t.token_type) {
-                .eof, .right_brace => break,
+                .eof => break self.tokens.input.len,
+                .right_brace => break self.tokens.pos - t.value.len,
                 .semicolon => {
                     _ = self.next();
-                    break;
+                    break self.tokens.pos - t.value.len;
                 },
                 else => try self.collectComponentValue(&list),
             }
-        }
-        return self.declarationFrom(list.items);
+        };
+        return self.declarationFrom(list.items, source_end);
     }
 
     /// A nested "consume a qualified rule" with `;` as its stop token,
@@ -496,7 +497,7 @@ const Parser = struct {
     /// its trailing `!important` taken off, whitespace trimmed. A value that
     /// holds a top-level {}-block beside anything else is no declaration,
     /// unless the property is a custom one.
-    fn declarationFrom(self: *Parser, list: []const Token) Allocator.Error!?Declaration {
+    fn declarationFrom(self: *Parser, list: []const Token, source_end: usize) Allocator.Error!?Declaration {
         if (list.len == 0 or list[0].token_type != .ident) return null;
         const raw_name = list[0].value;
         var i: usize = 1;
@@ -530,6 +531,23 @@ const Parser = struct {
                 self.allocator.free(name);
                 return null;
             }
+        }
+        if (std.mem.eql(u8, name, "unicode-range")) {
+            // CSS Syntax 3 §5.5.6 step 8 consumes unicode ranges "from the
+            // segment of the original source text string" (row117 Q103).
+            // The descriptor consumer re-tokenizes it in §4.3.14's mode;
+            // generic serialization would turn U+41 into U/**/+41. Keep
+            // comments intact: they may separate ranges, but split U+ is
+            // invalid. Apply steps 6–7's !important and whitespace removal
+            // to this same source span before handing it to the consumer.
+            const input = self.tokens.input;
+            const start = @intFromPtr(list[i - 1].value.ptr) - @intFromPtr(input.ptr) + 1;
+            const stop = if (important)
+                @intFromPtr(list[end].value.ptr) - @intFromPtr(input.ptr)
+            else
+                source_end;
+            const source = std.mem.trim(u8, input[start..stop], " \t\n\r\x0c");
+            return .{ .name = name, .value = try self.allocator.dupe(u8, source), .important = important };
         }
         var value: Serializer = .{ .allocator = self.allocator };
         errdefer value.deinit();
