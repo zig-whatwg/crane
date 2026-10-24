@@ -1343,6 +1343,10 @@ fn lengthPercentage(options: ParseOptions, stream: *Stream, flags: LengthFlags) 
         .number => blk: {
             const n = t.numeric_value orelse return null;
             if (n == 0) break :blk Length.px(0);
+            // SVG2 §4.2 steps 3–4: a presentation attribute admits a
+            // number wherever a length occurs, including nested grammars.
+            // Q11's browser probe limits this mode to lengths, not angles.
+            if (options.svg_presentation) break :blk Length.px(n);
             // Quirks 3.2 "the unitless length quirk".
             if (options.quirks and flags.quirky) break :blk Length.px(n);
             return null;
