@@ -63,12 +63,11 @@ fn shorthandImages(allocator: std.mem.Allocator) !void {
     try expectResolved(style, .background_color, "rgb(255, 0, 0)", allocator);
     var computed_shorthand: std.ArrayList(u8) = .empty;
     defer computed_shorthand.deinit(allocator);
-    const assigned = [_]css.properties.Assigned{
-        .{ .value = style.get(.background_image) },
-        .{ .value = style.get(.background_color) },
-    };
-    try testing.expect(try css.properties.serializeShorthand(.background, &assigned, .computed, &computed_shorthand, allocator));
-    try testing.expectEqualStrings("rgb(255, 0, 0) image-set(url(\"one\") 1dppx, url(\"two\") 2dppx), url(\"dark\")", computed_shorthand.items);
+    const longhands = css.properties.Shorthand.background.longhands();
+    var assigned: [css.properties.max_assignments]css.properties.Assigned = undefined;
+    for (longhands, 0..) |longhand, index| assigned[index] = .{ .value = style.get(longhand) };
+    try testing.expect(try css.properties.serializeShorthand(.background, assigned[0..longhands.len], .computed, &computed_shorthand, allocator));
+    try testing.expectEqualStrings("image-set(url(\"one\") 1dppx, url(\"two\") 2dppx) repeat scroll 0% 0% / auto padding-box border-box, rgb(255, 0, 0) url(\"dark\") repeat scroll 0% 0% / auto padding-box border-box", computed_shorthand.items);
 }
 
 test "background shorthand keeps typed image candidates instead of flattening them" {

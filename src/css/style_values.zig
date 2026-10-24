@@ -811,6 +811,7 @@ pub const Value = union(enum) {
     image_keyword: @import("image_keywords.zig").Keyword,
     image_repeat: @import("image_keywords.zig").Repeat,
     image: *@import("image_values.zig").Image,
+    image_axis: *@import("position_values.zig").PositionAxis,
 
     /// Borrowed URL candidates in serialization order, valid while this
     /// value is retained. No sheet or document lookup is needed to use them.
@@ -857,6 +858,7 @@ pub const Value = union(enum) {
         if (self == .image_quad) return self.image_quad.ref();
         if (self == .layers) return self.layers.ref();
         if (self == .image) return self.image.ref();
+        if (self == .image_axis) return self.image_axis.ref();
         if (self.sharedText()) |t| t.ref();
     }
 
@@ -884,6 +886,7 @@ pub const Value = union(enum) {
         if (self == .image_quad) return self.image_quad.unref();
         if (self == .layers) return self.layers.unref();
         if (self == .image) return self.image.unref();
+        if (self == .image_axis) return self.image_axis.unref();
         if (self.sharedText()) |t| t.unref();
     }
 
@@ -937,6 +940,7 @@ pub const Value = union(enum) {
             .image_keyword => |v| v == b.image_keyword,
             .image_repeat => |v| std.meta.eql(v, b.image_repeat),
             .image => |v| v.eql(b.image),
+            .image_axis => |v| v.eql(b.image_axis),
         };
     }
 
@@ -983,6 +987,7 @@ pub const Value = union(enum) {
             .image_quad => |v| v.needsUnavailableMetrics(geometry_length),
             .layers => |v| v.needsUnavailableMetrics(geometry_length),
             .image => |v| v.needsUnavailableMetrics(geometry_length),
+            .image_axis => |v| v.needsUnavailableMetrics(geometry_length),
         };
     }
 
@@ -1025,6 +1030,7 @@ pub const Value = union(enum) {
             .image_quad => |v| v.needsTreeCounts(),
             .layers => |v| v.needsTreeCounts(),
             .image => |v| v.needsTreeCounts(),
+            .image_axis => |v| v.needsTreeCounts(),
         };
     }
 
@@ -1065,6 +1071,7 @@ pub const Value = union(enum) {
             .image_quad => |v| v.needsRandomBase(),
             .layers => |v| v.needsRandomBase(),
             .image => |v| v.needsRandomBase(),
+            .image_axis => |v| v.needsRandomBase(),
         };
     }
 

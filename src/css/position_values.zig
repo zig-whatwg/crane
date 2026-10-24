@@ -345,3 +345,139 @@ fn orderAxes(input: [2]Anchor) ?Ordered {
     if ((y == first or y == .neutral) and (x == second or x == .neutral)) return .{ .axes = .{ input[1], input[0] }, .logical = logical };
     return null;
 }
+/// Backgrounds4 §2.6: one independently mutable axis. The pair parser and
+/// this component share Anchor/Offset and the same logical-edge conversion.
+pub const PositionAxis = struct {
+    refs: std.atomic.Value(u32) = .init(1),
+    allocator: Allocator,
+    data: union(enum) { specified: Anchor, computed: Offset },
+
+    pub fn create(allocator: Allocator, anchor: Anchor) Allocator.Error!*PositionAxis {
+        const result = try allocator.create(PositionAxis);
+        result.* = .{ .allocator = allocator, .data = .{ .specified = anchor } };
+        if (anchor.offset) |v| v.retain();
+        return result;
+    }
+    pub fn ref(self: *PositionAxis) void {
+        _ = self.refs.fetchAdd(1, .monotonic);
+    }
+    pub fn unref(self: *PositionAxis) void {
+        if (self.refs.fetchSub(1, .acq_rel) != 1) return;
+        switch (self.data) {
+            .specified => |a| if (a.offset) |v| v.release(),
+            .computed => |o| o.value.release(),
+        }
+        self.allocator.destroy(self);
+    }
+    pub fn eql(self: *const PositionAxis, other: *const PositionAxis) bool {
+        if (self == other) return true;
+        if (std.meta.activeTag(self.data) != std.meta.activeTag(other.data)) return false;
+        return switch (self.data) {
+            .specified => |a| blk: {
+                const b = other.data.specified;
+                if (a.edge != b.edge) break :blk false;
+                if (a.offset) |v| break :blk if (b.offset) |w| v.eql(w) else false;
+                break :blk b.offset == null;
+            },
+            .computed => |o| o.complement == other.data.computed.complement and o.value.eql(other.data.computed.value),
+        };
+    }
+    pub fn needsUnavailableMetrics(self: *const PositionAxis, geometry_length: bool) bool {
+        return switch (self.data) {
+            .specified => |anchor| if (anchor.offset) |value| value.needsUnavailableMetrics(geometry_length) else false,
+            .computed => |offset| offset.value.needsUnavailableMetrics(geometry_length),
+        };
+    }
+    pub fn needsTreeCounts(self: *const PositionAxis) bool {
+        return switch (self.data) {
+            .specified => |anchor| if (anchor.offset) |value| value.needsTreeCounts() else false,
+            .computed => |offset| offset.value.needsTreeCounts(),
+        };
+    }
+    pub fn needsRandomBase(self: *const PositionAxis) bool {
+        return switch (self.data) {
+            .specified => |anchor| if (anchor.offset) |value| value.needsRandomBase() else false,
+            .computed => |offset| offset.value.needsRandomBase(),
+        };
+    }
+    pub fn serialize(self: *const PositionAxis, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
+        switch (self.data) {
+            .computed => |o| try o.serialize(out, allocator),
+            .specified => |a| try serializeAnchor(a, out, allocator),
+        }
+    }
+    pub fn compute(self: *const PositionAxis, allocator: Allocator, index: usize, context: anytype) Allocator.Error!*PositionAxis {
+        if (self.data == .computed) {
+            @constCast(self).ref();
+            return @constCast(self);
+        }
+        const anchor = self.data.specified;
+        const side = if (anchor.edge) |edge| physical(edge, index, context.writing_mode, context.direction) else null;
+        const offset: Offset = if (anchor.edge == .center)
+            .{ .value = .{ .length = .percent(50) } }
+        else
+            .{ .value = if (anchor.offset) |v| try context.length(v) else .{ .length = .percent(0) }, .complement = side == .right or side == .bottom };
+        errdefer offset.value.release();
+        const result = try allocator.create(PositionAxis);
+        result.* = .{ .allocator = allocator, .data = .{ .computed = offset } };
+        return result;
+    }
+};
+
+pub fn parseAxis(options: properties.ParseOptions, stream: *properties.Stream, horizontal: bool) Allocator.Error!?Value {
+    var anchor = Anchor{ .edge = null };
+    if (Edge.parse(stream.peek())) |edge| {
+        const allowed = if (horizontal)
+            edge == .center or edge == .left or edge == .right or edge == .x_start or edge == .x_end
+        else
+            edge == .center or edge == .top or edge == .bottom or edge == .y_start or edge == .y_end;
+        if (!allowed) return null;
+        _ = stream.next();
+        anchor.edge = edge;
+        if (edge == .center) return .{ .image_axis = try PositionAxis.create(options.allocator, anchor) };
+    }
+    anchor.offset = try @import("shape_components.zig").length(options, stream, true, true);
+    defer if (anchor.offset) |v| v.release();
+    if (anchor.edge == null and anchor.offset == null) return null;
+    return .{ .image_axis = try PositionAxis.create(options.allocator, anchor) };
+}
+
+fn serializeAnchor(anchor: Anchor, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
+    if (anchor.edge) |edge| try out.appendSlice(allocator, edge.name());
+    if (anchor.offset) |v| {
+        if (anchor.edge != null) try out.append(allocator, ' ');
+        try properties.serializeValue(.margin_left, v, out, allocator);
+    }
+}
+
+/// Background-position recombines independent components. If one edge has
+/// an offset, a bare length on the other axis needs its explicit start edge
+/// to keep the serialized three/four-value grammar valid.
+pub fn serializeAxes(x: Value, y: Value, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
+    const vs = [2]Value{ x, y };
+    var anchors: [2]Anchor = undefined;
+    var computed = false;
+    var edge_offset = false;
+    for (vs, 0..) |v, i| {
+        if (v == .image_axis) {
+            if (v.image_axis.data == .computed) {
+                computed = true;
+                continue;
+            }
+            anchors[i] = v.image_axis.data.specified;
+        } else anchors[i] = .{ .edge = null, .offset = v };
+        if (anchors[i].edge != null and anchors[i].offset != null) edge_offset = true;
+    }
+    if (computed) {
+        try properties.serializeValue(.background_position_x, x, out, allocator);
+        try out.append(allocator, ' ');
+        try properties.serializeValue(.background_position_y, y, out, allocator);
+        return;
+    }
+    for (anchors, 0..) |item, i| {
+        var anchor = item;
+        if (i != 0) try out.append(allocator, ' ');
+        if (edge_offset and anchor.edge == null) anchor.edge = if (i == 0) .left else .top;
+        try serializeAnchor(anchor, out, allocator);
+    }
+}
