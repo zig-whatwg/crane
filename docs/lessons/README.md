@@ -599,7 +599,6 @@ A lane brief now carries the lessons chosen for its batch.
 - [XML Navigation and XHR Decode Differently](spec-compliance-xml-navigation-and-xhr-decode-differently.md) - Share encoding selection while preserving each consumer's required error mode.
 - [A Dictionary Forwarder Must Preserve Its Receiver](spec-compliance-a-dictionary-forwarder-must-preserve-its-receiver.md) - A property-forwarding adapter must preserve both the lookup target and the getter receiver; matching property values alone is insufficient.
 - [execCommand fires input only - no browser fires beforeinput for it](spec-compliance-execcommand-fires-input-only-no-browser-fires-beforeinput.md) - Before wiring events from a spec's method steps, read the WPT file that names the event and the browsers' per-subtest results; share the action between user and script paths and let only the user path announce itself.
-
 - [Synthetic components still need computed-value conversion](spec-compliance-synthetic-components-still-need-computed-value-conversion.md) - Route manufactured leaves through the same owner conversion as authored leaves.
 
 ### Codegen
