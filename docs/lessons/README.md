@@ -649,6 +649,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Refresh aliases with their realm's interface objects](codegen-refresh-aliases-with-their-realms-interface-objects.md) - An alias names the realm's interface object, not the current contents of another global property.
 
 ### Testing
+- [Focused runs can miss an earlier stage fixture](testing-focused-runs-can-miss-an-earlier-stage-fixture.md) - Search every fixture that pins the old representation, preserve its ownership controls, and gate the complete changed tree.
 - [Check a control before assigning a staged failure](testing-check-a-control-before-assigning-a-staged-failure.md) - Inspect the first failed assertion before attributing every fixture failure to one missing consumer.
 - [Testing: Allocation Failure Must Cover Owned Parser Output](testing-allocation-failure-must-cover-owned-parser-output.md) - Exercise allocation failure across parsing, ownership transfer and declaration storage, including every unconsumed item in a shorthand expansion.
 - [An allocation per element makes the allocation-failure sweep quadratic](testing-an-allocation-per-element-makes-the-failure-sweep-quadratic.md) - Allocate per input, never per element, in code that parses untrusted data; a slow allocation-failure sweep is counting allocations, not hanging.
