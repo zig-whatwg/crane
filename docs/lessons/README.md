@@ -600,6 +600,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A Dictionary Forwarder Must Preserve Its Receiver](spec-compliance-a-dictionary-forwarder-must-preserve-its-receiver.md) - A property-forwarding adapter must preserve both the lookup target and the getter receiver; matching property values alone is insufficient.
 - [execCommand fires input only - no browser fires beforeinput for it](spec-compliance-execcommand-fires-input-only-no-browser-fires-beforeinput.md) - Before wiring events from a spec's method steps, read the WPT file that names the event and the browsers' per-subtest results; share the action between user and script paths and let only the user path announce itself.
 
+- [Synthetic components still need computed-value conversion](spec-compliance-synthetic-components-still-need-computed-value-conversion.md) - Route manufactured leaves through the same owner conversion as authored leaves.
+
 ### Codegen
 - [Unforgeable accessors must be installed on derived instances](codegen-unforgeable-accessors-must-be-installed-on-derived-instances.md) - An inherited WebIDL member still needs explicit instance installation when the engine template does not inherit that property representation.
 - [Constructor arity removes only trailing optional arguments](codegen-constructor-arity-removes-only-trailing-optional-arguments.md) - Test non-trailing optional arguments explicitly; optional, nullable, variadic and overloaded cases alone do not cover the effective-list algorithm.
