@@ -3435,6 +3435,22 @@ pub fn generateNamespace(
     try w.print("    pub const Meta = struct {{\n", .{});
     try w.print("        pub const name = \"{s}\";\n", .{namespace.name});
     try w.writeAll("        pub const is_namespace = true;\n");
+    // WebIDL exposed: a namespace and each of its partial members carry
+    // their own exposure. The binding chooses using this realm's scope.
+    try w.writeAll("        pub const extended_attributes = .{\n");
+    for (namespace.extAttrs) |attr| {
+        try w.print("            .{{ .name = \"{s}\"", .{attr.name});
+        if (attr.rhs) |rhs| {
+            try w.writeAll(", .value = ");
+            try writer.writeExtendedAttributeValue(w, rhs);
+        }
+        try w.writeAll(" },\n");
+    }
+    try w.writeAll("        };\n");
+    var exposed_attributes: std.ArrayList(types.Attribute) = .empty;
+    defer exposed_attributes.deinit(allocator);
+    for (namespace.members) |member| if (member.attribute) |attribute| try exposed_attributes.append(allocator, attribute);
+    try writer.writeExposedMembers(w, exposed_attributes.items, operations.items, &.{});
     // Namespaces have no base type - use null so FlattenedState produces void
     try w.writeAll("        pub const BaseType = null;\n");
     try w.writeAll("        pub const MixinTypes = &.{};\n");

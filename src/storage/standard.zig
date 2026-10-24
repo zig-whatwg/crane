@@ -156,11 +156,9 @@ pub fn getEndpoint(identifier: StorageIdentifier) StorageEndpoint {
 ///
 /// The parts are serializations: `origin` an origin's ("null" when opaque),
 /// `top_level_site` a site's (HTML "obtain a site": "scheme://registrable
-/// domain", or "null" for an opaque top-level origin). Crane has no identity
-/// for an opaque origin or site, so "null" names every one of them; for
-/// storage purposes `obtainStorageKey` turns either down, and only the blob
-/// URL store - for non-storage purposes - compares them, as it compared
-/// opaque origins before.
+/// domain", or "null" for an opaque top-level origin). Opaque identities
+/// travel as nonzero values, never cross-thread OriginRecord pointers.
+/// They remain ineligible for persistent storage.
 pub const StorageKey = struct {
     /// The origin, serialized.
     origin: []const u8,
@@ -168,6 +166,8 @@ pub const StorageKey = struct {
     top_level_site: []const u8,
     /// HTML "has cross-site ancestor" of the environment the key is for.
     has_cross_site_ancestor: bool,
+    origin_nonce: ?u128 = null,
+    top_level_nonce: ?u128 = null,
 
     /// The allocator that made `origin` and `top_level_site` (one allocation
     /// each); null for a borrowed key.
@@ -199,7 +199,10 @@ pub const StorageKey = struct {
 
     /// An owned copy of this key.
     pub fn clone(self: Self, allocator: std.mem.Allocator) !Self {
-        return init(allocator, self.origin, self.top_level_site, self.has_cross_site_ancestor);
+        var copy = try init(allocator, self.origin, self.top_level_site, self.has_cross_site_ancestor);
+        copy.origin_nonce = self.origin_nonce;
+        copy.top_level_nonce = self.top_level_nonce;
+        return copy;
     }
 
     /// Free the key's parts, if it owns them.
@@ -213,12 +216,25 @@ pub const StorageKey = struct {
 
     /// Storage "equals" with whatwg/storage PR 182's steps: the origins are
     /// same origin, the top-level sites same site, and the bits equal. The
-    /// parts are serializations, so each comparison is of bytes.
+    /// Opaque serializations require the same known identity on both sides.
     /// https://storage.spec.whatwg.org/#storage-key-equal
     pub fn equals(self: Self, other: Self) bool {
         return self.has_cross_site_ancestor == other.has_cross_site_ancestor and
-            std.mem.eql(u8, self.origin, other.origin) and
-            std.mem.eql(u8, self.top_level_site, other.top_level_site);
+            samePart(self.origin, self.origin_nonce, other.origin, other.origin_nonce) and
+            ((self.isOriginOnlyAdministrativeKey() and other.isOriginOnlyAdministrativeKey()) or
+                samePart(self.top_level_site, self.top_level_nonce, other.top_level_site, other.top_level_nonce));
+    }
+
+    /// StorageManager's origin-only accounting uses an empty site sentinel,
+    /// separate from every environment partition. It still needs a tuple origin.
+    fn isOriginOnlyAdministrativeKey(self: Self) bool {
+        return self.origin.len != 0 and !std.mem.eql(u8, self.origin, "null") and self.top_level_site.len == 0;
+    }
+
+    fn samePart(a: []const u8, a_nonce: ?u128, b: []const u8, b_nonce: ?u128) bool {
+        if (a.len == 0 or !std.mem.eql(u8, a, b)) return false;
+        if (!std.mem.eql(u8, a, "null")) return true;
+        return a_nonce != null and a_nonce.? != 0 and a_nonce == b_nonce;
     }
 
     /// Hash function for use in hash maps: of every part `equals` compares.
@@ -228,6 +244,14 @@ pub const StorageKey = struct {
         hasher.update(&.{0});
         hasher.update(self.top_level_site);
         hasher.update(&.{@intFromBool(self.has_cross_site_ancestor)});
+        if (std.mem.eql(u8, self.origin, "null")) {
+            const nonce = self.origin_nonce orelse 0;
+            hasher.update(std.mem.asBytes(&nonce));
+        }
+        if (std.mem.eql(u8, self.top_level_site, "null")) {
+            const nonce = self.top_level_nonce orelse 0;
+            hasher.update(std.mem.asBytes(&nonce));
+        }
         return hasher.final();
     }
 
@@ -249,7 +273,27 @@ pub const StorageKey = struct {
     /// two keys are equal exactly when their serializations are. Owned by
     /// the caller.
     pub fn serialize(self: Self, allocator: std.mem.Allocator) ![]u8 {
+        if (self.isOpaque()) {
+            var origin_buf: [32]u8 = undefined;
+            var site_buf: [32]u8 = undefined;
+            const origin_id = nonceText(&origin_buf, if (std.mem.eql(u8, self.origin, "null")) self.origin_nonce else null);
+            const site_id = nonceText(&site_buf, if (std.mem.eql(u8, self.top_level_site, "null")) self.top_level_nonce else null);
+            return std.fmt.allocPrint(allocator, "{s} {s} {d} {s} {s}", .{ self.origin, self.top_level_site, @intFromBool(self.has_cross_site_ancestor), origin_id, site_id });
+        }
         return std.fmt.allocPrint(allocator, "{s} {s} {d}", .{ self.origin, self.top_level_site, @intFromBool(self.has_cross_site_ancestor) });
+    }
+
+    fn nonceText(buf: *[32]u8, nonce: ?u128) []const u8 {
+        const value = nonce orelse return "-";
+        if (value == 0) return "-";
+        return std.fmt.bufPrint(buf, "{x}", .{value}) catch unreachable;
+    }
+
+    fn parseNonce(text: []const u8) error{InvalidNonce}!?u128 {
+        if (std.mem.eql(u8, text, "-")) return null;
+        if (text.len == 0 or text.len > 32 or text[0] == '0') return error.InvalidNonce;
+        for (text) |c| if (!(c >= '0' and c <= '9') and !(c >= 'a' and c <= 'f')) return error.InvalidNonce;
+        return std.fmt.parseInt(u128, text, 16) catch error.InvalidNonce;
     }
 
     /// The key `serialized` (`serialize`'s form) names, borrowing from it;
@@ -259,13 +303,22 @@ pub const StorageKey = struct {
         const origin = parts.next() orelse return null;
         const site = parts.next() orelse return null;
         const bit = parts.next() orelse return null;
-        if (parts.next() != null or origin.len == 0 or site.len == 0) return null;
+        if (origin.len == 0 or site.len == 0) return null;
         const has_cross_site_ancestor = if (std.mem.eql(u8, bit, "1")) true else if (std.mem.eql(u8, bit, "0")) false else return null;
-        return initBorrowed(origin, site, has_cross_site_ancestor);
+        var key = initBorrowed(origin, site, has_cross_site_ancestor);
+        if (parts.next()) |origin_id| {
+            const site_id = parts.next() orelse return null;
+            if (parts.next() != null or !key.isOpaque()) return null;
+            key.origin_nonce = parseNonce(origin_id) catch return null;
+            key.top_level_nonce = parseNonce(site_id) catch return null;
+            if (!std.mem.eql(u8, origin, "null") and key.origin_nonce != null) return null;
+            if (!std.mem.eql(u8, site, "null") and key.top_level_nonce != null) return null;
+        }
+        return key;
     }
 
-    /// Whether the origin or the top-level site is opaque (or missing):
-    /// Crane cannot tell one such key from another.
+    /// Whether the origin or top-level site is opaque (or missing), which
+    /// still makes the key ineligible for persistent storage.
     pub fn isOpaque(self: Self) bool {
         return self.origin.len == 0 or std.mem.eql(u8, self.origin, "null") or
             self.top_level_site.len == 0 or std.mem.eql(u8, self.top_level_site, "null");
@@ -615,6 +668,10 @@ pub const StorageShed = struct {
     /// Obtain a storage shelf for the given key
     /// https://storage.spec.whatwg.org/#obtain-a-storage-shelf
     pub fn obtainShelf(self: *Self, key: StorageKey) !*StorageShelf {
+        // Storage's obtain-a-storage-key rejects opaque partitions. The
+        // existing origin-only administrative shelf is the sole exception;
+        // every admitted map key must compare equal to itself.
+        if (key.isOpaque() and !key.isOriginOnlyAdministrativeKey()) return error.SecurityError;
         // Check if shelf already exists
         if (self.shelves.getPtr(key)) |shelf| {
             return shelf;

@@ -139,10 +139,9 @@ pub const InternalState = struct {
     owner_prohibits_mixed_security_contexts: bool = false,
 
     /// The settings object's top-level site (Fetch "determine the network
-    /// partition key"): a dedicated worker's owner's, read on the owner's
-    /// thread when it started (worker_host.ScopeSettings). OWNED; null for a
-    /// shared or service worker, an owner with none, or a scope no host
-    /// started.
+    /// partition key"): a dedicated or shared worker's owner's, read on the
+    /// owner's thread when it started (worker_host.ScopeSettings). OWNED;
+    /// null for a service worker, an owner with none, or a scope no host started.
     top_level_site: ?[]u8 = null,
     top_level_origin: ?[]u8 = null,
 
@@ -152,6 +151,7 @@ pub const InternalState = struct {
     /// service worker or a scope no host started, whose key is its own
     /// origin's (`settingsStorageKey`).
     storage_top_level_site: ?[]u8 = null,
+    storage_top_level_nonce: ?u128 = null,
     has_cross_site_ancestor: bool = false,
     /// The settings object's storage key for non-storage purposes,
     /// serialized, made on first use (`settingsStorageKey`). OWNED.
@@ -259,6 +259,10 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
             if (settings.top_level_origin) |origin| internal.top_level_origin = try allocator.dupe(u8, origin);
             // The storage key's partition: the creator's (worker_host).
             if (settings.storage_top_level_site) |site| internal.storage_top_level_site = try allocator.dupe(u8, site);
+            internal.storage_top_level_nonce = settings.storage_top_level_nonce;
+            if (settings.origin_nonce) |nonce| {
+                if (internal.origin_record) |record| if (record.isOpaque()) record.importOpaqueNonce(nonce);
+            }
             internal.has_cross_site_ancestor = settings.has_cross_site_ancestor;
         }
     }
@@ -324,7 +328,9 @@ fn settingsStorageKey(instance: *runtime.Instance) error{OutOfMemory}!?[]const u
         };
     defer if (own_site) |site| allocator.free(site);
     const site = internal.storage_top_level_site orelse own_site orelse "null";
-    const key = @import("storage").StorageKey.initBorrowed(origin, site, internal.has_cross_site_ancestor);
+    var key = @import("storage").StorageKey.initBorrowed(origin, site, internal.has_cross_site_ancestor);
+    if (internal.origin_record) |record| key.origin_nonce = try record.opaqueNonce(instance.ctx.browserScope());
+    key.top_level_nonce = if (internal.storage_top_level_site != null) internal.storage_top_level_nonce else key.origin_nonce;
     internal.storage_key = try key.serialize(allocator);
     return internal.storage_key;
 }
@@ -727,9 +733,17 @@ pub fn call_importScripts(instance: *runtime.Instance, urls: []const typedefs.Tr
     // worker global scope's URL.
     const allocator = instance.ctx.allocator;
     const base_url: []const u8 = if (internal.internal_location) |loc| loc.getHref() else internal.url;
-    var records: std.ArrayListUnmanaged([]const u8) = .empty;
+    const ParsedImport = struct {
+        url: []const u8,
+        entry: ?*@import("fetch").internal.request.CapturedBlobEntry,
+        captured: bool,
+    };
+    var records: std.ArrayListUnmanaged(ParsedImport) = .empty;
     defer {
-        for (records.items) |record| allocator.free(record);
+        for (records.items) |record| {
+            allocator.free(record.url);
+            if (record.entry) |entry| entry.release();
+        }
         records.deinit(allocator);
     }
     try records.ensureTotalCapacity(allocator, urls.len);
@@ -741,12 +755,20 @@ pub fn call_importScripts(instance: *runtime.Instance, urls: []const typedefs.Tr
         const parsed = (try interfaces.URL.call_static_parse(instance, url, base_arg)) orelse
             return error.SyntaxError;
         defer runtime.Instance.deinit(parsed);
-        records.appendAssumeCapacity(try interfaces.URL.get_href(parsed));
+        const href = try interfaces.URL.get_href(parsed);
+        const is_blob = std.mem.startsWith(u8, href, "blob:");
+        // HTML import scripts steps 4-5 parse the entire list before step
+        // 6 runs any script; an earlier script can revoke a later URL.
+        records.appendAssumeCapacity(.{
+            .url = href,
+            .entry = if (is_blob) @import("dom").global_settings.captureBlobURL(instance.ctx, href) else null,
+            .captured = is_blob,
+        });
     }
 
     // Step 6.
     for (records.items) |record| {
-        var script = try worker_host.fetchClassicWorkerImportedScript(instance.ctx, record);
+        var script = try worker_host.fetchClassicWorkerImportedScriptWithEntry(instance.ctx, record.url, record.entry, record.captured);
         defer script.deinit();
         try worker_host.runImportedScript(instance.ctx, &script);
     }

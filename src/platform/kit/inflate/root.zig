@@ -1,5 +1,6 @@
-//! The testing platform's zlib inflater (RFC 1950's container around RFC
-//! 1951's DEFLATE), for png.zig's image data. It decodes as far as its input
+//! kit/inflate: a zlib inflater (RFC 1950's container around RFC 1951's
+//! DEFLATE), for the testing platform's png.zig and kit/sfnt's WOFF tables.
+//! `zlib` decodes as far as its input
 //! goes and stops exactly there: every symbol whose bits are all present is
 //! decoded and none is guessed, as zlib's own inflate leaves a truncated
 //! stream - which is how libpng, under Gecko, decodes a truncated PNG's
@@ -18,8 +19,11 @@
 //! over-subscribed code, an incomplete one other than a single 1-bit code
 //! (and an incomplete code-length code), length symbols 286 and 287,
 //! distance symbols 30 and 31, and a distance past the start of the output.
-//! The Adler-32 check is not read: the caller asks for exactly the bytes it
-//! needs, and the stream's end is never reached for a whole image.
+//! `zlib`'s caller asks for exactly the bytes it needs, and the stream's end
+//! is never reached for a whole image, so it reads no Adler-32. `zlibWhole`
+//! is zlib's uncompress() instead, as OTS uses it for a WOFF table: the
+//! stream must end, with its Adler-32 matching, after exactly `out.len`
+//! bytes.
 
 const std = @import("std");
 
@@ -46,6 +50,19 @@ pub fn zlib(out: []u8, input: []const u8) Result {
     var inflater: Inflater = .{ .out = out, .bits = .{ .input = input } };
     const end = inflater.run();
     return .{ .len = inflater.written, .end = end };
+}
+
+/// zlib's uncompress() into `out`: true when the stream `input` inflates to
+/// exactly `out.len` bytes, its final block ends there, and its Adler-32
+/// matches them. Input after the checksum is not read, as uncompress() does
+/// not read it.
+pub fn zlibWhole(out: []u8, input: []const u8) bool {
+    var inflater: Inflater = .{ .out = out, .bits = .{ .input = input }, .whole = true };
+    if (inflater.run() != .ended or inflater.written != out.len) return false;
+    inflater.bits.alignToByte();
+    var adler: u32 = 0;
+    for (0..4) |_| adler = adler << 8 | (inflater.bits.byte() catch return false);
+    return adler == std.hash.Adler32.hash(out);
 }
 
 const Error = error{ RanOut, Invalid, Full, Ended };
@@ -154,6 +171,9 @@ const code_length_order = [19]u8{ 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3
 const Inflater = struct {
     out: []u8,
     written: usize = 0,
+    /// `zlibWhole`: output past `out` is an overflow, and filling `out` does
+    /// not stop the stream.
+    whole: bool = false,
     bits: Bits,
     literals: Huffman = .{},
     distances: Huffman = .{},
@@ -170,7 +190,7 @@ const Inflater = struct {
 
     /// The stream, until one of `Error`'s ends: it returns no other way.
     fn stream(self: *Inflater) Error!void {
-        if (self.out.len == 0) return error.Full;
+        if (self.out.len == 0 and !self.whole) return error.Full;
         // RFC 1950 2.2: CMF and FLG.
         const cmf = try self.bits.byte();
         const flg = try self.bits.byte();
@@ -204,9 +224,10 @@ const Inflater = struct {
     }
 
     fn put(self: *Inflater, value: u8) Error!void {
+        if (self.whole and self.written == self.out.len) return error.Full;
         self.out[self.written] = value;
         self.written += 1;
-        if (self.written == self.out.len) return error.Full;
+        if (!self.whole and self.written == self.out.len) return error.Full;
     }
 
     /// 3.2.4: LEN, NLEN, and LEN bytes - copied as far as they arrived.
@@ -288,3 +309,23 @@ const Inflater = struct {
         }
     }
 };
+
+test "zlibWhole: exactly out.len bytes, the stream ended, the Adler-32 matching" {
+    // zlib.compress(b"hello hello hello hello").
+    const stream = [_]u8{ 0x78, 0x9c, 0xcb, 0x48, 0xcd, 0xc9, 0xc9, 0x57, 0xc8, 0x40, 0x27, 0x01, 0x68, 0x03, 0x08, 0xb1 };
+    var out: [23]u8 = undefined;
+    try std.testing.expect(zlibWhole(&out, &stream));
+    try std.testing.expectEqualStrings("hello hello hello hello", &out);
+    // Trailing input after the checksum is not read.
+    try std.testing.expect(zlibWhole(&out, &stream ++ [_]u8{0xff}));
+    // More output than asked for, or less.
+    var short: [22]u8 = undefined;
+    try std.testing.expect(!zlibWhole(&short, &stream));
+    var long: [24]u8 = undefined;
+    try std.testing.expect(!zlibWhole(&long, &stream));
+    // A wrong checksum, or none.
+    var bad = stream;
+    bad[bad.len - 1] ^= 1;
+    try std.testing.expect(!zlibWhole(&out, &bad));
+    try std.testing.expect(!zlibWhole(&out, stream[0 .. stream.len - 2]));
+}

@@ -81,8 +81,8 @@ pub const FileSystemDirectoryHandle = struct {
 
         /// Async iterable declaration (for Symbol.asyncIterator support)
         pub const async_iterable = .{
-            .value_type = "runtime.USVString",
-            .key_type = "FileSystemHandle",
+            .value_type = "FileSystemHandle",
+            .key_type = "runtime.USVString",
             .options_type = null,
         };
     };

@@ -359,6 +359,31 @@ pub const Navigator = struct {
             "registerProtocolHandler",
             "unregisterProtocolHandler",
         };
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "audioSession", .{"Window"} },
+            .{ "contacts", .{"Window"} },
+            .{ "cpuPerformance", .{"Window"} },
+            .{ "devicePosture", .{"Window"} },
+            .{ "ink", .{"Window"} },
+            .{ "mediaCapabilities", .{"Window"} },
+            .{ "preferences", .{"Window"} },
+            .{ "mediaSession", .{"Window"} },
+            .{ "permissions", .{"Window"} },
+            .{ "serial", .{"Window"} },
+            .{ "usb", .{"Window"} },
+            .{ "windowControlsOverlay", .{"Window"} },
+            .{ "deviceMemory", .{ "Window", "Worker" } },
+            .{ "productSub", .{"Window"} },
+            .{ "vendor", .{"Window"} },
+            .{ "vendorSub", .{"Window"} },
+            .{ "oscpu", .{"Window"} },
+            .{ "getAutoplayPolicy", .{"Window"} },
+            .{ "requestMediaKeySystemAccess", .{"Window"} },
+            .{ "getGamepads", .{"Window"} },
+            .{ "getInstalledRelatedApps", .{"Window"} },
+            .{ "taintEnabled", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -650,6 +675,7 @@ pub const Navigator = struct {
         return value;
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_audioSession(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NavigatorImpl.get_audioSession(instance);
     }
@@ -667,7 +693,7 @@ pub const Navigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SecureContext], [SameObject]
+    /// Extended attributes: [SecureContext], [SameObject], [Exposed=Window]
     pub fn get_contacts(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -680,7 +706,7 @@ pub const Navigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SecureContext]
+    /// Extended attributes: [SecureContext], [Exposed=Window]
     pub fn get_cpuPerformance(instance: *runtime.Instance) anyerror!u16 {
         return try NavigatorImpl.get_cpuPerformance(instance);
     }
@@ -698,7 +724,7 @@ pub const Navigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SameObject], [SecureContext]
+    /// Extended attributes: [SameObject], [SecureContext], [Exposed=(Window)]
     pub fn get_devicePosture(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -750,7 +776,7 @@ pub const Navigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [Exposed=Window]
     pub fn get_ink(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -798,7 +824,7 @@ pub const Navigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [Exposed=Window]
     pub fn get_mediaCapabilities(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -824,7 +850,7 @@ pub const Navigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SameObject], [SecureContext]
+    /// Extended attributes: [SameObject], [Exposed=Window], [SecureContext]
     pub fn get_preferences(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -837,7 +863,7 @@ pub const Navigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [Exposed=Window]
     pub fn get_mediaSession(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -850,7 +876,7 @@ pub const Navigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [Exposed=(Window)]
     pub fn get_permissions(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -893,7 +919,7 @@ pub const Navigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SameObject], [SecureContext]
+    /// Extended attributes: [SameObject], [Exposed=Window], [SecureContext]
     pub fn get_serial(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -958,7 +984,7 @@ pub const Navigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SameObject], [SecureContext]
+    /// Extended attributes: [SameObject], [Exposed=Window], [SecureContext]
     pub fn get_usb(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -984,7 +1010,7 @@ pub const Navigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SameObject], [SecureContext]
+    /// Extended attributes: [SameObject], [SecureContext], [Exposed=(Window)]
     pub fn get_windowControlsOverlay(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -1010,7 +1036,7 @@ pub const Navigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SecureContext]
+    /// Extended attributes: [SecureContext], [Exposed=(Window,Worker)]
     pub const get_deviceMemory = mixins.NavigatorDeviceMemory.get_deviceMemory;
 
     pub const get_globalPrivacyControl = mixins.GlobalPrivacyControl.get_globalPrivacyControl;
@@ -1188,7 +1214,7 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_deprecatedURNtoURL(instance, urnOrConfig, send_reports);
     }
 
-    /// Extended attributes: [SecureContext]
+    /// Extended attributes: [SecureContext], [Exposed=Window]
     pub fn call_requestMediaKeySystemAccess(instance: *runtime.Instance, keySystem: runtime.DOMString, supportedConfigurations: runtime.JSValue) anyerror!runtime.JSValue {
         return try NavigatorImpl.call_requestMediaKeySystemAccess(instance, keySystem, supportedConfigurations);
     }
@@ -1231,6 +1257,7 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_vibrate(instance, pattern);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn call_getAutoplayPolicy(instance: *runtime.Instance, @"type": AutoplayPolicyMediaType) anyerror!AutoplayPolicy {
         return try NavigatorImpl.call_getAutoplayPolicy(instance, @"type");
     }
@@ -1239,7 +1266,7 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_sendBeacon(instance, url, data);
     }
 
-    /// Extended attributes: [SecureContext]
+    /// Extended attributes: [SecureContext], [Exposed=Window]
     pub fn call_getInstalledRelatedApps(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try NavigatorImpl.call_getInstalledRelatedApps(instance);
     }
@@ -1256,6 +1283,7 @@ pub const Navigator = struct {
 
     pub const call_unregisterProtocolHandler = mixins.NavigatorContentUtils.call_unregisterProtocolHandler;
 
+    /// Extended attributes: [Exposed=Window]
     pub fn call_getGamepads(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try NavigatorImpl.call_getGamepads(instance);
     }
@@ -1275,6 +1303,7 @@ pub const Navigator = struct {
         }
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn call_getAutoplayPolicy__1(instance: *runtime.Instance, element: *runtime.Instance) anyerror!AutoplayPolicy {
         if (comptime @hasDecl(NavigatorImpl, "call_getAutoplayPolicy__1")) {
             return try NavigatorImpl.call_getAutoplayPolicy__1(instance, element);
@@ -1283,6 +1312,7 @@ pub const Navigator = struct {
         }
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn call_getAutoplayPolicy__2(instance: *runtime.Instance, context: *runtime.Instance) anyerror!AutoplayPolicy {
         if (comptime @hasDecl(NavigatorImpl, "call_getAutoplayPolicy__2")) {
             return try NavigatorImpl.call_getAutoplayPolicy__2(instance, context);

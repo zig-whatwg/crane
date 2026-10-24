@@ -67,6 +67,14 @@ pub const NavigatorID = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "productSub", .{"Window"} },
+            .{ "vendor", .{"Window"} },
+            .{ "vendorSub", .{"Window"} },
+            .{ "oscpu", .{"Window"} },
+            .{ "taintEnabled", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(

@@ -35,9 +35,12 @@ const clock = @import("clock");
 extern "c" fn getentropy(buf: [*]u8, len: usize) c_int;
 
 const BlobData = @import("blob_internals.zig").BlobData;
+const CapturedEntry = @import("blob_url").BlobURLEntry;
 
 /// Entry in the blob URL store.
 pub const BlobURLEntry = struct {
+    /// Owns the immutable payload and key. The fields below borrow them.
+    captured: *CapturedEntry,
     /// The blob's data: a reference of the entry's own (`BlobData.retain`),
     /// released when the entry leaves the store. The Blob object script made
     /// may be collected first.
@@ -92,6 +95,13 @@ pub const BlobURLStore = struct {
     /// Map from UUID string to blob entry
     entries: std.StringHashMap(BlobURLEntry),
 
+    /// Under `mutex`: bounds `entries`' tombstones. The store is its
+    /// Browser's, alive for every page, and each URL is a fresh UUID that
+    /// leaves at its revoke or its page's end, so std's map never grows and
+    /// kept every removal's tombstone (src/infra/tombstones.zig). Entries
+    /// are read by copy, and `removeEntriesFor` collects before it removes.
+    guard: @import("infra").tombstones.TombstoneGuard = .{},
+
     /// Memory allocator
     allocator: std.mem.Allocator,
 
@@ -130,10 +140,7 @@ pub const BlobURLStore = struct {
         while (it.next()) |entry| {
             // Free the UUID key
             self.allocator.free(entry.key_ptr.*);
-            // Free the storage key (the origin is a slice of it)
-            self.allocator.free(@constCast(entry.value_ptr.storage_key));
-            // The entry's reference to its blob's data.
-            entry.value_ptr.blob.deinit();
+            entry.value_ptr.captured.release();
         }
         self.entries.deinit();
     }
@@ -169,6 +176,12 @@ pub const BlobURLStore = struct {
     /// keeps `uuid` and its copy of the key, not this string. The mutable slice says so in
     /// the type, which is what lets `DOMString.initOwned` accept it.
     pub fn createObjectURL(self: *BlobURLStore, blob: *BlobData, storage_key: []const u8, environment: ?*const anyopaque) ![]u8 {
+        return self.createObjectURLWithOrigin(blob, storage_key, null, environment);
+    }
+
+    /// The settings object's opaque origin crosses threads only as a value.
+    /// The existing native API keeps its unknown-identity default.
+    pub fn createObjectURLWithOrigin(self: *BlobURLStore, blob: *BlobData, storage_key: []const u8, origin_nonce: ?u128, environment: ?*const anyopaque) ![]u8 {
         std.Io.Threaded.mutexLock(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const origin = originOfKey(storage_key);
@@ -181,23 +194,60 @@ pub const BlobURLStore = struct {
         const url = try std.fmt.allocPrint(self.allocator, "blob:{s}/{s}", .{ origin, uuid });
         errdefer self.allocator.free(url);
 
-        // Copy the key for storage; the origin is a slice of the copy.
-        const owned_key = try self.allocator.dupe(u8, storage_key);
-        errdefer self.allocator.free(owned_key);
+        const captured = try CapturedEntry.create(self.allocator, storage_key, origin_nonce, blob, .{
+            .retain = &retainPayload,
+            .release = &releasePayload,
+            .read = &readPayload,
+        });
+        errdefer captured.release();
 
         // Store the entry. It holds the blob for as long as it is in the
         // store: a reference of its own, which revoking releases - taken
         // only once nothing below can fail.
         try self.entries.ensureUnusedCapacity(1);
+        // A rehash keeps the capacity just ensured.
+        self.guard.beforeInsert(&self.entries);
         self.entries.putAssumeCapacity(uuid, .{
-            .blob = blob.retain(),
-            .storage_key = owned_key,
-            .origin = owned_key[0..origin.len],
+            .captured = captured,
+            .blob = blob,
+            .storage_key = captured.storage_key,
+            .origin = captured.origin,
             .environment = environment,
             .valid = true,
         });
 
         return url;
+    }
+
+    /// File API "resolve a blob URL": capture the complete URL, excluding
+    /// its fragment. Access is checked later by the retained entry's read.
+    pub fn capture(self: *BlobURLStore, url: []const u8) ?*CapturedEntry {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        const key = url[0 .. std.mem.indexOfScalar(u8, url, '#') orelse url.len];
+        const uuid = self.extractUUID(key) orelse return null;
+        const entry = self.entries.get(uuid) orelse return null;
+        if (!entry.valid or !matchesEntryURL(key, uuid, entry.origin)) return null;
+        return entry.captured.retain();
+    }
+
+    fn retainPayload(ptr: *anyopaque) void {
+        const blob: *BlobData = @ptrCast(@alignCast(ptr));
+        _ = blob.retain();
+    }
+
+    fn releasePayload(ptr: *anyopaque) void {
+        const blob: *BlobData = @ptrCast(@alignCast(ptr));
+        blob.deinit();
+    }
+
+    fn readPayload(ptr: *anyopaque, allocator: std.mem.Allocator) error{OutOfMemory}!CapturedEntry.Data {
+        // BlobData's bytes and MIME type are immutable; its atomic retained
+        // reference outlives this read even when another thread revokes.
+        const blob: *BlobData = @ptrCast(@alignCast(ptr));
+        const bytes = try allocator.dupe(u8, blob.bytes);
+        errdefer allocator.free(bytes);
+        return .{ .bytes = bytes, .content_type = try allocator.dupe(u8, blob.mime_type) };
     }
 
     /// Revoke a blob URL, for the current settings object whose storage key
@@ -275,11 +325,9 @@ pub const BlobURLStore = struct {
     /// held.
     fn removeEntry(self: *BlobURLStore, uuid: []const u8) void {
         const kv = self.entries.fetchRemove(uuid) orelse return;
+        self.guard.noteRemoval(&self.entries);
         self.allocator.free(kv.key);
-        self.allocator.free(@constCast(kv.value.storage_key));
-        // The entry's reference to its blob's data: the last one frees it
-        // when the Blob object has already been collected.
-        kv.value.blob.deinit();
+        kv.value.captured.release();
     }
 
     /// Resolve a blob URL to its associated blob, for `access`.
@@ -309,7 +357,7 @@ pub const BlobURLStore = struct {
 
         // "Obtain a blob object" steps 1-3.
         switch (access) {
-            .environment => |storage_key| if (!std.mem.eql(u8, entry.storage_key, storage_key)) return null,
+            .environment => |storage_key| if (!legacyKeysEqual(entry.storage_key, storage_key)) return null,
             .top_level_navigation, .top_level_self_fetch => {},
         }
 
@@ -318,6 +366,36 @@ pub const BlobURLStore = struct {
         }
 
         return entry.blob.retain();
+    }
+
+    /// Navigation still supplies its pre-identity key until streamnav
+    /// carries captured entries (row 115 Q18). Preserve that path's old
+    /// comparison; fetch/Request/XHR/importScripts authorize through the
+    /// captured entry's strict read instead. A key carrying identity is
+    /// never reduced to its public serialization here.
+    fn legacyKeysEqual(entry_key: []const u8, request_key: []const u8) bool {
+        if (std.mem.eql(u8, entry_key, request_key)) return true;
+        // A reserved navigation client serializes an unknown opaque
+        // identity as "- -" now. That is the old public key, too; a
+        // request carrying either identity never takes this fallback.
+        const request_prefix = prefix: {
+            var spaces: usize = 0;
+            for (request_key, 0..) |byte, i| if (byte == ' ') {
+                spaces += 1;
+                if (spaces == 3) {
+                    if (!std.mem.eql(u8, request_key[i..], " - -")) return false;
+                    break :prefix request_key[0..i];
+                }
+            };
+            if (spaces != 2) return false;
+            break :prefix request_key;
+        };
+        var spaces: usize = 0;
+        for (entry_key, 0..) |byte, i| if (byte == ' ') {
+            spaces += 1;
+            if (spaces == 3) return std.mem.eql(u8, entry_key[0..i], request_prefix);
+        };
+        return spaces == 2 and std.mem.eql(u8, entry_key, request_prefix);
     }
 
     /// Generate a random UUID v4.
@@ -625,4 +703,41 @@ test "BlobURLStore - invalid URL" {
     try std.testing.expect(store.resolve("not-a-blob-url", .{ .environment = "https://example.com" }) == null);
     try std.testing.expect(store.resolve("blob:", .{ .environment = "https://example.com" }) == null);
     try std.testing.expect(store.resolve("blob:https://example.com/", .{ .environment = "https://example.com" }) == null);
+}
+
+test "BlobURLStore: blob URLs made and revoked page after page keep half the store's unused slots free" {
+    // Lane hashmaps1: the store is its Browser's, alive for every page; each
+    // URL is a fresh UUID, and leaves at its revoke or its page's end - a
+    // removal, which std's map turns into a tombstone it never clears while
+    // puts and removes balance (src/infra/tombstones.zig). Entries are read
+    // by copy under the lock, and removeEntriesFor collects before it
+    // removes, so a rehash moves nothing anyone holds.
+    const tombstones = @import("infra").tombstones;
+    const allocator = std.testing.allocator;
+    var store = BlobURLStore.init(allocator);
+    defer store.deinit();
+    const blob = try BlobData.init(allocator, "page data", "text/plain");
+    defer blob.deinit();
+    var page: u8 = 0;
+    var starved: usize = 0;
+    var worst: usize = 0;
+    for (0..300) |_| {
+        for (0..16) |i| {
+            const url = try store.createObjectURL(blob, "https://example.com", &page);
+            if (i % 2 == 0) store.revokeObjectURL(url, "https://example.com");
+            allocator.free(url);
+            if (i == 0) {
+                if (!tombstones.slotCounts(&store.entries).halfOfUnusedFree()) starved += 1;
+                worst = @max(worst, tombstones.meanMissProbe(&store.entries));
+            }
+        }
+        // The page ends: the rest leave with it.
+        store.removeEntriesFor(&page);
+    }
+    try std.testing.expectEqual(@as(usize, 0), store.entries.count());
+    if (starved != 0 or worst > 8) {
+        const counts = tombstones.slotCounts(&store.entries);
+        std.debug.print("BlobURLStore.entries: {d} of 300 pages starved; worst mean miss {d} (capacity {d}, live {d}, free {d})\n", .{ starved, worst, counts.capacity, counts.live, counts.free });
+        return error.TombstonesFilledTheMap;
+    }
 }

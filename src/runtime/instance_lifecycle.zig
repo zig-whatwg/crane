@@ -28,6 +28,7 @@
 //! - `cleanup_complete`: Cleanup is done (prevents double-free)
 //! - `attached_to_dom`: Instance is in the DOM tree (affects cleanup order)
 //! - `gc_weak_callback_pending`: V8 weak callback may fire
+//! - `wrapped`: an engine object was bound to it in some realm (sticky)
 //!
 //! ## Usage
 //!
@@ -66,8 +67,17 @@ pub const LifecycleFlags = packed struct(u8) {
     /// V8 weak callback is registered and may fire
     gc_weak_callback_pending: bool = false,
 
+    /// An engine object was bound to the instance - a wrapper, a realm's
+    /// global object - in some realm, at some point since the slab issued
+    /// this slot. Sticky: nothing clears it but the slot's next issue. An
+    /// adapter with `engine.capabilities.wrap_tracking` sets it on every
+    /// path that binds one (`markWrapped`), so on such an engine an
+    /// instance WITHOUT it was never reachable from script, in any realm:
+    /// no wrapper can reach its slot (`provablyUnwrapped`).
+    wrapped: bool = false,
+
     /// Reserved for future use
-    _reserved: u4 = 0,
+    _reserved: u3 = 0,
 };
 
 const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
@@ -171,6 +181,33 @@ pub fn clearGCWeakCallbackPending(instance: *const Instance) void {
     var flags = read(instance);
     flags.gc_weak_callback_pending = false;
     write(instance, flags);
+}
+
+/// An engine object was bound to `instance` (see `LifecycleFlags.wrapped`).
+/// The adapter calls it where it writes the instance into the object, before
+/// any step that can fail: a mark on an instance whose wrapper was then
+/// discarded only keeps its storage, which is the safe answer.
+pub fn markWrapped(instance: *const Instance) void {
+    var flags = read(instance);
+    flags.wrapped = true;
+    write(instance, flags);
+}
+
+/// Whether an engine object was ever bound to `instance` since its slot was
+/// issued. Meaningful only on an engine whose adapter tracks wraps: read it
+/// through `provablyUnwrapped`.
+pub fn wasWrapped(instance: *const Instance) bool {
+    return read(instance).wrapped;
+}
+
+/// Whether `instance` can be PROVEN never to have been reachable from script:
+/// its engine tracks wraps (`tracked` - the host passes
+/// `engine.capabilities.wrap_tracking != .unsupported`) and no wrap marked it.
+/// The default, an engine that does not track, is "it may have been": nothing
+/// is freed on the strength of a missing mark (tests/runtime pins it).
+pub fn provablyUnwrapped(tracked: bool, instance: *const Instance) bool {
+    if (!tracked) return false;
+    return !read(instance).wrapped;
 }
 
 /// Check if cleanup should proceed (not already started/complete)

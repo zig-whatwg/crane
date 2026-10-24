@@ -68,6 +68,7 @@ const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const realm_finalizers = @import("realm_finalizers.zig");
+const tombstones = @import("webidl").utils.tombstones;
 
 const log = std.log.scoped(.wrapper_cache);
 
@@ -605,6 +606,7 @@ pub fn holdForPendingActivity(instance: *runtime.Instance) void {
         return;
     }
     const generation = runtime.SlabAllocator.generationOf(instance);
+    if (cache.walks == 0) cache.pending_guard.beforeInsert(&cache.pending_before_wrap);
     const gop = cache.pending_before_wrap.getOrPut(cache.allocator, instance) catch return;
     // A dead instance's keeps at a reissued address are not the newcomer's.
     if (!gop.found_existing or gop.value_ptr.generation != generation) gop.value_ptr.* = .{ .generation = generation, .count = 0 };
@@ -627,11 +629,13 @@ pub fn releasePendingActivity(instance: *runtime.Instance) void {
     }
     const waiting = cache.pending_before_wrap.getPtr(instance) orelse return cache.unmatchedRelease(instance);
     if (waiting.generation != runtime.SlabAllocator.generationOf(instance) or waiting.count == 0) {
-        _ = cache.pending_before_wrap.remove(instance);
+        if (cache.pending_before_wrap.remove(instance)) cache.pending_guard.noteRemoval(&cache.pending_before_wrap);
         return cache.unmatchedRelease(instance);
     }
     waiting.count -= 1;
-    if (waiting.count == 0) _ = cache.pending_before_wrap.remove(instance);
+    if (waiting.count == 0) {
+        if (cache.pending_before_wrap.remove(instance)) cache.pending_guard.noteRemoval(&cache.pending_before_wrap);
+    }
 }
 
 /// `instance`'s realm's cache, or null when it has none or it is being torn
@@ -763,13 +767,15 @@ fn unlinkCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
     }
 
     // Due to memory reuse (SlabAllocator/ArenaAllocator), the same instance
-    // address can be used for different objects over time: remove by key
-    // only this entry, and put back one that replaced it.
-    if (entry.cache.cache.fetchRemove(entry.instance)) |kv| {
-        if (kv.value != entry) {
-            log.debug("[unlinkCollected] STALE ENTRY: instance={*} - entry replaced, restoring new entry", .{entry.instance});
-            // The slot it came from is free again: no allocation.
-            entry.cache.cache.putAssumeCapacity(entry.instance, kv.value);
+    // address can be used for different objects over time: take out only
+    // this entry; one that replaced it stays. (Looked at before removing, so
+    // the first pass never inserts: an insert may rehash - `set`.)
+    if (entry.cache.cache.getEntry(entry.instance)) |found| {
+        if (found.value_ptr.* == entry) {
+            entry.cache.cache.removeByPtr(found.key_ptr);
+            entry.cache.guard.noteRemoval(&entry.cache.cache);
+        } else {
+            log.debug("[unlinkCollected] STALE ENTRY: instance={*} - entry replaced, keeping the new entry", .{entry.instance});
             entry.stale = true;
         }
     } else {
@@ -1149,8 +1155,33 @@ fn wrappedAgain(instance: *runtime.Instance, generation: u64, cache: *const Wrap
 ///
 /// Per-context cache maintaining 1:1 mapping between Zig instances and V8 wrappers.
 pub const WrapperCache = struct {
-    /// HashMap: *runtime.Instance → CacheEntry
+    /// HashMap: *runtime.Instance → CacheEntry. Each entry is its own
+    /// allocation, so a `*CacheEntry` read out of the map stays valid however
+    /// the map moves its slots; only a key or value POINTER into the map
+    /// (getPtr, getEntry, an iterator) is invalidated by an insert.
     cache: std.AutoHashMap(*runtime.Instance, *CacheEntry),
+
+    /// Bounds the tombstones `cache`'s removals leave
+    /// (webidl.utils.tombstones). Every collected wrapper takes its entry out
+    /// (`unlinkCollected`), and a node waiting on the deferred teardown queue
+    /// keeps its address, so a page that makes and drops wrappers puts and
+    /// removes keys it never sees again: std's map never counts a tombstone
+    /// against its load, never grows, and a miss probes until a FREE slot.
+    /// Without the guard gc_bench's append/remove ended with no free slot in
+    /// 10 of 14 runs - each miss walked all 16,384 slots, and the realm's end
+    /// asks about each of ~78,000 queued nodes twice (2.4 s; 1.2 s with one
+    /// free slot left). Every removal is counted here, and `set` rehashes in
+    /// place before an insert once they could take half the unused slots -
+    /// WTF::HashTable's policy (HashTable.h: `shouldExpand` counts deleted
+    /// buckets, `mustRehashInPlace` rebuilds at the same size).
+    guard: tombstones.TombstoneGuard = .{},
+
+    /// Walks over `cache` in progress that call out of this file
+    /// (`beginWalk`), nested. A rehash moves the map's slots, so an insert
+    /// made while one is reading them - a teardown a walk runs can wrap a new
+    /// object - does not rehash; the guard keeps counting, and the first
+    /// insert after the walk does it.
+    walks: u32 = 0,
 
     /// Allocator for cache entries
     allocator: std.mem.Allocator,
@@ -1170,6 +1201,12 @@ pub const WrapperCache = struct {
     /// (`holdForPendingActivity`), by slab generation so a reissued address
     /// does not inherit one. `set` moves a hold onto the new wrapper's entry.
     pending_before_wrap: std.AutoHashMapUnmanaged(*runtime.Instance, PendingBeforeWrap) = .empty,
+    /// Bounds `pending_before_wrap`'s tombstones: every object kept before
+    /// script sees it is a key the map never saw, removed when its wrapper
+    /// is made, so the map never grew (a 1,069-file runner sample: starved
+    /// in 151 of 2,432 samples). Gated on `walks` as `guard` is; nothing
+    /// iterates this map but the cache's end.
+    pending_guard: tombstones.TombstoneGuard = .{},
 
     /// Releases of pending activity with no keep left to end
     /// (`releasePendingActivity`): an owner that released what it did not
@@ -1182,6 +1219,15 @@ pub const WrapperCache = struct {
     /// realm ends. By slab generation, so an owner freed unwrapped and its
     /// address reissued leaves nothing to a newcomer.
     edges_before_wrap: std.AutoHashMapUnmanaged(*runtime.Instance, DeferredEdges) = .empty,
+    /// Bounds `edges_before_wrap`'s tombstones: every owner that traces a
+    /// child before script sees it is a key the map never saw, removed when
+    /// its wrapper is made or its edges are pruned (a 1,069-file runner
+    /// sample: capacity 16,384 with 73 slots free, 1,338 of 14,167 samples
+    /// starved). Gated on `walks` as `guard` is: `detach` walks this map
+    /// inside one, and `pruneDeferredEdges` finishes its walk before
+    /// `deferEdge` inserts. A `*DeferredEdges` is read and written only
+    /// between an insert and the next.
+    edges_guard: tombstones.TombstoneGuard = .{},
 
     /// Past `small_deferred_map` owners, `deferEdge` prunes dead owners'
     /// edges only once the map has grown to this many - then to twice what
@@ -1287,10 +1333,37 @@ pub const WrapperCache = struct {
     /// collected ones waiting for their second pass - at the realm's end,
     /// before its sweep frees anything.
     fn releaseAllCounted(self: *Self) void {
+        // A walk: in shadow mode a release only counts, but once references
+        // decide (refcount step 7) one can free a node, whose teardown can
+        // wrap.
+        self.beginWalk();
+        defer self.endWalk();
         var it = self.cache.valueIterator();
         while (it.next()) |entry_ptr| releaseCounted(entry_ptr.*);
         var at = self.pending_head;
         while (at) |entry| : (at = entry.pending_next) releaseCounted(entry);
+    }
+
+    /// A walk over `cache` that calls out of this file begins: until the
+    /// matching `endWalk`, `set` inserts without rehashing, so the slots the
+    /// walk's iterator reads stay where they are. Every iteration of `cache`
+    /// whose body can reach code that may wrap an object takes one.
+    fn beginWalk(self: *Self) void {
+        self.walks += 1;
+    }
+
+    fn endWalk(self: *Self) void {
+        std.debug.assert(self.walks != 0);
+        self.walks -= 1;
+    }
+
+    /// Tests: walk the entries as this cache's own walks do (`beginWalk`),
+    /// calling `visit` with each instance - which may wrap new objects.
+    pub fn walkEntriesForTest(self: *Self, context: anytype, comptime visit: fn (@TypeOf(context), *runtime.Instance) anyerror!void) !void {
+        self.beginWalk();
+        defer self.endWalk();
+        var it = self.cache.keyIterator();
+        while (it.next()) |key_ptr| try visit(context, key_ptr.*);
     }
 
     fn linkPending(self: *Self, entry: *CacheEntry) void {
@@ -1363,6 +1436,11 @@ pub const WrapperCache = struct {
         const holder = v8.v8_Global_Clone(global) orelse return;
         v8.v8_Global_SetWeak(@ptrCast(holder), null, detachedHolderCollected);
         self.detached_holder = holder;
+        // A walk: syncEntry makes V8 calls that may allocate, and a
+        // collection they start runs first passes here (removals only); a
+        // forced one would run its second passes - teardowns - too.
+        self.beginWalk();
+        defer self.endWalk();
         var iter = self.cache.valueIterator();
         while (iter.next()) |entry_ptr| syncEntry(entry_ptr.*);
         var deferred_iter = self.edges_before_wrap.valueIterator();
@@ -1408,6 +1486,7 @@ pub const WrapperCache = struct {
             self.prune_watermark = @max(small_deferred_map, 2 * self.edges_before_wrap.count());
         }
         const generation = runtime.SlabAllocator.generationOf(owner);
+        if (self.walks == 0) self.edges_guard.beforeInsert(&self.edges_before_wrap);
         const gop = try self.edges_before_wrap.getOrPut(self.allocator, owner);
         if (!gop.found_existing) {
             gop.value_ptr.* = .{ .generation = generation };
@@ -1458,6 +1537,7 @@ pub const WrapperCache = struct {
     /// the strong holds go. Needs a current context, which every wrap has.
     fn drawDeferredEdges(self: *Self, instance: *runtime.Instance, generation: u64, wrapper: *v8.Object) void {
         var kv = self.edges_before_wrap.fetchRemove(instance) orelse return;
+        self.edges_guard.noteRemoval(&self.edges_before_wrap);
         defer kv.value.dispose(self.allocator);
         if (kv.value.generation != generation) return;
         for (kv.value.edges.items) |edge| {
@@ -1477,8 +1557,9 @@ pub const WrapperCache = struct {
             if (runtime.SlabAllocator.generationOf(kv.key_ptr.*) == kv.value_ptr.generation) continue;
             kv.value_ptr.dispose(self.allocator);
             // Removing during iteration: the map's own tombstone removal
-            // leaves the iterator valid.
+            // leaves the iterator valid, and noting it never rehashes.
             self.edges_before_wrap.removeByPtr(kv.key_ptr);
+            self.edges_guard.noteRemoval(&self.edges_before_wrap);
         }
     }
 
@@ -1508,6 +1589,7 @@ pub const WrapperCache = struct {
         while (iter.next()) |deferred| deferred.dispose(self.allocator);
         self.edges_before_wrap.deinit(self.allocator);
         self.edges_before_wrap = .empty;
+        self.edges_guard = .{};
     }
 
     /// Initialize a new wrapper cache
@@ -1607,7 +1689,10 @@ pub const WrapperCache = struct {
         // groups of 5 and 6 leaked blocks at exit). `set` refuses while the
         // cache is torn down, so nothing joins the map this walks either.
         // (The entry iterator, not the value iterator: it re-reads the map's
-        // size, which removal lowers.)
+        // size, which removal lowers.) A walk, though nothing is inserted
+        // while it runs.
+        self.beginWalk();
+        defer self.endWalk();
         var iter = self.cache.iterator();
         var processed: usize = 0;
         var skipped_cleaned: usize = 0;
@@ -1616,6 +1701,7 @@ pub const WrapperCache = struct {
         while (iter.next()) |kv| {
             const entry = kv.value_ptr.*;
             self.cache.removeByPtr(kv.key_ptr);
+            self.guard.noteRemoval(&self.cache);
             processed += 1;
 
             // Count iframes in cache
@@ -1646,6 +1732,21 @@ pub const WrapperCache = struct {
             if (entry.instance_already_cleaned) {
                 severWrapper(entry);
                 skipped_cleaned += 1;
+                // Its teardown began under its live wrapper (markAsCleanedUp -
+                // a node its realm's tree tore down before this sweep), and
+                // PHASE 1 disarmed the finalizer that would have freed the
+                // storage it left. Inside the realm's coordinated teardown the
+                // coordinator returns it after the teardown's LAST phase
+                // (releaseDeferredStorage), not here: a teardown later in this
+                // sweep can still read it - a detached root reads its
+                // document, torn down with the realm's tree - and a slot
+                // returned now could be reissued under that read by an
+                // allocation the sweep makes. Outside one, it stays as it did.
+                // It used to stay until the Browser ended - every page's
+                // wrapped nodes kept their slots (lane unwrapped1).
+                if (!is_reused and runtime.instance_lifecycle.isCleanedUp(entry.instance) and
+                    !wrappedElsewhere(entry.instance, self))
+                    runtime.cleanup_coordinator.deferStorageRelease(entry.instance, entry.original_generation);
                 if (is_iframe) {
                     log.debug("[wrapper_cache.deinit] SKIP_CLEANED iframe instance={*}", .{entry.instance});
                 }
@@ -1914,6 +2015,7 @@ pub const WrapperCache = struct {
         // are about to orphan. Release it the same way remove() does before
         // taking over the key.
         if (self.cache.fetchRemove(instance)) |kv| {
+            self.guard.noteRemoval(&self.cache);
             const old_entry = kv.value;
             log.debug(
                 "[set] replacing existing wrapper for instance={*} old_entry={*} new_entry={*}",
@@ -1924,6 +2026,10 @@ pub const WrapperCache = struct {
             disposeEntryWrapper(old_entry);
             self.allocator.destroy(old_entry);
         }
+        // Rehash first if the tombstones could take half the unused slots -
+        // never while a walk reads the slots (`walks`). The only insert into
+        // `cache`: nothing else here can move its slots but growth.
+        if (self.walks == 0) self.guard.beforeInsert(&self.cache);
         try self.cache.put(instance, entry);
 
         // The wrapper owns one reference to a counted instance (a node:
@@ -1933,6 +2039,7 @@ pub const WrapperCache = struct {
 
         // Pending-activity keeps placed before the wrapper existed.
         if (self.pending_before_wrap.fetchRemove(instance)) |held| {
+            self.pending_guard.noteRemoval(&self.pending_before_wrap);
             if (held.value.generation == entry.original_generation) entry.pending_activity = held.value.count;
         }
         // Edges traced from the instance before script saw it.
@@ -1983,6 +2090,9 @@ pub const WrapperCache = struct {
         }
 
         // PHASE 2: Now safe to clean up all entries (no weak callbacks can fire)
+        // A walk: a teardown run here can wrap a new object (`set`).
+        self.beginWalk();
+        defer self.endWalk();
         var iter = self.cache.valueIterator();
         while (iter.next()) |entry_ptr| {
             const entry = entry_ptr.*;
@@ -2002,6 +2112,7 @@ pub const WrapperCache = struct {
         }
 
         self.cache.clearRetainingCapacity();
+        self.guard.reset();
         self.disposeDeferredEdges();
     }
 
@@ -2078,6 +2189,7 @@ pub const WrapperCache = struct {
     /// true if entry was found and removed, false if not in cache
     pub fn remove(self: *Self, instance: *runtime.Instance) bool {
         if (self.cache.fetchRemove(instance)) |kv| {
+            self.guard.noteRemoval(&self.cache);
             const entry = kv.value;
 
             // Clear weak callback first to prevent it from firing

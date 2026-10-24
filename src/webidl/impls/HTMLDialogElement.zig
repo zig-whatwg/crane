@@ -557,7 +557,13 @@ fn modalInertness(node: *Instance) ?bool {
     var inert = false;
     var current: ?*Instance = node;
     while (current) |item| {
-        if (forms.hasAttribute(item, "inert") or html.forms.select_picker.isSelectButton(item)) inert = true;
+        // HTML 6.3.2: a foreign element's inert attribute has no effect.
+        const inert_attribute = forms.hasAttribute(item, "inert") and html_namespace: {
+            var namespace = (interfaces.Element.get_namespaceURI(item) catch null) orelse break :html_namespace false;
+            defer namespace.deinit(item.ctx.allocator);
+            break :html_namespace std.mem.eql(u8, namespace.asSlice(), "http://www.w3.org/1999/xhtml");
+        };
+        if (inert_attribute or html.forms.select_picker.isSelectButton(item)) inert = true;
         if (item == modal) return inert;
         current = flatParent(item);
     }

@@ -58,8 +58,8 @@ pub const XRHand = struct {
 
         /// Iterable declaration (for Symbol.iterator support)
         pub const iterable = .{
-            .value_type = "XRHandJoint",
-            .key_type = "XRJointSpace",
+            .value_type = "XRJointSpace",
+            .key_type = "XRHandJoint",
         };
     };
 

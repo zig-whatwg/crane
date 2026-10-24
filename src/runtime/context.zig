@@ -43,6 +43,7 @@
 //! ```
 
 const std = @import("std");
+const orphan_roots_mod = @import("orphan_roots.zig");
 const Logger = @import("logger.zig").Logger;
 const LoggerConfig = @import("logger.zig").LoggerConfig;
 const infra = @import("infra");
@@ -275,6 +276,10 @@ pub const ContextData = struct {
     /// This enables proper cross-realm TypeError throwing, object creation, etc.
     realm: ?*Realm,
 
+    /// The roots of subtrees removed from their trees while no wrapper
+    /// reached them, which this realm's end frees (runtime.orphan_roots).
+    orphan_roots: orphan_roots_mod.List = .{},
+
     const Self = @This();
 
     /// Context initialization options
@@ -360,6 +365,7 @@ pub const ContextData = struct {
         self.clearDocumentUrl();
         self.console_state.deinit(self.allocator);
         self.logger.deinit();
+        self.orphan_roots.deinit(self.allocator);
     }
 
     /// The URL this realm records for its document (or worker script), if any.

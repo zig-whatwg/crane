@@ -32,6 +32,11 @@ pub const ComputedStyle = struct {
     /// CSS Color Adjustment 1 2.2, the element color scheme: what its system
     /// colors were resolved against.
     used_color_scheme: color_scheme.Scheme = .light,
+    /// Grid 2 §9 / Display 4 §2.5: copied box ancestry facts, never a parent
+    /// style pointer. display:contents forwards its nearest principal box;
+    /// display:none suppresses all descendant boxes.
+    box_context: enum { suppressed, grid, other } = .other,
+    subgrid_ineligible: bool = false,
 
     /// A style whose every value is its longhand's initial value, computed
     /// (the root's parent; an element no rule styles).
@@ -72,13 +77,34 @@ pub const ComputedStyle = struct {
         return c.absolute() orelse (self.get(.color).color.absolute() orelse values.RgbaColor.black);
     }
 
+    /// Owned used color for CSSOM. Resolve against this element without
+    /// reducing the result to an 8-bit physical destination.
+    pub fn resolvedColor(self: *const ComputedStyle, l: Longhand, allocator: Allocator) Allocator.Error!Color {
+        const value = self.get(l);
+        const color = if (value == .color) value.color else Color.current;
+        return color.resolveComputed(allocator, .{ .scheme = self.used_color_scheme, .current = self.get(.color).color });
+    }
+
     /// CSSOM section 9: the resolved value of `l`, serialized into `out`.
     pub fn serializeResolved(self: *const ComputedStyle, l: Longhand, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
         const v = self.get(l);
+        // Grid 2 §§7.2.6, 9: only the resolved value of an ineligible
+        // subgrid becomes none. The computed track object is unchanged.
+        if ((l == .grid_template_columns or l == .grid_template_rows) and self.subgrid_ineligible and v == .grid_tracks and v.grid_tracks.subgrid)
+            return out.appendSlice(allocator, "none");
+        // CSS Text4 §8.2's legacy resolved value: every computed zero is normal.
+        if (l == .letter_spacing and v == .length and v.length.value == 0)
+            return out.appendSlice(allocator, "normal");
+        if (l == .animation_duration) return @import("animation_values.zig").serializeDurationResolved(v, self.get(.animation_timeline), out, allocator);
+        if (l == .caret_color) return @import("ui_values.zig").serializeCaretResolved(v, .{ .scheme = self.used_color_scheme, .current = self.get(.color).color }, out, allocator);
+        if (v == .color) {
+            const color = try self.resolvedColor(l, allocator);
+            defer color.release();
+            return color.serializeComputed(out, allocator);
+        }
         switch (properties.Longhand.info(l).grammar) {
-            // "background-color ... color ... A resolved value special case
-            // property like color: the resolved value is the used value."
-            .color => return values.serializeRgba(self.usedColor(l), out, allocator),
+            .paint => return @import("svg_paint.zig").serializeResolved(v, self.get(.color).color, out, allocator),
+            .filter => if (v == .filter) return v.filter.serializeResolved(self.get(.color).color, out, allocator),
             // "line-height: the resolved value is normal if the computed
             // value is normal, or the used value otherwise." A number's
             // used value is that many times the font size.
@@ -108,14 +134,18 @@ pub const initial_values: [Longhand.count]Value = blk: {
 /// and font-size made absolute, and a border width with style none zero.
 pub fn initialComputed(l: Longhand) Value {
     return switch (l) {
+        .justify_items => .{ .alignment = .{ .position = .normal } },
         // The initial border-style is none, so the initial border-width
         // computes to 0 (CSS Backgrounds 3 "border-width" computed value).
         .border_top_width, .border_right_width, .border_bottom_width, .border_left_width, .border_block_start_width, .border_block_end_width, .border_inline_start_width, .border_inline_end_width => Value.px(0),
+        .outline_width => Value.px(3),
         .font_size => Value.px(16),
         .font_weight => .{ .number = 400 },
+        .letter_spacing => Value.px(0),
         // CanvasText with no element to take a color scheme from: the UA
         // default's (light). The cascade resolves it per element.
         .color => .{ .color = .{ .rgba = values.RgbaColor.black } },
+        .background_color => .{ .color = .{ .rgba = values.RgbaColor.transparent } },
         else => l.info().initial,
     };
 }

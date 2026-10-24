@@ -270,6 +270,8 @@ pub fn requestClient(global: *runtime.Instance) error{OutOfMemory}!Client {
         if (err == error.OutOfMemory) return error.OutOfMemory;
     }
     // Fetch "determine the network partition key": the top-level site.
+    if (try shareableOriginOf(global)) |record|
+        client.request.origin_nonce = try record.opaqueNonce(global.ctx.browserScope());
     if (settings.top_level_site) |site_of| client.request.top_level_site = try site_of(global);
     // A srcdoc Window walks to its ancestor document; a worker's realm
     // document URL is already its creation URL (Referrer Policy 8.3).
@@ -280,6 +282,7 @@ pub fn requestClient(global: *runtime.Instance) error{OutOfMemory}!Client {
     // The blob URL store a blob: request's blob is obtained from: the
     // global's Browser's (its realm's scope).
     client.request.blob_url_store = @ptrCast(@import("browser_state.zig").blobURLStoreOf(global.ctx));
+    client.request.capture_blob = &captureBlobFromStore;
     // What a blob: request obtains its blob for (Fetch scheme fetch "blob"
     // steps 3-5): the settings object's storage key, BORROWED from the
     // global; and, for a top-level Window, its creation URL - a fetch of it
@@ -301,6 +304,19 @@ pub fn requestClient(global: *runtime.Instance) error{OutOfMemory}!Client {
     client.request.service_worker = @import("service_worker_clients.zig").routeForGlobal(global);
     client.request.integrity_violation_reporter = @import("sri_reporting.zig").reporterFor(global);
     return client;
+}
+
+/// URL parsing in a realm captures its Browser's live entry now, without
+/// authorizing a fetch. The returned reference is the caller's to release.
+pub fn captureBlobURL(realm: runtime.Context, url: []const u8) ?*fetch.internal.request.CapturedBlobEntry {
+    if (!std.ascii.startsWithIgnoreCase(url, "blob:")) return null;
+    const store = @import("browser_state.zig").existingBlobURLStoreOf(realm) orelse return null;
+    return store.capture(url);
+}
+
+fn captureBlobFromStore(ptr: *anyopaque, url: []const u8) ?*fetch.internal.request.CapturedBlobEntry {
+    const store: *@import("file").BlobURLStore = @ptrCast(@alignCast(ptr));
+    return store.capture(url);
 }
 
 /// Whether `global` is a Window whose navigable is a top-level traversable

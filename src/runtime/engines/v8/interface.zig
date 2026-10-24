@@ -1679,6 +1679,82 @@ pub fn realmIsSecureContext(context: *v8.Context) bool {
     return realm.secure_context;
 }
 
+/// Only codegen's scalar ByteString results use byte-to-code-unit
+/// conversion. With no table (or no entry), the existing conversion stays.
+pub fn returnsByteString(comptime Interface: type, comptime name: []const u8) bool {
+    if (!@hasDecl(Interface, "byte_string_returns")) return false;
+    inline for (Interface.byte_string_returns) |member| {
+        if (comptime std.mem.eql(u8, member, name)) return true;
+    }
+    return false;
+}
+
+pub fn realmExposureScope(context: *v8.Context) webidl.helpers.GlobalScope {
+    const entry = @import("context_manager.zig").getEntry(context) orelse return .Window;
+    return entry.exposure_scope;
+}
+
+fn exposureOverrides(comptime Interface: type, comptime static: bool) type {
+    return struct {
+        const name = if (static) "exposed_static_members" else "exposed_members";
+        const entries = if (@hasDecl(Interface.Meta, name)) @field(Interface.Meta, name) else .{};
+    };
+}
+
+pub fn hasExposureOverride(comptime Interface: type, comptime name: []const u8, comptime static: bool) bool {
+    @setEvalBranchQuota(100_000);
+    inline for (exposureOverrides(Interface, static).entries) |entry| {
+        if (comptime std.mem.eql(u8, entry[0], name)) return true;
+    }
+    return false;
+}
+
+/// Only these interfaces need work after a wrapper is instantiated. Keep
+/// the predicate metadata-only so the dispatcher compiles out every other
+/// interface before instantiating its binding.
+pub fn hasConditionalUnforgeables(comptime Interface: type) bool {
+    @setEvalBranchQuota(1_000_000);
+    if (@hasDecl(Interface.Meta, "unforgeable_members")) {
+        inline for (Interface.Meta.unforgeable_members) |member| {
+            if (comptime hasExposureOverride(Interface, member, false)) return true;
+        }
+    }
+    if (@hasDecl(Interface.Meta, "ParentInterface")) return hasConditionalUnforgeables(Interface.Meta.ParentInterface);
+    return false;
+}
+
+/// WebIDL "exposed": a member defaults to its interface's exposure. A
+/// partial/mixin override is intersected with the host interface's set.
+pub fn memberIsExposed(comptime Interface: type, comptime name: []const u8, comptime static: bool, scope: webidl.helpers.GlobalScope) bool {
+    if (!interfaceIsExposedInScope(Interface, scope)) return false;
+    inline for (exposureOverrides(Interface, static).entries) |entry| {
+        if (comptime std.mem.eql(u8, entry[0], name)) {
+            inline for (entry[1]) |global| {
+                if (comptime std.mem.eql(u8, global, "*")) return true;
+                if (scope.matchesExposure(global)) return true;
+            }
+            return false;
+        }
+    }
+    return true;
+}
+
+/// The existing exposure helper consumes heterogeneous comptime metadata.
+/// Resolve each scope at comptime, then choose its result for this realm.
+pub fn interfaceIsExposedInScope(comptime Interface: type, scope: webidl.helpers.GlobalScope) bool {
+    return switch (scope) {
+        inline else => |current| comptime webidl.helpers.isExposedIn(Interface, current),
+    };
+}
+
+fn hideUnexposedMembers(comptime Interface: type, comptime static: bool, isolate: *v8.Isolate, context: *v8.Context, object: *v8.Object) void {
+    inline for (exposureOverrides(Interface, static).entries) |entry| {
+        if (!memberIsExposed(Interface, entry[0], static, realmExposureScope(context))) {
+            hideNames(isolate, context, object, .{entry[0]});
+        }
+    }
+}
+
 /// Delete each of `names` from `object`: WebIDL 3.3.13, the [SecureContext]
 /// constructs a realm that is not a secure context does not expose.
 pub fn hideNames(isolate: *v8.Isolate, context: *v8.Context, object: *v8.Object, comptime names: anytype) void {
@@ -2451,6 +2527,19 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             }
 
+            // These configurable members came from isolate-wide templates;
+            // filter the realm's objects, never the shared template.
+            hideUnexposedMembers(Interface, true, isolate, context, @ptrCast(constructor));
+            if (comptime @hasDecl(Meta, "exposed_members")) {
+                if (v8.v8_String_NewFromUtf8(isolate, "prototype", 9)) |key| {
+                    defer v8.v8_String_Dispose(key);
+                    if (v8.v8_Object_Get(@ptrCast(constructor), context, @ptrCast(key))) |prototype| {
+                        defer v8.v8_Value_Dispose(prototype);
+                        if (v8.v8_Value_IsObject(prototype)) hideUnexposedMembers(Interface, false, isolate, context, @ptrCast(prototype));
+                    }
+                }
+            }
+
             return constructor;
         }
 
@@ -2478,14 +2567,19 @@ pub fn V8Interface(comptime Interface: type) type {
         fn defineConstants(isolate: *v8.Isolate, context: *v8.Context, target: *v8.Object) void {
             if (!@hasDecl(Meta, "constants")) return;
             inline for (Meta.constants) |constant| {
-                const const_name: []const u8 = constant[0];
-                const getter_name: []const u8 = constant[1];
-                const value = @field(Interface, getter_name)();
-                const v8_value = v8.v8_Number_New(isolate, @floatFromInt(value));
-                defer v8.v8_Value_Dispose(@ptrCast(v8_value));
-                if (v8.v8_String_NewFromUtf8(isolate, const_name.ptr, @intCast(const_name.len))) |const_name_v8| {
-                    defer v8.v8_String_Dispose(const_name_v8);
-                    _ = v8.v8_Object_DefineProperty(target, context, @ptrCast(const_name_v8), @ptrCast(v8_value), false, true, false);
+                install_member: {
+                    const const_name: []const u8 = constant[0];
+                    if (comptime hasExposureOverride(Interface, const_name, true)) {
+                        if (!memberIsExposed(Interface, const_name, true, realmExposureScope(context))) break :install_member;
+                    }
+                    const getter_name: []const u8 = constant[1];
+                    const value = @field(Interface, getter_name)();
+                    const v8_value = v8.v8_Number_New(isolate, @floatFromInt(value));
+                    defer v8.v8_Value_Dispose(@ptrCast(v8_value));
+                    if (v8.v8_String_NewFromUtf8(isolate, const_name.ptr, @intCast(const_name.len))) |const_name_v8| {
+                        defer v8.v8_String_Dispose(const_name_v8);
+                        _ = v8.v8_Object_DefineProperty(target, context, @ptrCast(const_name_v8), @ptrCast(v8_value), false, true, false);
+                    }
                 }
             }
         }
@@ -2515,6 +2609,22 @@ pub fn V8Interface(comptime Interface: type) type {
         /// template: @@toStringTag, the iterable and async-iterable members and
         /// @@unscopables.
         fn setUpPrototype(isolate: *v8.Isolate, context: *v8.Context, proto: *v8.Object) void {
+            // Non-configurable constants with [Exposed] cannot be removed
+            // from a template-created object: define them only in this realm.
+            if (comptime @hasDecl(Meta, "constants")) {
+                inline for (Meta.constants) |constant| {
+                    install_constant: {
+                        if (comptime !hasExposureOverride(Interface, constant[0], false)) continue;
+                        if (!memberIsExposed(Interface, constant[0], false, realmExposureScope(context))) break :install_constant;
+                        const value = @field(Interface, constant[1])();
+                        const number = v8.v8_Number_New(isolate, @floatFromInt(value));
+                        defer v8.v8_Value_Dispose(@ptrCast(number));
+                        const constant_name = v8.v8_String_NewFromUtf8(isolate, constant[0].ptr, @intCast(constant[0].len)) orelse break :install_constant;
+                        defer v8.v8_String_Dispose(constant_name);
+                        _ = v8.v8_Object_DefineProperty(proto, context, @ptrCast(constant_name), @ptrCast(number), false, true, false);
+                    }
+                }
+            }
             // Set Symbol.toStringTag on prototype
             // This makes Object.prototype.toString.call(prototype) return "[object InterfaceName]"
             if (v8.v8_Symbol_GetToStringTag(isolate)) |symbol| {
@@ -2648,69 +2758,79 @@ pub fn V8Interface(comptime Interface: type) type {
             context: *v8.Context,
             target_object: *v8.Object,
         ) void {
+            installOwnProperties(isolate, context, target_object, false);
+        }
+
+        fn installOwnProperties(isolate: *v8.Isolate, context: *v8.Context, target_object: *v8.Object, comptime conditional_only: bool) void {
             @setEvalBranchQuota(10000);
 
             // Register EAGER properties as accessor properties on the target object
             inline for (eager_properties) |prop| {
-                const prop_name: []const u8 = prop[0];
-                const getter_name: []const u8 = prop[1];
-                const setter_name: ?[]const u8 = prop[2];
-
-                // `self` and `frames` are [Replaceable]: the realm defines them
-                // as own data properties whose value is the global itself
-                // (protocol_realms bindWindowToGlobal), which testharness.js's
-                // `(function (global_scope) { ... })(self)` needs. `window` is
-                // an accessor like any other member, the global's own: its
-                // getter answers the global (answerWindowGetter).
-                if (comptime is_global_interface and (std.mem.eql(u8, prop_name, "self") or
-                    std.mem.eql(u8, prop_name, "frames")))
-                {
-                    continue;
-                }
-
-                const prop_name_str = v8.v8_String_NewFromUtf8(
-                    isolate,
-                    prop_name.ptr,
-                    @intCast(prop_name.len),
-                ).?;
-                defer v8.v8_String_Dispose(prop_name_str);
-
-                // Use PropertyGetterCallback to generate the getter callback
-                const getter_cb: v8.FunctionCallback = PropertyGetterCallback(interface_name, getter_name).callback;
-
-                // Check if this property has [PutForwards] extended attribute
-                const put_forwards_target: ?[]const u8 = comptime blk: {
-                    if (!@hasDecl(Meta, "put_forwards_attributes")) break :blk null;
-                    for (Meta.put_forwards_attributes) |pf| {
-                        if (std.mem.eql(u8, pf[0], prop_name)) {
-                            break :blk pf[1];
-                        }
+                install_member: {
+                    const prop_name: []const u8 = prop[0];
+                    if (comptime conditional_only and !(isUnforgeableMember(prop_name) and hasExposureOverride(Interface, prop_name, false))) continue;
+                    if (comptime hasExposureOverride(Interface, prop_name, false)) {
+                        if (!memberIsExposed(Interface, prop_name, false, realmExposureScope(context))) break :install_member;
                     }
-                    break :blk null;
-                };
+                    const getter_name: []const u8 = prop[1];
+                    const setter_name: ?[]const u8 = prop[2];
 
-                // Generate setter callback
-                const setter_cb: ?v8.FunctionCallback = if (put_forwards_target) |forward_prop|
-                    PutForwardsSetterCallback(prop_name, forward_prop).callback
-                else if (setter_name) |s_name|
-                    makeSetterCallback(interface_name, s_name)
-                else
-                    null;
+                    // `self` and `frames` are [Replaceable]: the realm defines them
+                    // as own data properties whose value is the global itself
+                    // (protocol_realms bindWindowToGlobal), which testharness.js's
+                    // `(function (global_scope) { ... })(self)` needs. `window` is
+                    // an accessor like any other member, the global's own: its
+                    // getter answers the global (answerWindowGetter).
+                    if (comptime is_global_interface and (std.mem.eql(u8, prop_name, "self") or
+                        std.mem.eql(u8, prop_name, "frames")))
+                    {
+                        continue;
+                    }
 
-                // Set as accessor property on the target object
-                // This creates an own property visible to Object.getOwnPropertyDescriptor.
-                // Each function runs WebIDL's security check for a
-                // cross-origin `this` unless HTML lists it (cross_origin.zig).
-                _ = v8.v8_Object_SetAccessorPropertyChecked(
-                    target_object,
-                    context,
-                    prop_name_str,
-                    getter_cb,
-                    setter_cb,
-                    comptime acceptsAnyReceiver(prop_name, .getter),
-                    comptime acceptsAnyReceiver(prop_name, .setter),
-                    comptime if (isUnforgeableMember(prop_name)) v8.PropertyAttribute.DontDelete else v8.PropertyAttribute.None,
-                );
+                    const prop_name_str = v8.v8_String_NewFromUtf8(
+                        isolate,
+                        prop_name.ptr,
+                        @intCast(prop_name.len),
+                    ).?;
+                    defer v8.v8_String_Dispose(prop_name_str);
+
+                    // Use PropertyGetterCallback to generate the getter callback
+                    const getter_cb: v8.FunctionCallback = PropertyGetterCallback(interface_name, getter_name).callback;
+
+                    // Check if this property has [PutForwards] extended attribute
+                    const put_forwards_target: ?[]const u8 = comptime blk: {
+                        if (!@hasDecl(Meta, "put_forwards_attributes")) break :blk null;
+                        for (Meta.put_forwards_attributes) |pf| {
+                            if (std.mem.eql(u8, pf[0], prop_name)) {
+                                break :blk pf[1];
+                            }
+                        }
+                        break :blk null;
+                    };
+
+                    // Generate setter callback
+                    const setter_cb: ?v8.FunctionCallback = if (put_forwards_target) |forward_prop|
+                        PutForwardsSetterCallback(prop_name, forward_prop).callback
+                    else if (setter_name) |s_name|
+                        makeSetterCallback(interface_name, s_name)
+                    else
+                        null;
+
+                    // Set as accessor property on the target object
+                    // This creates an own property visible to Object.getOwnPropertyDescriptor.
+                    // Each function runs WebIDL's security check for a
+                    // cross-origin `this` unless HTML lists it (cross_origin.zig).
+                    _ = v8.v8_Object_SetAccessorPropertyChecked(
+                        target_object,
+                        context,
+                        prop_name_str,
+                        getter_cb,
+                        setter_cb,
+                        comptime acceptsAnyReceiver(prop_name, .getter),
+                        comptime acceptsAnyReceiver(prop_name, .setter),
+                        comptime if (isUnforgeableMember(prop_name)) v8.PropertyAttribute.DontDelete else v8.PropertyAttribute.None,
+                    );
+                }
             }
         }
 
@@ -2739,76 +2859,97 @@ pub fn V8Interface(comptime Interface: type) type {
             context: *v8.Context,
             target_object: *v8.Object,
         ) void {
+            installOwnMethods(isolate, context, target_object, false);
+        }
+
+        fn installOwnMethods(isolate: *v8.Isolate, context: *v8.Context, target_object: *v8.Object, comptime conditional_only: bool) void {
             @setEvalBranchQuota(20000);
 
             // Register all methods as function properties on the target object
             inline for (methods) |method| {
-                const method_name: []const u8 = method[0];
-                const zig_name: []const u8 = method[1];
-                // WebIDL 3.7.6 (create an operation function): its `length`
-                // is the shortest overload's required argument count and its
-                // `name` the operation's identifier - as on the prototype,
-                // where createTemplate sets both. Left out here, every
-                // window operation read `length` 0 and `name` "".
-                const arity: c_int = if (method.len >= 3) method[2] else 0;
+                install_member: {
+                    const method_name: []const u8 = method[0];
+                    const zig_name: []const u8 = method[1];
+                    if (comptime conditional_only and !(isUnforgeableMember(method_name) and hasExposureOverride(Interface, method_name, false))) continue;
+                    if (comptime hasExposureOverride(Interface, method_name, false)) {
+                        if (!memberIsExposed(Interface, method_name, false, realmExposureScope(context))) break :install_member;
+                    }
+                    // WebIDL 3.7.6 (create an operation function): its `length`
+                    // is the shortest overload's required argument count and its
+                    // `name` the operation's identifier - as on the prototype,
+                    // where createTemplate sets both. Left out here, every
+                    // window operation read `length` 0 and `name` "".
+                    const arity: c_int = if (method.len >= 3) method[2] else 0;
 
-                // Create the method callback using FunctionTemplate
-                const Callback = MethodCallback(zig_name);
+                    // Create the method callback using FunctionTemplate
+                    const Callback = MethodCallback(zig_name);
 
-                // Create FunctionTemplate for this method
-                const method_tmpl = v8.v8_FunctionTemplate_New(
-                    isolate,
-                    Callback.callback,
-                    null,
-                );
-
-                // Every handle here is owned and released once the property is
-                // set. The function lives in `context`, so one leaked handle
-                // per method kept every context this ran for alive - every
-                // page and every frame.
-                if (method_tmpl) |tmpl| {
-                    defer v8.v8_FunctionTemplate_Dispose(tmpl);
-                    v8.v8_FunctionTemplate_SetLength(tmpl, arity);
-                    // Not a constructor: no `prototype` (as on the prototype).
-                    v8.v8_FunctionTemplate_RemovePrototype(tmpl);
-                    // WebIDL's security check for a cross-origin `this`,
-                    // unless HTML lists the operation (cross_origin.zig).
-                    if (comptime engineChecksReceiver(method_name, zig_name)) v8.v8_FunctionTemplate_SetAcceptAnyReceiver(tmpl, false);
-                    // Get Function from template
-                    const method_fn = v8.v8_FunctionTemplate_GetFunction(
-                        tmpl,
-                        context,
+                    // Create FunctionTemplate for this method
+                    const method_tmpl = v8.v8_FunctionTemplate_New(
+                        isolate,
+                        Callback.callback,
+                        null,
                     );
 
-                    if (method_fn) |func| {
-                        defer v8.v8_Function_Dispose(func);
-                        // Create string for method name
-                        const name_str = v8.v8_String_NewFromUtf8(
-                            isolate,
-                            method_name.ptr,
-                            @intCast(method_name.len),
+                    // Every handle here is owned and released once the property is
+                    // set. The function lives in `context`, so one leaked handle
+                    // per method kept every context this ran for alive - every
+                    // page and every frame.
+                    if (method_tmpl) |tmpl| {
+                        defer v8.v8_FunctionTemplate_Dispose(tmpl);
+                        v8.v8_FunctionTemplate_SetLength(tmpl, arity);
+                        // Not a constructor: no `prototype` (as on the prototype).
+                        v8.v8_FunctionTemplate_RemovePrototype(tmpl);
+                        // WebIDL's security check for a cross-origin `this`,
+                        // unless HTML lists the operation (cross_origin.zig).
+                        if (comptime engineChecksReceiver(method_name, zig_name)) v8.v8_FunctionTemplate_SetAcceptAnyReceiver(tmpl, false);
+                        // Get Function from template
+                        const method_fn = v8.v8_FunctionTemplate_GetFunction(
+                            tmpl,
+                            context,
                         );
 
-                        if (name_str) |name_v8_str| {
-                            defer v8.v8_String_Dispose(name_v8_str);
-                            v8.v8_Function_SetName(func, name_v8_str);
-                            // Defined, never assigned (a [[Set]] runs whatever
-                            // the prototype chain has under the name):
-                            // { writable, enumerable, configurable }, WebIDL
-                            // 3.7.6 for a regular operation.
-                            _ = v8.v8_Object_DefineProperty(
-                                target_object,
-                                context,
-                                @ptrCast(name_v8_str),
-                                @ptrCast(func),
-                                true,
-                                true,
-                                true,
+                        if (method_fn) |func| {
+                            defer v8.v8_Function_Dispose(func);
+                            // Create string for method name
+                            const name_str = v8.v8_String_NewFromUtf8(
+                                isolate,
+                                method_name.ptr,
+                                @intCast(method_name.len),
                             );
+
+                            if (name_str) |name_v8_str| {
+                                defer v8.v8_String_Dispose(name_v8_str);
+                                v8.v8_Function_SetName(func, name_v8_str);
+                                // Defined, never assigned (a [[Set]] runs whatever
+                                // the prototype chain has under the name):
+                                // { writable, enumerable, configurable }, WebIDL
+                                // 3.7.6 for a regular operation.
+                                _ = v8.v8_Object_DefineProperty(
+                                    target_object,
+                                    context,
+                                    @ptrCast(name_v8_str),
+                                    @ptrCast(func),
+                                    !isUnforgeableMember(method_name),
+                                    true,
+                                    !isUnforgeableMember(method_name),
+                                );
+                            }
                         }
                     }
                 }
             }
+        }
+
+        /// WebIDL 3.8: non-configurable exposed members belong to this
+        /// realm's wrapper. The isolate's templates cannot hold them.
+        pub fn installConditionalUnforgeables(isolate: *v8.Isolate, context: *v8.Context, object: *v8.Object) void {
+            if (comptime !hasConditionalUnforgeables(Interface)) return;
+            if (@hasDecl(Meta, "ParentInterface")) {
+                V8Interface(Meta.ParentInterface).installConditionalUnforgeables(isolate, context, object);
+            }
+            installOwnProperties(isolate, context, object, true);
+            installOwnMethods(isolate, context, object, true);
         }
 
         /// Check if interface has a constructor (from Meta.has_constructor hint)
@@ -3099,6 +3240,7 @@ pub fn V8Interface(comptime Interface: type) type {
             if (@hasDecl(Meta, "constants")) {
                 inline for (Meta.constants) |proto_const| {
                     const proto_const_name: []const u8 = proto_const[0];
+                    if (comptime hasExposureOverride(Interface, proto_const_name, false)) continue;
                     const proto_getter_name: []const u8 = proto_const[1];
 
                     // Get constant value at comptime
@@ -3279,6 +3421,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // [LegacyUnforgeable] operations: { [[Writable]]: false,
                     // [[Configurable]]: false }, on the instance.
                     const unforgeable = comptime isUnforgeableMember(method_name);
+                    if (comptime unforgeable and hasExposureOverride(Interface, method_name, false)) continue;
                     registerMethod(zig_name, method_name, isolate, template, if (unforgeable) instance_tmpl else proto_tmpl, arity, if (unforgeable) v8.PropertyAttribute.ReadOnly | v8.PropertyAttribute.DontDelete else v8.PropertyAttribute.None);
                 }
             }
@@ -3321,7 +3464,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
         fn registerOwnUnforgeableMethods(isolate: *v8.Isolate, template: *v8.FunctionTemplate, instance_tmpl: *v8.ObjectTemplate) void {
             inline for (methods) |method| {
-                if (comptime isUnforgeableMember(method[0])) {
+                if (comptime isUnforgeableMember(method[0]) and !hasExposureOverride(Interface, method[0], false)) {
                     registerMethod(method[1], method[0], isolate, template, instance_tmpl, if (method.len >= 3) method[2] else 0, v8.PropertyAttribute.ReadOnly | v8.PropertyAttribute.DontDelete);
                 }
             }
@@ -3337,6 +3480,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 if (comptime members_on_global_object) continue;
                 const prop_name: []const u8 = prop[0];
                 const unforgeable = comptime isUnforgeableMember(prop_name);
+                if (comptime unforgeable and hasExposureOverride(Interface, prop_name, false)) continue;
                 if (comptime only_unforgeable and !unforgeable) continue;
 
                 const prop_name_str = v8.v8_String_NewFromUtf8(
@@ -4024,6 +4168,10 @@ pub fn V8Interface(comptime Interface: type) type {
 
                         // Convert to V8 using comptime type dispatch
                         const v8_value: *v8.Value = comptime_convert: {
+                            if (comptime returnsByteString(Interface, getter_name)) {
+                                break :comptime_convert conv.byteStringToV8(PayloadType, isolate_inner, result) catch
+                                    (v8.v8_Undefined(isolate_inner) orelse unreachable);
+                            }
                             // WebIDL primitive types
                             // Handle all unsigned integer types (u8, u16, u32)
                             if (PayloadType == u32 or PayloadType == runtime.UnsignedLong) {
@@ -4715,7 +4863,7 @@ pub fn V8Interface(comptime Interface: type) type {
             context: *v8.Context,
             arg: *v8.Value,
         ) !T {
-            const value = try convertArgReleasingWith(T, mode, allocator, isolate, context, arg);
+            var value = try convertArgReleasingWith(T, mode, allocator, isolate, context, arg);
             if (comptime mode.restricted) {
                 conv.requireFinite(T, value) catch |err| {
                     freeConvertedArg(T, allocator, value);
@@ -4723,7 +4871,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 };
             }
             if (comptime mode.byte_string) {
-                conv.requireByteString(T, value) catch |err| {
+                conv.encodeByteStringOwned(T, allocator, &value) catch |err| {
                     freeConvertedArg(T, allocator, value);
                     return err;
                 };
@@ -5164,12 +5312,13 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Convert return value to V8
             // CROSS-REALM SUPPORT: Use return_context (method's realm) for object creation
-            return try convertReturnValue(ReturnType, zig_result, allocator, isolate, return_context, result_owned);
+            return try convertReturnValue(ReturnType, comptime returnsByteString(Interface, modes.fn_name), zig_result, allocator, isolate, return_context, result_owned);
         }
 
         /// Convert Zig return value to V8 Value
         fn convertReturnValue(
             comptime ReturnType: type,
+            comptime byte_string: bool,
             result: anytype,
             allocator: std.mem.Allocator,
             isolate: *v8.Isolate,
@@ -5194,7 +5343,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // Handle error union - unwrap it
             if (type_info == .error_union) {
                 const PayloadType = type_info.error_union.payload;
-                return convertReturnValue(PayloadType, result, std.heap.page_allocator, isolate, v8_context, owned);
+                return convertReturnValue(PayloadType, byte_string, result, std.heap.page_allocator, isolate, v8_context, owned);
             }
 
             // Handle void return
@@ -5202,11 +5351,16 @@ pub fn V8Interface(comptime Interface: type) type {
                 return null;
             }
 
+            if (comptime byte_string) {
+                owned.* = true;
+                return try conv.byteStringToV8(ReturnType, isolate, result);
+            }
+
             // Handle optional types
             if (type_info == .optional) {
                 if (result) |value| {
                     const ChildType = type_info.optional.child;
-                    return convertReturnValue(ChildType, value, std.heap.page_allocator, isolate, v8_context, owned);
+                    return convertReturnValue(ChildType, false, value, std.heap.page_allocator, isolate, v8_context, owned);
                 } else {
                     owned.* = true;
                     return @ptrCast(v8.v8_Null(isolate));
@@ -5613,6 +5767,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // ========================================
             // CACHE THE WRAPPER: Store constructor-created wrapper for identity
             // ========================================
+            if (comptime hasConditionalUnforgeables(Interface)) installConditionalUnforgeables(isolate, constructor_context, this_obj);
             if (ctx.getV8WrapperCacheStorage()) |cache_storage| {
                 const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
                 const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
@@ -5840,6 +5995,10 @@ pub fn V8Interface(comptime Interface: type) type {
                 setInstanceWithTypeInfo(runtime.Instance, receiver, element, type_info);
             } else {
                 setInstance(runtime.Instance, receiver, element);
+            }
+            if (comptime hasConditionalUnforgeables(Interface)) {
+                const context: *v8.Context = @ptrCast(@alignCast(element.ctx.engine_ctx orelse return false));
+                installConditionalUnforgeables(isolate, context, receiver);
             }
             const cache = elementWrapperCache(element) orelse return false;
             cache.set(element, receiver, isolate) catch |err| {
@@ -6390,7 +6549,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             return .kNo;
                         };
                         // Other type (like DOMString, CSSOMString) - convert to V8 string
-                        const v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch {
+                        const v8_value = convertSpecialResult(ChildType, special.indexed_getter.?, isolate, v8_context, unwrapped_result) catch {
                             conv.throwError(isolate, "Failed to convert result to V8");
                             return .kNo;
                         };
@@ -6410,7 +6569,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     conv.throwError(isolate, "No V8 context");
                     return .kNo;
                 };
-                const v8_value = conv.toV8Value(ActualReturnType, isolate, v8_context, result) catch {
+                const v8_value = convertSpecialResult(ActualReturnType, special.indexed_getter.?, isolate, v8_context, result) catch {
                     conv.throwError(isolate, "Failed to convert result to V8");
                     return .kNo;
                 };
@@ -6617,7 +6776,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         v8_value = conv.instanceToV8(isolate, unwrapped_result);
                         value_owned = v8.v8_Value_IsUndefined(v8_value.?);
                     } else {
-                        v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch return .kNo;
+                        v8_value = convertSpecialResult(ChildType, special.indexed_getter.?, isolate, v8_context, unwrapped_result) catch return .kNo;
                         value_owned = comptime getterValueIsOwned(ChildType);
                     }
                 } else {
@@ -6625,7 +6784,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     v8_value = v8.v8_Undefined(isolate);
                 }
             } else {
-                v8_value = conv.toV8Value(ActualReturnType, isolate, v8_context, result) catch return .kNo;
+                v8_value = convertSpecialResult(ActualReturnType, special.indexed_getter.?, isolate, v8_context, result) catch return .kNo;
                 value_owned = comptime getterValueIsOwned(ActualReturnType);
             }
 
@@ -7102,6 +7261,11 @@ pub fn V8Interface(comptime Interface: type) type {
         /// releases once read; a wrapper is the wrapper cache's.
         const NamedValue = struct { value: *v8.Value, owned: bool };
 
+        fn convertSpecialResult(comptime T: type, comptime delegate: []const u8, isolate: *v8.Isolate, context: *v8.Context, value: T) !*v8.Value {
+            if (comptime returnsByteString(Interface, delegate)) return conv.byteStringToV8(T, isolate, value);
+            return conv.toV8Value(T, isolate, context, value);
+        }
+
         fn namedPropertyValue(instance: *runtime.Instance, isolate: *v8.Isolate, v8_context: *v8.Context, key: []const u8) ?NamedValue {
             const getter_fn = @field(Interface, special.named_getter.?);
             const result_allocator = instance.ctx.allocator;
@@ -7126,14 +7290,14 @@ pub fn V8Interface(comptime Interface: type) type {
                     const string = conv.newStringFromWtf8(isolate, unwrapped.asSlice()) orelse return null;
                     return .{ .value = string, .owned = true };
                 }
-                const v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped) catch return null;
+                const v8_value = convertSpecialResult(ChildType, special.named_getter.?, isolate, v8_context, unwrapped) catch return null;
                 return .{ .value = @ptrCast(v8_value), .owned = comptime getterValueIsOwned(ChildType) };
             }
             // DOMStringMap's anonymous getter comes here: one string per
             // `el.dataset.x` read - 60,000 a page on the legacy multi-byte
             // decode tests - each kept for the life of the process until the
             // conversion's handle was released.
-            const v8_value = conv.toV8Value(ActualReturnType, isolate, v8_context, result) catch return null;
+            const v8_value = convertSpecialResult(ActualReturnType, special.named_getter.?, isolate, v8_context, result) catch return null;
             return .{ .value = @ptrCast(v8_value), .owned = comptime getterValueIsOwned(ActualReturnType) };
         }
 
@@ -7664,8 +7828,8 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Released at the end of each round: the call copies them
                     // into its arguments.
-                    const key_str = v8.v8_String_NewFromUtf8(isolate, entry.name.ptr, @intCast(entry.name.len)) orelse continue;
-                    defer v8.v8_String_Dispose(key_str);
+                    const key_str = pairStringToV8(true, isolate, entry.name) orelse continue;
+                    defer v8.v8_Value_Dispose(key_str);
                     const val_v8 = entryValue(isolate, entry) orelse continue;
                     defer v8.v8_Value_Dispose(val_v8);
 
@@ -7707,7 +7871,17 @@ pub fn V8Interface(comptime Interface: type) type {
                         null,
                 };
             }
-            return conv.newStringFromWtf8(isolate, entry.value) orelse return null;
+            return pairStringToV8(false, isolate, entry.value);
+        }
+
+        fn pairStringToV8(comptime key: bool, isolate: *v8.Isolate, bytes: []const u8) ?*v8.Value {
+            if (comptime @hasDecl(Meta, "iterable")) {
+                const type_name = if (key) Meta.iterable.key_type else Meta.iterable.value_type;
+                if (comptime @TypeOf(type_name) != @TypeOf(null) and std.mem.eql(u8, type_name, "runtime.ByteString")) {
+                    return conv.byteStringToV8([]const u8, isolate, bytes) catch null;
+                }
+            }
+            return conv.newStringFromWtf8(isolate, bytes);
         }
 
         const IteratorKind = enum { entries, keys, values };
@@ -8011,7 +8185,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             const pair = v8.v8_Array_New(isolate, 2);
 
                             // entry.name is the key
-                            const key_str = v8.v8_String_NewFromUtf8(isolate, entry.name.ptr, @intCast(entry.name.len));
+                            const key_str = pairStringToV8(true, isolate, entry.name);
 
                             // Handle the value - check if it's a union type or simple string
                             const ValueType = @TypeOf(entry.value);
@@ -8026,7 +8200,7 @@ pub fn V8Interface(comptime Interface: type) type {
                                     }
                                 } else {
                                     // Simple string type - use directly
-                                    break :val_blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, entry.value.ptr, @intCast(entry.value.len)));
+                                    break :val_blk pairStringToV8(false, isolate, entry.value);
                                 }
                             };
 
@@ -8165,7 +8339,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Convert Zig strings to V8 strings
                 const undef = v8.v8_Undefined(isolate) orelse return;
                 defer v8.v8_Value_Dispose(undef);
-                const key_v8: ?*v8.Value = @ptrCast(v8.v8_String_NewFromUtf8(isolate, entry.name.ptr, @intCast(entry.name.len)));
+                const key_v8 = pairStringToV8(true, isolate, entry.name);
                 defer if (key_v8) |k| v8.v8_Value_Dispose(k);
                 const val_v8 = entryValue(isolate, entry);
                 defer if (val_v8) |v| v8.v8_Value_Dispose(v);
@@ -9175,7 +9349,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         conv.fromV8ValueInteger(ValueType, setter_integer, allocator, isolate_inner, context, new_value_v8)
                     else
                         convertV8ToZig(ValueType, comptime argumentInterface(Interface, setter_name_param, 0), allocator, isolate_inner, context, new_value_v8);
-                    const zig_value = converted_value catch |err| {
+                    var zig_value = converted_value catch |err| {
                         // A strict callback rejects before taking its Global.
                         // The setter's defer still owns that failed argument.
                         if (comptime isCallbackFunctionType(ValueType) or isOptionalCallbackType(ValueType)) value_handed_over = false;
@@ -9213,7 +9387,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // A ByteString (`byte_string_arguments`): a code unit
                     // above 0xFF is a TypeError, before the setter steps run.
                     if (comptime byteStringMask(Interface, setter_name_param) & 1 != 0) {
-                        conv.requireByteString(ValueType, zig_value) catch |err| {
+                        conv.encodeByteStringOwned(ValueType, allocator, &zig_value) catch |err| {
                             conv.throwWebIDLErrorFromContext(isolate_inner, setter_context, @errorName(err));
                             return;
                         };
@@ -9876,6 +10050,8 @@ pub fn setInstance(comptime T: type, object: *v8.Object, instance: *T) void {
         0,
         @ptrCast(instance),
     );
+    // [wrap_tracking]: the object reaches the instance from here.
+    if (T == runtime.Instance) runtime.instance_lifecycle.markWrapped(instance);
 }
 
 /// Store Zig instance in V8 object with type info for safe unwrapping
@@ -9895,6 +10071,9 @@ pub fn setInstanceWithTypeInfo(
         0,
         @ptrCast(instance),
     );
+    // [wrap_tracking]: the object reaches the instance from here - a
+    // constructor's `this`, a custom element's at construction or upgrade.
+    if (T == runtime.Instance) runtime.instance_lifecycle.markWrapped(instance);
     // Store type info pointer in slot 1
     v8.v8_Object_SetAlignedPointerInInternalField(
         object,

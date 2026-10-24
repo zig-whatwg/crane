@@ -824,6 +824,12 @@ pub const ServiceWorkerResourceKind = enum {
 /// service worker job thread, not the client's).
 pub const ServiceWorkerFetchOptions = struct {
     kind: ServiceWorkerResourceKind,
+    /// Service Workers 6.3.2: the entry in the URL parsed before any import
+    /// ran. Borrowed here; the new request takes its own reference.
+    blob_url_entry: ?*fetch.internal.request.CapturedBlobEntry = null,
+    blob_url_captured: bool = false,
+    storage_key: ?[]const u8 = null,
+    origin_nonce: ?u128 = null,
     /// The fetch hook's step 2 (21.3 for an imported script): the request's
     /// cache mode is "no-cache".
     bypass_http_cache: bool = false,
@@ -934,6 +940,9 @@ pub fn serviceWorkerScriptRequest(allocator: Allocator, url: []const u8, options
     // client to resolve it from on the job thread - would read every URL as
     // same-origin (InternalRequest.currentUrlIsSameOrigin).
     if (options.origin) |origin| try request.setOrigin(origin);
+    request.origin_nonce = options.origin_nonce;
+    if (options.blob_url_captured) request.setCapturedBlobEntry(options.blob_url_entry);
+    if (options.storage_key) |key| try request.setBlobStorageKey(key);
     if (options.policy_container) |container| {
         request.setPolicyContainer(try container.clone(allocator));
     }

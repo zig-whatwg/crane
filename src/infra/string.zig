@@ -92,8 +92,8 @@ fn isAsciiSimd(bytes: []const u8) bool {
 
 fn utf8ToUtf16Unicode(allocator: Allocator, utf8: []const u8) !String {
     var result = List(u16).init(allocator);
-    try result.ensureCapacity(utf8.len);
     errdefer result.deinit();
+    try result.ensureCapacity(utf8.len);
 
     var i: usize = 0;
     while (i < utf8.len) {
@@ -132,8 +132,8 @@ pub fn utf16ToUtf8(allocator: Allocator, utf16: String) ![]const u8 {
     }
 
     var result = List(u8).init(allocator);
-    try result.ensureCapacity(utf16.len);
     errdefer result.deinit();
+    try result.ensureCapacity(utf16.len);
 
     var i: usize = 0;
     while (i < utf16.len) {
@@ -425,8 +425,8 @@ pub fn stripNewlines(allocator: Allocator, string: String) !String {
     }
 
     var result = List(u16).init(allocator);
-    try result.ensureCapacity(string.len);
     errdefer result.deinit();
+    try result.ensureCapacity(string.len);
 
     for (string) |c| {
         if (c != 0x000A and c != 0x000D) {
@@ -443,8 +443,8 @@ pub fn normalizeNewlines(allocator: Allocator, string: String) !String {
     }
 
     var result = List(u16).init(allocator);
-    try result.ensureCapacity(string.len);
     errdefer result.deinit();
+    try result.ensureCapacity(string.len);
 
     var i: usize = 0;
     while (i < string.len) {
@@ -597,8 +597,8 @@ pub fn codePointSubstring(allocator: Allocator, string: String, start: usize, le
     std.debug.assert(start <= std.math.maxInt(usize) - length); // Prevent overflow in start + length
 
     var result = List(u16).init(allocator);
-    try result.ensureCapacity(length * 2);
     errdefer result.deinit();
+    try result.ensureCapacity(length * 2);
 
     var code_point_index: usize = 0;
     var i: usize = 0;
@@ -734,8 +734,8 @@ pub fn convertToScalarValueString(allocator: Allocator, string: String) !String 
     }
 
     var result = List(u16).init(allocator);
-    try result.ensureCapacity(string.len);
     errdefer result.deinit();
+    try result.ensureCapacity(string.len);
 
     var i: usize = 0;
     while (i < string.len) {
@@ -792,8 +792,8 @@ pub fn stripAndCollapseAsciiWhitespace(allocator: Allocator, string: String) !St
     }
 
     var result = List(u16).init(allocator);
-    try result.ensureCapacity(string.len);
     errdefer result.deinit();
+    try result.ensureCapacity(string.len);
 
     var in_whitespace = false;
     for (string) |c| {
@@ -854,4 +854,82 @@ pub fn concatenate(allocator: Allocator, strings: []const String, separator: ?St
     }
 
     return result;
+}
+
+// ============================================================================
+// Allocation failure: every helper that reserves capacity frees what it took
+// ============================================================================
+
+const testing = std.testing;
+
+fn expectUtf16(allocator: Allocator, expected: []const u8, result: String) !void {
+    defer allocator.free(result);
+    const want = try utf8ToUtf16(testing.allocator, expected);
+    defer testing.allocator.free(want);
+    try testing.expectEqualSlices(u16, want, result);
+}
+
+const AllocationCases = struct {
+    fn unicodeToUtf16(allocator: Allocator) !void {
+        try expectUtf16(allocator, "h\u{e9}llo w\u{f6}rld, longer than eight", try utf8ToUtf16Unicode(allocator, "h\u{e9}llo w\u{f6}rld, longer than eight"));
+    }
+    fn toUtf8(allocator: Allocator) !void {
+        const input = try utf8ToUtf16(testing.allocator, "h\u{e9}llo w\u{f6}rld, longer than eight");
+        defer testing.allocator.free(input);
+        const result = try utf16ToUtf8(allocator, input);
+        defer allocator.free(result);
+        try testing.expectEqualStrings("h\u{e9}llo w\u{f6}rld, longer than eight", result);
+    }
+    fn stripNewlinesCase(allocator: Allocator) !void {
+        const input = try utf8ToUtf16(testing.allocator, "a\nb\r\nc, longer than eight");
+        defer testing.allocator.free(input);
+        try expectUtf16(allocator, "abc, longer than eight", try stripNewlines(allocator, input));
+    }
+    fn normalizeNewlinesCase(allocator: Allocator) !void {
+        const input = try utf8ToUtf16(testing.allocator, "a\r\nb\rc, longer than eight");
+        defer testing.allocator.free(input);
+        try expectUtf16(allocator, "a\nb\nc, longer than eight", try normalizeNewlines(allocator, input));
+    }
+    fn codePointSubstringCase(allocator: Allocator) !void {
+        const input = try utf8ToUtf16(testing.allocator, "0123456789\u{1F600}abcdef");
+        defer testing.allocator.free(input);
+        try expectUtf16(allocator, "23456789\u{1F600}a", try codePointSubstring(allocator, input, 2, 10));
+    }
+    fn scalarValueCase(allocator: Allocator) !void {
+        const input = [_]u16{ 'a', 'b', 'c', 'd', 'e', 0xD800, 'f', 'g', 'h', 'i', 'j' };
+        try expectUtf16(allocator, "abcde\u{FFFD}fghij", try convertToScalarValueString(allocator, &input));
+    }
+    fn collapseCase(allocator: Allocator) !void {
+        const input = try utf8ToUtf16(testing.allocator, "  a   b\t\tc  longer than eight  ");
+        defer testing.allocator.free(input);
+        try expectUtf16(allocator, "a b c longer than eight", try stripAndCollapseAsciiWhitespace(allocator, input));
+    }
+};
+
+test "utf8ToUtf16Unicode frees what it took on any allocation failure" {
+    try testing.checkAllAllocationFailures(testing.allocator, AllocationCases.unicodeToUtf16, .{});
+}
+
+test "utf16ToUtf8 frees what it took on any allocation failure" {
+    try testing.checkAllAllocationFailures(testing.allocator, AllocationCases.toUtf8, .{});
+}
+
+test "stripNewlines frees what it took on any allocation failure" {
+    try testing.checkAllAllocationFailures(testing.allocator, AllocationCases.stripNewlinesCase, .{});
+}
+
+test "normalizeNewlines frees what it took on any allocation failure" {
+    try testing.checkAllAllocationFailures(testing.allocator, AllocationCases.normalizeNewlinesCase, .{});
+}
+
+test "codePointSubstring frees what it took on any allocation failure" {
+    try testing.checkAllAllocationFailures(testing.allocator, AllocationCases.codePointSubstringCase, .{});
+}
+
+test "convertToScalarValueString frees what it took on any allocation failure" {
+    try testing.checkAllAllocationFailures(testing.allocator, AllocationCases.scalarValueCase, .{});
+}
+
+test "stripAndCollapseAsciiWhitespace frees what it took on any allocation failure" {
+    try testing.checkAllAllocationFailures(testing.allocator, AllocationCases.collapseCase, .{});
 }

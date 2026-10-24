@@ -10,6 +10,14 @@ pub const WebAssembly = struct {
     pub const Meta = struct {
         pub const name = "WebAssembly";
         pub const is_namespace = true;
+        pub const extended_attributes = .{
+            .{ .name = "Exposed", .value = .{ .identifier = "*" } },
+        };
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "compileStreaming", .{ "Window", "Worker" } },
+            .{ "instantiateStreaming", .{ "Window", "Worker" } },
+        };
         pub const BaseType = null;
         pub const MixinTypes = &.{};
 

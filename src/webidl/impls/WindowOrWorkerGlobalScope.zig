@@ -172,7 +172,7 @@ pub fn call_setInterval(instance: *runtime.Instance, handler: typedefs.TimerHand
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#dom-atob
 pub fn call_atob(instance: *runtime.Instance, data: runtime.DOMString) anyerror!runtime.ByteString {
     // Freed by the binding.
-    return html_core.base64_utility.atob(instance.ctx.allocator, data.asSlice());
+    return html_core.base64_utility.atobBytes(instance.ctx.allocator, data.asSlice());
 }
 
 /// Operation: btoa

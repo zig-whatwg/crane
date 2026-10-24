@@ -75,6 +75,10 @@ pub const capabilities: engine.Capabilities = .{
     // instantiateStreaming are JSGlobalObject's private
     // GlobalObjectMethodTable entries, so the two functions are absent.
     .webassembly_streaming = .unsupported,
+    // Not until this adapter marks every object it binds an instance to
+    // (runtime.instance_lifecycle.markWrapped): until then a missing mark
+    // proves nothing, and a realm's end keeps what it kept before.
+    .wrap_tracking = .unsupported,
 };
 
 /// No engine is linked yet: every operation answers without one.

@@ -301,9 +301,9 @@ test "a code unit above 0xFF in a name or a value is a TypeError" {
 }
 
 test "code units up to 0xFF are a ByteString" {
-    // Held as UTF-8 text, as every Crane string: U+00E9 is C3 A9.
-    try expectSequence("[['a', '\\u00e9\\u00ff\\u0080']]", &.{.{ "a", "\u{e9}\u{ff}\u{80}" }});
-    try expectRecord("({ a: '\\u00e9' })", &.{.{ "a", "\u{e9}" }});
+    // WebIDL 3.2.11: one raw byte per code unit; other string types stay UTF-8.
+    try expectSequence("[['a', '\\u00e9\\u00ff\\u0080']]", &.{.{ "a", "\xE9\xFF\x80" }});
+    try expectRecord("({ a: '\\u00e9' })", &.{.{ "a", "\xE9" }});
 }
 
 test "codeUnitsFitInByte reads the code units WTF-8 encodes" {

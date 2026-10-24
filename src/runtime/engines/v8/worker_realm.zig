@@ -215,7 +215,6 @@ fn createWorkerRealmOf(comptime Kind: type, agent: *runtime.Agent, options: runt
     // does: testharness.js runs `(function(global_scope){...})(self)` and
     // needs `self === globalThis`.
     defineSelf(isolate, context);
-    registerWorkerInterfaces(isolate, context);
 
     // The realm's runtime context: the context manager's entry for it. Every
     // Instance created in the realm points here - the global scope first.
@@ -251,6 +250,7 @@ fn createWorkerRealmOf(comptime Kind: type, agent: *runtime.Agent, options: runt
     // and, in a realm that is not a secure context, [SecureContext].
     interface_bindings.installForScope(isolate, context, Kind.scope);
     interface_bindings.hideSecureContextInterfaceObjects(isolate, context, Kind.scope);
+    interface_bindings.registerNamespacesGeneric(@import("namespaces"), isolate, context);
 
     // The platform object behind the global, its prototype chain and its own
     // members - after the interface objects, whose prototypes it links.
@@ -306,31 +306,6 @@ fn defineSelf(isolate: *ffi.Isolate, context: *ffi.Context) void {
     _ = ffi.v8_Object_Set(global, context, @ptrCast(key), @ptrCast(global));
 }
 
-/// The interfaces a worker realm had before installForScope ran over it (the
-/// same set it always registered first). installForScope then installs every
-/// interface exposed to the worker's kind.
-///
-/// Through registerGlobalFast, with the global taken once and released:
-/// registerGlobal takes the context's global for every call and never
-/// releases it, and a Global of the global proxy keeps the whole worker
-/// context alive after destroyWorkerRealm.
-fn registerWorkerInterfaces(isolate: *ffi.Isolate, context: *ffi.Context) void {
-    const global = ffi.v8_Context_Global(context) orelse return;
-    defer ffi.v8_Object_Dispose(global);
-    V8Interface(interfaces.URL).registerGlobalFast(isolate, context, global, "URL");
-    V8Interface(interfaces.URLSearchParams).registerGlobalFast(isolate, context, global, "URLSearchParams");
-    V8Interface(interfaces.Event).registerGlobalFast(isolate, context, global, "Event");
-    V8Interface(interfaces.EventTarget).registerGlobalFast(isolate, context, global, "EventTarget");
-    V8Interface(interfaces.DOMException).registerGlobalFast(isolate, context, global, "DOMException");
-    V8Interface(interfaces.WebSocket).registerGlobalFast(isolate, context, global, "WebSocket");
-    V8Interface(interfaces.CloseEvent).registerGlobalFast(isolate, context, global, "CloseEvent");
-    V8Interface(interfaces.MessageEvent).registerGlobalFast(isolate, context, global, "MessageEvent");
-    V8Interface(interfaces.MessagePort).registerGlobalFast(isolate, context, global, "MessagePort");
-    V8Interface(interfaces.MessageChannel).registerGlobalFast(isolate, context, global, "MessageChannel");
-    V8Interface(interfaces.Worker).registerGlobalFast(isolate, context, global, "Worker");
-    V8Interface(interfaces.Blob).registerGlobalFast(isolate, context, global, "Blob");
-}
-
 /// The other half of "run a worker" step 6: the platform object behind the
 /// global object, and what V8 does not set up for a global made from an
 /// interface template.
@@ -377,6 +352,8 @@ pub fn bindGlobalScope(comptime Interface: type, isolate: *ffi.Isolate, context:
 pub fn bindGlobalFields(context: *ffi.Context, instance: ?*runtime.Instance) void {
     const global = ffi.v8_Context_Global(context) orelse return;
     defer ffi.v8_Object_Dispose(global);
+    // [wrap_tracking]: the global objects reach the instance from here.
+    if (instance) |bound| runtime.instance_lifecycle.markWrapped(bound);
     ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(instance));
     // The V1 GetPrototype on a global proxy is V8's from_javascript=false
     // path: it returns the hidden JSGlobalObject, not what script sees.
@@ -427,7 +404,7 @@ fn linkGlobalPrototype(comptime Interface: type, isolate: *ffi.Isolate, context:
 /// WorkerOrWorkletScriptController::DisposeContextIfNeeded does: clear the
 /// global's native info, then release the per-context data (the callbacks
 /// its script registered, its wrapper cache and every Instance in it - the
-/// global scope first). `retire(data)` runs once nothing can run in the realm
+/// global scope last). `retire(data)` runs once nothing can run in the realm
 /// any more but its agent's handles are still live, with the agent entered -
 /// for what a host releases with the realm (its fetches in flight). Then
 /// what the process keeps per isolate for the realm goes. The agent stays:
@@ -454,8 +431,9 @@ fn destroyWorkerRealmIn(
         ffi.v8_Context_Enter(context);
         defer ffi.v8_Context_Exit(context);
 
-        // The global scope is freed with the realm's wrapper cache just
-        // below; the global object must not point at it after.
+        // The global scope is freed just below, after the rest of the
+        // realm's wrapper cache (context_manager.removeContextByKey); the
+        // global object must not point at it after.
         bindGlobalFields(context, null);
 
         // The entry is retired, so `engine_ctx` reads null from here on:

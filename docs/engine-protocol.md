@@ -187,6 +187,18 @@ class finalizer, the same way. Both answer `reactToPromise` with
 `NotSupported` today: no step and no `dropped` ever runs, and the data stays
 the caller's.
 
+**A realm's end frees the nodes no wrapper reached** - [wrap_tracking] only.
+An adapter that declares the capability marks every instance it binds an
+engine object to (`instance_lifecycle.markWrapped`), so the host can prove
+an unmarked node unreachable from script in any realm. The realm's end then
+(1) frees the realm's orphan roots (`runtime.orphan_roots.drain`, subtrees
+`dom.mutation.remove` left with no mark) before its objects are torn down, and
+(2) returns the slab slots of unmarked nodes its tree tore down after its last
+teardown phase (`CleanupCoordinator.releaseDeferredStorage`). V8 does both in
+`context_manager.removeContextByKey`. An adapter that declares
+`.unsupported` calls neither: `provablyUnwrapped` is false, nothing is
+recorded or handed over, and those nodes stay with their Browser as before.
+
 ### Errors
 
 `Error = { OperationFailed, ExceptionReported, OutOfMemory, TypeError, ExceptionPending, DataCloneError, NotSupported, MutedScriptError }`
@@ -295,6 +307,7 @@ capability the branch compiles out.
 | `html_constructor` | native (the construct callback's FunctionCallbackInfo::NewTarget) | unsupported - a JSObjectCallAsConstructorCallback is handed no NewTarget, so `super()` from a custom element class cannot reach the host | `HostHooks.htmlConstructor` is never called: HTMLElement and the other [HTMLConstructor] interfaces construct as their own constructors do, so custom element construction - `new MyElement()`, createElement of a defined name, an upgrade - is unavailable on iOS until JavaScriptCore's C API offers NewTarget |
 | `cross_origin_objects` | emulated (Location uses a Proxy with HTML internal methods and explicit borrowed-receiver checks; Window keeps native access checks and the global proxy, with public-API limits on prototype/extensibility/enumeration) | unsupported - no access-check API and no WindowProxy apart from the global; JSClassDefinition callbacks could emulate it except for [[GetPrototypeOf]] | the engine runs no cross-origin check: Window's `document` getter keeps the host's own check, and every other property of another realm's WindowProxy or Location is reached as a same-origin one would be (security-relevant) |
 | `webassembly_streaming` | native (Isolate::SetWasmStreamingCallback: V8 defines compileStreaming and instantiateStreaming and hands each fulfilled source to the host) | unsupported - no streaming hook in the public C API (WebKit's compileStreaming is JSGlobalObject's private GlobalObjectMethodTable) | `WebAssembly.compileStreaming` and `instantiateStreaming` are absent |
+| `wrap_tracking` | native (`instance_lifecycle.markWrapped` wherever the adapter writes an instance into an object: `wrapInstanceAsV8Object` before its cache step, `setInstance`/`setInstanceWithTypeInfo` for constructors and custom element construction and upgrade, the Window and worker global bindings) | unsupported - the adapter does not mark yet | a missing mark proves nothing (`provablyUnwrapped` is false): a realm's end keeps the slab slot of every node its tree tore down, and a subtree removed while unwrapped stays until its Browser ends (`runtime.orphan_roots` records nothing) |
 
 Flip a JavaScriptCore capability when an iOS release makes the API public.
 Structured serialization has no JSC API and is not a capability: the JSC

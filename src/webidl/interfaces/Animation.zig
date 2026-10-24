@@ -118,6 +118,13 @@ pub const Animation = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = true;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "startTime", .{"Window"} },
+            .{ "currentTime", .{"Window"} },
+            .{ "trigger", .{"Window"} },
+            .{ "overallProgress", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -374,30 +381,37 @@ pub const Animation = struct {
         try event_handlers.setValue(EventHandler, instance, "onremove", value);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_startTime(instance: *runtime.Instance) anyerror!?CSSNumberish {
         return try AnimationImpl.get_startTime(instance);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn set_startTime(instance: *runtime.Instance, value: ?CSSNumberish) anyerror!void {
         try AnimationImpl.set_startTime(instance, value);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_currentTime(instance: *runtime.Instance) anyerror!?CSSNumberish {
         return try AnimationImpl.get_currentTime(instance);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn set_currentTime(instance: *runtime.Instance, value: ?CSSNumberish) anyerror!void {
         try AnimationImpl.set_currentTime(instance, value);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_trigger(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try AnimationImpl.get_trigger(instance);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn set_trigger(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         try AnimationImpl.set_trigger(instance, value);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_overallProgress(instance: *runtime.Instance) anyerror!?f64 {
         return try AnimationImpl.get_overallProgress(instance);
     }

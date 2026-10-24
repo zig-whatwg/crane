@@ -63,6 +63,10 @@ pub const RestrictionTarget = struct {
         pub const secure_context_static_members = .{
             "fromElement",
         };
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_static_members = .{
+            .{ "fromElement", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(

@@ -128,6 +128,10 @@ pub const Notification = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = true;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_static_members = .{
+            .{ "requestPermission", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(

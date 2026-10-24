@@ -10,6 +10,13 @@ pub const CSS = struct {
     pub const Meta = struct {
         pub const name = "CSS";
         pub const is_namespace = true;
+        pub const extended_attributes = .{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        };
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "animationWorklet", .{"Window"} },
+        };
         pub const BaseType = null;
         pub const MixinTypes = &.{};
 

@@ -58,8 +58,8 @@ pub const XRBody = struct {
 
         /// Iterable declaration (for Symbol.iterator support)
         pub const iterable = .{
-            .value_type = "XRBodyJoint",
-            .key_type = "XRBodySpace",
+            .value_type = "XRBodySpace",
+            .key_type = "XRBodyJoint",
         };
     };
 

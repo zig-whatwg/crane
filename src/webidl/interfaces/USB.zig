@@ -78,6 +78,10 @@ pub const USB = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "requestDevice", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(

@@ -125,6 +125,11 @@ pub const Context = struct {
     /// Content 3 / Values 5: synchronous, never saved in a computed value.
     content_attributes: ?@import("generated_content.zig").AttributeLookup = null,
     pseudo: ?[]const u8 = null,
+    /// Q83: absent random input skips the candidate at the same availability
+    /// boundary as missing metrics. Real DOM resolution supplies this lazily.
+    random_base: ?@import("random_values.zig").Provider = null,
+    /// Borrowed and called at most once, only for a tree-dependent value.
+    tree_counts: ?struct { context: *anyopaque, get: *const fn (*anyopaque) @import("math_values.zig").TreeCounts } = null,
     /// The root element's computed font-size (rem); the initial 16px for
     /// the root itself.
     root_font_size: f64 = 16,
@@ -193,10 +198,18 @@ fn collectCandidates(allocator: Allocator, matched: []const Matched) Allocator.E
             });
         }
     }
-    // Highest priority first.
-    std.mem.sort(Candidate, candidates.items, {}, struct {
+    // Both pointers identify ordered positions in stable contiguous slices:
+    // Source in Matched, and Declaration in its block's Entry array (typed()
+    // iterates forwards). They give the original insertion order without an
+    // extra field, keeping Candidate at 32 bytes. No address escapes cascade.
+    // This total order also avoids block sort's 512-candidate stack buffer.
+    std.mem.sortUnstable(Candidate, candidates.items, {}, struct {
         fn lessThan(_: void, a: Candidate, b: Candidate) bool {
-            return a.priority > b.priority;
+            // Cascade 5 §6.1: the last declaration wins, including two
+            // declarations in one block that map to the same physical slot.
+            if (a.priority != b.priority) return a.priority > b.priority;
+            if (a.source != b.source) return @intFromPtr(a.source) > @intFromPtr(b.source);
+            return @intFromPtr(a.decl) > @intFromPtr(b.decl);
         }
     }.lessThan);
     return candidates;
@@ -264,6 +277,7 @@ pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*Computed
         .candidates = candidates.items,
         .index = CandidateIndex.init(candidates.items, links),
     };
+    defer builder.deinit();
     const style = try allocator.create(ComputedStyle);
     style.* = .{ .allocator = allocator, .values = computed_mod.initial_values };
     // `initial_values` holds no counted text; every slot is overwritten
@@ -283,6 +297,47 @@ const Builder = struct {
     direction: Keyword = .ltr,
     /// The element color scheme, once color-scheme is computed.
     used_scheme: color_scheme_mod.Scheme = .light,
+    cached_tree_counts: ?@import("math_values.zig").TreeCounts = null,
+    pending: std.ArrayList(PendingResult) = .empty,
+
+    const PendingResult = struct {
+        value: *const @import("pending_values.zig").Pending,
+        source: ValueSource,
+        outcome: @import("pending_values.zig").Outcome,
+    };
+    fn deinit(self: *Builder) void {
+        for (self.pending.items) |entry| entry.outcome.deinit(self.ctx.allocator);
+        self.pending.deinit(self.ctx.allocator);
+    }
+    fn resolvePending(self: *Builder, c: Candidate, l: Longhand) Allocator.Error!struct { assigned: properties.Assigned, unavailable: bool = false } {
+        if (c.decl.value != .value or c.decl.value.value != .pending) return .{ .assigned = c.decl.value };
+        const pending = c.decl.value.value.pending;
+        const source = ValueSource{ .tree_scope = c.source.tree_scope, .tree_count_allowed = c.source.tree_count_allowed };
+        var found: ?usize = null;
+        for (self.pending.items, 0..) |entry, index| if (entry.value == pending and std.meta.eql(entry.source, source)) {
+            found = index;
+            break;
+        };
+        const index = found orelse blk: {
+            // Pending key math may need counts; the selected assignment's
+            // normal dependency query still runs below after substitution.
+            var context = self.mathContext(l);
+            if (!source.tree_count_allowed) context.tree_counts = .{ .index = 0, .count = 0 } else context.tree_count_provider = .{ .context = self, .get = pendingTreeCounts };
+            const outcome = try pending.resolve(self.ctx.allocator, context);
+            errdefer outcome.deinit(self.ctx.allocator);
+            const at = self.pending.items.len;
+            try self.pending.append(self.ctx.allocator, .{ .value = pending, .source = source, .outcome = outcome });
+            break :blk at;
+        };
+        return switch (self.pending.items[index].outcome) {
+            .invalid => .{ .assigned = .{ .css_wide = .unset } },
+            .unavailable => .{ .assigned = .{ .css_wide = .unset }, .unavailable = true },
+            .resolved => |assignments| blk: {
+                for (assignments) |assignment| if (assignment.longhand == c.decl.longhand) break :blk .{ .assigned = assignment.value };
+                break :blk .{ .assigned = .{ .css_wide = .unset } };
+            },
+        };
+    }
 
     fn parentValue(self: *const Builder, l: Longhand) Value {
         if (self.ctx.parent) |p| return p.get(l);
@@ -299,11 +354,12 @@ const Builder = struct {
     /// Cascade 5 sections 6-7.3: the specified value of physical longhand
     /// `l` - its cascaded value through `revert` and `revert-layer`, or its
     /// default. Borrowed (not retained).
-    fn specified(self: *const Builder, l: Longhand) Specified {
+    fn specified(self: *Builder, l: Longhand) Allocator.Error!Specified {
         var excluded = Exclusions{};
         while (true) {
-            const winner = self.pick(l, &excluded) orelse return self.defaulted(l);
-            switch (winner.decl.value) {
+            const picked = (try self.pick(l, &excluded)) orelse return self.defaulted(l);
+            const winner = picked.candidate;
+            switch (picked.assigned) {
                 .value => |v| return .{ .value = .{ .value = v, .source = .{
                     .tree_scope = winner.source.tree_scope,
                     .tree_count_allowed = winner.source.tree_count_allowed,
@@ -338,7 +394,7 @@ const Builder = struct {
         return self.unset(l);
     }
 
-    fn pick(self: *const Builder, l: Longhand, excluded: *const Exclusions) ?Candidate {
+    fn pick(self: *Builder, l: Longhand, excluded: *const Exclusions) Allocator.Error!?struct { candidate: Candidate, assigned: properties.Assigned } {
         var position = self.index.heads[@intFromEnum(l)];
         while (position != CandidateIndex.none) : (position = self.index.links[position]) {
             const c = self.candidates[position];
@@ -346,15 +402,19 @@ const Builder = struct {
             // Q17/Q23–25: unavailable cap-height/ascent cannot enter scalar
             // consumers. Only geometry lengths may remain unresolved; the
             // next retained candidate/default wins, with no hidden CSSOM history.
-            if (c.decl.value == .value) {
-                const value = c.decl.value.value;
-                const geometry_length = switch (l.info().grammar) {
-                    .length_percentage_auto, .length_percentage_nonneg, .size, .line_width => true,
-                    else => false,
-                };
-                if (value.needsUnavailableMetrics(geometry_length)) continue;
-            }
-            return c;
+            const preflight = try self.resolvePending(c, l);
+            const assigned = preflight.assigned;
+            const geometry_length = switch (l.info().grammar) {
+                .length_percentage_auto, .length_percentage_nonneg, .size, .max_size, .line_width, .gap, .signed_length, .fit_tolerance => true,
+                else => false,
+            };
+            // Q25/Q83/Q88: this is the single unavailable-input decision,
+            // after pending substitution has selected just its live branch.
+            const unavailable = preflight.unavailable or (assigned == .value and
+                (assigned.value.needsUnavailableMetrics(geometry_length) or
+                    (self.ctx.random_base == null and assigned.value.needsRandomBase())));
+            if (unavailable) continue;
+            return .{ .candidate = c, .assigned = assigned };
         }
         return null;
     }
@@ -415,7 +475,7 @@ const Builder = struct {
 
     /// Compute `l` and store it (holding its own reference).
     fn computeAndStore(self: *Builder, l: Longhand) Allocator.Error!Value {
-        const v = try self.compute(l, self.specified(l));
+        const v = try self.compute(l, try self.specified(l));
         self.style.values[@intFromEnum(l)] = v;
         return v;
     }
@@ -439,7 +499,7 @@ const Builder = struct {
             // element's color scheme (Chrome 151 and Safari 27.0.1 answer
             // white for `color: initial` under `only dark`; Firefox 144
             // black).
-            .initial => if (l == .color) l.info().initial else computed_mod.initialComputed(l),
+            .initial => if (l == .color or l == .justify_items) l.info().initial else computed_mod.initialComputed(l),
             .value => |v| v.value,
         };
         const source: ValueSource = switch (spec) {
@@ -454,8 +514,51 @@ const Builder = struct {
     }
 
     fn computeValue(self: *Builder, l: Longhand, v: Value, source: ValueSource) Allocator.Error!Value {
+        if (v == .animation_list) return .{ .animation_list = try v.animation_list.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
+        if (v == .transform) return .{ .transform = try v.transform.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
+        if (v == .grid_line) return .{ .grid_line = try v.grid_line.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
+        if (v == .grid_tracks) return .{ .grid_tracks = try v.grid_tracks.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
+        if (v == .caret_pair) return .{ .caret_pair = try v.caret_pair.compute(self.ctx.allocator, .{
+            .scheme = self.used_scheme,
+            .math = self.computationContext(l, v, source),
+        }) };
+        if (v == .color) {
+            // Color4 §6.4: currentcolor in color inherits. Every other
+            // destination keeps it symbolic until the receiving element
+            // resolves the value, including nested expression origins.
+            var root_color: ?values.Color = null;
+            defer if (root_color) |color| color.release();
+            const current: ?values.Color = if (l != .color) null else if (self.ctx.parent) |parent|
+                parent.get(.color).color
+            else blk: {
+                // Cascade5 §7.3.2: the root inherits its initial color in
+                // its own scheme, including a nested currentcolor origin.
+                root_color = try l.info().initial.color.resolveComputed(self.ctx.allocator, .{ .scheme = self.used_scheme });
+                break :blk root_color;
+            };
+            return .{ .color = try v.color.resolveComputed(self.ctx.allocator, .{
+                .scheme = self.used_scheme,
+                .current = current,
+                .math = self.computationContext(l, v, source),
+            }) };
+        }
+
+        if (v == .sizing_function) {
+            const argument = try self.computeValue(l, v.sizing_function.argument, source);
+            errdefer argument.release();
+            return .{ .sizing_function = try values.SizingFunction.create(self.ctx.allocator, argument) };
+        }
+        if (v == .alignment) {
+            const parent = if (self.ctx.parent) |p| p.get(l) else null;
+            return .{ .alignment = v.alignment.computed(if (parent) |p| if (p == .alignment) p.alignment else null else null) };
+        }
+        if (v == .position_area) return .{ .position_area = v.position_area.computed() };
+        if (v == .try_fallbacks) {
+            v.retain();
+            return .{ .try_fallbacks = .{ .list = v.try_fallbacks.list, .computed = true } };
+        }
         if (v == .calculation) {
-            const expression = try v.calculation.compute(self.ctx.allocator, self.mathContext(l));
+            const expression = try v.calculation.compute(self.ctx.allocator, self.computationContext(l, v, source));
             if (expression.computedNumber()) |number| {
                 defer expression.unref();
                 const scalar: Value = switch (number.unit) {
@@ -475,6 +578,19 @@ const Builder = struct {
             }
             return .{ .calculation = expression };
         }
+        if (l == .outline_width) {
+            // UI 4 §3.4 computes width independently of outline-style:none.
+            const px: f64 = switch (v) {
+                .keyword => |k| switch (k) {
+                    .thin => 1,
+                    .thick => 5,
+                    else => 3,
+                },
+                .length => |len| self.absolute(len, l),
+                else => 0,
+            };
+            return Value.px(snapBorderWidth(px));
+        }
         switch (l) {
             // Writing Modes 4 §5.1: retain the legacy spelling only until
             // computation (Blink/Gecko ship it; their specified forms differ).
@@ -493,28 +609,13 @@ const Builder = struct {
                 // Firefox and Safari (CSS Content's contents is a used rule).
                 return v;
             },
+            .fill, .stroke => return @import("svg_paint.zig").compute(v, self.ctx.allocator, .{ .scheme = self.used_scheme, .math = self.computationContext(l, v, source) }),
+            .stroke_width => if (v == .number) return Value.px(v.number),
             .font_size => return Value.px(self.computeFontSize(v)),
             .font_weight => return .{ .number = self.computeFontWeight(v) },
-            // CSS Color 4 6.4: "if currentcolor is the specified value of
-            // the color property, it is treated as if it were inherit."
-            .color => if (v == .color) switch (v.color) {
-                .current => {
-                    const p = self.parentValue(.color);
-                    p.retain();
-                    return p;
-                },
-                .named => |n| return .{ .color = .{ .rgba = n.rgba } },
-                .system => |s| return .{ .color = .{ .rgba = s.color(self.used_scheme) } },
-                .rgba => {},
-            },
+            // CSS Text4 §8.2: normal is zero in the computed value.
+            .letter_spacing => if (v.isKeyword(.normal)) return Value.px(0),
             .opacity => return .{ .number = std.math.clamp(v.number, 0, 1) },
-            // A named color computes to its color; a system color to its
-            // color in the element color scheme (CSS Color 4 15.5).
-            .background_color, .border_top_color, .border_right_color, .border_bottom_color, .border_left_color => if (v == .color) switch (v.color) {
-                .named => |n| return .{ .color = .{ .rgba = n.rgba } },
-                .system => |s| return .{ .color = .{ .rgba = s.color(self.used_scheme) } },
-                .rgba, .current => {},
-            },
             .line_height => switch (v) {
                 .length => |len| if (len.unit == .percent) return Value.px(len.value / 100 * self.fontSize()),
                 else => {},
@@ -543,6 +644,12 @@ const Builder = struct {
                 defer offset.release();
                 return .{ .indent = try @import("text_indent.zig").Indent.create(self.ctx.allocator, offset, indent.flags) };
             },
+            .filter => |value| return .{ .filter = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
+            .shape => |value| return .{ .shape = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
+            .image_position => |value| return .{ .image_position = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
+            .image_size => |value| return .{ .image_size = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
+            .image_quad => |value| return .{ .image_quad = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
+            .layers => |value| return .{ .layers = try value.compute(self.ctx.allocator, l, ComponentContext.init(self, source)) },
             else => {
                 v.retain();
                 return v;
@@ -559,6 +666,34 @@ const Builder = struct {
         };
     }
 
+    fn pendingTreeCounts(raw: *anyopaque) @import("math_values.zig").TreeCounts {
+        const self: *Builder = @ptrCast(@alignCast(raw));
+        if (self.cached_tree_counts == null) {
+            self.cached_tree_counts = if (self.ctx.tree_counts) |provider| provider.get(provider.context) else .{ .index = 1, .count = 1 };
+        }
+        return self.cached_tree_counts.?;
+    }
+
+    /// Values 5 §10: the source restriction belongs to the winning value,
+    /// including every nested expression. No inherited value is recomputed.
+    fn computationContext(self: *Builder, l: Longhand, v: Value, source: ValueSource) @import("math_values.zig").Context {
+        var context = self.mathContext(l);
+        if (v.needsTreeCounts()) {
+            if (!source.tree_count_allowed) {
+                context.tree_counts = .{ .index = 0, .count = 0 };
+            } else {
+                if (self.cached_tree_counts == null) {
+                    self.cached_tree_counts = if (self.ctx.tree_counts) |provider|
+                        provider.get(provider.context)
+                    else
+                        .{ .index = 1, .count = 1 };
+                }
+                context.tree_counts = self.cached_tree_counts;
+            }
+        }
+        return context;
+    }
+
     fn mathContext(self: *const Builder, l: Longhand) @import("math_values.zig").Context {
         // Values 4 §6.1.1: font-affecting properties use parent metrics;
         // line-height additionally uses its parent's lh to avoid a cycle.
@@ -572,6 +707,7 @@ const Builder = struct {
         const mode = if (font_affecting) self.parentValue(.writing_mode).keyword else self.writing_mode;
         const orientation = if (font_affecting) self.parentValue(.text_orientation).keyword else self.style.keyword(.text_orientation);
         return .{
+            .random_base = self.ctx.random_base,
             .font_size = em,
             .root_font_size = root_em,
             .line_height = own_lh,
@@ -667,6 +803,27 @@ const Builder = struct {
         // element."
         if (self.ctx.is_root and display.box == .contents) display = Display.block_flow;
         s.values[@intFromEnum(Longhand.display)] = .{ .display = display };
+
+        // Contain 2 §2: aliases share the computed flag set and shortest
+        // serialization. No layout state or allocation is needed here.
+        const containment = s.get(.contain).containment.computed();
+        s.values[@intFromEnum(Longhand.contain)] = .{ .containment = containment };
+        const parent_box = if (self.ctx.parent) |p| p.box_context else .other;
+        s.box_context = if (parent_box == .suppressed or display.box == .none)
+            .suppressed
+        else if (display.box == .contents)
+            parent_box
+        else if (display.inner == .grid)
+            .grid
+        else
+            .other;
+        // Grid 2 §9: a subgrid must be an in-flow grid item and cannot
+        // establish an independent formatting context. Contain 2 §§3.3,
+        // 3.5 and §4: layout/paint containment, including content-visibility.
+        const content_visibility = s.keyword(.content_visibility);
+        const independent = containment.layout or containment.paint or content_visibility == .auto or content_visibility == .hidden;
+        s.subgrid_ineligible = s.box_context != .suppressed and display.box == .normal and display.inner == .grid and
+            (parent_box != .grid or out_of_flow or independent);
 
         // CSS Overflow 3: "as specified, except with visible/clip computing
         // to auto/hidden (respectively) if one of overflow-x or overflow-y is
@@ -1048,6 +1205,7 @@ fn cv1SourceSpecified(matched: []const Matched, longhand: Longhand, mode: Keywor
         .writing_mode = mode,
         .direction = direction,
     };
+    defer builder.deinit();
     builder.mapLogicalChains();
     return builder.specified(longhand);
 }
@@ -1328,4 +1486,126 @@ fn cv1IndexLarge(allocator: Allocator) !void {
     defer style.destroy();
     try testing.expectEqual(@as(f64, 0.25), style.get(.opacity).number);
     try testing.expectEqual(@as(f64, 7), style.get(.margin_right).length.value);
+}
+
+// Component computation for structured CSS image/shape values, without layout.
+const ComponentContext = struct {
+    builder: *Builder,
+    source: ValueSource,
+    writing_mode: values.Keyword,
+    direction: values.Keyword,
+
+    fn init(builder: *Builder, source: ValueSource) ComponentContext {
+        return .{ .builder = builder, .source = source, .writing_mode = builder.writing_mode, .direction = builder.direction };
+    }
+    pub fn length(self: ComponentContext, value: Value) Allocator.Error!Value {
+        return self.builder.computeValue(.margin_left, value, self.source);
+    }
+    pub fn color(self: ComponentContext, value: values.Color) Allocator.Error!values.Color {
+        return value.resolveComputed(self.builder.ctx.allocator, .{
+            .scheme = self.builder.used_scheme,
+            .math = self.builder.computationContext(.filter, .{ .color = value }, self.source),
+        });
+    }
+    pub fn component(self: ComponentContext, longhand: Longhand, value: Value) Allocator.Error!Value {
+        return self.builder.computeValue(longhand, value, self.source);
+    }
+};
+
+// Q73/Q74: pin source capture separately from the nested Color consumer below.
+test "ci1 nested component context copies its winning declaration source" {
+    const allocator = testing.allocator;
+    var block = try DeclarationBlock.parse(.{ .allocator = allocator }, "mask-size: 1em 2em");
+    defer block.deinit();
+    try testing.expect(block.entries.items.len > 0);
+    var matched = [_]Matched{.{
+        .block = &block,
+        .source = .{ .origin = .author, .tree_scope = .{ .serial = 71 }, .tree_count_allowed = false },
+    }};
+    var candidates = try collectCandidates(allocator, &matched);
+    defer candidates.deinit(allocator);
+    const links = try allocator.alloc(usize, candidates.items.len);
+    defer allocator.free(links);
+    var builder = Builder{
+        .ctx = .{ .allocator = allocator, .parent = null },
+        .candidates = candidates.items,
+        .index = CandidateIndex.init(candidates.items, links),
+    };
+    const style = try allocator.create(ComputedStyle);
+    style.* = .{ .allocator = allocator, .values = computed_mod.initial_values };
+    defer style.destroy();
+    builder.style = style;
+    try builder.run();
+    const winner = try builder.specified(.mask_size);
+    try testing.expect(winner == .value);
+    const context = ComponentContext.init(&builder, winner.value.source);
+    matched[0].source.tree_scope.serial = 999;
+    matched[0].source.tree_count_allowed = true;
+    const length = try context.length(.{ .length = .{ .value = 2, .unit = .em } });
+    defer length.release();
+    try testing.expect(length.eql(Value.px(32)));
+    const nested_value = try context.component(.mask_size, winner.value.value);
+    defer nested_value.release();
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(allocator);
+    try properties.serializeValue(.mask_size, nested_value, &out, allocator);
+    try testing.expectEqualStrings("16px 32px", out.items);
+    try testing.expectEqual(@as(u64, 71), context.source.tree_scope.serial);
+    try testing.expect(!context.source.tree_count_allowed);
+}
+
+fn ci1NestedColorSource(allocator: Allocator, allowed: bool) !void {
+    var low = try DeclarationBlock.parse(.{ .allocator = allocator }, "filter:drop-shadow(rgb(calc(sibling-index() * 20) 0 0) 1px 2px)");
+    defer low.deinit();
+    try testing.expect(low.get(.filter) != null);
+    var high = try DeclarationBlock.parse(.{ .allocator = allocator }, "filter:revert");
+    defer high.deinit();
+    var matched = [_]Matched{
+        .{ .block = &low, .source = .{ .origin = .user, .tree_scope = .{ .serial = 71 }, .tree_count_allowed = allowed } },
+        .{ .block = &high, .source = .{ .origin = .author, .tree_scope = .{ .serial = 999 }, .tree_count_allowed = !allowed } },
+    };
+    const Probe = struct {
+        calls: usize = 0,
+        fn get(raw: *anyopaque) @import("math_values.zig").TreeCounts {
+            const self: *@This() = @ptrCast(@alignCast(raw));
+            self.calls += 1;
+            return .{ .index = 3, .count = 7 };
+        }
+    };
+    var probe: Probe = .{};
+    var candidates = try collectCandidates(allocator, &matched);
+    defer candidates.deinit(allocator);
+    const links = try allocator.alloc(usize, candidates.items.len);
+    defer allocator.free(links);
+    var builder = Builder{
+        .ctx = .{ .allocator = allocator, .parent = null, .tree_counts = .{ .context = &probe, .get = Probe.get } },
+        .candidates = candidates.items,
+        .index = CandidateIndex.init(candidates.items, links),
+    };
+    const style = try allocator.create(ComputedStyle);
+    style.* = .{ .allocator = allocator, .values = computed_mod.initial_values };
+    defer style.destroy();
+    builder.style = style;
+    try builder.run();
+    const winner = try builder.specified(.filter);
+    try testing.expect(winner == .value);
+    const context = ComponentContext.init(&builder, winner.value.source);
+    matched[0].source.tree_scope.serial = 1234;
+    matched[0].source.tree_count_allowed = !allowed;
+    // Q74/Q93: the actual nested Color consumer sees the retained winner's
+    // scope and permission even after the caller changes its Source record.
+    try testing.expectEqual(@as(u64, 71), context.source.tree_scope.serial);
+    try testing.expectEqual(allowed, context.source.tree_count_allowed);
+    const nested = try context.component(.filter, winner.value.value);
+    defer nested.release();
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(allocator);
+    try nested.filter.serializeResolved(values.Color.black, &out, allocator);
+    try testing.expectEqualStrings(if (allowed) "drop-shadow(rgb(60, 0, 0) 1px 2px 0px)" else "drop-shadow(rgb(0, 0, 0) 1px 2px 0px)", out.items);
+    try testing.expectEqual(@as(usize, if (allowed) 1 else 0), probe.calls);
+}
+
+test "ci1 winning source survives to a nested typed filter color consumer" {
+    try testing.checkAllAllocationFailures(testing.allocator, ci1NestedColorSource, .{false});
+    try testing.checkAllAllocationFailures(testing.allocator, ci1NestedColorSource, .{true});
 }

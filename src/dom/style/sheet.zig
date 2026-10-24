@@ -617,6 +617,11 @@ const Compiler = struct {
             // conditional context, but contributes no selector or layer rank.
             .font_face => try self.contents.font_rules.append(self.contents.allocator, .{ .rule = rule, .condition = condition }),
             .page => {},
+            // Anchor Position 1 §6.5 applies these only while trying a
+            // geometry-dependent fallback; they are not author rules.
+            .position_try => {},
+            // Keyframes store CSSOM data; animation execution is separate.
+            .keyframes, .keyframe => {},
         };
     }
 

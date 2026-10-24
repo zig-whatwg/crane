@@ -48,6 +48,8 @@ pub const capabilities: engine.Capabilities = .{
     .cross_origin_objects = .unsupported,
     // QuickJS has no WebAssembly.
     .webassembly_streaming = .unsupported,
+    // Not until this adapter marks every object it binds an instance to.
+    .wrap_tracking = .unsupported,
 };
 
 /// No engine is linked yet: every operation answers without one.

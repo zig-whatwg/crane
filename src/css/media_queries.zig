@@ -567,6 +567,19 @@ fn lengthToPx(value: *const Value, values: *const MediaValues) ?f64 {
                 };
                 return d.value * base / 100;
             }
+            // Conditional 5 §7, MQ 5 §1.3: an elementless query has no
+            // eligible container and uses the initial horizontal axes.
+            const math = @import("math_values.zig");
+            if (math.Unit.parse(d.unit)) |unit| switch (unit) {
+                .cqw, .cqh, .cqi, .cqb, .cqmin, .cqmax => {
+                    const context: math.Context = .{
+                        .viewport_width = values.width,
+                        .viewport_height = values.height,
+                    };
+                    return context.resolve(.{ .value = d.value, .unit = unit }).value;
+                },
+                else => {},
+            };
             return null;
         },
         else => return null,

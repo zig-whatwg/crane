@@ -219,6 +219,7 @@ pub fn createRequest(
     const url = state.request_url orelse return error.InvalidStateError;
     const request = try InternalRequest.init(allocator, url);
     errdefer request.deinit();
+    if (state.blob_url_captured) request.setCapturedBlobEntry(state.blob_url_entry);
 
     // method: this's request method.
     if (state.request_method) |method| {

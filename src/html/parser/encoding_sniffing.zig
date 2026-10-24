@@ -562,33 +562,84 @@ pub fn decode(allocator: std.mem.Allocator, bytes: []const u8, encoding: Encodin
     return decodeWith(allocator, input, chosen);
 }
 
+/// The length of the byte order mark `bytes` start with, or 0.
+pub fn bomLength(bytes: []const u8) usize {
+    const found = encoding_mod.bom.sniff(bytes) orelse return 0;
+    return encoding_mod.bom.length(found);
+}
+
+/// Whether `bytes` are a proper prefix of a byte order mark (UTF-8's, or
+/// UTF-16BE's or LE's): the next byte decides whether there is one.
+pub fn mayStartBom(bytes: []const u8) bool {
+    const boms = [_][]const u8{ "\xEF\xBB\xBF", "\xFE\xFF", "\xFF\xFE" };
+    for (boms) |bom| {
+        if (bytes.len < bom.len and std.mem.startsWith(u8, bom, bytes)) return true;
+    }
+    return false;
+}
+
 /// Decode `input` with `encoding`'s decoder, without BOM sniffing, errors as
 /// U+FFFD. Owned by `allocator`.
 pub fn decodeWith(allocator: std.mem.Allocator, input: []const u8, encoding: Encoding) ![]u8 {
     var out: std.ArrayListUnmanaged(u8) = .empty;
     errdefer out.deinit(allocator);
     try out.ensureTotalCapacity(allocator, input.len + input.len / 2);
-
-    var decoder = encoding.newDecoder();
-    var units: [4096]u16 = undefined;
-    // A high surrogate at the end of one chunk whose low half is in the next.
-    var pending_high: ?u16 = null;
-    var position: usize = 0;
-    while (true) {
-        const result = decoder.decodeReplacement(input[position..], &units, true);
-        position += result.bytes_consumed;
-        try appendUtf16(allocator, &out, units[0..result.code_units_written], &pending_high);
-        switch (result.status) {
-            .input_empty => break,
-            .output_full => continue,
-            // Replacement mode retains restored bytes and handler state.
-            // A malformed result here is the shared loop's no-progress guard.
-            .malformed => return error.DecodingError,
-        }
-    }
-    try flushPending(allocator, &out, &pending_high);
+    var stream = StreamDecoder.init(encoding);
+    try stream.decodeInto(allocator, &out, input, true);
     return out.toOwnedSlice(allocator);
 }
+
+/// Encoding's "decode" of a byte stream that arrives in pieces - a
+/// navigation's response body - with `encoding`'s decoder, without BOM
+/// sniffing, errors as U+FFFD. A byte sequence, or a UTF-16 surrogate pair,
+/// split between two pieces decodes as one: the decoder keeps what it has
+/// not finished until the next piece (Encoding "decode" step 4's "I/O queue"
+/// read as items arrive; Blink's TextResourceDecoder::Decode feeds its codec
+/// each received chunk the same way, flushing at the end).
+pub const StreamDecoder = struct {
+    encoding: Encoding,
+    decoder: enc.Decoder,
+    /// A high surrogate at the end of one piece whose low half is in the next.
+    pending_high: ?u16 = null,
+    /// Whether the UTF-8 decoder has bytes of an unfinished sequence.
+    partial: bool = false,
+
+    pub fn init(encoding: Encoding) StreamDecoder {
+        return .{ .encoding = encoding, .decoder = encoding.newDecoder() };
+    }
+
+    /// Decode `input`, the stream's next bytes, appending UTF-8 to `out`.
+    /// `last`: the stream ends with them - an unfinished sequence is an
+    /// error (U+FFFD) rather than kept for more.
+    pub fn decodeInto(self: *StreamDecoder, allocator: std.mem.Allocator, out: *std.ArrayListUnmanaged(u8), input: []const u8, last: bool) !void {
+        // Valid UTF-8, with nothing pending, decodes to itself.
+        if (self.encoding == &enc.UTF_8 and !self.partial and self.pending_high == null and std.unicode.utf8ValidateSlice(input)) {
+            try out.appendSlice(allocator, input);
+            return;
+        }
+        var units: [4096]u16 = undefined;
+        var position: usize = 0;
+        while (true) {
+            const result = self.decoder.decodeReplacement(input[position..], &units, last);
+            position += result.bytes_consumed;
+            try appendUtf16(allocator, out, units[0..result.code_units_written], &self.pending_high);
+            switch (result.status) {
+                .input_empty => break,
+                .output_full => continue,
+                // Replacement mode retains restored bytes and handler state.
+                // A malformed result here is the shared loop's no-progress guard.
+                .malformed => return error.DecodingError,
+            }
+        }
+        // Without `last` the UTF-8 decoder may hold the start of a sequence,
+        // which the shortcut above must not skip.
+        self.partial = switch (self.decoder.state) {
+            .utf8 => |state| state.bytes_needed != 0,
+            else => false,
+        };
+        if (last) try flushPending(allocator, out, &self.pending_high);
+    }
+};
 
 fn flushPending(allocator: std.mem.Allocator, out: *std.ArrayListUnmanaged(u8), pending_high: *?u16) !void {
     if (pending_high.*) |_| {

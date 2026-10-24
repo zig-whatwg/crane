@@ -193,6 +193,12 @@ pub const RTCPeerConnection = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = true;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_static_members = .{
+            .{ "startDiagnosticLogging", .{"Window"} },
+            .{ "finishDiagnosticLogging", .{"Window"} },
+            .{ "discardDiagnosticLogging", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -539,6 +545,7 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.call_getConfiguration(instance);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn call_static_finishDiagnosticLogging(instance: *runtime.Instance, options: webidl.Opt(RTCDiagnosticLoggingOptions)) anyerror!runtime.JSValue {
         return try RTCPeerConnectionImpl.call_static_finishDiagnosticLogging(instance, options);
     }
@@ -567,6 +574,7 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.call_setConfiguration(instance, configuration);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn call_static_startDiagnosticLogging(instance: *runtime.Instance, options: webidl.Opt(RTCDiagnosticLoggingOptions)) anyerror!runtime.JSValue {
         return try RTCPeerConnectionImpl.call_static_startDiagnosticLogging(instance, options);
     }
@@ -587,6 +595,7 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.call_createDataChannel(instance, label, dataChannelDict);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn call_static_discardDiagnosticLogging(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try RTCPeerConnectionImpl.call_static_discardDiagnosticLogging(instance);
     }

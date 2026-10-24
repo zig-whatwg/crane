@@ -292,7 +292,17 @@ pub const IDBServer = struct {
     /// Thread-safe (a BrowserScope supplement's).
     allocator: Allocator,
     mutex: std.Io.Mutex = .init,
+    /// Every database a page opens enters this map and leaves it once
+    /// nothing refers to it (`maybeForget`), and test pages name their
+    /// databases uniquely: std's map never grew and kept its tombstones (a
+    /// 1,069-file runner sample: starved in 45 of 258 samples), so each
+    /// open of a new name walked the table (src/infra/tombstones.zig).
     databases: std.HashMapUnmanaged(Key, *UniqueIDBDatabase, KeyContext, std.hash_map.default_max_load_percentage) = .empty,
+    /// Rehashes `databases` before an insert once its removals could take
+    /// half the unused slots; under `mutex`, like the map. Values are
+    /// `*UniqueIDBDatabase`, their own allocations, and every walk of the
+    /// map holds the lock an insert needs.
+    guard: @import("infra").tombstones.TombstoneGuard = .{},
     next_id: Id = 1,
 
     const Key = struct { storage_key: StorageKey, name: []const u8 };
@@ -360,7 +370,7 @@ pub const IDBServer = struct {
     /// With the lock: forget `database` if nothing refers to it any more.
     fn maybeForget(self: *IDBServer, database: *UniqueIDBDatabase) void {
         if (!database.idle()) return;
-        _ = self.databases.remove(.{ .storage_key = database.storage_key, .name = database.name });
+        if (self.databases.remove(.{ .storage_key = database.storage_key, .name = database.name })) self.guard.noteRemoval(&self.databases);
         self.destroyDatabase(database);
     }
 
@@ -368,15 +378,19 @@ pub const IDBServer = struct {
 
     /// The record of (`storage_key`, `name`), made on first use, held for
     /// the caller until `release`.
-    pub fn uniqueDatabase(self: *IDBServer, storage_key: StorageKey, name: []const u8) Allocator.Error!*UniqueIDBDatabase {
+    pub fn uniqueDatabase(self: *IDBServer, storage_key: StorageKey, name: []const u8) (Allocator.Error || error{SecurityError})!*UniqueIDBDatabase {
+        // IndexedDB open/deleteDatabase: a failed storage key is a
+        // SecurityError. Refuse it before the map can own an invalid key.
+        if (storage_key.isOpaque()) return error.SecurityError;
         self.lock();
         defer self.unlock();
+        self.guard.beforeInsert(&self.databases);
         const found = try self.databases.getOrPut(self.allocator, .{ .storage_key = storage_key, .name = name });
         if (found.found_existing) {
             found.value_ptr.*.holders += 1;
             return found.value_ptr.*;
         }
-        errdefer _ = self.databases.remove(.{ .storage_key = storage_key, .name = name });
+        errdefer if (self.databases.remove(.{ .storage_key = storage_key, .name = name })) self.guard.noteRemoval(&self.databases);
         const made = try self.allocator.create(UniqueIDBDatabase);
         errdefer self.allocator.destroy(made);
         var key_copy = try copyKey(self.allocator, storage_key);

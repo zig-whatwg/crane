@@ -68,6 +68,10 @@ pub const StorageManager = struct {
         pub const secure_context_members = .{
             "getDirectory",
         };
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "persist", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(

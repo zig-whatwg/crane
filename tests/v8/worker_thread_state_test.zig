@@ -21,6 +21,7 @@
 //! worker thread here makes and ends its own agent, as a worker does.
 
 const std = @import("std");
+const builtin = @import("builtin");
 /// Every worker realm has an event loop; this test drives none.
 const inline_task_loop = @import("inline_task_loop.zig");
 const runtime = @import("runtime");
@@ -138,6 +139,13 @@ fn runWorkers(n: usize) !void {
 }
 
 test "worker threads that end leave no per-thread containers mapped" {
+    // The count walks Mach VM regions and reads their user tags (macOS): Linux
+    // has no tag that tells Zig's page_allocator mappings from V8's. The
+    // branch is comptime, so a Linux build never analyses the Mach calls.
+    if (comptime builtin.os.tag.isDarwin()) try countWorkerThreadState() else return error.SkipZigTest;
+}
+
+fn countWorkerThreadState() !void {
     if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.page_allocator);
     @import("interfaces").process_hooks.startHooksForTest();
     try engine.initializeEngine(.{});

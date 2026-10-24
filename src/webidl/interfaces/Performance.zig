@@ -113,6 +113,14 @@ pub const Performance = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "eventCounts", .{"Window"} },
+            .{ "interactionCount", .{"Window"} },
+            .{ "timing", .{"Window"} },
+            .{ "navigation", .{"Window"} },
+            .{ "measureUserAgentSpecificMemory", .{ "Window", "ServiceWorker", "SharedWorker" } },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -267,7 +275,7 @@ pub const Performance = struct {
         return try PerformanceImpl.get_timeOrigin(instance);
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [Exposed=Window]
     pub fn get_eventCounts(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -280,11 +288,12 @@ pub const Performance = struct {
         return value;
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_interactionCount(instance: *runtime.Instance) anyerror!u64 {
         return try PerformanceImpl.get_interactionCount(instance);
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [Exposed=Window]
     pub fn get_timing(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -297,7 +306,7 @@ pub const Performance = struct {
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [Exposed=Window]
     pub fn get_navigation(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance

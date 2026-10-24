@@ -226,6 +226,9 @@ pub const StyleEngine = struct {
         /// CSSOM's "last CSS style sheet set name" has no field: nothing
         /// selects a set (selectedStyleSheetSet left CSSOM), so it stays null.
         preferred_set_name: ?[]u8 = null,
+        /// Values 5 §9.4: one document mapping, allocated only when a
+        /// non-fixed random value is computed. The seed owns no handles.
+        random_seed: ?[32]u8 = null,
         /// Used style resources, absent on documents with no resource
         /// values. Kept out of the embedded StyleEngine's size class.
         resources: ?*resource_loading.State = null,
@@ -972,10 +975,20 @@ const LineageEntry = struct {
 fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, state: *ElementStyle, pseudo: ?[]const u8, parent: ?*const ComputedStyle, is_root: bool, reads: *selector_matching.StateReads) Error!*ComputedStyle {
     res.matched.clearRetainingCapacity();
     try collectMatched(res, element, node, state, pseudo, reads);
+    var random_context: RandomContext = .{
+        .engine = res.engine,
+        .identity = .{
+            .address = @intFromPtr(element),
+            .generation = runtime.SlabAllocator.generationOf(element),
+            .pseudo = pseudo,
+        },
+    };
     return css.cascade.cascade(.{
         .allocator = element.ctx.allocator,
         .parent = parent,
         .content_attributes = .{ .context = element, .get = contentAttribute },
+        .tree_counts = .{ .context = node, .get = treeCounts },
+        .random_base = .{ .context = &random_context, .get = randomBase },
         .pseudo = pseudo,
         .root_font_size = if (is_root) 16 else res.root_font_size,
         .root_line_height = if (is_root) 19.2 else res.root_line_height,
@@ -987,6 +1000,88 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
         .page_color_scheme = res.page_color_scheme,
         .preferred_color_scheme = res.preferred_color_scheme,
     }, res.matched.items);
+}
+
+/// Values 5 §10: DOM elements only, one-based, using the originating node
+/// for pseudo-elements. Blink CSSMathSiblingFunctionValue uses the same
+/// DOM sibling relation; Q44 follows the newer outer-scope zero rule.
+/// The two-pass fill follows selector_matching's NthIndexCache design,
+/// but scalar records live on ElementStyle across separate style reads.
+fn treeCounts(context: *anyopaque) css.math_values.TreeCounts {
+    const node: *NodeBase = @ptrCast(@alignCast(context));
+    const parent = node.parent_node orelse return .{ .index = 1, .count = 1 };
+    const element = instanceOf(node);
+    const document = if (element) |e| interfaces.Node.get_ownerDocument(e) catch null else null;
+    const version = if (document) |d| refcount.treeVersion(d) else null;
+    const address = if (document) |d| @intFromPtr(d) else 0;
+    const generation = if (document) |d| runtime.SlabAllocator.generationOf(d) else 0;
+    if (version) |v| if (element) |e| if (element_style.existingOf(e)) |state| if (state.sibling_counts) |cached| {
+        if (cached.matches(address, generation, v)) return cached.value;
+    };
+    var counts: css.math_values.TreeCounts = .{ .index = 1, .count = 0 };
+    var next = parent.first_child;
+    while (next) |sibling| : (next = sibling.next_sibling) {
+        if (sibling.node_type != NodeBase.ELEMENT_NODE) continue;
+        counts.count += 1;
+        if (sibling == node) counts.index = counts.count;
+    }
+    // Count first, then fill every sibling with the same total. A failed
+    // cache allocation leaves the stack answer intact and no node is kept.
+    if (version) |v| {
+        var index: usize = 0;
+        next = parent.first_child;
+        while (next) |sibling| : (next = sibling.next_sibling) {
+            if (sibling.node_type != NodeBase.ELEMENT_NODE) continue;
+            index += 1;
+            const sibling_element = instanceOf(sibling) orelse continue;
+            const state = element_style.of(sibling_element) orelse continue;
+            _ = state.cacheSiblingCounts(.{
+                .value = .{ .index = index, .count = counts.count },
+                .document_address = address,
+                .document_generation = generation,
+                .tree_version = v,
+            });
+        }
+    }
+    return counts;
+}
+
+test "a detached parentless element has sibling index and count one" {
+    if (comptime !@hasDecl(@This(), "treeCounts")) return error.SiblingProviderNotImplemented;
+    const allocator = std.testing.allocator;
+    const node = try allocator.create(NodeBase);
+    defer allocator.destroy(node);
+    node.* = .{
+        .allocator = allocator,
+        .node_type = NodeBase.ELEMENT_NODE,
+        .node_name = "DIV",
+        .child_nodes = .init(allocator),
+        .registered_observers = .init(allocator),
+    };
+    defer node.child_nodes.deinit();
+    defer node.registered_observers.deinit();
+    const counts = @field(@This(), "treeCounts")(@ptrCast(node));
+    try std.testing.expectEqual(@as(usize, 1), counts.index);
+    try std.testing.expectEqual(@as(usize, 1), counts.count);
+}
+
+/// Values 5 §9.4: borrowed only while the cascade computes this element.
+/// The key owns its names; neither the hash nor the computed value retains
+/// this stack context, an element pointer, or the pseudo name.
+const RandomContext = struct {
+    engine: *StyleEngine,
+    identity: css.random_values.Identity,
+};
+
+fn randomBase(context: *anyopaque, key: css.random_values.CacheKey) Allocator.Error!f64 {
+    const input: *RandomContext = @ptrCast(@alignCast(context));
+    const rare = try input.engine.ensureRare();
+    if (rare.random_seed == null) {
+        var seed: [32]u8 = undefined;
+        @import("platform").fillRandom(&seed);
+        rare.random_seed = seed;
+    }
+    return css.random_values.baseValue(rare.random_seed.?, key, input.identity);
 }
 
 /// attr() on a pseudo-element reads its originating element. The cascade
@@ -1166,6 +1261,7 @@ fn matchAroundRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, 
         };
         if (!matched) continue;
         var source = base;
+        source.tree_count_allowed = kind != .part;
         source.order = base.order + rule.position;
         source.specificity = rule.specificity;
         if (rule.layer) |l| source.layer = active_sheet.layer_order[l] else if (active_sheet.import_layer) |l| source.layer = l;
@@ -1228,16 +1324,22 @@ pub fn reparseInline(element: *runtime.Instance, state: *ElementStyle, value: []
 /// none`; an element with `display: contents` has no box of its own (it is
 /// "delegating its rendering to its children").
 pub fn isBeingRendered(element: *runtime.Instance) Error!bool {
-    return renderedInFlatTree(element, false);
+    return renderedInFlatTree(element, false, false);
 }
 
 /// HTML 6.6.2 also accepts an element delegating rendering to its children.
 /// Accepting its own display:contents does not bypass a hidden ancestor.
 pub fn isBeingRenderedOrDelegating(element: *runtime.Instance) Error!bool {
-    return renderedInFlatTree(element, true);
+    return renderedInFlatTree(element, true, false);
 }
 
-fn renderedInFlatTree(element: *runtime.Instance, comptime accepts_contents: bool) Error!bool {
+/// HTML focusability and CSS UI 4 §6.3. Reuse the target's style read for
+/// CSS inertness, without changing the general rendering predicates.
+pub fn isRenderedForFocus(element: *runtime.Instance) Error!bool {
+    return renderedInFlatTree(element, true, true);
+}
+
+fn renderedInFlatTree(element: *runtime.Instance, comptime accepts_contents: bool, comptime check_interactivity: bool) Error!bool {
     const node = instance_bridge.getNodeBase(element) orelse return false;
     if (node.node_type != NodeBase.ELEMENT_NODE or !node.is_connected) return false;
     const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return false;
@@ -1245,11 +1347,19 @@ fn renderedInFlatTree(element: *runtime.Instance, comptime accepts_contents: boo
     if (view == null) return false;
     const style = (try computedStyle(element, null)) orelse return false;
     if (!accepts_contents and style.display().box == .contents) return false;
+    // Inherited computed interactivity is checked on the target only. An
+    // explicit auto can restore CSS interaction, but not HTML inertness.
+    // Chrome's extra propagation anticipates unmerged WHATWG/html#10956
+    // (crbug.com/413291835); the current text and WPT require this rule.
+    if (check_interactivity and style.keyword(.interactivity) == .inert) return false;
     var current: *NodeBase = node;
     while (true) {
         const e = instanceOf(current) orelse return false;
         const s = (try computedStyle(e, null)) orelse return false;
         if (s.display().box == .none) return false;
+        // CSS Contain 2 section 4: skipped contents produce no boxes, but
+        // the containing element keeps its own box. Reuse this style read.
+        if (current != node and @import("content_visibility.zig").contentsSkipped(e, s)) return false;
         var slotted = false;
         switch (flatParent(current, &slotted)) {
             .root => return true,

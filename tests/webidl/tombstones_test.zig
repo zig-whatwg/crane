@@ -1,5 +1,5 @@
 //! Side tables keyed by an object's address stay fast when page after page of
-//! entries comes and goes (src/webidl/utils/tombstones.zig).
+//! entries comes and goes (src/infra/tombstones.zig, re-exported as webidl.utils.tombstones).
 //!
 //! The churn is a runner's: a page's worth of objects at addresses never used
 //! before is registered and then released, forty times over, while a few
@@ -137,3 +137,118 @@ test "TombstoneGuard: a map that grew was rebuilt, and starts counting afresh" {
 
 // InstanceRegistry's own churn test: tests/runtime/instance_registry_test.zig
 // (runtime.InstanceRegistry, a Browser's side table, since instances B1).
+
+// ---------------------------------------------------------------------------
+// Unmanaged maps (lane hashmaps1): most of Crane's long-lived maps are
+// `*HashMapUnmanaged` - the wrapper cache's side maps, the HTTP cache, the
+// preflight cache, IndexedDB's databases - so the guard and the diagnostics
+// take either kind.
+// ---------------------------------------------------------------------------
+
+/// The same runner churn as `churn`, over an unmanaged map.
+fn churnUnmanaged(map: *std.AutoHashMapUnmanaged(usize, u32), guard: ?*tombstones.TombstoneGuard) !void {
+    const allocator = std.testing.allocator;
+    var next: usize = 0x1000;
+    for (0..resident) |_| {
+        if (guard) |g| g.beforeInsert(map);
+        try map.put(allocator, next, 1);
+        next += stride;
+    }
+    for (0..pages) |_| {
+        const first = next;
+        for (0..per_page) |_| {
+            if (guard) |g| g.beforeInsert(map);
+            try map.put(allocator, next, 2);
+            next += stride;
+        }
+        var key = first;
+        while (key < next) : (key += stride) {
+            if (map.remove(key)) {
+                if (guard) |g| g.noteRemoval(map);
+            }
+        }
+    }
+}
+
+test "slotCounts and meanMissProbe read an unmanaged map: unguarded churn leaves no free slot to stop a miss" {
+    var map: std.AutoHashMapUnmanaged(usize, u32) = .empty;
+    defer map.deinit(std.testing.allocator);
+    try churnUnmanaged(&map, null);
+    const counts = tombstones.slotCounts(&map);
+    try std.testing.expectEqual(@as(usize, resident), counts.live);
+    try std.testing.expect(!counts.halfOfUnusedFree());
+    // A miss walks from its home slot to the first free one: with the free
+    // slots gone, most of the table.
+    try std.testing.expect(tombstones.meanMissProbe(&map) > counts.capacity / 8);
+}
+
+test "TombstoneGuard keeps an unmanaged map's misses short" {
+    var map: std.AutoHashMapUnmanaged(usize, u32) = .empty;
+    defer map.deinit(std.testing.allocator);
+    var guard: tombstones.TombstoneGuard = .{};
+    try churnUnmanaged(&map, &guard);
+    // The invariant holds at an insert: the next page's first one.
+    guard.beforeInsert(&map);
+    const counts = tombstones.slotCounts(&map);
+    try std.testing.expect(counts.halfOfUnusedFree());
+    try std.testing.expect(tombstones.meanMissProbe(&map) <= 8);
+    var key: usize = 0x1000;
+    for (0..resident) |_| {
+        try std.testing.expectEqual(@as(?u32, 1), map.get(key));
+        key += stride;
+    }
+}
+
+/// A custom stateless context, as the HTTP and preflight caches have.
+const PairContext = struct {
+    pub fn hash(_: PairContext, key: [2]u32) u64 {
+        return std.hash.Wyhash.hash(0, std.mem.asBytes(&key));
+    }
+    pub fn eql(_: PairContext, a: [2]u32, b: [2]u32) bool {
+        return a[0] == b[0] and a[1] == b[1];
+    }
+};
+
+test "TombstoneGuard rehashes an unmanaged map with a custom stateless context, and a StringHashMap" {
+    const allocator = std.testing.allocator;
+    var pairs: std.HashMapUnmanaged([2]u32, u32, PairContext, 80) = .empty;
+    defer pairs.deinit(allocator);
+    var strings = std.StringHashMap(u32).init(allocator);
+    defer strings.deinit();
+    var names: std.ArrayList([]u8) = .empty;
+    defer {
+        for (names.items) |name| allocator.free(name);
+        names.deinit(allocator);
+    }
+    var pair_guard: tombstones.TombstoneGuard = .{};
+    var string_guard: tombstones.TombstoneGuard = .{};
+    for (0..200) |round| {
+        for (0..64) |i| {
+            const n: u32 = @intCast(round * 64 + i);
+            pair_guard.beforeInsert(&pairs);
+            try pairs.put(allocator, .{ n, n *% 7 }, n);
+            const name = try std.fmt.allocPrint(allocator, "id-{d}", .{n});
+            try names.append(allocator, name);
+            string_guard.beforeInsert(&strings);
+            try strings.put(name, n);
+        }
+        for (0..64) |i| {
+            const n: u32 = @intCast(round * 64 + i);
+            if (pairs.remove(.{ n, n *% 7 })) pair_guard.noteRemoval(&pairs);
+            if (strings.remove(names.items[n])) string_guard.noteRemoval(&strings);
+        }
+    }
+    pair_guard.beforeInsert(&pairs);
+    string_guard.beforeInsert(&strings);
+    try std.testing.expect(tombstones.slotCounts(&pairs).halfOfUnusedFree());
+    try std.testing.expect(tombstones.slotCounts(&strings).halfOfUnusedFree());
+}
+
+test "meanMissProbe: an empty map is 0; a map that never removed probes about as far as its load says" {
+    var map = std.AutoHashMap(usize, u32).init(std.testing.allocator);
+    defer map.deinit();
+    try std.testing.expectEqual(@as(usize, 0), tombstones.meanMissProbe(&map));
+    for (0..1000) |i| try map.put(0x1000 + i * stride, 1);
+    // At most 80% full with linear probing: a few slots, never the table.
+    try std.testing.expect(tombstones.meanMissProbe(&map) < 16);
+}

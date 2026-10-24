@@ -908,6 +908,18 @@ pub const Capabilities = struct {
     /// hook - WebKit's compileStreaming is the private GlobalObjectMethodTable
     /// - and QuickJS has no WebAssembly).
     webassembly_streaming: Support,
+    /// The adapter marks every instance it binds an engine object to - a
+    /// wrapper, a constructed `this`, a realm's global object - with
+    /// runtime.instance_lifecycle.markWrapped, on every path that binds one,
+    /// before any step of the bind can fail. So an instance without the mark
+    /// was never reachable from script in any realm, and the host frees what
+    /// only script could still have reached: at a realm's end, the slab slot
+    /// of a node its tree tore down (Node.deinitNodeByType), and the realm's
+    /// orphans - subtrees removed while nothing wrapped them
+    /// (runtime.orphan_roots). Unsupported: a missing mark proves nothing
+    /// (instance_lifecycle.provablyUnwrapped's default) - a realm's end keeps
+    /// those slots, and an orphan stays until its Browser ends.
+    wrap_tracking: Support,
 };
 
 /// The capabilities of the engine this build selected.

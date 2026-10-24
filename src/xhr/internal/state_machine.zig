@@ -137,6 +137,11 @@ pub const XMLHttpRequestState = struct {
     /// Spec: "request URL"
     request_url: ?[]const u8,
 
+    /// The blob entry in open()'s parsed URL, retained independently of the
+    /// store mapping. A known missing entry must not resolve again at send().
+    blob_url_entry: ?*fetch.internal.request.CapturedBlobEntry = null,
+    blob_url_captured: bool = false,
+
     /// Author request headers (using Fetch's HeaderList for spec compliance)
     /// Spec: "author request headers" - A header list
     author_request_headers: HeaderList,
@@ -280,12 +285,14 @@ pub const XMLHttpRequestState = struct {
         self.freeClient();
         self.client = .{
             .origin = origin,
+            .origin_nonce = client.origin_nonce,
             .referrer_source = referrer_source,
             .top_level_site = top_level_site,
             .traversable = client.traversable,
             .cookie_jar = client.cookie_jar,
             // Borrowed, as the jar: the client's Browser's blob URL store.
             .blob_url_store = client.blob_url_store,
+            .capture_blob = client.capture_blob,
             .storage_key = storage_key,
             .top_level_creation_url = top_level_creation_url,
             // Borrowed, as the jar: the client's Browser's network.
@@ -305,6 +312,12 @@ pub const XMLHttpRequestState = struct {
         };
     }
 
+    pub fn clearCapturedBlob(self: *XMLHttpRequestState) void {
+        if (self.blob_url_entry) |entry| entry.release();
+        self.blob_url_entry = null;
+        self.blob_url_captured = false;
+    }
+
     fn freeClient(self: *XMLHttpRequestState) void {
         if (self.client.top_level_site) |site| self.allocator.free(site);
         if (self.client.storage_key) |key| self.allocator.free(key);
@@ -322,6 +335,7 @@ pub const XMLHttpRequestState = struct {
     /// Clean up state
     pub fn deinit(self: *XMLHttpRequestState) void {
         self.freeClient();
+        self.clearCapturedBlob();
         // Free request state
         if (self.request_method) |m| self.allocator.free(m);
         if (self.request_url) |u| self.allocator.free(u);
@@ -367,6 +381,7 @@ pub const XMLHttpRequestState = struct {
     ///
     /// Spec: Step 11 of open() - "Set variables associated with the object"
     pub fn reset(self: *XMLHttpRequestState) void {
+        self.clearCapturedBlob();
         // Clear request state
         if (self.request_method) |m| {
             self.allocator.free(m);

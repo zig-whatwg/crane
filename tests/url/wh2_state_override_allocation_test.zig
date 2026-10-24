@@ -33,13 +33,34 @@ test "state override preserves every old URL field on allocation failure" {
 }
 
 test "component updates preserve a URL's existing opaque blob entry" {
-    var record = try parser.parse(testing.allocator, "blob:https://example.test/id#old", null);
-    defer record.deinit();
-    // The parser never dereferences this File API-owned opaque identity.
-    var identity: u8 = 0;
-    const entry: *url.blob_url.BlobURLEntry = @ptrCast(&identity);
-    record.blob_url_entry = entry;
-    _ = try parser.parseWithStateOverride(testing.allocator, "new", null, .fragment, &record);
-    try testing.expect(record.blob_url_entry == entry);
-    try testing.expectEqualStrings("new", record.fragment().?);
+    const Payload = struct { retains: usize = 0, releases: usize = 0 };
+    const Callbacks = struct {
+        fn retain(ptr: *anyopaque) void {
+            const payload: *Payload = @ptrCast(@alignCast(ptr));
+            payload.retains += 1;
+        }
+        fn release(ptr: *anyopaque) void {
+            const payload: *Payload = @ptrCast(@alignCast(ptr));
+            payload.releases += 1;
+        }
+        fn read(_: *anyopaque, _: std.mem.Allocator) error{OutOfMemory}!url.blob_url.BlobURLEntry.Data {
+            return error.OutOfMemory;
+        }
+    };
+    var payload: Payload = .{};
+    {
+        var record = try parser.parse(testing.allocator, "blob:https://example.test/id#old", null);
+        defer record.deinit();
+        const entry = try url.blob_url.BlobURLEntry.create(testing.allocator, "https://example.test", null, &payload, .{
+            .retain = &Callbacks.retain,
+            .release = &Callbacks.release,
+            .read = &Callbacks.read,
+        });
+        record.blob_url_entry = entry;
+        _ = try parser.parseWithStateOverride(testing.allocator, "new", null, .fragment, &record);
+        try testing.expect(record.blob_url_entry == entry);
+        try testing.expectEqualStrings("new", record.fragment().?);
+    }
+    try testing.expectEqual(@as(usize, 1), payload.retains);
+    try testing.expectEqual(@as(usize, 1), payload.releases);
 }

@@ -13,7 +13,8 @@
 //!    includer takes its mixins' members in the order of its `includes`
 //!    statements, ordered the same way. Extended attributes: the
 //!    definition's, then a partial's only where the definition has none of
-//!    that name.
+//!    that name. A partial's [Exposed] scopes its own members, never the
+//!    interface; unannotated members inherit the interface's exposure.
 //! 3. Two non-partial definitions of one name are an error unless a rule
 //!    names the definer (duplicates.zig): webref's canonical definer, or a
 //!    file that repeats its own definitions (first occurrence).
@@ -137,13 +138,23 @@ test "overloads are numbered in member order: the definition's act() is call_act
     try testing.expect(contains(thing, "pub fn call_act__1(instance: *runtime.Instance, x: i32) "));
 }
 
-test "extended attributes: the definition's [Exposed] wins over a partial's" {
+test "extended attributes: interface exposure stays on the definition and partial exposure stays on its members" {
     var out = try generateInOrder(&forward);
     defer out.deinit();
     const thing = try out.read("interfaces/Thing.zig");
     defer testing.allocator.free(thing);
     try testing.expect(contains(thing, "pub const exposed_in = .{ .Window = true };"));
-    try testing.expect(!contains(thing, "DedicatedWorker"));
+    // The fixture deliberately uses a partial set wider than the interface's
+    // (invalid IDL) to pin merging: its metadata must not broaden Thing.
+    // The binding still intersects each member with its host interface.
+    const members_start = try indexOf(thing, "pub const exposed_members = .{");
+    const members_end = members_start + (try indexOf(thing[members_start..], "};"));
+    const members = thing[members_start..members_end];
+    try testing.expect(contains(members, ".{ \"fromA2\", .{ \"Window\", \"DedicatedWorker\" } }"));
+    try testing.expectEqual(@as(usize, 1), std.mem.count(u8, members, "DedicatedWorker"));
+    for ([_][]const u8{ "\"base\"", "\"fromA\"", "\"act\"" }) |name| {
+        try testing.expect(!contains(members, name));
+    }
 }
 
 test "a partial dictionary member replaces the definition's member of that name" {

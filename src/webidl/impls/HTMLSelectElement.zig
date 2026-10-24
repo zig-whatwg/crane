@@ -525,12 +525,12 @@ pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
 /// Operation: showPicker
 pub fn call_showPicker(instance: *runtime.Instance) anyerror!void {
     // HTML select.showPicker steps 1–4, in order. A failed rendering check
-    // does not consume activation. content-visibility awaits style support.
+    // does not consume activation. The shared rendering predicate includes
+    // skipped contents of applicable content-visibility:hidden ancestors.
     if (form_associated.isDisabled(instance)) return error.InvalidStateError;
     try forms.picker.requireSameOriginWithTop(instance);
     const window = try forms.picker.requireActivation(instance);
-    if (!(try interfaces.Node.get_isConnected(instance)) or
-        !@import("html").embedded_content.isBeingRendered(instance)) return error.NotSupportedError;
+    if (!try dom.style.isBeingRendered(instance)) return error.NotSupportedError;
     // Steps 5–6: consume activation, then show the base-select picker.
     @import("html").user_activation.consume(window);
     try forms.select_picker.show(instance);
