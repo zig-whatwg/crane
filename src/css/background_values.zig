@@ -189,11 +189,11 @@ fn slash(stream: *properties.Stream) bool {
     return true;
 }
 
-/// §2.7: parse the pair once, then own each independent component. No
+/// §2.6: parse the pair once, then own each independent component. No
 /// computed writing-mode mapping is performed while parsing the declaration.
 pub fn parsePosition(options: properties.ParseOptions, stream: *properties.Stream, out: *std.ArrayList(properties.Assignment)) Allocator.Error!bool {
-    var strict = options;
-    strict.quirks = false;
+    // Values4 Appendix C applies the quirk to this property only. Keep the
+    // caller's mode here; parseShorthand and direct-axis parsing stay strict.
     var xs: std.ArrayList(Value) = .empty;
     defer {
         for (xs.items) |v| v.release();
@@ -205,7 +205,7 @@ pub fn parsePosition(options: properties.ParseOptions, stream: *properties.Strea
         ys.deinit(options.allocator);
     }
     while (true) {
-        const position = (try positions.parse(strict, stream, .background)) orelse return false;
+        const position = (try positions.parse(options, stream, .background)) orelse return false;
         defer position.unref();
         if (position.logical) return false;
         {

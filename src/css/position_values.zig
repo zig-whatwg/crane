@@ -4,6 +4,7 @@ const std = @import("std");
 const properties = @import("properties.zig");
 const values = @import("style_values.zig");
 const tokenizer = @import("tokenizer.zig");
+const math = @import("math_values.zig");
 const Allocator = std.mem.Allocator;
 const Value = values.Value;
 
@@ -74,11 +75,24 @@ pub const Anchor = struct {
     offset: ?Value = null,
 };
 
-/// An offset from top/left. complement keeps `100% - length` typed even
-/// before the CSS math parser is merged; no serialized value is re-parsed.
+/// An offset from top/left. Literal complements retain their allocation-free
+/// form; mixed math uses the shared typed expression API.
 pub const Offset = struct {
     value: Value,
     complement: bool = false,
+
+    fn resolveComplement(self: *Offset, allocator: Allocator, context: anytype) Allocator.Error!void {
+        if (!self.complement or self.value != .calculation) return;
+        // Values5 §4.2: right/bottom offsets compute as 100% minus their
+        // inward distance. Compose typed operands without a layout basis.
+        const full = (try math.dimension(allocator, .{ .value = 100, .unit = .percent }, .{ .kind = .length_percentage })).?;
+        defer full.unref();
+        const difference = (try math.compose(allocator, .{ .kind = .length_percentage }, .sub, full, self.value.calculation)).?;
+        defer difference.unref();
+        const from_start = try context.length(.{ .calculation = difference });
+        self.value.release();
+        self.* = .{ .value = from_start };
+    }
 
     pub fn serialize(self: Offset, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
         if (!self.complement) return properties.serializeValue(.margin_left, self.value, out, allocator);
@@ -198,6 +212,7 @@ pub const Position = struct {
             else
                 .{ .value = if (anchor.offset) |v| try context.length(v) else .{ .length = .percent(0) }, .complement = side == .right or side == .bottom };
             initialized[index] = true;
+            try axes[index].resolveComplement(allocator, context);
         }
         const result = try allocator.create(Position);
         result.* = .{ .allocator = allocator, .data = .{ .computed = axes } };
@@ -248,9 +263,11 @@ const Part = union(enum) { edge: Edge, value: Value };
 const Ordered = struct { axes: [2]Anchor, logical: bool = false };
 
 pub fn parse(options: properties.ParseOptions, stream: *properties.Stream, grammar: Grammar) Allocator.Error!?*Position {
-    // Values4 Appendix C does not grant quirky lengths to positions.
-    var strict = options;
-    strict.quirks = false;
+    // Values4 Appendix C grants the unitless-length quirk to standalone
+    // background-position. The whole background shorthand passes strict
+    // options; generic positions and direct axes do not inherit the quirk.
+    var scalar_options = options;
+    if (grammar != .background) scalar_options.quirks = false;
     var parts: [4]Part = undefined;
     var marks: [4]properties.Stream = undefined;
     var count: usize = 0;
@@ -264,11 +281,18 @@ pub fn parse(options: properties.ParseOptions, stream: *properties.Stream, gramm
             parts[count] = .{ .edge = edge };
         } else {
             const saved = stream.*;
-            const v = try properties.parseLonghand(strict, .margin_left, stream) orelse {
+            // Backgrounds3 §2.6 / Values4 §10.13: its length-percentage
+            // accepts the math owner's full typed grammar, never quirky
+            // numbers inside a function.
+            const parsed = if (grammar == .background and math.isFunction(stream.peek()))
+                try properties.mathValue(scalar_options, stream, .{ .kind = .length_percentage })
+            else
+                try properties.parseLonghand(scalar_options, .margin_left, stream);
+            const v = parsed orelse {
                 stream.* = saved;
                 break;
             };
-            if (v != .length) {
+            if (v != .length and !(grammar == .background and v == .calculation)) {
                 v.release();
                 stream.* = saved;
                 break;
@@ -413,11 +437,12 @@ pub const PositionAxis = struct {
         }
         const anchor = self.data.specified;
         const side = if (anchor.edge) |edge| physical(edge, index, context.writing_mode, context.direction) else null;
-        const offset: Offset = if (anchor.edge == .center)
+        var offset: Offset = if (anchor.edge == .center)
             .{ .value = .{ .length = .percent(50) } }
         else
             .{ .value = if (anchor.offset) |v| try context.length(v) else .{ .length = .percent(0) }, .complement = side == .right or side == .bottom };
         errdefer offset.value.release();
+        try offset.resolveComplement(allocator, context);
         const result = try allocator.create(PositionAxis);
         result.* = .{ .allocator = allocator, .data = .{ .computed = offset } };
         return result;
