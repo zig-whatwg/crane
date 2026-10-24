@@ -109,6 +109,12 @@ pub const SourceBuffer = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "audioTracks", .{"Window"} },
+            .{ "videoTracks", .{"Window"} },
+            .{ "textTracks", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(

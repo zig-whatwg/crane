@@ -220,6 +220,11 @@ pub const Headers = struct {
         .{ "call_append", 0b11 },
     };
 
+    /// WebIDL ByteString results: each byte becomes the code unit of its value.
+    pub const byte_string_returns = .{
+        "call_get",
+    };
+
     /// Get entries for pair iterable support (used by V8 for iteration)
     /// Returns slice of entries with .name and .value fields
     pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const HeadersImpl.IterableEntry {

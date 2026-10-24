@@ -80,3 +80,48 @@ test "flags are each instance's own, and never change its generation" {
     try testing.expect(!lifecycle.hasGCWeakCallbackPending(first));
     try testing.expect(!lifecycle.isAttachedToDOM(first));
 }
+
+// Lane unwrapped1: the wrap mark (`wrapped`), which a realm's end reads to
+// free the storage of nodes no wrapper ever reached.
+
+test "a wrap mark is sticky until the slab issues the slot again" {
+    var slab = runtime.SlabAllocator.init(testing.allocator);
+    defer slab.deinit();
+    const instance = try slab.alloc(&vtable);
+    const generation = runtime.SlabAllocator.generationOf(instance);
+
+    try testing.expect(!lifecycle.wasWrapped(instance));
+    lifecycle.markWrapped(instance);
+    try testing.expect(lifecycle.wasWrapped(instance));
+    // Nothing else clears it - not a cleanup, not the free - and it never
+    // touches the generation or the other flags.
+    try testing.expectEqual(generation, runtime.SlabAllocator.generationOf(instance));
+    try testing.expect(lifecycle.markCleanupStarted(instance));
+    lifecycle.markCleanupComplete(instance);
+    try testing.expect(lifecycle.wasWrapped(instance));
+    try testing.expect(lifecycle.isCleanedUp(instance));
+    slab.free(instance);
+    try testing.expect(lifecycle.wasWrapped(instance));
+
+    const again = try slab.alloc(&vtable);
+    try testing.expectEqual(instance, again);
+    try testing.expect(!lifecycle.wasWrapped(again));
+}
+
+test "the DEFAULT: an engine that does not track wraps proves no instance unwrapped" {
+    var slab = runtime.SlabAllocator.init(testing.allocator);
+    defer slab.deinit();
+    const instance = try slab.alloc(&vtable);
+
+    // Unmarked, on an engine that does not mark (JavaScriptCore, QuickJS,
+    // the test adapter): the missing mark proves nothing, so nothing may be
+    // freed on its strength - a realm's end keeps the slot (the safe answer).
+    try testing.expect(!lifecycle.provablyUnwrapped(false, instance));
+    lifecycle.markWrapped(instance);
+    try testing.expect(!lifecycle.provablyUnwrapped(false, instance));
+
+    // On an engine that marks every wrap, only an unmarked instance is.
+    const unmarked = try slab.alloc(&vtable);
+    try testing.expect(lifecycle.provablyUnwrapped(true, unmarked));
+    try testing.expect(!lifecycle.provablyUnwrapped(true, instance));
+}

@@ -687,3 +687,51 @@ test "randomized: the maps answer every key as a walk of the tree does, after ev
         }
     }
 }
+
+// =============================================================================
+// Tombstones (lane hashmaps1)
+// =============================================================================
+
+test "a document whose elements come and go under ever-new IDs keeps half its key map's unused slots free" {
+    // Each new ID is a key the map never saw; an emptied key is kept until
+    // the emptied ones outnumber the scope's peak, then swept out in a batch
+    // - removals std's map turns into tombstones it never clears, and it
+    // never grows while puts and removes balance (src/infra/tombstones.zig;
+    // a 1,069-file runner sample starved in 44 of 4,082 samples).
+    var f: Fixture = undefined;
+    try f.init(testing.allocator);
+    defer f.deinit();
+    var buf: [32]u8 = undefined;
+    var n: usize = 0;
+    var starved: usize = 0;
+    var worst: usize = 0;
+    // A page that builds a large list once: 1,000 IDs, then all removed.
+    var round: usize = 0;
+    while (round < 301) : (round += 1) {
+        const per_round: usize = if (round == 0) 1_000 else 16;
+        var made: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+        defer made.deinit(testing.allocator);
+        for (0..per_round) |i| {
+            const div = try element(f.document, html_ns, "div");
+            try setAttribute(div, "id", try std.fmt.bufPrint(&buf, "id-{d}", .{n}));
+            n += 1;
+            try append(f.body, div);
+            try made.append(testing.allocator, div);
+            if (i == 0 and round > 0) {
+                const table = map.inspectTable(f.document).?;
+                if (!table.slots.halfOfUnusedFree()) starved += 1;
+                worst = @max(worst, table.mean_miss);
+            }
+        }
+        for (made.items) |div| {
+            _ = try interfaces.Node.call_removeChild(f.body, div);
+            dom.node_creation.destroyUninserted(div);
+        }
+    }
+    try expectExact(f.document, true);
+    if (starved != 0 or worst > 8) {
+        const table = map.inspectTable(f.document).?;
+        std.debug.print("tree_ordered_map: {d} of 300 rounds began with fewer than half the unused slots free; worst mean miss {d} (capacity {d}, live {d}, free {d})\n", .{ starved, worst, table.slots.capacity, table.slots.live, table.slots.free });
+        return error.TombstonesFilledTheMap;
+    }
+}

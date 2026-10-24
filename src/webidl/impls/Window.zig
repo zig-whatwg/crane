@@ -803,12 +803,29 @@ fn settingsStorageKey(instance: *runtime.Instance) error{OutOfMemory}!?[]const u
     const allocator = internal.allocator;
     const origin = effectiveOrigin(instance, internal);
     // The top-level origin as a site; an opaque one, or one with no host, is
-    // "null" (storage.StorageKey: no identity, never a storage partition).
+    // "null" (still ineligible for persistent storage).
     const site = (try settingsTopLevelSite(instance)) orelse try instance.ctx.allocator.dupe(u8, "null");
     defer instance.ctx.allocator.free(site);
-    const key = storage.StorageKey.initBorrowed(if (origin.len == 0) "null" else origin, site, try hasCrossSiteAncestor(instance));
+    var key = storage.StorageKey.initBorrowed(if (origin.len == 0) "null" else origin, site, try hasCrossSiteAncestor(instance));
+    if (try @import("dom").global_settings.shareableOriginOf(instance)) |record|
+        key.origin_nonce = try record.opaqueNonce(instance.ctx.browserScope());
+    if (std.mem.eql(u8, site, "null")) {
+        if (topLevelWindowForStorage(instance)) |top| {
+            if (try @import("dom").global_settings.shareableOriginOf(top)) |record|
+                key.top_level_nonce = try record.opaqueNonce(top.ctx.browserScope());
+        }
+    }
     internal.storage_key = try key.serialize(allocator);
     return internal.storage_key;
+}
+
+fn topLevelWindowForStorage(instance: *runtime.Instance) ?*runtime.Instance {
+    var window = instance;
+    for (0..64) |_| {
+        const internal = getInternal(window) orelse return null;
+        window = parentWindowOf(internal) orelse return window;
+    }
+    return null;
 }
 
 /// HTML 8.1.3.2, a window's environment settings object's "has cross-site

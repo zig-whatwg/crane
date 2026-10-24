@@ -9,4 +9,6 @@
 
 **Fix**: Calculate the child index and adjusted offset in a local before assigning the new position. Keep the native regression exercising both directions and rerun the entire upstream file after the isolated case passes.
 
+**Recurred**: 2026-10-23, lane editing1: the delete command's `point = .{ .node = p, .offset = try indexOf(point.node) }` (six sites) drilled every caret up to its parent at offset 0 - the whole-element deletions removed the node BEFORE the target, and the block merge threw IndexSizeError. The fix is a helper that takes the old node as an argument (`common.pointBefore(node, parent)` / `pointAfter`), which cannot read a half-written destination; prefer one wherever a point is rebuilt from itself.
+
 **Takeaway**: **An anonymous aggregate initializer is not a snapshot of the old destination. Save dependent inputs before assigning it.**

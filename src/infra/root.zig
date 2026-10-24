@@ -26,6 +26,10 @@ pub const namespaces = @import("namespaces.zig");
 pub const time = @import("time.zig");
 pub const bloom_filter = @import("bloom_filter.zig");
 pub const ancestor_bloom_filter = @import("ancestor_bloom_filter.zig");
+/// Not Infra's: when to rehash a long-lived std hash map whose keys come
+/// and go (TombstoneGuard). Here so every module that keeps such a map -
+/// fetch, file and storage among them, which do not import webidl - can.
+pub const tombstones = @import("tombstones.zig");
 
 pub const String = string.String;
 pub const CodePoint = code_point.CodePoint;

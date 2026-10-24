@@ -73,6 +73,16 @@ pub const AnimationEffect = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "parent", .{"Window"} },
+            .{ "previousSibling", .{"Window"} },
+            .{ "nextSibling", .{"Window"} },
+            .{ "before", .{"Window"} },
+            .{ "after", .{"Window"} },
+            .{ "replace", .{"Window"} },
+            .{ "remove", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -187,30 +197,37 @@ pub const AnimationEffect = struct {
         }
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_parent(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try AnimationEffectImpl.get_parent(instance);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_previousSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try AnimationEffectImpl.get_previousSibling(instance);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_nextSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try AnimationEffectImpl.get_nextSibling(instance);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn call_before(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
         return try AnimationEffectImpl.call_before(instance, effects);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn call_replace(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
         return try AnimationEffectImpl.call_replace(instance, effects);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn call_remove(instance: *runtime.Instance) anyerror!void {
         return try AnimationEffectImpl.call_remove(instance);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn call_after(instance: *runtime.Instance, effects: []const *runtime.Instance) anyerror!void {
         return try AnimationEffectImpl.call_after(instance, effects);
     }

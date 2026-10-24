@@ -67,6 +67,11 @@ pub const InteractionContentfulPaint = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "paintTime", .{"Window"} },
+            .{ "presentationTime", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -208,10 +213,12 @@ pub const InteractionContentfulPaint = struct {
         return try InteractionContentfulPaintImpl.get_interactionId(instance);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_paintTime(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
         return try InteractionContentfulPaintImpl.get_paintTime(instance);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_presentationTime(instance: *runtime.Instance) anyerror!?DOMHighResTimeStamp {
         return try InteractionContentfulPaintImpl.get_presentationTime(instance);
     }

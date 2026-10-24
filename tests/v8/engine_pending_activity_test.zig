@@ -349,3 +349,88 @@ test "a teardown the collection deferred is not run for an instance wrapped agai
     try std.testing.expect(!probes[0].ran);
     try std.testing.expect(isCached(made));
 }
+
+// ---------------------------------------------------------------------------
+// The cache's two side maps under churn (lane hashmaps1). Each realm's
+// `pending_before_wrap` and `edges_before_wrap` see a key per platform object
+// that is kept, or traces a child, before script sees it - a new address
+// each time - put then, removed when its wrapper is made. std's map never
+// grows while puts and removes balance and never clears its tombstones
+// (src/infra/tombstones.zig): a 1,069-file runner sample had
+// edges_before_wrap at capacity 16,384 with 73 free (1,338 of 14,167 samples
+// starved), and pending_before_wrap starved in 151 of 2,432.
+// ---------------------------------------------------------------------------
+
+const tombstones = @import("webidl").utils.tombstones;
+
+const SideWorst = struct {
+    probe: usize = 0,
+    starved: usize = 0,
+
+    fn note(self: *SideWorst, map: anytype) void {
+        self.probe = @max(self.probe, tombstones.meanMissProbe(map));
+        if (!tombstones.slotCounts(map).halfOfUnusedFree()) self.starved += 1;
+    }
+
+    fn check(self: SideWorst, comptime what: []const u8, map: anytype) !void {
+        if (self.starved == 0 and self.probe <= 8) return;
+        const counts = tombstones.slotCounts(map);
+        std.debug.print(what ++ ": {d} of 300 pages began with fewer than half the unused slots free; worst mean miss {d} (capacity {d}, live {d}, free {d})\n", .{ self.starved, self.probe, counts.capacity, counts.live, counts.free });
+        return error.TombstonesFilledTheMap;
+    }
+};
+
+test "pending activity kept before the wrapper exists keeps half the side map's unused slots free, page after page" {
+    try setup();
+    const cache = cache_once.?;
+    var worst: SideWorst = .{};
+    // A burst first: a page that keeps 2,000 objects before wrapping them.
+    var burst: [2000]Made = undefined;
+    for (&burst) |*made| {
+        made.* = try unwrapped();
+        v8.worker_realm.keepPlatformObjectAlive(made.instance);
+    }
+    for (burst) |made| v8.worker_realm.releasePlatformObject(made.instance);
+    for (0..300) |_| {
+        var page: [16]Made = undefined;
+        for (&page, 0..) |*made, i| {
+            made.* = try unwrapped();
+            v8.worker_realm.keepPlatformObjectAlive(made.instance);
+            if (i == 0) worst.note(&cache.pending_before_wrap);
+        }
+        // Half are wrapped (the wrapper takes the keep), half released
+        // unwrapped.
+        for (page, 0..) |made, i| {
+            if (i % 2 == 0) {
+                try wrap(made);
+                v8.worker_realm.releasePlatformObject(made.instance);
+            } else v8.worker_realm.releasePlatformObject(made.instance);
+        }
+    }
+    try std.testing.expectEqual(@as(usize, 0), cache.pending_before_wrap.count());
+    try worst.check("pending_before_wrap", &cache.pending_before_wrap);
+}
+
+test "edges traced from owners script has not seen keep half the side map's unused slots free, page after page" {
+    try setup();
+    const cache = cache_once.?;
+    var worst: SideWorst = .{};
+    for (0..300) |page| {
+        // A page's owners: each traces a child before its own wrapper is
+        // made (a signal's reason, a control's ValidityState), then is
+        // wrapped, which draws the edges and takes the owner out.
+        const owners_per_page: usize = if (page == 0) 2_000 else 16;
+        var owners: std.ArrayListUnmanaged(Made) = .empty;
+        defer owners.deinit(std.heap.page_allocator);
+        for (0..owners_per_page) |i| {
+            const owner = try unwrapped();
+            try owners.append(std.heap.page_allocator, owner);
+            const child = ffi.v8_Object_New(isolate_once.?) orelse return error.ObjectFailed;
+            try cache.deferEdge(owner.instance, "child", @ptrCast(child));
+            if (i == 0 and page > 0) worst.note(&cache.edges_before_wrap);
+        }
+        for (owners.items) |owner| try wrap(owner);
+    }
+    try std.testing.expectEqual(@as(usize, 0), cache.edges_before_wrap.count());
+    try worst.check("edges_before_wrap", &cache.edges_before_wrap);
+}

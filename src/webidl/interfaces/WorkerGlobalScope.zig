@@ -504,6 +504,11 @@ pub const WorkerGlobalScope = struct {
     /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
     pub const legacy_treat_non_object_as_null = .{ "set_onerror", "set_onlanguagechange", "set_onoffline", "set_ononline", "set_onrejectionhandled", "set_onunhandledrejection" };
 
+    /// WebIDL ByteString results: each byte becomes the code unit of its value.
+    pub const byte_string_returns = .{
+        "call_atob",
+    };
+
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{

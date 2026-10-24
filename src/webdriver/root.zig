@@ -32,6 +32,7 @@
 //! - Servo WebDriver: https://book.servo.org/architecture/servodriver.html
 
 pub const Server = @import("server.zig").Server;
+pub const Config = @import("server.zig").Config;
 pub const Session = @import("session.zig").Session;
 pub const protocol = @import("protocol.zig");
 pub const commands = @import("commands.zig");

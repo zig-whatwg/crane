@@ -360,6 +360,11 @@ pub const Response = struct {
         return try ResponseImpl.call_clone(instance);
     }
 
+    /// WebIDL ByteString results: each byte becomes the code unit of its value.
+    pub const byte_string_returns = .{
+        "get_statusText",
+    };
+
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{

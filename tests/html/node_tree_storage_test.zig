@@ -1,6 +1,8 @@
 //! A tree's teardown must return descendants' storage even when none of
 //! their wrappers remains to run a later finalizer. Cached wrappers keep
-//! their storage until the collector releases them.
+//! their storage until the collector releases them. Inside a realm's
+//! coordinated teardown, a node no wrapper ever reached ([wrap_tracking])
+//! gives its storage back when the teardown ends (lane unwrapped1).
 
 const std = @import("std");
 const testing = std.testing;
@@ -10,7 +12,7 @@ const interfaces = @import("interfaces");
 const engine = @import("engine");
 const dom = @import("dom");
 
-const Scenario = enum { collected_tree, uninserted_tree, cached_wrappers, coordinated_teardown };
+const Scenario = enum { collected_tree, uninserted_tree, cached_wrappers, coordinated_teardown, coordinated_teardown_wrapped };
 
 fn runOnFreshThread(scenario: Scenario) !void {
     const Run = struct {
@@ -90,15 +92,49 @@ fn runOnFreshThread(scenario: Scenario) !void {
                     coordinator.beginContextCleanup();
                     dom.node_creation.destroyUninserted(root);
                     // Cache teardown may already have disposed some entries:
-                    // no wrapper query or new storage release is allowed.
+                    // no wrapper query, and no release while the teardown's
+                    // later phases run - each slot stays as it was.
                     try testing.expectEqual(root_generation, runtime.SlabAllocator.generationOf(root));
                     try testing.expectEqual(child_generation, runtime.SlabAllocator.generationOf(child));
                     try testing.expectEqual(text_generation, runtime.SlabAllocator.generationOf(text));
+                    // No wrapper ever reached them ([wrap_tracking]): the
+                    // teardown's end returns their storage, once.
                     coordinator.endContextCleanup();
-                    // Stand in for the cache's existing storage phase.
-                    runtime.gc.releaseStorage(text);
-                    runtime.gc.releaseStorage(child);
-                    runtime.gc.releaseStorage(root);
+                    coordinator.releaseDeferredStorage();
+                    try testing.expectEqual(runtime.SlabAllocator.dead_generation, runtime.SlabAllocator.generationOf(root));
+                    try testing.expectEqual(runtime.SlabAllocator.dead_generation, runtime.SlabAllocator.generationOf(child));
+                    try testing.expectEqual(runtime.SlabAllocator.dead_generation, runtime.SlabAllocator.generationOf(text));
+                    coordinator.releaseDeferredStorage();
+                },
+                .coordinated_teardown_wrapped => {
+                    // A node a wrapper reached keeps its storage through the
+                    // teardown: its wrapper's owner frees it, never the
+                    // coordinator. Wrapping the child wraps its ancestors
+                    // too (node tracing), so only the text is unwrapped.
+                    const held_child = try engine.retainValue(ctx, .{ .instance = child });
+                    held_child.release();
+                    try testing.expect(runtime.instance_lifecycle.wasWrapped(child));
+                    try testing.expect(runtime.instance_lifecycle.wasWrapped(root));
+                    try testing.expect(!runtime.instance_lifecycle.wasWrapped(text));
+                    {
+                        var coordinator = runtime.cleanup_coordinator.CleanupCoordinator.init(testing.allocator);
+                        defer coordinator.deinit();
+                        runtime.cleanup_coordinator.setActiveCoordinator(&coordinator);
+                        defer runtime.cleanup_coordinator.setActiveCoordinator(null);
+                        coordinator.beginContextCleanup();
+                        dom.node_creation.destroyUninserted(root);
+                        coordinator.endContextCleanup();
+                        coordinator.releaseDeferredStorage();
+                    }
+                    try testing.expectEqual(runtime.SlabAllocator.dead_generation, runtime.SlabAllocator.generationOf(text));
+                    try testing.expectEqual(root_generation, runtime.SlabAllocator.generationOf(root));
+                    try testing.expectEqual(child_generation, runtime.SlabAllocator.generationOf(child));
+                    try testing.expect(runtime.instance_lifecycle.isCleanedUp(child));
+                    // Their wrappers' collection frees them now.
+                    engine.requestGarbageCollection(page.agent);
+                    engine.requestGarbageCollection(page.agent);
+                    try testing.expect(runtime.SlabAllocator.generationOf(root) != root_generation);
+                    try testing.expect(runtime.SlabAllocator.generationOf(child) != child_generation);
                 },
             }
 
@@ -124,6 +160,10 @@ test "cached node wrappers retain cleaned storage until they are collected" {
     try runOnFreshThread(.cached_wrappers);
 }
 
-test "coordinated teardown keeps the cache's existing storage ownership" {
+test "coordinated teardown returns unwrapped storage at its end, never during it" {
     try runOnFreshThread(.coordinated_teardown);
+}
+
+test "coordinated teardown leaves a wrapped node's storage to its wrapper" {
+    try runOnFreshThread(.coordinated_teardown_wrapped);
 }

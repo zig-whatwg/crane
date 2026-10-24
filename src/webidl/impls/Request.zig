@@ -311,6 +311,12 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
             defer ctx.allocator.free(serialized_url);
 
             base_request = try InternalRequest.init(ctx.allocator, serialized_url);
+            // Fetch Request step 5 retains the parsed URL's blob entry. A
+            // later revoke removes the store mapping, not this URL record.
+            if (std.mem.startsWith(u8, serialized_url, "blob:")) {
+                parsed_url.blob_url_entry = @import("dom").global_settings.captureBlobURL(ctx, serialized_url);
+                base_request.setCapturedBlobEntry(parsed_url.blob_url_entry);
+            }
 
             // Step 5.5: Set fallbackMode to "cors"
             fallback_mode = enums.RequestMode._cors_;
@@ -399,6 +405,7 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
         if (base_request.origin_owned and base_request.origin == .origin) base_request.allocator.free(base_request.origin.origin);
         base_request.origin = .client;
         base_request.origin_owned = false;
+        base_request.origin_nonce = null;
 
         // Step 13.7: Set request's URL to request's current URL.
         // Step 13.8: Set request's URL list to « request's URL ». A request

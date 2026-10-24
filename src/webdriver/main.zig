@@ -25,18 +25,26 @@
 //! ```
 
 const std = @import("std");
-const server_mod = @import("server.zig");
-const Server = server_mod.Server;
-const Config = server_mod.Config;
+const host = @import("host");
+// The server through the `webdriver` module, not by relative path: server.zig
+// is that module's file, and one file cannot belong to two modules of a compile.
+const webdriver = @import("webdriver");
+const Server = webdriver.Server;
+const Config = webdriver.Config;
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+/// Zig 0.16 removed std.heap.GeneralPurposeAllocator and std.process.argsAlloc:
+/// std.process.Init carries the gpa (std.start's DebugAllocator in Debug builds,
+/// which reports leaks when main returns, as the GPA's deinit did), the argument
+/// vector and the process Io.
+pub fn main(init: std.process.Init) !void {
+    // Adopt the Io std.start built rather than letting host.io() build a second
+    // one (src/platform/host.zig: one Io.Threaded per process).
+    host.adopt(init.io);
+    const allocator = init.gpa;
 
-    // Parse command line arguments
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    // Parse command line arguments. `toSlice` may point into the argument
+    // vector, so it is given the process-lifetime arena rather than the gpa.
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     var config = Config{};
 

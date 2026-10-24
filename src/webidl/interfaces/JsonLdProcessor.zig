@@ -67,6 +67,10 @@ pub const JsonLdProcessor = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = true;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_static_members = .{
+            .{ "frame", .{"JsonLd"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -192,6 +196,7 @@ pub const JsonLdProcessor = struct {
         return try JsonLdProcessorImpl.call_static_expand(instance, input, options);
     }
 
+    /// Extended attributes: [Exposed=JsonLd]
     pub fn call_static_frame(instance: *runtime.Instance, input: JsonLdInput, frame: JsonLdInput, options: webidl.Opt(JsonLdOptions)) anyerror!runtime.JSValue {
         return try JsonLdProcessorImpl.call_static_frame(instance, input, frame, options);
     }

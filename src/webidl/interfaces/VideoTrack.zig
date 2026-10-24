@@ -61,6 +61,10 @@ pub const VideoTrack = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "sourceBuffer", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -199,6 +203,7 @@ pub const VideoTrack = struct {
         try VideoTrackImpl.set_selected(instance, value);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_sourceBuffer(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try VideoTrackImpl.get_sourceBuffer(instance);
     }

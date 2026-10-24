@@ -341,6 +341,10 @@ pub fn wrapInstanceAsV8Object(
         0,
         @ptrCast(instance),
     );
+    // [wrap_tracking]: an object reaches the instance from here, whatever
+    // the cache step below makes of it - cached, discarded after a failed
+    // insert, or bound to the NodeBase with no cache at all.
+    runtime.instance_lifecycle.markWrapped(instance);
 
     // Store WrapperTypeInfo in internal field 1 (for type-safe unwrapping)
     if (dom_type_info.getTypeInfoByName(interface_name)) |type_info| {
@@ -350,6 +354,10 @@ pub fn wrapInstanceAsV8Object(
             @ptrCast(@constCast(type_info)),
         );
     }
+
+    // Realm-dependent non-configurable members cannot live on an isolate's
+    // shared template. The dispatcher has no work for all other interfaces.
+    @import("interface_bindings.zig").installConditionalUnforgeablesByName(interface_name, isolate, context, v8_object);
 
     // For legacy platform objects, wrap in a Proxy to ensure correct
     // [[OwnPropertyKeys]] enumeration order per WebIDL §3.9.6.

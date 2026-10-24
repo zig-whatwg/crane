@@ -10,6 +10,10 @@ pub const GPUBufferUsage = struct {
     pub const Meta = struct {
         pub const name = "GPUBufferUsage";
         pub const is_namespace = true;
+        pub const extended_attributes = .{
+            .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
+            .{ .name = "SecureContext" },
+        };
         pub const BaseType = null;
         pub const MixinTypes = &.{};
 

@@ -606,6 +606,7 @@ pub fn holdForPendingActivity(instance: *runtime.Instance) void {
         return;
     }
     const generation = runtime.SlabAllocator.generationOf(instance);
+    if (cache.walks == 0) cache.pending_guard.beforeInsert(&cache.pending_before_wrap);
     const gop = cache.pending_before_wrap.getOrPut(cache.allocator, instance) catch return;
     // A dead instance's keeps at a reissued address are not the newcomer's.
     if (!gop.found_existing or gop.value_ptr.generation != generation) gop.value_ptr.* = .{ .generation = generation, .count = 0 };
@@ -628,11 +629,13 @@ pub fn releasePendingActivity(instance: *runtime.Instance) void {
     }
     const waiting = cache.pending_before_wrap.getPtr(instance) orelse return cache.unmatchedRelease(instance);
     if (waiting.generation != runtime.SlabAllocator.generationOf(instance) or waiting.count == 0) {
-        _ = cache.pending_before_wrap.remove(instance);
+        if (cache.pending_before_wrap.remove(instance)) cache.pending_guard.noteRemoval(&cache.pending_before_wrap);
         return cache.unmatchedRelease(instance);
     }
     waiting.count -= 1;
-    if (waiting.count == 0) _ = cache.pending_before_wrap.remove(instance);
+    if (waiting.count == 0) {
+        if (cache.pending_before_wrap.remove(instance)) cache.pending_guard.noteRemoval(&cache.pending_before_wrap);
+    }
 }
 
 /// `instance`'s realm's cache, or null when it has none or it is being torn
@@ -1198,6 +1201,12 @@ pub const WrapperCache = struct {
     /// (`holdForPendingActivity`), by slab generation so a reissued address
     /// does not inherit one. `set` moves a hold onto the new wrapper's entry.
     pending_before_wrap: std.AutoHashMapUnmanaged(*runtime.Instance, PendingBeforeWrap) = .empty,
+    /// Bounds `pending_before_wrap`'s tombstones: every object kept before
+    /// script sees it is a key the map never saw, removed when its wrapper
+    /// is made, so the map never grew (a 1,069-file runner sample: starved
+    /// in 151 of 2,432 samples). Gated on `walks` as `guard` is; nothing
+    /// iterates this map but the cache's end.
+    pending_guard: tombstones.TombstoneGuard = .{},
 
     /// Releases of pending activity with no keep left to end
     /// (`releasePendingActivity`): an owner that released what it did not
@@ -1210,6 +1219,15 @@ pub const WrapperCache = struct {
     /// realm ends. By slab generation, so an owner freed unwrapped and its
     /// address reissued leaves nothing to a newcomer.
     edges_before_wrap: std.AutoHashMapUnmanaged(*runtime.Instance, DeferredEdges) = .empty,
+    /// Bounds `edges_before_wrap`'s tombstones: every owner that traces a
+    /// child before script sees it is a key the map never saw, removed when
+    /// its wrapper is made or its edges are pruned (a 1,069-file runner
+    /// sample: capacity 16,384 with 73 slots free, 1,338 of 14,167 samples
+    /// starved). Gated on `walks` as `guard` is: `detach` walks this map
+    /// inside one, and `pruneDeferredEdges` finishes its walk before
+    /// `deferEdge` inserts. A `*DeferredEdges` is read and written only
+    /// between an insert and the next.
+    edges_guard: tombstones.TombstoneGuard = .{},
 
     /// Past `small_deferred_map` owners, `deferEdge` prunes dead owners'
     /// edges only once the map has grown to this many - then to twice what
@@ -1468,6 +1486,7 @@ pub const WrapperCache = struct {
             self.prune_watermark = @max(small_deferred_map, 2 * self.edges_before_wrap.count());
         }
         const generation = runtime.SlabAllocator.generationOf(owner);
+        if (self.walks == 0) self.edges_guard.beforeInsert(&self.edges_before_wrap);
         const gop = try self.edges_before_wrap.getOrPut(self.allocator, owner);
         if (!gop.found_existing) {
             gop.value_ptr.* = .{ .generation = generation };
@@ -1518,6 +1537,7 @@ pub const WrapperCache = struct {
     /// the strong holds go. Needs a current context, which every wrap has.
     fn drawDeferredEdges(self: *Self, instance: *runtime.Instance, generation: u64, wrapper: *v8.Object) void {
         var kv = self.edges_before_wrap.fetchRemove(instance) orelse return;
+        self.edges_guard.noteRemoval(&self.edges_before_wrap);
         defer kv.value.dispose(self.allocator);
         if (kv.value.generation != generation) return;
         for (kv.value.edges.items) |edge| {
@@ -1537,8 +1557,9 @@ pub const WrapperCache = struct {
             if (runtime.SlabAllocator.generationOf(kv.key_ptr.*) == kv.value_ptr.generation) continue;
             kv.value_ptr.dispose(self.allocator);
             // Removing during iteration: the map's own tombstone removal
-            // leaves the iterator valid.
+            // leaves the iterator valid, and noting it never rehashes.
             self.edges_before_wrap.removeByPtr(kv.key_ptr);
+            self.edges_guard.noteRemoval(&self.edges_before_wrap);
         }
     }
 
@@ -1568,6 +1589,7 @@ pub const WrapperCache = struct {
         while (iter.next()) |deferred| deferred.dispose(self.allocator);
         self.edges_before_wrap.deinit(self.allocator);
         self.edges_before_wrap = .empty;
+        self.edges_guard = .{};
     }
 
     /// Initialize a new wrapper cache
@@ -1710,6 +1732,21 @@ pub const WrapperCache = struct {
             if (entry.instance_already_cleaned) {
                 severWrapper(entry);
                 skipped_cleaned += 1;
+                // Its teardown began under its live wrapper (markAsCleanedUp -
+                // a node its realm's tree tore down before this sweep), and
+                // PHASE 1 disarmed the finalizer that would have freed the
+                // storage it left. Inside the realm's coordinated teardown the
+                // coordinator returns it after the teardown's LAST phase
+                // (releaseDeferredStorage), not here: a teardown later in this
+                // sweep can still read it - a detached root reads its
+                // document, torn down with the realm's tree - and a slot
+                // returned now could be reissued under that read by an
+                // allocation the sweep makes. Outside one, it stays as it did.
+                // It used to stay until the Browser ended - every page's
+                // wrapped nodes kept their slots (lane unwrapped1).
+                if (!is_reused and runtime.instance_lifecycle.isCleanedUp(entry.instance) and
+                    !wrappedElsewhere(entry.instance, self))
+                    runtime.cleanup_coordinator.deferStorageRelease(entry.instance, entry.original_generation);
                 if (is_iframe) {
                     log.debug("[wrapper_cache.deinit] SKIP_CLEANED iframe instance={*}", .{entry.instance});
                 }
@@ -2002,6 +2039,7 @@ pub const WrapperCache = struct {
 
         // Pending-activity keeps placed before the wrapper existed.
         if (self.pending_before_wrap.fetchRemove(instance)) |held| {
+            self.pending_guard.noteRemoval(&self.pending_before_wrap);
             if (held.value.generation == entry.original_generation) entry.pending_activity = held.value.count;
         }
         // Edges traced from the instance before script saw it.

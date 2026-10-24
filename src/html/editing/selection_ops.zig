@@ -1,8 +1,11 @@
 //! Selection and Clipboard Operations
 //!
 //! Implements selection and clipboard execCommand operations:
-//! - Selection commands (selectAll, delete, forwardDelete)
+//! - Selection commands (selectAll)
 //! - Clipboard commands (copy, cut, paste)
+//!
+//! delete and forwardDelete live in the html module (src/html/execcommand/),
+//! which can reach the generated interfaces; see executor.zig.
 //!
 //! Spec: https://w3c.github.io/editing/docs/execCommand/
 //! Clipboard: https://w3c.github.io/clipboard-apis/
@@ -60,80 +63,6 @@ pub fn executeSelectAll(allocator: std.mem.Allocator, document: DocumentHandle) 
     // 2. Call document.getSelection() to get Selection object
     // 3. Get editing host (document.body or contenteditable ancestor)
     // 4. Call selection.selectAllChildren(editingHost)
-
-    return .{ .success = true };
-}
-
-/// Execute delete command
-/// Deletes selection or character before caret (backspace behavior)
-///
-/// Spec: https://w3c.github.io/editing/docs/execCommand/#the-delete-command
-///
-/// Algorithm:
-/// 1. Get current selection
-/// 2. If selection is not collapsed:
-///    a. Call selection.deleteFromDocument()
-/// 3. If selection is collapsed (caret):
-///    a. Let range = selection.getRangeAt(0)
-///    b. If at start of container, merge with previous sibling/parent
-///    c. Otherwise, extend range backward by one grapheme cluster
-///    d. Delete the range contents
-/// 4. Handle special cases:
-///    - Empty list items: remove the <li>
-///    - Empty block elements: merge with previous block
-///    - Tables: don't delete across cell boundaries
-/// 5. Create undo entry
-///
-/// TODO: Full implementation requires DOM integration via html module (full.zig)
-/// which has access to runtime.Instance and impls.Selection.
-pub fn executeDelete(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
-    _ = allocator;
-    _ = document;
-
-    // Algorithm when integrated with DOM:
-    // 1. Get document instance from handle
-    // 2. Call document.getSelection() to get Selection object
-    // 3. If selection.isCollapsed:
-    //    a. Call selection.modify("extend", "backward", "character")
-    // 4. Call selection.deleteFromDocument()
-    // 5. Record undo entry
-
-    return .{ .success = true };
-}
-
-/// Execute forwardDelete command
-/// Deletes selection or character after caret (delete key behavior)
-///
-/// Spec: https://w3c.github.io/editing/docs/execCommand/#the-forwarddelete-command
-///
-/// Algorithm:
-/// 1. Get current selection
-/// 2. If selection is not collapsed:
-///    a. Call selection.deleteFromDocument()
-/// 3. If selection is collapsed (caret):
-///    a. Let range = selection.getRangeAt(0)
-///    b. If at end of container, merge with next sibling/child
-///    c. Otherwise, extend range forward by one grapheme cluster
-///    d. Delete the range contents
-/// 4. Handle special cases:
-///    - At end of list item: merge with next item
-///    - At end of block: merge with next block
-///    - Tables: don't delete across cell boundaries
-/// 5. Create undo entry
-///
-/// TODO: Full implementation requires DOM integration via html module (full.zig)
-/// which has access to runtime.Instance and impls.Selection.
-pub fn executeForwardDelete(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
-    _ = allocator;
-    _ = document;
-
-    // Algorithm when integrated with DOM:
-    // 1. Get document instance from handle
-    // 2. Call document.getSelection() to get Selection object
-    // 3. If selection.isCollapsed:
-    //    a. Call selection.modify("extend", "forward", "character")
-    // 4. Call selection.deleteFromDocument()
-    // 5. Record undo entry
 
     return .{ .success = true };
 }

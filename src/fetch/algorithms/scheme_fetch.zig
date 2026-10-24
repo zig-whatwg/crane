@@ -194,10 +194,8 @@ fn blobFetchRequest(allocator: Allocator, request: *const InternalRequest) error
     // 2. If request's method is not `GET` or blobURLEntry is null, then
     //    return a network error.
     if (!std.mem.eql(u8, request.method, "GET")) return .{ .network_error = "blob: fetch is GET only" };
-    const resolver = blob_resolver orelse return .{ .network_error = "no blob URL store" };
     // The user agent's blob URL store is the request's client's Browser's: a
     // request no Browser's realm made resolves no blob URL.
-    const store = request.blob_url_store orelse return .{ .network_error = "no blob URL store" };
     // 3-6. stringOrEnvironment: "top-level-navigation" for a request whose
     // destination is "document"; "top-level-self-fetch" for a top-level
     // Window's fetch of its own creation URL (populateRequestFromClient
@@ -212,7 +210,24 @@ fn blobFetchRequest(allocator: Allocator, request: *const InternalRequest) error
     else
         .{ .environment = request.blob_storage_key orelse return .{ .network_error = "blob: no environment to obtain the blob for" } };
     // 1, 7-8. The blob URL entry, and the blob obtained from it.
-    const blob = (try resolver(store, allocator, request.currentUrl(), access)) orelse return .{ .network_error = "no blob for this URL" };
+    const blob: ResolvedBlob = if (request.blob_url_captured) captured: {
+        const entry = request.blob_url_entry orelse return .{ .network_error = "no captured blob for this URL" };
+        const data = entry.read(allocator, switch (access) {
+            .environment => |key| .{ .environment = key },
+            .top_level_navigation => .top_level_navigation,
+            .top_level_self_fetch => .top_level_self_fetch,
+        }) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            error.WrongPartition => return .{ .network_error = "blob: wrong partition" },
+        };
+        break :captured .{ .bytes = data.bytes, .content_type = data.content_type };
+    } else legacy: {
+        // Navigation retains its existing lookup until streamnav carries
+        // captured entries (row 115 Q18). A failed capture never falls back.
+        const resolver = blob_resolver orelse return .{ .network_error = "no blob URL store" };
+        const store = request.blob_url_store orelse return .{ .network_error = "no blob URL store" };
+        break :legacy (try resolver(store, allocator, request.currentUrl(), access)) orelse return .{ .network_error = "no blob for this URL" };
+    };
     defer blob.deinit(allocator);
 
     // 9. Let response be a new response.

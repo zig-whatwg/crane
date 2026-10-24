@@ -374,8 +374,8 @@ pub const ScopeSettings = struct {
     /// data workers inherit it independently of secure-context status.
     owner_prohibits_mixed_security_contexts: bool = false,
     /// The owner's top-level site (dom.global_settings.topLevelSiteOf), read
-    /// on the owner's thread when a DEDICATED worker started. BORROWED from
-    /// the host; null for a shared or service worker or an owner with none.
+    /// on the owner's thread when a dedicated or shared worker started.
+    /// BORROWED from the host; null for a service worker or an owner with none.
     top_level_site: ?[]const u8 = null,
     top_level_origin: ?[]const u8 = null,
     /// The storage key's top-level site and has-cross-site-ancestor bit a
@@ -384,6 +384,8 @@ pub const ScopeSettings = struct {
     /// from the host; null for a service worker, whose key is its own
     /// origin's.
     storage_top_level_site: ?[]const u8 = null,
+    storage_top_level_nonce: ?u128 = null,
+    origin_nonce: ?u128 = null,
     has_cross_site_ancestor: bool = false,
 };
 
@@ -403,6 +405,8 @@ pub fn scopeSettings(ctx: runtime.Context) ?ScopeSettings {
         .top_level_site = wctx.top_level_site,
         .top_level_origin = wctx.top_level_origin,
         .storage_top_level_site = wctx.storage_top_level_site,
+        .storage_top_level_nonce = wctx.storage_top_level_nonce,
+        .origin_nonce = wctx.origin_nonce,
         .has_cross_site_ancestor = wctx.has_cross_site_ancestor,
     };
 }
@@ -491,12 +495,17 @@ pub const ImportedScript = struct {
 /// extracting a MIME type from response's header list is not a JavaScript
 /// MIME type, then throw a "NetworkError" DOMException."
 pub fn fetchClassicWorkerImportedScript(ctx: runtime.Context, url: []const u8) error{ NetworkError, OutOfMemory }!ImportedScript {
+    return fetchClassicWorkerImportedScriptWithEntry(ctx, url, null, false);
+}
+
+pub fn fetchClassicWorkerImportedScriptWithEntry(ctx: runtime.Context, url: []const u8, entry: ?*fetch_mod.internal.request.CapturedBlobEntry, captured: bool) error{ NetworkError, OutOfMemory }!ImportedScript {
     // A service worker's importScripts() runs Service Workers 6.3.2's fetch
     // hook: its script resource map, set of used scripts and update check.
-    if (serviceScopeOf(ctx)) |service| return service.hooks.import_script(service.manager, service.worker_id, ctx, url);
+    if (serviceScopeOf(ctx)) |service| return service.hooks.import_script(service.manager, service.worker_id, ctx, url, entry, captured);
     const allocator = ctx.allocator;
     const request = fetch_mod.internal.InternalRequest.init(allocator, url) catch return error.OutOfMemory;
     defer request.deinit();
+    if (captured) request.setCapturedBlobEntry(entry);
     request.destination = .script;
     request.initiator_type = .other;
     request.use_url_credentials = true;
@@ -808,6 +817,8 @@ pub const WorkerHost = struct {
     /// The storage key partition taken from the creator
     /// (`ScopeSettings.storage_top_level_site`). OWNED.
     storage_top_level_site: ?[]u8 = null,
+    storage_top_level_nonce: ?u128 = null,
+    origin_nonce: ?u128 = null,
     has_cross_site_ancestor: bool = false,
 
     /// The worker object that ran the worker - a dedicated worker's Worker,
@@ -855,7 +866,15 @@ pub const WorkerHost = struct {
     /// own, and clearTimeout(id) removes this global's entry and nothing in
     /// any other - it used to be one map for every worker on the thread, so a
     /// worker clearing an id it never armed cancelled another worker's timer.
-    timers: std.AutoHashMapUnmanaged(runtime.TimerId, *WorkerTimerContext) = .empty,
+    /// Its ids only grow, so every key is one it never saw: a
+    /// runtime.native_timer.TimerIdMap keeps its tombstones from taking the
+    /// free slots (as a std map, 299 of 300 rounds of a worker's churn left
+    /// none, and every setTimeout walked the table) and gives back what a
+    /// burst took (lane timerheap1, tests/html/workers/worker_timer_table_test.zig).
+    /// Both happen only before an insert (setTimer's ensureUnusedCapacity):
+    /// cancelWorkerTimers walks it with no insert, and a removal never
+    /// moves an entry. Values are their own allocations.
+    timers: runtime.native_timer.TimerIdMap(*WorkerTimerContext) = .empty,
 
     /// The next id this global's script is handed: greater than zero, and
     /// never one in `timers` (timer initialization step 2). Its own counter,
@@ -954,6 +973,8 @@ pub const WorkerHost = struct {
         self.top_level_origin = start.top_level_origin;
         start.top_level_origin = null;
         self.storage_top_level_site = start.storage_top_level_site;
+        self.storage_top_level_nonce = start.storage_top_level_nonce;
+        self.origin_nonce = start.origin_nonce;
         start.storage_top_level_site = null;
         self.has_cross_site_ancestor = start.has_cross_site_ancestor;
         // "Obtain a worker/worklet agent" step 3: a dedicated worker's agent
@@ -2707,8 +2728,9 @@ fn ownerProhibitsMixedSecurityContexts(realm: runtime.Context) error{OutOfMemory
 
 /// The owner's top-level site (Fetch "determine the network partition key"),
 /// read in its realm on its thread and copied with `allocator` to cross to
-/// the worker's. A nested dedicated worker's owner is a worker realm, whose
-/// answer is the site it captured in turn.
+/// the worker's. A nested worker's owner is a worker realm, whose answer is
+/// the site it captured in turn. Shared workers use the creator's partition,
+/// as their storage-key-based identity does.
 fn ownerTopLevelSite(allocator: Allocator, realm: runtime.Context) error{OutOfMemory}!?[]u8 {
     const record = realm.getRealm() orelse return null;
     const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
@@ -2738,7 +2760,7 @@ pub fn creatorTopLevelOrigin(allocator: Allocator, realm: runtime.Context) error
 /// worker by its creator's storage key - which SharedWorker matching
 /// compares too. A creator with no key gives none (the worker then keys by
 /// its own origin's site).
-fn creatorStoragePartition(allocator: Allocator, realm: runtime.Context, script_url: []const u8) error{OutOfMemory}!struct { top_level_site: ?[]u8, has_cross_site_ancestor: bool } {
+fn creatorStoragePartition(allocator: Allocator, realm: runtime.Context, script_url: []const u8) error{OutOfMemory}!struct { top_level_site: ?[]u8, has_cross_site_ancestor: bool, top_level_nonce: ?u128 = null, origin_nonce: ?u128 = null } {
     const is_data = std.ascii.startsWithIgnoreCase(script_url, "data:");
     const record = realm.getRealm() orelse return .{ .top_level_site = null, .has_cross_site_ancestor = is_data };
     const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return .{ .top_level_site = null, .has_cross_site_ancestor = is_data }));
@@ -2747,6 +2769,10 @@ fn creatorStoragePartition(allocator: Allocator, realm: runtime.Context, script_
     return .{
         .top_level_site = try allocator.dupe(u8, key.top_level_site),
         .has_cross_site_ancestor = key.has_cross_site_ancestor or is_data,
+        .top_level_nonce = key.top_level_nonce,
+        // HTML worker settings: data: creates a fresh opaque origin; a
+        // blob: worker inherits the creator's captured opaque identity.
+        .origin_nonce = if (is_data) null else key.origin_nonce,
     };
 }
 
@@ -2834,7 +2860,7 @@ const PendingModuleEvaluation = struct {
 /// map is empty). OWNED (`allocator`), or null for the TypeError.
 fn importMetaResolve(host: ?*anyopaque, realm: runtime.Context, base_url: []const u8, specifier: []const u8, allocator: Allocator) ?[]u8 {
     const agent_host: *html_core.agent_host.AgentHost = @ptrCast(@alignCast(host orelse return null));
-    const self: *WorkerHost = @fieldParentPtr("agent_host", agent_host);
+    const self: *WorkerHost = @alignCast(@fieldParentPtr("agent_host", agent_host));
     if (self.realm != realm) return null;
     const env = self.moduleEnvironment() orelse return null;
     const url = module_script.resolve(&env, specifier, base_url) orelse return null;
@@ -2871,7 +2897,7 @@ fn loadImportedModule(
 ) void {
     const agent_host: *html_core.agent_host.AgentHost = @ptrCast(@alignCast(host orelse
         return finishImportWithTypeError(realm, request, "import() is not supported here")));
-    const self: *WorkerHost = @fieldParentPtr("agent_host", agent_host);
+    const self: *WorkerHost = @alignCast(@fieldParentPtr("agent_host", agent_host));
     // Only the worker's own realm has its settings object.
     if (self.realm != realm or !self.runsTasks())
         return finishImportWithTypeError(realm, request, "import() in a worker that has ended");
@@ -3361,6 +3387,8 @@ const ThreadHost = struct {
         /// its creator, read on the creator's thread
         /// (`creatorStoragePartition`). OWNED.
         storage_top_level_site: ?[]u8 = null,
+        storage_top_level_nonce: ?u128 = null,
+        origin_nonce: ?u128 = null,
         has_cross_site_ancestor: bool = false,
         /// The worker's reserved client, until its realm adopts it.
         service_worker_client: ?*anyopaque,
@@ -3373,8 +3401,11 @@ const ThreadHost = struct {
         errdefer allocator.free(script_url);
         const name = try allocator.dupe(u8, start.name);
         errdefer allocator.free(name);
-        // On the owner's thread, in its realm: its top-level site.
-        const top_level_site = if (start.shared == null) try ownerTopLevelSite(allocator, start.owner_realm) else null;
+        // Fetch 2.7/2.8: both worker kinds use their creator's network
+        // partition. Chromium SharedWorkerHost::ComputeIsolationInfoForNetworkRequest
+        // likewise derives it from the worker's creator-keyed StorageKey.
+        // A missing site means no cache, not a common unpartitioned cache.
+        const top_level_site = try ownerTopLevelSite(allocator, start.owner_realm);
         errdefer if (top_level_site) |site| allocator.free(site);
         const top_level_origin = if (start.shared == null) try creatorTopLevelOrigin(allocator, start.owner_realm) else null;
         errdefer if (top_level_origin) |origin| allocator.free(origin);
@@ -3412,6 +3443,8 @@ const ThreadHost = struct {
                 .top_level_site = top_level_site,
                 .top_level_origin = top_level_origin,
                 .storage_top_level_site = storage_partition.top_level_site,
+                .storage_top_level_nonce = storage_partition.top_level_nonce,
+                .origin_nonce = storage_partition.origin_nonce,
                 .has_cross_site_ancestor = storage_partition.has_cross_site_ancestor,
                 .service_worker_client = start.service_worker_client,
             },
@@ -3609,7 +3642,9 @@ pub const ServiceHooks = struct {
     /// importScripts() in the service worker (Service Workers 6.3.2): the
     /// fetch hook's steps - answered from its script resource map, or
     /// fetched and recorded there. NetworkError for a network error.
-    import_script: *const fn (manager: *anyopaque, worker_id: u64, ctx: runtime.Context, url: []const u8) error{ NetworkError, OutOfMemory }!ImportedScript,
+    /// The parsed entry is borrowed for the call; a fetch request retains
+    /// its own reference. The stored-resource branch need not read it.
+    import_script: *const fn (manager: *anyopaque, worker_id: u64, ctx: runtime.Context, url: []const u8, entry: ?*fetch_mod.internal.request.CapturedBlobEntry, captured: bool) error{ NetworkError, OutOfMemory }!ImportedScript,
     /// A module service worker's graph fetched the module script at `url`
     /// (a good response: `content_type`, `body` BORROWED for the call): the
     /// manager keeps it in the worker's script resource map while the worker
@@ -3631,7 +3666,7 @@ pub fn serviceScopeOf(ctx: runtime.Context) ?ServiceScope {
 fn serviceHostOf(ctx: runtime.Context) ?*WorkerHost {
     const agent = ctx.agent orelse return null;
     const agent_host: *html_core.agent_host.AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
-    const host: *WorkerHost = @fieldParentPtr("agent_host", agent_host);
+    const host: *WorkerHost = @alignCast(@fieldParentPtr("agent_host", agent_host));
     if (host.service == null) return null;
     return host;
 }

@@ -1,6 +1,7 @@
 # Debugging: A Wrapperless Removal Orphans the Node Until Browser End
 
 **Date**: 2026-10-10
+**Status** (2026-10-23, lane unwrapped1): on an engine that declares `wrap_tracking` (V8), an orphan now lives until its REALM ends, not its Browser: the removal records its root (`runtime.orphan_roots`) and the realm's end frees it through its own deinit. The sweeps stay - for an orphan made after its realm's end began, and for engines that do not track wraps - and so does the advice not to free at the removal site. See architecture-a-page-end-frees-what-no-wrapper-reached-only-on-proof.md.
 **Lesson**: A node removed while it has no JS wrapper is freed by nobody before the browser ends, so any InternalState that owns non-arena memory needs a teardown sweep until reference counting lands.
 
 **Why**: Until refcount step 7, a detached node with no wrapper has no owner: the collector never sees it and the tree no longer holds it. dom/teardown_sweeps.zig is the net, but only for node types that install a sweep. Final cleanup frees registries wholesale, so a type without a sweep never runs its InternalState.deinit, and gpa memory it owns leaks.

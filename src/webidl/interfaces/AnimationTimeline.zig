@@ -58,6 +58,12 @@ pub const AnimationTimeline = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "currentTime", .{"Window"} },
+            .{ "duration", .{"Window"} },
+            .{ "play", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -164,14 +170,17 @@ pub const AnimationTimeline = struct {
         }
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_currentTime(instance: *runtime.Instance) anyerror!?CSSNumberish {
         return try AnimationTimelineImpl.get_currentTime(instance);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_duration(instance: *runtime.Instance) anyerror!?CSSNumberish {
         return try AnimationTimelineImpl.get_duration(instance);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn call_play(instance: *runtime.Instance, effect: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
         return try AnimationTimelineImpl.call_play(instance, effect);
     }

@@ -54,6 +54,10 @@
 //! ```
 
 const std = @import("std");
+const Instance = @import("instance.zig").Instance;
+const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
+const instance_lifecycle = @import("instance_lifecycle.zig");
+const gc_integration = @import("gc_integration.zig");
 
 /// Cleanup phases in order of execution
 /// These must be cleaned up in this order to avoid use-after-free
@@ -119,6 +123,15 @@ pub const CleanupCoordinator = struct {
     /// Debug: count of instances cleaned up per phase
     phase_cleanup_counts: [8]usize = .{0} ** 8,
 
+    /// The storage of instances this teardown tore down that no engine
+    /// object ever reached (runtime.instance_lifecycle.provablyUnwrapped: a
+    /// node no wrapper of any realm was bound to), returned by
+    /// `releaseDeferredStorage` once the teardown's last phase is done. Not
+    /// inline: every phase after the one that tore the instance down still
+    /// sees exactly what it saw before (lane unwrapped1). What the owner
+    /// never releases stays with its Browser's slab, as before.
+    deferred_storage: std.ArrayListUnmanaged(DeferredStorage) = .empty,
+
     const Self = @This();
 
     /// Initialize a new cleanup coordinator
@@ -128,9 +141,38 @@ pub const CleanupCoordinator = struct {
         };
     }
 
-    /// Deinitialize the coordinator
+    /// An instance whose storage `releaseDeferredStorage` returns, as it was
+    /// when its teardown handed it over.
+    pub const DeferredStorage = struct {
+        instance: *Instance,
+        generation: u64,
+    };
+
+    /// Deinitialize the coordinator. Storage still deferred is left to the
+    /// Browser's slab, which frees it with itself.
     pub fn deinit(self: *Self) void {
         self.handlers.deinit(self.allocator);
+        self.deferred_storage.deinit(self.allocator);
+    }
+
+    /// `instance`, torn down by this teardown and provably never reached by
+    /// an engine object, gives its storage back at the teardown's end. Out
+    /// of memory, it keeps the storage until its Browser ends - what every
+    /// such instance did before.
+    pub fn deferStorageRelease(self: *Self, instance: *Instance, generation: u64) void {
+        self.deferred_storage.append(self.allocator, .{ .instance = instance, .generation = generation }) catch return;
+    }
+
+    /// The teardown's last phase is done: return the storage handed over,
+    /// each only while its slot still holds the instance handed over (the
+    /// generation) and its cleanup completed - never twice, never a newcomer's.
+    pub fn releaseDeferredStorage(self: *Self) void {
+        for (self.deferred_storage.items) |deferred| {
+            if (SlabAllocator.generationOf(deferred.instance) != deferred.generation) continue;
+            if (!instance_lifecycle.isCleanedUp(deferred.instance)) continue;
+            gc_integration.releaseStorage(deferred.instance);
+        }
+        self.deferred_storage.clearAndFree(self.allocator);
     }
 
     /// Register a cleanup handler for a specific phase
@@ -250,6 +292,7 @@ pub const CleanupCoordinator = struct {
         self.context_teardown_complete = false;
         self.phase_cleanup_counts = .{0} ** 8;
         self.handlers.clearRetainingCapacity();
+        self.deferred_storage.clearRetainingCapacity();
     }
 };
 
@@ -277,6 +320,14 @@ pub fn setActiveCoordinator(coordinator: ?*CleanupCoordinator) void {
 /// Get the active coordinator for this thread
 pub fn getActiveCoordinator() ?*CleanupCoordinator {
     return active_coordinator;
+}
+
+/// Hand `instance`'s storage to the teardown in progress
+/// (`CleanupCoordinator.deferStorageRelease`); nothing when none is.
+pub fn deferStorageRelease(instance: *Instance, generation: u64) void {
+    const coordinator = active_coordinator orelse return;
+    if (!coordinator.isContextTearingDown()) return;
+    coordinator.deferStorageRelease(instance, generation);
 }
 
 /// Check if context teardown is in progress

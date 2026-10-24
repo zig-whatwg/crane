@@ -58,8 +58,8 @@ pub const RdfDataset = struct {
 
         /// Iterable declaration (for Symbol.iterator support)
         pub const iterable = .{
-            .value_type = "runtime.USVString",
-            .key_type = "RdfGraph",
+            .value_type = "RdfGraph",
+            .key_type = "runtime.USVString",
         };
     };
 

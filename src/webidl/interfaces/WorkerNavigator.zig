@@ -181,6 +181,20 @@ pub const WorkerNavigator = struct {
             "setAppBadge",
             "clearAppBadge",
         };
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "mediaCapabilities", .{"Worker"} },
+            .{ "permissions", .{"Worker"} },
+            .{ "serial", .{"DedicatedWorker"} },
+            .{ "hid", .{ "DedicatedWorker", "ServiceWorker" } },
+            .{ "usb", .{"Worker"} },
+            .{ "deviceMemory", .{ "Window", "Worker" } },
+            .{ "productSub", .{"Window"} },
+            .{ "vendor", .{"Window"} },
+            .{ "vendorSub", .{"Window"} },
+            .{ "oscpu", .{"Window"} },
+            .{ "taintEnabled", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -358,7 +372,7 @@ pub const WorkerNavigator = struct {
         }
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [Exposed=Worker]
     pub fn get_mediaCapabilities(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -371,7 +385,7 @@ pub const WorkerNavigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SameObject]
+    /// Extended attributes: [SameObject], [Exposed=(Worker)]
     pub fn get_permissions(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -384,7 +398,7 @@ pub const WorkerNavigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SameObject], [SecureContext]
+    /// Extended attributes: [SameObject], [Exposed=DedicatedWorker], [SecureContext]
     pub fn get_serial(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -410,7 +424,7 @@ pub const WorkerNavigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SameObject], [SecureContext]
+    /// Extended attributes: [SameObject], [Exposed=(DedicatedWorker,ServiceWorker)], [SecureContext]
     pub fn get_hid(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -423,7 +437,7 @@ pub const WorkerNavigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SameObject], [SecureContext]
+    /// Extended attributes: [SameObject], [Exposed=Worker], [SecureContext]
     pub fn get_usb(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -449,7 +463,7 @@ pub const WorkerNavigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SecureContext]
+    /// Extended attributes: [SecureContext], [Exposed=(Window,Worker)]
     pub const get_deviceMemory = mixins.NavigatorDeviceMemory.get_deviceMemory;
 
     pub const get_globalPrivacyControl = mixins.GlobalPrivacyControl.get_globalPrivacyControl;

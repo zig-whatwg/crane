@@ -1,0 +1,77 @@
+# Long-lived std hash maps in src/ that are removed from and have no TombstoneGuard:
+# path Qualified.name count (tools/lint_tombstones.zig). std.HashMap deletes by
+# tombstone and never grows while puts and removes balance, so its free slots run out
+# and every miss walks the table; guard each map (infra.tombstones.TombstoneGuard), or
+# exempt one that is cleared, bounded or short-lived with a `// tombstones: <why>` line
+# above it. A ratchet - `zig build lint-tombstones`, part of `zig build test`, fails if
+# a count rises or a new key appears. After paying some off, lower it with
+# `zig build lint-tombstones -- --update`. Never raise it by hand.
+src/browser/storage/Storage.zig LocalStorage.data 1
+src/browser/storage/Storage.zig SessionStorage.data 1
+src/dom/agent_cluster_keys.zig HistoricalKeys.groups 1
+src/dom/mutation_observer_algorithms.zig MutationObserverAgent.signal_slot_set 1
+src/dom/refcount.zig Ledger.gc_reachable 1
+src/fetch/network/auth_entries.zig AuthEntries.entries 1
+src/fetch/network/connection_pool.zig ConnectionPool.active_handles 1
+src/fs/bucket.zig BucketManager.buckets 1
+src/fs/entry.zig DirectoryEntry.children 1
+src/html/custom_elements.zig ElementReactionQueues.queues 1
+src/html/custom_elements/form_observers.zig FormIdObservers.by_element 1
+src/html/custom_elements/form_observers.zig FormIdObservers.by_id 1
+src/html/event_loop/timers.zig TimerManager.timers 1
+src/html/module_script.zig AsyncModuleLoader.pending 1
+src/html/navigation/joint_history.zig JointHistory.update_only 1
+src/html/parser/tokens.zig TagToken.attribute_names 1
+src/html/stylesheet_blocking.zig StylesheetBlockingTracker.pending_stylesheets 1
+src/html/window/animation_frame.zig AnimationFrameScheduler.callbacks 1
+src/html/worklet_host.zig GlobalScope.module_map 1
+src/permissions/storage.zig PermissionStorage.cache 1
+src/platform/filesystem_adapter.zig InMemoryFileSystem.directories 1
+src/platform/filesystem_adapter.zig InMemoryFileSystem.files 1
+src/platform/stub_platform_backend.zig StubContext.storage 1
+src/runtime/engines/v8/context_manager.zig ManagerState.contexts 1
+src/runtime/engines/v8/frozen_context_manager.zig FrozenContextManager.frozen_contexts 1
+src/runtime/engines/v8/observable_array.zig Registry.states 1
+src/runtime/engines/v8/protocol_agents.zig agents 1
+src/runtime/engines/v8/protocol_modules.zig records 1
+src/runtime/engines/v8/shadow_realm.zig ShadowRealmCallbackData.tracked_realms 1
+src/runtime/internal_state.zig Registry.map 1
+src/selector/cache.zig SelectorQueryCache.entries 1
+src/service_worker/cache/store.zig Storage.handles 1
+src/storage/backends/leveldb.zig LevelDBBackend.cursors 1
+src/storage/backends/memory.zig MemoryBackend.DatabaseState.object_stores 1
+src/storage/backends/memory.zig MemoryBackend.Index.data 1
+src/storage/backends/memory.zig MemoryBackend.ObjectStore.data 1
+src/storage/backends/memory.zig MemoryBackend.ObjectStore.indexes 1
+src/storage/backends/memory.zig MemoryBackend.Transaction.pending_writes 1
+src/storage/backends/memory.zig MemoryBackend.cursors 1
+src/storage/backends/memory.zig MemoryBackend.transactions 1
+src/storage/backends/sqlite.zig SQLiteBackend.cursors 1
+src/storage/indexeddb/database.zig IDBDatabase.connection_names 1
+src/storage/indexeddb/database.zig IDBDatabase.object_stores 1
+src/storage/indexeddb/index_persistence.zig IndexManager.indexes 1
+src/storage/indexeddb/mvcc.zig ConcurrentReadTracker.active_readers 1
+src/storage/indexeddb/mvcc.zig MVCCManager.snapshots 1
+src/storage/indexeddb/object_store.zig IDBObjectStore.index_names_view 1
+src/storage/indexeddb/object_store.zig IDBObjectStore.indexes 1
+src/storage/indexeddb/object_store.zig RecordData.indexes 1
+src/storage/indexeddb/schema.zig SchemaManager.ObjectStoreSchema.indexes 1
+src/storage/indexeddb/schema.zig SchemaManager.object_stores 1
+src/storage/indexeddb/sqlite_transactions.zig SQLiteTransactionManager.transactions 1
+src/storage/indexeddb/transaction_ordering.zig TransactionScheduler.transaction_queues 1
+src/storage/indexeddb/worker_threads.zig AsyncSQLite.pending 1
+src/storage/standard.zig StorageShed.shelves 1
+src/webdriver/session.zig SessionManager.sessions 1
+src/webidl/codegen/ir.zig IR.callbacks 1
+src/webidl/codegen/ir.zig IR.dictionaries 1
+src/webidl/codegen/ir.zig IR.enums 1
+src/webidl/codegen/ir.zig IR.interfaces 1
+src/webidl/codegen/ir.zig IR.namespaces 1
+src/webidl/codegen/ir.zig IR.typedefs 1
+src/webidl/codegen/ir.zig IR.unresolved 1
+src/webidl/impls/CustomElementRegistry.zig InternalState.when_defined 1
+src/webidl/impls/Document.zig InternalState.import_map_imports 1
+src/webidl/impls/Document.zig InternalState.module_map 1
+src/webidl/impls/HTMLIFrameElement.zig navigations 1
+src/webidl/impls/Navigation.zig InternalState.handed 1
+src/webidl/impls/XSLTProcessor.zig InternalState.parameters 1

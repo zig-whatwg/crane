@@ -69,6 +69,10 @@ pub const XRRenderState = struct {
         pub const secure_context_members = .{
             "layers",
         };
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "layers", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -201,7 +205,7 @@ pub const XRRenderState = struct {
         return try XRRenderStateImpl.get_baseLayer(instance);
     }
 
-    /// Extended attributes: [SecureContext]
+    /// Extended attributes: [SecureContext], [Exposed=Window]
     pub fn get_layers(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try XRRenderStateImpl.get_layers(instance);
     }

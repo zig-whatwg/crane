@@ -38,6 +38,8 @@ const BlobURLEntry = @import("blob_url").BlobURLEntry;
 /// - Host is stored separately (can be domain, IPv4, IPv6, opaque)
 /// - Path is stored separately (can be opaque or segments)
 pub const URLRecord = struct {
+    pub const BlobEntry = BlobURLEntry;
+
     /// Memory buffer holding all string components
     buffer: []const u8,
 
@@ -77,7 +79,8 @@ pub const URLRecord = struct {
     has_fragment: bool = false,
 
     /// Blob URL entry (spec line 819) - null or a blob URL entry
-    /// Used for blob: URLs to cache the object and origin
+    /// Owned reference captured at parse; revocation only removes the
+    /// store's mapping, not this reference's immutable payload or origin.
     blob_url_entry: ?*BlobURLEntry,
 
     allocator: std.mem.Allocator,
@@ -202,6 +205,8 @@ pub const URLRecord = struct {
 
     /// Free URL record resources
     pub fn deinit(self: *URLRecord) void {
+        if (self.blob_url_entry) |entry| entry.release();
+        self.blob_url_entry = null;
         std.log.debug("[URLRecord.deinit] Freeing buffer at {*}, len={d}", .{ self.buffer.ptr, self.buffer.len });
         self.allocator.free(self.buffer);
         if (self.host) |*h| {

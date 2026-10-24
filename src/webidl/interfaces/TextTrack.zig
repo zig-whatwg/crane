@@ -93,6 +93,10 @@ pub const TextTrack = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "sourceBuffer", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -269,6 +273,7 @@ pub const TextTrack = struct {
         try event_handlers.setValue(EventHandler, instance, "oncuechange", value);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_sourceBuffer(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try TextTrackImpl.get_sourceBuffer(instance);
     }

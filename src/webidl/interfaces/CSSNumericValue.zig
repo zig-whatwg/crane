@@ -88,6 +88,10 @@ pub const CSSNumericValue = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_static_members = .{
+            .{ "parse", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(

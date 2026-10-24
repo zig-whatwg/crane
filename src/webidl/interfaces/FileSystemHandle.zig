@@ -76,6 +76,11 @@ pub const FileSystemHandle = struct {
             "queryPermission",
             "requestPermission",
         };
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "queryPermission", .{ "Window", "Worker" } },
+            .{ "requestPermission", .{ "Window", "Worker" } },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -229,7 +234,7 @@ pub const FileSystemHandle = struct {
         return try FileSystemHandleImpl.get_name(instance);
     }
 
-    /// Extended attributes: [SecureContext]
+    /// Extended attributes: [Exposed=(Window,Worker)], [SecureContext]
     pub fn call_queryPermission(instance: *runtime.Instance, descriptor: webidl.Opt(FileSystemHandlePermissionDescriptor)) anyerror!runtime.JSValue {
         return try FileSystemHandleImpl.call_queryPermission(instance, descriptor);
     }
@@ -238,7 +243,7 @@ pub const FileSystemHandle = struct {
         return try FileSystemHandleImpl.call_isSameEntry(instance, other);
     }
 
-    /// Extended attributes: [SecureContext]
+    /// Extended attributes: [Exposed=(Window,Worker)], [SecureContext]
     pub fn call_requestPermission(instance: *runtime.Instance, descriptor: webidl.Opt(FileSystemHandlePermissionDescriptor)) anyerror!runtime.JSValue {
         return try FileSystemHandleImpl.call_requestPermission(instance, descriptor);
     }

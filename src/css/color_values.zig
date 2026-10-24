@@ -212,6 +212,23 @@ pub const Expression = struct {
             .alpha => |alpha| alpha.origin.eql(b.data.alpha.origin) and optionalComponentEql(alpha.override, b.data.alpha.override),
         };
     }
+    /// Color dependencies follow the typed graph, without resolving it or
+    /// allocating. Numeric components and weights cannot contain a Color.
+    /// After light-dark computation only the selected branch remains.
+    pub fn containsCurrentColor(self: *const Expression) bool {
+        return switch (self.data) {
+            .resolved => false,
+            .channels => |channels| if (channels.origin) |origin| origin.containsCurrentColor() else false,
+            .mix => |mix| blk: {
+                for (mix.items) |item| if (item.color.containsCurrentColor()) break :blk true;
+                break :blk false;
+            },
+            .light_dark => |pair| pair[0].containsCurrentColor() or pair[1].containsCurrentColor(),
+            .contrast => |color| color.containsCurrentColor(),
+            .alpha => |alpha| alpha.origin.containsCurrentColor(),
+        };
+    }
+
     pub fn needsTreeCounts(self: *const Expression) bool {
         return switch (self.data) {
             .resolved => false,
@@ -758,6 +775,7 @@ fn channelsValue(channels: Channels) ?Components {
 fn resolvedComponents(color: Color) ?Components {
     return switch (color) {
         .rgba => |rgba| fromBytes(rgba),
+        .transparent_keyword => fromBytes(values.RgbaColor.transparent),
         .named => |named| fromBytes(named.rgba),
         .system => |system| fromBytes(system.color(.light)),
         .current => null,

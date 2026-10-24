@@ -109,6 +109,15 @@ pub const RTCIceTransport = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = true;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "onerror", .{"Window"} },
+            .{ "onicecandidate", .{"Window"} },
+            .{ "gather", .{"Window"} },
+            .{ "start", .{"Window"} },
+            .{ "stop", .{"Window"} },
+            .{ "addRemoteCandidate", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -303,26 +312,31 @@ pub const RTCIceTransport = struct {
         try event_handlers.setValue(EventHandler, instance, "onselectedcandidatepairchange", value);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
         if (comptime @hasDecl(RTCIceTransportImpl, "get_onerror")) return try RTCIceTransportImpl.get_onerror(instance);
         return event_handlers.value(EventHandler, instance, "onerror");
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn set_onerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         if (comptime @hasDecl(RTCIceTransportImpl, "set_onerror")) return try RTCIceTransportImpl.set_onerror(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onerror", value);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn get_onicecandidate(instance: *runtime.Instance) anyerror!EventHandler {
         if (comptime @hasDecl(RTCIceTransportImpl, "get_onicecandidate")) return try RTCIceTransportImpl.get_onicecandidate(instance);
         return event_handlers.value(EventHandler, instance, "onicecandidate");
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn set_onicecandidate(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         if (comptime @hasDecl(RTCIceTransportImpl, "set_onicecandidate")) return try RTCIceTransportImpl.set_onicecandidate(instance, value);
         try event_handlers.setValue(EventHandler, instance, "onicecandidate", value);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn call_addRemoteCandidate(instance: *runtime.Instance, remoteCandidate: webidl.Opt(RTCIceCandidateInit)) anyerror!void {
         return try RTCIceTransportImpl.call_addRemoteCandidate(instance, remoteCandidate);
     }
@@ -335,6 +349,7 @@ pub const RTCIceTransport = struct {
         return try RTCIceTransportImpl.call_getRemoteCandidates(instance);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn call_stop(instance: *runtime.Instance) anyerror!void {
         return try RTCIceTransportImpl.call_stop(instance);
     }
@@ -343,10 +358,12 @@ pub const RTCIceTransport = struct {
         return try RTCIceTransportImpl.call_getRemoteParameters(instance);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn call_start(instance: *runtime.Instance, remoteParameters: webidl.Opt(RTCIceParameters), role: webidl.Opt(RTCIceRole)) anyerror!void {
         return try RTCIceTransportImpl.call_start(instance, remoteParameters, role);
     }
 
+    /// Extended attributes: [Exposed=Window]
     pub fn call_gather(instance: *runtime.Instance, options: webidl.Opt(RTCIceGatherOptions)) anyerror!void {
         return try RTCIceTransportImpl.call_gather(instance, options);
     }

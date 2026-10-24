@@ -3231,6 +3231,13 @@ pub fn call_execCommand(instance: *runtime.Instance, commandId: runtime.DOMStrin
     else
         null;
 
+    // The delete and forwardDelete commands: the Editing spec's actions,
+    // in the html module (src/html/execcommand/), which runs the method's
+    // enabled check and input event itself.
+    if (@import("html").execcommand.Command.fromName(command_name)) |command| {
+        return @import("html").execcommand.execCommand(instance, command);
+    }
+
     // Parse command and determine action
     // Formatting commands that wrap selection in elements
     if (std.ascii.eqlIgnoreCase(command_name, "bold")) {
@@ -3860,6 +3867,12 @@ pub fn call_createCDATASection(instance: *runtime.Instance, data: runtime.DOMStr
 pub fn call_queryCommandEnabled(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!bool {
     const internal = getInternal(instance) orelse return false;
     const command_name = commandId.asSlice();
+
+    // delete and forwardDelete: the Editing spec's "enabled" (the active
+    // range lies in one editing host).
+    if (@import("html").execcommand.Command.fromName(command_name)) |command| {
+        return @import("html").execcommand.isEnabled(instance, command);
+    }
 
     return editing.queryCommandEnabled(
         internal.allocator,
