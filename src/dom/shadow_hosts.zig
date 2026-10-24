@@ -21,7 +21,7 @@
 //! The ShadowRoot impl installs the implementation in its installHooks, which runs
 //! before any element can have a shadow root.
 //!
-//! lint-impls: hook for ShadowRoot, Element
+//! lint-impls: hook for ShadowRoot, Element, Document
 const process_start = @import("process_start.zig");
 const instance_bridge = @import("instance_bridge.zig");
 const refcount = @import("refcount.zig");
@@ -32,6 +32,8 @@ const runtime = @import("runtime");
 pub const Implementation = struct {
     host_destroyed: ?*const fn (shadow: *runtime.Instance) void = null,
     root_for_host: ?*const fn (host: *runtime.Instance) ?*runtime.Instance = null,
+    scope_serial: ?*const fn (shadow: *runtime.Instance) u64 = null,
+    next_scope_serial: ?*const fn (document: *runtime.Instance) u64 = null,
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
@@ -43,6 +45,8 @@ pub fn install(impl: Implementation) void {
     var combined = implementation orelse Implementation{};
     if (impl.host_destroyed) |step| combined.host_destroyed = step;
     if (impl.root_for_host) |step| combined.root_for_host = step;
+    if (impl.scope_serial) |step| combined.scope_serial = step;
+    if (impl.next_scope_serial) |step| combined.next_scope_serial = step;
     implementation = combined;
 }
 
@@ -107,4 +111,18 @@ test "hostDestroyed forwards to the installed implementation" {
     const shadow = try scope.slab.alloc(&test_vtable);
     hostDestroyed(shadow);
     try std.testing.expectEqual(@as(?*runtime.Instance, shadow), Fake.seen);
+}
+
+/// CSS Scoping's tree identity, installed by ShadowRoot. Documents use zero.
+pub fn scopeSerial(root: *runtime.Instance) u64 {
+    const impl = implementation orelse return 0;
+    const step = impl.scope_serial orelse return 0;
+    return step(root);
+}
+
+/// Allocate a nonzero serial from this document, without retaining a node.
+pub fn nextScopeSerial(document: *runtime.Instance) u64 {
+    const impl = implementation orelse return 0;
+    const step = impl.next_scope_serial orelse return 0;
+    return step(document);
 }
