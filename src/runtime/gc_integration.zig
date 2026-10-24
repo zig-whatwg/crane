@@ -136,6 +136,48 @@ pub fn releaseStorage(inst: *Instance) void {
     scope.slab.free(inst);
 }
 
+/// An owner tears down `child`, a platform object it made and keeps for
+/// its own life - a [SameObject] child (dom same_object.KeptChild), an
+/// element's attribute map, a window's Location and History - and frees it
+/// WHOLE, as the abortsig1 rule asks: an interface's deinit is a destructor,
+/// not a free (docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
+///
+/// The destructor chain runs now, once (the cleanup flags guard it and
+/// record it). The storage - the state block and the slab slot - goes back
+/// to whoever can reach it last:
+/// - no engine object can reach the child (instance_lifecycle
+///   .provablyUnwrapped: never wrapped, or its last wrapper finalized):
+///   now, or, inside a coordinated realm teardown, once its last phase is
+///   done (cleanup_coordinator.deferStorageRelease) - every later phase sees
+///   what it saw before;
+/// - otherwise its wrapper's end - its finalizer, or its realm's wrapper
+///   cache's sweep - which returns the storage of an instance whose cleanup
+///   completed, and never runs the destructor again.
+///
+/// Makes no engine call, so it is safe in any teardown, the collector's
+/// included. Only for a child that is still the object the owner made (a
+/// generation check, the caller's - same_object.Link).
+pub fn releaseOwned(child: *Instance) void {
+    const instance_lifecycle = @import("instance_lifecycle.zig");
+    const cleanup_coordinator = @import("cleanup_coordinator.zig");
+    const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
+    const generation = SlabAllocator.generationOf(child);
+    if (generation == SlabAllocator.dead_generation) return;
+    if (instance_lifecycle.markCleanupStarted(child)) {
+        if (child.vtable.deinit) |deinit| deinit(child);
+        instance_lifecycle.markCleanupComplete(child);
+    }
+    // The destructor may have freed the child some other way (a type that
+    // frees itself): its slot is no longer this child's.
+    if (SlabAllocator.generationOf(child) != generation or !instance_lifecycle.isCleanedUp(child)) return;
+    const tracked = @import("engine").capabilities.wrap_tracking != .unsupported;
+    if (!instance_lifecycle.provablyUnwrapped(tracked, child)) return;
+    if (cleanup_coordinator.isContextTearingDown())
+        cleanup_coordinator.deferStorageRelease(child, generation)
+    else
+        releaseStorage(child);
+}
+
 /// An agent's queue of native objects whose last owner went away - a node
 /// root whose wrapper the collector took, today; an object whose reference
 /// count reached zero, once the DOM counts references - to be torn down soon,
