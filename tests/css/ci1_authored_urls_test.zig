@@ -316,3 +316,18 @@ test "computed marker compression compares resolved references while specified c
     try testing.checkAllAllocationFailures(testing.allocator, markerIdentity, .{false});
     try testing.checkAllAllocationFailures(testing.allocator, markerIdentity, .{true});
 }
+
+// Q66: the later-supported property joins the same URL checks; keep all
+// existing paths and their assertions unchanged.
+test "authored URL and frozen computed resolution: border-image-source" {
+    try testing.checkAllAllocationFailures(testing.allocator, checkCase, .{Case{
+        .property = "border-image-source",
+        .input = "url(picture.svg)",
+        .specified = "url(\"picture.svg\")",
+        .computed = "url(\"https://old.test/css/picture.svg\")",
+    }});
+    try testing.checkAllAllocationFailures(testing.allocator, localOrNonlocal, .{ "border-image-source", true });
+    try testing.checkAllAllocationFailures(testing.allocator, localOrNonlocal, .{ "border-image-source", false });
+    try testing.checkAllAllocationFailures(testing.allocator, invalidUrl, .{ "border-image-source", true });
+    try testing.checkAllAllocationFailures(testing.allocator, invalidUrl, .{ "border-image-source", false });
+}
