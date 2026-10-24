@@ -75,11 +75,20 @@ fn exercise(scenario: Scenario) !void {
         try std.testing.expectEqual(@as(?*dom.NodeBase, null), dom.instance_bridge.getNodeBase(child));
         try std.testing.expectEqual(slots_allocated, runtime.BrowserScope.standalone().?.slab.stats().currently_allocated);
         try std.testing.expectEqual(bytes_before + root_state_bytes + child_state_bytes, runtime.BrowserScope.standalone().?.arena.stats().bytes_in_use);
-        if (scenario == .coordinated) coordinator.endContextCleanup();
-        // Stand in for that owner's storage phase, after resource cleanup.
-        runtime.gc.releaseStorage(child);
-        try std.testing.expectEqual(bytes_before + root_state_bytes, runtime.BrowserScope.standalone().?.arena.stats().bytes_in_use);
-        runtime.gc.releaseStorage(root);
+        if (scenario == .coordinated) {
+            // No wrapper ever reached them ([wrap_tracking]): the coordinator
+            // is that owner, and returns both at the teardown's end, once.
+            coordinator.endContextCleanup();
+            coordinator.releaseDeferredStorage();
+            try std.testing.expectEqual(runtime.SlabAllocator.dead_generation, runtime.SlabAllocator.generationOf(root));
+            try std.testing.expectEqual(runtime.SlabAllocator.dead_generation, runtime.SlabAllocator.generationOf(child));
+            coordinator.releaseDeferredStorage();
+        } else {
+            // Stand in for that owner's storage phase, after resource cleanup.
+            runtime.gc.releaseStorage(child);
+            try std.testing.expectEqual(bytes_before + root_state_bytes, runtime.BrowserScope.standalone().?.arena.stats().bytes_in_use);
+            runtime.gc.releaseStorage(root);
+        }
     }
     // Check before pool shutdown: bulk arena/slab cleanup would hide retention.
     try std.testing.expectEqual(slots_before, runtime.BrowserScope.standalone().?.slab.stats().currently_allocated);
@@ -111,6 +120,6 @@ test "document.write merge: retired originating realm retains cleaned subtree st
     try onFreshThread(.retired);
 }
 
-test "document.write merge: coordinated native teardown leaves storage to its existing owner" {
+test "document.write merge: coordinated native teardown returns unwrapped storage at its end" {
     try onFreshThread(.coordinated);
 }

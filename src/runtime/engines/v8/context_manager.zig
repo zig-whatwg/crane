@@ -1060,6 +1060,11 @@ pub fn removeContextByKey(key: usize, v8_ctx: ?*v8.Context) void {
             const cache: *@import("wrapper_cache.zig").WrapperCache = @ptrCast(@alignCast(cache_storage));
             cache.drainDeferred();
         }
+        // Then its orphans - subtrees its removals left with no wrapper
+        // reaching them, which no tree teardown and no collector reaches -
+        // under the same conditions (runtime.orphan_roots, [wrap_tracking]).
+        // They stayed until the Browser ended.
+        runtime.orphan_roots.drain(&entry.runtime_ctx);
     }
 
     if (state.contexts.fetchRemove(key)) |kv| {
@@ -1197,6 +1202,12 @@ pub fn removeContextByKey(key: usize, v8_ctx: ?*v8.Context) void {
                 realm.deinit();
             }
 
+            // Last: the storage of the nodes this teardown tore down that no
+            // wrapper of any realm ever reached ([wrap_tracking];
+            // Node.deinitNodeByType handed it over). Nothing can reach their
+            // slots: the cache, the event loop and the realm are gone.
+            coordinator.releaseDeferredStorage();
+
             // NOTE: no `ctx_data.deinit()` here - deinit()'s drain does it, once
             // no Instance can still be pointing at this ContextData.
         }
@@ -1286,6 +1297,8 @@ fn createWindowBoundToGlobal(
         0,
         @ptrCast(window_instance),
     );
+    // [wrap_tracking]: the global object reaches the Window from here.
+    runtime.instance_lifecycle.markWrapped(window_instance);
 
     // Use dom_type_info which has the actual type info definitions
     const dom_type_info = @import("dom_type_info.zig");
@@ -2171,6 +2184,8 @@ pub fn hydrateWindowContext(comptime namespaces_module: type, options: Hydration
     // Use dom_type_info which has the actual type info definitions
     const dom_type_info_3 = @import("dom_type_info.zig");
     v8.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(window_instance));
+    // [wrap_tracking]: the global object reaches the Window from here.
+    runtime.instance_lifecycle.markWrapped(window_instance);
     if (dom_type_info_3.getTypeInfoByName("Window")) |type_info| {
         v8.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
     }

@@ -10050,6 +10050,8 @@ pub fn setInstance(comptime T: type, object: *v8.Object, instance: *T) void {
         0,
         @ptrCast(instance),
     );
+    // [wrap_tracking]: the object reaches the instance from here.
+    if (T == runtime.Instance) runtime.instance_lifecycle.markWrapped(instance);
 }
 
 /// Store Zig instance in V8 object with type info for safe unwrapping
@@ -10069,6 +10071,9 @@ pub fn setInstanceWithTypeInfo(
         0,
         @ptrCast(instance),
     );
+    // [wrap_tracking]: the object reaches the instance from here - a
+    // constructor's `this`, a custom element's at construction or upgrade.
+    if (T == runtime.Instance) runtime.instance_lifecycle.markWrapped(instance);
     // Store type info pointer in slot 1
     v8.v8_Object_SetAlignedPointerInInternalField(
         object,

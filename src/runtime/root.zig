@@ -140,6 +140,8 @@ pub const onObjectFreed = gc.onObjectFreed;
 
 // Cleanup coordination (RC2 fix - prevents dual cleanup path conflicts)
 pub const cleanup_coordinator = @import("cleanup_coordinator.zig");
+/// A realm's orphan roots, freed at its end (lane unwrapped1).
+pub const orphan_roots = @import("orphan_roots.zig");
 pub const CleanupCoordinator = cleanup_coordinator.CleanupCoordinator;
 pub const CleanupPhase = cleanup_coordinator.CleanupPhase;
 pub const CleanupStats = cleanup_coordinator.CleanupStats;

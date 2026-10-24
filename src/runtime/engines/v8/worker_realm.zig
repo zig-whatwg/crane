@@ -352,6 +352,8 @@ pub fn bindGlobalScope(comptime Interface: type, isolate: *ffi.Isolate, context:
 pub fn bindGlobalFields(context: *ffi.Context, instance: ?*runtime.Instance) void {
     const global = ffi.v8_Context_Global(context) orelse return;
     defer ffi.v8_Object_Dispose(global);
+    // [wrap_tracking]: the global objects reach the instance from here.
+    if (instance) |bound| runtime.instance_lifecycle.markWrapped(bound);
     ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(instance));
     // The V1 GetPrototype on a global proxy is V8's from_javascript=false
     // path: it returns the hidden JSGlobalObject, not what script sees.

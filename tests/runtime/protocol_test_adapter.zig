@@ -39,6 +39,7 @@ pub const capabilities: engine.Capabilities = .{
     .html_constructor = .unsupported,
     .cross_origin_objects = .unsupported,
     .webassembly_streaming = .unsupported,
+    .wrap_tracking = .unsupported,
 };
 
 /// No engine behind it.

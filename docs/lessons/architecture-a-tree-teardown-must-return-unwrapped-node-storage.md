@@ -1,6 +1,7 @@
 # Architecture: A tree teardown must return unwrapped node storage
 
 **Date**: 2026-10-08
+**Status** (2026-10-23, lane unwrapped1): coordinated teardown no longer keeps every slot. On an engine that declares `wrap_tracking`, a node no wrapper of any realm ever reached hands its slot to the CleanupCoordinator, which returns it after the teardown's last phase, and the wrapper cache's end frees an `instance_already_cleaned` entry's storage after severing it. The rule here - never query a cache during the teardown - stands: the proof is the slot's own mark. See architecture-a-page-end-frees-what-no-wrapper-reached-only-on-proof.md.
 **Lesson**: Cleaning a node's registries and NodeBase does not return its Instance or state storage when its wrapper's finalizer already left that storage to the tree.
 
 **Why**: A parented node remains owned by its tree after the collector takes its wrapper. The wrapper's finalizer drops its cache entry without freeing the native node. When the detached root is collected later, its recursive teardown cleans the child, but only the root's finalizer returns storage. No finalizer remains to return a child whose entry already went.

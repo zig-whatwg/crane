@@ -520,33 +520,44 @@ pub fn ListWithCapacity(comptime T: type, comptime inline_capacity: usize) type 
             return &[_]T{};
         }
 
+        /// Make room for `capacity` items. Failure-atomic: on error the list
+        /// is exactly as it was - no heap block is installed and nothing
+        /// moves - so a caller that installs `errdefer list.deinit()` after
+        /// this call leaks nothing when it fails.
         pub fn ensureCapacity(self: *Self, capacity: usize) !void {
             if (capacity <= inline_capacity) {
                 return;
             }
 
-            try self.ensureHeap();
-
             if (self.heap_storage) |*heap| {
+                // std.ArrayList grows failure-atomically.
                 if (heap.capacity < capacity) {
                     try heap.ensureTotalCapacity(self.allocator, capacity);
                 }
+                return;
             }
+
+            // One allocation for the whole capacity, installed only once it
+            // succeeded: moving to the heap first and growing it second left
+            // the first block owned by the list when the second failed.
+            try self.moveToHeap(capacity);
         }
 
         fn ensureHeap(self: *Self) !void {
-            if (self.heap_storage == null) {
-                const initial_capacity = if (inline_capacity > 0) inline_capacity * 2 else 4;
-                var heap = try std.ArrayList(T).initCapacity(self.allocator, initial_capacity);
+            if (self.heap_storage == null) try self.moveToHeap(0);
+        }
 
-                if (comptime inline_capacity > 0) {
-                    for (self.inline_storage[0..self.len]) |item| {
-                        try heap.append(self.allocator, item);
-                    }
-                }
-
-                self.heap_storage = heap;
+        /// Move the items to a heap block of at least `capacity` (and at
+        /// least the initial heap capacity). Failure-atomic: the block is
+        /// installed only after its one allocation succeeded.
+        fn moveToHeap(self: *Self, capacity: usize) !void {
+            std.debug.assert(self.heap_storage == null);
+            const initial_capacity = if (inline_capacity > 0) inline_capacity * 2 else 4;
+            var heap = try std.ArrayList(T).initCapacity(self.allocator, @max(capacity, initial_capacity, self.len));
+            if (comptime inline_capacity > 0) {
+                heap.appendSliceAssumeCapacity(self.inline_storage[0..self.len]);
             }
+            self.heap_storage = heap;
         }
     };
 }
@@ -568,4 +579,59 @@ test "insert into a list that moved to the heap and shrank back stays in step" {
     try list.insert(0, 99);
     try std.testing.expectEqual(@as(usize, 4), list.size());
     try std.testing.expectEqualSlices(u32, &.{ 99, 0, 1, 2 }, list.items());
+}
+
+// ============================================================================
+// ensureCapacity is failure-atomic
+// ============================================================================
+
+test "a failed ensureCapacity leaves the list as it was" {
+    // Each allocation in turn fails: either the call succeeds with the room
+    // asked for, or it fails with the list untouched - never a heap block
+    // installed by a step before the one that failed.
+    for (0..4) |fail_index| {
+        var failing: std.testing.FailingAllocator = .init(std.testing.allocator, .{ .fail_index = fail_index });
+        var list = List(u16).init(failing.allocator());
+        defer list.deinit();
+        try list.append(1);
+        try list.append(2);
+
+        if (list.ensureCapacity(64)) {
+            try std.testing.expect(list.heap_storage.?.capacity >= 64);
+        } else |err| {
+            try std.testing.expectEqual(error.OutOfMemory, err);
+            try std.testing.expect(list.heap_storage == null);
+        }
+        try std.testing.expectEqualSlices(u16, &.{ 1, 2 }, list.items());
+    }
+}
+
+test "ensureCapacity with no errdefer yet leaks nothing on any failure" {
+    const Build = struct {
+        // The order string.zig's helpers used: the errdefer came only after
+        // the capacity was reserved.
+        fn run(allocator: Allocator) !void {
+            var list = List(u16).init(allocator);
+            try list.append(7);
+            try list.ensureCapacity(100);
+            defer list.deinit();
+            for (0..100) |i| try list.append(@intCast(i));
+            try std.testing.expectEqual(@as(usize, 101), list.size());
+            try std.testing.expect(list.heap_storage.?.capacity >= 100);
+        }
+    };
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, Build.run, .{});
+}
+
+test "ensureCapacity keeps the inline items when it moves to the heap" {
+    var list = List(u32).init(std.testing.allocator);
+    defer list.deinit();
+    for (0..3) |i| try list.append(@intCast(i));
+    try list.ensureCapacity(3);
+    try std.testing.expect(list.heap_storage == null);
+    try list.ensureCapacity(5);
+    try std.testing.expect(list.heap_storage.?.capacity >= 8);
+    try list.ensureCapacity(1000);
+    try std.testing.expect(list.heap_storage.?.capacity >= 1000);
+    try std.testing.expectEqualSlices(u32, &.{ 0, 1, 2 }, list.items());
 }

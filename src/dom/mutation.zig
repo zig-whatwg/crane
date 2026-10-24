@@ -1697,6 +1697,26 @@ pub fn remove(
         refcount.checkAround(@ptrCast(parent));
         refcount.checkAround(@ptrCast(node));
     }
+
+    orphanRemoved(@ptrCast(node));
+}
+
+/// `node` left its tree. A root no wrapper of any realm ever reached - nor
+/// anything in its subtree, since a wrap reaches up to the root - is an
+/// ORPHAN: no tree teardown and no collector reaches it until reference
+/// counting decides (refcount design step 7). Its realm frees it at its end
+/// unless a tree or a wrapper takes it first (runtime.orphan_roots; lane
+/// unwrapped1). Only where the engine marks every wrap ([wrap_tracking]):
+/// elsewhere the missing mark proves nothing, and the orphan stays until its
+/// Browser ends, as before. A holder that holds the root rescued it with a
+/// wrapper in the removing steps above (node_holds), so a held root is never
+/// recorded.
+fn orphanRemoved(node: *NodeBase) void {
+    if (engine.capabilities.wrap_tracking == .unsupported) return;
+    if (node.parent_node != null or node.bound_v8_wrapper != null) return;
+    const instance: *runtime.Instance = @ptrCast(@alignCast(node.owner_instance orelse return));
+    if (!runtime.instance_lifecycle.provablyUnwrapped(true, instance)) return;
+    runtime.orphan_roots.record(instance.ctx, instance);
 }
 
 // ============================================================================
