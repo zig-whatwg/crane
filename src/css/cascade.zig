@@ -804,6 +804,27 @@ const Builder = struct {
         if (self.ctx.is_root and display.box == .contents) display = Display.block_flow;
         s.values[@intFromEnum(Longhand.display)] = .{ .display = display };
 
+        // Contain 2 §2: aliases share the computed flag set and shortest
+        // serialization. No layout state or allocation is needed here.
+        const containment = s.get(.contain).containment.computed();
+        s.values[@intFromEnum(Longhand.contain)] = .{ .containment = containment };
+        const parent_box = if (self.ctx.parent) |p| p.box_context else .other;
+        s.box_context = if (parent_box == .suppressed or display.box == .none)
+            .suppressed
+        else if (display.box == .contents)
+            parent_box
+        else if (display.inner == .grid)
+            .grid
+        else
+            .other;
+        // Grid 2 §9: a subgrid must be an in-flow grid item and cannot
+        // establish an independent formatting context. Contain 2 §§3.3,
+        // 3.5 and §4: layout/paint containment, including content-visibility.
+        const content_visibility = s.keyword(.content_visibility);
+        const independent = containment.layout or containment.paint or content_visibility == .auto or content_visibility == .hidden;
+        s.subgrid_ineligible = s.box_context != .suppressed and display.box == .normal and display.inner == .grid and
+            (parent_box != .grid or out_of_flow or independent);
+
         // CSS Overflow 3: "as specified, except with visible/clip computing
         // to auto/hidden (respectively) if one of overflow-x or overflow-y is
         // neither visible nor clip."
