@@ -9205,8 +9205,19 @@ pub fn V8Interface(comptime Interface: type) type {
                         if (fi.params.len < 2) break :blk false;
                         break :blk setterValueIsBorrowed(fi.params[1].type orelse break :blk false);
                     };
+                    // A callback value's Global is the value itself, borrowed
+                    // for the setter: a take moved its function out, and the
+                    // emptied box goes without the general dispose's lookups
+                    // (v8_Global_DisposeCallbackValue), as an argument's does.
+                    const value_is_callback = comptime blk: {
+                        const fi = @typeInfo(@TypeOf(zig_setter)).@"fn";
+                        if (fi.params.len < 2) break :blk false;
+                        break :blk isCallbackFunctionShape(fi.params[1].type orelse break :blk false);
+                    };
                     var value_handed_over = false;
-                    defer if (value_is_copied or !value_handed_over) v8.v8_Value_Dispose(new_value_v8);
+                    defer if (value_is_copied or !value_handed_over) {
+                        if (comptime value_is_callback) v8.v8_Global_DisposeCallbackValue(new_value_v8) else v8.v8_Value_Dispose(new_value_v8);
+                    };
 
                     // Extract instance from 'this'
                     const this_obj = info.getThis();
