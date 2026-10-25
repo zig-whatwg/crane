@@ -50,19 +50,9 @@ pub const PathItem = struct {
     target: *runtime.Instance,
     /// Not the standard's either: the invocation target's tree node (null
     /// for a Window or any other target that is not a node), recorded by
-    /// "append to an event path" for the hold below.
+    /// "append to an event path" so the path's hold (`EventState.holdPath`)
+    /// needs no lookup.
     invocation_node: ?*NodeBase = null,
-    /// The path's counted references while dispatch runs (refcount step
-    /// 5g), WebKit's EventContext `RefPtr<Node> m_node` and `RefPtr<Node>
-    /// m_relatedTarget` (Source/WebCore/dom/EventContext.h): `hold` on the
-    /// invocation target, `related_hold` on the item's relatedTarget when it
-    /// differs from the previous item's. The shadow-adjusted target and
-    /// `target` are always some item's invocation target, held there. Taken
-    /// once the path is built (`EventState.holdPath`: an item never moves
-    /// after that) and let go when it is emptied (`clearPath`). SHADOW MODE:
-    /// counted only - they decide nothing yet.
-    hold: node_holds.RefHold = .{},
-    related_hold: node_holds.RefHold = .{},
 };
 
 /// Event's eventPhase values (DOM 2.2).
@@ -145,8 +135,21 @@ pub const EventState = struct {
     target_hold: node_holds.RefHold = .{},
     related_hold: node_holds.RefHold = .{},
 
-    /// Whether the path's holds are taken (`holdPath`): from then until
-    /// `clearPath` nothing may append to the path, whose items they live in.
+    /// The path's counted references while dispatch runs (refcount step
+    /// 5g), WebKit's EventContext `RefPtr<Node> m_node` and `RefPtr<Node>
+    /// m_relatedTarget` (Source/WebCore/dom/EventContext.h): one on each
+    /// item's invocation target, and one on each item's relatedTarget that
+    /// differs from the previous item's. The shadow-adjusted targets and the
+    /// items' `target`s are always some item's invocation target, held
+    /// there. An array of exactly that size, made by `holdPath` once the
+    /// path is built and freed by `clearPath` when dispatch ends - never
+    /// fields of the items, which an event keeps after dispatch: there they
+    /// made every uncollected event's path buffer 104 B an item larger
+    /// (gc_bench event-churn: +79% peak RSS, +22% instructions). SHADOW
+    /// MODE: counted only - they decide nothing yet.
+    path_holds: []node_holds.RefHold = &.{},
+    /// Whether `holdPath` ran for the current path (with or without the
+    /// array): until `clearPath`, nothing may append to the path.
     path_held: bool = false,
 
     pub fn init(allocator: std.mem.Allocator) EventState {
@@ -254,33 +257,55 @@ pub const EventState = struct {
         self.related_hold.release();
     }
 
-    /// Take the path's holds (each item's `hold` and `related_hold`), once
-    /// dom.event_path has built it: the items stay where they are until
-    /// `clearPath` empties the path, which lets the holds go.
-    pub fn holdPath(self: *EventState) void {
-        std.debug.assert(!self.path_held);
+    /// Take the path's holds (`path_holds`) once dom.event_path has built
+    /// it; `clearPath` lets them go when dispatch ends. On an allocation
+    /// failure no hold is taken - the path keeps its old net, the counts
+    /// stay balanced - and the error is the caller's to report or ignore.
+    pub fn holdPath(self: *EventState) error{OutOfMemory}!void {
+        std.debug.assert(!self.path_held and self.path_holds.len == 0);
+        self.path_held = true;
+        const items = self.path.toSlice();
+        var needed: usize = 0;
         var previous_related: ?*runtime.Instance = null;
-        for (self.path.toSliceMut()) |*item| {
-            item.hold.setNode(item.invocation_target, item.invocation_node);
+        for (items) |item| {
+            if (item.invocation_node != null) needed += 1;
             if (item.related_target) |related| {
-                if (related != previous_related) item.related_hold.set(related);
+                if (related != previous_related) needed += 1;
+            }
+            previous_related = item.related_target;
+        }
+        if (needed == 0) return;
+        const holds = try self.allocator.alloc(node_holds.RefHold, needed);
+        for (holds) |*hold| hold.* = .{};
+        var next: usize = 0;
+        previous_related = null;
+        for (items) |item| {
+            if (item.invocation_node) |node| {
+                holds[next].setNode(item.invocation_target, node);
+                next += 1;
+            }
+            if (item.related_target) |related| {
+                if (related != previous_related) {
+                    holds[next].set(related);
+                    next += 1;
+                }
             }
             previous_related = item.related_target;
             // TODO(refcount 5g): each item's touch target list - always empty
             // until a TouchEvent fills the event's (Touch is a stub) - takes
             // its holds here when one can.
         }
-        self.path_held = true;
+        self.path_holds = holds;
     }
 
-    /// Let the path's holds go, before the path is emptied or freed.
+    /// Let the path's holds go and free their array, before the path is
+    /// emptied or freed.
     fn releasePath(self: *EventState) void {
-        if (!self.path_held) return;
-        for (self.path.toSliceMut()) |*item| {
-            item.hold.release();
-            item.related_hold.release();
-        }
         self.path_held = false;
+        if (self.path_holds.len == 0) return;
+        for (self.path_holds) |*hold| hold.release();
+        self.allocator.free(self.path_holds);
+        self.path_holds = &.{};
     }
 
     /// DOM 2.2 "set the canceled flag" given the event, whose cancelable

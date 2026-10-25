@@ -49,6 +49,7 @@ const interfaces = @import("interfaces");
 const infra = @import("infra");
 
 const NodeBase = @import("node_base.zig").NodeBase;
+const log = std.log.scoped(.event_path);
 const event_dispatch = @import("event_dispatch.zig");
 const EventState = event_dispatch.EventState;
 const PathItem = event_dispatch.PathItem;
@@ -363,8 +364,10 @@ pub fn build(state: *EventState, target: *runtime.Instance, input: Input) error{
         } else false;
 
     // The path is built and grows no more: its nodes are held while
-    // dispatch runs (refcount step 5g), until step 9 empties it.
-    state.holdPath();
+    // dispatch runs (refcount step 5g), until step 9 empties it. Shadow
+    // mode: an allocation failure only leaves them uncounted - the counts
+    // stay balanced and decide nothing yet - so dispatch goes on.
+    state.holdPath() catch log.debug("event path holds not taken: out of memory", .{});
     return walk.result;
 }
 
