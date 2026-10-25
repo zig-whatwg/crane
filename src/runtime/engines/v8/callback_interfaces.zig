@@ -65,10 +65,22 @@ pub fn callUserObjectOperation(
     }
 }
 
-/// A callback-function argument as the conversion hands it over: the
-/// Global<Function> it made, its pointer tagged `.global_handle` (see
-/// conversions.zig, "callback function"). The Global becomes the caller's.
+/// A callback-function value as the conversion makes it - the Global it holds
+/// (conversions.zig, "callback function"; a `.global_handle` tag in its low
+/// bits is ignored) - taken by the impl that keeps it, as a hold of the
+/// caller's own (OWNED). The value is BORROWED for the call: the binding
+/// frees its Global with the rest of the value when the call returns
+/// (interface.freeConvertedArg), so the function MOVES out of it into a
+/// Global of the taker's (v8_Global_TakeOver - no V8 handle made, one 16 B
+/// box). An impl that never takes the callback leaves the binding's Global
+/// to the binding, which frees it: a stub that drops its callback keeps
+/// nothing (ResizeObserver's constructor kept one per call, lane leaks7).
+///
+/// Taken twice, the value holds nothing the second time: undefined, nothing
+/// to release. A take after the call returned reads a freed Global - every
+/// impl takes during its call (lane leaks7's audit).
 pub fn takeCallbackFunction(argument: *const anyopaque) JSValue {
     const untagged = pointer_tag.untagPointer(argument);
-    return realm_entry.owned(untagged.ptr);
+    const own = ffi.v8_Global_TakeOver(@ptrCast(@alignCast(untagged.ptr))) orelse return JSValue.jsUndefined;
+    return realm_entry.owned(@ptrCast(own));
 }

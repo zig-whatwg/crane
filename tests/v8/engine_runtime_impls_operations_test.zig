@@ -392,22 +392,33 @@ test "convert to unrestricted double is ToNumber, and what it throws stays in fl
     try std.testing.expectEqual(@as(i32, 1), try eval("symbolError instanceof TypeError ? 1 : 0"));
 }
 
-test "a callback-function argument is handed over as an owned handle to the same function" {
+test "a taken callback-function argument is an owned hold of its own on the same function" {
     _ = try realm();
     // What the conversion hands an impl for a callback-function argument: a
-    // Global it made, tagged `.global_handle`.
+    // Global it made (a `.global_handle` tag is ignored), BORROWED for the
+    // call - the binding frees it when the call returns.
     const function = try evalHandle("globalThis.theCallback = function () { return 7; }; theCallback");
     const tagged = v8.pointer_tag.tagPointer(@ptrCast(function), .global_handle);
 
     const taken = v8.callback_interfaces.takeCallbackFunction(tagged);
     try std.testing.expect(taken == .handle);
-    try std.testing.expect(taken == .handle);
-    try std.testing.expectEqual(@intFromPtr(function), @intFromPtr(taken.handle.ptr));
+    // A hold of the taker's own: the function moved out of the binding's
+    // Global, which is left empty for the binding to free.
+    try std.testing.expect(@intFromPtr(function) != @intFromPtr(taken.handle.ptr));
+    try std.testing.expect(ffi.v8_Global_IsEmpty(function));
+    ffi.v8_Value_Dispose(function);
     try expose("taken", taken);
     try std.testing.expectEqual(@as(i32, 1), try eval("taken === theCallback ? 1 : 0"));
     // The impl's to release; after that the function is script's alone.
     v8.engine.v8ReleaseValue(taken);
     try std.testing.expectEqual(@as(i32, 7), try eval("theCallback()"));
+    // Taken again, the binding's value holds nothing: undefined.
+    const again = try evalHandle("theCallback");
+    const first = v8.callback_interfaces.takeCallbackFunction(@ptrCast(again));
+    defer v8.engine.v8ReleaseValue(first);
+    const second = v8.callback_interfaces.takeCallbackFunction(@ptrCast(again));
+    try std.testing.expect(second == .undefined);
+    ffi.v8_Value_Dispose(again);
 }
 
 test "a callback-function argument converts to a value its function-pointer type may hold" {
@@ -431,13 +442,15 @@ test "a callback-function argument converts to a value its function-pointer type
     const nullable = (try v8.conversions.fromV8Value(?Callback, std.testing.allocator, isolate_once.?, context_once.?, function)) orelse return error.NullHandler;
     try std.testing.expectEqual(@intFromPtr(function), @intFromPtr(nullable));
 
-    // takeCallbackFunction takes it over: the same function, the impl's to
-    // release.
+    // takeCallbackFunction takes a hold of its own on the same function, the
+    // impl's to release; the converted value - the argument's Global - stays
+    // the binding's, which frees it (interface.freeConvertedArg).
     const taken = v8.callback_interfaces.takeCallbackFunction(@ptrCast(converted));
-    try std.testing.expectEqual(@intFromPtr(function), @intFromPtr(taken.handle.ptr));
+    try std.testing.expect(@intFromPtr(function) != @intFromPtr(taken.handle.ptr));
     try expose("takenHandler", taken);
     try std.testing.expectEqual(@as(i32, 1), try eval("takenHandler === theHandler ? 1 : 0"));
     v8.engine.v8ReleaseValue(taken);
+    v8.interface_mod.freeConvertedArg(Callback, std.testing.allocator, converted);
 }
 
 // ============================================================================

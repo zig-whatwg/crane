@@ -1678,8 +1678,9 @@ pub fn fromV8Value(
 
 /// WebIDL 3.2.19, attribute assignment with [LegacyTreatNonObjectAsNull]:
 /// a non-object becomes null; every object is preserved, callable or not.
-/// The binding keeps ownership on null and hands the same Global to the
-/// setter otherwise. This is never the generic callback conversion.
+/// The value is the same Global, which the binding keeps and frees once the
+/// setter returns (a callback value is borrowed, interface.
+/// setterValueIsBorrowed). This is never the generic callback conversion.
 pub fn fromV8LegacyCallbackAttribute(comptime T: type, value: *v8.Value) ConversionError!T {
     const Child = @typeInfo(T).optional.child;
     if (!v8.v8_Value_IsObject(value)) return null;
@@ -1687,7 +1688,9 @@ pub fn fromV8LegacyCallbackAttribute(comptime T: type, value: *v8.Value) Convers
 }
 
 /// The transitional callback representation is the untagged Global address,
-/// never a callable Zig function. The consumer adopts it through the protocol.
+/// never a callable Zig function. BORROWED: the binding frees it with the
+/// value, and a consumer that keeps it takes a hold of its own through the
+/// protocol (takeCallbackFunction).
 fn callbackFunctionValue(comptime T: type, value: *v8.Value) T {
     const address: usize = @intFromPtr(value);
     std.debug.assert(std.mem.isAligned(address, @alignOf(@typeInfo(T).pointer.child)));
@@ -2362,15 +2365,18 @@ pub fn fromV8ValueAs(
     // A callback function type is a Zig function-pointer type until codegen
     // types callback parameters as engine.CallbackFunction (the protocol's
     // TRANSITIONAL note on takeCallbackFunction): the value holds the
-    // function's Global<Value>* and is never called. Every consumer takes it
-    // over through takeCallbackFunction, or returns it from a getter
-    // (interface.zig), as a Global.
+    // function's Global<Value>* and is never called. It is BORROWED for the
+    // call, as every converted value is: the binding frees the Global with
+    // the value (interface.freeConvertedArg), and a consumer that keeps the
+    // callback takes a hold of its own (takeCallbackFunction, which moves the
+    // function out of this Global).
     if (type_info == .pointer) {
         const child_info = @typeInfo(type_info.pointer.child);
         if (child_info == .@"fn") {
             // NOTE: value from v8_FunctionCallbackInfo_GetArgument is ALREADY a
             // Global<Value>* of the binding's (the C++ side made it from the
-            // argument's Local), so it is handed over as it is.
+            // argument's Local), so it is the value as it is - still the
+            // binding's to free.
             if (!v8.v8_Value_IsFunction(value)) {
                 return ConversionError.TypeError;
             }
@@ -3024,9 +3030,10 @@ pub fn toV8Record(
     return object;
 }
 
-/// ALLOWLIST: the raw function-pointer conversion hands its input Global to
-/// the callback on success, and adopts nothing when it fails. Unknown pointer
-/// and aggregate types remain false; nullable callbacks have the same rule.
+/// ALLOWLIST: the raw function-pointer conversion's value IS its input Global
+/// on success (freed with the value, interface.freeConvertedArg), and holds
+/// nothing when it fails. Unknown pointer and aggregate types remain false;
+/// nullable callbacks have the same rule.
 pub fn callbackConversionAdoptsInput(comptime T: type) bool {
     const info = @typeInfo(T);
     if (info == .optional) return callbackConversionAdoptsInput(info.optional.child);
