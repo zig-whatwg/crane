@@ -63,6 +63,7 @@ const std = @import("std");
 
 /// CSS tokenizer for property values.
 pub const tokenizer = @import("tokenizer.zig");
+pub const syntax_definitions = @import("syntax_definitions.zig");
 pub const Tokenizer = tokenizer.Tokenizer;
 pub const Token = tokenizer.Token;
 pub const TokenType = tokenizer.TokenType;
@@ -116,6 +117,7 @@ pub const cascade = @import("cascade.zig");
 pub const text_transform = @import("text_transform.zig");
 pub const color_scheme = @import("color_scheme.zig");
 pub const resolved_urls = @import("resolved_urls.zig");
+pub const environment_variables = @import("environment_variables.zig");
 pub const svg_presentation = @import("svg_presentation.zig");
 pub const image_layers = @import("image_layers.zig");
 pub const image_values = @import("image_values.zig");
