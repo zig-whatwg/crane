@@ -747,3 +747,97 @@ test "el.onclick = f: the getter returns f, after a collection too, and a second
     try page.expectNoMoreThan("root.title = 'x'", "root.onclick = function () {}");
     try page.run("probeRoot.onclick = null; probeRoot.onclick === null ? 'ok' : 'still set'");
 }
+
+// ============================================================================
+// Every take site, through the generated bindings
+// ============================================================================
+//
+// Each impl that keeps a callback takes it during its call: after the call
+// returns, the binding's Global is gone, so a take made later would read
+// freed memory. Here each kept callback is collected-over and then run - it
+// must still be the function script gave.
+
+/// Run `prepare`, collect twice (no microtask checkpoint first), run the
+/// microtasks, then `check`, which must answer "ok".
+fn keptAfterCollection(comptime prepare: []const u8, comptime check: []const u8) !void {
+    const page = try Page.open();
+    defer page.close();
+    try page.run(
+        \\globalThis.probeDocument = new Document().implementation.createHTMLDocument("");
+        \\globalThis.probeRoot = probeDocument.createElement("div");
+        \\
+    ++ prepare ++
+        \\;
+        \\"ok"
+    );
+    const Collect = struct {
+        fn steps(data: ?*anyopaque) void {
+            protocol.requestGarbageCollection(@ptrCast(@alignCast(data.?)));
+        }
+    };
+    try protocol.runInRealm(page.realm, Collect.steps, page.agent);
+    try protocol.runInRealm(page.realm, Collect.steps, page.agent);
+    try protocol.performMicrotaskCheckpoint(page.agent);
+    try page.run(check);
+}
+
+test "take site: EventTarget's event handler map (el.onclick = f) runs f after a collection" {
+    try keptAfterCollection(
+        "probeRoot.onclick = function () { globalThis.clicked = (globalThis.clicked | 0) + 1; }",
+        "probeRoot.dispatchEvent(new Event('click')); globalThis.clicked === 1 ? 'ok' : 'clicked ' + globalThis.clicked",
+    );
+}
+
+test "take site: queueMicrotask(f) runs f at the checkpoint after a collection" {
+    try keptAfterCollection(
+        "globalThis.ran = 0; queueMicrotask(() => { ran++; })",
+        "ran === 1 ? 'ok' : 'ran ' + ran",
+    );
+}
+
+test "take site: new MutationObserver(f) notifies f after a collection" {
+    try keptAfterCollection(
+        "globalThis.seen = 0; globalThis.mo = new MutationObserver(() => { seen++; }); mo.observe(probeRoot, { childList: true }); probeRoot.appendChild(probeDocument.createElement('b'))",
+        "seen === 1 ? 'ok' : 'seen ' + seen",
+    );
+}
+
+test "take site: CustomElementRegistry.define keeps its constructor; getName compares with it" {
+    try keptAfterCollection(
+        "globalThis.reg = new CustomElementRegistry(); globalThis.X = class extends HTMLElement {}; reg.define('x-y', X)",
+        "reg.get('x-y') === X && reg.getName(X) === 'x-y' ? 'ok' : 'lost: ' + reg.getName(X)",
+    );
+}
+
+test "take site: trustedTypes.createPolicy keeps its options' callbacks" {
+    try keptAfterCollection(
+        "globalThis.policy = trustedTypes.createPolicy('leaks7', { createHTML: (s) => s + '!', createScript: (s) => s + '?' })",
+        "String(policy.createHTML('a')) === 'a!' && String(policy.createScript('b')) === 'b?' ? 'ok' : 'lost'",
+    );
+}
+
+test "take site: a WritableStream's and a ReadableStream's strategy size runs after a collection" {
+    try keptAfterCollection(
+        \\globalThis.ws = new WritableStream({}, { highWaterMark: 4, size() { return 3; } });
+        \\globalThis.writer = ws.getWriter();
+        \\globalThis.rc = null;
+        \\globalThis.rs = new ReadableStream({ start(c) { rc = c; } }, { highWaterMark: 4, size() { return 3; } })
+    ,
+        "writer.write('x'); rc.enqueue('y'); writer.desiredSize === 1 && rc.desiredSize === 1 ? 'ok' : writer.desiredSize + ' ' + rc.desiredSize",
+    );
+}
+
+test "take site: requestIdleCallback(f) takes f, cancelIdleCallback releases it" {
+    const page = try Page.open();
+    defer page.close();
+    try page.expectNoMoreThan("void 0", "cancelIdleCallback(requestIdleCallback(() => {}))");
+}
+
+test "take site: the observers' constructors keep their callbacks for the observer's life only" {
+    const page = try Page.open();
+    defer page.close();
+    try page.expectNoMoreThan("new Event('x')", "new PerformanceObserver(() => {})");
+    try page.expectNoMoreThan("new Event('x')", "new IntersectionObserver(() => {})");
+    try page.expectNoMoreThan("new Event('x')", "new ReportingObserver(() => {})");
+    try page.expectNoMoreThan("new Event('x')", "new MutationObserver(() => {})");
+}
