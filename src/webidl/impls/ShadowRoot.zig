@@ -217,7 +217,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
 pub fn deinitOwn(instance: *runtime.Instance) void {
     // Get internal state from registry (where it was stored in init)
     if (Registry.get(instance)) |internal| {
-        if (internal.style_sheets) |ss| internal.style_sheets_kept.release(ss, interfaces.StyleSheetList.deinit);
+        if (internal.style_sheets) |ss| internal.style_sheets_kept.releaseOwned(ss);
         internal.style_sheets = null;
         internal.registry_edge.release(instance);
         internal.deinit();

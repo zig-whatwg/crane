@@ -29,6 +29,7 @@
 //! - `attached_to_dom`: Instance is in the DOM tree (affects cleanup order)
 //! - `gc_weak_callback_pending`: V8 weak callback may fire
 //! - `wrapped`: an engine object was bound to it in some realm (sticky)
+//! - `wrapper_gone`: the last one bound is gone (until the next bind)
 //!
 //! ## Usage
 //!
@@ -76,8 +77,19 @@ pub const LifecycleFlags = packed struct(u8) {
     /// no wrapper can reach its slot (`provablyUnwrapped`).
     wrapped: bool = false,
 
+    /// The engine objects that were bound to the instance are gone: the
+    /// adapter finalized its last wrapper - collected, in no other realm's
+    /// cache - while the host kept the instance (a node in its tree, a
+    /// window's document). Set only by such an adapter (`markWrapperGone`);
+    /// the next bind clears it (`markWrapped`). With it, `wrapped` is the
+    /// history and this the present: no wrapper reaches the slot now
+    /// (`provablyUnwrapped`). Lane pageretention1: a removed frame's
+    /// collected realm left every wrapped node of its document - and the
+    /// document - keeping its slot when the realm's end tore them down.
+    wrapper_gone: bool = false,
+
     /// Reserved for future use
-    _reserved: u3 = 0,
+    _reserved: u2 = 0,
 };
 
 const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
@@ -190,6 +202,19 @@ pub fn clearGCWeakCallbackPending(instance: *const Instance) void {
 pub fn markWrapped(instance: *const Instance) void {
     var flags = read(instance);
     flags.wrapped = true;
+    flags.wrapper_gone = false;
+    write(instance, flags);
+}
+
+/// The adapter finalized the last engine object bound to `instance`, which
+/// the host keeps (see `LifecycleFlags.wrapper_gone`). Only an adapter with
+/// `wrap_tracking` calls it, and only when no other realm's wrapper and no
+/// global object is bound to the instance; the next `markWrapped` undoes it.
+/// On an instance never marked wrapped it changes nothing anyone reads.
+pub fn markWrapperGone(instance: *const Instance) void {
+    var flags = read(instance);
+    if (!flags.wrapped) return;
+    flags.wrapper_gone = true;
     write(instance, flags);
 }
 
@@ -200,14 +225,26 @@ pub fn wasWrapped(instance: *const Instance) bool {
     return read(instance).wrapped;
 }
 
-/// Whether `instance` can be PROVEN never to have been reachable from script:
-/// its engine tracks wraps (`tracked` - the host passes
-/// `engine.capabilities.wrap_tracking != .unsupported`) and no wrap marked it.
-/// The default, an engine that does not track, is "it may have been": nothing
-/// is freed on the strength of a missing mark (tests/runtime pins it).
+/// Whether `instance` can be PROVEN unreachable from script now: its engine
+/// tracks wraps (`tracked` - the host passes
+/// `engine.capabilities.wrap_tracking != .unsupported`) and either no wrap
+/// ever marked it, or the last engine object bound to it is gone
+/// (`markWrapperGone`: its wrapper finalized while the host kept it, no other
+/// realm's wrapper bound). The default - an engine that does not track, an
+/// instance marked and not released since - is "it may be": nothing is freed
+/// on the strength of a missing mark (tests/runtime pins it).
+///
+/// "Gone" proves as much as "never" for every reader (lane pageretention1):
+/// wrapped nodes are upward-closed - a wrap and an insertion wrap every
+/// unwrapped ancestor and draw the edges (wrapper_cache.drawTreeEdges) - and
+/// the wrapped part of a tree is one cycle the collector keeps or takes
+/// whole, so a node whose wrapper was finalized has no wrapped descendant
+/// left either: a subtree under it is no more reachable than a never-wrapped
+/// one. A later wrap clears the release before anything reads it again.
 pub fn provablyUnwrapped(tracked: bool, instance: *const Instance) bool {
     if (!tracked) return false;
-    return !read(instance).wrapped;
+    const flags = read(instance);
+    return !flags.wrapped or flags.wrapper_gone;
 }
 
 /// Check if cleanup should proceed (not already started/complete)

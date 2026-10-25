@@ -152,46 +152,26 @@ pub const InternalState = struct {
             v.deinit(self.allocator);
         }
 
-        // Clean up cached NamedNodeMap
-        // CRITICAL: Mark the NamedNodeMap via lifecycle tracking BEFORE calling deinit.
-        // We use lifecycle tracking (not wrapper_cache.markInstanceCleanedUp) because
-        // during wrapper_cache.deinit, the HashMap is being iterated/destroyed and
-        // cannot be safely accessed. The lifecycle tracking uses a SEPARATE data
-        // structure that's safe to modify during teardown.
+        // The cached NamedNodeMap goes WHOLE with its element: its destructor
+        // and its storage (runtime.gc.releaseOwned) - back now when no
+        // wrapper can reach it (after the realm teardown under way, if one
+        // is), else at its wrapper's end, which returns a completed
+        // cleanup's storage. It used to run only the interface's destructor
+        // after marking the map's cleanup STARTED: a wrapped map's wrapper
+        // end then saw "started, never completed" and returned nothing, and
+        // a map no wrapper reached had no other exit - its slab slot and
+        // state block stayed until the Browser ended, one per element whose
+        // `attributes` was ever read (lane pageretention1: an attribute-map
+        // page kept 25 more per page).
         //
-        // wrapper_cache.deinit checks isCleanupStarted() before calling gc.onObjectFreed,
-        // so marking here prevents double-free of the NamedNodeMap.
+        // Only while the slot is still this element's map: the wrapper
+        // cache's sweep or a collection can free the map first - state block
+        // and slab slot - and the slab may have reissued its address since.
+        // The generation recorded when the map was taken tells them apart
+        // (a freed map's block reads 0xAA, which sails past a null check:
+        // custom-elements/connected-callbacks.html's exit SEGV).
         if (self.named_node_map) |nnm| {
-            // The protocol above covers Element freeing the map FIRST. The other
-            // order happens too: if script ever touched `el.attributes`, the map
-            // was wrapped, and the wrapper cache's weak callback frees it at
-            // whatever GC finds it dead - long before this exit-time sweep. It
-            // marks the Instance cleaned-up and the slab reclaims the memory,
-            // so `NamedNodeMap.deinit` here reads `getState` off an unmapped
-            // page: SEGV in `Instance.stateAs` under
-            // `InstanceRegistry(Element.InternalState).deinitAllAndClear`, which
-            // is how custom-elements/connected-callbacks.html died at exit.
-            //
-            // The lifecycle flags are keyed on the address and never dereference
-            // it, so they are safe to consult on freed memory. If the slab has
-            // since reissued the address to a live object, the stale flag makes
-            // this skip a deinit it should have done - a leak, and the
-            // conservative side of the same trade the rest of this tree makes.
-            //
-            // The flags miss one order: the wrapper cache's teardown sweep freed
-            // the map through onObjectFreed - state block and slab slot, no
-            // flag set - before it reached this element. `getState` on that
-            // poisoned block sails past every null check (0xAA is not null) and
-            // the attribute list is freed a second time. The generation recorded
-            // when the map was taken is what tells a freed or reissued slot from
-            // the map this element still owns.
-            const already_gone = runtime.instance_lifecycle.isCleanedUp(nnm) or
-                runtime.instance_lifecycle.isCleanupStarted(nnm) or
-                runtime.SlabAllocator.generationOf(nnm) != self.named_node_map_generation;
-            if (!already_gone) {
-                _ = runtime.instance_lifecycle.markCleanupStarted(nnm);
-                interfaces.NamedNodeMap.deinit(nnm);
-            }
+            if (runtime.SlabAllocator.generationOf(nnm) == self.named_node_map_generation) runtime.gc.releaseOwned(nnm);
             self.named_node_map = null;
         }
 

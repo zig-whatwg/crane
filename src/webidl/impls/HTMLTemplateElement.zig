@@ -106,11 +106,17 @@ pub fn deinit(instance: *runtime.Instance) void {
         // nobody's template contents and left to its wrapper, whose
         // collection then frees it; an unwrapped one is freed now. During a
         // coordinated teardown the realm's own sweep frees what is left, and
-        // a wrapper cache is never queried then.
+        // a wrapper cache is never queried then - but a fragment no wrapper
+        // can reach any more ([wrap_tracking]: its last wrapper finalized,
+        // instance_lifecycle.provablyUnwrapped) has no entry left for that
+        // sweep, so it is freed here too, its storage the teardown's (lane
+        // pageretention1: a removed frame's templates, whose realm the
+        // collector took whole, kept their contents until the Browser ended).
         if (internal.content) |content| {
             if (runtime.SlabAllocator.generationOf(content) == internal.content_generation) {
                 dom.template_contents.releaseHost(content);
-                if (!instance.ctx.hasEngine() or
+                const unreachable_now = runtime.instance_lifecycle.provablyUnwrapped(engine.capabilities.wrap_tracking != .unsupported, content);
+                if (!instance.ctx.hasEngine() or unreachable_now or
                     (!runtime.cleanup_coordinator.isContextTearingDown() and !engine.hasWrapper(content)))
                     dom.node_creation.destroyUninserted(content);
             }

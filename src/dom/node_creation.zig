@@ -57,7 +57,9 @@ pub const DocumentTypeSteps = struct {
 
 /// What Node supplies.
 pub const NodeSteps = struct {
-    /// Free `node`, which was created and never inserted, and its subtree.
+    /// Free `node`, a root - created and never inserted, or one its owner
+    /// tears down (`destroyRoot`) - and its subtree: Node's own teardown,
+    /// with its storage rule.
     destroy_uninserted: *const fn (node: *runtime.Instance) void,
     /// DOM clone-a-node, with an explicit document, parent and fallback registry.
     clone: ?*const fn (*runtime.Instance, ?*runtime.Instance, bool, ?*runtime.Instance, ?*runtime.Instance) anyerror!*runtime.Instance = null,
@@ -119,6 +121,17 @@ pub fn setDoctypeIds(doctype: *runtime.Instance, name: ?[]const u8, public_id: ?
 /// Free `node` - created, never inserted, unreachable from script - and its
 /// subtree.
 pub fn destroyUninserted(node: *runtime.Instance) void {
+    const steps = node_steps.node orelse return;
+    steps.destroy_uninserted(node);
+}
+
+/// Free `node`, a root its owner tears down - a window's document, at the
+/// window's end - and its subtree, through Node's own teardown: the step
+/// `destroyUninserted` runs, which frees a node's storage by the rule every
+/// tree teardown follows - now when no wrapper reaches it, at the end of the
+/// realm teardown under way when none can, else at its wrapper's end. Unlike
+/// `destroyUninserted`'s nodes, script may have reached this one.
+pub fn destroyRoot(node: *runtime.Instance) void {
     const steps = node_steps.node orelse return;
     steps.destroy_uninserted(node);
 }
