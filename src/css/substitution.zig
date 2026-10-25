@@ -92,6 +92,12 @@ pub const Id = enum {
     }
 };
 
+/// When a function's arguments are split: at parse time from the literal
+/// tokens, or at computed-value time after early invocation (a spread may
+/// have brought in what the literal text did not show). attr() rejects a
+/// literally malformed header only at parse time (Codex row 122 Q22).
+pub const Phase = enum { parse, substituted };
+
 /// One row per function.
 pub const Function = struct {
     id: Id,
@@ -99,7 +105,7 @@ pub const Function = struct {
     /// arguments, or error.Invalid. Tokens only; nothing is substituted.
     /// An omitted optional argument is absent from the list; one present
     /// but empty is an empty slice (`var(--x,)` has two arguments).
-    arguments: *const fn (Allocator, []const Node) Error![]const []const Node,
+    arguments: *const fn (Allocator, []const Node, Phase) Error![]const []const Node,
     /// Values 5 "replace an arbitrary substitution function": the fully
     /// substituted nodes this function is replaced by, or error.Invalid for
     /// the guaranteed-invalid value. It substitutes only the arguments it
@@ -122,8 +128,18 @@ pub const functions = [_]Function{
     .{ .id = .random_item, .arguments = randomItemArguments, .replace = replaceRandomItem },
 };
 
+/// The rows a parse or a substitution uses: `functions`, except in tests
+/// that stand a recording row in for one.
+pub const Table = []const Function;
+pub const default_table: Table = &functions;
+
 pub fn function(id: Id) Function {
     inline for (functions) |f| if (f.id == id) return f;
+    unreachable;
+}
+
+fn functionIn(table: Table, id: Id) Function {
+    for (table) |f| if (f.id == id) return f;
     unreachable;
 }
 
@@ -163,7 +179,12 @@ pub fn parse(allocator: Allocator, text: []const u8) Error![]const Node {
 }
 
 fn parseLimited(allocator: Allocator, text: []const u8, limit: usize) Error![]const Node {
-    var parser: Parser = .{ .allocator = allocator, .tokenizer = tokens.Tokenizer.init(text), .limit = limit };
+    return parseWith(allocator, text, limit, default_table);
+}
+
+/// `parse` with a table of rows (tests stand a recording row in).
+pub fn parseWith(allocator: Allocator, text: []const u8, limit: usize, table: Table) Error![]const Node {
+    var parser: Parser = .{ .allocator = allocator, .tokenizer = tokens.Tokenizer.init(text), .limit = limit, .table = table };
     const nodes = (try parser.sequence(null)).nodes;
     try checkDeclarationTokens(nodes);
     return nodes;
@@ -216,6 +237,7 @@ const Parser = struct {
     allocator: Allocator,
     tokenizer: tokens.Tokenizer,
     limit: usize,
+    table: Table = default_table,
     depth: usize = 0,
     count: usize = 0,
     item_index: usize = 0,
@@ -276,7 +298,7 @@ const Parser = struct {
                 // contents is substituted before the split, so its
                 // arguments are known only then.
                 if (node.function) |id| if (!hasSpread(node.children)) {
-                    _ = try function(id).arguments(self.allocator, node.children);
+                    _ = try functionIn(self.table, id).arguments(self.allocator, node.children, .parse);
                 };
             }
             try nodes.append(self.allocator, node);
@@ -388,7 +410,7 @@ fn afterFirstComma(contents: []const Node) struct { first: []const Node, rest: ?
 /// 320896, RESOLVED FIXED, 318912@main, 2026-08, exported as wpt#61857:
 /// css/css-variables/var-parsing.html); Chrome 156, Firefox 158 and Safari 27
 /// stable fail the same eight names of that file - a lag, not a refusal.
-fn varArguments(allocator: Allocator, contents: []const Node) Error![]const []const Node {
+fn varArguments(allocator: Allocator, contents: []const Node, _: Phase) Error![]const []const Node {
     const split = afterFirstComma(contents);
     const name = try freeForm(split.first);
     if (name.len == 0) return error.Invalid;
@@ -467,7 +489,7 @@ pub fn customPropertyName(allocator: Allocator, text: []const u8) Allocator.Erro
 /// (golden rule 2, no browser ships the newer behaviour; integrator Q1).
 /// Integer indices are css-env-1's; Chrome ships them (integrator,
 /// 2026-10-25, tmp/analysis/integrator-probes-1025a/RULINGS.md).
-fn envArguments(allocator: Allocator, contents: []const Node) Error![]const []const Node {
+fn envArguments(allocator: Allocator, contents: []const Node, _: Phase) Error![]const []const Node {
     const split = afterFirstComma(contents);
     const name = trim(split.first);
     _ = try envName(name);
@@ -576,7 +598,7 @@ fn replaceEnv(resolver: *Resolver, _: Node, args: []const []const Node) Error!Re
 /// unwrapping. Only the key must be nonempty at parse time. (Row 118's
 /// grammar, unchanged: an unwrapped item matches no top-level block of any
 /// kind.)
-fn randomItemArguments(allocator: Allocator, contents: []const Node) Error![]const []const Node {
+fn randomItemArguments(allocator: Allocator, contents: []const Node, _: Phase) Error![]const []const Node {
     const list = try splitCommas(allocator, contents);
     var out = try allocator.alloc([]const Node, list.len);
     for (list, 0..) |raw, index| out[index] = try strictItem(raw);
@@ -748,6 +770,8 @@ pub const Resolver = struct {
     namespaces: ?*const NamespaceMap = null,
     /// The consuming declaration's sheet's quirks mode (if()'s supports()).
     quirks: bool = false,
+    /// The function rows (tests stand a recording row in).
+    table: Table = default_table,
     early_numeric: usize = 0,
     depth: usize = 0,
     emitted: usize = 0,
@@ -840,10 +864,10 @@ pub const Resolver = struct {
         // 2.1 "Substitute early-invoked functions in func's contents."
         const early = try self.substituteWithTaint(node.children, true);
         // 2.3 "Parse early result according to func's argument grammar."
-        const args = try function(id).arguments(self.allocator, early.nodes);
+        const args = try functionIn(self.table, id).arguments(self.allocator, early.nodes, .substituted);
         // 2.4 "Replace an arbitrary substitution function for func." A
         // tainted early substitution taints the replacement.
-        var replacement = try function(id).replace(self, node, args);
+        var replacement = try functionIn(self.table, id).replace(self, node, args);
         if (early.tainted) replacement.tainted = true;
         return replacement;
     }
@@ -994,6 +1018,6 @@ pub fn substituteAndRender(allocator: Allocator, nodes: []const Node, host: Host
 }
 
 /// A function's arguments at computed-value time, after early substitution.
-pub fn arguments(allocator: Allocator, id: Id, contents: []const Node) Error![]const []const Node {
-    return function(id).arguments(allocator, contents);
+pub fn arguments(allocator: Allocator, id: Id, contents: []const Node, phase: Phase) Error![]const []const Node {
+    return function(id).arguments(allocator, contents, phase);
 }
