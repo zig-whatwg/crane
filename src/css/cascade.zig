@@ -18,9 +18,10 @@
 //!
 //! Computed values follow each property's "Computed value" line; the
 //! adjustments between properties are CSS 2.1 9.7 (position, float and
-//! display), CSS Display 4 2.7/2.8 (blockification), CSS Overflow 3
-//! (visible/clip fix-up) and CSS Backgrounds 3 (a border with style none or
-//! hidden has width 0).
+//! display), CSS Display 4 2.7/2.8 (blockification) and CSS Overflow 3
+//! (visible/clip fix-up). A border width keeps its length whatever the
+//! border style (Backgrounds 3 3.3); only its resolved value is zero for a
+//! side not drawn (ComputedStyle.serializeResolved).
 //!
 //! Stated: `revert-rule` (Cascade 5's newest keyword, which no browser ships)
 //! acts as `revert-layer`; there is no user origin (Crane has no user style
@@ -291,6 +292,67 @@ pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*Computed
     return style;
 }
 
+/// How Builder.run defaults a longhand that no declaration touches (an
+/// empty CandidateIndex chain). Cascade 5 7.1 "defaulting": an inherited
+/// property takes its parent's computed value, any other its initial value.
+pub const DefaultPath = enum {
+    /// Today's specified() -> compute() walk: the safe answer.
+    compute,
+    /// Store the parent's computed value (initialComputed at the root).
+    inherit,
+    /// Keep the shared initial computed value already in the slot.
+    initial,
+};
+
+/// The longhands Builder.run computes eagerly in its high-priority prefix.
+fn isHighPriority(l: Longhand) bool {
+    return switch (l) {
+        .writing_mode, .direction, .text_orientation, .color_scheme, .font_size, .line_height, .color => true,
+        else => false,
+    };
+}
+
+/// Whether a longhand whose initial value is `initial` may default without
+/// the compute walk. An ALLOWLIST whose default is `.compute` (AGENTS.md:
+/// gates default to the safe answer): `.initial` only for a value whose
+/// computeValue result is the value itself in every element context.
+/// Font-relative and viewport lengths (font metrics, the parent's em, the
+/// viewport), math values (tree counts, random(), metrics), images, lists,
+/// transforms and any tag added later are not proven and compute.
+pub fn defaultPathFor(l: Longhand, initial: Value) DefaultPath {
+    if (l.logical() != null or isHighPriority(l)) return .compute;
+    if (l.inherited()) return .inherit;
+    switch (l) {
+        // computeValue reads element context for these initial values:
+        // content's `normal` is `none` on ::before/::after (CSS Content 3),
+        // and justify-items' `legacy` reads the parent (Align 3 7.1).
+        .content, .justify_items => return .compute,
+        else => {},
+    }
+    return switch (initial) {
+        .keyword, .number, .integer, .display, .grid_flow, .image_repeat, .image_keyword, .position_visibility, .containment => .initial,
+        // Align 3: only a lone `legacy` reads the parent.
+        .alignment => |a| if (a.position == .legacy) .compute else .initial,
+        // An absolute length is its own computed value; a percentage stays.
+        .length => |len| if (len.unit == .px or len.unit == .percent) .initial else .compute,
+        // Color 4 6.4: currentcolor stays symbolic outside `color` itself,
+        // and an rgba color is already computed.
+        .color => |c| switch (c) {
+            .rgba, .current => .initial,
+            else => .compute,
+        },
+        else => .compute,
+    };
+}
+
+/// Each longhand's default path, from its initial computed value.
+pub const default_path: [Longhand.count]DefaultPath = blk: {
+    @setEvalBranchQuota(100_000);
+    var out: [Longhand.count]DefaultPath = undefined;
+    for (0..Longhand.count) |i| out[i] = defaultPathFor(@enumFromInt(i), computed_mod.initial_values[i]);
+    break :blk out;
+};
+
 const Builder = struct {
     ctx: Context,
     candidates: []const Candidate,
@@ -450,11 +512,29 @@ const Builder = struct {
         _ = try self.computeAndStore(.color);
         for (0..Longhand.count) |i| {
             const l: Longhand = @enumFromInt(i);
-            if (l.logical() != null) continue;
-            switch (l) {
-                .writing_mode, .direction, .text_orientation, .color_scheme, .font_size, .line_height, .color => continue,
-                else => {},
-            }
+            if (l.logical() != null or isHighPriority(l)) continue;
+            // Untouched: the defaulting step without the compute walk
+            // (design: Blink StyleResolver::InitStyle -> CreateNewStyle takes
+            // non-inherited data from the initial style and inherited data
+            // from the parent, and StyleCascade applies only declared
+            // properties; WebKit's Resolver::initializeStateAndStyle does
+            // inheritFrom(parent) and its Builder applies only the
+            // PropertyCascade). A longhand with candidates, even all of them
+            // later skipped, takes specified() below, unchanged.
+            if (self.index.heads[i] == CandidateIndex.none) switch (default_path[i]) {
+                // compute(.inherit) without the dispatch: the parent's value,
+                // or initialComputed at the root (color is high-priority).
+                .inherit => {
+                    const v = self.parentValue(l);
+                    v.retain();
+                    self.style.values[i] = v;
+                    continue;
+                },
+                // The slot already holds initial_values[i], which is what
+                // compute(.initial) yields for an allowlisted longhand.
+                .initial => continue,
+                .compute => {},
+            };
             _ = try self.computeAndStore(l);
         }
         self.adjust();
@@ -677,8 +757,19 @@ const Builder = struct {
             .font_size_adjust => |font_adjust| return switch (try font_adjust.compute(self.ctx.allocator, self.computationContext(l, v, source), self.ctx.font_metric_ratios, @import("font_request.zig").fromComputed(self.style))) {
                 .value => |computed| computed,
                 // The single unavailable decision skips real unavailable
-                // candidates. Q87: a defensive failure computes as unset.
-                .unavailable => self.compute(l, self.unset(l)),
+                // candidates. Q87: a defensive failure computes as unset,
+                // which for this inherited longhand is compute(.inherit):
+                // the parent's value, retained. Written out rather than
+                // calling compute(): a compute <-> computeValue recursion
+                // stopped LLVM inlining compute into computeAndStore and
+                // slowed every longhand of every element (Q212, lesson
+                // debugging-a-hot-path-cost-can-be-a-call-graph-shape-...).
+                .unavailable => blk: {
+                    comptime std.debug.assert(Longhand.font_size_adjust.inherited());
+                    const inherited = self.parentValue(l);
+                    inherited.retain();
+                    break :blk inherited;
+                },
             },
             else => {
                 v.retain();
@@ -865,23 +956,6 @@ const Builder = struct {
         if (!x_plain or !y_plain) {
             s.values[@intFromEnum(Longhand.overflow_x)] = Value.kw(fixOverflow(ox));
             s.values[@intFromEnum(Longhand.overflow_y)] = Value.kw(fixOverflow(oy));
-        }
-
-        // CSS Backgrounds 3 border-width: "absolute length, snapped as a
-        // border width; zero if the border style is none or hidden."
-        const sides = [_][2]Longhand{
-            .{ .border_top_style, .border_top_width },
-            .{ .border_right_style, .border_right_width },
-            .{ .border_bottom_style, .border_bottom_width },
-            .{ .border_left_style, .border_left_width },
-        };
-        for (sides) |pair| {
-            const style_kw = s.keyword(pair[0]);
-            if (style_kw == .none or style_kw == .hidden) {
-                const slot = &s.values[@intFromEnum(pair[1])];
-                slot.release();
-                slot.* = Value.px(0);
-            }
         }
     }
 };
@@ -1638,4 +1712,31 @@ fn ci1NestedColorSource(allocator: Allocator, allowed: bool) !void {
 test "ci1 winning source survives to a nested typed filter color consumer" {
     try testing.checkAllAllocationFailures(testing.allocator, ci1NestedColorSource, .{false});
     try testing.checkAllAllocationFailures(testing.allocator, ci1NestedColorSource, .{true});
+}
+
+test "a defensive unavailable font-size-adjust computes as its inherited value" {
+    var parent_block = try TestBlock.make("font-size-adjust: 0.4");
+    defer parent_block.deinit();
+    const parent = try cascade(.{ .allocator = testing.allocator, .parent = null, .is_root = true }, &.{.{ .block = &parent_block.block, .source = .{ .origin = .author } }});
+    defer parent.destroy();
+    var block = try TestBlock.make("font-size-adjust: cap-height from-font");
+    defer block.deinit();
+    var it = block.block.typed();
+    const from_font = it.next().?.value.value;
+    // No metric capability: Adjust.compute answers .unavailable, which the
+    // cascade's pick() normally excludes before computeValue is reached.
+    const style = try ComputedStyle.initial(testing.allocator);
+    defer style.destroy();
+    var no_links: [0]usize = .{};
+    var builder: Builder = .{ .ctx = .{ .allocator = testing.allocator, .parent = parent }, .candidates = &.{}, .index = CandidateIndex.init(&.{}, &no_links), .style = style };
+    defer builder.deinit();
+    const v = try builder.computeValue(.font_size_adjust, from_font, .{});
+    defer v.release();
+    try testing.expect(std.meta.eql(parent.get(.font_size_adjust), v));
+    // At the root the inherited value is the initial one.
+    var root_builder: Builder = .{ .ctx = .{ .allocator = testing.allocator, .parent = null, .is_root = true }, .candidates = &.{}, .index = CandidateIndex.init(&.{}, &no_links), .style = style };
+    defer root_builder.deinit();
+    const root_value = try root_builder.computeValue(.font_size_adjust, from_font, .{});
+    defer root_value.release();
+    try testing.expect(std.meta.eql(computed_mod.initialComputed(.font_size_adjust), root_value));
 }
