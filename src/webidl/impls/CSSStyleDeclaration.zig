@@ -287,6 +287,8 @@ fn computedValue(internal: *InternalState, name: []const u8, out: *std.ArrayList
                 const value = style.get(l);
                 if (value == .color) {
                     resolved[i] = .{ .color = try style.resolvedColor(l, internal.allocator) };
+                } else if (value == .image or value == .layers or value == .content) {
+                    resolved[i] = try style.resolvedImageValue(l, internal.allocator);
                 } else {
                     value.retain();
                     resolved[i] = value;

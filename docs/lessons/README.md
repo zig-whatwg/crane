@@ -371,6 +371,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Native font status precedes its script promise](architecture-native-font-status-precedes-its-script-promise.md) - Preserve automatic outcomes until script requests the promise.
 
 ### Spec Compliance
+- [Nested CSS parsers preserve declaration identity](spec-compliance-nested-css-parsers-preserve-declaration-identity.md) - Forward the original declaration scope and source slice through nested value grammars.
 
 - [Recognizing a property can change its CSSOM readback](spec-compliance-recognizing-a-property-can-change-its-cssom-readback.md) - Audit the old storage route when registering a property; typed parse failure can discard previously observable text.
 - [Preserve the owning property's quirks](spec-compliance-preserve-the-owning-propertys-quirks.md) - Route compatibility exceptions by the containing property, including its explicitly allowed exceptions.
@@ -905,6 +906,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A hot-path cost can be the call graph's shape, not an allocation](debugging-a-hot-path-cost-can-be-a-call-graph-shape-not-an-allocation.md) - An allocation count and a flat profile cannot see a recursion that blocks inlining; check the call graph's shape before calling a hot-path cost structural.
 
 ### Workflow
+- [Relocating inputs must preserve their identity](workflow-relocating-inputs-must-preserve-their-identity.md) - Permit path relocation while pinning every non-location field to immutable evidence.
 - [Capture remote gate output while the wrapper prints it](workflow-capture-remote-gate-output-while-the-wrapper-prints-it.md) - Keep the delivered terminal log; the remote copy is removed after printing.
 - [Cancelling a remote wrapper can leave build children](workflow-cancelling-a-remote-wrapper-can-leave-build-children.md) - Verify that a cancelled wrapper's own build and test descendants have exited before starting its replacement.
 - [Workflow: A Partial WPT Submodule Replaces the Remote Fixture Tree](workflow-a-partial-wpt-submodule-replaces-the-remote-fixture-tree.md) - Keep an uninitialized lane WPT submodule empty when crane-remote supplies the shared fixture tree.

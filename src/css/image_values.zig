@@ -1,11 +1,13 @@
 //! CSS Images4 §2.4 and Color5 §7: owned image choices, never resource loading.
-//! Legacy cross-fade follows Chrome/WebKit (Q21); gradients remain raw in (d1).
+//! Legacy cross-fade follows Chrome/WebKit (Q21); standard gradients are typed.
 const std = @import("std");
 const properties = @import("properties.zig");
 const values = @import("style_values.zig");
 const resources = @import("resource_values.zig");
 const Scheme = @import("color_scheme.zig").Scheme;
 const tokenizer = @import("tokenizer.zig");
+const gradients = @import("gradient_values.zig");
+const image_values = @This();
 const Allocator = std.mem.Allocator;
 const Value = values.Value;
 
@@ -79,9 +81,11 @@ pub const Data = union(enum) {
     light_dark: [2]Value,
     cross_fade: CrossFade,
     solid_color: values.Color,
+    gradient: gradients.Gradient,
 
     fn clone(self: Data, allocator: Allocator) Allocator.Error!Data {
         return switch (self) {
+            .gradient => |gradient| .{ .gradient = try gradient.clone(allocator) },
             .image_set => |set| blk: {
                 const copy = try allocator.alloc(Candidate, set.candidates.len);
                 errdefer allocator.free(copy);
@@ -116,6 +120,7 @@ pub const Data = union(enum) {
 
     fn release(self: Data, allocator: Allocator) void {
         switch (self) {
+            .gradient => |gradient| gradient.release(allocator),
             .image_set => |set| {
                 for (set.candidates) |item| {
                     item.image.release();
@@ -135,6 +140,10 @@ pub const Data = union(enum) {
         var urls = resources.Builder{ .allocator = allocator };
         defer urls.deinit();
         switch (self) {
+            .gradient => |gradient| {
+                try gradient.serialize(&out, allocator);
+                return values.SharedText.create(allocator, out.items);
+            },
             .image_set => |set| {
                 try out.appendSlice(allocator, "image-set(");
                 for (set.candidates, 0..) |candidate, i| {
@@ -226,6 +235,7 @@ pub const Image = struct {
                 for (cross.inputs, other.data.cross_fade.inputs) |a, b| if (!a.eql(b)) return false;
             },
             .solid_color => |color| if (!color.eql(other.data.solid_color)) return false,
+            .gradient => |gradient| if (!gradient.eql(other.data.gradient)) return false,
         }
         return true;
     }
@@ -239,6 +249,7 @@ pub const Image = struct {
             .light_dark => |pair| pair[0].needsUnavailableMetrics(geometry_length) or pair[1].needsUnavailableMetrics(geometry_length),
             .cross_fade => |cross| cross.inputs[0].needsUnavailableMetrics(geometry_length) or cross.inputs[1].needsUnavailableMetrics(geometry_length),
             .solid_color => |color| color.needsUnavailableMetrics(geometry_length),
+            .gradient => |gradient| gradient.needsUnavailableMetrics(geometry_length),
         };
     }
 
@@ -251,6 +262,7 @@ pub const Image = struct {
             .light_dark => |pair| pair[0].needsTreeCounts() or pair[1].needsTreeCounts(),
             .cross_fade => |cross| cross.inputs[0].needsTreeCounts() or cross.inputs[1].needsTreeCounts(),
             .solid_color => |color| color.needsTreeCounts(),
+            .gradient => |gradient| gradient.needsTreeCounts(),
         };
     }
 
@@ -263,11 +275,82 @@ pub const Image = struct {
             .light_dark => |pair| pair[0].needsRandomBase() or pair[1].needsRandomBase(),
             .cross_fade => |cross| cross.inputs[0].needsRandomBase() or cross.inputs[1].needsRandomBase(),
             .solid_color => |color| color.needsRandomBase(),
+            .gradient => |gradient| gradient.needsRandomBase(),
         };
+    }
+
+    /// Structural dependency query; Color alone owns color graph inspection.
+    pub fn containsCurrentColor(self: *const Image) bool {
+        return switch (self.data) {
+            .gradient => |gradient| gradient.containsCurrentColor(),
+            .solid_color => |color| color.containsCurrentColor(),
+            .image_set => |set| blk: {
+                for (set.candidates) |candidate| if (image_values.containsCurrentColor(candidate.image)) break :blk true;
+                break :blk false;
+            },
+            .light_dark => |pair| image_values.containsCurrentColor(pair[0]) or image_values.containsCurrentColor(pair[1]),
+            .cross_fade => |cross| image_values.containsCurrentColor(cross.inputs[0]) or image_values.containsCurrentColor(cross.inputs[1]),
+        };
+    }
+
+    // Image.create borrows each temporary, clones its owned data and rebuilds
+    // URL occurrence offsets against the replacement text. No selection,
+    // descriptor computation or URL resolution belongs to this CSSOM copy.
+    fn resolveColors(self: *const Image, allocator: Allocator, context: values.Color.Context) Allocator.Error!Value {
+        switch (self.data) {
+            .gradient => |gradient| {
+                const resolved = try gradient.resolveCurrentColors(allocator, context);
+                defer resolved.release(allocator);
+                return .{ .image = try create(allocator, .{ .gradient = resolved }) };
+            },
+            .solid_color => |color| {
+                const resolved = try color.resolveComputed(allocator, context);
+                defer resolved.release();
+                return .{ .image = try create(allocator, .{ .solid_color = resolved }) };
+            },
+            .image_set => |set| {
+                const candidates = try allocator.alloc(Candidate, set.candidates.len);
+                var initialized: usize = 0;
+                defer {
+                    for (candidates[0..initialized]) |candidate| candidate.image.release();
+                    allocator.free(candidates);
+                }
+                for (set.candidates, candidates) |candidate, *replacement| {
+                    var resolved = candidate;
+                    resolved.image = try resolveCurrentColors(allocator, .list_style_image, candidate.image, context);
+                    replacement.* = resolved;
+                    initialized += 1;
+                }
+                // These temporary records own only the replacement images;
+                // MIME strings and every descriptor stay borrowed until create.
+                return .{ .image = try create(allocator, .{ .image_set = .{ .candidates = candidates } }) };
+            },
+            .light_dark => |pair| {
+                const first = try resolveCurrentColors(allocator, .list_style_image, pair[0], context);
+                defer first.release();
+                const second = try resolveCurrentColors(allocator, .list_style_image, pair[1], context);
+                defer second.release();
+                return .{ .image = try create(allocator, .{ .light_dark = .{ first, second } }) };
+            },
+            .cross_fade => |cross| {
+                const first = try resolveCurrentColors(allocator, .list_style_image, cross.inputs[0], context);
+                defer first.release();
+                const second = try resolveCurrentColors(allocator, .list_style_image, cross.inputs[1], context);
+                defer second.release();
+                var resolved = cross;
+                resolved.inputs = .{ first, second };
+                return .{ .image = try create(allocator, .{ .cross_fade = resolved }) };
+            },
+        }
     }
 
     pub fn compute(self: *const Image, allocator: Allocator, scheme: Scheme, context: anytype) Allocator.Error!Value {
         switch (self.data) {
+            .gradient => |gradient| {
+                const computed = try gradient.compute(allocator, scheme, context);
+                defer computed.release(allocator);
+                return .{ .image = try create(allocator, .{ .gradient = computed }) };
+            },
             .light_dark => |pair| {
                 // Color5 §7: choose at computed time BEFORE inheritance.
                 const chosen = pair[if (scheme == .dark) @as(usize, 1) else 0];
@@ -312,6 +395,51 @@ pub const Image = struct {
     }
 };
 
+/// Whether an image aggregate contains a receiver-dependent color. Unrelated
+/// Value arms and opaque leaves have no typed image colors to inspect.
+pub fn containsCurrentColor(value: Value) bool {
+    return switch (value) {
+        .image => |image| image.containsCurrentColor(),
+        .layers => |layers| blk: {
+            for (layers.items) |item| if (containsCurrentColor(item)) break :blk true;
+            break :blk false;
+        },
+        .content => |content| blk: {
+            for (content.items) |item| if (item.image) |image| {
+                if (containsCurrentColor(image)) break :blk true;
+            };
+            break :blk false;
+        },
+        else => false,
+    };
+}
+
+const ResolvedColorContext = struct {
+    allocator: Allocator,
+    color: values.Color.Context,
+
+    pub fn component(self: ResolvedColorContext, longhand: properties.Longhand, value: Value) Allocator.Error!Value {
+        return resolveCurrentColors(self.allocator, longhand, value, self.color);
+    }
+};
+
+/// Owned CSSOM image value (CSSOM §6.7.2 step 4, Color4 §15.5). Preserve
+/// computed numbers, image choices and resource identities; only resolve
+/// dependent colors. A graph without currentcolor is retained allocation-free.
+pub fn resolveCurrentColors(allocator: Allocator, longhand: properties.Longhand, value: Value, context: values.Color.Context) Allocator.Error!Value {
+    if (!containsCurrentColor(value)) {
+        value.retain();
+        return value;
+    }
+    const narrow = ResolvedColorContext{ .allocator = allocator, .color = context };
+    return switch (value) {
+        .image => |image| image.resolveColors(allocator, context),
+        .layers => |layers| .{ .layers = try layers.compute(allocator, longhand, narrow) },
+        .content => |content| .{ .content = try content.computeImages(allocator, narrow) },
+        else => unreachable,
+    };
+}
+
 /// All fields are borrowed from the retained Value. No CSS is reparsed here.
 pub const View = union(enum) {
     none,
@@ -331,6 +459,7 @@ pub fn view(value: Value) ?View {
         .light_dark => .{ .light_dark = &value.image.data.light_dark },
         .cross_fade => .{ .cross_fade = &value.image.data.cross_fade },
         .solid_color => |color| .{ .solid_color = color },
+        .gradient => .{ .gradient = value.image.text },
     };
     if (value == .text) return switch (value.text.image_kind) {
         .generic => null,
@@ -372,6 +501,11 @@ fn parseAtDepth(options: properties.ParseOptions, stream: *properties.Stream, po
         return Value.kw(.none);
     }
     if (token.token_type == .function) {
+        if (policy.generated and gradients.function(token) != null) {
+            const gradient = try gradients.parse(options, stream) orelse return null;
+            defer gradient.release(options.allocator);
+            return .{ .image = try Image.create(options.allocator, .{ .gradient = gradient }) };
+        }
         if (tokenizer.nameEql(token.value, "image-set") or tokenizer.nameEql(token.value, "-webkit-image-set")) {
             if (!policy.image_set or depth == 128) return null;
             return parseSet(options, stream, policy, depth + 1);
@@ -386,8 +520,8 @@ fn parseAtDepth(options: properties.ParseOptions, stream: *properties.Stream, po
         }
     }
     if (!policy.generated and !isUrl(token)) return null;
-    // Q30/Q33: the old leaf grammar remains responsible for URLs and raw
-    // gradients, with its resolver and provenance behavior unchanged.
+    // The legacy leaf grammar retains its URLs and nonstandard functions,
+    // with resolver and provenance behavior unchanged.
     const leaf = (try properties.parseImageLeaf(options, stream)) orelse return null;
     if (!policy.image_set and leaf == .text) {
         // The raw legacy leaf branch has not acquired its complete grammar

@@ -7,6 +7,7 @@ const css_serialize = @import("serialize.zig");
 const values = @import("style_values.zig");
 const resources = @import("resource_values.zig");
 const properties = @import("properties.zig");
+const random_values = @import("random_values.zig");
 const Allocator = std.mem.Allocator;
 const Token = tokenizer.Token;
 
@@ -234,10 +235,17 @@ pub fn parse(allocator: Allocator, text: []const u8, resolver: ?UrlResolver) !?*
 }
 
 pub fn parseWithSource(allocator: Allocator, text: []const u8, resolver: ?UrlResolver, source: ?*resources.ResourceSource) !?*Content {
+    return parseWithSourceAndScope(allocator, text, resolver, source, null);
+}
+
+/// Values 5 §9.4.1: borrow the declaration's original token ordinals while
+/// parsing. Text must be from the scope's original buffer; parsed keys own
+/// their strings, and neither Content nor its images retain the scope.
+pub fn parseWithSourceAndScope(allocator: Allocator, text: []const u8, resolver: ?UrlResolver, source: ?*resources.ResourceSource, scope: ?*const random_values.ParseScope) !?*Content {
     const result = try Content.create(allocator);
     var success = false;
     defer if (!success) result.unref();
-    var parser: Parser = .{ .allocator = result.arena.allocator(), .backing_allocator = allocator, .tok = .init(text), .input = text, .resolver = resolver, .source = source };
+    var parser: Parser = .{ .allocator = result.arena.allocator(), .backing_allocator = allocator, .tok = .init(text), .input = text, .resolver = resolver, .source = source, .random_scope = scope };
     var items: std.ArrayList(Item) = .empty;
     while (parser.peek().token_type != .eof) {
         const token = parser.peek();
@@ -273,6 +281,8 @@ const Parser = struct {
     peeked: ?Token = null,
     resolver: ?UrlResolver,
     source: ?*resources.ResourceSource,
+    /// Borrowed only for this parse; retries use the same immutable scope.
+    random_scope: ?*const random_values.ParseScope,
 
     fn peek(self: *Parser) Token {
         if (self.peeked) |token| return token;
@@ -330,10 +340,10 @@ const Parser = struct {
             if (value.token_type != .string or !self.closeFunction()) return null;
             return try self.url(try self.string(value));
         }
-        inline for (.{ "image-set", "-webkit-image-set", "light-dark", "-webkit-cross-fade" }) |image| if (std.ascii.eqlIgnoreCase(name, image)) return self.typedImage(token);
-        // Q76: preserve raw functions' Syntax EOF completion and rejection
-        // until the complete shared gradient grammar replaces this branch.
-        inline for (.{ "linear-gradient", "radial-gradient", "conic-gradient", "repeating-linear-gradient", "repeating-radial-gradient", "repeating-conic-gradient", "image", "cross-fade", "element", "paint" }) |image| if (std.ascii.eqlIgnoreCase(name, image)) return self.remainingFunction(token, .image);
+        inline for (.{ "image-set", "-webkit-image-set", "light-dark", "-webkit-cross-fade", "linear-gradient", "radial-gradient", "conic-gradient", "repeating-linear-gradient", "repeating-radial-gradient", "repeating-conic-gradient" }) |image| if (std.ascii.eqlIgnoreCase(name, image)) return self.typedImage(token);
+        // Q76/Q115: standard gradients now share the typed EOF grammar.
+        // Unrelated raw functions retain their original Syntax handling.
+        inline for (.{ "image", "cross-fade", "element", "paint" }) |image| if (std.ascii.eqlIgnoreCase(name, image)) return self.remainingFunction(token, .image);
         if (std.ascii.eqlIgnoreCase(name, "leader")) {
             const value = self.next();
             if (value.token_type != .string and !(value.token_type == .ident and (tokenizer.nameEql(value.value, "dotted") or tokenizer.nameEql(value.value, "solid") or tokenizer.nameEql(value.value, "space")))) return null;
@@ -351,7 +361,7 @@ const Parser = struct {
     }
 
     fn imageOptions(self: *const Parser) properties.ParseOptions {
-        return .{ .allocator = self.backing_allocator, .url_resolver = self.resolver, .resource_source = self.source };
+        return .{ .allocator = self.backing_allocator, .url_resolver = self.resolver, .resource_source = self.source, .random_scope = self.random_scope };
     }
 
     /// Takes ownership even on failure; the value never lives in our arena.
