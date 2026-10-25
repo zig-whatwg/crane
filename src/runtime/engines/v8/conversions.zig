@@ -4614,8 +4614,16 @@ pub fn instanceToV8Checked(isolate: *v8.Isolate, instance: *runtime.Instance) er
 
 /// A Window as script sees it: the global it is bound to (a `Global<Object>*`,
 /// BORROWED from the realm's wrapper cache, which SetReturnValueGlobal reads),
-/// or null when it has none to answer with: its teardown ran (a realm's end
-/// frees its state, the binding with it).
+/// or null when it has none to answer with:
+/// - its teardown ran (a realm's end frees its state, the binding with it);
+/// - its realm has no engine left: the collector took a detached realm's
+///   context and its global with it, in the collection whose second pass
+///   disposed the cached handle the binding names, before the realm's end -
+///   a queued task - has run (lane winslot1, E4;
+///   tests/v8/window_collected_realm_conversion_test.zig). realmCollected
+///   marks the realm first (engine_ctx null), and a global proxy cannot be
+///   collected while its context lives, so a realm that still has an engine
+///   never names a disposed handle.
 /// Never an ordinary wrapper: a Window wrapped in another realm's cache was
 /// freed by that cache's sweep - its destructor run a second time and its
 /// slot returned - while every holder of it read on (lane winslot1, E3;
@@ -4623,6 +4631,7 @@ pub fn instanceToV8Checked(isolate: *v8.Isolate, instance: *runtime.Instance) er
 /// answers v8::Null for a window with no frame
 /// (core/frame/dom_window.cc).
 fn windowProxyOrNull(isolate: *v8.Isolate, window: *runtime.Instance) *v8.Value {
+    if (!window.ctx.hasEngine()) return v8.v8_Null(isolate) orelse unreachable;
     const bound_global = @import("dom").window_globals.boundGlobal(window) orelse
         return v8.v8_Null(isolate) orelse unreachable;
     return @ptrCast(bound_global);
