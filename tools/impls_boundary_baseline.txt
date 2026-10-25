@@ -18,7 +18,7 @@ src/html/event_utils.zig ErrorEvent.createErrorEvent 1
 src/html/full.zig impls.@import 1
 src/lib_exports.zig impls.@import 1
 src/runtime/engines/v8/context_manager.zig Node.getInternalState 1
-src/runtime/engines/v8/context_manager.zig Window.getInternal 3
+src/runtime/engines/v8/context_manager.zig Window.getInternal 2
 src/runtime/engines/v8/context_manager.zig Window.getNamedProperty 1
 src/runtime/engines/v8/context_manager.zig Window.hasNamedProperty 1
 src/runtime/engines/v8/context_manager.zig Window.setBoundV8Global 2
@@ -77,10 +77,8 @@ src/webidl/impls/Response.zig Headers.initWithHeaderList 1
 src/webidl/impls/SVGScriptElement.zig Node.setLocalName 1
 src/webidl/impls/URL.zig Blob.getInternal 1
 src/webidl/impls/Window.zig History.State 1
-src/webidl/impls/Window.zig History.deinit 1
 src/webidl/impls/Window.zig History.getInternal 1
 src/webidl/impls/Window.zig History.init 1
-src/webidl/impls/Window.zig Location.deinit 1
 src/webidl/impls/Window.zig Screen.init 1
 src/webidl/impls/Window.zig Storage.initWithStorage 2
 src/webidl/impls/WorkerGlobalScope.zig WorkerLocation.InternalState 1

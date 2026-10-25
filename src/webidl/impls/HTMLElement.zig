@@ -109,7 +109,7 @@ pub const InternalState = struct {
         if (self.cryptographic_nonce) |nonce| self.allocator.free(nonce);
         // element.style is severed from the element (its wrapper, which the
         // element's traced, goes with the element's).
-        if (self.style_declaration) |style| self.style_declaration_kept.release(style, interfaces.CSSStyleProperties.deinit);
+        if (self.style_declaration) |style| self.style_declaration_kept.releaseOwned(style);
         self.style_declaration = null;
     }
 };

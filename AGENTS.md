@@ -235,7 +235,10 @@ Two kinds this codebase keeps needing:
 
 1. **Memory.** `std.testing.allocator` does not see C++ allocations. For
    anything touching V8 handles or allocators, measure with `zig build gc-bench`
-   and name leaks with `leaks --atExit -- <cmd>`.
+   and name leaks with `leaks --atExit -- <cmd>`. Run the WPT runner under it
+   in-process: no `--parallel` (not even `=1`) and no `--supervise`, which make
+   it a supervisor of child processes that `leaks` never inspects
+   ([lesson](docs/lessons/testing-leaks-at-exit-sees-only-the-supervisor-not-its-child-runners.md)).
 2. **Comptime predicates** that gate handle ownership (`typeRetainsContext`,
    `argHandleIsCopied`) must have a test pinning their **default**, not just
    their known cases. See `tests/v8/retention_predicate_test.zig` — two

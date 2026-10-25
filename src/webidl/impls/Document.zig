@@ -737,10 +737,10 @@ pub const InternalState = struct {
 
         // The objects this document handed out as the same object for its
         // whole life: each is severed from it here (see `KeptChild`).
-        if (self.all_collection) |all| self.all_collection_kept.release(all, interfaces.HTMLAllCollection.deinit);
-        if (self.fonts) |fonts_inst| self.fonts_kept.release(fonts_inst, interfaces.FontFaceSet.deinit);
-        if (self.selection) |sel| self.selection_kept.release(sel, interfaces.Selection.deinit);
-        if (self.style_sheets) |ss| self.style_sheets_kept.release(ss, interfaces.StyleSheetList.deinit);
+        if (self.all_collection) |all| self.all_collection_kept.releaseOwned(all);
+        if (self.fonts) |fonts_inst| self.fonts_kept.releaseOwned(fonts_inst);
+        if (self.selection) |sel| self.selection_kept.releaseOwned(sel);
+        if (self.style_sheets) |ss| self.style_sheets_kept.releaseOwned(ss);
     }
 
     fn ensureInteractionState(self: *InternalState) !*InteractionState {
@@ -1304,11 +1304,24 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
             internal.refcounts.foreign_holds,
         });
         engine.forgetTracedChild(instance, .{ .name = "template owner document" });
+        // The template contents owner document goes with this document: now
+        // when nothing else can reach it - no engine realm, no wrapper (the
+        // cache is never asked during a coordinated teardown), or, there, no
+        // wrapper any more ([wrap_tracking]: its last one finalized, so the
+        // realm's sweep has no entry left to free it; lane pageretention1).
+        // Else its wrapper frees it.
         if (internal.template_owner_document) |owner| {
-            if (runtime.SlabAllocator.generationOf(owner) == internal.template_owner_generation and
-                (!instance.ctx.hasEngine() or
-                    (!runtime.cleanup_coordinator.isContextTearingDown() and !engine.hasWrapper(owner))))
-                runtime.Instance.deinit(owner);
+            if (runtime.SlabAllocator.generationOf(owner) == internal.template_owner_generation) {
+                if (!instance.ctx.hasEngine() or
+                    (!runtime.cleanup_coordinator.isContextTearingDown() and !engine.hasWrapper(owner)))
+                {
+                    runtime.Instance.deinit(owner);
+                } else if (runtime.cleanup_coordinator.isContextTearingDown() and
+                    runtime.instance_lifecycle.provablyUnwrapped(engine.capabilities.wrap_tracking != .unsupported, owner))
+                {
+                    @import("dom").node_creation.destroyRoot(owner);
+                }
+            }
         }
         releaseNativeGlobalRegistry(internal);
         internal.custom_element_registry.release(instance);

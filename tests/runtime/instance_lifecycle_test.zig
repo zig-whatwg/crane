@@ -125,3 +125,63 @@ test "the DEFAULT: an engine that does not track wraps proves no instance unwrap
     try testing.expect(lifecycle.provablyUnwrapped(true, unmarked));
     try testing.expect(!lifecycle.provablyUnwrapped(true, instance));
 }
+
+// Lane pageretention1: the release of a wrap (`wrapper_gone`), which the
+// adapter sets when it finalizes the last engine object of an instance the
+// host keeps. The mark is then the present, not only the history.
+
+test "the DEFAULT of a released wrap: only a release the adapter recorded proves an instance unreachable" {
+    var slab = runtime.SlabAllocator.init(testing.allocator);
+    defer slab.deinit();
+
+    // Marked and never released: reachable, tracked or not.
+    const held = try slab.alloc(&vtable);
+    lifecycle.markWrapped(held);
+    try testing.expect(!lifecycle.provablyUnwrapped(true, held));
+    try testing.expect(!lifecycle.provablyUnwrapped(false, held));
+
+    // Released: unreachable - but only on an engine that tracks wraps. An
+    // engine that does not (JavaScriptCore, QuickJS, the test adapter)
+    // proves nothing, released or not: the slot is kept.
+    const released = try slab.alloc(&vtable);
+    lifecycle.markWrapped(released);
+    lifecycle.markWrapperGone(released);
+    try testing.expect(lifecycle.provablyUnwrapped(true, released));
+    try testing.expect(!lifecycle.provablyUnwrapped(false, released));
+    // The history stays: it was wrapped.
+    try testing.expect(lifecycle.wasWrapped(released));
+
+    // A release on an instance never wrapped records nothing: there is no
+    // bind for a later one to undo.
+    const never = try slab.alloc(&vtable);
+    lifecycle.markWrapperGone(never);
+    try testing.expectEqual(@as(u8, 0), runtime.SlabAllocator.lifecycleBitsOf(never));
+    try testing.expect(lifecycle.provablyUnwrapped(true, never));
+}
+
+test "a new bind undoes a released wrap, and a reissued slot starts with neither" {
+    var slab = runtime.SlabAllocator.init(testing.allocator);
+    defer slab.deinit();
+    const instance = try slab.alloc(&vtable);
+    lifecycle.markWrapped(instance);
+    lifecycle.markWrapperGone(instance);
+    try testing.expect(lifecycle.provablyUnwrapped(true, instance));
+
+    // Script reached it again (a fresh wrapper): reachable until that one
+    // is released too.
+    lifecycle.markWrapped(instance);
+    try testing.expect(!lifecycle.provablyUnwrapped(true, instance));
+    // A release never touches the cleanup flags or the generation.
+    const generation = runtime.SlabAllocator.generationOf(instance);
+    try testing.expect(lifecycle.markCleanupStarted(instance));
+    lifecycle.markWrapperGone(instance);
+    try testing.expect(lifecycle.isCleanupStarted(instance));
+    try testing.expect(!lifecycle.isCleanedUp(instance));
+    try testing.expectEqual(generation, runtime.SlabAllocator.generationOf(instance));
+
+    slab.free(instance);
+    const again = try slab.alloc(&vtable);
+    try testing.expectEqual(instance, again);
+    try testing.expect(!lifecycle.wasWrapped(again));
+    try testing.expect(lifecycle.provablyUnwrapped(true, again));
+}

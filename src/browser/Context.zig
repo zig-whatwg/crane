@@ -2634,7 +2634,12 @@ pub const Context = struct {
             document,
             runtime.DOMString.initInterned("iframe"),
         );
-        defer interfaces.HTMLCollection.deinit(iframes);
+        // Made here and never handed to script, so nothing else will free it:
+        // its teardown AND its storage (runtime.Instance.deinit). The
+        // interface's deinit alone - a destructor, not a free - left every
+        // page load one HTMLCollection slot until its Browser ended (lane
+        // pageretention1).
+        defer runtime.Instance.deinit(iframes);
 
         // Get the collection length
         const length = try interfaces.HTMLCollection.get_length(iframes);

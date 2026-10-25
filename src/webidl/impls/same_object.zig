@@ -183,4 +183,23 @@ pub const KeptChild = struct {
         if (self.link) |link| if (link.isLive()) sever(child);
         self.* = .{};
     }
+
+    /// The owner is going, and `child` - if it is still the object the
+    /// owner made - goes WHOLE with it (runtime.gc.releaseOwned): its
+    /// destructor now, so script that still holds it gets InvalidStateError,
+    /// and its storage back from whoever can reach it last - now (or after
+    /// the realm teardown under way) when no wrapper can, else its wrapper's
+    /// end. For a child whose sever is its own destructor; a shadow root,
+    /// which outlives its host as a DocumentFragment, keeps `release`.
+    ///
+    /// The owners here severed with the interface's deinit alone - a
+    /// destructor, not a free (abortsig1's class) - which a wrapped child
+    /// survived only because its wrapper's end ran its deinit AGAIN and then
+    /// freed it. A child no wrapper reached - made where the owner's realm
+    /// has no engine, so the hand-out's edge wrapped nothing - kept its slab
+    /// slot and state block until its Browser ended (lane pageretention1).
+    pub fn releaseOwned(self: *KeptChild, child: *runtime.Instance) void {
+        if (self.link) |link| if (link.isLive()) runtime.gc.releaseOwned(child);
+        self.* = .{};
+    }
 };

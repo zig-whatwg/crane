@@ -332,6 +332,15 @@ fn isRealmWindow(instance: *runtime.Instance) bool {
 /// root's subtree). WebKit asserts the same in Node::~Node: a node is never
 /// destroyed while it has a parent. Anything that is not a node, and a node
 /// that is a root, answers false and is freed as before.
+/// Push `entry` - a live entry the deinit walk took out of its map, so on
+/// no pending list - onto `list`, through its pending link (unused while it
+/// is live): a list that needs no allocation, so it cannot fail.
+fn setAside(list: *?*CacheEntry, entry: *CacheEntry) void {
+    std.debug.assert(entry.pending_next == null and entry.pending_prev == null);
+    entry.pending_next = list.*;
+    list.* = entry;
+}
+
 pub fn treeOwns(instance: *runtime.Instance) bool {
     const NodeImpl = @import("impls").Node;
     const node_internal = NodeImpl.getInternalState(instance) orelse return false;
@@ -980,12 +989,26 @@ fn finalizeEntry(entry: *CacheEntry) void {
     // root's - freed here first, the root's teardown then walked into it
     // (gc_bench's host-in-dropped-parent body, a segfault in Node.deinit at the
     // page's end).
+    //
+    // The wrapper finalized here was the last engine object of an instance
+    // no other realm wraps, so nothing in script reaches the instance any
+    // more (lane pageretention1). One its tree already tore down hands its
+    // storage to the teardown, which returns it after its last phase; a tree
+    // node still to be torn down is marked released, so that its tree's
+    // teardown returns its storage the same way (Node.deinitNodeByType). Both
+    // kept their slots until the Browser ended: the teardown found the node
+    // marked wrapped and no entry left to return it.
     if (runtime.cleanup_coordinator.isContextTearingDown()) {
-        if (!runtime.instance_lifecycle.isCleanupStarted(entry.instance) and
-            !wrappedElsewhere(entry.instance, entry.cache) and
-            !treeOwns(entry.instance))
-        {
+        const started = runtime.instance_lifecycle.isCleanupStarted(entry.instance);
+        const elsewhere = wrappedElsewhere(entry.instance, entry.cache);
+        if (!started and !elsewhere and !treeOwns(entry.instance)) {
             runtime.gc.onObjectFreed(entry.instance);
+        } else if (!elsewhere and !isRealmWindow(entry.instance)) {
+            if (!started) {
+                runtime.instance_lifecycle.markWrapperGone(entry.instance);
+            } else if (runtime.instance_lifecycle.isCleanedUp(entry.instance)) {
+                runtime.cleanup_coordinator.deferStorageRelease(entry.instance, entry.original_generation);
+            }
         }
         disposeEntryWrapper(entry);
         entry.cache.allocator.destroy(entry);
@@ -1015,6 +1038,18 @@ fn finalizeEntry(entry: *CacheEntry) void {
     const detached_streams = entry.cache.detached_holder != null and isStreamsGraphObject(entry.instance.vtable.name);
     if (isRealmWindow(entry.instance) or (engineOwns(entry.instance) and !detached_streams)) {
         log.debug("[finalizeEntry] ENGINE-OWNED: instance={*} - wrapper released, instance kept", .{entry.instance});
+        // [wrap_tracking]: this was the instance's last engine object - no
+        // other realm's cache wraps it, and it is no realm's global - so
+        // nothing in script reaches it now, and the host's teardown of it may
+        // return its storage as for a node no wrapper ever reached
+        // (instance_lifecycle.provablyUnwrapped). A removed frame's realm
+        // is taken whole by the collector: every wrapped node of its document,
+        // and the document, kept its slot when the realm's end tore them
+        // down, marked wrapped with no entry left to return it (lane
+        // pageretention1). WebKit: the wrapper's `Ref` to its node goes with
+        // the wrapper (JSDOMWrapper::m_wrapped), leaving the node its tree's.
+        if (!isRealmWindow(entry.instance) and !wrappedElsewhere(entry.instance, entry.cache))
+            runtime.instance_lifecycle.markWrapperGone(entry.instance);
         disposeEntryWrapper(entry);
         entry.cache.allocator.destroy(entry);
         return;
@@ -1693,6 +1728,9 @@ pub const WrapperCache = struct {
         // while it runs.
         self.beginWalk();
         defer self.endWalk();
+        // Tree-owned entries the walk reaches before their root, waiting for
+        // its end (the treeOwns branch below).
+        var aside: ?*CacheEntry = null;
         var iter = self.cache.iterator();
         var processed: usize = 0;
         var skipped_cleaned: usize = 0;
@@ -1756,10 +1794,18 @@ pub const WrapperCache = struct {
                     log.debug("[wrapper_cache.deinit] SKIP_STARTED iframe instance={*}", .{entry.instance});
                 }
                 // Its tree tore it down and left the storage: free that, and
-                // only that - deinit has run.
+                // only that - deinit has run. Inside a coordinated teardown,
+                // after its last phase (the coordinator), as for an entry
+                // `instance_already_cleaned`: returned here, mid-sweep, the
+                // slot was the next allocation of any type's (the slab's free
+                // list is LIFO) while a teardown later in this sweep could
+                // still read it (lane pageretention1; unwrapped1's rule).
                 if (!is_reused and runtime.instance_lifecycle.isCleanedUp(entry.instance)) {
                     severWrapper(entry);
-                    runtime.gc.releaseStorage(entry.instance);
+                    if (runtime.cleanup_coordinator.isContextTearingDown())
+                        runtime.cleanup_coordinator.deferStorageRelease(entry.instance, entry.original_generation)
+                    else
+                        runtime.gc.releaseStorage(entry.instance);
                 }
             } else if (is_reused) {
                 // Its slot holds another object now: the wrapper must not
@@ -1787,6 +1833,20 @@ pub const WrapperCache = struct {
                 // its children in Node.deinit, which marks each one's cleanup
                 // started, so a child's entry reached after its root is
                 // skipped above as `is_started`.
+                //
+                // In THIS order the root's teardown, later in the walk, frees
+                // the node but not its slot - the node was wrapped, and its
+                // teardown leaves a wrapped node's storage to its wrapper,
+                // whose entry this is - so every wrapped node of a detached
+                // wrapped tree whose entry came first kept its slot until the
+                // Browser ended (lane pageretention1). The entry waits until
+                // the walk is done (`setAside`): a node its root's teardown
+                // freed then gives its slot to the teardown, severed from its
+                // wrapper; one still alive keeps both, as before. No
+                // allocation: the entry's own pending link, which a live
+                // entry does not use, holds the list.
+                setAside(&aside, entry);
+                continue;
             } else if (wrappedElsewhere(entry.instance, self)) {
                 // Another realm's cache still wraps it; that one frees it.
             } else {
@@ -1805,6 +1865,25 @@ pub const WrapperCache = struct {
             disposeEntryWrapper(entry);
 
             // Free the CacheEntry
+            self.allocator.destroy(entry);
+        }
+
+        // The tree-owned entries set aside: a node whose root's teardown ran
+        // later in the walk is gone, and only this entry's wrapper can still
+        // reach its slot - severed, the slot goes to the teardown, which
+        // returns it after its last phase. A node still alive (its tree is
+        // another realm's, or its root was not reached) keeps wrapper and
+        // slot. Then each entry goes as every other did above.
+        while (aside) |entry| {
+            aside = entry.pending_next;
+            entry.pending_next = null;
+            if (!slotReissued(entry) and runtime.instance_lifecycle.isCleanedUp(entry.instance) and
+                !wrappedElsewhere(entry.instance, self))
+            {
+                severWrapper(entry);
+                runtime.cleanup_coordinator.deferStorageRelease(entry.instance, entry.original_generation);
+            }
+            disposeEntryWrapper(entry);
             self.allocator.destroy(entry);
         }
 

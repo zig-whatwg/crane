@@ -256,6 +256,23 @@ pub const Longhand = enum(u8) {
     background_origin,
     background_clip,
 
+    // CSS Fonts4 value families (row 119).
+    font_width,
+    font_feature_settings,
+    font_kerning,
+    font_language_override,
+    font_optical_sizing,
+    font_variant_alternates,
+    font_variant_caps,
+    font_variant_east_asian,
+    font_variant_emoji,
+    font_variant_ligatures,
+    font_variant_numeric,
+    font_variant_position,
+    font_variation_settings,
+    // Must follow all request inputs for from-font computation (Q46).
+    font_size_adjust,
+
     pub const count = @typeInfo(Longhand).@"enum".fields.len;
 
     /// The property name.
@@ -438,6 +455,12 @@ pub const Grammar = enum {
     font_family,
     font_size,
     font_weight,
+    font_style,
+    font_width,
+    font_settings,
+    font_language_override,
+    font_variant,
+    font_size_adjust,
     letter_spacing,
     line_height,
     opacity,
@@ -584,7 +607,7 @@ const infos: [Longhand.count]Info = blk: {
         // CSS Fonts 4: "Initial: depends on user agent" - serif (design Q11).
         .{ .longhand = .font_family, .inherited = true, .initial = Value.kw(.serif), .grammar = .font_family },
         .{ .longhand = .font_size, .inherited = true, .initial = Value.kw(.medium), .grammar = .font_size, .quirky_length = true },
-        .{ .longhand = .font_style, .inherited = true, .initial = Value.kw(.normal), .grammar = .keywords, .keywords = &.{ .normal, .italic, .oblique } },
+        .{ .longhand = .font_style, .inherited = true, .initial = Value.kw(.normal), .grammar = .font_style },
         .{ .longhand = .font_weight, .inherited = true, .initial = .{ .number = 400 }, .grammar = .font_weight },
         .{ .longhand = .height, .inherited = false, .initial = Value.kw(.auto), .grammar = .size, .quirky_length = true },
         .{ .longhand = .inline_size, .inherited = false, .initial = Value.kw(.auto), .grammar = .size, .logical = .{ .group = .size, .side = .inline_start } },
@@ -688,6 +711,20 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .background_attachment, .inherited = false, .initial = .{ .image_keyword = .scroll }, .grammar = .background },
         .{ .longhand = .background_origin, .inherited = false, .initial = .{ .image_keyword = .padding_box }, .grammar = .background },
         .{ .longhand = .background_clip, .inherited = false, .initial = .{ .image_keyword = .border_box }, .grammar = .background },
+        .{ .longhand = .font_width, .inherited = true, .initial = .{ .font_width_keyword = .normal }, .grammar = .font_width },
+        .{ .longhand = .font_feature_settings, .inherited = true, .initial = Value.kw(.normal), .grammar = .font_settings },
+        .{ .longhand = .font_kerning, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .normal, .none } },
+        .{ .longhand = .font_language_override, .inherited = true, .initial = Value.kw(.normal), .grammar = .font_language_override },
+        .{ .longhand = .font_optical_sizing, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .none } },
+        .{ .longhand = .font_variant_alternates, .inherited = true, .initial = Value.kw(.normal), .grammar = .font_variant },
+        .{ .longhand = .font_variant_caps, .inherited = true, .initial = Value.kw(.normal), .grammar = .font_variant },
+        .{ .longhand = .font_variant_east_asian, .inherited = true, .initial = Value.kw(.normal), .grammar = .font_variant },
+        .{ .longhand = .font_variant_emoji, .inherited = true, .initial = Value.kw(.normal), .grammar = .font_variant },
+        .{ .longhand = .font_variant_ligatures, .inherited = true, .initial = Value.kw(.normal), .grammar = .font_variant },
+        .{ .longhand = .font_variant_numeric, .inherited = true, .initial = Value.kw(.normal), .grammar = .font_variant },
+        .{ .longhand = .font_variant_position, .inherited = true, .initial = Value.kw(.normal), .grammar = .font_variant },
+        .{ .longhand = .font_size_adjust, .inherited = true, .initial = Value.kw(.none), .grammar = .font_size_adjust },
+        .{ .longhand = .font_variation_settings, .inherited = true, .initial = Value.kw(.normal), .grammar = .font_settings },
     };
     for (defs) |def| {
         const i = @intFromEnum(def.longhand);
@@ -757,6 +794,8 @@ pub const Shorthand = enum(u8) {
     mask,
     mask_border,
     background_position,
+    font_variant,
+    font,
 
     pub fn name(self: Shorthand) []const u8 {
         return switch (self) {
@@ -771,6 +810,8 @@ pub const Shorthand = enum(u8) {
             .all => &all_longhands,
             .background => &@import("background_values.zig").longhands,
             .background_position => &@import("background_values.zig").position_longhands,
+            .font_variant => &@import("font_variants.zig").longhands,
+            .font => &@import("font_shorthand.zig").longhands,
             .border => &.{ .border_top_width, .border_right_width, .border_bottom_width, .border_left_width, .border_top_style, .border_right_style, .border_bottom_style, .border_left_style, .border_top_color, .border_right_color, .border_bottom_color, .border_left_color, .border_image_source },
             .border_block => &.{ .border_block_start_width, .border_block_end_width, .border_block_start_style, .border_block_end_style, .border_block_start_color, .border_block_end_color },
             .border_inline => &.{ .border_inline_start_width, .border_inline_end_width, .border_inline_start_style, .border_inline_end_style, .border_inline_start_color, .border_inline_end_color },
@@ -855,6 +896,7 @@ const legacy_aliases = .{
     .{ "grid-column-gap", Property{ .longhand = .column_gap } },
     .{ "grid-gap", Property{ .shorthand = .gap } },
     .{ "-webkit-appearance", Property{ .longhand = .appearance } },
+    .{ "font-stretch", Property{ .longhand = .font_width } },
     // CSS UI 4 §6.1 requires the legacy spelling to alias user-select.
     .{ "-webkit-user-select", Property{ .longhand = .user_select } },
 };
@@ -1229,7 +1271,13 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
             while (!stream.atEnd()) _ = stream.next();
             return .{ .content = parsed };
         },
-        .font_family => return fontFamilyValue(options, stream),
+        .font_family => return @import("font_family.zig").parse(options, stream),
+        .font_style => return @import("font_style.zig").parse(options, stream),
+        .font_width => return @import("font_width.zig").parse(options, stream),
+        .font_settings => return @import("font_settings.zig").parse(options, stream, if (l == .font_feature_settings) .feature else .variation),
+        .font_language_override => return @import("font_settings.zig").parseLanguage(options, stream),
+        .font_variant => return @import("font_variants.zig").parse(options, l, stream),
+        .font_size_adjust => return @import("font_size_adjust.zig").parse(options, stream),
         .font_size => {
             if (takeKeyword(stream, &.{ .xx_small, .x_small, .small, .medium, .large, .x_large, .xx_large, .xxx_large, .larger, .smaller })) |k| return Value.kw(k);
             return lengthPercentage(options, stream, .{ .negative = false, .quirky = def.quirky_length });
@@ -1660,8 +1708,6 @@ fn identKeywordText(t: Token) ?IdentText {
     return out;
 }
 
-const generic_families = [_][]const u8{ "serif", "sans-serif", "cursive", "fantasy", "monospace", "system-ui", "math", "emoji", "fangsong", "ui-serif", "ui-sans-serif", "ui-monospace", "ui-rounded" };
-
 /// CSS Fonts 4 3.1: `[ <family-name> | <generic-family> ]#`, kept as its
 /// serialization - strings as CSSOM serializes a string, identifier
 /// sequences joined by one space.
@@ -1738,50 +1784,9 @@ pub fn parseColorSchemeSupport(allocator: Allocator, text: []const u8) Allocator
     };
 }
 
-fn fontFamilyValue(options: ParseOptions, stream: *Stream) Allocator.Error!?Value {
-    var out: std.ArrayList(u8) = .empty;
-    defer out.deinit(options.allocator);
-    var families: usize = 0;
-    while (true) {
-        const t = stream.peek();
-        if (families > 0) try out.appendSlice(options.allocator, ", ");
-        switch (t.token_type) {
-            .string => {
-                _ = stream.next();
-                const contents = try tokenizer_mod.decode(options.allocator, t.stringContents());
-                defer options.allocator.free(contents);
-                try values.appendString(contents, &out, options.allocator);
-            },
-            .ident => {
-                var words: usize = 0;
-                while (stream.peek().token_type == .ident) : (words += 1) {
-                    const w = stream.next();
-                    const decoded = try tokenizer_mod.decode(options.allocator, w.value);
-                    defer options.allocator.free(decoded);
-                    // A generic family or a CSS-wide keyword cannot be one
-                    // word of several; "default" is reserved.
-                    if (words > 0) try out.append(options.allocator, ' ');
-                    try out.appendSlice(options.allocator, decoded);
-                }
-            },
-            else => return null,
-        }
-        families += 1;
-        const after = stream.peek();
-        if (after.token_type == .comma) {
-            _ = stream.next();
-            continue;
-        }
-        break;
-    }
-    if (families == 0) return null;
-    return .{ .text = try SharedText.create(options.allocator, out.items) };
-}
-
-/// Whether `family` is a <generic-family> keyword.
-pub fn isGenericFamily(family: []const u8) bool {
-    for (generic_families) |g| if (std.ascii.eqlIgnoreCase(g, family)) return true;
-    return false;
+/// Whether the decoded name is a <generic-family> keyword (Fonts4 §2.1).
+pub fn isGenericFamily(name: []const u8) bool {
+    return @import("font_family.zig").Generic.parse(name) != null;
 }
 
 // ============================================================================
@@ -1794,6 +1799,8 @@ fn append(options: ParseOptions, out: *std.ArrayList(Assignment), l: Longhand, v
 
 fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
     switch (s) {
+        .font_variant => return @import("font_variants.zig").parseShorthand(options, stream, out),
+        .font => return @import("font_shorthand.zig").parse(options, stream, out),
         .flex => return @import("flex_values.zig").consumeShorthand(options, stream, out),
         .animation, .animation_range, .transition => return @import("animation_values.zig").consumeShorthand(options, s, stream, out),
         .grid_template, .grid => {
@@ -2218,6 +2225,12 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .image_repeat => |v| try v.serialize(out, allocator),
         .image => |v| try out.appendSlice(allocator, v.text.bytes),
         .image_axis => |v| try v.serialize(out, allocator),
+        .font_width_keyword => |v| try out.appendSlice(allocator, v.name()),
+        .font_oblique => |v| try v.serialize(out, allocator),
+        .font_settings => |v| try v.serialize(out, allocator),
+        .font_family => |v| try out.appendSlice(allocator, v.text.bytes),
+        .font_size_adjust => |v| try v.serialize(out, allocator),
+        .font_system => {}, // Pending specified system longhand (Q28).
     }
 }
 
@@ -2266,6 +2279,8 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
     if (s == .all) return false;
     const ls = s.longhands();
     switch (s) {
+        .font_variant => return @import("font_variants.zig").serialize(vs, out, allocator),
+        .font => return @import("font_shorthand.zig").serialize(vs, mode, out, allocator),
         .flex => return @import("flex_values.zig").serializeShorthand(vs, out, allocator),
         .animation, .animation_range, .transition => return @import("animation_values.zig").serializeShorthand(s, vs, mode, out, allocator),
         .grid_template => return @import("grid_tracks.zig").serializeTemplate(.{ .rows = vs[0].value, .columns = vs[1].value, .areas = vs[2].value }, out, allocator),
@@ -2632,7 +2647,7 @@ test "display: legacy, two-keyword and list-item forms" {
 }
 
 test "font properties" {
-    try expectSerialized("font-family", "\"Helvetica Neue\", Helvetica,  Arial, sans-serif", "\"Helvetica Neue\", Helvetica, Arial, sans-serif");
+    try expectSerialized("font-family", "\"Helvetica Neue\", Helvetica,  Arial, sans-serif", "Helvetica Neue, Helvetica, Arial, sans-serif");
     try expectSerialized("font-family", "Times New Roman", "Times New Roman");
     try expectSerialized("font-weight", "bold", "bold");
     try expectSerialized("font-weight", "650", "650");

@@ -118,6 +118,46 @@ pub fn declarationValueHasBadToken(text: []const u8) bool {
     };
 }
 
+/// <declaration-value>?, as a custom property's value may be: "any sequence
+/// of one or more tokens, so long as the sequence does not contain
+/// <bad-string-token>, <bad-url-token>, unmatched <)-token>, <]-token>, or
+/// <}-token>, or top-level <semicolon-token> tokens or <delim-token> tokens
+/// with a value of "!"" - or nothing (an empty custom property is valid).
+pub fn isDeclarationValue(value: []const u8) bool {
+    var tok = Tokenizer.init(value);
+    var closers: [64]tokenizer.TokenType = undefined;
+    var depth: usize = 0;
+    while (true) {
+        const t = tok.next();
+        switch (t.token_type) {
+            .eof => return true,
+            .bad_string, .bad_url => return false,
+            .semicolon => if (depth == 0) return false,
+            .delim => if (depth == 0 and std.mem.eql(u8, t.value, "!")) return false,
+            // A function token's "(" is the next token (tokenizer.zig), so
+            // the function itself opens nothing.
+            .left_paren, .left_bracket, .left_brace => {
+                if (depth == closers.len) return false;
+                closers[depth] = closerOf(t.token_type);
+                depth += 1;
+            },
+            .right_paren, .right_bracket, .right_brace => {
+                if (depth == 0 or closers[depth - 1] != t.token_type) return false;
+                depth -= 1;
+            },
+            else => {},
+        }
+    }
+}
+
+pub fn closerOf(opener: tokenizer.TokenType) tokenizer.TokenType {
+    return switch (opener) {
+        .left_bracket => .right_bracket,
+        .left_brace => .right_brace,
+        else => .right_paren,
+    };
+}
+
 /// A style sheet's top-level rules, in order. Owned: `deinit`.
 pub const Rules = struct {
     allocator: Allocator,
