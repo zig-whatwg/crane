@@ -988,6 +988,13 @@ EXCLUDE = [
 ]
 
 
+# XML-format sources the user approved by name ahead of the general
+# XML-format re-inclusion (the user, 2026-10-25: Codex row 122's attr() work).
+XML_FORMAT_EXCEPTIONS = {
+    'css/css-values/attr-null-namespace.xhtml',
+}
+
+
 def walk(node, prefix=()):
     """Yield (path, url_count) for every testharness entry in the manifest."""
     for key, value in node.items():
@@ -1007,6 +1014,11 @@ def excluded(path):
             # exclusion (geometry, unsupported formats, hardware, etc.).
             if pattern in ('/tentative/', '.tentative.') and any(
                     path == prefix for prefix, _ in INCLUDE):
+                continue
+            # A named XML-format file the user approved bypasses only the
+            # XML-format rules below ('.xht' is a substring of '.xhtml'; row
+            # 113's runner path is on main).
+            if pattern in ('.xhtml', '.xht') and path in XML_FORMAT_EXCEPTIONS:
                 continue
             return True
     return False
