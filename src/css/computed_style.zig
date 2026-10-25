@@ -69,6 +69,27 @@ pub const ComputedStyle = struct {
         return if (v == .text_transform) v.text_transform else .{};
     }
 
+    /// Backgrounds 3 §3.3: whether `l` is a border width (physical or
+    /// logical) whose same-side border style is none or hidden. Its computed
+    /// value keeps the length; its resolved value, and a shorthand built from
+    /// resolved values, is zero. A logical slot holds its mapped side's value,
+    /// and so does the logical style beside it.
+    pub fn undrawnBorderWidth(self: *const ComputedStyle, l: Longhand) bool {
+        const side_style: Longhand = switch (l) {
+            .border_top_width => .border_top_style,
+            .border_right_width => .border_right_style,
+            .border_bottom_width => .border_bottom_style,
+            .border_left_width => .border_left_style,
+            .border_block_start_width => .border_block_start_style,
+            .border_block_end_width => .border_block_end_style,
+            .border_inline_start_width => .border_inline_start_style,
+            .border_inline_end_width => .border_inline_end_style,
+            else => return false,
+        };
+        const k = self.keyword(side_style);
+        return k == .none or k == .hidden;
+    }
+
     /// The used color of a color property: currentcolor is the element's
     /// `color` (CSS Color 4 6.4).
     pub fn usedColor(self: *const ComputedStyle, l: Longhand) values.RgbaColor {
@@ -108,7 +129,7 @@ pub const ComputedStyle = struct {
         if (l == .caret_color) return @import("ui_values.zig").serializeCaretResolved(v, .{ .scheme = self.used_color_scheme, .current = self.get(.color).color }, out, allocator);
         // Backgrounds 3 §3.3: a side whose style is none or hidden keeps its
         // computed width (inherit passes it on) but resolves to zero.
-        if (undrawnBorderWidth(self, l)) return out.appendSlice(allocator, "0px");
+        if (self.undrawnBorderWidth(l)) return out.appendSlice(allocator, "0px");
         if (v == .color) {
             const color = try self.resolvedColor(l, allocator);
             defer color.release();
@@ -137,25 +158,6 @@ pub const ComputedStyle = struct {
         try @import("resolved_urls.zig").serialize(l, v, out, allocator);
     }
 };
-
-/// Whether `l` is a border width (physical or logical) whose same-side
-/// border style is none or hidden. A logical slot holds its mapped side's
-/// value, and so does the logical style beside it.
-fn undrawnBorderWidth(style: *const ComputedStyle, l: Longhand) bool {
-    const side_style: Longhand = switch (l) {
-        .border_top_width => .border_top_style,
-        .border_right_width => .border_right_style,
-        .border_bottom_width => .border_bottom_style,
-        .border_left_width => .border_left_style,
-        .border_block_start_width => .border_block_start_style,
-        .border_block_end_width => .border_block_end_style,
-        .border_inline_start_width => .border_inline_start_style,
-        .border_inline_end_width => .border_inline_end_style,
-        else => return false,
-    };
-    const k = style.keyword(side_style);
-    return k == .none or k == .hidden;
-}
 
 /// Every longhand's initial value, as computed.
 pub const initial_values: [Longhand.count]Value = blk: {

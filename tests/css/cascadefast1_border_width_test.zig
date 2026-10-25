@@ -92,3 +92,20 @@ test "the initial style resolves every border width to zero" {
     try expectResolved(style, .border_top_width, "0px");
     try testing.expectEqual(@as(f64, 3), style.get(.border_top_width).length.value);
 }
+
+test "undrawnBorderWidth names the sides a shorthand must resolve to zero" {
+    // getComputedStyle builds border-width, border-block-width and the other
+    // border shorthands from resolved longhand values (CSSOM 6.6.1 step 2).
+    const style = try styleOf(null, "border-block-start: 10px groove; border-block-end: 10px none; border-inline: 4px hidden");
+    defer style.destroy();
+    try testing.expect(!style.undrawnBorderWidth(.border_block_start_width));
+    try testing.expect(!style.undrawnBorderWidth(.border_top_width));
+    try testing.expect(style.undrawnBorderWidth(.border_block_end_width));
+    try testing.expect(style.undrawnBorderWidth(.border_bottom_width));
+    try testing.expect(style.undrawnBorderWidth(.border_inline_start_width));
+    try testing.expect(style.undrawnBorderWidth(.border_left_width));
+    // Not a border width: never undrawn, whatever the style.
+    try testing.expect(!style.undrawnBorderWidth(.border_bottom_style));
+    try testing.expect(!style.undrawnBorderWidth(.outline_width));
+    try testing.expect(!style.undrawnBorderWidth(.margin_top));
+}

@@ -289,6 +289,9 @@ fn computedValue(internal: *InternalState, name: []const u8, out: *std.ArrayList
                     resolved[i] = .{ .color = try style.resolvedColor(l, internal.allocator) };
                 } else if (value == .image or value == .layers or value == .content) {
                     resolved[i] = try style.resolvedImageValue(l, internal.allocator);
+                } else if (style.undrawnBorderWidth(l)) {
+                    // Backgrounds 3 §3.3: an undrawn side's resolved width.
+                    resolved[i] = css.style_values.Value.px(0);
                 } else {
                     value.retain();
                     resolved[i] = value;
