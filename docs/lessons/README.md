@@ -806,6 +806,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A Verbose Summary Reuses Subtest Markers](testing-verbose-summary-lines-are-not-subtests.md) - Parse section boundaries and reconcile every count.
 - [leaks --atExit sees only the supervisor, not its child runners](testing-leaks-at-exit-sees-only-the-supervisor-not-its-child-runners.md) - A leak check is only as good as the process it watches: run the WPT runner in-process under `leaks`, and read the peak footprint before trusting "0 leaks".
 - [A subtest missing from all three browsers on wpt.fyi was changed upstream](testing-a-subtest-missing-from-all-three-browsers-on-wpt-fyi-was-changed-upstream.md) - wpt.fyi reports upstream master, not Crane's pin: a subtest that no browser reports was removed or renamed upstream, so read the file's history before treating it as a requirement.
+- [A cost bar that moves with no new instructions is code placement](testing-a-cost-bar-that-moves-with-no-new-instructions-is-code-placement.md) - A sub-microsecond per-operation metric in a whole-program optimized runner moves with code placement; when its path reaches no changed code, instructions retired (page minus a zero-iteration control) decide, not time.
 
 ### Debugging
 - [Debugging: Materialize coordinates before overwriting a vector](debugging-materialize-coordinates-before-overwriting-a-vector.md) - Compute every new coordinate from saved scalar inputs before assigning an aggregate back to its input vector.
