@@ -124,6 +124,9 @@ pub const Context = struct {
     parent: ?*const ComputedStyle,
     /// Content 3 / Values 5: synchronous, never saved in a computed value.
     content_attributes: ?@import("generated_content.zig").AttributeLookup = null,
+    /// Fonts4/5: value-only capability inputs, borrowed for each call (Q46).
+    system_fonts: ?@import("font_system.zig").Resolver = null,
+    font_metric_ratios: ?@import("font_size_adjust.zig").MetricResolver = null,
     pseudo: ?[]const u8 = null,
     /// Q83: absent random input skips the candidate at the same availability
     /// boundary as missing metrics. Real DOM resolution supplies this lazily.
@@ -410,9 +413,13 @@ const Builder = struct {
             };
             // Q25/Q83/Q88: this is the single unavailable-input decision,
             // after pending substitution has selected just its live branch.
+            // Q59/Q92: a null font View is defensive; unavailable scalar
+            // inputs are already excluded by this same decision.
             const unavailable = preflight.unavailable or (assigned == .value and
                 (assigned.value.needsUnavailableMetrics(geometry_length) or
-                    (self.ctx.random_base == null and assigned.value.needsRandomBase())));
+                    (self.ctx.random_base == null and assigned.value.needsRandomBase()) or
+                    (assigned.value == .font_size_adjust and assigned.value.font_size_adjust.fromFont() and
+                        (self.ctx.font_metric_ratios == null or @import("font_request.zig").fromComputed(self.style) == null))));
             if (unavailable) continue;
             return .{ .candidate = c, .assigned = assigned };
         }
@@ -514,6 +521,13 @@ const Builder = struct {
     }
 
     fn computeValue(self: *Builder, l: Longhand, v: Value, source: ValueSource) Allocator.Error!Value {
+        // Fonts4 §2.7: resolve the pending system value before the scalar
+        // font-size/weight/width paths, retaining no borrowed provider data.
+        if (v == .font_system) {
+            const selected = try @import("font_system.zig").compute(self.ctx.allocator, self.ctx.system_fonts, v.font_system, l);
+            defer selected.release();
+            return self.computeValue(l, selected, source);
+        }
         if (v == .animation_list) return .{ .animation_list = try v.animation_list.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         if (v == .transform) return .{ .transform = try v.transform.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         if (v == .grid_line) return .{ .grid_line = try v.grid_line.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
@@ -616,6 +630,7 @@ const Builder = struct {
             .stroke_width => if (v == .number) return Value.px(v.number),
             .font_size => return Value.px(self.computeFontSize(v)),
             .font_weight => return .{ .number = self.computeFontWeight(v) },
+            .font_width => return @import("font_width.zig").compute(v),
             // CSS Text4 §8.2: normal is zero in the computed value.
             .letter_spacing => if (v.isKeyword(.normal)) return Value.px(0),
             .opacity => return .{ .number = std.math.clamp(v.number, 0, 1) },
@@ -656,6 +671,15 @@ const Builder = struct {
             .image => |value| return value.compute(self.ctx.allocator, self.used_scheme, ComponentContext.init(self, source)),
             .cursor => |value| return .{ .cursor = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
             .image_axis => |value| return .{ .image_axis = try value.compute(self.ctx.allocator, if (l == .background_position_x) 0 else 1, ComponentContext.init(self, source)) },
+            .font_oblique => |value| return value.compute(self.ctx.allocator, self.computationContext(l, v, source)),
+            .font_settings => |value| return .{ .font_settings = try value.compute(self.ctx.allocator, self.computationContext(l, v, source)) },
+            .font_family => |family| return .{ .font_family = try family.capture(self.ctx.allocator, source.tree_scope) },
+            .font_size_adjust => |font_adjust| return switch (try font_adjust.compute(self.ctx.allocator, self.computationContext(l, v, source), self.ctx.font_metric_ratios, @import("font_request.zig").fromComputed(self.style))) {
+                .value => |computed| computed,
+                // The single unavailable decision skips real unavailable
+                // candidates. Q87: a defensive failure computes as unset.
+                .unavailable => self.compute(l, self.unset(l)),
+            },
             else => {
                 v.retain();
                 return v;
@@ -703,7 +727,7 @@ const Builder = struct {
     fn mathContext(self: *const Builder, l: Longhand) @import("math_values.zig").Context {
         // Values 4 §6.1.1: font-affecting properties use parent metrics;
         // line-height additionally uses its parent's lh to avoid a cycle.
-        const font_affecting = l == .font_size or l == .font_weight;
+        const font_affecting = @import("font_values.zig").isFontAffecting(l);
         const parent_em = self.parentValue(.font_size).length.value;
         const em = if (font_affecting) parent_em else self.fontSize();
         const parent_lh = if (self.ctx.parent) |parent| usedLineHeight(parent) else 19.2;
@@ -1090,7 +1114,7 @@ test "text values are shared, not leaked" {
     defer parent.destroy();
     const child = try cascade(.{ .allocator = testing.allocator, .parent = parent }, &.{});
     defer child.destroy();
-    try expectResolved(child, .font_family, "\"A B\", serif");
+    try expectResolved(child, .font_family, "A B, serif");
     try expectResolved(child, .background_image, "none");
 }
 
@@ -1333,7 +1357,7 @@ fn cv1SourceInheritanceRoundTrip(allocator: Allocator) !void {
             defer child_block.deinit();
             const result = try cascade(.{ .allocator = allocator, .parent = parent }, &.{.{ .block = &child_block, .source = .{ .origin = .author, .tree_scope = .{ .serial = 91 } } }});
             errdefer result.destroy();
-            try testing.expectEqual(parent.get(.font_family).text, result.get(.font_family).text);
+            try testing.expectEqual(parent.get(.font_family).font_family, result.get(.font_family).font_family);
             break :blk result;
         };
         defer child.destroy();

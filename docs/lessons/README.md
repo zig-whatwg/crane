@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Dependencies must follow effective values](architecture-dependencies-must-follow-effective-values.md) - Query dependencies over the components computation will actually evaluate.
 - [Resource discovery must read parsed values](architecture-resource-discovery-must-read-parsed-values.md) - Update resource-interest prefilters with their consumers when a value representation changes.
 - [Share a counter only when both consumers need opaque identities](architecture-share-a-counter-only-when-both-consumers-need-opaque-identities.md) - Prove every consumer tolerates sequence gaps before reusing an owner-local identity counter.
 - [An interface's deinit is a destructor, not a free](architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md) - A destructor chain is not a free: whoever tears down an object no wrapper owns must also return its storage - `runtime.Instance.deinit`, never `interfaces.X.deinit` alone - and a slot count per type per page, with a count of the torn-down ones, names such an owner at once.
@@ -369,6 +370,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Native font status precedes its script promise](architecture-native-font-status-precedes-its-script-promise.md) - Preserve automatic outcomes until script requests the promise.
 
 ### Spec Compliance
+
+- [Recognizing a property can change its CSSOM readback](spec-compliance-recognizing-a-property-can-change-its-cssom-readback.md) - Audit the old storage route when registering a property; typed parse failure can discard previously observable text.
 - [Preserve the owning property's quirks](spec-compliance-preserve-the-owning-propertys-quirks.md) - Route compatibility exceptions by the containing property, including its explicitly allowed exceptions.
 - [A reset-only member is not a shorthand component](spec-compliance-a-reset-only-member-is-not-a-shorthand-component.md) - Keep a shorthand reset set distinct from the components serialized by its grammar.
 - [CSS token payloads do not locate token starts](spec-compliance-css-token-payloads-do-not-locate-token-starts.md) - Keep actual source offsets with lookahead and parser marks.
@@ -657,6 +660,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Refresh aliases with their realm's interface objects](codegen-refresh-aliases-with-their-realms-interface-objects.md) - An alias names the realm's interface object, not the current contents of another global property.
 
 ### Testing
+- [Support detection activates previously skipped assertions](testing-support-detection-activates-previously-skipped-assertions.md) - When support detection changes, inspect the assertions it enables and complete their dependent behavior in the same accepted delivery.
 - [Focused runs can miss an earlier stage fixture](testing-focused-runs-can-miss-an-earlier-stage-fixture.md) - Search every fixture that pins the old representation, preserve its ownership controls, and gate the complete changed tree.
 - [Check a control before assigning a staged failure](testing-check-a-control-before-assigning-a-staged-failure.md) - Inspect the first failed assertion before attributing every fixture failure to one missing consumer.
 - [Testing: Allocation Failure Must Cover Owned Parser Output](testing-allocation-failure-must-cover-owned-parser-output.md) - Exercise allocation failure across parsing, ownership transfer and declaration storage, including every unconsumed item in a shorthand expansion.
