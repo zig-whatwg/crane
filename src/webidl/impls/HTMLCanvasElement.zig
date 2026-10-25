@@ -81,7 +81,7 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
     if (instance.stateAs(State)) |state| if (state.own._internal) |internal| {
         // The context, if it is still the one this canvas made, loses its
         // state: script that still holds it gets InvalidStateError.
-        if (internal.context) |context| internal.context_kept.release(context, interfaces.CanvasRenderingContext2D.deinit);
+        if (internal.context) |context| internal.context_kept.releaseOwned(context);
         state.own._internal = null;
         runtime.arenaOf(instance).destroy(InternalState, internal);
     };

@@ -198,6 +198,13 @@ teardown phase (`CleanupCoordinator.releaseDeferredStorage`). V8 does both in
 `context_manager.removeContextByKey`. An adapter that declares
 `.unsupported` calls neither: `provablyUnwrapped` is false, nothing is
 recorded or handed over, and those nodes stay with their Browser as before.
+The mark is the present, not only the history: the adapter clears it
+(`instance_lifecycle.markWrapperGone`) when it finalizes the LAST engine
+object bound to an instance the host keeps - its wrapper collected while the
+node's tree or the window's document held it, no other realm's wrapper, not a
+realm's global - and the next bind sets it again. A removed frame's realm,
+which the collector takes whole, then returns its document's slots at its end
+like any other (V8: `wrapper_cache.finalizeEntry`; lane pageretention1).
 
 ### Errors
 
@@ -307,7 +314,7 @@ capability the branch compiles out.
 | `html_constructor` | native (the construct callback's FunctionCallbackInfo::NewTarget) | unsupported - a JSObjectCallAsConstructorCallback is handed no NewTarget, so `super()` from a custom element class cannot reach the host | `HostHooks.htmlConstructor` is never called: HTMLElement and the other [HTMLConstructor] interfaces construct as their own constructors do, so custom element construction - `new MyElement()`, createElement of a defined name, an upgrade - is unavailable on iOS until JavaScriptCore's C API offers NewTarget |
 | `cross_origin_objects` | emulated (Location uses a Proxy with HTML internal methods and explicit borrowed-receiver checks; Window keeps native access checks and the global proxy, with public-API limits on prototype/extensibility/enumeration) | unsupported - no access-check API and no WindowProxy apart from the global; JSClassDefinition callbacks could emulate it except for [[GetPrototypeOf]] | the engine runs no cross-origin check: Window's `document` getter keeps the host's own check, and every other property of another realm's WindowProxy or Location is reached as a same-origin one would be (security-relevant) |
 | `webassembly_streaming` | native (Isolate::SetWasmStreamingCallback: V8 defines compileStreaming and instantiateStreaming and hands each fulfilled source to the host) | unsupported - no streaming hook in the public C API (WebKit's compileStreaming is JSGlobalObject's private GlobalObjectMethodTable) | `WebAssembly.compileStreaming` and `instantiateStreaming` are absent |
-| `wrap_tracking` | native (`instance_lifecycle.markWrapped` wherever the adapter writes an instance into an object: `wrapInstanceAsV8Object` before its cache step, `setInstance`/`setInstanceWithTypeInfo` for constructors and custom element construction and upgrade, the Window and worker global bindings) | unsupported - the adapter does not mark yet | a missing mark proves nothing (`provablyUnwrapped` is false): a realm's end keeps the slab slot of every node its tree tore down, and a subtree removed while unwrapped stays until its Browser ends (`runtime.orphan_roots` records nothing) |
+| `wrap_tracking` | native (`instance_lifecycle.markWrapped` wherever the adapter writes an instance into an object: `wrapInstanceAsV8Object` before its cache step, `setInstance`/`setInstanceWithTypeInfo` for constructors and custom element construction and upgrade, the Window and worker global bindings; `markWrapperGone` when `finalizeEntry` drops the last wrapper of an instance the host keeps) | unsupported - the adapter does not mark yet | a missing mark proves nothing (`provablyUnwrapped` is false): a realm's end keeps the slab slot of every node its tree tore down, and a subtree removed while unwrapped stays until its Browser ends (`runtime.orphan_roots` records nothing) |
 
 Flip a JavaScriptCore capability when an iOS release makes the API public.
 Structured serialization has no JSC API and is not a capability: the JSC

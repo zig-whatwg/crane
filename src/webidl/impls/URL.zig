@@ -64,9 +64,18 @@ pub const InternalState = struct {
         //
         // - If we're cleaned up first, URLSearchParams.deinit is safe to call
         //   because it checks its own internal state before doing anything.
+        //
+        // Freed WHOLE (runtime.gc.releaseOwned): its destructor - the one
+        // that cuts the back-reference - and its storage, back now when no
+        // wrapper can reach it (after the realm teardown under way, if one
+        // is), else at its wrapper's end, which then returns only the
+        // storage. The interface's deinit alone left every URL's query object
+        // script never read - a URL's searchParams is made with the URL - in
+        // the slab until its Browser ended: testharness.js makes URLs on
+        // every page (lane pageretention1: 351 a pass of 42 navigation files).
         if (self.query_params_instance) |params_instance| {
-            URLSearchParams.deinit(params_instance);
             self.query_params_instance = null;
+            runtime.gc.releaseOwned(params_instance);
         }
         allocator.destroy(self);
     }

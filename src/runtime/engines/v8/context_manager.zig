@@ -1130,18 +1130,15 @@ pub fn removeContextByKey(key: usize, v8_ctx: ?*v8.Context) void {
                     _ = cache_ptr.remove(wi);
                 }
 
-                // Also remove Location from wrapper cache before Window.deinit
-                const WindowImpl = @import("impls").Window;
-                if (WindowImpl.getInternal(wi)) |window_internal| {
-                    if (window_internal.location) |loc| {
-                        if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
-                            const cache_ptr2: *WrapperCache = @ptrCast(@alignCast(cache_storage));
-                            _ = cache_ptr2.remove(loc);
-                        }
-                    }
-                }
-
-                // Now call Window.deinit which will clean up Location, Document, and DOM tree
+                // Now call Window.deinit which will clean up Location, Document, and DOM tree.
+                //
+                // The Location's wrapper stays in the cache: Window.deinit frees
+                // the Location whole (runtime.gc.releaseOwned), so the sweep
+                // below finds it torn down, severs its wrapper and gives its
+                // slot to this teardown. It used to be taken out of the cache
+                // here, unsevered, before the Window freed it - and then
+                // nothing returned its storage: every page kept its Location
+                // until its Browser ended (lane pageretention1).
                 @import("interfaces").Window.deinit(wi);
             }
 

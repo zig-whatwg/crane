@@ -796,7 +796,7 @@ pub const Value = union(enum) {
     position_visibility: @import("position_visibility.zig").Value,
     containment: @import("containment.zig").Value,
     try_fallbacks: struct { list: *@import("anchor_fallbacks.zig").Fallbacks, computed: bool = false },
-    /// Kept as its serialization (a font-family list, an <image>).
+    /// Kept as its serialization when no structured value is needed.
     text: *SharedText,
     pending: *@import("pending_values.zig").Pending,
     cursor: *@import("cursor_values.zig").Cursor,
@@ -812,6 +812,12 @@ pub const Value = union(enum) {
     image_repeat: @import("image_keywords.zig").Repeat,
     image: *@import("image_values.zig").Image,
     image_axis: *@import("position_values.zig").PositionAxis,
+    font_width_keyword: @import("font_width.zig").Keyword,
+    font_oblique: *@import("font_style.zig").Oblique,
+    font_settings: *@import("font_settings.zig").Settings,
+    font_family: *@import("font_family.zig").Families,
+    font_size_adjust: *@import("font_size_adjust.zig").Adjust,
+    font_system: @import("font_system.zig").Keyword,
 
     /// Borrowed URL candidates in serialization order, valid while this
     /// value is retained. No sheet or document lookup is needed to use them.
@@ -859,6 +865,10 @@ pub const Value = union(enum) {
         if (self == .layers) return self.layers.ref();
         if (self == .image) return self.image.ref();
         if (self == .image_axis) return self.image_axis.ref();
+        if (self == .font_oblique) return self.font_oblique.ref();
+        if (self == .font_settings) return self.font_settings.ref();
+        if (self == .font_family) return self.font_family.ref();
+        if (self == .font_size_adjust) return self.font_size_adjust.ref();
         if (self.sharedText()) |t| t.ref();
     }
 
@@ -887,6 +897,10 @@ pub const Value = union(enum) {
         if (self == .layers) return self.layers.unref();
         if (self == .image) return self.image.unref();
         if (self == .image_axis) return self.image_axis.unref();
+        if (self == .font_oblique) return self.font_oblique.unref();
+        if (self == .font_settings) return self.font_settings.unref();
+        if (self == .font_family) return self.font_family.unref();
+        if (self == .font_size_adjust) return self.font_size_adjust.unref();
         if (self.sharedText()) |t| t.unref();
     }
 
@@ -941,6 +955,12 @@ pub const Value = union(enum) {
             .image_repeat => |v| std.meta.eql(v, b.image_repeat),
             .image => |v| v.eql(b.image),
             .image_axis => |v| v.eql(b.image_axis),
+            .font_width_keyword => |v| v == b.font_width_keyword,
+            .font_oblique => |v| v.eql(b.font_oblique),
+            .font_settings => |v| v.eql(b.font_settings),
+            .font_family => |v| v.eql(b.font_family),
+            .font_size_adjust => |v| v.eql(b.font_size_adjust),
+            .font_system => |v| v == b.font_system,
         };
     }
 
@@ -988,6 +1008,11 @@ pub const Value = union(enum) {
             .layers => |v| v.needsUnavailableMetrics(geometry_length),
             .image => |v| v.needsUnavailableMetrics(geometry_length),
             .image_axis => |v| v.needsUnavailableMetrics(geometry_length),
+            .font_width_keyword => false,
+            .font_oblique => |v| v.needsUnavailableMetrics(),
+            .font_settings => |v| v.needsUnavailableMetrics(),
+            .font_family, .font_system => false,
+            .font_size_adjust => |v| v.needsUnavailableMetrics(),
         };
     }
 
@@ -1031,6 +1056,11 @@ pub const Value = union(enum) {
             .layers => |v| v.needsTreeCounts(),
             .image => |v| v.needsTreeCounts(),
             .image_axis => |v| v.needsTreeCounts(),
+            .font_width_keyword => false,
+            .font_oblique => |v| v.needsTreeCounts(),
+            .font_settings => |v| v.needsTreeCounts(),
+            .font_family, .font_system => false,
+            .font_size_adjust => |v| v.needsTreeCounts(),
         };
     }
 
@@ -1072,6 +1102,11 @@ pub const Value = union(enum) {
             .layers => |v| v.needsRandomBase(),
             .image => |v| v.needsRandomBase(),
             .image_axis => |v| v.needsRandomBase(),
+            .font_width_keyword => false,
+            .font_oblique => |v| v.needsRandomBase(),
+            .font_settings => |v| v.needsRandomBase(),
+            .font_family, .font_system => false,
+            .font_size_adjust => |v| v.needsRandomBase(),
         };
     }
 

@@ -980,34 +980,37 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
     // Clean up Window's own internal state
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        // Clean up [SameObject] sub-interface instances that we own.
-        // These might or might not be in the wrapper cache (depends on whether
-        // JavaScript accessed them). The cleanup order in wrapper_cache is not
-        // guaranteed, so Location might already be cleaned up by the time
-        // Window.deinit runs. Check isCleanupStarted to avoid double-free.
+        // The window's Location and History ([SameObject]: one each for the
+        // window's life) go WHOLE with it: their destructors, and their
+        // storage back from whoever can reach them last (runtime.gc
+        // .releaseOwned) - now, or after the realm teardown under way, when
+        // no wrapper can; else their wrappers' ends, which return a completed
+        // cleanup's storage (the realm's wrapper cache sweep severs a wrapper
+        // whose instance goes). Only their destructors used to run here, and
+        // the realm's end took the Location's wrapper out of its cache
+        // unsevered first: each page kept its Location's slab slot and state
+        // block until its Browser ended (lane pageretention1).
         if (internal.location) |loc| {
-            // Clean up Location. It handles lifecycle tracking internally
-            // to prevent double-free if already cleaned up.
-            const LocationImpl = @import("Location.zig");
-            LocationImpl.deinit(loc);
+            runtime.gc.releaseOwned(loc);
+            internal.location = null;
         }
-
-        // Clean up History instance if it was lazily created
         if (internal.history) |history_inst| {
-            const HistoryImpl = @import("History.zig");
-            HistoryImpl.deinit(history_inst);
+            runtime.gc.releaseOwned(history_inst);
+            internal.history = null;
         }
 
-        // Clean up Document and its entire DOM tree.
-        // Per Chromium's pattern: Window.FrameDestroyed() calls Document.Shutdown()
-        // which recursively cleans up all child nodes via DetachLayoutTree().
-        // This is essential because:
-        // 1. DOM nodes created by DomTreeAdapter during parsing may not be in wrapper cache
-        // 2. If Document isn't cleaned up explicitly, its children leak
-        // 3. Document.deinit() -> Node.deinit() recursively cleans all child nodes
+        // The window's document and its tree go with the window, through
+        // Node's own teardown (dom.node_creation.destroyRoot), whose storage
+        // rule is every node's: back once no wrapper can reach the slot - at
+        // the end of the realm teardown under way - else at its wrapper's end.
+        // Chromium's Window.FrameDestroyed() calls Document.Shutdown() the
+        // same way. Only the document's destructor ran here before: a window
+        // whose document's wrapper was collected first - a removed frame's
+        // realm, which the collector takes whole - kept the document's slot
+        // until its Browser ended (lane pageretention1).
         if (internal.document) |doc| {
             log.debug("[Window.deinit] Cleaning up Document {*}", .{doc});
-            interfaces.Document.deinit(doc);
+            @import("dom").node_creation.destroyRoot(doc);
             internal.document = null;
             log.debug("[Window.deinit] Document cleanup DONE", .{});
         } else {

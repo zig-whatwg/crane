@@ -714,7 +714,7 @@ fn familyDescriptor(allocator: Allocator, text: []const u8) Allocator.Error!?[]u
     var stream = Stream.init(text);
     const value = (try css.properties.parseLonghand(.{ .allocator = allocator }, .font_family, &stream)) orelse return null;
     defer value.release();
-    return try allocator.dupe(u8, value.sharedText().?.bytes);
+    return try allocator.dupe(u8, value.font_family.text.bytes);
 }
 
 /// CSSWG #6236 (2026-03-11): the FontFace API accepts a family name as
@@ -1820,28 +1820,26 @@ const UsedFonts = struct {
 
     fn selectText(self: *UsedFonts, style: *const css.computed_style.ComputedStyle, content: []const u8) !void {
         if (content.len == 0) return;
-        const families = style.get(.font_family);
-        // Generic families map to platform fonts, not identically named
-        // @font-face declarations. Quoted generic names remain ordinary.
-        if (families != .text) return;
-        var request = MatchRequest{};
-        const style_value = style.get(.font_style);
-        if (style_value == .keyword) switch (style_value.keyword) {
-            .italic => request.style = .italic,
-            .oblique => request.style = .oblique,
-            else => {},
+        // Q167/Q180/Q197: unresolved computed values select no web font.
+        const view = css.font_request.fromComputed(style) orelse return;
+        var request = MatchRequest{
+            .width = view.stretch_pct,
+            .weight = view.weight,
         };
-        const weight = style.get(.font_weight);
-        if (weight == .number) request.weight = weight.number;
-        // Q58: font-stretch is not yet supported; its computed initial
-        // value is normal (100%). No private shorthand/property parser.
-        var stream = Stream.init(families.text.bytes);
-        while (!stream.atEnd()) {
-            const family = (try readFamily(self.allocator, &stream)) orelse break;
-            defer self.allocator.free(family.name);
-            if (!family.generic) try self.selectFamily(family.name, request, content);
-            if (stream.atEnd() or stream.next().token_type != .comma) break;
+        switch (view.style) {
+            .normal => {},
+            .italic => request.style = .italic,
+            .oblique => |angle| {
+                request.style = .oblique;
+                request.angle = angle;
+            },
         }
+        // CSS Fonts 4 §5.2 steps 1–3: preserve family order and skip
+        // platform generics; quoted generic names remain named references.
+        for (view.families) |family| switch (family) {
+            .named => |named| try self.selectFamily(named.name, request, content),
+            .generic => {},
+        };
     }
 
     fn selectControl(self: *UsedFonts, element: *runtime.Instance) !void {
