@@ -567,6 +567,10 @@ EXCLUDE = [
     ('accname/name/comp_name_from_content_alt_counter_invalidation.html', 'all accessible-name assertions require generated CSS counter content (row 112)'),
     ('accname/name/comp_name_from_content_alt_counter_multi_instance.html', 'all accessible-name assertions require generated CSS counter content (row 112)'),
     ('css/cssom/caretPositionFromPoint', 'asserts caret offsets from hit-tested viewport coordinates'),
+    # The user, 2026-10-25: no animation engine yet (element.animate and the
+    # Animation objects are stubs), so the registered-property animation and
+    # transition files would block whatever is built. Out for now.
+    ('css/css-properties-values-api/animation/', 'needs an animation engine, which Crane does not have yet (the user, 2026-10-25)'),
     ('css/css-variables/variable-reference-perspective-origin.html', 'every case asserts perspective-origin percentages resolved against the used 200px box'),
     ('css/css-variables/variable-animation-guaranteed-invalid.html', 'check-layout-th asserts each animated box offsetWidth (the invalid case stretches to its container)'),
     ('css/css-properties-values-api/at-property-viewport-units.html', 'asserts viewport units against the laid-out 400x200 iframe viewport'),
