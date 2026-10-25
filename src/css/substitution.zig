@@ -651,6 +651,14 @@ pub const Attribute = struct {
     local_name: []const u8,
 };
 
+/// A numeric value in canonical units, for range comparisons.
+pub const Numeric = struct {
+    value: f64,
+    dimension: Dimension,
+
+    pub const Dimension = enum { number, percentage, length, angle, time, frequency, resolution };
+};
+
 /// Values 5 Appendix A: the dependency types of substitution contexts.
 pub const GuardKind = enum { property, attribute, function };
 
@@ -688,6 +696,22 @@ pub const Host = struct {
     /// Whether guarding (kind, name) now would be cyclic - a query that marks
     /// nothing.
     would_cycle: ?*const fn (context: *anyopaque, kind: GuardKind, name: []const u8) bool = null,
+    /// if()'s style(--x) (Codex row 123): whether custom property `name`
+    /// has a value that is not the guaranteed-invalid value. Custom
+    /// properties only (a standard property's feature is row 123's unknown).
+    has_value: ?*const fn (context: *anyopaque, name: []const u8) Error!bool = null,
+    /// if()'s style(--x: value): whether `value_text`, substituted (a failure
+    /// there is an error the caller catches), equals the computed value of
+    /// custom property `name` - for an unregistered one, token by token with
+    /// whitespace normalized. Null: unknown (not a custom property name).
+    /// Batch 2 compares a registered property's computed values.
+    query_value_matches: ?*const fn (context: *anyopaque, name: []const u8, value_text: []const u8) Error!?bool = null,
+    /// if()'s range queries (style(--x > 10px)): `operand` - a custom
+    /// property name or a literal value text, substituted first (a failure is
+    /// an error the caller catches) - as a number in canonical units (px,
+    /// deg, s, Hz, dppx), computed in the element's context with the shared
+    /// math. Null: a guaranteed-invalid property, or no single numeric value.
+    numeric_value: ?*const fn (context: *anyopaque, operand: []const u8) Error!?Numeric = null,
     /// env(): the host's environment variables.
     environment: ?Environment = null,
     /// random-item()'s random base and tree counts; numeric math.

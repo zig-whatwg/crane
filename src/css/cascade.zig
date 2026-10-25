@@ -171,7 +171,36 @@ const Candidate = struct {
     source: *const Source,
 };
 
-/// Cascade 5 6.1's priority of a declaration from `source`.
+/// Two token texts equal token by token, whitespace runs (and the comments
+/// in them) normalized away at either end and to one between tokens.
+fn tokensEqual(a: []const u8, b: []const u8) bool {
+    const tokenizer = @import("tokenizer.zig");
+    var x = tokenizer.Tokenizer.init(a);
+    var y = tokenizer.Tokenizer.init(b);
+    x.skipWhitespace();
+    y.skipWhitespace();
+    while (true) {
+        const s = x.next();
+        const t = y.next();
+        const s_space = s.token_type == .whitespace;
+        const t_space = t.token_type == .whitespace;
+        if (s_space or t_space) {
+            if (s_space != t_space) return false;
+            x.skipWhitespace();
+            y.skipWhitespace();
+            // Trailing whitespace on one side only.
+            const s_end = x.peek().token_type == .eof;
+            const t_end = y.peek().token_type == .eof;
+            if (s_end != t_end) return false;
+            continue;
+        }
+        if (s.token_type != t.token_type) return false;
+        if (s.token_type == .eof) return true;
+        if (!std.mem.eql(u8, s.value, t.value)) return false;
+    }
+}
+
+/// Cascade 5 6.1's priority of a declaration from `source`./// Cascade 5 6.1's priority of a declaration from `source`.
 fn priority(source: Source, important: bool) u128 {
     // Origin and importance: normal UA < user < hints < author < important
     // author < important user < important UA.
@@ -679,6 +708,85 @@ const Builder = struct {
         return value.computed();
     }
 
+    fn hasValueCallback(context: *anyopaque, name: []const u8) substitution.Error!bool {
+        if (!custom_mod.isName(name)) return false;
+        return (try customValueCallback(context, name)) != null;
+    }
+
+    fn queryValueMatchesCallback(context: *anyopaque, name: []const u8, value_text: []const u8) substitution.Error!?bool {
+        const self: *Builder = @ptrCast(@alignCast(context));
+        if (!custom_mod.isName(name)) return null;
+        var arena = std.heap.ArenaAllocator.init(self.ctx.allocator);
+        defer arena.deinit();
+        const query = try self.substituteText(arena.allocator(), value_text);
+        const value = (try customValueCallback(context, name)) orelse return false;
+        return tokensEqual(value.text, query);
+    }
+
+    fn numericValueCallback(context: *anyopaque, operand: []const u8) substitution.Error!?substitution.Numeric {
+        const self: *Builder = @ptrCast(@alignCast(context));
+        var arena = std.heap.ArenaAllocator.init(self.ctx.allocator);
+        defer arena.deinit();
+        const a = arena.allocator();
+        const text = if (try substitution.customPropertyName(a, operand)) |name|
+            ((try customValueCallback(context, name)) orelse return null).text
+        else
+            try self.substituteText(a, operand);
+        return self.numeric(a, text);
+    }
+
+    /// `text` with its arbitrary substitution functions substituted for
+    /// this element; error.Invalid for the guaranteed-invalid value.
+    fn substituteText(self: *Builder, allocator: Allocator, text: []const u8) substitution.Error![]const u8 {
+        const source = substitution.originalText(text);
+        if (!substitution.mentionsFunction(source)) return source;
+        const nodes = try substitution.parse(allocator, source);
+        return (try substitution.substituteAndRender(allocator, nodes, self.substitutionHost(self.mathContext(.width)), "", null)).text;
+    }
+
+    /// One numeric value of `text` - a number, percentage or dimension token,
+    /// or a math function - computed with the shared math in this element's
+    /// context and converted to canonical units.
+    fn numeric(self: *Builder, allocator: Allocator, text: []const u8) Allocator.Error!?substitution.Numeric {
+        const math = @import("math_values.zig");
+        const context = self.mathContext(.width);
+        var stream = properties.Stream.init(text);
+        const token = stream.peek();
+        const literal: ?math.Numeric = switch (token.token_type) {
+            .number => .{ .value = token.numeric_value orelse return null, .unit = .number },
+            .percentage => .{ .value = token.numeric_value orelse return null, .unit = .percent },
+            .dimension => .{ .value = token.numeric_value orelse return null, .unit = math.Unit.parse(token.unit orelse return null) orelse return null },
+            else => null,
+        };
+        const value: math.Numeric = if (literal) |n| blk: {
+            _ = stream.next();
+            if (!stream.atEnd()) return null;
+            break :blk context.resolve(n);
+        } else blk: {
+            for ([_]math.Kind{ .number, .percentage, .length, .angle, .time, .resolution }) |kind| {
+                var attempt = properties.Stream.init(text);
+                const parsed = (try properties.mathValue(.{ .allocator = allocator }, &attempt, .{ .kind = kind })) orelse continue;
+                defer parsed.release();
+                if (!attempt.atEnd()) continue;
+                const computed = try parsed.calculation.compute(allocator, context);
+                defer computed.unref();
+                const known = computed.knownNumber() orelse return null;
+                break :blk context.resolve(known);
+            }
+            return null;
+        };
+        const dimension: substitution.Numeric.Dimension = switch (value.unit.base() orelse return .{ .value = value.value, .dimension = .number }) {
+            .percent => .percentage,
+            .length => if (value.unit == .px) .length else return null,
+            .angle => .angle,
+            .time => .time,
+            .frequency => .frequency,
+            .resolution => .resolution,
+            .flex => return null,
+        };
+        return .{ .value = value.value, .dimension = dimension };
+    }
+
     fn guardCallback(context: *anyopaque, kind: substitution.GuardKind, name: []const u8) Allocator.Error!usize {
         const self: *Builder = @ptrCast(@alignCast(context));
         return self.guard(kind, name);
@@ -745,6 +853,9 @@ const Builder = struct {
             .guard = guardCallback,
             .unguard = unguardCallback,
             .would_cycle = wouldCycleCallback,
+            .has_value = hasValueCallback,
+            .query_value_matches = queryValueMatchesCallback,
+            .numeric_value = numericValueCallback,
             .environment = self.ctx.environment,
             .math = context,
         };
@@ -2096,4 +2207,106 @@ test "a defensive unavailable font-size-adjust computes as its inherited value" 
     const root_value = try root_builder.computeValue(.font_size_adjust, from_font, .{});
     defer root_value.release();
     try testing.expect(std.meta.eql(computed_mod.initialComputed(.font_size_adjust), root_value));
+}
+
+/// The substitution Host of an element after its custom property phase, for
+/// the if() style() query tests (rows 122/123 call these from a function's
+/// replace; none of today's functions does).
+fn withHost(allocator: Allocator, text: []const u8, parent_text: ?[]const u8, body: *const fn (substitution.Host) anyerror!void) !void {
+    var parent: ?*ComputedStyle = null;
+    defer if (parent) |p| p.destroy();
+    if (parent_text) |pt| {
+        var block = try DeclarationBlock.parse(.{ .allocator = allocator }, pt);
+        defer block.deinit();
+        parent = try cascade(.{ .allocator = allocator, .parent = null, .is_root = true }, &.{.{ .block = &block, .source = .{ .origin = .author } }});
+    }
+    var block = try DeclarationBlock.parse(.{ .allocator = allocator }, text);
+    defer block.deinit();
+    const matched = [_]Matched{.{ .block = &block, .source = .{ .origin = .author } }};
+    var candidates = try collectCandidates(allocator, &matched);
+    defer candidates.deinit(allocator);
+    const links = try allocator.alloc(usize, candidates.items.len);
+    defer allocator.free(links);
+    var customs = try collectCustomCandidates(allocator, &matched);
+    defer customs.deinit(allocator);
+    var builder: Builder = .{
+        .ctx = .{ .allocator = allocator, .parent = parent },
+        .candidates = candidates.items,
+        .index = CandidateIndex.init(candidates.items, links),
+        .custom_candidates = customs.items,
+    };
+    defer builder.deinit();
+    const style = try allocator.create(ComputedStyle);
+    style.* = .{ .allocator = allocator, .values = computed_mod.initial_values };
+    defer style.destroy();
+    builder.style = style;
+    try builder.resolveCustomProperties();
+    try body(builder.substitutionHost(builder.mathContext(.width)));
+}
+
+test "style() queries: hasValue reads custom properties only" {
+    try withHost(testing.allocator, "--a: 1; --empty:; --bad: var(--missing)", "--inherited: x", struct {
+        fn body(host: substitution.Host) anyerror!void {
+            try testing.expect(try host.has_value.?(host.context, "--a"));
+            // The empty value is a value; the guaranteed-invalid one is not.
+            try testing.expect(try host.has_value.?(host.context, "--empty"));
+            try testing.expect(!try host.has_value.?(host.context, "--bad"));
+            try testing.expect(!try host.has_value.?(host.context, "--absent"));
+            try testing.expect(try host.has_value.?(host.context, "--inherited"));
+            try testing.expect(!try host.has_value.?(host.context, "color"));
+        }
+    }.body);
+}
+
+test "style() queries: queryValueMatches compares tokens, substituting the query first" {
+    try withHost(testing.allocator, "--a: red  blue; --n: 10px; --bad: var(--missing)", null, struct {
+        fn body(host: substitution.Host) anyerror!void {
+            const matches = host.query_value_matches.?;
+            try testing.expectEqual(@as(?bool, true), try matches(host.context, "--a", "red blue"));
+            try testing.expectEqual(@as(?bool, true), try matches(host.context, "--a", "  red /* c */ blue "));
+            try testing.expectEqual(@as(?bool, false), try matches(host.context, "--a", "red"));
+            try testing.expectEqual(@as(?bool, true), try matches(host.context, "--n", "var(--n)"));
+            try testing.expectEqual(@as(?bool, false), try matches(host.context, "--bad", "x"));
+            // A failed substitution of the query is an error the caller catches.
+            try testing.expectError(error.Invalid, matches(host.context, "--a", "var(--missing)"));
+            // Not a custom property: unknown.
+            try testing.expectEqual(@as(?bool, null), try matches(host.context, "color", "red"));
+        }
+    }.body);
+}
+
+test "style() range queries: numericValue in canonical units, from a name or a literal" {
+    try withHost(testing.allocator, "--len: 2in; --em: 2em; --angle: 0.5turn; --t: 250ms; --res: 2dppx; --pct: 40%; --num: 3; --calc: calc(1px + 1px); --word: big; --bad: var(--missing)", null, struct {
+        fn body(host: substitution.Host) anyerror!void {
+            const value = host.numeric_value.?;
+            try testing.expectEqual(substitution.Numeric{ .value = 192, .dimension = .length }, (try value(host.context, "--len")).?);
+            // Font-relative units resolve in the element's context (16px).
+            try testing.expectEqual(substitution.Numeric{ .value = 32, .dimension = .length }, (try value(host.context, "--em")).?);
+            try testing.expectEqual(substitution.Numeric{ .value = 180, .dimension = .angle }, (try value(host.context, "--angle")).?);
+            try testing.expectEqual(substitution.Numeric{ .value = 0.25, .dimension = .time }, (try value(host.context, "--t")).?);
+            try testing.expectEqual(substitution.Numeric{ .value = 2, .dimension = .resolution }, (try value(host.context, "--res")).?);
+            try testing.expectEqual(substitution.Numeric{ .value = 40, .dimension = .percentage }, (try value(host.context, "--pct")).?);
+            try testing.expectEqual(substitution.Numeric{ .value = 3, .dimension = .number }, (try value(host.context, "--num")).?);
+            try testing.expectEqual(substitution.Numeric{ .value = 2, .dimension = .length }, (try value(host.context, "--calc")).?);
+            try testing.expectEqual(substitution.Numeric{ .value = 1000, .dimension = .frequency }, (try value(host.context, "1khz")).?);
+            try testing.expectEqual(substitution.Numeric{ .value = 10, .dimension = .length }, (try value(host.context, "calc(var(--num) * 1px + 7px)")).?);
+            try testing.expect((try value(host.context, "--word")) == null);
+            try testing.expect((try value(host.context, "--bad")) == null);
+            try testing.expect((try value(host.context, "1px 2px")) == null);
+            try testing.expectError(error.Invalid, value(host.context, "var(--missing)"));
+        }
+    }.body);
+}
+
+test "style() query functions leak nothing under allocation failure" {
+    try testing.checkAllAllocationFailures(testing.allocator, struct {
+        fn run(allocator: Allocator) !void {
+            try withHost(allocator, "--a: red; --n: calc(1px + 2px)", null, struct {
+                fn body(host: substitution.Host) anyerror!void {
+                    _ = try host.query_value_matches.?(host.context, "--a", "red");
+                    _ = try host.numeric_value.?(host.context, "--n");
+                }
+            }.body);
+        }
+    }.run, .{});
 }
