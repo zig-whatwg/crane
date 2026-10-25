@@ -276,6 +276,10 @@ INCLUDE = [
     ('css/css-display/display-contents-computed-style.html', 'display computed style and inheritance; no rendered box assertions'),
     ('css/css-display/display-contents-parsing-001.html', 'display syntax and value parsing outside the parsing directory'),
     ('css/css-env/env-parsing.html', 'env syntax and value parsing outside the parsing directory'),
+    # The user, 2026-10-25 (lane vars1 Q5): env() substitution files, not
+    # tentative and no rendered boxes.
+    ('css/css-env/env-fallback-substitution.html', 'env() fallback substitution in custom properties; computed values only'),
+    ('css/css-env/env-revert-rule.html', 'env() fallback CSS-wide keyword after substitution; computed values only'),
     ('css/css-flexbox/balance/flex-line-count-computed.html', 'flexbox computed style and inheritance; no rendered box assertions'),
     ('css/css-flexbox/balance/flex-wrap-computed.html', 'flexbox computed style and inheritance; no rendered box assertions'),
     ('css/css-fonts/font-feature-settings-serialization-001.html', 'fonts value or rule serialization; no rendered boxes'),
