@@ -1,11 +1,16 @@
 //! Merge controls for native storage ownership versus a retired originating realm.
 //! A retired realm retains its agent identity, even after its engine context goes.
+//! It can ask no wrapper cache, so a torn-down node's storage stays for whatever
+//! wrapper may reach it - unless the slot's wrap mark proves none can
+//! ([wrap_tracking]: never wrapped, or its last wrapper released), when it goes
+//! back at once, as a native context's does (lane pageretention1: frames'
+//! retired realms kept every document's html, head and body).
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dom = @import("dom");
 
-const Scenario = enum { native, retired, coordinated };
+const Scenario = enum { native, retired, retired_wrapped, coordinated };
 
 fn exercise(scenario: Scenario) !void {
     interfaces.process_hooks.startHooksForTest();
@@ -18,7 +23,7 @@ fn exercise(scenario: Scenario) !void {
     // agent survives, while engine_ctx and its originating wrapper cache do
     // not. This opaque marker is only compared to null, never dereferenced.
     var agent_marker: u64 = 0;
-    if (scenario == .retired) context.agent = @ptrCast(&agent_marker);
+    if (scenario == .retired or scenario == .retired_wrapped) context.agent = @ptrCast(&agent_marker);
     try std.testing.expect(!context.hasEngine());
 
     var coordinator = runtime.cleanup_coordinator.CleanupCoordinator.init(std.testing.allocator);
@@ -49,6 +54,11 @@ fn exercise(scenario: Scenario) !void {
         }
     }
     try std.testing.expect(root_state_bytes > 0 and child_state_bytes > 0);
+    // A wrapper of some realm reached them: nothing proves them unreachable.
+    if (scenario == .retired_wrapped) {
+        runtime.instance_lifecycle.markWrapped(root);
+        runtime.instance_lifecycle.markWrapped(child);
+    }
     _ = try interfaces.Node.call_appendChild(root, child);
     const slots_allocated = runtime.BrowserScope.standalone().?.slab.stats().currently_allocated;
     const bytes_allocated = runtime.BrowserScope.standalone().?.arena.stats().bytes_in_use;
@@ -57,7 +67,7 @@ fn exercise(scenario: Scenario) !void {
 
     if (scenario == .coordinated) coordinator.beginContextCleanup();
     dom.node_creation.destroyUninserted(root);
-    if (scenario == .native) {
+    if (scenario == .native or scenario == .retired) {
         try std.testing.expectEqual(runtime.SlabAllocator.dead_generation, runtime.SlabAllocator.generationOf(root));
         try std.testing.expectEqual(runtime.SlabAllocator.dead_generation, runtime.SlabAllocator.generationOf(child));
         // A repeated destruction must reject the returned slot before reading
@@ -66,7 +76,8 @@ fn exercise(scenario: Scenario) !void {
     } else {
         // Resource teardown completes, but storage still belongs to an
         // existing wrapper/realm teardown owner. An absent originating cache
-        // cannot prove that another live realm has no wrapper of this node.
+        // cannot prove that another live realm has no wrapper of this node,
+        // and the wrap mark says one may.
         try std.testing.expectEqual(root_generation, runtime.SlabAllocator.generationOf(root));
         try std.testing.expectEqual(child_generation, runtime.SlabAllocator.generationOf(child));
         try std.testing.expect(runtime.instance_lifecycle.isCleanedUp(root));
@@ -116,8 +127,12 @@ test "document.write merge: native subtree storage returns exactly once" {
     try onFreshThread(.native);
 }
 
-test "document.write merge: retired originating realm retains cleaned subtree storage" {
+test "document.write merge: retired originating realm returns the storage no wrapper can reach" {
     try onFreshThread(.retired);
+}
+
+test "document.write merge: retired originating realm retains cleaned storage a wrapper may reach" {
+    try onFreshThread(.retired_wrapped);
 }
 
 test "document.write merge: coordinated native teardown returns unwrapped storage at its end" {
