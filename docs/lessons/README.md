@@ -372,6 +372,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Native font status precedes its script promise](architecture-native-font-status-precedes-its-script-promise.md) - Preserve automatic outcomes until script requests the promise.
 
 ### Spec Compliance
+- [Check source when cached Markdown drops grammar](spec-compliance-check-source-when-cached-markdown-drops-grammar.md) - Resolve missing punctuation in the original specification source before interpreting the converted grammar.
+- [Probe the full operator matrix](spec-compliance-probe-the-full-operator-matrix.md) - Test every operator pair with and without negation before generalizing a browser's comparison grammar.
 - [Nested CSS parsers preserve declaration identity](spec-compliance-nested-css-parsers-preserve-declaration-identity.md) - Forward the original declaration scope and source slice through nested value grammars.
 - [Recognizing a property can change its CSSOM readback](spec-compliance-recognizing-a-property-can-change-its-cssom-readback.md) - Audit the old storage route when registering a property; typed parse failure can discard previously observable text.
 - [Preserve the owning property's quirks](spec-compliance-preserve-the-owning-propertys-quirks.md) - Route compatibility exceptions by the containing property, including its explicitly allowed exceptions.
@@ -823,6 +825,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [leaks --atExit sees only the supervisor, not its child runners](testing-leaks-at-exit-sees-only-the-supervisor-not-its-child-runners.md) - A leak check is only as good as the process it watches: run the WPT runner in-process under `leaks`, and read the peak footprint before trusting "0 leaks".
 
 ### Debugging
+- [Allocate before transferring an arena](debugging-allocate-before-transferring-an-arena.md) - Transfer an arena only after its last allocation; struct field evaluation can otherwise copy stale ownership state.
 - [Debugging: Materialize coordinates before overwriting a vector](debugging-materialize-coordinates-before-overwriting-a-vector.md) - Compute every new coordinate from saved scalar inputs before assigning an aggregate back to its input vector.
 - [Debugging: Profile the WPT Worker, Not Its Supervisor](debugging-profile-the-wpt-worker-not-the-supervisor.md) - A WPT runner started with `--parallel=1` is still a supervisor; profile its actual test worker.
 - [Performance: A general sort reserves scratch before small-input branches](performance-a-general-sort-reserves-scratch-before-small-input-branches.md) - Profile a general sort's stack setup when a larger element type slows a hot path, even if nearly every input is tiny.
