@@ -412,8 +412,10 @@ fn replaceVar(resolver: *Resolver, _: Node, args: []const []const Node) Error!Re
     // guaranteed-invalid value."
     var result: ?Computed = null;
     var tainted = false;
-    if (resolver.substitute(args[0], false)) |name_nodes| {
-        const rendered = try render(resolver.allocator, name_nodes);
+    if (resolver.substituteWithTaint(args[0], false)) |name_argument| {
+        // A name a tainted substitution produced taints what it names.
+        if (name_argument.tainted) tainted = true;
+        const rendered = try render(resolver.allocator, name_argument.nodes);
         if (try customPropertyName(resolver.allocator, rendered.text)) |name| {
             const lookup = resolver.host.custom_value orelse return error.Invalid;
             result = try lookup(resolver.host.context, name);
@@ -430,8 +432,8 @@ fn replaceVar(resolver: *Resolver, _: Node, args: []const []const Node) Error!Re
     // substituted otherwise, so it creates no dependency.)
     const value = result orelse {
         if (args.len < 2) return error.Invalid;
-        const fallback = try resolver.substitute(args[1], false);
-        return .{ .nodes = fallback };
+        const fallback = try resolver.substituteWithTaint(args[1], false);
+        return .{ .nodes = fallback.nodes, .tainted = tainted or fallback.tainted };
     };
     // §8.7.2: a var() whose value was tainted is tainted as a whole.
     if (value.taint.len != 0) tainted = true;
@@ -562,7 +564,7 @@ fn replaceEnv(resolver: *Resolver, _: Node, args: []const []const Node) Error!Re
     // well." 3. "Otherwise, the property or descriptor containing the env()
     // function is invalid at computed-value time."
     if (args.len < 2) return error.Invalid;
-    return .{ .nodes = try resolver.substitute(args[1], false) };
+    return resolver.substituteWithTaint(args[1], false);
 }
 
 // ============================================================================
@@ -597,7 +599,7 @@ fn strictItem(raw: []const Node) Error![]const Node {
 
 fn replaceRandomItem(resolver: *Resolver, node: Node, args: []const []const Node) Error!Replacement {
     // §9.2 step 2: evaluate the key only; unused items remain untouched.
-    const key_nodes = try resolver.substitute(args[0], false);
+    const key_nodes = (try resolver.substituteWithTaint(args[0], false)).nodes;
     const key_text = (try render(resolver.allocator, key_nodes)).text;
     var stream = @import("properties.zig").Stream.init(key_text);
     const first = stream.peek();
@@ -626,7 +628,7 @@ fn replaceRandomItem(resolver: *Resolver, node: Node, args: []const []const Node
     // chosen item. An empty item is a real option, not a missing one.
     const count = args.len - 1;
     const selected = @min(count - 1, @as(usize, @intFromFloat(@floor(base * @as(f64, @floatFromInt(count))))));
-    return .{ .nodes = try resolver.substitute(args[selected + 1], false) };
+    return resolver.substituteWithTaint(args[selected + 1], false);
 }
 
 // ============================================================================
@@ -754,14 +756,10 @@ pub const Resolver = struct {
     /// `nodes` (the guard is the caller's: a "property" context for the
     /// declaration being substituted). `early_only` is "substitute
     /// early-invoked functions": only spread functions are replaced.
-    /// error.Invalid is the guaranteed-invalid value.
-    pub fn substitute(self: *Resolver, nodes: []const Node, early_only: bool) Error![]const Node {
-        return (try self.walk(nodes, early_only)).nodes;
-    }
-
-    /// `substitute`, with whether the result is tainted as a whole (Values
-    /// 5 §8.7.2) - true for an empty result that a tainted substitution
-    /// produced, which no node can carry. One walk.
+    /// error.Invalid is the guaranteed-invalid value. The result says
+    /// whether it is tainted as a whole (Values 5 §8.7.2) - true for an
+    /// empty result a tainted substitution produced, which no node can
+    /// carry. One walk; this is the only entry, so no path drops the flag.
     pub fn substituteWithTaint(self: *Resolver, nodes: []const Node, early_only: bool) Error!Replacement {
         const walked = try self.walk(nodes, early_only);
         return .{ .nodes = walked.nodes, .tainted = walked.tainted };
@@ -840,11 +838,14 @@ pub const Resolver = struct {
     /// Steps 2.1-2.5 for one function.
     fn replace(self: *Resolver, id: Id, node: Node) Error!Replacement {
         // 2.1 "Substitute early-invoked functions in func's contents."
-        const early = try self.substitute(node.children, true);
+        const early = try self.substituteWithTaint(node.children, true);
         // 2.3 "Parse early result according to func's argument grammar."
-        const args = try function(id).arguments(self.allocator, early);
-        // 2.4 "Replace an arbitrary substitution function for func."
-        return function(id).replace(self, node, args);
+        const args = try function(id).arguments(self.allocator, early.nodes);
+        // 2.4 "Replace an arbitrary substitution function for func." A
+        // tainted early substitution taints the replacement.
+        var replacement = try function(id).replace(self, node, args);
+        if (early.tainted) replacement.tainted = true;
+        return replacement;
     }
 };
 
@@ -986,7 +987,7 @@ pub const Declaration = struct {
 /// a result past the over-long limit).
 pub fn substituteAndRender(allocator: Allocator, nodes: []const Node, host: Host, declaration: Declaration) Error!Rendered {
     var resolver: Resolver = .{ .allocator = allocator, .host = host, .property = declaration.property, .namespaces = declaration.namespaces, .quirks = declaration.quirks };
-    const substituted = try resolver.substitute(nodes, false);
+    const substituted = (try resolver.substituteWithTaint(nodes, false)).nodes;
     const rendered = try render(allocator, substituted);
     if (rendered.text.len > max_substituted_bytes) return error.Invalid;
     return rendered;

@@ -327,10 +327,10 @@ test "a replacement may substitute any span, catch the guaranteed-invalid value 
     const nodes = try substitution.parse(arena.allocator(), "var(--missing) | var(--a) | var(--never)");
     var resolver: substitution.Resolver = .{ .allocator = arena.allocator(), .host = t.host(null), .property = "width" };
     // The first span fails; the failure is caught and is no one else's.
-    const failed = resolver.substitute(nodes[0..1], false);
+    const failed = resolver.substituteWithTaint(nodes[0..1], false);
     try testing.expectError(error.Invalid, failed);
     // The same resolver goes on with the next span.
-    const next = try resolver.substitute(nodes[4..5], false);
+    const next = (try resolver.substituteWithTaint(nodes[4..5], false)).nodes;
     try testing.expectEqualStrings("10px", (try substitution.render(arena.allocator(), next)).text);
     // The short-circuited span was never evaluated: no dependency on it.
     try testing.expect(t.wasAsked("--missing"));
@@ -395,4 +395,21 @@ test "a presentation attribute's pending value re-parses in presentation mode (S
     var style_list: std.ArrayList(css.properties.Assignment) = .empty;
     defer style_list.deinit(testing.allocator);
     try testing.expect(!try css.properties.parseDeclaration(.{ .allocator = testing.allocator }, .{ .longhand = .width }, "10", &style_list));
+}
+
+test "an empty tainted fallback keeps its taint flag (row 123 Q20)" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const vars = [_]Variable{.{ .name = "--t-empty", .value = .{ .text = "", .taint = &.{.{ .start = 0, .end = 0, .kind = .own }} } }};
+    var t: TestHost = .{ .variables = &vars, .allocator = testing.allocator };
+    defer t.deinit();
+    var resolver: substitution.Resolver = .{ .allocator = arena.allocator(), .host = t.host(test_environment), .property = "width" };
+    for ([_][]const u8{ "var(--missing, var(--t-empty))", "env(unknown, var(--t-empty))", "random-item(fixed 0.5, var(--t-empty), var(--t-empty))", "var(var(--missing, var(--t-empty)), )" }) |text| {
+        const result = try resolver.substituteWithTaint(try substitution.parse(arena.allocator(), text), false);
+        try testing.expectEqual(@as(usize, 0), result.nodes.len);
+        testing.expect(result.tainted) catch |err| {
+            std.debug.print("lost taint: {s}\n", .{text});
+            return err;
+        };
+    }
 }
