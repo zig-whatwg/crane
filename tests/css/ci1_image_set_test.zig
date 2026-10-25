@@ -44,7 +44,7 @@ const Checks = if (@hasDecl(css, "image_values")) struct {
         defer value.release();
         const set = images.view(value).?.image_set;
         try testing.expectEqual(@as(?usize, null), images.select(set.candidates, 1, .{ .context = &context, .supports = supported }));
-        try testing.expectEqual(@as(f64, 1), set.candidates[0].resolution_dppx);
+        try testing.expectEqual(@as(?f64, 1), set.candidates[0].resolutionDppx());
         try testing.expect(!set.candidates[0].resolution_explicit);
     }
 
@@ -53,7 +53,7 @@ const Checks = if (@hasDecl(css, "image_values")) struct {
         defer value.release();
         const set = images.view(value).?.image_set;
         const cross = images.view(set.candidates[0].image).?.cross_fade;
-        try testing.expectEqual(@as(f64, 0.5), cross.weight);
+        try testing.expectEqual(@as(?f64, 0.5), cross.normalizedWeight());
         try testing.expectEqualStrings("a", images.view(cross.inputs[0]).?.url.url);
         try testing.expectEqual(@as(usize, 1), images.view(cross.inputs[1]).?.image_set.candidates.len);
         const urls = value.resourceUrls();

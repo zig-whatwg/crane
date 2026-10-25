@@ -9,6 +9,8 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+
+- [Pending image descriptors have one read contract](architecture-pending-image-descriptors-have-one-read-contract.md) - Make pending data explicit, and test that defensive readers cannot hide a missing compute step.
 - [Dependencies must follow effective values](architecture-dependencies-must-follow-effective-values.md) - Query dependencies over the components computation will actually evaluate.
 - [Resource discovery must read parsed values](architecture-resource-discovery-must-read-parsed-values.md) - Update resource-interest prefilters with their consumers when a value representation changes.
 - [A wrap mark must say when the last wrapper went - and a sweep must wait for a tree's root](architecture-a-wrap-mark-must-say-when-the-last-wrapper-went.md) - "Was it ever wrapped?" is the wrong proof once wrappers can die before their objects: track "is a wrapper bound now", clear it only when the adapter finalizes the last one, decide a tree-owned node's slot only after the walk that frees its root, and audit destructor-only frees by what they call - aliases hide them.
@@ -661,6 +663,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Refresh aliases with their realm's interface objects](codegen-refresh-aliases-with-their-realms-interface-objects.md) - An alias names the realm's interface object, not the current contents of another global property.
 
 ### Testing
+
+- [A replacement is not a fallback candidate](testing-a-replacement-is-not-a-fallback-candidate.md) - Preserve a separate fallback candidate and distinguish it from the initial value.
 - [Support detection activates previously skipped assertions](testing-support-detection-activates-previously-skipped-assertions.md) - When support detection changes, inspect the assertions it enables and complete their dependent behavior in the same accepted delivery.
 - [Focused runs can miss an earlier stage fixture](testing-focused-runs-can-miss-an-earlier-stage-fixture.md) - Search every fixture that pins the old representation, preserve its ownership controls, and gate the complete changed tree.
 - [Check a control before assigning a staged failure](testing-check-a-control-before-assigning-a-staged-failure.md) - Inspect the first failed assertion before attributing every fixture failure to one missing consumer.

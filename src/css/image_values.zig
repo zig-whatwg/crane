@@ -7,6 +7,7 @@ const resources = @import("resource_values.zig");
 const Scheme = @import("color_scheme.zig").Scheme;
 const tokenizer = @import("tokenizer.zig");
 const gradients = @import("gradient_values.zig");
+const math = @import("math_values.zig");
 const image_values = @This();
 const Allocator = std.mem.Allocator;
 const Value = values.Value;
@@ -36,9 +37,26 @@ pub const Candidate = struct {
     /// Images4 §2.4: omitted resolution defaults selection to 1x, but does
     /// not override an image's intrinsic resolution supplied by its format.
     resolution_explicit: bool = false,
+    /// Images4 §2.4: a specified math descriptor owns this value until compute.
+    /// While pending, resolution_dppx is inactive; readers use resolutionDppx.
+    resolution_value: ?Value = null,
+
+    pub fn resolutionDppx(self: Candidate) ?f64 {
+        return if (self.resolution_value != null) null else self.resolution_dppx;
+    }
 };
 pub const Set = struct { candidates: []const Candidate };
-pub const CrossFade = struct { inputs: [2]Value, weight: f64 };
+pub const CrossFade = struct {
+    inputs: [2]Value,
+    weight: f64,
+    /// Q143: a specified expression owns its pending progress. Consumers use
+    /// the nullable accessor, never the inactive numeric field before compute.
+    weight_value: ?Value = null,
+
+    pub fn normalizedWeight(self: CrossFade) ?f64 {
+        return if (self.weight_value != null) null else self.weight;
+    }
+};
 
 pub const TypeSupport = struct {
     context: *const anyopaque,
@@ -52,6 +70,9 @@ pub const TypeSupport = struct {
 /// The returned index borrows the ORIGINAL list; nothing is filtered in place.
 pub fn select(candidates: []const Candidate, scale: f64, support: TypeSupport) ?usize {
     std.debug.assert(std.math.isFinite(scale) and scale > 0);
+    // Q114: selection consumes a fully computed set, never a partial choice
+    // that hides an unresolved descriptor later in the original list.
+    for (candidates) |candidate| if (candidate.resolutionDppx() == null) return null;
     var best: ?usize = null;
     for (candidates, 0..) |candidate, i| {
         // Step 1 precedes duplicate removal: an unsupported earlier image
@@ -59,13 +80,13 @@ pub fn select(candidates: []const Candidate, scale: f64, support: TypeSupport) ?
         if (candidate.mime_type) |mime| if (!support.supports(support.context, mime)) continue;
         // Blink IsSupported rejects 0dppx; WebKit returns InvalidImage when
         // its best result has zero scale. Zero remains valid specified CSS.
-        if (!(candidate.resolution_dppx > 0)) continue;
+        const next = candidate.resolutionDppx().?;
+        if (!(next > 0)) continue;
         const old_index = best orelse {
             best = i;
             continue;
         };
-        const old = candidates[old_index].resolution_dppx;
-        const next = candidate.resolution_dppx;
+        const old = candidates[old_index].resolutionDppx().?;
         const improves = if (old >= scale)
             next >= scale and next < old
         else
@@ -92,6 +113,7 @@ pub const Data = union(enum) {
                 var count: usize = 0;
                 errdefer for (copy[0..count]) |item| {
                     item.image.release();
+                    if (item.resolution_value) |value| value.release();
                     if (item.mime_type) |mime| allocator.free(mime);
                 };
                 for (set.candidates, copy) |item, *dest| {
@@ -99,6 +121,7 @@ pub const Data = union(enum) {
                     dest.* = item;
                     dest.mime_type = mime;
                     item.image.retain();
+                    if (item.resolution_value) |value| value.retain();
                     count += 1;
                 }
                 break :blk .{ .image_set = .{ .candidates = copy } };
@@ -109,6 +132,7 @@ pub const Data = union(enum) {
             },
             .cross_fade => |cross| blk: {
                 for (cross.inputs) |item| item.retain();
+                if (cross.weight_value) |value| value.retain();
                 break :blk self;
             },
             .solid_color => |color| blk: {
@@ -124,12 +148,16 @@ pub const Data = union(enum) {
             .image_set => |set| {
                 for (set.candidates) |item| {
                     item.image.release();
+                    if (item.resolution_value) |value| value.release();
                     if (item.mime_type) |mime| allocator.free(mime);
                 }
                 allocator.free(set.candidates);
             },
             .light_dark => |pair| for (pair) |item| item.release(),
-            .cross_fade => |cross| for (cross.inputs) |item| item.release(),
+            .cross_fade => |cross| {
+                for (cross.inputs) |item| item.release();
+                if (cross.weight_value) |value| value.release();
+            },
             .solid_color => |color| color.release(),
         }
     }
@@ -150,7 +178,10 @@ pub const Data = union(enum) {
                     if (i != 0) try out.appendSlice(allocator, ", ");
                     try appendImage(candidate.image, &out, &urls, allocator);
                     try out.append(allocator, ' ');
-                    try candidate.resolution.serialize(&out, allocator);
+                    if (candidate.resolution_value) |value|
+                        try properties.serializeValue(.margin_left, value, &out, allocator)
+                    else
+                        try candidate.resolution.serialize(&out, allocator);
                     if (candidate.mime_type) |mime| {
                         try out.appendSlice(allocator, " type(");
                         try values.appendString(mime, &out, allocator);
@@ -170,7 +201,12 @@ pub const Data = union(enum) {
                 try out.appendSlice(allocator, ", ");
                 try appendImage(cross.inputs[1], &out, &urls, allocator);
                 try out.appendSlice(allocator, ", ");
-                try values.appendNumber(cross.weight, &out, allocator);
+                // Q148: specified math keeps calc; literals and computed
+                // progress use the normalized number (WebKit's spelling).
+                if (cross.weight_value) |value|
+                    try properties.serializeValue(.margin_left, value, &out, allocator)
+                else
+                    try values.appendNumber(cross.normalizedWeight().?, &out, allocator);
             },
             .solid_color => |color| {
                 try out.appendSlice(allocator, "image(");
@@ -226,13 +262,19 @@ pub const Image = struct {
                 const a = set.candidates;
                 const b = other.data.image_set.candidates;
                 if (a.len != b.len) return false;
-                for (a, b) |x, y| if (x.resolution_explicit != y.resolution_explicit or !x.image.eql(y.image)) return false;
+                for (a, b) |x, y| {
+                    if (x.resolution_explicit != y.resolution_explicit or !x.image.eql(y.image)) return false;
+                    if ((x.resolution_value == null) != (y.resolution_value == null)) return false;
+                    if (x.resolution_value) |value| if (!value.eql(y.resolution_value.?)) return false;
+                }
             },
             .light_dark => |pair| {
                 for (pair, other.data.light_dark) |a, b| if (!a.eql(b)) return false;
             },
             .cross_fade => |cross| {
                 for (cross.inputs, other.data.cross_fade.inputs) |a, b| if (!a.eql(b)) return false;
+                if ((cross.weight_value == null) != (other.data.cross_fade.weight_value == null)) return false;
+                if (cross.weight_value) |value| if (!value.eql(other.data.cross_fade.weight_value.?)) return false;
             },
             .solid_color => |color| if (!color.eql(other.data.solid_color)) return false,
             .gradient => |gradient| if (!gradient.eql(other.data.gradient)) return false,
@@ -243,11 +285,15 @@ pub const Image = struct {
     pub fn needsUnavailableMetrics(self: *const Image, geometry_length: bool) bool {
         return switch (self.data) {
             .image_set => |set| blk: {
-                for (set.candidates) |candidate| if (candidate.image.needsUnavailableMetrics(geometry_length)) break :blk true;
+                for (set.candidates) |candidate| {
+                    if (candidate.image.needsUnavailableMetrics(geometry_length)) break :blk true;
+                    if (candidate.resolution_value) |value| if (value.needsUnavailableMetrics(false)) break :blk true;
+                }
                 break :blk false;
             },
             .light_dark => |pair| pair[0].needsUnavailableMetrics(geometry_length) or pair[1].needsUnavailableMetrics(geometry_length),
-            .cross_fade => |cross| cross.inputs[0].needsUnavailableMetrics(geometry_length) or cross.inputs[1].needsUnavailableMetrics(geometry_length),
+            .cross_fade => |cross| cross.inputs[0].needsUnavailableMetrics(geometry_length) or cross.inputs[1].needsUnavailableMetrics(geometry_length) or
+                (if (cross.weight_value) |value| value.needsUnavailableMetrics(false) else false),
             .solid_color => |color| color.needsUnavailableMetrics(geometry_length),
             .gradient => |gradient| gradient.needsUnavailableMetrics(geometry_length),
         };
@@ -256,11 +302,15 @@ pub const Image = struct {
     pub fn needsTreeCounts(self: *const Image) bool {
         return switch (self.data) {
             .image_set => |set| blk: {
-                for (set.candidates) |candidate| if (candidate.image.needsTreeCounts()) break :blk true;
+                for (set.candidates) |candidate| {
+                    if (candidate.image.needsTreeCounts()) break :blk true;
+                    if (candidate.resolution_value) |value| if (value.needsTreeCounts()) break :blk true;
+                }
                 break :blk false;
             },
             .light_dark => |pair| pair[0].needsTreeCounts() or pair[1].needsTreeCounts(),
-            .cross_fade => |cross| cross.inputs[0].needsTreeCounts() or cross.inputs[1].needsTreeCounts(),
+            .cross_fade => |cross| cross.inputs[0].needsTreeCounts() or cross.inputs[1].needsTreeCounts() or
+                (if (cross.weight_value) |value| value.needsTreeCounts() else false),
             .solid_color => |color| color.needsTreeCounts(),
             .gradient => |gradient| gradient.needsTreeCounts(),
         };
@@ -269,11 +319,15 @@ pub const Image = struct {
     pub fn needsRandomBase(self: *const Image) bool {
         return switch (self.data) {
             .image_set => |set| blk: {
-                for (set.candidates) |candidate| if (candidate.image.needsRandomBase()) break :blk true;
+                for (set.candidates) |candidate| {
+                    if (candidate.image.needsRandomBase()) break :blk true;
+                    if (candidate.resolution_value) |value| if (value.needsRandomBase()) break :blk true;
+                }
                 break :blk false;
             },
             .light_dark => |pair| pair[0].needsRandomBase() or pair[1].needsRandomBase(),
-            .cross_fade => |cross| cross.inputs[0].needsRandomBase() or cross.inputs[1].needsRandomBase(),
+            .cross_fade => |cross| cross.inputs[0].needsRandomBase() or cross.inputs[1].needsRandomBase() or
+                (if (cross.weight_value) |value| value.needsRandomBase() else false),
             .solid_color => |color| color.needsRandomBase(),
             .gradient => |gradient| gradient.needsRandomBase(),
         };
@@ -371,20 +425,40 @@ pub const Image = struct {
                 }
                 try items.ensureTotalCapacity(allocator, set.candidates.len);
                 for (set.candidates) |candidate| {
+                    // Images4 §2.4: compute every descriptor before the later
+                    // selection step. Context carries the winning Source.
+                    const dppx = if (candidate.resolution_value) |value| blk: {
+                        const result = try context.length(value);
+                        defer result.release();
+                        std.debug.assert(result == .calculation);
+                        const number = result.calculation.computedNumber().?;
+                        std.debug.assert(number.unit == .dppx);
+                        break :blk number.value;
+                    } else candidate.resolutionDppx().?;
                     var computed = candidate;
+                    computed.resolution_value = null;
+                    computed.resolution_dppx = dppx;
+                    computed.resolution = .{ .number = dppx, .unit = .dppx };
                     computed.image = try context.component(.list_style_image, candidate.image);
-                    computed.resolution = .{ .number = candidate.resolution_dppx, .unit = .dppx };
                     items.appendAssumeCapacity(computed);
                 }
                 // Keep EVERY option; selection is a separate used-value step.
                 return .{ .image = try create(allocator, .{ .image_set = .{ .candidates = items.items } }) };
             },
             .cross_fade => |cross| {
+                // Values §10.11–10.12: compute with the winning Source,
+                // normalizing percentages and clamping only the outer result.
+                const weight = if (cross.weight_value) |value| blk: {
+                    const result = try context.length(value);
+                    defer result.release();
+                    std.debug.assert(result == .number);
+                    break :blk result.number;
+                } else cross.normalizedWeight().?;
                 const first = try context.component(.list_style_image, cross.inputs[0]);
                 defer first.release();
                 const second = try context.component(.list_style_image, cross.inputs[1]);
                 defer second.release();
-                return .{ .image = try create(allocator, .{ .cross_fade = .{ .inputs = .{ first, second }, .weight = cross.weight } }) };
+                return .{ .image = try create(allocator, .{ .cross_fade = .{ .inputs = .{ first, second }, .weight = weight } }) };
             },
             .solid_color => |color| {
                 const computed = try context.color(color);
@@ -580,6 +654,7 @@ fn parseSet(options: properties.ParseOptions, stream: *properties.Stream, policy
     defer {
         for (candidates.items) |candidate| {
             candidate.image.release();
+            if (candidate.resolution_value) |value| value.release();
             if (candidate.mime_type) |mime| allocator.free(mime);
         }
         candidates.deinit(allocator);
@@ -606,6 +681,7 @@ fn parseSet(options: properties.ParseOptions, stream: *properties.Stream, policy
         var transferred = false;
         defer if (!transferred) {
             image.release();
+            if (candidate.resolution_value) |value| value.release();
             if (candidate.mime_type) |mime| allocator.free(mime);
         };
         // Images4 §2.4: resolution || type(string), either order, once each.
@@ -617,9 +693,13 @@ fn parseSet(options: properties.ParseOptions, stream: *properties.Stream, policy
                 if (mime.token_type != .string or !endFunction(stream)) return null;
                 candidate.mime_type = try tokenizer.decode(allocator, mime.stringContents());
             } else if (!candidate.resolution_explicit) {
-                const resolution = parseResolution(stream) orelse break;
-                candidate.resolution = resolution;
-                candidate.resolution_dppx = resolution.dppx();
+                if (math.isFunction(next)) {
+                    candidate.resolution_value = (try properties.mathValue(options, stream, .{ .kind = .resolution, .minimum = 0 })) orelse return null;
+                } else {
+                    const resolution = parseResolution(stream) orelse break;
+                    candidate.resolution = resolution;
+                    candidate.resolution_dppx = resolution.dppx();
+                }
                 candidate.resolution_explicit = true;
             } else break;
         }
@@ -667,6 +747,12 @@ fn parseCrossFade(options: properties.ParseOptions, stream: *properties.Stream, 
     const second = (try parseAtDepth(options, stream, .{ .none = true }, depth)) orelse return null;
     defer second.release();
     if (stream.next().token_type != .comma) return null;
+    if (stream.peek().token_type == .function) {
+        const value = (try properties.mathValue(options, stream, .{ .kind = .number_percentage, .minimum = 0, .maximum = 1 })) orelse return null;
+        defer value.release();
+        if (!endFunction(stream)) return null;
+        return .{ .image = try Image.create(options.allocator, .{ .cross_fade = .{ .inputs = .{ first, second }, .weight = 0, .weight_value = value } }) };
+    }
     const token = stream.next();
     if (token.token_type != .number and token.token_type != .percentage) return null;
     const number = token.numeric_value orelse return null;
