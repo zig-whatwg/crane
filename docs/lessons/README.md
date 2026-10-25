@@ -9,7 +9,6 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
-
 - [Pending image descriptors have one read contract](architecture-pending-image-descriptors-have-one-read-contract.md) - Make pending data explicit, and test that defensive readers cannot hide a missing compute step.
 - [Dependencies must follow effective values](architecture-dependencies-must-follow-effective-values.md) - Query dependencies over the components computation will actually evaluate.
 - [Resource discovery must read parsed values](architecture-resource-discovery-must-read-parsed-values.md) - Update resource-interest prefilters with their consumers when a value representation changes.
@@ -71,13 +70,10 @@ A lane brief now carries the lessons chosen for its batch.
 - [Tracing a holder's nodes makes a wrapper for every node it holds](architecture-tracing-a-holders-nodes-makes-a-wrapper-per-node.md) - Before choosing traced edges for a holder, count the wrappers its hottest fill path makes: an edge per held node is a wrapper per held node, so a holder of many nodes needs a native hold the teardown respects, not a trace.
 - [Reuse slots inside a collectible traced value](architecture-reuse-slots-inside-a-collectible-traced-value.md) - Temporary owners share a fixed trace member and recycle ordinary array slots instead of registering immortal keys.
 - [Load-delay notification is not permission to run script](architecture-load-delay-notification-is-not-permission-to-run-script.md) - Synchronous readiness callbacks queue parser and deferred-script continuation on a guarded document task.
-
 - [Associate a parser after the last reentrant step](architecture-associate-a-parser-after-the-last-reentrant-step.md) - Release the parser present at association, including one installed by a callback in the same operation.
-
 - [Parser tracing uses a fixed member and collectible storage](architecture-parser-tracing-uses-a-fixed-member-and-collectible-storage.md) - Keep variable parser graphs collectible and active calls rooted through native cleanup.
 - [A parser's holds are its own structures, and a detached tree is rescued through its root](architecture-parser-holds-are-its-structures-and-detached-trees-are-rescued.md) - Hold what your own structures name natively; pay one wrapper for a detached root, never one per node, and end holds at release, not detach.
 - [An internal mutation keeps its caller's reaction scope](architecture-an-internal-mutation-keeps-its-callers-reaction-scope.md) - Use shared DOM algorithms inside the owning public operation's reaction boundary.
-
 - [A script-created parser outlives each write](architecture-a-script-created-parser-outlives-each-write.md) - Keep the script-created parser across consecutive document.write calls until the stream closes.
 - [Script delivery and queue execution need separate owners](architecture-script-delivery-and-queue-execution-need-separate-owners.md) - Keep queue membership and delivery eligibility separate until execution or deliberate discard.
 - [Module graphs share fetches and own discovery](architecture-module-graphs-share-fetches-and-own-discovery.md) - Share an in-flight fetch by URL while each graph discovers and completes its own dependencies.
@@ -92,14 +88,10 @@ A lane brief now carries the lessons chosen for its batch.
 - [Shadow removal must walk shadow trees](architecture-shadow-removal-must-walk-shadow-trees.md) - Shadow-including lifecycle algorithms and allocation-failure fallbacks must traverse the same shadow edges in the same order.
 - [Eager slot assignment stays off trees without shadow roots, by its own invariant](architecture-eager-slot-assignment-stays-off-trees-without-shadow-roots.md) - Before making a spec algorithm lazy for speed, find the invariant that says when each step is a no-op: an eager implementation guarded by it can be as cheap on the common path, and stays exact at every observation point.
 - [Native owner liveness differs from realm callability](architecture-native-owner-liveness-differs-from-realm-callability.md) - Detach live native owners independently of whether their realms can run callbacks.
-
 - [Share fragment parser state initialization](architecture-share-fragment-parser-state-initialization.md) - Reuse state transitions and test resulting trees.
-
 - [Parser reparenting must consult the live DOM](architecture-parser-reparenting-must-consult-the-live-dom.md) - Keep parser state for decisions and perform DOM moves against live relationships.
-
 - [Stable continuations own their native record](architecture-stable-continuations-own-their-native-record.md) - Retain queued identity separately from the element and release it on completion or drop.
 - [A queue handoff may drop the task before return](architecture-a-queue-handoff-may-drop-the-task-before-return.md) - After transferring task ownership, treat the payload as already destroyed. A caller of a task scheduled many times does its work on the task before the handoff; when fixing one user of a handoff, grep the queue's other callers.
-
 - [Parsed records need platform objects at the binding](architecture-parsed-records-need-platform-objects-at-the-binding.md) - Convert representations at the owner boundary; a pointer cast cannot create a platform object or its lifetime.
 - [Cancelled reaction queues need stable element identities](architecture-cancelled-reaction-queues-need-stable-element-identities.md) - Cancel by stable identity so a reused slab address cannot inherit queued work.
 - [An activity bit cannot own two independent holds](architecture-an-activity-bit-cannot-own-two-independent-holds.md) - Root constructor returns independently across reactions and binding conversion; prove the exact GC window.
@@ -443,16 +435,11 @@ A lane brief now carries the lessons chosen for its batch.
 - [A keepalive quota is a running total, and ping loads are exempt](spec-compliance-a-keepalive-quota-is-a-running-total-and-ping-loads-are-exempt.md) - A quota "summed over in-flight records" that include the request being checked double-counts it: implement the engines' running total, reserved at start and released once at the end. Then check which load types each engine actually counts before applying a spec rule to every request that carries the flag.
 - [Required and optional apply to control categories](spec-compliance-required-and-optional-are-not-complements-on-all-elements.md) - Classify the element before negating pseudo-class state; use browser evidence for disputed input categories.
 - [An intervention's exceptions are decided one by one](spec-compliance-an-intervention-s-exceptions-are-decided-one-by-one.md) - For a behaviour the spec does not have, list each exception the shipping engines make, mark who allows it - counting a non-blocking engine as allowing - and test every line.
-
 - [Check the XHR send flag when abort is delivered](spec-compliance-check-the-xhr-send-flag-when-abort-is-delivered.md) - A queued document abort must recheck completed request state before touching its response or firing errors.
-
 - [Prepare scripts after batch connection](spec-compliance-script-preparation-runs-after-batch-connection.md) - Connect the parser-created batch before preparing scripts because preparation can execute script.
 - [Shared null defaults can hide caller semantics](spec-compliance-shared-null-defaults-can-hide-caller-semantics.md) - Keep absence distinct from present null and fix callers that need explicit null.
-
 - [Template fragment parsing uses the content registry](spec-compliance-template-fragment-parsing-uses-the-content-registry.md) - Derive registry from the intended insertion parent, not just the fragment context.
-
 - [Prescan bounds apply to the stream, not each attribute](spec-compliance-prescan-bounds-apply-to-the-stream-not-each-attribute.md) - Preserve complete values within the specified input window.
-
 - [Initialize document-owned state before descendants](spec-compliance-initialize-document-owned-state-before-descendants.md) - Establish persistent associations only after their owner is initialized.
 - [An enqueue step is not an execution guard](spec-compliance-an-enqueue-step-is-not-an-execution-guard.md) - Queue membership has observable effects; preserve the spec's placement of state guards.
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
@@ -620,7 +607,6 @@ A lane brief now carries the lessons chosen for its batch.
 - [Constructor arity removes only trailing optional arguments](codegen-constructor-arity-removes-only-trailing-optional-arguments.md) - Test non-trailing optional arguments explicitly; optional, nullable, variadic and overloaded cases alone do not cover the effective-list algorithm.
 - [A named special operation on a [Global] interface is a global function](codegen-a-named-special-operation-on-a-global-is-a-global-function.md) - A supplementary IDL member must not add a script-visible name the browsers lack - on a [Global] interface, a named special operation is a global function that shadows named access.
 - [A callback function type is an argument's form, not a result's](codegen-a-callback-function-type-is-an-argument-s-not-a-result-s.md) - A type the binding fills in one direction is not a type the binding can return; give a getter result a form with a conversion and an ownership rule (a JSValue has both).
-
 - [A generated default runs a src/dom algorithm, not an impls helper](codegen-a-generated-default-runs-a-src-dom-algorithm-not-an.md) - A generated default is a spec algorithm the generated layer calls: put it in src/dom, decide what the IDL fixes at compile time, and hook only what needs an impl's own state.
 - [The generated interface is the class - its construction chain and construction arguments are emitted](codegen-the-generated-interface-is-the-class.md) - An impl writes only its own construction and destruction steps (initOwn/deinitOwn); what it is given at construction arrives as an argument of the generated chain.
 - [A special operation is found by its metadata, not its name](codegen-a-special-operation-is-found-by-its-metadata-not-its-name.md) - The binding map's names say a function is bound, never what it is; when the binding needs a member's role, codegen states it in a table beside the delegate, from the IDL, with an explicit default for "none".
@@ -664,7 +650,6 @@ A lane brief now carries the lessons chosen for its batch.
 - [Refresh aliases with their realm's interface objects](codegen-refresh-aliases-with-their-realms-interface-objects.md) - An alias names the realm's interface object, not the current contents of another global property.
 
 ### Testing
-
 - [A replacement is not a fallback candidate](testing-a-replacement-is-not-a-fallback-candidate.md) - Preserve a separate fallback candidate and distinguish it from the initial value.
 - [Support detection activates previously skipped assertions](testing-support-detection-activates-previously-skipped-assertions.md) - When support detection changes, inspect the assertions it enables and complete their dependent behavior in the same accepted delivery.
 - [Focused runs can miss an earlier stage fixture](testing-focused-runs-can-miss-an-earlier-stage-fixture.md) - Search every fixture that pins the old representation, preserve its ownership controls, and gate the complete changed tree.
@@ -702,15 +687,10 @@ A lane brief now carries the lessons chosen for its batch.
 - [A misnested-form test must clear the form element pointer](testing-a-misnested-form-test-must-clear-the-form-element-pointer.md) - A "red by design" test is only evidence once it passes in a browser; check its markup against the parser's state (form element pointer, head pointer, open-element stack) first.
 - [A queued-record test must collect without a task turn](testing-a-queued-record-test-must-collect-without-a-task-turn.md) - Know which checkpoint your helper crosses: an `await` delivers queued mutation records, so a test of the queue must collect, churn and read without one.
 - [Check the harness’s roots before asserting collection](testing-check-the-harness-roots-before-asserting-collection.md) - Invoke real GC, avoid test-owned strong references, and prove retention assertions fail without their collector edge.
-
 - [A shared suite can hide missing hook setup](testing-a-shared-suite-can-hide-missing-hook-setup.md) - Each test file owns its process-wide prerequisites.
-
 - [Shared algorithm migrations need caller context tests](testing-shared-algorithm-migrations-need-caller-context-tests.md) - Verify the nodes exist and retain the caller's realm and subtype state.
-
 - [Subtree cleanup must return native storage](testing-subtree-cleanup-must-return-native-storage.md) - Count live storage separately and prove repeated operations plateau.
-
 - [Parser fixtures need explicit and implicit document roots](testing-parser-fixtures-need-explicit-and-implicit-document-roots.md) - Reparenting tests must exercise both root ownership paths.
-
 - [Prove a benchmark reaches the feature](testing-prove-a-benchmark-reaches-the-feature.md) - Assert the feature precondition before treating measurements as evidence.
 - [Typed handle counters can drift on generic disposal](testing-typed-handle-counters-can-drift-on-generic-disposal.md) - Validate counter coverage against actual handle and heap measurements.
 - [Read JSONL with its record delimiter](testing-read-jsonl-with-its-record-delimiter.md) - Preserve Unicode line separators inside strings when splitting records.
@@ -779,10 +759,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Allocator walks propagate injected errors](testing-allocator-walks-propagate-injected-errors.md) - Let injected OutOfMemory reach the walker before asserting the ordinary semantic error.
 - [A poisoned Array.prototype poisons testharness.js too](testing-a-poisoned-prototype-poisons-testharness-too.md) - Scope a prototype poison to the one call it tests; the harness shares the realm and trips over it.
 - [A dom unit test that reaches an engine operation cannot link](testing-a-dom-unit-test-that-reaches-an-engine-operation-cannot-link.md) - Keep src/dom unit tests to logic that reaches no `engine.*` operation; split the pure step out and test it, and read "N undefined _v8_ symbols" in a dom test step as "a test reached the engine".
-
 - [Measure the WPT process, not its supervisor](testing-measure-the-wpt-process-not-its-supervisor.md) - Even `--parallel=1` changes the process measured by `leaks --atExit`; compare direct runners.
 - [A red test for a step that has not landed asserts that it is still red](testing-a-red-test-for-an-unlanded-step-asserts-that-it-is-still-red.md) - Wrap the verdict in `knownRed(step_landed, ...)`: it passes while red, fails when it turns green unannounced, and is required once the flag is flipped in the commit that earns it.
-
 - [A union conversion needs a case per member type](testing-a-union-conversion-needs-a-case-per-member-type.md) - Enumerate the flattened member types from the IDL and give each its own case - plus an offset view and a detached buffer - before calling a conversion done.
 - [A test encoder written beside its decoder can share its mistake](testing-a-test-encoder-written-beside-its-decoder-can-share-its-mistake.md) - An encoder and decoder written together agree with each other, not with the format: anchor one of them to an independent implementation, and build truncated streams that end where you think they do.
 - [The WebDriver remote end reads the browsing context, not script's getters](testing-the-webdriver-remote-end-reads-the-browsing-context-not-script-getters.md) - Remote-end code is not script: reach a window's document and cookie store through its browsing context, never through an IDL getter that checks the accessor or a top-level-only field.
@@ -836,7 +814,6 @@ A lane brief now carries the lessons chosen for its batch.
 - [A call that can free its argument ends every read of it](debugging-a-call-that-can-free-its-argument-ends-every-read-of-it.md) - A call that can free its argument ends the caller's use of it - including the `defer`s written above the call; read the trace's top frame before believing a deep one.
 - [A parsed selector borrows its source text](debugging-a-parsed-selector-borrows-its-source-text.md) - Before keeping a parse result, find out what it borrows: an AST of slices lives no longer than its source.
 - [A per-call allocation in a lonely size class maps a page every call](debugging-a-per-call-allocation-in-a-lonely-size-class-maps-a-page.md) - Count allocations AND look at where they land: a per-call allocation that empties a DebugAllocator page costs a syscall pair; put call-lifetime data on the stack.
-
 - [An interface on the bindings' skip list is never installed](debugging-an-interface-on-the-bindings-skip-list-is-never-installed.md) - When an event is dispatched but its listener sees `undefined`, check that the event's interface is installed at all - grep the bindings' skip list before tracing the dispatch.
 - [A Range oracle can overflow on contradictory node order](debugging-range-oracle-stack-overflow-can-start-in-node-order.md) - Check oracle dependencies and native ordering antisymmetry before replacing a correct Range helper.
 - [A pull inflater needs short-input and block-transition tests](debugging-a-pull-inflater-needs-short-input-and-block-transition-tests.md) - Test streaming adapters at interrupted operations and block transitions with external data.
@@ -844,7 +821,6 @@ A lane brief now carries the lessons chosen for its batch.
 - [A Wrapperless Removal Orphans the Node Until Browser End](debugging-a-wrapperless-removal-orphans-the-node-until-browser-end.md) - A feature that starts passing can expose a leak in code merged rounds earlier; any InternalState owning non-arena memory needs a teardown sweep until refcounting.
 - [A node's slab generation can outlive its NodeBase - a generation check does not prove a node's storage is there](debugging-a-nodes-slab-generation-can-outlive-its-nodebase.md) - A live generation says the Instance slot is still that object's, not that its node storage exists: anything linked into a NodeBase must be unlinked by the node's own teardown, the way registered observers are.
 - [Give the objects that reissue a freed slot a voice](debugging-give-the-objects-that-reissue-a-freed-slot-a-voice.md) - Make the impostor talk: churn objects that announce themselves, so a reissued slot fails the assertion with its name instead of passing or crashing elsewhere.
-
 - [A worker thread's crash is journalled against a later file](debugging-a-worker-thread-crash-is-journalled-against-a-later-file.md) - The journal names the file running when the process died, which is not always the file that crashed. Find the fault line in the log first; a worker thread's fault can be printed many files before the abort.
 - [Inspect the DOM before changing a serializer](debugging-inspect-the-dom-before-changing-a-serializer.md) - Locate the first incorrect representation before repairing a later result.
 - [A diagnostic below the consumer's log level does not exist](debugging-a-diagnostic-below-the-consumer-s-log-level-does.md) - Pick the level from the consumer's threshold, not the author's.
