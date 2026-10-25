@@ -368,3 +368,31 @@ test "substituteWithTaint reports an empty tainted result as tainted (row 123 Q1
     try testing.expect(!clean.tainted);
     try testing.expectEqual(@as(usize, 1), clean.nodes.len);
 }
+
+test "a presentation attribute's pending value re-parses in presentation mode (SVG2 4.2)" {
+    var list: std.ArrayList(css.properties.Assignment) = .empty;
+    defer {
+        for (list.items) |a| a.value.release();
+        list.deinit(testing.allocator);
+    }
+    try testing.expect(try css.svg_presentation.parse(.{ .allocator = testing.allocator }, "http://www.w3.org/2000/svg", "rect", "width", "var(--stroke1)", &list));
+    const pending = list.items[0].value.value.pending;
+    try testing.expect(pending.svg_presentation);
+    const vars = [_]Variable{.{ .name = "--stroke1", .value = .{ .text = "10" } }};
+    var t: TestHost = .{ .variables = &vars, .allocator = testing.allocator };
+    defer t.deinit();
+    const outcome = try pending.resolve(testing.allocator, t.host(null), null);
+    defer outcome.deinit(testing.allocator);
+    // The substituted value parses exactly as the attribute "10" does (a
+    // unitless length is valid there; in a style declaration it is not).
+    var direct: std.ArrayList(css.properties.Assignment) = .empty;
+    defer {
+        for (direct.items) |a| a.value.release();
+        direct.deinit(testing.allocator);
+    }
+    try testing.expect(try css.svg_presentation.parse(.{ .allocator = testing.allocator }, "http://www.w3.org/2000/svg", "rect", "width", "10", &direct));
+    try testing.expect(outcome.resolved[0].value.value.eql(direct.items[0].value.value));
+    var style_list: std.ArrayList(css.properties.Assignment) = .empty;
+    defer style_list.deinit(testing.allocator);
+    try testing.expect(!try css.properties.parseDeclaration(.{ .allocator = testing.allocator }, .{ .longhand = .width }, "10", &style_list));
+}
