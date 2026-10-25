@@ -85,6 +85,15 @@ pub const ComputedStyle = struct {
         return color.resolveComputed(allocator, .{ .scheme = self.used_color_scheme, .current = self.get(.color).color });
     }
 
+    /// Owned image aggregate for CSSOM §6.7.2: resolve currentcolor for this
+    /// receiver while preserving the inherited computed image (Color4 §15.5).
+    pub fn resolvedImageValue(self: *const ComputedStyle, l: Longhand, allocator: Allocator) Allocator.Error!Value {
+        return @import("image_values.zig").resolveCurrentColors(allocator, l, self.get(l), .{
+            .scheme = self.used_color_scheme,
+            .current = self.get(.color).color,
+        });
+    }
+
     /// CSSOM section 9: the resolved value of `l`, serialized into `out`.
     pub fn serializeResolved(self: *const ComputedStyle, l: Longhand, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
         const v = self.get(l);
@@ -107,6 +116,11 @@ pub const ComputedStyle = struct {
         }
         // Q119/Q120: resolved size lists repeat against this receiver's images.
         if (l == .background_size) return @import("background_values.zig").serializeComputedSize(v, @import("image_layers.zig").count(self.get(.background_image)), out, allocator);
+        if (v == .image or v == .layers or v == .content) {
+            const resolved = try self.resolvedImageValue(l, allocator);
+            defer resolved.release();
+            return @import("resolved_urls.zig").serialize(l, resolved, out, allocator);
+        }
         switch (properties.Longhand.info(l).grammar) {
             .paint => return @import("svg_paint.zig").serializeResolved(v, self.get(.color).color, out, allocator),
             .filter => if (v == .filter) return v.filter.serializeResolved(self.get(.color).color, out, allocator),
