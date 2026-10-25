@@ -1,11 +1,12 @@
 //! Refcount step 5g (lane refcount4): an event's path holds its nodes only
-//! while dispatch runs, in an array of its own made when the path is built
-//! and freed when it is emptied - never in the path's items, which an event
-//! keeps after dispatch (the gc_bench event-churn row: holds embedded in each
-//! item made every uncollected event's path buffer 104 B an item larger,
-//! +79% peak RSS and +22% instructions). Every way a dispatch ends lets them
-//! go: a throwing listener, a nested dispatch, stopImmediatePropagation, a
-//! path node removed mid-dispatch, and an allocation failure taking them.
+//! while dispatch runs, by chainless counted references (node_holds
+//! CountedRef: 16 B, no allocation, no chain link) - never by chained holds
+//! in its items, which an event keeps after dispatch (the gc_bench
+//! event-churn row: two node_holds holds per item made every uncollected
+//! event's path 104 B an item larger, +79% peak RSS and +22% instructions).
+//! Every way a dispatch ends lets them go: a throwing listener, a nested
+//! dispatch, stopImmediatePropagation, a path node removed mid-dispatch, and
+//! an allocation failure while the path is built.
 //! SHADOW MODE: counts read through dom.refcount.count - born (1) + the
 //! wrapper's (1) + the holders'.
 const h = @import("refcount_holders_helpers.zig");
@@ -18,9 +19,11 @@ const Page = h.Page;
 const onFreshThread = h.onFreshThread;
 const expectCount = h.expectCount;
 
-test "a path item carries no hold: the path's holds live only while dispatch runs" {
+test "a path item carries no chained hold, only chainless counted references" {
     try testing.expect(!@hasField(dom.event_dispatch.PathItem, "hold"));
     try testing.expect(!@hasField(dom.event_dispatch.PathItem, "related_hold"));
+    try testing.expect(@FieldType(dom.event_dispatch.PathItem, "invocation_ref") == dom.node_holds.CountedRef);
+    try testing.expect(@sizeOf(dom.node_holds.CountedRef) == 16);
 }
 
 /// Reads its nodes' counts each time the page calls `probe()`.
@@ -133,8 +136,8 @@ test "every way a dispatch ends lets the path's holds go" {
 }
 
 /// One build-and-release of a path over `nodes` with `allocator` serving
-/// the state, as dispatch does: the path is appended, `holdPath` takes the
-/// holds, `clearPath` lets them go - whatever the allocator refuses.
+/// the state, as dispatch does: the path is appended (where the allocator
+/// can refuse), `holdPath` takes the references, `clearPath` lets them go.
 fn holdAndClear(allocator: std.mem.Allocator, instances: []const *runtime.Instance, nodes: []const *dom.NodeBase, related: *runtime.Instance) !void {
     var state = dom.event_dispatch.EventState.init(allocator);
     defer state.deinit();
@@ -151,9 +154,9 @@ fn holdAndClear(allocator: std.mem.Allocator, instances: []const *runtime.Instan
             .invocation_node = node,
         });
     }
-    // An allocation failure here is returned (dispatch itself ignores it:
-    // no hold taken, the old net stays); `deinit` must then leave nothing.
-    try state.holdPath();
+    // The path is built (every append above succeeded): its references are
+    // taken - no allocation - and `clearPath` lets them go.
+    state.holdPath();
     for (nodes) |node| try expectCount(3, node, "held by the path");
     state.clearPath();
     for (nodes) |node| try expectCount(2, node, "after clearPath");
@@ -180,6 +183,6 @@ fn allocationFailureLeavesNothing() !void {
     try expectAllBack(&nodes, "after every allocation failure");
 }
 
-test "an allocation failure taking the path's holds leaves no count and no dangling hold" {
+test "an allocation failure while the path is built leaves no count behind" {
     try onFreshThread(allocationFailureLeavesNothing);
 }

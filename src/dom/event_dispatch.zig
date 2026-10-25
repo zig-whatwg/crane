@@ -29,6 +29,7 @@ const infra = @import("infra");
 const KeptInstance = @import("custom_elements.zig").KeptInstance;
 const node_holds = @import("node_holds.zig");
 const NodeBase = @import("node_base.zig").NodeBase;
+const instance_bridge = @import("instance_bridge.zig");
 
 /// One struct of an event's path (DOM 2.9 "append to an event path"), built
 /// by dom.event_path.
@@ -53,6 +54,17 @@ pub const PathItem = struct {
     /// "append to an event path" so the path's hold (`EventState.holdPath`)
     /// needs no lookup.
     invocation_node: ?*NodeBase = null,
+    /// The path's counted references while dispatch runs (refcount step
+    /// 5g), WebKit's EventContext `RefPtr<Node> m_node` and `RefPtr<Node>
+    /// m_relatedTarget` (Source/WebCore/dom/EventContext.h): on the
+    /// invocation target, and on the item's relatedTarget when it differs
+    /// from the previous item's. The shadow-adjusted targets and the items'
+    /// `target`s are always some item's invocation target, held there.
+    /// Chainless (`node_holds.CountedRef`), so an item may move; taken by
+    /// `EventState.holdPath` once the path is built and let go by
+    /// `clearPath` when dispatch ends. SHADOW MODE: counted only.
+    invocation_ref: node_holds.CountedRef = .{},
+    related_ref: node_holds.CountedRef = .{},
 };
 
 /// Event's eventPhase values (DOM 2.2).
@@ -134,23 +146,6 @@ pub const EventState = struct {
     /// 9b; these decide nothing yet.
     target_hold: node_holds.RefHold = .{},
     related_hold: node_holds.RefHold = .{},
-
-    /// The path's counted references while dispatch runs (refcount step
-    /// 5g), WebKit's EventContext `RefPtr<Node> m_node` and `RefPtr<Node>
-    /// m_relatedTarget` (Source/WebCore/dom/EventContext.h): one on each
-    /// item's invocation target, and one on each item's relatedTarget that
-    /// differs from the previous item's. The shadow-adjusted targets and the
-    /// items' `target`s are always some item's invocation target, held
-    /// there. An array of exactly that size, made by `holdPath` once the
-    /// path is built and freed by `clearPath` when dispatch ends - never
-    /// fields of the items, which an event keeps after dispatch: there they
-    /// made every uncollected event's path buffer 104 B an item larger
-    /// (gc_bench event-churn: +79% peak RSS, +22% instructions). SHADOW
-    /// MODE: counted only - they decide nothing yet.
-    path_holds: []node_holds.RefHold = &.{},
-    /// Whether `holdPath` ran for the current path (with or without the
-    /// array): until `clearPath`, nothing may append to the path.
-    path_held: bool = false,
 
     pub fn init(allocator: std.mem.Allocator) EventState {
         return .{
@@ -257,55 +252,30 @@ pub const EventState = struct {
         self.related_hold.release();
     }
 
-    /// Take the path's holds (`path_holds`) once dom.event_path has built
-    /// it; `clearPath` lets them go when dispatch ends. On an allocation
-    /// failure no hold is taken - the path keeps its old net, the counts
-    /// stay balanced - and the error is the caller's to report or ignore.
-    pub fn holdPath(self: *EventState) error{OutOfMemory}!void {
-        std.debug.assert(!self.path_held and self.path_holds.len == 0);
-        self.path_held = true;
-        const items = self.path.toSlice();
-        var needed: usize = 0;
+    /// Take the path's counted references (each item's `invocation_ref`
+    /// and `related_ref`) once dom.event_path has built it; `clearPath` lets
+    /// them go when dispatch ends.
+    pub fn holdPath(self: *EventState) void {
         var previous_related: ?*runtime.Instance = null;
-        for (items) |item| {
-            if (item.invocation_node != null) needed += 1;
+        for (self.path.toSliceMut()) |*item| {
+            item.invocation_ref.take(item.invocation_target, item.invocation_node);
             if (item.related_target) |related| {
-                if (related != previous_related) needed += 1;
-            }
-            previous_related = item.related_target;
-        }
-        if (needed == 0) return;
-        const holds = try self.allocator.alloc(node_holds.RefHold, needed);
-        for (holds) |*hold| hold.* = .{};
-        var next: usize = 0;
-        previous_related = null;
-        for (items) |item| {
-            if (item.invocation_node) |node| {
-                holds[next].setNode(item.invocation_target, node);
-                next += 1;
-            }
-            if (item.related_target) |related| {
-                if (related != previous_related) {
-                    holds[next].set(related);
-                    next += 1;
-                }
+                if (related != previous_related) item.related_ref.take(related, instance_bridge.getNodeBase(@ptrCast(related)));
             }
             previous_related = item.related_target;
             // TODO(refcount 5g): each item's touch target list - always empty
             // until a TouchEvent fills the event's (Touch is a stub) - takes
-            // its holds here when one can.
+            // its references here when one can.
         }
-        self.path_holds = holds;
     }
 
-    /// Let the path's holds go and free their array, before the path is
-    /// emptied or freed.
+    /// Let the path's counted references go, before the path is emptied or
+    /// freed.
     fn releasePath(self: *EventState) void {
-        self.path_held = false;
-        if (self.path_holds.len == 0) return;
-        for (self.path_holds) |*hold| hold.release();
-        self.allocator.free(self.path_holds);
-        self.path_holds = &.{};
+        for (self.path.toSliceMut()) |*item| {
+            item.invocation_ref.release(item.invocation_target);
+            if (item.related_target) |related| item.related_ref.release(related);
+        }
     }
 
     /// DOM 2.2 "set the canceled flag" given the event, whose cancelable

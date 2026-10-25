@@ -303,6 +303,40 @@ pub const RefHold = struct {
     }
 };
 
+/// A counted reference with no chain, for a holder that lives a short,
+/// bounded time and may move - the items of an event's path while dispatch
+/// runs: WebKit's EventContext `RefPtr<Node> m_node`. A node freed under it
+/// is recognised the way the wrapper's own reference recognises one
+/// (wrapper_cache `releaseCounted`): its slot reissued, or its teardown
+/// begun - and then it is forgotten, never released. No chain link, so no
+/// address to keep stable and nothing for `nodeReleased` to walk. SHADOW
+/// MODE: counted only.
+pub const CountedRef = struct {
+    /// The node held, or null for none.
+    base: ?*NodeBase = null,
+    /// The slab generation of the instance behind `base` when it was taken.
+    generation: u64 = 0,
+
+    /// Take one reference on `base`, the tree node of `instance` (nothing
+    /// for null: not a node). The ref holds nothing before.
+    pub fn take(self: *CountedRef, instance: *runtime.Instance, base: ?*NodeBase) void {
+        std.debug.assert(self.base == null);
+        const node = base orelse return;
+        self.* = .{ .base = node, .generation = runtime.SlabAllocator.generationOf(instance) };
+        refcount.holderRef(node);
+    }
+
+    /// Let it go - `instance` is the one it was taken for - unless the node
+    /// went first (then it is forgotten). Safe on a ref holding nothing.
+    pub fn release(self: *CountedRef, instance: *runtime.Instance) void {
+        const node = self.base orelse return;
+        self.base = null;
+        if (runtime.SlabAllocator.generationOf(instance) != self.generation) return;
+        if (runtime.instance_lifecycle.isCleanupStarted(instance)) return;
+        refcount.holderDeref(node);
+    }
+};
+
 // ============================================================================
 // Task holds: what a queued native task keeps
 // ============================================================================

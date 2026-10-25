@@ -49,7 +49,6 @@ const interfaces = @import("interfaces");
 const infra = @import("infra");
 
 const NodeBase = @import("node_base.zig").NodeBase;
-const log = std.log.scoped(.event_path);
 const event_dispatch = @import("event_dispatch.zig");
 const EventState = event_dispatch.EventState;
 const PathItem = event_dispatch.PathItem;
@@ -136,8 +135,6 @@ const Walk = struct {
     /// an item deeper than the depth-0 tree, and filled in for the depth-0
     /// tree's items once its root is reached (`resolveScope`).
     fn append(self: *Walk, invocation_target: *runtime.Instance, node: ?*NodeBase, shadow_adjusted: ?*runtime.Instance, slot_in_closed_tree: bool) !void {
-        // The items' holds live in them: none is taken while the path grows.
-        std.debug.assert(!self.state.path_held);
         var touch = infra.List(*runtime.Instance).init(self.allocator());
         errdefer touch.deinit();
         if (self.touch_targets.len > 0) try touch.appendSlice(self.touch_targets.toSlice());
@@ -363,11 +360,9 @@ pub fn build(state: *EventState, target: *runtime.Instance, input: Input) error{
             if (inShadowTree(touch_target)) break true;
         } else false;
 
-    // The path is built and grows no more: its nodes are held while
-    // dispatch runs (refcount step 5g), until step 9 empties it. Shadow
-    // mode: an allocation failure only leaves them uncounted - the counts
-    // stay balanced and decide nothing yet - so dispatch goes on.
-    state.holdPath() catch log.debug("event path holds not taken: out of memory", .{});
+    // The path is built: its nodes are held while dispatch runs (refcount
+    // step 5g), until step 9 empties it.
+    state.holdPath();
     return walk.result;
 }
 
