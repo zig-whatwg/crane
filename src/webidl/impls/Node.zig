@@ -457,7 +457,18 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
             runtime.instance_lifecycle.isCleanedUp(instance))
         {
             if (!teardown_started and !runtime.cleanup_coordinator.isContextTearingDown()) {
-                if (if (ctx.hasEngine()) !engine.hasWrapper(instance) else ctx.agent == null)
+                // A retired realm (no engine left, its agent kept) can ask no
+                // wrapper cache, and could not prove that no OTHER realm wraps
+                // the node - so it kept every slot. The slot's wrap mark is
+                // that proof, for every realm ([wrap_tracking]: no engine
+                // object bound now). Without it - JavaScriptCore, QuickJS, the
+                // test adapter: provably_unwrapped is false - the slot stays,
+                // as before. A frame's retired realms' documents, torn down by
+                // the deferred teardown queue after their realm lost its
+                // engine, kept their html, head and body until the Browser
+                // ended (lane pageretention1: 52 of each a pass of 42
+                // browsing-the-web files).
+                if (if (ctx.hasEngine()) !engine.hasWrapper(instance) else (ctx.agent == null or provably_unwrapped))
                     runtime.gc.releaseStorage(instance);
             } else if (provably_unwrapped and runtime.cleanup_coordinator.isContextTearingDown()) {
                 runtime.cleanup_coordinator.deferStorageRelease(instance, generation);
