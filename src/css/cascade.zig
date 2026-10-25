@@ -18,9 +18,10 @@
 //!
 //! Computed values follow each property's "Computed value" line; the
 //! adjustments between properties are CSS 2.1 9.7 (position, float and
-//! display), CSS Display 4 2.7/2.8 (blockification), CSS Overflow 3
-//! (visible/clip fix-up) and CSS Backgrounds 3 (a border with style none or
-//! hidden has width 0).
+//! display), CSS Display 4 2.7/2.8 (blockification) and CSS Overflow 3
+//! (visible/clip fix-up). A border width keeps its length whatever the
+//! border style (Backgrounds 3 3.3); only its resolved value is zero for a
+//! side not drawn (ComputedStyle.serializeResolved).
 //!
 //! Stated: `revert-rule` (Cascade 5's newest keyword, which no browser ships)
 //! acts as `revert-layer`; there is no user origin (Crane has no user style
@@ -920,23 +921,6 @@ const Builder = struct {
         if (!x_plain or !y_plain) {
             s.values[@intFromEnum(Longhand.overflow_x)] = Value.kw(fixOverflow(ox));
             s.values[@intFromEnum(Longhand.overflow_y)] = Value.kw(fixOverflow(oy));
-        }
-
-        // CSS Backgrounds 3 border-width: "absolute length, snapped as a
-        // border width; zero if the border style is none or hidden."
-        const sides = [_][2]Longhand{
-            .{ .border_top_style, .border_top_width },
-            .{ .border_right_style, .border_right_width },
-            .{ .border_bottom_style, .border_bottom_width },
-            .{ .border_left_style, .border_left_width },
-        };
-        for (sides) |pair| {
-            const style_kw = s.keyword(pair[0]);
-            if (style_kw == .none or style_kw == .hidden) {
-                const slot = &s.values[@intFromEnum(pair[1])];
-                slot.release();
-                slot.* = Value.px(0);
-            }
         }
     }
 };

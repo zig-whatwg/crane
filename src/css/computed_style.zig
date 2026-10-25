@@ -97,6 +97,9 @@ pub const ComputedStyle = struct {
             return out.appendSlice(allocator, "normal");
         if (l == .animation_duration) return @import("animation_values.zig").serializeDurationResolved(v, self.get(.animation_timeline), out, allocator);
         if (l == .caret_color) return @import("ui_values.zig").serializeCaretResolved(v, .{ .scheme = self.used_color_scheme, .current = self.get(.color).color }, out, allocator);
+        // Backgrounds 3 §3.3: a side whose style is none or hidden keeps its
+        // computed width (inherit passes it on) but resolves to zero.
+        if (undrawnBorderWidth(self, l)) return out.appendSlice(allocator, "0px");
         if (v == .color) {
             const color = try self.resolvedColor(l, allocator);
             defer color.release();
@@ -121,6 +124,25 @@ pub const ComputedStyle = struct {
     }
 };
 
+/// Whether `l` is a border width (physical or logical) whose same-side
+/// border style is none or hidden. A logical slot holds its mapped side's
+/// value, and so does the logical style beside it.
+fn undrawnBorderWidth(style: *const ComputedStyle, l: Longhand) bool {
+    const side_style: Longhand = switch (l) {
+        .border_top_width => .border_top_style,
+        .border_right_width => .border_right_style,
+        .border_bottom_width => .border_bottom_style,
+        .border_left_width => .border_left_style,
+        .border_block_start_width => .border_block_start_style,
+        .border_block_end_width => .border_block_end_style,
+        .border_inline_start_width => .border_inline_start_style,
+        .border_inline_end_width => .border_inline_end_style,
+        else => return false,
+    };
+    const k = style.keyword(side_style);
+    return k == .none or k == .hidden;
+}
+
 /// Every longhand's initial value, as computed.
 pub const initial_values: [Longhand.count]Value = blk: {
     @setEvalBranchQuota(100_000);
@@ -133,13 +155,14 @@ pub const initial_values: [Longhand.count]Value = blk: {
 };
 
 /// A longhand's initial value, computed: the keyword lengths of borders
-/// and font-size made absolute, and a border width with style none zero.
+/// and font-size made absolute.
 pub fn initialComputed(l: Longhand) Value {
     return switch (l) {
         .justify_items => .{ .alignment = .{ .position = .normal } },
-        // The initial border-style is none, so the initial border-width
-        // computes to 0 (CSS Backgrounds 3 "border-width" computed value).
-        .border_top_width, .border_right_width, .border_bottom_width, .border_left_width, .border_block_start_width, .border_block_end_width, .border_inline_start_width, .border_inline_end_width => Value.px(0),
+        // Backgrounds 3 §3.3: initial `medium`, computed as an absolute
+        // length whatever the style (the browsers' medium is 3px); only the
+        // resolved value of an undrawn side is zero (serializeResolved).
+        .border_top_width, .border_right_width, .border_bottom_width, .border_left_width, .border_block_start_width, .border_block_end_width, .border_inline_start_width, .border_inline_end_width => Value.px(3),
         .outline_width => Value.px(3),
         .font_size => Value.px(16),
         .font_weight => .{ .number = 400 },
