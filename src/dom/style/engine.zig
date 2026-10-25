@@ -229,6 +229,9 @@ pub const StyleEngine = struct {
         /// Values 5 §9.4: one document mapping, allocated only when a
         /// non-fixed random value is computed. The seed owns no handles.
         random_seed: ?[32]u8 = null,
+        /// The environment revision the cached styles were computed with
+        /// (hooks.environmentRevision; 0 until a provider reports one).
+        environment_revision: u64 = 0,
         /// Used style resources, absent on documents with no resource
         /// values. Kept out of the embedded StyleEngine's size class.
         resources: ?*resource_loading.State = null,
@@ -383,6 +386,26 @@ pub const StyleEngine = struct {
         self.page_color_schemes_dirty = true;
     }
 
+    /// CSS Environment Variables 1: the document's environment variables
+    /// changed (a safe-area inset, say): every cached style is recomputed on
+    /// its next read - the generation each one's key carries moves, as a
+    /// media change makes it move; no sheet is rebuilt.
+    pub fn environmentChanged(self: *StyleEngine) void {
+        self.generation +%= 1;
+    }
+
+    /// env() values are PULLED like media values: each style read compares
+    /// the document's environment revision with the one its cached styles
+    /// were computed with, and a moved revision invalidates them all (0: no
+    /// provider, never invalidates; the last revision lives in Rare, so the
+    /// embedded engine keeps its size).
+    pub fn observeEnvironment(self: *StyleEngine, revision: u64) Error!void {
+        const seen: u64 = if (self.rare) |r| r.environment_revision else 0;
+        if (revision == seen) return;
+        (try self.ensureRare()).environment_revision = revision;
+        self.environmentChanged();
+    }
+
     /// A sheet of this document was made, removed or changed one of its
     /// flags: the active sheets are rebuilt when style is next read.
     pub fn sheetsChanged(self: *StyleEngine) void {
@@ -392,6 +415,7 @@ pub const StyleEngine = struct {
 
     /// The active sheets, rebuilt first if anything they depend on moved.
     fn ensureActive(self: *StyleEngine, document: *runtime.Instance) Error!*Active {
+        try self.observeEnvironment(hooks.environmentRevision(document));
         const media = hooks.mediaValues(document);
         const quirks = isQuirks(document);
         if (self.active) |*a| {
@@ -999,7 +1023,26 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
         .is_root = is_root and pseudo == null,
         .page_color_scheme = res.page_color_scheme,
         .preferred_color_scheme = res.preferred_color_scheme,
+        // CSS Variables 1 §2.1: a url() substitution brings in resolves
+        // against the consuming declaration's base, in this element's realm.
+        .url_resolver = .{ .context = element, .resolve = substitutedUrl },
+        // if()'s media() test reads the document's media values (row 123).
+        .media_values = &res.active.media,
     }, res.matched.items);
+}
+
+/// A url() substituted into a value, parsed against `base` (the consuming
+/// declaration's base URL); null when it does not parse (it stays as
+/// written).
+fn substitutedUrl(context: *const anyopaque, allocator: Allocator, base: []const u8, url: []const u8) ?[]u8 {
+    const element: *runtime.Instance = @ptrCast(@alignCast(@constCast(context)));
+    const webidl = @import("webidl");
+    const base_arg = if (base.len > 0) webidl.Opt(runtime.USVString).passed(base) else webidl.Opt(runtime.USVString).notPassed();
+    const parsed = (interfaces.URL.call_static_parse(element, url, base_arg) catch null) orelse return null;
+    defer runtime.Instance.deinit(parsed);
+    const href = interfaces.URL.get_href(parsed) catch return null;
+    defer element.ctx.allocator.free(href);
+    return allocator.dupe(u8, href) catch null;
 }
 
 /// Values 5 §10: DOM elements only, one-based, using the originating node

@@ -22,6 +22,11 @@ pub const Hooks = struct {
     /// Document: the media environment its elements are styled in (the
     /// viewport its window reports, the platform's preferences, scripting).
     media_values: ?*const fn (document: *runtime.Instance) css.media_queries.MediaValues = null,
+    /// CSS Environment Variables 1: the revision of the document's
+    /// environment variables, which moves whenever one changes (Codex row
+    /// 121's environment_variables.revision). Unset: 0, which never
+    /// invalidates.
+    environment_revision: ?*const fn (document: *runtime.Instance) u64 = null,
     /// Element: the slot its style state lives in (its state holds it).
     element_style_slot: ?*const fn (element: *runtime.Instance) ?*?*element_style.ElementStyle = null,
     /// Control owners remember their first style state without a lookup on
@@ -77,6 +82,12 @@ pub fn engineOf(document: *runtime.Instance) ?*engine_mod.StyleEngine {
 
 pub fn mediaValues(document: *runtime.Instance) css.media_queries.MediaValues {
     const f = hooks.media_values orelse return .{};
+    return f(document);
+}
+
+/// The document's environment revision (0: no provider).
+pub fn environmentRevision(document: *runtime.Instance) u64 {
+    const f = hooks.environment_revision orelse return 0;
     return f(document);
 }
 

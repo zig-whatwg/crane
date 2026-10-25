@@ -420,7 +420,11 @@ pub fn mayHaveResources(text: []const u8) bool {
             .url => return true,
             .function => if (css.tokenizer.nameEql(token.value, "url") or
                 css.tokenizer.nameEql(token.value, "src") or
-                css.tokenizer.nameEql(token.value, "image-set")) return true,
+                css.tokenizer.nameEql(token.value, "image-set") or
+                // CSS Variables 1 §2.1: a url() that var()/env()/random-item()
+                // substitutes resolves against THIS declaration's base, so
+                // the base is captured for a value that may bring one in.
+                css.substitution.functionId(token.value) != null) return true,
             .at_keyword => if (css.tokenizer.nameEql(token.value, "font-face")) return true,
             else => {},
         }
