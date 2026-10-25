@@ -129,6 +129,23 @@ pub fn validate(allocator: Allocator, text: []const u8) Allocator.Error!bool {
     return true;
 }
 
+/// The source segment of a value from its first to its last non-whitespace
+/// token: whitespace and comments at either end trimmed, everything between
+/// kept as written (CSS Syntax 3 "consume a declaration", a custom
+/// property's original text; css-variables-1 §4.1).
+pub fn originalText(text: []const u8) []const u8 {
+    var tokenizer = tokens.Tokenizer.init(text);
+    tokenizer.skipWhitespace();
+    const start = tokenizer.pos;
+    var end = start;
+    while (true) {
+        const token = tokenizer.next();
+        if (token.token_type == .eof) break;
+        if (token.token_type != .whitespace) end = tokenizer.pos;
+    }
+    return text[start..end];
+}
+
 /// The nesting and size limits a stored value may reach. Past them the
 /// value is invalid, not truncated.
 pub const max_depth = 128;

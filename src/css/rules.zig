@@ -27,6 +27,7 @@ const tokenizer = @import("tokenizer.zig");
 const Tokenizer = tokenizer.Tokenizer;
 const Token = tokenizer.Token;
 const TokenType = tokenizer.TokenType;
+const substitution = @import("substitution.zig");
 
 /// A declaration of a rule's block.
 pub const Declaration = struct {
@@ -589,6 +590,24 @@ const Parser = struct {
             const source = std.mem.trim(u8, input[start..stop], " \t\n\r\x0c");
             return .{ .name = name, .value = try self.allocator.dupe(u8, source), .important = important };
         }
+        if (custom or mentionsSubstitution(list[i..end])) {
+            // CSS Syntax 3 "consume a declaration": a custom property's value
+            // is its original text, and css-variables-1 §4.1 serializes it
+            // "exactly as specified by the author". Values 5 Appendix A: a
+            // value with an arbitrary substitution function is a
+            // pending-substitution value, which every browser writes back
+            // as its source (css-variables variable-cssText.html target11).
+            // The segment runs from the first to the last token; `!important`
+            // and the whitespace and comments at either end are not in it.
+            const input = self.tokens.input;
+            const start = @intFromPtr(list[i - 1].value.ptr) - @intFromPtr(input.ptr) + 1;
+            const stop = if (important)
+                @intFromPtr(list[end].value.ptr) - @intFromPtr(input.ptr)
+            else
+                source_end;
+            const source = substitution.originalText(input[start..stop]);
+            return .{ .name = name, .value = try self.allocator.dupe(u8, source), .important = important };
+        }
         var value: Serializer = .{ .allocator = self.allocator };
         errdefer value.deinit();
         for (list[i..end]) |token| try value.token(token);
@@ -678,6 +697,12 @@ fn holdsBlockBesideOthers(list: []const Token) bool {
         }
     }
     return block and other;
+}
+
+/// Whether a declaration's tokens hold an arbitrary substitution function.
+fn mentionsSubstitution(list: []const Token) bool {
+    for (list) |t| if (t.token_type == .function and substitution.functionId(t.value) != null) return true;
+    return false;
 }
 
 fn lastNonWhitespace(list: []const Token) ?usize {
