@@ -1639,8 +1639,9 @@ pub fn freeConvertedArg(comptime T: type, allocator: std.mem.Allocator, arg: T) 
         // its conversion made (conv.fromV8Value's function-pointer branch,
         // untagged). An impl that keeps the callback took a hold of its own,
         // which moved the function out and left this Global empty
-        // (engine.takeCallbackFunction); either way it goes now.
-        v8.v8_Value_Dispose(callbackFunctionGlobal(T, arg));
+        // (engine.takeCallbackFunction); either way it goes now - an emptied
+        // one without the general dispose's registry lookups.
+        v8.v8_Global_DisposeCallbackValue(callbackFunctionGlobal(T, arg));
     } else if (@typeInfo(T) == .optional) {
         // Handle all optional types by recursively freeing the inner value
         if (arg) |val| {

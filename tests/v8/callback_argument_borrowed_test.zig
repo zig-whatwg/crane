@@ -460,6 +460,125 @@ test "the take is a hold of the taker's own: the binding's Global is left to the
     if (steps.failed) |err| return err;
 }
 
+/// The take moves the handle and what is keyed by its box. Read before the
+/// call, after the conversion, after the take, after the binding's free and
+/// after the taker's release: V8's global handle bytes (one node per
+/// callback, made once and released once) and the realm-tag map (an entry
+/// only for the taker's Global, gone with it).
+const Bookkeeping = struct {
+    function: *ffi.Value,
+    shape: Shape,
+    failed: ?anyerror = null,
+
+    const Shape = enum { taken, untaken, tagged_before_take, weak_before_take };
+
+    fn run(data: ?*anyopaque) void {
+        const self: *Bookkeeping = @ptrCast(@alignCast(data.?));
+        self.check() catch |err| {
+            self.failed = err;
+        };
+    }
+
+    fn noteCollected(_: ?*anyopaque, _: usize) callconv(.c) void {}
+
+    fn check(self: *Bookkeeping) !void {
+        const isolate = ffi.v8_Isolate_GetCurrent() orelse return error.NoIsolate;
+        const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return error.NoContext;
+        defer ffi.v8_Context_Dispose(context);
+        const allocator = testing.allocator;
+        const one = handleBytesOfOne(isolate);
+        const bytes0: i64 = @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate));
+        const tags0 = ffi.v8_Debug_RealmTaggedHandleCount();
+
+        const argument = ffi.v8_Global_Clone(self.function) orelse return error.CloneFailed;
+        const converted = try interface_mod.convertArgReleasingWith(Callback, .{}, allocator, isolate, context, argument);
+        try expectBytes(isolate, bytes0 + one);
+        switch (self.shape) {
+            .untaken => {
+                interface_mod.freeArgument(Callback, allocator, converted);
+                try expectBytes(isolate, bytes0);
+                try testing.expectEqual(tags0, ffi.v8_Debug_RealmTaggedHandleCount());
+                return;
+            },
+            .tagged_before_take => {
+                const key = v8.context_manager.keyOf(context) orelse return error.NoRealmKey;
+                ffi.v8_Global_TagRealm(argument, key);
+                try testing.expectEqual(tags0 + 1, ffi.v8_Debug_RealmTaggedHandleCount());
+            },
+            .weak_before_take => ffi.v8_Global_SetWeak(@ptrCast(argument), null, noteCollected),
+            .taken => {},
+        }
+
+        const taken = protocol.takeCallbackFunction(@ptrCast(converted));
+        const taken_global: *ffi.Value = @ptrCast(@alignCast(taken.function.value.handle.ptr));
+        try testing.expect(taken_global != argument);
+        switch (self.shape) {
+            .weak_before_take => {
+                // Never moved: the taker has a strong Global of its own (one
+                // more node), and the weak box keeps its arm.
+                try testing.expect(!ffi.v8_Global_IsEmpty(argument));
+                try expectBytes(isolate, bytes0 + 2 * one);
+            },
+            else => {
+                // Moved: no node made, and the binding's box is empty.
+                try testing.expect(ffi.v8_Global_IsEmpty(argument));
+                try expectBytes(isolate, bytes0 + one);
+                // The realm tag is the taker's box's only: one entry, never
+                // one left keyed by the binding's box.
+                try testing.expect(!ffi.v8_Debug_IsRealmTagged(argument));
+                try testing.expect(ffi.v8_Debug_IsRealmTagged(taken_global));
+                try testing.expectEqual(tags0 + 1, ffi.v8_Debug_RealmTaggedHandleCount());
+            },
+        }
+
+        // The call returns: the binding frees its box.
+        interface_mod.freeArgument(Callback, allocator, converted);
+        try expectBytes(isolate, bytes0 + one);
+        // The taker lets go.
+        taken.release();
+        try expectBytes(isolate, bytes0);
+        try testing.expectEqual(tags0, ffi.v8_Debug_RealmTaggedHandleCount());
+    }
+
+    fn handleBytesOfOne(isolate: *ffi.Isolate) i64 {
+        const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        const value = ffi.v8_Number_New(isolate, 1);
+        const with_one = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        ffi.v8_Value_Dispose(@ptrCast(value));
+        return @intCast(with_one - start);
+    }
+
+    fn expectBytes(isolate: *ffi.Isolate, expected: i64) !void {
+        try testing.expectEqual(expected, @as(i64, @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate))));
+    }
+};
+
+fn expectBookkeeping(shape: Bookkeeping.Shape) !void {
+    const page = try Page.open();
+    defer page.close();
+    const function = try page.value("(function () { return 7; })");
+    defer function.release();
+    var check: Bookkeeping = .{ .function = @ptrCast(@alignCast(function.value.handle.ptr)), .shape = shape };
+    try protocol.runInRealm(page.realm, Bookkeeping.run, &check);
+    if (check.failed) |err| return err;
+}
+
+test "a taken callback: one handle made and released once, its realm tag on the taker's Global only" {
+    try expectBookkeeping(.taken);
+}
+
+test "an untaken callback: its handle is released by the binding, nothing tagged" {
+    try expectBookkeeping(.untaken);
+}
+
+test "a take re-keys a realm tag the binding's Global carried, so none is left keyed by a freed box" {
+    try expectBookkeeping(.tagged_before_take);
+}
+
+test "a take never moves a weak Global: the taker gets one of its own, the box keeps its arm" {
+    try expectBookkeeping(.weak_before_take);
+}
+
 // ============================================================================
 // An overloaded constructor's variant
 // ============================================================================
