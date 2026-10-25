@@ -271,9 +271,17 @@ pub const KeptPage = struct {
     data: *anyopaque,
     steps: *const PageSteps,
 
-    /// Whether `object` - a Window or a Document - is this page's.
+    /// Whether `object` - a Window or a Document - is this page's: the same
+    /// address, and its slot not reissued since the page was kept (lane
+    /// winslot1, kind 8) - a kept page whose realm ended with its opener's
+    /// gives its Window's slot back, and a Window made later in that slot is
+    /// no page of this cache. Compares only.
     pub fn has(self: *const KeptPage, object: *const anyopaque) bool {
-        return object == @as(*const anyopaque, @ptrCast(self.window)) or object == @as(*const anyopaque, @ptrCast(self.document));
+        if (object == @as(*const anyopaque, @ptrCast(self.window)))
+            return runtime.SlabAllocator.generationOf(self.window) == self.window_generation;
+        if (object == @as(*const anyopaque, @ptrCast(self.document)))
+            return runtime.SlabAllocator.generationOf(self.document) == self.document_generation;
+        return false;
     }
 };
 
