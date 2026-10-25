@@ -6,8 +6,9 @@
 //! ("serialize a CSS declaration block"). A declaration of a property Crane
 //! does not support is kept as written, for read-back only (stated, design
 //! section 6.2, ruling Q7): CSSOM returns it, the cascade never sees it.
-//! Q206's interim var()/env() shorthand seam also keeps original text here;
-//! the queued CSS Variables work owns the full per-longhand pending model.
+//! A declaration with var(), env() or random-item() is a pending-substitution
+//! value of each longhand it sets (Values 5 Appendix A, pending_values.zig);
+//! a custom property declaration is a `.custom` entry (CSS Variables 1).
 //!
 //! Spec: https://drafts.csswg.org/cssom-1/#css-declaration-blocks
 //! Spec: https://drafts.csswg.org/cssom-1/#the-cssstyledeclaration-interface
@@ -16,7 +17,6 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const properties = @import("properties.zig");
 const rules = @import("rules.zig");
-const tokenizer = @import("tokenizer.zig");
 const values = @import("style_values.zig");
 const custom_properties = @import("custom_properties.zig");
 
@@ -80,8 +80,6 @@ pub const DeclarationBlock = struct {
     context: Context = .style,
     /// CSSOM "declarations", in order.
     entries: std.ArrayList(Entry) = .empty,
-    /// Conservative until clear(): ordinary typed blocks avoid raw-entry scans.
-    may_have_unparsed_shorthands: bool = false,
     /// The number of custom property declarations: the cascade looks for
     /// them only in a block that has some.
     custom_count: u32 = 0,
@@ -139,7 +137,6 @@ pub const DeclarationBlock = struct {
     pub fn clear(self: *DeclarationBlock) void {
         for (self.entries.items) |*e| self.freeEntry(e);
         self.entries.clearRetainingCapacity();
-        self.may_have_unparsed_shorthands = false;
         std.debug.assert(self.custom_count == 0);
     }
 
@@ -200,31 +197,17 @@ pub const DeclarationBlock = struct {
         if (!self.context.allows(property, important)) return;
         var assignments: std.ArrayList(Assignment) = .empty;
         defer assignments.deinit(self.allocator);
-        if (!try properties.parseDeclaration(options, property, value_text, &assignments)) {
-            _ = try self.setSubstitutionShorthand(property, value_text, important, true);
-            return;
-        }
+        if (!try properties.parseDeclaration(options, property, value_text, &assignments)) return;
         var consumed: usize = 0;
         defer for (assignments.items[consumed..]) |a| a.value.release();
         for (assignments.items) |a| {
-            var previous = self.indexOf(a.longhand);
+            const previous = self.indexOf(a.longhand);
             if (previous) |i| {
                 if (self.entries.items[i].important() and !important) {
                     a.value.release();
                     consumed += 1;
                     continue;
                 }
-            }
-            if (self.may_have_unparsed_shorthands) {
-                // Q207/Q209: parsed priority is unchanged; setters below use
-                // CSSOM's replacement rule regardless of earlier importance.
-                if (!important and self.importantRawCovers(a.longhand)) {
-                    a.value.release();
-                    consumed += 1;
-                    continue;
-                }
-                _ = self.removeRawCovering(a.longhand);
-                previous = self.indexOf(a.longhand);
             }
             if (previous) |i| {
                 var old = self.entries.orderedRemove(i);
@@ -323,126 +306,6 @@ pub const DeclarationBlock = struct {
         return &self.entries.items[i].custom;
     }
 
-    // Values 5 Appendix A, "Substitution in Shorthand Properties": original
-    // shorthand text is observable only while every constituent comes from it.
-    // Q206–Q210 authorize this interim readback seam, NOT variable evaluation.
-    // It uses existing unparsed storage and leaves longhands out of the cascade.
-    // Browsers keep other constituents pending when one changes; our temporary
-    // whole-entry invalidation instead avoids stale text. The queued CSS
-    // Variables foundation must replace it with the complete pending model.
-    // Q211 leaves var()/env() argument grammar to that owner; this seam
-    // enforces only the existing CSS Syntax declaration-value boundary.
-    fn setSubstitutionShorthand(self: *DeclarationBlock, property: Property, text: []const u8, important: bool, parsed: bool) Allocator.Error!bool {
-        const shorthand = switch (property) {
-            .shorthand => |s| s,
-            .longhand => return false,
-        };
-        // CSSOM setProperty steps 5–6, CSS Syntax 3 section 7.2: invalid
-        // declaration values cannot change stored declarations (Q211).
-        if (!rules.isDeclarationValue(text)) return false;
-        var tokens = tokenizer.Tokenizer.init(text);
-        var found = false;
-        while (true) {
-            const token = tokens.next();
-            if (token.token_type == .eof) break;
-            if (token.token_type == .function and
-                (tokenizer.nameEql(token.value, "var") or tokenizer.nameEql(token.value, "env"))) found = true;
-        }
-        if (!found) return false;
-        const name = shorthand.name();
-        // Q209: addParsed preserves important declarations, setProperty does not.
-        if (parsed and !important) {
-            if (self.indexOfName(name)) |i| if (self.entries.items[i].important()) return false;
-            // Q211 PART 2 follows Blink's per-longhand parsed-priority drop
-            // already used by addParsed. Keep partially covered raw text, but
-            // no entry when every constituent loses to important declarations.
-            if (self.allLonghandsImportant(shorthand)) return false;
-        }
-        try self.setUnparsed(name, text, important);
-        self.may_have_unparsed_shorthands = true;
-        var i: usize = 0;
-        while (i < self.entries.items.len) {
-            const entry = &self.entries.items[i];
-            const overlaps = switch (entry.*) {
-                .typed => |d| containsLonghand(shorthand.longhands(), d.longhand),
-                .unparsed => if (rawShorthand(entry)) |other| other != shorthand and shorthandsOverlap(shorthand, other) else false,
-                .custom => false,
-            };
-            if (!overlaps or (parsed and !important and entry.important())) {
-                i += 1;
-                continue;
-            }
-            var old = self.entries.orderedRemove(i);
-            self.freeEntry(&old);
-        }
-        return true;
-    }
-
-    fn allLonghandsImportant(self: *const DeclarationBlock, shorthand: Shorthand) bool {
-        for (shorthand.longhands()) |longhand| {
-            if (self.get(longhand)) |declaration| if (declaration.important) continue;
-            if (self.may_have_unparsed_shorthands and self.importantRawCovers(longhand)) continue;
-            return false;
-        }
-        return true;
-    }
-
-    fn rawShorthand(entry: *const Entry) ?Shorthand {
-        const raw = switch (entry.*) {
-            .unparsed => |u| u,
-            .typed, .custom => return null,
-        };
-        return switch (properties.lookup(raw.name) orelse return null) {
-            .shorthand => |s| s,
-            .longhand => null,
-        };
-    }
-
-    fn shorthandsOverlap(a: Shorthand, b: Shorthand) bool {
-        for (a.longhands()) |l| if (containsLonghand(b.longhands(), l)) return true;
-        return false;
-    }
-
-    fn rawShorthandIsComplete(self: *const DeclarationBlock, shorthand: Shorthand, important: bool) bool {
-        for (self.entries.items) |*entry| switch (entry.*) {
-            .typed => |d| if (containsLonghand(shorthand.longhands(), d.longhand)) return false,
-            .unparsed => |u| {
-                if (important or !u.important) continue;
-                if (rawShorthand(entry)) |other| {
-                    if (other != shorthand and shorthandsOverlap(shorthand, other)) return false;
-                }
-            },
-            .custom => {},
-        };
-        return true;
-    }
-
-    fn importantRawCovers(self: *const DeclarationBlock, longhand: Longhand) bool {
-        for (self.entries.items) |*entry| {
-            if (!entry.important()) continue;
-            if (rawShorthand(entry)) |s| if (containsLonghand(s.longhands(), longhand)) return true;
-        }
-        return false;
-    }
-
-    fn removeRawCovering(self: *DeclarationBlock, longhand: Longhand) bool {
-        if (!self.may_have_unparsed_shorthands) return false;
-        var removed = false;
-        var i: usize = 0;
-        while (i < self.entries.items.len) {
-            if (rawShorthand(&self.entries.items[i])) |s| {
-                if (containsLonghand(s.longhands(), longhand)) {
-                    var old = self.entries.orderedRemove(i);
-                    self.freeEntry(&old);
-                    removed = true;
-                    continue;
-                }
-            }
-            i += 1;
-        }
-        return removed;
-    }
-
     pub fn indexOf(self: *const DeclarationBlock, l: Longhand) ?usize {
         for (self.entries.items, 0..) |e, i| switch (e) {
             .typed => |d| if (d.longhand == l) return i,
@@ -500,13 +363,6 @@ pub const DeclarationBlock = struct {
             //    substeps": each longhand's declaration, or ""; one
             //    importance, or "".
             .shorthand => |s| {
-                if (self.may_have_unparsed_shorthands) {
-                    if (self.indexOfName(s.name())) |i| {
-                        const raw = self.entries.items[i].unparsed;
-                        if (self.rawShorthandIsComplete(s, raw.important)) try out.appendSlice(self.allocator, raw.value);
-                        return;
-                    }
-                }
                 var vs: [properties.max_assignments]Assigned = undefined;
                 var important: ?bool = null;
                 for (s.longhands(), 0..) |l, i| {
@@ -553,12 +409,6 @@ pub const DeclarationBlock = struct {
         };
         switch (property) {
             .shorthand => |s| {
-                if (self.may_have_unparsed_shorthands) {
-                    if (self.indexOfName(s.name())) |i| {
-                        const raw = self.entries.items[i].unparsed;
-                        return raw.important and self.rawShorthandIsComplete(s, raw.important);
-                    }
-                }
                 for (s.longhands()) |l| {
                     const d = self.get(l) orelse return false;
                     if (!d.important) return false;
@@ -596,9 +446,7 @@ pub const DeclarationBlock = struct {
         //    property property. If component value list is null, then return."
         var assignments: std.ArrayList(Assignment) = .empty;
         defer assignments.deinit(self.allocator);
-        if (!try properties.parseDeclaration(options, property, value_text, &assignments)) {
-            return self.setSubstitutionShorthand(property, value_text, important, false);
-        }
+        if (!try properties.parseDeclaration(options, property, value_text, &assignments)) return false;
         var consumed: usize = 0;
         defer for (assignments.items[consumed..]) |a| a.value.release();
         // 6-9: "set the CSS declaration" each longhand.
@@ -614,8 +462,7 @@ pub const DeclarationBlock = struct {
     /// CSSOM "set a CSS declaration": the value consumed (released when not
     /// kept). True when the block changed.
     fn setDeclaration(self: *DeclarationBlock, l: Longhand, value: Assigned, important: bool) Allocator.Error!bool {
-        // CSSOM set a declaration steps 1–2, with Q207/Q210 interim invalidation.
-        const removed_raw = self.removeRawCovering(l);
+        // CSSOM "set a CSS declaration" steps 1-2.
         if (self.indexOf(l)) |i| {
             // "If property is in a logical property group and there is a
             // declaration after it in declarations whose property is in the
@@ -626,7 +473,7 @@ pub const DeclarationBlock = struct {
             if (!needs_append) {
                 if (existing.important == important and assignedEql(existing.value, value)) {
                     value.release();
-                    return removed_raw;
+                    return false;
                 }
                 existing.value.release();
                 existing.value = value;
@@ -683,8 +530,6 @@ pub const DeclarationBlock = struct {
             .longhand => |l| &.{l},
         };
         for (longhands) |l| {
-            // CSSOM removeProperty step 5; Q210 invalidates the whole raw entry.
-            if (self.removeRawCovering(l)) removed = true;
             if (self.indexOf(l)) |i| {
                 var old = self.entries.orderedRemove(i);
                 self.freeEntry(&old);
@@ -703,7 +548,6 @@ pub const DeclarationBlock = struct {
         self.clear();
         self.entries.deinit(self.allocator);
         self.entries = parsed.entries;
-        self.may_have_unparsed_shorthands = parsed.may_have_unparsed_shorthands;
         self.custom_count = parsed.custom_count;
         parsed.entries = .empty;
         parsed.custom_count = 0;

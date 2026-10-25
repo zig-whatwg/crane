@@ -68,8 +68,14 @@ test "math signed zero infinities and NaN stay internal until the outer result" 
 }
 
 test "math token syntax enforces whitespace and balanced argument grammars" {
-    for ([_][]const u8{ "calc(1px+2px)", "calc(1px +2px)", "calc(1px+ 2px)", "calc()", "min()", "min(1px,)", "calc(1px, 2px)", "clamp(1px, 2px)", "calc(foo)", "calc(1px +)", "calc(var(--x))", "calc(env(foo))" }) |value| try check("width", value, "", null);
+    for ([_][]const u8{ "calc(1px+2px)", "calc(1px +2px)", "calc(1px+ 2px)", "calc()", "min()", "min(1px,)", "calc(1px, 2px)", "clamp(1px, 2px)", "calc(foo)", "calc(1px +)" }) |value| try check("width", value, "", null);
     try check("width", "CALC( 1PX + 2px )", "calc(3px)", "3px");
+    // Lane vars1: var() and env() make the value a pending-substitution
+    // value, valid at parse time and read back as written (Values 5
+    // "Resolving in Properties"); the math grammar applies after
+    // substitution.
+    try check("width", "calc(var(--x))", "calc(var(--x))", null);
+    try check("width", "calc(env(foo))", "calc(env(foo))", null);
 }
 
 test "math allocation errors release every partially built expression" {
