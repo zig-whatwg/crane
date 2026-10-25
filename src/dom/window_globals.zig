@@ -18,6 +18,11 @@ pub const Implementation = struct {
     bind: *const fn (window: *runtime.Instance, global: *anyopaque) void,
     /// Set the Window's associated document during document initialization.
     set_document: *const fn (window: *runtime.Instance, document: *runtime.Instance) void,
+    /// The global `window` is bound to, or null when it has none (not bound
+    /// yet, or torn down). The ENGINE ADAPTER's own handle, opaque and
+    /// BORROWED for the call: only the adapter that bound it reads it, and
+    /// nothing outside it may interpret it.
+    bound_global: *const fn (window: *runtime.Instance) ?*anyopaque,
 };
 
 var implementation: ?Implementation = null;
@@ -36,4 +41,12 @@ pub fn bind(window: *runtime.Instance, global: *anyopaque) void {
 
 pub fn setDocument(window: *runtime.Instance, document: *runtime.Instance) void {
     (implementation orelse return).set_document(window, document);
+}
+
+/// The global object `window` is bound to (`bind`), or null: torn down, not
+/// bound yet, or no Window installed. The engine adapter's opaque handle,
+/// BORROWED for the call; read only by that adapter.
+pub fn boundGlobal(window: *runtime.Instance) ?*anyopaque {
+    const impl = implementation orelse return null;
+    return impl.bound_global(window);
 }
