@@ -151,6 +151,27 @@ INCLUDE = [
     # are in: their offset* reads are bare style flushes, not assertions.
     ('css/css-variables/', 'custom properties, var() substitution, cycles and CSSOM serialization'),
     ('css/css-properties-values-api/', 'registered custom properties: @property, registerProperty, typed computation'),
+    # The user, 2026-10-25: typed attr() files for Codex row 122's attr() work.
+    # Not attr-invalidation-after-view-transition.html or the four
+    # attr-security-animation/transition files: they need view transitions
+    # or an animation engine, which the user deferred.
+    ('css/css-values/attr-IACVT.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-all-types.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-argument-grammar.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-container-style-query.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-css-wide-keywords.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-cycle.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-invalidation-after-stylesheet-change.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-invalidation.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-length-specified.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-null-namespace.xhtml', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-pseudo-elem-invalidation-2.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-pseudo-elem-invalidation.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-pseudo-element-originating.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-revert-rule.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-security-if.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-security.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-universal-selector.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
     ('css/css-values/acos-asin-atan-atan2-computed.html', 'inverse trigonometric CSS value computation'),
     ('css/css-values/calc-infinity-nan-computed.html', 'CSS numeric infinity and NaN computation'),
     ('css/css-values/clamp-color-computed.html', 'clamping computed color channels'),
