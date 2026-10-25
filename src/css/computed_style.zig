@@ -21,6 +21,7 @@ const Allocator = std.mem.Allocator;
 const properties = @import("properties.zig");
 const values = @import("style_values.zig");
 const color_scheme = @import("color_scheme.zig");
+const custom_properties = @import("custom_properties.zig");
 
 const Longhand = properties.Longhand;
 const Value = values.Value;
@@ -37,6 +38,10 @@ pub const ComputedStyle = struct {
     /// display:none suppresses all descendant boxes.
     box_context: enum { suppressed, grid, other } = .other,
     subgrid_ineligible: bool = false,
+    /// CSS Variables 1 §2: the element's custom properties, computed; shared
+    /// by reference with the parent's when this cascade changed none (one
+    /// reference held). Null: none has a value.
+    custom: ?*custom_properties.CustomProperties = null,
 
     /// A style whose every value is its longhand's initial value, computed
     /// (the root's parent; an element no rule styles).
@@ -48,7 +53,23 @@ pub const ComputedStyle = struct {
 
     pub fn destroy(self: *ComputedStyle) void {
         for (self.values) |v| v.release();
+        if (self.custom) |c| c.release();
         self.allocator.destroy(self);
+    }
+
+    /// The computed value of custom property `name` (case-sensitive), or
+    /// null for the guaranteed-invalid value (absent included). Borrowed.
+    pub fn customValue(self: *const ComputedStyle, name: []const u8) ?*const custom_properties.Text {
+        const record = self.custom orelse return null;
+        return record.get(name);
+    }
+
+    /// The custom properties with a value, in code-point order (CSSOM
+    /// getComputedStyle lists them after the longhands; integrator Q3).
+    /// Borrowed names; the slice is the caller's.
+    pub fn customNames(self: *const ComputedStyle, allocator: Allocator) Allocator.Error![]const []const u8 {
+        const record = self.custom orelse return &.{};
+        return record.names(allocator);
     }
 
     pub fn get(self: *const ComputedStyle, l: Longhand) Value {

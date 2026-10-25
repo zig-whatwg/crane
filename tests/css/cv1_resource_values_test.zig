@@ -292,7 +292,10 @@ const Checks = struct {
         try testing.expectEqual(@as(usize, 0), color.resourceUrls().len);
         var block = try Block.parse(options(s), "--image: url(a.png); background-image: var(--image); width: calc(2px + 1px); padding-top: env(safe-area-inset-top)");
         defer block.deinit();
-        try testing.expect(block.get(.background_image) == null);
+        // Lane vars1: var() and env() values are pending-substitution values
+        // with no resource URL of their own until substituted.
+        try testing.expect(block.get(.background_image).?.value.value == .pending);
+        try testing.expectEqual(@as(usize, 0), block.get(.background_image).?.value.value.resourceUrls().len);
         // The typed math prerequisite now accepts width calculations. They
         // still carry no resource provenance, including under a sheet source.
         const width = block.get(.width).?.value.value;
@@ -301,8 +304,9 @@ const Checks = struct {
         defer width_text.deinit(testing.allocator);
         try block.getPropertyValue("width", &width_text);
         try testing.expectEqualStrings("calc(3px)", width_text.items);
-        try testing.expect(block.get(.padding_top) == null);
-        try testing.expectEqual(@as(usize, 2), block.length());
+        try testing.expect(block.get(.padding_top).?.value.value == .pending);
+        // --image, background-image, width, padding-top.
+        try testing.expectEqual(@as(usize, 4), block.length());
         const literal = try value(options(s), "content", "'url(fake.png)' attr(label, 'url(also-fake.png)')");
         defer literal.release();
         try testing.expectEqual(@as(usize, 0), literal.resourceUrls().len);

@@ -1184,6 +1184,30 @@ pub const MediaQueryList = struct {
         return false;
     }
 
+    /// Values 5 §8.3, if()'s `media()` test (Codex row 123): `text` - a
+    /// <media-feature> body such as `width > 10px`, or a <media-condition> -
+    /// evaluated once. error.Invalid when it does not match the grammar or
+    /// evaluates to unknown (a <general-enclosed>), which the caller treats
+    /// as unknown; false only for a valid test that does not match. Unlike a
+    /// media query list, nothing is replaced by `not all`.
+    pub fn evaluateTest(allocator: std.mem.Allocator, text: []const u8, values: *const MediaValues) error{ OutOfMemory, Invalid }!bool {
+        // A feature body and a condition both parse as one parenthesized
+        // <media-condition>: `(width > 10px)`, `((a) and (b))`.
+        const wrapped = try std.fmt.allocPrint(allocator, "({s})", .{text});
+        defer allocator.free(wrapped);
+        var list = try parse(allocator, wrapped);
+        defer list.deinit();
+        if (list.queries.len != 1) return error.Invalid;
+        const query = &list.queries[0];
+        if (query.media_type != null or query.modifier != .none) return error.Invalid;
+        const condition = if (query.condition) |*c| c else return error.Invalid;
+        return switch (evalCondition(condition, values)) {
+            .t => true,
+            .f => false,
+            .u => error.Invalid,
+        };
+    }
+
     /// Parse `text` and evaluate it once.
     pub fn matchesQuery(allocator: std.mem.Allocator, text: []const u8, values: *const MediaValues) error{OutOfMemory}!bool {
         var list = try parse(allocator, text);
