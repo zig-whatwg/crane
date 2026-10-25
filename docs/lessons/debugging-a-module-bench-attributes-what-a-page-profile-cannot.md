@@ -9,4 +9,6 @@
 
 **Fix**: Keep the bench in the lane's scratch, build each variant from an exported tree (never edit the real one to experiment), compare medians of many batches, and confirm a mechanism by removing it. Then fix in the real tree, red first. Here: the cascade's fast path (untouched longhands default without the compute walk) and a non-recursive inherit for that arm.
 
+The mechanism itself - a recursion that blocks inlining is invisible to allocation counts and flat profiles - is [A hot-path cost can be the call graph's shape](debugging-a-hot-path-cost-can-be-a-call-graph-shape-not-an-allocation.md); this lesson is the method that found it.
+
 **Takeaway**: **Before calling a cost structural, rebuild the module alone in the release mode and bisect the two trees with one-line edits; a recursion or lost inline costs every caller and shows in no single frame.**

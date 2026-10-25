@@ -757,8 +757,19 @@ const Builder = struct {
             .font_size_adjust => |font_adjust| return switch (try font_adjust.compute(self.ctx.allocator, self.computationContext(l, v, source), self.ctx.font_metric_ratios, @import("font_request.zig").fromComputed(self.style))) {
                 .value => |computed| computed,
                 // The single unavailable decision skips real unavailable
-                // candidates. Q87: a defensive failure computes as unset.
-                .unavailable => self.compute(l, self.unset(l)),
+                // candidates. Q87: a defensive failure computes as unset,
+                // which for this inherited longhand is compute(.inherit):
+                // the parent's value, retained. Written out rather than
+                // calling compute(): a compute <-> computeValue recursion
+                // stopped LLVM inlining compute into computeAndStore and
+                // slowed every longhand of every element (Q212, lesson
+                // debugging-a-hot-path-cost-can-be-a-call-graph-shape-...).
+                .unavailable => blk: {
+                    comptime std.debug.assert(Longhand.font_size_adjust.inherited());
+                    const inherited = self.parentValue(l);
+                    inherited.retain();
+                    break :blk inherited;
+                },
             },
             else => {
                 v.retain();
@@ -1701,4 +1712,31 @@ fn ci1NestedColorSource(allocator: Allocator, allowed: bool) !void {
 test "ci1 winning source survives to a nested typed filter color consumer" {
     try testing.checkAllAllocationFailures(testing.allocator, ci1NestedColorSource, .{false});
     try testing.checkAllAllocationFailures(testing.allocator, ci1NestedColorSource, .{true});
+}
+
+test "a defensive unavailable font-size-adjust computes as its inherited value" {
+    var parent_block = try TestBlock.make("font-size-adjust: 0.4");
+    defer parent_block.deinit();
+    const parent = try cascade(.{ .allocator = testing.allocator, .parent = null, .is_root = true }, &.{.{ .block = &parent_block.block, .source = .{ .origin = .author } }});
+    defer parent.destroy();
+    var block = try TestBlock.make("font-size-adjust: cap-height from-font");
+    defer block.deinit();
+    var it = block.block.typed();
+    const from_font = it.next().?.value.value;
+    // No metric capability: Adjust.compute answers .unavailable, which the
+    // cascade's pick() normally excludes before computeValue is reached.
+    const style = try ComputedStyle.initial(testing.allocator);
+    defer style.destroy();
+    var no_links: [0]usize = .{};
+    var builder: Builder = .{ .ctx = .{ .allocator = testing.allocator, .parent = parent }, .candidates = &.{}, .index = CandidateIndex.init(&.{}, &no_links), .style = style };
+    defer builder.deinit();
+    const v = try builder.computeValue(.font_size_adjust, from_font, .{});
+    defer v.release();
+    try testing.expect(std.meta.eql(parent.get(.font_size_adjust), v));
+    // At the root the inherited value is the initial one.
+    var root_builder: Builder = .{ .ctx = .{ .allocator = testing.allocator, .parent = null, .is_root = true }, .candidates = &.{}, .index = CandidateIndex.init(&.{}, &no_links), .style = style };
+    defer root_builder.deinit();
+    const root_value = try root_builder.computeValue(.font_size_adjust, from_font, .{});
+    defer root_value.release();
+    try testing.expect(std.meta.eql(computed_mod.initialComputed(.font_size_adjust), root_value));
 }
