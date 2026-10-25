@@ -602,6 +602,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Synthetic components still need computed-value conversion](spec-compliance-synthetic-components-still-need-computed-value-conversion.md) - Route manufactured leaves through the same owner conversion as authored leaves.
 - [Control font selection uses displayed text](spec-compliance-control-font-selection-uses-displayed-text.md) - Match rendered characters/metrics and invalidate on value changes.
 - [Re-tokenize Unicode Ranges From Original Source](spec-compliance-unicode-ranges-need-original-declaration-source.md) - Preserve source before a grammar-specific tokenization mode.
+- [Substitution continues past a guaranteed-invalid function](spec-compliance-substitution-continues-past-a-guaranteed-invalid-function.md) - When an algorithm's side effects (dependency edges, cycle marks) come from visiting the input, an early return on the first failure is a behaviour change, not an optimization - walk what the spec walks.
 
 ### Codegen
 - [Unforgeable accessors must be installed on derived instances](codegen-unforgeable-accessors-must-be-installed-on-derived-instances.md) - An inherited WebIDL member still needs explicit instance installation when the engine template does not inherit that property representation.
