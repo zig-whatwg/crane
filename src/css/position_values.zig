@@ -284,7 +284,8 @@ pub fn parse(options: properties.ParseOptions, stream: *properties.Stream, gramm
             // Backgrounds3 §2.6 / Values4 §10.13: its length-percentage
             // accepts the math owner's full typed grammar, never quirky
             // numbers inside a function.
-            const parsed = if (grammar == .background and math.isFunction(stream.peek()))
+            const is_math = math.isFunction(stream.peek());
+            const parsed = if (is_math)
                 try properties.mathValue(scalar_options, stream, .{ .kind = .length_percentage })
             else
                 try properties.parseLonghand(scalar_options, .margin_left, stream);
@@ -292,7 +293,7 @@ pub fn parse(options: properties.ParseOptions, stream: *properties.Stream, gramm
                 stream.* = saved;
                 break;
             };
-            if (v != .length and !(grammar == .background and v == .calculation)) {
+            if (v != .length and !((is_math or grammar == .background) and v == .calculation)) {
                 v.release();
                 stream.* = saved;
                 break;

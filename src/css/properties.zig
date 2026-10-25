@@ -953,6 +953,9 @@ pub const ParseOptions = struct {
     random_scope: ?*const @import("random_values.zig").ParseScope = null,
     /// SVG2 §4.2 presentation-attribute number-to-length parsing context.
     svg_presentation: bool = false,
+    /// Q138: background math belongs to typed grammars; retained opaque
+    /// image leaves keep the pre-existing rejection for those properties.
+    reject_opaque_image_math: bool = false,
 };
 
 pub const UrlResolver = resources.UrlResolver;
@@ -1001,7 +1004,7 @@ pub fn parseDeclaration(options: ParseOptions, property: Property, text: []const
     const opaque_image = (property == .longhand and property.longhand == .background_image) or
         (property == .shorthand and property.shorthand == .background);
     var functions = FunctionFlags{};
-    if (containsUnsupportedToken(text, content_functions, opaque_image, &functions)) return false;
+    if (containsUnsupportedToken(text, content_functions, &functions)) return false;
     if (functions.random_item) {
         const pending = try @import("pending_values.zig").Pending.create(options, property, text) orelse return false;
         defer pending.unref();
@@ -1026,6 +1029,7 @@ pub fn parseDeclaration(options: ParseOptions, property: Property, text: []const
         null;
     defer if (scope) |*owned| owned.deinit();
     var scoped_options = options;
+    scoped_options.reject_opaque_image_math = opaque_image;
     if (scope) |*owned| scoped_options.random_scope = owned;
     var stream = Stream.init(text);
     const ok = switch (property) {
@@ -1059,12 +1063,11 @@ fn cssWideKeyword(text: []const u8) ?values.CssWide {
 /// Unsupported substitution/functions cannot pass through opaque grammars.
 const FunctionFlags = struct { numeric_random: bool = false, random_item: bool = false };
 
-fn containsUnsupportedToken(text: []const u8, content_functions: bool, opaque_image: bool, flags: *FunctionFlags) bool {
+fn containsUnsupportedToken(text: []const u8, content_functions: bool, flags: *FunctionFlags) bool {
     var tok = Tokenizer.init(text);
-    var opaque_math = false;
     while (true) {
         const token = tok.next();
-        if (token.token_type == .eof) return opaque_math and !flags.random_item;
+        if (token.token_type == .eof) return false;
         // Syntax 3 section 7.2 applies inside nested functions too. Generic
         // declaration serialization must leave these tokens invalid for
         // this property grammar, unlike Fonts' forgiving src components.
@@ -1076,10 +1079,7 @@ fn containsUnsupportedToken(text: []const u8, content_functions: bool, opaque_im
         if (token.token_type == .function and (tokenizer_mod.nameEql(token.value, "var") or tokenizer_mod.nameEql(token.value, "env"))) return true;
         if (content_functions) continue;
         if (token.token_type != .function) continue;
-        if (math_values.isFunction(token)) {
-            if (opaque_image) opaque_math = true;
-            continue;
-        }
+        if (math_values.isFunction(token)) continue;
         for ([_][]const u8{ "var", "env", "attr", "round", "mod", "rem", "abs", "sign", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "pow", "sqrt", "hypot", "log", "exp", "progress", "calc-size", "if" }) |f| {
             if (tokenizer_mod.nameEql(token.value, f)) return true;
         }
@@ -1267,7 +1267,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
             if (takeKeyword(stream, &.{ .normal, .none })) |k| return Value.kw(k);
             const generated = @import("generated_content.zig");
             const resolver: ?generated.UrlResolver = if (options.url_resolver) |r| .{ .context = r.context, .resolve = r.resolve } else null;
-            const parsed = try generated.parseWithSource(options.allocator, stream.text[stream.offset()..], resolver, options.resource_source) orelse return null;
+            const parsed = try generated.parseWithSourceAndScope(options.allocator, stream.text[stream.offset()..], resolver, options.resource_source, options.random_scope) orelse return null;
             while (!stream.atEnd()) _ = stream.next();
             return .{ .content = parsed };
         },
@@ -1555,6 +1555,14 @@ pub fn parseImageLeaf(options: ParseOptions, stream: *Stream) Allocator.Error!?V
                 const end = stream.tok.pos;
                 stream.peeked = null;
                 const text = std.mem.trim(u8, stream.text[begin..end], " \t\n");
+                if (options.reject_opaque_image_math) {
+                    var tokens = Tokenizer.init(text);
+                    while (true) {
+                        const token = tokens.next();
+                        if (token.token_type == .eof) break;
+                        if (math_values.isFunction(token)) return null;
+                    }
+                }
                 const shared = try SharedText.create(options.allocator, text);
                 errdefer shared.unref();
                 shared.resource_urls = try resources.collect(options.allocator, text, options.url_resolver, options.resource_source);
