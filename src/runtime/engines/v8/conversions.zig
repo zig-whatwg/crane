@@ -4565,24 +4565,16 @@ pub fn instanceToV8Checked(isolate: *v8.Isolate, instance: *runtime.Instance) er
     // Get interface name from instance vtable
     const interface_name = template_registry.getInstanceInterfaceName(instance);
 
-    // Special handling for Window instances with bound V8 global
-    // This enables cross-realm support: iframe.contentWindow returns the V8 global
-    // which has DOMRectReadOnly and other constructors on it.
+    // A Window's one wrapper is its realm's global - the WindowProxy it is
+    // bound to (dom.window_globals): `iframe.contentWindow`, an event's
+    // view or source, `frames[i]` all answer that object, with the realm's
+    // interface objects on it.
     // The length first: the compare runs for every object wrapped - every
     // `list[i]` - and std.mem.eql is a call chain in the Debug build (5% of
     // an Array.prototype.indexOf over a NodeList, with the same test in
     // wrapInstanceAsV8Object). Same answer: only "Window" has both.
     if (interface_name.len == "Window".len and std.mem.eql(u8, interface_name, "Window")) {
-        const WindowImpl = @import("impls").Window;
-        if (WindowImpl.getBoundV8Global(instance)) |bound_global| {
-            // bound_global is a Global<Object>* - a persistent handle that was created
-            // in createWindowBoundToGlobal via v8_Context_Global.
-            // Return it directly - SetReturnValueGlobal will dereference it.
-            std.log.info("[instanceToV8] Window returning Global<Object>* at {*}", .{bound_global});
-            return @ptrCast(bound_global);
-        } else {
-            std.log.warn("[instanceToV8] Window at {*} has NO bound global!", .{instance});
-        }
+        return windowProxyOrNull(isolate, instance);
     }
 
     // A platform object has one wrapper, made in its relevant realm - the
@@ -4618,6 +4610,22 @@ pub fn instanceToV8Checked(isolate: *v8.Isolate, instance: *runtime.Instance) er
     };
 
     return @ptrCast(v8_obj);
+}
+
+/// A Window as script sees it: the global it is bound to (a `Global<Object>*`,
+/// BORROWED from the realm's wrapper cache, which SetReturnValueGlobal reads),
+/// or null when it has none to answer with: its teardown ran (a realm's end
+/// frees its state, the binding with it).
+/// Never an ordinary wrapper: a Window wrapped in another realm's cache was
+/// freed by that cache's sweep - its destructor run a second time and its
+/// slot returned - while every holder of it read on (lane winslot1, E3;
+/// tests/v8/window_dead_conversion_test.zig). Blink's DOMWindow::Wrap
+/// answers v8::Null for a window with no frame
+/// (core/frame/dom_window.cc).
+fn windowProxyOrNull(isolate: *v8.Isolate, window: *runtime.Instance) *v8.Value {
+    const bound_global = @import("dom").window_globals.boundGlobal(window) orelse
+        return v8.v8_Null(isolate) orelse unreachable;
+    return @ptrCast(bound_global);
 }
 
 /// `instance`'s relevant realm's context, BORROWED from the realm record -

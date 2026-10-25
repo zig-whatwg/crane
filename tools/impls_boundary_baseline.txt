@@ -22,8 +22,6 @@ src/runtime/engines/v8/context_manager.zig Window.getInternal 2
 src/runtime/engines/v8/context_manager.zig Window.getNamedProperty 1
 src/runtime/engines/v8/context_manager.zig Window.hasNamedProperty 1
 src/runtime/engines/v8/context_manager.zig Window.setBoundV8Global 2
-src/runtime/engines/v8/conversions.zig Window.getBoundV8Global 1
-src/runtime/engines/v8/template_registry.zig Window.getBoundV8Global 1
 src/runtime/engines/v8/window_properties.zig Window.getNamedProperty 2
 src/runtime/engines/v8/window_properties.zig Window.hasNamedProperty 1
 src/runtime/engines/v8/wrapper_cache.zig Document.getInternalState 1
