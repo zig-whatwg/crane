@@ -101,6 +101,12 @@ const safe = [_]Holder{
     .ui_event_view, // tests/html/winslot_proxy_holders_test.zig
     .browsing_context_active_window, // tests/html/winslot_browsing_context_test.zig
     .event_targets, // tests/v8/winslot_event_target_test.zig
+    .window_opener, // the opener realm outlives its popups' (a realm's children end first); tests/html/winslot_reporters_test.zig reads the fallback
+    .bfcache_kept_page, // tests/html/winslot_reporters_test.zig
+    .suspended_idle_request, // the same generation check as groupOf; reached only through the idle scheduler
+    .navigation_source_reporter, // GuardedReporter.liveGlobal; no script reaches the window between beforeunload and the read
+    .fetch_reporters, // tests/html/winslot_reporters_test.zig
+    .navigation_window_reads, // same realm; the generation the Navigation keeps
 };
 
 /// Whether `holder` is in `table`. Every kind a table does not list is
