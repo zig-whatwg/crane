@@ -532,7 +532,8 @@ fn ruleMayHaveResources(rule: *@import("rules.zig").Rule) bool {
             },
             else => {},
         },
-        .unparsed => {},
+        // A custom property's value loads nothing until var() substitutes it.
+        .unparsed, .custom => {},
     };
     if (rule.children()) |children| for (children.items) |child| {
         if (ruleMayHaveResources(child)) return true;

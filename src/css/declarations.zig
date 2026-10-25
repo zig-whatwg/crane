@@ -18,6 +18,7 @@ const properties = @import("properties.zig");
 const rules = @import("rules.zig");
 const tokenizer = @import("tokenizer.zig");
 const values = @import("style_values.zig");
+const custom_properties = @import("custom_properties.zig");
 
 const Longhand = properties.Longhand;
 const Shorthand = properties.Shorthand;
@@ -40,14 +41,25 @@ pub const Unparsed = struct {
     important: bool,
 };
 
+/// A custom property declaration (CSS Variables 1 §2): its case-sensitive
+/// name and its value, both shared by reference with the computed styles
+/// they reach.
+pub const Custom = struct {
+    name: *custom_properties.Text,
+    value: custom_properties.Specified,
+    important: bool,
+};
+
 pub const Entry = union(enum) {
     typed: Declaration,
     unparsed: Unparsed,
+    custom: Custom,
 
     pub fn name(self: *const Entry) []const u8 {
         return switch (self.*) {
             .typed => |d| d.longhand.name(),
             .unparsed => |u| u.name,
+            .custom => |c| c.name.bytes,
         };
     }
 
@@ -55,6 +67,7 @@ pub const Entry = union(enum) {
         return switch (self.*) {
             .typed => |d| d.important,
             .unparsed => |u| u.important,
+            .custom => |c| c.important,
         };
     }
 };
@@ -69,6 +82,9 @@ pub const DeclarationBlock = struct {
     entries: std.ArrayList(Entry) = .empty,
     /// Conservative until clear(): ordinary typed blocks avoid raw-entry scans.
     may_have_unparsed_shorthands: bool = false,
+    /// The number of custom property declarations: the cascade looks for
+    /// them only in a block that has some.
+    custom_count: u32 = 0,
 
     pub const Context = enum {
         style,
@@ -124,6 +140,7 @@ pub const DeclarationBlock = struct {
         for (self.entries.items) |*e| self.freeEntry(e);
         self.entries.clearRetainingCapacity();
         self.may_have_unparsed_shorthands = false;
+        std.debug.assert(self.custom_count == 0);
     }
 
     fn freeEntry(self: *DeclarationBlock, e: *Entry) void {
@@ -132,6 +149,11 @@ pub const DeclarationBlock = struct {
             .unparsed => |u| {
                 self.allocator.free(u.name);
                 self.allocator.free(u.value);
+            },
+            .custom => |c| {
+                c.name.release();
+                c.value.release();
+                self.custom_count -= 1;
             },
         }
     }
@@ -168,6 +190,7 @@ pub const DeclarationBlock = struct {
     /// order would make lose anyway (Blink's parsed declaration sets do the
     /// same).
     fn addParsed(self: *DeclarationBlock, options: properties.ParseOptions, name: []const u8, value_text: []const u8, important: bool) Allocator.Error!void {
+        if (std.mem.startsWith(u8, name, "--")) return self.addCustom(options, name, value_text, important);
         const property = properties.lookup(name) orelse {
             if (self.context == .position_try) return;
             if (self.context == .keyframe and (important or !keyframePropertyAllowed(name))) return;
@@ -227,6 +250,79 @@ pub const DeclarationBlock = struct {
         try self.entries.append(self.allocator, .{ .unparsed = .{ .name = name_copy, .value = value_copy, .important = important } });
     }
 
+    /// A parsed custom property declaration (CSS Variables 1 §2). Invalid
+    /// values and the reserved name `--` are dropped. Like a longhand, a
+    /// later declaration replaces an earlier one and moves to the end -
+    /// unless the earlier is important and the later is not (Blink's parsed
+    /// declaration sets; css-variables variable-definition.html "!important
+    /// 2"). Not in @position-try (Anchor Position 1 §6.4 lists its
+    /// properties); in @keyframes only without !important.
+    fn addCustom(self: *DeclarationBlock, options: properties.ParseOptions, name: []const u8, value_text: []const u8, important: bool) Allocator.Error!void {
+        if (!custom_properties.isName(name)) return;
+        switch (self.context) {
+            .style => {},
+            .position_try => return,
+            .keyframe => if (important) return,
+        }
+        if (self.indexOfCustom(name)) |i| if (self.entries.items[i].custom.important and !important) return;
+        const value = try custom_properties.parse(options, value_text) orelse return;
+        errdefer value.release();
+        const name_text = try custom_properties.Text.create(self.allocator, name);
+        errdefer name_text.release();
+        try self.entries.ensureUnusedCapacity(self.allocator, 1);
+        if (self.indexOfCustom(name)) |i| {
+            var old = self.entries.orderedRemove(i);
+            self.freeEntry(&old);
+        }
+        self.entries.appendAssumeCapacity(.{ .custom = .{ .name = name_text, .value = value, .important = important } });
+        self.custom_count += 1;
+    }
+
+    /// setProperty() of a custom property (CSSOM 6.6.1 steps 5-9): the value
+    /// parsed; "set a CSS declaration" replaces it in place, whatever its
+    /// importance. True when the block changed.
+    fn setCustom(self: *DeclarationBlock, options: properties.ParseOptions, name: []const u8, value_text: []const u8, important: bool) Allocator.Error!bool {
+        if (!custom_properties.isName(name)) return false;
+        switch (self.context) {
+            .style => {},
+            .position_try => return false,
+            .keyframe => if (important) return false,
+        }
+        const value = try custom_properties.parse(options, value_text) orelse return false;
+        if (self.indexOfCustom(name)) |i| {
+            const existing = &self.entries.items[i].custom;
+            if (existing.important == important and existing.value.eql(value)) {
+                value.release();
+                return false;
+            }
+            existing.value.release();
+            existing.value = value;
+            existing.important = important;
+            return true;
+        }
+        errdefer value.release();
+        const name_text = try custom_properties.Text.create(self.allocator, name);
+        errdefer name_text.release();
+        try self.entries.append(self.allocator, .{ .custom = .{ .name = name_text, .value = value, .important = important } });
+        self.custom_count += 1;
+        return true;
+    }
+
+    fn indexOfCustom(self: *const DeclarationBlock, name: []const u8) ?usize {
+        if (self.custom_count == 0) return null;
+        for (self.entries.items, 0..) |e, i| switch (e) {
+            .custom => |c| if (std.mem.eql(u8, c.name.bytes, name)) return i,
+            else => {},
+        };
+        return null;
+    }
+
+    /// The custom property declaration named `name` (case-sensitively).
+    pub fn getCustom(self: *const DeclarationBlock, name: []const u8) ?*const Custom {
+        const i = self.indexOfCustom(name) orelse return null;
+        return &self.entries.items[i].custom;
+    }
+
     // Values 5 Appendix A, "Substitution in Shorthand Properties": original
     // shorthand text is observable only while every constituent comes from it.
     // Q206–Q210 authorize this interim readback seam, NOT variable evaluation.
@@ -270,6 +366,7 @@ pub const DeclarationBlock = struct {
             const overlaps = switch (entry.*) {
                 .typed => |d| containsLonghand(shorthand.longhands(), d.longhand),
                 .unparsed => if (rawShorthand(entry)) |other| other != shorthand and shorthandsOverlap(shorthand, other) else false,
+                .custom => false,
             };
             if (!overlaps or (parsed and !important and entry.important())) {
                 i += 1;
@@ -293,7 +390,7 @@ pub const DeclarationBlock = struct {
     fn rawShorthand(entry: *const Entry) ?Shorthand {
         const raw = switch (entry.*) {
             .unparsed => |u| u,
-            .typed => return null,
+            .typed, .custom => return null,
         };
         return switch (properties.lookup(raw.name) orelse return null) {
             .shorthand => |s| s,
@@ -315,6 +412,7 @@ pub const DeclarationBlock = struct {
                     if (other != shorthand and shorthandsOverlap(shorthand, other)) return false;
                 }
             },
+            .custom => {},
         };
         return true;
     }
@@ -348,14 +446,14 @@ pub const DeclarationBlock = struct {
     pub fn indexOf(self: *const DeclarationBlock, l: Longhand) ?usize {
         for (self.entries.items, 0..) |e, i| switch (e) {
             .typed => |d| if (d.longhand == l) return i,
-            .unparsed => {},
+            .unparsed, .custom => {},
         };
         return null;
     }
 
     fn indexOfName(self: *const DeclarationBlock, name: []const u8) ?usize {
         for (self.entries.items, 0..) |e, i| switch (e) {
-            .typed => {},
+            .typed, .custom => {},
             .unparsed => |u| if (std.mem.eql(u8, u.name, name)) return i,
         };
         return null;
@@ -383,6 +481,13 @@ pub const DeclarationBlock = struct {
 
     /// getPropertyValue(property), appended to `out`.
     pub fn getPropertyValue(self: *const DeclarationBlock, property_name: []const u8, out: *std.ArrayList(u8)) Allocator.Error!void {
+        // 3. A custom property's declaration, by a case-sensitive match
+        //    (CSS Variables 1 §4: custom property declarations have the
+        //    case-sensitive flag set).
+        if (std.mem.startsWith(u8, property_name, "--")) {
+            if (self.getCustom(property_name)) |c| try c.value.serialize(out, self.allocator);
+            return;
+        }
         // 1. "If property is not a custom property, follow these substeps:
         //    Let property be property converted to ASCII lowercase."
         const property = properties.lookup(property_name) orelse {
@@ -430,7 +535,7 @@ pub const DeclarationBlock = struct {
     fn indexOfNameInsensitive(self: *const DeclarationBlock, name: []const u8) ?usize {
         const custom = std.mem.startsWith(u8, name, "--");
         for (self.entries.items, 0..) |e, i| switch (e) {
-            .typed => {},
+            .typed, .custom => {},
             .unparsed => |u| {
                 if (custom and std.mem.eql(u8, u.name, name)) return i;
                 if (!custom and std.ascii.eqlIgnoreCase(u.name, name)) return i;
@@ -441,6 +546,7 @@ pub const DeclarationBlock = struct {
 
     /// getPropertyPriority(property): whether it is "important".
     pub fn getPropertyPriority(self: *const DeclarationBlock, property_name: []const u8) bool {
+        if (std.mem.startsWith(u8, property_name, "--")) return if (self.getCustom(property_name)) |c| c.important else false;
         const property = properties.lookup(property_name) orelse {
             const i = self.indexOfNameInsensitive(property_name) orelse return false;
             return self.entries.items[i].important();
@@ -478,6 +584,8 @@ pub const DeclarationBlock = struct {
         //    case-insensitive match for the string "important", then return."
         if (priority.len != 0 and !std.ascii.eqlIgnoreCase(priority, "important")) return false;
         const important = priority.len != 0;
+        // 1. A custom property keeps its case; 5-9 below, for its grammar.
+        if (std.mem.startsWith(u8, property_name, "--")) return self.setCustom(options, property_name, value_text, important);
         // 2. "If property is not a case-sensitive match for a supported CSS
         //    property, then return." (Parsing keeps an unsupported
         //    declaration for read-back; setProperty, as the spec says, does
@@ -541,7 +649,7 @@ pub const DeclarationBlock = struct {
                 const g = logicalGroup(d.longhand) orelse continue;
                 if (g == group and (d.longhand.logical() != null) != logical) return true;
             },
-            .unparsed => {},
+            .unparsed, .custom => {},
         };
         return false;
     }
@@ -554,6 +662,14 @@ pub const DeclarationBlock = struct {
         try self.getPropertyValue(property_name, out);
         // 4-5. Remove the longhands (or the property).
         var removed = false;
+        if (std.mem.startsWith(u8, property_name, "--")) {
+            if (self.indexOfCustom(property_name)) |i| {
+                var old = self.entries.orderedRemove(i);
+                self.freeEntry(&old);
+                removed = true;
+            }
+            return removed;
+        }
         const property = properties.lookup(property_name) orelse {
             if (self.indexOfNameInsensitive(property_name)) |i| {
                 var old = self.entries.orderedRemove(i);
@@ -588,7 +704,9 @@ pub const DeclarationBlock = struct {
         self.entries.deinit(self.allocator);
         self.entries = parsed.entries;
         self.may_have_unparsed_shorthands = parsed.may_have_unparsed_shorthands;
+        self.custom_count = parsed.custom_count;
         parsed.entries = .empty;
+        parsed.custom_count = 0;
     }
 
     /// CSSOM "serialize a CSS declaration block" (the cssText getter),
@@ -605,6 +723,13 @@ pub const DeclarationBlock = struct {
             switch (e.*) {
                 .unparsed => |u| {
                     try appendDeclaration(out, allocator, &first, u.name, u.value, u.important);
+                    done[index] = true;
+                },
+                .custom => |c| {
+                    var value: std.ArrayList(u8) = .empty;
+                    defer value.deinit(allocator);
+                    try c.value.serialize(&value, allocator);
+                    try appendDeclaration(out, allocator, &first, c.name.bytes, value.items, c.important);
                     done[index] = true;
                 },
                 .typed => |d| {
@@ -661,6 +786,28 @@ pub const DeclarationBlock = struct {
         return .{ .entries = self.entries.items };
     }
 
+    /// The custom property declarations, in order.
+    pub fn customs(self: *const DeclarationBlock) CustomIterator {
+        return .{ .entries = if (self.custom_count == 0) &.{} else self.entries.items };
+    }
+
+    pub const CustomIterator = struct {
+        entries: []const Entry,
+        index: usize = 0,
+
+        pub fn next(self: *CustomIterator) ?*const Custom {
+            while (self.index < self.entries.len) {
+                const e = &self.entries[self.index];
+                self.index += 1;
+                switch (e.*) {
+                    .custom => |*c| return c,
+                    .typed, .unparsed => {},
+                }
+            }
+            return null;
+        }
+    };
+
     pub const TypedIterator = struct {
         entries: []const Entry,
         index: usize = 0,
@@ -671,7 +818,7 @@ pub const DeclarationBlock = struct {
                 self.index += 1;
                 switch (e.*) {
                     .typed => |*d| return d,
-                    .unparsed => {},
+                    .unparsed, .custom => {},
                 }
             }
             return null;

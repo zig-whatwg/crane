@@ -105,7 +105,7 @@ fn destroyContents(c: *Contents) void {
                 },
                 .css_wide => {},
             },
-            .unparsed => {},
+            .unparsed, .custom => {},
         };
     }
     c.destroy();
