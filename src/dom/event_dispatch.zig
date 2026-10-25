@@ -117,8 +117,17 @@ pub const EventState = struct {
     /// which keeps it; dispatch writes it per path item ("invoke" step 4)
     /// and keeps the value it ends with (`endDispatch`).
     related_target: ?*runtime.Instance = null,
-    /// The currentTarget attribute's value, initially null.
+    /// The currentTarget attribute's value, initially null. Set with
+    /// `setCurrentTarget`.
     current_target: ?*runtime.Instance = null,
+    /// The slab generations of `target` - when the event last kept it
+    /// (`keepTarget`) - and of `current_target` when set: script reads each
+    /// through them (`targetForScript`, `currentTargetForScript`), so a
+    /// target whose slot was given back and reissued - another realm's
+    /// Window, after that realm's end - reads null, never the newcomer (lane
+    /// winslot1, kinds 5-7).
+    target_generation: u64 = 0,
+    current_target_generation: u64 = 0,
     /// The eventPhase attribute's value, initially NONE.
     phase: u16 = Phase.none,
     /// The isTrusted attribute's value, initially false.
@@ -186,6 +195,7 @@ pub const EventState = struct {
     pub fn keepTarget(self: *EventState, event: *runtime.Instance) void {
         self.target_hold.set(self.target);
         const target = self.target;
+        self.target_generation = if (target) |t| runtime.SlabAllocator.generationOf(t) else 0;
         if (target == self.traced_target) return;
         if (target) |t| {
             if (!engine.hasWrapper(event)) return;
@@ -195,6 +205,34 @@ pub const EventState = struct {
             self.traced_target = null;
             engine.forgetTracedChild(event, target_slot);
         }
+    }
+
+    /// The target attribute's value as script reads it (`target`,
+    /// `srcElement`): during dispatch the one the dispatcher holds; after it,
+    /// the one the event kept, while its slot is still that object's. An
+    /// event script has not seen draws no edge to its target (above): made
+    /// and dispatched natively at another realm's Window, and kept past that
+    /// realm's end, it named a torn-down Window, and - its slot given back -
+    /// whatever the slab put there next.
+    pub fn targetForScript(self: *const EventState) ?*runtime.Instance {
+        const target = self.target orelse return null;
+        if (self.dispatch_flag) return target;
+        if (runtime.SlabAllocator.generationOf(target) != self.target_generation) return null;
+        return target;
+    }
+
+    /// Set the currentTarget attribute's value ("invoke" step 7).
+    pub fn setCurrentTarget(self: *EventState, target: ?*runtime.Instance) void {
+        self.current_target = target;
+        self.current_target_generation = if (target) |t| runtime.SlabAllocator.generationOf(t) else 0;
+    }
+
+    /// The currentTarget attribute's value, while its slot is still that
+    /// object's.
+    pub fn currentTargetForScript(self: *const EventState) ?*runtime.Instance {
+        const target = self.current_target orelse return null;
+        if (runtime.SlabAllocator.generationOf(target) != self.current_target_generation) return null;
+        return target;
     }
 
     /// End `event`'s edge to its target, at the event's teardown. An event

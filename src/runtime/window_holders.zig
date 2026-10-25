@@ -100,6 +100,7 @@ const safe = [_]Holder{
     .message_event_source, // tests/html/winslot_proxy_holders_test.zig
     .ui_event_view, // tests/html/winslot_proxy_holders_test.zig
     .browsing_context_active_window, // tests/html/winslot_browsing_context_test.zig
+    .event_targets, // tests/v8/winslot_event_target_test.zig
 };
 
 /// Whether `holder` is in `table`. Every kind a table does not list is
