@@ -26,6 +26,12 @@ pub const Keyword = enum {
     intersect,
     exclude,
     fill,
+    scroll,
+    fixed,
+    local,
+    text,
+    border_area,
+    border_area_text,
 
     pub fn name(self: Keyword) []const u8 {
         return switch (self) {
@@ -38,6 +44,8 @@ pub const Keyword = enum {
             .view_box => "view-box",
             .no_clip => "no-clip",
             .match_source => "match-source",
+            .border_area => "border-area",
+            .border_area_text => "border-area text",
             inline else => |k| @tagName(k),
         };
     }

@@ -69,6 +69,15 @@ pub fn deliverSheet(owner: *@import("runtime").Instance, path: []const u16, byte
     sheetsChanged(document);
 }
 
+/// Metadata of the response just delivered above, before the lazy rule
+/// parse. Keeping it on the actual child sheet avoids confusing an
+/// @import's policy with its parent's, and survives removal of the owner.
+pub fn setDeliveredSheetPolicy(owner: *@import("runtime").Instance, path: []const u16, policy: @import("fetch").internal.ReferrerPolicy) void {
+    const root = hooks.sheetOf(owner) orelse return;
+    const delivered = root.importAt(path) orelse return;
+    delivered.referrer_policy = policy;
+}
+
 // No refAllDecls here: the dom module's own tests are not V8-linked, and
 // the resolver's functions reach the engine. Each file's tests run as it
 // is imported; tests/v8/style_engine_test.zig drives the resolver.

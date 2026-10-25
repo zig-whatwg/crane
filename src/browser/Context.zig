@@ -2913,7 +2913,7 @@ fn anyAnimationFrameRunnable(state: *const AnimationFrameState) bool {
 /// has called requestAnimationFrame. The Document owns the candidates; this
 /// list is only a scheduling request, not an owner of a document or realm.
 fn requestNativeRendering(document: *runtime.Instance) void {
-    if (!dom_mod.document_autofocus.hasCandidates(document)) return;
+    if (!dom_mod.document_autofocus.hasCandidates(document) and !dom_mod.style.engine.resource_loading.hasPending(document)) return;
     const allocator = current_allocator orelse return;
     const realm = document.ctx;
     const window = realmWindow(realm) orelse return;
@@ -2943,7 +2943,7 @@ fn retireNativeRenderingRequests(state: *AnimationFrameState) void {
     var index: usize = 0;
     while (index < state.native_pending.items.len) {
         const document = state.native_pending.items[index];
-        if (!document.current() or !dom_mod.document_autofocus.hasCandidates(document.document)) {
+        if (!document.current() or (!dom_mod.document_autofocus.hasCandidates(document.document) and !dom_mod.style.engine.resource_loading.hasPending(document.document))) {
             _ = state.native_pending.orderedRemove(index);
         } else index += 1;
     }
@@ -3106,6 +3106,13 @@ fn animationFrameHandler(_: ?*anyopaque) void {
     }
     if (animationFrameDispatchState(&token) != null) {
         if (last_realm) |realm| if (realm.hasEngine()) performMicrotaskCheckpoint(realm);
+    }
+    // Used CSS resources are selected at this existing rendering opportunity,
+    // after animation callbacks and their microtasks, never by a style getter.
+    for (documents.items) |document| {
+        if (animationFrameDispatchState(&token) == null) break;
+        if (!document.current()) continue;
+        dom_mod.style.engine.resource_loading.updateRendering(document.document);
     }
     // HTML update-the-rendering step 17, after the document turns. Retain
     // focusedAreaOf's existing no-blur deviation; never fix up in a selector.

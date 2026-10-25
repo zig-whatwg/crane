@@ -1,7 +1,7 @@
 //! Implementation for CSSFontFaceRule interface (CSS Fonts 4)
 //!
-//! The rule's descriptors are kept (cssText reads them back); `style`, a
-//! CSSFontFaceDescriptors object, is not implemented.
+//! The rule owns a validated descriptor block. Its SameObject style view
+//! uses the generated CSSStyleDeclaration parent and traces its cached view.
 //!
 //! Spec: https://drafts.csswg.org/css-fonts-4/#om-fontface
 
@@ -27,8 +27,8 @@ fn ruleOf(instance: *runtime.Instance) ?*dom.style.Rule {
     return dom.style.hooks.cssRuleOf(instance);
 }
 
-/// Getter for style (CSSFontFaceDescriptors): not implemented.
+/// CSS Fonts 4 §12.1: the live descriptor block (SameObject is generated).
 pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const rule = ruleOf(instance) orelse return error.InvalidStateError;
+    return interfaces.CSSFontFaceDescriptors.initWith(instance.ctx.allocator, instance.ctx, .{ .rule_block_of = rule });
 }

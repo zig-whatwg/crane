@@ -14,7 +14,7 @@
 //!
 //! Spec: https://dom.spec.whatwg.org/#concept-node-adopt-ext
 //!
-//! lint-impls: hook for HTMLImageElement
+//! lint-impls: hook for HTMLImageElement, ShadowRoot
 const std = @import("std");
 const process_start = @import("process_start.zig");
 const runtime = @import("runtime");

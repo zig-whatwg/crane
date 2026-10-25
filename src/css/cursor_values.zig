@@ -35,7 +35,56 @@ pub const Cursor = struct {
     }
 
     pub fn eql(self: *const Cursor, other: *const Cursor) bool {
-        return self == other or std.mem.eql(u8, self.text.bytes, other.text.bytes);
+        if (self == other) return true;
+        if (!std.mem.eql(u8, self.text.bytes, other.text.bytes) or self.candidates.len != other.candidates.len) return false;
+        for (self.candidates, other.candidates) |a, b| if (!a.image.eql(b.image)) return false;
+        return true;
+    }
+
+    pub fn needsUnavailableMetrics(self: *const Cursor, geometry_length: bool) bool {
+        for (self.candidates) |candidate| if (candidate.image.needsUnavailableMetrics(geometry_length)) return true;
+        return false;
+    }
+
+    pub fn needsTreeCounts(self: *const Cursor) bool {
+        for (self.candidates) |candidate| if (candidate.image.needsTreeCounts()) return true;
+        return false;
+    }
+
+    pub fn needsRandomBase(self: *const Cursor) bool {
+        for (self.candidates) |candidate| if (candidate.image.needsRandomBase()) return true;
+        return false;
+    }
+
+    pub fn compute(self: *const Cursor, allocator: Allocator, context: anytype) Allocator.Error!*Cursor {
+        const items = try allocator.alloc(Candidate, self.candidates.len);
+        var initialized: usize = 0;
+        errdefer {
+            for (items[0..initialized]) |item| item.image.release();
+            allocator.free(items);
+        }
+        var out: std.ArrayList(u8) = .empty;
+        defer out.deinit(allocator);
+        var urls = resources.Builder{ .allocator = allocator };
+        defer urls.deinit();
+        for (self.candidates, items) |item, *dest| {
+            dest.* = .{ .image = try context.component(.list_style_image, item.image), .hotspot = item.hotspot };
+            initialized += 1;
+            try urls.append(dest.image.resourceUrls(), out.items.len);
+            try properties.serializeValue(.list_style_image, dest.image, &out, allocator);
+            if (dest.hotspot) |point| for (point) |coordinate| {
+                try out.append(allocator, ' ');
+                try values.appendNumber(coordinate, &out, allocator);
+            };
+            try out.appendSlice(allocator, ", ");
+        }
+        try out.appendSlice(allocator, self.fallback.name());
+        const text = try values.SharedText.create(allocator, out.items);
+        errdefer text.unref();
+        text.resource_urls = try urls.take();
+        const result = try allocator.create(Cursor);
+        result.* = .{ .allocator = allocator, .candidates = items, .fallback = self.fallback, .text = text };
+        return result;
     }
 };
 
@@ -54,7 +103,7 @@ fn keyword(token: tokenizer.Token) ?values.Keyword {
 }
 
 /// Parse `[ <cursor-image> , ]* <cursor-predefined>` over CSS tokens.
-/// Image-set and light-dark join the shared typed image grammar in part (d).
+/// Typed image choices retain URL-only restrictions through nested branches.
 pub fn parse(options: properties.ParseOptions, stream: *properties.Stream) Allocator.Error!?values.Value {
     const allocator = options.allocator;
     if (keyword(stream.peek())) |k| {
@@ -72,12 +121,8 @@ pub fn parse(options: properties.ParseOptions, stream: *properties.Stream) Alloc
     var urls = resources.Builder{ .allocator = allocator };
     defer urls.deinit();
     while (true) {
-        const token = stream.peek();
-        // CSS UI4 <url> only for this stage; generated images are not cursors
-        // in Chrome/Firefox/Safari (css/css-ui/parsing/cursor-invalid.html).
-        if (token.token_type != .url and !(token.token_type == .function and
-            (tokenizer.nameEql(token.value, "url") or tokenizer.nameEql(token.value, "src")))) return null;
-        const image = try properties.parseLonghand(options, .list_style_image, stream) orelse return null;
+        // UI4 §5.1.1: URL-set choices admit no generated cursor images.
+        const image = try @import("image_values.zig").parse(options, stream, .{ .generated = false }) orelse return null;
         var candidate = Candidate{ .image = image };
         var transferred = false;
         defer if (!transferred) image.release();

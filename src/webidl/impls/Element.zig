@@ -195,6 +195,9 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    dom.style.engine.resource_loading.installHooks();
+    dom.mutation.registerInsertionStepsCallback(&dom.style.engine.resource_loading.insertionSteps) catch @panic("failed to install style resource insertion steps");
+    dom.mutation.registerChildrenChangedCallback(&dom.style.engine.resource_loading.childrenChanged) catch @panic("failed to install style resource children changed steps");
     dom.mutation.registerInsertionStepsCallback(&autofocusInsertionSteps) catch @panic("failed to install autofocus insertion steps");
     // Its states left at its Browser's end (Browser.deinit).
     @import("dom").teardown_sweeps.install(.elements, &sweepRemaining);
@@ -976,6 +979,9 @@ fn handleAttributeChanges(
     // Collections filter on any attribute: the node document's DOM tree
     // version moves (Blink's InvalidateNodeListCaches on attribute change).
     dom.refcount.attributeChanged(instance);
+    // Used style resources are reconsidered at the next rendering turn.
+    // Names are filtered before values; no style resolution occurs here.
+    dom.style.engine.resource_loading.attributeChanged(instance, local_name, new_value, namespace);
 
     // Step 1: "Queue a mutation record of "attributes" for element with
     // attribute's local name, attribute's namespace, oldValue, « », « »,

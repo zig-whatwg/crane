@@ -597,7 +597,10 @@ const Builder = struct {
             .text_orientation => if (v.isKeyword(.sideways_right)) return Value.kw(.sideways),
             .content => {
                 if (v == .content) {
-                    if (try v.content.compute(self.ctx.allocator, self.ctx.content_attributes)) |content| return .{ .content = content };
+                    if (try v.content.compute(self.ctx.allocator, self.ctx.content_attributes)) |content| {
+                        defer content.unref();
+                        return .{ .content = try content.computeImages(self.ctx.allocator, ComponentContext.init(self, source)) };
+                    }
                     // A guaranteed-invalid attr() invalidates the entire
                     // non-inherited declaration at computed-value time.
                     return self.computeValue(.content, Value.kw(.normal), source);
@@ -650,6 +653,9 @@ const Builder = struct {
             .image_size => |value| return .{ .image_size = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
             .image_quad => |value| return .{ .image_quad = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
             .layers => |value| return .{ .layers = try value.compute(self.ctx.allocator, l, ComponentContext.init(self, source)) },
+            .image => |value| return value.compute(self.ctx.allocator, self.used_scheme, ComponentContext.init(self, source)),
+            .cursor => |value| return .{ .cursor = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
+            .image_axis => |value| return .{ .image_axis = try value.compute(self.ctx.allocator, if (l == .background_position_x) 0 else 1, ComponentContext.init(self, source)) },
             else => {
                 v.retain();
                 return v;

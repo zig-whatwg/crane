@@ -824,6 +824,9 @@ fn release(load: *Load, ending: Ending) void {
     const document = load.document;
     const document_live = load.documentIsLive();
     load.allocator.destroy(load);
+    // Font Loading 3 §3.1: the pending request has left loads. Mark the
+    // next rendering turn; preserve the stylesheet event/blocking order.
+    if (document_live and ending != .teardown) dom.style.engine.resource_loading.fontEnvironmentChanged(document);
     if (document_live) switch (ending) {
         .settled => blockingMayHaveEnded(document),
         .mutation => queueBlockingMayHaveEnded(document),
@@ -1153,6 +1156,7 @@ fn deliver(load: *Load, sheet: *Sheet, bytes: []const u8, location: []const u8) 
     }
     std.mem.reverse(u16, path[0..n]);
     dom.style.deliverSheet(load.element, path[0..n], bytes, location, sheet.origin_clean);
+    dom.style.setDeliveredSheetPolicy(load.element, path[0..n], sheet.referrer_policy);
 }
 
 fn fail(load: *Load) void {

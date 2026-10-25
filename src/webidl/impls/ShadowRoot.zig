@@ -89,6 +89,9 @@ pub const InternalState = struct {
     /// (dom.tree_ordered_map): what getElementById answers from.
     tree_index: @import("dom").tree_ordered_map.Maps,
 
+    /// CSS Shadow1 §4.2: assigned by its node document after construction.
+    tree_scope_serial: u64 = 0,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -164,7 +167,8 @@ pub fn installHooks() void {
         .keeps_registry_null = &keepsRegistryNull,
     });
     // A host's teardown reaches its shadow root through this hook.
-    @import("dom").shadow_hosts.install(.{ .host_destroyed = &hostDestroyed });
+    @import("dom").shadow_hosts.install(.{ .host_destroyed = &hostDestroyed, .scope_serial = &treeScopeSerial });
+    @import("dom").adopting_steps.install(&adoptingSteps);
     // domindex1: its tree scope's ID map.
     @import("dom").tree_ordered_map.installShadowRoot(&treeIndexOf);
     // A host removed from its tree while script held no wrapper of it is an
@@ -281,9 +285,11 @@ pub fn create(
 
     // DOM attach-a-shadow-root step 5: create with the host's node document.
     // For an element, ownerDocument is its node document.
-    try @import("dom").node_document.set(instance, try interfaces.Node.get_ownerDocument(host));
+    const document = try interfaces.Node.get_ownerDocument(host);
+    try @import("dom").node_document.set(instance, document);
 
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (document) |owner| internal.tree_scope_serial = @import("dom").tree_scope.nextForDocument(owner);
     internal.host = host;
     internal.shadow_mode = mode;
     internal.delegates_focus_flag = delegates_focus;
@@ -535,4 +541,20 @@ pub fn setAvailableToElementInternals(instance: *runtime.Instance, value: bool) 
 pub fn setDeclarative(instance: *runtime.Instance, value: bool) void {
     const internal = getInternal(instance) orelse return;
     internal.declarative_flag = value;
+}
+
+fn treeScopeSerial(root: *runtime.Instance) u64 {
+    if (root.stateAs(ShadowRoot.State) == null) return 0;
+    return (getInternal(root) orelse return 0).tree_scope_serial;
+}
+
+/// DOM adopt §4.5 runs the adopting steps on every shadow-including element
+/// after changing node documents. Each host assigns its own root's new ID;
+/// nested hosts receive this callback too. Same-document adoption skips it.
+fn adoptingSteps(host: *runtime.Instance, old_document: ?*runtime.Instance) void {
+    const shadow = @import("dom").shadow_hosts.rootForHost(host) orelse return;
+    const internal = getInternal(shadow) orelse return;
+    const document = (interfaces.Node.get_ownerDocument(shadow) catch return) orelse return;
+    if (old_document == document) return;
+    internal.tree_scope_serial = @import("dom").tree_scope.nextForDocument(document);
 }

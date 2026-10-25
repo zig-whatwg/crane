@@ -14,7 +14,7 @@ test "full fetch owner table rejects overflow and deduplicates an existing owner
             }
         };
         const owner: owners.Owner = .{ .discard = Callbacks.first };
-        var slots: @field(owners, "OwnerSlots") = .{owner} ** 12;
+        var slots: @field(owners, "OwnerSlots") = .{owner} ** @typeInfo(owners.OwnerSlots).array.len;
         try @field(owners, "tryInstall")(&slots, owner);
         try std.testing.expectError(error.OwnerSlotsFull, @field(owners, "tryInstall")(&slots, .{ .discard = Callbacks.second }));
     }

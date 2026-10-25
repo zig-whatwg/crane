@@ -102,6 +102,8 @@ pub const ComputedStyle = struct {
             defer color.release();
             return color.serializeComputed(out, allocator);
         }
+        // Q119/Q120: resolved size lists repeat against this receiver's images.
+        if (l == .background_size) return @import("background_values.zig").serializeComputedSize(v, @import("image_layers.zig").count(self.get(.background_image)), out, allocator);
         switch (properties.Longhand.info(l).grammar) {
             .paint => return @import("svg_paint.zig").serializeResolved(v, self.get(.color).color, out, allocator),
             .filter => if (v == .filter) return v.filter.serializeResolved(self.get(.color).color, out, allocator),

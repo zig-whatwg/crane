@@ -6417,6 +6417,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // A settings object is a request's client: global_settings.requestClient
     // hands fetch what "populate request from client" reads.
     dom_mod.addImport("fetch", fetch_mod);
+    dom_mod.addImport("mimesniff", mimesniff_mod); // The shared image decoder sniffs per MIME Sniffing.
 
     // Add html to impls for script execution algorithms
     // Note: This creates html ↔ impls mutual dependency. Zig handles this because
