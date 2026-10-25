@@ -5,6 +5,7 @@ const values = @import("style_values.zig");
 const resources = @import("resource_values.zig");
 const paint = @import("svg_paint.zig");
 const tokenizer = @import("tokenizer.zig");
+const math = @import("math_values.zig");
 const Allocator = std.mem.Allocator;
 const Value = values.Value;
 const Color = values.Color;
@@ -45,14 +46,16 @@ pub const Kind = enum {
 };
 
 pub const Angle = @import("image_angle.zig").Angle;
+const AngleValue = union(enum) { literal: Angle, value: Value };
 pub const Shadow = struct { color: ?Color = null, lengths: [3]Value, count: u2 };
 pub const Function = struct {
     kind: Kind,
-    argument: union(enum) { omitted, scalar: Value, angle: Angle, shadow: Shadow },
+    argument: union(enum) { omitted, scalar: Value, angle: AngleValue, shadow: Shadow },
 
     fn release(self: Function) void {
         switch (self.argument) {
             .scalar => |v| v.release(),
+            .angle => |angle| if (angle == .value) angle.value.release(),
             .shadow => |s| {
                 if (s.color) |c| c.release();
                 for (s.lengths[0..s.count]) |v| v.release();
@@ -63,6 +66,7 @@ pub const Function = struct {
     fn retain(self: Function) void {
         switch (self.argument) {
             .scalar => |v| v.retain(),
+            .angle => |angle| if (angle == .value) angle.value.retain(),
             .shadow => |s| {
                 if (s.color) |c| c.retain();
                 for (s.lengths[0..s.count]) |v| v.retain();
@@ -76,9 +80,9 @@ pub const Function = struct {
         switch (self.argument) {
             .omitted => {},
             .scalar => |v| try properties.serializeValue(.margin_left, v, out, allocator),
-            .angle => |a| {
-                try values.appendNumber(a.number, out, allocator);
-                try out.appendSlice(allocator, @tagName(a.unit));
+            .angle => |angle| switch (angle) {
+                .literal => |literal| try literal.serialize(out, allocator),
+                .value => |value| try properties.serializeValue(.margin_left, value, out, allocator),
             },
             .shadow => |s| {
                 if (s.color) |c| {
@@ -136,7 +140,8 @@ pub const Filter = struct {
         for (self.items) |item| switch (item) {
             .reference => {},
             .function => |function| switch (function.argument) {
-                .omitted, .angle => {},
+                .omitted => {},
+                .angle => |angle| if (angle == .value and angle.value.needsTreeCounts()) return true,
                 .scalar => |value| if (value.needsTreeCounts()) return true,
                 .shadow => |shadow| {
                     if (shadow.color) |color| if (color.needsTreeCounts()) return true;
@@ -150,7 +155,8 @@ pub const Filter = struct {
         for (self.items) |item| switch (item) {
             .reference => {},
             .function => |function| switch (function.argument) {
-                .omitted, .angle => {},
+                .omitted => {},
+                .angle => |angle| if (angle == .value and angle.value.needsRandomBase()) return true,
                 .scalar => |value| if (value.needsRandomBase()) return true,
                 .shadow => |shadow| {
                     if (shadow.color) |color| if (color.needsRandomBase()) return true;
@@ -164,7 +170,8 @@ pub const Filter = struct {
         for (self.items) |item| switch (item) {
             .reference => {},
             .function => |function| switch (function.argument) {
-                .omitted, .angle => {},
+                .omitted => {},
+                .angle => |angle| if (angle == .value and angle.value.needsUnavailableMetrics(false)) return true,
                 .scalar => |value| if (value.needsUnavailableMetrics(geometry_length)) return true,
                 .shadow => |shadow| {
                     if (shadow.color) |color| if (color.needsUnavailableMetrics(geometry_length)) return true;
@@ -284,8 +291,24 @@ pub fn parse(options: properties.ParseOptions, stream: *properties.Stream) Alloc
 fn parseFunction(options: properties.ParseOptions, stream: *properties.Stream, kind: Kind) Allocator.Error!?Function {
     if (stream.peek().token_type == .right_paren) return if (kind == .drop_shadow) null else .{ .kind = kind, .argument = .omitted };
     if (kind == .drop_shadow) return parseShadow(options, stream);
-    if (kind == .hue_rotate) return .{ .kind = kind, .argument = .{ .angle = @import("image_angle.zig").parse(stream, true) orelse return null } };
+    if (kind == .hue_rotate) {
+        const angle: AngleValue = if (stream.peek().token_type == .function)
+            .{ .value = (try properties.mathValue(options, stream, .{ .kind = .angle })) orelse return null }
+        else
+            .{ .literal = @import("image_angle.zig").parse(stream, true) orelse return null };
+        return .{ .kind = kind, .argument = .{ .angle = angle } };
+    }
     if (kind == .blur) return .{ .kind = kind, .argument = .{ .scalar = (try parseLength(options, stream, false)) orelse return null } };
+    // Filter Effects §6.1 / Values §10.12: percentages become fractions and
+    // only the computed outer result is clamped to the function's range.
+    if (stream.peek().token_type == .function) {
+        const value = (try properties.mathValue(options, stream, .{
+            .kind = .number_percentage,
+            .minimum = 0,
+            .maximum = if (kind.clamps()) 1 else std.math.floatMax(f64),
+        })) orelse return null;
+        return .{ .kind = kind, .argument = .{ .scalar = value } };
+    }
     const t = stream.next();
     if (t.token_type != .number and t.token_type != .percentage) return null;
     const n = t.numeric_value orelse return null;
@@ -295,6 +318,25 @@ fn parseFunction(options: properties.ParseOptions, stream: *properties.Stream, k
 }
 
 fn parseLength(options: properties.ParseOptions, stream: *properties.Stream, negative: bool) Allocator.Error!?Value {
+    // §6.1: blur radii are nonnegative; drop-shadow's first two offsets are
+    // signed. A percentage or unitless math number is never a length here.
+    const grammar = math.Grammar{
+        .kind = .length,
+        .minimum = if (negative) -std.math.floatMax(f64) else 0,
+    };
+    const token = stream.peek();
+    if (token.token_type == .function) return properties.mathValue(options, stream, grammar);
+    if (token.token_type == .dimension) {
+        const raw_unit = token.unit orelse return null;
+        if (values.LengthUnit.fromString(raw_unit) == null) {
+            // Q152: extended literal units use main's typed dimension factory,
+            // preserving ordinary spelling and literal range checks (§6.1).
+            const unit = math.Unit.parse(raw_unit) orelse return null;
+            const expression = (try math.dimension(options.allocator, .{ .value = token.numeric_value orelse return null, .unit = unit }, grammar)) orelse return null;
+            _ = stream.next();
+            return .{ .calculation = expression };
+        }
+    }
     const v = (try properties.parseLonghand(options, .margin_left, stream)) orelse return null;
     if (v != .length or v.length.unit == .percent or (!negative and v.length.value < 0)) {
         v.release();
@@ -340,12 +382,30 @@ fn computeFunction(f: Function, context: anytype) Allocator.Error!Function {
     const argument: @FieldType(Function, "argument") = switch (f.argument) {
         .omitted => switch (f.kind) {
             .blur => .{ .scalar = Value.px(0) },
-            .hue_rotate => .{ .angle = .{ .number = 0, .unit = .deg } },
+            .hue_rotate => .{ .angle = .{ .literal = .{ .number = 0, .unit = .deg } } },
             else => .{ .scalar = .{ .number = 1 } },
         },
-        .angle => |a| .{ .angle = .{ .number = a.degrees(), .unit = .deg } },
+        .angle => |angle| blk: {
+            const degrees = switch (angle) {
+                .literal => |literal| literal.degrees(),
+                .value => |value| angle_value: {
+                    const result = try context.length(value);
+                    defer result.release();
+                    std.debug.assert(result == .calculation);
+                    const number = result.calculation.computedNumber().?;
+                    std.debug.assert(number.unit == .deg);
+                    break :angle_value number.value;
+                },
+            };
+            break :blk .{ .angle = .{ .literal = .{ .number = degrees, .unit = .deg } } };
+        },
         .scalar => |v| blk: {
             if (f.kind == .blur) break :blk .{ .scalar = try context.length(v) };
+            if (v == .calculation) {
+                const result = try context.length(v);
+                std.debug.assert(result == .number);
+                break :blk .{ .scalar = result };
+            }
             const n = if (v == .number) v.number else v.length.value / 100;
             break :blk .{ .scalar = .{ .number = if (f.kind.clamps()) @min(n, 1) else n } };
         },

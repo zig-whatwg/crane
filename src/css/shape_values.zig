@@ -6,6 +6,7 @@ const tokenizer = @import("tokenizer.zig");
 const paint = @import("svg_paint.zig");
 const positions = @import("position_values.zig");
 const components = @import("shape_components.zig");
+const math = @import("math_values.zig");
 const Allocator = std.mem.Allocator;
 const Value = values.Value;
 const Radius = components.Radius;
@@ -74,8 +75,15 @@ const ShapeRadius = union(enum) {
 };
 const Rect = struct {
     kind: enum { inset, rect, xywh },
-    coordinates: union(enum) { specified: [4]Value, computed: [4]Linear },
+    coordinates: union(enum) { specified: [4]Value, computed: [4]Linear, computed_values: [4]Value },
     radii: ?Radius = null,
+
+    fn valueCoordinates(self: Rect) ?components.Quad {
+        return switch (self.coordinates) {
+            .specified, .computed_values => |q| q,
+            .computed => null,
+        };
+    }
 };
 const Round = struct { ellipse: bool, radii: [2]ShapeRadius, position: ?*positions.Position = null };
 const Polygon = struct { evenodd: bool, rounding: ?Value = null, points: []const [2]Value };
@@ -99,7 +107,7 @@ pub const Shape = struct {
         switch (self.data) {
             .box => {},
             .rect => |r| {
-                if (r.coordinates == .specified) components.releaseQuad(r.coordinates.specified);
+                if (r.valueCoordinates()) |q| components.releaseQuad(q);
                 if (r.radii) |radii| for (radii) |q| components.releaseQuad(q);
             },
             .round => |r| {
@@ -126,7 +134,7 @@ pub const Shape = struct {
                 p.text.ref();
                 break :blk .{ .path = p };
             },
-            .rect => |r| .{ .rect = try computeRect(r, context) },
+            .rect => |r| .{ .rect = try computeRect(r, allocator, context) },
             .round => |r| .{ .round = try computeRound(r, allocator, context) },
             .polygon => |p| .{ .polygon = try computePolygon(p, allocator, context) },
             .commands => |c| .{ .commands = try c.compute(allocator, context) },
@@ -139,7 +147,7 @@ pub const Shape = struct {
         switch (self.data) {
             .box, .path => {},
             .rect => |rect| {
-                if (rect.coordinates == .specified) for (rect.coordinates.specified) |value| {
+                if (rect.valueCoordinates()) |q| for (q) |value| {
                     if (value.needsUnavailableMetrics(geometry_length)) return true;
                 };
                 if (rect.radii) |radii| for (radii) |quad| {
@@ -165,7 +173,7 @@ pub const Shape = struct {
         switch (self.data) {
             .box, .path => {},
             .rect => |rect| {
-                if (rect.coordinates == .specified) for (rect.coordinates.specified) |value| {
+                if (rect.valueCoordinates()) |q| for (q) |value| {
                     if (value.needsTreeCounts()) return true;
                 };
                 if (rect.radii) |radii| for (radii) |quad| {
@@ -191,7 +199,7 @@ pub const Shape = struct {
         switch (self.data) {
             .box, .path => {},
             .rect => |rect| {
-                if (rect.coordinates == .specified) for (rect.coordinates.specified) |value| {
+                if (rect.valueCoordinates()) |q| for (q) |value| {
                     if (value.needsRandomBase()) return true;
                 };
                 if (rect.radii) |radii| for (radii) |quad| {
@@ -239,6 +247,7 @@ pub const Shape = struct {
                 if (a.kind != b.kind or std.meta.activeTag(a.coordinates) != std.meta.activeTag(b.coordinates)) return false;
                 switch (a.coordinates) {
                     .specified => |q| if (!components.quadEql(q, b.coordinates.specified)) return false,
+                    .computed_values => |q| if (!components.quadEql(q, b.coordinates.computed_values)) return false,
                     .computed => |q| {
                         for (q, b.coordinates.computed) |x, y| if (!x.eql(y)) return false;
                     },
@@ -268,6 +277,7 @@ pub const Shape = struct {
                 try out.appendSlice(allocator, @tagName(r.kind));
                 try out.append(allocator, '(');
                 switch (r.coordinates) {
+                    .computed_values => |q| try components.serializeQuad(q, out, allocator),
                     .specified => |q| {
                         if (r.kind == .inset) try components.serializeQuad(q, out, allocator) else for (q, 0..) |v, i| {
                             if (i > 0) try out.append(allocator, ' ');
@@ -336,7 +346,16 @@ pub const Shape = struct {
     }
 };
 
-fn computeRect(rect: Rect, context: anytype) Allocator.Error!Rect {
+fn computeRect(rect: Rect, allocator: Allocator, context: anytype) Allocator.Error!Rect {
+    if (rect.coordinates == .computed_values) {
+        const q = rect.coordinates.computed_values;
+        components.retainQuad(q);
+        errdefer components.releaseQuad(q);
+        return .{ .kind = .inset, .coordinates = .{ .computed_values = q }, .radii = if (rect.radii) |r| try computeRadii(r, context) else null };
+    }
+    if (rect.coordinates == .specified) for (rect.coordinates.specified) |value| {
+        if (value == .calculation) return computeRectMath(rect, allocator, context);
+    };
     var q: [4]Linear = undefined;
     if (rect.coordinates == .computed) q = rect.coordinates.computed else {
         for (rect.coordinates.specified, 0..) |v, i| {
@@ -370,6 +389,69 @@ fn computeRect(rect: Rect, context: anytype) Allocator.Error!Rect {
         }
     }
     return .{ .kind = .inset, .coordinates = .{ .computed = q }, .radii = if (rect.radii) |r| try computeRadii(r, context) else null };
+}
+
+/// Shapes1 §3.2: rect(t r b l) -> inset(t 100%-r 100%-b l), and
+/// xywh(x y w h) -> inset(y 100%-x-w 100%-y-h x). Q48 keeps unresolved
+/// percentages typed; no element geometry or serialization/reparse is used.
+fn computeRectMath(rect: Rect, allocator: Allocator, context: anytype) Allocator.Error!Rect {
+    var q: components.Quad = undefined;
+    var count: usize = 0;
+    errdefer for (q[0..count]) |value| value.release();
+    for (rect.coordinates.specified, 0..) |value, i| {
+        q[i] = if (value.isKeyword(.auto))
+            .{ .length = .percent(if (i == 1 or i == 2) 100 else 0) }
+        else
+            try context.length(value);
+        count += 1;
+    }
+    const hundred: Value = .{ .length = .percent(100) };
+    if (rect.kind == .rect) {
+        const right = try subtractComputed(allocator, hundred, q[1], context);
+        q[1].release();
+        q[1] = right;
+        const bottom = try subtractComputed(allocator, hundred, q[2], context);
+        q[2].release();
+        q[2] = bottom;
+    } else if (rect.kind == .xywh) {
+        q = blk: {
+            const right_origin = try subtractComputed(allocator, hundred, q[0], context);
+            defer right_origin.release();
+            const right = try subtractComputed(allocator, right_origin, q[2], context);
+            errdefer right.release();
+            const bottom_origin = try subtractComputed(allocator, hundred, q[1], context);
+            defer bottom_origin.release();
+            const bottom = try subtractComputed(allocator, bottom_origin, q[3], context);
+            const left = q[0];
+            const top = q[1];
+            q[2].release();
+            q[3].release();
+            break :blk .{ top, right, bottom, left };
+        };
+    }
+    return .{ .kind = .inset, .coordinates = .{ .computed_values = q }, .radii = if (rect.radii) |r| try computeRadii(r, context) else null };
+}
+
+fn computedExpression(allocator: Allocator, value: Value) Allocator.Error!*math.Expression {
+    if (value == .calculation) {
+        value.calculation.ref();
+        return value.calculation;
+    }
+    std.debug.assert(value == .length and (value.length.unit == .px or value.length.unit == .percent));
+    return (try math.dimension(allocator, .{
+        .value = value.length.value,
+        .unit = if (value.length.unit == .percent) .percent else .px,
+    }, .{ .kind = .length_percentage })).?;
+}
+
+fn subtractComputed(allocator: Allocator, left: Value, right: Value, context: anytype) Allocator.Error!Value {
+    const lhs = try computedExpression(allocator, left);
+    defer lhs.unref();
+    const rhs = try computedExpression(allocator, right);
+    defer rhs.unref();
+    const difference = (try math.compose(allocator, .{ .kind = .length_percentage }, .sub, lhs, rhs)).?;
+    defer difference.unref();
+    return context.length(.{ .calculation = difference });
 }
 
 fn computeRadii(radii: Radius, context: anytype) Allocator.Error!Radius {

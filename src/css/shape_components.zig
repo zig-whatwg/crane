@@ -17,6 +17,13 @@ pub fn length(options: properties.ParseOptions, stream: *properties.Stream, nega
     // Borrow the scalar grammar, not margin's legacy unitless-length quirk.
     var strict = options;
     strict.quirks = false;
+    if (@import("math_values.zig").isFunction(stream.peek())) {
+        // Values4 §10: the component's range clamps the outer math result.
+        return properties.mathValue(strict, stream, .{
+            .kind = if (percent) .length_percentage else .length,
+            .minimum = if (negative) -std.math.inf(f64) else 0,
+        });
+    }
     const mark = stream.*;
     const v = (try properties.parseLonghand(strict, .margin_left, stream)) orelse {
         stream.* = mark;
