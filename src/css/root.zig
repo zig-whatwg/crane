@@ -63,6 +63,7 @@ const std = @import("std");
 
 /// CSS tokenizer for property values.
 pub const tokenizer = @import("tokenizer.zig");
+pub const syntax_definitions = @import("syntax_definitions.zig");
 pub const Tokenizer = tokenizer.Tokenizer;
 pub const Token = tokenizer.Token;
 pub const TokenType = tokenizer.TokenType;
