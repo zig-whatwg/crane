@@ -535,21 +535,27 @@ fn replaceEnv(resolver: *Resolver, _: Node, args: []const []const Node) Error!Re
     const parsed = try envName(args[0]);
     const name = try tokens.decode(resolver.allocator, parsed.ident.value);
     var indices: std.ArrayList(u32) = .empty;
+    // An index too large for u32 names no known sub-value: it is not
+    // looked up at all (4294967295 is a valid index of a sparse host
+    // list, so clamping to it would read the wrong value).
+    var addressable = true;
     for (parsed.indices) |node| {
         if (isSpace(node)) continue;
         var digits = node.value;
         while (digits.len > 0 and (digits[0] == '+' or digits[0] == '-')) digits = digits[1..];
-        // An index too large for u32 names no known sub-value.
-        const index = std.fmt.parseInt(u32, digits, 10) catch std.math.maxInt(u32);
+        const index = std.fmt.parseInt(u32, digits, 10) catch {
+            addressable = false;
+            break;
+        };
         try indices.append(resolver.allocator, index);
     }
     // 1. A recognized variable, the right number of indices, a known
     // sub-value: its value.
-    if (resolver.host.environment) |environment| {
+    if (addressable) if (resolver.host.environment) |environment| {
         if (try environment.lookup(environment.context, resolver.allocator, name, indices.items)) |text| {
             return .{ .nodes = try parseLimited(resolver.allocator, text, max_substituted_nodes) };
         }
-    }
+    };
     // 2. "Otherwise, if the env() function has a fallback value as its
     // second argument, replace the env() function by the fallback value. If
     // there are any env() references in the fallback, substitute them as

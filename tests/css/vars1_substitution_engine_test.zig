@@ -48,6 +48,7 @@ var environment_marker: u8 = 0;
 
 fn environmentLookup(_: *const anyopaque, allocator: Allocator, name: []const u8, indices: []const u32) Allocator.Error!?[]u8 {
     if (std.mem.eql(u8, name, "test-inset") and indices.len == 0) return try allocator.dupe(u8, "3px");
+    if (std.mem.eql(u8, name, "test-max") and indices.len == 1 and indices[0] == std.math.maxInt(u32)) return try allocator.dupe(u8, "max");
     if (std.mem.eql(u8, name, "test-grid") and indices.len == 2 and indices[0] < 2 and indices[1] < 2)
         return try std.fmt.allocPrint(allocator, "{d}px", .{indices[0] * 10 + indices[1]});
     return null;
@@ -335,4 +336,14 @@ test "a replacement may substitute any span, catch the guaranteed-invalid value 
     try testing.expect(t.wasAsked("--missing"));
     try testing.expect(t.wasAsked("--a"));
     try testing.expect(!t.wasAsked("--never"));
+}
+
+test "an env() index past u32 names no value: the fallback, never index 4294967295 (row 121)" {
+    var t: TestHost = .{ .variables = &variables, .allocator = testing.allocator };
+    defer t.deinit();
+    const host = t.host(test_environment);
+    try expectSubstitution(host, "env(test-max 4294967295, 37px)", "max");
+    try expectSubstitution(host, "env(test-max 4294967296, 37px)", "37px");
+    try expectSubstitution(host, "env(test-max 99999999999999999999, 37px)", "37px");
+    try expectSubstitution(host, "env(test-max 4294967296)", null);
 }
