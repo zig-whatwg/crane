@@ -119,6 +119,12 @@ pub const resolved_urls = @import("resolved_urls.zig");
 pub const svg_presentation = @import("svg_presentation.zig");
 pub const image_layers = @import("image_layers.zig");
 pub const image_values = @import("image_values.zig");
+pub const font_style = @import("font_style.zig");
+pub const font_width = @import("font_width.zig");
+pub const font_settings = @import("font_settings.zig");
+pub const font_variants = @import("font_variants.zig");
+pub const font_values = @import("font_values.zig");
+pub const font_support = @import("font_support.zig");
 
 // ============================================================================
 // Tests

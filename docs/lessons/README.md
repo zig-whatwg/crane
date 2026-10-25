@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Dependencies must follow effective values](architecture-dependencies-must-follow-effective-values.md) - Query dependencies over the components computation will actually evaluate.
 - [Resource discovery must read parsed values](architecture-resource-discovery-must-read-parsed-values.md) - Update resource-interest prefilters with their consumers when a value representation changes.
 - [Share a counter only when both consumers need opaque identities](architecture-share-a-counter-only-when-both-consumers-need-opaque-identities.md) - Prove every consumer tolerates sequence gaps before reusing an owner-local identity counter.
 - [An interface's deinit is a destructor, not a free](architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md) - A destructor chain is not a free: whoever tears down an object no wrapper owns must also return its storage - `runtime.Instance.deinit`, never `interfaces.X.deinit` alone - and a slot count per type per page, with a count of the torn-down ones, names such an owner at once.

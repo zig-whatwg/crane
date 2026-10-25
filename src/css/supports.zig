@@ -183,6 +183,9 @@ const Evaluator = struct {
                     const check = self.selector_check orelse return false;
                     return check(self.allocator, std.mem.trim(u8, inner, " \t\n\r\x0C"));
                 }
+                // Conditional5 §2: one font support identifier, not src() syntax.
+                if (tokenizer_mod.nameEql(open.value, "font-tech")) return @import("font_support.zig").evaluate(.tech, inner);
+                if (tokenizer_mod.nameEql(open.value, "font-format")) return @import("font_support.zig").evaluate(.format, inner);
                 return false;
             },
             else => return null,
@@ -361,8 +364,8 @@ test "supports(conditionText): white space is required after not, and, or" {
 }
 
 test "supports(conditionText): general-enclosed is false, and not of it is true" {
-    try testing.expect(!cond("font-tech(color-COLRv1)"));
-    try testing.expect(cond("not font-tech(color-COLRv1)"));
+    try testing.expect(!cond("unknown-font-tech(color-COLRv1)"));
+    try testing.expect(cond("not unknown-font-tech(color-COLRv1)"));
     try testing.expect(!cond("(unknown stuff)"));
     try testing.expect(!cond("foo(bar)"));
     try testing.expect(cond("not (unknown stuff)"));

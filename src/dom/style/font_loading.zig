@@ -1831,10 +1831,19 @@ const UsedFonts = struct {
             .oblique => request.style = .oblique,
             else => {},
         };
+        if (style_value == .font_oblique) {
+            // Q180/Q197: defensive boundary for an unresolved computed angle.
+            const angle = style_value.font_oblique.degrees() orelse return;
+            request.style = .oblique;
+            request.angle = angle;
+        }
         const weight = style.get(.font_weight);
         if (weight == .number) request.weight = weight.number;
-        // Q58: font-stretch is not yet supported; its computed initial
-        // value is normal (100%). No private shorthand/property parser.
+        const width = style.get(.font_width);
+        // Q180/Q197: defensive boundary for an unresolved computed width.
+        if (width != .length or width.length.unit != .percent) return;
+        // CSS Fonts 4 §5.2: match using the computed width percentage.
+        request.width = width.length.value;
         var stream = Stream.init(families.text.bytes);
         while (!stream.atEnd()) {
             const family = (try readFamily(self.allocator, &stream)) orelse break;

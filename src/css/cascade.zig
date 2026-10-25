@@ -616,6 +616,7 @@ const Builder = struct {
             .stroke_width => if (v == .number) return Value.px(v.number),
             .font_size => return Value.px(self.computeFontSize(v)),
             .font_weight => return .{ .number = self.computeFontWeight(v) },
+            .font_width => return @import("font_width.zig").compute(v),
             // CSS Text4 §8.2: normal is zero in the computed value.
             .letter_spacing => if (v.isKeyword(.normal)) return Value.px(0),
             .opacity => return .{ .number = std.math.clamp(v.number, 0, 1) },
@@ -656,6 +657,8 @@ const Builder = struct {
             .image => |value| return value.compute(self.ctx.allocator, self.used_scheme, ComponentContext.init(self, source)),
             .cursor => |value| return .{ .cursor = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
             .image_axis => |value| return .{ .image_axis = try value.compute(self.ctx.allocator, if (l == .background_position_x) 0 else 1, ComponentContext.init(self, source)) },
+            .font_oblique => |value| return value.compute(self.ctx.allocator, self.computationContext(l, v, source)),
+            .font_settings => |value| return .{ .font_settings = try value.compute(self.ctx.allocator, self.computationContext(l, v, source)) },
             else => {
                 v.retain();
                 return v;
@@ -703,7 +706,7 @@ const Builder = struct {
     fn mathContext(self: *const Builder, l: Longhand) @import("math_values.zig").Context {
         // Values 4 §6.1.1: font-affecting properties use parent metrics;
         // line-height additionally uses its parent's lh to avoid a cycle.
-        const font_affecting = l == .font_size or l == .font_weight;
+        const font_affecting = @import("font_values.zig").isFontAffecting(l);
         const parent_em = self.parentValue(.font_size).length.value;
         const em = if (font_affecting) parent_em else self.fontSize();
         const parent_lh = if (self.ctx.parent) |parent| usedLineHeight(parent) else 19.2;
