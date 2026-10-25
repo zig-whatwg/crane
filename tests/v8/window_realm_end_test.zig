@@ -249,3 +249,15 @@ test "releaseSevered returns a torn-down instance's storage now, or after the te
     try testing.expectEqual(live_generation, runtime.SlabAllocator.generationOf(live));
     runtime.Instance.deinit(live);
 }
+
+test "once every holder kind is safe, a realm's end gives its Window's slot back" {
+    if (!runtime.window_holders.reusable) return error.SkipZigTest;
+    try setup();
+    const no_hooks: protocol.HostHooks = .{};
+    const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
+    defer protocol.destroyAgent(agent);
+    const realm = try windowRealm(agent, null);
+    const window = try windowOf(realm);
+    protocol.destroyWindowRealm(realm, .global_detached);
+    try testing.expectEqual(runtime.SlabAllocator.dead_generation, runtime.SlabAllocator.generationOf(window));
+}

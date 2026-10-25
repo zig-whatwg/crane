@@ -107,6 +107,8 @@ const safe = [_]Holder{
     .navigation_source_reporter, // GuardedReporter.liveGlobal; no script reaches the window between beforeunload and the read
     .fetch_reporters, // tests/html/winslot_reporters_test.zig
     .navigation_window_reads, // same realm; the generation the Navigation keeps
+    .engine_window_proxy_field, // tests/v8/window_realm_end_test.zig
+    .engine_window_properties_field, // tests/v8/window_realm_end_test.zig
 };
 
 /// Whether `holder` is in `table`. Every kind a table does not list is

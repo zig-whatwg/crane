@@ -32,9 +32,9 @@ test "one kind left out keeps every Window's slot" {
     try testing.expect(window_holders.reusableWith(all));
 }
 
-test "the slot does not go back until every holder kind is safe" {
-    // Flipped by the commit that lists the last kind.
-    try testing.expect(!window_holders.reusable);
+test "every holder kind is safe, so a torn-down Window's slot goes back" {
+    // Was false until the commit that listed the last kind.
+    try testing.expect(window_holders.reusable);
 }
 
 const delegates = .{};
