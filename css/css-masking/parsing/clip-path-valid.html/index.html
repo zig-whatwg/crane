@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../css/"><code>css/</code></a></li><li><a href="../../../../css/css-masking/"><code>css-<wbr>masking/</code></a></li><li><a href="../../../../css/css-masking/parsing/"><code>parsing/</code></a></li><li aria-current="page"><code>clip-<wbr>path-<wbr>valid.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>clip-<wbr>path-<wbr>valid.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="css/css-masking/parsing/clip-path-valid.html">
-<p class="figures-main"><span class="fg-pass">53</span><span class="fg-of"> / 54</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>1</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">54</span><span class="fg-of"> / 54</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-3096bf8dff</code>, <span class="nowrap">25 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/3096bf8dff"><code>3096bf8dff</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-b6b92efd3d</code>, <span class="nowrap">25 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/b6b92efd3d"><code>b6b92efd3d</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-masking/parsing/clip-path-valid.html"><code>css/<wbr>css-<wbr>masking/<wbr>parsing/<wbr>clip-<wbr>path-<wbr>valid.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -63,7 +63,7 @@
 <li class="sub s-pass" id="s-a385f4cd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;clip-path&#39;] = &quot;polygon(round 0px, 1px 2px, 3px 4px)&quot; should set the property value</span></div><a class="self" href="#s-a385f4cd" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-b08abcbd"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;clip-path&#39;] = &quot;polygon(nonzero round 1px, 1px 2px, 3em 4em)&quot; should set the property value</span></div><a class="self" href="#s-b08abcbd" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-54b58189"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;clip-path&#39;] = &quot;polygon(evenodd round 1px, 1px 2px, 3em 4em, 5pt 6%)&quot; should set the property value</span></div><a class="self" href="#s-54b58189" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1ab9d9e3"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;clip-path&#39;] = &quot;polygon(round calc(1em + 2px), 1px 2px, 3px 4px)&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-1ab9d9e3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1ab9d9e3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;clip-path&#39;] = &quot;polygon(round calc(1em + 2px), 1px 2px, 3px 4px)&quot; should set the property value</span></div><a class="self" href="#s-1ab9d9e3" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-bae02b75"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;clip-path&#39;] = &quot;path(\&quot;m 20 0 h -100\&quot;)&quot; should set the property value</span></div><a class="self" href="#s-bae02b75" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-c9e8856c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;clip-path&#39;] = &quot;path(evenodd, \&quot;M 20 20 h 60 v 60 h -60 Z M 30 30 h 40 v 40 h -40 Z\&quot;)&quot; should set the property value</span></div><a class="self" href="#s-c9e8856c" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-f9577168"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;clip-path&#39;] = &quot;path(nonzero, \&quot;M20,20h60 v60 h-60z M30,30 h40 v40 h-40z\&quot;)&quot; should set the property value</span></div><a class="self" href="#s-f9577168" aria-label="Link to this subtest">&para;</a></li>
@@ -112,7 +112,7 @@
 <li class="toc-suite"><a href="../../../../cookies/"><span class="secno">9</span><span class="toc-name">cookies/</span><span class="toc-count" title="76 test files">76</span></a></li>
 <li class="toc-suite"><a href="../../../../cookiestore/"><span class="secno">10</span><span class="toc-name">cookiestore/</span><span class="toc-count" title="55 test files">55</span></a></li>
 <li class="toc-suite"><a href="../../../../cors/"><span class="secno">11</span><span class="toc-name">cors/</span><span class="toc-count" title="24 test files">24</span></a></li>
-<li class="toc-suite"><a href="../../../../css/" aria-current="page"><span class="secno">12</span><span class="toc-name">css/</span><span class="toc-count" title="2,051 test files">2,051</span></a></li>
+<li class="toc-suite"><a href="../../../../css/" aria-current="page"><span class="secno">12</span><span class="toc-name">css/</span><span class="toc-count" title="2,179 test files">2,179</span></a></li>
 <li class="toc-suite"><a href="../../../../custom-elements/"><span class="secno">13</span><span class="toc-name">custom-elements/</span><span class="toc-count" title="180 test files">180</span></a></li>
 <li class="toc-suite"><a href="../../../../dom/"><span class="secno">14</span><span class="toc-name">dom/</span><span class="toc-count" title="526 test files">526</span></a></li>
 <li class="toc-suite"><a href="../../../../domparsing/"><span class="secno">15</span><span class="toc-name">domparsing/</span><span class="toc-count" title="38 test files">38</span></a></li>
