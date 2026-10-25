@@ -99,3 +99,50 @@ fn automaticRelease() !void {
 test "a navigated frame's old Window's slot goes back by itself and its proxy holders read the proxy" {
     try helpers.onFreshThread(automaticRelease);
 }
+
+fn liveSlots(page: helpers.Page) usize {
+    var live: usize = 0;
+    var slab = page.browser.scope.slab.slabs;
+    while (slab) |each| : (slab = each.next) {
+        for (&each.slots) |*slot| {
+            const instance: *runtime.Instance = @ptrCast(slot);
+            if (runtime.SlabAllocator.generationOf(instance) != runtime.SlabAllocator.dead_generation) live += 1;
+        }
+    }
+    return live;
+}
+
+fn hundredNavigations() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(
+        \\globalThis.f = document.body.appendChild(document.createElement('iframe'));
+        \\globalThis.navigateTo = (n) => new Promise(resolve => { f.addEventListener('load', resolve, { once: true }); f.srcdoc = '<body>' + n + '</body>'; });
+        \\globalThis.pending = 1; navigateTo(0).then(() => { pending = 0; });
+    );
+    try page.settle();
+    var first_slots: ?usize = null;
+    var n: usize = 0;
+    while (n < 100) {
+        try page.run(
+            \\globalThis.pending = 1;
+            \\(async () => { for (let i = 0; i < 20; i++) await navigateTo(i + 1); pending = 0; })();
+        );
+        try page.settle();
+        n += 20;
+        try page.collect();
+        const windows = try liveWindows(page);
+        const slots = liveSlots(page);
+        if (first_slots == null) first_slots = slots;
+        std.debug.print("after {d} navigations: {d} live Windows, {d} live slots\n", .{ n, windows, slots });
+        // The page's Window and the frame's current one, at every checkpoint;
+        // and the slab no fuller than after the first twenty (a few slots of
+        // slack for whatever a checkpoint's own script leaves).
+        try testing.expectEqual(@as(usize, 2), windows);
+        try testing.expect(slots <= first_slots.? + 16);
+    }
+}
+
+test "a hundred navigations of one frame keep the Window count and the slab flat" {
+    try helpers.onFreshThread(hundredNavigations);
+}
