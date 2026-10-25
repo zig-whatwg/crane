@@ -138,7 +138,7 @@ pub const Pending = struct {
         const property = self.property orelse return .invalid;
         var arena = std.heap.ArenaAllocator.init(allocator);
         defer arena.deinit();
-        const rendered = substitution.substituteAndRender(arena.allocator(), self.nodes, host, self.propertyName(), self.namespaces) catch |err| switch (err) {
+        const rendered = substitution.substituteAndRender(arena.allocator(), self.nodes, host, .{ .property = self.propertyName(), .namespaces = self.namespaces, .quirks = self.quirks }) catch |err| switch (err) {
             error.Invalid => return .invalid,
             error.Unavailable => return .unavailable,
             error.OutOfMemory => return error.OutOfMemory,
@@ -180,7 +180,7 @@ pub const Pending = struct {
     pub fn substituteCustom(self: *const Pending, allocator: Allocator, host: substitution.Host, name: []const u8) Allocator.Error!CustomOutcome {
         var arena = std.heap.ArenaAllocator.init(allocator);
         defer arena.deinit();
-        const rendered = substitution.substituteAndRender(arena.allocator(), self.nodes, host, name, self.namespaces) catch |err| switch (err) {
+        const rendered = substitution.substituteAndRender(arena.allocator(), self.nodes, host, .{ .property = name, .namespaces = self.namespaces, .quirks = self.quirks }) catch |err| switch (err) {
             error.Invalid => return .invalid,
             error.Unavailable => return .unavailable,
             error.OutOfMemory => return error.OutOfMemory,

@@ -651,6 +651,13 @@ pub const Attribute = struct {
     local_name: []const u8,
 };
 
+/// A style() query's answer and whether what it read was tainted (Values 5
+/// §8.7.2): the custom property's computed value, or a substituted operand,
+/// carried taint. The caller marks its branch from the flag.
+pub fn Flagged(comptime T: type) type {
+    return struct { value: T, tainted: bool };
+}
+
 /// A numeric value in canonical units, for range comparisons.
 pub const Numeric = struct {
     value: f64,
@@ -699,19 +706,28 @@ pub const Host = struct {
     /// if()'s style(--x) (Codex row 123): whether custom property `name`
     /// has a value that is not the guaranteed-invalid value. Custom
     /// properties only (a standard property's feature is row 123's unknown).
-    has_value: ?*const fn (context: *anyopaque, name: []const u8) Error!bool = null,
+    has_value: ?*const fn (context: *anyopaque, name: []const u8) Error!Flagged(bool) = null,
     /// if()'s style(--x: value): whether `value_text`, substituted (a failure
     /// there is an error the caller catches), equals the computed value of
     /// custom property `name` - for an unregistered one, token by token with
     /// whitespace normalized. Null: unknown (not a custom property name).
     /// Batch 2 compares a registered property's computed values.
-    query_value_matches: ?*const fn (context: *anyopaque, name: []const u8, value_text: []const u8) Error!?bool = null,
+    query_value_matches: ?*const fn (context: *anyopaque, name: []const u8, value_text: []const u8) Error!?Flagged(bool) = null,
     /// if()'s range queries (style(--x > 10px)): `operand` - a custom
     /// property name or a literal value text, substituted first (a failure is
     /// an error the caller catches) - as a number in canonical units (px,
     /// deg, s, Hz, dppx), computed in the element's context with the shared
     /// math. Null: a guaranteed-invalid property, or no single numeric value.
-    numeric_value: ?*const fn (context: *anyopaque, operand: []const u8) Error!?Numeric = null,
+    numeric_value: ?*const fn (context: *anyopaque, operand: []const u8) Error!?Flagged(Numeric) = null,
+    /// if()'s media() test: `query_text` (a <media-feature> body or a
+    /// <media-condition>) against the element's document. error.Invalid for
+    /// a malformed or unknown test, false for a valid one that does not
+    /// match (css.media_queries.MediaQueryList.evaluateTest).
+    media: ?*const fn (context: *anyopaque, query_text: []const u8) Error!bool = null,
+    /// if()'s supports() test with the CONSUMING declaration's quirks mode
+    /// (Resolver.quirks). error.Invalid for a malformed test, false for an
+    /// unsupported one (css.supports.evaluateTest).
+    supports: ?*const fn (context: *anyopaque, text: []const u8, quirks: bool) Error!bool = null,
     /// env(): the host's environment variables.
     environment: ?Environment = null,
     /// random-item()'s random base and tree counts; numeric math.
@@ -728,6 +744,8 @@ pub const Resolver = struct {
     property: []const u8,
     /// The consuming declaration's sheet's namespace map (attr()), or null.
     namespaces: ?*const NamespaceMap = null,
+    /// The consuming declaration's sheet's quirks mode (if()'s supports()).
+    quirks: bool = false,
     early_numeric: usize = 0,
     depth: usize = 0,
     emitted: usize = 0,
@@ -739,6 +757,14 @@ pub const Resolver = struct {
     /// error.Invalid is the guaranteed-invalid value.
     pub fn substitute(self: *Resolver, nodes: []const Node, early_only: bool) Error![]const Node {
         return (try self.walk(nodes, early_only)).nodes;
+    }
+
+    /// `substitute`, with whether the result is tainted as a whole (Values
+    /// 5 §8.7.2) - true for an empty result that a tainted substitution
+    /// produced, which no node can carry. One walk.
+    pub fn substituteWithTaint(self: *Resolver, nodes: []const Node, early_only: bool) Error!Replacement {
+        const walked = try self.walk(nodes, early_only);
+        return .{ .nodes = walked.nodes, .tainted = walked.tainted };
     }
 
     const Walked = struct { nodes: []const Node, tainted: bool };
@@ -946,12 +972,20 @@ pub fn soleKeyword(text: []const u8) ?[]const u8 {
     return null;
 }
 
+/// What substitution knows of the declaration whose value it substitutes.
+pub const Declaration = struct {
+    /// The property (random-item()'s cache key); "" when there is none.
+    property: []const u8 = "",
+    namespaces: ?*const NamespaceMap = null,
+    quirks: bool = false,
+};
+
 /// Substitute `text` (a stored value's original text, already parsed into
 /// `nodes`) with `host`, and render it: the substituted text, or
 /// error.Invalid for the guaranteed-invalid value (an invalid function, or
 /// a result past the over-long limit).
-pub fn substituteAndRender(allocator: Allocator, nodes: []const Node, host: Host, property: []const u8, namespaces: ?*const NamespaceMap) Error!Rendered {
-    var resolver: Resolver = .{ .allocator = allocator, .host = host, .property = property, .namespaces = namespaces };
+pub fn substituteAndRender(allocator: Allocator, nodes: []const Node, host: Host, declaration: Declaration) Error!Rendered {
+    var resolver: Resolver = .{ .allocator = allocator, .host = host, .property = declaration.property, .namespaces = declaration.namespaces, .quirks = declaration.quirks };
     const substituted = try resolver.substitute(nodes, false);
     const rendered = try render(allocator, substituted);
     if (rendered.text.len > max_substituted_bytes) return error.Invalid;

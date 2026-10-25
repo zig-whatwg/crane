@@ -161,6 +161,9 @@ pub const Context = struct {
     /// CSS Variables 1 §2.1: resolves a url() that substitution brought into
     /// a value against the consuming declaration's base URL.
     url_resolver: ?@import("pending_values.zig").BaseUrlResolver = null,
+    /// The document's media values, for if()'s media() test (Codex row 123);
+    /// borrowed for the call. Null: the defaults.
+    media_values: ?*const @import("media_queries.zig").MediaValues = null,
 };
 
 const Candidate = struct {
@@ -708,40 +711,57 @@ const Builder = struct {
         return value.computed();
     }
 
-    fn hasValueCallback(context: *anyopaque, name: []const u8) substitution.Error!bool {
-        if (!custom_mod.isName(name)) return false;
-        return (try customValueCallback(context, name)) != null;
+    fn hasValueCallback(context: *anyopaque, name: []const u8) substitution.Error!substitution.Flagged(bool) {
+        if (!custom_mod.isName(name)) return .{ .value = false, .tainted = false };
+        const value = (try customValueCallback(context, name)) orelse return .{ .value = false, .tainted = false };
+        return .{ .value = true, .tainted = value.taint.len != 0 };
     }
 
-    fn queryValueMatchesCallback(context: *anyopaque, name: []const u8, value_text: []const u8) substitution.Error!?bool {
+    fn queryValueMatchesCallback(context: *anyopaque, name: []const u8, value_text: []const u8) substitution.Error!?substitution.Flagged(bool) {
         const self: *Builder = @ptrCast(@alignCast(context));
         if (!custom_mod.isName(name)) return null;
         var arena = std.heap.ArenaAllocator.init(self.ctx.allocator);
         defer arena.deinit();
         const query = try self.substituteText(arena.allocator(), value_text);
-        const value = (try customValueCallback(context, name)) orelse return false;
-        return tokensEqual(value.text, query);
+        const value = (try customValueCallback(context, name)) orelse return .{ .value = false, .tainted = query.tainted };
+        return .{ .value = tokensEqual(value.text, query.text), .tainted = query.tainted or value.taint.len != 0 };
     }
 
-    fn numericValueCallback(context: *anyopaque, operand: []const u8) substitution.Error!?substitution.Numeric {
+    fn numericValueCallback(context: *anyopaque, operand: []const u8) substitution.Error!?substitution.Flagged(substitution.Numeric) {
         const self: *Builder = @ptrCast(@alignCast(context));
         var arena = std.heap.ArenaAllocator.init(self.ctx.allocator);
         defer arena.deinit();
         const a = arena.allocator();
-        const text = if (try substitution.customPropertyName(a, operand)) |name|
-            ((try customValueCallback(context, name)) orelse return null).text
-        else
-            try self.substituteText(a, operand);
-        return self.numeric(a, text);
+        const text: Substituted = if (try substitution.customPropertyName(a, operand)) |name| blk: {
+            const value = (try customValueCallback(context, name)) orelse return null;
+            break :blk .{ .text = value.text, .tainted = value.taint.len != 0 };
+        } else try self.substituteText(a, operand);
+        const number = (try self.numeric(a, text.text)) orelse return null;
+        return .{ .value = number, .tainted = text.tainted };
     }
 
+    fn mediaCallback(context: *anyopaque, query_text: []const u8) substitution.Error!bool {
+        const self: *Builder = @ptrCast(@alignCast(context));
+        const media = self.ctx.media_values orelse &@import("media_queries.zig").MediaValues{};
+        return @import("media_queries.zig").MediaQueryList.evaluateTest(self.ctx.allocator, query_text, media);
+    }
+
+    fn supportsCallback(context: *anyopaque, text: []const u8, quirks: bool) substitution.Error!bool {
+        const self: *Builder = @ptrCast(@alignCast(context));
+        return @import("supports.zig").evaluateTest(self.ctx.allocator, text, quirks);
+    }
+
+    const Substituted = struct { text: []const u8, tainted: bool };
+
     /// `text` with its arbitrary substitution functions substituted for
-    /// this element; error.Invalid for the guaranteed-invalid value.
-    fn substituteText(self: *Builder, allocator: Allocator, text: []const u8) substitution.Error![]const u8 {
+    /// this element, and whether that brought in taint; error.Invalid for
+    /// the guaranteed-invalid value.
+    fn substituteText(self: *Builder, allocator: Allocator, text: []const u8) substitution.Error!Substituted {
         const source = substitution.originalText(text);
-        if (!substitution.mentionsFunction(source)) return source;
+        if (!substitution.mentionsFunction(source)) return .{ .text = source, .tainted = false };
         const nodes = try substitution.parse(allocator, source);
-        return (try substitution.substituteAndRender(allocator, nodes, self.substitutionHost(self.mathContext(.width)), "", null)).text;
+        const rendered = try substitution.substituteAndRender(allocator, nodes, self.substitutionHost(self.mathContext(.width)), .{});
+        return .{ .text = rendered.text, .tainted = rendered.taint.len != 0 };
     }
 
     /// One numeric value of `text` - a number, percentage or dimension token,
@@ -856,6 +876,8 @@ const Builder = struct {
             .has_value = hasValueCallback,
             .query_value_matches = queryValueMatchesCallback,
             .numeric_value = numericValueCallback,
+            .media = mediaCallback,
+            .supports = supportsCallback,
             .environment = self.ctx.environment,
             .math = context,
         };
@@ -2247,13 +2269,14 @@ fn withHost(allocator: Allocator, text: []const u8, parent_text: ?[]const u8, bo
 test "style() queries: hasValue reads custom properties only" {
     try withHost(testing.allocator, "--a: 1; --empty:; --bad: var(--missing)", "--inherited: x", struct {
         fn body(host: substitution.Host) anyerror!void {
-            try testing.expect(try host.has_value.?(host.context, "--a"));
+            try testing.expect((try host.has_value.?(host.context, "--a")).value);
             // The empty value is a value; the guaranteed-invalid one is not.
-            try testing.expect(try host.has_value.?(host.context, "--empty"));
-            try testing.expect(!try host.has_value.?(host.context, "--bad"));
-            try testing.expect(!try host.has_value.?(host.context, "--absent"));
-            try testing.expect(try host.has_value.?(host.context, "--inherited"));
-            try testing.expect(!try host.has_value.?(host.context, "color"));
+            try testing.expect((try host.has_value.?(host.context, "--empty")).value);
+            try testing.expect(!(try host.has_value.?(host.context, "--bad")).value);
+            try testing.expect(!(try host.has_value.?(host.context, "--absent")).value);
+            try testing.expect((try host.has_value.?(host.context, "--inherited")).value);
+            try testing.expect(!(try host.has_value.?(host.context, "color")).value);
+            try testing.expect(!(try host.has_value.?(host.context, "--a")).tainted);
         }
     }.body);
 }
@@ -2262,15 +2285,16 @@ test "style() queries: queryValueMatches compares tokens, substituting the query
     try withHost(testing.allocator, "--a: red  blue; --n: 10px; --bad: var(--missing)", null, struct {
         fn body(host: substitution.Host) anyerror!void {
             const matches = host.query_value_matches.?;
-            try testing.expectEqual(@as(?bool, true), try matches(host.context, "--a", "red blue"));
-            try testing.expectEqual(@as(?bool, true), try matches(host.context, "--a", "  red /* c */ blue "));
-            try testing.expectEqual(@as(?bool, false), try matches(host.context, "--a", "red"));
-            try testing.expectEqual(@as(?bool, true), try matches(host.context, "--n", "var(--n)"));
-            try testing.expectEqual(@as(?bool, false), try matches(host.context, "--bad", "x"));
+            try testing.expect((try matches(host.context, "--a", "red blue")).?.value);
+            try testing.expect((try matches(host.context, "--a", "  red /* c */ blue ")).?.value);
+            try testing.expect(!(try matches(host.context, "--a", "red")).?.value);
+            try testing.expect((try matches(host.context, "--n", "var(--n)")).?.value);
+            try testing.expect(!(try matches(host.context, "--bad", "x")).?.value);
+            try testing.expect(!(try matches(host.context, "--a", "red blue")).?.tainted);
             // A failed substitution of the query is an error the caller catches.
             try testing.expectError(error.Invalid, matches(host.context, "--a", "var(--missing)"));
             // Not a custom property: unknown.
-            try testing.expectEqual(@as(?bool, null), try matches(host.context, "color", "red"));
+            try testing.expect((try matches(host.context, "color", "red")) == null);
         }
     }.body);
 }
@@ -2279,21 +2303,48 @@ test "style() range queries: numericValue in canonical units, from a name or a l
     try withHost(testing.allocator, "--len: 2in; --em: 2em; --angle: 0.5turn; --t: 250ms; --res: 2dppx; --pct: 40%; --num: 3; --calc: calc(1px + 1px); --word: big; --bad: var(--missing)", null, struct {
         fn body(host: substitution.Host) anyerror!void {
             const value = host.numeric_value.?;
-            try testing.expectEqual(substitution.Numeric{ .value = 192, .dimension = .length }, (try value(host.context, "--len")).?);
+            try testing.expectEqual(substitution.Numeric{ .value = 192, .dimension = .length }, (try value(host.context, "--len")).?.value);
             // Font-relative units resolve in the element's context (16px).
-            try testing.expectEqual(substitution.Numeric{ .value = 32, .dimension = .length }, (try value(host.context, "--em")).?);
-            try testing.expectEqual(substitution.Numeric{ .value = 180, .dimension = .angle }, (try value(host.context, "--angle")).?);
-            try testing.expectEqual(substitution.Numeric{ .value = 0.25, .dimension = .time }, (try value(host.context, "--t")).?);
-            try testing.expectEqual(substitution.Numeric{ .value = 2, .dimension = .resolution }, (try value(host.context, "--res")).?);
-            try testing.expectEqual(substitution.Numeric{ .value = 40, .dimension = .percentage }, (try value(host.context, "--pct")).?);
-            try testing.expectEqual(substitution.Numeric{ .value = 3, .dimension = .number }, (try value(host.context, "--num")).?);
-            try testing.expectEqual(substitution.Numeric{ .value = 2, .dimension = .length }, (try value(host.context, "--calc")).?);
-            try testing.expectEqual(substitution.Numeric{ .value = 1000, .dimension = .frequency }, (try value(host.context, "1khz")).?);
-            try testing.expectEqual(substitution.Numeric{ .value = 10, .dimension = .length }, (try value(host.context, "calc(var(--num) * 1px + 7px)")).?);
+            try testing.expectEqual(substitution.Numeric{ .value = 32, .dimension = .length }, (try value(host.context, "--em")).?.value);
+            try testing.expectEqual(substitution.Numeric{ .value = 180, .dimension = .angle }, (try value(host.context, "--angle")).?.value);
+            try testing.expectEqual(substitution.Numeric{ .value = 0.25, .dimension = .time }, (try value(host.context, "--t")).?.value);
+            try testing.expectEqual(substitution.Numeric{ .value = 2, .dimension = .resolution }, (try value(host.context, "--res")).?.value);
+            try testing.expectEqual(substitution.Numeric{ .value = 40, .dimension = .percentage }, (try value(host.context, "--pct")).?.value);
+            try testing.expectEqual(substitution.Numeric{ .value = 3, .dimension = .number }, (try value(host.context, "--num")).?.value);
+            try testing.expectEqual(substitution.Numeric{ .value = 2, .dimension = .length }, (try value(host.context, "--calc")).?.value);
+            try testing.expectEqual(substitution.Numeric{ .value = 1000, .dimension = .frequency }, (try value(host.context, "1khz")).?.value);
+            try testing.expectEqual(substitution.Numeric{ .value = 10, .dimension = .length }, (try value(host.context, "calc(var(--num) * 1px + 7px)")).?.value);
             try testing.expect((try value(host.context, "--word")) == null);
             try testing.expect((try value(host.context, "--bad")) == null);
             try testing.expect((try value(host.context, "1px 2px")) == null);
             try testing.expectError(error.Invalid, value(host.context, "var(--missing)"));
+        }
+    }.body);
+}
+
+test "if() media() and supports() tests: true, false, or unknown (error.Invalid)" {
+    try withHost(testing.allocator, "--a: 1", null, struct {
+        fn body(host: substitution.Host) anyerror!void {
+            const media = host.media.?;
+            // The defaults: a 1024x768 screen.
+            try testing.expect(try media(host.context, "width > 10px"));
+            try testing.expect(try media(host.context, "(width > 10px) and (height > 10px)"));
+            try testing.expect(!try media(host.context, "width < 10px"));
+            try testing.expect(try media(host.context, "not (width < 10px)"));
+            // Malformed, or unknown (general-enclosed): unknown to the caller.
+            try testing.expectError(error.Invalid, media(host.context, "width >"));
+            try testing.expectError(error.Invalid, media(host.context, "(frobnicate)"));
+            try testing.expectError(error.Invalid, media(host.context, "screen"));
+            const supports = host.supports.?;
+            try testing.expect(try supports(host.context, "color: red", false));
+            try testing.expect(try supports(host.context, "(color: red) and (width: 1px)", false));
+            try testing.expect(!try supports(host.context, "color: 10px", false));
+            try testing.expect(try supports(host.context, "not (color: 10px)", false));
+            // The consuming declaration's quirks mode: unitless lengths.
+            try testing.expect(try supports(host.context, "width: 10", true));
+            try testing.expect(!try supports(host.context, "width: 10", false));
+            try testing.expectError(error.Invalid, supports(host.context, "color red", false));
+            try testing.expectError(error.Invalid, supports(host.context, "(color: red) and", false));
         }
     }.body);
 }

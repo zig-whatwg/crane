@@ -59,7 +59,7 @@ fn substituted(allocator: Allocator, host: substitution.Host, text: []const u8) 
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const nodes = try substitution.parse(arena.allocator(), text);
-    const output = substitution.substituteAndRender(arena.allocator(), nodes, host, "width", null) catch |err| switch (err) {
+    const output = substitution.substituteAndRender(arena.allocator(), nodes, host, .{ .property = "width" }) catch |err| switch (err) {
         error.Invalid => return null,
         else => |e| return e,
     };
@@ -209,7 +209,7 @@ test "an over-long substitution is the guaranteed-invalid value" {
 
 fn rendered(allocator: Allocator, host: substitution.Host, text: []const u8) !substitution.Rendered {
     const nodes = try substitution.parse(allocator, text);
-    return substitution.substituteAndRender(allocator, nodes, host, "background-image", null);
+    return substitution.substituteAndRender(allocator, nodes, host, .{ .property = "background-image" });
 }
 
 fn overlaps(range: substitution.TaintRange, start: usize, end: usize) bool {
@@ -346,4 +346,25 @@ test "an env() index past u32 names no value: the fallback, never index 42949672
     try expectSubstitution(host, "env(test-max 4294967296, 37px)", "37px");
     try expectSubstitution(host, "env(test-max 99999999999999999999, 37px)", "37px");
     try expectSubstitution(host, "env(test-max 4294967296)", null);
+}
+
+test "substituteWithTaint reports an empty tainted result as tainted (row 123 Q18)" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const vars = [_]Variable{
+        .{ .name = "--t-empty", .value = .{ .text = "", .taint = &.{.{ .start = 0, .end = 0, .kind = .own }} } },
+        .{ .name = "--clean", .value = .{ .text = "x" } },
+    };
+    var t: TestHost = .{ .variables = &vars, .allocator = testing.allocator };
+    defer t.deinit();
+    var resolver: substitution.Resolver = .{ .allocator = arena.allocator(), .host = t.host(null), .property = "width" };
+    const nodes = try substitution.parse(arena.allocator(), "var(--t-empty)");
+    // A synthetic function's evaluation: the span substitutes to nothing,
+    // and the flag still says it came from a tainted source.
+    const empty = try resolver.substituteWithTaint(nodes, false);
+    try testing.expectEqual(@as(usize, 0), empty.nodes.len);
+    try testing.expect(empty.tainted);
+    const clean = try resolver.substituteWithTaint(try substitution.parse(arena.allocator(), "var(--clean)"), false);
+    try testing.expect(!clean.tainted);
+    try testing.expectEqual(@as(usize, 1), clean.nodes.len);
 }
