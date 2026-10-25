@@ -1,55 +1,79 @@
-//! Values 5 §9.2 and Appendix A: owned, token-preserving random-item()
-//! substitution. The declaration's source survives; no resolver or DOM does.
-//! WebKit StyleSubstitutionResolver supplies the selected-branch design.
+//! Values 5 Appendix A: a pending-substitution value. A declaration whose
+//! value contains an arbitrary substitution function (var(), env(),
+//! random-item(), substitution.zig) is valid at parse time and is stored as
+//! this: its original text and component value tree, shared by every
+//! longhand a shorthand sets, and substituted at computed-value time - then
+//! parsed with the property's grammar ("replace substitution functions in a
+//! property"). A custom property's value with such a function is one too,
+//! with no grammar to parse against.
+//!
+//! The declaration's source survives; no resolver or DOM does. WebKit
+//! StyleSubstitutionResolver supplies the selected-branch design; Blink's
+//! CSSPendingSubstitutionValue the shorthand sharing.
 const std = @import("std");
 const tokens = @import("tokenizer.zig");
 const properties = @import("properties.zig");
 const resources = @import("resource_values.zig");
-const math = @import("math_values.zig");
-const random = @import("random_values.zig");
+const substitution = @import("substitution.zig");
 const Allocator = std.mem.Allocator;
-const Error = Allocator.Error || error{ Invalid, Unavailable };
-
-const Node = struct {
-    kind: tokens.TokenType,
-    raw: []const u8,
-    value: []const u8 = "",
-    children: []const Node = &.{},
-    close: ?u8 = null,
-    item_index: ?usize = null,
-};
+const Node = substitution.Node;
+const NamespaceMap = @import("namespace_map.zig").NamespaceMap;
 
 const CapturedUrl = struct { raw: []const u8, resolved: ?[]const u8 };
+
+/// Resolves a url() substituted into a value against the CONSUMING
+/// declaration's base URL (CSS Variables 1 §2.1: a relative URL in a custom
+/// property resolves where var() substitutes it; Blink parses substituted
+/// tokens with the consuming value's parser context). Supplied by the DOM;
+/// borrowed for the cascade call.
+pub const BaseUrlResolver = struct {
+    context: *const anyopaque,
+    resolve: *const fn (context: *const anyopaque, allocator: Allocator, base: []const u8, url: []const u8) ?[]u8,
+};
 
 pub const Pending = struct {
     refs: std.atomic.Value(u32) = .init(1),
     allocator: Allocator,
     arena: std.heap.ArenaAllocator,
-    property: properties.Property,
+    /// The declaration's property; null for a custom property's value.
+    property: ?properties.Property,
+    /// The original text (rules.zig keeps the source segment).
     text: []const u8 = "",
     nodes: []const Node = &.{},
     quirks: bool,
+    /// SVG2 §4.2: a presentation attribute's value re-parses in that mode.
+    svg_presentation: bool,
     source: ?*resources.ResourceSource,
+    /// The declaring sheet's namespace prefixes (attr()), retained; null for
+    /// a declaration outside a sheet, and for every declaration until Codex
+    /// row 122 fills ParseOptions.namespaces.
+    namespaces: ?*NamespaceMap,
     urls: []const CapturedUrl = &.{},
     had_resolver: bool,
 
-    pub fn create(options: properties.ParseOptions, property: properties.Property, text: []const u8) Allocator.Error!?*Pending {
+    /// The pending value of `text` for `property` (null for a custom
+    /// property), or null when the value is invalid at parse time: not a
+    /// <declaration-value>, or a function whose arguments do not match its
+    /// argument grammar.
+    pub fn create(options: properties.ParseOptions, property: ?properties.Property, text: []const u8) Allocator.Error!?*Pending {
         const self = try options.allocator.create(Pending);
         self.* = .{
             .allocator = options.allocator,
             .arena = std.heap.ArenaAllocator.init(options.allocator),
             .property = property,
             .quirks = options.quirks,
+            .svg_presentation = options.svg_presentation,
             .source = options.resource_source,
+            .namespaces = options.namespaces,
             .had_resolver = options.url_resolver != null,
         };
         if (self.source) |source| source.ref();
+        if (self.namespaces) |map| map.retain();
         var success = false;
         defer if (!success) self.unref();
         const arena = self.arena.allocator();
-        self.text = try arena.dupe(u8, std.mem.trim(u8, text, " \n\r\t\x0c"));
-        var parser = Parser{ .allocator = arena, .tokenizer = tokens.Tokenizer.init(self.text) };
-        self.nodes = parser.sequence(null) catch |err| switch (err) {
+        self.text = try arena.dupe(u8, substitution.originalText(text));
+        self.nodes = substitution.parse(arena, self.text) catch |err| switch (err) {
             error.Invalid, error.Unavailable => return null,
             error.OutOfMemory => return error.OutOfMemory,
         };
@@ -84,55 +108,106 @@ pub const Pending = struct {
     pub fn unref(self: *Pending) void {
         if (self.refs.fetchSub(1, .acq_rel) != 1) return;
         if (self.source) |source| source.unref();
+        if (self.namespaces) |map| map.release();
         const allocator = self.allocator;
         self.arena.deinit();
         allocator.destroy(self);
     }
     pub fn eql(self: *const Pending, other: *const Pending) bool {
-        return self == other or (std.meta.eql(self.property, other.property) and std.mem.eql(u8, self.text, other.text));
+        if (self == other) return true;
+        if (!std.mem.eql(u8, self.text, other.text)) return false;
+        if (self.property == null or other.property == null) return self.property == null and other.property == null;
+        return std.meta.eql(self.property.?, other.property.?);
+    }
+
+    fn propertyName(self: *const Pending) []const u8 {
+        return switch (self.property orelse return "") {
+            .longhand => |l| l.name(),
+            .shorthand => |s| s.name(),
+        };
     }
 
     /// Q88's three outcomes are distinct: missing input skips a candidate;
     /// invalid substitution remains the winning declaration, as unset.
-    pub fn resolve(self: *const Pending, allocator: Allocator, context: math.Context) Allocator.Error!Outcome {
+    /// Values 5 "replace substitution functions in a property": substitute
+    /// (1, 2: a guaranteed-invalid result is invalid at computed-value
+    /// time), then parse the result with the property's grammar (3: failure
+    /// is invalid at computed-value time). The assignments are the
+    /// caller's (Outcome.deinit).
+    pub fn resolve(self: *const Pending, allocator: Allocator, host: substitution.Host, url_resolver: ?BaseUrlResolver) Allocator.Error!Outcome {
+        const property = self.property orelse return .invalid;
         var arena = std.heap.ArenaAllocator.init(allocator);
         defer arena.deinit();
-        var resolver = Resolver{ .allocator = arena.allocator(), .context = context, .property = switch (self.property) {
-            .longhand => |l| l.name(),
-            .shorthand => |s| s.name(),
-        } };
-        const nodes = resolver.substitute(self.nodes, false) catch |err| switch (err) {
+        const rendered = substitution.substituteAndRender(arena.allocator(), self.nodes, host, self.propertyName(), self.namespaces) catch |err| switch (err) {
             error.Invalid => return .invalid,
             error.Unavailable => return .unavailable,
             error.OutOfMemory => return error.OutOfMemory,
         };
-        const text = try render(arena.allocator(), nodes);
         var assignments: std.ArrayList(properties.Assignment) = .empty;
         errdefer {
             for (assignments.items) |a| a.value.release();
             assignments.deinit(allocator);
         }
+        var urls: UrlContext = .{ .pending = self, .fallback = url_resolver };
         // The normal numeric ordinal scope is built here, AFTER selection.
         const options = properties.ParseOptions{
             .allocator = allocator,
             .quirks = self.quirks,
+            .svg_presentation = self.svg_presentation,
             .resource_source = self.source,
-            .url_resolver = if (self.had_resolver) .{ .context = self, .resolve = capturedUrl } else null,
+            .url_resolver = if (self.had_resolver or url_resolver != null) .{ .context = &urls, .resolve = UrlContext.resolve } else null,
+            .tainted_ranges = rendered.taint,
         };
-        if (!try properties.parseDeclaration(options, self.property, text, &assignments)) {
+        if (!try properties.parseDeclaration(options, property, rendered.text, &assignments)) {
             assignments.deinit(allocator);
             return .invalid;
         }
+        // Appendix A: what substitution gives is fully substituted. Text that
+        // still names a function (a host's environment value, say) does not
+        // pend again: the value is invalid at computed-value time.
+        for (assignments.items) |a| if (a.value == .value and a.value.value == .pending) {
+            for (assignments.items) |b| b.value.release();
+            assignments.deinit(allocator);
+            return .invalid;
+        };
         return .{ .resolved = try assignments.toOwnedSlice(allocator) };
     }
 
-    fn capturedUrl(raw_context: *const anyopaque, allocator: Allocator, raw: []const u8) ?[]u8 {
-        const self: *const Pending = @ptrCast(@alignCast(raw_context));
-        for (self.urls) |entry| if (std.mem.eql(u8, raw, entry.raw)) {
-            return allocator.dupe(u8, entry.resolved orelse return null) catch null;
+    /// A custom property's value substituted (CSS Variables 1 §2: "specified
+    /// value with variables substituted, or the guaranteed-invalid value"):
+    /// its text and taint ranges owned by `allocator`, or the
+    /// guaranteed-invalid value.
+    pub fn substituteCustom(self: *const Pending, allocator: Allocator, host: substitution.Host, name: []const u8) Allocator.Error!CustomOutcome {
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
+        const rendered = substitution.substituteAndRender(arena.allocator(), self.nodes, host, name, self.namespaces) catch |err| switch (err) {
+            error.Invalid => return .invalid,
+            error.Unavailable => return .unavailable,
+            error.OutOfMemory => return error.OutOfMemory,
         };
-        return null;
+        const text = try allocator.dupe(u8, rendered.text);
+        errdefer allocator.free(text);
+        const taint = try allocator.dupe(substitution.TaintRange, rendered.taint);
+        return .{ .substituted = .{ .text = text, .taint = taint } };
     }
+
+    const UrlContext = struct {
+        pending: *const Pending,
+        fallback: ?BaseUrlResolver,
+
+        fn resolve(raw_context: *const anyopaque, allocator: Allocator, raw: []const u8) ?[]u8 {
+            const self: *const UrlContext = @ptrCast(@alignCast(raw_context));
+            // A url() of the declaration's own text: the one captured at parse
+            // time, while its resolver was alive.
+            for (self.pending.urls) |entry| if (std.mem.eql(u8, raw, entry.raw)) {
+                return allocator.dupe(u8, entry.resolved orelse return null) catch null;
+            };
+            // A url() substitution brought in: the consuming declaration's base.
+            const fallback = self.fallback orelse return null;
+            const source = self.pending.source orelse return null;
+            return fallback.resolve(fallback.context, allocator, source.base_url, raw);
+        }
+    };
 };
 
 pub const Outcome = union(enum) {
@@ -148,202 +223,8 @@ pub const Outcome = union(enum) {
     }
 };
 
-const Parser = struct {
-    allocator: Allocator,
-    tokenizer: tokens.Tokenizer,
-    depth: usize = 0,
-    count: usize = 0,
-    item_index: usize = 0,
-
-    fn sequence(self: *Parser, closing: ?tokens.TokenType) Error![]const Node {
-        self.depth += 1;
-        defer self.depth -= 1;
-        if (self.depth > 128) return error.Invalid;
-        var nodes: std.ArrayList(Node) = .empty;
-        while (true) {
-            const start = self.tokenizer.pos;
-            const token = self.tokenizer.next();
-            if (token.token_type == .eof) break; // Syntax 3 closes blocks at EOF.
-            if (closing != null and token.token_type == closing.?) break;
-            switch (token.token_type) {
-                .right_paren, .right_bracket, .right_brace, .bad_string, .bad_url => return error.Invalid,
-                else => {},
-            }
-            self.count += 1;
-            if (self.count > 65536) return error.Invalid;
-            var node = Node{ .kind = token.token_type, .raw = self.tokenizer.input[start..self.tokenizer.pos], .value = token.value };
-            const close: ?tokens.TokenType = switch (token.token_type) {
-                .function => blk: {
-                    if (self.tokenizer.next().token_type != .left_paren) return error.Invalid;
-                    node.raw = self.tokenizer.input[start..self.tokenizer.pos];
-                    if (tokens.nameEql(token.value, "random-item")) {
-                        self.item_index += 1;
-                        node.item_index = self.item_index;
-                    }
-                    break :blk .right_paren;
-                },
-                .left_paren => .right_paren,
-                .left_bracket => .right_bracket,
-                .left_brace => .right_brace,
-                else => null,
-            };
-            if (close) |end| {
-                node.close = switch (end) {
-                    .right_paren => ')',
-                    .right_bracket => ']',
-                    .right_brace => '}',
-                    else => unreachable,
-                };
-                node.children = try self.sequence(end);
-                if (node.item_index != null and !hasSpread(node.children)) _ = try arguments(self.allocator, node.children);
-            }
-            try nodes.append(self.allocator, node);
-        }
-        return nodes.toOwnedSlice(self.allocator);
-    }
+pub const CustomOutcome = union(enum) {
+    substituted: struct { text: []u8, taint: []substitution.TaintRange },
+    unavailable,
+    invalid,
 };
-
-fn isSpace(node: Node) bool {
-    return node.kind == .whitespace;
-}
-fn trim(nodes: []const Node) []const Node {
-    var start: usize = 0;
-    var end = nodes.len;
-    while (start < end and isSpace(nodes[start])) start += 1;
-    while (end > start and isSpace(nodes[end - 1])) end -= 1;
-    return nodes[start..end];
-}
-fn spreadAt(nodes: []const Node, index: usize) bool {
-    if (index < 3 or nodes[index].item_index == null) return false;
-    for (nodes[index - 3 .. index]) |node| if (node.kind != .delim or !std.mem.eql(u8, node.raw, ".")) return false;
-    // Comments and whitespace between tokens do not count as adjacency.
-    for (index - 3..index) |i| if (@intFromPtr(nodes[i].raw.ptr) + nodes[i].raw.len != @intFromPtr(nodes[i + 1].raw.ptr)) return false;
-    return true;
-}
-fn hasSpread(nodes: []const Node) bool {
-    for (nodes, 0..) |node, index| {
-        if (node.item_index != null) {
-            if (spreadAt(nodes, index)) return true;
-        } else if (hasSpread(node.children)) return true;
-    }
-    return false;
-}
-
-/// §3.1.1: a free-form argument is either one {} block or a sequence with
-/// no top-level block. Its top-level ! and semicolon restrictions survive
-/// unwrapping. Only the key argument must be nonempty at parse time.
-fn unwrap(raw: []const Node) Error![]const Node {
-    const nodes = trim(raw);
-    const value = if (nodes.len == 1 and nodes[0].kind == .left_brace) nodes[0].children else nodes;
-    for (value) |node| {
-        if (node.kind == .semicolon or (node.kind == .delim and std.mem.eql(u8, node.value, "!"))) return error.Invalid;
-        if (value.ptr == nodes.ptr) switch (node.kind) {
-            .left_brace, .left_bracket, .left_paren => return error.Invalid,
-            else => {},
-        };
-    }
-    return trim(value);
-}
-fn arguments(allocator: Allocator, nodes: []const Node) Error![]const []const Node {
-    var list: std.ArrayList([]const Node) = .empty;
-    var start: usize = 0;
-    for (nodes, 0..) |node, index| if (node.kind == .comma) {
-        try list.append(allocator, try unwrap(nodes[start..index]));
-        start = index + 1;
-    };
-    try list.append(allocator, try unwrap(nodes[start..]));
-    if (list.items.len < 2 or list.items[0].len == 0) return error.Invalid;
-    return list.toOwnedSlice(allocator);
-}
-
-const Resolver = struct {
-    allocator: Allocator,
-    context: math.Context,
-    property: []const u8,
-    early_numeric: usize = 0,
-    depth: usize = 0,
-    emitted: usize = 0,
-
-    fn substitute(self: *Resolver, nodes: []const Node, early_only: bool) Error![]const Node {
-        self.depth += 1;
-        defer self.depth -= 1;
-        if (self.depth > 128) return error.Invalid;
-        var result: std.ArrayList(Node) = .empty;
-        for (nodes, 0..) |node, index| {
-            if (node.item_index != null) {
-                const spread = early_only and spreadAt(nodes, index);
-                if (early_only and !spread) {
-                    try result.append(self.allocator, node);
-                    continue;
-                }
-                if (spread) result.items.len -= 3;
-                const chosen = try self.replace(node);
-                // Appendix A: substitution is at token boundaries. A comment
-                // stops an adjacent number and ident becoming one dimension.
-                const barrier = Node{ .kind = .whitespace, .raw = "/**/" };
-                try result.append(self.allocator, barrier);
-                try result.appendSlice(self.allocator, chosen);
-                try result.append(self.allocator, barrier);
-            } else {
-                var copy = node;
-                if (node.close != null) copy.children = try self.substitute(node.children, early_only);
-                try result.append(self.allocator, copy);
-            }
-            self.emitted += 1;
-            if (self.emitted > 65536) return error.Invalid;
-        }
-        return result.toOwnedSlice(self.allocator);
-    }
-
-    fn replace(self: *Resolver, node: Node) Error![]const Node {
-        // Appendix A substitution step 2.1 precedes the argument split.
-        const early = try self.substitute(node.children, true);
-        const args = try arguments(self.allocator, early);
-        // §9.2 step 2: evaluate the key only; unused items remain untouched.
-        const key_nodes = try self.substitute(args[0], false);
-        const key_text = try render(self.allocator, key_nodes);
-        var stream = properties.Stream.init(key_text);
-        const first = stream.peek();
-        const base = if (first.token_type == .ident and tokens.nameEql(first.value, "fixed")) blk: {
-            _ = stream.next();
-            var scope = try random.ParseScope.init(self.allocator, key_text, self.property, .{ .early = true, .numeric_offset = self.early_numeric });
-            defer scope.deinit();
-            for (scope.entries) |entry| if (entry.source.function == .numeric) {
-                self.early_numeric += 1;
-            };
-            const number = try @import("numeric_values.zig").Number.consume(.{ .allocator = self.allocator, .random_scope = &scope }, &stream, .{ .kind = .number, .minimum = 0, .maximum = 1 }, false) orelse return error.Invalid;
-            defer number.unref();
-            if (!stream.atEnd()) return error.Invalid;
-            if ((number.needsRandomBase() and self.context.random_base == null) or number.needsUnavailableMetrics(false)) return error.Unavailable;
-            const computed = try number.compute(self.allocator, self.context);
-            defer computed.unref();
-            const scalar = computed.known() orelse return error.Unavailable;
-            break :blk random.fixedBase(scalar.value);
-        } else blk: {
-            const key = try random.parseCacheKey(self.allocator, key_text, .{ .property = self.property, .index = node.item_index.?, .function = .item }) orelse return error.Invalid;
-            defer key.deinit(self.allocator);
-            const provider = self.context.random_base orelse return error.Unavailable;
-            break :blk random.fixedBase(try provider.get(provider.context, key));
-        };
-        // §§9.2 step 3, 9.3: equal-width [0,1) buckets, then resolve ONLY
-        // the chosen item. An empty item is a real option, not a missing one.
-        const count = args.len - 1;
-        const selected = @min(count - 1, @as(usize, @intFromFloat(@floor(base * @as(f64, @floatFromInt(count))))));
-        return self.substitute(args[selected + 1], false);
-    }
-};
-
-fn render(allocator: Allocator, nodes: []const Node) Allocator.Error![]const u8 {
-    var out: std.ArrayList(u8) = .empty;
-    try appendNodes(allocator, nodes, &out);
-    return out.toOwnedSlice(allocator);
-}
-fn appendNodes(allocator: Allocator, nodes: []const Node, out: *std.ArrayList(u8)) Allocator.Error!void {
-    for (nodes) |node| {
-        try out.appendSlice(allocator, node.raw);
-        if (node.close) |close| {
-            try appendNodes(allocator, node.children, out);
-            try out.append(allocator, close);
-        }
-    }
-}

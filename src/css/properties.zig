@@ -956,6 +956,13 @@ pub const ParseOptions = struct {
     /// Q138: background math belongs to typed grammars; retained opaque
     /// image leaves keep the pre-existing rejection for those properties.
     reject_opaque_image_math: bool = false,
+    /// CSS Values 5 §8.7.2: the byte ranges of the text substitution
+    /// brought from a tainted source (substitution.zig), for a grammar that
+    /// must reject a tainted url(). Empty for text that was not substituted.
+    tainted_ranges: []const @import("substitution.zig").TaintRange = &.{},
+    /// The declaring sheet's namespace prefixes, borrowed; a pending value
+    /// retains it (attr(): Codex row 122 fills it where sheets parse).
+    namespaces: ?*@import("namespace_map.zig").NamespaceMap = null,
 };
 
 pub const UrlResolver = resources.UrlResolver;
@@ -2219,7 +2226,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .containment => |v| try v.serialize(out, allocator),
         .try_fallbacks => |f| try f.list.serialize(f.computed, out, allocator),
         .text => |t| try out.appendSlice(allocator, t.bytes),
-        .pending => |pending| if (pending.property == .longhand) try out.appendSlice(allocator, pending.text),
+        .pending => |pending| if (pending.property != null and pending.property.? == .longhand) try out.appendSlice(allocator, pending.text),
         .cursor => |c| try out.appendSlice(allocator, c.text.bytes),
         .indent => |v| try v.serialize(out, allocator),
         .paint => |v| try v.serialize(out, allocator, null),
@@ -2279,7 +2286,8 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
     // pending value; mixed/overridden placeholders serialize as empty.
     for (vs) |v| if (v.value == .pending) {
         const pending = v.value.pending;
-        if (pending.property != .shorthand or pending.property.shorthand != s) return false;
+        const declared = pending.property orelse return false;
+        if (declared != .shorthand or declared.shorthand != s) return false;
         for (vs) |other| if (other.value != .pending or other.value.pending != pending) return false;
         try out.appendSlice(allocator, pending.text);
         return true;

@@ -152,6 +152,13 @@ pub const Context = struct {
     /// The user's preferred color scheme (the host's, as prefers-color-scheme
     /// reports it).
     preferred_color_scheme: color_scheme_mod.Scheme = .light,
+    /// CSS Environment Variables 1: the document's environment variables,
+    /// from the host (Codex row 121 installs the provider). Null: every
+    /// name is undefined, so env() takes its fallback.
+    environment: ?@import("substitution.zig").Environment = null,
+    /// CSS Variables 1 §2.1: resolves a url() that substitution brought into
+    /// a value against the consuming declaration's base URL.
+    url_resolver: ?@import("pending_values.zig").BaseUrlResolver = null,
 };
 
 const Candidate = struct {
@@ -388,7 +395,9 @@ const Builder = struct {
             // normal dependency query still runs below after substitution.
             var context = self.mathContext(l);
             if (!source.tree_count_allowed) context.tree_counts = .{ .index = 0, .count = 0 } else context.tree_count_provider = .{ .context = self, .get = pendingTreeCounts };
-            const outcome = try pending.resolve(self.ctx.allocator, context);
+            var host = self.substitutionHost(context);
+            host.tree_scope = source.tree_scope.serial;
+            const outcome = try pending.resolve(self.ctx.allocator, host, self.ctx.url_resolver);
             errdefer outcome.deinit(self.ctx.allocator);
             const at = self.pending.items.len;
             try self.pending.append(self.ctx.allocator, .{ .value = pending, .source = source, .outcome = outcome });
@@ -402,6 +411,12 @@ const Builder = struct {
                 break :blk .{ .assigned = .{ .css_wide = .unset } };
             },
         };
+    }
+
+    /// What substitution reads from this element (substitution.Host): its
+    /// custom properties, the environment and the math context.
+    fn substitutionHost(self: *Builder, context: @import("math_values.zig").Context) @import("substitution.zig").Host {
+        return .{ .context = self, .environment = self.ctx.environment, .math = context };
     }
 
     fn parentValue(self: *const Builder, l: Longhand) Value {
