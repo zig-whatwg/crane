@@ -288,6 +288,67 @@ pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*Computed
     return style;
 }
 
+/// How Builder.run defaults a longhand that no declaration touches (an
+/// empty CandidateIndex chain). Cascade 5 7.1 "defaulting": an inherited
+/// property takes its parent's computed value, any other its initial value.
+pub const DefaultPath = enum {
+    /// Today's specified() -> compute() walk: the safe answer.
+    compute,
+    /// Store the parent's computed value (initialComputed at the root).
+    inherit,
+    /// Keep the shared initial computed value already in the slot.
+    initial,
+};
+
+/// The longhands Builder.run computes eagerly in its high-priority prefix.
+fn isHighPriority(l: Longhand) bool {
+    return switch (l) {
+        .writing_mode, .direction, .text_orientation, .color_scheme, .font_size, .line_height, .color => true,
+        else => false,
+    };
+}
+
+/// Whether a longhand whose initial value is `initial` may default without
+/// the compute walk. An ALLOWLIST whose default is `.compute` (AGENTS.md:
+/// gates default to the safe answer): `.initial` only for a value whose
+/// computeValue result is the value itself in every element context.
+/// Font-relative and viewport lengths (font metrics, the parent's em, the
+/// viewport), math values (tree counts, random(), metrics), images, lists,
+/// transforms and any tag added later are not proven and compute.
+pub fn defaultPathFor(l: Longhand, initial: Value) DefaultPath {
+    if (l.logical() != null or isHighPriority(l)) return .compute;
+    if (l.inherited()) return .inherit;
+    switch (l) {
+        // computeValue reads element context for these initial values:
+        // content's `normal` is `none` on ::before/::after (CSS Content 3),
+        // and justify-items' `legacy` reads the parent (Align 3 7.1).
+        .content, .justify_items => return .compute,
+        else => {},
+    }
+    return switch (initial) {
+        .keyword, .number, .integer, .display, .grid_flow, .image_repeat, .image_keyword, .position_visibility, .containment => .initial,
+        // Align 3: only a lone `legacy` reads the parent.
+        .alignment => |a| if (a.position == .legacy) .compute else .initial,
+        // An absolute length is its own computed value; a percentage stays.
+        .length => |len| if (len.unit == .px or len.unit == .percent) .initial else .compute,
+        // Color 4 6.4: currentcolor stays symbolic outside `color` itself,
+        // and an rgba color is already computed.
+        .color => |c| switch (c) {
+            .rgba, .current => .initial,
+            else => .compute,
+        },
+        else => .compute,
+    };
+}
+
+/// Each longhand's default path, from its initial computed value.
+pub const default_path: [Longhand.count]DefaultPath = blk: {
+    @setEvalBranchQuota(100_000);
+    var out: [Longhand.count]DefaultPath = undefined;
+    for (0..Longhand.count) |i| out[i] = defaultPathFor(@enumFromInt(i), computed_mod.initial_values[i]);
+    break :blk out;
+};
+
 const Builder = struct {
     ctx: Context,
     candidates: []const Candidate,
@@ -443,11 +504,29 @@ const Builder = struct {
         _ = try self.computeAndStore(.color);
         for (0..Longhand.count) |i| {
             const l: Longhand = @enumFromInt(i);
-            if (l.logical() != null) continue;
-            switch (l) {
-                .writing_mode, .direction, .text_orientation, .color_scheme, .font_size, .line_height, .color => continue,
-                else => {},
-            }
+            if (l.logical() != null or isHighPriority(l)) continue;
+            // Untouched: the defaulting step without the compute walk
+            // (design: Blink StyleResolver::InitStyle -> CreateNewStyle takes
+            // non-inherited data from the initial style and inherited data
+            // from the parent, and StyleCascade applies only declared
+            // properties; WebKit's Resolver::initializeStateAndStyle does
+            // inheritFrom(parent) and its Builder applies only the
+            // PropertyCascade). A longhand with candidates, even all of them
+            // later skipped, takes specified() below, unchanged.
+            if (self.index.heads[i] == CandidateIndex.none) switch (default_path[i]) {
+                // compute(.inherit) without the dispatch: the parent's value,
+                // or initialComputed at the root (color is high-priority).
+                .inherit => {
+                    const v = self.parentValue(l);
+                    v.retain();
+                    self.style.values[i] = v;
+                    continue;
+                },
+                // The slot already holds initial_values[i], which is what
+                // compute(.initial) yields for an allowlisted longhand.
+                .initial => continue,
+                .compute => {},
+            };
             _ = try self.computeAndStore(l);
         }
         self.adjust();
