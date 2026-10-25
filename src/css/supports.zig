@@ -17,6 +17,7 @@ const Tokenizer = tokenizer_mod.Tokenizer;
 const Token = tokenizer_mod.Token;
 const property_parser = @import("property_parser.zig");
 const properties = @import("properties.zig");
+const rules = @import("rules.zig");
 const PropertyParser = property_parser.PropertyParser;
 const ParserContext = @import("context.zig").ParserContext;
 
@@ -32,7 +33,7 @@ pub const SelectorCheck = *const fn (allocator: std.mem.Allocator, text: []const
 /// or escape processing is done on `property`, and !important is not part
 /// of any property's grammar.
 pub fn supportsDeclaration(allocator: std.mem.Allocator, property: []const u8, value: []const u8) bool {
-    if (isCustomPropertyName(property)) return isDeclarationValue(value);
+    if (isCustomPropertyName(property)) return rules.isDeclarationValue(value);
 
     var name_buf: [64]u8 = undefined;
     if (property.len == 0 or property.len > name_buf.len) return false;
@@ -72,46 +73,6 @@ pub fn supportsCondition(allocator: std.mem.Allocator, condition_text: []const u
 /// "A custom property name string": starts with two dashes.
 fn isCustomPropertyName(name: []const u8) bool {
     return name.len > 2 and name[0] == '-' and name[1] == '-';
-}
-
-/// <declaration-value>?, as a custom property's value may be: "any sequence
-/// of one or more tokens, so long as the sequence does not contain
-/// <bad-string-token>, <bad-url-token>, unmatched <)-token>, <]-token>, or
-/// <}-token>, or top-level <semicolon-token> tokens or <delim-token> tokens
-/// with a value of "!"" - or nothing (an empty custom property is valid).
-fn isDeclarationValue(value: []const u8) bool {
-    var tok = Tokenizer.init(value);
-    var closers: [64]tokenizer_mod.TokenType = undefined;
-    var depth: usize = 0;
-    while (true) {
-        const t = tok.next();
-        switch (t.token_type) {
-            .eof => return true,
-            .bad_string, .bad_url => return false,
-            .semicolon => if (depth == 0) return false,
-            .delim => if (depth == 0 and std.mem.eql(u8, t.value, "!")) return false,
-            // A function token's "(" is the next token (tokenizer.zig), so
-            // the function itself opens nothing.
-            .left_paren, .left_bracket, .left_brace => {
-                if (depth == closers.len) return false;
-                closers[depth] = closerOf(t.token_type);
-                depth += 1;
-            },
-            .right_paren, .right_bracket, .right_brace => {
-                if (depth == 0 or closers[depth - 1] != t.token_type) return false;
-                depth -= 1;
-            },
-            else => {},
-        }
-    }
-}
-
-fn closerOf(opener: tokenizer_mod.TokenType) tokenizer_mod.TokenType {
-    return switch (opener) {
-        .left_bracket => .right_bracket,
-        .left_brace => .right_brace,
-        else => .right_paren,
-    };
 }
 
 const Evaluator = struct {
@@ -226,7 +187,7 @@ fn block(tok: *Tokenizer) ?[]const u8 {
             .bad_string, .bad_url => return null,
             .left_paren, .left_bracket, .left_brace => {
                 if (depth == closers.len) return null;
-                closers[depth] = closerOf(t.token_type);
+                closers[depth] = rules.closerOf(t.token_type);
                 depth += 1;
             },
             .right_paren, .right_bracket, .right_brace => {
