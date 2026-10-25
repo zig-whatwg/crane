@@ -113,6 +113,10 @@ pub const BrowserScope = struct {
         canvas_rendering_context_2d,
         css_style_declaration,
         dom_string_map,
+        svg_image_element,
+        svg_use_element,
+        font_face,
+        font_face_set,
     };
     const table_count = @typeInfo(Table).@"enum".fields.len;
 

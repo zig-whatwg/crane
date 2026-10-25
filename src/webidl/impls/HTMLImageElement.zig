@@ -53,9 +53,9 @@ const EventTarget = interfaces.EventTarget;
 const Event = interfaces.Event;
 const same_object = @import("same_object.zig");
 const platform = @import("platform");
-const mimesniff = @import("mimesniff");
 const dom = @import("dom");
 const reflection = @import("dom").reflection;
+const available_images = dom.style.engine.available_images;
 
 // Event loop for microtask/task queuing
 const event_loop_mod = @import("streams_event_loop");
@@ -66,45 +66,12 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// The limits Crane sets on one image's decode (decision 19: on Crane's side
-/// of the platform protocol): 32768 pixels a side and 2^26 pixels (256 MiB
-/// of RGBA8). A larger image is broken.
-const image_limits: platform.ImageLimits = .{ .max_dimension = 1 << 15, .max_pixels = 1 << 26 };
-
 /// HTML 4.8.4.3: an image request's state.
 pub const RequestState = enum { unavailable, partially_available, completely_available, broken };
 
 /// An image request's image data, decoded: RGBA8, straight alpha, rows top
 /// down, OWNED by the element's allocator.
-const DecodedImage = struct {
-    width: u32,
-    height: u32,
-    pixels: []u8,
-    /// The response was CORS-same-origin (a basic or CORS response); an
-    /// opaque one is CORS-cross-origin, and taints a canvas it is drawn on.
-    cors_same_origin: bool,
-    /// How the platform's decode ended: complete, or a partial image whose
-    /// data ended early or was corrupt after its dimensions.
-    status: platform.ImageDecodeStatus = .complete,
-    /// A partial decode that reached no pixel data.
-    empty: bool = false,
-
-    /// Whether decode()'s "decoding process" fails for this image (HTML
-    /// 4.8.4.1: "If decoding fails (for example due to invalid image
-    /// data)"). Following the majority of the browsers, case by case (lane
-    /// imgpart, 2026-10-12): data that ENDED early is decoded as far as it
-    /// went - Gecko's Decoder::CompleteDecode finishes the frame, ImageIO
-    /// returns an image - and so is invalid data after some pixels (Blink:
-    /// a kFramePartial frame is a decoded frame, ImageDecoderWrapper::Decode;
-    /// ImageIO). Only invalid data with nothing decoded fails: Blink has an
-    /// empty frame (the decode fails, and createImageBitmap rejects WPT's
-    /// undecodable.png), and Gecko's decoder error discards the image
-    /// (RasterImage::NotifyDecodeComplete's DoError); ImageIO alone
-    /// resolves.
-    fn decodingFails(self: DecodedImage) bool {
-        return self.status == .corrupt and self.empty;
-    }
-};
+const DecodedImage = *available_images.Image;
 
 /// HTML 4.8.4.3 "image request": its state, current URL and image data.
 const ImageRequest = struct {
@@ -117,6 +84,10 @@ const ImageRequest = struct {
     generation: u64 = 0,
     /// HTML 4.8.4.3: the selected source's current pixel density.
     pixel_density: f64 = 1,
+    /// The CORS setting and origin at source selection, retained until the
+    /// request ends. Attribute changes cannot retag a completed image.
+    cors: available_images.CorsSetting = .none,
+    origin: ?*dom.origin_record.OriginRecord = null,
 
     fn available(self: *const ImageRequest) bool {
         return self.state == .partially_available or self.state == .completely_available;
@@ -125,7 +96,8 @@ const ImageRequest = struct {
     /// "Forget image request's image data": the image goes, the state and
     /// URL stay.
     fn forgetImage(self: *ImageRequest, allocator: std.mem.Allocator) void {
-        if (self.image) |image| allocator.free(image.pixels);
+        _ = allocator;
+        if (self.image) |image| image.release();
         self.image = null;
     }
 
@@ -138,6 +110,7 @@ const ImageRequest = struct {
     fn deinit(self: *ImageRequest, allocator: std.mem.Allocator) void {
         self.forgetImage(allocator);
         allocator.free(self.url);
+        if (self.origin) |origin| origin.release();
         self.* = .{};
     }
 };
@@ -299,18 +272,22 @@ const Outcome = union(enum) {
     /// (OWNED) and error fires only when the element has a src attribute
     /// (`only_with_src`) - step 11 - or always - step 13.
     no_request: struct { url: []u8, only_with_src: bool },
+    /// Step 7: the image data is already current; only the current URL and
+    /// load event wait for this task. Owns the URL until applied/dropped.
+    cached: []const u8,
 
     fn deinit(self: *Outcome, allocator: std.mem.Allocator) void {
         switch (self.*) {
-            .loaded => |image| allocator.free(image.pixels),
+            .loaded => |image| image.release(),
             .no_request => |n| allocator.free(n.url),
+            .cached => |url| allocator.free(url),
             .broken => {},
         }
         self.* = .broken;
     }
 
     fn eventType(self: Outcome) ImageEventType {
-        return if (self == .loaded) .load else .@"error";
+        return if (self == .loaded or self == .cached) .load else .@"error";
     }
 };
 
@@ -740,8 +717,8 @@ fn attributeChangeSteps(element: *runtime.Instance, local_name: []const u8, old_
 /// a task then updates the requests and fires load or error. A newer update
 /// cancels an older one (step 9: the generation counter).
 ///
-/// Not modelled, stated: picture source selection, the list of available
-/// images, and step 14's "same URL as the pending request"
+/// Not modelled, stated: picture source selection and step 14's
+/// "same URL as the pending request"
 /// shortcut (the update restarts); the partially available state (the image
 /// is decoded once its whole body has arrived - and then, when its data
 /// ended early or was corrupt after its dimensions, it is a partial image,
@@ -763,10 +740,73 @@ fn updateTheImageData(instance: *runtime.Instance) void {
     // document becomes fully active again.
     if (!hasBrowsingContext(instance)) return waitForFullyActive(instance);
 
+    // Steps 3–7: only a plain src can reuse the document's list before
+    // the microtask. A responsive source is still selected after step 8.
+    if (reuseAvailableImage(instance)) return;
+
     // Steps 8–12: even a plain src is selected and URL-resolved after the
     // caller's task. A base element inserted in that task affects the URL
     // (WPT image-base-url.html); a later unrelated insertion does not.
     startLoad(instance, .select_source, "") catch |err| log.debug("img: the update did not start: {s}", .{@errorName(err)});
+}
+
+/// HTML update-image-data step 7. The cache holds only complete images;
+/// pending fetches remain independent. No fetch or timing entry is made.
+fn reuseAvailableImage(instance: *runtime.Instance) bool {
+    if (attributeValue(instance, "srcset") != null) return false;
+    if (interfaces.Node.get_parentNode(instance) catch null) |parent| {
+        if (dom.element_data.of(parent)) |data| {
+            if (std.mem.eql(u8, data.local_name.asSlice(), "picture") and
+                std.mem.eql(u8, data.namespaceSlice() orelse "", "http://www.w3.org/1999/xhtml")) return false;
+        }
+    }
+    const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return false;
+    const style_engine = dom.style.hooks.engineOf(document) orelse return false;
+    const cache = style_engine.availableImages() orelse return false;
+    const src = attributeValue(instance, "src") orelse return false;
+    if (src.len == 0) return false;
+    const allocator = instance.ctx.allocator;
+    // Step 7.1: this lookup borrows the resolved URL only for this call.
+    // Keep ordinary parsing temporary storage on the stack; long URLs use
+    // the context allocator and are freed through the same temporary allocator.
+    var parse_memory = std.heap.stackFallback(4096, allocator);
+    const temporary = parse_memory.get();
+    const url = (dom.encoding_parse.encodingParseAndSerializeWithAllocator(temporary, instance, src) catch return false) orelse return false;
+    defer temporary.free(url);
+    const cors = available_images.CorsSetting.fromAttribute(attributeValue(instance, "crossorigin"));
+    const origin = if (cors != .none) (dom.document_origin.shareable(document) catch return false) orelse return false else null;
+    const image = cache.get(.{ .url = url, .cors = cors, .origin = origin }) orelse return false;
+    // Step 7.4.7 retains the URL until its element task. Allocate that owned
+    // copy before changing either request; no pointer into parse_memory escapes.
+    const task_url = allocator.dupe(u8, url) catch return false;
+    var owned_url = true;
+    defer if (owned_url) allocator.free(task_url);
+    const internal = getOrCreateInternal(instance) catch return false;
+    // Retain first: aborting the current request may drop another reference
+    // to the very same payload.
+    const kept = image.retain();
+    internal.cancelFetch();
+    internal.endLoadDelay();
+    internal.abortPending();
+    internal.current.deinit(allocator);
+    internal.load_generation += 1;
+    internal.complete = true;
+    internal.event_pending = false;
+    internal.document = same_object.Link.to(document);
+    internal.current = .{
+        .state = .completely_available,
+        .image = kept,
+        .generation = internal.load_generation,
+        .cors = cors,
+        .origin = if (origin) |o| o.retain() else null,
+    };
+    settleDecodes(instance, internal, .reject_all);
+    internal.keepLoad(instance);
+    // Step 7.4.7: currentSrc and load are both deferred. queueImageTask
+    // owns task_url from here, including failure and cancellation paths.
+    owned_url = false;
+    queueImageTask(instance, internal.load_generation, .{ .cached = task_url }, allocator);
+    return true;
 }
 
 /// Whether `element`'s node document has a browsing context: a window, as
@@ -1191,6 +1231,10 @@ fn makeImageRequest(instance: *runtime.Instance, internal: *InternalState, url: 
     internal.abortPending();
     var request: ImageRequest = .{ .generation = generation, .pixel_density = density };
     request.setUrl(internal.allocator, url);
+    request.cors = available_images.CorsSetting.fromAttribute(attributeValue(instance, "crossorigin"));
+    if (request.cors != .none) if (interfaces.Node.get_ownerDocument(instance) catch null) |document| {
+        if (dom.document_origin.shareable(document) catch null) |origin| request.origin = origin.retain();
+    };
     if (internal.current.state == .unavailable or internal.current.state == .broken) {
         internal.current.deinit(internal.allocator);
         internal.current = request;
@@ -1221,6 +1265,17 @@ fn applyOutcome(instance: *runtime.Instance, internal: *InternalState, generatio
             internal.current.forgetImage(internal.allocator);
             internal.current.image = image;
             internal.current.state = .completely_available;
+            // Step 27's final task, before load: add the image under the
+            // request's snapshotted key, with ignore-higher-layer-caching.
+            if (internal.current.cors == .none or internal.current.origin != null) {
+                if (interfaces.Node.get_ownerDocument(instance) catch null) |document| {
+                    if (dom.style.hooks.engineOf(document)) |style_engine| {
+                        if (style_engine.ensureAvailableImages()) |cache| {
+                            cache.put(.{ .url = internal.current.url, .cors = internal.current.cors, .origin = internal.current.origin }, image) catch {};
+                        } else |_| {}
+                    }
+                }
+            }
             outcome.* = .broken; // the image is the request's now
             settleDecodes(instance, internal, Settlement.ofAvailable(image));
             return true;
@@ -1247,6 +1302,10 @@ fn applyOutcome(instance: *runtime.Instance, internal: *InternalState, generatio
             internal.current.setUrl(internal.allocator, n.url);
             // Step 11: a src attribute or responsive source set.
             if (n.only_with_src) return attributeValue(instance, "src") != null or attributeValue(instance, "srcset") != null;
+            return true;
+        },
+        .cached => |url| {
+            internal.current.setUrl(internal.allocator, url);
             return true;
         },
     }
@@ -1393,44 +1452,8 @@ fn queueImageTask(instance: *runtime.Instance, generation: u64, outcome: Outcome
 /// set): an opaque response's body is still the image's - CORS-cross-origin
 /// image data, which a canvas may draw but not read.
 fn decodeResponse(allocator: std.mem.Allocator, response: *const fetch.internal.InternalResponse) Outcome {
-    if (response.response_type == .@"error") return .broken;
-    const body = response.body orelse return .broken;
-    const cors_same_origin = response.response_type != .@"opaque" and response.response_type != .opaqueredirect;
-    return decodeBody(allocator, &response.header_list, body.getBytes(), cors_same_origin);
-}
-
-fn decodeBody(allocator: std.mem.Allocator, headers: *const fetch.internal.HeaderList, body: []const u8, cors_same_origin: bool) Outcome {
-    if (platform.capabilities.image_decoding == .unsupported) {
-        // No image decoding: every image is broken.
-        return .broken;
-    }
-    var supplied = fetch.internal.mime.extractMimeType(allocator, headers) catch return .broken;
-    defer if (supplied) |*m| m.deinit();
-    // The resource header: MIME Sniffing 5.2 reads at most 1445 bytes.
-    const header = body[0..@min(body.len, 1445)];
-    var computed = (mimesniff.sniffInImageContext(allocator, supplied, header) catch return .broken) orelse return .broken;
-    defer computed.deinit();
-    const mime = mimesniff.serializeMimeTypeToBytes(allocator, computed) catch return .broken;
-    defer allocator.free(mime);
-    // A decode that obtained the dimensions is an image, partial or not
-    // ("corrupted in some fatal way such that the image dimensions cannot be
-    // obtained" is the only broken one): see the file comment.
-    const decoded = platform.decodeImage(allocator, platform.Str.from(mime), platform.Bytes.from(body), image_limits) catch |err| {
-        log.debug("img: not decoded ({s}, {s})", .{ mime, @errorName(err) });
-        return .broken;
-    };
-    if (decoded.status != .complete) log.debug("img: a partial image ({s}, {s}{s})", .{ mime, @tagName(decoded.status), if (decoded.empty) ", nothing decoded" else "" });
-    return .{
-        .loaded = .{
-            .width = decoded.width,
-            .height = decoded.height,
-            // Allocated with `allocator`, the element's.
-            .pixels = @constCast(decoded.pixels.slice()),
-            .cors_same_origin = cors_same_origin,
-            .status = decoded.status,
-            .empty = decoded.empty,
-        },
-    };
+    const image = available_images.decodeResponse(allocator, response) orelse return .broken;
+    return .{ .loaded = image };
 }
 
 /// The image request of one "update the image data", fetched in parallel
@@ -1439,8 +1462,7 @@ fn decodeBody(allocator: std.mem.Allocator, headers: *const fetch.internal.Heade
 /// still fence callbacks after forced document teardown.
 ///
 /// Its response is decoded when the whole body has arrived (decodeResponse),
-/// and the outcome applied in a task. Not modelled, stated: the list of
-/// available images. The document's load event waits for the update
+/// and the outcome applied in a task. The document's load event waits for the update
 /// (InternalState.load_delay).
 const ImageFetch = struct {
     allocator: std.mem.Allocator,

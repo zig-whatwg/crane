@@ -6,6 +6,7 @@ const tokenizer = @import("tokenizer.zig");
 const css_serialize = @import("serialize.zig");
 const values = @import("style_values.zig");
 const resources = @import("resource_values.zig");
+const properties = @import("properties.zig");
 const Allocator = std.mem.Allocator;
 const Token = tokenizer.Token;
 
@@ -25,6 +26,9 @@ pub const Item = struct {
     fallback: ?[]const u8 = null,
     /// Owned by the containing Content, with ranges relative to item.text.
     resource_urls: []const resources.ResourceUrl = &.{},
+    /// Owned typed image, retained independently of the Content arena.
+    /// Raw legacy images remain null until their complete grammar exists.
+    image: ?values.Value = null,
 };
 
 pub const Content = struct {
@@ -53,13 +57,46 @@ pub const Content = struct {
     pub fn unref(self: *Content) void {
         if (self.refs.fetchSub(1, .acq_rel) != 1) return;
         const allocator = self.allocator;
-        for (self.items) |item| resources.releaseAll(self.arena.allocator(), item.resource_urls);
+        for (self.items) |item| {
+            resources.releaseAll(self.arena.allocator(), item.resource_urls);
+            if (item.image) |image| image.release();
+        }
         self.arena.deinit();
         allocator.destroy(self);
     }
 
     pub fn eql(self: *const Content, other: *const Content) bool {
-        return self == other or std.mem.eql(u8, self.serialization, other.serialization);
+        if (self == other) return true;
+        if (!std.mem.eql(u8, self.serialization, other.serialization) or self.items.len != other.items.len) return false;
+        // Images4 §2.4: omitted resolution and explicit 1x serialize alike,
+        // but have different natural-resolution behavior.
+        for (self.items, other.items) |a, b| {
+            if (a.image) |image| {
+                if (b.image == null or !image.eql(b.image.?)) return false;
+            } else if (b.image != null) return false;
+        }
+        return true;
+    }
+
+    pub fn needsUnavailableMetrics(self: *const Content, geometry_length: bool) bool {
+        for (self.items) |item| if (item.image) |image| {
+            if (image.needsUnavailableMetrics(geometry_length)) return true;
+        };
+        return false;
+    }
+
+    pub fn needsTreeCounts(self: *const Content) bool {
+        for (self.items) |item| if (item.image) |image| {
+            if (image.needsTreeCounts()) return true;
+        };
+        return false;
+    }
+
+    pub fn needsRandomBase(self: *const Content) bool {
+        for (self.items) |item| if (item.image) |image| {
+            if (image.needsRandomBase()) return true;
+        };
+        return false;
     }
 
     /// CSS Values 5 8.7.1: substitution against the originating element,
@@ -81,6 +118,7 @@ pub const Content = struct {
         for (self.items, items, 0..) |item, *copy, i| {
             copy.* = item;
             copy.resource_urls = &.{};
+            if (copy.image) |image| image.retain();
             // Publish only initialized slots so every error path can unref.
             result.items = items[0 .. i + 1];
             const text = if (item.kind == .attribute) blk: {
@@ -101,6 +139,47 @@ pub const Content = struct {
             copy.resource_urls = try resources.cloneAll(a, item.resource_urls, 0);
         }
         result.items = items;
+        result.alternate = self.alternate;
+        try result.serialize();
+        return result;
+    }
+
+    /// Color5 §7 and Images4 §2.4: compute images before inheritance.
+    /// Existing image text and occurrence ranges remain usable by loaders.
+    pub fn computeImages(self: *Content, allocator: Allocator, context: anytype) Allocator.Error!*Content {
+        var needs_computation = false;
+        for (self.items) |item| if (item.image) |image| {
+            if (image == .image) {
+                needs_computation = true;
+                break;
+            }
+        };
+        if (!needs_computation) {
+            self.ref();
+            return self;
+        }
+        const result = try create(allocator);
+        errdefer result.unref();
+        const a = result.arena.allocator();
+        const items = try a.alloc(Item, self.items.len);
+        for (self.items, items, 0..) |item, *copy, i| {
+            copy.* = item;
+            copy.image = null;
+            copy.resource_urls = &.{};
+            result.items = items[0 .. i + 1];
+            if (item.image) |image| {
+                const computed = try context.component(.list_style_image, image);
+                copy.image = computed;
+                var out: std.ArrayList(u8) = .empty;
+                try properties.serializeValue(.list_style_image, computed, &out, a);
+                copy.text = out.items;
+                copy.resource_urls = try resources.cloneAll(a, computed.resourceUrls(), 0);
+            } else {
+                copy.text = try a.dupe(u8, item.text);
+                copy.resource_urls = try resources.cloneAll(a, item.resource_urls, 0);
+            }
+            if (item.fallback) |fallback| copy.fallback = try a.dupe(u8, fallback);
+        }
         result.alternate = self.alternate;
         try result.serialize();
         return result;
@@ -158,7 +237,7 @@ pub fn parseWithSource(allocator: Allocator, text: []const u8, resolver: ?UrlRes
     const result = try Content.create(allocator);
     var success = false;
     defer if (!success) result.unref();
-    var parser: Parser = .{ .allocator = result.arena.allocator(), .tok = .init(text), .input = text, .resolver = resolver, .source = source };
+    var parser: Parser = .{ .allocator = result.arena.allocator(), .backing_allocator = allocator, .tok = .init(text), .input = text, .resolver = resolver, .source = source };
     var items: std.ArrayList(Item) = .empty;
     while (parser.peek().token_type != .eof) {
         const token = parser.peek();
@@ -170,7 +249,10 @@ pub fn parseWithSource(allocator: Allocator, text: []const u8, resolver: ?UrlRes
         }
         const item = (try parser.item()) orelse return null;
         var item_kept = false;
-        defer if (!item_kept) resources.releaseAll(parser.allocator, item.resource_urls);
+        defer if (!item_kept) {
+            resources.releaseAll(parser.allocator, item.resource_urls);
+            if (item.image) |image| image.release();
+        };
         if (result.alternate != null and item.kind != .text and item.kind != .attribute and item.kind != .counter and item.kind != .substitution) return null;
         try items.append(parser.allocator, item);
         result.items = items.items;
@@ -185,6 +267,7 @@ pub fn parseWithSource(allocator: Allocator, text: []const u8, resolver: ?UrlRes
 
 const Parser = struct {
     allocator: Allocator,
+    backing_allocator: Allocator,
     tok: tokenizer.Tokenizer,
     input: []const u8,
     peeked: ?Token = null,
@@ -247,7 +330,10 @@ const Parser = struct {
             if (value.token_type != .string or !self.closeFunction()) return null;
             return try self.url(try self.string(value));
         }
-        inline for (.{ "linear-gradient", "radial-gradient", "conic-gradient", "repeating-linear-gradient", "repeating-radial-gradient", "repeating-conic-gradient", "image", "image-set", "cross-fade", "element", "paint", "-webkit-image-set" }) |image| if (std.ascii.eqlIgnoreCase(name, image)) return self.remainingFunction(token, .image);
+        inline for (.{ "image-set", "-webkit-image-set", "light-dark", "-webkit-cross-fade" }) |image| if (std.ascii.eqlIgnoreCase(name, image)) return self.typedImage(token);
+        // Q76: preserve raw functions' Syntax EOF completion and rejection
+        // until the complete shared gradient grammar replaces this branch.
+        inline for (.{ "linear-gradient", "radial-gradient", "conic-gradient", "repeating-linear-gradient", "repeating-radial-gradient", "repeating-conic-gradient", "image", "cross-fade", "element", "paint" }) |image| if (std.ascii.eqlIgnoreCase(name, image)) return self.remainingFunction(token, .image);
         if (std.ascii.eqlIgnoreCase(name, "leader")) {
             const value = self.next();
             if (value.token_type != .string and !(value.token_type == .ident and (tokenizer.nameEql(value.value, "dotted") or tokenizer.nameEql(value.value, "solid") or tokenizer.nameEql(value.value, "space")))) return null;
@@ -261,15 +347,30 @@ const Parser = struct {
     }
 
     fn url(self: *Parser, raw: []const u8) !Item {
-        const resolved = if (self.resolver) |r| r.resolve(r.context, self.allocator, raw) else null;
+        return self.imageItem(try properties.urlValue(self.imageOptions(), raw));
+    }
+
+    fn imageOptions(self: *const Parser) properties.ParseOptions {
+        return .{ .allocator = self.backing_allocator, .url_resolver = self.resolver, .resource_source = self.source };
+    }
+
+    /// Takes ownership even on failure; the value never lives in our arena.
+    fn imageItem(self: *Parser, image: values.Value) Allocator.Error!Item {
+        errdefer image.release();
         var out: std.ArrayList(u8) = .empty;
-        try out.appendSlice(self.allocator, "url(");
-        // Values4 §4.5: specified serialization keeps the authored URL.
-        // Frozen resolution belongs to metadata, read only by computed CSS.
-        try values.appendString(raw, &out, self.allocator);
-        try out.append(self.allocator, ')');
-        const occurrence = resources.ResourceUrl.describe(raw, resolved, self.resolver != null, self.source, .{ .start = 0, .end = out.items.len });
-        return .{ .kind = .image, .text = out.items, .resource_urls = try resources.cloneAll(self.allocator, &.{occurrence}, 0) };
+        try properties.serializeValue(.list_style_image, image, &out, self.allocator);
+        return .{ .kind = .image, .text = out.items, .resource_urls = try resources.cloneAll(self.allocator, image.resourceUrls(), 0), .image = image };
+    }
+
+    fn typedImage(self: *Parser, start: Token) Allocator.Error!?Item {
+        var stream = properties.Stream{ .tok = self.tok, .text = self.input };
+        stream.tok.pos = @intFromPtr(start.value.ptr) - @intFromPtr(self.input.ptr);
+        stream.tok.line = start.line;
+        stream.tok.column = start.column;
+        const image = try @import("image_values.zig").parse(self.imageOptions(), &stream, .{}) orelse return null;
+        self.tok = stream.tok;
+        self.peeked = stream.peeked;
+        return try self.imageItem(image);
     }
 
     fn serializedItem(self: *Parser, kind: Kind, text: []const u8) !Item {
@@ -389,6 +490,7 @@ const Parser = struct {
         while (!self.closeFunction()) {
             const symbol = (try self.item()) orelse return null;
             defer resources.releaseAll(self.allocator, symbol.resource_urls);
+            defer if (symbol.image) |image| image.release();
             if (symbol.kind != .text and symbol.kind != .image) return null;
             if (count > 0) try out.append(self.allocator, ' ');
             try urls.append(symbol.resource_urls, out.items.len);

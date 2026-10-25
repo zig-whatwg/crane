@@ -166,33 +166,41 @@ const Checks = struct {
         const spelling = "image-set(url('one.png') 1x, \"two.png\" 2x, linear-gradient(red, blue) 3x)";
         const nested = try value(options(s), "background-image", spelling);
         defer nested.release();
-        try testing.expectEqualStrings(spelling, nested.text.bytes);
+        var nested_text: std.ArrayList(u8) = .empty;
+        defer nested_text.deinit(testing.allocator);
+        try css.properties.serializeValue(.background_image, nested, &nested_text, testing.allocator);
+        // Images4 image-set serialization (pinned image-set-parsing.html:319):
+        // string options become url(); Values4 keeps specified URLs authored.
+        try testing.expectEqualStrings("image-set(url(\"one.png\") 1x, url(\"two.png\") 2x, linear-gradient(red, blue) 3x)", nested_text.items);
         const urls = nested.resourceUrls();
         try testing.expectEqual(@as(usize, 2), urls.len);
         try testing.expectEqualStrings("https://example.test/css/one.png", urls[0].url);
         try testing.expectEqualStrings("https://example.test/css/two.png", urls[1].url);
-        try testing.expectEqualStrings("url('one.png')", spelling[urls[0].range.start..urls[0].range.end]);
-        try testing.expectEqualStrings("\"two.png\"", spelling[urls[1].range.start..urls[1].range.end]);
+        try testing.expectEqualStrings("url(\"one.png\")", nested_text.items[urls[0].range.start..urls[0].range.end]);
+        try testing.expectEqualStrings("url(\"two.png\")", nested_text.items[urls[1].range.start..urls[1].range.end]);
         var block = try Block.parse(options(s), "background: url(a.png), image-set(url(#local) 1x, url(b.png) 2x) red;");
         defer block.deinit();
         const image = block.get(.background_image).?.value.value;
+        var image_text: std.ArrayList(u8) = .empty;
+        defer image_text.deinit(testing.allocator);
+        try css.properties.serializeValue(.background_image, image, &image_text, testing.allocator);
         try testing.expectEqual(@as(usize, 3), image.resourceUrls().len);
         try testing.expect(image.resourceUrls()[1].local_fragment);
         // The declaration-list serializer already quotes unquoted URL tokens.
-        try testing.expectEqualStrings("url(\"#local\")", image.text.bytes[image.resourceUrls()[1].range.start..image.resourceUrls()[1].range.end]);
+        try testing.expectEqualStrings("url(\"#local\")", image_text.items[image.resourceUrls()[1].range.start..image.resourceUrls()[1].range.end]);
         // A value can combine occurrences produced under different policies.
         const other = try source("origin");
         defer other.unref();
         const second = try value(options(other), "background-image", "url(c.png)");
         defer second.release();
-        const combined = try std.mem.concat(testing.allocator, u8, &.{ image.text.bytes, ", ", second.text.bytes });
+        const combined = try std.mem.concat(testing.allocator, u8, &.{ image_text.items, ", ", second.text.bytes });
         defer testing.allocator.free(combined);
         var last = second.resourceUrls()[0];
-        last.range.start += image.text.bytes.len + 2;
-        last.range.end += image.text.bytes.len + 2;
+        last.range.start += image_text.items.len + 2;
+        last.range.end += image_text.items.len + 2;
         if (last.argument_range) |*argument| {
-            argument.start += image.text.bytes.len + 2;
-            argument.end += image.text.bytes.len + 2;
+            argument.start += image_text.items.len + 2;
+            argument.end += image_text.items.len + 2;
         }
         const joined = try values.SharedText.createWithResources(testing.allocator, combined, &.{ image.resourceUrls()[0], last });
         defer joined.unref();

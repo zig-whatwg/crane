@@ -130,3 +130,71 @@ why = A timing assertion (fetchStart marked after the worker activates / before 
 pair.1 = base 1/1; tip 1/1
 pair.2 = base 1/1; tip 0/1
 pair.3 = base 1/1; tip 1/1
+
+[editing/plaintext-only/insertText.html]
+generation = 178
+kind = user-ruling
+why = Lane editing1 (delete core) made delete real; the 8 lost rows (4 white-space variants x 2: "insertText a when <p><b>[AB]</b></p> and delete", "... [A]</b></p><p>B</p> and delete and move caret") passed before only because delete was a no-op and insertText replaced the still-selected text. Browsers re-apply the typing style (CSS state and value overrides), which Crane mocks; they return with the editing formatting batch (tmp/plans/lane-editing1-handoff.md, "The 28 lost subtests" table). Isolated on main-bbb64bb6e4 and main-90714cd44e: 35/35 passing both, so not this round.
+date = 2026-10-23
+decision = The user: "Merge now" for editing1 with its typing-style losses recorded as the user's ruling (memory editing-typing-style-ruling).
+
+[hr-time/timeOrigin.html]
+generation = 178
+kind = flake
+why = Sweep-only: the gen 178 sweep failed "Window and worker timeOrigins are close when created one after another" (assert_greater_than_equal: worker timeOrigin should be greater than the window's) under the 8-runner sweep's load. Isolated, one process each, frozen main-bbb64bb6e4 (base) vs main-90714cd44e (tip), integrator 2026-10-24: all 3/3.
+pair.1 = base 3/3; tip 3/3
+pair.2 = base 3/3; tip 3/3
+pair.3 = base 3/3; tip 3/3
+
+[quirks/unitless-length/quirks.html]
+generation = 178
+kind = user-ruling
+why = A regression from Codex row 119's d1b (ff6490d75f09; attribution on its frozen runners, D310): 11 subtests: background-position 1, +1, -1, 1.5, +1.5, -1.5, 1 +2, 1 -2, 1 2px, 1px 2 and calc(2 * 2px); 1585 -> 1574. Its no-loss lists did not include quirks/. Fixed by row 119's r0 (c25a7dd1646a: background-position keeps the quirks unitless length per CSS Values 4 Appendix C, and math goes through mathValue), merged in main c86fb40d16c; restored in generation 179. quirks/ is now in every later no-loss list.
+date = 2026-10-24
+decision = The user: "Wait for the fix" - hold generation 178 off the public site and publish once r0 restores the 13 subtests.
+
+[quirks/unitless-length/limited-quirks.html]
+generation = 178
+kind = user-ruling
+why = A regression from Codex row 119's d1b (ff6490d75f09; attribution on its frozen runners, D310): 1 subtest: background-position calc(2 * 2px); 1581 -> 1580. Its no-loss lists did not include quirks/. Fixed by row 119's r0 (c25a7dd1646a: background-position keeps the quirks unitless length per CSS Values 4 Appendix C, and math goes through mathValue), merged in main c86fb40d16c; restored in generation 179. quirks/ is now in every later no-loss list.
+date = 2026-10-24
+decision = The user: "Wait for the fix" - hold generation 178 off the public site and publish once r0 restores the 13 subtests.
+
+[quirks/unitless-length/no-quirks.html]
+generation = 178
+kind = user-ruling
+why = A regression from Codex row 119's d1b (ff6490d75f09; attribution on its frozen runners, D310): 1 subtest: background-position calc(2 * 2px); 1581 -> 1580. Its no-loss lists did not include quirks/. Fixed by row 119's r0 (c25a7dd1646a: background-position keeps the quirks unitless length per CSS Values 4 Appendix C, and math goes through mathValue), merged in main c86fb40d16c; restored in generation 179. quirks/ is now in every later no-loss list.
+date = 2026-10-24
+decision = The user: "Wait for the fix" - hold generation 178 off the public site and publish once r0 restores the 13 subtests.
+
+[html/semantics/scripting-1/the-script-element/module/dynamic-import/microtasks/basic.any.js]
+generation = 179
+kind = flake
+why = Sweep-only: 8/9 in the generation 179 sweep; Isolated, one process each, frozen main-90714cd44e (base, generation 178) vs main-c86fb40d16 (tip, generation 179), integrator 2026-10-24: 9/9 on both sides in every pair. The round (row 119's tree-scope hooks and background-position quirks) touches neither modules nor microtasks.
+pair.1 = base 9/9; tip 9/9
+pair.2 = base 9/9; tip 9/9
+pair.3 = base 9/9; tip 9/9
+
+[html/webappapis/dynamic-markup-insertion/opening-the-input-stream/abort-refresh-immediate.window.js]
+generation = 179
+kind = flake
+why = Timing (the file times out on both sides): 2/6 in the generation 179 sweep, 3/6 in generation 178; Isolated, one process each, frozen main-90714cd44e (base, generation 178) vs main-c86fb40d16 (tip, generation 179), integrator 2026-10-24: base 3/6 every run, tip 4, 3, 4 - the tip never below the base. Same file as Codex row 111's controlled abort-refresh loss.
+pair.1 = base 3/6; tip 4/6
+pair.2 = base 3/6; tip 3/6
+pair.3 = base 3/6; tip 4/6
+
+[navigation-timing/test-performance-attributes.sub.html]
+generation = 179
+kind = flake
+why = Order-dependent, as in generation 177's disposition: it passed in the generation 178 sweep only; Isolated, one process each, frozen main-90714cd44e (base, generation 178) vs main-c86fb40d16 (tip, generation 179), integrator 2026-10-24: 0/1 on both sides in every pair, so this round did not change it.
+pair.1 = base 0/1; tip 0/1
+pair.2 = base 0/1; tip 0/1
+pair.3 = base 0/1; tip 0/1
+
+[xhr/send-redirect.htm]
+generation = 179
+kind = flake
+why = Sweep-only: 33/34 in the generation 179 sweep; Isolated, one process each, frozen main-90714cd44e (base, generation 178) vs main-c86fb40d16 (tip, generation 179), integrator 2026-10-24: 34/34 on both sides in every pair (a generation 173 disposition covers the same file's intermittency).
+pair.1 = base 34/34; tip 34/34
+pair.2 = base 34/34; tip 34/34
+pair.3 = base 34/34; tip 34/34

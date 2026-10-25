@@ -63,13 +63,12 @@ pub fn insertRule(object: *runtime.Instance, of: RulesOf, text: []const u8, inde
     // (its position is step 6's).
     var parsed = (try css.rules.parseRule(allocator, text)) orelse return error.SyntaxError;
     defer parsed.deinitOwned(allocator);
-    var url_context: sheet_mod.UrlContext = .{ .instance = object, .base = if (record) |r| r.base_url else "" };
-    const parse_options: css.properties.ParseOptions = .{
-        .allocator = if (record) |r| r.allocator else allocator,
-        .quirks = if (record) |r| r.mode.quirks else false,
-        .url_resolver = url_context.resolver(),
-    };
-    const new_rule = (try rules_mod.build(.{ .parse = parse_options }, &parsed, .imports_allowed)) orelse return error.SyntaxError;
+    var context = if (record) |r|
+        try @import("resource_loading.zig").ParseContext.forSheet(r, object, text)
+    else
+        @import("resource_loading.zig").ParseContext{ .parse = .{ .allocator = allocator }, .url_context = .{ .instance = object, .base = "" } };
+    defer context.deinit();
+    const new_rule = (try rules_mod.build(.{ .parse = context.options() }, &parsed, .imports_allowed)) orelse return error.SyntaxError;
     var inserted = false;
     defer if (!inserted) new_rule.unref();
     const kind = new_rule.kind();
@@ -170,13 +169,14 @@ pub fn removeRule(object: *runtime.Instance, of: RulesOf, index: u32) !void {
 /// @import rules, remove those rules from rules. Set sheet's CSS rules to
 /// rules."
 pub fn replaceRules(object: *runtime.Instance, record: *SheetRecord, text: []const u8) !void {
-    var url_context = record.urlContext(object);
+    var context = try @import("resource_loading.zig").ParseContext.forSheet(record, object, text);
+    defer context.deinit();
     var new_rules: std.ArrayList(*Rule) = .empty;
     errdefer {
         for (new_rules.items) |r| r.unref();
         new_rules.deinit(record.allocator);
     }
-    try rules_mod.parseSheet(.{ .parse = record.parseOptions(&url_context) }, text, &new_rules, null);
+    try rules_mod.parseSheet(.{ .parse = context.options() }, text, &new_rules, null);
     var i: usize = 0;
     while (i < new_rules.items.len) {
         if (new_rules.items[i].kind() == .import) {

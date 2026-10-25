@@ -191,12 +191,17 @@ pub const InternalState = struct {
     allocator: std.mem.Allocator,
     validation: forms.Validation = .{},
     labels: form_associated.LabelsCache = .{},
+    /// HTML 4.10.5.1.19: persists across leaving/re-entering Image Button.
+    image_src: ?[]u8 = null,
+    image_loader: ?*dom.style.engine.available_images.Loader = null,
     /// Owned. Non-null means the dirty value flag is set; always sanitized.
     value: ?[]u8 = null,
     /// The last user edit's owned raw text. Null after every script value
     /// write/reset/type change; also records last-user-edit provenance.
     editor_text: ?[]u8 = null,
     bad_input: bool = false,
+    /// Monotonic for this control; the style-created hook sets it once.
+    has_style_state: bool = false,
     selected_files: ?*runtime.Instance = null,
     selected_files_generation: u64 = 0,
     selected_files_realm: ?runtime.Context = null,
@@ -221,6 +226,12 @@ pub const InternalState = struct {
     saved_checked_radio: ?SavedRadio = null,
 
     pub fn deinit(self: *InternalState) void {
+        if (self.image_loader) |loader| {
+            self.image_loader = null;
+            loader.destroy();
+        }
+        if (self.image_src) |src| self.allocator.free(src);
+        self.image_src = null;
         self.validation.deinit(self.allocator);
         self.clearEditor();
         if (self.value) |v| self.allocator.free(v);
@@ -451,6 +462,7 @@ fn userEdit(instance: *runtime.Instance, edit: dom.form_controls.UserEdit) !void
     defer sanitized.deinit(internal.allocator);
     const empty = sanitized.isEmpty();
     try internal.setValue(sanitized.asSlice());
+    dom.style.engine.resource_loading.font_loading.controlValueChanged(instance, internal.has_style_state);
     internal.editor_text = raw;
     internal.bad_input = input_type == .number and raw.len != 0 and empty;
     // HTML 4.10.19.3–4: only this non-IDL path records a user edit.
@@ -462,9 +474,18 @@ fn userEdit(instance: *runtime.Instance, edit: dom.form_controls.UserEdit) !void
         dom.selection.scheduleTextControlSelectionchange(instance, &selectionchangeScheduled) catch {};
 }
 
+/// ElementStyle notifies once, on creation, so value writes can use the
+/// state they already loaded instead of looking up the Element again.
+fn styleStateCreated(instance: *runtime.Instance) void {
+    if (!isInput(instance)) return;
+    const internal = getInternal(instance) orelse return;
+    internal.has_style_state = true;
+}
+
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    dom.style.hooks.install(.{ .input_style_state_created = &styleStateCreated });
     // The steps other code runs on inputs.
     dom.attribute_change_steps.install("input", &attributeChangeSteps);
     dom.activation.install(.{
@@ -484,6 +505,8 @@ pub fn installHooks() void {
     // where an engine traces it, is the collector's.
     dom.orphan_states.installRegistrySweep(Registry);
     dom.cloning_steps.install(&cloningSteps);
+    dom.adopting_steps.install(&imageAdoptingSteps);
+    dom.document_fetches.install(.{ .discard = discardImageRealm, .prepare_abort = prepareImageAbort, .abort = abortImageDocument });
 }
 
 /// HTML 4.10.5: "The cloning steps for input elements given node, copy, and
@@ -577,6 +600,8 @@ fn attributeChangeSteps(
         const previous = InputType.fromAttribute(old_value);
         const now = InputType.fromAttribute(value);
         if (previous != now) typeChangeSteps(instance, previous, now);
+    } else if (std.mem.eql(u8, local_name, "src")) {
+        if (typeOf(instance) == .image) updateImageResource(instance, value, true);
     } else if (std.mem.eql(u8, local_name, "multiple")) {
         // HTML 4.10.5.1.5: setting or removing multiple runs the Email
         // state's value sanitization algorithm. A clean value is derived
@@ -615,6 +640,7 @@ fn attributeChangeSteps(
 fn typeChangeSteps(instance: *runtime.Instance, previous: InputType, now: InputType) void {
     const internal = getInternal(instance) orelse return;
     internal.clearEditor();
+    if (now == .image) updateImageResource(instance, borrowedAttribute(instance, "src"), false);
     // Blink/WebKit replace their FileInputType on a type change, so a later
     // return to File Upload starts a different empty selection/list.
     if (previous == .file or now == .file) dropFiles(instance, internal);
@@ -669,9 +695,56 @@ fn insertionStepsCallback(node: *NodeBase) void {
     const instance_ptr = instance_bridge.getInstance(node) orelse return;
     const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
     const internal = getInternal(instance) orelse return;
+    if (typeOf(instance) == .image and internal.image_loader == null)
+        updateImageResource(instance, borrowedAttribute(instance, "src"), false);
     if (!internal.checkedness or typeOf(instance) != .radio) return;
     if (!(interfaces.Node.get_isConnected(instance) catch false) and form_associated.formOwner(instance) == null) return;
     uncheckOthersInGroup(instance);
+}
+
+/// HTML image button triggers: src set/changed always; re-entry only when
+/// src differs from the value when it was last an Image Button. Removal
+/// records absence but is not itself a fetch trigger.
+fn updateImageResource(instance: *runtime.Instance, source: ?[]const u8, force: bool) void {
+    const internal = getInternal(instance) orelse return;
+    if (!force) if (source) |src| if (internal.image_src) |previous| {
+        if (std.mem.eql(u8, previous, src)) return;
+    };
+    const copy = if (source) |src| internal.allocator.dupe(u8, src) catch return else null;
+    if (internal.image_src) |previous| internal.allocator.free(previous);
+    internal.image_src = copy;
+    const src = copy orelse return;
+    if (src.len == 0) return;
+    if (internal.image_loader == null)
+        internal.image_loader = dom.style.engine.available_images.Loader.create(instance) catch return;
+    internal.image_loader.?.start(src, .{ .initiator = .input }) catch {};
+}
+
+fn imageAdoptingSteps(instance: *runtime.Instance, _: ?*runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    if (internal.image_loader) |loader| loader.cancel();
+    if (typeOf(instance) == .image) updateImageResource(instance, borrowedAttribute(instance, "src"), true);
+}
+
+fn discardImageRealm(realm: runtime.Context) void {
+    var iterator = Registry.iterator(realm.browserScope() orelse return) orelse return;
+    while (iterator.next()) |entry| if (entry.internal.image_loader) |loader| {
+        if (loader.realm == realm) loader.cancel();
+    };
+}
+
+fn prepareImageAbort(document: *runtime.Instance) bool {
+    var iterator = Registry.iterator(runtime.BrowserScope.ofInstance(document)) orelse return false;
+    var marked = false;
+    while (iterator.next()) |entry| if (entry.internal.image_loader) |loader| {
+        marked = loader.markAbort(document) or marked;
+    };
+    return marked;
+}
+
+fn abortImageDocument(document: *runtime.Instance) void {
+    var iterator = Registry.iterator(runtime.BrowserScope.ofInstance(document)) orelse return;
+    while (iterator.next()) |entry| if (entry.internal.image_loader) |loader| loader.abortMarked(document);
 }
 
 // ============================================================================
@@ -903,6 +976,7 @@ fn resetAlgorithm(instance: *runtime.Instance) void {
     emptySelectedFiles(instance);
     internal.dirty_checkedness = false;
     setCheckedness(instance, hasAttribute(instance, "checked"));
+    dom.style.engine.resource_loading.font_loading.controlValueChanged(instance, internal.has_style_state);
 }
 
 // ============================================================================
@@ -970,7 +1044,7 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
     switch (input_type.valueMode()) {
         .value => {
             // 1. Let oldValue be the element's value.
-            const old = try currentValue(instance);
+            const old = try valueIn(instance, input_type);
             defer internal.allocator.free(old);
             // 2-4. Set the value to the new value, set the dirty value flag,
             // and invoke the value sanitization algorithm.
@@ -986,6 +1060,7 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
             // selected text and resetting the selection direction to "none"."
             if (changed) {
                 internal.selection = .{ .start = end, .end = end, .direction = .none };
+                dom.style.engine.resource_loading.font_loading.controlValueChanged(instance, internal.has_style_state);
             }
         },
         // "default" and "default/on": set the value content attribute.
@@ -2300,6 +2375,7 @@ fn setRangeText(instance: *runtime.Instance, replacement: []const u8, range: ?[2
     defer internal.allocator.free(result.value);
     // 2. Set the dirty value flag; 9-10 the relevant value changed.
     try internal.setValue(result.value);
+    dom.style.engine.resource_loading.font_loading.controlValueChanged(instance, internal.has_style_state);
     // 14. Set the selection range with selection start and selection end.
     setSelectionRange(instance, result.selection_start, result.selection_end, null);
 }

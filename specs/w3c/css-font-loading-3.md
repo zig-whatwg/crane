@@ -65,29 +65,26 @@ enum FontFaceLoadStatus { "unloaded", "loading", "loaded", "error" };
 
 [Exposed=(Window,Worker)]
 interface FontFace {
+ [Throws]
  constructor(CSSOMString family,
  (CSSOMString or BufferSource) source,
  optional FontFaceDescriptors descriptors = );
 
- attribute CSSOMString family;
- attribute CSSOMString style;
- attribute CSSOMString weight;
- attribute CSSOMString width;
- attribute CSSOMString unicodeRange;
- attribute CSSOMString variant;
- attribute CSSOMString featureSettings;
- attribute CSSOMString variationSettings;
- attribute CSSOMString display;
- attribute CSSOMString ascentOverride;
- attribute CSSOMString descentOverride;
- attribute CSSOMString lineGapOverride;
- attribute CSSOMString sizeAdjust;
+ [SetterThrows] attribute CSSOMString family;
+ [SetterThrows] attribute CSSOMString style;
+ [SetterThrows] attribute CSSOMString weight;
+ [SetterThrows, BindingAlias="stretch"] attribute CSSOMString width;
+ [SetterThrows] attribute CSSOMString unicodeRange;
+ [SetterThrows] attribute CSSOMString variant;
+ [SetterThrows] attribute CSSOMString featureSettings;
+ [SetterThrows, Pref="layout.css.font-variations.enabled"] attribute CSSOMString variationSettings;
+ [SetterThrows] attribute CSSOMString display;
+ [SetterThrows] attribute CSSOMString ascentOverride;
+ [SetterThrows] attribute CSSOMString descentOverride;
+ [SetterThrows] attribute CSSOMString lineGapOverride;
+ [SetterThrows] attribute CSSOMString sizeAdjust;
 
  readonly attribute FontFaceLoadStatus status;
-
- Promise<FontFace> load();
- readonly attribute Promise<FontFace> loaded;
-};
 ```
 
 Tests
@@ -117,6 +114,7 @@ move between documents.
 [`style`], of type [CSSOMString](https://drafts.csswg.org/cssom-1/#cssomstring)\
 [`weight`], of type [CSSOMString](https://drafts.csswg.org/cssom-1/#cssomstring)\
 [`width`], of type [CSSOMString](https://drafts.csswg.org/cssom-1/#cssomstring)\
+[`stretch`], \
 [`unicodeRange`], of type [CSSOMString](https://drafts.csswg.org/cssom-1/#cssomstring)
 
 : These attributes all represent the corresponding aspects of a font
@@ -139,6 +137,10 @@ move between documents.
  grammar, throw a
  [`SyntaxError`](https://webidl.spec.whatwg.org/#syntaxerror); otherwise, set the attribute to the serialization
  of the parsed value.
+
+ Note that
+ [stretch](https://drafts.csswg.org/css-align-3/#valdef-align-content-stretch) is a legacy name alias of
+ [width](https://drafts.csswg.org/css-anchor-position-1/#valdef-anchor-size-width) and therefore they set the same attribute.
 
 [`featureSettings`], of type [CSSOMString](https://drafts.csswg.org/cssom-1/#cssomstring)\
 [`variationSettings`], of type [CSSOMString](https://drafts.csswg.org/cssom-1/#cssomstring)\
@@ -178,14 +180,10 @@ move between documents.
  or implicitly by the user agent, due to it detecting that the font
  face is needed to draw some text on the screen.
 
-[`loaded`], of type Promise\<[FontFace](#fontface)\>, readonly
+[`loaded`],
 
 : This attribute reflects the
  [`[[FontStatusPromise]]`](#dom-fontface-fontstatuspromise-slot) of the font face.
-
-[`stretch`] is an alias for
-[`width`](#dom-fontface-width). Its getter and setter delegate to
-[`width`](#dom-fontface-width).
 
 All [`FontFace`](#fontface)
 objects contain an internal
@@ -330,10 +328,10 @@ complete description of FontFaceSet.
 ### 2.2. The `load()` method
 
 The [`load()`](#dom-fontface-load) method of
-[`FontFace`](#fontface)
-forces a url-based font face to request its font data and load. For
-fonts constructed from a buffer source, or fonts that are already
-loading or loaded, it does nothing.
+[`FontFace`](#fontface) forces
+a url-based font face to request its font data and load. For fonts
+constructed from a buffer source, or fonts that are already loading or
+loaded, it does nothing.
 
 When the [`load()`] method is called,
 execute these steps:

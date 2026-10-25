@@ -228,8 +228,9 @@ pub const InternalState = struct {
     pending_load_token: u64 = 0,
     /// The step 9 task whose load completeLoadingWithChild ran early, or 0.
     early_load_token: u64 = 0,
-    /// Source of `pending_load_token`s: never reused, never zero.
-    next_load_token: u64 = 1,
+    /// Load-task tokens and shadow-tree scope serials share this sequence:
+    /// monotonic per document, never zero and never reused.
+    next_serial: u64 = 1,
     /// "The end" is waiting for its deferred scripts before DOMContentLoaded.
     parsing_end_waiting_on_scripts: bool = false,
     /// Abort, destruction, and parser replacement discard deliveries without
@@ -873,6 +874,7 @@ fn policyContainerOf(document: *runtime.Instance) ?*fetch.internal.PolicyContain
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    @import("dom").shadow_hosts.install(.{ .next_scope_serial = &nextTreeScopeSerial });
     @import("dom").top_layer.install(.{ .get = &topLayerState });
     // The editing commands' per-document state is freed with the document
     // (dom.editor_states): the editing subsystem installs its step.
@@ -2338,7 +2340,7 @@ pub fn get_permissionsPolicy(instance: *runtime.Instance) anyerror!*runtime.Inst
 pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const fonts = internal.fonts orelse blk: {
-        const made = interfaces.FontFaceSet.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+        const made = interfaces.FontFaceSet.initWith(internal.allocator, instance.ctx, .{ .font_document = instance }) catch return error.OutOfMemory;
         internal.fonts = made;
         internal.fonts_kept.made(made);
         break :blk made;
@@ -4259,6 +4261,9 @@ fn updateReadiness(instance: *runtime.Instance, readiness: enums.DocumentReadySt
     // Steps 1-2.
     if (internal.ready_state == readiness) return;
     internal.ready_state = readiness;
+    // Font Loading 3 §3.1: schedule an existing set's environment check.
+    // Readiness changes never create a font set or run its author reactions.
+    if (internal.fonts) |fonts| if (@import("dom").style.hooks.fontSetOf(fonts)) |set| set.environmentChanged();
     // Step 3: the load timing info's DOM complete or DOM interactive time,
     // the first time each comes - for the document its window shows (the
     // timeline keeps that document's load timing info; another document of
@@ -4572,8 +4577,7 @@ fn queueLoadUnlessDelayed(document: *runtime.Instance) void {
     // task to fire load. Set this before the native no-loop fallback can
     // synchronously run the queued task and its callbacks.
     internal.ready_for_post_load_tasks = true;
-    const token = internal.next_load_token;
-    internal.next_load_token += 1;
+    const token = nextSerial(internal);
     internal.pending_load_token = token;
     queueLifecycleTaskWith(document, .load, token);
 }
@@ -6357,4 +6361,19 @@ pub fn call_ariaNotify(instance: *runtime.Instance, announcement: runtime.DOMStr
     _ = announcement;
     _ = options;
     return error.NotImplemented;
+}
+
+/// Both consumers compare identities, never sequence gaps. Sharing the
+/// document's existing sequence keeps its state in the 2048-byte class.
+fn nextSerial(internal: *InternalState) u64 {
+    const serial = internal.next_serial;
+    internal.next_serial += 1;
+    return serial;
+}
+
+/// Own document state reached only through the generated installHooks chain.
+/// CSS Shadow1 §4.2 reserves zero for the document's own tree scope.
+fn nextTreeScopeSerial(document: *runtime.Instance) u64 {
+    const internal = getInternal(document) orelse return 0;
+    return nextSerial(internal);
 }

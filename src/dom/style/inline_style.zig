@@ -50,10 +50,11 @@ pub fn blockOf(element: *runtime.Instance) Allocator.Error!?*DeclarationBlock {
     return &state.inline_block.?;
 }
 
-/// The parse options for the element's inline block.
-pub fn parseOptions(element: *runtime.Instance) css.properties.ParseOptions {
+/// Owned synchronous context for the element's inline block. The caller
+/// invokes options() only after this value is in a stable local variable.
+pub fn parseOptions(element: *runtime.Instance, text: []const u8) Allocator.Error!engine.resource_loading.ParseContext {
     const state = element_style.of(element);
-    return .{ .allocator = if (state) |s| s.allocator else element.ctx.allocator, .quirks = quirksOf(element) };
+    return engine.resource_loading.inlineParseContext(element, if (state) |s| s.allocator else element.ctx.allocator, quirksOf(element), text);
 }
 
 /// CSSOM "update style attribute for": the block, serialized, becomes the
