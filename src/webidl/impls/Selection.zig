@@ -90,6 +90,10 @@ pub const InternalState = struct {
     /// The document this selection belongs to, retained by a traced edge.
     /// Its generation is only the teardown safety net.
     document: ?Link = null,
+    /// One counted reference on that document (refcount step 5f), taken
+    /// beside the edge in `bindDocument`. SHADOW MODE: the edge keeps the
+    /// document until refcount step 9b; this decides nothing yet.
+    document_hold: dom.node_holds.RefHold = .{},
 
     /// The document's has-scheduled-selectionchange-event flag. Its unique
     /// Selection owns it; input/textarea flags belong to those controls.
@@ -109,6 +113,7 @@ pub const InternalState = struct {
         self.range = null;
         self.range_generation = 0;
         self.document = null;
+        self.document_hold.release();
     }
 
     /// Make `range` the range of `selection` (whose state this is), or clear
@@ -238,6 +243,7 @@ fn bindDocument(selection: *runtime.Instance, document: *runtime.Instance) void 
     // Two traced edges permit the document/selection cycle to collect.
     engine.traceChild(selection, document, .{ .name = "document" });
     internal.document = Link.to(document);
+    internal.document_hold.set(document);
 }
 
 fn associatedDocument(internal: *const InternalState) ?*runtime.Instance {

@@ -245,6 +245,99 @@ pub const MemberHold = struct {
 };
 
 // ============================================================================
+// Counted references: a holder's Ref(Node)
+// ============================================================================
+
+/// One node a holder names, held by one counted reference and nothing more:
+/// the refcount design's `Ref(T)` / `?Ref(T)` (section 1.6) in shadow mode,
+/// for a holder that already keeps the node for script some other way - an
+/// edge from its wrapper (engine.traceChild), a pin - and keeps that way
+/// until refcount step 9b deletes it. WebKit's holders keep these as plain
+/// members: RangeBoundaryPoint `Ref<Node> m_container`
+/// (Source/WebCore/dom/RangeBoundaryPoint.h), NodeIteratorBase `const
+/// Ref<Node> m_root` (dom/Traversal.h), TreeWalker `Ref<Node> m_current`
+/// (dom/TreeWalker.h), Event `RefPtr<EventTarget> m_target` (dom/Event.h),
+/// EventContext `RefPtr<Node> m_node` (dom/EventContext.h).
+///
+/// A link in the node's chain (`Hold`, with no holder: a removal has nothing
+/// to rescue) plus one `refcount.holderRef` while it is linked. A node freed
+/// under it - its realm's end, the final sweep - is FORGOTTEN by
+/// `nodeReleased`, never released, so a later `set` or `release` writes
+/// nothing to the freed node. A member that is not a node (a Window, an
+/// XMLHttpRequest) is not counted - decision D3, nodes first - and this
+/// holds nothing for it.
+///
+/// Embedded by its holder and never moved while it holds a node; let go
+/// once, at the holder's end (`release` on one never taken, or again, does
+/// nothing).
+pub const RefHold = struct {
+    hold: Hold = .{},
+
+    /// Hold `member` - or nothing, for null - and let go of what this held.
+    /// Holding the node it holds already changes nothing.
+    pub fn set(self: *RefHold, member: ?*runtime.Instance) void {
+        const target = member orelse return self.hold.unlink();
+        if (self.holds(target)) return;
+        self.hold.unlink();
+        const base = instance_bridge.getNodeBase(@ptrCast(target)) orelse return;
+        self.hold.link(null, target, base);
+    }
+
+    /// `set` for a caller that has `member`'s tree node already: `base`, or
+    /// null when `member` is not a node.
+    pub fn setNode(self: *RefHold, member: *runtime.Instance, base: ?*NodeBase) void {
+        if (self.holds(member)) return;
+        self.hold.unlink();
+        self.hold.link(null, member, base orelse return);
+    }
+
+    /// Whether this holds `member` now: linked to it, at the slab generation
+    /// it was held at.
+    pub fn holds(self: *const RefHold, member: *runtime.Instance) bool {
+        return self.hold.node == member and Hold.stillHeld(member, self.hold.generation);
+    }
+
+    /// Let the node go. Safe on a hold never taken, and to repeat.
+    pub fn release(self: *RefHold) void {
+        self.hold.unlink();
+    }
+};
+
+/// A counted reference with no chain, for a holder that lives a short,
+/// bounded time and may move - the items of an event's path while dispatch
+/// runs: WebKit's EventContext `RefPtr<Node> m_node`. A node freed under it
+/// is recognised the way the wrapper's own reference recognises one
+/// (wrapper_cache `releaseCounted`): its slot reissued, or its teardown
+/// begun - and then it is forgotten, never released. No chain link, so no
+/// address to keep stable and nothing for `nodeReleased` to walk. SHADOW
+/// MODE: counted only.
+pub const CountedRef = struct {
+    /// The node held, or null for none.
+    base: ?*NodeBase = null,
+    /// The slab generation of the instance behind `base` when it was taken.
+    generation: u64 = 0,
+
+    /// Take one reference on `base`, the tree node of `instance` (nothing
+    /// for null: not a node). The ref holds nothing before.
+    pub fn take(self: *CountedRef, instance: *runtime.Instance, base: ?*NodeBase) void {
+        std.debug.assert(self.base == null);
+        const node = base orelse return;
+        self.* = .{ .base = node, .generation = runtime.SlabAllocator.generationOf(instance) };
+        refcount.holderRef(node);
+    }
+
+    /// Let it go - `instance` is the one it was taken for - unless the node
+    /// went first (then it is forgotten). Safe on a ref holding nothing.
+    pub fn release(self: *CountedRef, instance: *runtime.Instance) void {
+        const node = self.base orelse return;
+        self.base = null;
+        if (runtime.SlabAllocator.generationOf(instance) != self.generation) return;
+        if (runtime.instance_lifecycle.isCleanupStarted(instance)) return;
+        refcount.holderDeref(node);
+    }
+};
+
+// ============================================================================
 // Task holds: what a queued native task keeps
 // ============================================================================
 

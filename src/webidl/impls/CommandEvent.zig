@@ -16,6 +16,9 @@ pub const InternalState = struct {
     // The event traces its source, including while waiting for its wrapper.
     // Generation and saved realm are the teardown net, as in ToggleEvent.
     source: ?dom.custom_elements.KeptInstance = null,
+    /// One counted reference on the source (refcount step 5g), taken beside
+    /// the edge. SHADOW MODE: the edge keeps it until refcount step 9b.
+    source_hold: dom.node_holds.RefHold = .{},
 };
 const source_slot: engine.TracedSlot = .{ .name = "source" };
 
@@ -32,6 +35,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         if (internal.source != null) engine.forgetTracedChild(instance, source_slot);
+        internal.source_hold.release();
         internal.allocator.free(internal.command);
         internal.allocator.destroy(internal);
         state.own._internal = null;
@@ -52,6 +56,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     if (dict.source) |source| {
         internal.source = dom.custom_elements.KeptInstance.of(source);
         engine.traceChild(instance, source, source_slot);
+        internal.source_hold.set(source);
     }
     return instance;
 }

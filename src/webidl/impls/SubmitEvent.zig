@@ -42,6 +42,9 @@ pub const InternalState = struct {
     allocator: std.mem.Allocator,
     submitter: ?same_object.Link = null,
     submitter_realm: ?runtime.Context = null,
+    /// One counted reference on the submitter (refcount step 5g), taken beside
+    /// the edge. SHADOW MODE: the edge keeps it until refcount step 9b.
+    submitter_hold: @import("dom").node_holds.RefHold = .{},
 };
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
@@ -71,6 +74,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         // A native event can die before its wrapper exists: end the edge
         // waiting for that wrapper, just as CustomEvent does for detail.
         engine.forgetTracedChild(instance, .{ .name = "submitter" });
+        internal.submitter_hold.release();
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
@@ -89,6 +93,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     if (dict.submitter) |element| {
         internal.submitter_realm = element.ctx;
         engine.traceChild(instance, element, .{ .name = "submitter" });
+        internal.submitter_hold.set(element);
     }
     return instance;
 }

@@ -76,6 +76,15 @@ pub const InternalState = struct {
     traced_start: ?*runtime.Instance = null,
     traced_end: ?*runtime.Instance = null,
 
+    /// One counted reference on each boundary point's container (refcount
+    /// step 5f): WebKit's RangeBoundaryPoint holds `Ref<Node> m_container`
+    /// (Source/WebCore/dom/RangeBoundaryPoint.h), so a collapsed range
+    /// holds its node twice. Redrawn with the edges (`keepContainers`).
+    /// SHADOW MODE: the edges above are what keep the nodes until refcount
+    /// step 9b; these decide nothing yet.
+    start_hold: dom.node_holds.RefHold = .{},
+    end_hold: dom.node_holds.RefHold = .{},
+
     /// Deliberately weak: Selection already traces this Range, and an otherwise
     /// unreferenced Selection must not be rooted by a script-held Range. The
     /// generation check is the weak-link behavior, not a substitute for a hold.
@@ -116,6 +125,8 @@ const end_slot: engine.TracedSlot = .{ .name = "endContainer" };
 
 /// Make the boundary edges hold `range`'s current boundary nodes.
 fn keepContainers(range: *runtime.Instance, internal: *InternalState) void {
+    internal.start_hold.set(internal.start_container);
+    internal.end_hold.set(internal.end_container);
     const start = internal.start_container;
     if (start != internal.traced_start) {
         internal.traced_start = start;
@@ -230,6 +241,8 @@ pub fn deinit(instance: *runtime.Instance) void {
         // one freed unwrapped lets go of what waits for its wrapper.
         if (internal.traced_start != null) engine.forgetTracedChild(instance, start_slot);
         if (internal.traced_end != null) engine.forgetTracedChild(instance, end_slot);
+        internal.start_hold.release();
+        internal.end_hold.release();
         // Leave the document's live-range list, which mutation.zig walks on
         // every insert and remove. Blink holds that list weakly
         // (HeapHashSet<WeakMember<Range>>); here the range removes itself.

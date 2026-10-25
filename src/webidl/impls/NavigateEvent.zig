@@ -49,6 +49,9 @@ pub const InternalState = struct {
     signal_edge: same_object.Traced = .{ .slot = .{ .name = "signal" } },
     form_data_edge: same_object.Traced = .{ .slot = .{ .name = "formData" } },
     source_element_edge: same_object.Traced = .{ .slot = .{ .name = "sourceElement" } },
+    /// One counted reference on sourceElement (refcount step 5g), taken beside
+    /// the edge. SHADOW MODE: the edge keeps it until refcount step 9b.
+    source_element_hold: dom.node_holds.RefHold = .{},
     /// `info` is kept by an edge from the event's wrapper too (`info_slot`,
     /// engine.traceValue); undefined when there is none. Held as a root (an
     /// engine.Owned), an info that reached the event's realm kept it alive
@@ -60,6 +63,7 @@ pub const InternalState = struct {
         self.signal_edge.release(event);
         self.form_data_edge.release(event);
         self.source_element_edge.release(event);
+        self.source_element_hold.release();
         if (self.has_info) engine.forgetTracedChild(event, info_slot);
         self.has_info = false;
     }
@@ -149,7 +153,10 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     if (init_dict.info) |value| keepInfo(instance, internal, value);
     state.own.hasUAVisualTransition = init_dict.hasUAVisualTransition orelse false;
     state.own.sourceElement = init_dict.sourceElement;
-    if (init_dict.sourceElement) |element| internal.source_element_edge.hold(instance, element);
+    if (init_dict.sourceElement) |element| {
+        internal.source_element_edge.hold(instance, element);
+        internal.source_element_hold.set(element);
+    }
 
     // The inherited Event internal state and its initialized flag: without
     // them dispatchEvent throws InvalidStateError.

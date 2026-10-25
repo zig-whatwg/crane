@@ -28,6 +28,7 @@ const NodeFilter = struct {
     const SHOW_ALL = interfaces.NodeFilter.get_SHOW_ALL();
 };
 const node_filter = @import("node_filter.zig");
+const dom_module = @import("dom");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 pub const State = TreeWalker.State;
@@ -72,6 +73,14 @@ pub const InternalState = struct {
     root_traced: bool = false,
     traced_current: ?*runtime.Instance = null,
 
+    /// One counted reference each on the root and the current node (refcount
+    /// step 5f): WebKit's NodeIteratorBase holds `const Ref<Node> m_root`
+    /// (Source/WebCore/dom/Traversal.h) and TreeWalker `Ref<Node> m_current`
+    /// (dom/TreeWalker.h). Set with the edges, in setUp and `setCurrent`.
+    /// SHADOW MODE: the edges keep the nodes until refcount step 9b.
+    root_hold: dom_module.node_holds.RefHold = .{},
+    current_hold: dom_module.node_holds.RefHold = .{},
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -114,6 +123,7 @@ const current_slot: engine.TracedSlot = .{ .name = "currentNode" };
 /// it is not the root.
 fn setCurrent(instance: *runtime.Instance, internal: *InternalState, node: *runtime.Instance) void {
     internal.current = node;
+    internal.current_hold.set(node);
     const kept: ?*runtime.Instance = if (node == internal.root) null else node;
     if (kept == internal.traced_current) return;
     internal.traced_current = kept;
@@ -157,6 +167,8 @@ pub fn deinit(instance: *runtime.Instance) void {
         // one freed unwrapped lets go of what waits for its wrapper.
         if (internal.root_traced) engine.forgetTracedChild(instance, root_slot);
         if (internal.traced_current != null) engine.forgetTracedChild(instance, current_slot);
+        internal.root_hold.release();
+        internal.current_hold.release();
         node_filter.release(internal.filter);
         internal.filter = null;
         internal.deinit();
@@ -175,6 +187,7 @@ fn setUp(
     const internal = getInternal(instance);
     // Step 2: Set walker's root and walker's current to root.
     internal.root = root;
+    internal.root_hold.set(root);
     setCurrent(instance, internal, root);
     engine.traceChild(instance, root, root_slot);
     internal.root_traced = true;
@@ -580,6 +593,13 @@ fn filterNode(instance: *runtime.Instance, node: *runtime.Instance) ImplError!u1
 
     // Step 5: Set traverser's active flag
     internal.active_flag = true;
+
+    // The traversal holds `node` across the call, which runs script (refcount
+    // design 1.2: a stack frame across a step that can run script; WebKit's
+    // traversals keep `RefPtr<Node>` locals). SHADOW MODE: counted only.
+    var held: dom_module.node_holds.RefHold = .{};
+    held.set(node);
+    defer held.release();
 
     // Step 6: Let result be the return value of call a user object's operation
     // with filter's callback, "acceptNode", and « node ».

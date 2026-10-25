@@ -154,6 +154,7 @@ const Walk = struct {
             .root_of_closed_tree = root_of_closed_tree,
             .slot_in_closed_tree = slot_in_closed_tree,
             .target = self.target,
+            .invocation_node = node,
         });
     }
 
@@ -359,6 +360,9 @@ pub fn build(state: *EventState, target: *runtime.Instance, input: Input) error{
             if (inShadowTree(touch_target)) break true;
         } else false;
 
+    // The path is built: its nodes are held while dispatch runs (refcount
+    // step 5g), until step 9 empties it.
+    state.holdPath();
     return walk.result;
 }
 

@@ -24,6 +24,7 @@ const callbacks = @import("callbacks");
 const StaticRange = interfaces.StaticRange;
 const AbstractRange = interfaces.AbstractRange;
 const range_boundaries = @import("dom").range_boundaries;
+const node_holds = @import("dom").node_holds;
 const same_object = @import("same_object.zig");
 
 pub const State = StaticRange.State;
@@ -58,6 +59,12 @@ pub const InternalState = struct {
     /// The edges that keep the two containers.
     kept_start: same_object.Traced = .{ .slot = .{ .name = "startContainer" } },
     kept_end: same_object.Traced = .{ .slot = .{ .name = "endContainer" } },
+    /// One counted reference on each container (refcount step 5f; WebKit's
+    /// StaticRange holds `Ref<Node>` start and end containers,
+    /// Source/WebCore/dom/StaticRange.h). SHADOW MODE: the edges above keep
+    /// the containers until refcount step 9b; these decide nothing yet.
+    start_hold: node_holds.RefHold = .{},
+    end_hold: node_holds.RefHold = .{},
 
     pub fn init() InternalState {
         return .{
@@ -97,6 +104,8 @@ fn removeInternal(instance: *runtime.Instance) void {
         // waiting for its wrapper go; a collected one's went with it.
         internal.kept_start.release(instance);
         internal.kept_end.release(instance);
+        internal.start_hold.release();
+        internal.end_hold.release();
     }
     Registry.remove(instance);
 }
@@ -178,6 +187,7 @@ pub fn setStart(instance: *runtime.Instance, node: *runtime.Instance, offset: u3
     internal.start_container = node;
     internal.start_offset = offset;
     internal.kept_start.hold(instance, node);
+    internal.start_hold.set(node);
 }
 
 /// Set the end boundary point; the range keeps its container.
@@ -186,4 +196,5 @@ pub fn setEnd(instance: *runtime.Instance, node: *runtime.Instance, offset: u32)
     internal.end_container = node;
     internal.end_offset = offset;
     internal.kept_end.hold(instance, node);
+    internal.end_hold.set(node);
 }
