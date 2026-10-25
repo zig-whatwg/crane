@@ -1516,6 +1516,11 @@ pub extern fn v8_Object_GetCatching(
 /// A second, independently owned Global for the same value. Null for null/empty.
 pub extern fn v8_Global_Clone(global: ?*Value) ?*Value;
 
+/// The value `global` holds, MOVED into a Global of the caller's own: no V8
+/// handle is made, and `global` is left empty, still its owner's to dispose.
+/// Null for null/empty. engine.takeCallbackFunction's move.
+pub extern fn v8_Global_TakeOver(global: ?*Value) ?*Value;
+
 /// Run `body(data)` with V8's automatic microtask execution suppressed
 /// (Isolate::SuppressMicrotaskExecutionScope, held on the C++ stack).
 pub extern fn v8_RunWithMicrotasksSuppressed(

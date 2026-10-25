@@ -1461,6 +1461,18 @@ void v8_RunWithMicrotasksSuppressed(Isolate* isolate, void (*body)(void*), void*
     body(data);
 }
 
+/// The function a callback-function value holds, taken by the impl that keeps
+/// it (engine.takeCallbackFunction): its handle MOVES into a Global of the
+/// taker's own, and `global` - the binding's, borrowed for the call - is left
+/// empty, for the binding to dispose when the call returns. No V8 handle is
+/// made: Global's move constructor hands the node over
+/// (api_internal::MoveGlobalReference). Returns nullptr for a null or empty
+/// handle - a value taken already.
+Global<Value>* v8_Global_TakeOver(Global<Value>* global) {
+    if (!global || global->IsEmpty()) return nullptr;
+    return trackHandle(new Global<Value>(std::move(*global)));
+}
+
 /// A second, independently owned Global for the value `global` holds. Both
 /// must be disposed. Returns nullptr for a null or empty handle.
 Global<Value>* v8_Global_Clone(Global<Value>* global) {
