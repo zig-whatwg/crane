@@ -172,6 +172,16 @@ INCLUDE = [
     ('css/css-values/attr-security-if.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
     ('css/css-values/attr-security.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
     ('css/css-values/attr-universal-selector.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    # The user, 2026-10-25: if() files for Codex row 123's if() work. Not
+    # if-media-invalidation.html (it resizes an iframe: geometry) or
+    # if-range-with-attr-crash.html (a crashtest with no subtests).
+    ('css/css-values/if-conditionals.html', 'if() conditional substitution, its cycles and invalidation (row 123)'),
+    ('css/css-values/if-cycle.html', 'if() conditional substitution, its cycles and invalidation (row 123)'),
+    ('css/css-values/if-function-revert-rule.html', 'if() conditional substitution, its cycles and invalidation (row 123)'),
+    ('css/css-values/if-initial-unregistered.html', 'if() conditional substitution, its cycles and invalidation (row 123)'),
+    ('css/css-values/if-invalidation.html', 'if() conditional substitution, its cycles and invalidation (row 123)'),
+    ('css/css-values/if-style-invalidation.html', 'if() conditional substitution, its cycles and invalidation (row 123)'),
+    ('css/css-values/if-supports-quirks.html', 'if() conditional substitution, its cycles and invalidation (row 123)'),
     ('css/css-values/acos-asin-atan-atan2-computed.html', 'inverse trigonometric CSS value computation'),
     ('css/css-values/calc-infinity-nan-computed.html', 'CSS numeric infinity and NaN computation'),
     ('css/css-values/clamp-color-computed.html', 'clamping computed color channels'),
