@@ -18,6 +18,7 @@ const Token = tokenizer_mod.Token;
 const property_parser = @import("property_parser.zig");
 const properties = @import("properties.zig");
 const rules = @import("rules.zig");
+const substitution = @import("substitution.zig");
 const PropertyParser = property_parser.PropertyParser;
 const ParserContext = @import("context.zig").ParserContext;
 
@@ -33,7 +34,10 @@ pub const SelectorCheck = *const fn (allocator: std.mem.Allocator, text: []const
 /// or escape processing is done on `property`, and !important is not part
 /// of any property's grammar.
 pub fn supportsDeclaration(allocator: std.mem.Allocator, property: []const u8, value: []const u8) bool {
-    if (isCustomPropertyName(property)) return rules.isDeclarationValue(value);
+    // CSS Variables 1 §2.1: any <declaration-value>, whose var() references
+    // (and the other arbitrary substitution functions) are valid by their
+    // argument grammars.
+    if (isCustomPropertyName(property)) return rules.isDeclarationValue(value) and substitutionValid(allocator, value);
 
     var name_buf: [64]u8 = undefined;
     if (property.len == 0 or property.len > name_buf.len) return false;
@@ -48,6 +52,10 @@ pub fn supportsDeclaration(allocator: std.mem.Allocator, property: []const u8, v
         return ok;
     }
     if (PropertyParser.getPropertyType(name) == .unknown) return false;
+    // Values 5 "Resolving in Properties": a value with arbitrary substitution
+    // functions that match their argument grammars is valid for every
+    // property (css/css-variables variable-supports-*).
+    if (substitution.mentionsFunction(value)) return rules.isDeclarationValue(value) and substitutionValid(allocator, value);
 
     var ctx = ParserContext.noQuirks(allocator);
     defer ctx.deinit();
@@ -68,6 +76,11 @@ pub fn supportsCondition(allocator: std.mem.Allocator, condition_text: []const u
     const wrapped = std.fmt.allocPrint(allocator, "({s})", .{condition_text}) catch return false;
     defer allocator.free(wrapped);
     return evaluator.condition(wrapped) orelse false;
+}
+
+fn substitutionValid(allocator: std.mem.Allocator, value: []const u8) bool {
+    if (!substitution.mentionsFunction(value)) return true;
+    return substitution.validate(allocator, value) catch false;
 }
 
 /// "A custom property name string": starts with two dashes.
