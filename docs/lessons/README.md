@@ -818,6 +818,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Drive the storage path in a lifetime regression](testing-drive-the-storage-path-in-a-lifetime-regression.md) - Exercise the retained-data path before GC checks.
 - [A one-file sweep chunk has an unsharded report](testing-a-one-file-sweep-chunk-has-an-unsharded-report.md) - A complete source journal does not prove a complete subtest stream.
 - [A Verbose Summary Reuses Subtest Markers](testing-verbose-summary-lines-are-not-subtests.md) - Parse section boundaries and reconcile every count.
+- [leaks --atExit sees only the supervisor, not its child runners](testing-leaks-at-exit-sees-only-the-supervisor-not-its-child-runners.md) - A leak check is only as good as the process it watches: run the WPT runner in-process under `leaks`, and read the peak footprint before trusting "0 leaks".
 
 ### Debugging
 - [Debugging: Materialize coordinates before overwriting a vector](debugging-materialize-coordinates-before-overwriting-a-vector.md) - Compute every new coordinate from saved scalar inputs before assigning an aggregate back to its input vector.
