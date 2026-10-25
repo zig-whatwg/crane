@@ -93,3 +93,30 @@ fn parseAll(allocator: std.mem.Allocator) !void {
 test "allocation failure frees what was taken" {
     try testing.checkAllAllocationFailures(testing.allocator, parseAll, .{});
 }
+
+test "a value cut off by the end of the sheet: escaped EOF is U+FFFD, open strings, urls and blocks close (escaped-eof.html)" {
+    // Chrome 156 and Safari 27 pass css/css-syntax/escaped-eof.html; Firefox
+    // 158 does not (golden rule 2: the majority). The tokens say the same:
+    // an escaped EOF is U+FFFD, EOF ends a string, a url and every block.
+    var sheet = try rules.parseStyleSheetContents(testing.allocator, "foo { --foo:foo\\");
+    defer sheet.deinit();
+    try testing.expectEqualStrings("foo\u{FFFD}", sheet.items[0].declarations[0].value);
+    for ([_][2][]const u8{
+        .{ "foo { --foo:1foo\\", "1foo\u{FFFD}" },
+        .{ "foo { --foo:url(foo\\", "url(foo\u{FFFD})" },
+        .{ "foo { --foo:\"foo\\", "\"foo\"" },
+        .{ "foo { --foo:'a b", "'a b'" },
+        .{ "foo { --foo:f(a [b {c", "f(a [b {c}])" },
+        .{ "foo { --foo:var(--x, 1px", "var(--x, 1px)" },
+        // Not at the end of the sheet: as written (the escape's space is
+        // part of its token).
+        .{ "foo { --foo:a\\62  b }", "a\\62  b" },
+    }) |case| {
+        var other = try rules.parseStyleSheetContents(testing.allocator, case[0]);
+        defer other.deinit();
+        try testing.expectEqualStrings(case[1], other.items[0].declarations[0].value);
+    }
+    // A style attribute ends at its own end: the same rule.
+    try expectValue("--x: a\\", 0, "--x", "a\u{FFFD}", false);
+    try expectValue("color: var(--x", 0, "color", "var(--x)", false);
+}

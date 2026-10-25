@@ -220,6 +220,80 @@ pub fn originalText(text: []const u8) []const u8 {
     return text[start..end];
 }
 
+/// `segment` (original text that runs to the end of its input) as the
+/// tokens read it there: CSS Syntax 3 §4.3.7, an escaped EOF is U+FFFD (in
+/// a string it is ignored); EOF ends a string, a url() and every open block,
+/// whose closers are appended. Chrome 156 and Safari 27 serialize a custom
+/// property cut off this way so (css/css-syntax/escaped-eof.html; Firefox
+/// 158 keeps the source: golden rule 2, the majority). Owned by `allocator`.
+pub fn closeAtEof(allocator: Allocator, segment: []const u8) Allocator.Error![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    try out.appendSlice(allocator, segment);
+    var closers: std.ArrayList(u8) = .empty;
+    defer closers.deinit(allocator);
+    var tokenizer = tokens.Tokenizer.init(segment);
+    var last: tokens.TokenType = .eof;
+    var last_start: usize = 0;
+    while (true) {
+        const start = tokenizer.pos;
+        const token = tokenizer.next();
+        if (token.token_type == .eof) break;
+        last = token.token_type;
+        last_start = start;
+        switch (token.token_type) {
+            // A function token's "(" is the next token (tokenizer.zig).
+            .left_paren => try closers.append(allocator, ')'),
+            .left_bracket => try closers.append(allocator, ']'),
+            .left_brace => try closers.append(allocator, '}'),
+            .right_paren, .right_bracket, .right_brace => {
+                if (closers.items.len != 0) _ = closers.pop();
+            },
+            else => {},
+        }
+    }
+    const tail = segment[last_start..];
+    const escaped = trailingBackslashes(segment) % 2 == 1;
+    switch (last) {
+        .string, .bad_string => {
+            // The token's raw text may start with the comments before it.
+            const quote = tail[std.mem.indexOfAny(u8, tail, "\"'") orelse return out.toOwnedSlice(allocator)];
+            const closed = tail.len >= 2 and tail[tail.len - 1] == quote and !escaped and !(trailingBackslashes(tail[0 .. tail.len - 1]) % 2 == 1);
+            if (!closed) {
+                // "If the next input code point is EOF, do nothing" (the
+                // escaped EOF in a string is ignored).
+                if (escaped) out.items.len -= 1;
+                try out.append(allocator, quote);
+            }
+        },
+        .url, .bad_url => {
+            if (out.items.len == 0 or out.items[out.items.len - 1] != ')' or escaped) {
+                if (escaped) {
+                    out.items.len -= 1;
+                    try out.appendSlice(allocator, "\u{FFFD}");
+                }
+                try out.append(allocator, ')');
+            }
+        },
+        else => if (escaped) {
+            out.items.len -= 1;
+            try out.appendSlice(allocator, "\u{FFFD}");
+        },
+    }
+    var i = closers.items.len;
+    while (i > 0) {
+        i -= 1;
+        try out.append(allocator, closers.items[i]);
+    }
+    return out.toOwnedSlice(allocator);
+}
+
+fn trailingBackslashes(text: []const u8) usize {
+    var n: usize = 0;
+    while (n < text.len and text[text.len - 1 - n] == '\\') n += 1;
+    return n;
+}
+
 /// The nesting and size limits a stored value may reach. Past them the
 /// value is invalid, not truncated.
 pub const max_depth = 128;

@@ -618,6 +618,9 @@ const Parser = struct {
         else
             source_end;
         const source = substitution.originalText(input[start..stop]);
+        // A value cut off by the end of its input reads as its tokens there.
+        const at_eof = @intFromPtr(source.ptr) + source.len == @intFromPtr(input.ptr) + input.len;
+        if (at_eof) return .{ .name = name, .value = try substitution.closeAtEof(self.allocator, source), .important = important };
         return .{ .name = name, .value = try self.allocator.dupe(u8, source), .important = important };
     }
 
