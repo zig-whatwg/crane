@@ -645,6 +645,9 @@ pub const Attribute = struct {
     local_name: []const u8,
 };
 
+/// Values 5 Appendix A: the dependency types of substitution contexts.
+pub const GuardKind = enum { property, attribute, function };
+
 /// What a replacement reads from the element being styled, all borrowed for
 /// the call. A null member answers "nothing": every custom property is the
 /// guaranteed-invalid value, every environment variable is undefined.
@@ -665,6 +668,20 @@ pub const Host = struct {
     /// element, resolved on demand under its "property" guard; null for the
     /// guaranteed-invalid value. The text is valid for the cascade call.
     custom_value: ?*const fn (context: *anyopaque, name: []const u8) Error!?Computed = null,
+    /// inherit() (Values 5 §8.6, Codex row 123): the parent's computed value
+    /// of custom property `name`; at the root, its initial value (the
+    /// guaranteed-invalid value, null, for an unregistered one).
+    parent_custom_value: ?*const fn (context: *anyopaque, name: []const u8) Error!?Computed = null,
+    /// Values 5 Appendix A, "guard" a substitution context (attr() guards
+    /// ("attribute", expanded name), a custom function ("function", name)):
+    /// a context already guarded marks every context from it to the top
+    /// cyclic. Returns the token `unguard` takes.
+    guard: ?*const fn (context: *anyopaque, kind: GuardKind, name: []const u8) Allocator.Error!usize = null,
+    /// The guard's end: whether its context was marked cyclic.
+    unguard: ?*const fn (context: *anyopaque, token: usize) bool = null,
+    /// Whether guarding (kind, name) now would be cyclic - a query that marks
+    /// nothing.
+    would_cycle: ?*const fn (context: *anyopaque, kind: GuardKind, name: []const u8) bool = null,
     /// env(): the host's environment variables.
     environment: ?Environment = null,
     /// random-item()'s random base and tree counts; numeric math.
@@ -702,6 +719,7 @@ pub const Resolver = struct {
         if (self.depth > max_depth) return error.Invalid;
         var result: std.ArrayList(Node) = .empty;
         var tainted = false;
+        var invalid = false;
         // A replacement's last node must not merge with what follows it.
         var spliced_end: ?Node = null;
         for (nodes, 0..) |node, index| {
@@ -712,7 +730,19 @@ pub const Resolver = struct {
                     continue;
                 }
                 if (spread) result.items.len -= 3;
-                const replacement = try self.replace(id, node);
+                // 2.5 "If result contains the guaranteed-invalid value,
+                // replace func in values with the guaranteed-invalid value"
+                // - and continue: the remaining functions are still
+                // substituted, so their dependencies (and cycles) count, as
+                // in all three browsers (variable-substitution-variable-
+                // declaration.html target5's --varC).
+                const replacement = self.replace(id, node) catch |err| switch (err) {
+                    error.Invalid => {
+                        invalid = true;
+                        continue;
+                    },
+                    else => |e| return e,
+                };
                 var replaced = replacement.nodes;
                 if (replacement.tainted) {
                     replaced = try markOwn(self.allocator, replaced);
@@ -739,6 +769,7 @@ pub const Resolver = struct {
             self.emitted += 1;
             if (self.emitted > max_substituted_nodes) return error.Invalid;
         }
+        if (invalid) return error.Invalid;
         return .{ .nodes = try result.toOwnedSlice(self.allocator), .tainted = tainted };
     }
 

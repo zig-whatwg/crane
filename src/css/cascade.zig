@@ -37,6 +37,8 @@ const values = @import("style_values.zig");
 const declarations_mod = @import("declarations.zig");
 const computed_mod = @import("computed_style.zig");
 const color_scheme_mod = @import("color_scheme.zig");
+const custom_mod = @import("custom_properties.zig");
+const substitution = @import("substitution.zig");
 
 const Longhand = properties.Longhand;
 const Value = values.Value;
@@ -226,6 +228,41 @@ fn collectCandidates(allocator: Allocator, matched: []const Matched) Allocator.E
     return candidates;
 }
 
+/// A custom property declaration that applies to the element (CSS
+/// Variables 1 §2: "Custom properties are ordinary properties ... resolved
+/// with the normal inheritance and cascade rules").
+const CustomCandidate = struct {
+    decl: *const declarations_mod.Custom,
+    priority: u128,
+    source: *const Source,
+};
+
+/// The custom property candidates of `matched`, by name (code units), each
+/// name's strongest first with the same priority and tie-breaks as the
+/// longhands' candidates. Only blocks that hold custom properties are read.
+fn collectCustomCandidates(allocator: Allocator, matched: []const Matched) Allocator.Error!std.ArrayList(CustomCandidate) {
+    var candidates: std.ArrayList(CustomCandidate) = .empty;
+    errdefer candidates.deinit(allocator);
+    for (matched) |*m| {
+        if (m.block.custom_count == 0) continue;
+        var it = m.block.customs();
+        while (it.next()) |d| try candidates.append(allocator, .{ .decl = d, .priority = priority(m.source, d.important), .source = &m.source });
+    }
+    std.mem.sortUnstable(CustomCandidate, candidates.items, {}, struct {
+        fn lessThan(_: void, a: CustomCandidate, b: CustomCandidate) bool {
+            switch (std.mem.order(u8, a.decl.name.bytes, b.decl.name.bytes)) {
+                .lt => return true,
+                .gt => return false,
+                .eq => {},
+            }
+            if (a.priority != b.priority) return a.priority > b.priority;
+            if (a.source != b.source) return @intFromPtr(a.source) > @intFromPtr(b.source);
+            return @intFromPtr(a.decl) > @intFromPtr(b.decl);
+        }
+    }.lessThan);
+    return candidates;
+}
+
 /// Cascade 5 §§6–7.3: a property owns a priority-ordered fallback chain.
 /// Like Blink's CascadeMap and WebKit's PropertyCascade, lookup starts at
 /// that property's head. Candidate order and borrowed Source identity stay
@@ -283,10 +320,18 @@ pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*Computed
     else
         try allocator.alloc(usize, candidates.items.len);
     defer if (links.len > stack_links.len) allocator.free(links);
+    // Custom properties: only when a matched block declares one.
+    var custom_candidates: std.ArrayList(CustomCandidate) = .empty;
+    defer custom_candidates.deinit(allocator);
+    for (matched) |*m| if (m.block.custom_count != 0) {
+        custom_candidates = try collectCustomCandidates(allocator, matched);
+        break;
+    };
     var builder: Builder = .{
         .ctx = ctx,
         .candidates = candidates.items,
         .index = CandidateIndex.init(candidates.items, links),
+        .custom_candidates = custom_candidates.items,
     };
     defer builder.deinit();
     const style = try allocator.create(ComputedStyle);
@@ -371,6 +416,29 @@ const Builder = struct {
     used_scheme: color_scheme_mod.Scheme = .light,
     cached_tree_counts: ?@import("math_values.zig").TreeCounts = null,
     pending: std.ArrayList(PendingResult) = .empty,
+    custom_candidates: []const CustomCandidate = &.{},
+    /// One per custom property name with candidates, sorted by name.
+    custom_states: std.ArrayList(CustomState) = .empty,
+    /// Values 5 Appendix A: the substitution contexts being guarded.
+    guards: std.ArrayList(Guard) = .empty,
+
+    const CustomState = struct {
+        name: *custom_mod.Text,
+        /// The name's candidates: custom_candidates[first..end].
+        first: usize,
+        end: usize,
+        status: enum { unresolved, resolving, done } = .unresolved,
+        /// One reference, once done; null is the guaranteed-invalid value.
+        value: ?*custom_mod.Text = null,
+    };
+
+    const GuardKind = substitution.GuardKind;
+
+    const Guard = struct {
+        kind: GuardKind,
+        name: []const u8,
+        cyclic: bool = false,
+    };
 
     const PendingResult = struct {
         value: *const @import("pending_values.zig").Pending,
@@ -380,6 +448,250 @@ const Builder = struct {
     fn deinit(self: *Builder) void {
         for (self.pending.items) |entry| entry.outcome.deinit(self.ctx.allocator);
         self.pending.deinit(self.ctx.allocator);
+        for (self.custom_states.items) |state| if (state.value) |v| v.release();
+        self.custom_states.deinit(self.ctx.allocator);
+        self.guards.deinit(self.ctx.allocator);
+    }
+
+    // ------------------------------------------------------------------------
+    // Custom properties (CSS Variables 1 §§2-3, Values 5 Appendix A)
+    // ------------------------------------------------------------------------
+
+    /// The custom property phase, before any longhand: unregistered custom
+    /// properties depend only on one another and the environment, and any
+    /// longhand may reference one. Like WebKit's Builder (applyCustomProperty
+    /// on reference, applyCustomProperties for the rest) and Blink's
+    /// StyleCascade LookupAndApply, a property referenced by var() is
+    /// resolved when referenced, the others in order; each once.
+    fn resolveCustomProperties(self: *Builder) Allocator.Error!void {
+        const parent_record: ?*custom_mod.CustomProperties = if (self.ctx.parent) |p| p.custom else null;
+        if (self.custom_candidates.len == 0) {
+            // No declaration: the inherited map, shared (no copy).
+            if (parent_record) |r| {
+                r.retain();
+                self.style.custom = r;
+            }
+            return;
+        }
+        const allocator = self.ctx.allocator;
+        var first: usize = 0;
+        while (first < self.custom_candidates.len) {
+            const name = self.custom_candidates[first].decl.name;
+            var end = first + 1;
+            while (end < self.custom_candidates.len and std.mem.eql(u8, self.custom_candidates[end].decl.name.bytes, name.bytes)) end += 1;
+            try self.custom_states.append(allocator, .{ .name = name, .first = first, .end = end });
+            first = end;
+        }
+        for (0..self.custom_states.items.len) |i| {
+            if (self.custom_states.items[i].status == .unresolved) try self.resolveCustom(i);
+        }
+        // The record: the values this cascade changed over the parent's.
+        var changes: std.ArrayList(custom_mod.CustomProperties.Entry) = .empty;
+        defer changes.deinit(allocator);
+        for (self.custom_states.items) |state| {
+            const inherited = if (parent_record) |r| r.get(state.name.bytes) else null;
+            const same = if (state.value) |v| (inherited != null and v.eql(inherited.?)) else inherited == null;
+            if (!same) try changes.append(allocator, .{ .name = state.name, .value = state.value });
+        }
+        if (changes.items.len == 0) {
+            if (parent_record) |r| {
+                r.retain();
+                self.style.custom = r;
+            }
+            return;
+        }
+        self.style.custom = try custom_mod.CustomProperties.create(allocator, parent_record, changes.items);
+    }
+
+    fn findCustom(self: *const Builder, name: []const u8) ?usize {
+        var lo: usize = 0;
+        var hi = self.custom_states.items.len;
+        while (lo < hi) {
+            const mid = lo + (hi - lo) / 2;
+            switch (std.mem.order(u8, self.custom_states.items[mid].name.bytes, name)) {
+                .eq => return mid,
+                .lt => lo = mid + 1,
+                .gt => hi = mid,
+            }
+        }
+        return null;
+    }
+
+    /// Values 5 Appendix A, "guard" a substitution context: a context
+    /// already guarded marks every context from it to the top cyclic.
+    fn guard(self: *Builder, kind: GuardKind, name: []const u8) Allocator.Error!usize {
+        self.markIfCyclic(kind, name);
+        const at = self.guards.items.len;
+        try self.guards.append(self.ctx.allocator, .{ .kind = kind, .name = name });
+        return at;
+    }
+
+    /// The guard's end; whether its context was marked cyclic.
+    fn unguard(self: *Builder, at: usize) bool {
+        const cyclic = self.guards.items[at].cyclic;
+        self.guards.items.len = at;
+        return cyclic;
+    }
+
+    /// Whether guarding (kind, name) now would find a cycle - a query that
+    /// marks nothing.
+    fn wouldCycle(self: *const Builder, kind: GuardKind, name: []const u8) bool {
+        for (self.guards.items) |g| if (g.kind == kind and std.mem.eql(u8, g.name, name)) return true;
+        return false;
+    }
+
+    fn markIfCyclic(self: *Builder, kind: GuardKind, name: []const u8) void {
+        // Blink CascadeResolver::DetectCycle: [cycle_start, top) is in the
+        // cycle.
+        for (self.guards.items, 0..) |g, k| if (g.kind == kind and std.mem.eql(u8, g.name, name)) {
+            for (self.guards.items[k..]) |*entry| entry.cyclic = true;
+            return;
+        };
+    }
+
+    /// "Property replacement" of custom property `custom_states[i]`, under
+    /// its ("property", name) guard. A cycle makes it guaranteed-invalid,
+    /// fallback or not (Values 5: "When a cycle is detected, all
+    /// participants in the cycle become invalid").
+    fn resolveCustom(self: *Builder, i: usize) Allocator.Error!void {
+        self.custom_states.items[i].status = .resolving;
+        const name = self.custom_states.items[i].name.bytes;
+        const at = try self.guard(.property, name);
+        var value = self.computeCustom(i) catch |err| {
+            _ = self.unguard(at);
+            self.custom_states.items[i].status = .done;
+            return err;
+        };
+        if (self.unguard(at)) {
+            if (value) |v| v.release();
+            value = null;
+        }
+        self.custom_states.items[i].value = value;
+        self.custom_states.items[i].status = .done;
+    }
+
+    /// The inherited value of `name`: the parent's computed value, or the
+    /// guaranteed-invalid value (the initial value of an unregistered custom
+    /// property) at the root. Retained.
+    fn inheritedCustom(self: *const Builder, name: []const u8) ?*custom_mod.Text {
+        const parent = self.ctx.parent orelse return null;
+        const record = parent.custom orelse return null;
+        const value = record.get(name) orelse return null;
+        value.retain();
+        return value;
+    }
+
+    /// Cascade 5 §§6-7.3 for one custom property, then its computed value
+    /// (CSS Variables 1 §2: "specified value with variables substituted, or
+    /// the guaranteed-invalid value"). Retained; null is the
+    /// guaranteed-invalid value.
+    fn computeCustom(self: *Builder, i: usize) Allocator.Error!?*custom_mod.Text {
+        const state = self.custom_states.items[i];
+        const name = state.name.bytes;
+        var excluded = Exclusions{};
+        var position = state.first;
+        while (position < state.end) : (position += 1) {
+            const c = self.custom_candidates[position];
+            if (excluded.excludesSource(c.source.*, c.decl.important)) continue;
+            const keyword: values.CssWide = switch (c.decl.value) {
+                .css_wide => |k| k,
+                .text => |t| {
+                    t.retain();
+                    return t;
+                },
+                .pending => |pending| blk: {
+                    var host = self.substitutionHost(self.mathContext(.width));
+                    host.tree_scope = c.source.tree_scope.serial;
+                    switch (try pending.substituteCustom(self.ctx.allocator, host, name)) {
+                        // Values 5 "Invalid Substitution": an unregistered
+                        // custom property's computed value is the
+                        // guaranteed-invalid value.
+                        .invalid => return null,
+                        // Q83: missing random input skips the candidate.
+                        .unavailable => continue,
+                        .substituted => |result| {
+                            // "If a property value, after property
+                            // replacement, contains only a single CSS-wide
+                            // keyword ..., its value is determined as if
+                            // that keyword were its specified value all
+                            // along."
+                            if (substitution.soleKeyword(result.text)) |keyword| {
+                                self.ctx.allocator.free(result.text);
+                                self.ctx.allocator.free(result.taint);
+                                break :blk values.CssWide.parse(keyword).?;
+                            }
+                            errdefer {
+                                self.ctx.allocator.free(result.text);
+                                self.ctx.allocator.free(result.taint);
+                            }
+                            return try custom_mod.Text.adopt(self.ctx.allocator, result.text, result.taint);
+                        },
+                    }
+                },
+            };
+            switch (keyword) {
+                // §2.2: initial is the guaranteed-invalid value.
+                .initial => return null,
+                // Custom properties are inherited: unset is inherit.
+                .inherit, .unset => return self.inheritedCustom(name),
+                .revert => {
+                    if (c.source.origin == .user_agent) return self.inheritedCustom(name);
+                    excluded.revert_class_at_least = @min(excluded.revert_class_at_least, c.source.origin.revertClass());
+                },
+                .revert_layer, .revert_rule => excluded.addLevel(c.source.*, c.decl.important),
+            }
+        }
+        // No declaration left: the default, inherit.
+        return self.inheritedCustom(name);
+    }
+
+    /// substitution.Host's var() lookup: this element's custom property,
+    /// resolved now if it is declared here and not yet, else the inherited
+    /// value. A reference to one being resolved is a cycle.
+    fn customValueCallback(context: *anyopaque, name: []const u8) substitution.Error!?substitution.Computed {
+        const self: *Builder = @ptrCast(@alignCast(context));
+        if (self.findCustom(name)) |i| {
+            switch (self.custom_states.items[i].status) {
+                .done => {},
+                .resolving => {
+                    self.markIfCyclic(.property, name);
+                    return null;
+                },
+                .unresolved => try self.resolveCustom(i),
+            }
+            const value = self.custom_states.items[i].value orelse return null;
+            return value.computed();
+        }
+        const parent = self.ctx.parent orelse return null;
+        const record = parent.custom orelse return null;
+        const value = record.get(name) orelse return null;
+        return value.computed();
+    }
+
+    /// inherit() (Values 5 §8.6, Codex row 123): the parent's computed value
+    /// of `name`; at the root the initial value, guaranteed-invalid for an
+    /// unregistered custom property.
+    fn parentCustomValueCallback(context: *anyopaque, name: []const u8) substitution.Error!?substitution.Computed {
+        const self: *Builder = @ptrCast(@alignCast(context));
+        const parent = self.ctx.parent orelse return null;
+        const record = parent.custom orelse return null;
+        const value = record.get(name) orelse return null;
+        return value.computed();
+    }
+
+    fn guardCallback(context: *anyopaque, kind: substitution.GuardKind, name: []const u8) Allocator.Error!usize {
+        const self: *Builder = @ptrCast(@alignCast(context));
+        return self.guard(kind, name);
+    }
+
+    fn unguardCallback(context: *anyopaque, at: usize) bool {
+        const self: *Builder = @ptrCast(@alignCast(context));
+        return self.unguard(at);
+    }
+
+    fn wouldCycleCallback(context: *anyopaque, kind: substitution.GuardKind, name: []const u8) bool {
+        const self: *Builder = @ptrCast(@alignCast(context));
+        return self.wouldCycle(kind, name);
     }
     fn resolvePending(self: *Builder, c: Candidate, l: Longhand) Allocator.Error!struct { assigned: properties.Assigned, unavailable: bool = false } {
         if (c.decl.value != .value or c.decl.value.value != .pending) return .{ .assigned = c.decl.value };
@@ -397,7 +709,17 @@ const Builder = struct {
             if (!source.tree_count_allowed) context.tree_counts = .{ .index = 0, .count = 0 } else context.tree_count_provider = .{ .context = self, .get = pendingTreeCounts };
             var host = self.substitutionHost(context);
             host.tree_scope = source.tree_scope.serial;
-            const outcome = try pending.resolve(self.ctx.allocator, host, self.ctx.url_resolver);
+            // Values 5 "replace substitution functions in a property": the
+            // property's own ("property", name) context is guarded.
+            const guarded = try self.guard(.property, l.name());
+            var outcome = pending.resolve(self.ctx.allocator, host, self.ctx.url_resolver) catch |err| {
+                _ = self.unguard(guarded);
+                return err;
+            };
+            if (self.unguard(guarded)) {
+                outcome.deinit(self.ctx.allocator);
+                outcome = .invalid;
+            }
             errdefer outcome.deinit(self.ctx.allocator);
             const at = self.pending.items.len;
             try self.pending.append(self.ctx.allocator, .{ .value = pending, .source = source, .outcome = outcome });
@@ -415,8 +737,17 @@ const Builder = struct {
 
     /// What substitution reads from this element (substitution.Host): its
     /// custom properties, the environment and the math context.
-    fn substitutionHost(self: *Builder, context: @import("math_values.zig").Context) @import("substitution.zig").Host {
-        return .{ .context = self, .environment = self.ctx.environment, .math = context };
+    fn substitutionHost(self: *Builder, context: @import("math_values.zig").Context) substitution.Host {
+        return .{
+            .context = self,
+            .custom_value = customValueCallback,
+            .parent_custom_value = parentCustomValueCallback,
+            .guard = guardCallback,
+            .unguard = unguardCallback,
+            .would_cycle = wouldCycleCallback,
+            .environment = self.ctx.environment,
+            .math = context,
+        };
     }
 
     fn parentValue(self: *const Builder, l: Longhand) Value {
@@ -512,6 +843,9 @@ const Builder = struct {
     }
 
     fn run(self: *Builder) Allocator.Error!void {
+        // CSS Variables 1: custom properties first - any longhand, the
+        // high-priority ones included, may substitute one.
+        try self.resolveCustomProperties();
         // The high-priority longhands: the mapping of logical ones, then
         // color-scheme (what every system color resolves against - Blink
         // applies it before color too), then font-size (em), then color
@@ -1007,22 +1341,30 @@ const Exclusions = struct {
     const Level = struct { origin: Origin, layer: u16, important: bool };
 
     fn add(self: *Exclusions, c: Candidate) void {
+        self.addLevel(c.source.*, c.decl.important);
+    }
+
+    fn addLevel(self: *Exclusions, source: Source, important: bool) void {
         if (self.count == self.layers.len) {
             // Deeper than any real chain: discard the whole origin.
-            self.revert_class_at_least = @min(self.revert_class_at_least, c.source.origin.revertClass());
+            self.revert_class_at_least = @min(self.revert_class_at_least, source.origin.revertClass());
             return;
         }
-        self.layers[self.count] = .{ .origin = c.source.origin, .layer = c.source.layer, .important = c.decl.important };
+        self.layers[self.count] = .{ .origin = source.origin, .layer = source.layer, .important = important };
         self.count += 1;
     }
 
     fn excludes(self: *const Exclusions, c: Candidate) bool {
-        if (c.source.origin.revertClass() >= self.revert_class_at_least) return true;
+        return self.excludesSource(c.source.*, c.decl.important);
+    }
+
+    fn excludesSource(self: *const Exclusions, source: Source, important: bool) bool {
+        if (source.origin.revertClass() >= self.revert_class_at_least) return true;
         for (self.layers[0..self.count]) |lv| {
-            if (lv.origin != c.source.origin or lv.layer != c.source.layer) continue;
+            if (lv.origin != source.origin or lv.layer != source.layer) continue;
             // An important level's revert-layer also passes the normal
             // declarations of its layer.
-            if (lv.important or !c.decl.important) return true;
+            if (lv.important or !important) return true;
         }
         return false;
     }
