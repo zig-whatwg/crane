@@ -23,9 +23,10 @@
 //! border style (Backgrounds 3 3.3); only its resolved value is zero for a
 //! side not drawn (ComputedStyle.serializeResolved).
 //!
-//! Stated: `revert-rule` (Cascade 5's newest keyword, which no browser ships)
-//! acts as `revert-layer`; there is no user origin (Crane has no user style
-//! sheets) and no animation or transition origin.
+//! `revert-rule` (Cascade 5 7.3.6) rolls back to the cascade as if the
+//! current style rule were not present (Chrome and Safari ship it). Stated:
+//! there is no user origin (Crane has no user style sheets) and no animation
+//! or transition origin.
 //!
 //! Spec: https://drafts.csswg.org/css-cascade-5/#cascading
 //! Spec: https://drafts.csswg.org/css-cascade-5/#defaulting
@@ -624,7 +625,7 @@ const Builder = struct {
         var position = state.first;
         while (position < state.end) : (position += 1) {
             const c = self.custom_candidates[position];
-            if (excluded.excludesSource(c.source.*, c.decl.important)) continue;
+            if (excluded.excludesSource(c.source, c.decl.important)) continue;
             const keyword: values.CssWide = switch (c.decl.value) {
                 .css_wide => |k| k,
                 .text => |t| {
@@ -670,7 +671,8 @@ const Builder = struct {
                     if (c.source.origin == .user_agent) return self.inheritedCustom(name);
                     excluded.revert_class_at_least = @min(excluded.revert_class_at_least, c.source.origin.revertClass());
                 },
-                .revert_layer, .revert_rule => excluded.addLevel(c.source.*, c.decl.important),
+                .revert_layer => excluded.addLevel(c.source.*, c.decl.important),
+                .revert_rule => excluded.addRule(c.source),
             }
         }
         // No declaration left: the default, inherit.
@@ -940,7 +942,11 @@ const Builder = struct {
                     // that the specified value is calculated as if no rules
                     // were specified in the current cascade layer - or
                     // between its normal and important levels."
-                    .revert_layer, .revert_rule => excluded.add(winner),
+                    .revert_layer => excluded.add(winner),
+                    // Cascade 5 7.3.6: "as if the current style rule had not
+                    // been present at all" - every declaration of the rule
+                    // (one matched block) is passed over.
+                    .revert_rule => excluded.addRule(winner.source),
                 },
             }
         }
@@ -1487,6 +1493,9 @@ const Exclusions = struct {
     /// (origin, layer, important) levels `revert-layer` discarded.
     layers: [8]Level = undefined,
     count: usize = 0,
+    /// The rules (matched blocks, by their Source) `revert-rule` discarded.
+    rules: [8]*const Source = undefined,
+    rule_count: usize = 0,
 
     const Level = struct { origin: Origin, layer: u16, important: bool };
 
@@ -1504,11 +1513,23 @@ const Exclusions = struct {
         self.count += 1;
     }
 
-    fn excludes(self: *const Exclusions, c: Candidate) bool {
-        return self.excludesSource(c.source.*, c.decl.important);
+    fn addRule(self: *Exclusions, source: *const Source) void {
+        if (self.rule_count == self.rules.len) {
+            // Deeper than any real chain: discard the rule's whole layer.
+            self.addLevel(source.*, false);
+            return;
+        }
+        self.rules[self.rule_count] = source;
+        self.rule_count += 1;
     }
 
-    fn excludesSource(self: *const Exclusions, source: Source, important: bool) bool {
+    fn excludes(self: *const Exclusions, c: Candidate) bool {
+        return self.excludesSource(c.source, c.decl.important);
+    }
+
+    fn excludesSource(self: *const Exclusions, source_ref: *const Source, important: bool) bool {
+        for (self.rules[0..self.rule_count]) |rule| if (rule == source_ref) return true;
+        const source = source_ref.*;
         if (source.origin.revertClass() >= self.revert_class_at_least) return true;
         for (self.layers[0..self.count]) |lv| {
             if (lv.origin != source.origin or lv.layer != source.layer) continue;

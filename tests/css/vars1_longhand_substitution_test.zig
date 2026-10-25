@@ -252,3 +252,27 @@ fn cascadeAll(allocator: Allocator) !void {
 test "allocation failure leaks nothing through substitution into longhands" {
     try testing.checkAllAllocationFailures(testing.allocator, cascadeAll, .{});
 }
+
+test "revert-rule rolls back to the cascade without the current rule (Cascade 5 7.3.6; revert-rule-in-fallback.html)" {
+    var tree: Tree = .{ .allocator = testing.allocator };
+    defer tree.deinit();
+    // Chrome 156 and Safari 27 pass revert-rule-in-fallback.html.
+    const style = try tree.element(&.{
+        .{ .text = "width: 1px; margin: 1px; --x: earlier; height: 2px", .order = 1 },
+        .{ .text = "width: var(--unknown, revert-rule); margin: var(--unknown, revert-rule); --x: var(--unknown, revert-rule); height: revert-rule", .order = 2 },
+    });
+    try expectResolved(style, .width, "1px");
+    try expectResolved(style, .margin_top, "1px");
+    try expectResolved(style, .margin_left, "1px");
+    try expectResolved(style, .height, "2px");
+    try testing.expectEqualStrings("earlier", style.customValue("--x").?.bytes);
+}
+
+test "revert-rule with no earlier rule is the default" {
+    var tree: Tree = .{ .allocator = testing.allocator };
+    defer tree.deinit();
+    _ = try tree.element(&.{.{ .text = "color: rgb(1, 2, 3)" }});
+    const style = try tree.element(&.{.{ .text = "width: revert-rule; color: revert-rule", .order = 1 }});
+    try expectResolved(style, .width, "auto");
+    try expectResolved(style, .color, "rgb(1, 2, 3)");
+}
