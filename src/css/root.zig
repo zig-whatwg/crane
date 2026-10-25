@@ -155,3 +155,6 @@ pub const random_values = @import("random_values.zig");
 /// CSS Values 5 Appendix A: arbitrary substitution functions (var(), env(),
 /// random-item()) - argument grammars and the substitution engine.
 pub const substitution = @import("substitution.zig");
+pub const pending_values = @import("pending_values.zig");
+/// CSS Namespaces 3: a style sheet's namespace prefixes, shared by reference.
+pub const namespace_map = @import("namespace_map.zig");
