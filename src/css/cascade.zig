@@ -225,11 +225,75 @@ fn priority(source: Source, important: bool) u128 {
     return (origin << 96) | (tree << 80) | (attached << 79) | (layer << 63) | (source.specificity.packed30() << 33) | source.order;
 }
 
+const LonghandSet = std.EnumSet(Longhand);
+
+/// CSS Pseudo 4 2.1.2 and 2.2.4: the properties that apply to ::first-line
+/// and ::first-letter. A declaration of any other longhand in a rule for one
+/// of them is not applied: the pseudo-element keeps the value it inherits
+/// (from its originating element) or its initial value, as Blink and Gecko
+/// expose it through getComputedStyle; custom properties apply to both. The
+/// lists are the spec's categories mapped onto Crane's longhands - all font
+/// properties, color, opacity, all background properties, the typesetting
+/// and inline layout properties that apply to inline boxes (letter-spacing,
+/// text-transform, line-height) - and, for ::first-letter, also margin,
+/// padding and border properties and float (CSS 2.2 5.12.2).
+///
+/// "User agents may apply other properties as well": three Crane longhands
+/// outside those categories are applied, by browser majority (golden rule
+/// 2), since WebKit filters neither pseudo-element (StyleAdjuster.cpp only
+/// forces its display; PropertyAllowlist.cpp has no first-letter or
+/// first-line list) and so counts for every property Blink or Gecko
+/// applies: visibility (Blink's css_properties.json5 valid_for_first_letter
+/// and valid_for_first_line) and fill, stroke and stroke-width (Gecko's
+/// PropertyRestrictions svg_text_properties, servo/components/style/
+/// properties/data.py). The text properties that apply to text and block
+/// containers rather than inline boxes - white-space-collapse,
+/// text-wrap-mode, text-indent - apply to neither, as in both
+/// (css/css-pseudo/first-letter-allowed-properties.html and
+/// first-line-allowed-properties.html: Chrome and Firefox pass every "should
+/// not be applied" case, Safari fails position, border, margin, padding).
+const first_line_longhands: LonghandSet = blk: {
+    @setEvalBranchQuota(20_000);
+    var set: LonghandSet = .initMany(&.{
+        .color,                 .opacity,           .visibility,
+        .letter_spacing,        .text_transform,    .line_height,
+        .fill,                  .stroke,            .stroke_width,
+        .background_color,      .background_image,  .background_position_x,
+        .background_position_y, .background_size,   .background_repeat,
+        .background_attachment, .background_origin, .background_clip,
+    });
+    for (std.enums.values(Longhand)) |l| {
+        if (std.mem.startsWith(u8, @tagName(l), "font_")) set.insert(l);
+    }
+    break :blk set;
+};
+
+const first_letter_longhands: LonghandSet = blk: {
+    @setEvalBranchQuota(20_000);
+    var set = first_line_longhands;
+    set.insert(.float);
+    for (std.enums.values(Longhand)) |l| {
+        const name = @tagName(l);
+        if (std.mem.startsWith(u8, name, "margin_") or std.mem.startsWith(u8, name, "padding_") or std.mem.startsWith(u8, name, "border_")) set.insert(l);
+    }
+    break :blk set;
+};
+
+/// The longhands that may apply to `pseudo`, or null when every one does.
+/// Only ::first-letter and ::first-line filter, so only they pay.
+fn appliesTo(pseudo: ?[]const u8) ?*const LonghandSet {
+    const name = pseudo orelse return null;
+    if (std.mem.eql(u8, name, "first-letter")) return &first_letter_longhands;
+    if (std.mem.eql(u8, name, "first-line")) return &first_line_longhands;
+    return null;
+}
+
 /// The caller finishes appending matched batches before this call, and
 /// keeps the slice and declaration blocks immutable until cascade returns.
 /// Like Blink's MatchResult/CascadeMap, candidates refer back to their
 /// matched declarations rather than duplicating all source data per property.
-fn collectCandidates(allocator: Allocator, matched: []const Matched) Allocator.Error!std.ArrayList(Candidate) {
+/// A declaration of a longhand outside `applies` is not a candidate.
+fn collectCandidates(allocator: Allocator, matched: []const Matched, applies: ?*const LonghandSet) Allocator.Error!std.ArrayList(Candidate) {
     var candidates: std.ArrayList(Candidate) = .empty;
     errdefer candidates.deinit(allocator);
     for (matched) |*m| {
@@ -237,6 +301,7 @@ fn collectCandidates(allocator: Allocator, matched: []const Matched) Allocator.E
         std.debug.assert(@intFromPtr(&m.source) + @sizeOf(Source) <= @intFromPtr(matched.ptr) + matched.len * @sizeOf(Matched));
         var it = m.block.typed();
         while (it.next()) |d| {
+            if (applies) |set| if (!set.contains(d.longhand)) continue;
             try candidates.append(allocator, .{
                 .decl = d,
                 .priority = priority(m.source, d.important),
@@ -345,7 +410,7 @@ const CandidateIndex = struct {
 /// the caller's (`destroy`). Matched blocks must remain stable for this call.
 pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*ComputedStyle {
     const allocator = ctx.allocator;
-    var candidates = try collectCandidates(allocator, matched);
+    var candidates = try collectCandidates(allocator, matched, appliesTo(ctx.pseudo));
     defer candidates.deinit(allocator);
     var stack_links: [64]usize = undefined;
     const links = if (candidates.items.len <= stack_links.len)
@@ -1826,7 +1891,7 @@ const cv1HasSourceApi = @hasDecl(Cv1Cascade, "TreeScopeRef") and
     @hasDecl(Cv1Cascade, "ValueSource") and @hasDecl(Cv1Cascade, "collectCandidates");
 
 fn cv1SourceSpecified(matched: []const Matched, longhand: Longhand, mode: Keyword, direction: Keyword) !Specified {
-    var candidates = try Cv1Cascade.collectCandidates(testing.allocator, matched);
+    var candidates = try Cv1Cascade.collectCandidates(testing.allocator, matched, null);
     defer candidates.deinit(testing.allocator);
     const links = try testing.allocator.alloc(usize, candidates.items.len);
     defer testing.allocator.free(links);
@@ -2154,7 +2219,7 @@ test "ci1 nested component context copies its winning declaration source" {
         .block = &block,
         .source = .{ .origin = .author, .tree_scope = .{ .serial = 71 }, .tree_count_allowed = false },
     }};
-    var candidates = try collectCandidates(allocator, &matched);
+    var candidates = try collectCandidates(allocator, &matched, null);
     defer candidates.deinit(allocator);
     const links = try allocator.alloc(usize, candidates.items.len);
     defer allocator.free(links);
@@ -2205,7 +2270,7 @@ fn ci1NestedColorSource(allocator: Allocator, allowed: bool) !void {
         }
     };
     var probe: Probe = .{};
-    var candidates = try collectCandidates(allocator, &matched);
+    var candidates = try collectCandidates(allocator, &matched, null);
     defer candidates.deinit(allocator);
     const links = try allocator.alloc(usize, candidates.items.len);
     defer allocator.free(links);
@@ -2283,7 +2348,7 @@ fn withHost(allocator: Allocator, text: []const u8, parent_text: ?[]const u8, bo
     var block = try DeclarationBlock.parse(.{ .allocator = allocator }, text);
     defer block.deinit();
     const matched = [_]Matched{.{ .block = &block, .source = .{ .origin = .author } }};
-    var candidates = try collectCandidates(allocator, &matched);
+    var candidates = try collectCandidates(allocator, &matched, null);
     defer candidates.deinit(allocator);
     const links = try allocator.alloc(usize, candidates.items.len);
     defer allocator.free(links);
@@ -2399,7 +2464,7 @@ test "Host.attribute reads the element's attribute through content_attributes, n
     var block = try DeclarationBlock.parse(.{ .allocator = allocator }, "color: red");
     defer block.deinit();
     const matched = [_]Matched{.{ .block = &block, .source = .{ .origin = .author } }};
-    var candidates = try collectCandidates(allocator, &matched);
+    var candidates = try collectCandidates(allocator, &matched, null);
     defer candidates.deinit(allocator);
     const links = try allocator.alloc(usize, candidates.items.len);
     defer allocator.free(links);
