@@ -87,8 +87,11 @@ pub fn parseForFontLoading(options: Options, text: []const u8) Allocator.Error!?
     while (true) {
         const token = input.next();
         if (token.token_type == .eof) break;
+        // Lane vars1: env() and random-item() too - every arbitrary
+        // substitution function (style parsing now keeps them as pending
+        // values; nothing substitutes them without an element).
         if (token.token_type == .function and
-            (tokenizer.nameEql(token.value, "var") or
+            (@import("substitution.zig").functionId(token.value) != null or
                 tokenizer.nameEql(token.value, "random") or
                 tokenizer.nameEql(token.value, "sibling-index") or
                 tokenizer.nameEql(token.value, "sibling-count"))) return null;
