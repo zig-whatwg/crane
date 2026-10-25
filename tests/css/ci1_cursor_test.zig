@@ -27,6 +27,7 @@ test "cursor keywords and optional ordered image hotspots serialize canonically"
     try serialized("cursor", "contex\\74-menu", "context-menu");
     try serialized("cursor", "url(a.cur) 1.0 -2, url('b.png'), grab", "url(\"a.cur\") 1 -2, url(\"b.png\"), grab");
     try serialized("cursor", "url() 0 0, none", "url(\"\") 0 0, none");
+    try serialized("cursor", "url(a.cur) calc(1) 2, pointer", "url(\"a.cur\") calc(1) 2, pointer");
     // Q3: Firefox/Safari retain fractional hotspots; Blink truncates.
     // Evidence: tmp/analysis/integrator-probes-1022c/results/cursor-*.json.
     try serialized("cursor", "url(a) 1.5 -2.9, pointer", "url(\"a\") 1.5 -2.9, pointer");
@@ -35,7 +36,7 @@ test "cursor keywords and optional ordered image hotspots serialize canonically"
 }
 
 test "cursor requires a final keyword, paired numbers and comma separated images" {
-    for ([_][]const u8{ "", "bogus", "url(a.cur)", "url(a.cur) pointer", "url(a.cur) 1, pointer", "url(a.cur) 1px 2px, pointer", "url(a.cur) 1 2 3, pointer", "pointer, url(a.cur)", "url(a.cur),", "url(a.cur), pointer junk", "linear-gradient(red, blue), pointer", "url(a.cur) calc(1) 2, pointer" }) |input| {
+    for ([_][]const u8{ "", "bogus", "url(a.cur)", "url(a.cur) pointer", "url(a.cur) 1, pointer", "url(a.cur) 1px 2px, pointer", "url(a.cur) 1 2 3, pointer", "pointer, url(a.cur)", "url(a.cur),", "url(a.cur), pointer junk", "linear-gradient(red, blue), pointer" }) |input| {
         const value = try parse(testing.allocator, "cursor", input, null);
         defer if (value) |v| v.release();
         try testing.expect(value == null);

@@ -478,10 +478,16 @@ from the integrator, who owns engine_protocol.zig. It lands in one change:
   borrowed for the call.
 - **`takeCallbackFunction` / `takeCallbackInterface`** untag the binding's
   callback values until codegen types callback parameters as
-  `CallbackFunction` / `CallbackInterface`. A `*runtime.CallbackWrapper` is
-  an opaque, BORROWED argument: the binding releases it when the call
-  returns, and an impl that keeps the callback takes its own
-  CallbackInterface.
+  `CallbackFunction` / `CallbackInterface`. Both values are BORROWED for the
+  call: a `*runtime.CallbackWrapper` is an opaque argument the binding
+  releases when the call returns, and a callback-function value (an
+  argument, a dictionary member, a union arm, a sequence element) is the
+  Global its conversion made, which the binding frees with the rest of the
+  value. An impl that keeps the callback takes its own CallbackFunction or
+  CallbackInterface during the call (V8 moves the function out of the
+  binding's Global); one that does not leaves it to the binding. Until lane
+  leaks7 (2026-10-25) the take adopted the binding's Global, so every stub
+  that dropped its callback (`new ResizeObserver(fn)`) kept it.
 - **Ownership flags** are gone: `runtime.JSValue`'s handle arm is only the
   engine's pointer (it carried `needs_disposal` and a `.local` / `.global`
   tag). The binding releases every value an impl returns; the generated

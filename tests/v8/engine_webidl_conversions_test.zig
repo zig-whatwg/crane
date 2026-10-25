@@ -1193,9 +1193,12 @@ test "protocol: prepare to run a callback makes the callback context the incumbe
 var taken: ?protocol.CallbackFunction = null;
 
 /// A binding taking a callback-function argument: the conversion's Global,
-/// tagged as the binding tags it, handed to takeCallbackFunction.
+/// tagged as the binding tags it, handed to takeCallbackFunction - which
+/// takes a hold of its own - and freed when the call returns, as the binding
+/// frees it (interface.freeConvertedArg).
 fn takeArgument(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     const argument = info.get(0);
+    defer ffi.v8_Value_Dispose(argument);
     taken = protocol.takeCallbackFunction(v8.pointer_tag.tagPointer(@ptrCast(argument), .global_handle));
 }
 

@@ -482,13 +482,17 @@ test "setterValueIsBorrowed - a union whose only non-copied arm is `object` is b
     try std.testing.expect(borrowed(?ObjectOrString));
 }
 
-test "setterValueIsBorrowed - a callback is handed over, never borrowed" {
+test "setterValueIsBorrowed - a callback function is borrowed; the map keeps a hold of its own" {
     // typedefs.EventHandler, reconstructed: `?EventHandlerNonNull`. Its
-    // conversion adopts the argument's Global, and the event handler map
-    // keeps it; releasing it would free the stored handler.
+    // conversion's value IS the argument's Global, BORROWED for the setter
+    // since lane leaks7: the event handler map takes a hold of its own
+    // (engine.takeCallbackFunction moves the function out), and the binding
+    // releases its Global once the setter has returned.
     const EventHandler = ?*const fn (event: *runtime.Instance) runtime.JSValue;
-    try std.testing.expect(!borrowed(EventHandler));
-    try std.testing.expect(!borrowed(*const fn () callconv(.c) void));
+    try std.testing.expect(borrowed(EventHandler));
+    try std.testing.expect(borrowed(*const fn () callconv(.c) void));
+    // Not named, so handed over: a callback interface's wrapper, and a union
+    // arm nobody typed.
     try std.testing.expect(!borrowed(*runtime.CallbackWrapper));
     const TimerHandlerShaped = union(enum) { domstring: runtime.DOMString, function: *anyopaque };
     try std.testing.expect(!borrowed(TimerHandlerShaped));

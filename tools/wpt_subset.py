@@ -371,6 +371,17 @@ INCLUDE = [
     ('css/css-shadow/host-context-parsing.html', 'shadow syntax and value parsing outside the parsing directory'),
     ('css/css-shadow/host-parsing.html', 'shadow syntax and value parsing outside the parsing directory'),
     ('css/css-shadow/part/serialization.html', 'shadow value or rule serialization; no rendered boxes'),
+    # The user, 2026-10-25: ::part() forwarding through exportparts for Codex row 122
+    # (computed colors only; not invalidation-part-pseudo.html, which needs pointer hit-testing).
+    ('css/css-shadow/part/simple-forward.html', '::part() forwarding through exportparts and its invalidation (row 122)'),
+    ('css/css-shadow/part/simple-forward-shorthand.html', '::part() forwarding through exportparts and its invalidation (row 122)'),
+    ('css/css-shadow/part/double-forward.html', '::part() forwarding through exportparts and its invalidation (row 122)'),
+    ('css/css-shadow/part/exportparts-multiple.html', '::part() forwarding through exportparts and its invalidation (row 122)'),
+    ('css/css-shadow/part/both-part-and-exportparts.html', '::part() forwarding through exportparts and its invalidation (row 122)'),
+    ('css/css-shadow/part/precedence-part-vs-part.html', '::part() forwarding through exportparts and its invalidation (row 122)'),
+    ('css/css-shadow/part/invalidation-change-exportparts-forward.html', '::part() forwarding through exportparts and its invalidation (row 122)'),
+    ('css/css-shadow/part/invalidation-change-part-name-forward.html', '::part() forwarding through exportparts and its invalidation (row 122)'),
+    ('css/css-shadow/part/invalidation-complex-selector-forward.html', '::part() forwarding through exportparts and its invalidation (row 122)'),
     ('css/css-shadow/slotted-parsing.html', 'shadow syntax and value parsing outside the parsing directory'),
     ('css/css-shapes/basic-shape-circle-ellipse-serialization.html', 'shapes value or rule serialization; no rendered boxes'),
     ('css/css-shapes/shape-functions/circle-function-computed.html', 'shapes computed style and inheritance; no rendered box assertions'),
