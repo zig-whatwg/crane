@@ -198,3 +198,11 @@ why = Sweep-only: 33/34 in the generation 179 sweep; Isolated, one process each,
 pair.1 = base 34/34; tip 34/34
 pair.2 = base 34/34; tip 34/34
 pair.3 = base 34/34; tip 34/34
+
+[html/cross-origin-opener-policy/coop-coep-sandbox.https.html]
+generation = 181
+kind = flake
+why = The same sweep-load hang as the generation-177 disposition: the generation-181 sweep recorded TIMEOUT ("supervisor killed a child that made no progress for 150000ms", 0 subtests); generation 180 had 3/4. Three alternating serial pairs on chat (2026-10-25, frozen main-fbeb806cc8 BASE and main-3096bf8dff TIP) gave OK 3/4 on every run of both sides, the same one failing subtest each time (a sandboxed COOP popup is created instead of a network error: the known COOP/COEP isolation gap). Second sweep-only hang of this file (177, 181), queued in tmp/plans/feature-queue.md. Evidence: tmp/debug/flake181.out.
+pair.1 = base 3/4; tip 3/4
+pair.2 = base 3/4; tip 3/4
+pair.3 = base 3/4; tip 3/4
