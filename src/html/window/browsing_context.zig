@@ -110,6 +110,26 @@ pub const Navigables = struct {
         return null;
     }
 
+    /// A Window's teardown: no browsing context of this Browser - live or
+    /// retired - names `window` as its active window from here on, nor, when
+    /// it was that Window's, `document` as its active document (lane
+    /// winslot1, kind 1). A retired context - a removed iframe's, kept while
+    /// a Window might still read it (`discard`) - named its torn-down Window
+    /// for the rest of the Browser's life, and every reader of it (user
+    /// activation, the opener, frames[i], a frame's named property) read
+    /// whatever the slab put at that address next. Blink clears both sides
+    /// when a window leaves its frame (DOMWindow::DisconnectFromFrame).
+    /// Compares only; reads neither.
+    pub fn forgetWindow(self: *Navigables, window: InstancePtr, document: ?InstancePtr) void {
+        for (self.live.items) |ctx| {
+            if (ctx.active_window != window) continue;
+            ctx.active_window = null;
+            if (document) |d| {
+                if (ctx.active_document == d) ctx.active_document = null;
+            }
+        }
+    }
+
     /// The live browsing context with this id, if any.
     pub fn byId(self: *const Navigables, id: u64) ?*BrowsingContext {
         for (self.live.items) |ctx| {

@@ -980,6 +980,9 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
     // Clean up Window's own internal state
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        // Its document, as it was: what `forgetWindow` below compares.
+        const associated_document = internal.document;
+
         // The window's Location and History ([SameObject]: one each for the
         // window's life) go WHOLE with it: their destructors, and their
         // storage back from whoever can reach them last (runtime.gc
@@ -1015,6 +1018,13 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
             log.debug("[Window.deinit] Document cleanup DONE", .{});
         } else {
             log.debug("[Window.deinit] NO document to clean up", .{});
+        }
+
+        // No browsing context names this Window from here on - its own, or a
+        // retired one that kept it (Navigables.forgetWindow) - before
+        // `internal.deinit` can free a context the Window owns.
+        if (internal.browsing_context.navigables) |navigables| {
+            navigables.forgetWindow(@ptrCast(instance), if (associated_document) |d| @ptrCast(d) else null);
         }
 
         internal.deinit();

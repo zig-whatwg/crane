@@ -99,6 +99,7 @@ const safe = [_]Holder{
     .nested_teardown_coordinator, // tests/v8/cleanup_coordinator_nested_test.zig
     .message_event_source, // tests/html/winslot_proxy_holders_test.zig
     .ui_event_view, // tests/html/winslot_proxy_holders_test.zig
+    .browsing_context_active_window, // tests/html/winslot_browsing_context_test.zig
 };
 
 /// Whether `holder` is in `table`. Every kind a table does not list is
