@@ -807,6 +807,22 @@ const Builder = struct {
         return .{ .value = value.value, .dimension = dimension };
     }
 
+    /// attr() (Codex row 122): the element's attribute through the DOM's
+    /// Context.content_attributes lookup (the originating element's for a
+    /// pseudo-element). Batch 1 answers the no-namespace case only - a
+    /// prefixed name gives null, so the fallback applies - until row 122
+    /// extends the lookup with namespaces and the winning declaration's tree
+    /// scope (passed here already).
+    fn attributeCallback(context: *anyopaque, tree_scope: u64, map: ?*const substitution.NamespaceMap, prefix: ?[]const u8, local_name: []const u8) ?substitution.Attribute {
+        _ = tree_scope;
+        _ = map;
+        const self: *Builder = @ptrCast(@alignCast(context));
+        if (prefix != null) return null;
+        const lookup = self.ctx.content_attributes orelse return null;
+        const value = lookup.get(lookup.context, local_name) orelse return null;
+        return .{ .value = value, .namespace = null, .local_name = local_name };
+    }
+
     fn guardCallback(context: *anyopaque, kind: substitution.GuardKind, name: []const u8) Allocator.Error!usize {
         const self: *Builder = @ptrCast(@alignCast(context));
         return self.guard(kind, name);
@@ -870,6 +886,7 @@ const Builder = struct {
             .context = self,
             .custom_value = customValueCallback,
             .parent_custom_value = parentCustomValueCallback,
+            .attribute = attributeCallback,
             .guard = guardCallback,
             .unguard = unguardCallback,
             .would_cycle = wouldCycleCallback,
@@ -2347,6 +2364,39 @@ test "if() media() and supports() tests: true, false, or unknown (error.Invalid)
             try testing.expectError(error.Invalid, supports(host.context, "(color: red) and", false));
         }
     }.body);
+}
+
+test "Host.attribute reads the element's attribute through content_attributes, no namespace" {
+    const Attributes = struct {
+        fn get(_: *const anyopaque, name: []const u8) ?[]const u8 {
+            if (std.mem.eql(u8, name, "data-size")) return "10px";
+            return null;
+        }
+    };
+    var marker: u8 = 0;
+    const allocator = testing.allocator;
+    var block = try DeclarationBlock.parse(.{ .allocator = allocator }, "color: red");
+    defer block.deinit();
+    const matched = [_]Matched{.{ .block = &block, .source = .{ .origin = .author } }};
+    var candidates = try collectCandidates(allocator, &matched);
+    defer candidates.deinit(allocator);
+    const links = try allocator.alloc(usize, candidates.items.len);
+    defer allocator.free(links);
+    var builder: Builder = .{
+        .ctx = .{ .allocator = allocator, .parent = null, .content_attributes = .{ .context = &marker, .get = Attributes.get } },
+        .candidates = candidates.items,
+        .index = CandidateIndex.init(candidates.items, links),
+    };
+    defer builder.deinit();
+    const host = builder.substitutionHost(.{});
+    // A synthetic attr()-like evaluation: the attribute, the canonical
+    // local name, no namespace; a prefix or a missing attribute is null.
+    const found = host.attribute.?(host.context, 7, null, null, "data-size").?;
+    try testing.expectEqualStrings("10px", found.value);
+    try testing.expect(found.namespace == null);
+    try testing.expectEqualStrings("data-size", found.local_name);
+    try testing.expect(host.attribute.?(host.context, 7, null, "svg", "data-size") == null);
+    try testing.expect(host.attribute.?(host.context, 7, null, null, "missing") == null);
 }
 
 test "style() query functions leak nothing under allocation failure" {
