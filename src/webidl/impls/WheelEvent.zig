@@ -71,9 +71,10 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     // (dom.event_construction), never its state's type.
     try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(base_init));
 
-    // Initialize UIEvent attributes (in state.base.base.own)
-    state.base.base.own.view = ui_init.view;
-    state.base.base.own.detail = ui_init.detail orelse 0;
+    // UIEventInit's members, through UIEvent's own steps
+    // (dom.event_construction): it keeps another realm's view as its
+    // WindowProxy, which a write into its state would not.
+    event_construction.initializeUIEvent(instance, event_construction.uiEventInitFrom(ui_init));
 
     // Initialize MouseEvent attributes (in state.base.own)
     const screenX: i32 = mouse_init.screenX orelse 0;

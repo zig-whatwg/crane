@@ -97,6 +97,8 @@ const safe = [_]Holder{
     .engine_foreign_window_wrapper, // tests/v8/window_dead_conversion_test.zig
     .engine_collected_realm_global, // tests/v8/window_collected_realm_conversion_test.zig
     .nested_teardown_coordinator, // tests/v8/cleanup_coordinator_nested_test.zig
+    .message_event_source, // tests/html/winslot_proxy_holders_test.zig
+    .ui_event_view, // tests/html/winslot_proxy_holders_test.zig
 };
 
 /// Whether `holder` is in `table`. Every kind a table does not list is
