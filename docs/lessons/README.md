@@ -895,6 +895,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Read the Linked V8 Patch Version](debugging-read-the-linked-v8-patch-version.md) - Measure the linked binary, then read its exact source tag before designing around an internal behavior.
 - [End cleanup at the ownership transfer](debugging-end-cleanup-at-the-ownership-transfer.md) - End the old errdefer before fallible work under the new owner.
 - [Install cleanup before reserving capacity](debugging-install-cleanup-before-reserving-capacity.md) - A failed reserve may already own an allocation.
+- [A Module Bench Attributes What a Page Profile Cannot](debugging-a-module-bench-attributes-what-a-page-profile-cannot.md) - Before calling a cost structural, rebuild the module alone in the release mode and bisect the two trees with one-line edits; a recursion or lost inline costs every caller and shows in no single frame.
 
 ### Workflow
 - [Capture remote gate output while the wrapper prints it](workflow-capture-remote-gate-output-while-the-wrapper-prints-it.md) - Keep the delivered terminal log; the remote copy is removed after printing.
