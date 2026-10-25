@@ -507,6 +507,40 @@ plugs in (section 13).
 | `invalidateLayout` | `(browser, document, node, reason: .tree / .style / .attribute / .text) void` | agent | Crane reports changes; the implementation lays out lazily. |
 | `forceLayout` | `(browser, document) void` | agent | Before a layout-dependent query that must be current. |
 
+CSS environment values are host facts available **without** the `layout` capability. They do not
+require boxes or a renderer. The pure CSS layer validates names and index counts; the DOM provider
+asks the realm's BrowserPlatform and serializes the finite number into CSS tokens.
+
+| Operation | Signature | Thread | Notes |
+|---|---|---|---|
+| `cssEnvironmentVariable` | `(browser, tab, variable: CssEnvironmentVariable, x: u32, y: u32) ?f64` | agent, sync | Allocation-free. CSS pixels, except the unitless `preferred_text_scale`. `null` means undefined: `env()` uses its fallback. A defined zero remains a value. `x` and `y` are the horizontal and vertical segment indices; ignored for scalars. |
+| `cssEnvironmentRevision` | `(browser, tab) u64` | agent, sync | Allocation-free revision advanced whenever any environment value changes. The style engine checks it on reads and invalidates cached styles when it moves. Immutable defaults return 0. |
+
+`CssEnvironmentVariable` names every standard variable, with underscores in place of CSS hyphens.
+The defaults below follow CSS Env 1, VirtualKeyboard and Window Controls Overlay, checked in Chrome
+155, Firefox 158 and Safari 27 on 2026-10-25. A browser without a newer variable does not count as
+disagreement with the browser that ships it.
+
+| CSS names | Type / indices | Headless, darwin, linux and initial testing value |
+|---|---|---|
+| `safe-area-inset-{top,right,bottom,left}` | length / none | `0px` (all three browsers) |
+| `safe-area-max-inset-{top,right,bottom,left}` | length / none | `0px` (Chrome ships the newer definition) |
+| `keyboard-inset-{top,right,bottom,left,width,height}` | length / none | `0px` (Chrome ships the newer definition) |
+| `preferred-text-scale` | number / none | `1` (Chrome ships the newer definition) |
+| `titlebar-area-{x,y,width,height}` | length / none | undefined without a window controls overlay |
+| `viewport-segment-{width,height,top,right,bottom,left}` | length / exactly two | undefined without a segmented viewport; `(0, 0)` is not an implicit segment |
+
+The host supplies finite values and updates its revision after publishing a change. Segment right
+and bottom values are coordinates relative to the viewport origin, not distances from its far edge.
+The testing adapter exposes `setCssEnvironmentVariable(browser, tab, variable, x, y, value)` with
+`error{OutOfMemory}!void`: overrides are sparse, `null` makes an entry undefined, equal values do not
+advance the revision, and allocation failure preserves both the value and revision. Each Browser
+owns its overrides. No state is shared between Browsers.
+
+**Current scope:** values are per Browser. The built-in adapters ignore `tab`, and the DOM provider
+passes 0. Per-tab values wait for platform recipes step 7's document-to-TabId mapping and event bridge.
+The current change signal is the revision queried during style reads; no platform event is needed.
+
 ### 6.10 Capabilities offered to pages
 
 Every operation below is per Browser, called on the agent's thread (section 4), and gated on its

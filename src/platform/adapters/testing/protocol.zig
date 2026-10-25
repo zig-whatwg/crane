@@ -23,6 +23,7 @@ const curl = @import("kit_curl");
 const crypto = @import("kit_crypto");
 const browser_state = @import("kit_browser_state");
 const memory_clipboard = @import("kit_memory_clipboard");
+const environment_variables = @import("environment_variables.zig");
 const image_decoding = if (for (platform_options.platform_without) |capability| {
     if (std.mem.eql(u8, capability, "image_decoding")) break true;
 } else false) headless else @import("image_decoding.zig");
@@ -35,14 +36,16 @@ const fonts = if (for (platform_options.platform_without) |capability| {
 /// reaches the next (WebKitTestRunner's process-global mocks need a reset).
 const Extra = struct {
     clipboard: memory_clipboard.Clipboard,
+    environment: environment_variables.Values,
 
     pub fn init(allocator: std.mem.Allocator, options: *const platform.BrowserOptions) error{OutOfMemory}!Extra {
         _ = options;
-        return .{ .clipboard = .init(allocator) };
+        return .{ .clipboard = .init(allocator), .environment = .init(allocator) };
     }
 
     pub fn deinit(self: *Extra) void {
         self.clipboard.deinit();
+        self.environment.deinit();
     }
 };
 
@@ -189,6 +192,22 @@ pub const protocol = struct {
     pub const isRendered = headless.isRendered;
     pub const renderedText = headless.renderedText;
     pub const viewport = headless.viewport;
+
+    pub fn cssEnvironmentVariable(browser: *platform.BrowserPlatform, tab: platform.TabId, variable: platform.CssEnvironmentVariable, x: u32, y: u32) ?f64 {
+        return State.of(browser).extra.environment.get(browser, tab, variable, x, y);
+    }
+
+    pub fn cssEnvironmentRevision(browser: *platform.BrowserPlatform, tab: platform.TabId) u64 {
+        _ = tab;
+        return State.of(browser).extra.environment.revision.load(.acquire);
+    }
+
+    /// Test control: change this Browser's value (null makes it undefined).
+    /// The reserved tab argument is ignored until recipes step 7.
+    pub fn setCssEnvironmentVariable(browser: *platform.BrowserPlatform, tab: platform.TabId, variable: platform.CssEnvironmentVariable, x: u32, y: u32, value: ?f64) error{OutOfMemory}!void {
+        return State.of(browser).extra.environment.set(browser, tab, variable, x, y, value);
+    }
+
     pub const invalidateLayout = headless.invalidateLayout;
     pub const forceLayout = headless.forceLayout;
     pub const platformPermissionState = headless.platformPermissionState;
