@@ -406,6 +406,12 @@ pub const DeclarationBlock = struct {
                 var important: ?bool = null;
                 for (s.longhands(), 0..) |l, i| {
                     const d = self.get(l) orelse return;
+                    // CSSOM getPropertyValue steps 1.2.2–1.2.3: serialize
+                    // the shorthand from its longhands. Pending system-font
+                    // members have no serializable longhand value here.
+                    // Q200, tmp/analysis/integrator-probes-1024d: the coupled
+                    // longhand/getter rule follows Safari; cssText is separate.
+                    if (s == .font_variant and d.value == .value and d.value.value == .font_system) return;
                     if (important) |imp| if (imp != d.important) return;
                     important = d.important;
                     vs[i] = d.value;

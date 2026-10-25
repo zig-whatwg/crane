@@ -227,7 +227,8 @@ pub fn serialize(vs: []const properties.Assigned, out: *std.ArrayList(u8), alloc
     return true;
 }
 fn isNormal(v: Value) bool {
-    return v == .keyword and v.keyword == .normal;
+    // Q28: pending system-font longhands serialize empty and are skipped.
+    return v == .font_system or (v == .keyword and v.keyword == .normal);
 }
 fn take(stream: *properties.Stream, name: []const u8) bool {
     const token = stream.peek();

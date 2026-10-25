@@ -125,6 +125,11 @@ pub const font_settings = @import("font_settings.zig");
 pub const font_variants = @import("font_variants.zig");
 pub const font_values = @import("font_values.zig");
 pub const font_support = @import("font_support.zig");
+pub const font_family = @import("font_family.zig");
+pub const font_request = @import("font_request.zig");
+pub const font_shorthand = @import("font_shorthand.zig");
+pub const font_size_adjust = @import("font_size_adjust.zig");
+pub const font_system = @import("font_system.zig");
 
 // ============================================================================
 // Tests
