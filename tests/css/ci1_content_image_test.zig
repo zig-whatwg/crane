@@ -5,6 +5,12 @@ const testing = std.testing;
 const Content = css.style_values.Content;
 const Item = std.meta.Child(@TypeOf(@as(Content, undefined).items));
 
+const MissingAttributes = struct {
+    fn attribute(_: *anyopaque, _: u64, _: ?*const css.substitution.NamespaceMap, _: ?[]const u8, _: []const u8) ?css.substitution.Attribute {
+        return null;
+    }
+};
+
 fn parseContent(allocator: std.mem.Allocator, text: []const u8, source: ?*css.style_values.ResourceSource) !*Content {
     var assignments: std.ArrayList(css.properties.Assignment) = .empty;
     defer {
@@ -12,7 +18,18 @@ fn parseContent(allocator: std.mem.Allocator, text: []const u8, source: ?*css.st
         assignments.deinit(allocator);
     }
     try testing.expect(try css.properties.parseDeclaration(.{ .allocator = allocator, .resource_source = source }, .{ .longhand = .content }, text, &assignments));
-    const result = assignments.items[0].value.value.content;
+    const specified = assignments.items[0].value.value;
+    if (specified == .pending) {
+        var attributes: MissingAttributes = .{};
+        const resolved = try specified.pending.resolve(allocator, .{ .context = &attributes, .attribute = MissingAttributes.attribute }, null);
+        defer resolved.deinit(allocator);
+        try testing.expect(resolved == .resolved);
+        try testing.expectEqual(@as(usize, 1), resolved.resolved.len);
+        const result = resolved.resolved[0].value.value.content;
+        result.ref();
+        return result;
+    }
+    const result = specified.content;
     result.ref();
     return result;
 }
@@ -41,6 +58,8 @@ const Checks = if (@hasField(Item, "image")) struct {
     }
 
     fn attrCopy(allocator: std.mem.Allocator, release_source_first: bool) !void {
+        // Resolve through Pending before Content computation; the returned
+        // Content must outlive both the Pending and its resolved assignments.
         const original = try parseContent(allocator, "url(image) attr(data, 'fallback')", null);
         var original_owned = true;
         defer if (original_owned) original.unref();

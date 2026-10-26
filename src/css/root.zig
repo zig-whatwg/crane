@@ -170,3 +170,5 @@ pub const syntax_values = @import("syntax_values.zig");
 pub const registered_properties = @import("registered_properties.zig");
 /// CSS Namespaces 3: a style sheet's namespace prefixes, shared by reference.
 pub const namespace_map = @import("namespace_map.zig");
+pub const attr_function = @import("attr_function.zig");
+pub const shadow_parts = @import("shadow_parts.zig");

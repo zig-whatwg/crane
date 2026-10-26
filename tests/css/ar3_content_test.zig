@@ -27,7 +27,8 @@ test "content parses strings, attribute references, alternatives and distinct la
     try check("none", "none");
     try check("'a' \"b\"", "\"a\" \"b\"");
     try check("attr(data-label)", "attr(data-label)");
-    try check("attr(data-label raw-string, 'fallback')", "attr(data-label raw-string, \"fallback\")");
+    // Arbitrary substitutions keep the Pending authored tokens until compute.
+    try check("attr(data-label raw-string, 'fallback')", "attr(data-label raw-string, 'fallback')");
     try check("'visual' / 'spoken'", "\"visual\" / \"spoken\"");
     try check("counter(chapter)", "counter(chapter)");
     try check("open-quote 'inside' close-quote", "open-quote \"inside\" close-quote");
@@ -48,7 +49,9 @@ test "an explicit raw-string attribute without a fallback is invalid when missin
 }
 
 test "content functions close at EOF according to CSS Syntax" {
-    try check("attr(data-label", "attr(data-label)");
+    // Direct parseDeclaration serializes Pending.text. The stylesheet parser
+    // performs EOF completion separately (vars1_original_text_test).
+    try check("attr(data-label", "attr(data-label");
     try check("counter(chapter", "counter(chapter)");
     try check("counters(chapter, '.'", "counters(chapter, \".\")");
     try check("counter(chapter, symbols('a' 'b'", "counter(chapter, symbols(\"a\" \"b\"))");

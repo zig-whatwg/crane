@@ -197,12 +197,13 @@ pub const Pending = struct {
     /// substitution brought in against its base - as `resolve` parses a
     /// longhand's (Properties and Values API 1 §2.4). Null when the syntax
     /// does not match.
-    pub fn parseSyntax(self: *const Pending, allocator: Allocator, definition: *const @import("syntax_definitions.zig").Definition, text: []const u8, url_resolver: ?BaseUrlResolver) Allocator.Error!?@import("syntax_values.zig").Value {
+    pub fn parseSyntax(self: *const Pending, allocator: Allocator, definition: *const @import("syntax_definitions.zig").Definition, text: []const u8, taint: []const substitution.TaintRange, url_resolver: ?BaseUrlResolver) Allocator.Error!?@import("syntax_values.zig").Value {
         var urls: UrlContext = .{ .pending = self, .fallback = url_resolver };
         return definition.parseValue(.{
             .allocator = allocator,
             .quirks = self.quirks,
             .resource_source = self.source,
+            .tainted_ranges = taint,
             .url_resolver = if (self.had_resolver or url_resolver != null) .{ .context = &urls, .resolve = UrlContext.resolve } else null,
         }, text);
     }

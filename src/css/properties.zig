@@ -1000,6 +1000,9 @@ pub const ParseOptions = struct {
     /// brought from a tainted source (substitution.zig), for a grammar that
     /// must reject a tainted url(). Empty for text that was not substituted.
     tainted_ranges: []const @import("substitution.zig").TaintRange = &.{},
+    /// Byte offset of this parser's input within the substituted declaration.
+    /// Sliced content and copied raw functions keep the original coordinates.
+    taint_offset: usize = 0,
     /// The declaring sheet's namespace prefixes, borrowed; a pending value
     /// retains it (attr(): Codex row 122 fills it where sheets parse).
     namespaces: ?*@import("namespace_map.zig").NamespaceMap = null,
@@ -1322,8 +1325,10 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .content => {
             if (takeKeyword(stream, &.{ .normal, .none })) |k| return Value.kw(k);
             const generated = @import("generated_content.zig");
-            const resolver: ?generated.UrlResolver = if (options.url_resolver) |r| .{ .context = r.context, .resolve = r.resolve } else null;
-            const parsed = try generated.parseWithSourceAndScope(options.allocator, stream.text[stream.offset()..], resolver, options.resource_source, options.random_scope) orelse return null;
+            const begin = stream.offset();
+            var content_options = options;
+            content_options.taint_offset += begin;
+            const parsed = try generated.parseWithOptions(content_options, stream.text[begin..]) orelse return null;
             while (!stream.atEnd()) _ = stream.next();
             return .{ .content = parsed };
         },
@@ -1578,12 +1583,25 @@ fn imageOnly(options: ParseOptions, stream: *Stream) Allocator.Error!?Value {
     return @import("image_values.zig").parse(options, stream, .{});
 }
 
+/// Values 5 §8.7.2: check the URL's original component before serialization.
+/// Container taint covers its marked opener, not unrelated sibling arguments.
+pub fn urlRangeTainted(options: ParseOptions, range: resources.ResourceUrl.Range) bool {
+    if (options.tainted_ranges.len == 0) return false;
+    const original: resources.ResourceUrl.Range = .{ .start = options.taint_offset + range.start, .end = options.taint_offset + range.end };
+    for (options.tainted_ranges) |taint| {
+        if (taint.kind != .none and @import("attr_function.zig").urlIsTainted(original, &.{.{ .start = taint.start, .end = taint.end }})) return true;
+    }
+    return false;
+}
+
 /// The pre-existing URL and raw gradient parser; no choice is made here.
 pub fn parseImageLeaf(options: ParseOptions, stream: *Stream) Allocator.Error!?Value {
+    const begin = stream.offset();
     const t = stream.peek();
     switch (t.token_type) {
         .url => {
             _ = stream.next();
+            if (urlRangeTainted(options, .{ .start = begin, .end = stream.tok.pos })) return null;
             const raw = try tokenizer_mod.decode(options.allocator, t.value);
             defer options.allocator.free(raw);
             return try urlValue(options, raw);
@@ -1603,13 +1621,13 @@ pub fn parseImageLeaf(options: ParseOptions, stream: *Stream) Allocator.Error!?V
                     stream.restore(m);
                     return null;
                 }
+                if (urlRangeTainted(options, .{ .start = begin, .end = stream.tok.pos })) return null;
                 const raw = try tokenizer_mod.decode(options.allocator, s.stringContents());
                 defer options.allocator.free(raw);
                 return try urlValue(options, raw);
             }
             for (image_functions) |f| {
                 if (!tokenizer_mod.nameEql(t.value, f)) continue;
-                const begin = stream.offset();
                 _ = stream.next();
                 stream.skipArguments();
                 const end = stream.tok.pos;
@@ -1626,6 +1644,12 @@ pub fn parseImageLeaf(options: ParseOptions, stream: *Stream) Allocator.Error!?V
                 const shared = try SharedText.create(options.allocator, text);
                 errdefer shared.unref();
                 shared.resource_urls = try resources.collect(options.allocator, text, options.url_resolver, options.resource_source);
+                for (shared.resource_urls) |url| {
+                    if (urlRangeTainted(options, .{ .start = begin + url.range.start, .end = begin + url.range.end })) {
+                        shared.unref();
+                        return null;
+                    }
+                }
                 shared.image_kind = if (std.mem.endsWith(u8, f, "gradient")) .gradient else .other;
                 return .{ .text = shared };
             }

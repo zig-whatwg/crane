@@ -27,11 +27,13 @@ pub const svg_resources = @import("svg_resources.zig");
 pub const ParseContext = struct {
     parse: css.properties.ParseOptions,
     source: ?*css.style_values.ResourceSource = null,
+    namespaces: ?*css.namespace_map.NamespaceMap = null,
     url_context: ?@import("sheet.zig").UrlContext = null,
 
     pub fn options(self: *const ParseContext) css.properties.ParseOptions {
         var result = self.parse;
         result.resource_source = self.source;
+        result.namespaces = self.namespaces;
         if (self.url_context) |*context| result.url_resolver = context.resolver();
         return result;
     }
@@ -39,12 +41,19 @@ pub const ParseContext = struct {
     pub fn deinit(self: *ParseContext) void {
         if (self.source) |source| source.unref();
         self.source = null;
+        if (self.namespaces) |map| map.release();
+        self.namespaces = null;
     }
 
     pub fn forSheet(record: *@import("sheet.zig").SheetRecord, instance: *runtime.Instance, text: []const u8) Allocator.Error!ParseContext {
+        const map = try record.namespaceMap(instance);
+        // Acquire the fallible source before taking the additional map hold.
+        const source = try record.resourceSource(text);
+        if (map) |m| m.retain();
         return .{
             .parse = .{ .allocator = record.allocator, .quirks = record.mode.quirks },
-            .source = try record.resourceSource(text),
+            .source = source,
+            .namespaces = map,
             .url_context = record.urlContext(instance),
         };
     }
