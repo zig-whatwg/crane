@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Platform lookups stay with the state owner](architecture-platform-lookups-stay-with-the-state-owner.md) - Install cross-layer callbacks from the state owner, keep host state with its Browser, and test revision invalidation separately from initial lookup.
 - [Pending image descriptors have one read contract](architecture-pending-image-descriptors-have-one-read-contract.md) - Make pending data explicit, and test that defensive readers cannot hide a missing compute step.
 - [A hand-over every callee must take leaks at every callee that does not](architecture-a-hand-over-every-callee-must-take-leaks-at-every-callee-that-does-not.md) - Make "borrowed for the call" the default for every converted value, and have keepers take their own hold: a hand-over that each callee must remember to take leaks at every callee that forgets. And before theorising that a leak depends on order, re-run the isolation in-process on a debuggable runner.
 - [Dependencies must follow effective values](architecture-dependencies-must-follow-effective-values.md) - Query dependencies over the components computation will actually evaluate.

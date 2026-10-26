@@ -25,7 +25,7 @@ fn revision() !void {
     const page = try helper.Page.open();
     defer page.close();
     try page.run(
-        \\document.body.innerHTML = '<div id="env-target" style="width: env(safe-area-inset-top, 3px)"></div>';
+        \\document.body.innerHTML = '<div id="env-target" style="width: env(vars1-missing-environment-variable, 3px)"></div>';
         \\if (getComputedStyle(document.getElementById('env-target')).width !== '3px') throw Error('env fallback');
     );
     const document = page.browser.current_context.?.document_instance.?;
