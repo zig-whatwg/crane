@@ -133,6 +133,29 @@ pub fn execCommand(document: *Instance, command: Command) bool {
     return true;
 }
 
+/// The insertText command's first step (specs/w3c/execCommand.md, "The
+/// insertText command", action step 1): "If the active range is not
+/// collapsed, delete the selection", so a join follows the browsers' rules
+/// (delete.zig). One deviation until the formatting commands exist: the
+/// spec strips the emptied inline wrappers and then re-applies their style
+/// to the typed text through the state and value overrides (record current
+/// states and values, step 2 on), which overrides.zig still mocks; keeping
+/// the wrapper the caret is in (strip wrappers false) types into it instead,
+/// as the browsers' typing style does for `foo<b>[bar]</b>baz` -> `foo<b>a</b>baz`
+/// (editing/run/inserttext.html), so no passing inserttext or multitest
+/// subtest is traded while the overrides are mocks. The formatting batch
+/// (overrides, insertText steps 2 on) reverts this to the spec's strip
+/// wrappers true. Whether it ran.
+pub fn deleteSelectionBeforeInsert(document: *Instance) bool {
+    var edit = (beginEdit(document) catch return false) orelse return false;
+    if (edit.rangeCollapsed() catch true) return false;
+    delete.deleteTheSelection(&edit, true, false, .forward) catch |err| {
+        log.debug("insertText's delete the selection: {}", .{err});
+        return false;
+    };
+    return true;
+}
+
 /// Whether `target` (the focused element, or the body for a design-mode
 /// document) is where Backspace and Delete edit rich text.
 pub fn isEditableTarget(target: *Instance) bool {

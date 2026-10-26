@@ -3363,20 +3363,21 @@ fn applyInsertText(document: *runtime.Instance, _: *InternalState, text: []const
     const selection_opt = call_getSelection(document) catch return false;
     const selection = selection_opt orelse return false;
 
-    // Step 2: Get the range (or create one if collapsed)
-    const range = interfaces.Selection.call_getRangeAt(selection, 0) catch return false;
+    // Step 2: the Editing spec's insertText action step 1, "If the active
+    // range is not collapsed, delete the selection" (specs/w3c/
+    // execCommand.md) - the html module's, which follows the browsers where
+    // a deletion joins blocks (editing/other/delete-without-unwrapping-
+    // first-line-of-child-block.html).
+    _ = @import("html").execcommand.deleteSelectionBeforeInsert(document);
 
-    // Step 3: Delete selected content if any
-    const is_collapsed = interfaces.Selection.get_isCollapsed(selection) catch false;
-    if (!is_collapsed) {
-        RangeImpl.call_deleteContents(range) catch return false;
-    }
+    // Step 3: the range, after the deletion collapsed it.
+    const range = interfaces.Selection.call_getRangeAt(selection, 0) catch return false;
 
     // Step 4: Create text node
     const text_node = call_createTextNode(document, runtime.DOMString.initInterned(text)) catch return false;
 
     // Step 5: Insert text node at range position
-    RangeImpl.call_insertNode(range, text_node) catch return false;
+    interfaces.Range.call_insertNode(range, text_node) catch return false;
 
     // Step 6: Collapse selection after the inserted text
     interfaces.Selection.call_collapseToEnd(selection) catch {};
