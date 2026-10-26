@@ -83,7 +83,9 @@ fn readBack(allocator: Allocator, property: []const u8, function: []const u8, se
     var removed: std.ArrayList(u8) = .empty;
     defer removed.deinit(allocator);
     try testing.expect(try block.removeProperty(property, &removed));
-    try testing.expectEqualStrings(function, removed.items);
+    // A pending shorthand's removeProperty returns "" (integrator probe
+    // 1026a: Chrome and Safari; Firefox returns the value, CSSOM's step 3).
+    try testing.expectEqualStrings("", removed.items);
     try testing.expectEqual(@as(usize, 0), block.length());
 }
 

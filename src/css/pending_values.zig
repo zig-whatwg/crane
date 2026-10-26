@@ -191,6 +191,22 @@ pub const Pending = struct {
         return .{ .substituted = .{ .text = text, .taint = taint } };
     }
 
+    /// A registered custom property's substituted value (`text`, from
+    /// substituteCustom) parsed against its syntax with this declaration's
+    /// URL context - its own url()s as resolved at parse time, a url()
+    /// substitution brought in against its base - as `resolve` parses a
+    /// longhand's (Properties and Values API 1 §2.4). Null when the syntax
+    /// does not match.
+    pub fn parseSyntax(self: *const Pending, allocator: Allocator, definition: *const @import("syntax_definitions.zig").Definition, text: []const u8, url_resolver: ?BaseUrlResolver) Allocator.Error!?@import("syntax_values.zig").Value {
+        var urls: UrlContext = .{ .pending = self, .fallback = url_resolver };
+        return definition.parseValue(.{
+            .allocator = allocator,
+            .quirks = self.quirks,
+            .resource_source = self.source,
+            .url_resolver = if (self.had_resolver or url_resolver != null) .{ .context = &urls, .resolve = UrlContext.resolve } else null,
+        }, text);
+    }
+
     const UrlContext = struct {
         pending: *const Pending,
         fallback: ?BaseUrlResolver,

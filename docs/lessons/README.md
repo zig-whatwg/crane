@@ -900,6 +900,7 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Workflow
 - [A lane inside a long command cannot see a closing notice](workflow-a-lane-inside-a-long-command-cannot-see-a-closing-notice.md) - A lane cannot react to a notice it has not read: give every lane a watcher that sets STOP the moment a CLOSING NOTICE appears, and make its stop kill the remote job too.
+- [A notice watcher must match every notice format, and only notices](workflow-a-notice-watcher-must-match-every-notice-format.md) - Key a watcher on the notice's exact shapes, every one of them, and test the pattern against the file's history before trusting it.
 - [Relocating inputs must preserve their identity](workflow-relocating-inputs-must-preserve-their-identity.md) - Permit path relocation while pinning every non-location field to immutable evidence.
 - [Capture remote gate output while the wrapper prints it](workflow-capture-remote-gate-output-while-the-wrapper-prints-it.md) - Keep the delivered terminal log; the remote copy is removed after printing.
 - [Cancelling a remote wrapper can leave build children](workflow-cancelling-a-remote-wrapper-can-leave-build-children.md) - Verify that a cancelled wrapper's own build and test descendants have exited before starting its replacement.
