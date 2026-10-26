@@ -803,6 +803,7 @@ pub const Value = union(enum) {
     indent: *@import("text_indent.zig").Indent,
     paint: *@import("svg_paint.zig").Paint,
     filter: *@import("filter_values.zig").Filter,
+    box_shadow: *@import("box_shadow_values.zig").BoxShadow,
     shape: *@import("shape_values.zig").Shape,
     image_resolution: @import("image_resolution.zig").Value,
     image_position: *@import("position_values.zig").Position,
@@ -859,6 +860,7 @@ pub const Value = union(enum) {
         if (self == .try_fallbacks) return self.try_fallbacks.list.ref();
         if (self == .paint) return self.paint.ref();
         if (self == .filter) return self.filter.ref();
+        if (self == .box_shadow) return self.box_shadow.ref();
         if (self == .shape) return self.shape.ref();
         if (self == .image_resolution) return self.image_resolution.retain();
         if (self == .image_position) return self.image_position.ref();
@@ -892,6 +894,7 @@ pub const Value = union(enum) {
         if (self == .try_fallbacks) return self.try_fallbacks.list.unref();
         if (self == .paint) return self.paint.unref();
         if (self == .filter) return self.filter.unref();
+        if (self == .box_shadow) return self.box_shadow.unref();
         if (self == .shape) return self.shape.unref();
         if (self == .image_resolution) return self.image_resolution.release();
         if (self == .image_position) return self.image_position.unref();
@@ -949,6 +952,7 @@ pub const Value = union(enum) {
             .indent => |v| v.eql(b.indent),
             .paint => |v| v.eql(b.paint),
             .filter => |v| v.eql(b.filter),
+            .box_shadow => |v| v.eql(b.box_shadow),
             .shape => |v| v.eql(b.shape),
             .image_resolution => |v| v.eql(b.image_resolution),
             .image_position => |v| v.eql(b.image_position),
@@ -1005,6 +1009,7 @@ pub const Value = union(enum) {
             .image_keyword, .image_repeat, .position_visibility, .containment => false,
             .paint => |v| v.needsUnavailableMetrics(geometry_length),
             .filter => |v| v.needsUnavailableMetrics(geometry_length),
+            .box_shadow => |v| v.needsUnavailableMetrics(geometry_length),
             .shape => |v| v.needsUnavailableMetrics(geometry_length),
             .image_resolution => |v| v.needsUnavailableMetrics(geometry_length),
             .image_position => |v| v.needsUnavailableMetrics(geometry_length),
@@ -1054,6 +1059,7 @@ pub const Value = union(enum) {
             .image_keyword, .image_repeat, .position_visibility, .containment => false,
             .paint => |v| v.needsTreeCounts(),
             .filter => |v| v.needsTreeCounts(),
+            .box_shadow => |v| v.needsTreeCounts(),
             .shape => |v| v.needsTreeCounts(),
             .image_resolution => |v| v.needsTreeCounts(),
             .image_position => |v| v.needsTreeCounts(),
@@ -1101,6 +1107,7 @@ pub const Value = union(enum) {
             .image_keyword, .image_repeat, .position_visibility, .containment => false,
             .paint => |v| v.needsRandomBase(),
             .filter => |v| v.needsRandomBase(),
+            .box_shadow => |v| v.needsRandomBase(),
             .shape => |v| v.needsRandomBase(),
             .image_resolution => |v| v.needsRandomBase(),
             .image_position => |v| v.needsRandomBase(),

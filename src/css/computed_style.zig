@@ -166,6 +166,7 @@ pub const ComputedStyle = struct {
         switch (properties.Longhand.info(l).grammar) {
             .paint => return @import("svg_paint.zig").serializeResolved(v, self.get(.color).color, out, allocator),
             .filter => if (v == .filter) return v.filter.serializeResolved(self.get(.color).color, out, allocator),
+            .box_shadow => if (v == .box_shadow) return v.box_shadow.serializeResolved(self.get(.color).color, out, allocator),
             // "line-height: the resolved value is normal if the computed
             // value is normal, or the used value otherwise." A number's
             // used value is that many times the font size.
