@@ -5022,14 +5022,21 @@ const FrameWindow = struct {
 /// about to become the navigable's active document.
 ///
 /// Step 6: the active window is reused when the active document is the
-/// initial about:blank one and same origin(-domain) with the new document -
-/// both documents then share one Window. Step 7, otherwise: a new realm, whose
-/// global object is a new Window and whose global this binding is the
-/// browsing context's WindowProxy (`replaceRealm`).
+/// initial about:blank one and "same origin-domain with navigationParams's
+/// origin" - both documents then share one Window. The new document has set
+/// no domain yet, so that is the same origin with no domain set on the
+/// initial document: one that set document.domain is no longer same
+/// origin-domain with it (HTML "same origin-domain" 2.1), as Blink's
+/// ShouldReuseDOMWindow asks SecurityOrigin::CanAccess, which compares the
+/// domains, and WebKit's DocumentWriter::begin canAccessAgentCluster. Step 7,
+/// otherwise: a new realm, whose global object is a new Window and whose
+/// global this binding is the browsing context's WindowProxy
+/// (`replaceRealm`).
 fn realmForNewDocument(integration: *IFrameIntegration, new_origin: html_core.Origin) bool {
     const old_document = activeDocumentOf(integration) orelse return true;
     const old_origin = if (integration.window_proxy) |proxy| proxy.document_origin else html_core.Origin.createOpaque();
-    if (document_lifecycle.isInitialAboutBlank(old_document) and old_origin.isSameOrigin(new_origin)) return true;
+    if (document_lifecycle.isInitialAboutBlank(old_document) and old_origin.isSameOrigin(new_origin) and
+        dom_module.document_origin.domain(old_document) == null) return true;
     return replaceRealm(integration, new_origin);
 }
 

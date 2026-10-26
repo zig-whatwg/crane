@@ -150,7 +150,8 @@ progress = [
   "372e36cb58c - a top-level realm a navigation replaced is detached like a frame's (its successor takes its context and isolate entries); window.open's realm follows its opener's WindowProxy (WindowRealmOptions.auxiliary) (newwin1 E1/E2)",
   "14f95a7742c - the host page's top-level traversable is a navigable record that owns its browsing context across Windows (dom.top_level_traversables) (newwin1 B2)",
   "493207da804 - a load that replaces a page's loaded document gives it a new Window behind the same WindowProxy; the old realm detached and its cleanup steps run; a load asked for under the page's own parse waits for it (newwin1 B3)",
-  "S4 - pushState on an initial about:blank document replaces its entry (URL and history update steps step 4) (newwin1)",
+  "873d6e9bcf4 - pushState on an initial about:blank document replaces its entry (URL and history update steps step 4) (newwin1 S4)",
+  "B6 - a frame's initial about:blank Window is reused only when same origin-domain with the next document (newwin1)",
 ]
 
   [[infra.items]]

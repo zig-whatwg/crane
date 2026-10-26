@@ -146,3 +146,67 @@ fn unloadThenNewWindow() !void {
 test "the replaced page unloads in its own Window before the new page's script runs" {
     try onFreshThread(unloadThenNewWindow);
 }
+
+fn initialDocumentWithDomain() !void {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    const page = browser.current_context orelse return error.NoPage;
+    try page.loadHTML("<!doctype html><body><iframe></iframe></body>", .{ .base_url = "http://example.test/top" });
+    // The frame's initial about:blank document is the top page's origin. A
+    // marker on its Window shows whether the frame's first document keeps
+    // that Window (step 6) or gets a new one (step 7).
+    try page.runScript(
+        \\globalThis.pending = 1;
+        \\const f = document.querySelector('iframe');
+        \\f.onload = () => { pending = 0; };
+        \\frames[0].marker = 'initial window';
+        \\// Same origin, no domain set: step 6 keeps the initial Window.
+        \\f.srcdoc = '<p>one</p>';
+    );
+    var waited: usize = 0;
+    while (waited < 3_000) : (waited += 10) {
+        _ = try browser.runEventLoopBlocking(10);
+        const done = try page.evaluateScriptToString("String(pending === 0)", testing.allocator);
+        defer testing.allocator.free(done);
+        if (std.mem.eql(u8, done, "true")) break;
+    }
+    try expectEval(page, "String(frames[0].marker)", "initial window");
+}
+
+test "a frame's first same-origin document keeps its initial about:blank document's Window" {
+    try onFreshThread(initialDocumentWithDomain);
+}
+
+fn initialDocumentDomainSet() !void {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    const page = browser.current_context orelse return error.NoPage;
+    try page.loadHTML("<!doctype html><body><iframe></iframe></body>", .{ .base_url = "http://example.test/top" });
+    // document.domain set on the initial about:blank document: its origin is
+    // no longer same origin-DOMAIN with the next document's (whose domain is
+    // null), so step 6 does not reuse its Window - Blink's
+    // ShouldReuseDOMWindow asks SecurityOrigin::CanAccess, which compares
+    // the domains, and WebKit's canAccessAgentCluster.
+    try page.runScript(
+        \\globalThis.pending = 1;
+        \\const f = document.querySelector('iframe');
+        \\f.onload = () => { pending = 0; };
+        \\frames[0].document.domain = 'example.test';
+        \\frames[0].marker = 'initial window';
+        \\f.srcdoc = '<p>one</p>';
+    );
+    var waited: usize = 0;
+    while (waited < 3_000) : (waited += 10) {
+        _ = try browser.runEventLoopBlocking(10);
+        const done = try page.evaluateScriptToString("String(pending === 0)", testing.allocator);
+        defer testing.allocator.free(done);
+        if (std.mem.eql(u8, done, "true")) break;
+    }
+    try expectEval(page, "[typeof frames[0].marker, frames[0].document.body.textContent].join()", "undefined,one");
+}
+
+test "a frame's first document gets a new Window when its initial about:blank document set document.domain" {
+    try onFreshThread(initialDocumentDomainSet);
+}
