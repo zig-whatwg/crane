@@ -36,6 +36,7 @@ pub const whitespace = @import("whitespace.zig");
 pub const split_parent = @import("split_parent.zig");
 pub const delete = @import("delete.zig");
 pub const overrides = @import("overrides.zig");
+pub const wrap = @import("wrap.zig");
 
 const Instance = runtime.Instance;
 const Edit = common.Edit;
