@@ -26,7 +26,7 @@
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-b6b92efd3d</code>, <span class="nowrap">25 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/b6b92efd3d"><code>b6b92efd3d</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-031a779242</code>, <span class="nowrap">26 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/031a779242"><code>031a779242</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-values/attr-null-namespace.xhtml"><code>css/<wbr>css-<wbr>values/<wbr>attr-<wbr>null-<wbr>namespace.<wbr>xhtml</code></a></dd></div>
 </dl>
 </header>
@@ -36,10 +36,10 @@
 <div class="run">
 <ol class="subtests">
 <li class="sub s-pass" id="s-cc0c734b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Sanity check</span></div><a class="self" href="#s-cc0c734b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c4b84efd"><details><summary><span class="mark">FAIL</span><span class="sub-name">Attribute in null-namespace is substituted</span></summary><pre class="msg">assert_equals: expected &quot;value3&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-c4b84efd" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-99d77b5c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Fallback is taken when attribute does not exist in null-namespace</span></summary><pre class="msg">assert_equals: expected &quot;fallback&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-99d77b5c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d4978b51"><details><summary><span class="mark">FAIL</span><span class="sub-name">Attribute in null-namespace is substituted (JS)</span></summary><pre class="msg">assert_equals: expected &quot;value8&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-d4978b51" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-355836e1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Fallback is taken when attribute does not does exist in null-namespace (JS)</span></summary><pre class="msg">assert_equals: expected &quot;fallback&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-355836e1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c4b84efd"><details><summary><span class="mark">FAIL</span><span class="sub-name">Attribute in null-namespace is substituted</span></summary><pre class="msg">assert_equals: expected &quot;value3&quot; but got &quot;attr(data-x type(*), fallback)&quot;</pre></details><a class="self" href="#s-c4b84efd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-99d77b5c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Fallback is taken when attribute does not exist in null-namespace</span></summary><pre class="msg">assert_equals: expected &quot;fallback&quot; but got &quot;attr(data-y type(*), fallback)&quot;</pre></details><a class="self" href="#s-99d77b5c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d4978b51"><details><summary><span class="mark">FAIL</span><span class="sub-name">Attribute in null-namespace is substituted (JS)</span></summary><pre class="msg">assert_equals: expected &quot;value8&quot; but got &quot;attr(data-z type(*), fallback)&quot;</pre></details><a class="self" href="#s-d4978b51" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-355836e1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Fallback is taken when attribute does not does exist in null-namespace (JS)</span></summary><pre class="msg">assert_equals: expected &quot;fallback&quot; but got &quot;attr(data-w type(*), fallback)&quot;</pre></details><a class="self" href="#s-355836e1" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

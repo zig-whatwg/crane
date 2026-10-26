@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../css/"><code>css/</code></a></li><li><a href="../../../../css/css-color/"><code>css-<wbr>color/</code></a></li><li><a href="../../../../css/css-color/parsing/"><code>parsing/</code></a></li><li aria-current="page"><code>color-<wbr>valid-<wbr>relative-<wbr>color.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>color-<wbr>valid-<wbr>relative-<wbr>color.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="css/css-color/parsing/color-valid-relative-color.html">
-<p class="figures-main"><span class="fg-pass">1,135</span><span class="fg-of"> / 1,147</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>12</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">1,147</span><span class="fg-of"> / 1,147</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-b6b92efd3d</code>, <span class="nowrap">25 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/b6b92efd3d"><code>b6b92efd3d</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-031a779242</code>, <span class="nowrap">26 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/031a779242"><code>031a779242</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-color/parsing/color-valid-relative-color.html"><code>css/<wbr>css-<wbr>color/<wbr>parsing/<wbr>color-<wbr>valid-<wbr>relative-<wbr>color.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -34,21 +34,7 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-559ff984"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;rgb(from var(--bg-color) r g b / 80%)&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-559ff984" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d17d0ff5"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;lch(from var(--color) calc(l / 2) c h)&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-d17d0ff5" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-77877537"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;rgb(from var(--color) calc(r * .3 + g * .59 + b * .11) calc(r * .3 + g * .59 + b * .11) calc(r * .3 + g * .59 + b * .11))&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-77877537" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-91b785cb"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;lch(from var(--color) l 0 h)&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-91b785cb" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-89bb69ae"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;hsl(from var(--accent) calc(h + 180) s l)&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-89bb69ae" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-bd5c7a76"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;lab(from var(--mycolor) l a b / 100%)&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-bd5c7a76" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6bee0482"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;lab(from var(--mycolor) l a b / calc(alpha * 0.8))&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-6bee0482" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-063c9b3a"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;lab(from var(--mycolor) l 0 0)&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-063c9b3a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9c6bc7f2"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;LCH(from var(--accent) l c calc(h + 180))&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-9c6bc7f2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9a0c8acf"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;lch(from var(--mycolor) l 0 h)&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-9a0c8acf" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c4d78407"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;var(--mygray)&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-c4d78407" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-30a559f9"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color&#39;] = &quot;lch(from var(--mygray) l 30 h)&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-30a559f9" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<p class="omitted">1,135 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+<p class="omitted">1,147 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
 </div>
 </section>
 <footer class="foot">

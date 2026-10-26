@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../css/"><code>css/</code></a></li><li><a href="../../../css/css-env/"><code>css-<wbr>env/</code></a></li><li aria-current="page"><code>env-<wbr>parsing.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>env-<wbr>parsing.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="css/css-env/env-parsing.html">
-<p class="figures-main"><span class="fg-pass">5</span><span class="fg-of"> / 8</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>3</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">8</span><span class="fg-of"> / 8</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-b6b92efd3d</code>, <span class="nowrap">25 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/b6b92efd3d"><code>b6b92efd3d</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-031a779242</code>, <span class="nowrap">26 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/031a779242"><code>031a779242</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-env/env-parsing.html"><code>css/<wbr>css-<wbr>env/<wbr>env-<wbr>parsing.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,9 +35,9 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-ea54ee9c"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;width&#39;] = &quot;env(safe-area-inset-top)&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-ea54ee9c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5e2a621b"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;width&#39;] = &quot;env(safe-area-inset-top,)&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-5e2a621b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-59b5603e"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;width&#39;] = &quot;env(safe-area-inset-top, )&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-59b5603e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ea54ee9c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;width&#39;] = &quot;env(safe-area-inset-top)&quot; should set the property value</span></div><a class="self" href="#s-ea54ee9c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5e2a621b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;width&#39;] = &quot;env(safe-area-inset-top,)&quot; should set the property value</span></div><a class="self" href="#s-5e2a621b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-59b5603e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;width&#39;] = &quot;env(safe-area-inset-top, )&quot; should set the property value</span></div><a class="self" href="#s-59b5603e" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-7d1c1b53"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;width&#39;] = &quot;env(safe-area-inset-top ())&quot; should not set the property value</span></div><a class="self" href="#s-7d1c1b53" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-2088ef4b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;width&#39;] = &quot;env(safe-area-inset-top () )&quot; should not set the property value</span></div><a class="self" href="#s-2088ef4b" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-78f466a3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">e.style[&#39;width&#39;] = &quot;env(safe-area-inset-top() )&quot; should not set the property value</span></div><a class="self" href="#s-78f466a3" aria-label="Link to this subtest">&para;</a></li>
