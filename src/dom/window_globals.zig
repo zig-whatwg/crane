@@ -36,6 +36,11 @@ pub const Implementation = struct {
     /// Set the Window's origin, serialized ("null" for an opaque one) - the
     /// one its storage is keyed by until its document says otherwise.
     set_origin: *const fn (window: *runtime.Instance, origin: []const u8) anyerror!void,
+    /// The popups `from` opened (window.open's auxiliary navigables, which a
+    /// Window keeps) are `to`'s from here, and the realm their realms are
+    /// made under is `to`'s: a navigation gave the opener's navigable the new
+    /// Window `to` (lane newwin1, B7).
+    move_auxiliary_navigables: *const fn (from: *runtime.Instance, to: *runtime.Instance) void,
 };
 
 var implementation: ?Implementation = null;
@@ -82,4 +87,10 @@ pub fn adoptBrowsingContext(window: *runtime.Instance, browsing_context: *anyopa
 pub fn setOrigin(window: *runtime.Instance, origin: []const u8) !void {
     const impl = implementation orelse return;
     try impl.set_origin(window, origin);
+}
+
+/// See Implementation.move_auxiliary_navigables.
+pub fn moveAuxiliaryNavigables(from: *runtime.Instance, to: *runtime.Instance) void {
+    const impl = implementation orelse return;
+    impl.move_auxiliary_navigables(from, to);
 }

@@ -89,6 +89,11 @@ pub const Holder = enum {
     engine_collected_realm_global,
     /// A teardown ended inside another (E9).
     nested_teardown_coordinator,
+    /// A popup's navigable record's parent realm (IFrameIntegration
+    /// .parent_realm): the opener's realm its next realms are made under,
+    /// which a navigation that gives the opener's navigable a new Window
+    /// replaces - and the old realm's end frees (lane newwin1, B7).
+    popup_parent_realm,
 };
 
 /// The kinds whose conversion has landed, each with its test. Append a kind
@@ -109,6 +114,7 @@ const safe = [_]Holder{
     .navigation_window_reads, // same realm; the generation the Navigation keeps
     .engine_window_proxy_field, // tests/v8/window_realm_end_test.zig
     .engine_window_properties_field, // tests/v8/window_realm_end_test.zig
+    .popup_parent_realm, // moved with the popups at every realm replacement (Window moveAuxiliaryNavigables); tests/html/nw1_popups_test.zig navigates the popup after its opener's old realm ended
 };
 
 /// Whether `holder` is in `table`. Every kind a table does not list is

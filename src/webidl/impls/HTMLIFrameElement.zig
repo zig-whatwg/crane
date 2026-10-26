@@ -4935,6 +4935,11 @@ fn attachRealm(
         .origin = origin,
         .global_this = global_this,
         .parent = parent,
+        // A popup's realm (window.open's navigable, no container) follows its
+        // opener's WindowProxy to the realm the opener's navigation makes
+        // (lane newwin1, E2); a frame's is destroyed with its parent's
+        // document.
+        .auxiliary = integration.iframe_element == null,
         // Its Browser is the parent's, recorded before its Window is made.
         .browser_scope = parent.browser_scope,
         .create_global_object = FrameWindow.create,
@@ -5083,6 +5088,7 @@ fn replaceRealm(integration: *IFrameIntegration, new_origin: html_core.Origin) b
     // the new one is built around its WindowProxy (engine: window_proxy_of
     // detaches it).
     const secure_context = newDocumentIsSecureContext(browsing_context.parent != null, parent.secure_context, new_origin, allocator);
+    const old_window = windowOfRealm(old);
     const old_data = integration.releaseCurrentRealm() orelse return false;
     if (attachRealm(integration, parent, browsing_context, origin_copy, .{ .window_proxy_of = old }, secure_context, allocator) == null) {
         // No new realm: the old one ends with the integration, as every
@@ -5090,6 +5096,12 @@ fn replaceRealm(integration: *IFrameIntegration, new_origin: html_core.Origin) b
         integration.keepRetiredRealm(old_data) catch engine.destroyWindowRealm(old, .global_detached);
         return false;
     }
+    // The popups the old Window opened move with the navigable (lane
+    // newwin1, B7): the new Window keeps them, and their next realms are
+    // made under the new realm.
+    if (old_window) |from| if (browsing_context.getActiveWindow()) |to| {
+        dom_module.window_globals.moveAuxiliaryNavigables(from, @ptrCast(@alignCast(to)));
+    };
     // HTML "destroy a document" for the old document: the engine keeps its
     // realm while script reaches it.
     engine.destroyWindowRealm(old, .global_detached);
