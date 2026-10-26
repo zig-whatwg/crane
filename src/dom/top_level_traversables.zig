@@ -84,7 +84,7 @@ pub const Implementation = struct {
     record_load: *const fn (record: *anyopaque, document: *anyopaque, url: []const u8, origin: []const u8, markup: ?[]const u8, replace: bool) void,
 };
 
-// process-wide: immutable function pointers HTMLIFrameElement installs once at process start (process_start.zig); each record they make is its own Context's, of its own Browser
+// process-wide: immutable function pointers HTMLIFrameElement installs once at process start (process_start.zig), identical for every Browser and thread; all mutable state is on the records they make, each owned by one Context of one Browser on that Browser's thread
 var implementation: ?Implementation = null;
 
 /// Called by HTMLIFrameElement's installHooks, once, at process start
