@@ -1283,6 +1283,9 @@ const Builder = struct {
             .font_width => return @import("font_width.zig").compute(v),
             // CSS Text4 §8.2: normal is zero in the computed value.
             .letter_spacing => if (v.isKeyword(.normal)) return Value.px(0),
+            // CSS Text4 §8.1: normal computes to zero before inheritance.
+            .word_spacing => if (v.isKeyword(.normal)) return Value.px(0),
+            .text_align, .text_align_last => return @import("text_values.zig").computeAlignment(l, v, if (self.ctx.is_root) null else self.ctx.parent),
             .opacity => return .{ .number = std.math.clamp(v.number, 0, 1) },
             .line_height => switch (v) {
                 .length => |len| if (len.unit == .percent) return Value.px(len.value / 100 * self.fontSize()),
@@ -1313,6 +1316,7 @@ const Builder = struct {
                 return .{ .indent = try @import("text_indent.zig").Indent.create(self.ctx.allocator, offset, indent.flags) };
             },
             .filter => |value| return .{ .filter = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
+            .text_values => |value| return .{ .text_values = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
             .shape => |value| return .{ .shape = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
             .image_position => |value| return .{ .image_position = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
             .image_size => |value| return .{ .image_size = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },

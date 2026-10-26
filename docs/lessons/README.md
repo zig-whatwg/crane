@@ -655,6 +655,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Refresh aliases with their realm's interface objects](codegen-refresh-aliases-with-their-realms-interface-objects.md) - An alias names the realm's interface object, not the current contents of another global property.
 
 ### Testing
+- [WPT subtest names are JSON strings](testing-wpt-subtest-names-are-json-strings.md) - Preserve exact names, URL variants and repeated occurrences in a lossless format, and verify execution coverage.
 - [A no-throw check can pass when the binding returns an Error](testing-a-no-throw-check-can-pass-when-the-binding-returns-an-error.md) - Verify the binding's rejection path and the observable return value before treating a call without an exception as success.
 - [A replacement is not a fallback candidate](testing-a-replacement-is-not-a-fallback-candidate.md) - Preserve a separate fallback candidate and distinguish it from the initial value.
 - [Support detection activates previously skipped assertions](testing-support-detection-activates-previously-skipped-assertions.md) - When support detection changes, inspect the assertions it enables and complete their dependent behavior in the same accepted delivery.
@@ -813,6 +814,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A cost bar that moves with no new instructions is code placement](testing-a-cost-bar-that-moves-with-no-new-instructions-is-code-placement.md) - A sub-microsecond per-operation metric in a whole-program optimized runner moves with code placement; when its path reaches no changed code, instructions retired (page minus a zero-iteration control) decide, not time.
 
 ### Debugging
+- [Optional CSS groups must restore the token stream](debugging-optional-css-groups-must-restore-the-token-stream.md) - Test malformed components through their shorthand: a failed optional group must restore the tokens it consumed.
 - [Debugging: Materialize coordinates before overwriting a vector](debugging-materialize-coordinates-before-overwriting-a-vector.md) - Compute every new coordinate from saved scalar inputs before assigning an aggregate back to its input vector.
 - [Debugging: Profile the WPT Worker, Not Its Supervisor](debugging-profile-the-wpt-worker-not-the-supervisor.md) - A WPT runner started with `--parallel=1` is still a supervisor; profile its actual test worker.
 - [Performance: A general sort reserves scratch before small-input branches](performance-a-general-sort-reserves-scratch-before-small-input-branches.md) - Profile a general sort's stack setup when a larger element type slows a hot path, even if nearly every input is tiny.

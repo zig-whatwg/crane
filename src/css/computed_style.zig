@@ -206,6 +206,7 @@ pub fn initialComputed(l: Longhand) Value {
         // CSS Fonts 4 §2.3: font-width's initial normal computes to 100%.
         .font_width => .{ .length = values.Length.percent(100) },
         .letter_spacing => Value.px(0),
+        .word_spacing => Value.px(0),
         // CanvasText with no element to take a color scheme from: the UA
         // default's (light). The cascade resolves it per element.
         .color => .{ .color = .{ .rgba = values.RgbaColor.black } },

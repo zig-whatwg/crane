@@ -275,6 +275,28 @@ pub const Longhand = enum(u8) {
     // Must follow all request inputs for from-font computation (Q46).
     font_size_adjust,
 
+    // CSS Text4 §§6.1–6.4: line-breaking controls (row 124).
+    hyphens,
+    line_break,
+    word_break,
+    overflow_wrap,
+    hyphenate_character,
+    hyphenate_limit_chars,
+    tab_size,
+    word_spacing,
+    text_fit,
+    text_wrap_style,
+    text_justify,
+    hyphenate_limit_lines,
+    text_group_align,
+    text_autospace,
+    text_spacing_trim,
+    word_space_transform,
+    hanging_punctuation,
+    text_align,
+    text_align_last,
+    white_space_trim,
+
     pub const count = @typeInfo(Longhand).@"enum".fields.len;
 
     /// The property name.
@@ -302,7 +324,7 @@ pub const Longhand = enum(u8) {
 /// CSSOM 7.2 step 5 enumerates names lexicographically, independently of
 /// declaration order. Separate property families can append contiguous blocks.
 pub const lexicographic: [Longhand.count]Longhand = blk: {
-    @setEvalBranchQuota(100_000);
+    @setEvalBranchQuota(1_000_000);
     var out: [Longhand.count]Longhand = undefined;
     for (0..Longhand.count) |i| out[i] = @enumFromInt(i);
     std.mem.sort(Longhand, &out, {}, struct {
@@ -420,6 +442,7 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
 
 /// A longhand's grammar.
 pub const Grammar = enum {
+    text_value,
     animation_list,
     individual_transform,
     flex_factor,
@@ -507,6 +530,35 @@ const infos: [Longhand.count]Info = blk: {
     const zero = Value.px(0);
     const medium_width = Value.kw(.medium);
     const defs = [_]Info{
+        // Text4 §§7.1/7.4 values, with the independent longhands shipped by
+        // all three engines (Q15; CSSWG3117). No text-align-all expansion.
+        .{ .longhand = .text_align, .inherited = true, .initial = Value.kw(.start), .grammar = .keywords, .keywords = &.{ .start, .end, .left, .right, .center, .justify, .match_parent } },
+        .{ .longhand = .text_align_last, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .start, .end, .left, .right, .center, .justify, .match_parent } },
+        // Text4 §4.2; independent longhand (WebKit cssWhiteSpaceTrimEnabled).
+        .{ .longhand = .white_space_trim, .inherited = false, .initial = Value.kw(.none), .grammar = .text_value },
+        .{ .longhand = .hanging_punctuation, .inherited = true, .initial = Value.kw(.none), .grammar = .text_value },
+        .{ .longhand = .hyphenate_limit_lines, .inherited = true, .initial = Value.kw(.no_limit), .grammar = .text_value },
+        // Text4 §7.6, WebKit's cssTextGroupAlignEnabled implementation.
+        .{ .longhand = .text_group_align, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .start, .end, .left, .right, .center } },
+        .{ .longhand = .text_autospace, .inherited = true, .initial = Value.kw(.normal), .grammar = .text_value },
+        // Text4 §8.5: stable Chrome ships part; pinned WPT covers all seven.
+        .{ .longhand = .text_spacing_trim, .inherited = true, .initial = Value.kw(.normal), .grammar = .keywords, .keywords = &.{ .space_all, .normal, .space_first, .trim_start, .trim_both, .trim_all, .auto } },
+        .{ .longhand = .word_space_transform, .inherited = true, .initial = Value.kw(.none), .grammar = .text_value },
+        // CSS Text4 §§4.4, 5.4, 6.3, 7.5, 8.1; Text5 §2.
+        .{ .longhand = .hyphenate_character, .inherited = true, .initial = Value.kw(.auto), .grammar = .text_value },
+        .{ .longhand = .hyphenate_limit_chars, .inherited = true, .initial = Value.kw(.auto), .grammar = .text_value },
+        .{ .longhand = .tab_size, .inherited = true, .initial = .{ .number = 8 }, .grammar = .text_value },
+        .{ .longhand = .word_spacing, .inherited = true, .initial = Value.kw(.normal), .grammar = .letter_spacing, .quirky_length = true },
+        .{ .longhand = .text_fit, .inherited = true, .initial = Value.kw(.none), .grammar = .text_value },
+        .{ .longhand = .text_wrap_style, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .balance, .stable, .pretty } },
+        .{ .longhand = .text_justify, .inherited = true, .initial = Value.kw(.auto), .grammar = .text_value },
+        // CSS Text4 §§6.1–6.4: computed values are the specified keywords.
+        .{ .longhand = .hyphens, .inherited = true, .initial = Value.kw(.manual), .grammar = .keywords, .keywords = &.{ .none, .manual, .auto } },
+        .{ .longhand = .line_break, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .loose, .normal, .strict, .anywhere } },
+        // manual: CSSWG PR9242 (2023-08-31), pinned by word-break-valid.html.
+        // No engine has declined it; Q6 applies the spec's parse/compute rule.
+        .{ .longhand = .word_break, .inherited = true, .initial = Value.kw(.normal), .grammar = .keywords, .keywords = &.{ .normal, .break_all, .keep_all, .manual, .auto_phrase, .break_word } },
+        .{ .longhand = .overflow_wrap, .inherited = true, .initial = Value.kw(.normal), .grammar = .keywords, .keywords = &.{ .normal, .break_word, .anywhere } },
         .{ .longhand = .translate, .inherited = false, .initial = Value.kw(.none), .grammar = .individual_transform },
         .{ .longhand = .rotate, .inherited = false, .initial = Value.kw(.none), .grammar = .individual_transform },
         .{ .longhand = .scale, .inherited = false, .initial = Value.kw(.none), .grammar = .individual_transform },
@@ -788,6 +840,8 @@ pub const Shorthand = enum(u8) {
     place_self,
     position_try,
     white_space,
+    text_wrap,
+    text_spacing,
     animation,
     animation_range,
     flex,
@@ -856,6 +910,8 @@ pub const Shorthand = enum(u8) {
             .place_self => &.{ .align_self, .justify_self },
             .position_try => &.{ .position_try_order, .position_try_fallbacks },
             .white_space => &.{ .white_space_collapse, .text_wrap_mode },
+            .text_wrap => &.{ .text_wrap_mode, .text_wrap_style },
+            .text_spacing => &.{ .text_spacing_trim, .text_autospace },
             .animation => &.{ .animation_duration, .animation_timing_function, .animation_delay, .animation_iteration_count, .animation_direction, .animation_fill_mode, .animation_play_state, .animation_name, .animation_timeline, .animation_range_start, .animation_range_end },
             .animation_range => &.{ .animation_range_start, .animation_range_end },
             .flex => &.{ .flex_grow, .flex_shrink, .flex_basis },
@@ -892,6 +948,8 @@ pub const Property = union(enum) {
 /// property (and is not enumerated). CSS UI 4: "-webkit-appearance" is a
 /// legacy name alias of appearance.
 const legacy_aliases = .{
+    // CSS Text4 §6.4: both spellings address one property.
+    .{ "word-wrap", Property{ .longhand = .overflow_wrap } },
     // CSS Gaps 1 §2.4: aliases share the canonical property entries.
     .{ "flow-tolerance", Property{ .longhand = .fit_tolerance } },
     .{ "grid-row-gap", Property{ .longhand = .row_gap } },
@@ -1178,6 +1236,7 @@ pub const Stream = struct {
 pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Allocator.Error!?Value {
     const def = l.info();
     switch (def.grammar) {
+        .text_value => return @import("text_values.zig").parse(options, l, stream),
         .flex_factor => return @import("flex_values.zig").consumeFactor(options, stream),
         .individual_transform => {
             if (takeKeyword(stream, &.{.none})) |keyword| return Value.kw(keyword);
@@ -1825,6 +1884,8 @@ fn append(options: ParseOptions, out: *std.ArrayList(Assignment), l: Longhand, v
 
 fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
     switch (s) {
+        .text_wrap => return @import("text_values.zig").parseWrap(options, stream, out),
+        .text_spacing => return @import("text_values.zig").parseSpacing(options, stream, out),
         .font_variant => return @import("font_variants.zig").parseShorthand(options, stream, out),
         .font => return @import("font_shorthand.zig").parse(options, stream, out),
         .flex => return @import("flex_values.zig").consumeShorthand(options, stream, out),
@@ -2206,6 +2267,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         return values.appendLength(value.length, out, allocator);
     }
     switch (value) {
+        .text_values => |v| try v.serialize(out, allocator),
         .keyword => |k| try out.appendSlice(allocator, k.name()),
         .length => |len| try values.appendLength(len, out, allocator),
         .number => |n| {
@@ -2308,6 +2370,8 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
     switch (s) {
         .font_variant => return @import("font_variants.zig").serialize(vs, out, allocator),
         .font => return @import("font_shorthand.zig").serialize(vs, mode, out, allocator),
+        .text_wrap => return @import("text_values.zig").serializeWrap(vs, out, allocator),
+        .text_spacing => return @import("text_values.zig").serializeSpacing(vs, out, allocator),
         .flex => return @import("flex_values.zig").serializeShorthand(vs, out, allocator),
         .animation, .animation_range, .transition => return @import("animation_values.zig").serializeShorthand(s, vs, mode, out, allocator),
         .grid_template => return @import("grid_tracks.zig").serializeTemplate(.{ .rows = vs[0].value, .columns = vs[1].value, .areas = vs[2].value }, out, allocator),
