@@ -47,6 +47,10 @@ pub const Edit = struct {
     selection: *Instance,
     allocator: std.mem.Allocator,
     modified: bool = false,
+    /// The delete or forwardDelete action built the range it deletes from a
+    /// collapsed selection (their steps after step 1): the browser rules for
+    /// a user's range (delete.zig rangeKeepsChildBlock) do not apply.
+    range_from_caret: bool = false,
 
     /// The active range: the selection's range, or null.
     pub fn activeRange(self: *Edit) !?*Instance {

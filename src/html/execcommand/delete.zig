@@ -70,6 +70,9 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
     // The range's start as given, for the browsers' caret placement (see
     // collapseForward).
     const original_start = (try edit.rangeStart()) orelse return;
+    // Step 25.4's anchor without strip wrappers: the element holding the
+    // range's start as given (its Text node may be deleted).
+    const wrapper_anchor = if (common.isText(original_start.node)) (try common.parent(original_start.node)) orelse original_start.node else original_start.node;
     // Steps 4-5.
     var start = try common.lastEquivalentPoint(original_start);
     var end = try common.firstEquivalentPoint((try edit.rangeEnd()) orelse return);
@@ -124,7 +127,7 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
         }
     }
     // Step 32's browser rule, decided on the range before anything goes.
-    const keeps_child_block = if (start_block != null and end_block != null and common.isAncestorOf(start_block.?, end_block.?))
+    const keeps_child_block = if (!edit.range_from_caret and start_block != null and end_block != null and common.isAncestorOf(start_block.?, end_block.?))
         try rangeKeepsChildBlock(start, end_block.?)
     else
         false;
@@ -177,8 +180,15 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
         var p = (try common.parent(node)) orelse continue;
         // Step 25.2.
         try edit.removeNode(node);
-        // Step 25.4: strip the emptied inline wrappers.
-        if (strip_wrappers or !common.isInclusiveDescendantOf(start.node, p)) {
+        // Step 25.4: strip the emptied inline wrappers. Without strip
+        // wrappers (insertText), the wrappers kept are those around the
+        // range's start as given, not the start steps 4 and 7 normalized
+        // into the next inline: `foo<b>[bar]</b>baz` keeps the <b>,
+        // `abc[<b><i><img>def]</i></b>ghi` loses both (Chrome 155 and
+        // Firefox 158 type `abcdefghi`; editing/run/inserttext.html at
+        // wpt.fyi df642c4142; golden rule 2, no newer spec).
+        const kept_start = if (strip_wrappers) start.node else wrapper_anchor;
+        if (strip_wrappers or !common.isInclusiveDescendantOf(kept_start, p)) {
             while ((try common.isEditable(p)) and common.isInlineNode(p) and (try common.nodeLength(p)) == 0) {
                 const grandparent = (try common.parent(p)) orelse break;
                 try edit.removeNode(p);
@@ -267,7 +277,7 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
         // a preserved line feed and inside an inline.
         var line: Line = .{};
         defer line.deinit(edit.allocator);
-        try extractFirstLine(edit, (try common.firstChild(eb)).?, &line);
+        try extractFirstLine(edit, (try common.firstChild(eb)).?, &line, .move);
         if (line.nodes.items.len == 0) {
             try overrides.restoreStatesAndValues(edit, recorded);
             return;
@@ -306,7 +316,7 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
         var line: Line = .{};
         defer line.deinit(edit.allocator);
         if (try common.nextSibling(reference)) |next| {
-            try extractFirstLine(edit, next, &line);
+            try extractFirstLine(edit, next, &line, .move);
         }
         try line.recordWhiteSpace(edit, sb);
         // Step 33.8.
@@ -335,7 +345,7 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
         // the br or line feed that ended it is deleted.
         var line: Line = .{};
         defer line.deinit(edit.allocator);
-        if (try common.firstChild(eb)) |first| try extractFirstLine(edit, first, &line);
+        if (try common.firstChild(eb)) |first| try extractFirstLine(edit, first, &line, .delete);
         try line.recordWhiteSpace(edit, sb);
         for (line.nodes.items) |node| {
             try edit.movePreservingRanges(node, sb, try common.childCount(sb));
@@ -588,6 +598,7 @@ const Line = struct {
         if (!self.preserve) return;
         for (self.nodes.items, self.styles.items) |node, recorded| {
             const source = recorded orelse continue;
+            if (try isBr(node)) continue;
             const value = source.shorthandValue() orelse continue;
             const new_parent = (try common.parent(node)) orelse continue;
             if (!common.isElement(new_parent)) continue;
@@ -667,11 +678,18 @@ const LineEnd = struct { parent: *Instance, node: ?*Instance };
 /// and the inline itself there (Gecko's SplitNodeDeep; the clones take
 /// what follows). Appends the line's top-level nodes - `first` and its
 /// following siblings - to `line`.
-fn extractFirstLine(edit: *Edit, first: *Instance, line: *Line) !void {
+fn extractFirstLine(edit: *Edit, first: *Instance, line: *Line, lone_br: LoneBr) !void {
     var current: ?*Instance = first;
     while (current) |child| {
         if (common.isBlockNode(child)) return;
         if (try isBr(child)) {
+            // A line that is only a br: steps 32 and 33 move it, as the spec
+            // does, and their later steps drop it where it is extraneous;
+            // step 34 deletes it (the browsers' first line).
+            if (child == first and lone_br == .move) {
+                try line.nodes.append(edit.allocator, child);
+                return;
+            }
             try edit.removeNode(child);
             return;
         }
@@ -691,6 +709,9 @@ fn extractFirstLine(edit: *Edit, first: *Instance, line: *Line) !void {
         current = try common.nextSibling(child);
     }
 }
+
+/// What a line that is only a br does with it.
+const LoneBr = enum { move, delete };
 
 /// A Text node split at the line feed that ends a line.
 const LineFeedSplit = struct {
@@ -811,6 +832,7 @@ pub fn deleteAction(edit: *Edit) !bool {
         try deleteTheSelection(edit, true, true, .forward);
         return true;
     }
+    edit.range_from_caret = true;
     // Browser step (golden rule 2, no newer spec): with nothing visible
     // between the editing host's start and the caret - only collapsed
     // white-space, invisible nodes and the caret's own block's start -
@@ -1074,6 +1096,7 @@ pub fn forwardDeleteAction(edit: *Edit) !bool {
         try deleteTheSelection(edit, true, true, .forward);
         return true;
     }
+    edit.range_from_caret = true;
     // Browser step: with nothing visible between the caret and the editing
     // host's end, Delete does nothing. Chrome 156 and Safari 27 leave
     // `<div>abc[] </div>` and `<div>abc [] </div>` unchanged; Firefox 158

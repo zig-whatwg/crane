@@ -135,17 +135,12 @@ pub fn execCommand(document: *Instance, command: Command) bool {
 
 /// The insertText command's first step (specs/w3c/execCommand.md, "The
 /// insertText command", action step 1): "If the active range is not
-/// collapsed, delete the selection", so a join follows the browsers' rules
-/// (delete.zig). One deviation until the formatting commands exist: the
-/// spec strips the emptied inline wrappers and then re-applies their style
-/// to the typed text through the state and value overrides (record current
-/// states and values, step 2 on), which overrides.zig still mocks; keeping
-/// the wrapper the caret is in (strip wrappers false) types into it instead,
-/// as the browsers' typing style does for `foo<b>[bar]</b>baz` -> `foo<b>a</b>baz`
-/// (editing/run/inserttext.html), so no passing inserttext or multitest
-/// subtest is traded while the overrides are mocks. The formatting batch
-/// (overrides, insertText steps 2 on) reverts this to the spec's strip
-/// wrappers true. Whether it ran.
+/// collapsed, delete the selection, with strip wrappers false", so a join
+/// follows the browsers' rules (delete.zig) and the wrappers around the
+/// range's start stay for the typed text (`foo<b>[bar]</b>baz` ->
+/// `foo<b>a</b>baz`, editing/run/inserttext.html). The record and restore of
+/// the overrides (steps 9 and 15) wait for the formatting batch, which
+/// overrides.zig mocks until then. Whether it ran.
 pub fn deleteSelectionBeforeInsert(document: *Instance) bool {
     var edit = (beginEdit(document) catch return false) orelse return false;
     if (edit.rangeCollapsed() catch true) return false;
@@ -153,7 +148,27 @@ pub fn deleteSelectionBeforeInsert(document: *Instance) bool {
         log.debug("insertText's delete the selection: {}", .{err});
         return false;
     };
+    // Step 14.1, for the text inserted where the deletion left the caret:
+    // "If node has only one child, which is a collapsed line break, remove
+    // its child" - the br that padded the emptied block or wrapper
+    // (`<blockquote><font color=blue>[foo]</font></blockquote>` -> `<font
+    // color="blue">a</font>`, editing/run/inserttext.html; Chrome 155,
+    // Firefox 158 and Safari 27). Steps 6-8 first: a Text node beside the
+    // caret takes the text instead.
+    removeLoneCollapsedLineBreak(&edit) catch |err| log.debug("insertText step 14.1: {}", .{err});
     return true;
+}
+
+fn removeLoneCollapsedLineBreak(edit: *Edit) !void {
+    const start = (try edit.rangeStart()) orelse return;
+    if (common.isText(start.node)) return;
+    if (try common.childBefore(start.node, start.offset)) |before| if (common.isText(before)) return;
+    if (try common.childAt(start.node, start.offset)) |at| if (common.isText(at)) return;
+    if ((try common.childCount(start.node)) != 1) return;
+    const only = (try common.firstChild(start.node)).?;
+    if (!try common.isCollapsedLineBreak(only)) return;
+    if (!try common.isEditable(only)) return;
+    try edit.removeNode(only);
 }
 
 /// Whether `target` (the focused element, or the body for a design-mode
