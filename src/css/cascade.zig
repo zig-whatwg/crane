@@ -654,7 +654,7 @@ const Builder = struct {
     /// ConvertRegisteredPropertyVariableData; WebKit
     /// computeCustomPropertyValueForSyntax). A failed parse is invalid at
     /// computed-value time: unset. Retained.
-    fn typedCustom(self: *Builder, name: []const u8, reg: *const registered_mod.Snapshot.Entry, text: []const u8, taint: []const substitution.TaintRange) Allocator.Error!?*custom_mod.Text {
+    fn typedCustom(self: *Builder, name: []const u8, reg: *const registered_mod.Snapshot.Entry, text: []const u8, taint: []const substitution.TaintRange, pending: ?*const @import("pending_values.zig").Pending) Allocator.Error!?*custom_mod.Text {
         // §2.5 / unit-cycles.html: font-relative units make font-size (and
         // lh line-height) a dependency. While that property is itself being
         // substituted - its var() reached here - both are in a cycle (Blink
@@ -675,7 +675,7 @@ const Builder = struct {
             if (deps.line_height) try self.ensureLineHeight();
         }
         const allocator = self.ctx.allocator;
-        const bytes = (try self.computeTyped(allocator, reg, text)) orelse return retained(self.defaultCustom(name));
+        const bytes = (try self.computeTyped(allocator, reg, text, pending)) orelse return retained(self.defaultCustom(name));
         errdefer allocator.free(bytes);
         // Computation reorders tokens, so taint covers the whole value when
         // any input token was tainted (both shipping browsers taint a var()
@@ -692,8 +692,13 @@ const Builder = struct {
     /// `text` parsed against `reg`'s syntax and computed in this element's
     /// context, serialized (owned by `allocator`); null when the syntax
     /// does not match.
-    fn computeTyped(self: *Builder, allocator: Allocator, reg: *const registered_mod.Snapshot.Entry, text: []const u8) Allocator.Error!?[]u8 {
-        var value = (try reg.syntax.parseValue(.{ .allocator = allocator }, text)) orelse return null;
+    fn computeTyped(self: *Builder, allocator: Allocator, reg: *const registered_mod.Snapshot.Entry, text: []const u8, pending: ?*const @import("pending_values.zig").Pending) Allocator.Error!?[]u8 {
+        // A declaration's own url()s resolve against its base (the
+        // pending value keeps them); a query value's are left as written.
+        var value = (if (pending) |p|
+            try p.parseSyntax(allocator, &reg.syntax, text, self.ctx.url_resolver)
+        else
+            try reg.syntax.parseValue(.{ .allocator = allocator }, text)) orelse return null;
         defer value.deinit();
         var computed = try value.compute(allocator, .{
             .math = self.mathContext(.width),
@@ -872,7 +877,7 @@ const Builder = struct {
             const keyword: values.CssWide = switch (c.decl.value) {
                 .css_wide => |k| k,
                 .text => |t| {
-                    if (self.typedRegistration(name)) |reg| return self.typedCustom(name, reg, t.bytes, t.taint);
+                    if (self.typedRegistration(name)) |reg| return self.typedCustom(name, reg, t.bytes, t.taint, null);
                     t.retain();
                     return t;
                 },
@@ -903,7 +908,7 @@ const Builder = struct {
                                     self.ctx.allocator.free(result.text);
                                     self.ctx.allocator.free(result.taint);
                                 }
-                                return self.typedCustom(name, reg, result.text, result.taint);
+                                return self.typedCustom(name, reg, result.text, result.taint, pending);
                             }
                             errdefer {
                                 self.ctx.allocator.free(result.text);
@@ -1007,7 +1012,7 @@ const Builder = struct {
         // computed under its registration (a mismatch matches nothing),
         // compared with the element's computed value.
         if (self.typedRegistration(name)) |reg| {
-            query.text = (try self.computeTyped(arena.allocator(), reg, query.text)) orelse return .{ .value = false, .tainted = query.tainted };
+            query.text = (try self.computeTyped(arena.allocator(), reg, query.text, null)) orelse return .{ .value = false, .tainted = query.tainted };
         }
         const value = (try customValueCallback(context, name)) orelse return .{ .value = false, .tainted = query.tainted };
         return .{ .value = tokensEqual(value.text, query.text), .tainted = query.tainted or value.taint.len != 0 };

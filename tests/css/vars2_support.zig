@@ -55,6 +55,8 @@ pub fn snapshotOf(allocator: Allocator, environment: registered.Environment, lis
 pub const Tree = struct {
     allocator: Allocator,
     registered: ?*Snapshot = null,
+    /// Resolves the blocks' url()s at parse time (a style sheet's base).
+    url_resolver: ?css.properties.UrlResolver = null,
     styles: std.ArrayList(*ComputedStyle) = .empty,
 
     pub fn deinit(self: *Tree) void {
@@ -69,7 +71,7 @@ pub const Tree = struct {
     /// A child of the last element styled (the root first), with `text` as
     /// its one author block.
     pub fn element(self: *Tree, text: []const u8) !*ComputedStyle {
-        var block = try DeclarationBlock.parse(.{ .allocator = self.allocator }, text);
+        var block = try DeclarationBlock.parse(.{ .allocator = self.allocator, .url_resolver = self.url_resolver }, text);
         defer block.deinit();
         const parent: ?*const ComputedStyle = if (self.styles.items.len == 0) null else self.styles.items[self.styles.items.len - 1];
         try self.styles.ensureUnusedCapacity(self.allocator, 1);

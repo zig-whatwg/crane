@@ -146,6 +146,44 @@ test "a cycle through an unregistered property: every participant is invalid" {
     try expectCustom(child, "--u", "10em");
 }
 
+/// A style sheet at https://sheet.test/: url()s resolve against it.
+const SheetResolver = struct {
+    fn resolve(_: *const anyopaque, allocator: Allocator, raw: []const u8) ?[]u8 {
+        return std.fmt.allocPrint(allocator, "https://sheet.test/{s}", .{raw}) catch null;
+    }
+};
+
+fn urlCase(allocator: Allocator) !void {
+    const url_defs = [_]support.Def{
+        .{ .name = "--url", .syntax = "<url>", .inherits = false, .initial = "url(initial.png)" },
+        .{ .name = "--img", .syntax = "<image>", .inherits = true, .initial = "url(initial.png)" },
+    };
+    var t: Tree = .{
+        .allocator = allocator,
+        .registered = try support.snapshotOf(allocator, .{}, &url_defs),
+        .url_resolver = .{ .context = undefined, .resolve = SheetResolver.resolve },
+    };
+    defer endTree(&t);
+    const root = try t.element("--url: url(a.png); --img: url(\"b.png\"); --plain: url(c.png)");
+    // css-properties-values-api url-resolution.html: a registered <url>
+    // resolves against its declaration's style sheet, so var() carries the
+    // absolute URL; an unregistered property keeps its tokens.
+    try expectCustom(root, "--url", "url(\"https://sheet.test/a.png\")");
+    try expectCustom(root, "--img", "url(\"https://sheet.test/b.png\")");
+    try expectCustom(root, "--plain", "url(c.png)");
+    const child = try t.element("--u: var(--url)");
+    try expectCustom(child, "--img", "url(\"https://sheet.test/b.png\")");
+    _ = try t.element("color: red");
+}
+
+test "a registered <url> or <image> resolves against its declaration's base" {
+    try urlCase(testing.allocator);
+}
+
+test "registered url resolution survives every allocation failure" {
+    try testing.checkAllAllocationFailures(testing.allocator, urlCase, .{});
+}
+
 fn typedUnderOom(allocator: Allocator) !void {
     var t = try tree(allocator);
     defer endTree(&t);
