@@ -257,6 +257,16 @@ pub const Client = struct {
 /// Read `global`'s settings object as a request's client. A global no kind
 /// owns is a client that knows nothing: the request keeps "client" for its
 /// origin and referrer, has no traversable and no cookie jar.
+/// The global of `realm` while the realm stands - its realm record's global
+/// object - or null once it ended (its record goes with its retirement).
+/// What a reporter that keeps a realm, not a global, resolves when it
+/// reports: a request outlives the call that made it, and a realm that ended
+/// gave its Window's slot back (lane winslot1, kind 11).
+pub fn liveGlobalOf(realm: runtime.Context) ?*runtime.Instance {
+    const record = realm.getRealm() orelse return null;
+    return @ptrCast(@alignCast(record.global_object orelse return null));
+}
+
 pub fn requestClient(global: *runtime.Instance) error{OutOfMemory}!Client {
     const allocator = global.ctx.allocator;
     var client: Client = .{ .allocator = allocator };

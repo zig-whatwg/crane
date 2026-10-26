@@ -1351,7 +1351,7 @@ fn invoke(item: *const dom_module.event_dispatch.PathItem, event: *runtime.Insta
     if (state.stop_propagation_flag) return;
 
     // Step 7
-    state.current_target = item.invocation_target;
+    state.setCurrentTarget(item.invocation_target);
 
     // Steps 8-10.
     //

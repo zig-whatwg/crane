@@ -821,7 +821,11 @@ pub const EventLoop = struct {
         for (self.suspended.items) |group| {
             if (group.resumed) continue;
             if (group.window) |window| {
-                if (window == @as(*anyopaque, @ptrCast(global))) return true;
+                // The same address, and still that Window (lane winslot1,
+                // kind 9): a kept page's Window whose slot went back and was
+                // issued again is another window.
+                if (window == @as(*anyopaque, @ptrCast(global)) and
+                    runtime.SlabAllocator.generationOf(@ptrCast(@alignCast(global))) == group.window_generation) return true;
             }
         }
         return false;

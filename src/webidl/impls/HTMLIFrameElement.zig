@@ -1750,11 +1750,11 @@ fn startFetch(record: *Navigation) void {
         // type to navigable's container's local name" - only a navigation
         // the container started is reported to resource timing, to the
         // container document's global (its fetch client's).
-        if (record.csp_reporter) |source| {
+        if (record.csp_reporter) |*source| if (source.liveGlobal()) |source_global| {
             if (record.integration.iframe_element) |element_ptr| {
                 const container: *runtime.Instance = @ptrCast(@alignCast(element_ptr));
-                if (container.ctx == source.global.ctx) {
-                    record.timing_reporter = dom_module.performance_timeline.GuardedTimingReporter.forGlobal(source.global);
+                if (container.ctx == source_global.ctx) {
+                    record.timing_reporter = dom_module.performance_timeline.GuardedTimingReporter.forGlobal(source_global);
                     // Step 10.3: "set request's initiator type to navigable's
                     // container's local name".
                     request.initiator_type = switch (container_kind orelse .iframe) {
@@ -1767,7 +1767,7 @@ fn startFetch(record: *Navigation) void {
                     if (record.timing_reporter) |*reporter| request.timing_reporter = reporter.reporter();
                 }
             }
-        }
+        };
         // Step 3's POST resource: "set request's body to documentResource's
         // request body" and "Content-Type" to its request content-type. The
         // body is the record's, borrowed for as long as the fetch runs.

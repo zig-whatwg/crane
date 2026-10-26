@@ -124,11 +124,14 @@ pub const InternalState = struct {
     /// The associated document (lazily set)
     document: ?*runtime.Instance = null,
 
-    /// The opener window (if opened via window.open())
-    opener: ?*runtime.Instance = null,
-
-    /// Opener as anyopaque for the IDL getter
-    opener_any: ?*const anyopaque = null,
+    /// The opener Window (if opened via window.open()), as it was when set:
+    /// the IDL getter's fallback when the browsing context's opener has no
+    /// active window to answer with. Held with its slab generation
+    /// (runtime.window_holders.Link), beside a traced edge from this Window
+    /// to the opener's WindowProxy when the opener is another realm's
+    /// (`opener_slot`) - the proxy is what the getter answers (lane winslot1,
+    /// kind 2).
+    opener: ?runtime.window_holders.Link = null,
 
     /// Sub-interface instances (lazily created)
     location: ?*runtime.Instance = null,
@@ -980,6 +983,9 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
     // Clean up Window's own internal state
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        // Its document, as it was: what `forgetWindow` below compares.
+        const associated_document = internal.document;
+
         // The window's Location and History ([SameObject]: one each for the
         // window's life) go WHOLE with it: their destructors, and their
         // storage back from whoever can reach them last (runtime.gc
@@ -1017,6 +1023,13 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
             log.debug("[Window.deinit] NO document to clean up", .{});
         }
 
+        // No browsing context names this Window from here on - its own, or a
+        // retired one that kept it (Navigables.forgetWindow) - before
+        // `internal.deinit` can free a context the Window owns.
+        if (internal.browsing_context.navigables) |navigables| {
+            navigables.forgetWindow(@ptrCast(instance), if (associated_document) |d| @ptrCast(d) else null);
+        }
+
         internal.deinit();
         // Return the block itself, not just what it points to. `internal.deinit()`
         // releases what the state OWNS; the state struct was staying allocated for
@@ -1040,9 +1053,14 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 pub fn setOpener(instance: *runtime.Instance, opener_window: *runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Store the opener Window instance
-    internal.opener = opener_window;
-    internal.opener_any = @ptrCast(opener_window);
+    // Keep the opener: its WindowProxy, when it is another realm's - a
+    // WindowProxy holder keeps the PROXY (the integrator's ruling of
+    // 2026-10-25 on the three-browser probe, Firefox's behaviour; WebKit's
+    // Frame keeps WeakPtr<Frame> m_opener, read through its WindowProxy) -
+    // and the Window, for when there is no edge to read.
+    forgetOpener(instance, internal);
+    internal.opener = runtime.window_holders.Link.of(opener_window);
+    if (opener_window.ctx != instance.ctx) engine.traceValue(instance, .{ .instance = opener_window }, opener_slot);
 
     // Also update the browsing context's opener
     const opener_internal = getInternal(opener_window) orelse return error.InvalidStateError;
@@ -1058,8 +1076,17 @@ pub fn setOpenerNoopener(instance: *runtime.Instance) !void {
 
     // Mark as disowned from creation
     internal.browsing_context.disowned = true;
+    forgetOpener(instance, internal);
+}
+
+/// The member a Window keeps another realm's opener (its WindowProxy) in.
+const opener_slot: engine.TracedSlot = .{ .name = "opener" };
+
+/// Let go of the opener `setOpener` kept.
+fn forgetOpener(instance: *runtime.Instance, internal: *InternalState) void {
+    const link = internal.opener orelse return;
     internal.opener = null;
-    internal.opener_any = null;
+    if (link.realm != instance.ctx) engine.forgetTracedChild(instance, opener_slot);
 }
 
 /// Check if this window has an accessible opener.
@@ -1583,8 +1610,11 @@ pub fn get_opener(instance: *runtime.Instance) anyerror!runtime.JSValue {
 
     // Return opener if set - opener is a stored Window instance pointer
     // Use fromInstanceAnyopaque for legacy anyopaque instance pointers
-    if (internal.opener_any) |opener| {
-        return runtime.JSValue.fromInstanceAnyopaque(@constCast(opener));
+    if (internal.opener) |link| {
+        if (link.realm != instance.ctx) {
+            if (engine.tracedValue(instance, opener_slot)) |held| return held.take();
+        }
+        if (link.get()) |opener| return .{ .instance = opener };
     }
 
     // Return null for no opener
@@ -2054,8 +2084,7 @@ pub fn set_opener(instance: *runtime.Instance, value: runtime.JSValue) anyerror!
     if (value.isNull()) {
         if (navigableOf(instance, internal) == null) return;
         internal.browsing_context.disown();
-        internal.opener = null;
-        internal.opener_any = null;
+        forgetOpener(instance, internal);
         return;
     }
 

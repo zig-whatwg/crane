@@ -149,6 +149,9 @@ pub const isContextTearingDown = cleanup_coordinator.isContextTearingDown;
 
 // Instance lifecycle tracking (RC2 fix - tracks cleanup state per instance)
 pub const instance_lifecycle = @import("instance_lifecycle.zig");
+/// What may keep a Window past its realm's end, and whether its slot may go
+/// back (lane winslot1).
+pub const window_holders = @import("window_holders.zig");
 pub const LifecycleFlags = instance_lifecycle.LifecycleFlags;
 
 // Internal state registry and accessors
@@ -444,6 +447,7 @@ test "runtime exports" {
 
     _ = gc;
     _ = lifetime;
+    _ = window_holders;
     _ = onObjectFreed;
 
     _ = initRuntime;
