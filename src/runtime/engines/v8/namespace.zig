@@ -147,6 +147,29 @@ fn freeStringResult(comptime T: type, allocator: std.mem.Allocator, result: T) v
     }
 }
 
+/// The WebIDL length codegen gives the operation bound as `zig_name`: the
+/// third entry of its `Meta.methods` row. 0 for a namespace without one (a
+/// hand-written binding test's).
+fn webidlLength(comptime Namespace: type, comptime zig_name: []const u8) c_int {
+    if (!@hasDecl(Namespace, "Meta") or !@hasDecl(Namespace.Meta, "methods")) return 0;
+    for (Namespace.Meta.methods) |row| {
+        if (row.len >= 3 and std.mem.eql(u8, row[1], zig_name)) return row[2];
+    }
+    return 0;
+}
+
+/// Throw what a namespace operation's or attribute getter's error names
+/// (conv.throwWebIDLErrorFromContext: a DOMException name, TypeError, ...),
+/// in the operation's context. error.ExceptionPending says script has
+/// already thrown - a callback the impl ran, a conversion of a value script
+/// handed it - and that exception stays pending, script's own object, as the
+/// interface binding's throwMemberError leaves it
+/// (docs/lessons/architecture-a-pending-script-exception-is-not-a-new-host-error.md).
+fn throwOperationError(isolate: *v8.Isolate, context: *v8.Context, err: anyerror) void {
+    if (err == error.ExceptionPending) return;
+    conv.throwWebIDLErrorFromContext(isolate, context, @errorName(err));
+}
+
 /// `call_<name>__<k>`: overload k of an overloaded operation (AGENTS.md,
 /// "Names are the binding map").
 fn isFurtherOverload(comptime decl_name: []const u8) bool {
@@ -181,6 +204,12 @@ pub fn V8Namespace(comptime Namespace: type) type {
         name: []const u8, // JavaScript name (e.g., "log")
         zig_name: []const u8, // Zig function name (e.g., "call_log")
         param_count: usize, // Number of parameters
+        /// WebIDL's `length` of the operation function (3.7.6 "create an
+        /// operation function"): the shortest argument list in its
+        /// effective overload set - what codegen writes as the third entry
+        /// of the operation's `Meta.methods` row. Not `param_count`, which
+        /// counts Zig parameters (the realm, optional and variadic ones).
+        length: c_int = 0,
     };
 
     // Validate namespace type at compile time
@@ -210,6 +239,7 @@ pub fn V8Namespace(comptime Namespace: type) type {
                     .name = method_name,
                     .zig_name = decl.name,
                     .param_count = fn_info.@"fn".params.len,
+                    .length = webidlLength(Namespace, decl.name),
                 }};
             }
         }
@@ -375,7 +405,7 @@ pub fn V8Namespace(comptime Namespace: type) type {
                         return;
                     };
                     const result = getter_fn(realm) catch |err| {
-                        conv.throwWebIDLErrorFromContext(isolate, context, @errorName(err));
+                        throwOperationError(isolate, context, err);
                         return;
                     };
                     defer freeStringResult(return_type, realm.getAllocator(), result);
@@ -402,6 +432,10 @@ pub fn V8Namespace(comptime Namespace: type) type {
             const callback = comptime generateCallback(method);
             const fn_template = v8.v8_FunctionTemplate_New(isolate, callback, null) orelse return;
             defer v8.v8_FunctionTemplate_Dispose(fn_template);
+            // The function's `length` (WebIDL 3.7.6), as interface
+            // operations set theirs (interface.zig, Meta.methods' arity):
+            // left unset, every namespace operation's was 0.
+            v8.v8_FunctionTemplate_SetLength(fn_template, method.length);
             const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
             defer v8.v8_Context_Dispose(context);
             // Released once set: the function lives in the context, and one
@@ -494,7 +528,17 @@ pub fn V8Namespace(comptime Namespace: type) type {
         fn generateCallback(comptime method: MethodInfo) v8.FunctionCallback {
             const namespace_fn = @field(Namespace, method.zig_name);
             const fn_type_info = @typeInfo(@TypeOf(namespace_fn)).@"fn";
-            const return_type = fn_type_info.return_type orelse void;
+            const declared_return = fn_type_info.return_type orelse void;
+            // What a successful call returns: the payload of an error union.
+            // The error itself is THROWN (throwOperationError), never
+            // converted - conv.toV8Value's error-union branch made an Error
+            // object and returned it as the call's value, so every failing
+            // namespace operation (CSS.registerProperty, console.*,
+            // TestUtils.gc) returned an Error instead of throwing.
+            const return_type = switch (@typeInfo(declared_return)) {
+                .error_union => |eu| eu.payload,
+                else => declared_return,
+            };
 
             const Wrapper = struct {
                 fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
@@ -692,7 +736,17 @@ pub fn V8Namespace(comptime Namespace: type) type {
                     }
 
                     // Call the namespace function with extracted arguments
-                    const result = @call(.auto, namespace_fn, args);
+                    const completion = @call(.auto, namespace_fn, args);
+                    // WebIDL 3.13.1 "create an operation function": an abrupt
+                    // completion of the steps is the function's - thrown, as
+                    // the getter path and the interface binding throw it.
+                    const result: return_type = if (comptime return_type != declared_return)
+                        completion catch |err| {
+                            throwOperationError(isolate, context, err);
+                            return;
+                        }
+                    else
+                        completion;
                     // A string the impl returns is the binding's once it is
                     // converted, as an interface operation's is (interface.zig,
                     // needs_string_cleanup): freed with the allocator the impl

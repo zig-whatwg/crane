@@ -3381,7 +3381,7 @@ fn overloadArity(overload_ops: []const types.Operation, op: types.Operation) usi
     return arity;
 }
 
-fn requiredArgumentCount(op: types.Operation) usize {
+pub fn requiredArgumentCount(op: types.Operation) usize {
     var count: usize = 0;
     for (op.arguments) |arg| {
         if (arg.optional or arg.variadic) break;

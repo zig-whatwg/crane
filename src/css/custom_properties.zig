@@ -162,8 +162,11 @@ pub fn parse(options: @import("properties.zig").ParseOptions, text: []const u8) 
     return .{ .text = try Text.create(options.allocator, source) };
 }
 
-fn cssWideKeyword(text: []const u8) ?values.CssWide {
+/// The CSS-wide keyword `text` is, alone (whitespace and comments around
+/// it allowed), or null.
+pub fn cssWideKeyword(text: []const u8) ?values.CssWide {
     var tokenizer = @import("tokenizer.zig").Tokenizer.init(text);
+    tokenizer.skipWhitespace();
     const token = tokenizer.next();
     if (token.token_type != .ident) return null;
     tokenizer.skipWhitespace();

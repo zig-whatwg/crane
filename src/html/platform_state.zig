@@ -56,3 +56,32 @@ pub fn of(realm: runtime.Context) ?*platform.BrowserPlatform {
     const state = scope.existing(PlatformState) orelse return null;
     return state.browser;
 }
+
+/// The platform owner installs the style provider once, at process start.
+pub fn installHooks() void {
+    @import("dom").style.environment_variables.install(.{
+        .value = &environmentValue,
+        .revision = &environmentRevision,
+    });
+}
+
+fn environmentValue(document: *runtime.Instance, variable: @import("dom").style.environment_variables.Variable, x: u32, y: u32) ?f64 {
+    const browser = of(document.ctx) orelse return null;
+    comptime {
+        const Variable = @import("dom").style.environment_variables.Variable;
+        if (@typeInfo(Variable).@"enum".fields.len != @typeInfo(platform.CssEnvironmentVariable).@"enum".fields.len)
+            @compileError("CSS and platform environment variable sets must match");
+    }
+    // Exhaustively resolve tags by name at compile time, never by ordinal.
+    const platform_variable = switch (variable) {
+        inline else => |tag| @field(platform.CssEnvironmentVariable, @tagName(tag)),
+    };
+    // Platform protocol §6.9: values are currently per Browser. Tab 0 is
+    // reserved until recipes step 7 supplies document-to-TabId mapping.
+    return platform.cssEnvironmentVariable(browser, 0, platform_variable, x, y);
+}
+
+fn environmentRevision(document: *runtime.Instance) u64 {
+    const browser = of(document.ctx) orelse return 0;
+    return platform.cssEnvironmentRevision(browser, 0);
+}

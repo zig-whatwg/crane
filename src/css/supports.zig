@@ -95,9 +95,11 @@ fn substitutionValid(allocator: std.mem.Allocator, value: []const u8) std.mem.Al
 /// when it matches neither grammar (unknown to the caller); false only for
 /// a valid test that is not supported. No implicit-parentheses retry (that
 /// is CSS.supports()'s own step), and allocation failure propagates.
-pub fn evaluateTest(allocator: std.mem.Allocator, text: []const u8, quirks: bool) error{ OutOfMemory, Invalid }!bool {
+/// `selector_check` answers selector(), as CSS.supports()'s and @supports'
+/// callers supply it; null makes every selector() false.
+pub fn evaluateTest(allocator: std.mem.Allocator, text: []const u8, quirks: bool, selector_check: ?SelectorCheck) error{ OutOfMemory, Invalid }!bool {
     var oom = false;
-    const evaluator: Evaluator = .{ .allocator = allocator, .selector_check = null, .quirks = quirks, .oom = &oom };
+    const evaluator: Evaluator = .{ .allocator = allocator, .selector_check = selector_check, .quirks = quirks, .oom = &oom };
     const result = evaluator.condition(text) orelse evaluator.declaration(text);
     if (oom) return error.OutOfMemory;
     return result orelse error.Invalid;
@@ -287,6 +289,13 @@ fn testSelectorCheck(allocator: std.mem.Allocator, text: []const u8) bool {
         if (std.mem.indexOf(u8, text, bad) != null) return false;
     }
     return true;
+}
+
+test "evaluateTest (if()'s supports()) answers selector() through the caller's check" {
+    try testing.expect(try evaluateTest(testing.allocator, "selector(a > b)", false, &testSelectorCheck));
+    try testing.expect(!try evaluateTest(testing.allocator, "selector(a:unknown)", false, &testSelectorCheck));
+    // No check: every selector() is false, as CSS.supports() without one.
+    try testing.expect(!try evaluateTest(testing.allocator, "selector(a > b)", false, null));
 }
 
 test "supports(property, value): a property Crane parses, with a value that parses for it" {

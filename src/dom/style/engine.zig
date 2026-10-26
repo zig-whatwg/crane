@@ -57,8 +57,10 @@ const navigable_container = @import("../navigable_container.zig");
 const selector_matching = @import("../selector_matching.zig");
 const hooks = @import("hooks.zig");
 const sheet_mod = @import("sheet.zig");
+const style_rules = @import("rules.zig");
 const ua_sheet = @import("ua_sheet.zig");
 const element_style = @import("element_style.zig");
+const environment_variables = @import("environment_variables.zig");
 pub const resource_loading = @import("resource_loading.zig");
 pub const available_images = @import("available_images.zig");
 
@@ -238,12 +240,20 @@ pub const StyleEngine = struct {
         /// HTML's completed image cache is independent of CSS interest:
         /// making it never schedules a style walk or a rendering turn.
         images: ?*available_images.Cache = null,
+        /// Properties and Values §2.1: document registrations, allocated only
+        /// when a script or an active document stylesheet registers a name.
+        property_registry: ?*css.property_registry.Registry = null,
+        property_registry_generation: ?u64 = null,
 
         fn deinit(self: *Rare, allocator: Allocator) void {
             if (self.resources) |resources| resources.destroy();
             if (self.images) |images| {
                 images.deinit();
                 allocator.destroy(images);
+            }
+            if (self.property_registry) |registry| {
+                registry.deinit();
+                allocator.destroy(registry);
             }
             self.media_query_lists.deinit(allocator);
             self.adopting_roots.deinit(allocator);
@@ -272,6 +282,49 @@ pub const StyleEngine = struct {
         rare.* = .{};
         self.rare = rare;
         return rare;
+    }
+
+    fn ensurePropertyRegistry(self: *StyleEngine) Error!*css.property_registry.Registry {
+        const rare = try self.ensureRare();
+        if (rare.property_registry) |registry| return registry;
+        const registry = try self.allocator.create(css.property_registry.Registry);
+        registry.* = .init(self.allocator);
+        rare.property_registry = registry;
+        return registry;
+    }
+
+    /// Refresh before a cascade read. The returned registry is borrowed until
+    /// the next sheet/registration change; absent registrations allocate no
+    /// rare state. Current browsers ignore registrations from shadow sheets.
+    pub fn propertyRegistry(self: *StyleEngine, document: *runtime.Instance) Error!?*const css.property_registry.Registry {
+        const active = try self.ensureActive(document);
+        if (self.rare) |rare| {
+            if (rare.property_registry_generation == self.generation) return rare.property_registry;
+        }
+        var declared = css.property_registry.Declared.init(self.allocator);
+        defer declared.deinit();
+        // §2.1: the last rule in document stylesheet order wins. Imports are
+        // already substituted by ensureActive; layer precedence is irrelevant.
+        for (active.sheets.items) |sheet| for (sheet.contents.property_rules.items) |entry| {
+            if (sheet.contents.conditionHolds(entry.condition, &active.media))
+                try declared.add(entry.rule.data.property);
+        };
+        const existing = if (self.rare) |rare| rare.property_registry else null;
+        if (existing == null and declared.entries.count() == 0) return null;
+        const registry = existing orelse try self.ensurePropertyRegistry();
+        registry.replaceDeclared(&declared);
+        self.rare.?.property_registry_generation = self.generation;
+        return registry;
+    }
+
+    /// §4.1: only a successful script registration changes computed style.
+    /// All objects/URLs were converted by the caller; this retains no realm.
+    pub fn registerProperty(self: *StyleEngine, document: *runtime.Instance, options: css.properties.ParseOptions, definition: css.property_registry.Definition) (Error || error{ SyntaxError, InvalidModificationError })!void {
+        std.debug.assert(hooks.engineOf(document) == self);
+        const registry = try self.ensurePropertyRegistry();
+        try registry.register(options, definition);
+        self.generation +%= 1;
+        if (self.resourceState()) |resources| resources.invalidate();
     }
 
     pub fn resourceState(self: *StyleEngine) ?*resource_loading.State {
@@ -1010,6 +1063,7 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
     return css.cascade.cascade(.{
         .allocator = element.ctx.allocator,
         .parent = parent,
+        .environment = .{ .context = res.document, .lookup = environment_variables.lookup },
         .content_attributes = .{ .context = element, .get = contentAttribute },
         .tree_counts = .{ .context = node, .get = treeCounts },
         .random_base = .{ .context = &random_context, .get = randomBase },
@@ -1028,6 +1082,8 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
         .url_resolver = .{ .context = element, .resolve = substitutedUrl },
         // if()'s media() test reads the document's media values (row 123).
         .media_values = &res.active.media,
+        // if()'s supports() test answers selector() as @supports does.
+        .selector_check = &style_rules.selectorSupported,
     }, res.matched.items);
 }
 

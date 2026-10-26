@@ -387,8 +387,9 @@ pub fn deinit() void {
                         _ = cache_ptr.remove(window_instance);
                     }
 
-                    // Now call Window.deinit to clean up Document and DOM tree
-                    @import("interfaces").Window.deinit(window_instance);
+                    // Now call Window.deinit to clean up Document and DOM tree,
+                    // marked as removeContextByKey marks it.
+                    deinitWindow(window_instance);
                     log.debug("[context_manager.deinit] DOM Tree cleanup: Window.deinit DONE", .{});
                 } else {
                     log.debug("[context_manager.deinit] DOM Tree cleanup: NO window_instance for context", .{});
@@ -1043,6 +1044,18 @@ pub fn keyOf(v8_ctx: *v8.Context) ?usize {
     return @intFromPtr(raw_addr);
 }
 
+/// The realm's Window torn down - its destructor chain, once - with its
+/// cleanup marked (runtime.instance_lifecycle): from its first step, every
+/// holder that keeps it with a generation and asks for its cleanup reads it
+/// gone, before its slot is given back (protocol_realms.endRealm, step 5),
+/// and the slot's release asks for that mark (lane winslot1, P2).
+fn deinitWindow(window: *runtime.Instance) void {
+    const lifecycle = runtime.instance_lifecycle;
+    if (!lifecycle.markCleanupStarted(window)) return;
+    @import("interfaces").Window.deinit(window);
+    lifecycle.markCleanupComplete(window);
+}
+
 /// `removeContext` by the context's key (`keyOf`): the realm's Window, its
 /// wrapper cache and its realm record go, and the entry is retired. Touches
 /// the context only through `v8_ctx`, which may be null - a context the
@@ -1149,7 +1162,7 @@ pub fn removeContextByKey(key: usize, v8_ctx: ?*v8.Context) void {
                 // here, unsevered, before the Window freed it - and then
                 // nothing returned its storage: every page kept its Location
                 // until its Browser ended (lane pageretention1).
-                @import("interfaces").Window.deinit(wi);
+                deinitWindow(wi);
             }
 
             // Clean up V8 wrapper cache

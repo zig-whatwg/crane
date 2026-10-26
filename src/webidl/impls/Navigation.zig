@@ -332,7 +332,14 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 /// The relevant global object: the Window of this object's realm, from the
 /// realm record.
 fn windowOf(instance: *runtime.Instance, internal: *InternalState) ?*runtime.Instance {
-    if (internal.window) |window| return window;
+    // The one kept, while its slot is still that Window's and its teardown
+    // has not begun (lane winslot1, kind 13): the Navigation goes with its
+    // Window's realm, but every read of the Window goes through this.
+    if (internal.window) |window| {
+        if (runtime.SlabAllocator.generationOf(window) != internal.window_generation) return null;
+        if (runtime.instance_lifecycle.isCleanupStarted(window)) return null;
+        return window;
+    }
     const record = instance.ctx.getRealm() orelse return null;
     const window: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
     internal.window = window;

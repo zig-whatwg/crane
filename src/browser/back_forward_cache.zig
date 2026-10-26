@@ -151,6 +151,9 @@ pub const BackForwardCache = struct {
             // A page whose realm ended with its opener's is no page.
             if (!entry.page.realm.hasEngine()) return null;
             if (runtime.SlabAllocator.generationOf(entry.page.document) != entry.page.document_generation) return null;
+            // ... and the Window the restore makes its navigable's active one
+            // again (lane winslot1, kind 8).
+            if (runtime.SlabAllocator.generationOf(entry.page.window) != entry.page.window_generation) return null;
             _ = self.entries.orderedRemove(index);
             self.armTtl();
             return entry.page;

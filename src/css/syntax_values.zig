@@ -171,6 +171,9 @@ pub const Value = struct {
 /// §5.3: alternatives are tried in order; each must consume the whole value.
 pub fn parse(definition: *const syntax.Definition, options: properties.ParseOptions, text: []const u8) Allocator.Error!?Value {
     if (!@import("rules.zig").isDeclarationValue(text)) return null;
+    // Values 5 §3.3.1: universal matching returns declaration values
+    // uncomputed. The consuming property resolves any CSS-wide keyword.
+    if (definition.universal) return .{ .allocator = options.allocator, .data = .{ .universal = try options.allocator.dupe(u8, text) } };
     var stream = properties.Stream.init(text);
     const first = stream.next();
     if (first.token_type == .ident and stream.atEnd()) {
@@ -178,7 +181,6 @@ pub fn parse(definition: *const syntax.Definition, options: properties.ParseOpti
         defer options.allocator.free(decoded);
         if (style.CssWide.parse(decoded) != null) return null;
     }
-    if (definition.universal) return .{ .allocator = options.allocator, .data = .{ .universal = try options.allocator.dupe(u8, text) } };
     for (definition.components) |component| {
         stream = properties.Stream.init(text);
         var strict = options;
