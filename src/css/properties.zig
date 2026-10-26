@@ -220,6 +220,7 @@ pub const Longhand = enum(u8) {
     // CSS image value families (row 119).
     cursor,
     list_style_image,
+    image_resolution,
     text_indent,
     fill,
     stroke,
@@ -228,6 +229,7 @@ pub const Longhand = enum(u8) {
     marker_end,
     clip_path,
     filter,
+    box_shadow,
     object_position,
     mask_image,
     mask_position,
@@ -245,6 +247,10 @@ pub const Longhand = enum(u8) {
     stroke_width,
     mask_type,
     border_image_source,
+    border_image_slice,
+    border_image_width,
+    border_image_outset,
+    border_image_repeat,
 
     // Anchor Position 1 §6.6, Values 5 §11.3 and Contain 2 §2.
     position_visibility,
@@ -275,6 +281,11 @@ pub const Longhand = enum(u8) {
     // Must follow all request inputs for from-font computation (Q46).
     font_size_adjust,
 
+    border_top_left_radius,
+    border_top_right_radius,
+    border_bottom_right_radius,
+    border_bottom_left_radius,
+
     pub const count = @typeInfo(Longhand).@"enum".fields.len;
 
     /// The property name.
@@ -302,7 +313,7 @@ pub const Longhand = enum(u8) {
 /// CSSOM 7.2 step 5 enumerates names lexicographically, independently of
 /// declaration order. Separate property families can append contiguous blocks.
 pub const lexicographic: [Longhand.count]Longhand = blk: {
-    @setEvalBranchQuota(100_000);
+    @setEvalBranchQuota(200_000);
     var out: [Longhand.count]Longhand = undefined;
     for (0..Longhand.count) |i| out[i] = @enumFromInt(i);
     std.mem.sort(Longhand, &out, {}, struct {
@@ -479,10 +490,14 @@ pub const Grammar = enum {
     reference,
     shape,
     filter,
+    box_shadow,
     image_position,
+    image_resolution,
     mask,
+    border_image,
     stroke_width,
     background,
+    border_radius_corner,
 };
 
 pub const Info = struct {
@@ -680,6 +695,8 @@ const infos: [Longhand.count]Info = blk: {
         // CSS UI4 §5.1.1; CSS Lists3 §3.3.
         .{ .longhand = .cursor, .inherited = true, .initial = Value.kw(.auto), .grammar = .cursor },
         .{ .longhand = .list_style_image, .inherited = true, .initial = Value.kw(.none), .grammar = .image },
+        // CSS Images 4 §6.1 / Values 4 §7.4; Q146 defers snap rounding.
+        .{ .longhand = .image_resolution, .inherited = true, .initial = .{ .image_resolution = .initial }, .grammar = .image_resolution },
         .{ .longhand = .text_indent, .inherited = true, .initial = Value.px(0), .grammar = .text_indent },
         .{ .longhand = .fill, .inherited = true, .initial = .{ .color = Color.black }, .grammar = .paint },
         .{ .longhand = .stroke, .inherited = true, .initial = Value.kw(.none), .grammar = .paint },
@@ -688,6 +705,12 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .marker_end, .inherited = true, .initial = Value.kw(.none), .grammar = .reference },
         .{ .longhand = .clip_path, .inherited = false, .initial = Value.kw(.none), .grammar = .shape },
         .{ .longhand = .filter, .inherited = false, .initial = Value.kw(.none), .grammar = .filter },
+        .{ .longhand = .border_top_left_radius, .inherited = false, .initial = .{ .corner_radius = .zero }, .grammar = .border_radius_corner },
+        .{ .longhand = .border_top_right_radius, .inherited = false, .initial = .{ .corner_radius = .zero }, .grammar = .border_radius_corner },
+        .{ .longhand = .border_bottom_right_radius, .inherited = false, .initial = .{ .corner_radius = .zero }, .grammar = .border_radius_corner },
+        .{ .longhand = .border_bottom_left_radius, .inherited = false, .initial = .{ .corner_radius = .zero }, .grammar = .border_radius_corner },
+        // Q172 PART2 / Backgrounds3 §6.1; tmp/analysis/integrator-probes-1024c/.
+        .{ .longhand = .box_shadow, .inherited = false, .initial = Value.kw(.none), .grammar = .box_shadow },
         .{ .longhand = .object_position, .inherited = false, .initial = Value.kw(.center), .grammar = .image_position },
         .{ .longhand = .mask_image, .inherited = false, .initial = Value.kw(.none), .grammar = .mask },
         .{ .longhand = .mask_position, .inherited = false, .initial = .{ .length = .percent(0) }, .grammar = .mask },
@@ -706,6 +729,11 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .mask_type, .inherited = false, .initial = .{ .image_keyword = .luminance }, .grammar = .mask },
         // CSS Backgrounds3 §5.1: one image, independently of border widths.
         .{ .longhand = .border_image_source, .inherited = false, .initial = Value.kw(.none), .grammar = .image },
+        // CSS Backgrounds3 §§5.2–5.5: typed, non-inherited components.
+        .{ .longhand = .border_image_slice, .inherited = false, .initial = .{ .length = .percent(100) }, .grammar = .border_image },
+        .{ .longhand = .border_image_width, .inherited = false, .initial = .{ .number = 1 }, .grammar = .border_image },
+        .{ .longhand = .border_image_outset, .inherited = false, .initial = .{ .number = 0 }, .grammar = .border_image },
+        .{ .longhand = .border_image_repeat, .inherited = false, .initial = .{ .image_repeat = .{ .x = .stretch, .y = .stretch, .border = true } }, .grammar = .border_image },
         .{ .longhand = .background_position_x, .inherited = false, .initial = .{ .length = .percent(0) }, .grammar = .background },
         .{ .longhand = .background_position_y, .inherited = false, .initial = .{ .length = .percent(0) }, .grammar = .background },
         .{ .longhand = .background_size, .inherited = false, .initial = Value.kw(.auto), .grammar = .background },
@@ -795,9 +823,11 @@ pub const Shorthand = enum(u8) {
     marker,
     mask,
     mask_border,
+    border_image,
     background_position,
     font_variant,
     font,
+    border_radius,
 
     pub fn name(self: Shorthand) []const u8 {
         return switch (self) {
@@ -814,7 +844,8 @@ pub const Shorthand = enum(u8) {
             .background_position => &@import("background_values.zig").position_longhands,
             .font_variant => &@import("font_variants.zig").longhands,
             .font => &@import("font_shorthand.zig").longhands,
-            .border => &.{ .border_top_width, .border_right_width, .border_bottom_width, .border_left_width, .border_top_style, .border_right_style, .border_bottom_style, .border_left_style, .border_top_color, .border_right_color, .border_bottom_color, .border_left_color, .border_image_source },
+            .border_radius => &.{ .border_top_left_radius, .border_top_right_radius, .border_bottom_right_radius, .border_bottom_left_radius },
+            .border => &.{ .border_top_width, .border_right_width, .border_bottom_width, .border_left_width, .border_top_style, .border_right_style, .border_bottom_style, .border_left_style, .border_top_color, .border_right_color, .border_bottom_color, .border_left_color, .border_image_source, .border_image_slice, .border_image_width, .border_image_outset, .border_image_repeat },
             .border_block => &.{ .border_block_start_width, .border_block_end_width, .border_block_start_style, .border_block_end_style, .border_block_start_color, .border_block_end_color },
             .border_inline => &.{ .border_inline_start_width, .border_inline_end_width, .border_inline_start_style, .border_inline_end_style, .border_inline_start_color, .border_inline_end_color },
             .border_block_color => &.{ .border_block_start_color, .border_block_end_color },
@@ -863,6 +894,7 @@ pub const Shorthand = enum(u8) {
             .marker => &.{ .marker_start, .marker_mid, .marker_end },
             .mask => &@import("mask_values.zig").longhands,
             .mask_border => &@import("mask_values.zig").border_longhands,
+            .border_image => &@import("border_image_values.zig").longhands,
         };
     }
 };
@@ -901,6 +933,12 @@ const legacy_aliases = .{
     .{ "font-stretch", Property{ .longhand = .font_width } },
     // CSS UI 4 §6.1 requires the legacy spelling to alias user-select.
     .{ "-webkit-user-select", Property{ .longhand = .user_select } },
+    // Q177 pure legacy aliases; tmp/analysis/integrator-probes-1024c/.
+    .{ "-webkit-border-radius", Property{ .shorthand = .border_radius } },
+    .{ "-webkit-border-top-left-radius", Property{ .longhand = .border_top_left_radius } },
+    .{ "-webkit-border-top-right-radius", Property{ .longhand = .border_top_right_radius } },
+    .{ "-webkit-border-bottom-right-radius", Property{ .longhand = .border_bottom_right_radius } },
+    .{ "-webkit-border-bottom-left-radius", Property{ .longhand = .border_bottom_left_radius } },
 };
 
 /// Names exposed by CSSStyleProperties as attributes, but not as separate
@@ -1354,9 +1392,13 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .paint => return @import("svg_paint.zig").parse(options, stream),
         .reference => return @import("svg_paint.zig").parseReference(options, stream),
         .shape => return @import("shape_values.zig").parse(options, stream),
+        .border_radius_corner => return @import("border_radius.zig").parseCorner(options, stream),
         .filter => return @import("filter_values.zig").parse(options, stream),
+        .box_shadow => return @import("box_shadow_values.zig").parse(options, stream),
+        .image_resolution => return @import("image_resolution.zig").parse(options, stream),
         .image_position => return if (try @import("position_values.zig").parse(options, stream, .position)) |position| .{ .image_position = position } else null,
         .mask => return @import("mask_values.zig").parse(options, l, stream),
+        .border_image => return @import("border_image_values.zig").parse(options, l, stream),
         .stroke_width => return @import("svg_paint.zig").parseStrokeWidth(options, stream),
         .background => return @import("background_values.zig").parse(options, l, stream),
     }
@@ -1948,6 +1990,10 @@ fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *st
             // Backgrounds3 §3.4: border resets the supported border-image
             // components. Its side shorthands do not reset them.
             try append(options, out, .border_image_source, Value.kw(.none));
+            try append(options, out, .border_image_slice, Longhand.border_image_slice.info().initial);
+            try append(options, out, .border_image_width, Longhand.border_image_width.info().initial);
+            try append(options, out, .border_image_outset, Longhand.border_image_outset.info().initial);
+            try append(options, out, .border_image_repeat, Longhand.border_image_repeat.info().initial);
             return true;
         },
         .border_block => return borderSide(options, .border_block_start_width, .border_block_start_style, .border_block_start_color, Shorthand.border_block_width.longhands(), Shorthand.border_block_style.longhands(), Shorthand.border_block_color.longhands(), stream, out),
@@ -1966,6 +2012,8 @@ fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *st
         .marker => return @import("svg_paint.zig").parseMarker(options, stream, out),
         .mask => return @import("mask_values.zig").parseShorthand(options, stream, out),
         .mask_border => return @import("mask_values.zig").parseBorder(options, stream, out),
+        .border_image => return @import("border_image_values.zig").parseShorthand(options, stream, out),
+        .border_radius => return @import("border_radius.zig").parseShorthand(options, stream, out),
     }
 }
 
@@ -2242,7 +2290,10 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .indent => |v| try v.serialize(out, allocator),
         .paint => |v| try v.serialize(out, allocator, null),
         .filter => |v| try out.appendSlice(allocator, v.text.bytes),
+        .box_shadow => |v| try out.appendSlice(allocator, v.text.bytes),
         .shape => |v| try v.serialize(out, allocator),
+        .corner_radius => |v| try v.serialize(out, allocator),
+        .image_resolution => |v| try v.serialize(out, allocator),
         .image_position => |v| try v.serialize(out, allocator),
         .image_size => |v| try v.serialize(out, allocator),
         .image_quad => |v| try v.serialize(out, allocator),
@@ -2383,7 +2434,11 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
         .border_top, .border_right, .border_bottom, .border_left, .border_block_start, .border_block_end, .border_inline_start, .border_inline_end => return borderSideText(ls, vs, mode, out, allocator),
         .border, .border_block, .border_inline => {
             // CSSOM §6.7.2: reset-only components must have initial values.
-            if (s == .border and !vs[12].value.isKeyword(.none)) return false;
+            if (s == .border) {
+                for (ls[12..], vs[12..]) |l, v| {
+                    if (!@import("border_image_values.zig").isInitial(l, v.value)) return false;
+                }
+            }
             // Every side must agree: widths, then styles, then colors.
             const sides = if (s == .border) 4 else ls.len / 3;
             for (0..3) |group| {
@@ -2421,6 +2476,8 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
         .marker => return @import("svg_paint.zig").serializeMarker(vs, mode, out, allocator),
         .mask => return @import("mask_values.zig").serialize(vs, mode, out, allocator),
         .mask_border => return @import("mask_values.zig").serializeBorder(vs, mode, out, allocator),
+        .border_image => return @import("border_image_values.zig").serialize(vs, mode, out, allocator),
+        .border_radius => return @import("border_radius.zig").serializeShorthand(vs, out, allocator),
         .all => return false,
     }
 }

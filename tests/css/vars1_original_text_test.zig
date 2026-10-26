@@ -116,7 +116,10 @@ test "a value cut off by the end of the sheet: escaped EOF is U+FFFD, open strin
         defer other.deinit();
         try testing.expectEqualStrings(case[1], other.items[0].declarations[0].value);
     }
-    // A style attribute ends at its own end: the same rule.
+    // A style attribute ends at its own end: the same rule - except that a
+    // pending value there keeps its authored text, unclosed (integrator
+    // probe 1026b: Chrome and Safari read cssText 'color: var(--x' back as
+    // "var(--x"; vars2_cssText_eof_test.zig).
     try expectValue("--x: a\\", 0, "--x", "a\u{FFFD}", false);
-    try expectValue("color: var(--x", 0, "color", "var(--x)", false);
+    try expectValue("color: var(--x", 0, "color", "var(--x", false);
 }
