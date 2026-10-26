@@ -675,19 +675,7 @@ const Builder = struct {
             if (deps.line_height) try self.ensureLineHeight();
         }
         const allocator = self.ctx.allocator;
-        var value = (try reg.syntax.parseValue(.{ .allocator = allocator }, text)) orelse return retained(self.defaultCustom(name));
-        defer value.deinit();
-        var computed = try value.compute(allocator, .{
-            .math = self.mathContext(.width),
-            .color = .{ .scheme = self.used_scheme },
-            .writing_mode = self.writing_mode,
-            .direction = self.direction,
-        });
-        defer computed.deinit();
-        var out: std.ArrayList(u8) = .empty;
-        defer out.deinit(allocator);
-        try computed.serialize(&out, allocator);
-        const bytes = try out.toOwnedSlice(allocator);
+        const bytes = (try self.computeTyped(allocator, reg, text)) orelse return retained(self.defaultCustom(name));
         errdefer allocator.free(bytes);
         // Computation reorders tokens, so taint covers the whole value when
         // any input token was tainted (both shipping browsers taint a var()
@@ -699,6 +687,25 @@ const Builder = struct {
         };
         errdefer if (whole.len != 0) allocator.free(whole);
         return try custom_mod.Text.adopt(allocator, bytes, whole);
+    }
+
+    /// `text` parsed against `reg`'s syntax and computed in this element's
+    /// context, serialized (owned by `allocator`); null when the syntax
+    /// does not match.
+    fn computeTyped(self: *Builder, allocator: Allocator, reg: *const registered_mod.Snapshot.Entry, text: []const u8) Allocator.Error!?[]u8 {
+        var value = (try reg.syntax.parseValue(.{ .allocator = allocator }, text)) orelse return null;
+        defer value.deinit();
+        var computed = try value.compute(allocator, .{
+            .math = self.mathContext(.width),
+            .color = .{ .scheme = self.used_scheme },
+            .writing_mode = self.writing_mode,
+            .direction = self.direction,
+        });
+        defer computed.deinit();
+        var out: std.ArrayList(u8) = .empty;
+        defer out.deinit(allocator);
+        try computed.serialize(&out, allocator);
+        return try out.toOwnedSlice(allocator);
     }
 
     const FontDependencies = struct { font_size: bool = false, line_height: bool = false };
@@ -995,7 +1002,13 @@ const Builder = struct {
         }
         var arena = std.heap.ArenaAllocator.init(self.ctx.allocator);
         defer arena.deinit();
-        const query = try self.substituteText(arena.allocator(), value_text);
+        var query = try self.substituteText(arena.allocator(), value_text);
+        // A registered property with a syntax: the query value parsed and
+        // computed under its registration (a mismatch matches nothing),
+        // compared with the element's computed value.
+        if (self.typedRegistration(name)) |reg| {
+            query.text = (try self.computeTyped(arena.allocator(), reg, query.text)) orelse return .{ .value = false, .tainted = query.tainted };
+        }
         const value = (try customValueCallback(context, name)) orelse return .{ .value = false, .tainted = query.tainted };
         return .{ .value = tokensEqual(value.text, query.text), .tainted = query.tainted or value.taint.len != 0 };
     }
@@ -2555,12 +2568,16 @@ test "a defensive unavailable font-size-adjust computes as its inherited value" 
 /// the if() style() query tests (rows 122/123 call these from a function's
 /// replace; none of today's functions does).
 fn withHost(allocator: Allocator, text: []const u8, parent_text: ?[]const u8, body: *const fn (substitution.Host) anyerror!void) !void {
+    return withRegisteredHost(allocator, null, text, parent_text, body);
+}
+
+fn withRegisteredHost(allocator: Allocator, registered: ?*registered_mod.Snapshot, text: []const u8, parent_text: ?[]const u8, body: *const fn (substitution.Host) anyerror!void) !void {
     var parent: ?*ComputedStyle = null;
     defer if (parent) |p| p.destroy();
     if (parent_text) |pt| {
         var block = try DeclarationBlock.parse(.{ .allocator = allocator }, pt);
         defer block.deinit();
-        parent = try cascade(.{ .allocator = allocator, .parent = null, .is_root = true }, &.{.{ .block = &block, .source = .{ .origin = .author } }});
+        parent = try cascade(.{ .allocator = allocator, .parent = null, .is_root = true, .registered = registered }, &.{.{ .block = &block, .source = .{ .origin = .author } }});
     }
     var block = try DeclarationBlock.parse(.{ .allocator = allocator }, text);
     defer block.deinit();
@@ -2572,7 +2589,7 @@ fn withHost(allocator: Allocator, text: []const u8, parent_text: ?[]const u8, bo
     var customs = try collectCustomCandidates(allocator, &matched);
     defer customs.deinit(allocator);
     var builder: Builder = .{
-        .ctx = .{ .allocator = allocator, .parent = parent, .selector_check = &hostTestSelectorCheck },
+        .ctx = .{ .allocator = allocator, .parent = parent, .selector_check = &hostTestSelectorCheck, .registered = registered },
         .candidates = candidates.items,
         .index = CandidateIndex.init(candidates.items, links),
         .custom_candidates = customs.items,
@@ -2670,6 +2687,59 @@ test "style() queries: a CSS-wide keyword query value is computed as the propert
             try testing.expect(!(try matches(host.context, "--missing", "initial x")).?.value);
         }
     }.body);
+}
+
+/// A snapshot of one registration, for the style() query tests: --len,
+/// <length>, initial 10px, inherits as given.
+fn lengthSnapshot(allocator: Allocator, inherits: bool) !*registered_mod.Snapshot {
+    var definition = try @import("syntax_definitions.zig").parse(allocator, "<length>");
+    defer definition.deinit();
+    var initial = (try definition.parseValue(.{ .allocator = allocator }, "10px")).?;
+    defer initial.deinit();
+    return registered_mod.Snapshot.create(allocator, .{}, &.{.{ .name = "--len", .syntax_text = "<length>", .inherits = inherits, .initial_value = &initial }});
+}
+
+fn registeredQueries(allocator: Allocator) !void {
+    const snapshot = try lengthSnapshot(allocator, false);
+    defer snapshot.release();
+    try withRegisteredHost(allocator, snapshot, "--len: calc(4px + 1em); font-size: 10px", "--len: 3px", struct {
+        fn body(host: substitution.Host) anyerror!void {
+            const matches = host.query_value_matches.?;
+            // The query value is computed under the registration, in the
+            // element's context (row 123 Q5: "plain feature computes the
+            // query value under the property's registration").
+            try testing.expect((try matches(host.context, "--len", "14px")).?.value);
+            try testing.expect((try matches(host.context, "--len", "calc(7px * 2)")).?.value);
+            try testing.expect((try matches(host.context, "--len", "1.4em")).?.value);
+            try testing.expect(!(try matches(host.context, "--len", "13px")).?.value);
+            // A value its syntax does not match is no match.
+            try testing.expect(!(try matches(host.context, "--len", "red")).?.value);
+            // initial is the registration's; inherits: false makes unset
+            // initial; inherit is the parent's.
+            try testing.expect(!(try matches(host.context, "--len", "initial")).?.value);
+            try testing.expect((try matches(host.context, "--missing", "initial")).?.value);
+            // A registered property at its initial value has a value (RULINGS 1025h).
+            try testing.expect((try host.has_value.?(host.context, "--len")).value);
+        }
+    }.body);
+    try withRegisteredHost(allocator, snapshot, "color: red", "--len: 3px", struct {
+        fn body(host: substitution.Host) anyerror!void {
+            const matches = host.query_value_matches.?;
+            try testing.expect((try matches(host.context, "--len", "initial")).?.value);
+            try testing.expect((try matches(host.context, "--len", "unset")).?.value);
+            try testing.expect((try matches(host.context, "--len", "10px")).?.value);
+            try testing.expect(!(try matches(host.context, "--len", "inherit")).?.value);
+            try testing.expect((try host.has_value.?(host.context, "--len")).value);
+        }
+    }.body);
+}
+
+test "style() queries on a registered property compute the query value under its registration" {
+    try registeredQueries(testing.allocator);
+}
+
+test "registered style() queries survive every allocation failure" {
+    try testing.checkAllAllocationFailures(testing.allocator, registeredQueries, .{});
 }
 
 test "style() queries: a keyword query value at the root reads no parent" {
