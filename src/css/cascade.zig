@@ -165,6 +165,10 @@ pub const Context = struct {
     /// The document's media values, for if()'s media() test (Codex row 123);
     /// borrowed for the call. Null: the defaults.
     media_values: ?*const @import("media_queries.zig").MediaValues = null,
+    /// if()'s supports() test's selector() function: the check CSS.supports()
+    /// and @supports use (src/selector is not a dependency of this module).
+    /// Null: every selector() is false.
+    selector_check: ?@import("supports.zig").SelectorCheck = null,
 };
 
 const Candidate = struct {
@@ -854,7 +858,7 @@ const Builder = struct {
 
     fn supportsCallback(context: *anyopaque, text: []const u8, quirks: bool) substitution.Error!bool {
         const self: *Builder = @ptrCast(@alignCast(context));
-        return @import("supports.zig").evaluateTest(self.ctx.allocator, text, quirks);
+        return @import("supports.zig").evaluateTest(self.ctx.allocator, text, quirks, self.ctx.selector_check);
     }
 
     const Substituted = struct { text: []const u8, tainted: bool };
@@ -2394,7 +2398,7 @@ fn withHost(allocator: Allocator, text: []const u8, parent_text: ?[]const u8, bo
     var customs = try collectCustomCandidates(allocator, &matched);
     defer customs.deinit(allocator);
     var builder: Builder = .{
-        .ctx = .{ .allocator = allocator, .parent = parent },
+        .ctx = .{ .allocator = allocator, .parent = parent, .selector_check = &hostTestSelectorCheck },
         .candidates = candidates.items,
         .index = CandidateIndex.init(candidates.items, links),
         .custom_candidates = customs.items,
@@ -2406,6 +2410,24 @@ fn withHost(allocator: Allocator, text: []const u8, parent_text: ?[]const u8, bo
     builder.style = style;
     try builder.resolveCustomProperties();
     try body(builder.substitutionHost(builder.mathContext(.width)));
+}
+
+/// A stand-in for src/selector's check, as supports.zig's tests use: a
+/// selector with `:unknown` does not parse.
+fn hostTestSelectorCheck(allocator: Allocator, text: []const u8) bool {
+    _ = allocator;
+    return text.len != 0 and std.mem.indexOf(u8, text, ":unknown") == null;
+}
+
+test "if() supports(selector(...)) asks the context's selector check, as CSS.supports() does" {
+    try withHost(testing.allocator, "--a: 1", null, struct {
+        fn body(host: substitution.Host) anyerror!void {
+            const supports = host.supports.?;
+            try testing.expect(try supports(host.context, "selector(h2 > p)", false));
+            try testing.expect(!try supports(host.context, "selector(h2:unknown)", false));
+            try testing.expect(try supports(host.context, "not selector(h2:unknown)", false));
+        }
+    }.body);
 }
 
 test "style() queries: hasValue reads custom properties only" {
