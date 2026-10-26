@@ -1024,6 +1024,48 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
     return state.pseudoCached(p).?.cached.style;
 }
 
+/// Whether the author origin - the document's and its shadow trees' style
+/// sheets, and the element's style attribute; never the UA sheet or HTML's
+/// presentational hints - declares any of the properties `names` (lowercase
+/// CSS property names, longhand or shorthand, matched as written) for
+/// `element` itself. Read-only: it matches the element's rules as its
+/// cascade does and keeps nothing. False for an element without a style.
+///
+/// The editing join's one question (src/html/execcommand/delete.zig): a
+/// <pre> whose white-space is the UA sheet's alone adds no white-space span
+/// when a line moves out of it, an author-specified one does (Chrome and
+/// Safari; editing/other/join-pre-and-other-block.html).
+pub fn authorDeclares(element: *runtime.Instance, names: []const []const u8) Error!bool {
+    const node = instance_bridge.getNodeBase(element) orelse return false;
+    if (node.node_type != NodeBase.ELEMENT_NODE or !node.is_connected) return false;
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return false;
+    const engine = hooks.engineOf(document) orelse return false;
+    const state = element_style.of(element) orelse return false;
+    engine.enterResolution();
+    defer engine.resolving = false;
+    const active = try engine.ensureActive(document);
+    var res: Resolution = .{
+        .allocator = engine.allocator,
+        .document = document,
+        .engine = engine,
+        .active = active,
+        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slot_version, .singletons = singletonKey(document) },
+    };
+    defer res.deinit();
+    var reads: selector_matching.StateReads = .{};
+    try collectMatched(&res, element, node, state, null, &reads);
+    for (res.matched.items) |matched| {
+        if (matched.source.origin != .author) continue;
+        for (matched.block.entries.items) |*entry| {
+            const declared = entry.name();
+            for (names) |name| {
+                if (std.mem.eql(u8, declared, name)) return true;
+            }
+        }
+    }
+    return false;
+}
+
 /// Whether `element` has the pseudo-element `name` at all. CSS Forms'
 /// ::picker(select) is a drop-down box's picker: a select that is a list
 /// box (`multiple`, or a display size above 1) has none, and its computed
