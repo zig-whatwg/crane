@@ -153,6 +153,7 @@ progress = [
   "873d6e9bcf4 - pushState on an initial about:blank document replaces its entry (URL and history update steps step 4) (newwin1 S4)",
   "0c100a019f5 - a frame's initial about:blank Window is reused only when same origin-domain with the next document (newwin1 B6)",
   "6933bdd6ccd - an embedder's loads push or replace session history entries (navigate steps 13-14), keeping their markup so a traversal re-creates the page (newwin1 B4)",
+  "7581660bc4f, 5277a774ad0, b7627990b98 - the host page keeps its old Location path's file: refusal and queued javascript: URLs, and window.stop cancels a document's forms' planned navigations (Blink CancelFormSubmission, WebKit NavigationScheduler) (newwin1)",
   "47356e5067b - popups move with their opener's navigable at a Window swap (the new Window keeps them; their realms are auxiliary and follow the opener's WindowProxy; their parent realm is the opener's current one) (newwin1 B7)",
   "cb3d11033ed - the host page navigates as a popup does: Location, hyperlinks, forms, Refresh, javascript: URLs, reload and traversal reach its traversable record (dom.top_level_navigation retired); Context.navigate / Browser.navigateInPlace for the embedder; WebDriver Navigate To in place (newwin1 B5)",
 ]
