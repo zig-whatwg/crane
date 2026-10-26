@@ -1490,6 +1490,27 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // beforeunload already: "apply the history step" checks it for every
     // navigable the traversal takes to another document, before their
     // navigate events (History's runTraversal and reload).
+    // The host page's traversable: a document that is not itself a file:
+    // document navigating the page to a file: URL goes nowhere - all three
+    // browsers refuse to load local resources for web content, and the
+    // navigation API sees the navigation aborted
+    // (navigation-methods/return-value/navigate-file-url.html); Fetch
+    // leaves file: URLs to the user agent. As Location's top-level path did
+    // before the page's traversable took its navigations (stated: a frame's
+    // or popup's navigation is not refused here).
+    if (integration.host_realms != null and options.traversal_entry == 0 and
+        std.mem.eql(u8, navigate_steps.schemeOf(url), "file"))
+    {
+        if (active != null) {
+            if (!std.mem.eql(u8, navigate_steps.schemeOf(active_url), "file")) {
+                if (isOngoing(integration, id)) integration.ongoing_navigation = .none;
+                endNavigation(id);
+                endLoadDelay(integration);
+                if (integration.browsing_context.?.getActiveWindow()) |window| dom_module.navigation_api.informAboutAbortingNavigation(@ptrCast(@alignCast(window)));
+                return;
+            }
+        }
+    }
     if (options.traversal_entry != 0) return startFetch(navigationById(id) orelse return);
     runBeforeUnload(@ptrFromInt(id));
 }

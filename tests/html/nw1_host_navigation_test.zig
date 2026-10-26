@@ -119,3 +119,26 @@ fn embedderNavigatesInPlace() !void {
 test "an embedder's in-place navigation keeps the page's traversable and its history" {
     try onFreshThread(embedderNavigatesInPlace);
 }
+
+fn fileUrlRefused() !void {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    const page = browser.current_context orelse return error.NoPage;
+    try page.loadHTML("<!doctype html><title>one</title>", .{ .base_url = "http://example.test/one" });
+    try until(browser, "document.readyState === 'complete'");
+    // A document that is not itself a file: document navigating the page to
+    // a file: URL goes nowhere - the browsers refuse local resources to web
+    // content - and the navigation API sees it aborted
+    // (navigation-methods/return-value/navigate-file-url.html).
+    try page.runScript(
+        \\globalThis.outcome = 'pending';
+        \\navigation.navigate('file://').committed.then(() => { outcome = 'committed'; }, (e) => { outcome = e.name; });
+    );
+    try until(browser, "outcome !== 'pending'");
+    try expectEval(page, "[outcome, document.URL].join()", "AbortError,http://example.test/one");
+}
+
+test "the host page's navigation to a file: URL is refused and aborted" {
+    try onFreshThread(fileUrlRefused);
+}
