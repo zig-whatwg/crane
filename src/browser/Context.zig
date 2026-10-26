@@ -1769,7 +1769,11 @@ pub const Context = struct {
         // from now on, across every Window its loads make.
         if (self.context_type == .window) {
             if (self.window_instance) |window| if (self.browsing_context) |bc| {
-                self.traversable = dom_mod.top_level_traversables.create(self.allocator, window, @ptrCast(bc), .{ .context = self });
+                self.traversable = dom_mod.top_level_traversables.create(self.allocator, window, @ptrCast(bc), .{
+                    .context = self,
+                    .realm_for_document = &realmForTraversableDocument,
+                    .committed = &traversableCommitted,
+                });
             };
         }
 
@@ -2226,6 +2230,64 @@ pub const Context = struct {
     /// 3. Execute inline and external scripts (in document order)
     /// 4. Fire DOMContentLoaded event
     /// 5. Fire load event
+    /// HTML "navigate" the page's top-level traversable to `url` - the
+    /// embedder's own "browser UI" navigation of the page it shows, as an
+    /// address bar navigates a tab: the same traversable (its session history
+    /// gains an entry, its WindowProxy keeps its identity), beforeunload, the
+    /// fetch and the commit as the navigation's tasks - run the event loop
+    /// for them. The next document gets a new Window unless the page shows
+    /// its initial about:blank document (create and initialize a Document
+    /// object steps 6-7). error.NoTraversable for a page with no record.
+    pub fn navigate(self: *Context, url: []const u8) !void {
+        const record = self.traversable orelse return error.NoTraversable;
+        const serialized = serializedUrlOf(self.allocator, url);
+        defer if (serialized) |s| self.allocator.free(s);
+        dom_mod.top_level_traversables.navigate(record, serialized orelse url);
+    }
+
+    /// `url` parsed and serialized; null when it does not parse.
+    fn serializedUrlOf(allocator: std.mem.Allocator, url: []const u8) ?[]u8 {
+        var record = @import("basic_parser").parse(allocator, url, null) catch return null;
+        defer record.deinit();
+        return @constCast(@import("url_serializer").serialize(allocator, &record, false) catch return null);
+    }
+
+    /// dom.top_level_traversables: HTML "create and initialize a Document
+    /// object" steps 6-7 for a document of `origin` that one of the page's
+    /// own navigations - Location, a hyperlink, a form, a javascript: URL, a
+    /// reload, a traversal - is about to commit. Step 6 keeps the Window of
+    /// the page's initial about:blank document (the deviation embedder loads
+    /// state, `createLoadDocument`); step 7 makes the realm of a new one.
+    fn realmForTraversableDocument(context: *anyopaque, origin: html_mod.Origin) bool {
+        const self: *Context = @ptrCast(@alignCast(context));
+        const shown = self.document_instance orelse return true;
+        if (dom_mod.document_lifecycle.isInitialAboutBlank(shown)) return true;
+        var buffer: [512]u8 = undefined;
+        const serialized: ?[]const u8 = if (origin.is_opaque) null else (if (origin.port) |port|
+            std.fmt.bufPrint(&buffer, "{s}://{s}:{d}", .{ origin.scheme, origin.host, port }) catch null
+        else
+            std.fmt.bufPrint(&buffer, "{s}://{s}", .{ origin.scheme, origin.host }) catch null);
+        self.replaceRealm(serialized orelse "about:blank", serialized) catch return false;
+        return true;
+    }
+
+    /// dom.top_level_traversables: one of the page's navigations committed
+    /// `document` - the page's document, and URL, from here.
+    fn traversableCommitted(context: *anyopaque, document_ptr: *anyopaque) void {
+        const self: *Context = @ptrCast(@alignCast(context));
+        const document: *runtime.Instance = @ptrCast(@alignCast(document_ptr));
+        self.document_instance = document;
+        if (self.realm) |realm| if (self.window_instance) |window| {
+            if (engine.getProperty(realm, .{ .instance = window }, "__internal")) |internal| {
+                defer internal.release();
+                storeInternal(realm, internal.value, "document", document);
+            } else |_| {}
+        };
+        const url = interfaces.Document.get_URL(document) catch return;
+        defer document.ctx.allocator.free(url);
+        self.setUrl(url) catch {};
+    }
+
     pub fn loadPage(self: *Context) !void {
         return self.loadPageWithOptions(.{});
     }
@@ -2597,6 +2659,12 @@ pub const Context = struct {
         // Step 10: "Set window's associated Document to document." From here
         // the window keeps it, and the document it replaces is unlinked.
         self.associateDocument(runtime_ctx, document, replaced);
+        // The traversable's active document's origin, which its next
+        // navigation compares with.
+        if (self.traversable) |record| {
+            const origin = if (options.sandboxing_flags.origin) "null" else originPrefix(options.base_url) orelse "null";
+            dom_mod.top_level_traversables.setActiveOrigin(record, origin);
+        }
         return .{ .document = document };
     }
 

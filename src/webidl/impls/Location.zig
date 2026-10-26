@@ -224,13 +224,22 @@ fn refreshFromDocument(internal: *InternalState) void {
     }
 }
 
-/// The hooks this type owns (src/dom), installed once, at process start,
-/// by crane.Process through the generated interface (docs/instances.md).
-pub fn installHooks() void {
-    // The hyperlinks and forms that choose the top-level page navigate it
-    // here.
-    @import("dom").top_level_navigation.install(.{ .navigate = &topLevelNavigateHook });
-}
+/// "Navigate"'s optional arguments, as Location-object navigate of a page
+/// with no navigable record passes them (`topLevelNavigate`).
+const TopLevelParams = struct {
+    history_behavior: TopLevelHistoryBehavior = .auto,
+    source_document: ?*runtime.Instance = null,
+    source_element: ?*runtime.Instance = null,
+    user_involvement: dom.navigation_api.UserInvolvement = .none,
+    /// BORROWED.
+    navigation_api_state: ?html_core.navigation.joint_history.SerializedState = null,
+    /// A form submitted "as entity body": its entry list. BORROWED.
+    form_data: ?*runtime.Instance = null,
+    csp_navigation_type: @import("csp").navigation_check.NavigationType = .other,
+};
+
+/// `NavigationHistoryBehavior`.
+const TopLevelHistoryBehavior = enum { auto, push, replace };
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -925,8 +934,10 @@ pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) anyerror!
     return navigateToCopy(internal, &copy);
 }
 
-/// HTML "navigate" for the top-level page, whose Location has no navigable
-/// engine behind it: `window`'s navigable, to `url` (serialized, absolute).
+/// HTML "navigate" for a top-level page whose Location has no navigable
+/// record behind it - one whose traversable could not be made (the host
+/// page's record takes its Location's navigations: dom.top_level_traversables):
+/// `window`'s navigable, to `url` (serialized, absolute).
 /// This engine cannot replace the page's document, so what it runs is:
 /// history handling (steps 12-13), a fragment navigation (step 14, "navigate
 /// to a fragment"), and the navigate event before anything else (step 21) -
@@ -936,7 +947,7 @@ pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) anyerror!
 /// Not modelled, stated: source snapshot params and sandboxing (1-7), the
 /// ongoing navigation (19). A javascript: URL (20) runs in a task, and its
 /// String result - a new document - is dropped.
-fn topLevelNavigate(window: *runtime.Instance, url: []const u8, params: dom.top_level_navigation.Params) !void {
+fn topLevelNavigate(window: *runtime.Instance, url: []const u8, params: TopLevelParams) !void {
     const document = interfaces.Window.get_document(window) catch return;
     // Step 9: "If navigable's active document's unload counter is greater
     // than 0 ... return."
@@ -1218,13 +1229,6 @@ fn reportJavascriptUrlException(host: ?*anyopaque, info: *const engine.ErrorInfo
     _ = @import("html").report_exception.reportErrorInfo(global, &extracted, .{});
 }
 
-/// dom.top_level_navigation: the page's hyperlinks and forms.
-fn topLevelNavigateHook(window: *runtime.Instance, url: []const u8, params: dom.top_level_navigation.Params) void {
-    topLevelNavigate(window, url, params) catch |err| {
-        log.debug("the top-level page cannot navigate to {s}: {s}", .{ url, @errorName(err) });
-    };
-}
-
 /// Whether `source` - navigate's sourceDocument - is same origin with the
 /// active document at `document_url` (step 12.1, step 21). By URL, as the
 /// navigable containers compare it; no source is the page itself.
@@ -1255,7 +1259,7 @@ fn topLevelFragmentNavigation(
     url: []const u8,
     old_url: []const u8,
     handling: navigate_steps.HistoryHandling,
-    params: dom.top_level_navigation.Params,
+    params: TopLevelParams,
 ) !void {
     const allocator = window.ctx.allocator;
     const bc = dom.browser_state.browsingContextOf(window);
@@ -1463,7 +1467,7 @@ fn locationObjectNavigate(internal: *InternalState, url: []const u8, behavior: n
         // activation, then set historyHandling to "replace"."
         const replace = !dom.document_lifecycle.isCompletelyLoaded(document) and
             !@import("html").user_activation.incumbentHasTransientActivation();
-        const handling: dom.top_level_navigation.HistoryBehavior = if (replace) .replace else switch (behavior) {
+        const handling: TopLevelHistoryBehavior = if (replace) .replace else switch (behavior) {
             .auto => .auto,
             .push => .push,
             .replace => .replace,

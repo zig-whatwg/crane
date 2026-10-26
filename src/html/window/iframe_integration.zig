@@ -199,6 +199,8 @@ pub const HostRealms = struct {
     /// HTML "create and initialize a Document object" steps 6-7 for a
     /// document of the given origin; null keeps the active window.
     realm_for_document: ?*const fn (*anyopaque, Origin) bool,
+    /// A navigation committed the given document (an `*runtime.Instance`).
+    committed: ?*const fn (*anyopaque, *anyopaque) void = null,
 };
 
 pub const IFrameIntegration = struct {

@@ -5160,14 +5160,9 @@ fn refreshComesDue(data: ?*anyopaque) void {
         dom.history_traversal.reload(window);
         return;
     }
-    if (dom.navigables.isInstalled()) {
-        dom.navigables.navigateByTarget(document, .{ .target = "_self", .url = refresh.url, .history_behavior = .replace });
-        return;
-    }
-    // No navigable container on this thread has made the hook: the
-    // document is its page's, which its Location navigates.
-    if (!dom.top_level_navigation.isInstalled()) _ = interfaces.Window.get_location(window) catch return;
-    dom.top_level_navigation.navigate(window, refresh.url, .{ .history_behavior = .replace, .source_document = document });
+    // The document's navigable - a frame's, a popup's or the host page's
+    // traversable - navigated as any hyperlink targeting "_self" navigates it.
+    dom.navigables.navigateByTarget(document, .{ .target = "_self", .url = refresh.url, .history_behavior = .replace });
 }
 
 /// Whether `document`'s active sandboxing flag set has the sandboxed

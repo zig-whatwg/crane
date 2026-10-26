@@ -146,7 +146,6 @@ src/dom/teardown_sweeps.zig test_sweeps 1 G X decl:3796f88280404836
 src/dom/template_contents.zig hooks 1 G P-res decl:4dad5b7413d7153c
 src/dom/token_lists.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/top_layer.zig access 1 G P-res decl:2d5e0483fa586ff8
-src/dom/top_level_navigation.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/top_level_traversables.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/traversal.zig node_iterator 1 G H decl:82cd93d362367cd5
 src/dom/traversal.zig tree_walker 1 G H decl:d5e806e980531fcb

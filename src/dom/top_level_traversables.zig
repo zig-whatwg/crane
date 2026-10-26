@@ -33,6 +33,10 @@ pub const Host = struct {
     /// whose global this is the traversable's WindowProxy (step 7). False when
     /// no realm could be made. Null: the active window is always kept.
     realm_for_document: ?*const fn (context: *anyopaque, origin: Origin) bool = null,
+    /// A navigation of the traversable committed `document` (an
+    /// `*runtime.Instance`), now its active document - the host keeps what
+    /// names the page's document in step with it.
+    committed: ?*const fn (context: *anyopaque, document: *anyopaque) void = null,
 };
 
 /// What HTMLIFrameElement supplies.
@@ -58,6 +62,16 @@ pub const Implementation = struct {
     /// (FrameLoader::dispatchUnloadEvents, m_didCallImplicitClose) unload
     /// without pagehide or unload - the documents are destroyed silently.
     unload_active_document: *const fn (record: *anyopaque, fire_events: bool) void,
+    /// The host committed a document of `origin` (serialized; "null" for an
+    /// opaque one) without the record's navigation - an embedder's load: the
+    /// origin the next navigation compares with (its unload timing, its
+    /// navigable target name, step 6's window reuse).
+    set_active_origin: *const fn (record: *anyopaque, origin: []const u8) void,
+    /// HTML "navigate" the traversable to `url` (serialized, absolute) as the
+    /// user agent's own "browser UI" navigation - the embedder's address
+    /// bar: beforeunload, the fetch and the commit run as the navigation's
+    /// tasks on the page's event loop.
+    navigate: *const fn (record: *anyopaque, url: []const u8) void,
 };
 
 // process-wide: immutable function pointers HTMLIFrameElement installs once at process start (process_start.zig); each record they make is its own Context's, of its own Browser
@@ -94,6 +108,18 @@ pub fn attachRealm(record: *anyopaque, realm: runtime.Context) void {
 pub fn unloadActiveDocument(record: *anyopaque, fire_events: bool) void {
     const impl = implementation orelse return;
     impl.unload_active_document(record, fire_events);
+}
+
+/// See Implementation.set_active_origin.
+pub fn setActiveOrigin(record: *anyopaque, origin: []const u8) void {
+    const impl = implementation orelse return;
+    impl.set_active_origin(record, origin);
+}
+
+/// See Implementation.navigate.
+pub fn navigate(record: *anyopaque, url: []const u8) void {
+    const impl = implementation orelse return;
+    impl.navigate(record, url);
 }
 
 /// See Implementation.destroy.

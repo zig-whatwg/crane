@@ -169,6 +169,8 @@ pub fn installHooks() void {
         .destroy = &destroyHostTraversable,
         .attach_realm = &attachHostRealm,
         .unload_active_document = &unloadHostDocument,
+        .set_active_origin = &setHostActiveOrigin,
+        .navigate = &navigateHostTraversable,
     });
     dom_module.content_navigables.install(.{
         .delays_load_event = &iframesDelayLoadEvent,
@@ -2367,6 +2369,21 @@ fn runCommit(context: ?*anyopaque) void {
     // document (the unload timing info): the unsafe shared current time
     // around it, made relative to the new document's time origin when its
     // navigation timing entry is created.
+    //
+    // Stated deviation in order: HTML's "finalize a cross-document
+    // navigation" puts the new entry in the session history BEFORE this
+    // unload; Crane records it after (commitInRealm), once the document is
+    // made. The order is observable only through each document's own view,
+    // and HTML keeps those views back: the leaving document's History length
+    // and index and its Navigation entry list and currentEntry are never
+    // updated, and the traversable's other documents get theirs from "apply
+    // the history step" step 18, after this unload. Crane reads all of them
+    // live from the joint history, so recording first would show the new
+    // entry to the leaving document's pageswap and unload handlers and to
+    // its parent and siblings. The per-document views land with the session
+    // history traversal queue (lane newwin1's batch 2); until then the
+    // entry's identity is reserved where pageswap names it
+    // (docs/lessons/architecture-reserve-what-a-step-names-before-the-engine-makes-it.md).
     const unload_start = fetch_mod.algorithms.http_fetch.getCurrentTimeMs();
     // The back/forward cache may keep the displayed page (unload step 5).
     var kept: ?KeptDocument = null;
@@ -3167,6 +3184,11 @@ fn recordInHistory(integration: *IFrameIntegration, record: *Navigation, url: []
 /// every entry of it, pushState's and fragment navigations' made by the
 /// document's scripts as it parsed among them.
 fn attachDocument(integration: *IFrameIntegration, document_state: ?u64) void {
+    // The host page's traversable: the host's names for the page's document
+    // follow the commit.
+    defer if (integration.host_realms) |host| if (host.committed) |notify| {
+        if (integration.browsing_context) |bc| if (bc.getActiveDocument()) |document| notify(host.context, document);
+    };
     const state = document_state orelse return;
     const bc = integration.browsing_context orelse return;
     const history = bc.jointHistory() catch return;
@@ -4191,24 +4213,10 @@ fn navigateByTargetWithReferrerPolicy(source_document: *runtime.Instance, reques
             });
         },
         .page => |page| {
-            const window = (interfaces.Document.get_defaultView(page) catch null) orelse return;
-            // The page's Location installs its navigate.
-            if (!dom_module.top_level_navigation.isInstalled()) _ = interfaces.Window.get_location(window) catch return;
-            var behavior: dom_module.top_level_navigation.HistoryBehavior = switch (request.history_behavior) {
-                .auto => .auto,
-                .push => .push,
-                .replace => .replace,
-            };
-            if (request.source_not_completely_loaded and page == source_document) behavior = .replace;
-            dom_module.top_level_navigation.navigate(window, request.url, .{
-                .history_behavior = behavior,
-                .source_document = source_document,
-                .source_element = request.source_element,
-                .user_involvement = request.user_involvement,
-                .navigation_api_state = request.navigation_api_state,
-                .form_data = if (request.post_resource != null) request.form_data else null,
-                .csp_navigation_type = request.csp_navigation_type,
-            });
+            // A document no navigable record shows: a host page whose
+            // traversable could not be made. Nothing navigates it, stated.
+            _ = page;
+            log.debug("[navigation] {s}: the chosen page has no navigable to navigate", .{request.url});
         },
         // Step 7's popups of the page's browsing context group, else step 8:
         // a new top-level traversable - Window keeps both - navigated as the
@@ -4979,11 +4987,7 @@ fn attachRealm(
     // The Window's Location (HTML 7.2.1 - made with the Window, in its
     // realm), and its navigate callback for programmatic navigation
     // (iframe.contentWindow.location = 'url', location.assign()).
-    if (interfaces.Window.get_location(window_instance)) |location| {
-        const LocationImpl = @import("Location.zig");
-        LocationImpl.setWindow(location, window_instance);
-        LocationImpl.setNavigateCallback(location, &navigateFromLocation, @ptrCast(integration));
-    } else |err| log.debug("a frame's Location was not made: {}", .{err});
+    giveLocationNavigateCallback(window_instance, integration);
 
     integration.realm_for_document_callback = &realmForNewDocument;
     return realm;
@@ -5150,6 +5154,9 @@ const KeptDocument = struct {
 /// fires (step 12: salvageable).
 fn mayKeepInBfcache(integration: *IFrameIntegration, document: *runtime.Instance, tree_size: usize) bool {
     if (integration.iframe_element != null) return false;
+    // Not the host page's traversable (stated): keeping it needs its
+    // Context's realms to outlive the page that leaves - bfcache phase C/D.
+    if (integration.host_realms != null) return false;
     const bc = integration.browsing_context orelse return false;
     if (bc.parent != null or bc.is_closed or bc.orphaned) return false;
     if (tree_size != 1 or bc.children.items.len != 0) return false;
@@ -5696,7 +5703,7 @@ fn createHostTraversable(allocator: std.mem.Allocator, window: *runtime.Instance
     const browsing_context: *html_core.BrowsingContext = @ptrCast(@alignCast(browsing_context_ptr));
     // From here the record owns the browsing context: its deinit frees it.
     integration.browsing_context = browsing_context;
-    integration.host_realms = .{ .context = host.context, .realm_for_document = host.realm_for_document };
+    integration.host_realms = .{ .context = host.context, .realm_for_document = host.realm_for_document, .committed = host.committed };
     // Its WindowProxy record, whose document origin - the active document's -
     // decides whether a navigation keeps the Window. The host's initial
     // about:blank document is opaque.
@@ -5708,8 +5715,51 @@ fn createHostTraversable(allocator: std.mem.Allocator, window: *runtime.Instance
     integration.update_location_callback = &updateIframeLocation;
     integration.navigate_callback = &navigateFromIntegration;
     integration.abandon_navigations_callback = &abandonNavigationsOf;
+    // HTML "create and initialize a Document object" steps 6-7 are the
+    // host's: its realms are parentless and entered for their life.
+    integration.realm_for_document_callback = &realmForHostDocument;
     integration.state = .ready;
+    // One of the Browser's navigables: Location, hyperlinks and forms that
+    // target the page, a javascript: URL, a reload or a traversal reach it as
+    // they reach a popup.
+    integration.deinit_callback = &leaveLiveNavigables;
+    joinLiveNavigables(integration);
+    giveLocationNavigateCallback(window, integration);
     return integration;
+}
+
+/// The host page's realm decision (`realm_for_document_callback`): the
+/// host's HostRealms, or - with none - the active window kept.
+fn realmForHostDocument(integration: *IFrameIntegration, new_origin: html_core.Origin) bool {
+    const host = integration.host_realms orelse return true;
+    const decide = host.realm_for_document orelse return true;
+    return decide(host.context, new_origin);
+}
+
+/// dom.top_level_traversables: the host committed a document of `origin`
+/// itself (an embedder's load) - the active document's origin from here.
+fn setHostActiveOrigin(record: *anyopaque, origin: []const u8) void {
+    const integration: *IFrameIntegration = @ptrCast(@alignCast(record));
+    if (integration.window_proxy) |*proxy| proxy.setDocumentOrigin(dom_module.navigables.parseOriginFromString(origin));
+}
+
+/// dom.top_level_traversables: HTML "navigate" the host page's traversable
+/// to `url` as a "browser UI" navigation - no source document, the
+/// embedder's own (navigate step 5: a null sourceDocument is a "browser UI"
+/// navigation).
+fn navigateHostTraversable(record: *anyopaque, url: []const u8) void {
+    const integration: *IFrameIntegration = @ptrCast(@alignCast(record));
+    navigate(integration, url, .{ .user_involvement = .browser_ui });
+}
+
+/// `window`'s Location navigates `integration`'s navigable (HTML
+/// Location-object navigate), and names `window` as its own.
+fn giveLocationNavigateCallback(window: *runtime.Instance, integration: *IFrameIntegration) void {
+    if (interfaces.Window.get_location(window)) |location| {
+        const LocationImpl = @import("Location.zig");
+        LocationImpl.setWindow(location, window);
+        LocationImpl.setNavigateCallback(location, &navigateFromLocation, @ptrCast(integration));
+    } else |err| log.debug("a navigable's Location was not made: {}", .{err});
 }
 
 /// The host page's realms are the host's to end (Context.deinit): the
@@ -5722,6 +5772,7 @@ fn attachHostRealm(record: *anyopaque, realm: runtime.Context) void {
     const integration: *IFrameIntegration = @ptrCast(@alignCast(record));
     integration.setRealmContext(realm.engine_ctx, @ptrCast(realm), @ptrCast(realm), @ptrCast(realm), createDocumentForIframe, hostRealmCleanup, parseHtmlForIframe);
     integration.parse_xml_callback = &parseXmlForIframe;
+    if (windowOfRealm(realm)) |window| giveLocationNavigateCallback(window, integration);
 }
 
 /// dom.top_level_traversables: "unload a document and its descendants" for
