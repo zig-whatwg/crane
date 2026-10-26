@@ -814,6 +814,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A cost bar that moves with no new instructions is code placement](testing-a-cost-bar-that-moves-with-no-new-instructions-is-code-placement.md) - A sub-microsecond per-operation metric in a whole-program optimized runner moves with code placement; when its path reaches no changed code, instructions retired (page minus a zero-iteration control) decide, not time.
 
 ### Debugging
+- [Computed shorthands may need symbolic colors](debugging-computed-shorthands-may-need-symbolic-colors.md) - Preserve symbolic values until the consumer decides whether to omit them; early resolution can erase a CSSOM distinction.
 - [Optional CSS groups must restore the token stream](debugging-optional-css-groups-must-restore-the-token-stream.md) - Test malformed components through their shorthand: a failed optional group must restore the tokens it consumed.
 - [Debugging: Materialize coordinates before overwriting a vector](debugging-materialize-coordinates-before-overwriting-a-vector.md) - Compute every new coordinate from saved scalar inputs before assigning an aggregate back to its input vector.
 - [Debugging: Profile the WPT Worker, Not Its Supervisor](debugging-profile-the-wpt-worker-not-the-supervisor.md) - A WPT runner started with `--parallel=1` is still a supervisor; profile its actual test worker.

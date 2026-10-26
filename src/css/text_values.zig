@@ -77,6 +77,8 @@ pub const Components = struct {
                 if (self.items[1].isKeyword(.auto)) count = 1;
             }
         }
+        // Decor4: an equal inset pair serializes as one value.
+        if (self.property == .text_decoration_inset and self.items[0].eql(self.items[1])) count = 1;
         for (self.items[0..count], 0..) |item, i| {
             if (i != 0) try out.append(allocator, ' ');
             try properties.serializeValue(self.property, item, out, allocator);

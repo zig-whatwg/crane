@@ -297,6 +297,21 @@ pub const Longhand = enum(u8) {
     text_align_last,
     white_space_trim,
 
+    // CSS Text Decoration3/4 (row124).
+    text_decoration_line,
+    text_decoration_style,
+    text_decoration_color,
+    text_decoration_thickness,
+    text_decoration_inset,
+    text_decoration_skip_ink,
+    text_decoration_skip_spaces,
+    text_underline_position,
+    text_underline_offset,
+    text_emphasis_style,
+    text_emphasis_color,
+    text_emphasis_position,
+    text_shadow,
+
     pub const count = @typeInfo(Longhand).@"enum".fields.len;
 
     /// The property name.
@@ -443,6 +458,8 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
 /// A longhand's grammar.
 pub const Grammar = enum {
     text_value,
+    decoration_value,
+    text_shadow,
     animation_list,
     individual_transform,
     flex_factor,
@@ -536,6 +553,20 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .text_align_last, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .start, .end, .left, .right, .center, .justify, .match_parent } },
         // Text4 §4.2; independent longhand (WebKit cssWhiteSpaceTrimEnabled).
         .{ .longhand = .white_space_trim, .inherited = false, .initial = Value.kw(.none), .grammar = .text_value },
+        // Decor3/4; Q16 initializes emphasis position over right, computed over.
+        .{ .longhand = .text_decoration_line, .inherited = false, .initial = Value.kw(.none), .grammar = .decoration_value },
+        .{ .longhand = .text_decoration_style, .inherited = false, .initial = Value.kw(.solid), .grammar = .keywords, .keywords = &.{ .solid, .double, .dotted, .dashed, .wavy } },
+        .{ .longhand = .text_decoration_color, .inherited = false, .initial = .{ .color = .current }, .grammar = .color },
+        .{ .longhand = .text_decoration_thickness, .inherited = false, .initial = Value.kw(.auto), .grammar = .decoration_value },
+        .{ .longhand = .text_decoration_inset, .inherited = false, .initial = Value.px(0), .grammar = .decoration_value },
+        .{ .longhand = .text_decoration_skip_ink, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .all, .none } },
+        .{ .longhand = .text_decoration_skip_spaces, .inherited = true, .initial = @import("decoration_values.zig").Keywords.init(.text_decoration_skip_spaces, &.{ .start, .end }).value(), .grammar = .decoration_value },
+        .{ .longhand = .text_underline_position, .inherited = true, .initial = Value.kw(.auto), .grammar = .decoration_value },
+        .{ .longhand = .text_underline_offset, .inherited = true, .initial = Value.kw(.auto), .grammar = .decoration_value },
+        .{ .longhand = .text_emphasis_style, .inherited = true, .initial = Value.kw(.none), .grammar = .decoration_value },
+        .{ .longhand = .text_emphasis_color, .inherited = true, .initial = .{ .color = .current }, .grammar = .color },
+        .{ .longhand = .text_emphasis_position, .inherited = true, .initial = @import("decoration_values.zig").Keywords.init(.text_emphasis_position, &.{.over}).value(), .grammar = .decoration_value },
+        .{ .longhand = .text_shadow, .inherited = true, .initial = Value.kw(.none), .grammar = .text_shadow },
         .{ .longhand = .hanging_punctuation, .inherited = true, .initial = Value.kw(.none), .grammar = .text_value },
         .{ .longhand = .hyphenate_limit_lines, .inherited = true, .initial = Value.kw(.no_limit), .grammar = .text_value },
         // Text4 §7.6, WebKit's cssTextGroupAlignEnabled implementation.
@@ -842,6 +873,8 @@ pub const Shorthand = enum(u8) {
     white_space,
     text_wrap,
     text_spacing,
+    text_decoration,
+    text_emphasis,
     animation,
     animation_range,
     flex,
@@ -912,6 +945,8 @@ pub const Shorthand = enum(u8) {
             .white_space => &.{ .white_space_collapse, .text_wrap_mode },
             .text_wrap => &.{ .text_wrap_mode, .text_wrap_style },
             .text_spacing => &.{ .text_spacing_trim, .text_autospace },
+            .text_decoration => &.{ .text_decoration_line, .text_decoration_thickness, .text_decoration_style, .text_decoration_color },
+            .text_emphasis => &.{ .text_emphasis_style, .text_emphasis_color },
             .animation => &.{ .animation_duration, .animation_timing_function, .animation_delay, .animation_iteration_count, .animation_direction, .animation_fill_mode, .animation_play_state, .animation_name, .animation_timeline, .animation_range_start, .animation_range_end },
             .animation_range => &.{ .animation_range_start, .animation_range_end },
             .flex => &.{ .flex_grow, .flex_shrink, .flex_basis },
@@ -1237,6 +1272,8 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
     const def = l.info();
     switch (def.grammar) {
         .text_value => return @import("text_values.zig").parse(options, l, stream),
+        .decoration_value => return @import("decoration_values.zig").parse(options, l, stream),
+        .text_shadow => return @import("text_shadow_values.zig").parse(options, stream),
         .flex_factor => return @import("flex_values.zig").consumeFactor(options, stream),
         .individual_transform => {
             if (takeKeyword(stream, &.{.none})) |keyword| return Value.kw(keyword);
@@ -1886,6 +1923,7 @@ fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *st
     switch (s) {
         .text_wrap => return @import("text_values.zig").parseWrap(options, stream, out),
         .text_spacing => return @import("text_values.zig").parseSpacing(options, stream, out),
+        .text_decoration, .text_emphasis => return @import("decoration_values.zig").parseShorthand(options, s, stream, out),
         .font_variant => return @import("font_variants.zig").parseShorthand(options, stream, out),
         .font => return @import("font_shorthand.zig").parse(options, stream, out),
         .flex => return @import("flex_values.zig").consumeShorthand(options, stream, out),
@@ -2268,6 +2306,8 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
     }
     switch (value) {
         .text_values => |v| try v.serialize(out, allocator),
+        .decoration_keywords => |v| try v.serialize(out, allocator),
+        .text_shadow => |v| try v.serialize(null, out, allocator),
         .keyword => |k| try out.appendSlice(allocator, k.name()),
         .length => |len| try values.appendLength(len, out, allocator),
         .number => |n| {
@@ -2372,6 +2412,7 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
         .font => return @import("font_shorthand.zig").serialize(vs, mode, out, allocator),
         .text_wrap => return @import("text_values.zig").serializeWrap(vs, out, allocator),
         .text_spacing => return @import("text_values.zig").serializeSpacing(vs, out, allocator),
+        .text_decoration, .text_emphasis => return @import("decoration_values.zig").serializeShorthand(s, vs, mode, out, allocator),
         .flex => return @import("flex_values.zig").serializeShorthand(vs, out, allocator),
         .animation, .animation_range, .transition => return @import("animation_values.zig").serializeShorthand(s, vs, mode, out, allocator),
         .grid_template => return @import("grid_tracks.zig").serializeTemplate(.{ .rows = vs[0].value, .columns = vs[1].value, .areas = vs[2].value }, out, allocator),

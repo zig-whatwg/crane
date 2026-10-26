@@ -271,6 +271,24 @@ pub const Keyword = enum(u8) {
     discard_before,
     discard_after,
     discard_inner,
+    // CSS Text Decoration3/4 (row124).
+    underline,
+    overline,
+    line_through,
+    blink,
+    spelling_error,
+    grammar_error,
+    wavy,
+    from_font,
+    under,
+    over,
+    filled,
+    open,
+    dot,
+    circle,
+    double_circle,
+    triangle,
+    sesame,
 
     /// The keyword's CSS spelling.
     pub fn name(self: Keyword) []const u8 {
@@ -862,6 +880,8 @@ pub const Value = union(enum) {
     font_size_adjust: *@import("font_size_adjust.zig").Adjust,
     font_system: @import("font_system.zig").Keyword,
     text_values: *@import("text_values.zig").Components,
+    decoration_keywords: @import("decoration_values.zig").Keywords,
+    text_shadow: *@import("text_shadow_values.zig").Shadows,
 
     /// Borrowed URL candidates in serialization order, valid while this
     /// value is retained. No sheet or document lookup is needed to use them.
@@ -887,6 +907,7 @@ pub const Value = union(enum) {
     /// Take a reference to what the value holds (a copy of it is kept).
     pub fn retain(self: Value) void {
         if (self == .text_values) return self.text_values.ref();
+        if (self == .text_shadow) return self.text_shadow.ref();
         if (self == .color) return self.color.retain();
         if (self == .content) return self.content.ref();
         if (self == .cursor) return self.cursor.ref();
@@ -920,6 +941,7 @@ pub const Value = union(enum) {
     /// Drop the reference `retain` took.
     pub fn release(self: Value) void {
         if (self == .text_values) return self.text_values.unref();
+        if (self == .text_shadow) return self.text_shadow.unref();
         if (self == .color) return self.color.release();
         if (self == .content) return self.content.unref();
         if (self == .cursor) return self.cursor.unref();
@@ -1008,6 +1030,8 @@ pub const Value = union(enum) {
             .font_size_adjust => |v| v.eql(b.font_size_adjust),
             .font_system => |v| v == b.font_system,
             .text_values => |v| v.eql(b.text_values),
+            .decoration_keywords => |v| v.eql(b.decoration_keywords),
+            .text_shadow => |v| v.eql(b.text_shadow),
         };
     }
 
@@ -1061,6 +1085,8 @@ pub const Value = union(enum) {
             .font_family, .font_system => false,
             .font_size_adjust => |v| v.needsUnavailableMetrics(),
             .text_values => |v| v.needsUnavailableMetrics(geometry_length),
+            .text_shadow => |v| v.needsUnavailableMetrics(geometry_length),
+            .decoration_keywords => false,
         };
     }
 
@@ -1110,6 +1136,8 @@ pub const Value = union(enum) {
             .font_family, .font_system => false,
             .font_size_adjust => |v| v.needsTreeCounts(),
             .text_values => |v| v.needsTreeCounts(),
+            .text_shadow => |v| v.needsTreeCounts(),
+            .decoration_keywords => false,
         };
     }
 
@@ -1157,6 +1185,8 @@ pub const Value = union(enum) {
             .font_family, .font_system => false,
             .font_size_adjust => |v| v.needsRandomBase(),
             .text_values => |v| v.needsRandomBase(),
+            .text_shadow => |v| v.needsRandomBase(),
+            .decoration_keywords => false,
         };
     }
 

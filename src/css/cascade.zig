@@ -1317,6 +1317,8 @@ const Builder = struct {
             },
             .filter => |value| return .{ .filter = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
             .text_values => |value| return .{ .text_values = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
+            .decoration_keywords => |value| return value.compute(self.style.keyword(.writing_mode)).value(),
+            .text_shadow => |value| return .{ .text_shadow = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
             .shape => |value| return .{ .shape = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
             .image_position => |value| return .{ .image_position = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
             .image_size => |value| return .{ .image_size = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
