@@ -147,6 +147,18 @@ fn freeStringResult(comptime T: type, allocator: std.mem.Allocator, result: T) v
     }
 }
 
+/// Throw what a namespace operation's or attribute getter's error names
+/// (conv.throwWebIDLErrorFromContext: a DOMException name, TypeError, ...),
+/// in the operation's context. error.ExceptionPending says script has
+/// already thrown - a callback the impl ran, a conversion of a value script
+/// handed it - and that exception stays pending, script's own object, as the
+/// interface binding's throwMemberError leaves it
+/// (docs/lessons/architecture-a-pending-script-exception-is-not-a-new-host-error.md).
+fn throwOperationError(isolate: *v8.Isolate, context: *v8.Context, err: anyerror) void {
+    if (err == error.ExceptionPending) return;
+    conv.throwWebIDLErrorFromContext(isolate, context, @errorName(err));
+}
+
 /// `call_<name>__<k>`: overload k of an overloaded operation (AGENTS.md,
 /// "Names are the binding map").
 fn isFurtherOverload(comptime decl_name: []const u8) bool {
@@ -375,7 +387,7 @@ pub fn V8Namespace(comptime Namespace: type) type {
                         return;
                     };
                     const result = getter_fn(realm) catch |err| {
-                        conv.throwWebIDLErrorFromContext(isolate, context, @errorName(err));
+                        throwOperationError(isolate, context, err);
                         return;
                     };
                     defer freeStringResult(return_type, realm.getAllocator(), result);
@@ -494,7 +506,17 @@ pub fn V8Namespace(comptime Namespace: type) type {
         fn generateCallback(comptime method: MethodInfo) v8.FunctionCallback {
             const namespace_fn = @field(Namespace, method.zig_name);
             const fn_type_info = @typeInfo(@TypeOf(namespace_fn)).@"fn";
-            const return_type = fn_type_info.return_type orelse void;
+            const declared_return = fn_type_info.return_type orelse void;
+            // What a successful call returns: the payload of an error union.
+            // The error itself is THROWN (throwOperationError), never
+            // converted - conv.toV8Value's error-union branch made an Error
+            // object and returned it as the call's value, so every failing
+            // namespace operation (CSS.registerProperty, console.*,
+            // TestUtils.gc) returned an Error instead of throwing.
+            const return_type = switch (@typeInfo(declared_return)) {
+                .error_union => |eu| eu.payload,
+                else => declared_return,
+            };
 
             const Wrapper = struct {
                 fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
@@ -692,7 +714,17 @@ pub fn V8Namespace(comptime Namespace: type) type {
                     }
 
                     // Call the namespace function with extracted arguments
-                    const result = @call(.auto, namespace_fn, args);
+                    const completion = @call(.auto, namespace_fn, args);
+                    // WebIDL 3.13.1 "create an operation function": an abrupt
+                    // completion of the steps is the function's - thrown, as
+                    // the getter path and the interface binding throw it.
+                    const result: return_type = if (comptime return_type != declared_return)
+                        completion catch |err| {
+                            throwOperationError(isolate, context, err);
+                            return;
+                        }
+                    else
+                        completion;
                     // A string the impl returns is the binding's once it is
                     // converted, as an interface operation's is (interface.zig,
                     // needs_string_cleanup): freed with the allocator the impl
