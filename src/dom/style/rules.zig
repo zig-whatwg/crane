@@ -28,7 +28,7 @@
 //! parse, an @import after any rule but @charset, @layer statements and
 //! other @imports, an @namespace after any other rule, an unknown at-rule.
 //! Stated deviations: @charset is dropped (CSSOM has no object for it);
-//! @counter-style, @property, @container, @scope,
+//! @counter-style, @container, @scope,
 //! @starting-style and the other at-rules Crane does not model are left out
 //! of the rule lists, as the cascade left them out before; nested style
 //! rules (CSS Nesting) are dropped, as css.rules drops them.
@@ -83,6 +83,7 @@ pub const Kind = enum {
     font_face,
     page,
     position_try,
+    property,
     keyframes,
     keyframe,
 
@@ -100,7 +101,7 @@ pub const Kind = enum {
             .namespace => 10,
             .supports => 12,
             .layer_block, .layer_statement => 0,
-            .position_try => 0,
+            .position_try, .property => 0,
         };
     }
 
@@ -159,6 +160,7 @@ pub const Data = union(Kind) {
     font_face: @import("font_loading.zig").FontRule,
     page: DeclarationBlock,
     position_try: DeclarationBlock,
+    property: *css.property_registry.Registration,
     keyframes: struct { children: std.ArrayList(*Rule) = .empty },
     keyframe: struct { selectors: css.keyframe_values.Selectors, block: DeclarationBlock },
 };
@@ -209,6 +211,7 @@ pub const Rule = struct {
             .font_face => |*font| font.deinit(),
             .page => |*b| b.deinit(),
             .position_try => |*b| b.deinit(),
+            .property => |registration| registration.unref(),
             .keyframes => |*k| releaseChildren(a, &k.children),
             .keyframe => |*k| {
                 k.selectors.deinit();
@@ -278,6 +281,7 @@ pub const Rule = struct {
 
     fn serializeInto(self: *Rule, allocator: Allocator, out: *std.ArrayList(u8)) Allocator.Error!void {
         switch (self.data) {
+            .property => |registration| try registration.serializeRule(out, allocator),
             // "The result of performing serialize a group of selectors on
             // the rule's associated selectors, followed by the string " {"
             // ... decls ... " }"" (no nested rules here: stated).
@@ -596,6 +600,16 @@ pub fn build(options: BuildOptions, parsed: *const css.rules.Rule, position: Pos
             keyframe.parent_rule = parent;
         }
         return parent;
+    }
+    if (std.mem.eql(u8, name, "property")) {
+        // Properties and Values §3: validate descriptors before exposing a
+        // CSSPropertyRule. The immutable record also backs the registry.
+        const registration = try css.property_registry.Registration.fromRule(options.parse, parsed) orelse return null;
+        errdefer registration.unref();
+        const prelude = try css.serialize.serializeIdentifier(a, registration.name);
+        // make consumes prelude, including failure; registration moves only
+        // after make succeeds, as for the other owned rule payloads.
+        return make(a, prelude, .{ .property = registration });
     }
     if (std.mem.eql(u8, name, "position-try")) {
         // Anchor Position 1 §6.4: exactly one dashed identifier, with a
