@@ -9,6 +9,8 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Architecture: A new Window per load moves what belongs to the navigable, and swaps the realm only when nothing of it is on the stack](architecture-a-new-window-per-load-moves-what-belongs-to-the-navigable.md) - when a page-lifetime object starts dying per navigation, give each thing it held to its spec owner; swap an engine realm only where nothing of it is on the stack
+- [Architecture: The order of a session history update is observable only through each document's own view](architecture-the-order-of-a-history-update-is-observable-only-through-each-documents-view.md) - list every view through which script observes a step before reordering it; with live reads of shared state, build per-document views first
 - [A slot goes back only when every holder kind is on an allowlist](architecture-a-slot-goes-back-only-when-every-holder-kind-is-on-an-allowlist.md) - Do not return a slot that holders can still name: inventory every holder kind, gate the return on an allowlist whose default is unsafe, convert one kind per commit with a forced-reuse test, and flip the switch last; where the platform object is a proxy for something that outlives it (a WindowProxy), keep the proxy, not the object.
 - [Platform lookups stay with the state owner](architecture-platform-lookups-stay-with-the-state-owner.md) - Install cross-layer callbacks from the state owner, keep host state with its Browser, and test revision invalidation separately from initial lookup.
 - [Pending image descriptors have one read contract](architecture-pending-image-descriptors-have-one-read-contract.md) - Make pending data explicit, and test that defensive readers cannot hide a missing compute step.
@@ -372,7 +374,9 @@ A lane brief now carries the lessons chosen for its batch.
 ### Spec Compliance
 
 - [A new typed case must preserve legacy parser fallbacks](spec-compliance-a-new-typed-case-must-preserve-legacy-parser-fallbacks.md) - Share the new alternative without replacing the caller's existing recovery.
+- [Check source when cached Markdown drops grammar](spec-compliance-check-source-when-cached-markdown-drops-grammar.md) - Resolve missing punctuation in the original specification source before interpreting the converted grammar.
 - [Environment defaults distinguish absence from zero](spec-compliance-environment-defaults-distinguish-absence-from-zero.md) - Probe availability, parsing and value separately; zero and undefined are different environment answers.
+- [Probe the full operator matrix](spec-compliance-probe-the-full-operator-matrix.md) - Test every operator pair with and without negation before generalizing a browser's comparison grammar.
 - [Registration validation must see dependencies simplification removes](spec-compliance-registration-validation-precedes-math-simplification.md) - Validate initial-value dependencies at registration, before simplified values erase their source evidence.
 - [Nested CSS parsers preserve declaration identity](spec-compliance-nested-css-parsers-preserve-declaration-identity.md) - Forward the original declaration scope and source slice through nested value grammars.
 - [Recognizing a property can change its CSSOM readback](spec-compliance-recognizing-a-property-can-change-its-cssom-readback.md) - Audit the old storage route when registering a property; typed parse failure can discard previously observable text.
@@ -605,6 +609,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Source Inference Needs Browser Measurement](spec-compliance-source-inference-needs-browser-measurement.md) - Label source-based predictions as inferences until an actual browser run confirms them.
 - [XML Navigation and XHR Decode Differently](spec-compliance-xml-navigation-and-xhr-decode-differently.md) - Share encoding selection while preserving each consumer's required error mode.
 - [A Dictionary Forwarder Must Preserve Its Receiver](spec-compliance-a-dictionary-forwarder-must-preserve-its-receiver.md) - A property-forwarding adapter must preserve both the lookup target and the getter receiver; matching property values alone is insufficient.
+- [A computed value cannot tell a UA default from author style](spec-compliance-a-computed-value-cannot-tell-a-ua-default-from-author-style.md) - When behaviour turns on "did the page set this?", ask the cascade for the declaration's origin; never infer it from the computed value, which is identical either way.
 - [execCommand fires input only - no browser fires beforeinput for it](spec-compliance-execcommand-fires-input-only-no-browser-fires-beforeinput.md) - Before wiring events from a spec's method steps, read the WPT file that names the event and the browsers' per-subtest results; share the action between user and script paths and let only the user path announce itself.
 - [Synthetic components still need computed-value conversion](spec-compliance-synthetic-components-still-need-computed-value-conversion.md) - Route manufactured leaves through the same owner conversion as authored leaves.
 - [Control font selection uses displayed text](spec-compliance-control-font-selection-uses-displayed-text.md) - Match rendered characters/metrics and invalidate on value changes.
@@ -659,6 +664,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Refresh aliases with their realm's interface objects](codegen-refresh-aliases-with-their-realms-interface-objects.md) - An alias names the realm's interface object, not the current contents of another global property.
 
 ### Testing
+- [Enum Capacity and Container Layout Are Separate Invariants](testing-enum-capacity-and-container-layout.md) - Audit ID storage and reflected counts, then measure containing types instead of inferring their size from the tag.
+- [Bind WPT Evidence to the Served Source Hashes](testing-bind-wpt-evidence-to-served-source-hashes.md) - Match the actual served sources and frozen artifacts; retain original receipts and label authorized evidence reuse.
 - [A no-throw check can pass when the binding returns an Error](testing-a-no-throw-check-can-pass-when-the-binding-returns-an-error.md) - Verify the binding's rejection path and the observable return value before treating a call without an exception as success.
 - [A replacement is not a fallback candidate](testing-a-replacement-is-not-a-fallback-candidate.md) - Preserve a separate fallback candidate and distinguish it from the initial value.
 - [Support detection activates previously skipped assertions](testing-support-detection-activates-previously-skipped-assertions.md) - When support detection changes, inspect the assertions it enables and complete their dependent behavior in the same accepted delivery.
@@ -817,6 +824,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A cost bar that moves with no new instructions is code placement](testing-a-cost-bar-that-moves-with-no-new-instructions-is-code-placement.md) - A sub-microsecond per-operation metric in a whole-program optimized runner moves with code placement; when its path reaches no changed code, instructions retired (page minus a zero-iteration control) decide, not time.
 
 ### Debugging
+- [Allocate before transferring an arena](debugging-allocate-before-transferring-an-arena.md) - Transfer an arena only after its last allocation; struct field evaluation can otherwise copy stale ownership state.
 - [Debugging: Materialize coordinates before overwriting a vector](debugging-materialize-coordinates-before-overwriting-a-vector.md) - Compute every new coordinate from saved scalar inputs before assigning an aggregate back to its input vector.
 - [Debugging: Profile the WPT Worker, Not Its Supervisor](debugging-profile-the-wpt-worker-not-the-supervisor.md) - A WPT runner started with `--parallel=1` is still a supervisor; profile its actual test worker.
 - [Performance: A general sort reserves scratch before small-input branches](performance-a-general-sort-reserves-scratch-before-small-input-branches.md) - Profile a general sort's stack setup when a larger element type slows a hot path, even if nearly every input is tiny.

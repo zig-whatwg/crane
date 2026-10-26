@@ -99,6 +99,8 @@ pub const rules = @import("rules.zig");
 /// CSS.supports(): the supports() functions of CSS Conditional 3.
 pub const supports = @import("supports.zig");
 
+pub const if_function = @import("if_function.zig");
+
 /// CSSOM serializing idioms: serialize an identifier (CSS.escape()).
 pub const serialize = @import("serialize.zig");
 

@@ -43,10 +43,10 @@ pub const ParagraphSeparator = enum {
 pub const EditorState = struct {
     allocator: std.mem.Allocator,
 
-    /// Whether to use CSS for styling (vs HTML elements)
-    /// Command: styleWithCSS
-    /// When true: uses <span style="...">
-    /// When false: uses <b>, <i>, <u>, etc.
+    /// The Document's CSS styling flag, "initially false"
+    /// (specs/w3c/execCommand.md, "CSS styling flag"). Set by the
+    /// styleWithCSS and useCSS commands; when true, formatting commands
+    /// write <span style="..."> rather than <b>, <i>, <u>, etc.
     style_with_css: bool = false,
 
     /// Default paragraph separator element
@@ -64,10 +64,6 @@ pub const EditorState = struct {
     /// Whether object resizing UI is enabled
     /// Command: enableObjectResizing
     object_resizing: bool = true, // Enabled by default in most browsers
-
-    /// Whether content is read-only
-    /// Command: contentReadOnly
-    content_read_only: bool = false,
 
     /// Undo/redo history manager
     undo_manager: history.UndoManager,
@@ -108,11 +104,6 @@ pub const EditorState = struct {
             };
         }
 
-        // Check read-only state
-        if (self.content_read_only and command.modifiesContent()) {
-            return false;
-        }
-
         // Check undo/redo availability
         return switch (command) {
             .undo => self.undo_manager.canUndo(),
@@ -121,11 +112,26 @@ pub const EditorState = struct {
         };
     }
 
+    /// The state of a configuration command, or null for a command whose
+    /// state is not this object's to answer. styleWithCSS: "True if the CSS
+    /// styling flag is true, otherwise false"; useCSS has no state, so
+    /// queryCommandState answers false (specs/w3c/execCommand.md).
+    pub fn getCommandState(self: *const EditorState, command: Command) ?bool {
+        return switch (command) {
+            .styleWithCSS => self.style_with_css,
+            .useCSS => false,
+            else => null,
+        };
+    }
+
     /// Get the value for a command
     pub fn getCommandValue(self: *const EditorState, command: Command) ?[]const u8 {
         return switch (command) {
             .defaultParagraphSeparator => self.default_paragraph_separator.toString(),
-            .styleWithCSS => if (self.style_with_css) "true" else "false",
+            // Neither defines a value, so queryCommandValue returns the
+            // empty string (Chrome 155, Firefox 158 and Safari 27 agree:
+            // tmp/analysis/integrator-probes-1026l/results/swc-*.json).
+            .styleWithCSS, .useCSS => "",
             // TODO: Query current selection for formatting values
             else => null,
         };
@@ -134,12 +140,17 @@ pub const EditorState = struct {
     /// Set configuration for a command
     pub fn setConfig(self: *EditorState, command: Command, value: ?[]const u8) bool {
         switch (command) {
+            // "If value is an ASCII case-insensitive match for the string
+            // "false", set the CSS styling flag to false. Otherwise, set the
+            // CSS styling flag to true. Either way, return true." No value is
+            // execCommand's IDL default, "".
             .styleWithCSS => {
-                if (value) |v| {
-                    self.style_with_css = std.ascii.eqlIgnoreCase(v, "true");
-                } else {
-                    self.style_with_css = true; // Default to true when called without value
-                }
+                self.style_with_css = !std.ascii.eqlIgnoreCase(value orelse "", "false");
+                return true;
+            },
+            // useCSS: the same with the opposite values.
+            .useCSS => {
+                self.style_with_css = std.ascii.eqlIgnoreCase(value orelse "", "false");
                 return true;
             },
             .defaultParagraphSeparator => {
@@ -167,13 +178,6 @@ pub const EditorState = struct {
             },
             .enableObjectResizing => {
                 self.object_resizing = if (value) |v|
-                    std.ascii.eqlIgnoreCase(v, "true")
-                else
-                    true;
-                return true;
-            },
-            .contentReadOnly => {
-                self.content_read_only = if (value) |v|
                     std.ascii.eqlIgnoreCase(v, "true")
                 else
                     true;
@@ -279,6 +283,16 @@ test "EditorState.setConfig" {
 
     try std.testing.expect(state_obj.setConfig(.styleWithCSS, "true"));
     try std.testing.expect(state_obj.style_with_css);
+    try std.testing.expect(state_obj.setConfig(.styleWithCSS, "FALSE"));
+    try std.testing.expect(!state_obj.style_with_css);
+    try std.testing.expect(state_obj.setConfig(.styleWithCSS, "truer"));
+    try std.testing.expect(state_obj.style_with_css);
+    try std.testing.expect(state_obj.setConfig(.useCSS, "TRUE"));
+    try std.testing.expect(!state_obj.style_with_css);
+    try std.testing.expect(state_obj.setConfig(.useCSS, "False"));
+    try std.testing.expect(state_obj.style_with_css);
+    try std.testing.expectEqual(@as(?bool, true), state_obj.getCommandState(.styleWithCSS));
+    try std.testing.expectEqualStrings("", state_obj.getCommandValue(.styleWithCSS).?);
 
     try std.testing.expect(state_obj.setConfig(.defaultParagraphSeparator, "p"));
     try std.testing.expectEqual(ParagraphSeparator.p, state_obj.default_paragraph_separator);

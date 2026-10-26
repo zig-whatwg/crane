@@ -85,15 +85,20 @@ test "CSS-wide keywords are the keywords, not text (variable-definition-keywords
     try testing.expect(block.getCustom("--f").?.value == .text);
 }
 
-test "any <declaration-value> is a valid value; invalid var() makes it invalid (§2.1)" {
-    var block = try parsed("--a: 25%; --b: foo(bar()); --c: ( ); --d: { }; --e: [ ]; --f: @media {}; --g: if(x > 5) this.width = 10; --h: var(--x, a, b); --i: var(); --j: var(--x)); --k: a !b");
+test "custom declarations preserve arbitrary values and reject malformed substitution functions" {
+    var block = try parsed("--a: 25%; --b: foo(bar()); --c: ( ); --d: { }; --e: [ ]; --f: @media {}; --g: if(x > 5) this.width = 10; --h: var(--x, a, b); --i: var(); --j: var(--x)); --k: a !b; --l: unknown(x > 5) this.width = 10");
     defer block.deinit();
-    for ([_][]const u8{ "--a", "--b", "--c", "--d", "--e", "--f", "--g", "--h" }) |name| {
+    for ([_][]const u8{ "--a", "--b", "--c", "--d", "--e", "--f", "--h", "--l" }) |name| {
         if (block.getCustom(name) == null) {
             std.debug.print("missing {s}\n", .{name});
             return error.TestExpectedValid;
         }
     }
+    // CSS Values 5 §8.3 makes if() a substitution function whose argument
+    // grammar requires a colon. The Variables 1 §2.1 example predates that
+    // grammar; --l keeps its arbitrary unknown-function coverage.
+    try testing.expect(block.getCustom("--g") == null);
+    try expectValue(&block, "--l", "unknown(x > 5) this.width = 10");
     try testing.expect(block.getCustom("--i") == null);
     try testing.expect(block.getCustom("--k") == null);
     try expectValue(&block, "--h", "var(--x, a, b)");

@@ -843,7 +843,26 @@ const submission_algorithms: @import("dom").form_submission.Implementation = .{
     .reset = &resetForm,
     .construct_entry_list = &constructEntryListInto,
     .past_names_owner_change = &ownerChanged,
+    .cancel_planned_navigations = &cancelPlannedNavigationsOf,
 };
+
+/// dom.form_submission: HTML "stop loading" the navigable whose active
+/// document is `document` cancels the planned navigation of each of its
+/// forms whose task has not run - every one still queued, as Blink's
+/// LocalFrame::CancelFormSubmission (from FrameLoader::StopAllLoaders) and
+/// WebKit's NavigationScheduler cancel (from FrameLoader::stopAllLoaders)
+/// drop the frame's pending submission. The queued tasks find their tokens
+/// gone and do nothing (runPlannedNavigation).
+fn cancelPlannedNavigationsOf(document: *runtime.Instance) void {
+    var registered = Registry.iterator(runtime.BrowserScope.ofInstance(document)) orelse return;
+    while (registered.next()) |entry| {
+        const form: *runtime.Instance = @ptrCast(@alignCast(entry.instance));
+        const owner = interfaces.Node.get_ownerDocument(form) catch continue;
+        if (owner != document) continue;
+        entry.internal.pending_navigations.clearRetainingCapacity();
+        entry.internal.planned_navigation = 0;
+    }
+}
 
 fn submitFromHook(form: *runtime.Instance, submitter: *runtime.Instance, user_involvement: @import("dom").form_submission.UserInvolvement) anyerror!void {
     try submit(form, submitter, .{ .user_involvement = user_involvement });

@@ -517,6 +517,17 @@ pub const Browser = struct {
         }
     }
 
+    /// HTML "navigate" the page this Browser shows to `url`, in place: the
+    /// same top-level traversable - its session history, its WindowProxy -
+    /// as an address bar navigates its tab (Context.navigate; the navigation
+    /// runs as tasks, so run the event loop for it). With no page yet, the
+    /// first one is opened (`navigate`). `navigate` itself opens a FRESH
+    /// traversable each time - what the WPT runner wants for each file.
+    pub fn navigateInPlace(self: *Browser, url: []const u8) !void {
+        const ctx = self.current_context orelse return self.navigate(url, .window);
+        ctx.navigate(url) catch return self.navigate(url, .window);
+    }
+
     /// `url` parsed with the basic URL parser and serialized; null when it
     /// does not parse. Owned by `allocator`.
     fn serializedUrl(allocator: std.mem.Allocator, url: []const u8) ?[]u8 {
