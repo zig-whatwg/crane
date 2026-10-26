@@ -216,11 +216,16 @@ pub fn set_cssText(instance: *runtime.Instance, value: typedefs.CSSOMString) any
 }
 
 /// length: the number of declarations - for a computed declaration, every
-/// supported longhand (CSSOM 7.2 step 5).
+/// supported longhand (CSSOM 7.2 step 5), then every custom property with a
+/// value (css/cssom/cssstyledeclaration-custom-properties.html: after all
+/// the non-custom properties; integrator Q3).
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return 0;
     if (internal.kind == .computed) {
-        return if ((try computedStyleOf(internal)) != null) @intCast(properties.Longhand.count) else 0;
+        const style = (try computedStyleOf(internal)) orelse return 0;
+        const names = try style.customNames(internal.allocator);
+        defer internal.allocator.free(names);
+        return @intCast(properties.Longhand.count + names.len);
     }
     const block = (try writableBlock(internal)) orelse return 0;
     return @intCast(block.length());
@@ -244,8 +249,14 @@ pub fn get_parentRule(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!typedefs.CSSOMString {
     const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
     if (internal.kind == .computed) {
-        if ((try computedStyleOf(internal)) == null or index >= properties.Longhand.count) return runtime.DOMString.initEmpty();
-        return runtime.DOMString.initInterned(properties.lexicographic[index].name());
+        const style = (try computedStyleOf(internal)) orelse return runtime.DOMString.initEmpty();
+        if (index < properties.Longhand.count) return runtime.DOMString.initInterned(properties.lexicographic[index].name());
+        // The custom properties follow, in code-point order.
+        const names = try style.customNames(internal.allocator);
+        defer internal.allocator.free(names);
+        const at = index - properties.Longhand.count;
+        if (at >= names.len) return runtime.DOMString.initEmpty();
+        return ownedString(instance.ctx.allocator, names[at]);
     }
     const block = (try writableBlock(internal)) orelse return runtime.DOMString.initEmpty();
     const name = block.item(index) orelse return runtime.DOMString.initEmpty();
@@ -274,6 +285,13 @@ pub fn call_getPropertyValue(instance: *runtime.Instance, property: typedefs.CSS
 /// unless the shorthand cannot represent them).
 fn computedValue(internal: *InternalState, name: []const u8, out: *std.ArrayList(u8)) !void {
     const style = (try computedStyleOf(internal)) orelse return;
+    // CSS Variables 1 §2: a custom property's computed value, case-
+    // sensitively; "" for the guaranteed-invalid value; §4.1 writes an empty
+    // value as one space.
+    if (std.mem.startsWith(u8, name, "--")) {
+        if (style.customValue(name)) |value| try css.custom_properties.appendValue(value.bytes, out, internal.allocator);
+        return;
+    }
     const property = properties.lookup(name) orelse return;
     switch (property) {
         .longhand => |l| try style.serializeResolved(l, out, internal.allocator),
@@ -289,6 +307,9 @@ fn computedValue(internal: *InternalState, name: []const u8, out: *std.ArrayList
                     resolved[i] = .{ .color = try style.resolvedColor(l, internal.allocator) };
                 } else if (value == .image or value == .layers or value == .content) {
                     resolved[i] = try style.resolvedImageValue(l, internal.allocator);
+                } else if (style.undrawnBorderWidth(l)) {
+                    // Backgrounds 3 §3.3: an undrawn side's resolved width.
+                    resolved[i] = css.style_values.Value.px(0);
                 } else {
                     value.retain();
                     resolved[i] = value;

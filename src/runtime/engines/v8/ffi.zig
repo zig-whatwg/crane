@@ -1516,6 +1516,19 @@ pub extern fn v8_Object_GetCatching(
 /// A second, independently owned Global for the same value. Null for null/empty.
 pub extern fn v8_Global_Clone(global: ?*Value) ?*Value;
 
+/// The value `global` holds, MOVED into a Global of the caller's own: no V8
+/// handle is made, and `global` is left empty, still its owner's to dispose.
+/// Null for null/empty. engine.takeCallbackFunction's move.
+pub extern fn v8_Global_TakeOver(global: ?*Value) ?*Value;
+
+/// The binding's Global for a callback-function value, when its call is over:
+/// deleted at once when a take emptied it, disposed otherwise.
+pub extern fn v8_Global_DisposeCallbackValue(global: ?*Value) void;
+
+/// Tests: how many Globals carry a realm tag, and whether `global` does.
+pub extern fn v8_Debug_RealmTaggedHandleCount() usize;
+pub extern fn v8_Debug_IsRealmTagged(global: ?*Value) bool;
+
 /// Run `body(data)` with V8's automatic microtask execution suppressed
 /// (Isolate::SuppressMicrotaskExecutionScope, held on the C++ stack).
 pub extern fn v8_RunWithMicrotasksSuppressed(

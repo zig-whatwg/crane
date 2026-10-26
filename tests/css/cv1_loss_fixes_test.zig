@@ -80,13 +80,16 @@ test "declaration serialization preserves separated CSS token meanings" {
         .{ "1px,2px", "1px,2px" },
         .{ "[a](b)", "[a](b)" },
     }) |pair| {
-        const input = try std.fmt.allocPrint(testing.allocator, "--x:{s}", .{pair[0]});
+        // An unsupported non-custom property: since lane vars1 a custom
+        // property keeps its original text (CSS Syntax 3, css-variables-1
+        // §4.1), so the rule parser's token serializer is exercised here.
+        const input = try std.fmt.allocPrint(testing.allocator, "x-unknown:{s}", .{pair[0]});
         defer testing.allocator.free(input);
         const declarations = try css.rules.parseDeclarationList(testing.allocator, input);
         defer css.rules.freeDeclarationList(testing.allocator, declarations);
         try testing.expectEqual(@as(usize, 1), declarations.len);
         try testing.expectEqualStrings(pair[1], declarations[0].value);
-        const again = try std.fmt.allocPrint(testing.allocator, "--x:{s}", .{declarations[0].value});
+        const again = try std.fmt.allocPrint(testing.allocator, "x-unknown:{s}", .{declarations[0].value});
         defer testing.allocator.free(again);
         const reparsed = try css.rules.parseDeclarationList(testing.allocator, again);
         defer css.rules.freeDeclarationList(testing.allocator, reparsed);

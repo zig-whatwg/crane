@@ -1225,7 +1225,7 @@ pub fn descriptorValue(block: *const Block, name: []const u8) []const u8 {
     const index = descriptorIndex(block, name) orelse return "";
     return switch (block.entries.items[index]) {
         .unparsed => |entry| entry.value,
-        .typed => "",
+        .typed, .custom => "",
     };
 }
 
@@ -1318,7 +1318,8 @@ pub const FontRule = struct {
             .unparsed => |descriptor| {
                 _ = try setCanonicalDescriptor(&copy.block, descriptor.name, try allocator.dupe(u8, descriptor.value));
             },
-            .typed => unreachable,
+            // A descriptor block holds descriptors only (setDescriptor).
+            .typed, .custom => unreachable,
         };
         if (self.sources) |*sources| copy.sources = try cloneSources(allocator, sources);
         return copy;

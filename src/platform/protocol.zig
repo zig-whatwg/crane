@@ -1274,6 +1274,56 @@ pub const Viewport = extern struct {
     visual: Rect,
 };
 
+/// CSS Env 1 section 2, VirtualKeyboard's keyboard inset variables and
+/// Window Controls Overlay's title bar variables. CSS pixels except
+/// preferred_text_scale, a unitless multiplier. No DOM or CSS module
+/// crosses this seam.
+pub const CssEnvironmentVariable = enum(u8) {
+    safe_area_inset_top,
+    safe_area_inset_right,
+    safe_area_inset_bottom,
+    safe_area_inset_left,
+    safe_area_max_inset_top,
+    safe_area_max_inset_right,
+    safe_area_max_inset_bottom,
+    safe_area_max_inset_left,
+    keyboard_inset_top,
+    keyboard_inset_right,
+    keyboard_inset_bottom,
+    keyboard_inset_left,
+    keyboard_inset_width,
+    keyboard_inset_height,
+    titlebar_area_x,
+    titlebar_area_y,
+    titlebar_area_width,
+    titlebar_area_height,
+    viewport_segment_width,
+    viewport_segment_height,
+    viewport_segment_top,
+    viewport_segment_right,
+    viewport_segment_bottom,
+    viewport_segment_left,
+    preferred_text_scale,
+};
+
+/// Allocation-free host value; null means undefined and selects env()'s
+/// fallback. x/y index viewport segments horizontally/vertically; ignored
+/// for scalars. Hosts supply finite values and bump cssEnvironmentRevision
+/// whenever a value changes. Available without the layout capability.
+/// Until recipes step 7 supplies document -> TabId mapping, built-in
+/// platforms answer per Browser, ignoring tab; DOM callers pass 0.
+pub inline fn cssEnvironmentVariable(browser: *BrowserPlatform, tab: TabId, variable: CssEnvironmentVariable, x: u32, y: u32) ?f64 {
+    return impl.cssEnvironmentVariable(browser, tab, variable, x, y);
+}
+
+/// Changes to any CSS environment value advance this revision. The style
+/// engine compares it on reads and invalidates its cached computed styles.
+/// Immutable headless defaults have revision 0. Allocation-free; no layout
+/// capability required. TabId has the same scope as cssEnvironmentVariable.
+pub inline fn cssEnvironmentRevision(browser: *BrowserPlatform, tab: TabId) u64 {
+    return impl.cssEnvironmentRevision(browser, tab);
+}
+
 pub const InvalidationReason = enum(u8) { tree, style, attribute, text };
 
 /// The node's box metrics; null: no layout box (offsetWidth 0, offsetParent

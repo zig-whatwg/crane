@@ -89,12 +89,54 @@ const Control = struct {
         return self.origin == other.origin and self.point.eql(other.point);
     }
 };
+const Rotation = union(enum) {
+    literal: angles.Angle,
+    value: Value,
+
+    fn release(self: Rotation) void {
+        if (self == .value) self.value.release();
+    }
+    fn eql(self: Rotation, other: Rotation) bool {
+        if (std.meta.activeTag(self) != std.meta.activeTag(other)) return false;
+        return switch (self) {
+            .literal => |a| a.number == other.literal.number and a.unit == other.literal.unit,
+            .value => |value| value.eql(other.value),
+        };
+    }
+    fn isDefault(self: Rotation) bool {
+        // Shapes §3.3 / Q142: specified math zero keeps its expression;
+        // literal zero and a computed zero omit the default rotation.
+        return self == .literal and self.literal.number == 0;
+    }
+    fn serialize(self: Rotation, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
+        switch (self) {
+            .literal => |angle| try angle.serialize(out, allocator),
+            .value => |value| try properties.serializeValue(.margin_left, value, out, allocator),
+        }
+    }
+    fn compute(self: Rotation, context: anytype) Allocator.Error!Rotation {
+        const degrees = switch (self) {
+            .literal => |angle| angle.degrees(),
+            .value => |value| blk: {
+                // Values §10.11: the actual component context keeps Source,
+                // tree counts, random base and font inputs from the winner.
+                const result = try context.length(value);
+                defer result.release();
+                std.debug.assert(result == .calculation);
+                const number = result.calculation.computedNumber().?;
+                std.debug.assert(number.unit == .deg);
+                break :blk number.value;
+            },
+        };
+        return .{ .literal = .{ .number = degrees, .unit = .deg } };
+    }
+};
 const Arc = struct {
     radii: [2]Value = undefined,
     count: u2 = 0,
     clockwise: bool = false,
     large: bool = false,
-    rotation: angles.Angle = .{ .number = 0, .unit = .deg },
+    rotation: Rotation = .{ .literal = .{ .number = 0, .unit = .deg } },
 };
 const Kind = enum { move, line, hline, vline, curve, smooth, arc, close };
 const Command = struct {
@@ -111,7 +153,10 @@ const Command = struct {
             .axis => |p| p.release(),
         }
         for (self.controls[0..self.control_count]) |c| c.point.release();
-        if (self.arc) |a| for (a.radii[0..a.count]) |v| v.release();
+        if (self.arc) |a| {
+            a.rotation.release();
+            for (a.radii[0..a.count]) |v| v.release();
+        }
     }
     fn eql(self: Command, other: Command) bool {
         if (self.kind != other.kind or self.relative != other.relative or self.control_count != other.control_count or std.meta.activeTag(self.endpoint) != std.meta.activeTag(other.endpoint)) return false;
@@ -123,7 +168,7 @@ const Command = struct {
         for (self.controls[0..self.control_count], other.controls[0..other.control_count]) |a, b| if (!a.eql(b)) return false;
         if (self.arc) |a| {
             const b = other.arc orelse return false;
-            if (a.count != b.count or a.clockwise != b.clockwise or a.large != b.large or a.rotation.number != b.rotation.number or a.rotation.unit != b.rotation.unit) return false;
+            if (a.count != b.count or a.clockwise != b.clockwise or a.large != b.large or !a.rotation.eql(b.rotation)) return false;
             for (a.radii[0..a.count], b.radii[0..b.count]) |x, y| if (!x.eql(y)) return false;
         } else if (other.arc != null) return false;
         return true;
@@ -154,7 +199,7 @@ const Command = struct {
             }
             if (a.clockwise) try out.appendSlice(allocator, " cw");
             if (a.large) try out.appendSlice(allocator, " large");
-            if (a.rotation.number != 0) {
+            if (!a.rotation.isDefault()) {
                 try out.appendSlice(allocator, " rotate ");
                 try a.rotation.serialize(out, allocator);
             }
@@ -180,7 +225,7 @@ const Command = struct {
             result.controls[result.control_count] = .{ .point = try c.point.compute(allocator, context), .origin = c.origin };
         }
         if (self.arc) |a| {
-            result.arc = .{ .clockwise = a.clockwise, .large = a.large, .rotation = .{ .number = a.rotation.degrees(), .unit = .deg } };
+            result.arc = .{ .clockwise = a.clockwise, .large = a.large, .rotation = try a.rotation.compute(context) };
             while (result.arc.?.count < a.count) : (result.arc.?.count += 1) {
                 const i = result.arc.?.count;
                 result.arc.?.radii[i] = try context.length(a.radii[i]);
@@ -208,9 +253,10 @@ pub const Commands = struct {
                 .axis => |axis| if (axis == .value and axis.value.needsUnavailableMetrics(geometry_length)) return true,
             }
             for (entry.controls[0..entry.control_count]) |c| if (c.point.needsUnavailableMetrics(geometry_length)) return true;
-            if (entry.arc) |arc| for (arc.radii[0..arc.count]) |value| {
-                if (value.needsUnavailableMetrics(geometry_length)) return true;
-            };
+            if (entry.arc) |arc| {
+                if (arc.rotation == .value and arc.rotation.value.needsUnavailableMetrics(false)) return true;
+                for (arc.radii[0..arc.count]) |value| if (value.needsUnavailableMetrics(geometry_length)) return true;
+            }
         }
         return false;
     }
@@ -224,9 +270,10 @@ pub const Commands = struct {
                 .axis => |axis| if (axis == .value and axis.value.needsTreeCounts()) return true,
             }
             for (entry.controls[0..entry.control_count]) |c| if (c.point.needsTreeCounts()) return true;
-            if (entry.arc) |arc| for (arc.radii[0..arc.count]) |value| {
-                if (value.needsTreeCounts()) return true;
-            };
+            if (entry.arc) |arc| {
+                if (arc.rotation == .value and arc.rotation.value.needsTreeCounts()) return true;
+                for (arc.radii[0..arc.count]) |value| if (value.needsTreeCounts()) return true;
+            }
         }
         return false;
     }
@@ -239,9 +286,10 @@ pub const Commands = struct {
                 .axis => |axis| if (axis == .value and axis.value.needsRandomBase()) return true,
             }
             for (entry.controls[0..entry.control_count]) |c| if (c.point.needsRandomBase()) return true;
-            if (entry.arc) |arc| for (arc.radii[0..arc.count]) |value| {
-                if (value.needsRandomBase()) return true;
-            };
+            if (entry.arc) |arc| {
+                if (arc.rotation == .value and arc.rotation.value.needsRandomBase()) return true;
+                for (arc.radii[0..arc.count]) |value| if (value.needsRandomBase()) return true;
+            }
         }
         return false;
     }
@@ -383,7 +431,10 @@ fn command(options: properties.ParseOptions, stream: *properties.Stream) Allocat
             } else if (!size and parts.keyword(stream, "small")) {
                 size = true;
             } else if (!rotation and parts.keyword(stream, "rotate")) {
-                result.arc.?.rotation = angles.parse(stream, false) orelse return null;
+                result.arc.?.rotation = if (stream.peek().token_type == .function)
+                    .{ .value = (try properties.mathValue(options, stream, .{ .kind = .angle })) orelse return null }
+                else
+                    .{ .literal = angles.parse(stream, false) orelse return null };
                 rotation = true;
             } else break;
         }

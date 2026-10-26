@@ -68,8 +68,14 @@ test "math signed zero infinities and NaN stay internal until the outer result" 
 }
 
 test "math token syntax enforces whitespace and balanced argument grammars" {
-    for ([_][]const u8{ "calc(1px+2px)", "calc(1px +2px)", "calc(1px+ 2px)", "calc()", "min()", "min(1px,)", "calc(1px, 2px)", "clamp(1px, 2px)", "calc(foo)", "calc(1px +)", "calc(var(--x))", "calc(env(foo))" }) |value| try check("width", value, "", null);
+    for ([_][]const u8{ "calc(1px+2px)", "calc(1px +2px)", "calc(1px+ 2px)", "calc()", "min()", "min(1px,)", "calc(1px, 2px)", "clamp(1px, 2px)", "calc(foo)", "calc(1px +)" }) |value| try check("width", value, "", null);
     try check("width", "CALC( 1PX + 2px )", "calc(3px)", "3px");
+    // Lane vars1: var() and env() make the value a pending-substitution
+    // value, valid at parse time and read back as written (Values 5
+    // "Resolving in Properties"); the math grammar applies after
+    // substitution.
+    try check("width", "calc(var(--x))", "calc(var(--x))", null);
+    try check("width", "calc(env(foo))", "calc(env(foo))", null);
 }
 
 test "math allocation errors release every partially built expression" {
@@ -87,15 +93,14 @@ fn allocationFailure(allocator: std.mem.Allocator) !void {
     try testing.expectEqualStrings("calc(20% + 32px)", text.items);
 }
 
-// Q16/Q138/Q214 (d2): typed gradients and r0 background positions consume
-// typed math; background size math still waits for f. ci1_gradient_math_test
-// pins raw-leaf rejection
+// Q16/Q138/Q214/Q219/Q220: typed gradients, background positions and
+// background sizes consume typed math. ci1_gradient_math_test pins raw-leaf rejection
 // in "opaque generated-image leaves keep their previous background-only math rejection" and
 // "opaque URL-modifier fallback retains background math rejection and other-property acceptance".
-test "typed gradients and background positions accept math while background size retains rejection" {
+test "typed gradients background positions and background sizes accept math" {
     try check("background-image", "linear-gradient(red calc(1px + 2px), blue)", "linear-gradient(red calc(3px), blue)", "linear-gradient(rgb(255, 0, 0) 3px, rgb(0, 0, 255))");
     try check("background", "url(a.png) calc(10% + 1px) 0", "url(\"a.png\") calc(10% + 1px) 0px", null);
-    try check("background", "url(a.png) 0 / calc(10px + 2px) auto", "", null);
+    try check("background", "url(a.png) 0 / calc(10px + 2px) auto", "url(\"a.png\") 0px center / calc(12px) auto", null);
 }
 
 test "math component values close open functions and parentheses at EOF" {

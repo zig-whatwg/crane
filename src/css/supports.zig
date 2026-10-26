@@ -18,6 +18,7 @@ const Token = tokenizer_mod.Token;
 const property_parser = @import("property_parser.zig");
 const properties = @import("properties.zig");
 const rules = @import("rules.zig");
+const substitution = @import("substitution.zig");
 const PropertyParser = property_parser.PropertyParser;
 const ParserContext = @import("context.zig").ParserContext;
 
@@ -33,7 +34,16 @@ pub const SelectorCheck = *const fn (allocator: std.mem.Allocator, text: []const
 /// or escape processing is done on `property`, and !important is not part
 /// of any property's grammar.
 pub fn supportsDeclaration(allocator: std.mem.Allocator, property: []const u8, value: []const u8) bool {
-    if (isCustomPropertyName(property)) return rules.isDeclarationValue(value);
+    return declarationSupported(allocator, property, value, false) catch false;
+}
+
+/// supportsDeclaration, with the quirks mode of the consuming declaration's
+/// sheet, reporting allocation failure.
+fn declarationSupported(allocator: std.mem.Allocator, property: []const u8, value: []const u8, quirks: bool) std.mem.Allocator.Error!bool {
+    // CSS Variables 1 §2.1: any <declaration-value>, whose var() references
+    // (and the other arbitrary substitution functions) are valid by their
+    // argument grammars.
+    if (isCustomPropertyName(property)) return rules.isDeclarationValue(value) and try substitutionValid(allocator, value);
 
     var name_buf: [64]u8 = undefined;
     if (property.len == 0 or property.len > name_buf.len) return false;
@@ -43,13 +53,17 @@ pub fn supportsDeclaration(allocator: std.mem.Allocator, property: []const u8, v
         var arena = std.heap.ArenaAllocator.init(allocator);
         defer arena.deinit();
         var assignments: std.ArrayList(properties.Assignment) = .empty;
-        const ok = properties.parseDeclaration(.{ .allocator = arena.allocator() }, known, value, &assignments) catch return false;
+        const ok = try properties.parseDeclaration(.{ .allocator = arena.allocator(), .quirks = quirks }, known, value, &assignments);
         for (assignments.items) |a| a.value.release();
         return ok;
     }
     if (PropertyParser.getPropertyType(name) == .unknown) return false;
+    // Values 5 "Resolving in Properties": a value with arbitrary substitution
+    // functions that match their argument grammars is valid for every
+    // property (css/css-variables variable-supports-*).
+    if (substitution.mentionsFunction(value)) return rules.isDeclarationValue(value) and try substitutionValid(allocator, value);
 
-    var ctx = ParserContext.noQuirks(allocator);
+    var ctx = if (quirks) ParserContext.init(allocator, .quirks) else ParserContext.noQuirks(allocator);
     defer ctx.deinit();
     var tok = Tokenizer.init(value);
     _ = PropertyParser.parse(&tok, name, &ctx) catch return false;
@@ -70,6 +84,25 @@ pub fn supportsCondition(allocator: std.mem.Allocator, condition_text: []const u
     return evaluator.condition(wrapped) orelse false;
 }
 
+fn substitutionValid(allocator: std.mem.Allocator, value: []const u8) std.mem.Allocator.Error!bool {
+    if (!substitution.mentionsFunction(value)) return true;
+    return substitution.validate(allocator, value);
+}
+
+/// Values 5 §8.3, if()'s `supports()` test (Codex row 123): `text` - a
+/// bare `<ident> : <declaration-value>` or a <supports-condition> -
+/// evaluated with the consuming declaration's quirks mode. error.Invalid
+/// when it matches neither grammar (unknown to the caller); false only for
+/// a valid test that is not supported. No implicit-parentheses retry (that
+/// is CSS.supports()'s own step), and allocation failure propagates.
+pub fn evaluateTest(allocator: std.mem.Allocator, text: []const u8, quirks: bool) error{ OutOfMemory, Invalid }!bool {
+    var oom = false;
+    const evaluator: Evaluator = .{ .allocator = allocator, .selector_check = null, .quirks = quirks, .oom = &oom };
+    const result = evaluator.condition(text) orelse evaluator.declaration(text);
+    if (oom) return error.OutOfMemory;
+    return result orelse error.Invalid;
+}
+
 /// "A custom property name string": starts with two dashes.
 fn isCustomPropertyName(name: []const u8) bool {
     return name.len > 2 and name[0] == '-' and name[1] == '-';
@@ -78,6 +111,10 @@ fn isCustomPropertyName(name: []const u8) bool {
 const Evaluator = struct {
     allocator: std.mem.Allocator,
     selector_check: ?SelectorCheck,
+    quirks: bool = false,
+    /// Set when a declaration test ran out of memory (evaluateTest reports
+    /// it; CSS.supports() keeps answering false).
+    oom: ?*bool = null,
 
     /// <supports-condition> = not <supports-in-parens>
     ///   | <supports-in-parens> [ and <supports-in-parens> ]*
@@ -166,7 +203,10 @@ const Evaluator = struct {
         // "A trailing !important is allowed inside @supports, though it
         // won't change the validity of the declaration."
         value = stripImportant(value);
-        return supportsDeclaration(self.allocator, name.value, value);
+        return declarationSupported(self.allocator, name.value, value, self.quirks) catch {
+            if (self.oom) |flag| flag.* = true;
+            return false;
+        };
     }
 };
 

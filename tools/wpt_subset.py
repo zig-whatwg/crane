@@ -145,9 +145,43 @@ INCLUDE = [
     ('css/css-images/image-set/image-set-computed.sub.html', 'computed image-set URLs and resolution serialization'),
     ('css/css-images/image-orientation/image-orientation-from-image-computed-style.html', 'image-orientation computed keyword'),
     ('css/css-images/image-orientation/image-orientation-none-computed-style.html', 'image-orientation computed keyword'),
-    ('css/css-properties-values-api/get-computed-style-enumeration.html', 'computed registered custom property enumeration'),
-    ('css/css-properties-values-api/invalid-at-computed-value-time.html', 'invalid-at-computed-value-time custom property fallback'),
-    ('css/css-properties-values-api/non-computed-unit-cycles.html', 'custom property dependency-cycle computation'),
+    # CSS Variables and the Properties and Values API, whole directories (the
+    # user, 2026-10-25, lane vars1): every testharness file except the
+    # geometry-dependent ones excluded below. Animation and transition files
+    # are in: their offset* reads are bare style flushes, not assertions.
+    ('css/css-variables/', 'custom properties, var() substitution, cycles and CSSOM serialization'),
+    ('css/css-properties-values-api/', 'registered custom properties: @property, registerProperty, typed computation'),
+    # The user, 2026-10-25: typed attr() files for Codex row 122's attr() work.
+    # Not attr-invalidation-after-view-transition.html or the four
+    # attr-security-animation/transition files: they need view transitions
+    # or an animation engine, which the user deferred.
+    ('css/css-values/attr-IACVT.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-all-types.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-argument-grammar.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-container-style-query.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-css-wide-keywords.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-cycle.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-invalidation-after-stylesheet-change.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-invalidation.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-length-specified.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-null-namespace.xhtml', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-pseudo-elem-invalidation-2.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-pseudo-elem-invalidation.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-pseudo-element-originating.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-revert-rule.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-security-if.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-security.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    ('css/css-values/attr-universal-selector.html', 'typed attr() substitution, its taint and invalidation (row 122)'),
+    # The user, 2026-10-25: if() files for Codex row 123's if() work. Not
+    # if-media-invalidation.html (it resizes an iframe: geometry) or
+    # if-range-with-attr-crash.html (a crashtest with no subtests).
+    ('css/css-values/if-conditionals.html', 'if() conditional substitution, its cycles and invalidation (row 123)'),
+    ('css/css-values/if-cycle.html', 'if() conditional substitution, its cycles and invalidation (row 123)'),
+    ('css/css-values/if-function-revert-rule.html', 'if() conditional substitution, its cycles and invalidation (row 123)'),
+    ('css/css-values/if-initial-unregistered.html', 'if() conditional substitution, its cycles and invalidation (row 123)'),
+    ('css/css-values/if-invalidation.html', 'if() conditional substitution, its cycles and invalidation (row 123)'),
+    ('css/css-values/if-style-invalidation.html', 'if() conditional substitution, its cycles and invalidation (row 123)'),
+    ('css/css-values/if-supports-quirks.html', 'if() conditional substitution, its cycles and invalidation (row 123)'),
     ('css/css-values/acos-asin-atan-atan2-computed.html', 'inverse trigonometric CSS value computation'),
     ('css/css-values/calc-infinity-nan-computed.html', 'CSS numeric infinity and NaN computation'),
     ('css/css-values/clamp-color-computed.html', 'clamping computed color channels'),
@@ -273,6 +307,10 @@ INCLUDE = [
     ('css/css-display/display-contents-computed-style.html', 'display computed style and inheritance; no rendered box assertions'),
     ('css/css-display/display-contents-parsing-001.html', 'display syntax and value parsing outside the parsing directory'),
     ('css/css-env/env-parsing.html', 'env syntax and value parsing outside the parsing directory'),
+    # The user, 2026-10-25 (lane vars1 Q5): env() substitution files, not
+    # tentative and no rendered boxes.
+    ('css/css-env/env-fallback-substitution.html', 'env() fallback substitution in custom properties; computed values only'),
+    ('css/css-env/env-revert-rule.html', 'env() fallback CSS-wide keyword after substitution; computed values only'),
     ('css/css-flexbox/balance/flex-line-count-computed.html', 'flexbox computed style and inheritance; no rendered box assertions'),
     ('css/css-flexbox/balance/flex-wrap-computed.html', 'flexbox computed style and inheritance; no rendered box assertions'),
     ('css/css-fonts/font-feature-settings-serialization-001.html', 'fonts value or rule serialization; no rendered boxes'),
@@ -319,7 +357,6 @@ INCLUDE = [
     ('css/css-position/backdrop-inherit-computed.html', 'position computed style and inheritance; no rendered box assertions'),
     ('css/css-position/overlay/overlay-computed.html', 'position computed style and inheritance; no rendered box assertions'),
     ('css/css-position/sticky/position-sticky-parsing.html', 'position syntax and value parsing outside the parsing directory'),
-    ('css/css-properties-values-api/register-property-syntax-parsing.html', 'properties values api syntax and value parsing outside the parsing directory'),
     ('css/css-pseudo/highlight-cascade/highlight-currentcolor-computed-inheritance.html', 'pseudo computed style and inheritance; no rendered box assertions'),
     ('css/css-pseudo/highlight-cascade/highlight-currentcolor-computed-visited.html', 'pseudo computed style and inheritance; no rendered box assertions'),
     ('css/css-pseudo/highlight-cascade/highlight-currentcolor-computed.html', 'pseudo computed style and inheritance; no rendered box assertions'),
@@ -334,6 +371,17 @@ INCLUDE = [
     ('css/css-shadow/host-context-parsing.html', 'shadow syntax and value parsing outside the parsing directory'),
     ('css/css-shadow/host-parsing.html', 'shadow syntax and value parsing outside the parsing directory'),
     ('css/css-shadow/part/serialization.html', 'shadow value or rule serialization; no rendered boxes'),
+    # The user, 2026-10-25: ::part() forwarding through exportparts for Codex row 122
+    # (computed colors only; not invalidation-part-pseudo.html, which needs pointer hit-testing).
+    ('css/css-shadow/part/simple-forward.html', '::part() forwarding through exportparts and its invalidation (row 122)'),
+    ('css/css-shadow/part/simple-forward-shorthand.html', '::part() forwarding through exportparts and its invalidation (row 122)'),
+    ('css/css-shadow/part/double-forward.html', '::part() forwarding through exportparts and its invalidation (row 122)'),
+    ('css/css-shadow/part/exportparts-multiple.html', '::part() forwarding through exportparts and its invalidation (row 122)'),
+    ('css/css-shadow/part/both-part-and-exportparts.html', '::part() forwarding through exportparts and its invalidation (row 122)'),
+    ('css/css-shadow/part/precedence-part-vs-part.html', '::part() forwarding through exportparts and its invalidation (row 122)'),
+    ('css/css-shadow/part/invalidation-change-exportparts-forward.html', '::part() forwarding through exportparts and its invalidation (row 122)'),
+    ('css/css-shadow/part/invalidation-change-part-name-forward.html', '::part() forwarding through exportparts and its invalidation (row 122)'),
+    ('css/css-shadow/part/invalidation-complex-selector-forward.html', '::part() forwarding through exportparts and its invalidation (row 122)'),
     ('css/css-shadow/slotted-parsing.html', 'shadow syntax and value parsing outside the parsing directory'),
     ('css/css-shapes/basic-shape-circle-ellipse-serialization.html', 'shapes value or rule serialization; no rendered boxes'),
     ('css/css-shapes/shape-functions/circle-function-computed.html', 'shapes computed style and inheritance; no rendered box assertions'),
@@ -396,8 +444,6 @@ INCLUDE = [
     ('css/css-values/urls/url-request-modifiers-font-face-parsing.html', 'values syntax and value parsing outside the parsing directory'),
     ('css/css-values/urls/url-request-modifiers-import-parsing.sub.html', 'values syntax and value parsing outside the parsing directory'),
     ('css/css-values/viewport-units-parsing.html', 'values syntax and value parsing outside the parsing directory'),
-    ('css/css-variables/url-token-serialization.html', 'variables value or rule serialization; no rendered boxes'),
-    ('css/css-variables/var-parsing.html', 'variables syntax and value parsing outside the parsing directory'),
     ('css/css-view-transitions/computed-style-no-active-transition.html', 'view transitions computed style and inheritance; no rendered box assertions'),
     ('css/css-view-transitions/navigation/with-types/at-rule-with-types-parsing.html', 'view transitions syntax and value parsing outside the parsing directory'),
     ('css/css-view-transitions/pseudo-computed-style-stays-in-sync-with-new-element.html', 'view transitions computed style and inheritance; no rendered box assertions'),
@@ -563,6 +609,14 @@ EXCLUDE = [
     ('accname/name/comp_name_from_content_alt_counter_invalidation.html', 'all accessible-name assertions require generated CSS counter content (row 112)'),
     ('accname/name/comp_name_from_content_alt_counter_multi_instance.html', 'all accessible-name assertions require generated CSS counter content (row 112)'),
     ('css/cssom/caretPositionFromPoint', 'asserts caret offsets from hit-tested viewport coordinates'),
+    # The user, 2026-10-25: no animation engine yet (element.animate and the
+    # Animation objects are stubs), so the registered-property animation and
+    # transition files would block whatever is built. Out for now.
+    ('css/css-properties-values-api/animation/', 'needs an animation engine, which Crane does not have yet (the user, 2026-10-25)'),
+    ('css/css-variables/variable-reference-perspective-origin.html', 'every case asserts perspective-origin percentages resolved against the used 200px box'),
+    ('css/css-variables/variable-animation-guaranteed-invalid.html', 'check-layout-th asserts each animated box offsetWidth (the invalid case stretches to its container)'),
+    ('css/css-properties-values-api/at-property-viewport-units.html', 'asserts viewport units against the laid-out 400x200 iframe viewport'),
+    ('css/css-properties-values-api/at-property-viewport-units-dynamic.html', 'asserts viewport units after resizing the laid-out iframe viewport'),
     ('css/cssom/caretRangeFromPoint', 'asserts caret ranges from hit-tested viewport coordinates'),
     ('css/cssom/computed-style-002.html', 'asserts percentage width resolved against iframe width'),
     ('css/cssom/computed-style-003.html', 'asserts percentage width after iframe display/layout changes'),
@@ -955,6 +1009,13 @@ EXCLUDE = [
 ]
 
 
+# XML-format sources the user approved by name ahead of the general
+# XML-format re-inclusion (the user, 2026-10-25: Codex row 122's attr() work).
+XML_FORMAT_EXCEPTIONS = {
+    'css/css-values/attr-null-namespace.xhtml',
+}
+
+
 def walk(node, prefix=()):
     """Yield (path, url_count) for every testharness entry in the manifest."""
     for key, value in node.items():
@@ -974,6 +1035,11 @@ def excluded(path):
             # exclusion (geometry, unsupported formats, hardware, etc.).
             if pattern in ('/tentative/', '.tentative.') and any(
                     path == prefix for prefix, _ in INCLUDE):
+                continue
+            # A named XML-format file the user approved bypasses only the
+            # XML-format rules below ('.xht' is a substring of '.xhtml'; row
+            # 113's runner path is on main).
+            if pattern in ('.xhtml', '.xht') and path in XML_FORMAT_EXCEPTIONS:
                 continue
             return True
     return False

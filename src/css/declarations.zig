@@ -6,8 +6,9 @@
 //! ("serialize a CSS declaration block"). A declaration of a property Crane
 //! does not support is kept as written, for read-back only (stated, design
 //! section 6.2, ruling Q7): CSSOM returns it, the cascade never sees it.
-//! Q206's interim var()/env() shorthand seam also keeps original text here;
-//! the queued CSS Variables work owns the full per-longhand pending model.
+//! A declaration with var(), env() or random-item() is a pending-substitution
+//! value of each longhand it sets (Values 5 Appendix A, pending_values.zig);
+//! a custom property declaration is a `.custom` entry (CSS Variables 1).
 //!
 //! Spec: https://drafts.csswg.org/cssom-1/#css-declaration-blocks
 //! Spec: https://drafts.csswg.org/cssom-1/#the-cssstyledeclaration-interface
@@ -16,8 +17,8 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const properties = @import("properties.zig");
 const rules = @import("rules.zig");
-const tokenizer = @import("tokenizer.zig");
 const values = @import("style_values.zig");
+const custom_properties = @import("custom_properties.zig");
 
 const Longhand = properties.Longhand;
 const Shorthand = properties.Shorthand;
@@ -40,14 +41,25 @@ pub const Unparsed = struct {
     important: bool,
 };
 
+/// A custom property declaration (CSS Variables 1 §2): its case-sensitive
+/// name and its value, both shared by reference with the computed styles
+/// they reach.
+pub const Custom = struct {
+    name: *custom_properties.Text,
+    value: custom_properties.Specified,
+    important: bool,
+};
+
 pub const Entry = union(enum) {
     typed: Declaration,
     unparsed: Unparsed,
+    custom: Custom,
 
     pub fn name(self: *const Entry) []const u8 {
         return switch (self.*) {
             .typed => |d| d.longhand.name(),
             .unparsed => |u| u.name,
+            .custom => |c| c.name.bytes,
         };
     }
 
@@ -55,6 +67,7 @@ pub const Entry = union(enum) {
         return switch (self.*) {
             .typed => |d| d.important,
             .unparsed => |u| u.important,
+            .custom => |c| c.important,
         };
     }
 };
@@ -67,8 +80,9 @@ pub const DeclarationBlock = struct {
     context: Context = .style,
     /// CSSOM "declarations", in order.
     entries: std.ArrayList(Entry) = .empty,
-    /// Conservative until clear(): ordinary typed blocks avoid raw-entry scans.
-    may_have_unparsed_shorthands: bool = false,
+    /// The number of custom property declarations: the cascade looks for
+    /// them only in a block that has some.
+    custom_count: u32 = 0,
 
     pub const Context = enum {
         style,
@@ -123,7 +137,7 @@ pub const DeclarationBlock = struct {
     pub fn clear(self: *DeclarationBlock) void {
         for (self.entries.items) |*e| self.freeEntry(e);
         self.entries.clearRetainingCapacity();
-        self.may_have_unparsed_shorthands = false;
+        std.debug.assert(self.custom_count == 0);
     }
 
     fn freeEntry(self: *DeclarationBlock, e: *Entry) void {
@@ -132,6 +146,11 @@ pub const DeclarationBlock = struct {
             .unparsed => |u| {
                 self.allocator.free(u.name);
                 self.allocator.free(u.value);
+            },
+            .custom => |c| {
+                c.name.release();
+                c.value.release();
+                self.custom_count -= 1;
             },
         }
     }
@@ -168,6 +187,7 @@ pub const DeclarationBlock = struct {
     /// order would make lose anyway (Blink's parsed declaration sets do the
     /// same).
     fn addParsed(self: *DeclarationBlock, options: properties.ParseOptions, name: []const u8, value_text: []const u8, important: bool) Allocator.Error!void {
+        if (std.mem.startsWith(u8, name, "--")) return self.addCustom(options, name, value_text, important);
         const property = properties.lookup(name) orelse {
             if (self.context == .position_try) return;
             if (self.context == .keyframe and (important or !keyframePropertyAllowed(name))) return;
@@ -177,31 +197,17 @@ pub const DeclarationBlock = struct {
         if (!self.context.allows(property, important)) return;
         var assignments: std.ArrayList(Assignment) = .empty;
         defer assignments.deinit(self.allocator);
-        if (!try properties.parseDeclaration(options, property, value_text, &assignments)) {
-            _ = try self.setSubstitutionShorthand(property, value_text, important, true);
-            return;
-        }
+        if (!try properties.parseDeclaration(options, property, value_text, &assignments)) return;
         var consumed: usize = 0;
         defer for (assignments.items[consumed..]) |a| a.value.release();
         for (assignments.items) |a| {
-            var previous = self.indexOf(a.longhand);
+            const previous = self.indexOf(a.longhand);
             if (previous) |i| {
                 if (self.entries.items[i].important() and !important) {
                     a.value.release();
                     consumed += 1;
                     continue;
                 }
-            }
-            if (self.may_have_unparsed_shorthands) {
-                // Q207/Q209: parsed priority is unchanged; setters below use
-                // CSSOM's replacement rule regardless of earlier importance.
-                if (!important and self.importantRawCovers(a.longhand)) {
-                    a.value.release();
-                    consumed += 1;
-                    continue;
-                }
-                _ = self.removeRawCovering(a.longhand);
-                previous = self.indexOf(a.longhand);
             }
             if (previous) |i| {
                 var old = self.entries.orderedRemove(i);
@@ -227,135 +233,90 @@ pub const DeclarationBlock = struct {
         try self.entries.append(self.allocator, .{ .unparsed = .{ .name = name_copy, .value = value_copy, .important = important } });
     }
 
-    // Values 5 Appendix A, "Substitution in Shorthand Properties": original
-    // shorthand text is observable only while every constituent comes from it.
-    // Q206–Q210 authorize this interim readback seam, NOT variable evaluation.
-    // It uses existing unparsed storage and leaves longhands out of the cascade.
-    // Browsers keep other constituents pending when one changes; our temporary
-    // whole-entry invalidation instead avoids stale text. The queued CSS
-    // Variables foundation must replace it with the complete pending model.
-    // Q211 leaves var()/env() argument grammar to that owner; this seam
-    // enforces only the existing CSS Syntax declaration-value boundary.
-    fn setSubstitutionShorthand(self: *DeclarationBlock, property: Property, text: []const u8, important: bool, parsed: bool) Allocator.Error!bool {
-        const shorthand = switch (property) {
-            .shorthand => |s| s,
-            .longhand => return false,
-        };
-        // CSSOM setProperty steps 5–6, CSS Syntax 3 section 7.2: invalid
-        // declaration values cannot change stored declarations (Q211).
-        if (!rules.isDeclarationValue(text)) return false;
-        var tokens = tokenizer.Tokenizer.init(text);
-        var found = false;
-        while (true) {
-            const token = tokens.next();
-            if (token.token_type == .eof) break;
-            if (token.token_type == .function and
-                (tokenizer.nameEql(token.value, "var") or tokenizer.nameEql(token.value, "env"))) found = true;
+    /// A parsed custom property declaration (CSS Variables 1 §2). Invalid
+    /// values and the reserved name `--` are dropped. Like a longhand, a
+    /// later declaration replaces an earlier one and moves to the end -
+    /// unless the earlier is important and the later is not (Blink's parsed
+    /// declaration sets; css-variables variable-definition.html "!important
+    /// 2"). Not in @position-try (Anchor Position 1 §6.4 lists its
+    /// properties); in @keyframes only without !important.
+    fn addCustom(self: *DeclarationBlock, options: properties.ParseOptions, name: []const u8, value_text: []const u8, important: bool) Allocator.Error!void {
+        if (!custom_properties.isName(name)) return;
+        switch (self.context) {
+            .style => {},
+            .position_try => return,
+            .keyframe => if (important) return,
         }
-        if (!found) return false;
-        const name = shorthand.name();
-        // Q209: addParsed preserves important declarations, setProperty does not.
-        if (parsed and !important) {
-            if (self.indexOfName(name)) |i| if (self.entries.items[i].important()) return false;
-            // Q211 PART 2 follows Blink's per-longhand parsed-priority drop
-            // already used by addParsed. Keep partially covered raw text, but
-            // no entry when every constituent loses to important declarations.
-            if (self.allLonghandsImportant(shorthand)) return false;
-        }
-        try self.setUnparsed(name, text, important);
-        self.may_have_unparsed_shorthands = true;
-        var i: usize = 0;
-        while (i < self.entries.items.len) {
-            const entry = &self.entries.items[i];
-            const overlaps = switch (entry.*) {
-                .typed => |d| containsLonghand(shorthand.longhands(), d.longhand),
-                .unparsed => if (rawShorthand(entry)) |other| other != shorthand and shorthandsOverlap(shorthand, other) else false,
-            };
-            if (!overlaps or (parsed and !important and entry.important())) {
-                i += 1;
-                continue;
-            }
+        if (self.indexOfCustom(name)) |i| if (self.entries.items[i].custom.important and !important) return;
+        const value = try custom_properties.parse(options, value_text) orelse return;
+        errdefer value.release();
+        const name_text = try custom_properties.Text.create(self.allocator, name);
+        errdefer name_text.release();
+        try self.entries.ensureUnusedCapacity(self.allocator, 1);
+        if (self.indexOfCustom(name)) |i| {
             var old = self.entries.orderedRemove(i);
             self.freeEntry(&old);
         }
-        return true;
+        self.entries.appendAssumeCapacity(.{ .custom = .{ .name = name_text, .value = value, .important = important } });
+        self.custom_count += 1;
     }
 
-    fn allLonghandsImportant(self: *const DeclarationBlock, shorthand: Shorthand) bool {
-        for (shorthand.longhands()) |longhand| {
-            if (self.get(longhand)) |declaration| if (declaration.important) continue;
-            if (self.may_have_unparsed_shorthands and self.importantRawCovers(longhand)) continue;
-            return false;
+    /// setProperty() of a custom property (CSSOM 6.6.1 steps 5-9): the value
+    /// parsed; "set a CSS declaration" replaces it in place, whatever its
+    /// importance. True when the block changed.
+    fn setCustom(self: *DeclarationBlock, options: properties.ParseOptions, name: []const u8, value_text: []const u8, important: bool) Allocator.Error!bool {
+        if (!custom_properties.isName(name)) return false;
+        switch (self.context) {
+            .style => {},
+            .position_try => return false,
+            .keyframe => if (important) return false,
         }
-        return true;
-    }
-
-    fn rawShorthand(entry: *const Entry) ?Shorthand {
-        const raw = switch (entry.*) {
-            .unparsed => |u| u,
-            .typed => return null,
-        };
-        return switch (properties.lookup(raw.name) orelse return null) {
-            .shorthand => |s| s,
-            .longhand => null,
-        };
-    }
-
-    fn shorthandsOverlap(a: Shorthand, b: Shorthand) bool {
-        for (a.longhands()) |l| if (containsLonghand(b.longhands(), l)) return true;
-        return false;
-    }
-
-    fn rawShorthandIsComplete(self: *const DeclarationBlock, shorthand: Shorthand, important: bool) bool {
-        for (self.entries.items) |*entry| switch (entry.*) {
-            .typed => |d| if (containsLonghand(shorthand.longhands(), d.longhand)) return false,
-            .unparsed => |u| {
-                if (important or !u.important) continue;
-                if (rawShorthand(entry)) |other| {
-                    if (other != shorthand and shorthandsOverlap(shorthand, other)) return false;
-                }
-            },
-        };
-        return true;
-    }
-
-    fn importantRawCovers(self: *const DeclarationBlock, longhand: Longhand) bool {
-        for (self.entries.items) |*entry| {
-            if (!entry.important()) continue;
-            if (rawShorthand(entry)) |s| if (containsLonghand(s.longhands(), longhand)) return true;
-        }
-        return false;
-    }
-
-    fn removeRawCovering(self: *DeclarationBlock, longhand: Longhand) bool {
-        if (!self.may_have_unparsed_shorthands) return false;
-        var removed = false;
-        var i: usize = 0;
-        while (i < self.entries.items.len) {
-            if (rawShorthand(&self.entries.items[i])) |s| {
-                if (containsLonghand(s.longhands(), longhand)) {
-                    var old = self.entries.orderedRemove(i);
-                    self.freeEntry(&old);
-                    removed = true;
-                    continue;
-                }
+        const value = try custom_properties.parse(options, value_text) orelse return false;
+        if (self.indexOfCustom(name)) |i| {
+            const existing = &self.entries.items[i].custom;
+            if (existing.important == important and existing.value.eql(value)) {
+                value.release();
+                return false;
             }
-            i += 1;
+            existing.value.release();
+            existing.value = value;
+            existing.important = important;
+            return true;
         }
-        return removed;
+        errdefer value.release();
+        const name_text = try custom_properties.Text.create(self.allocator, name);
+        errdefer name_text.release();
+        try self.entries.append(self.allocator, .{ .custom = .{ .name = name_text, .value = value, .important = important } });
+        self.custom_count += 1;
+        return true;
+    }
+
+    fn indexOfCustom(self: *const DeclarationBlock, name: []const u8) ?usize {
+        if (self.custom_count == 0) return null;
+        for (self.entries.items, 0..) |e, i| switch (e) {
+            .custom => |c| if (std.mem.eql(u8, c.name.bytes, name)) return i,
+            else => {},
+        };
+        return null;
+    }
+
+    /// The custom property declaration named `name` (case-sensitively).
+    pub fn getCustom(self: *const DeclarationBlock, name: []const u8) ?*const Custom {
+        const i = self.indexOfCustom(name) orelse return null;
+        return &self.entries.items[i].custom;
     }
 
     pub fn indexOf(self: *const DeclarationBlock, l: Longhand) ?usize {
         for (self.entries.items, 0..) |e, i| switch (e) {
             .typed => |d| if (d.longhand == l) return i,
-            .unparsed => {},
+            .unparsed, .custom => {},
         };
         return null;
     }
 
     fn indexOfName(self: *const DeclarationBlock, name: []const u8) ?usize {
         for (self.entries.items, 0..) |e, i| switch (e) {
-            .typed => {},
+            .typed, .custom => {},
             .unparsed => |u| if (std.mem.eql(u8, u.name, name)) return i,
         };
         return null;
@@ -383,6 +344,13 @@ pub const DeclarationBlock = struct {
 
     /// getPropertyValue(property), appended to `out`.
     pub fn getPropertyValue(self: *const DeclarationBlock, property_name: []const u8, out: *std.ArrayList(u8)) Allocator.Error!void {
+        // 3. A custom property's declaration, by a case-sensitive match
+        //    (CSS Variables 1 §4: custom property declarations have the
+        //    case-sensitive flag set).
+        if (std.mem.startsWith(u8, property_name, "--")) {
+            if (self.getCustom(property_name)) |c| try c.value.serialize(out, self.allocator);
+            return;
+        }
         // 1. "If property is not a custom property, follow these substeps:
         //    Let property be property converted to ASCII lowercase."
         const property = properties.lookup(property_name) orelse {
@@ -395,13 +363,6 @@ pub const DeclarationBlock = struct {
             //    substeps": each longhand's declaration, or ""; one
             //    importance, or "".
             .shorthand => |s| {
-                if (self.may_have_unparsed_shorthands) {
-                    if (self.indexOfName(s.name())) |i| {
-                        const raw = self.entries.items[i].unparsed;
-                        if (self.rawShorthandIsComplete(s, raw.important)) try out.appendSlice(self.allocator, raw.value);
-                        return;
-                    }
-                }
                 var vs: [properties.max_assignments]Assigned = undefined;
                 var important: ?bool = null;
                 for (s.longhands(), 0..) |l, i| {
@@ -430,7 +391,7 @@ pub const DeclarationBlock = struct {
     fn indexOfNameInsensitive(self: *const DeclarationBlock, name: []const u8) ?usize {
         const custom = std.mem.startsWith(u8, name, "--");
         for (self.entries.items, 0..) |e, i| switch (e) {
-            .typed => {},
+            .typed, .custom => {},
             .unparsed => |u| {
                 if (custom and std.mem.eql(u8, u.name, name)) return i;
                 if (!custom and std.ascii.eqlIgnoreCase(u.name, name)) return i;
@@ -441,18 +402,13 @@ pub const DeclarationBlock = struct {
 
     /// getPropertyPriority(property): whether it is "important".
     pub fn getPropertyPriority(self: *const DeclarationBlock, property_name: []const u8) bool {
+        if (std.mem.startsWith(u8, property_name, "--")) return if (self.getCustom(property_name)) |c| c.important else false;
         const property = properties.lookup(property_name) orelse {
             const i = self.indexOfNameInsensitive(property_name) orelse return false;
             return self.entries.items[i].important();
         };
         switch (property) {
             .shorthand => |s| {
-                if (self.may_have_unparsed_shorthands) {
-                    if (self.indexOfName(s.name())) |i| {
-                        const raw = self.entries.items[i].unparsed;
-                        return raw.important and self.rawShorthandIsComplete(s, raw.important);
-                    }
-                }
                 for (s.longhands()) |l| {
                     const d = self.get(l) orelse return false;
                     if (!d.important) return false;
@@ -478,6 +434,8 @@ pub const DeclarationBlock = struct {
         //    case-insensitive match for the string "important", then return."
         if (priority.len != 0 and !std.ascii.eqlIgnoreCase(priority, "important")) return false;
         const important = priority.len != 0;
+        // 1. A custom property keeps its case; 5-9 below, for its grammar.
+        if (std.mem.startsWith(u8, property_name, "--")) return self.setCustom(options, property_name, value_text, important);
         // 2. "If property is not a case-sensitive match for a supported CSS
         //    property, then return." (Parsing keeps an unsupported
         //    declaration for read-back; setProperty, as the spec says, does
@@ -488,9 +446,7 @@ pub const DeclarationBlock = struct {
         //    property property. If component value list is null, then return."
         var assignments: std.ArrayList(Assignment) = .empty;
         defer assignments.deinit(self.allocator);
-        if (!try properties.parseDeclaration(options, property, value_text, &assignments)) {
-            return self.setSubstitutionShorthand(property, value_text, important, false);
-        }
+        if (!try properties.parseDeclaration(options, property, value_text, &assignments)) return false;
         var consumed: usize = 0;
         defer for (assignments.items[consumed..]) |a| a.value.release();
         // 6-9: "set the CSS declaration" each longhand.
@@ -506,8 +462,7 @@ pub const DeclarationBlock = struct {
     /// CSSOM "set a CSS declaration": the value consumed (released when not
     /// kept). True when the block changed.
     fn setDeclaration(self: *DeclarationBlock, l: Longhand, value: Assigned, important: bool) Allocator.Error!bool {
-        // CSSOM set a declaration steps 1–2, with Q207/Q210 interim invalidation.
-        const removed_raw = self.removeRawCovering(l);
+        // CSSOM "set a CSS declaration" steps 1-2.
         if (self.indexOf(l)) |i| {
             // "If property is in a logical property group and there is a
             // declaration after it in declarations whose property is in the
@@ -518,7 +473,7 @@ pub const DeclarationBlock = struct {
             if (!needs_append) {
                 if (existing.important == important and assignedEql(existing.value, value)) {
                     value.release();
-                    return removed_raw;
+                    return false;
                 }
                 existing.value.release();
                 existing.value = value;
@@ -541,7 +496,7 @@ pub const DeclarationBlock = struct {
                 const g = logicalGroup(d.longhand) orelse continue;
                 if (g == group and (d.longhand.logical() != null) != logical) return true;
             },
-            .unparsed => {},
+            .unparsed, .custom => {},
         };
         return false;
     }
@@ -554,6 +509,14 @@ pub const DeclarationBlock = struct {
         try self.getPropertyValue(property_name, out);
         // 4-5. Remove the longhands (or the property).
         var removed = false;
+        if (std.mem.startsWith(u8, property_name, "--")) {
+            if (self.indexOfCustom(property_name)) |i| {
+                var old = self.entries.orderedRemove(i);
+                self.freeEntry(&old);
+                removed = true;
+            }
+            return removed;
+        }
         const property = properties.lookup(property_name) orelse {
             if (self.indexOfNameInsensitive(property_name)) |i| {
                 var old = self.entries.orderedRemove(i);
@@ -567,8 +530,6 @@ pub const DeclarationBlock = struct {
             .longhand => |l| &.{l},
         };
         for (longhands) |l| {
-            // CSSOM removeProperty step 5; Q210 invalidates the whole raw entry.
-            if (self.removeRawCovering(l)) removed = true;
             if (self.indexOf(l)) |i| {
                 var old = self.entries.orderedRemove(i);
                 self.freeEntry(&old);
@@ -587,8 +548,9 @@ pub const DeclarationBlock = struct {
         self.clear();
         self.entries.deinit(self.allocator);
         self.entries = parsed.entries;
-        self.may_have_unparsed_shorthands = parsed.may_have_unparsed_shorthands;
+        self.custom_count = parsed.custom_count;
         parsed.entries = .empty;
+        parsed.custom_count = 0;
     }
 
     /// CSSOM "serialize a CSS declaration block" (the cssText getter),
@@ -605,6 +567,13 @@ pub const DeclarationBlock = struct {
             switch (e.*) {
                 .unparsed => |u| {
                     try appendDeclaration(out, allocator, &first, u.name, u.value, u.important);
+                    done[index] = true;
+                },
+                .custom => |c| {
+                    var value: std.ArrayList(u8) = .empty;
+                    defer value.deinit(allocator);
+                    try c.value.serialize(&value, allocator);
+                    try appendDeclaration(out, allocator, &first, c.name.bytes, value.items, c.important);
                     done[index] = true;
                 },
                 .typed => |d| {
@@ -661,6 +630,28 @@ pub const DeclarationBlock = struct {
         return .{ .entries = self.entries.items };
     }
 
+    /// The custom property declarations, in order.
+    pub fn customs(self: *const DeclarationBlock) CustomIterator {
+        return .{ .entries = if (self.custom_count == 0) &.{} else self.entries.items };
+    }
+
+    pub const CustomIterator = struct {
+        entries: []const Entry,
+        index: usize = 0,
+
+        pub fn next(self: *CustomIterator) ?*const Custom {
+            while (self.index < self.entries.len) {
+                const e = &self.entries[self.index];
+                self.index += 1;
+                switch (e.*) {
+                    .custom => |*c| return c,
+                    .typed, .unparsed => {},
+                }
+            }
+            return null;
+        }
+    };
+
     pub const TypedIterator = struct {
         entries: []const Entry,
         index: usize = 0,
@@ -671,7 +662,7 @@ pub const DeclarationBlock = struct {
                 self.index += 1;
                 switch (e.*) {
                     .typed => |*d| return d,
-                    .unparsed => {},
+                    .unparsed, .custom => {},
                 }
             }
             return null;

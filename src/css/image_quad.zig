@@ -1,4 +1,4 @@
-//! Masking §8.3–8.5 / Backgrounds §6: four typed border-image components.
+//! Masking §8.3–8.5 / Backgrounds §5.2–5.4: four typed border-image components.
 const std = @import("std");
 const properties = @import("properties.zig");
 const values = @import("style_values.zig");
@@ -58,7 +58,7 @@ pub const Quad = struct {
         defer for (sides[0..count]) |v| v.release();
         while (count < 4) : (count += 1) {
             const v = self.sides[count];
-            if (v == .length) sides[count] = try context.length(v) else {
+            if (v == .length or v == .calculation) sides[count] = try context.length(v) else {
                 v.retain();
                 sides[count] = v;
             }
@@ -80,6 +80,16 @@ pub fn parse(options: properties.ParseOptions, stream: *properties.Stream, gramm
 }
 fn component(options: properties.ParseOptions, stream: *properties.Stream, grammar: Grammar) Allocator.Error!?Value {
     const t = stream.peek();
+    if (t.token_type == .function) {
+        // Backgrounds §5.2 preserves slice percentages, whose basis is the
+        // image dimension. Number-percentage would instead make a fraction.
+        if (grammar == .width) return properties.mathValue(options, stream, .{ .kind = .length_percentage_number, .minimum = 0 });
+        if (try properties.mathValue(options, stream, .{ .kind = .number, .minimum = 0 })) |value| return value;
+        return properties.mathValue(options, stream, .{
+            .kind = if (grammar == .slice) .percentage else .length,
+            .minimum = 0,
+        });
+    }
     if (t.token_type == .number or (grammar == .slice and t.token_type == .percentage)) {
         const n = t.numeric_value orelse return null;
         if (!std.math.isFinite(n) or n < 0) return null;

@@ -291,9 +291,11 @@ pub fn deinit() void {
         var coordinator = cleanup_coordinator.CleanupCoordinator.init(state.allocator);
         defer coordinator.deinit();
 
-        // Set coordinator as active so GC callbacks can check teardown state
+        // Set coordinator as active so GC callbacks can check teardown state,
+        // and give the one it replaces back after (see removeContextByKey).
+        const previous_coordinator = cleanup_coordinator.getActiveCoordinator();
         cleanup_coordinator.setActiveCoordinator(&coordinator);
-        defer cleanup_coordinator.setActiveCoordinator(null);
+        defer cleanup_coordinator.setActiveCoordinator(previous_coordinator);
 
         // Begin coordinated cleanup - signals GC callbacks to skip
         coordinator.beginContextCleanup();
@@ -1094,9 +1096,17 @@ pub fn removeContextByKey(key: usize, v8_ctx: ?*v8.Context) void {
             var coordinator = cleanup_coordinator.CleanupCoordinator.init(state.allocator);
             defer coordinator.deinit();
 
-            // Set coordinator as active so GC callbacks can check teardown state
+            // Set coordinator as active so GC callbacks can check teardown state,
+            // and give the one it replaces back after: a realm's teardown can
+            // end another realm inside one of its phases (a frame's Window
+            // ending a popup it owns whose realm is the page's child), and
+            // that inner end used to leave NO coordinator active for the rest
+            // of the outer one - every later deferral dropped, and
+            // runtime.gc.releaseOwned freeing storage inline, mid-teardown
+            // (lane winslot1, tests/v8/cleanup_coordinator_nested_test.zig).
+            const previous_coordinator = cleanup_coordinator.getActiveCoordinator();
             cleanup_coordinator.setActiveCoordinator(&coordinator);
-            defer cleanup_coordinator.setActiveCoordinator(null);
+            defer cleanup_coordinator.setActiveCoordinator(previous_coordinator);
 
             // Begin coordinated cleanup - signals GC callbacks to skip
             coordinator.beginContextCleanup();

@@ -63,6 +63,7 @@ const std = @import("std");
 
 /// CSS tokenizer for property values.
 pub const tokenizer = @import("tokenizer.zig");
+pub const syntax_definitions = @import("syntax_definitions.zig");
 pub const Tokenizer = tokenizer.Tokenizer;
 pub const Token = tokenizer.Token;
 pub const TokenType = tokenizer.TokenType;
@@ -118,6 +119,7 @@ pub const cascade = @import("cascade.zig");
 pub const text_transform = @import("text_transform.zig");
 pub const color_scheme = @import("color_scheme.zig");
 pub const resolved_urls = @import("resolved_urls.zig");
+pub const environment_variables = @import("environment_variables.zig");
 pub const svg_presentation = @import("svg_presentation.zig");
 pub const image_layers = @import("image_layers.zig");
 pub const image_values = @import("image_values.zig");
@@ -154,3 +156,11 @@ pub const numeric_values = @import("numeric_values.zig");
 pub const color_values = @import("color_values.zig");
 pub const color_spaces = @import("color_spaces.zig");
 pub const random_values = @import("random_values.zig");
+/// CSS Values 5 Appendix A: arbitrary substitution functions (var(), env(),
+/// random-item()) - argument grammars and the substitution engine.
+pub const substitution = @import("substitution.zig");
+pub const pending_values = @import("pending_values.zig");
+/// CSS Variables 1: custom property values, specified and computed.
+pub const custom_properties = @import("custom_properties.zig");
+/// CSS Namespaces 3: a style sheet's namespace prefixes, shared by reference.
+pub const namespace_map = @import("namespace_map.zig");

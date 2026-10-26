@@ -1847,6 +1847,13 @@ pub const WrapperCache = struct {
                 // entry does not use, holds the list.
                 setAside(&aside, entry);
                 continue;
+            } else if (isRealmWindow(entry.instance)) {
+                // A Window entry this sweep meets is no realm's own: the
+                // realm's end takes its Window's entry out before the sweep
+                // (context_manager.removeContextByKey). A Window is freed by
+                // its own realm's end, never by another realm's cache: only
+                // the wrapper goes (lane winslot1, E3).
+                severWrapper(entry);
             } else if (wrappedElsewhere(entry.instance, self)) {
                 // Another realm's cache still wraps it; that one frees it.
             } else {
