@@ -27,58 +27,7 @@ const boxes = [_]Keyword{ .border_box, .padding_box, .content_box, .fill_box, .s
 pub const border_longhands = longhands[8..].*;
 
 pub fn parseBorder(options: properties.ParseOptions, stream: *properties.Stream, out: *std.ArrayList(properties.Assignment)) Allocator.Error!bool {
-    var components: [border_longhands.len]Value = undefined;
-    for (border_longhands, &components) |l, *v| {
-        v.* = l.info().initial;
-        v.retain();
-    }
-    defer for (components) |v| v.release();
-    var seen = [_]bool{false} ** border_longhands.len;
-    var groups: usize = 0;
-    while (!stream.atEnd()) {
-        var matched = false;
-        // The source, slice group and repeat group are unordered. Slashes
-        // belong only to the slice group and cannot stand independently.
-        for ([_]usize{ 0, 1, 4 }) |i| {
-            if (seen[i]) continue;
-            const mark = stream.*;
-            const value = (try parse(options, border_longhands[i], stream)) orelse {
-                stream.* = mark;
-                continue;
-            };
-            components[i].release();
-            components[i] = value;
-            seen[i] = true;
-            groups += 1;
-            matched = true;
-            if (i == 1 and slash(stream)) {
-                const width_mark = stream.*;
-                const width = try quads.parse(options, stream, .width);
-                if (width) |v| {
-                    components[2].release();
-                    components[2] = v;
-                } else stream.* = width_mark;
-                if (slash(stream)) {
-                    const outset = (try quads.parse(options, stream, .outset)) orelse return false;
-                    components[3].release();
-                    components[3] = outset;
-                } else if (width == null) {
-                    // Q52: Safari rejects a trailing slash with neither
-                    // width nor outset, despite the optional productions.
-                    return false;
-                }
-            }
-            break;
-        }
-        if (!matched) return false;
-    }
-    if (groups == 0) return false;
-    try out.ensureUnusedCapacity(options.allocator, border_longhands.len);
-    for (border_longhands, components) |l, v| {
-        v.retain();
-        out.appendAssumeCapacity(.{ .longhand = l, .value = .{ .value = v } });
-    }
-    return true;
+    return @import("image_border_values.zig").parse(border_longhands, options, stream, out);
 }
 
 /// CSSOM shorthand serialization, with Q52's Safari mechanism pinned by
