@@ -21,6 +21,7 @@ const Allocator = std.mem.Allocator;
 const properties = @import("properties.zig");
 const values = @import("style_values.zig");
 const color_scheme = @import("color_scheme.zig");
+const custom_properties = @import("custom_properties.zig");
 
 const Longhand = properties.Longhand;
 const Value = values.Value;
@@ -37,6 +38,10 @@ pub const ComputedStyle = struct {
     /// display:none suppresses all descendant boxes.
     box_context: enum { suppressed, grid, other } = .other,
     subgrid_ineligible: bool = false,
+    /// CSS Variables 1 §2: the element's custom properties, computed; shared
+    /// by reference with the parent's when this cascade changed none (one
+    /// reference held). Null: none has a value.
+    custom: ?*custom_properties.CustomProperties = null,
 
     /// A style whose every value is its longhand's initial value, computed
     /// (the root's parent; an element no rule styles).
@@ -48,7 +53,23 @@ pub const ComputedStyle = struct {
 
     pub fn destroy(self: *ComputedStyle) void {
         for (self.values) |v| v.release();
+        if (self.custom) |c| c.release();
         self.allocator.destroy(self);
+    }
+
+    /// The computed value of custom property `name` (case-sensitive), or
+    /// null for the guaranteed-invalid value (absent included). Borrowed.
+    pub fn customValue(self: *const ComputedStyle, name: []const u8) ?*const custom_properties.Text {
+        const record = self.custom orelse return null;
+        return record.get(name);
+    }
+
+    /// The custom properties with a value, in code-point order (CSSOM
+    /// getComputedStyle lists them after the longhands; integrator Q3).
+    /// Borrowed names; the slice is the caller's.
+    pub fn customNames(self: *const ComputedStyle, allocator: Allocator) Allocator.Error![]const []const u8 {
+        const record = self.custom orelse return &.{};
+        return record.names(allocator);
     }
 
     pub fn get(self: *const ComputedStyle, l: Longhand) Value {
@@ -67,6 +88,27 @@ pub const ComputedStyle = struct {
     pub fn textTransform(self: *const ComputedStyle) values.TextTransform {
         const v = self.get(.text_transform);
         return if (v == .text_transform) v.text_transform else .{};
+    }
+
+    /// Backgrounds 3 §3.3: whether `l` is a border width (physical or
+    /// logical) whose same-side border style is none or hidden. Its computed
+    /// value keeps the length; its resolved value, and a shorthand built from
+    /// resolved values, is zero. A logical slot holds its mapped side's value,
+    /// and so does the logical style beside it.
+    pub fn undrawnBorderWidth(self: *const ComputedStyle, l: Longhand) bool {
+        const side_style: Longhand = switch (l) {
+            .border_top_width => .border_top_style,
+            .border_right_width => .border_right_style,
+            .border_bottom_width => .border_bottom_style,
+            .border_left_width => .border_left_style,
+            .border_block_start_width => .border_block_start_style,
+            .border_block_end_width => .border_block_end_style,
+            .border_inline_start_width => .border_inline_start_style,
+            .border_inline_end_width => .border_inline_end_style,
+            else => return false,
+        };
+        const k = self.keyword(side_style);
+        return k == .none or k == .hidden;
     }
 
     /// The used color of a color property: currentcolor is the element's
@@ -106,6 +148,9 @@ pub const ComputedStyle = struct {
             return out.appendSlice(allocator, "normal");
         if (l == .animation_duration) return @import("animation_values.zig").serializeDurationResolved(v, self.get(.animation_timeline), out, allocator);
         if (l == .caret_color) return @import("ui_values.zig").serializeCaretResolved(v, .{ .scheme = self.used_color_scheme, .current = self.get(.color).color }, out, allocator);
+        // Backgrounds 3 §3.3: a side whose style is none or hidden keeps its
+        // computed width (inherit passes it on) but resolves to zero.
+        if (self.undrawnBorderWidth(l)) return out.appendSlice(allocator, "0px");
         if (v == .color) {
             const color = try self.resolvedColor(l, allocator);
             defer color.release();
@@ -147,13 +192,14 @@ pub const initial_values: [Longhand.count]Value = blk: {
 };
 
 /// A longhand's initial value, computed: the keyword lengths of borders
-/// and font-size made absolute, and a border width with style none zero.
+/// and font-size made absolute.
 pub fn initialComputed(l: Longhand) Value {
     return switch (l) {
         .justify_items => .{ .alignment = .{ .position = .normal } },
-        // The initial border-style is none, so the initial border-width
-        // computes to 0 (CSS Backgrounds 3 "border-width" computed value).
-        .border_top_width, .border_right_width, .border_bottom_width, .border_left_width, .border_block_start_width, .border_block_end_width, .border_inline_start_width, .border_inline_end_width => Value.px(0),
+        // Backgrounds 3 §3.3: initial `medium`, computed as an absolute
+        // length whatever the style (the browsers' medium is 3px); only the
+        // resolved value of an undrawn side is zero (serializeResolved).
+        .border_top_width, .border_right_width, .border_bottom_width, .border_left_width, .border_block_start_width, .border_block_end_width, .border_inline_start_width, .border_inline_end_width => Value.px(3),
         .outline_width => Value.px(3),
         .font_size => Value.px(16),
         .font_weight => .{ .number = 400 },

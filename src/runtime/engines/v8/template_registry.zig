@@ -201,13 +201,13 @@ pub fn wrapInstanceAsV8Object(
     // When contentWindow is accessed from another realm, we need to return
     // the actual V8 global (which has DOMRectReadOnly, etc. on it).
     // The length first (conversions.instanceToV8Checked says why).
+    // A Window with no global to answer with (torn down) is never given an
+    // ordinary wrapper: that wrapper's cache would free it - a second
+    // destructor run and its slot returned - at its own realm's end (lane
+    // winslot1, E3). conversions.instanceToV8Checked answers null for it.
     if (interface_name.len == "Window".len and std.mem.eql(u8, interface_name, "Window")) {
-        const WindowImpl = @import("impls").Window;
-        if (WindowImpl.getBoundV8Global(instance)) |bound_global| {
-            // Return the bound global directly - this is the key for cross-realm!
-            // bound_global is a Global<Object>* which is the correct type for return values
-            return @ptrCast(bound_global);
-        }
+        const bound_global = @import("dom").window_globals.boundGlobal(instance) orelse return error.WindowHasNoGlobal;
+        return @ptrCast(bound_global);
     }
 
     // (A Document is a node: its one wrapper is the node's bound wrapper,

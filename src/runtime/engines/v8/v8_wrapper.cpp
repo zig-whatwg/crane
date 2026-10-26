@@ -1461,6 +1461,79 @@ void v8_RunWithMicrotasksSuppressed(Isolate* isolate, void (*body)(void*), void*
     body(data);
 }
 
+/// The function a callback-function value holds, taken by the impl that keeps
+/// it (engine.takeCallbackFunction): its handle MOVES into a Global of the
+/// taker's own, and `global` - the binding's, borrowed for the call - is left
+/// empty, for the binding to dispose when the call returns. No V8 handle is
+/// made: Global's move constructor hands the node over
+/// (api_internal::MoveGlobalReference), and with it the node's class id, so a
+/// count kept by class id moves too. Returns nullptr for a null or empty
+/// handle - a value taken already.
+///
+/// What the adapter keys by the BOX moves with it: a realm tag is re-keyed to
+/// the taker's box. A weak Global - its arm is keyed by its box, with a
+/// finalizer that may be pending - is never moved: the taker gets a strong
+/// Global of its own and the box keeps its arm for its owner's dispose. The
+/// binding's own Globals carry neither (each comes from GetArgument or a
+/// member's Get; tags and arms go on the taker's box), so these are what keep
+/// the bookkeeping right should one ever be handed to a take.
+Global<Value>* v8_Global_TakeOver(Global<Value>* global) {
+    if (!global || global->IsEmpty()) return nullptr;
+    if (global->IsWeak()) {
+        Isolate* isolate = Isolate::GetCurrent();
+        HandleScope handle_scope(isolate);
+        return trackHandle(new Global<Value>(isolate, global->Get(isolate)));
+    }
+    // A move, not a new handle: nothing for the creation counters
+    // (trackHandle). Snapshot mode resets every box in bulk, so it tracks this
+    // one too.
+    Global<Value>* own = new Global<Value>(std::move(*global));
+    if (g_snapshot_mode) g_snapshot_handles.push_back({own, resetGlobalHandle<Value>});
+    if (realmTagCount().load(std::memory_order_acquire) != 0) {
+        std::lock_guard<std::mutex> guard(realmTagLock());
+        auto& tagged = realmTaggedHandles();
+        auto it = tagged.find(static_cast<const void*>(global));
+        if (it != tagged.end()) {
+            const uintptr_t realm_key = it->second;
+            tagged.erase(it);
+            // One entry out, one in: realmTagCount is unchanged.
+            tagged.emplace(static_cast<const void*>(own), realm_key);
+        }
+    }
+    return own;
+}
+
+void v8_Value_Dispose(Global<Value>* value);
+
+/// The binding's Global for a callback-function value, once the call that
+/// converted it is over (interface.freeConvertedArg). Moved from by a take
+/// (v8_Global_TakeOver), it is an empty box with nothing keyed by it - the
+/// take re-keyed a realm tag, and never moves a weak Global - so it is
+/// deleted without the registries v8_Value_Dispose consults, two locks and two
+/// lookups per call (lane leaks7: `el.onclick = f` cost +4.96% instructions
+/// through the general dispose). Untaken, it is disposed as any Global is.
+void v8_Global_DisposeCallbackValue(Global<Value>* global) {
+    if (!global) return;
+    if (g_snapshot_mode) return;
+    if (global->IsEmpty()) {
+        delete global;
+        return;
+    }
+    v8_Value_Dispose(global);
+}
+
+/// How many Globals carry a realm tag. For tests: the tag map's size.
+size_t v8_Debug_RealmTaggedHandleCount() {
+    return realmTagCount().load(std::memory_order_acquire);
+}
+
+/// Whether `global` carries a realm tag. For tests.
+bool v8_Debug_IsRealmTagged(Global<Value>* global) {
+    if (!global) return false;
+    std::lock_guard<std::mutex> guard(realmTagLock());
+    return realmTaggedHandles().count(static_cast<const void*>(global)) != 0;
+}
+
 /// A second, independently owned Global for the value `global` holds. Both
 /// must be disposed. Returns nullptr for a null or empty handle.
 Global<Value>* v8_Global_Clone(Global<Value>* global) {

@@ -1678,8 +1678,9 @@ pub fn fromV8Value(
 
 /// WebIDL 3.2.19, attribute assignment with [LegacyTreatNonObjectAsNull]:
 /// a non-object becomes null; every object is preserved, callable or not.
-/// The binding keeps ownership on null and hands the same Global to the
-/// setter otherwise. This is never the generic callback conversion.
+/// The value is the same Global, which the binding keeps and frees once the
+/// setter returns (a callback value is borrowed, interface.
+/// setterValueIsBorrowed). This is never the generic callback conversion.
 pub fn fromV8LegacyCallbackAttribute(comptime T: type, value: *v8.Value) ConversionError!T {
     const Child = @typeInfo(T).optional.child;
     if (!v8.v8_Value_IsObject(value)) return null;
@@ -1687,7 +1688,9 @@ pub fn fromV8LegacyCallbackAttribute(comptime T: type, value: *v8.Value) Convers
 }
 
 /// The transitional callback representation is the untagged Global address,
-/// never a callable Zig function. The consumer adopts it through the protocol.
+/// never a callable Zig function. BORROWED: the binding frees it with the
+/// value, and a consumer that keeps it takes a hold of its own through the
+/// protocol (takeCallbackFunction).
 fn callbackFunctionValue(comptime T: type, value: *v8.Value) T {
     const address: usize = @intFromPtr(value);
     std.debug.assert(std.mem.isAligned(address, @alignOf(@typeInfo(T).pointer.child)));
@@ -2362,15 +2365,18 @@ pub fn fromV8ValueAs(
     // A callback function type is a Zig function-pointer type until codegen
     // types callback parameters as engine.CallbackFunction (the protocol's
     // TRANSITIONAL note on takeCallbackFunction): the value holds the
-    // function's Global<Value>* and is never called. Every consumer takes it
-    // over through takeCallbackFunction, or returns it from a getter
-    // (interface.zig), as a Global.
+    // function's Global<Value>* and is never called. It is BORROWED for the
+    // call, as every converted value is: the binding frees the Global with
+    // the value (interface.freeConvertedArg), and a consumer that keeps the
+    // callback takes a hold of its own (takeCallbackFunction, which moves the
+    // function out of this Global).
     if (type_info == .pointer) {
         const child_info = @typeInfo(type_info.pointer.child);
         if (child_info == .@"fn") {
             // NOTE: value from v8_FunctionCallbackInfo_GetArgument is ALREADY a
             // Global<Value>* of the binding's (the C++ side made it from the
-            // argument's Local), so it is handed over as it is.
+            // argument's Local), so it is the value as it is - still the
+            // binding's to free.
             if (!v8.v8_Value_IsFunction(value)) {
                 return ConversionError.TypeError;
             }
@@ -3024,9 +3030,10 @@ pub fn toV8Record(
     return object;
 }
 
-/// ALLOWLIST: the raw function-pointer conversion hands its input Global to
-/// the callback on success, and adopts nothing when it fails. Unknown pointer
-/// and aggregate types remain false; nullable callbacks have the same rule.
+/// ALLOWLIST: the raw function-pointer conversion's value IS its input Global
+/// on success (freed with the value, interface.freeConvertedArg), and holds
+/// nothing when it fails. Unknown pointer and aggregate types remain false;
+/// nullable callbacks have the same rule.
 pub fn callbackConversionAdoptsInput(comptime T: type) bool {
     const info = @typeInfo(T);
     if (info == .optional) return callbackConversionAdoptsInput(info.optional.child);
@@ -4558,24 +4565,16 @@ pub fn instanceToV8Checked(isolate: *v8.Isolate, instance: *runtime.Instance) er
     // Get interface name from instance vtable
     const interface_name = template_registry.getInstanceInterfaceName(instance);
 
-    // Special handling for Window instances with bound V8 global
-    // This enables cross-realm support: iframe.contentWindow returns the V8 global
-    // which has DOMRectReadOnly and other constructors on it.
+    // A Window's one wrapper is its realm's global - the WindowProxy it is
+    // bound to (dom.window_globals): `iframe.contentWindow`, an event's
+    // view or source, `frames[i]` all answer that object, with the realm's
+    // interface objects on it.
     // The length first: the compare runs for every object wrapped - every
     // `list[i]` - and std.mem.eql is a call chain in the Debug build (5% of
     // an Array.prototype.indexOf over a NodeList, with the same test in
     // wrapInstanceAsV8Object). Same answer: only "Window" has both.
     if (interface_name.len == "Window".len and std.mem.eql(u8, interface_name, "Window")) {
-        const WindowImpl = @import("impls").Window;
-        if (WindowImpl.getBoundV8Global(instance)) |bound_global| {
-            // bound_global is a Global<Object>* - a persistent handle that was created
-            // in createWindowBoundToGlobal via v8_Context_Global.
-            // Return it directly - SetReturnValueGlobal will dereference it.
-            std.log.info("[instanceToV8] Window returning Global<Object>* at {*}", .{bound_global});
-            return @ptrCast(bound_global);
-        } else {
-            std.log.warn("[instanceToV8] Window at {*} has NO bound global!", .{instance});
-        }
+        return windowProxyOrNull(isolate, instance);
     }
 
     // A platform object has one wrapper, made in its relevant realm - the
@@ -4611,6 +4610,31 @@ pub fn instanceToV8Checked(isolate: *v8.Isolate, instance: *runtime.Instance) er
     };
 
     return @ptrCast(v8_obj);
+}
+
+/// A Window as script sees it: the global it is bound to (a `Global<Object>*`,
+/// BORROWED from the realm's wrapper cache, which SetReturnValueGlobal reads),
+/// or null when it has none to answer with:
+/// - its teardown ran (a realm's end frees its state, the binding with it);
+/// - its realm has no engine left: the collector took a detached realm's
+///   context and its global with it, in the collection whose second pass
+///   disposed the cached handle the binding names, before the realm's end -
+///   a queued task - has run (lane winslot1, E4;
+///   tests/v8/window_collected_realm_conversion_test.zig). realmCollected
+///   marks the realm first (engine_ctx null), and a global proxy cannot be
+///   collected while its context lives, so a realm that still has an engine
+///   never names a disposed handle.
+/// Never an ordinary wrapper: a Window wrapped in another realm's cache was
+/// freed by that cache's sweep - its destructor run a second time and its
+/// slot returned - while every holder of it read on (lane winslot1, E3;
+/// tests/v8/window_dead_conversion_test.zig). Blink's DOMWindow::Wrap
+/// answers v8::Null for a window with no frame
+/// (core/frame/dom_window.cc).
+fn windowProxyOrNull(isolate: *v8.Isolate, window: *runtime.Instance) *v8.Value {
+    if (!window.ctx.hasEngine()) return v8.v8_Null(isolate) orelse unreachable;
+    const bound_global = @import("dom").window_globals.boundGlobal(window) orelse
+        return v8.v8_Null(isolate) orelse unreachable;
+    return @ptrCast(bound_global);
 }
 
 /// `instance`'s relevant realm's context, BORROWED from the realm record -

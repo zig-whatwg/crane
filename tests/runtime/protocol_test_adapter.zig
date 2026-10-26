@@ -242,6 +242,9 @@ pub fn isCallable(_: Context, _: JSValue) bool {
 pub fn isConstructor(_: Context, _: JSValue) bool {
     return false;
 }
+/// The binding's callback-function value is BORROWED for the call; the take
+/// is a hold of the caller's own, released once. This adapter has no
+/// binding and holds nothing: undefined, whose release is a no-op.
 pub fn takeCallbackFunction(_: *const anyopaque) engine.CallbackFunction {
     return .{ .function = .{ .value = JSValue.jsUndefined }, .context = null };
 }

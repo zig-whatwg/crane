@@ -22,9 +22,11 @@
 //! - CSS UI 4: appearance
 //! - CSS Cascade 5: all
 //!
-//! Scalar math uses typed CSS Values 4 expressions. var()/env() remain
-//! unsupported; image/background grammars retain their previous math
-//! rejection until they consume that typed parser (row 118 Q16).
+//! Scalar math uses typed CSS Values 4 expressions; image/background grammars
+//! retain their previous math rejection until they consume that typed parser
+//! (row 118 Q16). A value with var(), env() or random-item() is a
+//! pending-substitution value (pending_values.zig), parsed with its grammar
+//! after substitution.
 //!
 //! Spec: https://drafts.csswg.org/css-cascade-5/#shorthand
 //! Spec: https://drafts.csswg.org/cssom-1/#serializing-css-values
@@ -946,8 +948,8 @@ pub const ParseOptions = struct {
     /// null leaves it as written.
     url_resolver: ?UrlResolver = null,
     /// Borrowed while parsing; resource-bearing values retain this record.
-    /// CSS Variables 1 §2.1: future untyped var() substitution must supply
-    /// the CONSUMING declaration's source after substituting its tokens.
+    /// CSS Variables 1 §2.1: a pending value retains the CONSUMING
+    /// declaration's source, whose base resolves substituted url()s.
     resource_source: ?*values.ResourceSource = null,
     /// Borrowed, immutable source ordinals for numeric random() functions.
     random_scope: ?*const @import("random_values.zig").ParseScope = null,
@@ -956,6 +958,13 @@ pub const ParseOptions = struct {
     /// Q138: background math belongs to typed grammars; retained opaque
     /// image leaves keep the pre-existing rejection for those properties.
     reject_opaque_image_math: bool = false,
+    /// CSS Values 5 §8.7.2: the byte ranges of the text substitution
+    /// brought from a tainted source (substitution.zig), for a grammar that
+    /// must reject a tainted url(). Empty for text that was not substituted.
+    tainted_ranges: []const @import("substitution.zig").TaintRange = &.{},
+    /// The declaring sheet's namespace prefixes, borrowed; a pending value
+    /// retains it (attr(): Codex row 122 fills it where sheets parse).
+    namespaces: ?*@import("namespace_map.zig").NamespaceMap = null,
 };
 
 pub const UrlResolver = resources.UrlResolver;
@@ -1005,7 +1014,13 @@ pub fn parseDeclaration(options: ParseOptions, property: Property, text: []const
         (property == .shorthand and property.shorthand == .background);
     var functions = FunctionFlags{};
     if (containsUnsupportedToken(text, content_functions, &functions)) return false;
-    if (functions.random_item) {
+    // Values 5 "Resolving in Properties": a value with an arbitrary
+    // substitution function (var(), env(), random-item()) whose functions
+    // all match their argument grammars is valid at parse time, and is a
+    // pending-substitution value of every longhand the property sets
+    // ("Substitution in Shorthand Properties"); its grammar applies after
+    // substitution, at computed-value time.
+    if (functions.substitution) {
         const pending = try @import("pending_values.zig").Pending.create(options, property, text) orelse return false;
         defer pending.unref();
         const longhands: []const Longhand = switch (property) {
@@ -1060,8 +1075,9 @@ fn cssWideKeyword(text: []const u8) ?values.CssWide {
     return values.CssWide.parse(token.value);
 }
 
-/// Unsupported substitution/functions cannot pass through opaque grammars.
-const FunctionFlags = struct { numeric_random: bool = false, random_item: bool = false };
+/// Unsupported functions cannot pass through opaque grammars; an arbitrary
+/// substitution function makes the value pending.
+const FunctionFlags = struct { numeric_random: bool = false, substitution: bool = false };
 
 fn containsUnsupportedToken(text: []const u8, content_functions: bool, flags: *FunctionFlags) bool {
     var tok = Tokenizer.init(text);
@@ -1073,14 +1089,16 @@ fn containsUnsupportedToken(text: []const u8, content_functions: bool, flags: *F
         // this property grammar, unlike Fonts' forgiving src components.
         if (token.token_type == .bad_string or token.token_type == .bad_url) return true;
         if (token.token_type == .function and tokenizer_mod.nameEql(token.value, "random")) flags.numeric_random = true;
-        if (token.token_type == .function and tokenizer_mod.nameEql(token.value, "random-item")) flags.random_item = true;
-        // Q56: the custom-property/env substitution foundation stays
-        // unavailable even inside an otherwise accepted pending value.
-        if (token.token_type == .function and (tokenizer_mod.nameEql(token.value, "var") or tokenizer_mod.nameEql(token.value, "env"))) return true;
+        // An arbitrary substitution function anywhere: the whole value is
+        // checked (and stored) by pending_values.Pending.create instead.
+        if (token.token_type == .function and @import("substitution.zig").functionId(token.value) != null) {
+            flags.substitution = true;
+            return false;
+        }
         if (content_functions) continue;
         if (token.token_type != .function) continue;
         if (math_values.isFunction(token)) continue;
-        for ([_][]const u8{ "var", "env", "attr", "round", "mod", "rem", "abs", "sign", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "pow", "sqrt", "hypot", "log", "exp", "progress", "calc-size", "if" }) |f| {
+        for ([_][]const u8{ "attr", "round", "mod", "rem", "abs", "sign", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "pow", "sqrt", "hypot", "log", "exp", "progress", "calc-size", "if" }) |f| {
             if (tokenizer_mod.nameEql(token.value, f)) return true;
         }
     }
@@ -2219,7 +2237,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .containment => |v| try v.serialize(out, allocator),
         .try_fallbacks => |f| try f.list.serialize(f.computed, out, allocator),
         .text => |t| try out.appendSlice(allocator, t.bytes),
-        .pending => |pending| if (pending.property == .longhand) try out.appendSlice(allocator, pending.text),
+        .pending => |pending| if (pending.property != null and pending.property.? == .longhand) try out.appendSlice(allocator, pending.text),
         .cursor => |c| try out.appendSlice(allocator, c.text.bytes),
         .indent => |v| try v.serialize(out, allocator),
         .paint => |v| try v.serialize(out, allocator, null),
@@ -2279,7 +2297,8 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
     // pending value; mixed/overridden placeholders serialize as empty.
     for (vs) |v| if (v.value == .pending) {
         const pending = v.value.pending;
-        if (pending.property != .shorthand or pending.property.shorthand != s) return false;
+        const declared = pending.property orelse return false;
+        if (declared != .shorthand or declared.shorthand != s) return false;
         for (vs) |other| if (other.value != .pending or other.value.pending != pending) return false;
         try out.appendSlice(allocator, pending.text);
         return true;

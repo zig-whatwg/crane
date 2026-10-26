@@ -15,22 +15,10 @@ test "cursor URLs and numeric hotspots need neither tree counts nor random input
     try testing.checkAllAllocationFailures(testing.allocator, dependencies, .{ "cursor:url(pointer.cur) 1 2, pointer", .cursor, false, false });
 }
 
-fn unsupportedHotspots(allocator: std.mem.Allocator) !void {
-    // This stage's cursor grammar accepts two number tokens, stored as f64.
-    // Function tokens cannot hide dependencies in those scalar coordinates.
-    for ([_][]const u8{
-        "cursor:url(pointer.cur) calc(1) 2, pointer",
-        "cursor:url(pointer.cur) random(0, 1) 2, pointer",
-        "cursor:url(pointer.cur) 1 calc(sibling-index()), pointer",
-    }) |input| {
-        var block = try css.declarations.DeclarationBlock.parse(.{ .allocator = allocator }, input);
-        defer block.deinit();
-        try testing.expect(block.get(.cursor) == null);
-    }
-}
-
 test "cursor hotspot function tokens cannot hide tree or random dependencies" {
-    try testing.checkAllAllocationFailures(testing.allocator, unsupportedHotspots, .{});
+    try testing.checkAllAllocationFailures(testing.allocator, dependencies, .{ "cursor:url(pointer.cur) calc(1) 2, pointer", .cursor, false, false });
+    try testing.checkAllAllocationFailures(testing.allocator, dependencies, .{ "cursor:url(pointer.cur) random(0, 1) 2, pointer", .cursor, false, true });
+    try testing.checkAllAllocationFailures(testing.allocator, dependencies, .{ "cursor:url(pointer.cur) 1 calc(sibling-index()), pointer", .cursor, true, false });
 }
 
 test "flagged text-indent forwards sibling counts through its owned offset" {

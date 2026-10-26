@@ -564,9 +564,12 @@ pub fn callUserObjectOperation(realm: Context, callback: *const engine.CallbackI
     return finish(try body.result, entered.context(), callback_realm.realm, behavior);
 }
 
-/// A callback-function argument as the binding hands it over (the
-/// Global<Function> the conversion made, tagged), with its callback context:
-/// the incumbent realm now - the operation is converting its arguments.
+/// A callback-function value as the binding converted it (the Global the
+/// conversion made, BORROWED for the call), taken as a hold of the caller's
+/// own (OWNED: callback_interfaces.takeCallbackFunction moves the function
+/// out of the binding's Global, which the binding still frees), with its
+/// callback context: the incumbent realm now - the operation is converting
+/// its arguments. A value taken already gives undefined.
 pub fn takeCallbackFunction(argument: *const anyopaque) engine.CallbackFunction {
     const function = callback_interfaces.takeCallbackFunction(argument);
     const isolate = ffi.v8_Isolate_GetCurrent() orelse return .{ .function = .{ .value = function }, .context = null };

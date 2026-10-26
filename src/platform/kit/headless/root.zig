@@ -145,6 +145,48 @@ pub fn viewport(browser: *BrowserPlatform, tab: TabId) platform.Viewport {
     return default_viewport;
 }
 
+/// CSS Env 1 section 2's unobscured rectangle and default text scale;
+/// VirtualKeyboard's closed keyboard. No overlay or segments.
+/// Matches the Chrome 155 / Firefox 158 / Safari 27 probe (2026-10-25),
+/// taking Chrome's newer definitions where the other engines lack them.
+pub fn cssEnvironmentVariable(browser: *BrowserPlatform, tab: TabId, variable: platform.CssEnvironmentVariable, x: u32, y: u32) ?f64 {
+    _ = .{ browser, tab, x, y };
+    return switch (variable) {
+        .safe_area_inset_top,
+        .safe_area_inset_right,
+        .safe_area_inset_bottom,
+        .safe_area_inset_left,
+        .safe_area_max_inset_top,
+        .safe_area_max_inset_right,
+        .safe_area_max_inset_bottom,
+        .safe_area_max_inset_left,
+        .keyboard_inset_top,
+        .keyboard_inset_right,
+        .keyboard_inset_bottom,
+        .keyboard_inset_left,
+        .keyboard_inset_width,
+        .keyboard_inset_height,
+        => 0,
+        .preferred_text_scale => 1,
+        .titlebar_area_x,
+        .titlebar_area_y,
+        .titlebar_area_width,
+        .titlebar_area_height,
+        .viewport_segment_width,
+        .viewport_segment_height,
+        .viewport_segment_top,
+        .viewport_segment_right,
+        .viewport_segment_bottom,
+        .viewport_segment_left,
+        => null,
+    };
+}
+
+pub fn cssEnvironmentRevision(browser: *BrowserPlatform, tab: TabId) u64 {
+    _ = .{ browser, tab };
+    return 0;
+}
+
 pub fn invalidateLayout(browser: *BrowserPlatform, document: LayoutNode, node: LayoutNode, reason: platform.InvalidationReason) void {
     _ = .{ browser, document, node, reason };
 }

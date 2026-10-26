@@ -237,8 +237,8 @@ pub const CallbackThis = runtime.CallbackThis;
 
 /// WebIDL: a callback function type's value (3.2.19) - "a reference to the
 /// function object, and a callback context": the incumbent realm when the
-/// value was converted (null when there was none). OWNED: `release` gives the
-/// function back.
+/// value was converted (null when there was none). OWNED: a hold of its
+/// holder's own, released exactly once - `release` gives the function back.
 pub const CallbackFunction = struct {
     function: Owned,
     context: ?Context,
@@ -1430,10 +1430,16 @@ pub inline fn isConstructor(realm: Context, value: JSValue) bool {
     return impl.isConstructor(realm, value);
 }
 
-/// A callback-function argument as the binding hands it over, as a
-/// CallbackFunction (OWNED) whose context is the incumbent realm now - the
-/// operation being called is converting its arguments. TRANSITIONAL, until
-/// codegen types callback parameters as CallbackFunction.
+/// A callback-function value as the binding converted it - an argument, a
+/// dictionary member, a union arm, a sequence element - taken as a
+/// CallbackFunction of the caller's own (OWNED: released exactly once) whose
+/// context is the incumbent realm now - the operation being called is
+/// converting its arguments. The value is BORROWED, as every argument is:
+/// the binding releases it when the call returns, whether or not the impl
+/// took it, so an impl that keeps the callback takes it during its call, and
+/// one that does not need it leaves it alone. Taken twice, it gives nothing
+/// the second time (an undefined function). TRANSITIONAL, until codegen
+/// types callback parameters as CallbackFunction.
 pub inline fn takeCallbackFunction(argument: *const anyopaque) CallbackFunction {
     return impl.takeCallbackFunction(argument);
 }

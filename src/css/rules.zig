@@ -27,6 +27,7 @@ const tokenizer = @import("tokenizer.zig");
 const Tokenizer = tokenizer.Tokenizer;
 const Token = tokenizer.Token;
 const TokenType = tokenizer.TokenType;
+const substitution = @import("substitution.zig");
 
 /// A declaration of a rule's block.
 pub const Declaration = struct {
@@ -240,6 +241,7 @@ const Parser = struct {
     allocator: Allocator,
     tokens: Tokenizer,
     peeked: ?Token = null,
+    property_descriptors: bool = false,
 
     fn next(self: *Parser) Token {
         if (self.peeked) |token| {
@@ -286,6 +288,9 @@ const Parser = struct {
                     if (isGroupRule(name)) {
                         children = try self.consumeRuleList();
                     } else if (isDeclarationBlockRule(name)) {
+                        const previous = self.property_descriptors;
+                        self.property_descriptors = std.mem.eql(u8, name, "property");
+                        defer self.property_descriptors = previous;
                         declarations = try self.consumeDeclarationList();
                     } else {
                         try self.skipBlock(.right_brace);
@@ -536,7 +541,7 @@ const Parser = struct {
     /// optional whitespace, then a colon - or nothing. The value is the rest,
     /// its trailing `!important` taken off, whitespace trimmed. A value that
     /// holds a top-level {}-block beside anything else is no declaration,
-    /// unless the property is a custom one.
+    /// unless it is custom or an @property initial-value descriptor.
     fn declarationFrom(self: *Parser, list: []const Token, source_end: usize) Allocator.Error!?Declaration {
         if (list.len == 0 or list[0].token_type != .ident) return null;
         const raw_name = list[0].value;
@@ -565,34 +570,59 @@ const Parser = struct {
         const name = try tokenizer.decode(self.allocator, raw_name);
         errdefer self.allocator.free(name);
         const custom = std.mem.startsWith(u8, name, "--");
+        // Properties and Values §3: initial-value accepts declaration values.
+        // All three browsers exempt this descriptor from Syntax §5.5.6's
+        // block-beside-other-tokens restriction (probe 1025l, Q16).
+        const property_initial = self.property_descriptors and std.ascii.eqlIgnoreCase(name, "initial-value");
         if (!custom) {
             _ = std.ascii.lowerString(name, name);
-            if (holdsBlockBesideOthers(list[i..end])) {
+            if (!property_initial and holdsBlockBesideOthers(list[i..end])) {
                 self.allocator.free(name);
                 return null;
             }
         }
-        if (std.mem.eql(u8, name, "unicode-range")) {
-            // CSS Syntax 3 §5.5.6 step 8 consumes unicode ranges "from the
-            // segment of the original source text string" (row117 Q103).
-            // The descriptor consumer re-tokenizes it in §4.3.14's mode;
-            // generic serialization would turn U+41 into U/**/+41. Keep
-            // comments intact: they may separate ranges, but split U+ is
-            // invalid. Apply steps 6–7's !important and whitespace removal
-            // to this same source span before handing it to the consumer.
-            const input = self.tokens.input;
-            const start = @intFromPtr(list[i - 1].value.ptr) - @intFromPtr(input.ptr) + 1;
-            const stop = if (important)
-                @intFromPtr(list[end].value.ptr) - @intFromPtr(input.ptr)
-            else
-                source_end;
-            const source = std.mem.trim(u8, input[start..stop], " \t\n\r\x0c");
-            return .{ .name = name, .value = try self.allocator.dupe(u8, source), .important = important };
+        const raw_descriptor = property_initial or std.mem.eql(u8, name, "unicode-range");
+        // CSS Syntax 3 "consume a declaration": a custom property's value is
+        // its original text, and css-variables-1 §4.1 serializes it "exactly
+        // as specified by the author". Values 5 Appendix A: a value with an
+        // arbitrary substitution function is a pending-substitution value,
+        // which every browser writes back as its source (css-variables
+        // variable-cssText.html target11). The segment runs from the first to
+        // the last token; `!important` and the whitespace and comments at
+        // either end are not in it. Whether a value substitutes is found in
+        // the serializing loop itself (one test per function token), so an
+        // ordinary value pays no extra pass.
+        var substitutes = false;
+        if (!custom and !raw_descriptor) {
+            var value: Serializer = .{ .allocator = self.allocator };
+            errdefer value.deinit();
+            for (list[i..end]) |token| {
+                if (token.token_type == .function and !substitutes and substitution.functionId(token.value) != null) substitutes = true;
+                try value.token(token);
+            }
+            if (!substitutes) return .{ .name = name, .value = try value.finish(), .important = important };
+            value.deinit();
         }
-        var value: Serializer = .{ .allocator = self.allocator };
-        errdefer value.deinit();
-        for (list[i..end]) |token| try value.token(token);
-        return .{ .name = name, .value = try value.finish(), .important = important };
+        const input = self.tokens.input;
+        const start = @intFromPtr(list[i - 1].value.ptr) - @intFromPtr(input.ptr) + 1;
+        const stop = if (important)
+            @intFromPtr(list[end].value.ptr) - @intFromPtr(input.ptr)
+        else
+            source_end;
+        // Syntax §5.5.6's unicode-range consumer re-tokenizes original text
+        // in §4.3.14's mode (row117 Q103); generic serialization would turn
+        // U+41 into U/**/+41. Properties and Values §6.1's initialValue also
+        // keeps its source spelling, for typed and universal syntax (probe
+        // 1025m, Q17). These descriptors keep comments and trim only ASCII
+        // whitespace; custom/substitution values retain their token trimming.
+        const source = if (raw_descriptor)
+            std.mem.trim(u8, input[start..stop], " \t\n\r\x0c")
+        else
+            substitution.originalText(input[start..stop]);
+        // A value cut off by the end of its input reads as its tokens there.
+        const at_eof = @intFromPtr(source.ptr) + source.len == @intFromPtr(input.ptr) + input.len;
+        if (!raw_descriptor and at_eof) return .{ .name = name, .value = try substitution.closeAtEof(self.allocator, source), .important = important };
+        return .{ .name = name, .value = try self.allocator.dupe(u8, source), .important = important };
     }
 
     /// "Consume a component value" into `out`: a token, or a whole block (a

@@ -11,7 +11,7 @@
 Neither run spoiled a measurement, because the series had not started. Both delayed a window by 10-20 minutes.
 
 **Fix**:
-1. Before its first chat job, a lane starts a local background watcher. The watcher creates the lane's STOP file as soon as a new line containing "CLOSING NOTICE" appears in held-files.
+1. Before its first chat job, a lane starts a local background watcher. The watcher creates the lane's STOP file as soon as a new line containing "CLOSING NOTICE" appears in held-files. A watcher that exits after firing is re-armed at once, chat work planned or not: vars1's fired on one notice and was not running for the next.
 2. Every chat script checks STOP before each job and each chunk, and exits cleanly when it is set.
 3. The lane's stop also kills its crane-remote jobs on chat (`ssh chat.local kill <pid>`), not just the local tmux or script.
 4. The lane resumes only on a held-files line that BEGINS with "GAP OPEN". The liaison posts GAP OPEN only as such a line.

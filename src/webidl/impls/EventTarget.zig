@@ -823,12 +823,15 @@ pub fn setEventHandler(comptime Handler: type, target: *runtime.Instance, event_
         return;
     };
     // Step 4: set eventHandler's value to the given value, then activate it.
-    // The map takes the binding's value over from here.
+    // The binding's value is borrowed for the setter: the map takes a hold of
+    // its own, and the getter hands out that hold's Global - the binding's
+    // goes when the setter returns (lane leaks7).
     var address: usize = undefined;
     @memcpy(std.mem.asBytes(&address), std.mem.asBytes(&handler));
+    const callback = engine.takeCallbackFunction(@ptrFromInt(address));
     const handler_value: HandlerEntry = .{ .compiled = .{
-        .callback = engine.takeCallbackFunction(@ptrFromInt(address)),
-        .address = address,
+        .callback = callback,
+        .address = @intFromPtr(callback.function.value.handle.ptr),
     } };
     errdefer handler_value.release(internal.allocator, true);
     try storeHandlerEntry(target, internal, event_type, handler_value);
@@ -946,8 +949,9 @@ fn setHandlerAddress(target: *runtime.Instance, event_type: []const u8, address:
 }
 
 /// An event handler's value in the map: the callback function the binding
-/// converted the setter's argument to (OWNED by the map), and the address the
-/// binding handed over, which the getter returns as it was given. A running
+/// converted the setter's argument to, taken as the map's own hold (OWNED by
+/// the map), and the address of that hold's Global, which the getter returns
+/// in the binding's representation. A running
 /// handler holds a value of its own (invokeIdlEventHandler), so
 /// `this.onclick = null` inside one is safe.
 const HandlerValue = struct {
@@ -1347,7 +1351,7 @@ fn invoke(item: *const dom_module.event_dispatch.PathItem, event: *runtime.Insta
     if (state.stop_propagation_flag) return;
 
     // Step 7
-    state.current_target = item.invocation_target;
+    state.setCurrentTarget(item.invocation_target);
 
     // Steps 8-10.
     //

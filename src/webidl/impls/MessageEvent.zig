@@ -53,8 +53,57 @@ pub const InternalState = struct {
     ports: []*runtime.Instance = &.{},
     /// The event's hold on `source`'s wrapper, when the constructor was
     /// given one: the event may be all that refers to it. Released on deinit.
+    /// Not for a WindowProxy of another realm (`source_window`).
     source_hold: ?engine.Owned = null,
+    /// A source that is another realm's WindowProxy: the Window it named
+    /// when set, held with its generation (runtime.window_holders.Link), and
+    /// a traced edge from this event to the proxy itself (`source_slot`).
+    /// The source getter answers the proxy - whatever document its browsing
+    /// context shows now - and the Link only when there is no edge to read.
+    source_window: ?runtime.window_holders.Link = null,
 };
+
+/// The member a MessageEvent keeps another realm's WindowProxy source in
+/// (engine.traceValue).
+const source_slot: engine.TracedSlot = .{ .name = "source" };
+
+/// Hold `source` for the event (`internal`'s), as `source_hold` and
+/// `source_window` say.
+///
+/// A WindowProxy holder keeps the PROXY, never the Window it showed then
+/// (lane winslot1, kind 3; the integrator's ruling of 2026-10-25 on the
+/// three-browser probe, tmp/analysis/integrator-probes-1025n): after the
+/// source's frame navigates, `source` is the same proxy showing the new
+/// document (Firefox 158, Safari 27; Chrome 155 answers null), and after
+/// its iframe is removed, the same proxy, closed (Chrome, Firefox; Safari
+/// null) - Firefox's behaviour, the majority mechanism by mechanism.
+/// WebKit's MessageEvent keeps `Ref<WindowProxy>` (dom/MessageEvent.h). The
+/// edge is traced, never a root: the removed frame's realm lives exactly as
+/// long as the event. A source of the event's own realm needs none: the
+/// event goes with that realm, and the realm keeps its Window while it
+/// lives.
+fn holdSource(instance: *runtime.Instance, internal: *InternalState, source: typedefs.MessageEventSource) void {
+    switch (source) {
+        .window_proxy => |window| {
+            if (window.ctx == instance.ctx) return;
+            internal.source_window = runtime.window_holders.Link.of(window);
+            engine.traceValue(instance, .{ .instance = window }, source_slot);
+        },
+        inline else => |object| internal.source_hold = engine.retainValue(instance.ctx, .{ .instance = object }) catch null,
+    }
+}
+
+/// Let go of what `holdSource` held.
+fn releaseSource(instance: *runtime.Instance, internal: *InternalState) void {
+    if (internal.source_hold) |held| {
+        held.release();
+        internal.source_hold = null;
+    }
+    if (internal.source_window != null) {
+        engine.forgetTracedChild(instance, source_slot);
+        internal.source_window = null;
+    }
+}
 
 pub fn installHooks() void {
     @import("dom").extract_origin.install(.message_event, .{ .owns = &ownsOriginExtraction, .extract = &extractOrigin });
@@ -133,11 +182,8 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
         }
         if (internal.ports.len > 0) instance.ctx.allocator.free(internal.ports);
         internal.ports = &.{};
-        if (internal.source_hold) |held| {
-            held.release();
-            internal.source_hold = null;
-            state.own.source = null;
-        }
+        releaseSource(instance, internal);
+        state.own.source = null;
     }
 
     // Clean up the cloned JSValue data (if it's an owned string)
@@ -204,12 +250,9 @@ fn initialize(instance: *runtime.Instance, event_type: runtime.DOMString, init_d
     // is passed directly to the constructor. Retain it for this event.
     state.own.source = init_dict.source;
     if (init_dict.source) |source| {
-        const source_instance: *runtime.Instance = switch (source) {
-            inline else => |object| object,
-        };
         // With no engine to wrap in (a unit test's realm) there is no
         // collector either, and nothing to hold.
-        if (state.own._internal) |internal| internal.source_hold = engine.retainValue(ctx, .{ .instance = source_instance }) catch null;
+        if (state.own._internal) |internal| holdSource(instance, internal, source);
     }
 
     // The frozen array is what keeps the ports before script first reads
@@ -297,8 +340,18 @@ pub fn get_lastEventId(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// This is used by postMessage to identify the sending window/worker.
 pub fn get_source(instance: *runtime.Instance) anyerror!?typedefs.MessageEventSource {
     const state = instance.getState(State);
-    log.debug("[MessageEvent.get_source] called\n", .{});
-    return state.own.source;
+    const source = state.own.source orelse return null;
+    // Another realm's WindowProxy: the proxy the event keeps, as the Window
+    // it shows now (`holdSource`); with no edge to read, the Window it named,
+    // while that is still the one.
+    if (source == .window_proxy) if (state.own._internal) |internal| if (internal.source_window) |link| {
+        if (engine.tracedValue(instance, source_slot)) |held| {
+            defer held.release();
+            if (engine.convertToPlatformObject(instance.ctx, held.value)) |window| return .{ .window_proxy = window };
+        }
+        return if (link.get()) |window| .{ .window_proxy = window } else null;
+    };
+    return source;
 }
 
 /// Getter for ports
@@ -372,10 +425,7 @@ pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": runtime.DOMSt
         releaseData(state, internal);
         if (internal.owns_origin and state.own.origin.len > 0) allocator.free(state.own.origin);
         internal.owns_origin = false;
-        if (internal.source_hold) |held| {
-            held.release();
-            internal.source_hold = null;
-        }
+        releaseSource(instance, internal);
     }
     state.own.data.deinit(allocator);
     // `optional any data = null`: absent or undefined is null.
@@ -393,10 +443,7 @@ pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": runtime.DOMSt
     // "source": the event holds its wrapper, as the constructor's does.
     state.own.source = if (source.was_passed) source.value else null;
     if (state.own.source) |source_value| {
-        const source_instance: *runtime.Instance = switch (source_value) {
-            inline else => |object| object,
-        };
-        if (state.own._internal) |internal| internal.source_hold = engine.retainValue(instance.ctx, .{ .instance = source_instance }) catch null;
+        if (state.own._internal) |internal| holdSource(instance, internal, source_value);
     }
 
     // TODO(seam): "ports" - a sequence<MessagePort> the binding hands over as

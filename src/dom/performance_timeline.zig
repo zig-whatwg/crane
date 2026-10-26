@@ -1227,7 +1227,9 @@ pub const ResourceTimings = struct {
 /// object (fetch's TimingReporter): what fetch reports is marked as a
 /// resource timing of `global`, in a global task.
 pub fn timingReporterFor(global: *Instance) fetch.internal.TimingReporter {
-    return .{ .context = global, .report = &reportResourceTiming };
+    // The global's realm, resolved when fetch reports (lane winslot1, kind
+    // 11; csp_violations.reporterFor says why).
+    return .{ .context = global.ctx, .report = &reportResourceTiming };
 }
 
 /// A timing reporter for a global that can end before the reporter's last
@@ -1258,7 +1260,8 @@ pub const GuardedTimingReporter = struct {
 /// Fetch "report timing" for the request's client's `global` (the
 /// reporter's context).
 fn reportResourceTiming(context: *anyopaque, report: *const fetch.internal.TimingReport) void {
-    reportResourceTimingFor(@ptrCast(@alignCast(context)), report);
+    const global = @import("global_settings.zig").liveGlobalOf(@ptrCast(@alignCast(context))) orelse return;
+    reportResourceTimingFor(global, report);
 }
 
 /// Resource Timing's "mark resource timing" for `global`, with what fetch

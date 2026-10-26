@@ -55,8 +55,11 @@ const WindowRealmState = struct {
     /// The realms made with this one as their parent that have not ended:
     /// they end first when this one does.
     children: std.ArrayListUnmanaged(Context) = .empty,
-    /// The realm's Window, which the host made (create_global_object).
+    /// The realm's Window, which the host made (create_global_object), and
+    /// its slab generation then: the realm's end gives the Window's slot
+    /// back only while it is still that Window's (`endRealm` step 5).
     window: ?*engine.Instance = null,
+    window_generation: u64 = 0,
     /// This realm's global object, once its WindowProxy went on to a later
     /// realm (window_proxy_handed_on): held weakly - empty once V8 collects
     /// it - to sever it from this realm's Window at the end. A function of
@@ -353,6 +356,7 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
         .host = options.host,
         .parent = options.parent,
         .window = window,
+        .window_generation = runtime.SlabAllocator.generationOf(window),
         .allocator = allocator,
     };
     const parent_state: ?*WindowRealmState = if (options.parent) |parent| realms.get(parent) else null;
@@ -862,6 +866,23 @@ fn endRealm(realm: Context, how: engine.WindowRealmEnd) void {
         }
     };
 
+    // Every engine object that still names the Window loses it BEFORE the
+    // context manager frees it (lane winslot1, E1/E2): the WindowProxy and
+    // the hidden global behind it - both carry the Window in field 0 - and
+    // the WindowProperties object on its prototype chain. It used to happen
+    // after, and only for a destroyed navigable: a realm ended with
+    // .global_detached and no hand-on - a top-level page, a retired frame
+    // realm - kept the Window in all three, and a getter of Window.prototype
+    // called on the detached proxy unwrapped it. Blink's DisposeContext
+    // clears the global's native info (V8DOMWrapper::ClearNativeInfo) before
+    // DetachGlobalObject. A proxy handed on to a later realm is that realm's
+    // (its field 0 is the later Window; this realm's own global object was
+    // severed above, through `retired_global`), and a collected context has
+    // no object left that script could reach.
+    if (state) |s| if (s.window) |window| {
+        if (!s.window_proxy_handed_on and isLive(context)) severAttachedGlobal(context, window);
+    };
+
     // 1. The context manager first: it tears down the Window, its document and
     // its frames, and retires the realm - which from here on has no engine
     // context, and may only be compared.
@@ -878,10 +899,10 @@ fn endRealm(realm: Context, how: engine.WindowRealmEnd) void {
         // attached: script that holds a removed frame's WindowProxy still
         // reads its own properties - `self`, `frames`, `globalThis` - and
         // `window` (self-et-al.window.js). The global outlives the Window the
-        // context manager just freed - its page ended first - so it is
-        // severed from it: a member that needs the Window finds none and
-        // throws a TypeError, rather than reading freed memory.
-        .navigable_destroyed => if (state) |s| if (s.window) |window| severAttachedGlobal(context, window),
+        // context manager just freed - its page ended first - so it was
+        // severed from it before (above): a member that needs the Window
+        // finds none and throws a TypeError, rather than reading freed memory.
+        .navigable_destroyed => {},
     };
     // 3. Exit the context entered for the realm's life - unless a realm
     // that took over its WindowProxy was entered in its place. Only the last
@@ -899,6 +920,17 @@ fn endRealm(realm: Context, how: engine.WindowRealmEnd) void {
     _ = ffi.v8_Isolate_ContextDisposedNotification(isolate, true);
     ffi.v8_Context_Dispose(context);
     if (state) |s| if (s.entered_isolate) ffi.v8_Isolate_Exit(isolate);
+    // 5. The Window's storage goes back to its Browser's slab: its teardown
+    // ran (step 1, which marks it), every engine object that named it was
+    // severed (above) and its realm's sweep is over - now, or, when this
+    // end runs inside another realm's teardown, after that teardown's last
+    // phase (runtime.gc.releaseSevered). Only once every holder that can
+    // outlive the realm reads it through a generation check
+    // (runtime.window_holders.reusable); until then it stays issued, as it
+    // always was, until its Browser ends.
+    if (runtime.window_holders.reusable) if (state) |s| if (s.window) |window| {
+        runtime.gc.releaseSevered(window, s.window_generation);
+    };
 }
 
 // ============================================================================

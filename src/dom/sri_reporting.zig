@@ -11,11 +11,14 @@ const csp = @import("csp");
 const reporting = @import("reporting.zig");
 
 pub fn reporterFor(global: *runtime.Instance) request.IntegrityViolationReporter {
-    return .{ .context = global, .report = report };
+    // The global's realm, resolved when fetch reports (lane winslot1, kind
+    // 11; csp_violations.reporterFor says why).
+    return .{ .context = global.ctx, .report = report };
 }
 
 fn report(context: *anyopaque, violation: *const request.IntegrityViolation) void {
-    reportFallible(@ptrCast(@alignCast(context)), violation) catch {};
+    const global = @import("global_settings.zig").liveGlobalOf(@ptrCast(@alignCast(context))) orelse return;
+    reportFallible(global, violation) catch {};
 }
 
 fn reportFallible(global: *runtime.Instance, violation: *const request.IntegrityViolation) !void {
