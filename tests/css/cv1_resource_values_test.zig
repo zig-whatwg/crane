@@ -247,7 +247,10 @@ const Checks = struct {
         defer s.unref();
         const specified = try value(options(s), "content", "attr(data-label, 'a long label') url(#icon) image-set(url(a.png) 1x, 'b.png' 2x)");
         defer specified.release();
-        const computed_content = (try specified.content.compute(testing.allocator, null)).?;
+        try testing.expect(specified == .pending);
+        const substituted = try resolveContent(testing.allocator, specified);
+        defer substituted.unref();
+        const computed_content = (try substituted.compute(testing.allocator, null)).?;
         const computed: values.Value = .{ .content = computed_content };
         defer computed.release();
         const urls = computed.resourceUrls();
@@ -328,7 +331,9 @@ const Checks = struct {
             }
             _ = try css.properties.parseDeclaration(opts, css.properties.lookup("content").?, spelling, &assignments);
             if (assignments.items.len != 0) {
-                const computed = try assignments.items[0].value.value.content.compute(allocator, null);
+                const substituted = try resolveContent(allocator, assignments.items[0].value.value);
+                defer substituted.unref();
+                const computed = try substituted.compute(allocator, null);
                 if (computed) |c| c.unref();
             }
         }
@@ -340,5 +345,25 @@ const Checks = struct {
             }
             _ = try css.properties.parseDeclaration(opts, css.properties.lookup("background").?, spelling, &assignments);
         }
+    }
+
+    fn resolveContent(allocator: std.mem.Allocator, specified: values.Value) !*values.Content {
+        if (specified == .pending) {
+            const MissingAttributes = struct {
+                fn attribute(_: *anyopaque, _: u64, _: ?*const css.substitution.NamespaceMap, _: ?[]const u8, _: []const u8) ?css.substitution.Attribute {
+                    return null;
+                }
+            };
+            var attributes: MissingAttributes = .{};
+            const resolved = try specified.pending.resolve(allocator, .{ .context = &attributes, .attribute = MissingAttributes.attribute }, null);
+            defer resolved.deinit(allocator);
+            try testing.expect(resolved == .resolved);
+            try testing.expectEqual(@as(usize, 1), resolved.resolved.len);
+            const result = resolved.resolved[0].value.value.content;
+            result.ref();
+            return result;
+        }
+        specified.content.ref();
+        return specified.content;
     }
 };

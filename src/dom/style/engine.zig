@@ -31,7 +31,8 @@
 //! part of every cached style's key. ::slotted() rules of a slot's tree
 //! apply to the elements assigned to the slot, after flattening, and
 //! ::part() rules of a host's tree to the elements of its shadow tree with
-//! those part names (stated: exportparts forwards nothing yet).
+//! those part names, including exportparts names forwarded through successive
+//! hosts. Exported pseudo-element matching is not implemented yet.
 //!
 //! Spec: https://drafts.csswg.org/cssom-1/#css-style-sheet-collections
 //! Spec: https://drafts.csswg.org/css-cascade-5/#value-stages
@@ -53,6 +54,7 @@ const pointer_states = @import("../pointer_states.zig");
 const target_element = @import("../target_element.zig");
 const slot_helpers = @import("../slot_helpers.zig");
 const custom_elements = @import("../custom_elements.zig");
+const tree_scope = @import("../tree_scope.zig");
 const navigable_container = @import("../navigable_container.zig");
 const selector_matching = @import("../selector_matching.zig");
 const hooks = @import("hooks.zig");
@@ -1161,7 +1163,7 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
         .allocator = element.ctx.allocator,
         .parent = parent,
         .environment = .{ .context = res.document, .lookup = environment_variables.lookup },
-        .content_attributes = .{ .context = element, .get = contentAttribute },
+        .content_attributes = .{ .context = element, .get = contentAttribute, .scoped = scopedContentAttribute },
         .tree_counts = .{ .context = node, .get = treeCounts },
         .random_base = .{ .context = &random_context, .get = randomBase },
         .pseudo = pseudo,
@@ -1299,6 +1301,46 @@ fn contentAttribute(context: *const anyopaque, name: []const u8) ?[]const u8 {
     return null;
 }
 
+/// Values 5 §8.7, CSS Scoping (csswg-drafts#12721): a ::part reference
+/// reads the host in its declaration's scope, including exportparts. A
+/// slotted or :host declaration names an inner scope, not an ancestor of
+/// the real element, and therefore keeps that element. No pointer escapes.
+fn attributeOrigin(element: *runtime.Instance, declaration_scope: u64) *runtime.Instance {
+    var candidate = element;
+    while (true) {
+        var root = instance_bridge.getNodeBase(candidate) orelse return element;
+        while (root.parent_node) |parent| root = parent;
+        if (scopeSerial(root) == declaration_scope) return candidate;
+        if (!isShadowRoot(root)) return element;
+        candidate = interfaces.ShadowRoot.get_host(instanceOf(root) orelse return element) catch return element;
+    }
+}
+
+/// Namespace-aware, declaration-scoped lookup for the shared attr Host.
+/// The legacy get(name) remains available to existing content callers.
+fn scopedContentAttribute(context: *const anyopaque, declaration_scope: u64, map: ?*const css.substitution.NamespaceMap, prefix: ?[]const u8, name: []const u8) ?css.substitution.Attribute {
+    const styled: *const runtime.Instance = @ptrCast(@alignCast(context));
+    const element = attributeOrigin(@constCast(styled), declaration_scope);
+    const namespace = if (prefix) |p| (map orelse return null).lookup(p) orelse return null else "";
+    const data = element_data.of(element) orelse return null;
+    const document = interfaces.Node.get_ownerDocument(element) catch null;
+    const is_html = std.mem.eql(u8, data.namespaceSlice() orelse "", html_namespace) and
+        (if (document) |owner| document_internals.getDocumentType(owner) == .html else false);
+    var iterator = data.attributeIterator();
+    while (iterator.next()) |entry| {
+        if (!std.mem.eql(u8, namespace, entry.namespace_uri orelse "")) continue;
+        const matches = if (is_html) std.ascii.eqlIgnoreCase(entry.local_name, name) else std.mem.eql(u8, entry.local_name, name);
+        if (!matches) continue;
+        return .{
+            .origin = @intFromPtr(element),
+            .value = entry.value,
+            .namespace = if (namespace.len == 0) null else entry.namespace_uri,
+            .local_name = entry.local_name,
+        };
+    }
+    return null;
+}
+
 /// Cascade 5 section 5: every declaration block that applies to the
 /// element, with where it enters the cascade.
 fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase, state: *ElementStyle, pseudo: ?[]const u8, reads: *selector_matching.StateReads) Error!void {
@@ -1333,21 +1375,22 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
 
     var matcher = selector_matching.StyleMatcher.init(element, reads) orelse return;
     const quirks = res.active.quirks;
+    var root = node;
+    while (root.parent_node) |p| root = p;
+    const own_scope = scopeSerial(root);
 
     // The UA origin, and HTML's presentational hints.
     if (ua_sheet.get()) |ua| {
-        try matchContents(res, &matcher, element, keys, ua.rules, pseudo, is_html, quirks, .{ .origin = .user_agent }, null, null);
-        if (quirks) try matchContents(res, &matcher, element, keys, ua.quirks, pseudo, is_html, quirks, .{ .origin = .user_agent, .order = 1 << 20 }, null, null);
-        try matchContents(res, &matcher, element, keys, ua.hints, pseudo, is_html, quirks, .{ .origin = .presentational_hint }, null, .zero);
+        try matchContents(res, &matcher, element, keys, ua.rules, pseudo, is_html, quirks, .{ .origin = .user_agent, .tree_scope = .{ .serial = own_scope } }, null, null);
+        if (quirks) try matchContents(res, &matcher, element, keys, ua.quirks, pseudo, is_html, quirks, .{ .origin = .user_agent, .order = 1 << 20, .tree_scope = .{ .serial = own_scope } }, null, null);
+        try matchContents(res, &matcher, element, keys, ua.hints, pseudo, is_html, quirks, .{ .origin = .presentational_hint, .tree_scope = .{ .serial = own_scope } }, null, .zero);
     }
     if (background_eligible) if (try resource_loading.backgroundHint(element, state, background)) |hint| {
-        try res.matched.append(res.allocator, .{ .block = hint, .source = .{ .origin = .presentational_hint } });
+        try res.matched.append(res.allocator, .{ .block = hint, .source = .{ .origin = .presentational_hint, .tree_scope = .{ .serial = own_scope } } });
     };
 
     // The author origin (CSS Scoping 3): the sheets of the element's own
     // tree - the document's, or its shadow tree's - in that tree's context.
-    var root = node;
-    while (root.parent_node) |p| root = p;
     var own_depth: u16 = 0;
     if (root.node_type == NodeBase.DOCUMENT_NODE) {
         for (res.active.sheets.items) |*s| {
@@ -1356,7 +1399,7 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
     } else if (res.active.scopeOf(root)) |scope| {
         own_depth = scope.depth;
         for (scope.sheets.items) |*s| {
-            try matchContents(res, &matcher, element, keys, s.contents, pseudo, is_html, quirks, .{ .origin = .author, .order = s.order_base, .tree_depth = scope.depth }, s, null);
+            try matchContents(res, &matcher, element, keys, s.contents, pseudo, is_html, quirks, .{ .origin = .author, .order = s.order_base, .tree_depth = scope.depth, .tree_scope = .{ .serial = scopeSerial(scope.root) } }, s, null);
         }
     } else if (isShadowRoot(root)) own_depth = shadowDepth(root);
     // A shadow host: its shadow tree's :host rules, the host featureless
@@ -1365,7 +1408,7 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
         if (res.active.scopeOf(shadow_node)) |scope| if (selector_matching.StyleMatcher.initForHost(element, shadow, reads)) |host_matcher| {
             var m = host_matcher;
             for (scope.sheets.items) |*s| {
-                try matchHostRules(res, &m, element, s.contents, pseudo, quirks, .{ .origin = .author, .order = s.order_base, .tree_depth = scope.depth }, s);
+                try matchHostRules(res, &m, element, s.contents, pseudo, quirks, .{ .origin = .author, .order = s.order_base, .tree_depth = scope.depth, .tree_scope = .{ .serial = scopeSerial(scope.root) } }, s);
             }
         };
     };
@@ -1385,30 +1428,48 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
         if (res.active.scopeOf(slot_root)) |scope| if (selector_matching.StyleMatcher.init(slot_instance, reads)) |slot_matcher| {
             var m = slot_matcher;
             for (scope.sheets.items) |*s| {
-                try matchAroundRules(res, &m, .slotted, element, slot_instance, s.contents, pseudo, .{ .origin = .author, .order = s.order_base, .tree_depth = scope.depth }, s);
+                try matchAroundRules(res, &m, .slotted, element, slot_instance, &.{}, s.contents, pseudo, .{ .origin = .author, .order = s.order_base, .tree_depth = scope.depth, .tree_scope = .{ .serial = scopeSerial(scope.root) } }, s);
             }
         };
         assigned = slot;
     }
-    // ::part() (CSS Shadow Parts 4.1): an element of a shadow tree with part
-    // names takes the ::part() rules of its host's tree, in that (outer)
-    // context. Stated: names forwarded by exportparts are not exposed further.
-    if (data.findAttribute(null, "part") != null and isShadowRoot(root)) part: {
-        const host = interfaces.ShadowRoot.get_host(instanceOf(root) orelse break :part) catch break :part;
-        const host_node = instance_bridge.getNodeBase(host) orelse break :part;
-        var host_root = host_node;
-        while (host_root.parent_node) |p| host_root = p;
-        var part_matcher = selector_matching.StyleMatcher.init(host, reads) orelse break :part;
-        if (host_root.node_type == NodeBase.DOCUMENT_NODE) {
-            for (res.active.sheets.items) |*s| {
-                try matchAroundRules(res, &part_matcher, .part, element, host, s.contents, pseudo, .{ .origin = .author, .order = s.order_base }, s);
+    // CSS Shadow Parts §5.1: start with this element's part names, match
+    // each host in its own scope, then forward ONLY its exportparts names.
+    if (isShadowRoot(root)) if (data.findAttribute(null, "part")) |part| part: {
+        const parts = css.shadow_parts;
+        var buffers = [_]parts.NameBuffer{ parts.nameBuffer(res.allocator), parts.nameBuffer(res.allocator) };
+        const allocators = [_]Allocator{ buffers[0].get(), buffers[1].get() };
+        var current: usize = 0;
+        var names = try parts.fromAttribute(allocators[current], part.value);
+        defer names.deinit(allocators[current]);
+        var part_root = root;
+        while (names.items.len != 0 and isShadowRoot(part_root)) {
+            const host = interfaces.ShadowRoot.get_host(instanceOf(part_root) orelse break :part) catch break :part;
+            const host_node = instance_bridge.getNodeBase(host) orelse break :part;
+            var host_root = host_node;
+            while (host_root.parent_node) |p| host_root = p;
+            var part_matcher = selector_matching.StyleMatcher.init(host, reads) orelse break :part;
+            if (host_root.node_type == NodeBase.DOCUMENT_NODE) {
+                for (res.active.sheets.items) |*s| {
+                    try matchAroundRules(res, &part_matcher, .part, element, host, names.items, s.contents, pseudo, .{ .origin = .author, .order = s.order_base }, s);
+                }
+            } else if (res.active.scopeOf(host_root)) |scope| {
+                for (scope.sheets.items) |*s| {
+                    try matchAroundRules(res, &part_matcher, .part, element, host, names.items, s.contents, pseudo, .{ .origin = .author, .order = s.order_base, .tree_depth = scope.depth, .tree_scope = .{ .serial = scopeSerial(host_root) } }, s);
+                }
             }
-        } else if (res.active.scopeOf(host_root)) |scope| {
-            for (scope.sheets.items) |*s| {
-                try matchAroundRules(res, &part_matcher, .part, element, host, s.contents, pseudo, .{ .origin = .author, .order = s.order_base, .tree_depth = scope.depth }, s);
-            }
+            if (!isShadowRoot(host_root)) break;
+            const host_data = element_data.of(host) orelse break;
+            const exported = host_data.findAttribute(null, "exportparts") orelse break;
+            const next = 1 - current;
+            const forwarded = try parts.forward(allocators[next], names.items, exported.value);
+            names.deinit(allocators[current]);
+            buffers[current].fixed_buffer_allocator.reset();
+            names = forwarded;
+            current = next;
+            part_root = host_root;
         }
-    }
+    };
 
     // Element-attached declarations: the style attribute (CSS Style
     // Attributes, Cascade 5 6.1 "Element-Attached Styles").
@@ -1416,10 +1477,15 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
         const n = ns.?;
         if (std.mem.eql(u8, n, html_namespace) or std.mem.eql(u8, n, svg_namespace) or std.mem.eql(u8, n, mathml_namespace)) {
             if (try inlineBlock(element, state, quirks)) |block| {
-                try res.matched.append(res.allocator, .{ .block = block, .source = .{ .origin = .author, .element_attached = true, .tree_depth = own_depth } });
+                try res.matched.append(res.allocator, .{ .block = block, .source = .{ .origin = .author, .element_attached = true, .tree_depth = own_depth, .tree_scope = .{ .serial = own_scope } } });
             }
         }
     }
+}
+
+/// Reuse the existing document-local shadow identity, never a new counter.
+fn scopeSerial(root: *NodeBase) u64 {
+    return tree_scope.serialOf(instanceOf(root) orelse return 0);
 }
 
 const SpecificityOverride = enum { zero };
@@ -1445,7 +1511,7 @@ const AroundKind = enum { slotted, part };
 
 /// A sheet's ::slotted() or ::part() rules that match `element` through
 /// `outer` - the slot it is assigned to, the host whose part it is.
-fn matchAroundRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, kind: AroundKind, element: *runtime.Instance, outer: *runtime.Instance, contents: *const Contents, pseudo: ?[]const u8, base: css.cascade.Source, active_sheet: *const ActiveSheet) Error!void {
+fn matchAroundRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, kind: AroundKind, element: *runtime.Instance, outer: *runtime.Instance, exposed: []const []const u8, contents: *const Contents, pseudo: ?[]const u8, base: css.cascade.Source, active_sheet: *const ActiveSheet) Error!void {
     const candidates = switch (kind) {
         .slotted => contents.buckets.slotted.items,
         .part => contents.buckets.part.items,
@@ -1455,7 +1521,7 @@ fn matchAroundRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, 
         if (!contents.conditionHolds(rule.condition, &res.active.media)) continue;
         const matched = switch (kind) {
             .slotted => matcher.matchesSlotted(element, outer, rule.complex, pseudo),
-            .part => matcher.matchesPart(element, outer, rule.complex, pseudo),
+            .part => matcher.matchesPart(element, outer, rule.complex, pseudo, exposed),
         };
         if (!matched) continue;
         var source = base;

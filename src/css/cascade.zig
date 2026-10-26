@@ -675,7 +675,7 @@ const Builder = struct {
             if (deps.line_height) try self.ensureLineHeight();
         }
         const allocator = self.ctx.allocator;
-        const bytes = (try self.computeTyped(allocator, reg, text, pending)) orelse return retained(self.defaultCustom(name));
+        const bytes = (try self.computeTyped(allocator, reg, text, taint, pending)) orelse return retained(self.defaultCustom(name));
         errdefer allocator.free(bytes);
         // Computation reorders tokens, so taint covers the whole value when
         // any input token was tainted (both shipping browsers taint a var()
@@ -692,13 +692,13 @@ const Builder = struct {
     /// `text` parsed against `reg`'s syntax and computed in this element's
     /// context, serialized (owned by `allocator`); null when the syntax
     /// does not match.
-    fn computeTyped(self: *Builder, allocator: Allocator, reg: *const registered_mod.Snapshot.Entry, text: []const u8, pending: ?*const @import("pending_values.zig").Pending) Allocator.Error!?[]u8 {
+    fn computeTyped(self: *Builder, allocator: Allocator, reg: *const registered_mod.Snapshot.Entry, text: []const u8, taint: []const substitution.TaintRange, pending: ?*const @import("pending_values.zig").Pending) Allocator.Error!?[]u8 {
         // A declaration's own url()s resolve against its base (the
         // pending value keeps them); a query value's are left as written.
         var value = (if (pending) |p|
-            try p.parseSyntax(allocator, &reg.syntax, text, self.ctx.url_resolver)
+            try p.parseSyntax(allocator, &reg.syntax, text, taint, self.ctx.url_resolver)
         else
-            try reg.syntax.parseValue(.{ .allocator = allocator }, text)) orelse return null;
+            try reg.syntax.parseValue(.{ .allocator = allocator, .tainted_ranges = taint }, text)) orelse return null;
         defer value.deinit();
         var computed = try value.compute(allocator, .{
             .math = self.mathContext(.width),
@@ -1070,7 +1070,7 @@ const Builder = struct {
         // computed under its registration (a mismatch matches nothing),
         // compared with the element's computed value.
         if (self.typedRegistration(name)) |reg| {
-            query.text = (try self.computeTyped(arena.allocator(), reg, query.text, null)) orelse return .{ .value = false, .tainted = query.tainted };
+            query.text = (try self.computeTyped(arena.allocator(), reg, query.text, &.{}, null)) orelse return .{ .value = false, .tainted = query.tainted };
         }
         const value = (try customValueCallback(context, name)) orelse return .{ .value = false, .tainted = query.tainted };
         return .{ .value = tokensEqual(value.text, query.text), .tainted = query.tainted or value.taint.len != 0 };
@@ -1163,18 +1163,12 @@ const Builder = struct {
 
     /// attr() (Codex row 122): the element's attribute through the DOM's
     /// Context.content_attributes lookup (the originating element's for a
-    /// pseudo-element). Batch 1 answers the no-namespace case only - a
-    /// prefixed name gives null, so the fallback applies - until row 122
-    /// extends the lookup with namespaces and the winning declaration's tree
-    /// scope (passed here already).
+    /// pseudo-element), with the winning declaration's namespaces and tree
+    /// scope. The lookup supplies the resolved origin for the cycle key.
     fn attributeCallback(context: *anyopaque, tree_scope: u64, map: ?*const substitution.NamespaceMap, prefix: ?[]const u8, local_name: []const u8) ?substitution.Attribute {
-        _ = tree_scope;
-        _ = map;
         const self: *Builder = @ptrCast(@alignCast(context));
-        if (prefix != null) return null;
         const lookup = self.ctx.content_attributes orelse return null;
-        const value = lookup.get(lookup.context, local_name) orelse return null;
-        return .{ .value = value, .namespace = null, .local_name = local_name };
+        return lookup.attribute(tree_scope, map, prefix, local_name);
     }
 
     fn guardCallback(context: *anyopaque, kind: substitution.GuardKind, name: []const u8) Allocator.Error!usize {

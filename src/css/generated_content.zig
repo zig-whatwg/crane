@@ -8,12 +8,23 @@ const values = @import("style_values.zig");
 const resources = @import("resource_values.zig");
 const properties = @import("properties.zig");
 const random_values = @import("random_values.zig");
+const substitution = @import("substitution.zig");
 const Allocator = std.mem.Allocator;
 const Token = tokenizer.Token;
 
 pub const AttributeLookup = struct {
     context: *const anyopaque,
     get: *const fn (*const anyopaque, []const u8) ?[]const u8,
+    scoped: ?*const fn (*const anyopaque, u64, ?*const substitution.NamespaceMap, ?[]const u8, []const u8) ?substitution.Attribute = null,
+
+    /// Values 5 §8.7: namespace and originating element follow the winning
+    /// declaration. Legacy callers still provide a no-namespace lookup.
+    pub fn attribute(self: AttributeLookup, tree_scope: u64, map: ?*const substitution.NamespaceMap, prefix: ?[]const u8, local_name: []const u8) ?substitution.Attribute {
+        if (self.scoped) |lookup| return lookup(self.context, tree_scope, map, prefix, local_name);
+        if (prefix != null) return null;
+        const value = self.get(self.context, local_name) orelse return null;
+        return .{ .origin = @intFromPtr(self.context), .value = value, .namespace = null, .local_name = local_name };
+    }
 };
 
 pub const UrlResolver = resources.UrlResolver;
@@ -242,10 +253,16 @@ pub fn parseWithSource(allocator: Allocator, text: []const u8, resolver: ?UrlRes
 /// parsing. Text must be from the scope's original buffer; parsed keys own
 /// their strings, and neither Content nor its images retain the scope.
 pub fn parseWithSourceAndScope(allocator: Allocator, text: []const u8, resolver: ?UrlResolver, source: ?*resources.ResourceSource, scope: ?*const random_values.ParseScope) !?*Content {
-    const result = try Content.create(allocator);
+    return parseWithOptions(.{ .allocator = allocator, .url_resolver = resolver, .resource_source = source, .random_scope = scope }, text);
+}
+
+/// Borrow options for this parse only. Taint ranges stay in the original
+/// declaration's coordinates, with taint_offset naming this input's start.
+pub fn parseWithOptions(options: properties.ParseOptions, text: []const u8) !?*Content {
+    const result = try Content.create(options.allocator);
     var success = false;
     defer if (!success) result.unref();
-    var parser: Parser = .{ .allocator = result.arena.allocator(), .backing_allocator = allocator, .tok = .init(text), .input = text, .resolver = resolver, .source = source, .random_scope = scope };
+    var parser: Parser = .{ .allocator = result.arena.allocator(), .backing_allocator = options.allocator, .tok = .init(text), .input = text, .options = options };
     var items: std.ArrayList(Item) = .empty;
     while (parser.peek().token_type != .eof) {
         const token = parser.peek();
@@ -279,14 +296,15 @@ const Parser = struct {
     tok: tokenizer.Tokenizer,
     input: []const u8,
     peeked: ?Token = null,
-    resolver: ?UrlResolver,
-    source: ?*resources.ResourceSource,
+    peeked_offset: usize = 0,
     /// Borrowed only for this parse; retries use the same immutable scope.
-    random_scope: ?*const random_values.ParseScope,
+    options: properties.ParseOptions,
 
     fn peek(self: *Parser) Token {
         if (self.peeked) |token| return token;
         while (true) {
+            self.tok.skipWhitespace();
+            self.peeked_offset = self.tok.pos;
             const token = self.tok.next();
             if (token.token_type == .whitespace) continue;
             self.peeked = token;
@@ -320,9 +338,11 @@ const Parser = struct {
     }
 
     fn item(self: *Parser) Allocator.Error!?Item {
+        _ = self.peek();
+        const begin = self.peeked_offset;
         const token = self.next();
         if (token.token_type == .string) return .{ .kind = .text, .text = try self.string(token) };
-        if (token.token_type == .url) return try self.url(try self.ident(token));
+        if (token.token_type == .url) return try self.url(try self.ident(token), .{ .start = begin, .end = self.tok.pos });
         if (token.token_type == .ident) {
             const name = try self.ident(token);
             inline for (.{ "open-quote", "close-quote", "no-open-quote", "no-close-quote" }) |quote| if (std.ascii.eqlIgnoreCase(name, quote)) return .{ .kind = .quote, .text = quote };
@@ -338,7 +358,7 @@ const Parser = struct {
         if (std.ascii.eqlIgnoreCase(name, "url") or std.ascii.eqlIgnoreCase(name, "src")) {
             const value = self.next();
             if (value.token_type != .string or !self.closeFunction()) return null;
-            return try self.url(try self.string(value));
+            return try self.url(try self.string(value), .{ .start = begin, .end = self.tok.pos });
         }
         // Images4 §2.5 / Q168: sole-color image() uses the owned image bridge.
         // Q232: other image() forms keep their existing Syntax3 EOF grammar.
@@ -359,12 +379,23 @@ const Parser = struct {
         return null;
     }
 
-    fn url(self: *Parser, raw: []const u8) !Item {
-        return self.imageItem(try properties.urlValue(self.imageOptions(), raw));
+    fn url(self: *Parser, raw: []const u8, range: resources.ResourceUrl.Range) Allocator.Error!?Item {
+        const options = self.imageOptions();
+        if (properties.urlRangeTainted(options, range)) return null;
+        return try self.imageItem(try properties.urlValue(options, raw));
     }
 
     fn imageOptions(self: *const Parser) properties.ParseOptions {
-        return .{ .allocator = self.backing_allocator, .url_resolver = self.resolver, .resource_source = self.source, .random_scope = self.random_scope };
+        // Keep content's existing strict image grammar; only taint joins
+        // the source and random scope previously forwarded here.
+        return .{
+            .allocator = self.backing_allocator,
+            .url_resolver = self.options.url_resolver,
+            .resource_source = self.options.resource_source,
+            .random_scope = self.options.random_scope,
+            .tainted_ranges = self.options.tainted_ranges,
+            .taint_offset = self.options.taint_offset,
+        };
     }
 
     /// Takes ownership even on failure; the value never lives in our arena.
@@ -383,6 +414,7 @@ const Parser = struct {
         const image = try @import("image_values.zig").parse(self.imageOptions(), &stream, .{}) orelse return null;
         self.tok = stream.tok;
         self.peeked = stream.peeked;
+        self.peeked_offset = stream.peeked_offset;
         return try self.imageItem(image);
     }
 
@@ -397,11 +429,19 @@ const Parser = struct {
             return self.remainingFunction(start, .image);
         self.tok = stream.tok;
         self.peeked = stream.peeked;
+        self.peeked_offset = stream.peeked_offset;
         return try self.imageItem(image);
     }
 
-    fn serializedItem(self: *Parser, kind: Kind, text: []const u8) !Item {
-        return .{ .kind = kind, .text = text, .resource_urls = try resources.collect(self.allocator, text, self.resolver, self.source) };
+    fn serializedItem(self: *Parser, kind: Kind, text: []const u8, begin: usize) !?Item {
+        const urls = try resources.collect(self.allocator, text, self.options.url_resolver, self.options.resource_source);
+        for (urls) |url_value| {
+            if (properties.urlRangeTainted(self.options, .{ .start = begin + url_value.range.start, .end = begin + url_value.range.end })) {
+                resources.releaseAll(self.allocator, urls);
+                return null;
+            }
+        }
+        return .{ .kind = kind, .text = text, .resource_urls = urls };
     }
 
     fn remainingFunction(self: *Parser, start: Token, kind: Kind) !?Item {
@@ -416,7 +456,7 @@ const Parser = struct {
                     var closed: std.ArrayList(u8) = .empty;
                     try closed.appendSlice(self.allocator, self.input[begin..self.tok.pos]);
                     try closed.appendNTimes(self.allocator, ')', depth);
-                    return try self.serializedItem(kind, closed.items);
+                    return try self.serializedItem(kind, closed.items, begin);
                 },
                 .bad_string, .bad_url, .semicolon, .left_brace, .right_brace => return null,
                 .left_paren => depth += 1,
@@ -426,7 +466,7 @@ const Parser = struct {
         }
         if (!any) return null;
         const begin = @intFromPtr(start.value.ptr) - @intFromPtr(self.input.ptr);
-        return try self.serializedItem(kind, try self.allocator.dupe(u8, self.input[begin..self.tok.pos]));
+        return try self.serializedItem(kind, try self.allocator.dupe(u8, self.input[begin..self.tok.pos]), begin);
     }
 
     fn attribute(self: *Parser, start: Token) !?Item {
