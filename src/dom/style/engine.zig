@@ -57,8 +57,10 @@ const navigable_container = @import("../navigable_container.zig");
 const selector_matching = @import("../selector_matching.zig");
 const hooks = @import("hooks.zig");
 const sheet_mod = @import("sheet.zig");
+const style_rules = @import("rules.zig");
 const ua_sheet = @import("ua_sheet.zig");
 const element_style = @import("element_style.zig");
+const environment_variables = @import("environment_variables.zig");
 pub const resource_loading = @import("resource_loading.zig");
 pub const available_images = @import("available_images.zig");
 
@@ -242,6 +244,12 @@ pub const StyleEngine = struct {
         /// when a script or an active document stylesheet registers a name.
         property_registry: ?*css.property_registry.Registry = null,
         property_registry_generation: ?u64 = null,
+        /// The registrations as the cascade reads them, each initial value
+        /// computed once (css.registered_properties; lane vars1b2), for the
+        /// registry version and viewport in `registered_key`. One reference
+        /// held; every style computed with it holds its own.
+        registered: ?*css.registered_properties.Snapshot = null,
+        registered_key: RegisteredKey = .{},
 
         fn deinit(self: *Rare, allocator: Allocator) void {
             if (self.resources) |resources| resources.destroy();
@@ -253,6 +261,7 @@ pub const StyleEngine = struct {
                 registry.deinit();
                 allocator.destroy(registry);
             }
+            if (self.registered) |snapshot| snapshot.release();
             self.media_query_lists.deinit(allocator);
             self.adopting_roots.deinit(allocator);
             if (self.preferred_set_name) |name| allocator.free(name);
@@ -313,6 +322,50 @@ pub const StyleEngine = struct {
         registry.replaceDeclared(&declared);
         self.rare.?.property_registry_generation = self.generation;
         return registry;
+    }
+
+    const RegisteredKey = struct { version: u64 = 0, viewport_width: f64 = 0, viewport_height: f64 = 0 };
+
+    /// The document's registrations for the cascade (Properties and Values
+    /// API 1; design: wpt-results/lanes/vars1b2-unit1-c53b90634d/
+    /// cascade-design.md section 2): a snapshot with each initial value
+    /// computed once, rebuilt only when the registry's version or the
+    /// viewport (the one global input of an initial value) moved - Blink's
+    /// StyleInitialData, made lazily per document and dropped on
+    /// PropertyRegistryChanged. Null when the document registers nothing,
+    /// so the cascade's fast path reads no registry at all. Borrowed until
+    /// the next style read.
+    fn registeredSnapshot(self: *StyleEngine, document: *runtime.Instance, media: *const css.media_queries.MediaValues) Error!?*css.registered_properties.Snapshot {
+        const registry = (try self.propertyRegistry(document)) orelse return null;
+        const rare = self.rare.?;
+        if (registry.scripted.entries.count() == 0 and registry.declared.entries.count() == 0) {
+            if (rare.registered) |old| old.release();
+            rare.registered = null;
+            return null;
+        }
+        const key: RegisteredKey = .{ .version = registry.version, .viewport_width = media.width, .viewport_height = media.height };
+        if (rare.registered) |snapshot| if (std.meta.eql(rare.registered_key, key)) return snapshot;
+        // §2.1: a script registration wins over a declared one of its name.
+        var sources: std.ArrayList(css.registered_properties.Source) = .empty;
+        defer sources.deinit(self.allocator);
+        for ([_]*const css.property_registry.Declared{ &registry.scripted, &registry.declared }, 0..) |set, n| {
+            var it = set.entries.iterator();
+            while (it.next()) |entry| {
+                const registration = entry.value_ptr.*;
+                if (n == 1 and registry.scripted.entries.contains(registration.name)) continue;
+                try sources.append(self.allocator, .{
+                    .name = registration.name,
+                    .syntax_text = registration.syntax_text,
+                    .inherits = registration.inherits,
+                    .initial_value = if (registration.initial_value) |*value| value else null,
+                });
+            }
+        }
+        const snapshot = try css.registered_properties.Snapshot.create(self.allocator, .{ .viewport_width = media.width, .viewport_height = media.height }, sources.items);
+        if (rare.registered) |old| old.release();
+        rare.registered = snapshot;
+        rare.registered_key = key;
+        return snapshot;
     }
 
     /// §4.1: only a successful script registration changes computed style.
@@ -904,6 +957,9 @@ const Resolution = struct {
     /// preferred one, found once per style read.
     page_color_scheme: css.color_scheme.Scheme = .light,
     preferred_color_scheme: css.color_scheme.Scheme = .light,
+    /// The document's registered custom properties (StyleEngine.
+    /// registeredSnapshot), found once per style read; null when none.
+    registered: ?*css.registered_properties.Snapshot = null,
     matched: std.ArrayList(Matched) = .empty,
     candidates: std.ArrayList(u32) = .empty,
 
@@ -955,6 +1011,7 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
     // and with them the generation every cached style is keyed on.
     res.preferred_color_scheme = if (active.media.prefers_color_scheme == .dark) .dark else .light;
     res.page_color_scheme = css.color_scheme.used(engine.page_color_schemes, res.preferred_color_scheme);
+    res.registered = try engine.registeredSnapshot(document, &active.media);
 
     // The flat-tree lineage, the element first.
     var lineage: std.ArrayList(LineageEntry) = .empty;
@@ -1061,6 +1118,7 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
     return css.cascade.cascade(.{
         .allocator = element.ctx.allocator,
         .parent = parent,
+        .environment = .{ .context = res.document, .lookup = environment_variables.lookup },
         .content_attributes = .{ .context = element, .get = contentAttribute },
         .tree_counts = .{ .context = node, .get = treeCounts },
         .random_base = .{ .context = &random_context, .get = randomBase },
@@ -1079,6 +1137,10 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
         .url_resolver = .{ .context = element, .resolve = substitutedUrl },
         // if()'s media() test reads the document's media values (row 123).
         .media_values = &res.active.media,
+        // if()'s supports() test answers selector() as @supports does.
+        .selector_check = &style_rules.selectorSupported,
+        // Properties and Values API 1: the registrations; null when none.
+        .registered = res.registered,
     }, res.matched.items);
 }
 

@@ -340,10 +340,13 @@ const Parser = struct {
             if (value.token_type != .string or !self.closeFunction()) return null;
             return try self.url(try self.string(value));
         }
+        // Images4 §2.5 / Q168: sole-color image() uses the owned image bridge.
+        // Q232: other image() forms keep their existing Syntax3 EOF grammar.
+        if (std.ascii.eqlIgnoreCase(name, "image")) return self.solidColorImage(token);
         inline for (.{ "image-set", "-webkit-image-set", "light-dark", "-webkit-cross-fade", "linear-gradient", "radial-gradient", "conic-gradient", "repeating-linear-gradient", "repeating-radial-gradient", "repeating-conic-gradient" }) |image| if (std.ascii.eqlIgnoreCase(name, image)) return self.typedImage(token);
         // Q76/Q115: standard gradients now share the typed EOF grammar.
         // Unrelated raw functions retain their original Syntax handling.
-        inline for (.{ "image", "cross-fade", "element", "paint" }) |image| if (std.ascii.eqlIgnoreCase(name, image)) return self.remainingFunction(token, .image);
+        inline for (.{ "cross-fade", "element", "paint" }) |image| if (std.ascii.eqlIgnoreCase(name, image)) return self.remainingFunction(token, .image);
         if (std.ascii.eqlIgnoreCase(name, "leader")) {
             const value = self.next();
             if (value.token_type != .string and !(value.token_type == .ident and (tokenizer.nameEql(value.value, "dotted") or tokenizer.nameEql(value.value, "solid") or tokenizer.nameEql(value.value, "space")))) return null;
@@ -378,6 +381,20 @@ const Parser = struct {
         stream.tok.line = start.line;
         stream.tok.column = start.column;
         const image = try @import("image_values.zig").parse(self.imageOptions(), &stream, .{}) orelse return null;
+        self.tok = stream.tok;
+        self.peeked = stream.peeked;
+        return try self.imageItem(image);
+    }
+
+    fn solidColorImage(self: *Parser, start: Token) Allocator.Error!?Item {
+        var stream = properties.Stream{ .tok = self.tok, .text = self.input };
+        stream.tok.pos = @intFromPtr(start.value.ptr) - @intFromPtr(self.input.ptr);
+        stream.tok.line = start.line;
+        stream.tok.column = start.column;
+        // Leave our post-'(' state intact on a non-match, so the legacy path
+        // parses once and preserves its empty-body guard and EOF closure.
+        const image = try @import("image_values.zig").parseSolidColor(self.imageOptions(), &stream) orelse
+            return self.remainingFunction(start, .image);
         self.tok = stream.tok;
         self.peeked = stream.peeked;
         return try self.imageItem(image);

@@ -10,6 +10,7 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
 - [A slot goes back only when every holder kind is on an allowlist](architecture-a-slot-goes-back-only-when-every-holder-kind-is-on-an-allowlist.md) - Do not return a slot that holders can still name: inventory every holder kind, gate the return on an allowlist whose default is unsafe, convert one kind per commit with a forced-reuse test, and flip the switch last; where the platform object is a proxy for something that outlives it (a WindowProxy), keep the proxy, not the object.
+- [Platform lookups stay with the state owner](architecture-platform-lookups-stay-with-the-state-owner.md) - Install cross-layer callbacks from the state owner, keep host state with its Browser, and test revision invalidation separately from initial lookup.
 - [Pending image descriptors have one read contract](architecture-pending-image-descriptors-have-one-read-contract.md) - Make pending data explicit, and test that defensive readers cannot hide a missing compute step.
 - [A hand-over every callee must take leaks at every callee that does not](architecture-a-hand-over-every-callee-must-take-leaks-at-every-callee-that-does-not.md) - Make "borrowed for the call" the default for every converted value, and have keepers take their own hold: a hand-over that each callee must remember to take leaks at every callee that forgets. And before theorising that a leak depends on order, re-run the isolation in-process on a debuggable runner.
 - [Dependencies must follow effective values](architecture-dependencies-must-follow-effective-values.md) - Query dependencies over the components computation will actually evaluate.
@@ -326,6 +327,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A V8 security token also scopes stack traces](architecture-a-v8-security-token-also-scopes-stack-traces.md) - A per-realm security token is not only an access-check switch: grep the V8 source for HasSameSecurityTokenAs and security_token() before changing tokens, and give every agent-wide stack read kExposeFramesAcrossSecurityOrigins.
 - [Window callback errors use the HTML reporter](architecture-window-callback-errors-use-the-html-reporter.md) - The context override alone is not a general exception-reporting API.
 - [A nesting limit does not bound a left-associative chain](architecture-a-nesting-limit-does-not-bound-a-left-associative-chain.md) - Bound recursion by the height of the tree you walk, not by the parser's nesting depth - any left-associative operator loop builds a tree as high as its input is long.
+- [A conversion that accepts an error union returns the error as a value](architecture-a-conversion-that-accepts-an-error-union-returns-the-error.md) - Throwing is the binding's job, never the conversion's: unwrap an impl's error union before converting, and treat an error-union branch in a generic value conversion as a trap.
 - [A pending script exception is not a new host error](architecture-a-pending-script-exception-is-not-a-new-host-error.md) - Test the identity of a thrown object across each binding path, not merely that some exception was thrown.
 - [A setter borrows an `any` and takes a callback - on every path](architecture-a-setter-borrows-an-any-and-takes-a-callback-on-every-path.md) - Ownership of an argument is decided once, by its conversion, and holds on the error path too: release what the callee borrows whatever it returned, and leave what it takes to the taker even when it fails.
 - [A JSValue's type cannot say whether its conversion is fresh](architecture-a-jsvalue-s-type-cannot-say-whether-its-conversion-is-fresh.md) - A type-level "is it fresh?" answer must be "kept" for JSValue and unions, so it leaks every fresh value: ask the value (its arm) with an allowlist, and keep borrowed arms as the default.
@@ -368,6 +370,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Native font status precedes its script promise](architecture-native-font-status-precedes-its-script-promise.md) - Preserve automatic outcomes until script requests the promise.
 
 ### Spec Compliance
+
+- [A new typed case must preserve legacy parser fallbacks](spec-compliance-a-new-typed-case-must-preserve-legacy-parser-fallbacks.md) - Share the new alternative without replacing the caller's existing recovery.
 - [Environment defaults distinguish absence from zero](spec-compliance-environment-defaults-distinguish-absence-from-zero.md) - Probe availability, parsing and value separately; zero and undefined are different environment answers.
 - [Registration validation must see dependencies simplification removes](spec-compliance-registration-validation-precedes-math-simplification.md) - Validate initial-value dependencies at registration, before simplified values erase their source evidence.
 - [Nested CSS parsers preserve declaration identity](spec-compliance-nested-css-parsers-preserve-declaration-identity.md) - Forward the original declaration scope and source slice through nested value grammars.
@@ -898,6 +902,7 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Workflow
 - [A lane inside a long command cannot see a closing notice](workflow-a-lane-inside-a-long-command-cannot-see-a-closing-notice.md) - A lane cannot react to a notice it has not read: give every lane a watcher that sets STOP the moment a CLOSING NOTICE appears, and make its stop kill the remote job too.
+- [A notice watcher must match every notice format, and only notices](workflow-a-notice-watcher-must-match-every-notice-format.md) - Key a watcher on the notice's exact shapes, every one of them, and test the pattern against the file's history before trusting it.
 - [Relocating inputs must preserve their identity](workflow-relocating-inputs-must-preserve-their-identity.md) - Permit path relocation while pinning every non-location field to immutable evidence.
 - [Capture remote gate output while the wrapper prints it](workflow-capture-remote-gate-output-while-the-wrapper-prints-it.md) - Keep the delivered terminal log; the remote copy is removed after printing.
 - [Cancelling a remote wrapper can leave build children](workflow-cancelling-a-remote-wrapper-can-leave-build-children.md) - Verify that a cancelled wrapper's own build and test descendants have exited before starting its replacement.
