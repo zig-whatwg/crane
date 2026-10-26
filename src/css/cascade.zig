@@ -39,6 +39,7 @@ const declarations_mod = @import("declarations.zig");
 const computed_mod = @import("computed_style.zig");
 const color_scheme_mod = @import("color_scheme.zig");
 const custom_mod = @import("custom_properties.zig");
+const registered_mod = @import("registered_properties.zig");
 const substitution = @import("substitution.zig");
 
 const Longhand = properties.Longhand;
@@ -169,6 +170,11 @@ pub const Context = struct {
     /// and @supports use (src/selector is not a dependency of this module).
     /// Null: every selector() is false.
     selector_check: ?@import("supports.zig").SelectorCheck = null,
+    /// Properties and Values API 1: the document's registrations, with
+    /// their initial values computed (registered_properties.zig), borrowed
+    /// for the call; the style retains it. Null when the document has none:
+    /// every custom property is unregistered and nothing below reads it.
+    registered: ?*registered_mod.Snapshot = null,
 };
 
 const Candidate = struct {
@@ -442,6 +448,10 @@ pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*Computed
     // below, each holding its own reference.
     builder.style = style;
     errdefer style.destroy();
+    if (ctx.registered) |r| {
+        r.retain();
+        style.registered = r;
+    }
     try builder.run();
     return style;
 }
@@ -568,7 +578,9 @@ const Builder = struct {
     fn resolveCustomProperties(self: *Builder) Allocator.Error!void {
         const parent_record: ?*custom_mod.CustomProperties = if (self.ctx.parent) |p| p.custom else null;
         if (self.custom_candidates.len == 0) {
-            // No declaration: the inherited map, shared (no copy).
+            // No declaration: the inherited map, shared (no copy), and no
+            // non-inherited record (an unset registered property is its
+            // initial value, which the snapshot holds).
             if (parent_record) |r| {
                 r.retain();
                 self.style.custom = r;
@@ -587,14 +599,27 @@ const Builder = struct {
         for (0..self.custom_states.items.len) |i| {
             if (self.custom_states.items[i].status == .unresolved) try self.resolveCustom(i);
         }
-        // The record: the values this cascade changed over the parent's.
+        // The records: the values this cascade changed over what the
+        // element would take by default - the parent's inherited record, or
+        // for an `inherits: false` registered property its initial value.
         var changes: std.ArrayList(custom_mod.CustomProperties.Entry) = .empty;
         defer changes.deinit(allocator);
+        var own: std.ArrayList(custom_mod.CustomProperties.Entry) = .empty;
+        defer own.deinit(allocator);
         for (self.custom_states.items) |state| {
-            const inherited = if (parent_record) |r| r.get(state.name.bytes) else null;
-            const same = if (state.value) |v| (inherited != null and v.eql(inherited.?)) else inherited == null;
-            if (!same) try changes.append(allocator, .{ .name = state.name, .value = state.value });
+            const reg = self.registration(state.name.bytes);
+            if (reg != null and !reg.?.inherits) {
+                if (!sameText(state.value, reg.?.initial)) try own.append(allocator, .{ .name = state.name, .value = state.value });
+                continue;
+            }
+            const inherited: ?*custom_mod.Text = if (parent_record) |r| switch (r.lookup(state.name.bytes)) {
+                .value => |v| v,
+                .invalid => null,
+                .absent => if (reg) |g| g.initial else null,
+            } else if (reg) |g| g.initial else null;
+            if (!sameText(state.value, inherited)) try changes.append(allocator, .{ .name = state.name, .value = state.value });
         }
+        if (own.items.len != 0) self.style.custom_own = try custom_mod.CustomProperties.create(allocator, null, own.items);
         if (changes.items.len == 0) {
             if (parent_record) |r| {
                 r.retain();
@@ -603,6 +628,44 @@ const Builder = struct {
             return;
         }
         self.style.custom = try custom_mod.CustomProperties.create(allocator, parent_record, changes.items);
+    }
+
+    fn sameText(a: ?*custom_mod.Text, b: ?*custom_mod.Text) bool {
+        if (a == null or b == null) return a == null and b == null;
+        return a.?.eql(b.?);
+    }
+
+    /// The registration of custom property `name`, or null: unregistered.
+    fn registration(self: *const Builder, name: []const u8) ?*const registered_mod.Snapshot.Entry {
+        const snapshot = self.ctx.registered orelse return null;
+        return snapshot.find(name);
+    }
+
+    /// The initial value of `name`: a registered property's computed
+    /// initial value, else the guaranteed-invalid value (null). Borrowed.
+    fn initialCustom(self: *const Builder, name: []const u8) ?*custom_mod.Text {
+        const reg = self.registration(name) orelse return null;
+        return reg.initial;
+    }
+
+    /// The parent's computed value of `name` ("inherit"); the initial value
+    /// at the root. Borrowed.
+    fn parentCustom(self: *const Builder, name: []const u8) ?*custom_mod.Text {
+        const parent = self.ctx.parent orelse return self.initialCustom(name);
+        return parent.customValueIn(name, self.ctx.registered);
+    }
+
+    /// What `name` computes to when no declaration applies, and for
+    /// `unset`: the parent's value for an inherited property (every
+    /// unregistered one), the initial value for an `inherits: false` one.
+    fn defaultCustom(self: *const Builder, name: []const u8) ?*custom_mod.Text {
+        if (self.registration(name)) |reg| if (!reg.inherits) return reg.initial;
+        return self.parentCustom(name);
+    }
+
+    fn retained(text: ?*custom_mod.Text) ?*custom_mod.Text {
+        if (text) |t| t.retain();
+        return text;
     }
 
     fn findCustom(self: *const Builder, name: []const u8) ?usize {
@@ -672,17 +735,6 @@ const Builder = struct {
         self.custom_states.items[i].status = .done;
     }
 
-    /// The inherited value of `name`: the parent's computed value, or the
-    /// guaranteed-invalid value (the initial value of an unregistered custom
-    /// property) at the root. Retained.
-    fn inheritedCustom(self: *const Builder, name: []const u8) ?*custom_mod.Text {
-        const parent = self.ctx.parent orelse return null;
-        const record = parent.custom orelse return null;
-        const value = record.get(name) orelse return null;
-        value.retain();
-        return value;
-    }
-
     /// Cascade 5 §§6-7.3 for one custom property, then its computed value
     /// (CSS Variables 1 §2: "specified value with variables substituted, or
     /// the guaranteed-invalid value"). Retained; null is the
@@ -732,20 +784,24 @@ const Builder = struct {
                 },
             };
             switch (keyword) {
-                // §2.2: initial is the guaranteed-invalid value.
-                .initial => return null,
-                // Custom properties are inherited: unset is inherit.
-                .inherit, .unset => return self.inheritedCustom(name),
+                // §2.2: initial is the guaranteed-invalid value for an
+                // unregistered property; a registered one's is its
+                // registration's (Properties and Values API 1 §2.4).
+                .initial => return retained(self.initialCustom(name)),
+                .inherit => return retained(self.parentCustom(name)),
+                // Unregistered custom properties are inherited, so unset is
+                // inherit; a registered one follows its `inherits`.
+                .unset => return retained(self.defaultCustom(name)),
                 .revert => {
-                    if (c.source.origin == .user_agent) return self.inheritedCustom(name);
+                    if (c.source.origin == .user_agent) return retained(self.defaultCustom(name));
                     excluded.revert_class_at_least = @min(excluded.revert_class_at_least, c.source.origin.revertClass());
                 },
                 .revert_layer => excluded.addLevel(c.source.*, c.decl.important),
                 .revert_rule => excluded.addRule(c.source),
             }
         }
-        // No declaration left: the default, inherit.
-        return self.inheritedCustom(name);
+        // No declaration left: the default.
+        return retained(self.defaultCustom(name));
     }
 
     /// substitution.Host's var() lookup: this element's custom property,
@@ -765,9 +821,8 @@ const Builder = struct {
             const value = self.custom_states.items[i].value orelse return null;
             return value.computed();
         }
-        const parent = self.ctx.parent orelse return null;
-        const record = parent.custom orelse return null;
-        const value = record.get(name) orelse return null;
+        // No declaration here: the default (inherited or initial).
+        const value = self.defaultCustom(name) orelse return null;
         return value.computed();
     }
 
@@ -776,9 +831,7 @@ const Builder = struct {
     /// unregistered custom property.
     fn parentCustomValueCallback(context: *anyopaque, name: []const u8) substitution.Error!?substitution.Computed {
         const self: *Builder = @ptrCast(@alignCast(context));
-        const parent = self.ctx.parent orelse return null;
-        const record = parent.custom orelse return null;
-        const value = record.get(name) orelse return null;
+        const value = self.parentCustom(name) orelse return null;
         return value.computed();
     }
 
@@ -799,18 +852,17 @@ const Builder = struct {
     /// is the parent's computed value; `unset` is `inherit`, custom
     /// properties being inherited; `revert`, `revert-layer` and
     /// `revert-rule` make the feature false (row 123 Q5 ruling,
-    /// tmp/plans/codex-condfns-questions.md). Registered properties (their
-    /// initial value, inherits: false, typed comparison) come with batch 2's
-    /// cascade part, at `queryInitialValue` and `queryInherits`.
+    /// tmp/plans/codex-condfns-questions.md). A registered property's
+    /// initial value and `inherits` are its registration's.
     fn queryValueMatchesCallback(context: *anyopaque, name: []const u8, value_text: []const u8) substitution.Error!?substitution.Flagged(bool) {
         const self: *Builder = @ptrCast(@alignCast(context));
         if (!custom_mod.isName(name)) return null;
         if (custom_mod.cssWideKeyword(value_text)) |keyword| {
             const current = try customValueCallback(context, name);
             const expected: ?substitution.Computed = switch (keyword) {
-                .initial => queryInitialValue(name),
-                .inherit => try parentCustomValueCallback(context, name),
-                .unset => if (queryInherits(name)) try parentCustomValueCallback(context, name) else queryInitialValue(name),
+                .initial => computedOf(self.initialCustom(name)),
+                .inherit => computedOf(self.parentCustom(name)),
+                .unset => computedOf(self.defaultCustom(name)),
                 .revert, .revert_layer, .revert_rule => return .{ .value = false, .tainted = false },
             };
             const tainted = (if (current) |c| c.taint.len != 0 else false) or (if (expected) |e| e.taint.len != 0 else false);
@@ -824,17 +876,9 @@ const Builder = struct {
         return .{ .value = tokensEqual(value.text, query.text), .tainted = query.tainted or value.taint.len != 0 };
     }
 
-    /// The initial value of custom property `name`: guaranteed-invalid
-    /// (null) while every custom property is unregistered.
-    fn queryInitialValue(name: []const u8) ?substitution.Computed {
-        _ = name;
-        return null;
-    }
-
-    /// Whether custom property `name` inherits: every unregistered one does.
-    fn queryInherits(name: []const u8) bool {
-        _ = name;
-        return true;
+    fn computedOf(text: ?*custom_mod.Text) ?substitution.Computed {
+        const t = text orelse return null;
+        return t.computed();
     }
 
     fn numericValueCallback(context: *anyopaque, operand: []const u8) substitution.Error!?substitution.Flagged(substitution.Numeric) {
