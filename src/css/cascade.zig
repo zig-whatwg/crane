@@ -843,6 +843,64 @@ const Builder = struct {
     /// fallback or not (Values 5: "When a cycle is detected, all
     /// participants in the cycle become invalid").
     fn resolveCustom(self: *Builder, i: usize) Allocator.Error!void {
+        // Codex row 122 Q39 ruling: a referenced custom property's computed
+        // value belongs to the element, so it is computed without the
+        // caller's attribute guards (attr-cycle.html case 27: --y's raw
+        // read of data-foo inside --x's attr(data-foo type(*)) is no
+        // cycle); property guards still stack, so property cycles are
+        // caught, and within one substitution chain every attr() lookup
+        // stays guarded (Q24, probe 1025q). Blink keeps one stack
+        // (CascadeResolver: style_cascade.cc ResolveAttrInto locks
+        // {kAttribute, name}, ResolveVarInto -> LookupAndApply applies the
+        // referenced property under the same resolver and returns false
+        // when that caused a cycle), so there the result follows the order
+        // custom properties are applied in; this makes it order-independent.
+        const saved = try self.hideAttributeGuards();
+        defer self.restoreGuards(saved);
+        try self.resolveCustomGuarded(i);
+    }
+
+    /// The guard stack while attribute guards are hidden: the caller's
+    /// whole stack, and where each guard of the view came from.
+    const SavedGuards = struct {
+        outer: ?std.ArrayList(Guard) = null,
+        origin: []usize = &.{},
+    };
+
+    /// Replaces the guard stack with its property (and function) guards
+    /// alone; restoreGuards puts the whole stack back, carrying any cycle
+    /// mark made meanwhile to the guard it came from.
+    fn hideAttributeGuards(self: *Builder) Allocator.Error!SavedGuards {
+        var hidden: usize = 0;
+        for (self.guards.items) |g| if (g.kind == .attribute) {
+            hidden += 1;
+        };
+        if (hidden == 0) return .{};
+        const allocator = self.ctx.allocator;
+        const kept = self.guards.items.len - hidden;
+        const origin = try allocator.alloc(usize, kept);
+        errdefer allocator.free(origin);
+        var view: std.ArrayList(Guard) = try .initCapacity(allocator, kept);
+        for (self.guards.items, 0..) |g, k| if (g.kind != .attribute) {
+            origin[view.items.len] = k;
+            view.appendAssumeCapacity(g);
+        };
+        const outer = self.guards;
+        self.guards = view;
+        return .{ .outer = outer, .origin = origin };
+    }
+
+    fn restoreGuards(self: *Builder, saved: SavedGuards) void {
+        const outer = saved.outer orelse return;
+        for (self.guards.items[0..saved.origin.len], saved.origin) |g, k| if (g.cyclic) {
+            outer.items[k].cyclic = true;
+        };
+        self.guards.deinit(self.ctx.allocator);
+        self.guards = outer;
+        self.ctx.allocator.free(saved.origin);
+    }
+
+    fn resolveCustomGuarded(self: *Builder, i: usize) Allocator.Error!void {
         self.custom_states.items[i].status = .resolving;
         const name = self.custom_states.items[i].name.bytes;
         const at = try self.guard(.property, name);
@@ -2625,6 +2683,31 @@ test "if() supports(selector(...)) asks the context's selector check, as CSS.sup
             try testing.expect(try supports(host.context, "not selector(h2:unknown)", false));
         }
     }.body);
+}
+
+test "a referenced custom property resolves without the caller's attribute guards; property guards stay and marks map back" {
+    // Codex row 122 Q39 ruling (integrator, 2026-10-26): a referenced custom
+    // property's computed value belongs to the element, so computing it on
+    // demand starts WITHOUT the caller's attribute guards (attr-cycle.html
+    // case 27); property guards still stack, so property cycles are caught.
+    var no_links: [0]usize = .{};
+    var builder: Builder = .{ .ctx = .{ .allocator = testing.allocator, .parent = null }, .candidates = &.{}, .index = CandidateIndex.init(&.{}, &no_links) };
+    defer builder.deinit();
+    _ = try builder.guard(.property, "--x");
+    _ = try builder.guard(.attribute, "data-foo");
+    _ = try builder.guard(.property, "--w");
+    const saved = try builder.hideAttributeGuards();
+    try testing.expectEqual(@as(usize, 2), builder.guards.items.len);
+    try testing.expect(!builder.wouldCycle(.attribute, "data-foo"));
+    try testing.expect(builder.wouldCycle(.property, "--x"));
+    // A cycle back to --w found inside marks --w (and what is above it).
+    builder.markIfCyclic(.property, "--w");
+    builder.restoreGuards(saved);
+    try testing.expectEqual(@as(usize, 3), builder.guards.items.len);
+    try testing.expect(!builder.guards.items[0].cyclic);
+    try testing.expect(!builder.guards.items[1].cyclic);
+    try testing.expect(builder.guards.items[2].cyclic);
+    try testing.expect(builder.wouldCycle(.attribute, "data-foo"));
 }
 
 test "style() queries: hasValue reads custom properties only" {
