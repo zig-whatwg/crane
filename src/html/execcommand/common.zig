@@ -47,6 +47,10 @@ pub const Edit = struct {
     selection: *Instance,
     allocator: std.mem.Allocator,
     modified: bool = false,
+    /// The delete or forwardDelete action built the range it deletes from a
+    /// collapsed selection (their steps after step 1): the browser rules for
+    /// a user's range (delete.zig rangeKeepsChildBlock) do not apply.
+    range_from_caret: bool = false,
 
     /// The active range: the selection's range, or null.
     pub fn activeRange(self: *Edit) !?*Instance {
@@ -728,6 +732,68 @@ pub fn whiteSpaceAround(node: *Instance) !WhiteSpace {
     const p = (try parent(node)) orelse return .normal;
     if (!isElement(p)) return .normal;
     return whiteSpaceOf(p);
+}
+
+/// The two longhands of `white-space` an element computes (CSS Text 4:
+/// white-space-collapse and text-wrap-mode), as Gecko's editor reads them
+/// (EditorUtils::GetComputedWhiteSpaceStyles).
+pub const WhiteSpaceStyles = struct {
+    collapse: Collapse,
+    nowrap: bool,
+
+    pub const Collapse = enum { collapse, discard, preserve, preserve_breaks, preserve_spaces, break_spaces };
+
+    pub fn eql(a: WhiteSpaceStyles, b: WhiteSpaceStyles) bool {
+        return a.collapse == b.collapse and a.nowrap == b.nowrap;
+    }
+
+    /// The value of the `white-space` shorthand that sets exactly this pair,
+    /// as Gecko's HTMLEditor::MoveNodeOrChildrenWithTransaction writes it
+    /// (its GetWhiteSpaceStyleValue); null where Gecko writes none
+    /// (preserve-spaces) or the shorthand has no form (discard).
+    pub fn shorthandValue(self: WhiteSpaceStyles) ?[]const u8 {
+        return switch (self.collapse) {
+            .collapse => if (self.nowrap) "nowrap" else "normal",
+            .preserve => if (self.nowrap) "pre" else "pre-wrap",
+            .preserve_breaks => if (self.nowrap) "nowrap preserve-breaks" else "pre-line",
+            .break_spaces => if (self.nowrap) "nowrap break-spaces" else "break-spaces",
+            .preserve_spaces, .discard => null,
+        };
+    }
+};
+
+/// The computed white-space pair of `element`; null without a computed style.
+pub fn whiteSpaceStylesOf(element: *Instance) ?WhiteSpaceStyles {
+    const style = computedStyleOf(element) orelse return null;
+    const collapse: WhiteSpaceStyles.Collapse = switch (style.keyword(.white_space_collapse)) {
+        .discard => .discard,
+        .preserve => .preserve,
+        .preserve_breaks => .preserve_breaks,
+        .preserve_spaces => .preserve_spaces,
+        .break_spaces => .break_spaces,
+        else => .collapse,
+    };
+    return .{ .collapse = collapse, .nowrap = style.keyword(.text_wrap_mode) == .nowrap };
+}
+
+/// The computed white-space pair that applies to `node`: its own for an
+/// element, its parent element's for a Text node, null otherwise.
+pub fn whiteSpaceStylesAround(node: *Instance) !?WhiteSpaceStyles {
+    if (isElement(node)) return whiteSpaceStylesOf(node);
+    if (!isText(node)) return null;
+    const p = (try parent(node)) orelse return null;
+    if (!isElement(p)) return null;
+    return whiteSpaceStylesOf(p);
+}
+
+/// Set one property in `element`'s inline style through its CSSOM
+/// declaration (HTMLElement.style, CSSStyleDeclaration.setProperty), so the
+/// other declarations stay. HTML elements only; false for any other.
+pub fn setInlineStyleProperty(element: *Instance, name: []const u8, value: []const u8) !bool {
+    if (!try isHtmlElement(element)) return false;
+    const declaration = try interfaces.HTMLElement.get_style(element);
+    try interfaces.CSSStyleDeclaration.call_setProperty(declaration, DOMString.initInterned(name), DOMString.initInterned(value), webidl.Opt(DOMString).notPassed());
+    return true;
 }
 
 /// Whether an element's computed display is none.
