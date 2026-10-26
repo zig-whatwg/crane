@@ -374,7 +374,9 @@ A lane brief now carries the lessons chosen for its batch.
 ### Spec Compliance
 
 - [A new typed case must preserve legacy parser fallbacks](spec-compliance-a-new-typed-case-must-preserve-legacy-parser-fallbacks.md) - Share the new alternative without replacing the caller's existing recovery.
+- [Check source when cached Markdown drops grammar](spec-compliance-check-source-when-cached-markdown-drops-grammar.md) - Resolve missing punctuation in the original specification source before interpreting the converted grammar.
 - [Environment defaults distinguish absence from zero](spec-compliance-environment-defaults-distinguish-absence-from-zero.md) - Probe availability, parsing and value separately; zero and undefined are different environment answers.
+- [Probe the full operator matrix](spec-compliance-probe-the-full-operator-matrix.md) - Test every operator pair with and without negation before generalizing a browser's comparison grammar.
 - [Registration validation must see dependencies simplification removes](spec-compliance-registration-validation-precedes-math-simplification.md) - Validate initial-value dependencies at registration, before simplified values erase their source evidence.
 - [Nested CSS parsers preserve declaration identity](spec-compliance-nested-css-parsers-preserve-declaration-identity.md) - Forward the original declaration scope and source slice through nested value grammars.
 - [Recognizing a property can change its CSSOM readback](spec-compliance-recognizing-a-property-can-change-its-cssom-readback.md) - Audit the old storage route when registering a property; typed parse failure can discard previously observable text.
@@ -822,6 +824,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A cost bar that moves with no new instructions is code placement](testing-a-cost-bar-that-moves-with-no-new-instructions-is-code-placement.md) - A sub-microsecond per-operation metric in a whole-program optimized runner moves with code placement; when its path reaches no changed code, instructions retired (page minus a zero-iteration control) decide, not time.
 
 ### Debugging
+- [Allocate before transferring an arena](debugging-allocate-before-transferring-an-arena.md) - Transfer an arena only after its last allocation; struct field evaluation can otherwise copy stale ownership state.
 - [Debugging: Materialize coordinates before overwriting a vector](debugging-materialize-coordinates-before-overwriting-a-vector.md) - Compute every new coordinate from saved scalar inputs before assigning an aggregate back to its input vector.
 - [Debugging: Profile the WPT Worker, Not Its Supervisor](debugging-profile-the-wpt-worker-not-the-supervisor.md) - A WPT runner started with `--parallel=1` is still a supervisor; profile its actual test worker.
 - [Performance: A general sort reserves scratch before small-input branches](performance-a-general-sort-reserves-scratch-before-small-input-branches.md) - Profile a general sort's stack setup when a larger element type slows a hot path, even if nearly every input is tiny.
