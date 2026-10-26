@@ -142,3 +142,24 @@ fn fileUrlRefused() !void {
 test "the host page's navigation to a file: URL is refused and aborted" {
     try onFreshThread(fileUrlRefused);
 }
+
+fn stopCancelsPlannedFormNavigation() !void {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    const page = browser.current_context orelse return error.NoPage;
+    try page.loadHTML("<!doctype html><title>one</title><form id=form action='about:blank'></form>", .{ .base_url = "http://example.test/one" });
+    try until(browser, "document.readyState === 'complete'");
+    // HTML "stop loading" in the task that planned the form's navigation:
+    // the planned navigation is cancelled - Blink's FrameLoader::
+    // StopAllLoaders calls CancelFormSubmission(); WebKit's stopAllLoaders
+    // cancels the NavigationScheduler
+    // (navigating-across-documents/form-submit-and-window-stop.html).
+    try page.runScript("window.marker = 'kept'; document.getElementById('form').submit(); window.stop();");
+    _ = try browser.runEventLoopBlocking(200);
+    try expectEval(page, "[window.marker, document.URL].join()", "kept,http://example.test/one");
+}
+
+test "window.stop in the task that submitted a form cancels its planned navigation of the host page" {
+    try onFreshThread(stopCancelsPlannedFormNavigation);
+}

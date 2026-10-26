@@ -4063,6 +4063,11 @@ fn stopLoadingDocument(document: *runtime.Instance) void {
         };
     }
     if (runtime.SlabAllocator.generationOf(document) != generation) return;
+    // The planned navigations of the document's forms whose tasks have not
+    // run go too (dom.form_submission): Blink's FrameLoader::StopAllLoaders
+    // calls CancelFormSubmission, WebKit's stopAllLoaders cancels its
+    // NavigationScheduler.
+    dom_module.form_submission.cancelPlannedNavigations(document);
     // "Abort a document and its descendants" steps 2-3: snapshot the
     // descendants and queue each document's global task before aborting the
     // root (step 4). Abort listeners may remove or replace descendants.
