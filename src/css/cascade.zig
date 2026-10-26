@@ -533,6 +533,10 @@ const Builder = struct {
     custom_states: std.ArrayList(CustomState) = .empty,
     /// Values 5 Appendix A: the substitution contexts being guarded.
     guards: std.ArrayList(Guard) = .empty,
+    /// font-size and line-height are computed once, by run() or earlier when
+    /// a registered property's font-relative units pull them in.
+    font_size_done: bool = false,
+    line_height_done: bool = false,
 
     const CustomState = struct {
         name: *custom_mod.Text,
@@ -575,6 +579,19 @@ const Builder = struct {
     /// on reference, applyCustomProperties for the rest) and Blink's
     /// StyleCascade LookupAndApply, a property referenced by var() is
     /// resolved when referenced, the others in order; each once.
+    /// The custom property states, one per name with candidates, before any
+    /// longhand: each resolves when a var() first reaches it.
+    fn collectCustomStates(self: *Builder) Allocator.Error!void {
+        var first: usize = 0;
+        while (first < self.custom_candidates.len) {
+            const name = self.custom_candidates[first].decl.name;
+            var end = first + 1;
+            while (end < self.custom_candidates.len and std.mem.eql(u8, self.custom_candidates[end].decl.name.bytes, name.bytes)) end += 1;
+            try self.custom_states.append(self.ctx.allocator, .{ .name = name, .first = first, .end = end });
+            first = end;
+        }
+    }
+
     fn resolveCustomProperties(self: *Builder) Allocator.Error!void {
         const parent_record: ?*custom_mod.CustomProperties = if (self.ctx.parent) |p| p.custom else null;
         if (self.custom_candidates.len == 0) {
@@ -588,14 +605,6 @@ const Builder = struct {
             return;
         }
         const allocator = self.ctx.allocator;
-        var first: usize = 0;
-        while (first < self.custom_candidates.len) {
-            const name = self.custom_candidates[first].decl.name;
-            var end = first + 1;
-            while (end < self.custom_candidates.len and std.mem.eql(u8, self.custom_candidates[end].decl.name.bytes, name.bytes)) end += 1;
-            try self.custom_states.append(allocator, .{ .name = name, .first = first, .end = end });
-            first = end;
-        }
         for (0..self.custom_states.items.len) |i| {
             if (self.custom_states.items[i].status == .unresolved) try self.resolveCustom(i);
         }
@@ -628,6 +637,109 @@ const Builder = struct {
             return;
         }
         self.style.custom = try custom_mod.CustomProperties.create(allocator, parent_record, changes.items);
+    }
+
+    /// The registration of `name` when it has a syntax other than the
+    /// universal one - the properties whose computed value is typed.
+    fn typedRegistration(self: *const Builder, name: []const u8) ?*const registered_mod.Snapshot.Entry {
+        const reg = self.registration(name) orelse return null;
+        return if (reg.syntax.universal) null else reg;
+    }
+
+    /// Properties and Values API 1 §2.4: `text` (the specified value with
+    /// its arbitrary substitution functions substituted) parsed against the
+    /// registration's syntax and computed; the computed value's
+    /// serialization is what var() substitutes (Blink CustomProperty::
+    /// ApplyValue -> ConvertRegisteredPropertyValue ->
+    /// ConvertRegisteredPropertyVariableData; WebKit
+    /// computeCustomPropertyValueForSyntax). A failed parse is invalid at
+    /// computed-value time: unset. Retained.
+    fn typedCustom(self: *Builder, name: []const u8, reg: *const registered_mod.Snapshot.Entry, text: []const u8, taint: []const substitution.TaintRange) Allocator.Error!?*custom_mod.Text {
+        // §2.5 / unit-cycles.html: font-relative units make font-size (and
+        // lh line-height) a dependency. While that property is itself being
+        // substituted - its var() reached here - both are in a cycle (Blink
+        // StyleCascade HasFontSizeDependency -> CascadeResolver::
+        // DetectCycle); otherwise it is computed first (WebKit: a font-size
+        // dependency calls updateFont()).
+        const deps = fontDependencies(text, self.ctx.is_root);
+        if (deps.font_size or deps.line_height) {
+            if (self.wouldCycle(.property, Longhand.font_size.name())) {
+                self.markIfCyclic(.property, Longhand.font_size.name());
+                return retained(self.defaultCustom(name));
+            }
+            if (deps.line_height and self.wouldCycle(.property, Longhand.line_height.name())) {
+                self.markIfCyclic(.property, Longhand.line_height.name());
+                return retained(self.defaultCustom(name));
+            }
+            try self.ensureFontSize();
+            if (deps.line_height) try self.ensureLineHeight();
+        }
+        const allocator = self.ctx.allocator;
+        var value = (try reg.syntax.parseValue(.{ .allocator = allocator }, text)) orelse return retained(self.defaultCustom(name));
+        defer value.deinit();
+        var computed = try value.compute(allocator, .{
+            .math = self.mathContext(.width),
+            .color = .{ .scheme = self.used_scheme },
+            .writing_mode = self.writing_mode,
+            .direction = self.direction,
+        });
+        defer computed.deinit();
+        var out: std.ArrayList(u8) = .empty;
+        defer out.deinit(allocator);
+        try computed.serialize(&out, allocator);
+        const bytes = try out.toOwnedSlice(allocator);
+        errdefer allocator.free(bytes);
+        // Computation reorders tokens, so taint covers the whole value when
+        // any input token was tainted (both shipping browsers taint a var()
+        // value as a whole when attr() produced tokens in it; RULINGS 1025t).
+        const whole: []substitution.TaintRange = if (taint.len == 0) &.{} else blk: {
+            const ranges = try allocator.alloc(substitution.TaintRange, 1);
+            ranges[0] = .{ .start = 0, .end = bytes.len, .kind = .own };
+            break :blk ranges;
+        };
+        errdefer if (whole.len != 0) allocator.free(whole);
+        return try custom_mod.Text.adopt(allocator, bytes, whole);
+    }
+
+    const FontDependencies = struct { font_size: bool = false, line_height: bool = false };
+
+    /// Which of font-size and line-height a registered value's units read
+    /// (the units syntax_values.isComputationallyIndependent rejects): em,
+    /// ex, cap, ch, ic read font-size, lh line-height; their root forms read
+    /// the root's, which is this element only on the root.
+    fn fontDependencies(text: []const u8, is_root: bool) FontDependencies {
+        var deps: FontDependencies = .{};
+        var tokenizer = @import("tokenizer.zig").Tokenizer.init(text);
+        while (true) {
+            const token = tokenizer.next();
+            if (token.token_type == .eof) return deps;
+            if (token.token_type != .dimension) continue;
+            const unit = token.unit orelse continue;
+            const nameEql = @import("tokenizer.zig").nameEql;
+            inline for (.{ "em", "ex", "cap", "ch", "ic" }) |u| if (nameEql(unit, u)) {
+                deps.font_size = true;
+            };
+            if (nameEql(unit, "lh")) deps.line_height = true;
+            if (is_root) {
+                inline for (.{ "rem", "rex", "rcap", "rch", "ric" }) |u| if (nameEql(unit, u)) {
+                    deps.font_size = true;
+                };
+                if (nameEql(unit, "rlh")) deps.line_height = true;
+            }
+        }
+    }
+
+    fn ensureFontSize(self: *Builder) Allocator.Error!void {
+        if (self.font_size_done) return;
+        self.font_size_done = true;
+        _ = try self.computeAndStore(.font_size);
+    }
+
+    fn ensureLineHeight(self: *Builder) Allocator.Error!void {
+        if (self.line_height_done) return;
+        try self.ensureFontSize();
+        self.line_height_done = true;
+        _ = try self.computeAndStore(.line_height);
     }
 
     fn sameText(a: ?*custom_mod.Text, b: ?*custom_mod.Text) bool {
@@ -729,7 +841,10 @@ const Builder = struct {
         };
         if (self.unguard(at)) {
             if (value) |v| v.release();
-            value = null;
+            // In a cycle: invalid at computed-value time - the
+            // guaranteed-invalid value, or for a registered property with a
+            // syntax, unset (Values 5 "Invalid Substitution"; unit-cycles.html).
+            value = if (self.typedRegistration(name) != null) retained(self.defaultCustom(name)) else null;
         }
         self.custom_states.items[i].value = value;
         self.custom_states.items[i].status = .done;
@@ -750,6 +865,7 @@ const Builder = struct {
             const keyword: values.CssWide = switch (c.decl.value) {
                 .css_wide => |k| k,
                 .text => |t| {
+                    if (self.typedRegistration(name)) |reg| return self.typedCustom(name, reg, t.bytes, t.taint);
                     t.retain();
                     return t;
                 },
@@ -758,9 +874,10 @@ const Builder = struct {
                     host.tree_scope = c.source.tree_scope.serial;
                     switch (try pending.substituteCustom(self.ctx.allocator, host, name)) {
                         // Values 5 "Invalid Substitution": an unregistered
-                        // custom property's computed value is the
-                        // guaranteed-invalid value.
-                        .invalid => return null,
+                        // (or universal) custom property's computed value is
+                        // the guaranteed-invalid value; a registered one with
+                        // a syntax is unset.
+                        .invalid => return if (self.typedRegistration(name) != null) retained(self.defaultCustom(name)) else null,
                         // Q83: missing random input skips the candidate.
                         .unavailable => continue,
                         .substituted => |result| {
@@ -773,6 +890,13 @@ const Builder = struct {
                                 self.ctx.allocator.free(result.text);
                                 self.ctx.allocator.free(result.taint);
                                 break :blk values.CssWide.parse(keyword).?;
+                            }
+                            if (self.typedRegistration(name)) |reg| {
+                                defer {
+                                    self.ctx.allocator.free(result.text);
+                                    self.ctx.allocator.free(result.taint);
+                                }
+                                return self.typedCustom(name, reg, result.text, result.taint);
                             }
                             errdefer {
                                 self.ctx.allocator.free(result.text);
@@ -1151,9 +1275,10 @@ const Builder = struct {
     }
 
     fn run(self: *Builder) Allocator.Error!void {
-        // CSS Variables 1: custom properties first - any longhand, the
-        // high-priority ones included, may substitute one.
-        try self.resolveCustomProperties();
+        // CSS Variables 1: the custom property states first - any longhand,
+        // the high-priority ones included, may substitute one, which then
+        // resolves when it is first reached.
+        try self.collectCustomStates();
         // The high-priority longhands: the mapping of logical ones, then
         // color-scheme (what every system color resolves against - Blink
         // applies it before color too), then font-size (em), then color
@@ -1164,8 +1289,13 @@ const Builder = struct {
         _ = try self.computeAndStore(.text_orientation);
         self.used_scheme = self.elementColorScheme(try self.computeAndStore(.color_scheme));
         self.style.used_color_scheme = self.used_scheme;
-        _ = try self.computeAndStore(.font_size);
-        _ = try self.computeAndStore(.line_height);
+        try self.ensureFontSize();
+        try self.ensureLineHeight();
+        // The custom properties not yet reached by a var(): after font-size
+        // and line-height, which a registered one's font-relative units read
+        // (Blink StyleCascade::Apply applies custom properties after
+        // UpdateFont and line-height, pulling them in earlier on demand).
+        try self.resolveCustomProperties();
         _ = try self.computeAndStore(.color);
         for (0..Longhand.count) |i| {
             const l: Longhand = @enumFromInt(i);
@@ -2452,6 +2582,7 @@ fn withHost(allocator: Allocator, text: []const u8, parent_text: ?[]const u8, bo
     style.* = .{ .allocator = allocator, .values = computed_mod.initial_values };
     defer style.destroy();
     builder.style = style;
+    try builder.collectCustomStates();
     try builder.resolveCustomProperties();
     try body(builder.substitutionHost(builder.mathContext(.width)));
 }

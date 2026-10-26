@@ -14,54 +14,8 @@ const ComputedStyle = css.computed_style.ComputedStyle;
 const DeclarationBlock = css.declarations.DeclarationBlock;
 const Snapshot = css.registered_properties.Snapshot;
 
-const Tree = struct {
-    allocator: Allocator,
-    registered: ?*Snapshot = null,
-    styles: std.ArrayList(*ComputedStyle) = .empty,
-
-    fn deinit(self: *Tree) void {
-        var i = self.styles.items.len;
-        while (i > 0) {
-            i -= 1;
-            self.styles.items[i].destroy();
-        }
-        self.styles.deinit(self.allocator);
-    }
-
-    /// A child of the last element styled (the root first), with `text` as
-    /// its one author block.
-    fn element(self: *Tree, text: []const u8) !*ComputedStyle {
-        var block = try DeclarationBlock.parse(.{ .allocator = self.allocator }, text);
-        defer block.deinit();
-        const parent: ?*const ComputedStyle = if (self.styles.items.len == 0) null else self.styles.items[self.styles.items.len - 1];
-        try self.styles.ensureUnusedCapacity(self.allocator, 1);
-        const style = try cascade_mod.cascade(.{
-            .allocator = self.allocator,
-            .parent = parent,
-            .is_root = parent == null,
-            .registered = self.registered,
-        }, &.{.{ .block = &block, .source = .{ .origin = .author } }});
-        self.styles.appendAssumeCapacity(style);
-        return style;
-    }
-};
-
-fn expectCustom(style: *const ComputedStyle, name: []const u8, expected: ?[]const u8) !void {
-    const got = style.customValue(name);
-    if (expected) |e| {
-        if (got == null) {
-            std.debug.print("{s}: expected \"{s}\", got the guaranteed-invalid value\n", .{ name, e });
-            return error.TestExpectedEqual;
-        }
-        testing.expectEqualStrings(e, got.?.bytes) catch |err| {
-            std.debug.print("  (for {s})\n", .{name});
-            return err;
-        };
-    } else if (got) |g| {
-        std.debug.print("{s}: expected the guaranteed-invalid value, got \"{s}\"\n", .{ name, g.bytes });
-        return error.TestExpectedEqual;
-    }
-}
+const Tree = support.Tree;
+const expectCustom = support.expectCustom;
 
 const defs = [_]support.Def{
     .{ .name = "--len", .syntax = "<length>", .inherits = false, .initial = "10px" },
