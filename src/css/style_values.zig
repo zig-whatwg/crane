@@ -41,7 +41,7 @@ pub const ResourceUrl = resources.ResourceUrl;
 
 /// Every keyword a supported property's grammar names. The CSS spelling is
 /// the tag name with '_' for '-'.
-pub const Keyword = enum(u8) {
+pub const Keyword = enum(u16) {
     auto,
     none,
     normal,
