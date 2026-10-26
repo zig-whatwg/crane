@@ -279,22 +279,29 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
         defer line.deinit(edit.allocator);
         try extractFirstLine(edit, (try common.firstChild(eb)).?, &line, .move);
         if (line.nodes.items.len == 0) {
-            try overrides.restoreStatesAndValues(edit, recorded);
-            return;
+            // Nothing on the line to move (a line feed, or an inline that
+            // held only its br): an end block left empty goes, with its
+            // emptied ancestors.
+            while (!try common.hasChildren(eb) and eb != sb and try common.isEditable(eb)) {
+                const p = (try common.parent(eb)) orelse break;
+                try edit.removeNode(eb);
+                eb = p;
+            }
+        } else {
+            const children = line.nodes.items;
+            try line.recordWhiteSpace(edit, sb);
+            // Step 32.9.
+            values = try overrides.recordTheValues(edit, children);
+            // Step 32.10.
+            while ((try common.parent(children[0])) != sb) {
+                try split_parent.splitParent(edit, children);
+            }
+            // Step 32.11.
+            if (try common.previousSibling(children[0])) |previous| {
+                if ((try common.isEditable(previous)) and try isBr(previous)) try edit.removeNode(previous);
+            }
+            try line.preserveWhiteSpace(edit);
         }
-        const children = line.nodes.items;
-        try line.recordWhiteSpace(edit, sb);
-        // Step 32.9.
-        values = try overrides.recordTheValues(edit, children);
-        // Step 32.10.
-        while ((try common.parent(children[0])) != sb) {
-            try split_parent.splitParent(edit, children);
-        }
-        // Step 32.11.
-        if (try common.previousSibling(children[0])) |previous| {
-            if ((try common.isEditable(previous)) and try isBr(previous)) try edit.removeNode(previous);
-        }
-        try line.preserveWhiteSpace(edit);
     } else if (common.isDescendantOf(sb, eb)) {
         // Step 33: the start block is inside the end block - pull in what
         // follows it up to a br or block node.
@@ -700,8 +707,15 @@ fn extractFirstLine(edit: *Edit, first: *Instance, line: *Line, lone_br: LoneBr)
             }
         } else if (common.isElement(child)) {
             if (try findLineEndInside(edit, child)) |end| {
-                try line.nodes.append(edit.allocator, child);
                 try splitDeep(edit, child, end.parent, end.node);
+                // An inline the line end emptied (it held only the br) is
+                // invisible: it goes instead of moving (Gecko's
+                // MoveNodeOrChildrenWithTransaction, RemoveIfInvisibleNode).
+                if (!try common.hasChildren(child)) {
+                    try edit.removeNode(child);
+                } else {
+                    try line.nodes.append(edit.allocator, child);
+                }
                 return;
             }
         }

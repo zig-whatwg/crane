@@ -76,6 +76,8 @@ const cases = [_]Case{
     // A line that is only a br moves as the spec says, and goes where it
     // is extraneous (editing/run/delete.html and forwarddelete.html).
     .{ .input = "foo{}<p><br></p>", .command = "forwardDelete", .after = "foo", .after_typing = "fooX" },
+    .{ .input = "foo{}<p><span><br></span></p>", .command = "forwardDelete", .after = "foo", .after_typing = "fooX" },
+    .{ .input = "foo{}<span><br></span><p><span><br></span></p>", .command = "forwardDelete", .after = "foo", .after_typing = "fooX" },
     .{ .input = "<ol><li>foo<br><br></li></ol>{}<br>", .command = "delete", .after = "<ol><li>foo<br><br></li></ol>", .after_typing = "<ol><li>foo<br>X<br></li></ol>" },
     .{ .input = "<p>foo</p>{<p>bar}</p><p>baz</p>", .command = "delete", .after = "<p>foo</p><br><p>baz</p>", .after_typing = "<p>foo</p>X<br><p>baz</p>" },
     // A range the forwardDelete action built from a caret still joins.
