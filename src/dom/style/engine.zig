@@ -59,6 +59,7 @@ const hooks = @import("hooks.zig");
 const sheet_mod = @import("sheet.zig");
 const ua_sheet = @import("ua_sheet.zig");
 const element_style = @import("element_style.zig");
+const environment_variables = @import("environment_variables.zig");
 pub const resource_loading = @import("resource_loading.zig");
 pub const available_images = @import("available_images.zig");
 
@@ -1061,6 +1062,7 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
     return css.cascade.cascade(.{
         .allocator = element.ctx.allocator,
         .parent = parent,
+        .environment = .{ .context = res.document, .lookup = environment_variables.lookup },
         .content_attributes = .{ .context = element, .get = contentAttribute },
         .tree_counts = .{ .context = node, .get = treeCounts },
         .random_base = .{ .context = &random_context, .get = randomBase },
