@@ -289,6 +289,28 @@ pub const Keyword = enum(u8) {
     double_circle,
     triangle,
     sesame,
+    // CSS Inline3 (row124).
+    baseline,
+    text_bottom,
+    alphabetic,
+    ideographic,
+    middle,
+    central,
+    mathematical,
+    hanging,
+    text_top,
+    text_before_edge,
+    text_after_edge,
+    sub,
+    super,
+    top,
+    bottom,
+    drop,
+    raise,
+    cap,
+    ex,
+    ideographic_ink,
+    trim_end,
 
     /// The keyword's CSS spelling.
     pub fn name(self: Keyword) []const u8 {

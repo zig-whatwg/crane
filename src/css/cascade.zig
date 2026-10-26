@@ -1285,6 +1285,8 @@ const Builder = struct {
             .letter_spacing => if (v.isKeyword(.normal)) return Value.px(0),
             // CSS Text4 §8.1: normal computes to zero before inheritance.
             .word_spacing => if (v.isKeyword(.normal)) return Value.px(0),
+            // Inline3 §4.2.3.1: Q12 C/S computed split resolves by the spec.
+            .baseline_shift => if (v.isKeyword(.baseline)) return Value.px(0),
             .text_align, .text_align_last => return @import("text_values.zig").computeAlignment(l, v, if (self.ctx.is_root) null else self.ctx.parent),
             .opacity => return .{ .number = std.math.clamp(v.number, 0, 1) },
             .line_height => switch (v) {

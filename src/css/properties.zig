@@ -312,6 +312,15 @@ pub const Longhand = enum(u8) {
     text_emphasis_position,
     text_shadow,
 
+    // CSS Inline3 (row124).
+    alignment_baseline,
+    baseline_shift,
+    baseline_source,
+    dominant_baseline,
+    initial_letter,
+    text_box_trim,
+    text_box_edge,
+
     pub const count = @typeInfo(Longhand).@"enum".fields.len;
 
     /// The property name.
@@ -459,6 +468,7 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
 pub const Grammar = enum {
     text_value,
     decoration_value,
+    inline_value,
     text_shadow,
     animation_list,
     individual_transform,
@@ -567,6 +577,14 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .text_emphasis_color, .inherited = true, .initial = .{ .color = .current }, .grammar = .color },
         .{ .longhand = .text_emphasis_position, .inherited = true, .initial = @import("decoration_values.zig").Keywords.init(.text_emphasis_position, &.{.over}).value(), .grammar = .decoration_value },
         .{ .longhand = .text_shadow, .inherited = true, .initial = Value.kw(.none), .grammar = .text_shadow },
+        // Inline3; Q18 edge inherits, trim does not. Q19 preserves legacy edge spellings.
+        .{ .longhand = .alignment_baseline, .inherited = false, .initial = Value.kw(.baseline), .grammar = .keywords, .keywords = &.{ .baseline, .text_bottom, .alphabetic, .ideographic, .middle, .central, .mathematical, .hanging, .text_top, .text_before_edge, .text_after_edge } },
+        .{ .longhand = .baseline_shift, .inherited = false, .initial = Value.px(0), .grammar = .inline_value },
+        .{ .longhand = .baseline_source, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .first, .last } },
+        .{ .longhand = .dominant_baseline, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .text_bottom, .alphabetic, .ideographic, .middle, .central, .mathematical, .hanging, .text_top, .text_before_edge, .text_after_edge } },
+        .{ .longhand = .initial_letter, .inherited = false, .initial = Value.kw(.normal), .grammar = .inline_value },
+        .{ .longhand = .text_box_trim, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .trim_start, .trim_end, .trim_both } },
+        .{ .longhand = .text_box_edge, .inherited = true, .initial = Value.kw(.auto), .grammar = .inline_value },
         .{ .longhand = .hanging_punctuation, .inherited = true, .initial = Value.kw(.none), .grammar = .text_value },
         .{ .longhand = .hyphenate_limit_lines, .inherited = true, .initial = Value.kw(.no_limit), .grammar = .text_value },
         // Text4 §7.6, WebKit's cssTextGroupAlignEnabled implementation.
@@ -875,6 +893,8 @@ pub const Shorthand = enum(u8) {
     text_spacing,
     text_decoration,
     text_emphasis,
+    vertical_align,
+    text_box,
     animation,
     animation_range,
     flex,
@@ -947,6 +967,8 @@ pub const Shorthand = enum(u8) {
             .text_spacing => &.{ .text_spacing_trim, .text_autospace },
             .text_decoration => &.{ .text_decoration_line, .text_decoration_thickness, .text_decoration_style, .text_decoration_color },
             .text_emphasis => &.{ .text_emphasis_style, .text_emphasis_color },
+            .vertical_align => &.{ .alignment_baseline, .baseline_shift, .baseline_source },
+            .text_box => &.{ .text_box_trim, .text_box_edge },
             .animation => &.{ .animation_duration, .animation_timing_function, .animation_delay, .animation_iteration_count, .animation_direction, .animation_fill_mode, .animation_play_state, .animation_name, .animation_timeline, .animation_range_start, .animation_range_end },
             .animation_range => &.{ .animation_range_start, .animation_range_end },
             .flex => &.{ .flex_grow, .flex_shrink, .flex_basis },
@@ -1273,6 +1295,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
     switch (def.grammar) {
         .text_value => return @import("text_values.zig").parse(options, l, stream),
         .decoration_value => return @import("decoration_values.zig").parse(options, l, stream),
+        .inline_value => return @import("inline_values.zig").parse(options, l, stream),
         .text_shadow => return @import("text_shadow_values.zig").parse(options, stream),
         .flex_factor => return @import("flex_values.zig").consumeFactor(options, stream),
         .individual_transform => {
@@ -1924,6 +1947,8 @@ fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *st
         .text_wrap => return @import("text_values.zig").parseWrap(options, stream, out),
         .text_spacing => return @import("text_values.zig").parseSpacing(options, stream, out),
         .text_decoration, .text_emphasis => return @import("decoration_values.zig").parseShorthand(options, s, stream, out),
+        .vertical_align => return @import("inline_values.zig").parseVerticalAlign(options, stream, out),
+        .text_box => return @import("inline_values.zig").parseTextBox(options, stream, out),
         .font_variant => return @import("font_variants.zig").parseShorthand(options, stream, out),
         .font => return @import("font_shorthand.zig").parse(options, stream, out),
         .flex => return @import("flex_values.zig").consumeShorthand(options, stream, out),
@@ -2413,6 +2438,8 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
         .text_wrap => return @import("text_values.zig").serializeWrap(vs, out, allocator),
         .text_spacing => return @import("text_values.zig").serializeSpacing(vs, out, allocator),
         .text_decoration, .text_emphasis => return @import("decoration_values.zig").serializeShorthand(s, vs, mode, out, allocator),
+        .vertical_align => return @import("inline_values.zig").serializeVerticalAlign(vs, out, allocator),
+        .text_box => return @import("inline_values.zig").serializeTextBox(vs, out, allocator),
         .flex => return @import("flex_values.zig").serializeShorthand(vs, out, allocator),
         .animation, .animation_range, .transition => return @import("animation_values.zig").serializeShorthand(s, vs, mode, out, allocator),
         .grid_template => return @import("grid_tracks.zig").serializeTemplate(.{ .rows = vs[0].value, .columns = vs[1].value, .areas = vs[2].value }, out, allocator),
