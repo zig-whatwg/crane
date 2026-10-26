@@ -510,9 +510,8 @@ fn parseRelativeTo(document: *runtime.Instance, url: []const u8, allocator: Allo
 
 /// HTML "URL and history update steps" given the History's document and
 /// `new_url`, taking `serialized`. The document's URL changes now; the entry
-/// is pushed or replaced in the traversable's history. Step 3 - the initial
-/// about:blank document always replaces - is the joint history's "replace"
-/// of the navigable's only entry.
+/// is pushed or replaced in the traversable's history - always replaced on
+/// an initial about:blank document (step 4).
 fn urlAndHistoryUpdate(
     internal: *InternalState,
     bc: *BrowsingContext,
@@ -522,10 +521,18 @@ fn urlAndHistoryUpdate(
     handling: joint_history.HistoryHandling,
     restore_state: bool,
 ) !void {
+    // Step 4: "If document's is initial about:blank is true, then set
+    // historyHandling to "replace"." - pushState() on an initial about:blank
+    // document behaves as replaceState(), wherever that document's
+    // navigable's entry sits in the joint session history.
+    const effective: joint_history.HistoryHandling = blk: {
+        const document = interfaces.Window.get_document(window) catch break :blk handling;
+        break :blk if (@import("dom").document_lifecycle.isInitialAboutBlank(document)) .replace else handling;
+    };
     const history = try ensureEntries(bc);
     // The new entry's navigation API state is a fresh one (the URL and
     // history update steps do not carry it over).
-    try history.commitSameDocument(bc.id, new_url, serialized, handling, .undefined);
+    try history.commitSameDocument(bc.id, new_url, serialized, effective, .undefined);
     // Step 7: "Restore the history object state" - the next read deserializes
     // the new entry's state.
     if (restore_state) {
@@ -538,7 +545,7 @@ fn urlAndHistoryUpdate(
     // Step 9: "Update the navigation API entries for a same-document
     // navigation given document's relevant global object's navigation API,
     // newEntry, and historyHandling."
-    @import("dom").navigation_api.sameDocumentNavigation(window, switch (handling) {
+    @import("dom").navigation_api.sameDocumentNavigation(window, switch (effective) {
         .push => .push,
         .replace => .replace,
     });
