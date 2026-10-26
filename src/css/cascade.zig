@@ -1356,7 +1356,10 @@ const Builder = struct {
                 return .{ .indent = try @import("text_indent.zig").Indent.create(self.ctx.allocator, offset, indent.flags) };
             },
             .filter => |value| return .{ .filter = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
+            .box_shadow => |value| return .{ .box_shadow = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
             .shape => |value| return .{ .shape = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
+            .corner_radius => |value| return .{ .corner_radius = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
+            .image_resolution => |value| return .{ .image_resolution = try value.compute(self.ctx.allocator, self.computationContext(l, v, source)) },
             .image_position => |value| return .{ .image_position = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
             .image_size => |value| return .{ .image_size = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
             .image_quad => |value| return .{ .image_quad = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
