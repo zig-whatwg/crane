@@ -25,11 +25,24 @@ pub fn length(options: properties.ParseOptions, stream: *properties.Stream, nega
         });
     }
     const mark = stream.*;
-    const v = (try properties.parseLonghand(strict, .margin_left, stream)) orelse {
+    const literal = stream.peek();
+    // Q176: literals use the owner's sign check before allocation. Extended
+    // lengths (1cap/1rcap/1ic/...) are typed calculations, not math functions;
+    // negative literals must reject instead of acquiring a computed clamp.
+    const scalar: properties.Longhand = if (negative) .margin_left else .padding_left;
+    const v = (try properties.parseLonghand(strict, scalar, stream)) orelse {
         stream.* = mark;
         return null;
     };
-    if (v != .length or (!percent and v.length.unit == .percent) or (!negative and v.length.value < 0)) {
+    const accepted = switch (v) {
+        .length => |scalar_length| (percent or scalar_length.unit != .percent) and (negative or scalar_length.value >= 0),
+        // The strict scalar parser admits calculations here only for extended
+        // dimension literals. Their type/range was checked by the owner;
+        // unlike percentages, a dimension never needs a percentage basis.
+        .calculation => literal.token_type == .dimension,
+        else => false, // In particular, signed margin must not admit auto.
+    };
+    if (!accepted) {
         v.release();
         stream.* = mark;
         return null;
