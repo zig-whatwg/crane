@@ -804,6 +804,7 @@ pub const Value = union(enum) {
     paint: *@import("svg_paint.zig").Paint,
     filter: *@import("filter_values.zig").Filter,
     shape: *@import("shape_values.zig").Shape,
+    image_resolution: @import("image_resolution.zig").Value,
     image_position: *@import("position_values.zig").Position,
     image_size: *@import("image_size.zig").Size,
     image_quad: *@import("image_quad.zig").Quad,
@@ -859,6 +860,7 @@ pub const Value = union(enum) {
         if (self == .paint) return self.paint.ref();
         if (self == .filter) return self.filter.ref();
         if (self == .shape) return self.shape.ref();
+        if (self == .image_resolution) return self.image_resolution.retain();
         if (self == .image_position) return self.image_position.ref();
         if (self == .image_size) return self.image_size.ref();
         if (self == .image_quad) return self.image_quad.ref();
@@ -891,6 +893,7 @@ pub const Value = union(enum) {
         if (self == .paint) return self.paint.unref();
         if (self == .filter) return self.filter.unref();
         if (self == .shape) return self.shape.unref();
+        if (self == .image_resolution) return self.image_resolution.release();
         if (self == .image_position) return self.image_position.unref();
         if (self == .image_size) return self.image_size.unref();
         if (self == .image_quad) return self.image_quad.unref();
@@ -947,6 +950,7 @@ pub const Value = union(enum) {
             .paint => |v| v.eql(b.paint),
             .filter => |v| v.eql(b.filter),
             .shape => |v| v.eql(b.shape),
+            .image_resolution => |v| v.eql(b.image_resolution),
             .image_position => |v| v.eql(b.image_position),
             .image_size => |v| v.eql(b.image_size),
             .image_quad => |v| v.eql(b.image_quad),
@@ -1002,6 +1006,7 @@ pub const Value = union(enum) {
             .paint => |v| v.needsUnavailableMetrics(geometry_length),
             .filter => |v| v.needsUnavailableMetrics(geometry_length),
             .shape => |v| v.needsUnavailableMetrics(geometry_length),
+            .image_resolution => |v| v.needsUnavailableMetrics(geometry_length),
             .image_position => |v| v.needsUnavailableMetrics(geometry_length),
             .image_size => |v| v.needsUnavailableMetrics(geometry_length),
             .image_quad => |v| v.needsUnavailableMetrics(geometry_length),
@@ -1050,6 +1055,7 @@ pub const Value = union(enum) {
             .paint => |v| v.needsTreeCounts(),
             .filter => |v| v.needsTreeCounts(),
             .shape => |v| v.needsTreeCounts(),
+            .image_resolution => |v| v.needsTreeCounts(),
             .image_position => |v| v.needsTreeCounts(),
             .image_size => |v| v.needsTreeCounts(),
             .image_quad => |v| v.needsTreeCounts(),
@@ -1096,6 +1102,7 @@ pub const Value = union(enum) {
             .paint => |v| v.needsRandomBase(),
             .filter => |v| v.needsRandomBase(),
             .shape => |v| v.needsRandomBase(),
+            .image_resolution => |v| v.needsRandomBase(),
             .image_position => |v| v.needsRandomBase(),
             .image_size => |v| v.needsRandomBase(),
             .image_quad => |v| v.needsRandomBase(),

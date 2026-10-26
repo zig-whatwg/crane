@@ -220,6 +220,7 @@ pub const Longhand = enum(u8) {
     // CSS image value families (row 119).
     cursor,
     list_style_image,
+    image_resolution,
     text_indent,
     fill,
     stroke,
@@ -302,7 +303,7 @@ pub const Longhand = enum(u8) {
 /// CSSOM 7.2 step 5 enumerates names lexicographically, independently of
 /// declaration order. Separate property families can append contiguous blocks.
 pub const lexicographic: [Longhand.count]Longhand = blk: {
-    @setEvalBranchQuota(100_000);
+    @setEvalBranchQuota(200_000);
     var out: [Longhand.count]Longhand = undefined;
     for (0..Longhand.count) |i| out[i] = @enumFromInt(i);
     std.mem.sort(Longhand, &out, {}, struct {
@@ -480,6 +481,7 @@ pub const Grammar = enum {
     shape,
     filter,
     image_position,
+    image_resolution,
     mask,
     stroke_width,
     background,
@@ -680,6 +682,8 @@ const infos: [Longhand.count]Info = blk: {
         // CSS UI4 §5.1.1; CSS Lists3 §3.3.
         .{ .longhand = .cursor, .inherited = true, .initial = Value.kw(.auto), .grammar = .cursor },
         .{ .longhand = .list_style_image, .inherited = true, .initial = Value.kw(.none), .grammar = .image },
+        // CSS Images 4 §6.1 / Values 4 §7.4; Q146 defers snap rounding.
+        .{ .longhand = .image_resolution, .inherited = true, .initial = .{ .image_resolution = .initial }, .grammar = .image_resolution },
         .{ .longhand = .text_indent, .inherited = true, .initial = Value.px(0), .grammar = .text_indent },
         .{ .longhand = .fill, .inherited = true, .initial = .{ .color = Color.black }, .grammar = .paint },
         .{ .longhand = .stroke, .inherited = true, .initial = Value.kw(.none), .grammar = .paint },
@@ -1355,6 +1359,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .reference => return @import("svg_paint.zig").parseReference(options, stream),
         .shape => return @import("shape_values.zig").parse(options, stream),
         .filter => return @import("filter_values.zig").parse(options, stream),
+        .image_resolution => return @import("image_resolution.zig").parse(options, stream),
         .image_position => return if (try @import("position_values.zig").parse(options, stream, .position)) |position| .{ .image_position = position } else null,
         .mask => return @import("mask_values.zig").parse(options, l, stream),
         .stroke_width => return @import("svg_paint.zig").parseStrokeWidth(options, stream),
@@ -2243,6 +2248,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .paint => |v| try v.serialize(out, allocator, null),
         .filter => |v| try out.appendSlice(allocator, v.text.bytes),
         .shape => |v| try v.serialize(out, allocator),
+        .image_resolution => |v| try v.serialize(out, allocator),
         .image_position => |v| try v.serialize(out, allocator),
         .image_size => |v| try v.serialize(out, allocator),
         .image_quad => |v| try v.serialize(out, allocator),
