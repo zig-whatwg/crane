@@ -143,11 +143,11 @@ fn executeCommandImpl(
 
         // Configuration commands
         .styleWithCSS,
+        .useCSS,
         .defaultParagraphSeparator,
         .enableAbsolutePositionEditor,
         .enableInlineTableEditing,
         .enableObjectResizing,
-        .contentReadOnly,
         => executeConfigCommand(allocator, document, command, value),
     };
 }
@@ -352,6 +352,16 @@ pub fn queryCommandState(
     command_name: []const u8,
 ) !bool {
     const command = Command.fromString(command_name) orelse return false;
+
+    // The configuration commands' state is the Document's: the CSS styling
+    // flag, false until a command sets it.
+    switch (command) {
+        .styleWithCSS, .useCSS => {
+            const editor_state = existingEditorState(document) orelse return false;
+            return editor_state.getCommandState(command) orelse false;
+        },
+        else => {},
+    }
 
     // Only toggle commands have meaningful state
     if (!command.isToggle()) {
