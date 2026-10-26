@@ -435,6 +435,10 @@ pub const FontRuleData = struct {
     condition: ?u32,
 };
 
+/// A valid @property and its enclosing media conditions. The rule tree owns
+/// the record; this ordered index borrows it until recompilation.
+pub const PropertyRuleData = struct { rule: *Rule, condition: ?u32 };
+
 /// An @import rule, as the cascade substitutes its sheet.
 pub const ImportRule = struct {
     media: *const MediaQueryList,
@@ -451,6 +455,8 @@ pub const Contents = struct {
     /// CSS Font Loading 3 §4.2: font faces in stylesheet order. Empty
     /// until a font rule is compiled; ordinary sheets allocate nothing.
     font_rules: std.ArrayList(FontRuleData) = .empty,
+    /// Properties and Values §2.1: registration order ignores layer rank.
+    property_rules: std.ArrayList(PropertyRuleData) = .empty,
     rules: std.ArrayList(RuleData) = .empty,
     conditions: std.ArrayList(Condition) = .empty,
     /// The sheet's layer names, as dotted paths (anonymous layers get a
@@ -520,6 +526,7 @@ pub const Contents = struct {
         const a = self.allocator;
         self.style_rules.deinit(a);
         self.font_rules.deinit(a);
+        self.property_rules.deinit(a);
         self.rules.deinit(a);
         self.conditions.deinit(a);
         for (self.layers.items) |name| a.free(name);
@@ -616,6 +623,7 @@ const Compiler = struct {
             // CSS Font Loading 3 §4.2: @font-face is indexed in the same
             // conditional context, but contributes no selector or layer rank.
             .font_face => try self.contents.font_rules.append(self.contents.allocator, .{ .rule = rule, .condition = condition }),
+            .property => try self.contents.property_rules.append(self.contents.allocator, .{ .rule = rule, .condition = condition }),
             .page => {},
             // Anchor Position 1 §6.5 applies these only while trying a
             // geometry-dependent fallback; they are not author rules.

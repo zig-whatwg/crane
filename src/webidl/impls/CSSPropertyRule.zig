@@ -1,64 +1,33 @@
-//! Implementation for CSSPropertyRule interface
-
-const std = @import("std");
+//! CSS Properties and Values §6.1: a view of an immutable registration.
+//! The generated CSSRule construction chain owns the native rule record.
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const CSSPropertyRule = interfaces.CSSPropertyRule;
+const dom = @import("dom");
+const css = @import("css");
 
-pub const State = CSSPropertyRule.State;
-
-pub const ImplError = error{
-    NotImplemented,
-};
-
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
+pub const State = interfaces.CSSPropertyRule.State;
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+fn registrationOf(instance: *runtime.Instance) !*const css.property_registry.Registration {
+    const rule = dom.style.hooks.cssRuleOf(instance) orelse return error.InvalidStateError;
+    if (rule.data != .property) return error.InvalidStateError;
+    return rule.data.property;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-/// Getter for name
 pub fn get_name(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return runtime.DOMString.initDupe(instance.ctx.allocator, (try registrationOf(instance)).name);
 }
 
-/// Getter for syntax
 pub fn get_syntax(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return runtime.DOMString.initDupe(instance.ctx.allocator, (try registrationOf(instance)).syntax_text);
 }
 
-/// Getter for inherits
 pub fn get_inherits(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return (try registrationOf(instance)).inherits;
 }
 
-/// Getter for initialValue
 pub fn get_initialValue(instance: *runtime.Instance) anyerror!?typedefs.CSSOMString {
-    _ = instance;
-    return null;
+    const text = (try registrationOf(instance)).initial_text orelse return null;
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, text);
 }
