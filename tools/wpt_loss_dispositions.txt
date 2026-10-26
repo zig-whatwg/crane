@@ -287,3 +287,19 @@ why = Not vars1: 1 -> 0 in the sweep; BASE itself fails 2 of 3 isolated runs. Th
 pair.1 = base 0/1; tip 1/1
 pair.2 = base 0/1; tip 1/1
 pair.3 = base 1/1; tip 1/1
+
+[html/webappapis/dynamic-markup-insertion/opening-the-input-stream/abort-refresh-immediate.window.js]
+generation = 184
+kind = flake
+why = The same timing-bound file as the generation 179 disposition and Codex row 119's Q248 (the file times out on both sides): 3/6 in the generation 183 sweep, 2/6 in 184's. Isolated, one process each, alternating, frozen main-031a779242 (base, generation 183) vs main-df896d6560 (tip, generation 184), integrator 2026-10-26 on chat through crane-measure.sh: base 4/6 in all seven pairs, tip 3/6 once (pair 1: "assert_unreached: Fetch should have been aborted", the assertion row 119's isolated pairs saw fail on BOTH endpoints of this same base) and 4/6 in the other six. Generation 184 adds env() values, namespace-operation errors and style()/if() fixes, none on the document.open or fetch-abort path. Evidence chat:~/crane-work/integrator-pairs-184/.
+pair.1 = base 4/6; tip 3/6
+pair.2 = base 4/6; tip 4/6
+pair.3 = base 4/6; tip 4/6
+
+[navigation-timing/test-performance-attributes.sub.html]
+generation = 184
+kind = flake
+why = The same intermittent secureConnectionStart >= connectStart subtest as generations 175, 177 and 179 and Codex row 119's Q250 (base 2/11 vs tip 1/11, Fisher p = 1.0): it passed in generation 183's sweep and failed in 184's. Isolated, one process each, alternating, frozen main-031a779242 (base) vs main-df896d6560 (tip), integrator 2026-10-26: base 0/1 in all three pairs, tip 0/1, 0/1, 1/1 - the tip is never below the base. Evidence chat:~/crane-work/integrator-pairs-184/.
+pair.1 = base 0/1; tip 0/1
+pair.2 = base 0/1; tip 0/1
+pair.3 = base 0/1; tip 1/1
