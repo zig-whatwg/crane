@@ -220,6 +220,9 @@ test "var() and env() are valid at parse time in every recognized longhand and s
     // Generic over the property table: no per-property list. Every
     // supported property accepts a valid var() value, and rejects an invalid
     // one (var-parsing.html's test_invalid_value names).
+    // The unrolled loops grow with the property table; Codex rows 124/125's
+    // properties pass Zig's default 1,000-branch comptime quota.
+    @setEvalBranchQuota(100_000);
     inline for (@typeInfo(Longhand).@"enum".fields) |field| {
         const l: Longhand = @enumFromInt(field.value);
         var list: std.ArrayList(css.properties.Assignment) = .empty;
