@@ -160,5 +160,10 @@ pub const substitution = @import("substitution.zig");
 pub const pending_values = @import("pending_values.zig");
 /// CSS Variables 1: custom property values, specified and computed.
 pub const custom_properties = @import("custom_properties.zig");
+/// CSS Properties and Values API 1: matching and computing syntax values.
+pub const syntax_values = @import("syntax_values.zig");
+/// Registered custom properties as the cascade reads them: a per-document
+/// snapshot of the registry with each initial value computed once.
+pub const registered_properties = @import("registered_properties.zig");
 /// CSS Namespaces 3: a style sheet's namespace prefixes, shared by reference.
 pub const namespace_map = @import("namespace_map.zig");
