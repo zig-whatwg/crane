@@ -99,7 +99,12 @@ fn isGroupRule(name: []const u8) bool {
 /// CSSOM's cssText): "consume a block's contents" of `text`, the
 /// declarations only. Owned: `freeDeclarationList`.
 pub fn parseDeclarationList(allocator: Allocator, text: []const u8) Allocator.Error![]Declaration {
-    var parser: Parser = .{ .allocator = allocator, .tokens = Tokenizer.init(text) };
+    // A pending value cut off by the end of a declaration list keeps its
+    // authored text, unclosed (integrator probe 1026b: Chrome and Safari
+    // read style.cssText = 'color: var(--x' back as "var(--x"; Firefox
+    // closes it - golden rule 2, the majority). A style sheet's text still
+    // closes it (declarationFrom).
+    var parser: Parser = .{ .allocator = allocator, .tokens = Tokenizer.init(text), .close_at_eof = false };
     return parser.consumeDeclarationList();
 }
 
@@ -242,6 +247,10 @@ const Parser = struct {
     tokens: Tokenizer,
     peeked: ?Token = null,
     property_descriptors: bool = false,
+    /// Whether a pending value cut off by the end of the input reads as its
+    /// tokens there (substitution.closeAtEof): a style sheet's, not a
+    /// declaration list's (parseDeclarationList). Other values always do.
+    close_at_eof: bool = true,
 
     fn next(self: *Parser) Token {
         if (self.peeked) |token| {
@@ -621,7 +630,11 @@ const Parser = struct {
             substitution.originalText(input[start..stop]);
         // A value cut off by the end of its input reads as its tokens there.
         const at_eof = @intFromPtr(source.ptr) + source.len == @intFromPtr(input.ptr) + input.len;
-        if (!raw_descriptor and at_eof) return .{ .name = name, .value = try substitution.closeAtEof(self.allocator, source), .important = important };
+        // In a declaration list a pending value keeps its authored text
+        // (probe 1026b, parseDeclarationList); anything else closes, except
+        // a raw descriptor, which keeps its source.
+        const keep_authored = !self.close_at_eof and substitution.mentionsFunction(source);
+        if (!raw_descriptor and at_eof and !keep_authored) return .{ .name = name, .value = try substitution.closeAtEof(self.allocator, source), .important = important };
         return .{ .name = name, .value = try self.allocator.dupe(u8, source), .important = important };
     }
 

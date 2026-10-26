@@ -506,6 +506,7 @@ pub const DeclarationBlock = struct {
     pub fn removeProperty(self: *DeclarationBlock, property_name: []const u8, out: *std.ArrayList(u8)) Allocator.Error!bool {
         // 3. "Let value be the return value of invoking getPropertyValue()
         //    with property as argument."
+        const start = out.items.len;
         try self.getPropertyValue(property_name, out);
         // 4-5. Remove the longhands (or the property).
         var removed = false;
@@ -529,6 +530,13 @@ pub const DeclarationBlock = struct {
             .shorthand => |s| s.longhands(),
             .longhand => |l| &.{l},
         };
+        // A shorthand whose value is a pending substitution returns "" -
+        // integrator probe 1026a: Chrome and Safari return "" for
+        // removeProperty('border') after `border: var(--x)`; Firefox
+        // returns "var(--x)", CSSOM's step 3. No newer spec: golden rule 2,
+        // the majority. The value read above and the longhands removed
+        // below are as CSSOM says.
+        if (property == .shorthand and self.holdsPendingShorthand(property.shorthand)) out.shrinkRetainingCapacity(start);
         for (longhands) |l| {
             if (self.indexOf(l)) |i| {
                 var old = self.entries.orderedRemove(i);
@@ -537,6 +545,19 @@ pub const DeclarationBlock = struct {
             }
         }
         return removed;
+    }
+
+    /// Whether a longhand of `s` holds the pending-substitution value of
+    /// a declaration of `s` itself (`border: var(--x)`).
+    fn holdsPendingShorthand(self: *const DeclarationBlock, s: properties.Shorthand) bool {
+        for (s.longhands()) |l| {
+            const i = self.indexOf(l) orelse continue;
+            const d = self.entries.items[i].typed;
+            if (d.value != .value or d.value.value != .pending) continue;
+            const owner = d.value.value.pending.property orelse continue;
+            if (owner == .shorthand and owner.shorthand == s) return true;
+        }
+        return false;
     }
 
     /// The cssText setter's steps after the readonly check: "Empty the

@@ -21,13 +21,13 @@ pub const WebAssembly = struct {
         pub const BaseType = null;
         pub const MixinTypes = &.{};
 
-        /// Method binding hints for V8Interface (JS name, Zig function name)
+        /// Method binding hints (JS name, Zig function name, WebIDL length)
         pub const methods = .{
-            .{ "instantiate", "call_instantiate" },
-            .{ "compileStreaming", "call_compileStreaming" },
-            .{ "instantiateStreaming", "call_instantiateStreaming" },
-            .{ "compile", "call_compile" },
-            .{ "validate", "call_validate" },
+            .{ "instantiate", "call_instantiate", 1 },
+            .{ "compileStreaming", "call_compileStreaming", 1 },
+            .{ "instantiateStreaming", "call_instantiateStreaming", 1 },
+            .{ "compile", "call_compile", 1 },
+            .{ "validate", "call_validate", 1 },
         };
 
         pub const has_constructor = false;

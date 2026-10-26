@@ -22,6 +22,7 @@ const properties = @import("properties.zig");
 const values = @import("style_values.zig");
 const color_scheme = @import("color_scheme.zig");
 const custom_properties = @import("custom_properties.zig");
+const registered_properties = @import("registered_properties.zig");
 
 const Longhand = properties.Longhand;
 const Value = values.Value;
@@ -42,6 +43,17 @@ pub const ComputedStyle = struct {
     /// by reference with the parent's when this cascade changed none (one
     /// reference held). Null: none has a value.
     custom: ?*custom_properties.CustomProperties = null,
+    /// Properties and Values API 1 §2.4: the `inherits: false` registered
+    /// custom properties THIS element's cascade set to something other than
+    /// their initial value - never shared with or inherited from the parent
+    /// (Blink StyleNonInheritedVariables; WebKit nonInheritedCustomProperties).
+    /// Null on every element that sets none.
+    custom_own: ?*custom_properties.CustomProperties = null,
+    /// The document's registrations this style was computed with (one
+    /// reference held), whose initial values stand for every registered
+    /// property neither record sets (Blink ComputedStyle::GetVariableData's
+    /// fallback to StyleInitialData). Null when the document has none.
+    registered: ?*registered_properties.Snapshot = null,
 
     /// A style whose every value is its longhand's initial value, computed
     /// (the root's parent; an element no rule styles).
@@ -54,22 +66,72 @@ pub const ComputedStyle = struct {
     pub fn destroy(self: *ComputedStyle) void {
         for (self.values) |v| v.release();
         if (self.custom) |c| c.release();
+        if (self.custom_own) |c| c.release();
+        if (self.registered) |r| r.release();
         self.allocator.destroy(self);
     }
 
     /// The computed value of custom property `name` (case-sensitive), or
     /// null for the guaranteed-invalid value (absent included). Borrowed.
-    pub fn customValue(self: *const ComputedStyle, name: []const u8) ?*const custom_properties.Text {
+    pub fn customValue(self: *const ComputedStyle, name: []const u8) ?*custom_properties.Text {
+        return self.customValueIn(name, self.registered);
+    }
+
+    /// customValue with the registrations of `snapshot` - the cascade reads
+    /// a parent computed without any (the root's initial parent) this way.
+    pub fn customValueIn(self: *const ComputedStyle, name: []const u8, registrations: ?*const registered_properties.Snapshot) ?*custom_properties.Text {
+        if (registrations) |snapshot| if (snapshot.find(name)) |registration| {
+            // A registered property: its record (the inherited one or this
+            // element's own), else its initial value.
+            const record = if (registration.inherits) self.custom else self.custom_own;
+            if (record) |r| switch (r.lookup(name)) {
+                .value => |v| return v,
+                .invalid => return null,
+                .absent => {},
+            };
+            return registration.initial;
+        };
         const record = self.custom orelse return null;
         return record.get(name);
     }
 
     /// The custom properties with a value, in code-point order (CSSOM
-    /// getComputedStyle lists them after the longhands; integrator Q3).
-    /// Borrowed names; the slice is the caller's.
+    /// getComputedStyle lists them after the longhands; integrator Q3):
+    /// those either record sets, and the registered ones at a non-null
+    /// initial value (Blink ComputedStyle::GetVariableNames unions the
+    /// initial data's names and both maps). Borrowed names; the slice is
+    /// the caller's.
     pub fn customNames(self: *const ComputedStyle, allocator: Allocator) Allocator.Error![]const []const u8 {
-        const record = self.custom orelse return &.{};
-        return record.names(allocator);
+        const snapshot = self.registered orelse {
+            const record = self.custom orelse return &.{};
+            return record.names(allocator);
+        };
+        var out: std.ArrayList([]const u8) = .empty;
+        errdefer out.deinit(allocator);
+        // Candidates: every name either record lists and every registered
+        // name with an initial value - sorted, duplicates dropped, each kept
+        // when its value is not guaranteed-invalid.
+        for ([_]?*custom_properties.CustomProperties{ self.custom, self.custom_own }) |maybe| {
+            const record = maybe orelse continue;
+            const listed = try record.names(allocator);
+            defer allocator.free(listed);
+            try out.appendSlice(allocator, listed);
+        }
+        for (snapshot.entries) |entry| if (entry.initial != null) try out.append(allocator, entry.name);
+        std.mem.sort([]const u8, out.items, {}, struct {
+            fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+                return std.mem.order(u8, a, b) == .lt;
+            }
+        }.lessThan);
+        var kept: usize = 0;
+        for (out.items, 0..) |name, i| {
+            if (i != 0 and std.mem.eql(u8, name, out.items[i - 1])) continue;
+            if (self.customValue(name) == null) continue;
+            out.items[kept] = name;
+            kept += 1;
+        }
+        out.shrinkRetainingCapacity(kept);
+        return out.toOwnedSlice(allocator);
     }
 
     pub fn get(self: *const ComputedStyle, l: Longhand) Value {
@@ -166,6 +228,7 @@ pub const ComputedStyle = struct {
         switch (properties.Longhand.info(l).grammar) {
             .paint => return @import("svg_paint.zig").serializeResolved(v, self.get(.color).color, out, allocator),
             .filter => if (v == .filter) return v.filter.serializeResolved(self.get(.color).color, out, allocator),
+            .box_shadow => if (v == .box_shadow) return v.box_shadow.serializeResolved(self.get(.color).color, out, allocator),
             .text_shadow => if (v == .text_shadow) return v.text_shadow.serialize(self.get(.color).color, out, allocator),
             // "line-height: the resolved value is normal if the computed
             // value is normal, or the used value otherwise." A number's

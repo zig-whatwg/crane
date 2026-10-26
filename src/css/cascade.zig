@@ -39,6 +39,7 @@ const declarations_mod = @import("declarations.zig");
 const computed_mod = @import("computed_style.zig");
 const color_scheme_mod = @import("color_scheme.zig");
 const custom_mod = @import("custom_properties.zig");
+const registered_mod = @import("registered_properties.zig");
 const substitution = @import("substitution.zig");
 
 const Longhand = properties.Longhand;
@@ -165,6 +166,15 @@ pub const Context = struct {
     /// The document's media values, for if()'s media() test (Codex row 123);
     /// borrowed for the call. Null: the defaults.
     media_values: ?*const @import("media_queries.zig").MediaValues = null,
+    /// if()'s supports() test's selector() function: the check CSS.supports()
+    /// and @supports use (src/selector is not a dependency of this module).
+    /// Null: every selector() is false.
+    selector_check: ?@import("supports.zig").SelectorCheck = null,
+    /// Properties and Values API 1: the document's registrations, with
+    /// their initial values computed (registered_properties.zig), borrowed
+    /// for the call; the style retains it. Null when the document has none:
+    /// every custom property is unregistered and nothing below reads it.
+    registered: ?*registered_mod.Snapshot = null,
 };
 
 const Candidate = struct {
@@ -438,6 +448,10 @@ pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*Computed
     // below, each holding its own reference.
     builder.style = style;
     errdefer style.destroy();
+    if (ctx.registered) |r| {
+        r.retain();
+        style.registered = r;
+    }
     try builder.run();
     return style;
 }
@@ -519,6 +533,10 @@ const Builder = struct {
     custom_states: std.ArrayList(CustomState) = .empty,
     /// Values 5 Appendix A: the substitution contexts being guarded.
     guards: std.ArrayList(Guard) = .empty,
+    /// font-size and line-height are computed once, by run() or earlier when
+    /// a registered property's font-relative units pull them in.
+    font_size_done: bool = false,
+    line_height_done: bool = false,
 
     const CustomState = struct {
         name: *custom_mod.Text,
@@ -561,10 +579,25 @@ const Builder = struct {
     /// on reference, applyCustomProperties for the rest) and Blink's
     /// StyleCascade LookupAndApply, a property referenced by var() is
     /// resolved when referenced, the others in order; each once.
+    /// The custom property states, one per name with candidates, before any
+    /// longhand: each resolves when a var() first reaches it.
+    fn collectCustomStates(self: *Builder) Allocator.Error!void {
+        var first: usize = 0;
+        while (first < self.custom_candidates.len) {
+            const name = self.custom_candidates[first].decl.name;
+            var end = first + 1;
+            while (end < self.custom_candidates.len and std.mem.eql(u8, self.custom_candidates[end].decl.name.bytes, name.bytes)) end += 1;
+            try self.custom_states.append(self.ctx.allocator, .{ .name = name, .first = first, .end = end });
+            first = end;
+        }
+    }
+
     fn resolveCustomProperties(self: *Builder) Allocator.Error!void {
         const parent_record: ?*custom_mod.CustomProperties = if (self.ctx.parent) |p| p.custom else null;
         if (self.custom_candidates.len == 0) {
-            // No declaration: the inherited map, shared (no copy).
+            // No declaration: the inherited map, shared (no copy), and no
+            // non-inherited record (an unset registered property is its
+            // initial value, which the snapshot holds).
             if (parent_record) |r| {
                 r.retain();
                 self.style.custom = r;
@@ -572,25 +605,30 @@ const Builder = struct {
             return;
         }
         const allocator = self.ctx.allocator;
-        var first: usize = 0;
-        while (first < self.custom_candidates.len) {
-            const name = self.custom_candidates[first].decl.name;
-            var end = first + 1;
-            while (end < self.custom_candidates.len and std.mem.eql(u8, self.custom_candidates[end].decl.name.bytes, name.bytes)) end += 1;
-            try self.custom_states.append(allocator, .{ .name = name, .first = first, .end = end });
-            first = end;
-        }
         for (0..self.custom_states.items.len) |i| {
             if (self.custom_states.items[i].status == .unresolved) try self.resolveCustom(i);
         }
-        // The record: the values this cascade changed over the parent's.
+        // The records: the values this cascade changed over what the
+        // element would take by default - the parent's inherited record, or
+        // for an `inherits: false` registered property its initial value.
         var changes: std.ArrayList(custom_mod.CustomProperties.Entry) = .empty;
         defer changes.deinit(allocator);
+        var own: std.ArrayList(custom_mod.CustomProperties.Entry) = .empty;
+        defer own.deinit(allocator);
         for (self.custom_states.items) |state| {
-            const inherited = if (parent_record) |r| r.get(state.name.bytes) else null;
-            const same = if (state.value) |v| (inherited != null and v.eql(inherited.?)) else inherited == null;
-            if (!same) try changes.append(allocator, .{ .name = state.name, .value = state.value });
+            const reg = self.registration(state.name.bytes);
+            if (reg != null and !reg.?.inherits) {
+                if (!sameText(state.value, reg.?.initial)) try own.append(allocator, .{ .name = state.name, .value = state.value });
+                continue;
+            }
+            const inherited: ?*custom_mod.Text = if (parent_record) |r| switch (r.lookup(state.name.bytes)) {
+                .value => |v| v,
+                .invalid => null,
+                .absent => if (reg) |g| g.initial else null,
+            } else if (reg) |g| g.initial else null;
+            if (!sameText(state.value, inherited)) try changes.append(allocator, .{ .name = state.name, .value = state.value });
         }
+        if (own.items.len != 0) self.style.custom_own = try custom_mod.CustomProperties.create(allocator, null, own.items);
         if (changes.items.len == 0) {
             if (parent_record) |r| {
                 r.retain();
@@ -599,6 +637,159 @@ const Builder = struct {
             return;
         }
         self.style.custom = try custom_mod.CustomProperties.create(allocator, parent_record, changes.items);
+    }
+
+    /// The registration of `name` when it has a syntax other than the
+    /// universal one - the properties whose computed value is typed.
+    fn typedRegistration(self: *const Builder, name: []const u8) ?*const registered_mod.Snapshot.Entry {
+        const reg = self.registration(name) orelse return null;
+        return if (reg.syntax.universal) null else reg;
+    }
+
+    /// Properties and Values API 1 §2.4: `text` (the specified value with
+    /// its arbitrary substitution functions substituted) parsed against the
+    /// registration's syntax and computed; the computed value's
+    /// serialization is what var() substitutes (Blink CustomProperty::
+    /// ApplyValue -> ConvertRegisteredPropertyValue ->
+    /// ConvertRegisteredPropertyVariableData; WebKit
+    /// computeCustomPropertyValueForSyntax). A failed parse is invalid at
+    /// computed-value time: unset. Retained.
+    fn typedCustom(self: *Builder, name: []const u8, reg: *const registered_mod.Snapshot.Entry, text: []const u8, taint: []const substitution.TaintRange, pending: ?*const @import("pending_values.zig").Pending) Allocator.Error!?*custom_mod.Text {
+        // §2.5 / unit-cycles.html: font-relative units make font-size (and
+        // lh line-height) a dependency. While that property is itself being
+        // substituted - its var() reached here - both are in a cycle (Blink
+        // StyleCascade HasFontSizeDependency -> CascadeResolver::
+        // DetectCycle); otherwise it is computed first (WebKit: a font-size
+        // dependency calls updateFont()).
+        const deps = fontDependencies(text, self.ctx.is_root);
+        if (deps.font_size or deps.line_height) {
+            if (self.wouldCycle(.property, Longhand.font_size.name())) {
+                self.markIfCyclic(.property, Longhand.font_size.name());
+                return retained(self.defaultCustom(name));
+            }
+            if (deps.line_height and self.wouldCycle(.property, Longhand.line_height.name())) {
+                self.markIfCyclic(.property, Longhand.line_height.name());
+                return retained(self.defaultCustom(name));
+            }
+            try self.ensureFontSize();
+            if (deps.line_height) try self.ensureLineHeight();
+        }
+        const allocator = self.ctx.allocator;
+        const bytes = (try self.computeTyped(allocator, reg, text, pending)) orelse return retained(self.defaultCustom(name));
+        errdefer allocator.free(bytes);
+        // Computation reorders tokens, so taint covers the whole value when
+        // any input token was tainted (both shipping browsers taint a var()
+        // value as a whole when attr() produced tokens in it; RULINGS 1025t).
+        const whole: []substitution.TaintRange = if (taint.len == 0) &.{} else blk: {
+            const ranges = try allocator.alloc(substitution.TaintRange, 1);
+            ranges[0] = .{ .start = 0, .end = bytes.len, .kind = .own };
+            break :blk ranges;
+        };
+        errdefer if (whole.len != 0) allocator.free(whole);
+        return try custom_mod.Text.adopt(allocator, bytes, whole);
+    }
+
+    /// `text` parsed against `reg`'s syntax and computed in this element's
+    /// context, serialized (owned by `allocator`); null when the syntax
+    /// does not match.
+    fn computeTyped(self: *Builder, allocator: Allocator, reg: *const registered_mod.Snapshot.Entry, text: []const u8, pending: ?*const @import("pending_values.zig").Pending) Allocator.Error!?[]u8 {
+        // A declaration's own url()s resolve against its base (the
+        // pending value keeps them); a query value's are left as written.
+        var value = (if (pending) |p|
+            try p.parseSyntax(allocator, &reg.syntax, text, self.ctx.url_resolver)
+        else
+            try reg.syntax.parseValue(.{ .allocator = allocator }, text)) orelse return null;
+        defer value.deinit();
+        var computed = try value.compute(allocator, .{
+            .math = self.mathContext(.width),
+            .color = .{ .scheme = self.used_scheme },
+            .writing_mode = self.writing_mode,
+            .direction = self.direction,
+        });
+        defer computed.deinit();
+        var out: std.ArrayList(u8) = .empty;
+        defer out.deinit(allocator);
+        try computed.serialize(&out, allocator);
+        return try out.toOwnedSlice(allocator);
+    }
+
+    const FontDependencies = struct { font_size: bool = false, line_height: bool = false };
+
+    /// Which of font-size and line-height a registered value's units read
+    /// (the units syntax_values.isComputationallyIndependent rejects): em,
+    /// ex, cap, ch, ic read font-size, lh line-height; their root forms read
+    /// the root's, which is this element only on the root.
+    fn fontDependencies(text: []const u8, is_root: bool) FontDependencies {
+        var deps: FontDependencies = .{};
+        var tokenizer = @import("tokenizer.zig").Tokenizer.init(text);
+        while (true) {
+            const token = tokenizer.next();
+            if (token.token_type == .eof) return deps;
+            if (token.token_type != .dimension) continue;
+            const unit = token.unit orelse continue;
+            const nameEql = @import("tokenizer.zig").nameEql;
+            inline for (.{ "em", "ex", "cap", "ch", "ic" }) |u| if (nameEql(unit, u)) {
+                deps.font_size = true;
+            };
+            if (nameEql(unit, "lh")) deps.line_height = true;
+            if (is_root) {
+                inline for (.{ "rem", "rex", "rcap", "rch", "ric" }) |u| if (nameEql(unit, u)) {
+                    deps.font_size = true;
+                };
+                if (nameEql(unit, "rlh")) deps.line_height = true;
+            }
+        }
+    }
+
+    fn ensureFontSize(self: *Builder) Allocator.Error!void {
+        if (self.font_size_done) return;
+        self.font_size_done = true;
+        _ = try self.computeAndStore(.font_size);
+    }
+
+    fn ensureLineHeight(self: *Builder) Allocator.Error!void {
+        if (self.line_height_done) return;
+        try self.ensureFontSize();
+        self.line_height_done = true;
+        _ = try self.computeAndStore(.line_height);
+    }
+
+    fn sameText(a: ?*custom_mod.Text, b: ?*custom_mod.Text) bool {
+        if (a == null or b == null) return a == null and b == null;
+        return a.?.eql(b.?);
+    }
+
+    /// The registration of custom property `name`, or null: unregistered.
+    fn registration(self: *const Builder, name: []const u8) ?*const registered_mod.Snapshot.Entry {
+        const snapshot = self.ctx.registered orelse return null;
+        return snapshot.find(name);
+    }
+
+    /// The initial value of `name`: a registered property's computed
+    /// initial value, else the guaranteed-invalid value (null). Borrowed.
+    fn initialCustom(self: *const Builder, name: []const u8) ?*custom_mod.Text {
+        const reg = self.registration(name) orelse return null;
+        return reg.initial;
+    }
+
+    /// The parent's computed value of `name` ("inherit"); the initial value
+    /// at the root. Borrowed.
+    fn parentCustom(self: *const Builder, name: []const u8) ?*custom_mod.Text {
+        const parent = self.ctx.parent orelse return self.initialCustom(name);
+        return parent.customValueIn(name, self.ctx.registered);
+    }
+
+    /// What `name` computes to when no declaration applies, and for
+    /// `unset`: the parent's value for an inherited property (every
+    /// unregistered one), the initial value for an `inherits: false` one.
+    fn defaultCustom(self: *const Builder, name: []const u8) ?*custom_mod.Text {
+        if (self.registration(name)) |reg| if (!reg.inherits) return reg.initial;
+        return self.parentCustom(name);
+    }
+
+    fn retained(text: ?*custom_mod.Text) ?*custom_mod.Text {
+        if (text) |t| t.retain();
+        return text;
     }
 
     fn findCustom(self: *const Builder, name: []const u8) ?usize {
@@ -652,6 +843,64 @@ const Builder = struct {
     /// fallback or not (Values 5: "When a cycle is detected, all
     /// participants in the cycle become invalid").
     fn resolveCustom(self: *Builder, i: usize) Allocator.Error!void {
+        // Codex row 122 Q39 ruling: a referenced custom property's computed
+        // value belongs to the element, so it is computed without the
+        // caller's attribute guards (attr-cycle.html case 27: --y's raw
+        // read of data-foo inside --x's attr(data-foo type(*)) is no
+        // cycle); property guards still stack, so property cycles are
+        // caught, and within one substitution chain every attr() lookup
+        // stays guarded (Q24, probe 1025q). Blink keeps one stack
+        // (CascadeResolver: style_cascade.cc ResolveAttrInto locks
+        // {kAttribute, name}, ResolveVarInto -> LookupAndApply applies the
+        // referenced property under the same resolver and returns false
+        // when that caused a cycle), so there the result follows the order
+        // custom properties are applied in; this makes it order-independent.
+        const saved = try self.hideAttributeGuards();
+        defer self.restoreGuards(saved);
+        try self.resolveCustomGuarded(i);
+    }
+
+    /// The guard stack while attribute guards are hidden: the caller's
+    /// whole stack, and where each guard of the view came from.
+    const SavedGuards = struct {
+        outer: ?std.ArrayList(Guard) = null,
+        origin: []usize = &.{},
+    };
+
+    /// Replaces the guard stack with its property (and function) guards
+    /// alone; restoreGuards puts the whole stack back, carrying any cycle
+    /// mark made meanwhile to the guard it came from.
+    fn hideAttributeGuards(self: *Builder) Allocator.Error!SavedGuards {
+        var hidden: usize = 0;
+        for (self.guards.items) |g| if (g.kind == .attribute) {
+            hidden += 1;
+        };
+        if (hidden == 0) return .{};
+        const allocator = self.ctx.allocator;
+        const kept = self.guards.items.len - hidden;
+        const origin = try allocator.alloc(usize, kept);
+        errdefer allocator.free(origin);
+        var view: std.ArrayList(Guard) = try .initCapacity(allocator, kept);
+        for (self.guards.items, 0..) |g, k| if (g.kind != .attribute) {
+            origin[view.items.len] = k;
+            view.appendAssumeCapacity(g);
+        };
+        const outer = self.guards;
+        self.guards = view;
+        return .{ .outer = outer, .origin = origin };
+    }
+
+    fn restoreGuards(self: *Builder, saved: SavedGuards) void {
+        const outer = saved.outer orelse return;
+        for (self.guards.items[0..saved.origin.len], saved.origin) |g, k| if (g.cyclic) {
+            outer.items[k].cyclic = true;
+        };
+        self.guards.deinit(self.ctx.allocator);
+        self.guards = outer;
+        self.ctx.allocator.free(saved.origin);
+    }
+
+    fn resolveCustomGuarded(self: *Builder, i: usize) Allocator.Error!void {
         self.custom_states.items[i].status = .resolving;
         const name = self.custom_states.items[i].name.bytes;
         const at = try self.guard(.property, name);
@@ -662,21 +911,13 @@ const Builder = struct {
         };
         if (self.unguard(at)) {
             if (value) |v| v.release();
-            value = null;
+            // In a cycle: invalid at computed-value time - the
+            // guaranteed-invalid value, or for a registered property with a
+            // syntax, unset (Values 5 "Invalid Substitution"; unit-cycles.html).
+            value = if (self.typedRegistration(name) != null) retained(self.defaultCustom(name)) else null;
         }
         self.custom_states.items[i].value = value;
         self.custom_states.items[i].status = .done;
-    }
-
-    /// The inherited value of `name`: the parent's computed value, or the
-    /// guaranteed-invalid value (the initial value of an unregistered custom
-    /// property) at the root. Retained.
-    fn inheritedCustom(self: *const Builder, name: []const u8) ?*custom_mod.Text {
-        const parent = self.ctx.parent orelse return null;
-        const record = parent.custom orelse return null;
-        const value = record.get(name) orelse return null;
-        value.retain();
-        return value;
     }
 
     /// Cascade 5 §§6-7.3 for one custom property, then its computed value
@@ -694,6 +935,7 @@ const Builder = struct {
             const keyword: values.CssWide = switch (c.decl.value) {
                 .css_wide => |k| k,
                 .text => |t| {
+                    if (self.typedRegistration(name)) |reg| return self.typedCustom(name, reg, t.bytes, t.taint, null);
                     t.retain();
                     return t;
                 },
@@ -702,9 +944,10 @@ const Builder = struct {
                     host.tree_scope = c.source.tree_scope.serial;
                     switch (try pending.substituteCustom(self.ctx.allocator, host, name)) {
                         // Values 5 "Invalid Substitution": an unregistered
-                        // custom property's computed value is the
-                        // guaranteed-invalid value.
-                        .invalid => return null,
+                        // (or universal) custom property's computed value is
+                        // the guaranteed-invalid value; a registered one with
+                        // a syntax is unset.
+                        .invalid => return if (self.typedRegistration(name) != null) retained(self.defaultCustom(name)) else null,
                         // Q83: missing random input skips the candidate.
                         .unavailable => continue,
                         .substituted => |result| {
@@ -718,6 +961,13 @@ const Builder = struct {
                                 self.ctx.allocator.free(result.taint);
                                 break :blk values.CssWide.parse(keyword).?;
                             }
+                            if (self.typedRegistration(name)) |reg| {
+                                defer {
+                                    self.ctx.allocator.free(result.text);
+                                    self.ctx.allocator.free(result.taint);
+                                }
+                                return self.typedCustom(name, reg, result.text, result.taint, pending);
+                            }
                             errdefer {
                                 self.ctx.allocator.free(result.text);
                                 self.ctx.allocator.free(result.taint);
@@ -728,20 +978,24 @@ const Builder = struct {
                 },
             };
             switch (keyword) {
-                // §2.2: initial is the guaranteed-invalid value.
-                .initial => return null,
-                // Custom properties are inherited: unset is inherit.
-                .inherit, .unset => return self.inheritedCustom(name),
+                // §2.2: initial is the guaranteed-invalid value for an
+                // unregistered property; a registered one's is its
+                // registration's (Properties and Values API 1 §2.4).
+                .initial => return retained(self.initialCustom(name)),
+                .inherit => return retained(self.parentCustom(name)),
+                // Unregistered custom properties are inherited, so unset is
+                // inherit; a registered one follows its `inherits`.
+                .unset => return retained(self.defaultCustom(name)),
                 .revert => {
-                    if (c.source.origin == .user_agent) return self.inheritedCustom(name);
+                    if (c.source.origin == .user_agent) return retained(self.defaultCustom(name));
                     excluded.revert_class_at_least = @min(excluded.revert_class_at_least, c.source.origin.revertClass());
                 },
                 .revert_layer => excluded.addLevel(c.source.*, c.decl.important),
                 .revert_rule => excluded.addRule(c.source),
             }
         }
-        // No declaration left: the default, inherit.
-        return self.inheritedCustom(name);
+        // No declaration left: the default.
+        return retained(self.defaultCustom(name));
     }
 
     /// substitution.Host's var() lookup: this element's custom property,
@@ -761,9 +1015,8 @@ const Builder = struct {
             const value = self.custom_states.items[i].value orelse return null;
             return value.computed();
         }
-        const parent = self.ctx.parent orelse return null;
-        const record = parent.custom orelse return null;
-        const value = record.get(name) orelse return null;
+        // No declaration here: the default (inherited or initial).
+        const value = self.defaultCustom(name) orelse return null;
         return value.computed();
     }
 
@@ -772,9 +1025,7 @@ const Builder = struct {
     /// unregistered custom property.
     fn parentCustomValueCallback(context: *anyopaque, name: []const u8) substitution.Error!?substitution.Computed {
         const self: *Builder = @ptrCast(@alignCast(context));
-        const parent = self.ctx.parent orelse return null;
-        const record = parent.custom orelse return null;
-        const value = record.get(name) orelse return null;
+        const value = self.parentCustom(name) orelse return null;
         return value.computed();
     }
 
@@ -784,14 +1035,50 @@ const Builder = struct {
         return .{ .value = true, .tainted = value.taint.len != 0 };
     }
 
+    /// style(name: value) (CSS Conditional 5 §6.2; Values 5 if()): the
+    /// query value computed as `name`'s own value would be, compared with the
+    /// element's computed value. A CSS-wide keyword computes as it does in a
+    /// declaration (integrator probes 1025h/1025i, RULINGS.md - Chrome, the
+    /// one browser shipping if(); Blink StyleCascade::EvalIfStyleFeature
+    /// resolves the query value like a declaration of the property):
+    /// `initial` is the property's initial value - guaranteed-invalid for an
+    /// unregistered custom property, so it matches a missing one; `inherit`
+    /// is the parent's computed value; `unset` is `inherit`, custom
+    /// properties being inherited; `revert`, `revert-layer` and
+    /// `revert-rule` make the feature false (row 123 Q5 ruling,
+    /// tmp/plans/codex-condfns-questions.md). A registered property's
+    /// initial value and `inherits` are its registration's.
     fn queryValueMatchesCallback(context: *anyopaque, name: []const u8, value_text: []const u8) substitution.Error!?substitution.Flagged(bool) {
         const self: *Builder = @ptrCast(@alignCast(context));
         if (!custom_mod.isName(name)) return null;
+        if (custom_mod.cssWideKeyword(value_text)) |keyword| {
+            const current = try customValueCallback(context, name);
+            const expected: ?substitution.Computed = switch (keyword) {
+                .initial => computedOf(self.initialCustom(name)),
+                .inherit => computedOf(self.parentCustom(name)),
+                .unset => computedOf(self.defaultCustom(name)),
+                .revert, .revert_layer, .revert_rule => return .{ .value = false, .tainted = false },
+            };
+            const tainted = (if (current) |c| c.taint.len != 0 else false) or (if (expected) |e| e.taint.len != 0 else false);
+            const equal = if (current == null or expected == null) current == null and expected == null else tokensEqual(current.?.text, expected.?.text);
+            return .{ .value = equal, .tainted = tainted };
+        }
         var arena = std.heap.ArenaAllocator.init(self.ctx.allocator);
         defer arena.deinit();
-        const query = try self.substituteText(arena.allocator(), value_text);
+        var query = try self.substituteText(arena.allocator(), value_text);
+        // A registered property with a syntax: the query value parsed and
+        // computed under its registration (a mismatch matches nothing),
+        // compared with the element's computed value.
+        if (self.typedRegistration(name)) |reg| {
+            query.text = (try self.computeTyped(arena.allocator(), reg, query.text, null)) orelse return .{ .value = false, .tainted = query.tainted };
+        }
         const value = (try customValueCallback(context, name)) orelse return .{ .value = false, .tainted = query.tainted };
         return .{ .value = tokensEqual(value.text, query.text), .tainted = query.tainted or value.taint.len != 0 };
+    }
+
+    fn computedOf(text: ?*custom_mod.Text) ?substitution.Computed {
+        const t = text orelse return null;
+        return t.computed();
     }
 
     fn numericValueCallback(context: *anyopaque, operand: []const u8) substitution.Error!?substitution.Flagged(substitution.Numeric) {
@@ -815,7 +1102,7 @@ const Builder = struct {
 
     fn supportsCallback(context: *anyopaque, text: []const u8, quirks: bool) substitution.Error!bool {
         const self: *Builder = @ptrCast(@alignCast(context));
-        return @import("supports.zig").evaluateTest(self.ctx.allocator, text, quirks);
+        return @import("supports.zig").evaluateTest(self.ctx.allocator, text, quirks, self.ctx.selector_check);
     }
 
     const Substituted = struct { text: []const u8, tainted: bool };
@@ -1064,9 +1351,10 @@ const Builder = struct {
     }
 
     fn run(self: *Builder) Allocator.Error!void {
-        // CSS Variables 1: custom properties first - any longhand, the
-        // high-priority ones included, may substitute one.
-        try self.resolveCustomProperties();
+        // CSS Variables 1: the custom property states first - any longhand,
+        // the high-priority ones included, may substitute one, which then
+        // resolves when it is first reached.
+        try self.collectCustomStates();
         // The high-priority longhands: the mapping of logical ones, then
         // color-scheme (what every system color resolves against - Blink
         // applies it before color too), then font-size (em), then color
@@ -1077,8 +1365,13 @@ const Builder = struct {
         _ = try self.computeAndStore(.text_orientation);
         self.used_scheme = self.elementColorScheme(try self.computeAndStore(.color_scheme));
         self.style.used_color_scheme = self.used_scheme;
-        _ = try self.computeAndStore(.font_size);
-        _ = try self.computeAndStore(.line_height);
+        try self.ensureFontSize();
+        try self.ensureLineHeight();
+        // The custom properties not yet reached by a var(): after font-size
+        // and line-height, which a registered one's font-relative units read
+        // (Blink StyleCascade::Apply applies custom properties after
+        // UpdateFont and line-height, pulling them in earlier on demand).
+        try self.resolveCustomProperties();
         _ = try self.computeAndStore(.color);
         for (0..Longhand.count) |i| {
             const l: Longhand = @enumFromInt(i);
@@ -1318,10 +1611,13 @@ const Builder = struct {
                 return .{ .indent = try @import("text_indent.zig").Indent.create(self.ctx.allocator, offset, indent.flags) };
             },
             .filter => |value| return .{ .filter = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
+            .box_shadow => |value| return .{ .box_shadow = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
             .text_values => |value| return .{ .text_values = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
             .decoration_keywords => |value| return value.compute(self.style.keyword(.writing_mode)).value(),
             .text_shadow => |value| return .{ .text_shadow = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
             .shape => |value| return .{ .shape = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
+            .corner_radius => |value| return .{ .corner_radius = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
+            .image_resolution => |value| return .{ .image_resolution = try value.compute(self.ctx.allocator, self.computationContext(l, v, source)) },
             .image_position => |value| return .{ .image_position = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
             .image_size => |value| return .{ .image_size = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
             .image_quad => |value| return .{ .image_quad = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
@@ -2346,12 +2642,16 @@ test "a defensive unavailable font-size-adjust computes as its inherited value" 
 /// the if() style() query tests (rows 122/123 call these from a function's
 /// replace; none of today's functions does).
 fn withHost(allocator: Allocator, text: []const u8, parent_text: ?[]const u8, body: *const fn (substitution.Host) anyerror!void) !void {
+    return withRegisteredHost(allocator, null, text, parent_text, body);
+}
+
+fn withRegisteredHost(allocator: Allocator, registered: ?*registered_mod.Snapshot, text: []const u8, parent_text: ?[]const u8, body: *const fn (substitution.Host) anyerror!void) !void {
     var parent: ?*ComputedStyle = null;
     defer if (parent) |p| p.destroy();
     if (parent_text) |pt| {
         var block = try DeclarationBlock.parse(.{ .allocator = allocator }, pt);
         defer block.deinit();
-        parent = try cascade(.{ .allocator = allocator, .parent = null, .is_root = true }, &.{.{ .block = &block, .source = .{ .origin = .author } }});
+        parent = try cascade(.{ .allocator = allocator, .parent = null, .is_root = true, .registered = registered }, &.{.{ .block = &block, .source = .{ .origin = .author } }});
     }
     var block = try DeclarationBlock.parse(.{ .allocator = allocator }, text);
     defer block.deinit();
@@ -2363,7 +2663,7 @@ fn withHost(allocator: Allocator, text: []const u8, parent_text: ?[]const u8, bo
     var customs = try collectCustomCandidates(allocator, &matched);
     defer customs.deinit(allocator);
     var builder: Builder = .{
-        .ctx = .{ .allocator = allocator, .parent = parent },
+        .ctx = .{ .allocator = allocator, .parent = parent, .selector_check = &hostTestSelectorCheck, .registered = registered },
         .candidates = candidates.items,
         .index = CandidateIndex.init(candidates.items, links),
         .custom_candidates = customs.items,
@@ -2373,8 +2673,52 @@ fn withHost(allocator: Allocator, text: []const u8, parent_text: ?[]const u8, bo
     style.* = .{ .allocator = allocator, .values = computed_mod.initial_values };
     defer style.destroy();
     builder.style = style;
+    try builder.collectCustomStates();
     try builder.resolveCustomProperties();
     try body(builder.substitutionHost(builder.mathContext(.width)));
+}
+
+/// A stand-in for src/selector's check, as supports.zig's tests use: a
+/// selector with `:unknown` does not parse.
+fn hostTestSelectorCheck(allocator: Allocator, text: []const u8) bool {
+    _ = allocator;
+    return text.len != 0 and std.mem.indexOf(u8, text, ":unknown") == null;
+}
+
+test "if() supports(selector(...)) asks the context's selector check, as CSS.supports() does" {
+    try withHost(testing.allocator, "--a: 1", null, struct {
+        fn body(host: substitution.Host) anyerror!void {
+            const supports = host.supports.?;
+            try testing.expect(try supports(host.context, "selector(h2 > p)", false));
+            try testing.expect(!try supports(host.context, "selector(h2:unknown)", false));
+            try testing.expect(try supports(host.context, "not selector(h2:unknown)", false));
+        }
+    }.body);
+}
+
+test "a referenced custom property resolves without the caller's attribute guards; property guards stay and marks map back" {
+    // Codex row 122 Q39 ruling (integrator, 2026-10-26): a referenced custom
+    // property's computed value belongs to the element, so computing it on
+    // demand starts WITHOUT the caller's attribute guards (attr-cycle.html
+    // case 27); property guards still stack, so property cycles are caught.
+    var no_links: [0]usize = .{};
+    var builder: Builder = .{ .ctx = .{ .allocator = testing.allocator, .parent = null }, .candidates = &.{}, .index = CandidateIndex.init(&.{}, &no_links) };
+    defer builder.deinit();
+    _ = try builder.guard(.property, "--x");
+    _ = try builder.guard(.attribute, "data-foo");
+    _ = try builder.guard(.property, "--w");
+    const saved = try builder.hideAttributeGuards();
+    try testing.expectEqual(@as(usize, 2), builder.guards.items.len);
+    try testing.expect(!builder.wouldCycle(.attribute, "data-foo"));
+    try testing.expect(builder.wouldCycle(.property, "--x"));
+    // A cycle back to --w found inside marks --w (and what is above it).
+    builder.markIfCyclic(.property, "--w");
+    builder.restoreGuards(saved);
+    try testing.expectEqual(@as(usize, 3), builder.guards.items.len);
+    try testing.expect(!builder.guards.items[0].cyclic);
+    try testing.expect(!builder.guards.items[1].cyclic);
+    try testing.expect(builder.guards.items[2].cyclic);
+    try testing.expect(builder.wouldCycle(.attribute, "data-foo"));
 }
 
 test "style() queries: hasValue reads custom properties only" {
@@ -2408,6 +2752,118 @@ test "style() queries: queryValueMatches compares tokens, substituting the query
             try testing.expect((try matches(host.context, "color", "red")) == null);
         }
     }.body);
+}
+
+test "style() queries: a CSS-wide keyword query value is computed as the property's own value would be" {
+    // integrator probes 1025h/1025i (RULINGS.md, Chrome - the one browser
+    // shipping if()): style(--missing: initial) is true; initial is the
+    // guaranteed-invalid value for an unregistered custom property, inherit
+    // the parent's computed value, unset inherit (custom properties
+    // inherit); revert and revert-layer are false (row 123 Q5 ruling).
+    try withHost(testing.allocator, "--a: red; --empty:; --bad: var(--missing); --same: x; --differs: y", "--same: x; --differs: z", struct {
+        fn body(host: substitution.Host) anyerror!void {
+            const matches = host.query_value_matches.?;
+            // initial: a missing or guaranteed-invalid property matches.
+            try testing.expect((try matches(host.context, "--missing", "initial")).?.value);
+            try testing.expect((try matches(host.context, "--missing", "INITIAL")).?.value);
+            try testing.expect((try matches(host.context, "--bad", "initial")).?.value);
+            try testing.expect(!(try matches(host.context, "--a", "initial")).?.value);
+            // The empty value is a value, not the guaranteed-invalid one.
+            try testing.expect(!(try matches(host.context, "--empty", "initial")).?.value);
+            // inherit and unset: the parent's computed value.
+            try testing.expect((try matches(host.context, "--same", "inherit")).?.value);
+            try testing.expect(!(try matches(host.context, "--differs", "inherit")).?.value);
+            try testing.expect((try matches(host.context, "--same", "unset")).?.value);
+            try testing.expect(!(try matches(host.context, "--differs", "unset")).?.value);
+            try testing.expect(!(try matches(host.context, "--a", "inherit")).?.value);
+            // Missing on both: the parent's guaranteed-invalid equals ours.
+            try testing.expect((try matches(host.context, "--missing", "inherit")).?.value);
+            try testing.expect((try matches(host.context, "--missing", "unset")).?.value);
+            // revert and revert-layer: false, whatever the value.
+            try testing.expect(!(try matches(host.context, "--missing", "revert")).?.value);
+            try testing.expect(!(try matches(host.context, "--a", "revert-layer")).?.value);
+            // Still compared as tokens when the keyword is not the whole value.
+            try testing.expect(!(try matches(host.context, "--missing", "initial x")).?.value);
+        }
+    }.body);
+}
+
+/// A snapshot of one registration, for the style() query tests: --len,
+/// <length>, initial 10px, inherits as given.
+fn lengthSnapshot(allocator: Allocator, inherits: bool) !*registered_mod.Snapshot {
+    var definition = try @import("syntax_definitions.zig").parse(allocator, "<length>");
+    defer definition.deinit();
+    var initial = (try definition.parseValue(.{ .allocator = allocator }, "10px")).?;
+    defer initial.deinit();
+    return registered_mod.Snapshot.create(allocator, .{}, &.{.{ .name = "--len", .syntax_text = "<length>", .inherits = inherits, .initial_value = &initial }});
+}
+
+fn registeredQueries(allocator: Allocator) !void {
+    const snapshot = try lengthSnapshot(allocator, false);
+    defer snapshot.release();
+    try withRegisteredHost(allocator, snapshot, "--len: calc(4px + 1em); font-size: 10px", "--len: 3px", struct {
+        fn body(host: substitution.Host) anyerror!void {
+            const matches = host.query_value_matches.?;
+            // The query value is computed under the registration, in the
+            // element's context (row 123 Q5: "plain feature computes the
+            // query value under the property's registration").
+            try testing.expect((try matches(host.context, "--len", "14px")).?.value);
+            try testing.expect((try matches(host.context, "--len", "calc(7px * 2)")).?.value);
+            try testing.expect((try matches(host.context, "--len", "1.4em")).?.value);
+            try testing.expect(!(try matches(host.context, "--len", "13px")).?.value);
+            // A value its syntax does not match is no match.
+            try testing.expect(!(try matches(host.context, "--len", "red")).?.value);
+            // initial is the registration's; inherits: false makes unset
+            // initial; inherit is the parent's.
+            try testing.expect(!(try matches(host.context, "--len", "initial")).?.value);
+            try testing.expect((try matches(host.context, "--missing", "initial")).?.value);
+            // A registered property at its initial value has a value (RULINGS 1025h).
+            try testing.expect((try host.has_value.?(host.context, "--len")).value);
+        }
+    }.body);
+    try withRegisteredHost(allocator, snapshot, "color: red", "--len: 3px", struct {
+        fn body(host: substitution.Host) anyerror!void {
+            const matches = host.query_value_matches.?;
+            try testing.expect((try matches(host.context, "--len", "initial")).?.value);
+            try testing.expect((try matches(host.context, "--len", "unset")).?.value);
+            try testing.expect((try matches(host.context, "--len", "10px")).?.value);
+            try testing.expect(!(try matches(host.context, "--len", "inherit")).?.value);
+            try testing.expect((try host.has_value.?(host.context, "--len")).value);
+        }
+    }.body);
+}
+
+test "style() queries on a registered property compute the query value under its registration" {
+    try registeredQueries(testing.allocator);
+}
+
+test "registered style() queries survive every allocation failure" {
+    try testing.checkAllAllocationFailures(testing.allocator, registeredQueries, .{});
+}
+
+test "style() queries: a keyword query value at the root reads no parent" {
+    try withHost(testing.allocator, "--a: red", null, struct {
+        fn body(host: substitution.Host) anyerror!void {
+            const matches = host.query_value_matches.?;
+            try testing.expect((try matches(host.context, "--missing", "inherit")).?.value);
+            try testing.expect(!(try matches(host.context, "--a", "inherit")).?.value);
+            try testing.expect(!(try matches(host.context, "--a", "unset")).?.value);
+        }
+    }.body);
+}
+
+test "style() keyword queries survive every allocation failure" {
+    try testing.checkAllAllocationFailures(testing.allocator, struct {
+        fn run(allocator: Allocator) !void {
+            try withHost(allocator, "--a: red; --same: x", "--same: x", struct {
+                fn body(host: substitution.Host) anyerror!void {
+                    const matches = host.query_value_matches.?;
+                    try testing.expect((try matches(host.context, "--missing", "initial")).?.value);
+                    try testing.expect((try matches(host.context, "--same", "inherit")).?.value);
+                }
+            }.body);
+        }
+    }.run, .{});
 }
 
 test "style() range queries: numericValue in canonical units, from a name or a literal" {

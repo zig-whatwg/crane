@@ -575,6 +575,14 @@ fn parseAtDepth(options: properties.ParseOptions, stream: *properties.Stream, po
         return Value.kw(.none);
     }
     if (token.token_type == .function) {
+        if (policy.generated and tokenizer.nameEql(token.value, "image")) {
+            // Images4 §2.5: recognize the complete sole-color production.
+            // Q168 preserves the legacy URL/direction/fallback grammar below
+            // when this production does not match; no rejection is widened.
+            const original = stream.*;
+            if (try parseSolidColor(options, stream)) |image| return image;
+            stream.* = original;
+        }
         if (policy.generated and gradients.function(token) != null) {
             const gradient = try gradients.parse(options, stream) orelse return null;
             defer gradient.release(options.allocator);
@@ -611,6 +619,20 @@ fn parseAtDepth(options: properties.ParseOptions, stream: *properties.Stream, po
         }
     }
     return leaf;
+}
+
+/// Parses sole-color image() from a borrowed stream and returns an owned value.
+/// Callers trying another grammar must restore their stream on a non-match.
+pub fn parseSolidColor(options: properties.ParseOptions, stream: *properties.Stream) Allocator.Error!?Value {
+    // Images4 §2.5 and Syntax3 §5.5.10: EOF closes an open image() just
+    // as it closes a nested color function. Colors never enable quirks here.
+    if (!beginFunction(stream)) return null;
+    var strict = options;
+    strict.quirks = false;
+    const color = try properties.parseLonghand(strict, .color, stream) orelse return null;
+    defer color.release();
+    if (color != .color or !endFunction(stream)) return null;
+    return .{ .image = try Image.create(options.allocator, .{ .solid_color = color.color }) };
 }
 
 fn isUrl(token: tokenizer.Token) bool {

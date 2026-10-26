@@ -155,15 +155,40 @@ pub fn parse(options: @import("properties.zig").ParseOptions, text: []const u8) 
     const source = substitution.originalText(text);
     if (cssWideKeyword(source)) |k| return .{ .css_wide = k };
     if (!@import("rules.zig").isDeclarationValue(source)) return null;
-    if (substitution.mentionsFunction(source)) {
+    // A url() keeps what it resolves to at parse time, while the sheet's
+    // resolver is alive: a registered <url> or <image> computes against its
+    // declaration's base (Properties and Values API 1 §2.4, "Relative
+    // URLs"), and registrations may come after the sheet is parsed.
+    if (substitution.mentionsFunction(source) or (options.url_resolver != null and mentionsUrl(source))) {
         const pending = try Pending.create(options, null, source) orelse return null;
         return .{ .pending = pending };
     }
     return .{ .text = try Text.create(options.allocator, source) };
 }
 
-fn cssWideKeyword(text: []const u8) ?values.CssWide {
+/// Whether `text` holds a url (a url token, or a url()/src()/image-set()
+/// function, whose strings are URLs).
+fn mentionsUrl(text: []const u8) bool {
+    const tokenizer_mod = @import("tokenizer.zig");
+    var tokenizer = tokenizer_mod.Tokenizer.init(text);
+    while (true) {
+        const token = tokenizer.next();
+        switch (token.token_type) {
+            .eof => return false,
+            .url => return true,
+            .function => inline for (.{ "url", "src", "image-set", "-webkit-image-set" }) |name| {
+                if (tokenizer_mod.nameEql(token.value, name)) return true;
+            },
+            else => {},
+        }
+    }
+}
+
+/// The CSS-wide keyword `text` is, alone (whitespace and comments around
+/// it allowed), or null.
+pub fn cssWideKeyword(text: []const u8) ?values.CssWide {
     var tokenizer = @import("tokenizer.zig").Tokenizer.init(text);
+    tokenizer.skipWhitespace();
     const token = tokenizer.next();
     if (token.token_type != .ident) return null;
     tokenizer.skipWhitespace();
