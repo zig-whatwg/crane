@@ -2002,6 +2002,10 @@ pub const Context = struct {
         const navigable = dom_mod.browser_state.browsingContextOf(window) orelse return;
         const history = navigable.getTop().joint_history orelse return;
         history.forgetDocument(@ptrCast(replaced));
+        // The page's traversable records the new document's own entry
+        // (createLoadDocument); with no record, the entry that showed the
+        // replaced document shows this one.
+        if (self.traversable != null) return;
         if (history.currentEntry(navigable.id)) |entry| history.setDocumentOfState(entry.document_state, @ptrCast(document));
     }
 
@@ -2386,7 +2390,7 @@ pub const Context = struct {
             // Content-Type; the markup made for other types is characters.
             .byte_stream = if (kind == .html or kind == .xml) .{ .content_type = result.content_type } else null,
         };
-        const made = try self.createLoadDocument(html_options);
+        const made = try self.createLoadDocument(html_options, null);
         const document = made.document;
         const hold = self.holdDocument(document);
         defer if (hold) |held| held.release();
@@ -2547,7 +2551,7 @@ pub const Context = struct {
             self.pending_load = pending;
             return;
         }
-        const made = try self.createLoadDocument(options);
+        const made = try self.createLoadDocument(options, html_content);
         const hold = self.holdDocument(made.document);
         defer if (hold) |held| held.release();
         try self.parseLoadDocument(made, html_content, options);
@@ -2591,11 +2595,18 @@ pub const Context = struct {
     /// old Window, have run. Nothing observes the new Document earlier: no
     /// script of it runs before "scripts may run for the newly-created
     /// document".
-    fn createLoadDocument(self: *Context, options: LoadHTMLOptions) !LoadDocument {
+    fn createLoadDocument(self: *Context, options: LoadHTMLOptions, markup: ?[]const u8) !LoadDocument {
         if (self.realm == null or self.window_instance == null) return error.NotInitialized;
         const replaced = self.document_instance;
         // Step 6's condition, read before anything of the document goes.
         const keeps_window = if (replaced) |document| dom_mod.document_lifecycle.isInitialAboutBlank(document) else true;
+        // Navigate steps 13-14: a load to the shown document's own URL, or
+        // from the initial about:blank document ("the navigation must be a
+        // replace"), replaces its session history entry; any other pushes
+        // one. The traversable's history has the shown document's entry
+        // first.
+        const replace_entry = keeps_window or self.showsUrl(options.base_url);
+        if (self.traversable) |record| dom_mod.top_level_traversables.prepareHistory(record);
         if (replaced) |document| self.fireBeforeUnload(document);
         if (keeps_window) {
             // Step 6, with a stated deviation: the page's realm-creation
@@ -2660,12 +2671,29 @@ pub const Context = struct {
         // the window keeps it, and the document it replaces is unlinked.
         self.associateDocument(runtime_ctx, document, replaced);
         // The traversable's active document's origin, which its next
-        // navigation compares with.
+        // navigation compares with; and its session history entry ("finalize
+        // a cross-document navigation" steps 5-10), whose resource is the
+        // embedder's markup - a traversal back re-creates the page from it,
+        // the embedder never having served its URL - or none, for a page
+        // fetched from its URL. Recorded before the parser exists, so the
+        // page's own scripts see their entry (lesson
+        // architecture-a-commit-that-parses-synchronously-must-record-history-first),
+        // and after the old document unloaded (the stated order of runCommit).
         if (self.traversable) |record| {
             const origin = if (options.sandboxing_flags.origin) "null" else originPrefix(options.base_url) orelse "null";
             dom_mod.top_level_traversables.setActiveOrigin(record, origin);
+            dom_mod.top_level_traversables.recordLoad(record, @ptrCast(document), options.base_url, origin, markup, replace_entry);
         }
         return .{ .document = document };
+    }
+
+    /// Whether the page shows a document at `url` (navigate step 13.1's
+    /// "url equals navigable's active document's URL").
+    fn showsUrl(self: *Context, url: []const u8) bool {
+        const document = self.document_instance orelse return false;
+        const current = interfaces.Document.get_URL(document) catch return false;
+        defer document.ctx.allocator.free(current);
+        return std.mem.eql(u8, current, url);
     }
 
     /// "scheme://host[:port]" of an http(s) `url`, the origin the page's

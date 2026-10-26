@@ -171,6 +171,8 @@ pub fn installHooks() void {
         .unload_active_document = &unloadHostDocument,
         .set_active_origin = &setHostActiveOrigin,
         .navigate = &navigateHostTraversable,
+        .prepare_history = &prepareHostHistory,
+        .record_load = &recordHostLoad,
     });
     dom_module.content_navigables.install(.{
         .delays_load_event = &iframesDelayLoadEvent,
@@ -794,6 +796,10 @@ pub const NavigateOptions = struct {
     history_behavior: navigate_steps.HistoryBehavior = .auto,
     /// "documentResource" as a string: an iframe srcdoc document's markup.
     srcdoc: ?[]const u8 = null,
+    /// The host page's traversal to an entry an embedder's load made: the
+    /// markup the embedder gave, its document re-created from it at the
+    /// navigation's URL (dom.top_level_traversables recordLoad).
+    markup: ?[]const u8 = null,
     initial_insertion: bool = false,
     /// A history traversal's navigation: the session history entry, by id,
     /// that the new document populates - no entry is added.
@@ -828,6 +834,8 @@ const Navigation = struct {
     allocator: std.mem.Allocator,
     url: []u8,
     srcdoc: ?[]u8 = null,
+    /// NavigateOptions.markup, owned.
+    markup: ?[]u8 = null,
     history_handling: navigate_steps.HistoryHandling,
     initial_insertion: bool,
     traversal_entry: u64 = 0,
@@ -950,6 +958,7 @@ const Navigation = struct {
         if (self.reserved_url) |u| self.allocator.free(u);
         if (self.response) |*r| r.deinit();
         if (self.srcdoc) |s| self.allocator.free(s);
+        if (self.markup) |m| self.allocator.free(m);
         if (self.javascript_result) |r| self.allocator.free(r);
         if (self.javascript_url) |u| self.allocator.free(u);
         if (self.initiator_base_url) |u| self.allocator.free(u);
@@ -1309,6 +1318,12 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
             return;
         };
     }
+    if (options.markup) |html| {
+        record.markup = allocator.dupe(u8, html) catch {
+            record.destroy();
+            return;
+        };
+    }
     if (options.post_resource) |post| {
         record.post_body = allocator.dupe(u8, post.body) catch {
             record.destroy();
@@ -1618,6 +1633,12 @@ fn startFetch(record: *Navigation) void {
     if (record.srcdoc) |html| {
         // At about:srcdoc - or, for a traversal to a fragment entry of one,
         // at that entry's URL (about:srcdoc#yo).
+        record.response = htmlResponse(allocator, url, html) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+        return queueNavigationTask(record.integration, record.id, &runCommit);
+    }
+    if (record.markup) |html| {
+        // The embedder's markup for the entry's URL, which it never served:
+        // the document is re-created from it.
         record.response = htmlResponse(allocator, url, html) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
         return queueNavigationTask(record.integration, record.id, &runCommit);
     }
@@ -3171,6 +3192,7 @@ fn recordInHistory(integration: *IFrameIntegration, record: *Navigation, url: []
     // Navigate step 24.4: the document state's resource is documentResource
     // - a srcdoc document's markup, which a traversal back loads again.
     if (record.srcdoc) |markup| history.setCurrentResource(bc.id, markup) catch {};
+    if (record.markup) |markup| history.setCurrentResource(bc.id, markup) catch {};
     const current = history.currentEntry(bc.id) orelse return null;
     // "Update document for history step application" step 7's inputs, for
     // navigation.activation, before any of the document's script runs.
@@ -3314,6 +3336,12 @@ fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []con
         // as its about base URL. Deviation, stated: the spec restores the one
         // the entry's document state recorded when it was first navigated to;
         // the container's current one is used instead.
+        // The host page's entry an embedder's load made keeps the
+        // embedder's markup: re-created from it at the entry's URL.
+        if (integration.host_realms != null) {
+            navigate(integration, url, .{ .history_behavior = .replace, .traversal_entry = entry_id, .traversal_from = from_entry_id, .markup = resource });
+            return;
+        }
         const source: ?*runtime.Instance = if (resource != null) blk: {
             const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse break :blk null));
             break :blk @import("Node.zig").getOwnerDocument(element);
@@ -5762,6 +5790,33 @@ fn setHostActiveOrigin(record: *anyopaque, origin: []const u8) void {
 fn navigateHostTraversable(record: *anyopaque, url: []const u8) void {
     const integration: *IFrameIntegration = @ptrCast(@alignCast(record));
     navigate(integration, url, .{ .user_involvement = .browser_ui });
+}
+
+/// dom.top_level_traversables: the host page's session history has its
+/// entries - the active document's first - before the host's own load
+/// replaces that document ("create a new top-level traversable" steps 6-9
+/// made the first lazily until now).
+fn prepareHostHistory(record: *anyopaque) void {
+    const integration: *IFrameIntegration = @ptrCast(@alignCast(record));
+    const bc = integration.browsing_context orelse return;
+    _ = bc.ensureHistoryEntries(&history_documents.infoOf) catch {};
+}
+
+/// dom.top_level_traversables: "finalize a cross-document navigation" steps
+/// 5-10 for a document the host committed itself - an embedder's load: a new
+/// document state at `url`, pushed (the forward history cleared) or put in
+/// place of the active entry, keeping the embedder's `markup` as its
+/// resource so a traversal re-creates the document from it (navigate with
+/// `markup`), as an iframe srcdoc entry keeps its markup.
+fn recordHostLoad(record: *anyopaque, document: *anyopaque, url: []const u8, origin: []const u8, markup: ?[]const u8, replace: bool) void {
+    const integration: *IFrameIntegration = @ptrCast(@alignCast(record));
+    const bc = integration.browsing_context orelse return;
+    const history = bc.ensureHistoryEntries(&history_documents.infoOf) catch return;
+    history.commitDocument(bc.id, url, document, origin, if (replace) .replace else .push) catch return;
+    history.setCurrentResource(bc.id, markup) catch {};
+    // Step 9.1 cleared the forward history: its navigation API entries go
+    // (their dispose events).
+    if (!replace) dom_module.navigation_api.entriesRemoved(@ptrCast(bc));
 }
 
 /// `window`'s Location navigates `integration`'s navigable (HTML

@@ -64,3 +64,46 @@ fn pushStateOnInitialAboutBlank() !void {
 test "pushState on a frame's initial about:blank document replaces its entry" {
     try onFreshThread(pushStateOnInitialAboutBlank);
 }
+
+/// Run the page's tasks until `condition` (a script) is true, bounded at 5 s.
+fn until(browser: *browser_mod.Browser, condition: []const u8) !void {
+    var waited: usize = 0;
+    while (waited < 5_000) : (waited += 10) {
+        const page = browser.current_context orelse return error.NoPage;
+        const result = try page.evaluateScriptToString(condition, testing.allocator);
+        defer testing.allocator.free(result);
+        if (std.mem.eql(u8, result, "true")) return;
+        _ = try browser.runEventLoopBlocking(10);
+    }
+    std.debug.print("never true: {s}\n", .{condition});
+    return error.ConditionNeverMet;
+}
+
+fn embedderLoadsMakeEntries() !void {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    const page = browser.current_context orelse return error.NoPage;
+    // A load from the initial about:blank document replaces its entry
+    // ("the navigation must be a replace"); a load to another URL pushes one
+    // (navigate step 13): the page's traversable keeps both.
+    try page.loadHTML("<!doctype html><title>one</title><script>window.name += 'one,';</script>", .{ .base_url = "http://example.test/one" });
+    try until(browser, "document.readyState === 'complete'");
+    try expectEval(page, "String(history.length)", "1");
+    try page.loadHTML("<!doctype html><title>two</title><script>window.name += 'two,';</script>", .{ .base_url = "http://example.test/two" });
+    try until(browser, "document.readyState === 'complete'");
+    try expectEval(page, "String(history.length)", "2");
+    // Back: the traversal re-creates the first page from the markup its
+    // embedder gave (its entry keeps it, as an iframe srcdoc entry keeps its
+    // markup), at its URL - the embedder never served that URL.
+    try page.runScript("history.back();");
+    try until(browser, "document.URL === 'http://example.test/one' && document.readyState === 'complete'");
+    try expectEval(page, "[document.title, window.name, history.length].join()", "one,one,two,one,,2");
+    try page.runScript("history.forward();");
+    try until(browser, "document.URL === 'http://example.test/two' && document.readyState === 'complete'");
+    try expectEval(page, "[document.title, window.name].join()", "two,one,two,one,two,");
+}
+
+test "an embedder's loads push session history entries, and a traversal re-creates a page from its markup" {
+    try onFreshThread(embedderLoadsMakeEntries);
+}

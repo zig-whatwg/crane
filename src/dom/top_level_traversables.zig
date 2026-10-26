@@ -72,6 +72,16 @@ pub const Implementation = struct {
     /// bar: beforeunload, the fetch and the commit run as the navigation's
     /// tasks on the page's event loop.
     navigate: *const fn (record: *anyopaque, url: []const u8) void,
+    /// The traversable's session history has its entries, the active
+    /// document's among them - before a host's own load replaces it.
+    prepare_history: *const fn (record: *anyopaque) void,
+    /// HTML "finalize a cross-document navigation" steps 5-10 for a document
+    /// the host committed itself (an embedder's load): an entry for
+    /// `document` (an `*runtime.Instance`) at `url`, of `origin`, pushed - or
+    /// put in place of the active entry with `replace` - whose document
+    /// state's resource is `markup` (the embedder's markup, from which a
+    /// traversal re-creates the document) or null (refetched from `url`).
+    record_load: *const fn (record: *anyopaque, document: *anyopaque, url: []const u8, origin: []const u8, markup: ?[]const u8, replace: bool) void,
 };
 
 // process-wide: immutable function pointers HTMLIFrameElement installs once at process start (process_start.zig); each record they make is its own Context's, of its own Browser
@@ -120,6 +130,18 @@ pub fn setActiveOrigin(record: *anyopaque, origin: []const u8) void {
 pub fn navigate(record: *anyopaque, url: []const u8) void {
     const impl = implementation orelse return;
     impl.navigate(record, url);
+}
+
+/// See Implementation.prepare_history.
+pub fn prepareHistory(record: *anyopaque) void {
+    const impl = implementation orelse return;
+    impl.prepare_history(record);
+}
+
+/// See Implementation.record_load.
+pub fn recordLoad(record: *anyopaque, document: *anyopaque, url: []const u8, origin: []const u8, markup: ?[]const u8, replace: bool) void {
+    const impl = implementation orelse return;
+    impl.record_load(record, document, url, origin, markup, replace);
 }
 
 /// See Implementation.destroy.
