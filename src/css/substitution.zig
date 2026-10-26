@@ -33,6 +33,7 @@ const std = @import("std");
 const tokens = @import("tokenizer.zig");
 const math = @import("math_values.zig");
 const random = @import("random_values.zig");
+const if_function = @import("if_function.zig");
 const Allocator = std.mem.Allocator;
 
 pub const Error = Allocator.Error || error{ Invalid, Unavailable };
@@ -82,12 +83,15 @@ pub const Id = enum {
     env,
     /// CSS Values 5 §9.2.
     random_item,
+    /// CSS Values 5 §8.3.
+    @"if",
 
     pub fn name(self: Id) []const u8 {
         return switch (self) {
             .@"var" => "var",
             .env => "env",
             .random_item => "random-item",
+            .@"if" => "if",
         };
     }
 };
@@ -126,6 +130,7 @@ pub const functions = [_]Function{
     .{ .id = .@"var", .arguments = varArguments, .replace = replaceVar },
     .{ .id = .env, .arguments = envArguments, .replace = replaceEnv },
     .{ .id = .random_item, .arguments = randomItemArguments, .replace = replaceRandomItem },
+    .{ .id = .@"if", .arguments = if_function.arguments, .replace = if_function.replace },
 };
 
 /// The rows a parse or a substitution uses: `functions`, except in tests

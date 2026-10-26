@@ -1,9 +1,9 @@
 //! CSS Values 5 §8.3 if() argument grammar and §3.2 boolean expressions.
 //!
-//! This module parses borrowed CSS text. It does not perform substitutions,
-//! own a cascade, or fetch property values. The arbitrary-substitution engine
-//! substitutes visited conditions, evaluates them with its host, and substitutes
-//! only the selected branch. Query leaves keep their own grammar and context.
+//! The table adapter parses the shared component-value Nodes without turning
+//! them back into source tokens. The shared resolver performs every substitution;
+//! its Host computes query values. Only visited query leaves and the chosen
+//! branch are substituted. The text parsing API is also available to callers.
 //!
 //! Design reference (not copied): Blink CSSIfParser::ConsumeIfCondition and
 //! ConsumeFunction, and StyleCascade::EvalIfCondition / ResolveIfInto.
@@ -13,6 +13,7 @@ const std = @import("std");
 const tokens = @import("tokenizer.zig");
 const rules = @import("rules.zig");
 const properties = @import("properties.zig");
+const substitution = @import("substitution.zig");
 const Allocator = std.mem.Allocator;
 const Tokenizer = tokens.Tokenizer;
 const TokenType = tokens.TokenType;
@@ -68,12 +69,12 @@ fn Expression(comptime Leaf: type) type {
         all: []const *const Self,
         any: []const *const Self,
 
-        fn evaluate(self: *const Self, context: anytype) anyerror!Truth {
+        fn evaluate(self: *const Self, context: anytype) @TypeOf(if (Leaf == Query) context.evaluate(.style, "") else context.evaluate(@as(Leaf, undefined))) {
             return switch (self.*) {
                 .literal => |value| value,
                 .leaf => |leaf| if (Leaf == Query)
                     try context.evaluate(leaf.kind, leaf.text)
-                else if (isQueryableStyleFeature(leaf))
+                else if (Leaf != StyleFeature or isQueryableStyleFeature(leaf))
                     try context.evaluate(leaf)
                 else
                     .unknown,
@@ -521,3 +522,305 @@ fn freeForm(raw: []const u8, is_condition: bool) ?[]const u8 {
         }
     }
 }
+
+// The runtime adapter consumes substitution.Nodes. In particular, parsing a
+// condition never renders/re-tokenizes a query value: that would erase both
+// token boundaries and taint before the lazy leaf reaches the shared resolver.
+const Component = substitution.Node;
+const Error = substitution.Error;
+const Feature = union(enum) {
+    boolean: []const u8,
+    plain: struct { name: []const u8, value: []const Component },
+    range: struct { operands: []const []const Component, comparisons: []const Comparison },
+};
+const ComponentLeaf = union(enum) {
+    query: struct { kind: QueryKind, nodes: []const Component },
+    feature: Feature,
+};
+const Expr = Expression(ComponentLeaf);
+
+/// CSS Values 5 §8.3 argument grammar, called by the shared function table.
+/// Alternating condition/value spans; an empty value is still one argument.
+pub fn arguments(allocator: Allocator, contents: []const Component, _: substitution.Phase) Error![]const []const Component {
+    var result: std.ArrayList([]const Component) = .empty;
+    const nodes = contents;
+    var start: usize = 0;
+    var colon: ?usize = null;
+    for (0..nodes.len + 1) |i| {
+        if (i == nodes.len or nodes[i].kind == .semicolon) {
+            if (i == nodes.len and colon == null and result.items.len != 0 and substitution.trim(nodes[start..i]).len == 0) break;
+            const split = colon orelse return error.Invalid;
+            const condition = try argument(nodes[start..split], true);
+            if (condition.len == 0) return error.Invalid;
+            try result.append(allocator, condition);
+            try result.append(allocator, try argument(nodes[split + 1 .. i], false));
+            start = i + 1;
+            colon = null;
+        } else if (nodes[i].kind == .colon and colon == null) colon = i;
+    }
+    return result.toOwnedSlice(allocator);
+}
+
+fn argument(raw: []const Component, condition: bool) Error![]const Component {
+    const nodes = substitution.trim(raw);
+    const value = try substitution.freeForm(nodes);
+    const wrapped = nodes.len == 1 and nodes[0].kind == .left_brace;
+    for (value) |node| {
+        if (!wrapped and node.kind == .comma) return error.Invalid;
+        if (condition and node.kind == .colon) return error.Invalid;
+    }
+    // Golden rule 2, integrator probe 1025d2: shipping if() retains braces.
+    // A braced condition is consequently rejected at the late grammar step.
+    if (condition) return nodes;
+    // Consume the grammar whitespace after the colon, preserving the final
+    // whitespace of a nonempty value (if-conditionals.html subtest 1).
+    var start: usize = 0;
+    skipSpace(raw, &start);
+    return raw[start..];
+}
+
+/// CSS Values 5 §8.3 "replace an if() function". The shared walk supplies
+/// early invocation, guards, splicing and limits; this adapter chooses a branch.
+pub fn replace(resolver: *substitution.Resolver, _: Component, args: []const []const Component) Error!substitution.Replacement {
+    var evaluator = Evaluation{ .resolver = resolver };
+    var parser = ComponentParser{ .resolver = resolver, .tainted = &evaluator.tainted };
+    var i: usize = 0;
+    while (i < args.len) : (i += 2) {
+        // 1.1: expand condition syntax, keeping query children opaque. Invalid
+        // syntax/substitution skips this branch; OOM/unavailable propagate.
+        const condition = parser.condition(args[i], false, true, 0) catch |err| switch (err) {
+            error.Invalid => continue,
+            else => |e| return e,
+        } orelse continue;
+        // 1.2: Kleene logic evaluates only visited leaves. Host custom-property
+        // reads take the normal marking guard (probe 1025d2), not would_cycle.
+        if (!(try condition.evaluate(&evaluator)).matches()) continue;
+        // 1.3: only this value is substituted. Keep whole-result taint even
+        // for an empty result, including taint read by prior false conditions.
+        var selected = try resolver.substituteWithTaint(args[i + 1], false);
+        selected.tainted = selected.tainted or evaluator.tainted;
+        return selected;
+    }
+    // Golden rule 2 (probe 1025d2, Blink ResolveIfInto): no match is IACVT.
+    return error.Invalid;
+}
+
+const ComponentParser = struct {
+    resolver: *substitution.Resolver,
+    tainted: *bool,
+
+    fn make(self: *@This(), value: Expr) Allocator.Error!*const Expr {
+        const result = try self.resolver.allocator.create(Expr);
+        result.* = value;
+        return result;
+    }
+
+    // Q19's grammar cursor: only condition-level substitution functions are
+    // handed to the shared walk. Query function children stay opaque. Nodes
+    // already carry token boundaries; concatenating grammar spans does not
+    // serialize/splice CSS text or implement another replacement algorithm.
+    fn expand(self: *@This(), nodes: []const Component) Error![]const Component {
+        var expanded: std.ArrayList(Component) = .empty;
+        var start: usize = 0;
+        for (nodes, 0..) |node, i| {
+            if (node.kind != .function or substitution.functionId(node.value) == null) continue;
+            try expanded.appendSlice(self.resolver.allocator, nodes[start..i]);
+            const replacement = try self.resolver.substituteWithTaint(nodes[i .. i + 1], false);
+            self.tainted.* = self.tainted.* or replacement.tainted;
+            try expanded.appendSlice(self.resolver.allocator, replacement.nodes);
+            start = i + 1;
+        }
+        if (start == 0) return nodes;
+        try expanded.appendSlice(self.resolver.allocator, nodes[start..]);
+        return expanded.toOwnedSlice(self.resolver.allocator);
+    }
+
+    fn condition(self: *@This(), raw: []const Component, style: bool, allow_else: bool, depth: usize) Error!?*const Expr {
+        if (depth >= substitution.max_depth) return null;
+        const nodes = substitution.trim(if (style) raw else try self.expand(raw));
+        if (allow_else and nodes.len == 1 and keyword(nodes[0], "else")) return try self.make(.{ .literal = .true });
+        if (style) if (try self.parseFeature(nodes)) |feature| return try self.make(.{ .leaf = .{ .feature = feature } });
+        if (nodes.len == 0) return null;
+        var i: usize = 0;
+        if (keyword(nodes[0], "not")) {
+            i = 1;
+            const child = try self.group(nodes, &i, style, depth) orelse return null;
+            skipSpace(nodes, &i);
+            if (i != nodes.len) return null;
+            return try self.make(.{ .not = child });
+        }
+        const first = try self.group(nodes, &i, style, depth) orelse return null;
+        skipSpace(nodes, &i);
+        if (i == nodes.len) return first;
+        const is_and = keyword(nodes[i], "and");
+        if (!is_and and !keyword(nodes[i], "or")) return null;
+        var children: std.ArrayList(*const Expr) = .empty;
+        try children.append(self.resolver.allocator, first);
+        while (i < nodes.len) {
+            if (!keyword(nodes[i], if (is_and) "and" else "or")) return null;
+            i += 1;
+            const child = try self.group(nodes, &i, style, depth) orelse return null;
+            try children.append(self.resolver.allocator, child);
+            skipSpace(nodes, &i);
+        }
+        const owned = try children.toOwnedSlice(self.resolver.allocator);
+        return try self.make(if (is_and) .{ .all = owned } else .{ .any = owned });
+    }
+
+    fn group(self: *@This(), nodes: []const Component, i: *usize, style: bool, depth: usize) Error!?*const Expr {
+        skipSpace(nodes, i);
+        if (i.* == nodes.len) return null;
+        const node = nodes[i.*];
+        i.* += 1;
+        if (node.kind == .left_paren) {
+            if (try self.condition(node.children, style, false, depth + 1)) |child| return child;
+            return try self.make(.{ .literal = .unknown }); // general-enclosed, tried last
+        }
+        if (node.kind != .function) return null;
+        if (style) return try self.make(.{ .literal = .unknown });
+        const kind: QueryKind = if (tokens.nameEql(node.value, "style")) .style else if (tokens.nameEql(node.value, "media")) .media else if (tokens.nameEql(node.value, "supports")) .supports else return try self.make(.{ .literal = .unknown });
+        return try self.make(.{ .leaf = .{ .query = .{ .kind = kind, .nodes = node.children } } });
+    }
+
+    fn parseFeature(self: *@This(), nodes: []const Component) Allocator.Error!?Feature {
+        if (nodes.len != 0 and nodes[0].kind == .ident) {
+            const name = try tokens.decode(self.resolver.allocator, nodes[0].value);
+            if ((name.len > 2 and std.mem.startsWith(u8, name, "--")) or properties.lookup(name) != null) {
+                var i: usize = 1;
+                skipSpace(nodes, &i);
+                if (i == nodes.len) return .{ .boolean = name };
+                if (nodes[i].kind == .colon) {
+                    const value = substitution.trim(nodes[i + 1 ..]);
+                    if (!featureValue(value)) return null;
+                    return .{ .plain = .{ .name = name, .value = value } };
+                }
+            }
+        }
+        var operands: [3][]const Component = undefined;
+        var comparisons: [2]Comparison = undefined;
+        var count: usize = 0;
+        var start: usize = 0;
+        var i: usize = 0;
+        while (i < nodes.len) : (i += 1) {
+            const node = nodes[i];
+            if (node.kind != .delim or node.value.len != 1 or std.mem.indexOfScalar(u8, "<>=", node.value[0]) == null) continue;
+            if (count == 2) return null;
+            const value = substitution.trim(nodes[start..i]);
+            if (value.len == 0 or !featureValue(value)) return null;
+            operands[count] = value;
+            const equals = node.value[0] != '=' and i + 1 < nodes.len and nodes[i + 1].kind == .delim and std.mem.eql(u8, nodes[i + 1].value, "=");
+            comparisons[count] = switch (node.value[0]) {
+                '<' => if (equals) .less_equal else .less,
+                '>' => if (equals) .greater_equal else .greater,
+                else => .equal,
+            };
+            if (equals) i += 1;
+            count += 1;
+            start = i + 1;
+        }
+        if (count == 0) return null;
+        const last = substitution.trim(nodes[start..]);
+        if (last.len == 0 or !featureValue(last)) return null;
+        operands[count] = last;
+        if (count == 2 and !chainAccepted(comparisons[0], comparisons[1])) return null;
+        return .{ .range = .{ .operands = try self.resolver.allocator.dupe([]const Component, operands[0 .. count + 1]), .comparisons = try self.resolver.allocator.dupe(Comparison, comparisons[0..count]) } };
+    }
+};
+
+fn keyword(node: Component, word: []const u8) bool {
+    return node.kind == .ident and tokens.nameEql(node.value, word);
+}
+
+fn skipSpace(nodes: []const Component, i: *usize) void {
+    while (i.* < nodes.len and substitution.isSpace(nodes[i.*])) i.* += 1;
+}
+
+fn featureValue(nodes: []const Component) bool {
+    for (nodes) |node| {
+        if (node.kind == .semicolon) return false;
+        if (node.kind == .delim and std.mem.indexOfAny(u8, node.value, "!<>=") != null) return false;
+    }
+    return true;
+}
+
+const Evaluation = struct {
+    resolver: *substitution.Resolver,
+    tainted: bool = false,
+
+    fn text(self: *@This(), nodes: []const Component) Error![]const u8 {
+        const result = try self.resolver.substituteWithTaint(nodes, false);
+        self.tainted = self.tainted or result.tainted;
+        return (try substitution.render(self.resolver.allocator, result.nodes)).text;
+    }
+
+    fn flagged(self: *@This(), result: substitution.Flagged(bool)) Truth {
+        self.tainted = self.tainted or result.tainted;
+        return if (result.value) .true else .false;
+    }
+
+    fn evaluate(self: *@This(), leaf: ComponentLeaf) Error!Truth {
+        const host = self.resolver.host;
+        return switch (leaf) {
+            .query => |query| blk: {
+                if (query.kind == .style) {
+                    var parser = ComponentParser{ .resolver = self.resolver, .tainted = &self.tainted };
+                    const expression = try parser.condition(query.nodes, true, false, 0) orelse break :blk .unknown;
+                    break :blk try expression.evaluate(self);
+                }
+                const value = self.text(query.nodes) catch |err| switch (err) {
+                    error.Invalid => break :blk .unknown,
+                    else => |e| return e,
+                };
+                const result = (switch (query.kind) {
+                    .media => (host.media orelse break :blk .unknown)(host.context, value),
+                    .supports => (host.supports orelse break :blk .unknown)(host.context, value, self.resolver.quirks),
+                    .style => unreachable,
+                }) catch |err| switch (err) {
+                    error.Invalid => break :blk .unknown,
+                    else => |e| return e,
+                };
+                break :blk if (result) .true else .false;
+            },
+            .feature => |feature| self.evaluateFeature(feature) catch |err| switch (err) {
+                // Q9: substitution failure makes a FEATURE false, so a
+                // surrounding not can still invert it. OOM never becomes CSS.
+                error.Invalid => .false,
+                else => |e| return e,
+            },
+        };
+    }
+
+    fn evaluateFeature(self: *@This(), feature: Feature) Error!Truth {
+        const host = self.resolver.host;
+        switch (feature) {
+            .boolean => |name| {
+                if (!std.mem.startsWith(u8, name, "--")) return .unknown;
+                const callback = host.has_value orelse return .false;
+                return self.flagged(try callback(host.context, name));
+            },
+            .plain => |plain| {
+                if (!std.mem.startsWith(u8, plain.name, "--")) return .unknown;
+                const callback = host.query_value_matches orelse return .unknown;
+                const value = try self.text(plain.value);
+                const result = try callback(host.context, plain.name, value) orelse return .unknown;
+                return self.flagged(result);
+            },
+            .range => |range| {
+                // Conditional 5 §6.2; Blink EvalIfStyleFeature resolves the
+                // reference (operand 1), then left and right. A false first
+                // comparison still evaluates the right bound; a nonnumeric
+                // operand returns false immediately. Host owns all CSS math.
+                var values: [3]substitution.Numeric = undefined;
+                const order = [_]usize{ 1, 0, 2 };
+                const callback = host.numeric_value orelse return .false;
+                for (order[0..range.operands.len]) |i| {
+                    const value = try self.text(range.operands[i]);
+                    const result = try callback(host.context, value) orelse return .false;
+                    self.tainted = self.tainted or result.tainted;
+                    values[i] = result.value;
+                }
+                return compareRange(values[0..range.operands.len], range.comparisons);
+            },
+        }
+    }
+};
