@@ -229,6 +229,14 @@ pub const Keyword = enum(u16) {
     numeric_only,
     allow_keywords,
 
+    // CSS Flexbox 2 §§5.1–5.2.
+    row,
+    row_reverse,
+    column,
+    column_reverse,
+    wrap_reverse,
+    balance,
+
     /// The keyword's CSS spelling.
     pub fn name(self: Keyword) []const u8 {
         return switch (self) {
@@ -774,6 +782,7 @@ pub const SizingFunction = struct {
 /// A property's value, specified or computed.
 pub const Value = union(enum) {
     keyword: Keyword,
+    box_keywords: @import("box_values.zig").KeywordPair,
     length: Length,
     number: f64,
     integer: i32,
@@ -927,6 +936,7 @@ pub const Value = union(enum) {
         if (std.meta.activeTag(a) != std.meta.activeTag(b)) return false;
         return switch (a) {
             .keyword => |k| k == b.keyword,
+            .box_keywords => |pair| pair.eql(b.box_keywords),
             .length => |l| l.value == b.length.value and l.unit == b.length.unit,
             .number => |n| n == b.number,
             .integer => |n| n == b.integer,
@@ -995,6 +1005,7 @@ pub const Value = union(enum) {
             .grid_areas,
             .grid_flow,
             .keyword,
+            .box_keywords,
             .length,
             .number,
             .integer,
@@ -1046,6 +1057,7 @@ pub const Value = union(enum) {
             .grid_areas,
             .grid_flow,
             .keyword,
+            .box_keywords,
             .length,
             .number,
             .integer,
@@ -1095,6 +1107,7 @@ pub const Value = union(enum) {
             .grid_areas,
             .grid_flow,
             .keyword,
+            .box_keywords,
             .length,
             .number,
             .integer,

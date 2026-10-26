@@ -201,6 +201,11 @@ pub const ComputedStyle = struct {
     /// CSSOM section 9: the resolved value of `l`, serialized into `out`.
     pub fn serializeResolved(self: *const ComputedStyle, l: Longhand, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
         const v = self.get(l);
+        // Sizing 3 §3.2 / Q41: automatic minimums resolve to zero without
+        // a generated box; their stored computed value remains auto.
+        if ((l == .min_width or l == .min_height) and v.isKeyword(.auto) and
+            (self.box_context == .suppressed or self.display().box == .contents))
+            return out.appendSlice(allocator, "0px");
         // Grid 2 §§7.2.6, 9: only the resolved value of an ineligible
         // subgrid becomes none. The computed track object is unchanged.
         if ((l == .grid_template_columns or l == .grid_template_rows) and self.subgrid_ineligible and v == .grid_tracks and v.grid_tracks.subgrid)

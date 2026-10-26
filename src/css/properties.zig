@@ -286,6 +286,12 @@ pub const Longhand = enum(u16) {
     border_bottom_right_radius,
     border_bottom_left_radius,
 
+    // CSS Flexbox 2 §§5–6.1 and CSS Display 4 §3.
+    flex_direction,
+    flex_wrap,
+    flex_line_count,
+    order,
+
     pub const count = @typeInfo(Longhand).@"enum".fields.len;
 
     /// The property name.
@@ -313,7 +319,7 @@ pub const Longhand = enum(u16) {
 /// CSSOM 7.2 step 5 enumerates names lexicographically, independently of
 /// declaration order. Separate property families can append contiguous blocks.
 pub const lexicographic: [Longhand.count]Longhand = blk: {
-    @setEvalBranchQuota(200_000);
+    @setEvalBranchQuota(1_000_000);
     var out: [Longhand.count]Longhand = undefined;
     for (0..Longhand.count) |i| out[i] = @enumFromInt(i);
     std.mem.sort(Longhand, &out, {}, struct {
@@ -431,6 +437,7 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
 
 /// A longhand's grammar.
 pub const Grammar = enum {
+    box,
     animation_list,
     individual_transform,
     flex_factor,
@@ -528,6 +535,10 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .flex_grow, .inherited = false, .initial = .{ .number = 0 }, .grammar = .flex_factor },
         .{ .longhand = .flex_shrink, .inherited = false, .initial = .{ .number = 1 }, .grammar = .flex_factor },
         .{ .longhand = .flex_basis, .inherited = false, .initial = Value.kw(.auto), .grammar = .flex_basis },
+        .{ .longhand = .flex_direction, .inherited = false, .initial = Value.kw(.row), .grammar = .keywords, .keywords = &.{ .row, .row_reverse, .column, .column_reverse } },
+        .{ .longhand = .flex_wrap, .inherited = false, .initial = Value.kw(.nowrap), .grammar = .box },
+        .{ .longhand = .flex_line_count, .inherited = false, .initial = .{ .integer = 1 }, .grammar = .box },
+        .{ .longhand = .order, .inherited = false, .initial = .{ .integer = 0 }, .grammar = .box },
         .{ .longhand = .transition_property, .inherited = false, .initial = Value.kw(.all), .grammar = .animation_list },
         .{ .longhand = .transition_duration, .inherited = false, .initial = .{ .number = 0 }, .grammar = .animation_list },
         .{ .longhand = .transition_timing_function, .inherited = false, .initial = Value.kw(.ease), .grammar = .animation_list },
@@ -828,6 +839,7 @@ pub const Shorthand = enum(u8) {
     font_variant,
     font,
     border_radius,
+    flex_flow,
 
     pub fn name(self: Shorthand) []const u8 {
         return switch (self) {
@@ -890,6 +902,7 @@ pub const Shorthand = enum(u8) {
             .animation => &.{ .animation_duration, .animation_timing_function, .animation_delay, .animation_iteration_count, .animation_direction, .animation_fill_mode, .animation_play_state, .animation_name, .animation_timeline, .animation_range_start, .animation_range_end },
             .animation_range => &.{ .animation_range_start, .animation_range_end },
             .flex => &.{ .flex_grow, .flex_shrink, .flex_basis },
+            .flex_flow => &.{ .flex_direction, .flex_wrap },
             .transition => &.{ .transition_property, .transition_duration, .transition_timing_function, .transition_delay, .transition_behavior },
             .marker => &.{ .marker_start, .marker_mid, .marker_end },
             .mask => &@import("mask_values.zig").longhands,
@@ -924,6 +937,19 @@ pub const Property = union(enum) {
 /// property (and is not enumerated). CSS UI 4: "-webkit-appearance" is a
 /// legacy name alias of appearance.
 const legacy_aliases = .{
+    // CSS Flexbox 2 Appendix B: legacy names share canonical declarations.
+    .{ "-webkit-align-content", Property{ .longhand = .align_content } },
+    .{ "-webkit-align-items", Property{ .longhand = .align_items } },
+    .{ "-webkit-align-self", Property{ .longhand = .align_self } },
+    .{ "-webkit-flex", Property{ .shorthand = .flex } },
+    .{ "-webkit-flex-basis", Property{ .longhand = .flex_basis } },
+    .{ "-webkit-flex-direction", Property{ .longhand = .flex_direction } },
+    .{ "-webkit-flex-flow", Property{ .shorthand = .flex_flow } },
+    .{ "-webkit-flex-grow", Property{ .longhand = .flex_grow } },
+    .{ "-webkit-flex-shrink", Property{ .longhand = .flex_shrink } },
+    .{ "-webkit-flex-wrap", Property{ .longhand = .flex_wrap } },
+    .{ "-webkit-justify-content", Property{ .longhand = .justify_content } },
+    .{ "-webkit-order", Property{ .longhand = .order } },
     // CSS Gaps 1 §2.4: aliases share the canonical property entries.
     .{ "flow-tolerance", Property{ .longhand = .fit_tolerance } },
     .{ "grid-row-gap", Property{ .longhand = .row_gap } },
@@ -1216,6 +1242,7 @@ pub const Stream = struct {
 pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Allocator.Error!?Value {
     const def = l.info();
     switch (def.grammar) {
+        .box => return @import("box_values.zig").consume(options, l, stream),
         .flex_factor => return @import("flex_values.zig").consumeFactor(options, stream),
         .individual_transform => {
             if (takeKeyword(stream, &.{.none})) |keyword| return Value.kw(keyword);
@@ -1867,6 +1894,7 @@ fn append(options: ParseOptions, out: *std.ArrayList(Assignment), l: Longhand, v
 
 fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
     switch (s) {
+        .flex_flow => return @import("box_values.zig").parseFlexFlow(options, stream, out),
         .font_variant => return @import("font_variants.zig").parseShorthand(options, stream, out),
         .font => return @import("font_shorthand.zig").parse(options, stream, out),
         .flex => return @import("flex_values.zig").consumeShorthand(options, stream, out),
@@ -2255,6 +2283,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
     }
     switch (value) {
         .keyword => |k| try out.appendSlice(allocator, k.name()),
+        .box_keywords => |pair| try pair.serialize(out, allocator),
         .length => |len| try values.appendLength(len, out, allocator),
         .number => |n| {
             try values.appendNumber(n, out, allocator);
@@ -2357,6 +2386,7 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
     if (s == .all) return false;
     const ls = s.longhands();
     switch (s) {
+        .flex_flow => return @import("box_values.zig").serializeFlexFlow(vs, out, allocator),
         .font_variant => return @import("font_variants.zig").serialize(vs, out, allocator),
         .font => return @import("font_shorthand.zig").serialize(vs, mode, out, allocator),
         .flex => return @import("flex_values.zig").serializeShorthand(vs, out, allocator),
