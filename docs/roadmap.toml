@@ -152,7 +152,7 @@ progress = [
   "493207da804 - a load that replaces a page's loaded document gives it a new Window behind the same WindowProxy; the old realm detached and its cleanup steps run; a load asked for under the page's own parse waits for it (newwin1 B3)",
   "873d6e9bcf4 - pushState on an initial about:blank document replaces its entry (URL and history update steps step 4) (newwin1 S4)",
   "0c100a019f5 - a frame's initial about:blank Window is reused only when same origin-domain with the next document (newwin1 B6)",
-  "B4 - an embedder's loads push or replace session history entries (navigate steps 13-14), keeping their markup so a traversal re-creates the page (newwin1)",
+  "6933bdd6ccd - an embedder's loads push or replace session history entries (navigate steps 13-14), keeping their markup so a traversal re-creates the page (newwin1 B4)",
   "47356e5067b - popups move with their opener's navigable at a Window swap (the new Window keeps them; their realms are auxiliary and follow the opener's WindowProxy; their parent realm is the opener's current one) (newwin1 B7)",
   "cb3d11033ed - the host page navigates as a popup does: Location, hyperlinks, forms, Refresh, javascript: URLs, reload and traversal reach its traversable record (dom.top_level_navigation retired); Context.navigate / Browser.navigateInPlace for the embedder; WebDriver Navigate To in place (newwin1 B5)",
 ]
