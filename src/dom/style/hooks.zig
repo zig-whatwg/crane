@@ -27,6 +27,8 @@ pub const Hooks = struct {
     /// 121's environment_variables.revision). Unset: 0, which never
     /// invalidates.
     environment_revision: ?*const fn (document: *runtime.Instance) u64 = null,
+    /// HTML's document-to-platform environment value and revision lookup.
+    environment_provider: ?@import("environment_variables.zig").Hooks = null,
     /// Element: the slot its style state lives in (its state holds it).
     element_style_slot: ?*const fn (element: *runtime.Instance) ?*?*element_style.ElementStyle = null,
     /// Control owners remember their first style state without a lookup on
@@ -89,6 +91,10 @@ pub fn mediaValues(document: *runtime.Instance) css.media_queries.MediaValues {
 pub fn environmentRevision(document: *runtime.Instance) u64 {
     const f = hooks.environment_revision orelse return 0;
     return f(document);
+}
+
+pub fn environmentProvider() ?@import("environment_variables.zig").Hooks {
+    return hooks.environment_provider;
 }
 
 pub fn elementStyleSlot(element: *runtime.Instance) ?*?*element_style.ElementStyle {

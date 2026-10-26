@@ -3455,12 +3455,19 @@ pub fn generateNamespace(
     try w.writeAll("        pub const BaseType = null;\n");
     try w.writeAll("        pub const MixinTypes = &.{};\n");
     try w.writeAll("        \n");
-    try w.writeAll("        /// Method binding hints for V8Interface (JS name, Zig function name)\n");
+    try w.writeAll("        /// Method binding hints (JS name, Zig function name, WebIDL length)\n");
     try w.writeAll("        pub const methods = .{\n");
     // One entry per operation name: an overloaded operation is bound once,
     // as its first overload, which forwards to the one the arguments select.
+    // Its length (WebIDL 3.7.6 "create an operation function"): the
+    // shortest argument list in the effective overload set - the fewest
+    // required arguments of any overload - as an interface's methods carry
+    // it (writer.zig overloadArity).
     for (overload_sets) |set| {
-        try w.print("            .{{ \"{s}\", \"call_{s}\" }},\n", .{ set.name, set.name });
+        var length: usize = std.math.maxInt(usize);
+        for (set.operations) |op| length = @min(length, writer.requiredArgumentCount(op));
+        if (set.operations.len == 0) length = 0;
+        try w.print("            .{{ \"{s}\", \"call_{s}\", {d} }},\n", .{ set.name, set.name, length });
     }
     try w.writeAll("        };\n");
     try w.writeAll("        \n");

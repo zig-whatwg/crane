@@ -883,7 +883,7 @@ pub fn installHooks() void {
     @import("dom").teardown_sweeps.install(.documents, &sweepRemaining);
     // The style engine this document keeps, and the media environment its
     // elements are styled in (lane style1).
-    @import("dom").style.hooks.install(.{ .engine_of = &styleEngineOf, .media_values = &styleMediaValues, .document_adopted_sheets = &adoptedSheetsOf });
+    @import("dom").style.hooks.install(.{ .engine_of = &styleEngineOf, .media_values = &styleMediaValues, .document_adopted_sheets = &adoptedSheetsOf, .environment_revision = &@import("dom").style.environment_variables.revision });
     @import("dom").template_contents.install(.{ .owner_document = &templateOwnerDocument });
     @import("dom").refcount.install(.{ .document_counts = &countsOf });
     // domindex1: its tree scope's ID and named-property maps.

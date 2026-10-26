@@ -17,7 +17,7 @@ pub const GPUColorWrite = struct {
         pub const BaseType = null;
         pub const MixinTypes = &.{};
 
-        /// Method binding hints for V8Interface (JS name, Zig function name)
+        /// Method binding hints (JS name, Zig function name, WebIDL length)
         pub const methods = .{};
 
         pub const has_constructor = false;

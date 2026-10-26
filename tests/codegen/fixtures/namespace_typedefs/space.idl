@@ -11,4 +11,6 @@ namespace Space {
   undefined take(Either either);
   boolean supports(Ident property, Ident value);
   boolean supports(Ident conditionText);
+  undefined pair(Ident first, Ident second, optional Ident third);
+  undefined none(Ident... rest);
 };
