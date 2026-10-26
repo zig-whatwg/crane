@@ -303,3 +303,41 @@ why = The same intermittent secureConnectionStart >= connectStart subtest as gen
 pair.1 = base 0/1; tip 0/1
 pair.2 = base 0/1; tip 0/1
 pair.3 = base 0/1; tip 1/1
+
+[css/css-values/attr-security.html]
+generation = 185
+kind = user-ruling
+why = Lane vars1b2's cascade part (merged b146e18921d, main 57ce294e373): passing 20 -> 19 at file level (its A/B lost the two image-set(var(--some-string)) and image-set(var(--some-string-list)) names). They passed by accident while attr() was plain text in a registered <string> custom property; typed registration makes the value valid and image-set() now needs attr()'s taint check (Codex row 122). Evidence wpt-results/lanes/vars1b2-c8722ce1ca7/lost.txt.
+date = 2026-10-26
+decision = The user: "Merge now" for vars1b2 with these attr() names recorded as the user's ruling (memory loss-rulings-2026-10-26); Codex row 122's attr() must restore them
+
+[css/css-values/attr-universal-selector.html]
+generation = 185
+kind = user-ruling
+why = Lane vars1b2's cascade part (merged b146e18921d, main 57ce294e373): passing 1 -> 0, the file's single test, an accidental pass while attr() was plain text; it needs attr()'s security limitation (Codex row 122). Evidence wpt-results/lanes/vars1b2-c8722ce1ca7/lost.txt.
+date = 2026-10-26
+decision = The user: "Merge now" for vars1b2 with these attr() names recorded as the user's ruling (memory loss-rulings-2026-10-26); Codex row 122's attr() must restore it
+
+[html/semantics/scripting-1/the-script-element/module/dynamic-import/microtasks/basic.any.js]
+generation = 185
+kind = flake
+why = 9 -> 8 in the generation 185 sweep only. Isolated, one process each, alternating, frozen main-df896d6560 (base, generation 184) vs main-e95a90e570 (tip, generation 185), integrator 2026-10-26 on chat through crane-measure.sh: 9/9 on both sides in all three pairs. Evidence chat:~/crane-work/integrator-pairs-185/.
+pair.1 = base 9/9; tip 9/9
+pair.2 = base 9/9; tip 9/9
+pair.3 = base 9/9; tip 9/9
+
+[service-workers/service-worker/navigation-timing-extended.https.html]
+generation = 185
+kind = flake
+why = The recurring fetchStart/handler-time clock tie (generations 171, 177, 183; Codex rows 123/124 and lane newwin1 today, isolated pairs identical on both sides): 1 -> 0 in the generation 185 sweep. Isolated, one process each, alternating, frozen main-df896d6560 vs main-e95a90e570, integrator 2026-10-26: 1/1 on both sides in all three pairs. Evidence chat:~/crane-work/integrator-pairs-185/.
+pair.1 = base 1/1; tip 1/1
+pair.2 = base 1/1; tip 1/1
+pair.3 = base 1/1; tip 1/1
+
+[xhr/send-redirect.htm]
+generation = 185
+kind = flake
+why = 34 -> 33 in the generation 185 sweep only; lane newwin1's isolated pairs earlier today were 33-34 on both sides. Isolated, one process each, alternating, frozen main-df896d6560 vs main-e95a90e570, integrator 2026-10-26: 34/34 on both sides in all three pairs. Evidence chat:~/crane-work/integrator-pairs-185/.
+pair.1 = base 34/34; tip 34/34
+pair.2 = base 34/34; tip 34/34
+pair.3 = base 34/34; tip 34/34
