@@ -1106,7 +1106,14 @@ fn setOngoingNavigation(integration: *IFrameIntegration, value: navigate_steps.O
         if (bc.getActiveWindow()) |window| dom_module.navigation_api.informAboutAbortingNavigation(@ptrCast(@alignCast(window)));
     }
     switch (integration.ongoing_navigation) {
-        .id => |old| endNavigation(old),
+        .id => |old| {
+            // The host page's queued javascript: URL is not cancelled by the
+            // navigation that replaces it as ongoing (runJavascriptNavigation
+            // says why): its record stays for its task.
+            const queued_javascript = integration.host_realms != null and
+                (if (navigationById(old)) |record| navigate_steps.isJavascript(record.url) else false);
+            if (!queued_javascript) endNavigation(old);
+        },
         else => {},
     }
     // Step 3.
@@ -3718,9 +3725,21 @@ fn runJavascriptNavigation(context: ?*anyopaque) void {
     const record = kv.value;
     defer record.destroy();
     const integration = record.integration;
-    if (!isOngoing(integration, id)) return;
-    // Step 2: "Set the ongoing navigation for targetNavigable to null."
-    integration.ongoing_navigation = .none;
+    if (!isOngoing(integration, id)) {
+        // Step 2 ("If targetNavigable's ongoing navigation is no longer
+        // navigationId, then return") - except on the host page's
+        // traversable, where a later navigation does not cancel a queued
+        // javascript: URL. Stated: that is what its Location path did before
+        // the traversable took its navigations, and what Chrome does
+        // (url/javascript-urls.window.html: 6/6 at wpt.fyi stable, Firefox
+        // 4/6; two clicks in one task, the first URL still runs); frames and
+        // popups keep the text. Golden rule 2's audit of the whole step is
+        // lane newwin1's batch 2.
+        if (integration.host_realms == null) return;
+    } else {
+        // Step 3: "Set the ongoing navigation for targetNavigable to null."
+        integration.ongoing_navigation = .none;
+    }
 
     // Step 4: "If initiatorOrigin is not same origin-domain with
     // targetNavigable's active document's origin, then return." The

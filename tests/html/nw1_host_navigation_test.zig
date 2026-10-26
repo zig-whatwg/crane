@@ -163,3 +163,26 @@ fn stopCancelsPlannedFormNavigation() !void {
 test "window.stop in the task that submitted a form cancels its planned navigation of the host page" {
     try onFreshThread(stopCancelsPlannedFormNavigation);
 }
+
+fn javascriptUrlsNotCancelled() !void {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    const page = browser.current_context orelse return error.NoPage;
+    try page.loadHTML("<!doctype html><body><a id=a>x</a></body>", .{ .base_url = "http://example.test/one" });
+    try until(browser, "document.readyState === 'complete'");
+    // Two javascript: URLs followed in one task: the first still runs when
+    // its task comes - a later navigation does not cancel it
+    // (url/javascript-urls.window.html: Chrome 6/6 at wpt.fyi).
+    try page.runScript(
+        \\const a = document.getElementById('a');
+        \\a.href = 'javascript:globalThis.first = "ran";undefined'; a.click();
+        \\a.href = 'javascript:globalThis.second = "ran";undefined'; a.click();
+    );
+    try until(browser, "globalThis.second === 'ran'");
+    try expectEval(page, "String(globalThis.first)", "ran");
+}
+
+test "a javascript: URL the host page follows still runs after a later navigation is started" {
+    try onFreshThread(javascriptUrlsNotCancelled);
+}
