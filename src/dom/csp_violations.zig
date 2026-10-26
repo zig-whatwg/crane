@@ -264,9 +264,14 @@ pub fn documentCspList(document: *runtime.Instance) *const csp.CSPList {
 }
 
 /// The reporter for violations of `global`'s policies (a Window's or a
-/// WorkerGlobalScope's).
+/// WorkerGlobalScope's). Its context is the global's REALM, which is never
+/// reissued while its agent lives (a retired realm record stays), never the
+/// global: a request carries its reporter for as long as it lives - cloned,
+/// kept alive, re-targeted - and a realm that ended gave its Window's slot
+/// back. The report resolves the global at use time (`report`), as every
+/// realm holder does (lane winslot1, kind 11).
 pub fn reporterFor(global: *runtime.Instance) Reporter {
-    return .{ .context = global, .report = &report };
+    return .{ .context = global.ctx, .report = &report };
 }
 
 /// The reporter for violations of the policies of `realm`'s global, if the
@@ -304,6 +309,15 @@ pub const GuardedReporter = struct {
         return .{ .context = self, .report = &reportWhileAlive };
     }
 
+    /// The global, while it is still the instance this was made for and its
+    /// realm still runs - what every read of it goes through (lane winslot1,
+    /// kind 10).
+    pub fn liveGlobal(self: *const GuardedReporter) ?*runtime.Instance {
+        if (runtime.SlabAllocator.generationOf(self.global) != self.generation) return null;
+        if (!self.global.ctx.hasEngine()) return null;
+        return self.global;
+    }
+
     fn reportWhileAlive(context: *anyopaque, violation: *const Violation) void {
         const self: *GuardedReporter = @ptrCast(@alignCast(context));
         if (runtime.SlabAllocator.generationOf(self.global) != self.generation) return;
@@ -329,7 +343,8 @@ fn reportViolationAt(global: *runtime.Instance, violation: *const Violation, pos
 }
 
 fn report(context: *anyopaque, violation: *const Violation) void {
-    reportViolation(@ptrCast(@alignCast(context)), violation);
+    const global = @import("global_settings.zig").liveGlobalOf(@ptrCast(@alignCast(context))) orelse return;
+    reportViolation(global, violation);
 }
 
 /// CSP §4.2.5 / §5.5: a response-policy violation has no global and no

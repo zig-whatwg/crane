@@ -214,9 +214,12 @@ test "Event's IDL getters read the dispatch state the dispatcher writes" {
     try std.testing.expectEqual(interfaces.Event.get_NONE(), state.phase);
     try std.testing.expect(!state.is_trusted);
 
-    // What dispatch writes there, the IDL attributes report.
+    // What dispatch writes there, the IDL attributes report: during dispatch
+    // (the dispatch flag set), the target "invoke" sets and the current target
+    // it sets with its slab generation (EventState.setCurrentTarget).
+    state.dispatch_flag = true;
     state.target = other;
-    state.current_target = other;
+    state.setCurrentTarget(other);
     state.phase = interfaces.Event.get_AT_TARGET();
     state.is_trusted = true;
     try std.testing.expectEqual(@as(?*runtime.Instance, other), try interfaces.Event.get_target(event));
@@ -229,4 +232,5 @@ test "Event's IDL getters read the dispatch state the dispatcher writes" {
     try interfaces.Event.call_stopImmediatePropagation(event);
     try std.testing.expect(state.stop_propagation_flag and state.stop_immediate_propagation_flag);
     state.target = null;
+    state.dispatch_flag = false;
 }

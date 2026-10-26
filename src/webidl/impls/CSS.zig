@@ -471,10 +471,43 @@ pub fn call_parseValue(ctx: runtime.Context, css: runtime.DOMString) anyerror!ru
     return error.NotImplemented;
 }
 
+/// Properties and Values §4.1. The namespace binding currently passes this
+/// dictionary as JSValue, so WebIDL §3.2.18 conversion happens here, once and
+/// in lexicographical member order, before any registration algorithm step.
 pub fn call_registerProperty(ctx: runtime.Context, definition: runtime.JSValue) anyerror!void {
-    _ = ctx;
-    _ = definition;
-    return error.NotImplemented;
+    // Null/undefined are empty dictionaries and lack required inherits/name;
+    // other primitives fail dictionary conversion at step 1.
+    if (engine.typeOf(ctx, definition) != .object) return error.TypeError;
+    // Current-browser seam (Q2): inherits is still required.
+    const inherits = (try engine.getPropertyBoolean(ctx, definition, "inherits")) orelse return error.TypeError;
+    const initial = try registrationString(ctx, definition, "initialValue");
+    defer if (initial) |text| ctx.allocator.free(text);
+    const name = (try registrationString(ctx, definition, "name")) orelse return error.TypeError;
+    defer ctx.allocator.free(name);
+    const syntax = try registrationString(ctx, definition, "syntax");
+    defer if (syntax) |text| ctx.allocator.free(text);
+
+    // §4.1 step 1: the relevant global's associated Document owns the set.
+    const dom = @import("dom");
+    const document = dom.style.objects.associatedDocument(ctx) orelse return error.NotSupportedError;
+    const styles = dom.style.hooks.engineOf(document) orelse return error.InvalidStateError;
+    var parse_context = try dom.style.engine.resource_loading.inlineParseContext(document, ctx.allocator, false, initial orelse "");
+    defer parse_context.deinit();
+    try styles.registerProperty(document, parse_context.options(), .{
+        .name = name,
+        .syntax = syntax orelse "*",
+        .inherits = inherits,
+        .initial_value = initial,
+    });
+}
+
+/// WebIDL DOMString member conversion. Get's handle and the returned string
+/// have distinct owners; the caller keeps only the copied UTF-8 string.
+fn registrationString(ctx: runtime.Context, definition: runtime.JSValue, member: []const u8) !?[]u8 {
+    const got = try engine.getProperty(ctx, definition, member);
+    defer got.release();
+    if (engine.typeOf(ctx, got.value) == .undefined) return null;
+    return try engine.convertToDOMString(ctx, got.value, ctx.allocator);
 }
 
 pub fn call_dvi(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {

@@ -178,6 +178,27 @@ pub fn releaseOwned(child: *Instance) void {
         releaseStorage(child);
 }
 
+/// A realm's global object - a Window - whose realm has ended: its
+/// destructor chain ran (its cleanup is marked complete) and its owner, the
+/// realm's end, severed every engine object that named it (the WindowProxy,
+/// the hidden global, the WindowProperties object), so no wrapper can reach
+/// its slot. Its storage goes back now, or, inside a coordinated teardown
+/// still under way (a realm ended within another's), once that teardown's
+/// last phase is done - releaseOwned's rule, for an instance whose wrapper
+/// its owner severed rather than one no wrapper reached. Only while its slot
+/// is still the one `generation` names. Makes no engine call.
+pub fn releaseSevered(instance: *Instance, generation: u64) void {
+    const instance_lifecycle = @import("instance_lifecycle.zig");
+    const cleanup_coordinator = @import("cleanup_coordinator.zig");
+    const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
+    if (SlabAllocator.generationOf(instance) != generation) return;
+    if (!instance_lifecycle.isCleanedUp(instance)) return;
+    if (cleanup_coordinator.isContextTearingDown())
+        cleanup_coordinator.deferStorageRelease(instance, generation)
+    else
+        releaseStorage(instance);
+}
+
 /// An agent's queue of native objects whose last owner went away - a node
 /// root whose wrapper the collector took, today; an object whose reference
 /// count reached zero, once the DOM counts references - to be torn down soon,

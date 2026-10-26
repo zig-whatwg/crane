@@ -27,10 +27,10 @@
 //! subclass (MouseEvent, PointerEvent, KeyboardEvent, ...) writes through its
 //! own constructor; the getters here read them for all of them.
 //!
-//! `view` is stored as a pointer, as MouseEvent and PointerEvent store it: a
-//! Window outlives every event made in its own realm. An event handed another
-//! realm's Window (`{ view: frame.contentWindow }`) and kept past that frame's
-//! end would read a freed Window; see lane-forms-handoff.md.
+//! `view` is stored as a pointer: a Window outlives every event made in its
+//! own realm. An event handed another realm's Window
+//! (`{ view: frame.contentWindow }`) keeps that view's WindowProxy instead
+//! (`setView`), and reads the Window through it.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -40,6 +40,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const engine = @import("engine");
 const event_construction = @import("dom").event_construction;
 const UIEvent = interfaces.UIEvent;
 
@@ -49,8 +50,50 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// UIEvent keeps nothing beyond its generated fields.
-pub const InternalState = struct {};
+/// What UIEvent keeps beyond its generated fields, made only for a view of
+/// another realm (`setView`).
+pub const InternalState = struct {
+    /// The Window the view named when set, with its generation
+    /// (runtime.window_holders.Link), beside a traced edge from this event
+    /// to the view's WindowProxy (`view_slot`).
+    view_window: ?runtime.window_holders.Link = null,
+};
+
+/// The member a UIEvent keeps another realm's view (its WindowProxy) in
+/// (engine.traceValue).
+const view_slot: engine.TracedSlot = .{ .name = "view" };
+
+/// Set `instance`'s view, keeping another realm's as its WindowProxy.
+///
+/// A WindowProxy holder keeps the PROXY, never the Window it showed then
+/// (lane winslot1, kind 4; the integrator's ruling of 2026-10-25 on the
+/// three-browser probe, tmp/analysis/integrator-probes-1025n): after the
+/// view's frame navigates, `view` is the same proxy showing the new
+/// document, and after its iframe is removed, the same proxy, closed -
+/// Firefox 158's behaviour, the majority mechanism by mechanism (Chrome 155
+/// answers null after a navigation, Safari 27 after a removal). WebKit's
+/// UIEvent keeps `RefPtr<WindowProxy> m_view`. The edge is traced, never a
+/// root: a removed frame's realm lives exactly as long as the event. A view
+/// of the event's own realm - every event the engine fires - needs none:
+/// the event goes with that realm, which keeps its Window while it lives.
+fn setView(instance: *runtime.Instance, view: ?*runtime.Instance) void {
+    const state = instance.stateAs(State) orelse return;
+    if (state.own._internal) |internal| if (internal.view_window != null) {
+        engine.forgetTracedChild(instance, view_slot);
+        internal.view_window = null;
+    };
+    state.own.view = view;
+    const window = view orelse return;
+    if (window.ctx == instance.ctx) return;
+    const internal = state.own._internal orelse blk: {
+        const made = runtime.arenaOf(instance).create(InternalState) catch return;
+        made.* = .{};
+        state.own._internal = made;
+        break :blk made;
+    };
+    internal.view_window = runtime.window_holders.Link.of(window);
+    engine.traceValue(instance, .{ .instance = window }, view_slot);
+}
 
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
@@ -72,6 +115,11 @@ pub fn init(
 /// Deinitialize instance: UIEvent owns nothing; the Event part owns the type
 /// string and the flags.
 pub fn deinit(instance: *runtime.Instance) void {
+    if (instance.stateAs(State)) |state| if (state.own._internal) |internal| {
+        if (internal.view_window != null) engine.forgetTracedChild(instance, view_slot);
+        runtime.arenaOf(instance).destroy(InternalState, internal);
+        state.own._internal = null;
+    };
     interfaces.Event.deinit(instance);
 }
 
@@ -83,7 +131,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// inheriting from it.
 fn initializeMembers(instance: *runtime.Instance, init_dict: event_construction.UIEventInit) void {
     const state = instance.stateAs(State) orelse return;
-    state.own.view = init_dict.view;
+    setView(instance, init_dict.view);
     state.own.detail = init_dict.detail;
     state.own.which = init_dict.which;
     state.own.sourceCapabilities = null;
@@ -104,6 +152,16 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 /// initialized to".
 pub fn get_view(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const state = instance.stateAs(State) orelse return null;
+    // Another realm's view: the proxy the event keeps, as the Window it
+    // shows now (`setView`); with no edge to read, the Window it named,
+    // while that is still the one.
+    if (state.own._internal) |internal| if (internal.view_window) |link| {
+        if (engine.tracedValue(instance, view_slot)) |held| {
+            defer held.release();
+            if (engine.convertToPlatformObject(instance.ctx, held.value)) |window| return window;
+        }
+        return link.get();
+    };
     return state.own.view;
 }
 
@@ -136,6 +194,6 @@ pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: runtime.DOMString,
     if (event_construction.dispatchFlag(instance)) return;
     try interfaces.Event.call_initEvent(instance, typeArg, bubblesArg, cancelableArg);
     const state = instance.stateAs(State) orelse return;
-    state.own.view = if (viewArg.was_passed) viewArg.value else null;
+    setView(instance, if (viewArg.was_passed) viewArg.value else null);
     state.own.detail = if (detailArg.was_passed) detailArg.value else 0;
 }

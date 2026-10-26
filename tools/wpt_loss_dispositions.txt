@@ -206,3 +206,84 @@ why = The same sweep-load hang as the generation-177 disposition: the generation
 pair.1 = base 3/4; tip 3/4
 pair.2 = base 3/4; tip 3/4
 pair.3 = base 3/4; tip 3/4
+
+[css/css-values/attr-cycle.html]
+generation = 183
+kind = user-ruling
+why = Lane vars1 batch 1 (merged 7e3293cd445, main 031a7792420): passing 34 -> 5 (29). BASE passed these attr()/if() subtests by accident - it rejected the whole value at parse time, matching "" or "unchanged" expectations; vars1 keeps the value pending and leaves attr()/if() unsubstituted until Codex rows 122 (attr) and 123 (if) plug into its substitution engine. Names: wpt-results/lanes/vars1-540dcbc4e8c/attr-if-lost.txt
+date = 2026-10-25
+decision = The user: "Merge now" for vars1 with its 81 lost names recorded as the user's ruling (memory vars1-loss-ruling); rows 122/123 must restore these names
+
+[css/css-values/if-conditionals.html]
+generation = 183
+kind = user-ruling
+why = Lane vars1 batch 1 (merged 7e3293cd445, main 031a7792420): passing 16 -> 0 (16). BASE passed these attr()/if() subtests by accident - it rejected the whole value at parse time, matching "" or "unchanged" expectations; vars1 keeps the value pending and leaves attr()/if() unsubstituted until Codex rows 122 (attr) and 123 (if) plug into its substitution engine. Names: wpt-results/lanes/vars1-540dcbc4e8c/attr-if-lost.txt
+date = 2026-10-25
+decision = The user: "Merge now" for vars1 with its 81 lost names recorded as the user's ruling (memory vars1-loss-ruling); rows 122/123 must restore these names
+
+[css/css-values/attr-all-types.html]
+generation = 183
+kind = user-ruling
+why = Lane vars1 batch 1 (merged 7e3293cd445, main 031a7792420): passing 95 -> 84 (11). BASE passed these attr()/if() subtests by accident - it rejected the whole value at parse time, matching "" or "unchanged" expectations; vars1 keeps the value pending and leaves attr()/if() unsubstituted until Codex rows 122 (attr) and 123 (if) plug into its substitution engine. Names: wpt-results/lanes/vars1-540dcbc4e8c/attr-if-lost.txt
+date = 2026-10-25
+decision = The user: "Merge now" for vars1 with its 81 lost names recorded as the user's ruling (memory vars1-loss-ruling); rows 122/123 must restore these names
+
+[css/css-values/if-cycle.html]
+generation = 183
+kind = user-ruling
+why = Lane vars1 batch 1 (merged 7e3293cd445, main 031a7792420): passing 17 -> 7 (10). BASE passed these attr()/if() subtests by accident - it rejected the whole value at parse time, matching "" or "unchanged" expectations; vars1 keeps the value pending and leaves attr()/if() unsubstituted until Codex rows 122 (attr) and 123 (if) plug into its substitution engine. Names: wpt-results/lanes/vars1-540dcbc4e8c/attr-if-lost.txt
+date = 2026-10-25
+decision = The user: "Merge now" for vars1 with its 81 lost names recorded as the user's ruling (memory vars1-loss-ruling); rows 122/123 must restore these names
+
+[css/css-values/attr-css-wide-keywords.html]
+generation = 183
+kind = user-ruling
+why = Lane vars1 batch 1 (merged 7e3293cd445, main 031a7792420): passing 7 -> 4 (3). BASE passed these attr()/if() subtests by accident - it rejected the whole value at parse time, matching "" or "unchanged" expectations; vars1 keeps the value pending and leaves attr()/if() unsubstituted until Codex rows 122 (attr) and 123 (if) plug into its substitution engine. Names: wpt-results/lanes/vars1-540dcbc4e8c/attr-if-lost.txt
+date = 2026-10-25
+decision = The user: "Merge now" for vars1 with its 81 lost names recorded as the user's ruling (memory vars1-loss-ruling); rows 122/123 must restore these names
+
+[css/css-values/attr-argument-grammar.html]
+generation = 183
+kind = user-ruling
+why = Lane vars1 batch 1 (merged 7e3293cd445, main 031a7792420): passing 9 -> 6 (3). BASE passed these attr()/if() subtests by accident - it rejected the whole value at parse time, matching "" or "unchanged" expectations; vars1 keeps the value pending and leaves attr()/if() unsubstituted until Codex rows 122 (attr) and 123 (if) plug into its substitution engine. Names: wpt-results/lanes/vars1-540dcbc4e8c/attr-if-lost.txt
+date = 2026-10-25
+decision = The user: "Merge now" for vars1 with its 81 lost names recorded as the user's ruling (memory vars1-loss-ruling); rows 122/123 must restore these names
+
+[css/css-values/attr-parse-url.html]
+generation = 183
+kind = user-ruling
+why = Lane vars1 batch 1 (merged 7e3293cd445, main 031a7792420): passing 1 -> 0 (1). BASE passed these attr()/if() subtests by accident - it rejected the whole value at parse time, matching "" or "unchanged" expectations; vars1 keeps the value pending and leaves attr()/if() unsubstituted until Codex rows 122 (attr) and 123 (if) plug into its substitution engine. Names: wpt-results/lanes/vars1-540dcbc4e8c/attr-if-lost.txt
+date = 2026-10-25
+decision = The user: "Merge now" for vars1 with its 81 lost names recorded as the user's ruling (memory vars1-loss-ruling); rows 122/123 must restore these names
+
+[service-workers/service-worker/static-router-main-resource.https.html]
+generation = 183
+kind = flake
+why = Not vars1: 9 -> 8 in the sweep. Three isolated pairs, each the file alone, on chat 2026-10-26: BASE ~/crane-frozen/main-b6b92efd3d (gen 182's runner) vs TIP ~/crane-frozen/main-031a779242, `wpt_runner <file> --wpt-root=tests/wpt` (integrator)
+pair.1 = base 9/9; tip 9/9
+pair.2 = base 9/9; tip 9/9
+pair.3 = base 9/9; tip 9/9
+
+[service-workers/service-worker/navigation-timing-extended.https.html]
+generation = 183
+kind = flake
+why = Not vars1: 1 -> 0 in the sweep (the known fetchStart timing flake, gen 171 disposition). Three isolated pairs, each the file alone, on chat 2026-10-26: BASE ~/crane-frozen/main-b6b92efd3d (gen 182's runner) vs TIP ~/crane-frozen/main-031a779242, `wpt_runner <file> --wpt-root=tests/wpt` (integrator)
+pair.1 = base 1/1; tip 1/1
+pair.2 = base 1/1; tip 1/1
+pair.3 = base 1/1; tip 1/1
+
+[permissions/permissions-cg.https.html]
+generation = 183
+kind = flake
+why = Not vars1: 1 -> 0 (OK -> TIMEOUT) in the sweep. Three isolated pairs, each the file alone, on chat 2026-10-26: BASE ~/crane-frozen/main-b6b92efd3d (gen 182's runner) vs TIP ~/crane-frozen/main-031a779242, `wpt_runner <file> --wpt-root=tests/wpt` (integrator)
+pair.1 = base 1/1; tip 1/1
+pair.2 = base 1/1; tip 1/1
+pair.3 = base 1/1; tip 1/1
+
+[navigation-timing/secure-connection-start-reuse.https.html]
+generation = 183
+kind = flake
+why = Not vars1: 1 -> 0 in the sweep; BASE itself fails 2 of 3 isolated runs. Three isolated pairs, each the file alone, on chat 2026-10-26: BASE ~/crane-frozen/main-b6b92efd3d (gen 182's runner) vs TIP ~/crane-frozen/main-031a779242, `wpt_runner <file> --wpt-root=tests/wpt` (integrator)
+pair.1 = base 0/1; tip 1/1
+pair.2 = base 0/1; tip 1/1
+pair.3 = base 1/1; tip 1/1

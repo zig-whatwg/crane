@@ -9,6 +9,8 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [A slot goes back only when every holder kind is on an allowlist](architecture-a-slot-goes-back-only-when-every-holder-kind-is-on-an-allowlist.md) - Do not return a slot that holders can still name: inventory every holder kind, gate the return on an allowlist whose default is unsafe, convert one kind per commit with a forced-reuse test, and flip the switch last; where the platform object is a proxy for something that outlives it (a WindowProxy), keep the proxy, not the object.
+- [Platform lookups stay with the state owner](architecture-platform-lookups-stay-with-the-state-owner.md) - Install cross-layer callbacks from the state owner, keep host state with its Browser, and test revision invalidation separately from initial lookup.
 - [Pending image descriptors have one read contract](architecture-pending-image-descriptors-have-one-read-contract.md) - Make pending data explicit, and test that defensive readers cannot hide a missing compute step.
 - [A hand-over every callee must take leaks at every callee that does not](architecture-a-hand-over-every-callee-must-take-leaks-at-every-callee-that-does-not.md) - Make "borrowed for the call" the default for every converted value, and have keepers take their own hold: a hand-over that each callee must remember to take leaks at every callee that forgets. And before theorising that a leak depends on order, re-run the isolation in-process on a debuggable runner.
 - [Dependencies must follow effective values](architecture-dependencies-must-follow-effective-values.md) - Query dependencies over the components computation will actually evaluate.
@@ -655,6 +657,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Refresh aliases with their realm's interface objects](codegen-refresh-aliases-with-their-realms-interface-objects.md) - An alias names the realm's interface object, not the current contents of another global property.
 
 ### Testing
+- [A no-throw check can pass when the binding returns an Error](testing-a-no-throw-check-can-pass-when-the-binding-returns-an-error.md) - Verify the binding's rejection path and the observable return value before treating a call without an exception as success.
 - [A replacement is not a fallback candidate](testing-a-replacement-is-not-a-fallback-candidate.md) - Preserve a separate fallback candidate and distinguish it from the initial value.
 - [Support detection activates previously skipped assertions](testing-support-detection-activates-previously-skipped-assertions.md) - When support detection changes, inspect the assertions it enables and complete their dependent behavior in the same accepted delivery.
 - [Focused runs can miss an earlier stage fixture](testing-focused-runs-can-miss-an-earlier-stage-fixture.md) - Search every fixture that pins the old representation, preserve its ownership controls, and gate the complete changed tree.

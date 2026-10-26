@@ -170,7 +170,7 @@ pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Spec: https://dom.spec.whatwg.org/#dom-event-target
 pub fn get_target(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
-    return internal.target;
+    return internal.targetForScript();
 }
 
 /// Getter for srcElement (legacy)
@@ -179,7 +179,7 @@ pub fn get_target(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 /// The srcElement getter steps are to return this's target.
 pub fn get_srcElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
-    return internal.target;
+    return internal.targetForScript();
 }
 
 /// Getter for currentTarget
@@ -187,7 +187,7 @@ pub fn get_srcElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 /// Spec: https://dom.spec.whatwg.org/#dom-event-currenttarget
 pub fn get_currentTarget(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
-    return internal.current_target;
+    return internal.currentTargetForScript();
 }
 
 /// Getter for eventPhase
