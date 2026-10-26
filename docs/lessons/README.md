@@ -656,6 +656,7 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Testing
 - [Enum Capacity and Container Layout Are Separate Invariants](testing-enum-capacity-and-container-layout.md) - Audit ID storage and reflected counts, then measure containing types instead of inferring their size from the tag.
+- [Bind WPT Evidence to the Served Source Hashes](testing-bind-wpt-evidence-to-served-source-hashes.md) - Match the actual served sources and frozen artifacts; retain original receipts and label authorized evidence reuse.
 - [A no-throw check can pass when the binding returns an Error](testing-a-no-throw-check-can-pass-when-the-binding-returns-an-error.md) - Verify the binding's rejection path and the observable return value before treating a call without an exception as success.
 - [A replacement is not a fallback candidate](testing-a-replacement-is-not-a-fallback-candidate.md) - Preserve a separate fallback candidate and distinguish it from the initial value.
 - [Support detection activates previously skipped assertions](testing-support-detection-activates-previously-skipped-assertions.md) - When support detection changes, inspect the assertions it enables and complete their dependent behavior in the same accepted delivery.
