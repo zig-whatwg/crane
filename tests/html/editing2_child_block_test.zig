@@ -73,6 +73,13 @@ const cases = [_]Case{
     .{ .input = "<b>abc<br><br></b><div id=\"child\">[]def<br>ghi</div>", .command = "delete", .after = "<b>abc<br></b><div id=\"child\">def<br>ghi</div>", .after_typing = "<b>abc<br></b><div id=\"child\">Xdef<br>ghi</div>" },
     .{ .input = "abc\n\n<div id=\"child\">[]def<br>ghi</div>", .command = "delete", .after = "abc\n<div id=\"child\">def<br>ghi</div>", .after_typing = "abc\n<div id=\"child\">Xdef<br>ghi</div>", .pre = true },
     .{ .input = "\n<div id=\"child\">[]def<br>ghi</div>", .command = "delete", .after = "<div id=\"child\">def<br>ghi</div>", .after_typing = "<div id=\"child\">Xdef<br>ghi</div>", .pre = true },
+    // forwardDelete at an empty line before the block: only the line goes,
+    // the caret into the block.
+    .{ .input = "abc<br>{}<br><div id=\"child\">def<br>ghi</div>", .command = "forwardDelete", .after = "abc<br><div id=\"child\">def<br>ghi</div>", .after_typing = "abc<br><div id=\"child\">Xdef<br>ghi</div>" },
+    .{ .input = "{}<br><div id=\"child\">def<br>ghi</div>", .command = "forwardDelete", .after = "<div id=\"child\">def<br>ghi</div>", .after_typing = "<div id=\"child\">Xdef<br>ghi</div>" },
+    .{ .input = "<b>{}<br></b><div id=\"child\">def<br>ghi</div>", .command = "forwardDelete", .after = "<div id=\"child\">def<br>ghi</div>", .after_typing = "<div id=\"child\">Xdef<br>ghi</div>" },
+    .{ .input = "abc\n[]\n<div id=\"child\">def<br>ghi</div>", .command = "forwardDelete", .after = "abc\n<div id=\"child\">def<br>ghi</div>", .after_typing = "abc\n<div id=\"child\">Xdef<br>ghi</div>", .pre = true },
+    .{ .input = "[]\n<div id=\"child\">def<br>ghi</div>", .command = "forwardDelete", .after = "<div id=\"child\">def<br>ghi</div>", .after_typing = "<div id=\"child\">Xdef<br>ghi</div>", .pre = true },
     // A line that is only a br moves as the spec says, and goes where it
     // is extraneous (editing/run/delete.html and forwarddelete.html).
     .{ .input = "foo{}<p><br></p>", .command = "forwardDelete", .after = "foo", .after_typing = "fooX" },

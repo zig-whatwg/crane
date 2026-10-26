@@ -416,6 +416,66 @@ fn collapseForward(edit: *Edit, original_start: Point) !void {
     try edit.collapseToStart();
 }
 
+/// forwardDelete at an empty line right before a block: the browsers delete
+/// that line alone - its br, or its preserved line feed, with an inline
+/// wrapper it empties - and put the caret at the block's start, where the
+/// spec's step 5 or 7 range reaches into the block and joins it (golden
+/// rule 2, no newer spec): `abc<br>{}<br><div>def</div>` -> `abc<br><div>[]def</div>`,
+/// `<b>{}<br></b><div>def</div>` -> `<div>[]def</div>`. Gecko:
+/// AutoBlockElementsJoiner's DeletePrecedingBRElementOfBlock and
+/// DeletePrecedingPreformattedLineBreak (mozilla-firefox/firefox
+/// 6cb22fec8a1e); editing/other/delete-without-unwrapping-first-line-of-
+/// child-block.html ?method=forwardDeleteCommand, Chrome 155 and Firefox
+/// 158 25/25 (wpt.fyi df642c4142). Whether it did.
+fn deleteEmptyLineBeforeBlock(edit: *Edit, point: Point) !bool {
+    if (common.isText(point.node)) {
+        const length = try common.nodeLength(point.node);
+        if (point.offset + 1 != length or !try isPreservedLineFeedBefore(point.node, length)) return false;
+        const block = (try blockRightAfter(point.node)) orelse return false;
+        if ((try lineStartKind(point)) == .none) return false;
+        try edit.deleteData(point.node, point.offset, 1);
+        if ((try common.nodeLength(point.node)) == 0) try removeWithEmptiedWrappers(edit, point.node);
+        try edit.collapse(block, 0);
+        return true;
+    }
+    const br = (try common.childAt(point.node, point.offset)) orelse return false;
+    if (!try isBr(br) or !try common.isEditable(br)) return false;
+    const block = (try blockRightAfter(br)) orelse return false;
+    if ((try lineStartKind(point)) == .none) return false;
+    try removeWithEmptiedWrappers(edit, br);
+    try edit.collapse(block, 0);
+    return true;
+}
+
+/// The block that follows `node` directly - its next sibling, or its inline
+/// ancestors' - or null when something else comes first.
+fn blockRightAfter(node: *Instance) !?*Instance {
+    var current = node;
+    while (true) {
+        if (try common.nextSibling(current)) |next| {
+            // A nested list is not this rule's: Gecko joins it through its
+            // list handling, and so does the spec (editing/run/
+            // forwarddelete.html `<li>{}<br><ol><li>bar</ol></li>`).
+            if (try common.isHtmlElementIn(next, &.{ "ol", "ul" })) return null;
+            return if (common.isBlockNode(next) and try common.isEditable(next)) next else null;
+        }
+        const p = (try common.parent(current)) orelse return null;
+        if (!common.isInlineNode(p) or !try common.isEditable(p)) return null;
+        current = p;
+    }
+}
+
+/// Remove `node`, then the editable inline ancestors it leaves empty.
+fn removeWithEmptiedWrappers(edit: *Edit, node: *Instance) !void {
+    var p = (try common.parent(node)) orelse return edit.removeNode(node);
+    try edit.removeNode(node);
+    while ((try common.isEditable(p)) and common.isInlineNode(p) and (try common.nodeLength(p)) == 0) {
+        const grandparent = (try common.parent(p)) orelse break;
+        try edit.removeNode(p);
+        p = grandparent;
+    }
+}
+
 const EmptyLineBreak = union(enum) {
     br: *Instance,
     /// A Text node whose last character is the line feed.
@@ -1160,6 +1220,8 @@ pub fn forwardDeleteAction(edit: *Edit) !bool {
         // Step 4.5.
         break;
     }
+    // The browsers' empty line before a block (see deleteEmptyLineBeforeBlock).
+    if (try deleteEmptyLineBeforeBlock(edit, point)) return true;
     // Step 5: a character and its combining marks.
     if (common.isText(point.node) and point.offset != try common.nodeLength(point.node)) {
         // Step 5.1.
