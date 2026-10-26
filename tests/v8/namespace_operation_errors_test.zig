@@ -152,3 +152,9 @@ test "an operation that leaves script's exception pending rethrows it, not a new
         .{ .source = outcome ++ "outcome(() => Failing.pending())", .expected = "threw TypeError thrown by script" },
     });
 }
+
+test "an operation's length is the one its Meta.methods entry gives" {
+    try onThread(&.{
+        .{ .source = "[Failing.modification.length, Failing.syntaxWithPayload.length, Failing.succeedNumber.length].join()", .expected = "0,1,2" },
+    });
+}

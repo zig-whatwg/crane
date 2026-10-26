@@ -16,27 +16,27 @@ pub const console = struct {
         pub const BaseType = null;
         pub const MixinTypes = &.{};
 
-        /// Method binding hints for V8Interface (JS name, Zig function name)
+        /// Method binding hints (JS name, Zig function name, WebIDL length)
         pub const methods = .{
-            .{ "clear", "call_clear" },
-            .{ "log", "call_log" },
-            .{ "table", "call_table" },
-            .{ "trace", "call_trace" },
-            .{ "groupEnd", "call_groupEnd" },
-            .{ "info", "call_info" },
-            .{ "count", "call_count" },
-            .{ "debug", "call_debug" },
-            .{ "countReset", "call_countReset" },
-            .{ "time", "call_time" },
-            .{ "assert", "call_assert" },
-            .{ "groupCollapsed", "call_groupCollapsed" },
-            .{ "error", "call_error" },
-            .{ "timeLog", "call_timeLog" },
-            .{ "dir", "call_dir" },
-            .{ "warn", "call_warn" },
-            .{ "dirxml", "call_dirxml" },
-            .{ "timeEnd", "call_timeEnd" },
-            .{ "group", "call_group" },
+            .{ "clear", "call_clear", 0 },
+            .{ "log", "call_log", 0 },
+            .{ "table", "call_table", 0 },
+            .{ "trace", "call_trace", 0 },
+            .{ "groupEnd", "call_groupEnd", 0 },
+            .{ "info", "call_info", 0 },
+            .{ "count", "call_count", 0 },
+            .{ "debug", "call_debug", 0 },
+            .{ "countReset", "call_countReset", 0 },
+            .{ "time", "call_time", 0 },
+            .{ "assert", "call_assert", 0 },
+            .{ "groupCollapsed", "call_groupCollapsed", 0 },
+            .{ "error", "call_error", 0 },
+            .{ "timeLog", "call_timeLog", 0 },
+            .{ "dir", "call_dir", 0 },
+            .{ "warn", "call_warn", 0 },
+            .{ "dirxml", "call_dirxml", 0 },
+            .{ "timeEnd", "call_timeEnd", 0 },
+            .{ "group", "call_group", 0 },
         };
 
         pub const has_constructor = false;

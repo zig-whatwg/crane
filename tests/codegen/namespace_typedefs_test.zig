@@ -62,7 +62,7 @@ test "an overloaded namespace operation is call_<name> then call_<name>__<k>, ne
     // A further overload answers NotImplemented until the impl declares it.
     try testing.expect(contains(ns, "if (comptime @hasDecl(Space_impl, \"call_supports__1\"))"));
     // Bound once, under its own name.
-    try testing.expectEqual(@as(usize, 1), std.mem.count(u8, ns, ".{ \"supports\", \"call_supports\" }"));
+    try testing.expectEqual(@as(usize, 1), std.mem.count(u8, ns, ".{ \"supports\", \"call_supports\", 1 }"));
     try testing.expect(!contains(ns, "supports_DOMString") and !contains(ns, "supports_Ident"));
     // The overload resolution table, as an interface's.
     try testing.expect(contains(ns, "pub const overloads = .{"));
@@ -74,4 +74,30 @@ test "an overloaded namespace operation is call_<name> then call_<name>__<k>, ne
     try testing.expect(contains(impl, "pub fn call_supports(ctx: runtime.Context, property: runtime.DOMString, value: runtime.DOMString) anyerror!bool"));
     try testing.expect(contains(impl, "pub fn call_supports__1(ctx: runtime.Context, conditionText: runtime.DOMString) anyerror!bool"));
     try testing.expect(!contains(impl, "supports_DOMString") and !contains(impl, "supports_Ident"));
+}
+
+test "a namespace operation's Meta.methods entry carries its WebIDL length: the shortest overload's required arguments" {
+    // WebIDL 3.13.1 / 3.7.6 "create an operation function": the function's
+    // length is the shortest argument list in the effective overload set -
+    // its required arguments, counted to the first optional or variadic one.
+    // The binding sets it (namespace.zig registerMethod); without it every
+    // namespace operation's length was 0 (row 120 Q21: CSS.escape.length).
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realPathFileAlloc(testing.io, ".", testing.allocator);
+    defer testing.allocator.free(root);
+    try generateSpace(root);
+
+    const ns = try readOut(root, "namespaces/Space.zig");
+    defer testing.allocator.free(ns);
+    testing.expect(contains(ns, ".{ \"escape\", \"call_escape\", 1 },")) catch |err| {
+        std.debug.print("{s}\n", .{ns});
+        return err;
+    };
+    try testing.expect(contains(ns, ".{ \"check\", \"call_check\", 1 },"));
+    try testing.expect(contains(ns, ".{ \"take\", \"call_take\", 1 },"));
+    // supports(property, value) and supports(conditionText): the shorter.
+    try testing.expect(contains(ns, ".{ \"supports\", \"call_supports\", 1 },"));
+    try testing.expect(contains(ns, ".{ \"pair\", \"call_pair\", 2 },"));
+    try testing.expect(contains(ns, ".{ \"none\", \"call_none\", 0 },"));
 }

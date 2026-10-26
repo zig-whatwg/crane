@@ -147,6 +147,17 @@ fn freeStringResult(comptime T: type, allocator: std.mem.Allocator, result: T) v
     }
 }
 
+/// The WebIDL length codegen gives the operation bound as `zig_name`: the
+/// third entry of its `Meta.methods` row. 0 for a namespace without one (a
+/// hand-written binding test's).
+fn webidlLength(comptime Namespace: type, comptime zig_name: []const u8) c_int {
+    if (!@hasDecl(Namespace, "Meta") or !@hasDecl(Namespace.Meta, "methods")) return 0;
+    for (Namespace.Meta.methods) |row| {
+        if (row.len >= 3 and std.mem.eql(u8, row[1], zig_name)) return row[2];
+    }
+    return 0;
+}
+
 /// Throw what a namespace operation's or attribute getter's error names
 /// (conv.throwWebIDLErrorFromContext: a DOMException name, TypeError, ...),
 /// in the operation's context. error.ExceptionPending says script has
@@ -193,6 +204,12 @@ pub fn V8Namespace(comptime Namespace: type) type {
         name: []const u8, // JavaScript name (e.g., "log")
         zig_name: []const u8, // Zig function name (e.g., "call_log")
         param_count: usize, // Number of parameters
+        /// WebIDL's `length` of the operation function (3.7.6 "create an
+        /// operation function"): the shortest argument list in its
+        /// effective overload set - what codegen writes as the third entry
+        /// of the operation's `Meta.methods` row. Not `param_count`, which
+        /// counts Zig parameters (the realm, optional and variadic ones).
+        length: c_int = 0,
     };
 
     // Validate namespace type at compile time
@@ -222,6 +239,7 @@ pub fn V8Namespace(comptime Namespace: type) type {
                     .name = method_name,
                     .zig_name = decl.name,
                     .param_count = fn_info.@"fn".params.len,
+                    .length = webidlLength(Namespace, decl.name),
                 }};
             }
         }
@@ -414,6 +432,10 @@ pub fn V8Namespace(comptime Namespace: type) type {
             const callback = comptime generateCallback(method);
             const fn_template = v8.v8_FunctionTemplate_New(isolate, callback, null) orelse return;
             defer v8.v8_FunctionTemplate_Dispose(fn_template);
+            // The function's `length` (WebIDL 3.7.6), as interface
+            // operations set theirs (interface.zig, Meta.methods' arity):
+            // left unset, every namespace operation's was 0.
+            v8.v8_FunctionTemplate_SetLength(fn_template, method.length);
             const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
             defer v8.v8_Context_Dispose(context);
             // Released once set: the function lives in the context, and one
