@@ -101,10 +101,10 @@ test "gone: a document a load replaced before it loaded - its task is dropped at
     var probe: Probe = .{};
     loop.eventLoop().queueTask(probe.task(first));
 
-    // A load replaces it before it loaded: it is not unloaded (its destroy
-    // is a task of its own, DestroyReplacedDocument), but its window lets go
-    // of it at once (Window.setDocument: the old document's defaultView is
-    // null) - no navigable will show it again.
+    // A load replaces it before it loaded: no unload events, and the load
+    // destroys it at once - no parser of it is on the stack - in a Window no
+    // navigable shows any more (the load gave the page a new one: HTML
+    // "create and initialize a Document object" step 7).
     try context.loadHTML("<!doctype html><p>second", .{ .base_url = page_url });
     try testing.expectEqual(Activity.gone, activityOf(first));
     _ = loop.runOnceBlocking(0);

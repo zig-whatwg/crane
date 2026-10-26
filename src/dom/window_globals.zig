@@ -33,6 +33,9 @@ pub const Implementation = struct {
     /// another owner keeps), its active window from here on, freeing the one
     /// Window.init made for it.
     adopt_browsing_context: *const fn (window: *runtime.Instance, browsing_context: *anyopaque) void,
+    /// Set the Window's origin, serialized ("null" for an opaque one) - the
+    /// one its storage is keyed by until its document says otherwise.
+    set_origin: *const fn (window: *runtime.Instance, origin: []const u8) anyerror!void,
 };
 
 var implementation: ?Implementation = null;
@@ -73,4 +76,10 @@ pub fn releaseBrowsingContext(window: *runtime.Instance) ?*anyopaque {
 pub fn adoptBrowsingContext(window: *runtime.Instance, browsing_context: *anyopaque) void {
     const impl = implementation orelse return;
     impl.adopt_browsing_context(window, browsing_context);
+}
+
+/// Set `window`'s origin: see Implementation.set_origin.
+pub fn setOrigin(window: *runtime.Instance, origin: []const u8) !void {
+    const impl = implementation orelse return;
+    try impl.set_origin(window, origin);
 }

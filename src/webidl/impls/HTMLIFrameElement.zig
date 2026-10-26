@@ -164,7 +164,12 @@ pub fn installHooks() void {
     dom_module.child_navigables.install(.{ .window = &windowOfChildNavigable });
     dom_module.auxiliary_navigables.install(.{ .create = &createAuxiliaryNavigable, .definitely_close = &definitelyCloseTraversable });
     // The host page's top-level traversable: a popup nothing opened.
-    dom_module.top_level_traversables.install(.{ .create = &createHostTraversable, .destroy = &destroyHostTraversable });
+    dom_module.top_level_traversables.install(.{
+        .create = &createHostTraversable,
+        .destroy = &destroyHostTraversable,
+        .attach_realm = &attachHostRealm,
+        .unload_active_document = &unloadHostDocument,
+    });
     dom_module.content_navigables.install(.{
         .delays_load_event = &iframesDelayLoadEvent,
         .run_load_event_steps = &contentNavigableLoadEventSteps,
@@ -5673,19 +5678,15 @@ fn createAuxiliaryNavigable(
 
 /// dom.top_level_traversables: the host page's top-level traversable - the
 /// navigable record createAuxiliaryNavigable makes for a popup, with no
-/// opener and no container - around the host's realm-creation `window`,
-/// which hands it its top-level browsing context. From here the record owns
-/// that context, its session history and its WindowProxy record, across
-/// every Window the page's navigations make; the host keeps making and
-/// ending the realms (`HostRealms`), parentless and entered for their life.
-fn createHostTraversable(allocator: std.mem.Allocator, window: *runtime.Instance, host: dom_module.top_level_traversables.Host) ?*anyopaque {
+/// opener and no container - around the host's realm-creation `window` and
+/// the top-level browsing context it shows. From here the record owns that
+/// context, its session history and its WindowProxy record, across every
+/// Window the page's navigations make; the host keeps making and ending the
+/// realms (`HostRealms`), parentless and entered for their life.
+fn createHostTraversable(allocator: std.mem.Allocator, window: *runtime.Instance, browsing_context_ptr: *anyopaque, host: dom_module.top_level_traversables.Host) ?*anyopaque {
     const integration = allocator.create(IFrameIntegration) catch return null;
     integration.* = IFrameIntegration.init(allocator);
-    const browsing_context: *html_core.BrowsingContext = @ptrCast(@alignCast(dom_module.window_globals.releaseBrowsingContext(window) orelse {
-        integration.deinit();
-        allocator.destroy(integration);
-        return null;
-    }));
+    const browsing_context: *html_core.BrowsingContext = @ptrCast(@alignCast(browsing_context_ptr));
     // From here the record owns the browsing context: its deinit frees it.
     integration.browsing_context = browsing_context;
     integration.host_realms = .{ .context = host.context, .realm_for_document = host.realm_for_document };
@@ -5707,6 +5708,48 @@ fn createHostTraversable(allocator: std.mem.Allocator, window: *runtime.Instance
 /// The host page's realms are the host's to end (Context.deinit): the
 /// record's end leaves them alone.
 fn hostRealmCleanup(_: *IFrameIntegration) void {}
+
+/// dom.top_level_traversables: the host made `realm` for the traversable's
+/// next Window - documents and navigations go in it from here.
+fn attachHostRealm(record: *anyopaque, realm: runtime.Context) void {
+    const integration: *IFrameIntegration = @ptrCast(@alignCast(record));
+    integration.setRealmContext(realm.engine_ctx, @ptrCast(realm), @ptrCast(realm), @ptrCast(realm), createDocumentForIframe, hostRealmCleanup, parseHtmlForIframe);
+    integration.parse_xml_callback = &parseXmlForIframe;
+}
+
+/// dom.top_level_traversables: "unload a document and its descendants" for
+/// the host page's active document, as a navigation of any navigable unloads
+/// it (unloadDocumentTree: children first, the cleanup steps, the child
+/// navigables destroyed) - or, for a document whose load event never ran,
+/// the same with no pagehide and no unload (Blink kLoadEventNotRun, WebKit
+/// m_didCallImplicitClose): the documents are destroyed silently.
+fn unloadHostDocument(record: *anyopaque, fire_events: bool) void {
+    const integration: *IFrameIntegration = @ptrCast(@alignCast(record));
+    const document = activeDocumentOf(integration) orelse return;
+    if (fire_events) {
+        _ = unloadDocumentTree(document, integration, null, null);
+        return;
+    }
+    var documents = dom_module.navigables.inclusiveDescendantDocuments(document, integration.allocator);
+    defer documents.deinit(integration.allocator);
+    var i = documents.items.len;
+    while (i > 0) {
+        i -= 1;
+        const entry = documents.items[i];
+        if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+        if (entry.browsing_context) |child_bc| {
+            if (integrationOfBrowsingContext(child_bc)) |child| {
+                if (child != integration) abandonNavigationsOf(child);
+            }
+        }
+        document_lifecycle.destroy(entry.document);
+        if (integration.browsing_context) |bc| {
+            if (bc.getTop().joint_history) |history| history.forgetDocument(@ptrCast(entry.document));
+        }
+    }
+    if (integration.browsing_context) |bc| dom_module.navigables.destroyWindowDocuments(bc);
+    destroyChildNavigables(integration);
+}
 
 /// dom.top_level_traversables: the record's end, after the host ended its
 /// realms - every Window it showed is gone.

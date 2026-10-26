@@ -488,6 +488,7 @@ pub fn installHooks() void {
         .bound_global = &getBoundV8Global,
         .release_browsing_context = &releaseBrowsingContext,
         .adopt_browsing_context = &replaceBrowsingContext,
+        .set_origin = &setOrigin,
     });
     // A hyperlink's or form's target that names no frame: the popups this
     // window keeps, or a new one (the rules for choosing a navigable).
