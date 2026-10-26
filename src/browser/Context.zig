@@ -1679,6 +1679,11 @@ pub const Context = struct {
     /// initial about:blank document, which no load made. One reference,
     /// handed to the document's deferred destroy when a load replaces it.
     current_load: ?*LoadParse = null,
+    /// The page's top-level traversable (dom.top_level_traversables): the
+    /// navigable record that owns its top-level browsing context, session
+    /// history and WindowProxy record across every Window its loads make.
+    /// OWNED; null for a worker page, or when no record could be made.
+    traversable: ?*anyopaque = null,
 
     // Debug counter for tracking context lifecycle
     var context_id_counter: u32 = 0;
@@ -1769,6 +1774,15 @@ pub const Context = struct {
         };
 
         try self.registerBrowserGlobals(realm);
+
+        // HTML "create a new top-level traversable": the record that keeps
+        // the page's browsing context from now on - the Window that made it
+        // hands it over.
+        if (self.context_type == .window) {
+            if (self.window_instance) |window| {
+                self.traversable = dom_mod.top_level_traversables.create(self.allocator, window, .{ .context = self });
+            }
+        }
 
         // The timers this realm's Window sets run on the Browser's loop.
         if (self.timer) |timer| setTimerInterface(timer, self.allocator);
@@ -2760,6 +2774,10 @@ pub const Context = struct {
             engine.destroyWindowRealm(realm, .global_detached);
             self.realm = null;
         }
+        // The traversable goes once every Window it showed is gone: it frees
+        // the browsing context they read.
+        if (self.traversable) |record| dom_mod.top_level_traversables.destroy(record);
+        self.traversable = null;
 
         self.allocator.free(self.url);
         self.initialized = false;

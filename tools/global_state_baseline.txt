@@ -12,7 +12,7 @@ src/browser/Context.zig animation_frame_origin_ms 1 TL R decl:224540e62cf2e1c7
 src/browser/Context.zig animation_frames 1 TL T decl:a0f27a56138e4163
 src/browser/Context.zig current_allocator 1 TL R decl:72369f58d4c42d35
 src/browser/Context.zig current_timer_interface 1 TL A decl:e0a22fc47ca84e3d
-src/browser/Context.zig timer_contexts 1 TL R decl:2358bf7fb3c3c73c
+src/browser/Context.zig timer_contexts 1 TL R decl:d1b0e415f42e8dfc
 src/cookiestore/change_observer.zig test_callback_called 1 G X decl:4b877655cb3bb361
 src/cookiestore/change_observer.zig test_callback_count 1 G X decl:3796f88280404836
 src/csp/violations.zig default_rate_limiter 1 TL I/profile decl:eecc42a4ab8604f8
@@ -147,6 +147,7 @@ src/dom/template_contents.zig hooks 1 G P-res decl:4dad5b7413d7153c
 src/dom/token_lists.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/top_layer.zig access 1 G P-res decl:2d5e0483fa586ff8
 src/dom/top_level_navigation.zig implementation 1 G H decl:9c737e7125e9c3d4
+src/dom/top_level_traversables.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/traversal.zig node_iterator 1 G H decl:82cd93d362367cd5
 src/dom/traversal.zig tree_walker 1 G H decl:d5e806e980531fcb
 src/dom/tree_ordered_map.zig implementation 1 G P-res decl:89dd82c5fbd26c9f

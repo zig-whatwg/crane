@@ -482,7 +482,13 @@ pub fn installHooks() void {
     // Other types reach a window's container through this hook.
     @import("dom").navigable_container.install(.{ .of = &containerOf });
     // A frame's host binds the Window to the global its realm made here.
-    @import("dom").window_globals.install(.{ .bind = &setBoundV8Global, .set_document = &setDocument, .bound_global = &getBoundV8Global });
+    @import("dom").window_globals.install(.{
+        .bind = &setBoundV8Global,
+        .set_document = &setDocument,
+        .bound_global = &getBoundV8Global,
+        .release_browsing_context = &releaseBrowsingContext,
+        .adopt_browsing_context = &replaceBrowsingContext,
+    });
     // A hyperlink's or form's target that names no frame: the popups this
     // window keeps, or a new one (the rules for choosing a navigable).
     @import("dom").auxiliary_navigables.installTopLevelChooser(.{ .choose = &chooseTopLevelTraversable });
@@ -1171,6 +1177,17 @@ pub fn replaceBrowsingContext(instance: *runtime.Instance, bc_ptr: *anyopaque) v
     // The window's position and viewport size window.open() set up for the
     // browsing context: every Window it shows reports them.
     applyRequestedWindow(internal);
+}
+
+/// dom.window_globals: the Window stops owning the top-level browsing
+/// context Window.init made, and hands it to the caller - the host page's
+/// top-level traversable keeps it across every Window a navigation makes
+/// (lane newwin1). Null when this Window owns none (a frame's, a popup's).
+fn releaseBrowsingContext(instance: *runtime.Instance) ?*anyopaque {
+    const internal = getInternal(instance) orelse return null;
+    if (!internal.owns_browsing_context) return null;
+    internal.owns_browsing_context = false;
+    return @ptrCast(internal.browsing_context);
 }
 
 /// CSSOM View "set up browsing context features", as a Window of the

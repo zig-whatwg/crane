@@ -163,6 +163,8 @@ pub fn installHooks() void {
     // its container made the navigable's Window: the container makes it.
     dom_module.child_navigables.install(.{ .window = &windowOfChildNavigable });
     dom_module.auxiliary_navigables.install(.{ .create = &createAuxiliaryNavigable, .definitely_close = &definitelyCloseTraversable });
+    // The host page's top-level traversable: a popup nothing opened.
+    dom_module.top_level_traversables.install(.{ .create = &createHostTraversable, .destroy = &destroyHostTraversable });
     dom_module.content_navigables.install(.{
         .delays_load_event = &iframesDelayLoadEvent,
         .run_load_event_steps = &contentNavigableLoadEventSteps,
@@ -5667,6 +5669,52 @@ fn createAuxiliaryNavigable(
     // "Create a new top-level traversable" steps 6-9: its first entry.
     _ = browsing_context.ensureHistoryEntries(&history_documents.infoOf) catch {};
     return .{ .integration = @ptrCast(integration), .window = window };
+}
+
+/// dom.top_level_traversables: the host page's top-level traversable - the
+/// navigable record createAuxiliaryNavigable makes for a popup, with no
+/// opener and no container - around the host's realm-creation `window`,
+/// which hands it its top-level browsing context. From here the record owns
+/// that context, its session history and its WindowProxy record, across
+/// every Window the page's navigations make; the host keeps making and
+/// ending the realms (`HostRealms`), parentless and entered for their life.
+fn createHostTraversable(allocator: std.mem.Allocator, window: *runtime.Instance, host: dom_module.top_level_traversables.Host) ?*anyopaque {
+    const integration = allocator.create(IFrameIntegration) catch return null;
+    integration.* = IFrameIntegration.init(allocator);
+    const browsing_context: *html_core.BrowsingContext = @ptrCast(@alignCast(dom_module.window_globals.releaseBrowsingContext(window) orelse {
+        integration.deinit();
+        allocator.destroy(integration);
+        return null;
+    }));
+    // From here the record owns the browsing context: its deinit frees it.
+    integration.browsing_context = browsing_context;
+    integration.host_realms = .{ .context = host.context, .realm_for_document = host.realm_for_document };
+    // Its WindowProxy record, whose document origin - the active document's -
+    // decides whether a navigation keeps the Window. The host's initial
+    // about:blank document is opaque.
+    integration.window_proxy = html_core.WindowProxy.init(allocator, browsing_context);
+    const realm = window.ctx;
+    integration.setRealmContext(realm.engine_ctx, @ptrCast(realm), @ptrCast(realm), @ptrCast(realm), createDocumentForIframe, hostRealmCleanup, parseHtmlForIframe);
+    integration.parse_xml_callback = &parseXmlForIframe;
+    integration.execute_script_callback = &executeIframeScript;
+    integration.update_location_callback = &updateIframeLocation;
+    integration.navigate_callback = &navigateFromIntegration;
+    integration.abandon_navigations_callback = &abandonNavigationsOf;
+    integration.state = .ready;
+    return integration;
+}
+
+/// The host page's realms are the host's to end (Context.deinit): the
+/// record's end leaves them alone.
+fn hostRealmCleanup(_: *IFrameIntegration) void {}
+
+/// dom.top_level_traversables: the record's end, after the host ended its
+/// realms - every Window it showed is gone.
+fn destroyHostTraversable(record: *anyopaque) void {
+    const integration: *IFrameIntegration = @ptrCast(@alignCast(record));
+    const allocator = integration.allocator;
+    integration.deinit();
+    allocator.destroy(integration);
 }
 
 /// Getter for contentDocument
