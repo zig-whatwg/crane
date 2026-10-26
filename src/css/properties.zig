@@ -59,7 +59,7 @@ const SharedText = values.SharedText;
 
 /// Every supported longhand. Logical longhands are here too: they hold
 /// declarations, and the cascade maps them onto physical ones.
-pub const Longhand = enum(u8) {
+pub const Longhand = enum(u16) {
     align_content,
     align_items,
     align_self,
