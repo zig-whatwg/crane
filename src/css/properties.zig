@@ -277,6 +277,11 @@ pub const Longhand = enum(u8) {
     // Must follow all request inputs for from-font computation (Q46).
     font_size_adjust,
 
+    border_top_left_radius,
+    border_top_right_radius,
+    border_bottom_right_radius,
+    border_bottom_left_radius,
+
     pub const count = @typeInfo(Longhand).@"enum".fields.len;
 
     /// The property name.
@@ -487,6 +492,7 @@ pub const Grammar = enum {
     mask,
     stroke_width,
     background,
+    border_radius_corner,
 };
 
 pub const Info = struct {
@@ -694,6 +700,10 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .marker_end, .inherited = true, .initial = Value.kw(.none), .grammar = .reference },
         .{ .longhand = .clip_path, .inherited = false, .initial = Value.kw(.none), .grammar = .shape },
         .{ .longhand = .filter, .inherited = false, .initial = Value.kw(.none), .grammar = .filter },
+        .{ .longhand = .border_top_left_radius, .inherited = false, .initial = .{ .corner_radius = .zero }, .grammar = .border_radius_corner },
+        .{ .longhand = .border_top_right_radius, .inherited = false, .initial = .{ .corner_radius = .zero }, .grammar = .border_radius_corner },
+        .{ .longhand = .border_bottom_right_radius, .inherited = false, .initial = .{ .corner_radius = .zero }, .grammar = .border_radius_corner },
+        .{ .longhand = .border_bottom_left_radius, .inherited = false, .initial = .{ .corner_radius = .zero }, .grammar = .border_radius_corner },
         // Q172 PART2 / Backgrounds3 §6.1; tmp/analysis/integrator-probes-1024c/.
         .{ .longhand = .box_shadow, .inherited = false, .initial = Value.kw(.none), .grammar = .box_shadow },
         .{ .longhand = .object_position, .inherited = false, .initial = Value.kw(.center), .grammar = .image_position },
@@ -806,6 +816,7 @@ pub const Shorthand = enum(u8) {
     background_position,
     font_variant,
     font,
+    border_radius,
 
     pub fn name(self: Shorthand) []const u8 {
         return switch (self) {
@@ -822,6 +833,7 @@ pub const Shorthand = enum(u8) {
             .background_position => &@import("background_values.zig").position_longhands,
             .font_variant => &@import("font_variants.zig").longhands,
             .font => &@import("font_shorthand.zig").longhands,
+            .border_radius => &.{ .border_top_left_radius, .border_top_right_radius, .border_bottom_right_radius, .border_bottom_left_radius },
             .border => &.{ .border_top_width, .border_right_width, .border_bottom_width, .border_left_width, .border_top_style, .border_right_style, .border_bottom_style, .border_left_style, .border_top_color, .border_right_color, .border_bottom_color, .border_left_color, .border_image_source },
             .border_block => &.{ .border_block_start_width, .border_block_end_width, .border_block_start_style, .border_block_end_style, .border_block_start_color, .border_block_end_color },
             .border_inline => &.{ .border_inline_start_width, .border_inline_end_width, .border_inline_start_style, .border_inline_end_style, .border_inline_start_color, .border_inline_end_color },
@@ -909,6 +921,12 @@ const legacy_aliases = .{
     .{ "font-stretch", Property{ .longhand = .font_width } },
     // CSS UI 4 §6.1 requires the legacy spelling to alias user-select.
     .{ "-webkit-user-select", Property{ .longhand = .user_select } },
+    // Q177 pure legacy aliases; tmp/analysis/integrator-probes-1024c/.
+    .{ "-webkit-border-radius", Property{ .shorthand = .border_radius } },
+    .{ "-webkit-border-top-left-radius", Property{ .longhand = .border_top_left_radius } },
+    .{ "-webkit-border-top-right-radius", Property{ .longhand = .border_top_right_radius } },
+    .{ "-webkit-border-bottom-right-radius", Property{ .longhand = .border_bottom_right_radius } },
+    .{ "-webkit-border-bottom-left-radius", Property{ .longhand = .border_bottom_left_radius } },
 };
 
 /// Names exposed by CSSStyleProperties as attributes, but not as separate
@@ -1362,6 +1380,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .paint => return @import("svg_paint.zig").parse(options, stream),
         .reference => return @import("svg_paint.zig").parseReference(options, stream),
         .shape => return @import("shape_values.zig").parse(options, stream),
+        .border_radius_corner => return @import("border_radius.zig").parseCorner(options, stream),
         .filter => return @import("filter_values.zig").parse(options, stream),
         .box_shadow => return @import("box_shadow_values.zig").parse(options, stream),
         .image_resolution => return @import("image_resolution.zig").parse(options, stream),
@@ -1976,6 +1995,7 @@ fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *st
         .marker => return @import("svg_paint.zig").parseMarker(options, stream, out),
         .mask => return @import("mask_values.zig").parseShorthand(options, stream, out),
         .mask_border => return @import("mask_values.zig").parseBorder(options, stream, out),
+        .border_radius => return @import("border_radius.zig").parseShorthand(options, stream, out),
     }
 }
 
@@ -2254,6 +2274,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .filter => |v| try out.appendSlice(allocator, v.text.bytes),
         .box_shadow => |v| try out.appendSlice(allocator, v.text.bytes),
         .shape => |v| try v.serialize(out, allocator),
+        .corner_radius => |v| try v.serialize(out, allocator),
         .image_resolution => |v| try v.serialize(out, allocator),
         .image_position => |v| try v.serialize(out, allocator),
         .image_size => |v| try v.serialize(out, allocator),
@@ -2433,6 +2454,7 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
         .marker => return @import("svg_paint.zig").serializeMarker(vs, mode, out, allocator),
         .mask => return @import("mask_values.zig").serialize(vs, mode, out, allocator),
         .mask_border => return @import("mask_values.zig").serializeBorder(vs, mode, out, allocator),
+        .border_radius => return @import("border_radius.zig").serializeShorthand(vs, out, allocator),
         .all => return false,
     }
 }

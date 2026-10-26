@@ -805,6 +805,7 @@ pub const Value = union(enum) {
     filter: *@import("filter_values.zig").Filter,
     box_shadow: *@import("box_shadow_values.zig").BoxShadow,
     shape: *@import("shape_values.zig").Shape,
+    corner_radius: @import("border_radius.zig").Corner,
     image_resolution: @import("image_resolution.zig").Value,
     image_position: *@import("position_values.zig").Position,
     image_size: *@import("image_size.zig").Size,
@@ -862,6 +863,7 @@ pub const Value = union(enum) {
         if (self == .filter) return self.filter.ref();
         if (self == .box_shadow) return self.box_shadow.ref();
         if (self == .shape) return self.shape.ref();
+        if (self == .corner_radius) return self.corner_radius.ref();
         if (self == .image_resolution) return self.image_resolution.retain();
         if (self == .image_position) return self.image_position.ref();
         if (self == .image_size) return self.image_size.ref();
@@ -896,6 +898,7 @@ pub const Value = union(enum) {
         if (self == .filter) return self.filter.unref();
         if (self == .box_shadow) return self.box_shadow.unref();
         if (self == .shape) return self.shape.unref();
+        if (self == .corner_radius) return self.corner_radius.unref();
         if (self == .image_resolution) return self.image_resolution.release();
         if (self == .image_position) return self.image_position.unref();
         if (self == .image_size) return self.image_size.unref();
@@ -954,6 +957,7 @@ pub const Value = union(enum) {
             .filter => |v| v.eql(b.filter),
             .box_shadow => |v| v.eql(b.box_shadow),
             .shape => |v| v.eql(b.shape),
+            .corner_radius => |v| v.eql(b.corner_radius),
             .image_resolution => |v| v.eql(b.image_resolution),
             .image_position => |v| v.eql(b.image_position),
             .image_size => |v| v.eql(b.image_size),
@@ -1011,6 +1015,7 @@ pub const Value = union(enum) {
             .filter => |v| v.needsUnavailableMetrics(geometry_length),
             .box_shadow => |v| v.needsUnavailableMetrics(geometry_length),
             .shape => |v| v.needsUnavailableMetrics(geometry_length),
+            .corner_radius => |v| v.needsUnavailableMetrics(geometry_length),
             .image_resolution => |v| v.needsUnavailableMetrics(geometry_length),
             .image_position => |v| v.needsUnavailableMetrics(geometry_length),
             .image_size => |v| v.needsUnavailableMetrics(geometry_length),
@@ -1061,6 +1066,7 @@ pub const Value = union(enum) {
             .filter => |v| v.needsTreeCounts(),
             .box_shadow => |v| v.needsTreeCounts(),
             .shape => |v| v.needsTreeCounts(),
+            .corner_radius => |v| v.needsTreeCounts(),
             .image_resolution => |v| v.needsTreeCounts(),
             .image_position => |v| v.needsTreeCounts(),
             .image_size => |v| v.needsTreeCounts(),
@@ -1109,6 +1115,7 @@ pub const Value = union(enum) {
             .filter => |v| v.needsRandomBase(),
             .box_shadow => |v| v.needsRandomBase(),
             .shape => |v| v.needsRandomBase(),
+            .corner_radius => |v| v.needsRandomBase(),
             .image_resolution => |v| v.needsRandomBase(),
             .image_position => |v| v.needsRandomBase(),
             .image_size => |v| v.needsRandomBase(),
