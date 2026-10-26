@@ -773,6 +773,17 @@ pub const WindowRealmOptions = struct {
     /// script runs - is entered only for the calls that run in it. A realm
     /// without one stays the agent's entered realm for its life.
     parent: ?Context = null,
+    /// The realm is an auxiliary navigable's (window.open's new top-level
+    /// traversable, made under its opener's realm as `parent`). HTML's
+    /// top-level traversables belong to the user agent, not to the Window
+    /// that opened them: an auxiliary realm follows its parent's WindowProxy.
+    /// When a navigation builds a new realm around the parent's proxy
+    /// (`global_this = .window_proxy_of` the parent), the new realm adopts it -
+    /// it ends with that realm from then on, and the parent's detach or end
+    /// no longer reaches it. A frame's realm (false, the default) is never
+    /// adopted: it is destroyed with its parent's document. Ignored without
+    /// `parent`, and by engines without [reuse_window_proxy].
+    auxiliary: bool = false,
     /// The Browser the realm belongs to (runtime.BrowserScope,
     /// docs/instances.md): the engine records it as the realm's
     /// `ContextData.browser_scope` as soon as the realm exists - before

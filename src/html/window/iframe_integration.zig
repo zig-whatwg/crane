@@ -191,6 +191,18 @@ fn percentDecode(allocator: Allocator, input: []const u8) ![]u8 {
 
 /// Integration state for an iframe element
 /// This struct manages the relationship between HTMLIFrameElement and BrowsingContext
+/// How the host page's top-level traversable gets its realms: from the host
+/// (dom.top_level_traversables.Host, copied).
+pub const HostRealms = struct {
+    /// The host's state. BORROWED: the host outlives the record.
+    context: *anyopaque,
+    /// HTML "create and initialize a Document object" steps 6-7 for a
+    /// document of the given origin; null keeps the active window.
+    realm_for_document: ?*const fn (*anyopaque, Origin) bool,
+    /// A navigation committed the given document (an `*runtime.Instance`).
+    committed: ?*const fn (*anyopaque, *anyopaque) void = null,
+};
+
 pub const IFrameIntegration = struct {
     /// Allocator for this integration's resources
     allocator: Allocator,
@@ -392,6 +404,11 @@ pub const IFrameIntegration = struct {
     /// keep the active window, or make a new realm and Window around the same
     /// WindowProxy. Set by the engine; false when no realm could be made.
     realm_for_document_callback: ?*const fn (*IFrameIntegration, Origin) bool = null,
+    /// The host page's top-level traversable (dom.top_level_traversables):
+    /// the host makes its realms - parentless, entered for their life - so
+    /// the record asks it rather than making a frame's. Null for an iframe's
+    /// navigable or a popup's.
+    host_realms: ?HostRealms = null,
 
     /// The origin (serialized) the navigable's Windows are created with - the
     /// creator's - or null for an opaque one. Owned.

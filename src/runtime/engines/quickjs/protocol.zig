@@ -100,6 +100,9 @@ pub fn notifyMemoryPressure(_: *Agent, _: engine.MemoryPressure) void {}
 /// TODO (once linked): honour `secure_context` - a realm made with false
 /// exposes no [SecureContext] interface object or member (WebIDL 3.3.13), as
 /// the V8 adapter's does (tests/v8/secure_context_exposure_test.zig).
+/// `auxiliary` (window.open's realm follows its parent's WindowProxy) needs
+/// [reuse_window_proxy], declared unsupported here: the host keeps one Window
+/// per navigable - the declared fallback - so no realm is ever adopted.
 pub fn createWindowRealm(_: *const engine.WindowRealmOptions) Error!Context {
     return error.NotSupported;
 }

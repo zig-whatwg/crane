@@ -55,6 +55,13 @@ pub const Implementation = struct {
     /// from that map." Remove each entry of `form` whose element `change`
     /// gave another owner; answer whether `form` still has entries.
     past_names_owner_change: *const fn (form: *runtime.Instance, change: OwnerChange) bool,
+    /// HTML "stop loading" a navigable whose active document is `document`:
+    /// the planned navigations of `document`'s forms whose tasks have not
+    /// run are cancelled - Blink's FrameLoader::StopAllLoaders calls
+    /// LocalFrame::CancelFormSubmission, WebKit's FrameLoader::stopAllLoaders
+    /// cancels the NavigationScheduler (whatwg/html#3730;
+    /// navigating-across-documents/form-submit-and-window-stop.html).
+    cancel_planned_navigations: *const fn (document: *runtime.Instance) void,
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
@@ -64,6 +71,13 @@ var implementation: ?Implementation = null;
 pub fn install(impl: Implementation) void {
     process_start.assertInstalling();
     implementation = impl;
+}
+
+/// Cancel the planned navigations of `document`'s forms: see
+/// Implementation.cancel_planned_navigations.
+pub fn cancelPlannedNavigations(document: *runtime.Instance) void {
+    const impl = implementation orelse return;
+    impl.cancel_planned_navigations(document);
 }
 
 /// Submit `form` from `submitter`.

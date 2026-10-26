@@ -248,6 +248,12 @@ like any other (V8: `wrapper_cache.finalizeEntry`; lane pageretention1).
   the agent's entered realm for its life. A realm whose WindowProxy went on
   to a later one (`window_proxy_of`) is severed from its Window at its end:
   a function of it that script still holds finds no Window, not a freed one.
+  That realm - a frame's, or a parentless top-level page's - is detached by
+  `destroyWindowRealm(.global_detached)` and ends once collected or with the
+  realm that took its proxy; a parentless one hands its context and isolate
+  entries to that realm. `WindowRealmOptions.auxiliary` marks window.open's
+  realm: a realm built around its parent's proxy adopts it, so a popup
+  outlives its opener's navigation (frames are never adopted).
 - **Browser:** `WindowRealmOptions.browser_scope` is the realm's Browser
   (runtime.BrowserScope); the engine records it as the realm's
   `ContextData.browser_scope` before `create_global_object`, so the Window

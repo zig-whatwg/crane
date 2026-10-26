@@ -1114,6 +1114,8 @@ const FrameRealm = struct {
     host: WindowHost = .{},
     parent: runtime.Context,
     global_this: protocol.GlobalThis = .new_window_proxy,
+    /// WindowRealmOptions.auxiliary: a popup's realm under its opener's.
+    auxiliary: bool = false,
     made: ?runtime.Context = null,
     failed: ?anyerror = null,
     /// The entry realm just after the frame's realm was made, still inside
@@ -1136,6 +1138,7 @@ const FrameRealm = struct {
             .origin = "https://example.test",
             .global_this = self.global_this,
             .parent = self.parent,
+            .auxiliary = self.auxiliary,
             .create_global_object = WindowHost.createGlobalObject,
             .host = &self.host,
         }) catch |err| {
@@ -1304,6 +1307,185 @@ test "protocol: a frame's realm a navigation replaced is collected once nothing 
     try std.testing.expect(old.engine_ctx == null);
     // The new realm is untouched.
     try expectEval(new, "fresh instanceof Headers && globalThis.kept === undefined", "true");
+}
+
+// ----------------------------------------------------------------------------
+// A top-level page's realm a navigation replaced (lane newwin1, E1), and the
+// popups that follow their opener's WindowProxy (E2). The host page is a
+// parentless realm, entered for its life: its successor is built around its
+// proxy, takes over its entries, and the old realm is detached - kept while
+// script reaches it, ended at collection or with the realm that took its
+// proxy - as a frame's is (Blink LocalWindowProxy::DisposeContext
+// kGlobalObjectIsDetached, then CreateContext around global_proxy_).
+// ----------------------------------------------------------------------------
+
+/// A task's steps that do nothing: runTaskInRealm answers whether the realm
+/// still runs tasks.
+const NoSteps = struct {
+    fn steps(_: ?*anyopaque) void {}
+};
+
+test "protocol: the V8 adapter reuses a WindowProxy, and a realm is no popup's unless it says so" {
+    // [reuse_window_proxy]: the capability the host page's new Window per
+    // load is gated on; JavaScriptCore, QuickJS and the test adapter declare
+    // it unsupported and keep one Window per navigable.
+    comptime std.debug.assert(protocol.capabilities.reuse_window_proxy == .native);
+    // The default: a realm made with a parent is a frame's, destroyed with
+    // its parent's document, never adopted by a later realm.
+    const options: protocol.WindowRealmOptions = .{
+        .agent = undefined,
+        .allocator = std.heap.c_allocator,
+        .from_snapshot = false,
+        .timer = null,
+        .create_global_object = WindowHost.createGlobalObject,
+    };
+    try std.testing.expect(!options.auxiliary);
+}
+
+test "protocol: a top-level realm whose WindowProxy went on lives while script reaches it, and ends with the realm that took its proxy" {
+    const base = try realm();
+    var host_old: WindowHost = .{};
+    const old = try windowRealm(&host_old, false, .new_window_proxy);
+    const old_window = Watched.of(try platformObjectIn(old, "globalThis"));
+    // A function of the old page that reads its Window through its global,
+    // held by script elsewhere (another window of the Browser).
+    {
+        const reader = try evalOwned(old, "(function () { return typeof name; })");
+        defer reader.release();
+        try setGlobal(base, "topReader", reader.value);
+    }
+
+    // The navigation's new Window, behind the same WindowProxy: entered in
+    // the old realm's place.
+    var host_new: WindowHost = .{};
+    const new = try windowRealm(&host_new, false, .{ .window_proxy_of = old });
+    try std.testing.expectEqual(new, protocol.entryRealm().?);
+    protocol.destroyWindowRealm(old, .global_detached);
+    collectTwice();
+    // Detached, not ended: its Window lives while script reaches the realm.
+    try std.testing.expect(old.engine_ctx != null);
+    try std.testing.expect(old_window.alive());
+    try expectEval(base, "topReader()", "string");
+    // Its tasks are not run (HTML "destroy a document" step 5).
+    try std.testing.expectError(error.OperationFailed, protocol.runTaskInRealm(old, NoSteps.steps, null));
+    try std.testing.expectEqual(new, protocol.entryRealm().?);
+
+    // Its page ends - the realm that took its proxy: the old realm ends with
+    // it, severed from its Window.
+    protocol.destroyWindowRealm(new, .global_detached);
+    try std.testing.expect(old.engine_ctx == null);
+    try std.testing.expect(old.getV8WrapperCacheStorage() == null);
+    try expectEval(base, "(() => { try { topReader(); return 'read'; } catch (e) { return e.name; } })()", "TypeError");
+    try expectEval(base, "delete globalThis.topReader", "true");
+}
+
+test "protocol: a top-level realm a navigation replaced is collected once nothing reaches it" {
+    _ = try realm();
+    var host_old: WindowHost = .{};
+    const old = try windowRealm(&host_old, false, .new_window_proxy);
+    try expectEval(old, "globalThis.kept = new Headers([['a', '1']]); globalThis.target = new EventTarget(); target.addEventListener('x', () => kept); 'ok'", "ok");
+    var host_new: WindowHost = .{};
+    const new = try windowRealm(&host_new, false, .{ .window_proxy_of = old });
+    defer protocol.destroyWindowRealm(new, .global_detached);
+    try expectEval(new, "globalThis.fresh = new Headers(); 'ok'", "ok");
+    const with_both = liveContexts();
+
+    // Nothing Crane holds roots the old realm - none of it hung on the new
+    // realm's global through the shared proxy.
+    protocol.destroyWindowRealm(old, .global_detached);
+    const after = liveContexts();
+    if (after + 1 != with_both) {
+        std.debug.print("native contexts: {d} with both realms, {d} after the replaced top-level one was let go\n", .{ with_both, after });
+        return error.RealmKeptAlive;
+    }
+    try std.testing.expect(old.engine_ctx == null);
+    try expectEval(new, "fresh instanceof Headers && globalThis.kept === undefined", "true");
+}
+
+/// A Window realm in `agent`, an agent of its own (not the file's).
+fn windowRealmIn(agent: *protocol.Agent, host: *WindowHost, global_this: protocol.GlobalThis) !runtime.Context {
+    ensurePools();
+    return protocol.createWindowRealm(&.{
+        .agent = agent,
+        .allocator = std.heap.c_allocator,
+        .from_snapshot = false,
+        .timer = null,
+        .origin = "https://example.test",
+        .global_this = global_this,
+        .create_global_object = WindowHost.createGlobalObject,
+        .host = host,
+    });
+}
+
+test "protocol: a top-level realm's successor takes over its isolate entry" {
+    _ = try realm();
+    const file_isolate = isolate_once.?;
+    // An agent of its own, not entered: its first top-level realm enters its
+    // isolate for the realm's life.
+    const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &window_agent_hooks, .host = null });
+    defer protocol.destroyAgent(agent);
+    const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
+    var host_old: WindowHost = .{};
+    const old = try windowRealmIn(agent, &host_old, .new_window_proxy);
+    try std.testing.expectEqual(isolate, ffi.v8_Isolate_GetCurrent().?);
+
+    var host_new: WindowHost = .{};
+    const new = try windowRealmIn(agent, &host_new, .{ .window_proxy_of = old });
+    try std.testing.expectEqual(isolate, ffi.v8_Isolate_GetCurrent().?);
+    // The old realm detached, then ended on its own (as its collection
+    // would): the isolate stays entered for the realm that lives on.
+    protocol.destroyWindowRealm(old, .global_detached);
+    protocol.destroyWindowRealm(old, .navigable_destroyed);
+    try std.testing.expect(old.engine_ctx == null);
+    try std.testing.expectEqual(isolate, ffi.v8_Isolate_GetCurrent().?);
+    try expectEval(new, "self === globalThis", "true");
+
+    // The successor's end leaves the isolate as it found it: the file's.
+    protocol.destroyWindowRealm(new, .global_detached);
+    try std.testing.expectEqual(file_isolate, ffi.v8_Isolate_GetCurrent().?);
+}
+
+test "protocol: a popup's realm follows its opener page's WindowProxy to the realm a navigation made" {
+    var host_page: WindowHost = .{};
+    const page = try windowRealm(&host_page, false, .new_window_proxy);
+    var popup_realm: FrameRealm = .{ .parent = page, .auxiliary = true };
+    const popup = try popup_realm.make();
+    var frame_realm: FrameRealm = .{ .parent = page };
+    const frame = try frame_realm.make();
+
+    var host_next: WindowHost = .{};
+    const next = try windowRealm(&host_next, false, .{ .window_proxy_of = page });
+    protocol.destroyWindowRealm(page, .global_detached);
+    collectTwice();
+    // The popup was adopted: it is not its opener page's to end, and runs.
+    try protocol.runTaskInRealm(popup, NoSteps.steps, null);
+    try expectEval(popup, "self === globalThis", "true");
+    // The page's frame was not: it is destroyed with the page's document.
+    try std.testing.expectError(error.OperationFailed, protocol.runTaskInRealm(frame, NoSteps.steps, null));
+
+    // Both end with the realm that adopted the popup.
+    protocol.destroyWindowRealm(next, .global_detached);
+    try std.testing.expect(popup.engine_ctx == null);
+    try std.testing.expect(frame.engine_ctx == null);
+}
+
+test "protocol: a popup a frame opened outlives that frame's navigation" {
+    var host_page: WindowHost = .{};
+    const page = try windowRealm(&host_page, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(page, .global_detached);
+    var old_frame_realm: FrameRealm = .{ .parent = page };
+    const old_frame = try old_frame_realm.make();
+    var popup_realm: FrameRealm = .{ .parent = old_frame, .auxiliary = true };
+    const popup = try popup_realm.make();
+
+    var new_frame_realm: FrameRealm = .{ .parent = page, .global_this = .{ .window_proxy_of = old_frame } };
+    const new_frame = try new_frame_realm.make();
+    protocol.destroyWindowRealm(old_frame, .global_detached);
+    collectTwice();
+    try protocol.runTaskInRealm(popup, NoSteps.steps, null);
+    // Adopted by the frame's new realm: it ends when that realm does.
+    protocol.destroyWindowRealm(new_frame, .navigable_destroyed);
+    try std.testing.expectError(error.OperationFailed, protocol.runTaskInRealm(popup, NoSteps.steps, null));
 }
 
 test "protocol: a destroyed navigable's realm keeps its Window while script holds its WindowProxy, and ends when it is collected" {
