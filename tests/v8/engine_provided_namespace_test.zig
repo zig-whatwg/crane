@@ -127,3 +127,11 @@ test "a 64 KB argument converts: CSS.escape and both CSS.supports overloads" {
         \\[CSS.escape(s).length, CSS.supports('color', s), CSS.supports(' '.repeat(65536) + '(color: red)')].join()
     , "65536,false,true");
 }
+
+test "a CSS operation's length is its shortest overload's required arguments (WebIDL 3.7.6)" {
+    // registerMethod set no length, so every namespace operation's was 0
+    // (row 120 Q21: idlharness "CSS namespace: operation escape(CSSOMString)").
+    try expectEval(
+        \\[CSS.escape.length, CSS.supports.length, CSS.registerProperty.length, CSS.px.length].join()
+    , "1,1,1,1");
+}

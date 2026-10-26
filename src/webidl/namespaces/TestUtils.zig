@@ -16,9 +16,9 @@ pub const TestUtils = struct {
         pub const BaseType = null;
         pub const MixinTypes = &.{};
 
-        /// Method binding hints for V8Interface (JS name, Zig function name)
+        /// Method binding hints (JS name, Zig function name, WebIDL length)
         pub const methods = .{
-            .{ "gc", "call_gc" },
+            .{ "gc", "call_gc", 0 },
         };
 
         pub const has_constructor = false;

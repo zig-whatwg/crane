@@ -57,6 +57,7 @@ const navigable_container = @import("../navigable_container.zig");
 const selector_matching = @import("../selector_matching.zig");
 const hooks = @import("hooks.zig");
 const sheet_mod = @import("sheet.zig");
+const style_rules = @import("rules.zig");
 const ua_sheet = @import("ua_sheet.zig");
 const element_style = @import("element_style.zig");
 const environment_variables = @import("environment_variables.zig");
@@ -1081,6 +1082,8 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
         .url_resolver = .{ .context = element, .resolve = substitutedUrl },
         // if()'s media() test reads the document's media values (row 123).
         .media_values = &res.active.media,
+        // if()'s supports() test answers selector() as @supports does.
+        .selector_check = &style_rules.selectorSupported,
     }, res.matched.items);
 }
 
