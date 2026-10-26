@@ -784,14 +784,53 @@ const Builder = struct {
         return .{ .value = true, .tainted = value.taint.len != 0 };
     }
 
+    /// style(name: value) (CSS Conditional 5 §6.2; Values 5 if()): the
+    /// query value computed as `name`'s own value would be, compared with the
+    /// element's computed value. A CSS-wide keyword computes as it does in a
+    /// declaration (integrator probes 1025h/1025i, RULINGS.md - Chrome, the
+    /// one browser shipping if(); Blink StyleCascade::EvalIfStyleFeature
+    /// resolves the query value like a declaration of the property):
+    /// `initial` is the property's initial value - guaranteed-invalid for an
+    /// unregistered custom property, so it matches a missing one; `inherit`
+    /// is the parent's computed value; `unset` is `inherit`, custom
+    /// properties being inherited; `revert`, `revert-layer` and
+    /// `revert-rule` make the feature false (row 123 Q5 ruling,
+    /// tmp/plans/codex-condfns-questions.md). Registered properties (their
+    /// initial value, inherits: false, typed comparison) come with batch 2's
+    /// cascade part, at `queryInitialValue` and `queryInherits`.
     fn queryValueMatchesCallback(context: *anyopaque, name: []const u8, value_text: []const u8) substitution.Error!?substitution.Flagged(bool) {
         const self: *Builder = @ptrCast(@alignCast(context));
         if (!custom_mod.isName(name)) return null;
+        if (custom_mod.cssWideKeyword(value_text)) |keyword| {
+            const current = try customValueCallback(context, name);
+            const expected: ?substitution.Computed = switch (keyword) {
+                .initial => queryInitialValue(name),
+                .inherit => try parentCustomValueCallback(context, name),
+                .unset => if (queryInherits(name)) try parentCustomValueCallback(context, name) else queryInitialValue(name),
+                .revert, .revert_layer, .revert_rule => return .{ .value = false, .tainted = false },
+            };
+            const tainted = (if (current) |c| c.taint.len != 0 else false) or (if (expected) |e| e.taint.len != 0 else false);
+            const equal = if (current == null or expected == null) current == null and expected == null else tokensEqual(current.?.text, expected.?.text);
+            return .{ .value = equal, .tainted = tainted };
+        }
         var arena = std.heap.ArenaAllocator.init(self.ctx.allocator);
         defer arena.deinit();
         const query = try self.substituteText(arena.allocator(), value_text);
         const value = (try customValueCallback(context, name)) orelse return .{ .value = false, .tainted = query.tainted };
         return .{ .value = tokensEqual(value.text, query.text), .tainted = query.tainted or value.taint.len != 0 };
+    }
+
+    /// The initial value of custom property `name`: guaranteed-invalid
+    /// (null) while every custom property is unregistered.
+    fn queryInitialValue(name: []const u8) ?substitution.Computed {
+        _ = name;
+        return null;
+    }
+
+    /// Whether custom property `name` inherits: every unregistered one does.
+    fn queryInherits(name: []const u8) bool {
+        _ = name;
+        return true;
     }
 
     fn numericValueCallback(context: *anyopaque, operand: []const u8) substitution.Error!?substitution.Flagged(substitution.Numeric) {
@@ -2400,6 +2439,65 @@ test "style() queries: queryValueMatches compares tokens, substituting the query
             try testing.expect((try matches(host.context, "color", "red")) == null);
         }
     }.body);
+}
+
+test "style() queries: a CSS-wide keyword query value is computed as the property's own value would be" {
+    // integrator probes 1025h/1025i (RULINGS.md, Chrome - the one browser
+    // shipping if()): style(--missing: initial) is true; initial is the
+    // guaranteed-invalid value for an unregistered custom property, inherit
+    // the parent's computed value, unset inherit (custom properties
+    // inherit); revert and revert-layer are false (row 123 Q5 ruling).
+    try withHost(testing.allocator, "--a: red; --empty:; --bad: var(--missing); --same: x; --differs: y", "--same: x; --differs: z", struct {
+        fn body(host: substitution.Host) anyerror!void {
+            const matches = host.query_value_matches.?;
+            // initial: a missing or guaranteed-invalid property matches.
+            try testing.expect((try matches(host.context, "--missing", "initial")).?.value);
+            try testing.expect((try matches(host.context, "--missing", "INITIAL")).?.value);
+            try testing.expect((try matches(host.context, "--bad", "initial")).?.value);
+            try testing.expect(!(try matches(host.context, "--a", "initial")).?.value);
+            // The empty value is a value, not the guaranteed-invalid one.
+            try testing.expect(!(try matches(host.context, "--empty", "initial")).?.value);
+            // inherit and unset: the parent's computed value.
+            try testing.expect((try matches(host.context, "--same", "inherit")).?.value);
+            try testing.expect(!(try matches(host.context, "--differs", "inherit")).?.value);
+            try testing.expect((try matches(host.context, "--same", "unset")).?.value);
+            try testing.expect(!(try matches(host.context, "--differs", "unset")).?.value);
+            try testing.expect(!(try matches(host.context, "--a", "inherit")).?.value);
+            // Missing on both: the parent's guaranteed-invalid equals ours.
+            try testing.expect((try matches(host.context, "--missing", "inherit")).?.value);
+            try testing.expect((try matches(host.context, "--missing", "unset")).?.value);
+            // revert and revert-layer: false, whatever the value.
+            try testing.expect(!(try matches(host.context, "--missing", "revert")).?.value);
+            try testing.expect(!(try matches(host.context, "--a", "revert-layer")).?.value);
+            // Still compared as tokens when the keyword is not the whole value.
+            try testing.expect(!(try matches(host.context, "--missing", "initial x")).?.value);
+        }
+    }.body);
+}
+
+test "style() queries: a keyword query value at the root reads no parent" {
+    try withHost(testing.allocator, "--a: red", null, struct {
+        fn body(host: substitution.Host) anyerror!void {
+            const matches = host.query_value_matches.?;
+            try testing.expect((try matches(host.context, "--missing", "inherit")).?.value);
+            try testing.expect(!(try matches(host.context, "--a", "inherit")).?.value);
+            try testing.expect(!(try matches(host.context, "--a", "unset")).?.value);
+        }
+    }.body);
+}
+
+test "style() keyword queries survive every allocation failure" {
+    try testing.checkAllAllocationFailures(testing.allocator, struct {
+        fn run(allocator: Allocator) !void {
+            try withHost(allocator, "--a: red; --same: x", "--same: x", struct {
+                fn body(host: substitution.Host) anyerror!void {
+                    const matches = host.query_value_matches.?;
+                    try testing.expect((try matches(host.context, "--missing", "initial")).?.value);
+                    try testing.expect((try matches(host.context, "--same", "inherit")).?.value);
+                }
+            }.body);
+        }
+    }.run, .{});
 }
 
 test "style() range queries: numericValue in canonical units, from a name or a literal" {
