@@ -380,3 +380,11 @@ why = The recurring fetchStart/handler-time clock tie (generations 171, 177, 183
 pair.1 = base 1/1; tip 1/1
 pair.2 = base 0/1; tip 0/1
 pair.3 = base 1/1; tip 0/1
+
+[xhr/send-redirect.htm]
+generation = 189
+kind = flake
+why = The same intermittent redirect subtest as generation 185 (lane newwin1's pairs were 33-34 on both sides): "(302, POST, redirect.py?location=content.py)" read a null method, 34 -> 33 in the generation 189 sweep. Isolated, one process each, alternating, frozen main-1369efbfde (base, generation 188) vs main-7cb783a35b (tip, generation 189: lane editing3's execCommand/typing/<font> hints, no networking code), integrator 2026-10-27: base 34, 34, 33 of 34; tip 34, 33, 33 - the base drops it too. Evidence chat:~/crane-work/integrator-pairs-189/.
+pair.1 = base 34/34; tip 34/34
+pair.2 = base 34/34; tip 33/34
+pair.3 = base 33/34; tip 33/34
