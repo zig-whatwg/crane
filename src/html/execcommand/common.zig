@@ -19,6 +19,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dom = @import("dom");
+const engine = @import("engine");
 const webidl = @import("webidl");
 const ComputedStyle = @import("css").computed_style.ComputedStyle;
 
@@ -140,43 +141,70 @@ pub const Edit = struct {
         // Step 1: node, old parent and old index, new parent and new index.
         const old_parent = try parent(node);
         const old_index: u32 = if (old_parent != null) try indexOf(node) else 0;
-        // Snapshot every live range of the document with the adjusted points
-        // (steps 2-5), then move, then write the points back.
-        var adjusted: std.ArrayList(AdjustedRange) = .empty;
+        // Every live range's adjusted points (steps 2-5), then the move, then
+        // the points written to the ranges the list still holds. The list
+        // holds its ranges weakly (src/dom/live_range_list.zig): insertBefore
+        // can run script and allocate, and a collection's second passes then
+        // free the ranges script let go of - so nothing here keeps a range
+        // across the move. Walk 1 records each range's values under its
+        // address; the address is only ever compared, never dereferenced, once
+        // that walk ends. Walk 2 visits the entries the list holds at that
+        // moment and writes to the one it is on. Its writes (Range's
+        // setStartBoundary / setEndBoundary through dom.range_boundaries)
+        // redraw the range's traced edge to its node - an engine call that can
+        // allocate and start a collection - so walk 2 runs under a teardown
+        // hold (engine.holdTeardowns, as the mutation algorithms' live-range
+        // walks do, dom/mutation.zig holdTeardownsFor): what a write lets the
+        // collector take is torn down when the hold ends, after the walk,
+        // neither the entry being written nor a later one under it; and the
+        // list's cursor survives an entry that leaves anyway. The hold spans
+        // no script: the writes dispatch nothing and run no microtasks. The
+        // slab generation recorded with each address is an identity check
+        // against a freed range's slot reused by a new range between the
+        // walks - a teardown net, not a proof of liveness: liveness is the
+        // list's.
+        var adjusted: std.AutoHashMapUnmanaged(*Instance, AdjustedRange) = .empty;
         defer adjusted.deinit(self.allocator);
-        if (dom.document_internals.liveRanges(self.document)) |ranges| {
-            if (dom.range_boundaries.liveRange()) |live| {
-                var walk: dom.document_internals.LiveObjects.Walk = undefined;
-                ranges.beginWalk(&walk);
-                defer ranges.endWalk(&walk);
-                while (walk.nextEntry()) |range| {
-                    const points = live.points(range) orelse continue;
-                    const start_node = points.start_container orelse continue;
-                    const end_node = points.end_container orelse continue;
-                    var entry: AdjustedRange = .{
-                        .range = range,
-                        .start = .{ .node = start_node, .offset = points.start_offset },
-                        .end = .{ .node = end_node, .offset = points.end_offset },
-                    };
-                    adjustPoint(&entry.start, node, old_parent, old_index, new_parent, new_index);
-                    adjustPoint(&entry.end, node, old_parent, old_index, new_parent, new_index);
-                    try adjusted.append(self.allocator, entry);
-                }
+        const ranges = dom.document_internals.liveRanges(self.document);
+        const live = dom.range_boundaries.liveRange();
+        if (ranges != null and live != null) {
+            var walk: dom.document_internals.LiveObjects.Walk = undefined;
+            ranges.?.beginWalk(&walk);
+            defer ranges.?.endWalk(&walk);
+            while (walk.nextEntry()) |range| {
+                const points = live.?.points(range) orelse continue;
+                const start_node = points.start_container orelse continue;
+                const end_node = points.end_container orelse continue;
+                var entry: AdjustedRange = .{
+                    .generation = runtime.SlabAllocator.generationOf(range),
+                    .start = .{ .node = start_node, .offset = points.start_offset },
+                    .end = .{ .node = end_node, .offset = points.end_offset },
+                };
+                adjustPoint(&entry.start, node, old_parent, old_index, new_parent, new_index);
+                adjustPoint(&entry.end, node, old_parent, old_index, new_parent, new_index);
+                try adjusted.put(self.allocator, range, entry);
             }
         }
         // The same-parent move: the reference child is read before the
         // removal, as the reference implementation does.
         const reference = try childAt(new_parent, new_index);
         try self.insertBefore(new_parent, node, if (reference == node) try nextSibling(node) else reference);
-        if (dom.range_boundaries.liveRange()) |live| {
-            for (adjusted.items) |entry| {
-                live.set_start(entry.range, entry.start.node, entry.start.offset);
-                live.set_end(entry.range, entry.end.node, entry.end.offset);
+        if (ranges != null and live != null and adjusted.count() > 0) {
+            const hold = engine.holdTeardowns(self.document.ctx);
+            defer hold.release();
+            var walk: dom.document_internals.LiveObjects.Walk = undefined;
+            ranges.?.beginWalk(&walk);
+            defer ranges.?.endWalk(&walk);
+            while (walk.nextEntry()) |range| {
+                const entry = adjusted.get(range) orelse continue;
+                if (runtime.SlabAllocator.generationOf(range) != entry.generation) continue;
+                live.?.set_start(range, entry.start.node, entry.start.offset);
+                live.?.set_end(range, entry.end.node, entry.end.offset);
             }
         }
     }
 
-    const AdjustedRange = struct { range: *Instance, start: Point, end: Point };
+    const AdjustedRange = struct { generation: u64, start: Point, end: Point };
 
     fn adjustPoint(point: *Point, moved: *Instance, old_parent: ?*Instance, old_index: u32, new_parent: *Instance, new_index: u32) void {
         // Step 2: a point in the moved node or its descendants moves with it.
