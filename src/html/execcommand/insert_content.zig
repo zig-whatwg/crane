@@ -12,6 +12,7 @@ const dom = @import("dom");
 const common = @import("common.zig");
 const delete = @import("delete.zig");
 const overrides = @import("overrides.zig");
+const block_formatting = @import("block.zig");
 const dom_parser = @import("../dom_parser.zig");
 
 const Edit = common.Edit;
@@ -100,7 +101,7 @@ fn insertHtmlSteps(edit: *Edit, value: []const u8) anyerror!bool {
         try edit.collapse(p, index + 1);
     }
     // Step 12: "Fix disallowed ancestors of each member of descendants."
-    for (descendants.items) |descendant| try overrides.fixDisallowedAncestors(edit, descendant);
+    for (descendants.items) |descendant| try block_formatting.fixDisallowedAncestors(edit, descendant);
     // Step 13.
     return true;
 }

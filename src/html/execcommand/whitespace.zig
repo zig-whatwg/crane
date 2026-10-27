@@ -188,7 +188,13 @@ pub fn canonicalizeWhitespace(edit: *Edit, point: Point, fix_collapsed_space: bo
     var replacement: std.ArrayList(u16) = .empty;
     defer replacement.deinit(edit.allocator);
     const non_breaking_start = start_offset == 0 and try common.followsLineBreak(start_node);
-    const non_breaking_end = common.isText(end_node) and end_offset == (try common.nodeLength(end_node)) and try common.precedesLineBreak(end_node);
+    // "non-breaking end is true if end offset is end node's length and end
+    // node precedes a line break" - any node: a run that ends before a br
+    // ends at (br, 0), and a space there would collapse
+    // (`<p><a href=foo>foo&nbsp;[]<br><br></a></p>` keeps its no-break space
+    // on insertParagraph in Chrome 156, Firefox 158 and Safari 27,
+    // editing/run/insertparagraph.html at wpt.fyi 5af3c135c9).
+    const non_breaking_end = end_offset == (try common.nodeLength(end_node)) and try common.precedesLineBreak(end_node);
     try canonicalSpaceSequence(&replacement, edit.allocator, length, non_breaking_start, non_breaking_end);
     var next_unit: usize = 0;
     // Step 10: write it over the run, one code unit at a time.

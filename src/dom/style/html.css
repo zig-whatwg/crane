@@ -257,6 +257,13 @@ table {
 }
 td, th { padding: 1px; }
 th { font-weight: bold; }
+/* "a rule ... that matches th elements that have a parent node whose
+ * computed value for the 'text-align' property is its initial value, whose
+ * declaration block consists of just a single declaration that sets the
+ * 'text-align' property to the value 'center'" (15.3.8): the UA-only
+ * keyword computes to center under an initial text-align, else to the
+ * parent's value (css text_values.computeAlignment). */
+th { text-align: -internal-th-center; }
 
 caption { text-align: center; }
 thead, tbody, tfoot, table > tr { vertical-align: middle; }
