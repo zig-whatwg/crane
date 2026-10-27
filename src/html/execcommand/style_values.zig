@@ -192,7 +192,12 @@ pub const Rgba = struct {
 /// `text` as a valid CSS color, or null when it is not one. currentcolor
 /// counts as valid (callers reject it themselves where the spec says so).
 pub fn parseColor(allocator: Allocator, text: []const u8) ?Rgba {
-    const float = css.color.ColorParser.parseWithoutContext(text, allocator) catch return null;
+    _ = allocator;
+    // The parser's own scratch, on the stack: its error set has no
+    // OutOfMemory, so an allocation failure would read as "not a color".
+    var buffer: [4096]u8 = undefined;
+    var fixed = std.heap.FixedBufferAllocator.init(&buffer);
+    const float = css.color.ColorParser.parseWithoutContext(text, fixed.allocator()) catch return null;
     const quantized = float.quantize();
     return .{ .r = quantized.r, .g = quantized.g, .b = quantized.b, .a = quantized.a };
 }
@@ -223,8 +228,11 @@ pub fn colorsEquivalent(allocator: Allocator, a: []const u8, b: []const u8) bool
 /// "#rrggbb" in lowercase hex, written into `buffer`; null when `text` is
 /// not such a color.
 pub fn simpleColor(allocator: Allocator, text: []const u8, buffer: *[7]u8) ?[]const u8 {
+    _ = allocator;
     if (isCurrentColor(text)) return null;
-    const float = css.color.ColorParser.parseWithoutContext(text, allocator) catch return null;
+    var parse_buffer: [4096]u8 = undefined;
+    var fixed = std.heap.FixedBufferAllocator.init(&parse_buffer);
+    const float = css.color.ColorParser.parseWithoutContext(text, fixed.allocator()) catch return null;
     if (float.alpha < 1) return null;
     for (float.rgb) |channel| if (channel < 0 or channel > 1) return null;
     const rgba = float.quantize();
