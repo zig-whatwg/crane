@@ -356,3 +356,27 @@ why = The same timing-bound file as the generation 179 and 184 dispositions (it 
 pair.1 = base 4/6; tip 4/6
 pair.2 = base 4/6; tip 4/6
 pair.3 = base 4/6; tip 4/6
+
+[html/webappapis/dynamic-markup-insertion/opening-the-input-stream/abort-refresh-immediate.window.js]
+generation = 188
+kind = flake
+why = The same timing-bound file as the generation 179, 184 and 186 dispositions (it times out on both sides; its pass count moves between 2 and 4 of 6 from run to run): 3 -> 2 in the generation 188 sweep. Isolated, one process each, alternating, frozen main-25ded92d10 (base, generation 187) vs main-1369efbfde (tip, generation 188: Codex row 124's CSS Text/Decoration/Inline and H6's editing range fix, neither touching navigation or document.open), integrator 2026-10-27 on chat through crane-measure.sh: base 3/6 in all three pairs, tip 3/6, 2/6, 3/6, every run TIMEOUT. Evidence chat:~/crane-work/integrator-pairs-188/.
+pair.1 = base 3/6; tip 3/6
+pair.2 = base 3/6; tip 2/6
+pair.3 = base 3/6; tip 3/6
+
+[navigation-timing/test-performance-attributes.sub.html]
+generation = 188
+kind = flake
+why = The same intermittent secureConnectionStart >= connectStart subtest as generations 175, 177, 179 and 184 and Codex row 119's Q250 (base 2/11 vs tip 1/11, Fisher p = 1.0), which passes about one run in three on every build: 1 -> 0 in the generation 188 sweep. Isolated, one process each, alternating, frozen main-25ded92d10 (base) vs main-1369efbfde (tip; CSS and editing changes only), integrator 2026-10-27: base 1/1, 0/1, 0/1; tip 0/1 in all three pairs - within the file's known rate on both sides (generation 184's pairs had the base at 0/3 and the tip at 1/3). Evidence chat:~/crane-work/integrator-pairs-188/.
+pair.1 = base 1/1; tip 0/1
+pair.2 = base 0/1; tip 0/1
+pair.3 = base 0/1; tip 0/1
+
+[service-workers/service-worker/navigation-timing-extended.https.html]
+generation = 188
+kind = flake
+why = The recurring fetchStart/handler-time clock tie (generations 171, 177, 183 and 185; Codex rows 123/124 and lane newwin1): 1 -> 0 in the generation 188 sweep. Isolated, one process each, alternating, frozen main-25ded92d10 (base) vs main-1369efbfde (tip; CSS and editing changes only), integrator 2026-10-27: base 1/1, 0/1, 1/1; tip 1/1, 0/1, 0/1 - the base fails it too. Evidence chat:~/crane-work/integrator-pairs-188/.
+pair.1 = base 1/1; tip 1/1
+pair.2 = base 0/1; tip 0/1
+pair.3 = base 1/1; tip 0/1
