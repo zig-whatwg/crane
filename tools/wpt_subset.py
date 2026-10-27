@@ -812,6 +812,20 @@ EXCLUDE = [
     # tests/wpt/crane/cp1-non-ascii-codepoints.html, is the real test.
     ('css/css-syntax/non-ascii-codepoints.html',
      'broken upstream (missing comma in its code point range table; all three browsers ERROR) - the corrected copy is crane/cp1-non-ascii-codepoints.html'),
+    # Selection placed by the pointer: every assertion follows a pointer press or
+    # drag whose caret/selection position comes from hit-testing a point into
+    # laid-out text (Ahem metrics or a coordinate move). Crane has no layout, so
+    # these are geometry (the user's 2026-10-16 rule, confirmed 2026-10-27 after
+    # the per-file evidence in Codex row 129's D9). Clicks that name an element
+    # stay in scope and are supported.
+    ('selection/anonymous/details-ancestor.html',
+     'drag from a point inside <details> to (50,50): the selection anchor comes from hit testing'),
+    ('selection/textcontrols/focus.html',
+     'drag across Ahem text to (50,50): the caret and selection extension come from hit testing laid-out text'),
+    ('selection/selection-direction-on-single-click.html',
+     'click at a text node\'s start: the caret offset comes from hit testing laid-out text'),
+    ('selection/user-select-on-input-and-contenteditable.html',
+     'click at each field\'s centre must move the caret to the clicked character: needs text layout'),
     # Its abort-reason case waits for the service worker to see the page's
     # abort while its respondWith() promise is pending, and that promise
     # resolves only in the abort listener. ServiceWorker "Handle Fetch" waits
