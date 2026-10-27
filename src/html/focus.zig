@@ -714,6 +714,10 @@ pub fn unfocusingSteps(old_focus_target_in: *Instance) void {
     focusingSteps(top_document, null, .other);
 }
 
+/// Selection's editing-host focus side effect uses the supplied boundary
+/// position without rewriting its Range.
+pub const focusSelectionPosition = @import("selection_focus.zig").focusPosition;
+
 /// The HTMLOrSVGElement focus(options) method steps (6.6.6), for every
 /// element type that includes the mixin.
 pub fn focusMethod(element: *Instance) void {

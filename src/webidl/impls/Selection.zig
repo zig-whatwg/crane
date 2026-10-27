@@ -414,6 +414,11 @@ pub fn call_collapse(instance: *runtime.Instance, node: ?*runtime.Instance, offs
     // Steps 5-7: make and associate a live Range now, before any DOM mutation.
     const range = try newRange(instance, target, off, target, off);
     internal.setRange(instance, range, .none);
+    // Browsers also synchronize editable focus after step 7. The helper
+    // follows the canonical position's editable root (row129 Q10/Q20),
+    // without changing the exposed Range. Keep this last: a focus listener
+    // may replace the selection or navigate.
+    @import("html").focus.focusSelectionPosition(target, off);
 }
 
 /// Selection API - setPosition(node, offset)
