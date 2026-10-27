@@ -454,8 +454,30 @@ pub fn typeByKey(target: *Instance, text: []const u8) void {
 /// an editing host ("Additional requirements"), by command name (their
 /// actions are lane editing4's, blocks.zig).
 pub fn lineBreakByKey(target: *Instance, name: []const u8) void {
-    const command = Command.fromName(name) orelse return;
+    var command = Command.fromName(name) orelse return;
+    // Enter in a plaintext-only editing host inserts a line break, not a
+    // paragraph; execCommand("insertParagraph") there still makes one.
+    // All three browsers (editing/plaintext-only/insertLineBreak.html
+    // "Pressing Enter ...": Firefox 158 and Safari 27 63/63 at
+    // white-space normal, Chrome 156 45/63; wpt.fyi 5af3c135c9). Gecko:
+    // HTMLEditor::HandleKeyPressEvent's NS_VK_RETURN case runs
+    // InsertLineBreakAsAction for Shift+Enter "or if we're in
+    // plaintext-only mode ... because Chrome does so, but
+    // execCommand("insertParagraph") keeps working as
+    // contenteditable=true" (editor/libeditor/HTMLEditor.cpp, gecko-dev
+    // 5836a062726f). No spec covers it: the Editing draft predates
+    // plaintext-only.
+    if (command == .insert_paragraph and enterMakesLineBreak(target)) command = .insert_line_break;
     commandByKey(target, command, "");
+}
+
+/// Whether Enter with the focus on `target` edits a plaintext-only host.
+fn enterMakesLineBreak(target: *Instance) bool {
+    const document = nodeDocument(target) orelse return false;
+    var arena = std.heap.ArenaAllocator.init(document.ctx.allocator);
+    defer arena.deinit();
+    var edit = (beginEdit(document, arena.allocator()) catch return false) orelse return false;
+    return activeHostIsPlaintextOnly(&edit) catch false;
 }
 
 /// A command the user asked for with a key: beforeinput, re-check, the

@@ -68,3 +68,42 @@ fn enterKeys() !void {
 test "Enter runs insertParagraph and Shift+Enter insertLineBreak" {
     try helpers.onFreshThread(enterKeys);
 }
+
+fn plaintextOnlyLineBreaks() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(harness.setup_script);
+    try page.run(events_script);
+    // editing/plaintext-only/insertLineBreak.html: in a plaintext-only
+    // editing host, Enter inserts a line break, not a paragraph (Chrome
+    // 156, Firefox 158 and Safari 27)...
+    try page.run("host.setAttribute('contenteditable', 'plaintext-only'); host.style.whiteSpace = 'normal'; setupHost('A[]B').focus(); events.length = 0;");
+    pressEnter(page, false);
+    try harness.expectEval(page, "hostHTML() + '|' + events.join(',')", "A<br>B|beforeinput:insertLineBreak:null:true,input:insertLineBreak:null");
+    // ...while execCommand("insertParagraph") still makes one.
+    try harness.expectEval(page, "runCommands('<p>A[]B</p>', [['insertparagraph', '']]); hostHTML()", "<p>A</p><p>B</p>");
+    // Where its white-space keeps newlines, the line break is a
+    // preformatted linefeed, and an empty last line gets a padding <br>
+    // (Firefox 158 all rows, Safari 27 and Chrome 156 most; wpt.fyi
+    // 5af3c135c9).
+    try page.run("host.style.whiteSpace = 'pre-wrap';");
+    try harness.expectEval(page, "runCommands('A[]B', [['insertlinebreak', '']]); hostHTML()", "A\nB");
+    try harness.expectEval(page, "runCommands('<ul><li>[]AB</li></ul>', [['insertlinebreak', '']]); hostHTML()", "<ul><li>\nAB</li></ul>");
+    try harness.expectEval(page, "runCommands('<ul><li>AB[]</li></ul>', [['insertlinebreak', '']]); hostHTML()", "<ul><li>AB\n<br></li></ul>");
+    try harness.expectEval(page, "runCommands('<p>{}<br></p>', [['insertlinebreak', '']]); hostHTML()", "<p>\n<br></p>");
+    try harness.expectEval(page, "runCommands('<p style=\"white-space:normal\">A[]B</p>', [['insertlinebreak', '']]); hostHTML()", "<p style=\"white-space:normal\">A<br>B</p>");
+    // The caret goes after the linefeed: a second one follows the first.
+    try harness.expectEval(page, "runCommands('A[]B', [['insertlinebreak', ''], ['inserttext', 'x']]); hostHTML()", "A\nxB");
+    // Enter there: the linefeed too.
+    try page.run("setupHost('A[]B').focus(); events.length = 0;");
+    pressEnter(page, false);
+    try harness.expectEval(page, "hostHTML() + '|' + events.join(',')", "A\nB|beforeinput:insertLineBreak:null:true,input:insertLineBreak:null");
+    // A contenteditable=true host keeps the <br>, whatever its white-space
+    // (editing/run/insertlinebreak.html).
+    try page.run("host.setAttribute('contenteditable', 'true');");
+    try harness.expectEval(page, "runCommands('A[]B', [['insertlinebreak', '']]); hostHTML()", "A<br>B");
+}
+
+test "plaintext-only: Enter inserts a line break, a linefeed where white-space keeps newlines" {
+    try helpers.onFreshThread(plaintextOnlyLineBreaks);
+}

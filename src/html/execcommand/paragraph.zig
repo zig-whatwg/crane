@@ -83,6 +83,9 @@ fn insertLineBreakAfterDeletion(edit: *Edit) !bool {
         const p = (try common.parent(start.node)) orelse return true;
         if (!try common.isAllowedChild(.{ .name = "br" }, p)) return true;
     }
+    // A plaintext-only editing host whose white-space keeps newlines takes
+    // a preformatted linefeed instead of the br (see insertLinefeed).
+    if (try prefersLinefeed(edit, start)) return try insertLinefeed(edit, start);
     // Steps 5-6.
     try moveOffTextEdges(edit);
     // Steps 7-8.
@@ -105,6 +108,76 @@ fn insertLineBreakAfterDeletion(edit: *Edit) !bool {
     try keepEdgeSpacesVisible(edit, try previousLeaf(br), try nextLeaf(br));
     // Step 11.
     return true;
+}
+
+/// Whether a line break at `point` is a preformatted linefeed: the point's
+/// editing host is in the plaintext-only state (outside design mode) and
+/// the white-space around the point keeps newlines (pre, pre-wrap,
+/// pre-line, break-spaces). Gecko: HTMLEditUtils::
+/// ShouldInsertLinefeedCharacter, "If in contenteditable=plaintext-only, we
+/// should use linefeed when it's preformatted" (editor/libeditor/
+/// HTMLEditUtils.cpp, gecko-dev 5836a062726f). Where the host is
+/// contenteditable=true the spec's br stays (editing/run/insertlinebreak
+/// .html).
+fn prefersLinefeed(edit: *Edit, point: Point) !bool {
+    var mode = try interfaces.Document.get_designMode(edit.document);
+    defer mode.deinit(edit.document.ctx.allocator);
+    if (std.mem.eql(u8, mode.asSlice(), "on")) return false;
+    const host = (try common.editingHostOf(point.node)) orelse return false;
+    if (!try common.isHtmlElement(host)) return false;
+    var state = try interfaces.HTMLElement.get_contentEditable(host);
+    defer state.deinit(host.ctx.allocator);
+    if (!std.mem.eql(u8, state.asSlice(), "plaintext-only")) return false;
+    return (try common.whiteSpaceAround(point.node)).preservesNewlines();
+}
+
+/// insertLineBreak's steps 5-11 for a preformatted linefeed: a "\n" into
+/// the Text node at (or beside) `point`, or a new Text node there, the
+/// caret after it, and - when that leaves an empty last line in its block -
+/// a padding br after it so the line shows (`AB[]` -> `AB\n<br>`;
+/// editing/plaintext-only/insertLineBreak.html ?white-space=pre, pre-line
+/// and pre-wrap: Firefox 158 21/21 execCommand rows, Safari 27 16/21,
+/// Chrome 156 15/21, wpt.fyi 5af3c135c9). Gecko inserts into an existing
+/// Text node where there is one (HTMLEditor::InsertTextWithTransaction,
+/// InsertTextTo::ExistingTextNodeIfAvailable) and pads with
+/// InsertPaddingBRElementToMakeEmptyLineVisibleIfNeeded (editor/libeditor/
+/// HTMLEditSubActionHandler.cpp, gecko-dev 5836a062726f).
+fn insertLinefeed(edit: *Edit, point: Point) !bool {
+    var text: *Instance = undefined;
+    var after: u32 = 0;
+    if (common.isText(point.node)) {
+        text = point.node;
+        try edit.insertData(text, point.offset, "\n");
+        after = point.offset + 1;
+    } else if (try textChild(try common.childBefore(point.node, point.offset))) |before| {
+        text = before;
+        const length = try common.nodeLength(before);
+        try edit.insertData(text, length, "\n");
+        after = length + 1;
+    } else if (try textChild(try common.childAt(point.node, point.offset))) |at| {
+        text = at;
+        try edit.insertData(text, 0, "\n");
+        after = 1;
+    } else {
+        text = try interfaces.Document.call_createTextNode(edit.document, DOMString.initInterned("\n"));
+        try edit.insertBefore(point.node, text, try common.childAt(point.node, point.offset));
+        after = 1;
+    }
+    edit.modified = true;
+    try edit.collapse(text, after);
+    // An empty last line: nothing follows the linefeed before its block
+    // ends.
+    if (after == try common.nodeLength(text) and (try nextLeaf(text)) == null) {
+        const p = (try common.parent(text)) orelse return true;
+        const br = try edit.createElement("br");
+        try edit.insertBefore(p, br, try common.nextSibling(text));
+    }
+    return true;
+}
+
+fn textChild(node: ?*Instance) !?*Instance {
+    const n = node orelse return null;
+    return if (common.isText(n)) n else null;
 }
 
 // ============================================================================
