@@ -447,6 +447,13 @@ fn getOrCreateEditorState(allocator: std.mem.Allocator, document: DocumentHandle
     return new_state;
 }
 
+/// The editor state of `document` (a Document instance), made on first use
+/// as `getOrCreateEditorState` does: the html module's execcommand reads the
+/// CSS styling flag and the Document's state and value overrides here.
+pub fn editorStateOf(allocator: std.mem.Allocator, document: DocumentHandle) error{OutOfMemory}!*EditorState {
+    return getOrCreateEditorState(allocator, document);
+}
+
 /// `document`'s editor state, or null before its first editing command.
 fn existingEditorState(document: DocumentHandle) ?*EditorState {
     const state_ptr = dom.document_internals.editorState(@ptrCast(@alignCast(document))) orelse return null;

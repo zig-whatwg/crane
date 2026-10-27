@@ -38,6 +38,65 @@ pub const ParagraphSeparator = enum {
     }
 };
 
+/// The Document's state and value overrides (specs/w3c/execCommand.md,
+/// "Common definitions": "For some commands, each Document must have a
+/// boolean state override and/or a string value override"). Data only: the
+/// html module's execcommand/overrides.zig reads and writes them. The value
+/// override of backColor is hiliteColor's ("setting one sets the other").
+pub const FormattingOverrides = struct {
+    pub const StateCommand = enum { bold, italic, strikethrough, subscript, superscript, underline };
+    pub const ValueCommand = enum { create_link, font_name, font_size, fore_color, hilite_color };
+
+    states: std.EnumArray(StateCommand, ?bool) = .initFill(null),
+    /// When each state override was set (a running count): restoring them
+    /// in that order rebuilds the nesting a deletion recorded.
+    state_order: std.EnumArray(StateCommand, u32) = .initFill(0),
+    next_order: u32 = 1,
+    /// Owned by the EditorState's allocator.
+    values: std.EnumArray(ValueCommand, ?[]u8) = .initFill(null),
+    /// The selection the overrides were set under: "Whenever the number of
+    /// ranges in the selection changes to something different, and whenever
+    /// a boundary point of the range at a given index in the selection
+    /// changes to something different, the state override and value
+    /// override must be unset for every command." An identity record -
+    /// addresses with their slab generations, never dereferenced.
+    selection: SelectionKey = .{},
+
+    pub const SelectionKey = struct {
+        range_count: u32 = 0,
+        range: usize = 0,
+        range_generation: u64 = 0,
+        start: usize = 0,
+        start_generation: u64 = 0,
+        start_offset: u32 = 0,
+        end: usize = 0,
+        end_generation: u64 = 0,
+        end_offset: u32 = 0,
+
+        pub fn eql(a: SelectionKey, b: SelectionKey) bool {
+            return std.meta.eql(a, b);
+        }
+    };
+
+    /// Whether any override is set.
+    pub fn any(self: *const FormattingOverrides) bool {
+        for (self.states.values) |state| if (state != null) return true;
+        for (self.values.values) |value| if (value != null) return true;
+        return false;
+    }
+
+    /// Unset every override.
+    pub fn clear(self: *FormattingOverrides, allocator: std.mem.Allocator) void {
+        self.states = .initFill(null);
+        self.state_order = .initFill(0);
+        self.next_order = 1;
+        for (&self.values.values) |*value| {
+            if (value.*) |owned| allocator.free(owned);
+            value.* = null;
+        }
+    }
+};
+
 /// Editor configuration per document
 /// Tracks all state needed for execCommand operations
 pub const EditorState = struct {
@@ -71,6 +130,9 @@ pub const EditorState = struct {
     /// Reference to associated document (weak reference)
     document: ?DocumentHandle = null,
 
+    /// The Document's state and value overrides (execcommand/overrides.zig).
+    formatting_overrides: FormattingOverrides = .{},
+
     /// Create a new editor state
     pub fn init(allocator: std.mem.Allocator) EditorState {
         return .{
@@ -81,6 +143,7 @@ pub const EditorState = struct {
 
     /// Clean up editor state
     pub fn deinit(self: *EditorState) void {
+        self.formatting_overrides.clear(self.allocator);
         self.undo_manager.deinit();
     }
 

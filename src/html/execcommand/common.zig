@@ -51,6 +51,17 @@ pub const Edit = struct {
     /// collapsed selection (their steps after step 1): the browser rules for
     /// a user's range (delete.zig rangeKeepsChildBlock) do not apply.
     range_from_caret: bool = false,
+    /// An arena for the values one command produces - effective and
+    /// specified command values, recorded overrides and recorded values -
+    /// set by root.zig for exactly the command, query or key action and
+    /// freed at its end, so the algorithms that hold them need no frees.
+    scratch: ?std.mem.Allocator = null,
+
+    /// The scratch arena, or the edit's allocator when none was set (a
+    /// caller that sets none frees what it asks for).
+    pub fn scratchAllocator(self: *const Edit) std.mem.Allocator {
+        return self.scratch orelse self.allocator;
+    }
 
     /// The active range: the selection's range, or null.
     pub fn activeRange(self: *Edit) !?*Instance {

@@ -131,8 +131,15 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
         try rangeKeepsChildBlock(start, end_block.?)
     else
         false;
-    // Steps 18-19.
-    const recorded = try overrides.recordCurrentStatesAndValues(edit);
+    // Steps 18-19, with the values in effect where the deletion STARTS (the
+    // range's start as given, before steps 4-5 moved it): golden rule 2,
+    // the browsers' majority - Blink saves its typing style from the start
+    // of the selection it deletes (DeleteSelectionCommand::
+    // SaveTypingStyleState, chromium f31874d8d6d0), Chrome 156 and Safari
+    // 27 pass multitest.html ?9001-last's class-B rows, Firefox 158 follows
+    // the spec's first formattable node (wpt.fyi c645564b0e). See
+    // overrides.recordCurrentStatesAndValues.
+    const recorded = try overrides.recordCurrentStatesAndValues(edit, original_start.node);
     // Step 21: one editable Text node.
     if (start.node == end.node and common.isText(start.node) and try common.isEditable(start.node)) {
         try edit.deleteData(start.node, start.offset, end.offset - start.offset);

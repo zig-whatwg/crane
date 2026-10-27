@@ -228,3 +228,31 @@ fn emptiedParentIsRemoved() !void {
 test "wrap: an editable original parent left empty is removed" {
     try helpers.onFreshThread(emptiedParentIsRemoved);
 }
+
+fn churnedRangesSurviveTheSweep() !void {
+    // Step 10.2 moves boundary points of every live range of the document.
+    // A boundary write redraws the range's edges and can allocate, so a V8
+    // collection may run between two writes and free ranges script let go
+    // of: the sweep must never hold a range pointer outside the live list's
+    // walk (src/dom/live_range_list.zig; lane rangeuaf). Thousands of
+    // garbage ranges sit at the boundary the sweep moves.
+    var fixture = try Fixture.open("foo");
+    defer fixture.close();
+    var round: usize = 0;
+    while (round < 20) : (round += 1) {
+        try fixture.page.run(
+            \\host.innerHTML = 'foo';
+            \\for (let i = 0; i < 2000; i++) { const r = document.createRange(); r.setStart(host, 0); r.setEnd(host, 1); }
+            \\TestUtils.gc();
+            \\for (let i = 0; i < 2000; i++) { const r = document.createRange(); r.setStart(host, 0); r.setEnd(host, 0); }
+        );
+        const text = try fixture.child(0);
+        const result = try wrap_mod.wrap(&fixture.edit, &.{text}, Named{ .name = "b" });
+        try std.testing.expect(result != null);
+        try fixture.expectHTML("<b>foo</b>");
+    }
+}
+
+test "wrap: the step 10.2 sweep survives ranges collected mid-sweep" {
+    try helpers.onFreshThread(churnedRangesSurviveTheSweep);
+}
