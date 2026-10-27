@@ -894,6 +894,54 @@ pub fn convertArgReleasingWith(
     return value;
 }
 
+/// One argument's whole conversion by its `mode` (`convertArgReleasingWith`),
+/// then the steps codegen's tables add to it: for a restricted `double` or
+/// `float` (`restricted_floats`, `constructor_restricted_floats`) that
+/// conversion's last step - NaN and the infinities are a TypeError (WebIDL
+/// 3.2.5 step 2, 3.2.7 step 2); for a ByteString (`byte_string_arguments`), a
+/// code unit above 0xFF is; for an `object` (`object_arguments`), a value
+/// that is not an Object is. Each check is part of this argument's own
+/// conversion, so no later argument is converted first, and what the
+/// conversion made is freed when it fails.
+///
+/// Every path that converts an argument goes through here: an operation's,
+/// a constructor's (sole or overloaded: overload_resolver.zig), a static
+/// operation's and a namespace operation's (namespace.zig). Blink's
+/// conversions carry the restriction in the type (NativeValueTraits<IDLDouble>
+/// calls ToRestrictedDouble, bindings/core/v8/native_value_traits_impl.h,
+/// chromium 23520b2ec9fc); Crane's f64 cannot, so a path that skips this
+/// skips the check - as constructors and namespaces did until lane bindfix1
+/// (`new CSSUnitValue(NaN, "px")`, `CSS.px(Infinity)`).
+pub fn convertArgChecked(
+    comptime T: type,
+    comptime mode: ArgMode,
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    arg: *v8.Value,
+) !T {
+    var value = try convertArgReleasingWith(T, mode, allocator, isolate, context, arg);
+    if (comptime mode.restricted) {
+        conv.requireFinite(T, value) catch |err| {
+            freeConvertedArg(T, allocator, value);
+            return err;
+        };
+    }
+    if (comptime mode.byte_string) {
+        conv.encodeByteStringOwned(T, allocator, &value) catch |err| {
+            freeConvertedArg(T, allocator, value);
+            return err;
+        };
+    }
+    if (comptime mode.object) {
+        conv.requireObject(T, value) catch |err| {
+            freeConvertedArg(T, allocator, value);
+            return err;
+        };
+    }
+    return value;
+}
+
 /// One argument's conversion by its `mode`: to the interface it names, or by
 /// its integer branch (an interface type has none).
 fn convertArgValue(
@@ -1271,7 +1319,7 @@ pub fn restrictedFloatMask(comptime Interface: type, comptime fn_name: []const u
     return 0;
 }
 
-fn restrictedBit(comptime mask: u32, comptime index: usize) bool {
+pub fn restrictedBit(comptime mask: u32, comptime index: usize) bool {
     return index < 32 and (mask >> @intCast(index)) & 1 != 0;
 }
 
@@ -1294,13 +1342,35 @@ pub fn integerConversionMask(comptime Interface: type, comptime fn_name: []const
     return 0;
 }
 
-/// A sole constructor's argument `index`: its ConvertToInt branch and the
-/// interface it converts to (`constructorArgumentInterface`).
+/// A sole constructor's argument `index`: its ConvertToInt branch, the
+/// interface it converts to (`constructorArgumentInterface`), and whether it
+/// is a restricted float (`constructorRestrictedFloatMask`).
 fn constructorArgMode(comptime Interface: type, comptime index: usize) ArgMode {
     return .{
         .integer = constructorIntegerConversion(Interface, index),
         .interface = constructorArgumentInterface(Interface, "", index),
+        .restricted = restrictedBit(constructorRestrictedFloatMask(Interface, ""), index),
     };
+}
+
+/// WebIDL `double` and `float`, not `unrestricted` (3.2.5, 3.2.7): the
+/// constructor arguments - bit i for argument i - of the ConstructorArgs
+/// variant `variant` for an overloaded constructor, of the constructor ("")
+/// otherwise, whose NaN and infinities are a TypeError. Codegen writes the
+/// table (`constructor_restricted_floats`); an interface without one answers
+/// 0 for every variant.
+pub fn constructorRestrictedFloatMask(comptime Interface: type, comptime variant: []const u8) u32 {
+    if (!@hasDecl(Interface, "constructor_restricted_floats")) return 0;
+    return restrictedFloatTableMask(Interface.constructor_restricted_floats, variant);
+}
+
+/// The mask a `restricted_floats`-shaped table (`.{ .{ key, mask }, ... }`)
+/// gives `key`, or 0.
+pub fn restrictedFloatTableMask(comptime table: anytype, comptime key: []const u8) u32 {
+    inline for (table) |entry| {
+        if (comptime std.mem.eql(u8, entry[0], key)) return entry[1];
+    }
+    return 0;
 }
 
 /// The constructor's [EnforceRange] and [Clamp] arguments (codegen's
@@ -4924,12 +4994,8 @@ pub fn V8Interface(comptime Interface: type) type {
             return true;
         }
 
-        /// Convert one argument, then - for a restricted `double` or `float`
-        /// (`restricted_floats`) - apply that conversion's last step: NaN and
-        /// the infinities are a TypeError; for a ByteString
-        /// (`byte_string_arguments`), a code unit above 0xFF is. The check is
-        /// part of this argument's own conversion, so no later argument is
-        /// converted first.
+        /// One argument's conversion with the checks codegen's tables add
+        /// (`convertArgChecked`).
         fn convertArg(
             comptime T: type,
             comptime mode: ArgMode,
@@ -4938,36 +5004,20 @@ pub fn V8Interface(comptime Interface: type) type {
             context: *v8.Context,
             arg: *v8.Value,
         ) !T {
-            var value = try convertArgReleasingWith(T, mode, allocator, isolate, context, arg);
-            if (comptime mode.restricted) {
-                conv.requireFinite(T, value) catch |err| {
-                    freeConvertedArg(T, allocator, value);
-                    return err;
-                };
-            }
-            if (comptime mode.byte_string) {
-                conv.encodeByteStringOwned(T, allocator, &value) catch |err| {
-                    freeConvertedArg(T, allocator, value);
-                    return err;
-                };
-            }
-            // An `object` (`object_arguments`): a value that is not an
-            // Object is a TypeError, as part of this argument's conversion.
-            if (comptime mode.object) {
-                conv.requireObject(T, value) catch |err| {
-                    freeConvertedArg(T, allocator, value);
-                    return err;
-                };
-            }
-            return value;
+            return convertArgChecked(T, mode, allocator, isolate, context, arg);
         }
 
-        /// Convert multiple JS arguments into a slice for variadic parameters
+        /// Convert multiple JS arguments into a slice for variadic parameters:
+        /// each one as the variadic argument's own conversion
+        /// (`convertArgChecked` with its `mode`: the interface an
+        /// interface-typed one converts to, and the restricted float, ByteString,
+        /// object and integer steps codegen's tables give its index), one at a
+        /// time - a NaN for a restricted `double...` is a TypeError before the
+        /// next argument converts, as for a fixed argument. One that fails
+        /// frees the ones before it.
         fn collectVariadicArgs(
             comptime ElemType: type,
-            /// The interface each argument converts to, for a variadic
-            /// argument of an interface type (`argumentInterface`).
-            comptime element_interface: ?type,
+            comptime mode: ArgMode,
             allocator_inner: std.mem.Allocator,
             isolate_inner: *v8.Isolate,
             context_inner: *v8.Context,
@@ -4989,11 +5039,14 @@ pub fn V8Interface(comptime Interface: type) type {
             // Convert each JS argument to the element type. Each handle is
             // owned; released when the conversion copied out of it, as for a
             // fixed argument - a leaked one per `append(...nodes)` argument
-            // kept its page alive.
+            // kept its page alive. The ones converted before one that fails
+            // are freed (docs/lessons/architecture-a-conversion-that-fails-
+            // part-way-converted-the-rest.md).
             var i: usize = 0;
+            errdefer for (result[0..i]) |done| freeArgument(ElemType, allocator_inner, done);
             while (i < variadic_count) : (i += 1) {
                 const v8_arg = info_inner.get(@intCast(start_idx + i));
-                result[i] = try convertArgReleasingWith(ElemType, .{ .interface = element_interface }, allocator_inner, isolate_inner, context_inner, v8_arg);
+                result[i] = try convertArgChecked(ElemType, mode, allocator_inner, isolate_inner, context_inner, v8_arg);
             }
 
             return result;
@@ -5033,15 +5086,12 @@ pub fn V8Interface(comptime Interface: type) type {
                     if (comptime isVariadicParam(Param1Type)) {
                         // Collect all JS arguments into a slice
                         const ElemType = @typeInfo(Param1Type).pointer.child;
-                        const arg1 = try collectVariadicArgs(ElemType, comptime argMode(modes, 0).interface, allocator, isolate, v8_context, info.raw, 0);
+                        const arg1 = try collectVariadicArgs(ElemType, comptime argMode(modes, 0), allocator, isolate, v8_context, info.raw, 0);
                         // Free each element in the slice, then free the slice itself
                         defer {
                             for (arg1) |elem| freeArgument(ElemType, allocator, elem);
                             if (arg1.len > 0) allocator.free(arg1);
                         }
-                        // Each element is a restricted float conversion; the
-                        // defer above releases the slice if one fails.
-                        if (comptime restrictedBit(modes.restricted, 0)) try conv.requireFinite(Param1Type, arg1);
                         break :blk try method_fn(instance, arg1);
                     }
 
@@ -5086,12 +5136,11 @@ pub fn V8Interface(comptime Interface: type) type {
                     // createHTML("x", "a") and console.assert(c, "m").
                     if (comptime isVariadicParam(Param2Type)) {
                         const ElemType = @typeInfo(Param2Type).pointer.child;
-                        const rest = try collectVariadicArgs(ElemType, comptime argMode(modes, 1).interface, allocator, isolate, v8_context, info.raw, 1);
+                        const rest = try collectVariadicArgs(ElemType, comptime argMode(modes, 1), allocator, isolate, v8_context, info.raw, 1);
                         defer {
                             for (rest) |elem| freeArgument(ElemType, allocator, elem);
                             if (rest.len > 0) allocator.free(rest);
                         }
-                        if (comptime restrictedBit(modes.restricted, 1)) try conv.requireFinite(Param2Type, rest);
                         break :blk try method_fn(instance, arg1, rest);
                     }
 
@@ -5148,12 +5197,11 @@ pub fn V8Interface(comptime Interface: type) type {
                     // A trailing variadic, as in the two-parameter branch.
                     if (comptime isVariadicParam(Param3Type)) {
                         const ElemType = @typeInfo(Param3Type).pointer.child;
-                        const rest = try collectVariadicArgs(ElemType, comptime argMode(modes, 2).interface, allocator, isolate, v8_context, info.raw, 2);
+                        const rest = try collectVariadicArgs(ElemType, comptime argMode(modes, 2), allocator, isolate, v8_context, info.raw, 2);
                         defer {
                             for (rest) |elem| freeArgument(ElemType, allocator, elem);
                             if (rest.len > 0) allocator.free(rest);
                         }
-                        if (comptime restrictedBit(modes.restricted, 2)) try conv.requireFinite(Param3Type, rest);
                         break :blk try method_fn(instance, arg1, arg2, rest);
                     }
 
@@ -6152,10 +6200,11 @@ pub fn V8Interface(comptime Interface: type) type {
                 if (comptime @hasDecl(Interface, "ConstructorArgs") and Param1Type == Interface.ConstructorArgs) {
                     // Overloaded: the overload resolution algorithm picks
                     // the variant over codegen's `constructor_overloads`.
-                    const args = try overload_resolver.resolveConstructorOverload(
+                    const args = try overload_resolver.resolveConstructorOverloadWith(
                         Param1Type,
                         Interface.constructor_overloads,
                         if (@hasDecl(Interface, "constructor_interface_arguments")) Interface.constructor_interface_arguments else .{},
+                        if (@hasDecl(Interface, "constructor_restricted_floats")) Interface.constructor_restricted_floats else .{},
                         info,
                         allocator,
                         isolate,
@@ -6169,7 +6218,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // argument, as an operation's does.
                 if (comptime isVariadicParam(Param1Type)) {
                     const ElemType = @typeInfo(Param1Type).pointer.child;
-                    const rest = try collectVariadicArgs(ElemType, comptime constructorArgumentInterface(Interface, "", 0), allocator, isolate, v8_context, info, 0);
+                    const rest = try collectVariadicArgs(ElemType, comptime constructorArgMode(Interface, 0), allocator, isolate, v8_context, info, 0);
                     defer {
                         for (rest) |elem| freeArgument(ElemType, allocator, elem);
                         if (rest.len > 0) allocator.free(rest);
@@ -6184,7 +6233,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         log.debug("[CTOR_ARGS] MutationObserver converting arg from V8...\n", .{});
                     }
                     const v8_arg1 = info.get(0);
-                    const converted = try convertArgReleasingWith(Param1Type, comptime constructorArgMode(Interface, 0), allocator, isolate, v8_context, v8_arg1);
+                    const converted = try convertArg(Param1Type, comptime constructorArgMode(Interface, 0), allocator, isolate, v8_context, v8_arg1);
                     if (comptime std.mem.eql(u8, interface_name, "MutationObserver")) {
                         log.debug("[CTOR_ARGS] MutationObserver arg converted OK\n", .{});
                     }
@@ -6217,7 +6266,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Check if first param has a default (e.g., webidl.Opt or optional)
                 const arg1 = if (js_arg_count >= 1) blk: {
                     const v8_arg1 = info.get(0);
-                    break :blk try convertArgReleasingWith(Param1Type, comptime constructorArgMode(Interface, 0), allocator, isolate, v8_context, v8_arg1);
+                    break :blk try convertArg(Param1Type, comptime constructorArgMode(Interface, 0), allocator, isolate, v8_context, v8_arg1);
                 } else blk: {
                     // Try default for first param
                     if (comptime getDefaultArgValue(Param1Type)) |default_val| {
@@ -6233,7 +6282,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // A trailing variadic collects every argument from its index.
                 if (comptime isVariadicParam(Param2Type)) {
                     const ElemType = @typeInfo(Param2Type).pointer.child;
-                    const rest = try collectVariadicArgs(ElemType, comptime constructorArgumentInterface(Interface, "", 1), allocator, isolate, v8_context, info, 1);
+                    const rest = try collectVariadicArgs(ElemType, comptime constructorArgMode(Interface, 1), allocator, isolate, v8_context, info, 1);
                     defer {
                         for (rest) |elem| freeArgument(ElemType, allocator, elem);
                         if (rest.len > 0) allocator.free(rest);
@@ -6244,7 +6293,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Second param may be optional (use default if not provided)
                 const arg2 = if (js_arg_count >= 2) blk: {
                     const v8_arg2 = info.get(1);
-                    break :blk try convertArgReleasingWith(Param2Type, comptime constructorArgMode(Interface, 1), allocator, isolate, v8_context, v8_arg2);
+                    break :blk try convertArg(Param2Type, comptime constructorArgMode(Interface, 1), allocator, isolate, v8_context, v8_arg2);
                 } else blk: {
                     // Use getDefaultArgValue for consistent handling
                     if (comptime getDefaultArgValue(Param2Type)) |default_val| {
@@ -6267,7 +6316,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle first parameter - may be optional
                 const arg1 = if (js_arg_count >= 1) blk: {
                     const v8_arg1 = info.get(0);
-                    break :blk try convertArgReleasingWith(Param1Type, comptime constructorArgMode(Interface, 0), allocator, isolate, v8_context, v8_arg1);
+                    break :blk try convertArg(Param1Type, comptime constructorArgMode(Interface, 0), allocator, isolate, v8_context, v8_arg1);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param1Type)) |default_val| {
                         break :blk default_val;
@@ -6282,7 +6331,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle second parameter - may be optional
                 const arg2 = if (js_arg_count >= 2) blk: {
                     const v8_arg2 = info.get(1);
-                    break :blk try convertArgReleasingWith(Param2Type, comptime constructorArgMode(Interface, 1), allocator, isolate, v8_context, v8_arg2);
+                    break :blk try convertArg(Param2Type, comptime constructorArgMode(Interface, 1), allocator, isolate, v8_context, v8_arg2);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param2Type)) |default_val| {
                         break :blk default_val;
@@ -6297,7 +6346,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle third parameter - may be optional
                 const arg3 = if (js_arg_count >= 3) blk: {
                     const v8_arg3 = info.get(2);
-                    break :blk try convertArgReleasingWith(Param3Type, comptime constructorArgMode(Interface, 2), allocator, isolate, v8_context, v8_arg3);
+                    break :blk try convertArg(Param3Type, comptime constructorArgMode(Interface, 2), allocator, isolate, v8_context, v8_arg3);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param3Type)) |default_val| {
                         break :blk default_val;
@@ -6320,7 +6369,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle first parameter - may be optional
                 const arg1 = if (js_arg_count >= 1) blk: {
                     const v8_arg1 = info.get(0);
-                    break :blk try convertArgReleasingWith(Param1Type, comptime constructorArgMode(Interface, 0), allocator, isolate, v8_context, v8_arg1);
+                    break :blk try convertArg(Param1Type, comptime constructorArgMode(Interface, 0), allocator, isolate, v8_context, v8_arg1);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param1Type)) |default_val| {
                         break :blk default_val;
@@ -6335,7 +6384,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle second parameter - may be optional
                 const arg2 = if (js_arg_count >= 2) blk: {
                     const v8_arg2 = info.get(1);
-                    break :blk try convertArgReleasingWith(Param2Type, comptime constructorArgMode(Interface, 1), allocator, isolate, v8_context, v8_arg2);
+                    break :blk try convertArg(Param2Type, comptime constructorArgMode(Interface, 1), allocator, isolate, v8_context, v8_arg2);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param2Type)) |default_val| {
                         break :blk default_val;
@@ -6350,7 +6399,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle third parameter - may be optional
                 const arg3 = if (js_arg_count >= 3) blk: {
                     const v8_arg3 = info.get(2);
-                    break :blk try convertArgReleasingWith(Param3Type, comptime constructorArgMode(Interface, 2), allocator, isolate, v8_context, v8_arg3);
+                    break :blk try convertArg(Param3Type, comptime constructorArgMode(Interface, 2), allocator, isolate, v8_context, v8_arg3);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param3Type)) |default_val| {
                         break :blk default_val;
@@ -6365,7 +6414,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle fourth parameter - may be optional
                 const arg4 = if (js_arg_count >= 4) blk: {
                     const v8_arg4 = info.get(3);
-                    break :blk try convertArgReleasingWith(Param4Type, comptime constructorArgMode(Interface, 3), allocator, isolate, v8_context, v8_arg4);
+                    break :blk try convertArg(Param4Type, comptime constructorArgMode(Interface, 3), allocator, isolate, v8_context, v8_arg4);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param4Type)) |default_val| {
                         break :blk default_val;

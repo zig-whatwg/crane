@@ -1883,6 +1883,8 @@ fn generateInterfaceFile(
         // Which constructor arguments convert to an interface type, and the
         // interface each must implement.
         try writer.writeConstructorInterfaceArguments(w, own_constructors.items, type_reg);
+        // Which are restricted floats (WebIDL 3.2.5, 3.2.7), every overload's.
+        try writer.writeConstructorRestrictedFloats(w, own_constructors.items, if (ir) |ir_ptr| ir_ptr else null);
     }
 
     // Generate delegate functions (ONLY for own attributes/operations, not inherited)
@@ -2047,7 +2049,7 @@ pub fn generateFromFile(
         var namespace_iter = ir.namespaces.iterator();
         while (namespace_iter.next()) |entry| {
             const namespace = entry.value_ptr.*;
-            try generateNamespace(allocator, namespace, namespaces_path);
+            try generateNamespace(allocator, namespace, namespaces_path, &ir);
 
             // Generate impl stub if requested
             if (try cfg.getImplsPath()) |impls_path_for_ns| {
@@ -2763,6 +2765,8 @@ pub fn generateTypedef(
             try w.writeAll(",\n");
         }
 
+        try writeRestrictedArms(allocator, w, union_types, ir);
+
         try w.writeAll("};\n");
     } else {
         // Simple type alias
@@ -2778,6 +2782,60 @@ pub fn generateTypedef(
     }
 
     try w.flush();
+}
+
+/// A union's restricted `double` and `float` arms (WebIDL 3.2.5, 3.2.7: not
+/// `unrestricted`), written inside the union - its arm names, as the
+/// typedef writer names them:
+///
+///     pub const restricted_arms = .{"double"};
+///
+/// WebIDL 3.2.25 converts a value taken by a numeric arm "to that numeric
+/// type" (steps 13 and 17), the arm's own conversion, so a restricted arm
+/// refuses NaN and the infinities; the binding's union conversion reads this
+/// (conversions.zig, `requireFiniteArm`). `double` and `unrestricted double`
+/// are both f64 and both arms are named `double`, so the arm's name cannot
+/// say which it is. Blink converts each arm with its own type's traits
+/// (NativeValueTraits<IDLDouble> vs IDLUnrestrictedDouble). Nothing when the
+/// union has no such arm.
+pub fn writeRestrictedArms(allocator: std.mem.Allocator, w: anytype, union_types: []const types.IDLType, ir: *const ir_mod.IR) !void {
+    var names = std.ArrayList([]const u8).empty;
+    defer {
+        for (names.items) |name| allocator.free(name);
+        names.deinit(allocator);
+    }
+    // The arm names exactly as the field loop above derives them.
+    var used_names = std.StringHashMap(u32).init(allocator);
+    defer {
+        var key_iter = used_names.keyIterator();
+        while (key_iter.next()) |key| allocator.free(key.*);
+        used_names.deinit();
+    }
+    for (union_types) |union_type| {
+        const base_name = try deriveVariantName(allocator, union_type);
+        defer allocator.free(base_name);
+        const entry = try used_names.getOrPut(base_name);
+        if (!entry.found_existing) {
+            entry.key_ptr.* = try allocator.dupe(u8, base_name);
+            entry.value_ptr.* = 0;
+        }
+        const count = entry.value_ptr.*;
+        entry.value_ptr.* += 1;
+        if (!writer.isRestrictedFloat(union_type, ir)) continue;
+        const variant_name = if (count == 0)
+            try allocator.dupe(u8, base_name)
+        else
+            try std.fmt.allocPrint(allocator, "{s}_{d}", .{ base_name, count });
+        try names.append(allocator, variant_name);
+    }
+    if (names.items.len == 0) return;
+    try w.writeAll("\n    /// WebIDL `double` and `float` arms (not `unrestricted`): a value one of\n");
+    try w.writeAll("    /// them takes is a TypeError when NaN or infinite (3.2.5, 3.2.7, 3.2.25).\n");
+    try w.writeAll("    pub const restricted_arms = .{");
+    for (names.items, 0..) |name, i| {
+        try w.print("{s}\"{s}\"", .{ if (i == 0) "" else ", ", name });
+    }
+    try w.writeAll("};\n");
 }
 
 /// Write a type for dictionary member with proper type resolution
@@ -3381,6 +3439,7 @@ pub fn generateNamespace(
     allocator: std.mem.Allocator,
     namespace: types.Namespace,
     namespaces_path: []const u8,
+    model: ?*const ir_mod.IR,
 ) !void {
     // Create namespaces directory
     const io = host.io();
@@ -3496,6 +3555,11 @@ pub fn generateNamespace(
 
     // Generate empty State for V8Interface compatibility
     try w.writeAll("    pub const State = struct {};\n\n");
+
+    // The operations' restricted `double` and `float` arguments (WebIDL
+    // 3.2.5, 3.2.7), the table an interface's operations carry: without it
+    // `CSS.px(Infinity)` made a value Chrome and Safari refuse.
+    try writer.writeRestrictedFloats(w, &.{}, operations.items, model);
 
     // Generate operations (methods). Overloads are named as an interface's
     // are (AGENTS.md, "Names are the binding map"): the first `call_<name>`,

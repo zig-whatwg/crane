@@ -42,14 +42,20 @@ pub const Kind = webidl.overload_resolution.Kind;
 /// variant chosen by its argument count alone (FormData's three-argument
 /// append, CSSRotate's one-argument constructor) is checked only here.
 ///
+/// `restricted_floats` is the interface's `constructor_restricted_floats`
+/// (`.{}` for none): each variant's restricted `double` and `float`
+/// arguments, whose NaN and infinities are a TypeError as the argument
+/// converts (WebIDL 3.2.5, 3.2.7) - `new OfflineAudioContext(1, 1, NaN)`.
+///
 /// Errors: `error.TypeError` where the algorithm throws one (no constructor
 /// takes this many arguments, or none takes the value at the distinguishing
 /// index); `error.ExceptionPending` where script threw - a GetMethod during
 /// selection, or a conversion; and whatever a conversion fails with.
-pub fn resolveConstructorOverload(
+pub fn resolveConstructorOverloadWith(
     comptime UnionType: type,
     comptime overloads: []const Overload,
     comptime interface_arguments: anytype,
+    comptime restricted_floats: anytype,
     info: *const v8.FunctionCallbackInfo,
     allocator: std.mem.Allocator,
     isolate: *v8.Isolate,
@@ -69,7 +75,7 @@ pub fn resolveConstructorOverload(
             // arguments before the distinguishing index - and an exception
             // one of those conversions throws is the one script sees.
             if (webidl.overload_resolution.distinguishingPrefix(overloads, arg_count)) |prefix| {
-                try convertPrefix(UnionType, overloads, interface_arguments, prefix, info, allocator, isolate, context);
+                try convertPrefix(UnionType, overloads, interface_arguments, restricted_floats, prefix, info, allocator, isolate, context);
             }
             return error.TypeError;
         },
@@ -83,9 +89,23 @@ pub fn resolveConstructorOverload(
     // the distinguishing index, so converting them as the chosen one's is
     // step 11.
     inline for (fields, 0..) |field, k| {
-        if (k == chosen) return buildVariant(UnionType, field, overloads[k].args.len, interface_arguments, info, allocator, isolate, context);
+        if (k == chosen) return buildVariant(UnionType, field, overloads[k].args.len, interface_arguments, restricted_floats, info, allocator, isolate, context);
     }
     unreachable;
+}
+
+/// `resolveConstructorOverloadWith` for constructors with no restricted
+/// float argument (no `constructor_restricted_floats`).
+pub fn resolveConstructorOverload(
+    comptime UnionType: type,
+    comptime overloads: []const Overload,
+    comptime interface_arguments: anytype,
+    info: *const v8.FunctionCallbackInfo,
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+) !UnionType {
+    return resolveConstructorOverloadWith(UnionType, overloads, interface_arguments, .{}, info, allocator, isolate, context);
 }
 
 /// Step 11 alone: convert, and free again, the arguments before the
@@ -96,6 +116,7 @@ fn convertPrefix(
     comptime UnionType: type,
     comptime overloads: []const Overload,
     comptime interface_arguments: anytype,
+    comptime restricted_floats: anytype,
     prefix: webidl.overload_resolution.Prefix,
     info: *const v8.FunctionCallbackInfo,
     allocator: std.mem.Allocator,
@@ -108,7 +129,7 @@ fn convertPrefix(
             if (k == prefix.entry) {
                 inline for (@typeInfo(field.type).@"struct".fields, 0..) |arg_field, i| {
                     if (i < prefix.d) {
-                        const value = try interface_mod.convertArgReleasingWith(arg_field.type, .{ .interface = comptime variantArgumentInterface(interface_arguments, field.name, i) }, allocator, isolate, context, info.get(@intCast(i)));
+                        const value = try interface_mod.convertArgChecked(arg_field.type, comptime variantArgMode(interface_arguments, restricted_floats, field.name, i), allocator, isolate, context, info.get(@intCast(i)));
                         interface_mod.freeArgument(arg_field.type, allocator, value);
                     }
                 }
@@ -155,6 +176,7 @@ fn buildVariant(
     comptime field: std.builtin.Type.UnionField,
     comptime arity: usize,
     comptime interface_arguments: anytype,
+    comptime restricted_floats: anytype,
     info: *const v8.FunctionCallbackInfo,
     allocator: std.mem.Allocator,
     isolate: *v8.Isolate,
@@ -176,9 +198,9 @@ fn buildVariant(
         // argument rule (interface.convertArgReleasing), or every call
         // leaked one.
         const v8_arg = info.get(0);
-        const arg_value = try interface_mod.convertArgReleasingWith(
+        const arg_value = try interface_mod.convertArgChecked(
             VariantType,
-            .{ .interface = comptime variantArgumentInterface(interface_arguments, field.name, 0) },
+            comptime variantArgMode(interface_arguments, restricted_floats, field.name, 0),
             allocator,
             isolate,
             context,
@@ -203,9 +225,9 @@ fn buildVariant(
     // Convert each JavaScript argument to corresponding struct field
     inline for (type_info.@"struct".fields, 0..) |struct_field, i| {
         const v8_arg = info.get(@intCast(i));
-        const field_value = try interface_mod.convertArgReleasingWith(
+        const field_value = try interface_mod.convertArgChecked(
             struct_field.type,
-            .{ .interface = comptime variantArgumentInterface(interface_arguments, field.name, i) },
+            comptime variantArgMode(interface_arguments, restricted_floats, field.name, i),
             allocator,
             isolate,
             context,
@@ -217,6 +239,16 @@ fn buildVariant(
 
     // Build union with the populated struct
     return @unionInit(UnionType, field.name, variant_struct);
+}
+
+/// Argument `index` of the variant `variant`: the interface it converts to
+/// and whether it is a restricted float, from the interface's
+/// `constructor_interface_arguments` and `constructor_restricted_floats`.
+fn variantArgMode(comptime interface_arguments: anytype, comptime restricted_floats: anytype, comptime variant: []const u8, comptime index: usize) interface_mod.ArgMode {
+    return .{
+        .interface = variantArgumentInterface(interface_arguments, variant, index),
+        .restricted = interface_mod.restrictedBit(interface_mod.restrictedFloatTableMask(restricted_floats, variant), index),
+    };
 }
 
 /// The interface argument `index` of the variant `variant` converts to, from

@@ -1709,7 +1709,65 @@ fn callbackFunctionValue(comptime T: type, value: *v8.Value) T {
 /// cannot, since every interface type is `*runtime.Instance`. A union's arms
 /// name their own interfaces (`unionArmInterface`), and a dictionary's
 /// members theirs (`interface_members`), so neither takes `Interface`.
+///
+/// A union with restricted `double` or `float` arms (codegen's
+/// `restricted_arms`) checks the arm its conversion took (`requireFiniteArm`),
+/// wherever the union is converted: an argument, a nullable or variadic one,
+/// a dictionary member, a sequence element, an attribute's value.
 pub fn fromV8ValueAs(
+    comptime T: type,
+    comptime Interface: ?type,
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    value: *v8.Value,
+) ConversionError!T {
+    if (comptime hasRestrictedArms(T)) {
+        const converted = try convertValueAs(T, Interface, allocator, isolate, context, value);
+        requireFiniteArm(T, converted) catch |err| {
+            interface_mod.freeConvertedArg(T, allocator, converted);
+            return err;
+        };
+        return converted;
+    }
+    return convertValueAs(T, Interface, allocator, isolate, context, value);
+}
+
+/// Whether `T` is a union codegen marked with restricted arms.
+fn hasRestrictedArms(comptime T: type) bool {
+    return @typeInfo(T) == .@"union" and @hasDecl(T, "restricted_arms");
+}
+
+/// Whether union `T` lists arm `name` in `restricted_arms`.
+fn isRestrictedArm(comptime T: type, comptime name: []const u8) bool {
+    comptime {
+        if (!hasRestrictedArms(T)) return false;
+        for (T.restricted_arms) |arm| {
+            if (std.mem.eql(u8, arm, name)) return true;
+        }
+        return false;
+    }
+}
+
+/// WebIDL 3.2.25 steps 13 and 17: a value a union's numeric arm takes is
+/// "the result of converting V to that numeric type" - for a `double` or
+/// `float` arm (not `unrestricted`), 3.2.7 or 3.2.5, whose step 2 is a
+/// TypeError for NaN and the infinities. `double` and `unrestricted double`
+/// are both f64 and both arms are named `double`, so codegen lists the
+/// restricted ones on the union (`restricted_arms`: CSSNumberish's `double`,
+/// GPUColor's `double_sequence`); an arm not listed is unrestricted or not a
+/// number. Blink converts each arm with its own type's traits
+/// (NativeValueTraits<IDLDouble> -> ToRestrictedDouble,
+/// bindings/core/v8/native_value_traits_impl.h, chromium 23520b2ec9fc).
+pub fn requireFiniteArm(comptime T: type, value: T) ConversionError!void {
+    switch (value) {
+        inline else => |payload, tag| {
+            if (comptime isRestrictedArm(T, @tagName(tag))) try requireFinite(@TypeOf(payload), payload);
+        },
+    }
+}
+
+fn convertValueAs(
     comptime T: type,
     comptime Interface: ?type,
     allocator: std.mem.Allocator,
