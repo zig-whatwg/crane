@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Flat per-element storage makes every property cost every element](architecture-flat-per-element-storage-makes-every-property-cost-every-element.md) - Per-element storage should cost what the element writes, not what the engine supports: share untouched groups by pointer and copy on first write.
 - [Architecture: A new Window per load moves what belongs to the navigable, and swaps the realm only when nothing of it is on the stack](architecture-a-new-window-per-load-moves-what-belongs-to-the-navigable.md) - when a page-lifetime object starts dying per navigation, give each thing it held to its spec owner; swap an engine realm only where nothing of it is on the stack
 - [Architecture: The order of a session history update is observable only through each document's own view](architecture-the-order-of-a-history-update-is-observable-only-through-each-documents-view.md) - list every view through which script observes a step before reordering it; with live reads of shared state, build per-document views first
 - [A slot goes back only when every holder kind is on an allowlist](architecture-a-slot-goes-back-only-when-every-holder-kind-is-on-an-allowlist.md) - Do not return a slot that holders can still name: inventory every holder kind, gate the return on an allowlist whose default is unsafe, convert one kind per commit with a forced-reuse test, and flip the switch last; where the platform object is a proxy for something that outlives it (a WindowProxy), keep the proxy, not the object.
@@ -831,6 +832,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A cost bar that moves with no new instructions is code placement](testing-a-cost-bar-that-moves-with-no-new-instructions-is-code-placement.md) - A sub-microsecond per-operation metric in a whole-program optimized runner moves with code placement; when its path reaches no changed code, instructions retired (page minus a zero-iteration control) decide, not time.
 
 ### Debugging
+- [A kernel that frees its only object each op measures the allocator's page churn](debugging-a-one-object-kernel-measures-the-allocators-page-churn.md) - Before reading a size effect off an instruction count, check page reclaims per op and the spread across runs: one object at a time under DebugAllocator measures mmap, not the object.
 - [Allocate before transferring an arena](debugging-allocate-before-transferring-an-arena.md) - Transfer an arena only after its last allocation; struct field evaluation can otherwise copy stale ownership state.
 - [Computed shorthands may need symbolic colors](debugging-computed-shorthands-may-need-symbolic-colors.md) - Preserve symbolic values until the consumer decides whether to omit them; early resolution can erase a CSSOM distinction.
 - [Optional CSS groups must restore the token stream](debugging-optional-css-groups-must-restore-the-token-stream.md) - Test malformed components through their shorthand: a failed optional group must restore the tokens it consumed.
