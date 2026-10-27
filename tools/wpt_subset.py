@@ -826,6 +826,14 @@ EXCLUDE = [
      'click at a text node\'s start: the caret offset comes from hit testing laid-out text'),
     ('selection/user-select-on-input-and-contenteditable.html',
      'click at each field\'s centre must move the caret to the clicked character: needs text layout'),
+    # Outside the user's 0.1 line (a ratified spec and >= 1 shipping browser): it
+    # asserts document.permissionsPolicy.features(), which no browser ships
+    # (wpt.fyi 0/1 in Chrome, Firefox and Safari; Chrome exposes only the old
+    # document.featurePolicy). The spec is deciding between renaming the API
+    # back to featurePolicy (webappsec-permissions-policy#582) and removing it
+    # (#600). Dropped by the user 2026-10-27; revisit when that resolves.
+    ('fetch/fetch-later/permissions-policy/deferred-fetch-supported-by-permissions-policy.window.js',
+     'needs document.permissionsPolicy, which no browser ships (spec PRs #582/#600 pending)'),
     # Its abort-reason case waits for the service worker to see the page's
     # abort while its respondWith() promise is pending, and that promise
     # resolves only in the abort listener. ServiceWorker "Handle Fetch" waits
