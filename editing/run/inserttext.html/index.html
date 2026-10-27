@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../editing/"><code>editing/</code></a></li><li><a href="../../../editing/run/"><code>run/</code></a></li><li aria-current="page"><code>inserttext.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>inserttext.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="editing/run/inserttext.html">
-<p class="figures-main"><span class="fg-pass">2,969</span><span class="fg-of"> / 3,009</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>40</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">2,973</span><span class="fg-of"> / 3,009</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>36</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-7cb783a35b</code>, <span class="nowrap">27 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/7cb783a35b"><code>7cb783a35b</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-59cdb72552</code>, <span class="nowrap">27 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/59cdb72552"><code>59cdb72552</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/editing/run/inserttext.html"><code>editing/<wbr>run/<wbr>inserttext.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -34,16 +34,12 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/editing/run/inserttext.html?1-1000</code> <span class="gate">OK</span> <span class="fcount"><b>994</b> / 1,000</span></h3>
+<h3 class="run-head"><code>/editing/run/inserttext.html?1-1000</code> <span class="gate">OK</span> <span class="fcount"><b>998</b> / 1,000</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-8f1efaf8"><details><summary><span class="mark">FAIL</span><span class="sub-name">[[&quot;defaultparagraphseparator&quot;,&quot;div&quot;],[&quot;inserttext&quot;,&quot;\n&quot;]] &quot;foo[]bar&quot; compare innerHTML</span></summary><pre class="msg">assert_equals: Unexpected innerHTML (after normalizing inline style) expected &quot;&lt;div&gt;foo&lt;/div&gt;&lt;div&gt;bar&lt;/div&gt;&quot; but got &quot;foo\nbar&quot;</pre></details><a class="self" href="#s-8f1efaf8" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6ac5568d"><details><summary><span class="mark">FAIL</span><span class="sub-name">[[&quot;defaultparagraphseparator&quot;,&quot;p&quot;],[&quot;inserttext&quot;,&quot;\n&quot;]] &quot;foo[]bar&quot; compare innerHTML</span></summary><pre class="msg">assert_equals: Unexpected innerHTML (after normalizing inline style) expected &quot;&lt;p&gt;foo&lt;/p&gt;&lt;p&gt;bar&lt;/p&gt;&quot; but got &quot;foo\nbar&quot;</pre></details><a class="self" href="#s-6ac5568d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c4064ea3"><details><summary><span class="mark">FAIL</span><span class="sub-name">[[&quot;defaultparagraphseparator&quot;,&quot;div&quot;],[&quot;inserttext&quot;,&quot;abc\ndef&quot;]] &quot;foo[]bar&quot; compare innerHTML</span></summary><pre class="msg">assert_equals: Unexpected innerHTML (after normalizing inline style) expected &quot;&lt;div&gt;fooabc&lt;/div&gt;&lt;div&gt;defbar&lt;/div&gt;&quot; but got &quot;fooabc\ndefbar&quot;</pre></details><a class="self" href="#s-c4064ea3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-eb153203"><details><summary><span class="mark">FAIL</span><span class="sub-name">[[&quot;defaultparagraphseparator&quot;,&quot;p&quot;],[&quot;inserttext&quot;,&quot;abc\ndef&quot;]] &quot;foo[]bar&quot; compare innerHTML</span></summary><pre class="msg">assert_equals: Unexpected innerHTML (after normalizing inline style) expected &quot;&lt;p&gt;fooabc&lt;/p&gt;&lt;p&gt;defbar&lt;/p&gt;&quot; but got &quot;fooabc\ndefbar&quot;</pre></details><a class="self" href="#s-eb153203" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-4415ba3f"><details><summary><span class="mark">FAIL</span><span class="sub-name">[[&quot;inserttext&quot;,&quot; &quot;]] &quot;foo []&amp;nbsp;        bar&quot; compare innerHTML</span></summary><pre class="msg">assert_in_array: Unexpected innerHTML (after normalizing inline style) value &quot;foo &amp;nbsp;&amp;nbsp; bar&quot; not in array [&quot;foo&amp;nbsp; &amp;nbsp; bar&quot;, &quot;foo &amp;nbsp; &amp;nbsp;bar&quot;]</pre></details><a class="self" href="#s-4415ba3f" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-531c23bc"><details><summary><span class="mark">FAIL</span><span class="sub-name">[[&quot;inserttext&quot;,&quot; &quot;]] &quot;&lt;b&gt;a@b&lt;/b&gt;{}&quot; compare innerHTML</span></summary><pre class="msg">assert_equals: Unexpected innerHTML (after normalizing inline style) expected &quot;&lt;b&gt;a@b&lt;/b&gt;&amp;nbsp;&quot; but got &quot;&lt;b&gt;a@b&lt;/b&gt; &quot;</pre></details><a class="self" href="#s-531c23bc" aria-label="Link to this subtest">&para;</a></li>
 </ol>
-<p class="omitted">994 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+<p class="omitted">998 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
 </div>
 <div class="run">
 <h3 class="run-head"><code>/editing/run/inserttext.html?1001-2000</code> <span class="gate">OK</span> <span class="fcount"><b>995</b> / 1,000</span></h3>
@@ -112,7 +108,7 @@
 <li class="toc-suite"><a href="../../../cookies/"><span class="secno">9</span><span class="toc-name">cookies/</span><span class="toc-count" title="76 test files">76</span></a></li>
 <li class="toc-suite"><a href="../../../cookiestore/"><span class="secno">10</span><span class="toc-name">cookiestore/</span><span class="toc-count" title="55 test files">55</span></a></li>
 <li class="toc-suite"><a href="../../../cors/"><span class="secno">11</span><span class="toc-name">cors/</span><span class="toc-count" title="24 test files">24</span></a></li>
-<li class="toc-suite"><a href="../../../css/"><span class="secno">12</span><span class="toc-name">css/</span><span class="toc-count" title="2,179 test files">2,179</span></a></li>
+<li class="toc-suite"><a href="../../../css/"><span class="secno">12</span><span class="toc-name">css/</span><span class="toc-count" title="2,178 test files">2,178</span></a></li>
 <li class="toc-suite"><a href="../../../custom-elements/"><span class="secno">13</span><span class="toc-name">custom-elements/</span><span class="toc-count" title="180 test files">180</span></a></li>
 <li class="toc-suite"><a href="../../../dom/"><span class="secno">14</span><span class="toc-name">dom/</span><span class="toc-count" title="526 test files">526</span></a></li>
 <li class="toc-suite"><a href="../../../domparsing/"><span class="secno">15</span><span class="toc-name">domparsing/</span><span class="toc-count" title="38 test files">38</span></a></li>
@@ -120,7 +116,7 @@
 <li class="toc-suite"><a href="../../../editing/" aria-current="page"><span class="secno">17</span><span class="toc-name">editing/</span><span class="toc-count" title="122 test files">122</span></a></li>
 <li class="toc-suite"><a href="../../../encoding/"><span class="secno">18</span><span class="toc-name">encoding/</span><span class="toc-count" title="152 test files">152</span></a></li>
 <li class="toc-suite"><a href="../../../eventsource/"><span class="secno">19</span><span class="toc-name">eventsource/</span><span class="toc-count" title="63 test files">63</span></a></li>
-<li class="toc-suite"><a href="../../../fetch/"><span class="secno">20</span><span class="toc-name">fetch/</span><span class="toc-count" title="312 test files">312</span></a></li>
+<li class="toc-suite"><a href="../../../fetch/"><span class="secno">20</span><span class="toc-name">fetch/</span><span class="toc-count" title="311 test files">311</span></a></li>
 <li class="toc-suite"><a href="../../../hr-time/"><span class="secno">21</span><span class="toc-name">hr-time/</span><span class="toc-count" title="13 test files">13</span></a></li>
 <li class="toc-suite"><a href="../../../html-aam/"><span class="secno">22</span><span class="toc-name">html-aam/</span><span class="toc-count" title="25 test files">25</span></a></li>
 <li class="toc-suite"><a href="../../../html/"><span class="secno">23</span><span class="toc-name">html/</span><span class="toc-count" title="2,835 test files">2,835</span></a></li>
@@ -135,7 +131,7 @@
 <li class="toc-suite"><a href="../../../referrer-policy/"><span class="secno">32</span><span class="toc-name">referrer-policy/</span><span class="toc-count" title="1,387 test files">1,387</span></a></li>
 <li class="toc-suite"><a href="../../../resource-timing/"><span class="secno">33</span><span class="toc-name">resource-timing/</span><span class="toc-count" title="117 test files">117</span></a></li>
 <li class="toc-suite"><a href="../../../sanitizer-api/"><span class="secno">34</span><span class="toc-name">sanitizer-api/</span><span class="toc-count" title="23 test files">23</span></a></li>
-<li class="toc-suite"><a href="../../../selection/"><span class="secno">35</span><span class="toc-name">selection/</span><span class="toc-count" title="78 test files">78</span></a></li>
+<li class="toc-suite"><a href="../../../selection/"><span class="secno">35</span><span class="toc-name">selection/</span><span class="toc-count" title="74 test files">74</span></a></li>
 <li class="toc-suite"><a href="../../../service-workers/"><span class="secno">36</span><span class="toc-name">service-workers/</span><span class="toc-count" title="282 test files">282</span></a></li>
 <li class="toc-suite"><a href="../../../shadow-dom/"><span class="secno">37</span><span class="toc-name">shadow-dom/</span><span class="toc-count" title="183 test files">183</span></a></li>
 <li class="toc-suite"><a href="../../../streams/"><span class="secno">38</span><span class="toc-name">streams/</span><span class="toc-count" title="84 test files">84</span></a></li>
