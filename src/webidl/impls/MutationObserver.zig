@@ -27,7 +27,18 @@ const instance_bridge = dom_module.instance_bridge;
 const RegisteredObserver = dom_module.node_base.RegisteredObserverType;
 const RecordQueue = dom_module.observer_registrations.RecordQueue;
 const handles = dom_module.handles;
-const same_object = @import("same_object.zig");
+const NodeBase = dom_module.NodeBase;
+
+/// A weak reference to a node (refcount design 1.3 and 1.6, lane refcount5,
+/// step 5c): its tree node, its Instance and the Instance's slab generation.
+/// It never counts - DOM gives a MutationObserver's node list and transient
+/// node set as lists of weak references, and a registry that counted its
+/// node would keep it alive through its own registration. The node's own
+/// teardown takes it off the lists (`dom.observer_registrations.releaseList`
+/// runs before Node.deinit frees the NodeBase), and the generation is what
+/// tells a list a teardown sweep that frees nodes and observers in no order
+/// already took it.
+const WeakNode = dom_module.refcount.WeakRef(NodeBase);
 
 pub const State = MutationObserver.State;
 
@@ -48,11 +59,11 @@ pub const InternalState = struct {
 
     /// The nodes this observer is registered on - "a list of weak references
     /// to nodes". A node going away removes itself (through
-    /// `dom.observer_registrations`); the slab generation in each link covers
-    /// the teardown sweep, which frees nodes and observers in no order.
+    /// `dom.observer_registrations`); the slab generation in each reference
+    /// covers the teardown sweep, which frees nodes and observers in no order.
     ///
     /// Spec: https://dom.spec.whatwg.org/#mutationobserver-node-list
-    node_list: std.ArrayListUnmanaged(same_object.Link),
+    node_list: std.ArrayListUnmanaged(WeakNode),
 
     // The observer's own wrapper is held while any node lists it - its
     // pending activity (engine.keepPlatformObjectAlive). A node's registered
@@ -69,13 +80,18 @@ pub const InternalState = struct {
     // so a keep per observe() would hold the observer until its realm ended.
     kept_alive: bool = false,
 
-    /// The nodes that list a transient registered observer of this observer
-    /// (DOM "remove" step 15), weak like the node list. Notify step 6.3 takes
-    /// those registrations off again. The spec reaches them through the node
-    /// list; they are on the removed nodes, which it does not name, so the
-    /// observer keeps them itself, as Blink's MutationObserverRegistration
-    /// keeps its transient registration nodes.
-    transient_nodes: std.ArrayListUnmanaged(same_object.Link) = .empty,
+    /// The observer's transient node set: the nodes that list a transient
+    /// registered observer of this observer (DOM "remove" step 15), "a set
+    /// of weak references to nodes" like the node list
+    /// (https://dom.spec.whatwg.org/#mutationobserver-transient-node-set).
+    /// Notify step 6.3 takes those registrations off again. Weak, not
+    /// WebKit's HashSet<GCReachableRef<Node>> (MutationObserverRegistration
+    /// m_transientRegistrationNodes): a transient registration lasts until
+    /// the observer's next notify, which in Crane comes only with a record,
+    /// so a strong hold would keep every removed subtree of an observer that
+    /// records nothing; a removed node lives while anything in its tree is
+    /// held (refcount decision D1) and takes itself off the set when it goes.
+    transient_nodes: std.ArrayListUnmanaged(WeakNode) = .empty,
 
     /// Queue of pending mutation records. Its type is the mutation observer
     /// algorithms' (dom.observer_registrations), which reach it through
@@ -383,11 +399,15 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, opti
 
     // Step 8's other half: "Append a weak reference to target to this's node
     // list", once per node.
-    const target_in_list = for (internal.node_list.items) |link| {
-        if (link.instance == target and link.isLive()) break true;
+    const target_in_list = for (internal.node_list.items) |weak| {
+        if (namesNode(weak, target)) break true;
     } else false;
     if (!target_in_list) {
-        internal.node_list.append(internal.allocator, same_object.Link.to(target)) catch return error.OutOfMemory;
+        // Every node made through the WebIDL layer has its Instance beside
+        // its NodeBase; a WeakRef has nothing else to compare.
+        if (WeakNode.of(target_nodebase.?)) |weak| {
+            internal.node_list.append(internal.allocator, weak) catch return error.OutOfMemory;
+        }
     }
 
     // Registered: stay alive for as long as a node lists this observer.
@@ -399,9 +419,8 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, opti
 /// disconnect(), and the observer's own teardown.
 fn unregisterFromNodes(instance: *runtime.Instance, internal: *InternalState) void {
     const instance_ptr: *anyopaque = @ptrCast(instance);
-    for (internal.node_list.items) |link| {
-        if (!link.isLive()) continue;
-        const nodebase = instance_bridge.getNodeBase(@ptrCast(link.instance)) orelse continue;
+    for (internal.node_list.items) |weak| {
+        const nodebase = liveNode(weak) orelse continue;
         var i: usize = 0;
         while (i < nodebase.registered_observers.len) {
             const registered = nodebase.registered_observers.get(i) orelse break;
@@ -424,26 +443,24 @@ fn unregisterFromNodes(instance: *runtime.Instance, internal: *InternalState) vo
 fn removeTransientsWhere(instance: *runtime.Instance, internal: *InternalState, source: ?*const anyopaque) void {
     const instance_ptr: *anyopaque = @ptrCast(instance);
     var kept: usize = 0;
-    for (internal.transient_nodes.items) |link| {
+    for (internal.transient_nodes.items) |weak| {
         var still_listed = false;
-        if (link.isLive()) {
-            if (instance_bridge.getNodeBase(@ptrCast(link.instance))) |nodebase| {
-                var i: usize = 0;
-                while (i < nodebase.registered_observers.len) {
-                    const registered = nodebase.registered_observers.get(i) orelse break;
-                    const mine = registered.transient_source != null and
-                        handles.mutationObserverToAnyopaque(registered.observer) == instance_ptr;
-                    if (mine and (source == null or registered.transient_source == source)) {
-                        _ = nodebase.registered_observers.remove(i) catch break;
-                        continue;
-                    }
-                    if (mine) still_listed = true;
-                    i += 1;
+        if (liveNode(weak)) |nodebase| {
+            var i: usize = 0;
+            while (i < nodebase.registered_observers.len) {
+                const registered = nodebase.registered_observers.get(i) orelse break;
+                const mine = registered.transient_source != null and
+                    handles.mutationObserverToAnyopaque(registered.observer) == instance_ptr;
+                if (mine and (source == null or registered.transient_source == source)) {
+                    _ = nodebase.registered_observers.remove(i) catch break;
+                    continue;
                 }
+                if (mine) still_listed = true;
+                i += 1;
             }
         }
         if (still_listed) {
-            internal.transient_nodes.items[kept] = link;
+            internal.transient_nodes.items[kept] = weak;
             kept += 1;
         }
     }
@@ -457,10 +474,28 @@ fn transientAddedHook(observer: *runtime.Instance, generation: u64, node: *runti
     const state = observer.getState(State);
     const internal_ptr = state.own._internal orelse return;
     const internal: *InternalState = @ptrCast(@alignCast(internal_ptr));
-    for (internal.transient_nodes.items) |link| {
-        if (link.instance == node and link.isLive()) return;
+    for (internal.transient_nodes.items) |weak| {
+        if (namesNode(weak, node)) return;
     }
-    internal.transient_nodes.append(internal.allocator, same_object.Link.to(node)) catch {};
+    const nodebase = instance_bridge.getNodeBase(@ptrCast(node)) orelse return;
+    const weak = WeakNode.of(nodebase) orelse return;
+    internal.transient_nodes.append(internal.allocator, weak) catch {};
+}
+
+/// Whether `weak` still names `instance`: the same Instance, at the slab
+/// generation it was taken at. A field compare, not WeakRef.get's walk to
+/// the root: a list entry is taken off by its node's teardown.
+fn namesNode(weak: WeakNode, instance: *const runtime.Instance) bool {
+    return weak.instance == instance and runtime.SlabAllocator.generationOf(weak.instance) == weak.generation;
+}
+
+/// The tree node `weak` names while its node lives - by the slab generation,
+/// then through the instance bridge, which forgets a node in Node.deinit
+/// before its NodeBase is freed (the net a teardown sweep's order needs:
+/// docs/lessons/debugging-a-nodes-slab-generation-can-outlive-its-nodebase.md).
+fn liveNode(weak: WeakNode) ?*NodeBase {
+    if (runtime.SlabAllocator.generationOf(weak.instance) != weak.generation) return null;
+    return instance_bridge.getNodeBase(@ptrCast(@constCast(weak.instance)));
 }
 
 /// `dom.observer_registrations`: "notify mutation observers" step 6.3 - "for
