@@ -46,7 +46,10 @@
 //!   its endpoint's status.
 //! - `Options.load` says whether the request counts: `.fetch` (the
 //!   default; sendBeacon) does, `.ping` (CSP reports, a-ping) does not -
-//!   the browsers' majority, see `Load`.
+//!   the browsers' majority, see `Load` - and neither does `.deferred`
+//!   (fetchLater()'s sends, which have a quota of their own).
+//! - `startKept` starts a request its agent keeps from the start: sent as
+//!   its document goes, it reports to no one (dom.deferred_fetches).
 //!
 //! ## Lifetime
 //!
@@ -86,6 +89,7 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const fetch = @import("fetch");
+const platform = @import("platform");
 const global_settings = @import("global_settings.zig");
 const FetchGroup = @import("document_fetches.zig").FetchGroup;
 
@@ -109,6 +113,16 @@ pub const Load = enum {
     /// and SendViolationReport set keepalive and start through
     /// ResourceFetcher::StartLoad. No wpt.fyi file tests either.
     ping,
+    /// fetchLater()'s deferred fetch, sent (dom.deferred_fetches). Not
+    /// counted: it was admitted against the deferred-fetch quota (Fetch
+    /// 4.12.1) when it was queued, and Blink - the one engine that ships
+    /// fetchLater - starts it through its FetchLaterLoaderFactory in the
+    /// browser process, never through the ResourceFetcher whose
+    /// inflight_keepalive_bytes_ is this budget (FetchLaterManager::
+    /// FetchLater, third_party/blink/renderer/core/fetch/fetch_manager.cc at
+    /// f510e70030). Counted, ten 64 KiB deferred bodies sent as a document
+    /// goes would see nine refused.
+    deferred,
 };
 
 /// A slab-generation link to a global: whether `instance` is still the
@@ -147,7 +161,7 @@ pub const Reservation = struct {
     /// ResourceFetcher::StartLoad, WebKit CachedResource::load, Gecko
     /// FetchRequest via FetchUtil).
     pub fn take(global: *runtime.Instance, request: *const fetch.internal.InternalRequest, load: Load) error{OverQuota}!?Reservation {
-        if (load == .ping or !request.keepalive) return null;
+        if (load != .fetch or !request.keepalive) return null;
         // The check is HTTP-network-or-cache fetch's: a data:, blob: or
         // about: fetch never reaches it.
         const url = request.getUrl();
@@ -276,6 +290,20 @@ pub fn start(global: *runtime.Instance, request: *fetch.internal.InternalRequest
     return self;
 }
 
+/// Start fetching `request` for `global` as a fetch its agent keeps from the
+/// start (fetch.algorithms.AsyncFetch.keep): no one hears it, it reports to
+/// nothing of `global`'s realm, and it goes on after the realm retires - for
+/// a request sent as its document goes (dom.deferred_fetches). Takes
+/// `request` on every path; a counted load's budget is checked as `start`
+/// does, and its bytes leave the fetch group at once - the group's document
+/// is going.
+pub fn startKept(global: *runtime.Instance, request: *fetch.internal.InternalRequest, load: Load) Error!void {
+    const dispatch = (try start(global, request, .{ .load = load })) orelse return;
+    if (dispatch.active) |active| active.keep(platform.monotonicMillis());
+    dispatch.active = null;
+    dispatch.destroy();
+}
+
 /// Beacon's immediate acceptance: false for mixed content or budget
 /// rejection, true for a CSP block or a started fetch. Takes `request` on
 /// every path. `.ping` callers keep `start`'s asynchronous policy checks.
@@ -340,6 +368,7 @@ test "a reservation counts only a keepalive HTTP(S) request with a body, and onl
     try std.testing.expectEqual(@as(?Reservation, null), try Reservation.take(&global, request, .fetch));
     request.keepalive = true;
     try std.testing.expectEqual(@as(?Reservation, null), try Reservation.take(&global, request, .ping));
+    try std.testing.expectEqual(@as(?Reservation, null), try Reservation.take(&global, request, .deferred));
     request.body = .{ .bytes = "" };
     try std.testing.expectEqual(@as(?Reservation, null), try Reservation.take(&global, request, .fetch));
 }

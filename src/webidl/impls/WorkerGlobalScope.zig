@@ -183,6 +183,9 @@ pub const InternalState = struct {
         if (self.storage_key) |key| self.allocator.free(key);
         self.storage_key = null;
         self.reporting.deinit(self.allocator);
+        // Its fetch group's deferred fetch records still pending go unsent
+        // (dom.deferred_fetches: the unloading cleanup steps sent them).
+        self.fetch_group.deinit();
         if (self.indexed_db) |*factory| factory.edge.release(factory.owner);
         // A Performance or CacheStorage made lazily by native code may never
         // have been wrapped: one made while the realm's wrapper cache is torn
