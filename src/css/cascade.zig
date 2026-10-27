@@ -1325,6 +1325,7 @@ const Builder = struct {
             const assigned = preflight.assigned;
             const geometry_length = switch (l.info().grammar) {
                 .length_percentage_auto, .length_percentage_nonneg, .size, .max_size, .line_width, .gap, .signed_length, .fit_tolerance => true,
+                .column_size => true,
                 else => false,
             };
             // Q25/Q83/Q88: this is the single unavailable-input decision,
@@ -1535,8 +1536,9 @@ const Builder = struct {
             }
             return .{ .calculation = expression };
         }
-        if (l == .outline_width) {
+        if (l == .outline_width or l == .column_rule_width) {
             // UI 4 §3.4 computes width independently of outline-style:none.
+            // Multicol 1 §4.4 likewise retains an undrawn rule's width.
             const px: f64 = switch (v) {
                 .keyword => |k| switch (k) {
                     .thin => 1,

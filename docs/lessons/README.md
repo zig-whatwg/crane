@@ -371,6 +371,7 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Spec Compliance
 
+- [Register geometric grammars in the unavailable-input gate](spec-compliance-register-geometric-grammars-in-unavailable-input-gate.md) - Preserve unknown geometric lengths through candidate selection while retaining scalar fallback.
 - [Resolve automatic minimums without changing computed storage](spec-compliance-resolve-automatic-minimums-without-changing-computed-storage.md) - Resolve box-dependent CSSOM values at serialization while preserving the stored computed value.
 - [A new typed case must preserve legacy parser fallbacks](spec-compliance-a-new-typed-case-must-preserve-legacy-parser-fallbacks.md) - Share the new alternative without replacing the caller's existing recovery.
 - [Environment defaults distinguish absence from zero](spec-compliance-environment-defaults-distinguish-absence-from-zero.md) - Probe availability, parsing and value separately; zero and undefined are different environment answers.

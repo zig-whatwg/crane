@@ -292,6 +292,16 @@ pub const Longhand = enum(u16) {
     flex_line_count,
     order,
 
+    // CSS Multicol 1 §§4,6–7 and Multicol 2 §4.
+    column_count,
+    column_width,
+    column_height,
+    column_fill,
+    column_span,
+    column_rule_color,
+    column_rule_style,
+    column_rule_width,
+
     pub const count = @typeInfo(Longhand).@"enum".fields.len;
 
     /// The property name.
@@ -438,6 +448,8 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
 /// A longhand's grammar.
 pub const Grammar = enum {
     box,
+    column_count,
+    column_size,
     animation_list,
     individual_transform,
     flex_factor,
@@ -539,6 +551,14 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .flex_wrap, .inherited = false, .initial = Value.kw(.nowrap), .grammar = .box },
         .{ .longhand = .flex_line_count, .inherited = false, .initial = .{ .integer = 1 }, .grammar = .box },
         .{ .longhand = .order, .inherited = false, .initial = .{ .integer = 0 }, .grammar = .box },
+        .{ .longhand = .column_count, .inherited = false, .initial = Value.kw(.auto), .grammar = .column_count },
+        .{ .longhand = .column_width, .inherited = false, .initial = Value.kw(.auto), .grammar = .column_size },
+        .{ .longhand = .column_height, .inherited = false, .initial = Value.kw(.auto), .grammar = .column_size },
+        .{ .longhand = .column_fill, .inherited = false, .initial = Value.kw(.balance), .grammar = .keywords, .keywords = &.{ .auto, .balance, .balance_all } },
+        .{ .longhand = .column_span, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .all } },
+        .{ .longhand = .column_rule_color, .inherited = false, .initial = .{ .color = .current }, .grammar = .color },
+        .{ .longhand = .column_rule_style, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .hidden, .dotted, .dashed, .solid, .double, .groove, .ridge, .inset, .outset } },
+        .{ .longhand = .column_rule_width, .inherited = false, .initial = medium_width, .grammar = .line_width },
         .{ .longhand = .transition_property, .inherited = false, .initial = Value.kw(.all), .grammar = .animation_list },
         .{ .longhand = .transition_duration, .inherited = false, .initial = .{ .number = 0 }, .grammar = .animation_list },
         .{ .longhand = .transition_timing_function, .inherited = false, .initial = Value.kw(.ease), .grammar = .animation_list },
@@ -840,6 +860,8 @@ pub const Shorthand = enum(u8) {
     font,
     border_radius,
     flex_flow,
+    columns,
+    column_rule,
 
     pub fn name(self: Shorthand) []const u8 {
         return switch (self) {
@@ -903,6 +925,8 @@ pub const Shorthand = enum(u8) {
             .animation_range => &.{ .animation_range_start, .animation_range_end },
             .flex => &.{ .flex_grow, .flex_shrink, .flex_basis },
             .flex_flow => &.{ .flex_direction, .flex_wrap },
+            .columns => &.{ .column_width, .column_count, .column_height },
+            .column_rule => &.{ .column_rule_width, .column_rule_style, .column_rule_color },
             .transition => &.{ .transition_property, .transition_duration, .transition_timing_function, .transition_delay, .transition_behavior },
             .marker => &.{ .marker_start, .marker_mid, .marker_end },
             .mask => &@import("mask_values.zig").longhands,
@@ -965,6 +989,16 @@ const legacy_aliases = .{
     .{ "-webkit-border-top-right-radius", Property{ .longhand = .border_top_right_radius } },
     .{ "-webkit-border-bottom-right-radius", Property{ .longhand = .border_bottom_right_radius } },
     .{ "-webkit-border-bottom-left-radius", Property{ .longhand = .border_bottom_left_radius } },
+    // Q28/Q44, probe28 (1026p): Chrome + Safari share canonical storage.
+    .{ "-webkit-column-count", Property{ .longhand = .column_count } },
+    .{ "-webkit-column-width", Property{ .longhand = .column_width } },
+    .{ "-webkit-column-span", Property{ .longhand = .column_span } },
+    .{ "-webkit-column-gap", Property{ .longhand = .column_gap } },
+    .{ "-webkit-column-rule-color", Property{ .longhand = .column_rule_color } },
+    .{ "-webkit-column-rule-style", Property{ .longhand = .column_rule_style } },
+    .{ "-webkit-column-rule-width", Property{ .longhand = .column_rule_width } },
+    .{ "-webkit-columns", Property{ .shorthand = .columns } },
+    .{ "-webkit-column-rule", Property{ .shorthand = .column_rule } },
 };
 
 /// Names exposed by CSSStyleProperties as attributes, but not as separate
@@ -1243,6 +1277,16 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
     const def = l.info();
     switch (def.grammar) {
         .box => return @import("box_values.zig").consume(options, l, stream),
+        .column_count => {
+            // Multicol 2 §4.3: auto | <integer [1,∞]>.
+            if (takeKeyword(stream, &.{.auto})) |k| return Value.kw(k);
+            return @import("box_values.zig").consumeInteger(options, stream, 1);
+        },
+        .column_size => {
+            // Multicol 2 §§4.1–4.2: auto | <length [0,∞]>, no percentages.
+            if (takeKeyword(stream, &.{.auto})) |k| return Value.kw(k);
+            return lengthPercentage(options, stream, .{ .negative = false, .percent = false, .quirky = false });
+        },
         .flex_factor => return @import("flex_values.zig").consumeFactor(options, stream),
         .individual_transform => {
             if (takeKeyword(stream, &.{.none})) |keyword| return Value.kw(keyword);
@@ -1895,6 +1939,8 @@ fn append(options: ParseOptions, out: *std.ArrayList(Assignment), l: Longhand, v
 fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
     switch (s) {
         .flex_flow => return @import("box_values.zig").parseFlexFlow(options, stream, out),
+        .columns => return @import("box_multicol_values.zig").parseColumns(options, stream, out),
+        .column_rule => return borderSide(options, .column_rule_width, .column_rule_style, .column_rule_color, &.{.column_rule_width}, &.{.column_rule_style}, &.{.column_rule_color}, stream, out),
         .font_variant => return @import("font_variants.zig").parseShorthand(options, stream, out),
         .font => return @import("font_shorthand.zig").parse(options, stream, out),
         .flex => return @import("flex_values.zig").consumeShorthand(options, stream, out),
@@ -2387,6 +2433,8 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
     const ls = s.longhands();
     switch (s) {
         .flex_flow => return @import("box_values.zig").serializeFlexFlow(vs, out, allocator),
+        .columns => return @import("box_multicol_values.zig").serializeColumns(vs, out, allocator),
+        .column_rule => return @import("box_multicol_values.zig").serializeRule(vs, mode, out, allocator),
         .font_variant => return @import("font_variants.zig").serialize(vs, out, allocator),
         .font => return @import("font_shorthand.zig").serialize(vs, mode, out, allocator),
         .flex => return @import("flex_values.zig").serializeShorthand(vs, out, allocator),

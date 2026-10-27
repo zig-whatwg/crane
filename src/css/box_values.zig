@@ -74,7 +74,7 @@ fn consumeWrap(stream: *Stream) ?Value {
     return Value.kw(direction orelse return null);
 }
 
-fn consumeInteger(options: properties.ParseOptions, stream: *Stream, minimum: ?i32) Allocator.Error!?Value {
+pub fn consumeInteger(options: properties.ParseOptions, stream: *Stream, minimum: ?i32) Allocator.Error!?Value {
     // Values 4 §10.12: a calculation is rounded and range-clamped only
     // after computation. Pin representation bounds before the scalar cast.
     const low: f64 = @floatFromInt(minimum orelse std.math.minInt(i32));

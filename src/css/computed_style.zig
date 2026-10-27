@@ -268,7 +268,7 @@ pub fn initialComputed(l: Longhand) Value {
         // length whatever the style (the browsers' medium is 3px); only the
         // resolved value of an undrawn side is zero (serializeResolved).
         .border_top_width, .border_right_width, .border_bottom_width, .border_left_width, .border_block_start_width, .border_block_end_width, .border_inline_start_width, .border_inline_end_width => Value.px(3),
-        .outline_width => Value.px(3),
+        .outline_width, .column_rule_width => Value.px(3),
         .font_size => Value.px(16),
         .font_weight => .{ .number = 400 },
         // CSS Fonts 4 §2.3: font-width's initial normal computes to 100%.

@@ -236,6 +236,7 @@ pub const Keyword = enum(u16) {
     column_reverse,
     wrap_reverse,
     balance,
+    balance_all,
 
     /// The keyword's CSS spelling.
     pub fn name(self: Keyword) []const u8 {
