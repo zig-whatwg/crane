@@ -96,6 +96,8 @@ pub const ElementStyle = struct {
     cached: ?Cached = null,
     pseudo: std.ArrayList(PseudoCached) = .empty,
     background_hint: ?*BackgroundHint = null,
+    /// HTML 15.3.4: an HTML font element's color/face/size hint (font_hints.zig).
+    font_hint: ?*@import("font_hints.zig").FontHint = null,
 
     pub const InlineState = enum {
         /// Parse the attribute's value on the next read.
@@ -116,6 +118,7 @@ pub const ElementStyle = struct {
         if (self.inline_block) |*block| block.deinit();
         if (self.sibling_counts) |counts| self.allocator.destroy(counts);
         self.dropBackgroundHint();
+        self.dropFontHint();
         self.dropCache();
         self.pseudo.deinit(self.allocator);
         self.allocator.destroy(self);
@@ -133,6 +136,11 @@ pub const ElementStyle = struct {
     pub fn dropBackgroundHint(self: *ElementStyle) void {
         if (self.background_hint) |hint| hint.destroy();
         self.background_hint = null;
+    }
+
+    pub fn dropFontHint(self: *ElementStyle) void {
+        if (self.font_hint) |hint| hint.destroy();
+        self.font_hint = null;
     }
 
     /// Forget every cached style.

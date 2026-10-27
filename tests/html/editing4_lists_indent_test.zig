@@ -58,6 +58,13 @@ fn listStates() !void {
     // the default single-line container (toggle lists step 10, fix
     // disallowed ancestors).
     try harness.expectEval(page, "runCommands('<ol><li>[foo]</li></ol>', [['defaultparagraphseparator', 'div'], ['insertorderedlist', '']]); hostHTML()", "<div>foo</div>");
+    // A selection left part in a list and part in the default single-line
+    // container: "mixed ul" - state false, indeterm true - whichever
+    // container the separator names (editing/run/insertunorderedlist.html
+    // ?1001-2000; Chrome 156 and Safari 27 pass both).
+    const after_split = "[hostHTML(), document.queryCommandState('insertunorderedlist'), document.queryCommandIndeterm('insertunorderedlist'), getSelection().getRangeAt(0).endContainer.parentNode.nodeName].join()";
+    try harness.expectEval(page, "runCommands('<ul><li>foo<ul><li>b[ar</ul><li>b]az</ul>', [['defaultparagraphseparator', 'p'], ['insertunorderedlist', '']]); " ++ after_split, "<ul><li>foo</li><li>bar</li></ul><p>baz</p>,false,true,P");
+    try harness.expectEval(page, "runCommands('<ul><li>foo<ul><li>b[ar</ul><li>b]az</ul>', [['defaultparagraphseparator', 'div'], ['insertunorderedlist', '']]); " ++ after_split, "<ul><li>foo</li><li>bar</li></ul><div>baz</div>,false,true,DIV");
 }
 
 test "insertOrderedList and insertUnorderedList: state and indeterminacy" {

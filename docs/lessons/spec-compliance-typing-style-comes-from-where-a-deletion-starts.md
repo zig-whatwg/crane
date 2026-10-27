@@ -1,0 +1,15 @@
+# Spec Compliance: Typing style comes from where a deletion starts
+
+**Date**: 2026-10-27
+**Lesson**: After a deletion, the browsers give the next typed text the style in effect at the START of the deleted range, not the style of the first piece of text inside it. They also rebuild the deleted wrappers in their original nesting. The Editing spec's "record current states and values" does neither.
+
+**Why**: The Editing draft's "delete the selection" records the overrides from "the first formattable node effectively contained in the active range". Its own note says Firefox once did something like this and that the spec follows IE9. Blink instead saves its typing style from the start of the selection it deletes: DeleteSelectionCommand::SaveTypingStyleState builds `EditingStyle(selection_to_delete_.Start())` (third_party/blink/renderer/core/editing/commands/delete_selection_command.cc). The two rules agree when the range starts inside the styled text (`<b>[bar]</b>`). They disagree when it starts just before a wrapper (`abc[<b><i><img>de]f</i></b>`): the spec makes the next character bold and italic, and Chrome and Safari leave it plain.
+
+**What Happened**: Lane editing3 made the overrides real (editing1 had mocked them). Two existing expectations broke at once:
+- editing2's native insertText test, `<div>abc[<b><i><img>def]</i></b>ghi</div>` + insertText "X", expected `abcXghi` (Chrome and Firefox) and got `abc<i><b>X</b></i>ghi`.
+- WPT multitest.html ?9001-last, "delete, inserttext d,e,f on `<div>abc<b><i>[def]</i></b>ghi</div>`", expects `<b><i>def</i></b>` (all three browsers) and got `<i><b>def</b></i>`. Restoring in the spec's fixed command order (bold, then italic) wraps the new bold in the italic, because the bold wrapper itself is effectively contained when italic is applied.
+editing1's class-B rows (multitest.html ?9001-last, `abc[<b><i>...de]f`) had already shown the start-of-range rule in Chrome 156 and Safari 27 (wpt.fyi c645564b0e).
+
+**Fix**: overrides.zig `recordCurrentStatesAndValues` keeps the spec's steps 2-3 ("nothing formattable, nothing recorded"), but reads every value at the node where the deletion starts, as delete the selection was given it (delete.zig passes `original_start`; by step 18 the active range has been normalized into the wrappers). It also lists the toggles outermost specifying ancestor first, and record current overrides replays them in the order they were set, so restoring rebuilds the original nesting (each later wrapper goes inside the earlier ones, because set the selection's value does not wrap an element that holds the whole range). Both deviations are cited beside the code under golden rule 2 (no newer spec, browser majority).
+
+**Takeaway**: **When a spec records state "from the first node in the range", check what the engines key it on - Blink and WebKit key editing state on positions (where the caret or range starts), not on the contents. And when state is restored as a sequence of wrapping actions, the order of the actions decides the nesting.**

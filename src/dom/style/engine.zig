@@ -64,6 +64,7 @@ const ua_sheet = @import("ua_sheet.zig");
 const element_style = @import("element_style.zig");
 const environment_variables = @import("environment_variables.zig");
 pub const resource_loading = @import("resource_loading.zig");
+const font_hints = @import("font_hints.zig");
 pub const available_images = @import("available_images.zig");
 
 const ComputedStyle = css.computed_style.ComputedStyle;
@@ -1357,8 +1358,12 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
     var name_count: usize = 0;
     const background_eligible = pseudo == null and is_html and resource_loading.hasBackgroundHint(local);
     var background: ?[]const u8 = null;
+    // HTML 15.3.4: an HTML font element's color, face and size hints.
+    const font_eligible = pseudo == null and is_html and std.mem.eql(u8, local, "font");
+    var font_attributes: font_hints.Attributes = .{};
     var it = data.attributeIterator();
     while (it.next()) |entry| {
+        if (font_eligible and entry.namespace_uri == null) font_attributes.take(entry.local_name, entry.value);
         if (background_eligible and entry.namespace_uri == null and std.mem.eql(u8, entry.local_name, "background")) background = entry.value;
         if (entry.namespace_uri != null or name_count == names_storage.len) continue;
         const n = entry.local_name;
@@ -1387,6 +1392,9 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
     }
     if (background_eligible) if (try resource_loading.backgroundHint(element, state, background)) |hint| {
         try res.matched.append(res.allocator, .{ .block = hint, .source = .{ .origin = .presentational_hint, .tree_scope = .{ .serial = own_scope } } });
+    };
+    if (font_eligible) if (try font_hints.fontHint(state, font_attributes)) |hint| {
+        try res.matched.append(res.allocator, .{ .block = hint, .source = .{ .origin = .presentational_hint } });
     };
 
     // The author origin (CSS Scoping 3): the sheets of the element's own
