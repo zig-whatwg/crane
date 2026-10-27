@@ -81,21 +81,23 @@ fn executeCommandImpl(
     value: ?[]const u8,
 ) !CommandResult {
     return switch (command) {
-        // Formatting commands
-        .bold => formatting.executeBold(allocator, document),
-        .italic => formatting.executeItalic(allocator, document),
-        .underline => formatting.executeUnderline(allocator, document),
-        .strikeThrough => formatting.executeStrikeThrough(allocator, document),
-        .subscript => formatting.executeSubscript(allocator, document),
-        .superscript => formatting.executeSuperscript(allocator, document),
-        .removeFormat => formatting.executeRemoveFormat(allocator, document),
-
-        // Font commands
-        .fontName => formatting.executeFontName(allocator, document, value),
-        .fontSize => formatting.executeFontSize(allocator, document, value),
-        .foreColor => formatting.executeForeColor(allocator, document, value),
-        .backColor => formatting.executeBackColor(allocator, document, value),
-        .hiliteColor => formatting.executeHiliteColor(allocator, document, value),
+        // The inline formatting commands are the html module's
+        // (src/html/execcommand/inline.zig, on the generated interfaces,
+        // which html_core cannot reach); Document.execCommand dispatches them
+        // there before this executor, so they never arrive here.
+        .bold,
+        .italic,
+        .underline,
+        .strikeThrough,
+        .subscript,
+        .superscript,
+        .removeFormat,
+        .fontName,
+        .fontSize,
+        .foreColor,
+        .backColor,
+        .hiliteColor,
+        => .{ .success = false },
 
         // Alignment commands
         .justifyLeft => formatting.executeJustify(allocator, document, .left),
@@ -445,6 +447,13 @@ fn getOrCreateEditorState(allocator: std.mem.Allocator, document: DocumentHandle
         return error.OutOfMemory;
     }
     return new_state;
+}
+
+/// The editor state of `document` (a Document instance), made on first use
+/// as `getOrCreateEditorState` does: the html module's execcommand reads the
+/// CSS styling flag and the Document's state and value overrides here.
+pub fn editorStateOf(allocator: std.mem.Allocator, document: DocumentHandle) error{OutOfMemory}!*EditorState {
+    return getOrCreateEditorState(allocator, document);
 }
 
 /// `document`'s editor state, or null before its first editing command.

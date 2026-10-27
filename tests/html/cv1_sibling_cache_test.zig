@@ -13,6 +13,10 @@ const Before = struct {
     // Row117 MERGE-MAIN REQUIRED ruling (2026-10-24): this independent
     // field is present on both sides; the bound measures sibling_counts only.
     background_hint: @FieldType(state.ElementStyle, "background_hint"),
+    // Lane editing3 (2026-10-26), by the same precedent: HTML 15.3.4's font
+    // presentational hint cache is another independent field present on
+    // both sides (integrator grant).
+    font_hint: @FieldType(state.ElementStyle, "font_hint"),
     cached: @FieldType(state.ElementStyle, "cached"),
     pseudo: @FieldType(state.ElementStyle, "pseudo"),
 };
