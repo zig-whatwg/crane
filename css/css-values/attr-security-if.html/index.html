@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../css/"><code>css/</code></a></li><li><a href="../../../css/css-values/"><code>css-<wbr>values/</code></a></li><li aria-current="page"><code>attr-<wbr>security-<wbr>if.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>attr-<wbr>security-<wbr>if.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="css/css-values/attr-security-if.html">
-<p class="figures-main"><span class="fg-pass">9</span><span class="fg-of"> / 14</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>5</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">14</span><span class="fg-of"> / 14</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-904bbf8979</code>, <span class="nowrap">26 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/904bbf8979"><code>904bbf8979</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-25ded92d10</code>, <span class="nowrap">27 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/25ded92d10"><code>25ded92d10</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-values/attr-security-if.html"><code>css/<wbr>css-<wbr>values/<wbr>attr-<wbr>security-<wbr>if.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,26 +35,26 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-03da7049"><details><summary><span class="mark">FAIL</span><span class="sub-name">&#39;--x: image-set(if(style(--true): attr(data-foo);))&#39; with data-foo=&quot;https://does-not-exist.test/404.png&quot;</span></summary><pre class="msg">assert_equals: expected &quot;image-set(\&quot;https://does-not-exist.test/404.png\&quot;)&quot; but got &quot;image-set(attr(data-foo))&quot;</pre></details><a class="self" href="#s-03da7049" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-03da7049"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;--x: image-set(if(style(--true): attr(data-foo);))&#39; with data-foo=&quot;https://does-not-exist.test/404.png&quot;</span></div><a class="self" href="#s-03da7049" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-d58872c1"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;background-image: image-set(if(style(--true): attr(data-foo);))&#39; with data-foo=&quot;https://does-not-exist.test/404.png&quot;</span></div><a class="self" href="#s-d58872c1" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-ebc874af"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;background-image: image-set(
                 if(style(--true): url(https://does-not-exist-2.test/404.png);
                    else: attr(data-foo);))&#39; with data-foo=&quot;https://does-not-exist-2.test/404.png&quot;</span></div><a class="self" href="#s-ebc874af" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-afb6f9b8"><details><summary><span class="mark">FAIL</span><span class="sub-name">&#39;background-image: image-set(
-                if(style(--some-string): url(https://does-not-exist.test/404.png);))&#39; with data-foo=&quot;https://does-not-exist.test/404.png&quot;</span></summary><pre class="msg">assert_equals: expected &quot;none&quot; but got &quot;image-set(url(\&quot;https://does-not-exist.test/404.png\&quot;) 1dppx)&quot;</pre></details><a class="self" href="#s-afb6f9b8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-afb6f9b8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;background-image: image-set(
+                if(style(--some-string): url(https://does-not-exist.test/404.png);))&#39; with data-foo=&quot;https://does-not-exist.test/404.png&quot;</span></div><a class="self" href="#s-afb6f9b8" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-6318c052"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;background-image: image-set(
                 if(style(--condition-val: attr(data-foo type(*))): url(https://does-not-exist.test/404.png);))&#39; with data-foo=&quot;3&quot;</span></div><a class="self" href="#s-6318c052" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-0348eafe"><details><summary><span class="mark">FAIL</span><span class="sub-name">&#39;background-image: image-set(
+<li class="sub s-pass" id="s-0348eafe"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;background-image: image-set(
                 if(style(--condition-val: attr(data-foo type(*))): url(https://does-not-exist.test/404.png);
                    style(--true): url(https://does-not-exist.test/404.png);
-                   else: url(https://does-not-exist.test/404.png);))&#39; with data-foo=&quot;1&quot;</span></summary><pre class="msg">assert_equals: expected &quot;none&quot; but got &quot;image-set(url(\&quot;https://does-not-exist.test/404.png\&quot;) 1dppx)&quot;</pre></details><a class="self" href="#s-0348eafe" aria-label="Link to this subtest">&para;</a></li>
+                   else: url(https://does-not-exist.test/404.png);))&#39; with data-foo=&quot;1&quot;</span></div><a class="self" href="#s-0348eafe" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-4743fb21"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;background-image: image-set(if(style(--true): url(https://does-not-exist.test/404.png);
                             style(--condition-val): url(https://does-not-exist.test/404.png);
                             else: url(https://does-not-exist.test/404.png);))&#39; with data-foo=&quot;attr(data-foo type(*))&quot;</span></div><a class="self" href="#s-4743fb21" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-e0b34080"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;background-image: image-set(
                 if(style(--condition-val: if(style(--true): attr(data-foo type(*));)): url(https://does-not-exist.test/404.png);))&#39; with data-foo=&quot;3&quot;</span></div><a class="self" href="#s-e0b34080" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-a3c0cd25"><details><summary><span class="mark">FAIL</span><span class="sub-name">&#39;--x: image-set(if(style(--condition-val: if(style(--true): attr(data-foo type(*));)): url(https://does-not-exist.test/404.png);))&#39; with data-foo=&quot;3&quot;</span></summary><pre class="msg">assert_equals: expected &quot;image-set(url(https://does-not-exist.test/404.png))&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-a3c0cd25" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1fd582a9"><details><summary><span class="mark">FAIL</span><span class="sub-name">&#39;--x: image-set(if(style(--condition-val &gt;= attr(data-foo type(*))): url(https://does-not-exist.test/404.png);))&#39; with data-foo=&quot;3&quot;</span></summary><pre class="msg">assert_equals: expected &quot;image-set(url(https://does-not-exist.test/404.png))&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-1fd582a9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a3c0cd25"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;--x: image-set(if(style(--condition-val: if(style(--true): attr(data-foo type(*));)): url(https://does-not-exist.test/404.png);))&#39; with data-foo=&quot;3&quot;</span></div><a class="self" href="#s-a3c0cd25" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-1fd582a9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;--x: image-set(if(style(--condition-val &gt;= attr(data-foo type(*))): url(https://does-not-exist.test/404.png);))&#39; with data-foo=&quot;3&quot;</span></div><a class="self" href="#s-1fd582a9" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-45fcb67d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;background-image: image-set(
                 if(style(--condition-val &gt;= attr(data-foo type(*))): url(https://does-not-exist.test/404.png);))&#39; with data-foo=&quot;3&quot;</span></div><a class="self" href="#s-45fcb67d" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-2d0210b6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&#39;background-image: image-set(
