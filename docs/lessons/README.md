@@ -667,6 +667,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Refresh aliases with their realm's interface objects](codegen-refresh-aliases-with-their-realms-interface-objects.md) - An alias names the realm's interface object, not the current contents of another global property.
 
 ### Testing
+- [A subset variant can skip a row's commands but not its queries](testing-a-subset-variant-can-skip-a-rows-commands-but-not-its-queries.md) - In the editing suites a variant boundary can cut a row between its commands and its queries; a lost after-query there must be compared with the row's before-query before anyone calls it a regression.
 - [A connectedCallback is a deterministic collection point](testing-a-connectedcallback-is-a-deterministic-collection-point.md) - A connectedCallback inside a native call's [CEReactions] scope is a deterministic collection point between a snapshot and its write-back - use it to make a weak-list use-after-free go red on the first run.
 - [Enum Capacity and Container Layout Are Separate Invariants](testing-enum-capacity-and-container-layout.md) - Audit ID storage and reflected counts, then measure containing types instead of inferring their size from the tag.
 - [Bind WPT Evidence to the Served Source Hashes](testing-bind-wpt-evidence-to-served-source-hashes.md) - Match the actual served sources and frozen artifacts; retain original receipts and label authorized evidence reuse.
