@@ -212,6 +212,29 @@ test "a nullable and a variadic union argument check each value's restricted arm
     );
 }
 
+test "an object no other arm takes converts to the numeric arm (WebIDL 3.2.25 step 17)" {
+    const page = try Page.open();
+    defer page.close();
+    // CSSNumberish has an interface arm, so an object that is no
+    // CSSNumericValue was refused outright; steps 15-18 give it to the
+    // string, numeric or boolean arm - here the numeric one, through ToNumber.
+    try page.expectOk(prelude ++
+        \\const seven = (() => { try { return P.one(valueOf(7)); } catch (e) { return String(e); } })();
+        \\if (seven !== 7) failures.push("one(valueOf 7) = " + seven);
+        \\const sum = (() => { try { return P.many(1, valueOf(2)); } catch (e) { return String(e); } })();
+        \\if (sum !== 3) failures.push("many(1, valueOf 2) = " + sum);
+        \\if (P.maybe(valueOf(4)) !== 4) failures.push("maybe(valueOf 4)");
+        \\// What its valueOf throws is the call's exception.
+        \\const mine = new RangeError("mine");
+        \\let got;
+        \\try { P.one({ valueOf() { throw mine; } }); } catch (e) { got = e; }
+        \\if (got !== mine) failures.push("one(throwing valueOf) threw " + got);
+        \\// Still restricted.
+        \\if (!rejects(() => P.one(valueOf(NaN)))) failures.push("one(valueOf NaN)");
+        \\failures.join("; ") || "ok"
+    );
+}
+
 test "an unrestricted double arm still takes NaN and the infinities" {
     const page = try Page.open();
     defer page.close();

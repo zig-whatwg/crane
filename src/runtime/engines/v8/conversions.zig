@@ -2279,6 +2279,27 @@ fn convertValueAs(
                     // exception propagates (ExceptionPending).
                     const str_idx = string_idx.?;
                     return @unionInit(T, fields[str_idx].name, try fromV8Value(fields[str_idx].type, allocator, isolate, context, value));
+                } else if (comptime string_idx == null and dict_idx == null and function_idx == null and
+                    sequence_idx == null and object_idx == null and anyopaque_idx == null and
+                    (number_idx != null or boolean_idx != null))
+                {
+                    // An object that is no platform object an arm names -
+                    // {valueOf() {...}} for CSSNumberish (double or
+                    // CSSNumericValue) - in a union with no string type and
+                    // none of step 11's arms (WebIDL 3.2.25): step 5.1 took
+                    // no arm, steps 6-11 have nothing to try, and step 15
+                    // has no string type. Step 17: "If types includes a
+                    // numeric type, then return the result of converting V
+                    // to that numeric type" - ToNumber, so the valueOf runs
+                    // and what it throws propagates (ExceptionPending), and a
+                    // restricted arm still refuses NaN (`requireFiniteArm`).
+                    // Step 18 is the boolean arm's. It was a TypeError.
+                    if (number_idx) |idx| {
+                        return @unionInit(T, fields[idx].name, try fromV8Value(fields[idx].type, allocator, isolate, context, value));
+                    }
+                    if (boolean_idx) |idx| {
+                        return @unionInit(T, fields[idx].name, try fromV8Value(fields[idx].type, allocator, isolate, context, value));
+                    }
                 } else if (comptime dict_idx == null) {
                     // A union with one of step 11's arms as well, but no
                     // dictionary: as before (a toString attempt, then the
