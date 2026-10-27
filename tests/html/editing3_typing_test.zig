@@ -283,3 +283,18 @@ fn plaintextOnlyInsertHtml() !void {
 test "insertHTML in a plaintext-only host inserts the text, never runs scripts" {
     try helpers.onFreshThread(plaintextOnlyInsertHtml);
 }
+
+fn designModeInsertHtml() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    // In design mode a plaintext-only element still takes HTML
+    // (plaintext-only-in-designMode.html; all three browsers).
+    try page.run("document.body.innerHTML = '<div id=p contenteditable=plaintext-only>x</div>'; document.designMode = 'on'; getSelection().selectAllChildren(p); document.execCommand('insertHTML', false, '<b>ABC</b>');");
+    const actual = try page.evaluate("p.innerHTML");
+    defer std.testing.allocator.free(actual);
+    try std.testing.expectEqualStrings("<b>ABC</b>", actual);
+}
+
+test "insertHTML in design mode keeps the HTML even in a plaintext-only element" {
+    try helpers.onFreshThread(designModeInsertHtml);
+}

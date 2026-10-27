@@ -159,6 +159,13 @@ fn isHtmlDocument(document: *Instance) bool {
 }
 
 fn hostIsPlaintextOnly(edit: *Edit) !bool {
+    // In design mode the whole document is rich text: a plaintext-only
+    // element inside still takes the HTML (editing/plaintext-only/
+    // plaintext-only-in-designMode.html "should not suppress style of
+    // inserting HTML": Chrome 156, Firefox 158 and Safari 27 pass).
+    var mode = try interfaces.Document.get_designMode(edit.document);
+    defer mode.deinit(edit.document.ctx.allocator);
+    if (std.mem.eql(u8, mode.asSlice(), "on")) return false;
     const start = (try edit.rangeStart()) orelse return false;
     const host = (try common.editingHostOf(start.node)) orelse return false;
     if (!try common.isHtmlElement(host)) return false;
