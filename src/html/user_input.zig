@@ -495,9 +495,20 @@ pub fn pointerMove(pointer: *Pointer, target: *Instance, modifiers: Modifiers) v
 /// The first click-focusable inclusive ancestor of `target`, or null.
 fn clickFocusableAncestor(target: *Instance) ?*Instance {
     var current: ?*Instance = target;
-    while (current) |n| : (current = parentOf(n)) {
-        if (!isElement(n)) return null;
-        if (focus.isClickFocusable(n)) return n;
+    while (current) |n| {
+        if (isElement(n)) {
+            if (focus.isClickFocusable(n)) return n;
+            // HTML 6.6.4, get the focusable area: a delegating host can
+            // supply a click target even though it is not focusable itself.
+            if (focus.getFocusableArea(n, .click)) |area| return area;
+        }
+        // Hit-test ancestry follows the flat tree, including assigned slots
+        // and closed shadow roots (Blink MouseEventManager focus handling).
+        current = dom.shadow_dom_algorithms.assignedSlotOf(n) orelse parentOf(n);
+        if (current) |p| {
+            if (p.stateAs(interfaces.ShadowRoot.State) != null)
+                current = interfaces.ShadowRoot.get_host(p) catch null;
+        }
     }
     return null;
 }

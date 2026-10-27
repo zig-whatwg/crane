@@ -13,12 +13,6 @@
 //! Stated deviations:
 //!   * "Being rendered" has no layout to answer it: computed display and
 //!     flat-tree membership answer whether rendering exists or is delegated.
-//!   * Focus navigation scopes are the document's tree only: shadow trees,
-//!     slots and delegatesFocus are not flattened into the sequential focus
-//!     navigation order. Explicit focus and blur do follow delegatesFocus.
-//!   * Rendering-time fixup retains the existing no-blur deviation. Focus
-//!     actions validate their target, but their bookkeeping, script reads,
-//!     and selector matching only observe the designation (HTML 6.6.2–6.6.6).
 //!   * Every top-level traversable is taken to have system focus.
 //!
 //! Spec: https://html.spec.whatwg.org/multipage/interaction.html#focus
@@ -230,6 +224,12 @@ pub fn isFocusableArea(element: *Instance) bool {
     if (!isElement(element)) return false;
     if (element.stateAs(interfaces.HTMLAreaElement.State) != null) return isImageMapAreaFocusable(element);
     if (tabindexValue(element) == null and !isFocusableByDefault(element)) return false;
+    // HTML 6.6.2: a slot without a box owns a navigation scope but is not
+    // itself a focusable area. A styled slot that generates a box can be.
+    if (element.vtable == &interfaces.HTMLSlotElement.vtable) {
+        const style = (dom.style.engine.computedStyle(element, null) catch null) orelse return false;
+        if (style.display().box == .contents) return false;
+    }
     // HTML 6.6.2, first row: a host that delegates focus is not itself a
     // focusable area, even with a tabindex. Focusing step 1 finds its delegate.
     if (delegatingShadowRoot(element) != null) return false;
@@ -276,17 +276,24 @@ pub fn designatedAreaOf(document: *Instance) ?*Instance {
 
 /// Apply rendering-time focus fixup and return the document's focused area.
 ///
-/// HTML "focus fixup rule": "When the designated focused area of the
-/// document is removed from that Document in some way (e.g. it stops being a
-/// focusable area, it is removed from the DOM, it becomes inert, etc.),
-/// designate the Document's viewport to be the new focused area of the
-/// document." The spec runs it as a state change in "update the rendering";
-/// this helper retains the existing no-blur deviation. Update-the-rendering
-/// step 17 calls it; designation reads never repair focus. This reverses
-/// row61 Q16's provisional lazy script-read fixup, as required by Q42/Q43.
+/// HTML update-the-rendering step 17 focuses the viewport when its focused
+/// area stops being focusable, then clears the navigation focus flag.
+/// Designation reads never repair focus. Blink Document's
+/// ClearFocusedElementIfNeeded/TimerFired at 8d5ba1795f0c50b90072399d0403389df6eebbd6
+/// defers an element.blur() until style has updated. Use this existing
+/// rendering opportunity and focus update steps, without a new timer.
 pub fn focusedAreaOf(document: *Instance) ?*Instance {
     if (dom.focused_area.get(document) == null) return null;
-    if (designatedAreaOf(document)) |element| if (isFocusableArea(element)) return element;
+    if (designatedAreaOf(document)) |element| {
+        if (isFocusableArea(element)) return element;
+        const generation = runtime.SlabAllocator.generationOf(document);
+        focusUpdateSteps(focusChain(element), focusChain(document), document);
+        // A blur listener can navigate or choose a new focus target. The
+        // existing update steps preserve that target; do not clear it here.
+        if (runtime.SlabAllocator.generationOf(document) != generation) return null;
+        if (windowOf(document)) |window| dom.navigation_api.setFocusChanged(window, false);
+        return designatedAreaOf(document);
+    }
     dom.focused_area.set(document, null);
     // HTML removing steps, applied lazily with this focus fixup: removal
     // clears the navigation flag rather than counting as a focus update.
@@ -695,8 +702,12 @@ pub fn unfocusingSteps(old_focus_target_in: *Instance) void {
         if (entry == old_focus_target) break true;
     } else false;
     if (!in_chain) return;
-    // Step 6: "If old focus target is not a focusable area, then return."
-    if (isElement(old_focus_target) and !isFocusableArea(old_focus_target)) return;
+    // Browsers over step 6: an explicit blur still unfocuses a designated
+    // element whose tabindex was just removed. All three pass 15/15 in
+    // shadow-dom/focus/focus-method-delegatesFocus.html at WPT ffc4686d11.
+    // Blink Element::blur (8d5ba1795f0c50b90072399d0403389df6eebbd6) checks
+    // AdjustedFocusedElementInTreeScope, without checking IsFocusable.
+    // Step 5 above already established membership in the current chain.
     // Steps 7-8: the top document has system focus: run the focusing steps
     // for its viewport.
     const top_document = old_chain.last() orelse return;
@@ -914,92 +925,10 @@ fn following(node: *Instance, root: *Instance) ?*Instance {
     return form_associated.nextInTree(node, root, false);
 }
 
-/// `document`'s sequential focus navigation order (stated deviation: its
-/// tree only), into `out`: positive tabindex values first, ascending, then
-/// the rest in tree order; how many.
-fn sequentialOrder(document: *Instance, out: []*Instance) usize {
-    // This entire walk uses native reads, with no script or event dispatch.
-    // Borrow group names/nodes only here; defer destroys the summary before
-    // any navigation candidate can be focused and run arbitrary script.
-    var radios = @import("forms/radio_focus.zig").Navigation.init(document.ctx.allocator, document);
-    defer radios.deinit();
-    var count: usize = 0;
-    // Positive tabindex values, in ascending order, ties in tree order: one
-    // pass per distinct value would be quadratic, so collect then sort.
-    var positives: [512]struct { value: i32, index: usize, element: *Instance } = undefined;
-    var positive_count: usize = 0;
-    var tree_index: usize = 0;
-    var node = following(document, document);
-    while (node) |n| : (node = following(n, document)) {
-        tree_index += 1;
-        if (!isElement(n) or !(radios.eligibility(n) orelse isSequentiallyFocusable(n))) continue;
-        const value = tabindexValue(n) orelse 0;
-        if (value > 0 and positive_count < positives.len) {
-            positives[positive_count] = .{ .value = value, .index = tree_index, .element = n };
-            positive_count += 1;
-        }
-    }
-    const Positive = @TypeOf(positives[0]);
-    std.sort.pdq(Positive, positives[0..positive_count], {}, struct {
-        fn lessThan(_: void, a: Positive, b: Positive) bool {
-            return if (a.value != b.value) a.value < b.value else a.index < b.index;
-        }
-    }.lessThan);
-    for (positives[0..positive_count]) |p| {
-        if (count == out.len) return count;
-        out[count] = p.element;
-        count += 1;
-    }
-    node = following(document, document);
-    while (node) |n| : (node = following(n, document)) {
-        if (!isElement(n) or !(radios.eligibility(n) orelse isSequentiallyFocusable(n))) continue;
-        if ((tabindexValue(n) orelse 0) > 0) continue;
-        if (count == out.len) return count;
-        out[count] = n;
-        count += 1;
-    }
-    return count;
-}
-
 /// HTML "sequential navigation search algorithm" for `starting_point` in
 /// `document` (null: the document itself, the navigable row).
 fn sequentialSearch(document: *Instance, starting_point: ?*Instance, direction: Direction) ?*Instance {
-    var order: [1024]*Instance = undefined;
-    const count = sequentialOrder(document, &order);
-    const items = order[0..count];
-    var candidate: ?*Instance = null;
-    if (starting_point) |start| {
-        const position = std.mem.indexOfScalar(*Instance, items, start);
-        if (position) |p| {
-            // The "sequential" selection mechanism.
-            candidate = switch (direction) {
-                .forward => if (p + 1 < items.len) items[p + 1] else null,
-                .backward => if (p > 0) items[p - 1] else null,
-            };
-        } else {
-            // The "DOM" selection mechanism: the suitable area nearest after
-            // (before) the starting point in tree order.
-            var node = following(start, document);
-            if (direction == .forward) {
-                while (node) |n| : (node = following(n, document)) {
-                    if (std.mem.indexOfScalar(*Instance, items, n) != null) {
-                        candidate = n;
-                        break;
-                    }
-                }
-            } else {
-                var last: ?*Instance = null;
-                var walk = following(document, document);
-                while (walk) |n| : (walk = following(n, document)) {
-                    if (n == start) break;
-                    if (std.mem.indexOfScalar(*Instance, items, n) != null) last = n;
-                }
-                candidate = last;
-            }
-        }
-    } else if (items.len > 0) {
-        candidate = if (direction == .forward) items[0] else items[items.len - 1];
-    }
+    const candidate = @import("focus_navigation.zig").search(document, starting_point, direction);
     // Step 2: a navigable container with a content navigable: search inside.
     if (candidate) |c| {
         if (isNavigableContainer(c)) {
@@ -1017,6 +946,10 @@ fn sequentialSearch(document: *Instance, starting_point: ?*Instance, direction: 
 /// of the top-level traversable `document` is in.
 pub fn navigateSequentially(document: *Instance, direction: Direction) void {
     // Step 1: the starting point.
+    // A removal-stable starting point needs a document-owned live Range;
+    // tracked separately as "SEQUENTIAL FOCUS NAVIGATION STARTING POINT"
+    // in tmp/plans/feature-queue.md (row 129 Q7). Until then the focused
+    // area, or the document start, supplies the point without new ownership.
     var starting_point = currentlyFocusedArea(document);
     if (starting_point.stateAs(interfaces.HTMLOptionElement.State) != null) {
         const picker = @import("forms/select_picker.zig");
