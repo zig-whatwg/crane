@@ -831,6 +831,9 @@ EXCLUDE = [
      'click at the centre of a one-glyph <i>: wor|ld vs worl|d comes from which half of the laid-out glyph is hit'),
     ('selection/caret-position-should-be-correct-while-moveup-movedown.html',
      'Selection.modify by line/paragraph must keep the caret\'s inline position across laid-out lines (horizontal and vertical writing modes)'),
+    # Box geometry (the user's ruling 2026-10-27, after Codex row 127's Q52).
+    ('css/selectors/has-focus-display-change.html',
+     'asserts a nonzero getBoundingClientRect().height before Tab: box geometry'),
     # Outside the user's 0.1 line (a ratified spec and >= 1 shipping browser): it
     # asserts document.permissionsPolicy.features(), which no browser ships
     # (wpt.fyi 0/1 in Chrome, Firefox and Safari; Chrome exposes only the old
