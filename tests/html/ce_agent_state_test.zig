@@ -20,7 +20,7 @@ fn realmIsLive(realm: u32) bool {
     return realm != 99;
 }
 const Returns = @import("html_core").custom_element_returns.PendingReturns(u32, Root);
-const State = AgentState(u32, u32, Payload, Root, Returns, realmIsLive);
+const State = AgentState(u32, u32, Payload, Root, Root, Returns, realmIsLive);
 fn acquire(counts: *Counts, _: u32) !Root {
     counts.held += 1;
     return .{ .counts = counts };
