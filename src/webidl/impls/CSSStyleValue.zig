@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const css = @import("css");
 const CSSStyleValue = interfaces.CSSStyleValue;
 
 pub const State = CSSStyleValue.State;
@@ -57,6 +58,24 @@ pub fn call_static_parse(instance: *runtime.Instance, property: runtime.USVStrin
 
 /// Stringifier - serialize method for toString
 pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
+    // CSS Typed OM §6: dispatch on the reified value's concrete type.
+    // Subclass slots are reached only through their generated interface.
+    if (instance.stateAs(interfaces.CSSKeywordValue.State) != null) {
+        const value = try interfaces.CSSKeywordValue.get_value(instance);
+        defer instance.ctx.allocator.free(value);
+        // Chrome 156 and Safari 27 both pass cssKeywordValue.tentative.html's
+        // escaped identifiers (aligned wpt.fyi, 2026-10-27). Typed OM §6.2's
+        // raw-string wording predates this shared browser behavior.
+        return css.serialize.serializeIdentifier(instance.ctx.allocator, value);
+    }
+    if (instance.stateAs(interfaces.CSSUnitValue.State) != null) {
+        const unit = try interfaces.CSSUnitValue.get_unit(instance);
+        defer instance.ctx.allocator.free(unit);
+        return css.typed_om.numeric.serialize(instance.ctx.allocator, .{
+            .value = try interfaces.CSSUnitValue.get_value(instance),
+            .unit = css.typed_om.numeric.parseUnit(unit) orelse return error.TypeError,
+        });
+    }
     // TODO: CSS Typed OM "serialize a CSSStyleValue" (https://drafts.css-houdini.org/css-typed-om-1/#stylevalue-serialization). Until then, the placeholder - as a copy: the binding frees
     // the string toString() returns, and freeing a literal faulted in
     // Allocator.free's memset.

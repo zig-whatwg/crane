@@ -1,73 +1,46 @@
-//! Implementation for CSSUnitValue interface
-
+//! CSS Typed OM 1 §4.3.3: one numeric value in an existing CSS unit.
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const CSSUnitValue = interfaces.CSSUnitValue;
+const css = @import("css");
 
-pub const State = CSSUnitValue.State;
+pub const State = interfaces.CSSUnitValue.State;
+pub const ImplError = error{TypeError};
+pub const construction_args = .{"numeric_value"};
+pub const InternalState = struct { number: css.math_values.Numeric };
 
-pub const ImplError = error{
-    NotImplemented,
-};
-
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
-
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = allocator;
+    _ = StateType;
+    const internal = try runtime.arenaOf(instance).create(InternalState);
+    internal.* = .{ .number = if (@hasField(@TypeOf(args), "numeric_value")) args.numeric_value else .{ .value = 0, .unit = .number } };
+    instance.getState(State).own._internal = internal;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+pub fn deinitOwn(instance: *runtime.Instance) void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return;
+    state.own._internal = null;
+    runtime.arenaOf(instance).destroy(InternalState, internal);
 }
 
-/// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
+/// Constructor steps 1–2: validate the unit, then create its numeric leaf.
 pub fn call_constructor(ctx: runtime.Context, value: f64, unit: runtime.USVString) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &CSSUnitValue.vtable, ctx);
-    errdefer deinit(instance);
-
-    _ = value;
-    _ = unit;
-    // TODO: Implement constructor logic with parameters
-
-    return instance;
+    const parsed = css.typed_om.numeric.parseUnit(unit) orelse return error.TypeError;
+    return interfaces.CSSUnitValue.initWith(ctx.allocator, ctx, .{ .numeric_value = css.math_values.Numeric{ .value = value, .unit = parsed } });
 }
 
-/// Getter for value
 pub fn get_value(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    return internal.number.value;
 }
 
-/// Getter for unit
 pub fn get_unit(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    return instance.ctx.allocator.dupe(u8, @tagName(internal.number.unit));
 }
 
-/// Setter for value
 pub fn set_value(instance: *runtime.Instance, value: f64) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    internal.number.value = value;
 }
