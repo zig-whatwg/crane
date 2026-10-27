@@ -826,6 +826,11 @@ EXCLUDE = [
      'click at a text node\'s start: the caret offset comes from hit testing laid-out text'),
     ('selection/user-select-on-input-and-contenteditable.html',
      'click at each field\'s centre must move the caret to the clicked character: needs text layout'),
+    # Two more (the user's ruling 2026-10-27, after Codex row 129's Q25/Q26).
+    ('selection/fire-selectionchange-event-on-pressing-backspace.html',
+     'click at the centre of a one-glyph <i>: wor|ld vs worl|d comes from which half of the laid-out glyph is hit'),
+    ('selection/caret-position-should-be-correct-while-moveup-movedown.html',
+     'Selection.modify by line/paragraph must keep the caret\'s inline position across laid-out lines (horizontal and vertical writing modes)'),
     # Outside the user's 0.1 line (a ratified spec and >= 1 shipping browser): it
     # asserts document.permissionsPolicy.features(), which no browser ships
     # (wpt.fyi 0/1 in Chrome, Firefox and Safari; Chrome exposes only the old
