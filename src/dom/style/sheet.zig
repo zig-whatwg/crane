@@ -514,14 +514,14 @@ pub const Contents = struct {
     };
 
     /// A sheet of its own: `text` parsed into a tree this owns, compiled.
-    pub fn parse(allocator: Allocator, text: []const u8, options: struct { quirks: bool = false, url_resolver: ?UrlResolver = null }) Allocator.Error!*Contents {
+    pub fn parse(allocator: Allocator, text: []const u8, options: struct { quirks: bool = false, url_resolver: ?UrlResolver = null, user_agent: bool = false }) Allocator.Error!*Contents {
         var tree: std.ArrayList(*Rule) = .empty;
         var tree_owned = true;
         defer if (tree_owned) {
             for (tree.items) |r| r.unref();
             tree.deinit(allocator);
         };
-        try rules_mod.parseSheet(.{ .parse = .{ .allocator = allocator, .quirks = options.quirks, .url_resolver = options.url_resolver } }, text, &tree, null);
+        try rules_mod.parseSheet(.{ .parse = .{ .allocator = allocator, .quirks = options.quirks, .url_resolver = options.url_resolver, .user_agent = options.user_agent } }, text, &tree, null);
         const self = try compile(allocator, tree.items);
         self.owned_tree = tree;
         tree_owned = false;
