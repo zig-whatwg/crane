@@ -139,7 +139,7 @@ test "the typing style a deletion leaves comes from where it starts" {
     try helpers.onFreshThread(startOfDeletion);
 }
 
-// Restoring the recorded wrappers innermost first, in the order the
+// Restoring the recorded wrappers outermost first, in the order the
 // overrides were set, rebuilds their nesting: all three browsers pass
 // multitest.html ?9001-last "delete, inserttext d,e,f on <div>abc<b><i>
 // [def]</i></b>ghi</div>" and its forwarddelete form (wpt.fyi

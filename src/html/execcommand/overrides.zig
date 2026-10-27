@@ -217,14 +217,17 @@ pub fn recordCurrentOverrides(edit: *Edit) !Overrides {
 ///   Safari. Lane editing2's insertText test cites Chrome and Firefox for
 ///   the same rule on `<div>abc[<b><i><img>def]</i></b>ghi</div>`. The
 ///   spec's "nothing formattable, nothing recorded" (steps 2-3) stays.
-/// - The toggles are listed innermost wrapper first, and record current
+/// - The toggles are listed outermost wrapper first, and record current
 ///   overrides replays state overrides in the order they were set, so
 ///   restoring rebuilds the nesting the deleted text had: `<b><i>[def]</i>
-///   </b>` deleted and retyped is `<b><i>def</i></b>` in all three
-///   browsers (multitest.html ?9001-last "delete, inserttext d,e,f on
-///   <div>abc<b><i>[def]</i></b>ghi</div>" and its forwarddelete form,
-///   Chrome 156, Firefox 158 and Safari 27 pass), where the spec's fixed
-///   order (bold, then italic) wraps the new bold in the italic.
+///   </b>` deleted and retyped is `<b><i>def</i></b>` and `<i><b>[def]</b>
+///   </i>` is `<i><b>d</b></i>` in all three browsers (multitest.html
+///   ?9001-last "delete, inserttext d,e,f on <div>abc<b><i>[def]</i></b>
+///   ghi</div>" and its forwarddelete form: Chrome 156, Firefox 158 and
+///   Safari 27 pass). Each later wrapper goes inside the earlier ones,
+///   because set the selection's value does not wrap an element that holds
+///   the whole range (inline.zig); the spec's fixed order (bold, then
+///   italic) would rebuild `<i><b>` for both.
 pub fn recordCurrentStatesAndValues(edit: *Edit, start_node: *Instance) !Overrides {
     const arena = edit.scratchAllocator();
     var list: std.ArrayList(Override) = .empty;
@@ -237,7 +240,7 @@ pub fn recordCurrentStatesAndValues(edit: *Edit, start_node: *Instance) !Overrid
     // Step 4: its link.
     try list.append(arena, .{ .command = .create_link, .value = .{ .value = try inline_formatting.effectiveValue(edit, node, .create_link) } });
     // Step 5: the toggles, true when its effective command value is one of
-    // the inline command activated values - innermost wrapper first.
+    // the inline command activated values - outermost wrapper first.
     const Toggle = struct { command: Command, active: bool, depth: u32 };
     var toggles: std.ArrayList(Toggle) = .empty;
     for ([_]Command{ .bold, .italic, .strikethrough, .subscript, .superscript, .underline }) |command| {
@@ -250,10 +253,12 @@ pub fn recordCurrentStatesAndValues(edit: *Edit, start_node: *Instance) !Overrid
         try toggles.append(arena, .{ .command = command, .active = active, .depth = depth });
     }
     std.mem.sort(Toggle, toggles.items, {}, struct {
-        fn deeperFirst(_: void, a: Toggle, b: Toggle) bool {
-            return a.depth > b.depth;
+        fn outermostFirst(_: void, a: Toggle, b: Toggle) bool {
+            const ka: u32 = if (a.active) a.depth else std.math.maxInt(u32);
+            const kb: u32 = if (b.active) b.depth else std.math.maxInt(u32);
+            return ka < kb;
         }
-    }.deeperFirst);
+    }.outermostFirst);
     for (toggles.items) |toggle| try list.append(arena, .{ .command = toggle.command, .value = .{ .state = toggle.active } });
     // Step 6: fontName, foreColor and hiliteColor (at the start node, see
     // above).
