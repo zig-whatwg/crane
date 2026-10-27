@@ -805,6 +805,13 @@ EXCLUDE = [
      'expects document.open() to add a history entry and fire pageshow, removed by whatwg/html#3946 - wpt#63099'),
     ('html/browsers/history/the-location-interface/location_replace_session_history.html',
      'only completes if an iframe document is restored from session history without reloading (optional bfcache; times out in Servo too) - wpt#63100'),
+    # Broken upstream: a missing comma after [0x203f, 0x2040] in its range table
+    # makes the script throw before most cases run, so Chrome, Firefox and
+    # Safari all ERROR (wpt.fyi 15/15 E; still on WPT master 2026-10-27). The
+    # user dropped it (2026-10-27); Codex row 127's corrected copy,
+    # tests/wpt/crane/cp1-non-ascii-codepoints.html, is the real test.
+    ('css/css-syntax/non-ascii-codepoints.html',
+     'broken upstream (missing comma in its code point range table; all three browsers ERROR) - the corrected copy is crane/cp1-non-ascii-codepoints.html'),
     # Its abort-reason case waits for the service worker to see the page's
     # abort while its respondWith() promise is pending, and that promise
     # resolves only in the abort listener. ServiceWorker "Handle Fetch" waits
