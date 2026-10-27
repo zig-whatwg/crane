@@ -228,6 +228,9 @@ pub const Longhand = enum(u16) {
     marker_mid,
     marker_end,
     clip_path,
+    shape_outside,
+    shape_margin,
+    shape_image_threshold,
     filter,
     box_shadow,
     object_position,
@@ -481,6 +484,7 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
 
 /// A longhand's grammar.
 pub const Grammar = enum {
+    shape_outside,
     box,
     column_count,
     column_size,
@@ -791,6 +795,10 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .marker_mid, .inherited = true, .initial = Value.kw(.none), .grammar = .reference },
         .{ .longhand = .marker_end, .inherited = true, .initial = Value.kw(.none), .grammar = .reference },
         .{ .longhand = .clip_path, .inherited = false, .initial = Value.kw(.none), .grammar = .shape },
+        // CSS Shapes 1 §§6.1–6.3: all three properties are non-inherited.
+        .{ .longhand = .shape_outside, .inherited = false, .initial = Value.kw(.none), .grammar = .shape_outside },
+        .{ .longhand = .shape_margin, .inherited = false, .initial = zero, .grammar = .length_percentage_nonneg },
+        .{ .longhand = .shape_image_threshold, .inherited = false, .initial = .{ .number = 0 }, .grammar = .opacity },
         .{ .longhand = .filter, .inherited = false, .initial = Value.kw(.none), .grammar = .filter },
         .{ .longhand = .border_top_left_radius, .inherited = false, .initial = .{ .corner_radius = .zero }, .grammar = .border_radius_corner },
         .{ .longhand = .border_top_right_radius, .inherited = false, .initial = .{ .corner_radius = .zero }, .grammar = .border_radius_corner },
@@ -1537,6 +1545,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .paint => return @import("svg_paint.zig").parse(options, stream),
         .reference => return @import("svg_paint.zig").parseReference(options, stream),
         .shape => return @import("shape_values.zig").parse(options, stream),
+        .shape_outside => return @import("box_shape_values.zig").parse(options, stream),
         .border_radius_corner => return @import("border_radius.zig").parseCorner(options, stream),
         .filter => return @import("filter_values.zig").parse(options, stream),
         .box_shadow => return @import("box_shadow_values.zig").parse(options, stream),
@@ -2440,7 +2449,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .paint => |v| try v.serialize(out, allocator, null),
         .filter => |v| try out.appendSlice(allocator, v.text.bytes),
         .box_shadow => |v| try out.appendSlice(allocator, v.text.bytes),
-        .shape => |v| try v.serialize(out, allocator),
+        .shape => |v| if (l == .shape_outside) try v.serializeWithDefaultBox(.margin_box, out, allocator) else try v.serialize(out, allocator),
         .corner_radius => |v| try v.serialize(out, allocator),
         .image_resolution => |v| try v.serialize(out, allocator),
         .image_position => |v| try v.serialize(out, allocator),

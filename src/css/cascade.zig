@@ -282,6 +282,11 @@ const first_letter_longhands: LonghandSet = blk: {
     @setEvalBranchQuota(20_000);
     var set = first_line_longhands;
     set.insert(.float);
+    // Shapes 1 §6 / Q30: Firefox and Safari apply these to ::first-letter
+    // independently of floating (probe-batch-1026p).
+    set.insert(.shape_outside);
+    set.insert(.shape_margin);
+    set.insert(.shape_image_threshold);
     for (std.enums.values(Longhand)) |l| {
         const name = @tagName(l);
         if (std.mem.startsWith(u8, name, "margin_") or std.mem.startsWith(u8, name, "padding_") or std.mem.startsWith(u8, name, "border_")) set.insert(l);
@@ -1325,7 +1330,7 @@ const Builder = struct {
             const assigned = preflight.assigned;
             const geometry_length = switch (l.info().grammar) {
                 .length_percentage_auto, .length_percentage_nonneg, .size, .max_size, .line_width, .gap, .signed_length, .fit_tolerance => true,
-                .column_size, .scroll_padding => true,
+                .column_size, .scroll_padding, .shape_outside => true,
                 else => false,
             };
             // Q25/Q83/Q88: this is the single unavailable-input decision,
@@ -1578,7 +1583,8 @@ const Builder = struct {
             .font_width => return @import("font_width.zig").compute(v),
             // CSS Text4 §8.2: normal is zero in the computed value.
             .letter_spacing => if (v.isKeyword(.normal)) return Value.px(0),
-            .opacity => return .{ .number = std.math.clamp(v.number, 0, 1) },
+            // CSS Shapes 1 §6.2 shares opacity's computed [0,1] clamp.
+            .opacity, .shape_image_threshold => return .{ .number = std.math.clamp(v.number, 0, 1) },
             .line_height => switch (v) {
                 .length => |len| if (len.unit == .percent) return Value.px(len.value / 100 * self.fontSize()),
                 else => {},

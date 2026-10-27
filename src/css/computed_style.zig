@@ -231,6 +231,8 @@ pub const ComputedStyle = struct {
             return @import("resolved_urls.zig").serialize(l, resolved, out, allocator);
         }
         switch (properties.Longhand.info(l).grammar) {
+            .shape_outside => if (l == .shape_outside and v == .shape and v.shape.data == .path)
+                return @import("box_shape_values.zig").serializeResolved(v.shape, out, allocator),
             .paint => return @import("svg_paint.zig").serializeResolved(v, self.get(.color).color, out, allocator),
             .filter => if (v == .filter) return v.filter.serializeResolved(self.get(.color).color, out, allocator),
             .box_shadow => if (v == .box_shadow) return v.box_shadow.serializeResolved(self.get(.color).color, out, allocator),
