@@ -546,11 +546,14 @@ pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance);
 
     // Step 1: Let records be a clone of this's record queue.
-    const records = internal.record_queue.records.toOwnedSlice(internal.allocator) catch return error.OutOfMemory;
-    defer internal.allocator.free(records);
-
     // Step 2: Empty this's record queue.
-    // (Already emptied by toOwnedSlice)
+    // Together a move. The pending targets go with the records, and are let
+    // go once the records are the script's - after the sequence is made, as
+    // WebKit's takeRecords hands its `m_pendingTargets` out with the records
+    // (TakenRecords) until the binding has converted them.
+    var taken = internal.record_queue.take();
+    defer taken.deinit();
+    const records = taken.records.items;
 
     // Step 3: Return records - as a sequence<MutationRecord>, an Array of the
     // current realm. Wrapping hands each record to the engine, exactly as
