@@ -71,6 +71,54 @@ test "insertOrderedList and insertUnorderedList: state and indeterminacy" {
     try helpers.onFreshThread(listStates);
 }
 
+fn tableCellLists() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(harness.setup_script);
+    // editing/run/insert-list-items-in-table-cell.html: a selection whose
+    // boundary points sit in rows (the data's `data-start` / `data-end` on
+    // a <tr>) or on the table, then insertOrderedList once and twice.
+    try page.run(
+        \\globalThis.table_markup = '<div contenteditable="true"><table><tr><td>fsdf</td><td>fsdf</td></tr><tr><td>gghfg</td><td>fsfg</td></tr></table></div>';
+        \\globalThis.listCells = (pick, times) => {
+        \\  const host = document.getElementById('host');
+        \\  host.innerHTML = table_markup;
+        \\  const [s, so, e, eo] = pick(host);
+        \\  const r = document.createRange();
+        \\  r.setStart(s, so);
+        \\  r.setEnd(e, eo);
+        \\  getSelection().removeAllRanges();
+        \\  getSelection().addRange(r);
+        \\  for (let i = 0; i < times; i++) document.execCommand('insertOrderedList', false, i === 0 ? '' : '1');
+        \\  return [hostHTML(), document.queryCommandState('insertOrderedList'), document.queryCommandIndeterm('insertOrderedList')].join('|');
+        \\};
+        \\globalThis.firstRow = (h) => { const tr = h.querySelectorAll('tr'); return [tr[0], 0, tr[0], 2]; };
+        \\globalThis.bothRows = (h) => { const tr = h.querySelectorAll('tr'); return [tr[0], 0, tr[1], 2]; };
+        \\globalThis.wholeTable = (h) => { const t = h.querySelector('table'); return [t, 0, t, 1]; };
+    );
+    const plain = "<div contenteditable=\"true\"><table><tbody><tr><td>fsdf</td><td>fsdf</td></tr><tr><td>gghfg</td><td>fsfg</td></tr></tbody></table></div>";
+    // One row: each of its cells gets a list (the spec already does this:
+    // block-extending stays inside the table).
+    try harness.expectEval(page, "listCells(firstRow, 1)", "<div contenteditable=\"true\"><table><tbody><tr><td><ol><li>fsdf</li></ol></td><td><ol><li>fsdf</li></ol></td></tr><tr><td>gghfg</td><td>fsfg</td></tr></tbody></table></div>|false|false");
+    // From the first row's start to the last row's end: block-extending
+    // leaves the table, and the spec would put the whole table in one list
+    // item. Chrome 156 lists each cell, and Chrome and Safari 27 answer
+    // false for the state afterwards (wpt.fyi 5af3c135c9).
+    try harness.expectEval(page, "listCells(bothRows, 1)", "<div contenteditable=\"true\"><table><tbody><tr><td><ol><li>fsdf</li></ol></td><td><ol><li>fsdf</li></ol></td></tr><tr><td><ol><li>gghfg</li></ol></td><td><ol><li>fsfg</li></ol></td></tr></tbody></table></div>|false|false");
+    // The second insertOrderedList takes every cell's list out again (all
+    // three browsers).
+    try harness.expectEval(page, "listCells(bothRows, 2)", plain ++ "|false|false");
+    try harness.expectEval(page, "listCells(firstRow, 2)", plain ++ "|false|false");
+    // A selection holding the table itself wraps it whole, and toggles it
+    // back (the spec; all three browsers).
+    try harness.expectEval(page, "listCells(wholeTable, 1)", "<div contenteditable=\"true\"><ol><li><table><tbody><tr><td>fsdf</td><td>fsdf</td></tr><tr><td>gghfg</td><td>fsfg</td></tr></tbody></table></li></ol></div>|true|false");
+    try harness.expectEval(page, "listCells(wholeTable, 2)", plain ++ "|false|false");
+}
+
+test "the list commands in table cells: a cell bounds what a list takes" {
+    try helpers.onFreshThread(tableCellLists);
+}
+
 fn backspaceOutdents() !void {
     const page = try helpers.Page.open();
     defer page.close();

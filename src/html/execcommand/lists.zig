@@ -150,8 +150,9 @@ pub fn selectionListState(edit: *Edit) !ListState {
 /// state, so a second insertOrderedList over two cells' lists takes both
 /// out, as the browsers do.
 fn listState(edit: *Edit, for_query: bool) !ListState {
-    // Steps 1-2.
-    const range = (try block.blockExtendActiveRange(edit)) orelse return .none;
+    // Steps 1-2 (a table cell bounds the extension, see
+    // extendedActiveRange).
+    const range = (try extendedActiveRange(edit)) orelse return .none;
     // Steps 3-4.
     var node_list: std.ArrayList(*Instance) = .empty;
     defer node_list.deinit(edit.allocator);
@@ -278,8 +279,9 @@ pub fn toggleListsAction(edit: *Edit, tag_name: []const u8) !bool {
     const other_tag_name: []const u8 = if (std.mem.eql(u8, tag_name, "ul")) "ol" else "ul";
     // Steps 3-4.
     try normalizeItemsAroundActiveRange(edit);
-    // Step 5: the block-extended range, live through step 6's changes.
-    const extended = (try block.blockExtendActiveRange(edit)) orelse return true;
+    // Step 5: the block-extended range (a table cell bounds it, see
+    // extendedActiveRange), live through step 6's changes.
+    const extended = (try extendedActiveRange(edit)) orelse return true;
     const live = try block.LiveRange.init(edit, extended);
     defer live.release();
     // Step 6: lists of the other type become this type.
@@ -420,6 +422,67 @@ pub fn toggleListsAction(edit: *Edit, tag_name: []const u8) !bool {
         }
     }
     return true;
+}
+
+/// The list commands' block-extended active range ("the selection's list
+/// state" steps 1-2 and toggle lists step 5), with a table cell bounding
+/// what a list takes: a boundary point inside a cell - or in a row,
+/// between its cells - whose block extension would leave the cell's table
+/// stays at that cell's edge. A selection from a table's first row to its
+/// last then lists each cell's lines on their own instead of putting the
+/// whole table in one list item. Chrome 156 makes four `<td><ol><li>`
+/// lists of `<tr data-start=0>...<tr data-end=2>`, and Chrome and Safari 27
+/// answer false for queryCommandState afterwards
+/// (editing/run/insert-list-items-in-table-cell.html, wpt.fyi 5af3c135c9;
+/// Firefox 158 lists the table whole, as the spec does). Blink's
+/// InsertListCommand::DoApply iterates the paragraphs of
+/// SelectionForParagraphIteration, which snaps "endpoints anchored on
+/// table-internal structure into the cell their offset points at, so
+/// paragraph iteration runs per-cell instead of wrapping the whole table as
+/// one paragraph" and treats a table as a paragraph only when the
+/// selection holds it from outside
+/// (third_party/blink/renderer/core/editing/commands/
+/// editing_commands_utilities.cc, chromium main 2026-10-27). Golden rule 2,
+/// no newer spec involved: the browsers split, and the per-cell result is
+/// Chrome's and the file's. A selection that holds the table from outside
+/// its rows (`{<table>...</table>}`, `<table data-start=0 data-end=1>`) has
+/// no boundary cell and still wraps the table whole, as the spec says and
+/// all three browsers do.
+fn extendedActiveRange(edit: *Edit) !?block.Range {
+    const start = (try edit.rangeStart()) orelse return null;
+    const end = (try edit.rangeEnd()) orelse return null;
+    var range = try block.blockExtend(start, end);
+    if (try boundaryCell(start, .start)) |cell| {
+        if (try leavesTableOf(range.start, cell)) range.start = .{ .node = cell, .offset = 0 };
+    }
+    if (try boundaryCell(end, .end)) |cell| {
+        if (try leavesTableOf(range.end, cell)) range.end = .{ .node = cell, .offset = try common.nodeLength(cell) };
+    }
+    return range;
+}
+
+const Side = enum { start, end };
+
+/// The table cell a boundary point is in: an inclusive ancestor td or th
+/// of its node, or for a point in a row between two cells, the cell after
+/// it (a start) or before it (an end).
+fn boundaryCell(point: Point, side: Side) !?*Instance {
+    if (try tableCellOf(point.node)) |cell| return cell;
+    if (!try common.isHtmlElementNamed(point.node, "tr")) return null;
+    const child = switch (side) {
+        .start => try common.childAt(point.node, point.offset),
+        .end => if (point.offset == 0) null else try common.childAt(point.node, point.offset - 1),
+    } orelse return null;
+    return if (try common.isHtmlElementIn(child, &.{ "td", "th" })) child else null;
+}
+
+/// Whether `point` lies outside the table around `cell`.
+fn leavesTableOf(point: Point, cell: *Instance) !bool {
+    var ancestor = try common.parent(cell);
+    while (ancestor) |a| : (ancestor = try common.parent(a)) {
+        if (try common.isHtmlElementNamed(a, "table")) return !common.isInclusiveDescendantOf(point.node, a);
+    }
+    return false;
 }
 
 /// The table cell around `node`, or null.
