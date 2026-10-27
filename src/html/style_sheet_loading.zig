@@ -45,6 +45,7 @@ const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
 const engine = @import("engine");
 const fetch = @import("fetch");
+const stylesheet_encoding = css.rules.stylesheet_encoding;
 const css = @import("css");
 const dom = @import("dom");
 
@@ -178,6 +179,9 @@ const Sheet = struct {
     /// referrer and policy its own @imports are fetched with.
     location: ?[]u8 = null,
     referrer_policy: fetch.internal.ReferrerPolicy = .empty,
+    /// CSS Syntax 3 section 3.2: the encoding used for this response,
+    /// inherited by its @imports as their environment encoding.
+    encoding: ?*const stylesheet_encoding.Encoding = null,
     /// While the fetch runs.
     fetch: ?*AsyncFetch = null,
 
@@ -1114,13 +1118,32 @@ fn processResponse(sheet: *Sheet, outcome: fetch.algorithms.FetchError!fetch.alg
     // Content-Type, or one that does not parse, is the stylesheet link
     // type's default type, text/css (4.2.4.2).
     const cors_same_origin = response.response_type != .@"opaque" and response.response_type != .opaqueredirect;
+    var mime = fetch.internal.mime.extractMimeType(load.allocator, &response.header_list) catch return fail(load);
+    defer if (mime) |*m| m.deinit();
     if (!(load.quirks and cors_same_origin)) {
-        const essence = fetch.internal.mime.extractMimeEssence(load.allocator, &response.header_list) catch return fail(load);
-        if (essence) |e| {
-            defer load.allocator.free(e);
-            if (!std.mem.eql(u8, e, "text/css")) return fail(load);
+        if (mime) |m| {
+            const essence = fetch.internal.mime.essenceBytes(load.allocator, m) catch return fail(load);
+            defer load.allocator.free(essence);
+            if (!std.mem.eql(u8, essence, "text/css")) return fail(load);
         }
     }
+    // CSS Syntax 3 section 3.2: decode bytes once before BOTH consumers -
+    // CSSOM's parser and the loader's @import scanner. Encoding section 6.1
+    // gives the BOM precedence over the response and environment labels.
+    var protocol_label: ?[]u8 = null;
+    defer if (protocol_label) |label| load.allocator.free(label);
+    if (mime) |m| if (fetch.internal.mime.parameterIndex(m, "charset")) |index| {
+        protocol_label = std.unicode.utf16LeToUtf8Alloc(load.allocator, m.parameters.entries.items()[index].value) catch |err| switch (err) {
+            error.OutOfMemory => return fail(load),
+            else => null,
+        };
+    };
+    var decoded = stylesheet_encoding.decode(load.allocator, body_bytes, .{
+        .protocol_label = protocol_label,
+        .environment_label = sheetEnvironmentEncoding(sheet).name,
+    }) catch return fail(load);
+    defer decoded.deinit(load.allocator);
+    sheet.encoding = decoded.encoding;
     // The sheet is parsed; its @import rules are fetched relative to its
     // location, the response's URL.
     // HTML stylesheet processing: origin-clean is set for a
@@ -1131,15 +1154,44 @@ fn processResponse(sheet: *Sheet, outcome: fetch.algorithms.FetchError!fetch.alg
     const policy_header = response.header_list.get(load.allocator, "Referrer-Policy") catch null;
     defer if (policy_header) |h| load.allocator.free(h);
     sheet.referrer_policy = fetch.internal.policy_container.parseReferrerPolicyHeader(policy_header);
-    deliver(load, sheet, body_bytes, location);
-    fetchImports(load, sheet, body_bytes, location);
+    deliver(load, sheet, decoded.text, location);
+    fetchImports(load, sheet, decoded.text, location);
+}
+
+/// HTML stylesheet and CSSOM 6.3.4 environment-encoding steps 1–2, and
+/// CSS Cascade 3 section 2.2: imports inherit their parent's encoding.
+fn sheetEnvironmentEncoding(sheet: *const Sheet) *const stylesheet_encoding.Encoding {
+    if (sheet.parent) |parent| if (parent.encoding) |encoding| return encoding;
+    const load = sheet.load;
+    if (!load.documentIsLive()) return stylesheet_encoding.fallback("", .{});
+    if (load.kind == .stylesheet and load.elementIsLive()) {
+        const node_type = interfaces.Node.get_nodeType(load.element) catch 0;
+        if (node_type == interfaces.Node.get_PROCESSING_INSTRUCTION_NODE()) {
+            // CSSOM 6.3.4, environment encoding step 1: use a valid
+            // charset pseudo-attribute on an xml-stylesheet instruction.
+            if (interfaces.ProcessingInstruction.call_getAttribute(load.element, runtime.DOMString.initInterned("charset")) catch null) |value| {
+                var label = value;
+                defer label.deinit(load.element.ctx.allocator);
+                if (stylesheet_encoding.encodingForLabel(label.asSlice())) |encoding| return encoding;
+            }
+        } else if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
+            // HTML's environment encoding step 1: use a valid link charset.
+            if (interfaces.Element.call_getAttributeNS(load.element, null, runtime.DOMString.initInterned("charset")) catch null) |value| {
+                if (stylesheet_encoding.encodingForLabel(value.asSlice())) |encoding| return encoding;
+            }
+        }
+    }
+    // Step 2 in both algorithms: absent and invalid labels use the document.
+    var label = interfaces.Document.get_characterSet(load.document) catch return stylesheet_encoding.fallback("", .{});
+    defer label.deinit(load.document.ctx.allocator);
+    return stylesheet_encoding.fallback("", .{ .environment_label = label.asSlice() });
 }
 
 /// Hand a fetched sheet to the style engine: the link's own (the
 /// stylesheet link type's "process the linked resource" step 4, "create a
 /// CSS style sheet") or an @import's (CSS Cascade "fetch an @import" step 3).
 /// A superseded load's sheets are no longer the element's.
-fn deliver(load: *Load, sheet: *Sheet, bytes: []const u8, location: []const u8) void {
+fn deliver(load: *Load, sheet: *Sheet, text: []const u8, location: []const u8) void {
     if (load.kind != .stylesheet and load.kind != .style) return;
     if (load.superseded or !load.elementIsLive()) return;
     // The @import path from the element's own sheet, outermost first. A
@@ -1155,7 +1207,7 @@ fn deliver(load: *Load, sheet: *Sheet, bytes: []const u8, location: []const u8) 
         n += 1;
     }
     std.mem.reverse(u16, path[0..n]);
-    dom.style.deliverSheet(load.element, path[0..n], bytes, location, sheet.origin_clean);
+    dom.style.deliverSheet(load.element, path[0..n], text, location, sheet.origin_clean, sheet.encoding);
     dom.style.setDeliveredSheetPolicy(load.element, path[0..n], sheet.referrer_policy);
 }
 

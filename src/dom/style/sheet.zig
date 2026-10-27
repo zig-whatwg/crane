@@ -111,6 +111,10 @@ pub const SheetRecord = struct {
     /// client's policy; embedded sheets have no response policy of their
     /// own. Kept with the sheet after its owner is detached.
     referrer_policy: @import("fetch").internal.ReferrerPolicy = .empty,
+    /// CSS Syntax's resulting encoding, the environment of later imports.
+    /// Immutable static metadata, retained after parsing or detachment.
+    /// Null for sheets created from Unicode text rather than fetched bytes.
+    encoding: ?*const css.rules.stylesheet_encoding.Encoding = null,
     /// CSSOM "origin-clean flag".
     origin_clean: bool = true,
     /// CSSOM "constructed flag", "disallow modification flag", and
@@ -149,6 +153,7 @@ pub const SheetRecord = struct {
         location: ?[]const u8 = null,
         base_url: []const u8 = "",
         referrer_policy: @import("fetch").internal.ReferrerPolicy = .empty,
+        encoding: ?*const css.rules.stylesheet_encoding.Encoding = null,
         origin_clean: bool = true,
         mode: ParseMode = .{},
     };
@@ -158,7 +163,7 @@ pub const SheetRecord = struct {
     pub fn create(allocator: Allocator, text: []const u8, options: Options) Allocator.Error!*SheetRecord {
         const self = try allocator.create(SheetRecord);
         errdefer allocator.destroy(self);
-        self.* = .{ .allocator = allocator, .owner_node = options.owner_node, .alternate = options.alternate, .origin_clean = options.origin_clean, .mode = options.mode, .referrer_policy = options.referrer_policy };
+        self.* = .{ .allocator = allocator, .owner_node = options.owner_node, .alternate = options.alternate, .origin_clean = options.origin_clean, .mode = options.mode, .referrer_policy = options.referrer_policy, .encoding = options.encoding };
         errdefer self.freeStrings();
         self.title = try allocator.dupe(u8, options.title);
         self.media_text = try allocator.dupe(u8, options.media);

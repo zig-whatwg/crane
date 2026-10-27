@@ -29,6 +29,9 @@ const Token = tokenizer.Token;
 const TokenType = tokenizer.TokenType;
 const substitution = @import("substitution.zig");
 
+/// CSS Syntax byte decoding, before the Unicode rule parser runs.
+pub const stylesheet_encoding = @import("stylesheet_encoding.zig");
+
 /// A declaration of a rule's block.
 pub const Declaration = struct {
     /// The property name: decoded, and ASCII-lowercased unless it is a
