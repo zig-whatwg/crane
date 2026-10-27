@@ -21,9 +21,9 @@ const Edit = common.Edit;
 const Instance = common.Instance;
 const DOMString = runtime.DOMString;
 
-/// The insertParagraph action, reached by command name through the
-/// dispatch (lane editing4's); null while no such command is registered.
-pub const ParagraphAction = *const fn (edit: *Edit) anyerror!?bool;
+/// The insertParagraph action, reached through the dispatch (lane
+/// editing4's, blocks.zig).
+pub const ParagraphAction = *const fn (edit: *Edit) anyerror!bool;
 
 /// The insertText action with `value`.
 pub fn action(edit: *Edit, value: []const u8, insert_paragraph: ParagraphAction) anyerror!bool {
@@ -50,9 +50,8 @@ pub fn action(edit: *Edit, value: []const u8, insert_paragraph: ParagraphAction)
     if (value.len == 0) return true;
     // Step 5: a newline is a new paragraph.
     if (std.mem.eql(u8, value, "\n")) {
-        if (try insert_paragraph(edit)) |_| return true;
-        // TODO(editing4): insertParagraph's action is lane editing4's; until
-        // it is registered a newline is inserted as text, as before.
+        _ = try insert_paragraph(edit);
+        return true;
     }
     // Step 6.
     var node = start.node;

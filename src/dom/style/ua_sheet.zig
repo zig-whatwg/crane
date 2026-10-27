@@ -62,9 +62,9 @@ pub fn get() ?*const Sheets {
 }
 
 pub fn buildWith(a: std.mem.Allocator) std.mem.Allocator.Error!Sheets {
-    const rules = try Contents.parse(a, html_css, .{});
+    const rules = try Contents.parse(a, html_css, .{ .user_agent = true });
     errdefer destroyContents(rules);
-    const hints = try Contents.parse(a, hints_css, .{});
+    const hints = try Contents.parse(a, hints_css, .{ .user_agent = true });
     errdefer destroyContents(hints);
     const quirks = try Contents.parse(a, quirks_css, .{});
     errdefer destroyContents(quirks);
