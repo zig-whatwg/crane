@@ -124,6 +124,9 @@ pub const SheetRecord = struct {
     text: ?[]u8 = null,
     /// CSSOM "CSS rules", once parsed; each held.
     rules: ?std.ArrayList(*Rule) = null,
+    /// Immutable namespace snapshot for subsequent CSSOM declarations.
+    namespaces: ?*css.namespace_map.NamespaceMap = null,
+    namespaces_version: u64 = 0,
     /// The @import rules as parsed, by the index the loader delivers their
     /// sheets by (null where CSS dropped one the loader still fetches);
     /// each held, so an import a CSSOM edit removed still finds its rule.
@@ -196,6 +199,7 @@ pub const SheetRecord = struct {
             list.deinit(self.allocator);
         }
         if (self.media) |*m| m.deinit();
+        if (self.namespaces) |map| map.release();
         self.freeStrings();
         self.allocator.destroy(self);
     }
@@ -323,6 +327,18 @@ pub const SheetRecord = struct {
         if (self.text) |t| self.allocator.free(t);
         self.text = null;
         return &self.rules.?;
+    }
+
+    /// The CURRENT sheet's bindings, borrowed. Pending declarations and
+    /// ParseContext retain their snapshot when CSSOM changes this sheet.
+    pub fn namespaceMap(self: *SheetRecord, instance: *runtime.Instance) Allocator.Error!?*css.namespace_map.NamespaceMap {
+        const list = try self.rulesOf(instance);
+        if (self.namespaces_version == self.contents_version) return self.namespaces;
+        const current = try rules_mod.namespaceMap(self.allocator, list.items);
+        if (self.namespaces) |old| old.release();
+        self.namespaces = current;
+        self.namespaces_version = self.contents_version;
+        return current;
     }
 
     /// CSSOM "set sheet's CSS rules to rules" (replace(), replaceSync()):

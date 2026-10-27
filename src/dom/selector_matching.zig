@@ -204,7 +204,7 @@ pub const StyleMatcher = struct {
     pub fn matchesSlotted(self: *StyleMatcher, element: *runtime.Instance, slot: *runtime.Instance, complex: *const ComplexSelector, pseudo: ?[]const u8) bool {
         const node = instance_bridge.getNodeBase(element) orelse return false;
         const slot_node = instance_bridge.getNodeBase(slot) orelse return false;
-        return self.matchesAround(node, slot_node, complex, "slotted", pseudo);
+        return self.matchesAround(node, slot_node, complex, "slotted", pseudo, &.{});
     }
 
     /// Whether `complex`, a rule of the tree `host` is in (the matcher is
@@ -212,18 +212,18 @@ pub const StyleMatcher = struct {
     /// Shadow Parts 4.1): `element` is in `host`'s shadow tree and its part
     /// names include every name ::part() lists. The simple selectors before
     /// ::part() and the combinators match the host; what follows ::part()
-    /// matches `element`. Stated: names forwarded by exportparts are not.
-    pub fn matchesPart(self: *StyleMatcher, element: *runtime.Instance, host: *runtime.Instance, complex: *const ComplexSelector, pseudo: ?[]const u8) bool {
+    /// matches `element`. `exposed` includes names forwarded by exportparts.
+    pub fn matchesPart(self: *StyleMatcher, element: *runtime.Instance, host: *runtime.Instance, complex: *const ComplexSelector, pseudo: ?[]const u8, exposed: []const []const u8) bool {
         const node = instance_bridge.getNodeBase(element) orelse return false;
         const host_node = instance_bridge.getNodeBase(host) orelse return false;
-        return self.matchesAround(node, host_node, complex, "part", pseudo);
+        return self.matchesAround(node, host_node, complex, "part", pseudo, exposed);
     }
 
     /// ::slotted() and ::part(): the subject compound split at the
     /// pseudo-element named `name` - its left part matched against `outer`
     /// (the slot, the host) and its argument, part names and right part
     /// against `element` - then the combinators from `outer`.
-    fn matchesAround(self: *StyleMatcher, element: *NodeBase, outer: *NodeBase, complex: *const ComplexSelector, name: []const u8, pseudo: ?[]const u8) bool {
+    fn matchesAround(self: *StyleMatcher, element: *NodeBase, outer: *NodeBase, complex: *const ComplexSelector, name: []const u8, pseudo: ?[]const u8, exposed: []const []const u8) bool {
         if (element.node_type != ELEMENT_NODE or outer.node_type != ELEMENT_NODE) return false;
         const simples = complex.compound.simple_selectors;
         const at = for (simples, 0..) |*simple, i| {
@@ -242,7 +242,7 @@ pub const StyleMatcher = struct {
         const data = dataOf(element) orelse return false;
         const own = &simples[at].PseudoElement;
         if (own.argument) |list| if (!inner.matchesList(.{ .node = element }, list)) return false;
-        if (own.part_names.len != 0 and !hasPartNames(data, own.part_names)) return false;
+        if (own.part_names.len != 0 and !hasPartNames(exposed, own.part_names)) return false;
         // A sub-pseudo-element (::slotted(x)::before) is what `pseudo` asks
         // for, exactly when one is asked for.
         var sub: ?[]const u8 = null;
@@ -269,14 +269,12 @@ pub const StyleMatcher = struct {
     }
 };
 
-/// CSS Shadow Parts 4.1: the element's part name list - its `part`
-/// attribute's tokens - holds every name of `names` (case-sensitively).
-fn hasPartNames(data: *const ElementData, names: []const []const u8) bool {
-    const part = data.findAttribute(null, "part") orelse return false;
+/// CSS Shadow Parts 4.1: the exposed set holds every selector name.
+/// The engine supplies the set for this host; all other matching stays here.
+fn hasPartNames(exposed: []const []const u8, names: []const []const u8) bool {
     for (names) |wanted| {
-        var tokens = std.mem.tokenizeAny(u8, part.value, " \t\n\r\x0c");
-        const found = while (tokens.next()) |token| {
-            if (std.mem.eql(u8, token, wanted)) break true;
+        const found = for (exposed) |name| {
+            if (std.mem.eql(u8, name, wanted)) break true;
         } else false;
         if (!found) return false;
     }

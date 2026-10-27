@@ -341,3 +341,18 @@ why = 34 -> 33 in the generation 185 sweep only; lane newwin1's isolated pairs e
 pair.1 = base 34/34; tip 34/34
 pair.2 = base 34/34; tip 34/34
 pair.3 = base 34/34; tip 34/34
+
+[css/css-values/attr-security-if.html]
+generation = 186
+kind = user-ruling
+why = Codex row 123's if() (merged 9c989a72cf2, main f3b9a30d0fb): passing 11 -> 9, the :66 and :76 image-set(if(...)) names. They passed by accident while if() was unsupported (the declaration was invalid and read back "none"); with if() real, rejecting the attr()-derived url needs attr() substitution and its taint, which Codex row 122 delivers (its final tip passes both). Evidence: row 123's isolated pairs base 1/1, tip 0/1 x3 (tmp/plans/codex-condfns-questions.md Q28; wpt-results/lanes/codex-condfns-7eaf8f8f1bf/).
+date = 2026-10-26
+decision = The user: "Accept" for row 123's two attr-security-if losses (memory loss-rulings-2026-10-26); Codex row 122 merges second and must show both PASS
+
+[html/webappapis/dynamic-markup-insertion/opening-the-input-stream/abort-refresh-immediate.window.js]
+generation = 186
+kind = flake
+why = The same timing-bound file as the generation 179 and 184 dispositions (it times out on both sides): 3/6 in the generation 185 sweep, 2/6 in 186's. Isolated, one process each, alternating, frozen main-e95a90e570 (base, generation 185) vs main-904bbf8979 (tip, generation 186), integrator 2026-10-26 on chat through crane-measure.sh: 4/6 on both sides in all three pairs. Evidence chat:~/crane-work/integrator-pairs-186/.
+pair.1 = base 4/6; tip 4/6
+pair.2 = base 4/6; tip 4/6
+pair.3 = base 4/6; tip 4/6

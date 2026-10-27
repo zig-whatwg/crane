@@ -363,7 +363,9 @@ pub const Rule = struct {
             .namespace => |n| {
                 try out.appendSlice(allocator, "@namespace ");
                 if (n.prefix.len != 0) {
-                    try out.appendSlice(allocator, n.prefix);
+                    const prefix = try css.serialize.serializeIdentifier(allocator, n.prefix);
+                    defer allocator.free(prefix);
+                    try out.appendSlice(allocator, prefix);
                     try out.append(allocator, ' ');
                 }
                 try serializeUrl(allocator, out, n.uri);
@@ -786,35 +788,43 @@ fn matchingParen(text: []const u8, open: usize) ?usize {
     return null;
 }
 
-/// `@namespace <namespace-prefix>? [ <string> | <url> ]`.
+/// CSS Namespaces 3 §2: `@namespace <namespace-prefix>? [ <string> | <url> ]`.
+/// Consume tokens, as Blink's CSSParserImpl::ConsumeNamespaceRule does;
+/// comments and an escape's terminating space are not prefix separators.
 fn buildNamespace(a: Allocator, prelude_text: []const u8) Allocator.Error!?*Rule {
     const prelude = std.mem.trim(u8, prelude_text, " \t\n\r\x0c");
-    if (prelude.len == 0) return null;
+    var stream = css.tokenizer.Tokenizer.init(prelude);
+    stream.skipWhitespace();
+    var token = stream.next();
     var prefix: []const u8 = "";
-    var rest = prelude;
-    if (rest[0] != '"' and rest[0] != '\'' and !std.ascii.startsWithIgnoreCase(rest, "url(")) {
-        const space = std.mem.indexOfAny(u8, rest, " \t\n") orelse return null;
-        prefix = rest[0..space];
-        rest = std.mem.trim(u8, rest[space..], " \t\n\r\x0c");
+    if (token.token_type == .ident) {
+        prefix = token.value;
+        stream.skipWhitespace();
+        token = stream.next();
     }
-    var uri: std.ArrayList(u8) = .empty;
-    defer uri.deinit(a);
-    if (rest.len == 0) return null;
-    if (rest[0] == '"' or rest[0] == '\'') {
-        const end = try readString(a, rest, 0, &uri) orelse return null;
-        if (std.mem.trim(u8, rest[end..], " ").len != 0) return null;
-    } else if (std.ascii.startsWithIgnoreCase(rest, "url(")) {
-        var i: usize = "url(".len;
-        if (i < rest.len and (rest[i] == '"' or rest[i] == '\'')) {
-            i = try readString(a, rest, i, &uri) orelse return null;
-        } else {
-            const close = std.mem.indexOfScalarPos(u8, rest, i, ')') orelse return null;
-            try uri.appendSlice(a, rest[i..close]);
-        }
-    } else return null;
-    const owned_prefix = try a.dupe(u8, prefix);
+    const uri = switch (token.token_type) {
+        .string => token.stringContents(),
+        .url => token.value,
+        .function => blk: {
+            if (!css.tokenizer.nameEql(token.value, "url")) return null;
+            if (stream.next().token_type != .left_paren) return null;
+            stream.skipWhitespace();
+            const argument = stream.next();
+            if (argument.token_type != .string) return null;
+            stream.skipWhitespace();
+            const close = stream.next();
+            // CSS Syntax closes a function at EOF, as it does a URL token.
+            if (close.token_type != .right_paren and close.token_type != .eof) return null;
+            break :blk argument.stringContents();
+        },
+        else => return null,
+    };
+    stream.skipWhitespace();
+    if (stream.next().token_type != .eof) return null;
+    const owned_prefix = try css.tokenizer.decode(a, prefix);
     errdefer a.free(owned_prefix);
-    const owned_uri = try uri.toOwnedSlice(a);
+    // §2.1: a namespace URI is an exact string; never resolve it as a URL.
+    const owned_uri = try css.tokenizer.decode(a, uri);
     errdefer a.free(owned_uri);
     return try make(a, try a.dupe(u8, prelude), .{ .namespace = .{ .prefix = owned_prefix, .uri = owned_uri } });
 }
@@ -835,6 +845,13 @@ pub fn parseSheet(options: BuildOptions, text: []const u8, out: *std.ArrayList(*
     var parsed = try css.rules.parseStyleSheetContents(a, text);
     defer parsed.deinit();
     var position: Position = .imports_allowed;
+    // A complete sheet supplies its OWN bindings, including on replaceSync.
+    // A single-rule CSSOM edit instead receives the current map in build().
+    var scoped = options;
+    scoped.parse.namespaces = null;
+    var map: ?*css.namespace_map.NamespaceMap = null;
+    defer if (map) |m| m.release();
+    var namespaces_done = false;
     var import_count: u16 = 0;
     for (parsed.items) |*item| {
         if (item.kind == .at_rule and std.mem.eql(u8, item.name, "charset")) continue;
@@ -844,7 +861,12 @@ pub fn parseSheet(options: BuildOptions, text: []const u8, out: *std.ArrayList(*
         // supports() - and delivers it by that count: the indices agree.
         const index: ?u16 = if (is_import and position == .imports_allowed and !item.has_block) import_count else null;
         if (index != null) import_count +|= 1;
-        const built = try build(options, item, position);
+        if (!namespaces_done and advance(position, item) == .top) {
+            map = try namespaceMap(a, out.items);
+            scoped.parse.namespaces = map;
+            namespaces_done = true;
+        }
+        const built = try build(scoped, item, position);
         position = advance(position, item);
         if (index != null) if (imports) |list| {
             const held: ?*Rule = if (built) |r| (if (r.data == .import) r else null) else null;
@@ -862,6 +884,24 @@ pub fn parseSheet(options: BuildOptions, text: []const u8, out: *std.ArrayList(*
             return err;
         };
     }
+}
+
+/// CSS Namespaces 3 §2: a snapshot of the accepted namespace preamble.
+/// No allocation for the usual sheet with no namespace declarations. Only
+/// its preamble is inspected, never its style-rule body on a CSSOM edit.
+pub fn namespaceMap(allocator: Allocator, rules: []const *Rule) Allocator.Error!?*css.namespace_map.NamespaceMap {
+    var entries: std.ArrayList(css.namespace_map.Entry) = .empty;
+    defer entries.deinit(allocator);
+    var default: ?[]const u8 = null;
+    for (rules) |rule| switch (rule.data) {
+        .namespace => |ns| {
+            if (ns.prefix.len == 0) default = ns.uri else try entries.append(allocator, .{ .prefix = ns.prefix, .namespace = ns.uri });
+        },
+        .import, .layer_statement => {},
+        else => break,
+    };
+    if (entries.items.len == 0 and default == null) return null;
+    return try css.namespace_map.NamespaceMap.create(allocator, entries.items, default);
 }
 
 /// The position after `item` stands at `position`.
@@ -947,6 +987,74 @@ test "serialize a CSS rule" {
     }
 }
 
+test "namespace rules decode CSS tokens without resolving their URI" {
+    const cases = [_]struct { input: []const u8, prefix: []const u8, uri: []const u8 }{
+        .{ .input = "n\\73 \"urn:x\"", .prefix = "ns", .uri = "urn:x" },
+        .{ .input = "n/**/\"urn:x\"", .prefix = "n", .uri = "urn:x" },
+        .{ .input = "n\"urn:x\"", .prefix = "n", .uri = "urn:x" },
+        .{ .input = " /*before*/ n \"urn:x\" /*after*/ ", .prefix = "n", .uri = "urn:x" },
+        .{ .input = "n url(relative/path)", .prefix = "n", .uri = "relative/path" },
+        .{ .input = "n URL( \"a\\62 c\" )", .prefix = "n", .uri = "abc" },
+        .{ .input = "n url(a\\20 b)", .prefix = "n", .uri = "a b" },
+        .{ .input = "Ns u\\72 l(urn:x)", .prefix = "Ns", .uri = "urn:x" },
+        .{ .input = "inherit \"urn:x\"", .prefix = "inherit", .uri = "urn:x" },
+        .{ .input = "n \"\"", .prefix = "n", .uri = "" },
+        .{ .input = "url(urn:x)", .prefix = "", .uri = "urn:x" },
+        .{ .input = "\"urn:x\"", .prefix = "", .uri = "urn:x" },
+        .{ .input = "n \"urn:x", .prefix = "n", .uri = "urn:x" },
+        .{ .input = "n url(urn:x", .prefix = "n", .uri = "urn:x" },
+        .{ .input = "n url(\"urn:x\"", .prefix = "n", .uri = "urn:x" },
+    };
+    for (cases) |case| {
+        const rule = (try buildNamespace(testing.allocator, case.input)) orelse return error.ExpectedNamespaceRule;
+        defer rule.unref();
+        try testing.expectEqualStrings(case.prefix, rule.data.namespace.prefix);
+        try testing.expectEqualStrings(case.uri, rule.data.namespace.uri);
+    }
+}
+
+test "namespace rules reject malformed tokens and unconsumed URL tails" {
+    for ([_][]const u8{
+        "1n \"x\"",              "* \"x\"",              "n n \"x\"",  "n",             "n url(x) trailing",
+        "n url(\"x\") trailing", "n url(\"x\" invalid)", "n url(x y)", "n \"x\" \"y\"", "n \"bad\nstring\"",
+        "n url(x))",             "n 123",
+    }) |input| {
+        const rule = try buildNamespace(testing.allocator, input);
+        defer if (rule) |r| r.unref();
+        try testing.expect(rule == null);
+    }
+}
+
+test "namespace serialization escapes decoded identifiers and string contents" {
+    var parsed: std.ArrayList(*Rule) = .empty;
+    defer freeForTest(&parsed);
+    try parseForTest("@namespace \\31 prefix \"a\\22 b\";", &parsed);
+    try testing.expectEqual(@as(usize, 1), parsed.items.len);
+    try testing.expectEqualStrings("1prefix", parsed.items[0].data.namespace.prefix);
+    const text = try parsed.items[0].serialize(testing.allocator);
+    defer testing.allocator.free(text);
+    try testing.expectEqualStrings("@namespace \\31 prefix url(\"a\\\"b\");", text);
+    var round_trip: std.ArrayList(*Rule) = .empty;
+    defer freeForTest(&round_trip);
+    try parseForTest(text, &round_trip);
+    try testing.expectEqual(@as(usize, 1), round_trip.items.len);
+    try testing.expectEqualStrings(parsed.items[0].data.namespace.prefix, round_trip.items[0].data.namespace.prefix);
+    try testing.expectEqualStrings(parsed.items[0].data.namespace.uri, round_trip.items[0].data.namespace.uri);
+}
+
+test "namespace parsing and serialization clean up each allocation failure" {
+    try testing.checkAllAllocationFailures(testing.allocator, struct {
+        fn exercise(allocator: Allocator) !void {
+            const rule = (try buildNamespace(allocator, "n\\73 \"a\\22 b\"")) orelse return error.ExpectedNamespaceRule;
+            defer rule.unref();
+            const text = try rule.serialize(allocator);
+            defer allocator.free(text);
+            try testing.expectEqualStrings("ns", rule.data.namespace.prefix);
+            try testing.expectEqualStrings("@namespace ns url(\"a\\\"b\");", text);
+        }
+    }.exercise, .{});
+}
+
 test "a rule held after its list lets go keeps its data and loses its parents" {
     var rules: std.ArrayList(*Rule) = .empty;
     try parseForTest("@media print { a { color: red } }", &rules);
@@ -958,4 +1066,47 @@ test "a rule held after its list lets go keeps its data and loses its parents" {
     const text = try child.serialize(testing.allocator);
     defer testing.allocator.free(text);
     try testing.expectEqualStrings("a { color: red; }", text);
+}
+
+test "pending declarations retain the last namespace bindings from their sheet" {
+    var tree: std.ArrayList(*Rule) = .empty;
+    defer freeForTest(&tree);
+    try parseForTest("@namespace p 'urn:first'; @namespace p 'urn:last'; @namespace 'urn:default'; div { --value: var(--x) }", &tree);
+    const pending = tree.items[3].block().?.getCustom("--value").?.value.pending;
+    const map = pending.namespaces orelse return error.ExpectedNamespaceMap;
+    try testing.expectEqualStrings("urn:last", map.lookup("p").?);
+    try testing.expectEqualStrings("urn:default", map.default.?);
+    pending.ref();
+    defer pending.unref();
+    freeForTest(&tree);
+    tree = .empty;
+    try testing.expectEqualStrings("urn:last", pending.namespaces.?.lookup("p").?);
+}
+
+test "parsing replacement sheet contents never reuses the supplied old namespace map" {
+    const old = try css.namespace_map.NamespaceMap.create(testing.allocator, &.{.{ .prefix = "p", .namespace = "urn:old" }}, null);
+    defer old.release();
+    for ([_][]const u8{ "div { --value: var(--x) }", "@namespace p 'urn:new'; div { --value: var(--x) }" }, 0..) |text, i| {
+        var tree: std.ArrayList(*Rule) = .empty;
+        defer freeForTest(&tree);
+        try parseSheet(.{ .parse = .{ .allocator = testing.allocator, .namespaces = old } }, text, &tree, null);
+        const map = tree.items[tree.items.len - 1].block().?.getCustom("--value").?.value.pending.namespaces;
+        if (i == 0) try testing.expect(map == null) else try testing.expectEqualStrings("urn:new", map.?.lookup("p").?);
+    }
+}
+
+test "namespace snapshots and pending declarations release partial parse allocations" {
+    try testing.checkAllAllocationFailures(testing.allocator, struct {
+        fn exercise(allocator: Allocator) !void {
+            var tree: std.ArrayList(*Rule) = .empty;
+            defer {
+                for (tree.items) |rule| rule.unref();
+                tree.deinit(allocator);
+            }
+            try parseSheet(.{ .parse = .{ .allocator = allocator } }, "@namespace p 'urn:p'; @media all { div { --value: var(--x) } }", &tree, null);
+            const map = try namespaceMap(allocator, tree.items) orelse return error.ExpectedNamespaceMap;
+            defer map.release();
+            try testing.expectEqualStrings("urn:p", map.lookup("p").?);
+        }
+    }.exercise, .{});
 }
