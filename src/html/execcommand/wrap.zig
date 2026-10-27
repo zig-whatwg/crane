@@ -122,7 +122,7 @@ pub fn wrap(edit: *Edit, node_list_in: []const *Instance, context: anytype) !?*I
         // parent, add one to that boundary point's offset" - so the points
         // around the wrapped nodes end up inside the wrapper once they move
         // preserving ranges.
-        try sweepBoundaryPointsPast(edit, first_parent, try common.indexOf(parent_node));
+        sweepBoundaryPointsPast(edit, first_parent, try common.indexOf(parent_node));
     }
 
     // Step 11: "Let original parent be the parent of the first member of
@@ -256,30 +256,32 @@ fn lastVisible(nodes: []const *Instance) !?*Instance {
 
 /// Step 10.2 over every live range of the document: a boundary point
 /// (`container`, `offset`) moves to (`container`, `offset` + 1).
-fn sweepBoundaryPointsPast(edit: *Edit, container: *Instance, offset: u32) !void {
+///
+/// Every write happens inside the live list's walk, to the entry the walk
+/// is on, and no range pointer is kept outside it. The write is the Range's
+/// own boundary step (dom.range_boundaries set_start_offset /
+/// set_end_offset, Range.zig setStartOffset/setEndOffset): it tells a
+/// Selection the range belongs to (notifySelection, which may schedule a
+/// selectionchange) - an engine call that can allocate and so start a V8
+/// collection, whose pending second passes tear down ranges script let go
+/// of, each removing itself from this list. The walk survives that: it reads
+/// one entry at a time through a cursor, and the list's `remove` moves the
+/// cursor of every walk in progress past a removed entry (Gecko's
+/// nsTObserverArray design), so every entry still listed is visited once and
+/// none freed is read (src/dom/live_range_list.zig; lane rangeuaf). A copy
+/// of the entries, as this sweep first made, would hold ranges such a
+/// teardown frees.
+fn sweepBoundaryPointsPast(edit: *Edit, container: *Instance, offset: u32) void {
     const ranges = dom.document_internals.liveRanges(edit.document) orelse return;
     const live = dom.range_boundaries.liveRange() orelse return;
-    const Moved = struct { range: *Instance, start: ?u32, end: ?u32 };
-    var moved: std.ArrayList(Moved) = .empty;
-    defer moved.deinit(edit.allocator);
-    {
-        var walk: dom.document_internals.LiveObjects.Walk = undefined;
-        ranges.beginWalk(&walk);
-        defer ranges.endWalk(&walk);
-        while (walk.nextEntry()) |range| {
-            const points = live.points(range) orelse continue;
-            const start_hit = points.start_container == container and points.start_offset == offset;
-            const end_hit = points.end_container == container and points.end_offset == offset;
-            if (!start_hit and !end_hit) continue;
-            try moved.append(edit.allocator, .{
-                .range = range,
-                .start = if (start_hit) offset + 1 else null,
-                .end = if (end_hit) offset + 1 else null,
-            });
-        }
-    }
-    for (moved.items) |entry| {
-        if (entry.start) |start| live.set_start_offset(entry.range, start);
-        if (entry.end) |end| live.set_end_offset(entry.range, end);
+    var walk: dom.document_internals.LiveObjects.Walk = undefined;
+    ranges.beginWalk(&walk);
+    defer ranges.endWalk(&walk);
+    while (walk.nextEntry()) |range| {
+        const points = live.points(range) orelse continue;
+        const start_hit = points.start_container == container and points.start_offset == offset;
+        const end_hit = points.end_container == container and points.end_offset == offset;
+        if (start_hit) live.set_start_offset(range, offset + 1);
+        if (end_hit) live.set_end_offset(range, offset + 1);
     }
 }
