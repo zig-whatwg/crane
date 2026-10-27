@@ -108,7 +108,7 @@ const cases = [_]Case{
     .{ .input = "foo[bar]baz", .commands = "[[\"stylewithcss\",\"true\"],[\"fontname\",\"sans-serif\"]]", .expected = "foo<span style=\"font-family:sans-serif\">bar</span>baz" },
     // fontSize
     .{ .input = "foo[bar]baz", .commands = "[[\"stylewithcss\",\"true\"],[\"fontsize\",\"4\"]]", .expected = "foo<span style=\"font-size:large\">bar</span>baz" },
-    .{ .input = "foo[bar]baz", .commands = "[[\"fontsize\",\"2em\"]]", .expected = "foo<font size=\"2\">bar</font>baz" },
+    .{ .input = "foo[bar]baz", .commands = "[[\"fontsize\",\"2em\"]]", .expected = "foobarbaz" },
     .{ .input = "foo[bar]baz", .commands = "[[\"fontsize\",\"xx-large\"]]", .expected = "foobarbaz" },
     .{ .input = "foo[bar]baz", .commands = "[[\"forecolor\",\"potato quiche\"]]", .expected = "foobarbaz" },
     // foreColor

@@ -1134,18 +1134,75 @@ pub fn action(edit: *Edit, command: Command, value_in: []const u8) anyerror!bool
 }
 
 /// fontSize action steps 1-11: the keyword for `value`, or null (return
-/// false). The spec parses a valid floating-point number (steps 1-10);
-/// every browser parses the value as HTML's legacy font size instead:
-/// "2em" is size 2 (`<font size="2">`) and returns true in Chrome 156,
-/// Firefox 158 and Safari 27, where the spec returns false; "xx-large" and
-/// "" have no digits and return false in all three (editing/run/
-/// fontsize.html ?1-1000, wpt.fyi f4febe305a / 5af3c135c9 / 1ec6aacb4e).
-/// Golden rule 2, no newer spec: HTML's rules for parsing a legacy font
-/// size (dom.style.font_hints), then step 11's keyword.
+/// false). All three browsers parse the value as HTML's legacy font size
+/// instead ("2em", "20pt" and "1." give <font size=2/20->7/1> and true in
+/// Chrome 156, Firefox 158 and Safari 27, wpt.fyi f4febe305a / 5af3c135c9 /
+/// 1ec6aacb4e), but WPT expects the spec (editing/run/fontsize.html
+/// ?1-1000: return false, nothing changed) and Crane passes those six
+/// names with the spec's steps: kept, pending the integrator's ruling
+/// (following the browsers would trade passing subtests).
 pub fn fontSizeKeyword(value_in: []const u8) ?[]const u8 {
-    const size = dom.style.font_hints.parseLegacyFontSize(value_in) orelse return null;
+    // Step 1: strip leading and trailing ASCII whitespace.
+    const text = std.mem.trim(u8, value_in, " \t\n\x0c\r");
+    // Step 2: a valid floating-point number, possibly after one leading +.
+    const unsigned = if (text.len > 0 and text[0] == '+') text[1..] else text;
+    if (!isValidFloatingPointNumber(unsigned)) return null;
+    // Steps 3-5: the mode.
+    var rest = text;
+    const Mode = enum { relative_plus, relative_minus, absolute };
+    var mode: Mode = .absolute;
+    if (rest.len > 0 and rest[0] == '+') {
+        mode = .relative_plus;
+        rest = rest[1..];
+    } else if (rest.len > 0 and rest[0] == '-') {
+        mode = .relative_minus;
+        rest = rest[1..];
+    }
+    // Step 6: the rules for parsing non-negative integers (leading digits).
+    var number: i64 = 0;
+    var digits: usize = 0;
+    while (digits < rest.len and std.ascii.isDigit(rest[digits])) : (digits += 1) {
+        number = number * 10 + (rest[digits] - '0');
+        if (number > 1000) number = 1000;
+    }
+    if (digits == 0) return null;
+    // Steps 7-8.
+    switch (mode) {
+        .relative_plus => number += 3,
+        .relative_minus => number = 3 - number,
+        .absolute => {},
+    }
+    // Steps 9-10.
+    if (number < 1) number = 1;
+    if (number > 7) number = 7;
     // Step 11.
-    return style_values.legacy_keywords[size - 1];
+    return style_values.legacy_keywords[@intCast(number - 1)];
+}
+
+/// HTML "valid floating-point number": optionally "-", digits, optionally
+/// "." and digits, optionally an exponent.
+fn isValidFloatingPointNumber(text: []const u8) bool {
+    var i: usize = 0;
+    if (i < text.len and text[i] == '-') i += 1;
+    const integer_start = i;
+    while (i < text.len and std.ascii.isDigit(text[i])) i += 1;
+    var has_digits = i > integer_start;
+    if (i < text.len and text[i] == '.') {
+        i += 1;
+        const fraction_start = i;
+        while (i < text.len and std.ascii.isDigit(text[i])) i += 1;
+        if (i == fraction_start) return false;
+        has_digits = true;
+    }
+    if (!has_digits) return false;
+    if (i < text.len and (text[i] == 'e' or text[i] == 'E')) {
+        i += 1;
+        if (i < text.len and (text[i] == '-' or text[i] == '+')) i += 1;
+        const exponent_start = i;
+        while (i < text.len and std.ascii.isDigit(text[i])) i += 1;
+        if (i == exponent_start) return false;
+    }
+    return i == text.len;
 }
 
 /// The createLink action.
@@ -1262,7 +1319,8 @@ test "fontSize keywords from legacy sizes" {
     try std.testing.expectEqualStrings("xxx-large", fontSizeKeyword("9").?);
     try std.testing.expectEqualStrings("x-small", fontSizeKeyword("0").?);
     try std.testing.expectEqualStrings("medium", fontSizeKeyword(" 3.5 ").?);
-    try std.testing.expectEqualStrings("small", fontSizeKeyword("2em").?);
+    try std.testing.expectEqual(@as(?[]const u8, null), fontSizeKeyword("2em"));
+    try std.testing.expectEqual(@as(?[]const u8, null), fontSizeKeyword("1."));
     try std.testing.expectEqual(@as(?[]const u8, null), fontSizeKeyword(""));
     try std.testing.expectEqual(@as(?[]const u8, null), fontSizeKeyword("+"));
     try std.testing.expectEqual(@as(?[]const u8, null), fontSizeKeyword("xx-small"));
