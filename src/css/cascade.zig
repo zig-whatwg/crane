@@ -272,6 +272,29 @@ const first_line_longhands: LonghandSet = blk: {
         .background_position_y, .background_size,   .background_repeat,
         .background_attachment, .background_origin, .background_clip,
     });
+    // CSS Pseudo4 §§2.1.2/2.2.4: Text inline typesetting, Decoration,
+    // and inline layout, with shipping applicability pinned by the tests.
+    for ([_]Longhand{
+        .word_spacing,
+        .text_justify,
+        .hyphenate_character,
+        .hyphenate_limit_chars,
+        .hanging_punctuation,
+        .text_autospace,
+        .text_decoration_line,
+        .text_decoration_style,
+        .text_decoration_color,
+        .text_decoration_thickness,
+        .text_decoration_inset,
+        .text_decoration_skip_ink,
+        .text_decoration_skip_spaces,
+        .text_underline_position,
+        .text_underline_offset,
+        .text_shadow,
+        .alignment_baseline,
+        .baseline_shift,
+        .baseline_source,
+    }) |l| set.insert(l);
     for (std.enums.values(Longhand)) |l| {
         if (std.mem.startsWith(u8, @tagName(l), "font_")) set.insert(l);
     }
@@ -282,6 +305,8 @@ const first_letter_longhands: LonghandSet = blk: {
     @setEvalBranchQuota(20_000);
     var set = first_line_longhands;
     set.insert(.float);
+    // Inline3 §7.3 applies initial-letter to ::first-letter only.
+    set.insert(.initial_letter);
     for (std.enums.values(Longhand)) |l| {
         const name = @tagName(l);
         if (std.mem.startsWith(u8, name, "margin_") or std.mem.startsWith(u8, name, "padding_") or std.mem.startsWith(u8, name, "border_")) set.insert(l);
@@ -1570,6 +1595,11 @@ const Builder = struct {
             .font_width => return @import("font_width.zig").compute(v),
             // CSS Text4 §8.2: normal is zero in the computed value.
             .letter_spacing => if (v.isKeyword(.normal)) return Value.px(0),
+            // CSS Text4 §8.1: normal computes to zero before inheritance.
+            .word_spacing => if (v.isKeyword(.normal)) return Value.px(0),
+            // Inline3 §4.2.3.1: Q12 C/S computed split resolves by the spec.
+            .baseline_shift => if (v.isKeyword(.baseline)) return Value.px(0),
+            .text_align, .text_align_last => return @import("text_values.zig").computeAlignment(l, v, if (self.ctx.is_root) null else self.ctx.parent),
             .opacity => return .{ .number = std.math.clamp(v.number, 0, 1) },
             .line_height => switch (v) {
                 .length => |len| if (len.unit == .percent) return Value.px(len.value / 100 * self.fontSize()),
@@ -1601,6 +1631,9 @@ const Builder = struct {
             },
             .filter => |value| return .{ .filter = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
             .box_shadow => |value| return .{ .box_shadow = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
+            .text_values => |value| return .{ .text_values = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
+            .decoration_keywords => |value| return value.compute(self.style.keyword(.writing_mode)).value(),
+            .text_shadow => |value| return .{ .text_shadow = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
             .shape => |value| return .{ .shape = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
             .corner_radius => |value| return .{ .corner_radius = try value.compute(self.ctx.allocator, ComponentContext.init(self, source)) },
             .image_resolution => |value| return .{ .image_resolution = try value.compute(self.ctx.allocator, self.computationContext(l, v, source)) },

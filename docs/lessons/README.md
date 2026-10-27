@@ -668,6 +668,7 @@ A lane brief now carries the lessons chosen for its batch.
 ### Testing
 - [Enum Capacity and Container Layout Are Separate Invariants](testing-enum-capacity-and-container-layout.md) - Audit ID storage and reflected counts, then measure containing types instead of inferring their size from the tag.
 - [Bind WPT Evidence to the Served Source Hashes](testing-bind-wpt-evidence-to-served-source-hashes.md) - Match the actual served sources and frozen artifacts; retain original receipts and label authorized evidence reuse.
+- [WPT subtest names are JSON strings](testing-wpt-subtest-names-are-json-strings.md) - Preserve exact names, URL variants and repeated occurrences in a lossless format, and verify execution coverage.
 - [A no-throw check can pass when the binding returns an Error](testing-a-no-throw-check-can-pass-when-the-binding-returns-an-error.md) - Verify the binding's rejection path and the observable return value before treating a call without an exception as success.
 - [A replacement is not a fallback candidate](testing-a-replacement-is-not-a-fallback-candidate.md) - Preserve a separate fallback candidate and distinguish it from the initial value.
 - [A stack buffer does not prove a no-heap small case](testing-a-stack-buffer-does-not-prove-a-no-heap-small-case.md) - Pin the allocation claim with a failing fallback; stack storage alone is not evidence.
@@ -828,6 +829,8 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Debugging
 - [Allocate before transferring an arena](debugging-allocate-before-transferring-an-arena.md) - Transfer an arena only after its last allocation; struct field evaluation can otherwise copy stale ownership state.
+- [Computed shorthands may need symbolic colors](debugging-computed-shorthands-may-need-symbolic-colors.md) - Preserve symbolic values until the consumer decides whether to omit them; early resolution can erase a CSSOM distinction.
+- [Optional CSS groups must restore the token stream](debugging-optional-css-groups-must-restore-the-token-stream.md) - Test malformed components through their shorthand: a failed optional group must restore the tokens it consumed.
 - [Debugging: Materialize coordinates before overwriting a vector](debugging-materialize-coordinates-before-overwriting-a-vector.md) - Compute every new coordinate from saved scalar inputs before assigning an aggregate back to its input vector.
 - [Debugging: Profile the WPT Worker, Not Its Supervisor](debugging-profile-the-wpt-worker-not-the-supervisor.md) - A WPT runner started with `--parallel=1` is still a supervisor; profile its actual test worker.
 - [Performance: A general sort reserves scratch before small-input branches](performance-a-general-sort-reserves-scratch-before-small-input-branches.md) - Profile a general sort's stack setup when a larger element type slows a hot path, even if nearly every input is tiny.
@@ -969,3 +972,4 @@ A lane brief now carries the lessons chosen for its batch.
 - [Probe list matching separately for a shorthand and its longhands](spec-compliance-probe-list-matching-separately-for-shorthand-and-longhands.md) - Vary list lengths independently and distinguish storage from each observable serialization boundary.
 - [An Empty Bash Array Can Stop a Measurement Launcher](workflow-a-tmux-launch-is-not-proof-a-runner-started.md) - Verify runner startup and make optional arguments safe for the host shell.
 - [A merge that adapts one reader of a changed type must find them all](workflow-a-merge-that-adapts-one-reader-of-a-changed-type-must-find-them-all.md) - A failing test names one reader; a changed type has as many readers as the grep finds.
+- [Pseudo applicability probes need distinct controls](testing-pseudo-applicability-probes-need-distinct-controls.md) - A default-valued control cannot distinguish an applied declaration from a filtered one.
