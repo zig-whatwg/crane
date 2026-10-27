@@ -50,8 +50,14 @@ pub fn upgradeElement(element: *runtime.Instance, definition: *ce.Definition) !?
     if (data.state != .undefined and data.state != .uncustomized) return null;
     const held_definition = definition.retain();
     defer held_definition.deinit();
-    const root = try engine.retainValue(element.ctx, .{ .instance = element });
-    defer root.release();
+    // The element is held across its construction, while the definition's
+    // construction stack names it (steps 6-10, constructForUpgrade): refcount
+    // step 5e's GCReachableRef in shadow mode - its wrapper rooted, as it
+    // always was here, and one counted reference, as WebKit's
+    // JSCustomElementInterface keeps the stack as `Vector<RefPtr<Element>, 1>
+    // m_constructionStack` (bindings/js/JSCustomElementInterface.h).
+    const held = try ce.ElementHold.take(element);
+    defer held.release();
     ce.setDefinition(element, definition);
     ce.setState(element, .failed);
     var alive = true;
