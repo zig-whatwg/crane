@@ -754,6 +754,8 @@ fn logicalGroup(l: Longhand) ?properties.Logical.Group {
         .{ .group = .border_width, .ls = .{ .border_top_width, .border_right_width, .border_bottom_width, .border_left_width } },
         .{ .group = .border_style, .ls = .{ .border_top_style, .border_right_style, .border_bottom_style, .border_left_style } },
         .{ .group = .border_color, .ls = .{ .border_top_color, .border_right_color, .border_bottom_color, .border_left_color } },
+        .{ .group = .scroll_margin, .ls = .{ .scroll_margin_top, .scroll_margin_right, .scroll_margin_bottom, .scroll_margin_left } },
+        .{ .group = .scroll_padding, .ls = .{ .scroll_padding_top, .scroll_padding_right, .scroll_padding_bottom, .scroll_padding_left } },
     };
     for (sides) |g| for (g.ls) |x| if (x == l) return g.group;
     return null;

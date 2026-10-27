@@ -238,6 +238,17 @@ pub const Keyword = enum(u16) {
     balance,
     balance_all,
 
+    // CSS Scroll Snap 1 §§4–5 and Scroll Snap 2 §3.1.
+    x,
+    y,
+    pair,
+    mandatory,
+    proximity,
+    start,
+    end,
+    always,
+    nearest,
+
     /// The keyword's CSS spelling.
     pub fn name(self: Keyword) []const u8 {
         return switch (self) {

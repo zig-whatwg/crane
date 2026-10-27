@@ -302,6 +302,28 @@ pub const Longhand = enum(u16) {
     column_rule_style,
     column_rule_width,
 
+    // CSS Scroll Snap 1 §§4–5, Appendix A; Scroll Snap 2 §3.1.
+    scroll_snap_type,
+    scroll_snap_align,
+    scroll_snap_stop,
+    scroll_initial_target,
+    scroll_margin_top,
+    scroll_margin_right,
+    scroll_margin_bottom,
+    scroll_margin_left,
+    scroll_margin_block_start,
+    scroll_margin_block_end,
+    scroll_margin_inline_start,
+    scroll_margin_inline_end,
+    scroll_padding_top,
+    scroll_padding_right,
+    scroll_padding_bottom,
+    scroll_padding_left,
+    scroll_padding_block_start,
+    scroll_padding_block_end,
+    scroll_padding_inline_start,
+    scroll_padding_inline_end,
+
     pub const count = @typeInfo(Longhand).@"enum".fields.len;
 
     /// The property name.
@@ -353,7 +375,7 @@ pub const Logical = struct {
     group: Group,
     side: Side,
 
-    pub const Group = enum { margin, padding, inset, border_width, border_style, border_color, size, min_size, max_size };
+    pub const Group = enum { margin, padding, inset, border_width, border_style, border_color, size, min_size, max_size, scroll_margin, scroll_padding };
     pub const Side = enum { block_start, block_end, inline_start, inline_end };
 };
 
@@ -394,6 +416,18 @@ pub fn physicalSide(side: Logical.Side, writing_mode: Keyword, direction: Keywor
 /// The physical longhand of `group` on `side`.
 pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
     return switch (group) {
+        .scroll_margin => switch (side) {
+            .top => .scroll_margin_top,
+            .right => .scroll_margin_right,
+            .bottom => .scroll_margin_bottom,
+            .left => .scroll_margin_left,
+        },
+        .scroll_padding => switch (side) {
+            .top => .scroll_padding_top,
+            .right => .scroll_padding_right,
+            .bottom => .scroll_padding_bottom,
+            .left => .scroll_padding_left,
+        },
         .size => switch (side) {
             .top, .bottom => .height,
             .left, .right => .width,
@@ -450,6 +484,8 @@ pub const Grammar = enum {
     box,
     column_count,
     column_size,
+    scroll_snap,
+    scroll_padding,
     animation_list,
     individual_transform,
     flex_factor,
@@ -559,6 +595,26 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .column_rule_color, .inherited = false, .initial = .{ .color = .current }, .grammar = .color },
         .{ .longhand = .column_rule_style, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .hidden, .dotted, .dashed, .solid, .double, .groove, .ridge, .inset, .outset } },
         .{ .longhand = .column_rule_width, .inherited = false, .initial = medium_width, .grammar = .line_width },
+        .{ .longhand = .scroll_snap_type, .inherited = false, .initial = Value.kw(.none), .grammar = .scroll_snap },
+        .{ .longhand = .scroll_snap_align, .inherited = false, .initial = Value.kw(.none), .grammar = .scroll_snap },
+        .{ .longhand = .scroll_snap_stop, .inherited = false, .initial = Value.kw(.normal), .grammar = .keywords, .keywords = &.{ .normal, .always } },
+        .{ .longhand = .scroll_initial_target, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .nearest } },
+        .{ .longhand = .scroll_margin_top, .inherited = false, .initial = zero, .grammar = .signed_length },
+        .{ .longhand = .scroll_margin_right, .inherited = false, .initial = zero, .grammar = .signed_length },
+        .{ .longhand = .scroll_margin_bottom, .inherited = false, .initial = zero, .grammar = .signed_length },
+        .{ .longhand = .scroll_margin_left, .inherited = false, .initial = zero, .grammar = .signed_length },
+        .{ .longhand = .scroll_margin_block_start, .inherited = false, .initial = zero, .grammar = .signed_length, .logical = .{ .group = .scroll_margin, .side = .block_start } },
+        .{ .longhand = .scroll_margin_block_end, .inherited = false, .initial = zero, .grammar = .signed_length, .logical = .{ .group = .scroll_margin, .side = .block_end } },
+        .{ .longhand = .scroll_margin_inline_start, .inherited = false, .initial = zero, .grammar = .signed_length, .logical = .{ .group = .scroll_margin, .side = .inline_start } },
+        .{ .longhand = .scroll_margin_inline_end, .inherited = false, .initial = zero, .grammar = .signed_length, .logical = .{ .group = .scroll_margin, .side = .inline_end } },
+        .{ .longhand = .scroll_padding_top, .inherited = false, .initial = Value.kw(.auto), .grammar = .scroll_padding },
+        .{ .longhand = .scroll_padding_right, .inherited = false, .initial = Value.kw(.auto), .grammar = .scroll_padding },
+        .{ .longhand = .scroll_padding_bottom, .inherited = false, .initial = Value.kw(.auto), .grammar = .scroll_padding },
+        .{ .longhand = .scroll_padding_left, .inherited = false, .initial = Value.kw(.auto), .grammar = .scroll_padding },
+        .{ .longhand = .scroll_padding_block_start, .inherited = false, .initial = Value.kw(.auto), .grammar = .scroll_padding, .logical = .{ .group = .scroll_padding, .side = .block_start } },
+        .{ .longhand = .scroll_padding_block_end, .inherited = false, .initial = Value.kw(.auto), .grammar = .scroll_padding, .logical = .{ .group = .scroll_padding, .side = .block_end } },
+        .{ .longhand = .scroll_padding_inline_start, .inherited = false, .initial = Value.kw(.auto), .grammar = .scroll_padding, .logical = .{ .group = .scroll_padding, .side = .inline_start } },
+        .{ .longhand = .scroll_padding_inline_end, .inherited = false, .initial = Value.kw(.auto), .grammar = .scroll_padding, .logical = .{ .group = .scroll_padding, .side = .inline_end } },
         .{ .longhand = .transition_property, .inherited = false, .initial = Value.kw(.all), .grammar = .animation_list },
         .{ .longhand = .transition_duration, .inherited = false, .initial = .{ .number = 0 }, .grammar = .animation_list },
         .{ .longhand = .transition_timing_function, .inherited = false, .initial = Value.kw(.ease), .grammar = .animation_list },
@@ -862,6 +918,12 @@ pub const Shorthand = enum(u8) {
     flex_flow,
     columns,
     column_rule,
+    scroll_margin,
+    scroll_margin_block,
+    scroll_margin_inline,
+    scroll_padding,
+    scroll_padding_block,
+    scroll_padding_inline,
 
     pub fn name(self: Shorthand) []const u8 {
         return switch (self) {
@@ -927,6 +989,12 @@ pub const Shorthand = enum(u8) {
             .flex_flow => &.{ .flex_direction, .flex_wrap },
             .columns => &.{ .column_width, .column_count, .column_height },
             .column_rule => &.{ .column_rule_width, .column_rule_style, .column_rule_color },
+            .scroll_margin => &.{ .scroll_margin_top, .scroll_margin_right, .scroll_margin_bottom, .scroll_margin_left },
+            .scroll_margin_block => &.{ .scroll_margin_block_start, .scroll_margin_block_end },
+            .scroll_margin_inline => &.{ .scroll_margin_inline_start, .scroll_margin_inline_end },
+            .scroll_padding => &.{ .scroll_padding_top, .scroll_padding_right, .scroll_padding_bottom, .scroll_padding_left },
+            .scroll_padding_block => &.{ .scroll_padding_block_start, .scroll_padding_block_end },
+            .scroll_padding_inline => &.{ .scroll_padding_inline_start, .scroll_padding_inline_end },
             .transition => &.{ .transition_property, .transition_duration, .transition_timing_function, .transition_delay, .transition_behavior },
             .marker => &.{ .marker_start, .marker_mid, .marker_end },
             .mask => &@import("mask_values.zig").longhands,
@@ -1277,6 +1345,12 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
     const def = l.info();
     switch (def.grammar) {
         .box => return @import("box_values.zig").consume(options, l, stream),
+        .scroll_snap => return @import("box_scroll_values.zig").consume(l, stream),
+        .scroll_padding => {
+            // Scroll Snap 1 Appendix A: auto | <length-percentage [0,∞]>.
+            if (takeKeyword(stream, &.{.auto})) |k| return Value.kw(k);
+            return lengthPercentage(options, stream, .{ .negative = false, .quirky = false });
+        },
         .column_count => {
             // Multicol 2 §4.3: auto | <integer [1,∞]>.
             if (takeKeyword(stream, &.{.auto})) |k| return Value.kw(k);
@@ -2053,8 +2127,8 @@ fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *st
         },
         // `all` takes only the CSS-wide keywords, handled by the caller.
         .all => return false,
-        .margin, .padding, .inset, .border_width, .border_style, .border_color => return fourSides(options, s.longhands(), stream, out),
-        .margin_block, .margin_inline, .padding_block, .padding_inline, .inset_block, .inset_inline, .border_block_width, .border_block_style, .border_block_color, .border_inline_width, .border_inline_style, .border_inline_color, .gap => return twoSides(options, s.longhands(), stream, out),
+        .margin, .padding, .scroll_margin, .scroll_padding, .inset, .border_width, .border_style, .border_color => return fourSides(options, s.longhands(), stream, out),
+        .margin_block, .margin_inline, .padding_block, .padding_inline, .scroll_margin_block, .scroll_margin_inline, .scroll_padding_block, .scroll_padding_inline, .inset_block, .inset_inline, .border_block_width, .border_block_style, .border_block_color, .border_inline_width, .border_inline_style, .border_inline_color, .gap => return twoSides(options, s.longhands(), stream, out),
         .border_top, .border_right, .border_bottom, .border_left, .border_block_start, .border_block_end, .border_inline_start, .border_inline_end => {
             const ls = s.longhands();
             return borderSide(options, ls[0], ls[1], ls[2], &.{ls[0]}, &.{ls[1]}, &.{ls[2]}, stream, out);
@@ -2489,7 +2563,7 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
             } else try serializeValue(.text_orientation, vs[0].value, out, allocator);
             return true;
         },
-        .margin, .padding, .inset, .border_width, .border_style, .border_color => {
+        .margin, .padding, .scroll_margin, .scroll_padding, .inset, .border_width, .border_style, .border_color => {
             const top = vs[0].value;
             const right = vs[1].value;
             const bottom = vs[2].value;
@@ -2501,7 +2575,7 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
             }
             return true;
         },
-        .margin_block, .margin_inline, .padding_block, .padding_inline, .inset_block, .inset_inline, .border_block_width, .border_block_style, .border_block_color, .border_inline_width, .border_inline_style, .border_inline_color, .overflow, .place_content, .place_items, .place_self, .gap => {
+        .margin_block, .margin_inline, .padding_block, .padding_inline, .scroll_margin_block, .scroll_margin_inline, .scroll_padding_block, .scroll_padding_inline, .inset_block, .inset_inline, .border_block_width, .border_block_style, .border_block_color, .border_inline_width, .border_inline_style, .border_inline_color, .overflow, .place_content, .place_items, .place_self, .gap => {
             try serializeValue(ls[0], vs[0].value, out, allocator);
             if (!vs[1].value.eql(vs[0].value)) {
                 try out.append(allocator, ' ');

@@ -1325,7 +1325,7 @@ const Builder = struct {
             const assigned = preflight.assigned;
             const geometry_length = switch (l.info().grammar) {
                 .length_percentage_auto, .length_percentage_nonneg, .size, .max_size, .line_width, .gap, .signed_length, .fit_tolerance => true,
-                .column_size => true,
+                .column_size, .scroll_padding => true,
                 else => false,
             };
             // Q25/Q83/Q88: this is the single unavailable-input decision,
