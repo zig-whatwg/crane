@@ -226,8 +226,43 @@ fn toNumber(context: *v8.Context, value: *v8.Value) ConversionError!f64 {
     if (v8.v8_Value_IsSymbol(value) or v8.v8_Value_IsBigInt(value)) {
         return ConversionError.TypeError;
     }
-    return v8.v8_Value_NumberValue(value, context);
+    // A primitive's ToNumber runs no script and cannot throw (a Symbol and a
+    // BigInt were refused above): no TryCatch on the hot path.
+    if (!v8.v8_Value_IsObject(value)) return v8.v8_Value_NumberValue(value, context);
+    // An object's runs its @@toPrimitive, valueOf or toString, and what they
+    // throw is the abrupt completion of "? ToNumber(V)" (WebIDL 3.2.4
+    // ConvertToInt step 1, 3.2.5-3.2.8 step 1): the conversion's, so the
+    // operation, setter or constructor never runs, and script catches its
+    // own exception. NumberValue alone answered 0 with the exception left
+    // pending (FromMaybe(0)): the call ran with 0 - a setter stored it - and
+    // a call that then threw an error of its own threw that instead.
+    // Blink's ToRestrictedDouble/ToDouble return early on the
+    // ExceptionState the same way (bindings/core/v8/
+    // native_value_traits_impl.h, chromium 23520b2ec9fc).
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return v8.v8_Value_NumberValue(value, context);
+    var to_number: ObjectToNumber = .{ .value = value, .context = context };
+    var exception: ?*v8.Value = null;
+    if (v8.v8_RunCatching(isolate, ObjectToNumber.run, &to_number, &exception)) {
+        if (exception) |thrown| {
+            v8.v8_Isolate_ThrowException(isolate, thrown);
+            v8.v8_Global_Dispose(thrown);
+        }
+        return ConversionError.ExceptionPending;
+    }
+    return to_number.result;
 }
+
+/// ToNumber of an object, run under `v8_RunCatching` (`toNumber`).
+const ObjectToNumber = struct {
+    value: *v8.Value,
+    context: *v8.Context,
+    result: f64 = 0,
+
+    fn run(data: ?*anyopaque) callconv(.c) void {
+        const self: *ObjectToNumber = @ptrCast(@alignCast(data.?));
+        self.result = v8.v8_Value_NumberValue(self.value, self.context);
+    }
+};
 
 /// WebIDL `long`: ToNumber, then ConvertToInt. These helpers used to reject
 /// anything that was not already a number, which made `el.colSpan = "3"` a
@@ -2361,13 +2396,9 @@ fn convertValueAs(
     // [EnforceRange] nor [Clamp].
     if (type_info == .int) {
         // Step 1: x = ToNumber(V). ToNumber throws a TypeError for a Symbol or
-        // a BigInt. An object's valueOf can throw too; NumberValue then
-        // answers 0 and V8 rethrows the pending exception when the binding
-        // returns, so the call runs with 0 first - a known gap.
-        if (v8.v8_Value_IsSymbol(value) or v8.v8_Value_IsBigInt(value)) {
-            return ConversionError.TypeError;
-        }
-        return convertToInt(T, v8.v8_Value_NumberValue(value, context));
+        // a BigInt. An object's valueOf can throw too: that is the
+        // conversion's exception (`toNumber`), and the call does not run.
+        return convertToInt(T, try toNumber(context, value));
     }
 
     // Handle enums: WebIDL §3.2.23 - S = ? ToString(V), then a TypeError
