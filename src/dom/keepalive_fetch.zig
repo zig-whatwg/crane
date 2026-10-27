@@ -60,13 +60,24 @@
 //! document" (dom.document_fetches) does not cancel it, which is
 //! keepalive's purpose, and the document and its global may be freed
 //! while it is in flight; the fetch group goes with its global, and so
-//! does the reservation. Like `fetch({keepalive: true})` and Codex row
-//! 12's reporting uploads it is still terminated when its realm retires
-//! (`alive`): the request's client fields - its CSP violation and resource
-//! timing reporters - name the global unguarded, and termination at the
-//! next sweep keeps the network from reaching them after it goes.
-//! Surviving that needs an agent-level owner and guarded client fields;
-//! retaining a dead global would not provide one.
+//! does the reservation.
+//!
+//! The dispatch is its fetch's client while its realm stands (`alive`).
+//! When the realm retires, the agent's sweep - Fetch "terminate the fetch
+//! group" - finds the client gone: a keepalive request whose response has
+//! not come is KEPT (fetch.algorithms.AsyncFetch.keep), not terminated
+//! (Fetch 2.4 "terminated" step 1), and goes on on the agent's network side
+//! (AgentFetches) until it is over, has been kept for the agent's limit, or
+//! the agent ends; the dispatch hears it is over and frees itself, its
+//! reservation released into a fetch group that went with its global. What
+//! the kept request still reaches is its own clones and its Browser's
+//! state: the client reporters it was populated with name the REALM
+//! (dom.csp_violations.reporterFor, performance_timeline.timingReporterFor,
+//! sri_reporting.reporterFor) and resolve its global at use - none once it
+//! retired - and keep drops them anyway. Lane keepalive2: a beacon from a
+//! removed frame used to die whenever the collector took the frame's
+//! detached realm, and every keepalive request at every top-level
+//! navigation.
 //!
 //! Spec: https://fetch.spec.whatwg.org/#request-keepalive-flag
 //! Spec: https://fetch.spec.whatwg.org/#http-network-or-cache-fetch
@@ -187,8 +198,9 @@ pub const Options = struct {
 pub const Dispatch = struct {
     allocator: std.mem.Allocator,
     /// The realm of the global that started it. A page that ends retires
-    /// its context - `engine_ctx` becomes null - and the fetch is
-    /// terminated with it.
+    /// its context - `engine_ctx` becomes null - and the dispatch is over:
+    /// its fetch is kept by the agent if its request is keepalive, and
+    /// terminated otherwise (AgentFetches.sweep).
     ctx: runtime.Context,
     /// The body's bytes in the client's fetch group, until the end.
     reservation: ?Reservation = null,
@@ -228,7 +240,8 @@ pub const Dispatch = struct {
         if (observer.response) |response| response(observer.context, status);
     }
 
-    /// The fetch is over: it finished, or was terminated with its realm.
+    /// The dispatch is over: its fetch finished, or its realm went - the
+    /// fetch terminated, or kept by its agent.
     fn over(context: *anyopaque) void {
         const self: *Dispatch = @ptrCast(@alignCast(context));
         self.active = null;
