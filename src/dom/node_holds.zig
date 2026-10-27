@@ -434,6 +434,68 @@ pub const TaskHold = struct {
     }
 };
 
+/// One node a holder will hand to script later, kept for it: refcount design
+/// 2.4's `GCReachableRef` in shadow mode, for a holder whose node something
+/// else keeps from the collector meanwhile - so, unlike `TaskHold`, it never
+/// wraps. A MutationObserver's pending targets are the case (lane refcount5,
+/// step 5c): the queued record that names a target holds it and rescues its
+/// tree (5b), and wrapping every record's target is the cost lane edges
+/// measured (2.55x on an observed parse;
+/// docs/lessons/architecture-tracing-a-holders-nodes-makes-a-wrapper-per-node.md).
+///
+/// WebKit's GCReachableRef (Source/WebCore/dom/GCReachableRef.h) is a RefPtr
+/// plus an entry in GCReachableRefMap, a HashCountedSet that
+/// JSNodeOwner::isReachableFromOpaqueRoots reads to keep a disconnected
+/// node's wrapper (bindings/js/JSNodeCustom.cpp). Here: a counted hold in the
+/// node's chain (`Hold`, with no holder: a removal has nothing to rescue) and
+/// ONE counted pending-activity keep of the node's wrapper
+/// (engine.keepPlatformObjectAlive). A node with no wrapper yet keeps the
+/// keep waiting in its realm's wrapper cache, and the wrapper made later
+/// takes it - so its expandos last until the holder lets go, as WebKit's
+/// GC-time read of the map does.
+///
+/// A link in someone's chain: embedded where it does not move while it
+/// holds a node (docs/lessons/architecture-an-intrusive-hold-must-not-move.md).
+/// A node freed under it - its realm's coordinated teardown, the final sweep
+/// - is emptied by `nodeReleased`: its keep went with the node's wrapper
+/// cache, and its `release` then makes no engine call. Released once; a
+/// release of a hold that holds nothing does nothing.
+pub const ReachableHold = struct {
+    hold: Hold = .{},
+    /// Whether this hold took a pending-activity keep.
+    kept: bool = false,
+
+    /// Hold `member` (a node: `base` is its tree node) and keep its wrapper.
+    /// The hold holds nothing before.
+    pub fn take(self: *ReachableHold, member: *runtime.Instance, base: *NodeBase) void {
+        std.debug.assert(self.hold.node == null and !self.kept);
+        self.hold.link(null, member, base);
+        if (!member.ctx.hasEngine()) return;
+        engine.keepPlatformObjectAlive(member);
+        self.kept = true;
+    }
+
+    /// The node, or null once it was freed under the hold (a teardown net,
+    /// never the behaviour: the hold is what keeps it).
+    pub fn get(self: *const ReachableHold) ?*runtime.Instance {
+        return self.hold.get();
+    }
+
+    /// Whether this holds `member` now: linked to it at the slab generation
+    /// it was held at.
+    pub fn holds(self: *const ReachableHold, member: *runtime.Instance) bool {
+        return self.hold.node == member and Hold.stillHeld(member, self.hold.generation);
+    }
+
+    /// Let the node go: the keep first, while the node is alive, then the
+    /// counted hold.
+    pub fn release(self: *ReachableHold) void {
+        if (self.kept) if (self.hold.get()) |member| engine.releasePlatformObject(member);
+        self.kept = false;
+        self.hold.unlink();
+    }
+};
+
 /// A Browser's queued element tasks (`ElementTask`): a supplement of its
 /// scope (runtime.BrowserScope, docs/instances.md rule 2), reached through
 /// the realm of the element a task targets. It is what HTML's toggle task
