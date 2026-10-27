@@ -28,13 +28,17 @@ const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
-/// Fetch 2.4: the part of an environment settings object's fetch group that
-/// is counted - the in-flight keepalive request body bytes HTTP-network-or-
-/// cache fetch step 8.10 bounds at 64 KiB. Owned by each global with its
-/// settings (a Window's, a WorkerGlobalScope's InternalState), and reached
-/// through `dom.global_settings.fetchGroupOf`. Plain data: a request that
-/// outlives its global holds a slab-generation link to it and releases only
-/// while that is live (dom.keepalive_fetch.Reservation).
+/// Fetch 2.4: the parts of an environment settings object's fetch group that
+/// Crane keeps there - the in-flight keepalive request body bytes
+/// HTTP-network-or-cache fetch step 8.10 bounds at 64 KiB, and the deferred
+/// fetch records fetchLater() queues (dom.deferred_fetches; its fetch
+/// records are their owners', reached through the cancelers below). Owned
+/// by each global with its settings (a Window's, a WorkerGlobalScope's
+/// InternalState), `deinit` with it, and reached through
+/// `dom.global_settings.fetchGroupOf`. A request that outlives its global
+/// holds a slab-generation link to it and releases its bytes only while that
+/// is live (dom.keepalive_fetch.Reservation); a deferred record is the
+/// group's until it is sent, aborted or freed with it.
 ///
 /// The spec sums the in-flight records at each HTTP-network-or-cache fetch,
 /// which counts the request being checked twice (its own record is in the
@@ -48,6 +52,14 @@ const runtime = @import("runtime");
 /// FetchUtil::Increment/DecrementPendingKeepaliveRequestSize.
 pub const FetchGroup = struct {
     inflight_keepalive_bytes: u64 = 0,
+    /// "Deferred fetch records": the pending ones, in queueing order.
+    deferred: @import("deferred_fetches.zig").Records = .{},
+
+    /// The group's global goes: its pending deferred records go unsent -
+    /// its document's unloading cleanup steps sent them, if they ran.
+    pub fn deinit(self: *FetchGroup) void {
+        self.deferred.deinit();
+    }
 
     /// "64 kibibytes".
     pub const keepalive_quota: u64 = 64 * 1024;

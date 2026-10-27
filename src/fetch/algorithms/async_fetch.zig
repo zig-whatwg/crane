@@ -32,6 +32,12 @@
 //! gone is terminated - its transfer cancelled, its body failed - and the
 //! client is told so (`gone`), and nothing else after. Fetch calls this
 //! terminating the fetch group, which happens when its document unloads.
+//!
+//! Except a keepalive one: Fetch 2.4's "terminated" step 1 leaves a record
+//! whose request's keepalive is true, and such a fetch goes on without its
+//! client - KEPT (`AsyncFetch.keep`) - on its agent's network side, until it
+//! is over, it has run for `AgentFetches.kept_limit_ms`, or its agent ends.
+//! See `keep` for what a kept fetch may still reach.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -42,6 +48,7 @@ const internal_response = @import("../internal/response.zig");
 const body_pipe = @import("../internal/body_pipe.zig");
 const PipeSource = body_pipe.PipeSource;
 const clock = @import("clock");
+const platform = @import("platform");
 const network = @import("../network/root.zig");
 const NetworkScheduler = network.NetworkScheduler;
 const NetworkResponse = network.NetworkResponse;
@@ -107,6 +114,9 @@ pub const AsyncFetch = struct {
     outcome: ?(FetchError!FetchResult) = null,
     /// `done` has run.
     delivered: bool = false,
+    /// When its client went and it was kept (`keep`, the agent's monotonic
+    /// clock in milliseconds); null while it has a client.
+    kept_since_ms: ?i64 = null,
     client: Client,
 
     /// Who started the fetch, and hears how it goes.
@@ -271,6 +281,63 @@ pub const AsyncFetch = struct {
         }
         self.destroy();
     }
+
+    /// Whether this fetch goes on without its client once the client is
+    /// gone: its request's keepalive is true (Fetch 2.4 "terminated" step 1
+    /// terminates only the others) and its response has not been handed
+    /// over - once it has, the request is done with the network as far as a
+    /// keepalive request goes, and nobody is left to read the response.
+    /// WebKit's rule: NetworkResourceLoader::abort keeps a load whose
+    /// `options.keepAlive` is set and whose `m_response.isNull()`. A race's
+    /// network side is its raced fetch's to end.
+    pub fn outlivesClient(self: *const AsyncFetch) bool {
+        return self.job.request.keepalive and !self.delivered and self.race_owner == null and self.kept_since_ms == null;
+    }
+
+    /// The fetch's client is gone and the fetch goes on without it, its
+    /// response ignored, on its agent's network side (`fetches`), from
+    /// `now_ms`. The client hears nothing more: the caller tells it it is
+    /// gone. The design is WebKit's and Chromium's, not their code -
+    /// WebKit's NetworkResourceLoader::abort sets m_isKeptAlive and
+    /// transfers the loader to its session (NetworkSession::addKeptAliveLoad),
+    /// whose end aborts it; Chromium's KeepAliveURLLoader, owned by its
+    /// storage partition's KeepAliveURLLoaderService, drops the response
+    /// once its renderer is gone.
+    ///
+    /// What a kept fetch may still reach: its own request - the policy
+    /// container, URL and body are the request's clones, its CSP check on a
+    /// redirect reads the clone - and what its Browser owns and frees only
+    /// after every agent's fetches (the cookie jar, the network context, the
+    /// blob URL store, the service worker route). Nothing of its client:
+    /// the request's reporters - which name the client's realm, resolved at
+    /// use and answering nothing once it retired - are dropped here, and so
+    /// are its traversable (no prompt can be shown for a document that is
+    /// gone) and the job's process-response callback. It reports nothing.
+    pub fn keep(self: *AsyncFetch, now_ms: i64) void {
+        self.kept_since_ms = now_ms;
+        self.client = kept_client;
+        self.reporting = false;
+        self.job.options.process_response = null;
+        const request = self.job.request;
+        request.csp_violation_reporter = null;
+        request.timing_reporter = null;
+        request.integrity_violation_reporter = null;
+        if (request.traversable_for_user_prompts == .traversable) request.traversable_for_user_prompts = .no_traversable;
+    }
+
+    /// A kept fetch's client: no one. A response is dropped as it comes.
+    const kept_client: Client = .{ .context = undefined, .done = keptDone, .alive = keptAlive, .gone = keptGone };
+
+    fn keptDone(_: *anyopaque, outcome: FetchError!FetchResult) void {
+        var result = outcome catch return;
+        result.deinit();
+    }
+
+    fn keptAlive(_: *anyopaque) bool {
+        return true;
+    }
+
+    fn keptGone(_: *anyopaque) void {}
 
     fn destroy(self: *AsyncFetch) void {
         self.track_body_end = false;
@@ -782,19 +849,55 @@ pub const AsyncFetch = struct {
 pub const AgentFetches = struct {
     allocator: Allocator,
     scheduler: NetworkScheduler,
-    /// Every fetch of the agent that has not ended, oldest first.
+    /// Every fetch of the agent that has not ended, oldest first - kept
+    /// ones (`AsyncFetch.keep`) among them.
     live: std.ArrayListUnmanaged(*AsyncFetch) = .empty,
+    /// How long a kept fetch may run without its client before it is
+    /// terminated (`sweep`). An ENGINE RESOURCE BOUND, not a compatibility
+    /// ruling: once its client is gone nothing on the web can observe when
+    /// a kept fetch ends (WPT cannot), so golden rule 2 does not apply; the
+    /// bound exists so that a hanging server cannot keep a request, its
+    /// transfer and its connection for a long-lived Browser's whole life.
+    /// The engines: Chromium bounds it at 30 s after the renderer goes -
+    /// kDefaultDisconnectedKeepAliveURLLoaderTimeout, "Prevents this loader
+    /// from staying alive indefinitely" (content/browser/loader/
+    /// keep_alive_url_loader.cc, OnURLLoaderDisconnected and
+    /// OnDisconnectedLoaderTimerFired, at f510e70030) - and this takes its
+    /// value; WebKit sets no time limit (~NetworkSession aborts its
+    /// m_keptAliveLoads, Source/WebKit/NetworkProcess/NetworkSession.cpp at
+    /// 3ef14dfb52); Gecko sets none either (dom/fetch/FetchService.cpp at
+    /// 5a78f4525f caps only their number, dom.fetchKeepalive.*_limit). A
+    /// field, not a constant, so that a test can shorten it.
+    kept_limit_ms: i64 = 30 * std.time.ms_per_s,
 
     pub fn init(allocator: Allocator) AgentFetches {
         return .{ .allocator = allocator, .scheduler = NetworkScheduler.init(allocator) };
     }
 
     /// The agent's end, after its realms' (each of which swept the fetches
-    /// it left, while the agent lived): the scheduler closes its multi
-    /// handle. A fetch still here was never swept - its client outlived its
-    /// agent - and is left as it is: ending it would reach an engine that is
-    /// gone.
+    /// it left, while the agent lived): the kept fetches end - they reach no
+    /// client and no realm, so ending them needs no engine - and the
+    /// scheduler closes its multi handle. Another fetch still here was never
+    /// swept - its client outlived its agent - and is left as it is: ending
+    /// it would reach an engine that is gone.
+    ///
+    /// A worker's agent ends with its global, so a keepalive fetch of a
+    /// worker ends here too, soon after the worker: unlike the browsers -
+    /// Chromium's KeepAliveURLLoaderService and Gecko's parent-process
+    /// FetchService outlive every worker - Crane has no network side above
+    /// the agent to hand it to (a worker's transfers are on its own
+    /// thread's multi handle). Feature-queue "KEEPALIVE PAST A WORKER'S END".
     pub fn deinit(self: *AgentFetches) void {
+        var i: usize = 0;
+        while (i < self.live.items.len) {
+            const f = self.live.items[i];
+            if (f.kept_since_ms == null) {
+                i += 1;
+                continue;
+            }
+            // Removes it from `live`.
+            f.terminateWith(.{ .kind = .network });
+        }
         if (self.live.items.len != 0) log.warn("{d} fetches outlived their agent", .{self.live.items.len});
         self.live.deinit(self.allocator);
         self.scheduler.deinit();
@@ -888,24 +991,52 @@ pub const AgentFetches = struct {
     /// away. `pump` does this at the start of each turn; teardown can call it
     /// directly, right after a realm ends, so the fetches it left release
     /// what they hold - a promise, and through it the realm - at once rather
-    /// than on the next turn. Returns whether any fetch was terminated.
+    /// than on the next turn. Returns whether any fetch was terminated or
+    /// kept.
+    ///
+    /// Step 1 terminates only a record whose request's keepalive is false:
+    /// a keepalive fetch whose response has not come is kept instead
+    /// (`AsyncFetch.keep`) - its client still hears it is gone, and the
+    /// fetch goes on here, reporting to no one - until it is over, or until
+    /// it has been kept for `kept_limit_ms`, when it is terminated.
     pub fn sweep(self: *AgentFetches) bool {
-        var terminated = false;
+        var changed = false;
+        var now_ms: ?i64 = null;
         var i: usize = 0;
         while (i < self.live.items.len) {
             const f = self.live.items[i];
+            if (f.kept_since_ms) |since| {
+                const now = now_ms orelse platform.monotonicMillis();
+                now_ms = now;
+                if (now - since < self.kept_limit_ms) {
+                    i += 1;
+                    continue;
+                }
+                // Kept too long: it ends, and no one hears.
+                f.terminateWith(.{ .kind = .network });
+                changed = true;
+                continue;
+            }
             if (f.client.alive(f.client.context)) {
                 i += 1;
                 continue;
             }
             const client = f.client;
+            changed = true;
+            if (f.outlivesClient()) {
+                const now = now_ms orelse platform.monotonicMillis();
+                now_ms = now;
+                f.keep(now);
+                client.gone(client.context);
+                // Still in `live`, wherever the client's gone left it.
+                continue;
+            }
             // Its client is gone: nothing is reported for it.
             f.reporting = false;
             f.terminateWith(.{ .kind = .network });
             client.gone(client.context);
-            terminated = true;
         }
-        return terminated;
+        return changed;
     }
 
     /// The agent's global is ending - a worker's, whose agent has that one

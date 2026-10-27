@@ -169,7 +169,7 @@ test "cancel ends the transport synchronously and the observer hears nothing" {
     }.body);
 }
 
-test "a dispatch whose realm retires is terminated, and ends without a response" {
+test "a dispatch whose realm retires ends without a response, and its keepalive fetch goes on, kept by the agent" {
     try onThread(struct {
         fn body() !void {
             var page = try Page.open(std.testing.allocator);
@@ -178,11 +178,16 @@ test "a dispatch whose realm retires is terminated, and ends without a response"
             var heard: Heard = .{};
             _ = try keepalive_fetch.start(try page.window(), try page.request(4), .{ .observer = heard.observer() });
             // The page ends: its realm retires, and Fetch terminates the
-            // fetch group (Browser.navigate sweeps at once).
+            // fetch group (Browser.navigate sweeps at once) - all but its
+            // keepalive records (Fetch 2.4 "terminated" step 1). The
+            // dispatch's client is gone; the fetch is the agent's.
             try page.browser.navigate("about:blank", .window);
             try std.testing.expectEqual(@as(usize, 0), heard.responses);
             try std.testing.expectEqual(@as(usize, 1), heard.ends);
-            try std.testing.expectEqual(before, page.fetches().inFlight());
+            try std.testing.expectEqual(before + 1, page.fetches().inFlight());
+            // Refused when the network next pumps: over, and let go.
+            try turnUntilIdle(&page, before);
+            try std.testing.expectEqual(@as(usize, 0), heard.responses);
         }
     }.body);
 }

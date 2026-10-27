@@ -302,6 +302,9 @@ pub const InternalState = struct {
         // The close watchers stop being active, and let their owners go.
         self.close_watcher_manager.deinit();
         self.reporting.deinit(self.allocator);
+        // Its fetch group's deferred fetch records still pending go unsent
+        // (dom.deferred_fetches: the unloading cleanup steps sent them).
+        self.fetch_group.deinit();
         if (self.crypto) |*crypto| crypto.edge.release(crypto.owner);
         if (self.own_performance) |*performance| performance.edge.release(performance.owner);
         if (self.trusted_types) |*factory| factory.edge.release(factory.owner);
@@ -479,6 +482,11 @@ pub fn installHooks() void {
     // "Destroy a document" and "unload a document" end the window's idle
     // callbacks and their timeouts (an unloading document cleanup step).
     @import("dom").unloading_cleanup.install(&endIdleCallbacks);
+    // Fetch "when a fetch group is terminated" step 2, "process deferred
+    // fetches", as the window's document goes - and as the back/forward
+    // cache stores it (dom.deferred_fetches).
+    @import("dom").unloading_cleanup.install(&@import("dom").deferred_fetches.terminate);
+    @import("dom").bfcache.installStoreStep(&@import("dom").deferred_fetches.storeInCache);
     // Other types reach a window's container through this hook.
     @import("dom").navigable_container.install(.{ .of = &containerOf });
     // A frame's host binds the Window to the global its realm made here.
