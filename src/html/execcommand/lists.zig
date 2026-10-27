@@ -142,6 +142,14 @@ fn isSomeListish(node: *Instance, name: []const u8) !bool {
 }
 
 pub fn selectionListState(edit: *Edit) !ListState {
+    return listState(edit, true);
+}
+
+/// The list state, `for_query` applying the browsers' table-cell rule of
+/// the queries (below); toggle lists' own mode (its step 1) is the spec's
+/// state, so a second insertOrderedList over two cells' lists takes both
+/// out, as the browsers do.
+fn listState(edit: *Edit, for_query: bool) !ListState {
     // Steps 1-2.
     const range = (try block.blockExtendActiveRange(edit)) orelse return .none;
     // Steps 3-4.
@@ -158,6 +166,17 @@ pub fn selectionListState(edit: *Edit) !ListState {
     }
     // Step 5.
     if (node_list.items.len == 0) return .none;
+    // Lists in different table cells are never one list: Chrome 156,
+    // Firefox 158 and Safari 27 all answer false for a selection across two
+    // cells that each hold an ol (editing/run/insert-list-items-in-table-cell
+    // .html, wpt.fyi 5af3c135c9; Blink/WebKit SelectionListState require the
+    // selection's start and end in the same list).
+    if (for_query) {
+        const first_cell = try tableCellOf(node_list.items[0]);
+        for (node_list.items[1..]) |member| {
+            if ((try tableCellOf(member)) != first_cell) return .none;
+        }
+    }
     // Step 6.
     var all_ol = true;
     var all_ul = true;
@@ -254,7 +273,7 @@ fn shift(list: *std.ArrayList(*Instance)) *Instance {
 /// insertOrderedList / insertUnorderedList action).
 pub fn toggleListsAction(edit: *Edit, tag_name: []const u8) !bool {
     // Step 1.
-    const mode_disable = (try selectionListState(edit)) == (if (std.mem.eql(u8, tag_name, "ol")) ListState.ol else ListState.ul);
+    const mode_disable = (try listState(edit, false)) == (if (std.mem.eql(u8, tag_name, "ol")) ListState.ol else ListState.ul);
     // Step 2.
     const other_tag_name: []const u8 = if (std.mem.eql(u8, tag_name, "ul")) "ol" else "ul";
     // Steps 3-4.
@@ -401,6 +420,15 @@ pub fn toggleListsAction(edit: *Edit, tag_name: []const u8) !bool {
         }
     }
     return true;
+}
+
+/// The table cell around `node`, or null.
+fn tableCellOf(node: *Instance) !?*Instance {
+    var current: ?*Instance = node;
+    while (current) |c| : (current = try common.parent(c)) {
+        if (try common.isHtmlElementIn(c, &.{ "td", "th" })) return c;
+    }
+    return null;
 }
 
 fn isEditableNamed(node: ?*Instance, name: []const u8) !bool {

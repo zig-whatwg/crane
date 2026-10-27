@@ -97,12 +97,6 @@ fn executeCommandImpl(
         .backColor => formatting.executeBackColor(allocator, document, value),
         .hiliteColor => formatting.executeHiliteColor(allocator, document, value),
 
-        // Alignment commands
-        .justifyLeft => formatting.executeJustify(allocator, document, .left),
-        .justifyCenter => formatting.executeJustify(allocator, document, .center),
-        .justifyRight => formatting.executeJustify(allocator, document, .right),
-        .justifyFull => formatting.executeJustify(allocator, document, .full),
-
         // The block formatting commands are the html module's
         // (src/html/execcommand/blocks.zig, on the generated interfaces,
         // which html_core cannot reach); Document.execCommand dispatches
@@ -115,6 +109,10 @@ fn executeCommandImpl(
         .insertUnorderedList,
         .indent,
         .outdent,
+        .justifyLeft,
+        .justifyCenter,
+        .justifyRight,
+        .justifyFull,
         => .{ .success = false },
 
         // Link commands

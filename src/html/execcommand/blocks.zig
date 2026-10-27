@@ -11,6 +11,7 @@ const block = @import("block.zig");
 const paragraph = @import("paragraph.zig");
 const indent = @import("indent.zig");
 const lists = @import("lists.zig");
+const alignment = @import("alignment.zig");
 
 const Edit = common.Edit;
 
@@ -23,6 +24,10 @@ pub const Command = enum {
     insert_paragraph,
     insert_line_break,
     insert_horizontal_rule,
+    justify_center,
+    justify_full,
+    justify_left,
+    justify_right,
 
     /// "map an edit command to input type value"; formatBlock has no row
     /// in the table, so "".
@@ -36,12 +41,16 @@ pub const Command = enum {
             .insert_paragraph => "insertParagraph",
             .insert_line_break => "insertLineBreak",
             .insert_horizontal_rule => "insertHorizontalRule",
+            .justify_center => "formatJustifyCenter",
+            .justify_full => "formatJustifyFull",
+            .justify_left => "formatJustifyLeft",
+            .justify_right => "formatJustifyRight",
         };
     }
 
     /// False for a command that "must not be enabled if the editing host is
     /// in the plaintext-only state": indent, insertHorizontalRule, both
-    /// list commands and outdent by the spec's text,
+    /// list commands, the justify commands and outdent by the spec's text,
     /// and formatBlock by the browsers (its section lacks the sentence, but
     /// editing/plaintext-only/styling-commands.html's formatBlock "should
     /// be disabled" subtests pass in Chrome 156, Firefox 158 and Safari 27,
@@ -66,6 +75,10 @@ pub const names = [_]struct { []const u8, Command }{
     .{ "insertparagraph", .insert_paragraph },
     .{ "insertlinebreak", .insert_line_break },
     .{ "inserthorizontalrule", .insert_horizontal_rule },
+    .{ "justifycenter", .justify_center },
+    .{ "justifyfull", .justify_full },
+    .{ "justifyleft", .justify_left },
+    .{ "justifyright", .justify_right },
 };
 
 /// The command's action, given its value `argument`. Every block command "preserves
@@ -83,6 +96,10 @@ pub fn action(edit: *Edit, command: Command, argument: []const u8) !bool {
         .insert_paragraph => try paragraph.insertParagraphAction(edit),
         .insert_line_break => try paragraph.insertLineBreakAction(edit),
         .insert_horizontal_rule => try paragraph.insertHorizontalRuleAction(edit),
+        .justify_center => try alignment.justifyTheSelection(edit, .center),
+        .justify_full => try alignment.justifyTheSelection(edit, .justify),
+        .justify_left => try alignment.justifyTheSelection(edit, .left),
+        .justify_right => try alignment.justifyTheSelection(edit, .right),
     };
     if (try edit.rangeCollapsed()) try overrides.restoreStatesAndValues(edit, recorded);
     return result;
@@ -93,6 +110,10 @@ pub fn state(edit: *Edit, command: Command) !?bool {
     return switch (command) {
         .insert_ordered_list => (try lists.selectionListState(edit)) == .ol,
         .insert_unordered_list => (try lists.selectionListState(edit)) == .ul,
+        .justify_center => try alignment.justifyState(edit, .center),
+        .justify_full => try alignment.justifyState(edit, .justify),
+        .justify_left => try alignment.justifyState(edit, .left),
+        .justify_right => try alignment.justifyState(edit, .right),
         else => null,
     };
 }
@@ -109,6 +130,10 @@ pub fn indeterm(edit: *Edit, command: Command) !?bool {
             .mixed, .mixed_ul => true,
             else => false,
         },
+        .justify_center => try alignment.justifyIndeterm(edit, .center),
+        .justify_full => try alignment.justifyIndeterm(edit, .justify),
+        .justify_left => try alignment.justifyIndeterm(edit, .left),
+        .justify_right => try alignment.justifyIndeterm(edit, .right),
         else => null,
     };
 }
@@ -117,6 +142,7 @@ pub fn indeterm(edit: *Edit, command: Command) !?bool {
 pub fn value(edit: *Edit, command: Command) !?[]const u8 {
     return switch (command) {
         .format_block => try block.formatBlockValue(edit),
+        .justify_center, .justify_full, .justify_left, .justify_right => try alignment.justifyValue(edit),
         else => null,
     };
 }

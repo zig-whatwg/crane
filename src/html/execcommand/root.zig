@@ -56,6 +56,10 @@ pub const Command = enum {
     insert_paragraph,
     insert_line_break,
     insert_horizontal_rule,
+    justify_center,
+    justify_full,
+    justify_left,
+    justify_right,
 
     const Row = struct { []const u8, Command };
     /// One row per command, matched ASCII case-insensitively.

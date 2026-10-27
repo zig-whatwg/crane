@@ -3,7 +3,6 @@
 //! Implements formatting-related execCommand operations:
 //! - Inline formatting (bold, italic, underline, strikethrough, sub/superscript)
 //! - Font commands (fontName, fontSize, foreColor, backColor, hiliteColor)
-//! - Alignment commands (justifyLeft, justifyCenter, justifyRight, justifyFull)
 //! - removeFormat (strip all formatting)
 //!
 //! Spec: https://w3c.github.io/editing/docs/execCommand/
@@ -19,23 +18,6 @@ const executor = @import("executor.zig");
 pub const Command = commands.Command;
 pub const CommandResult = executor.CommandResult;
 pub const DocumentHandle = executor.DocumentHandle;
-
-/// Text alignment options
-pub const Alignment = enum {
-    left,
-    center,
-    right,
-    full,
-
-    pub fn toCssValue(self: Alignment) []const u8 {
-        return switch (self) {
-            .left => "left",
-            .center => "center",
-            .right => "right",
-            .full => "justify",
-        };
-    }
-};
 
 // =============================================================================
 // Formatting Toggle Commands
@@ -358,72 +340,6 @@ pub fn executeHiliteColor(
 }
 
 // =============================================================================
-// Alignment Commands
-// =============================================================================
-
-/// Execute justify command
-/// Sets text alignment for block containing selection
-///
-/// Spec: https://w3c.github.io/editing/docs/execCommand/#the-justifycenter-command
-///
-/// Algorithm:
-/// 1. Find all block elements containing the selection
-/// 2. For each block element:
-///    a. If styleWithCSS is true:
-///       - Set style="text-align: [left|center|right|justify]"
-///    b. Otherwise:
-///       - Set align="[left|center|right|justify]" attribute
-/// 3. Create undo entry
-///
-/// Note: justifyLeft, justifyCenter, justifyRight, justifyFull all use
-/// this common implementation with different alignment values.
-pub fn executeJustify(
-    allocator: std.mem.Allocator,
-    document: DocumentHandle,
-    alignment: Alignment,
-) !CommandResult {
-    _ = allocator;
-    _ = document;
-
-    const css_value = alignment.toCssValue();
-    _ = css_value;
-
-    // Algorithm when integrated with DOM:
-    // 1. Get selection range
-    // 2. Find all block-level ancestors
-    // 3. For each block:
-    //    a. If styleWithCSS: set style.textAlign = alignment
-    //    b. Otherwise: set align attribute
-    // 4. Record undo entry
-
-    return .{ .success = true };
-}
-
-/// Execute justifyLeft command
-/// Aligns block to left
-pub fn executeJustifyLeft(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
-    return executeJustify(allocator, document, .left);
-}
-
-/// Execute justifyCenter command
-/// Centers block
-pub fn executeJustifyCenter(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
-    return executeJustify(allocator, document, .center);
-}
-
-/// Execute justifyRight command
-/// Aligns block to right
-pub fn executeJustifyRight(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
-    return executeJustify(allocator, document, .right);
-}
-
-/// Execute justifyFull command
-/// Justifies block (full width alignment)
-pub fn executeJustifyFull(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
-    return executeJustify(allocator, document, .full);
-}
-
-// =============================================================================
 // Query Functions
 // =============================================================================
 
@@ -494,13 +410,6 @@ pub fn queryFormattingIndeterm(
 // =============================================================================
 // Tests
 // =============================================================================
-
-test "Alignment.toCssValue" {
-    try std.testing.expectEqualStrings("left", Alignment.left.toCssValue());
-    try std.testing.expectEqualStrings("center", Alignment.center.toCssValue());
-    try std.testing.expectEqualStrings("right", Alignment.right.toCssValue());
-    try std.testing.expectEqualStrings("justify", Alignment.full.toCssValue());
-}
 
 test "fontName requires value" {
     const allocator = std.testing.allocator;

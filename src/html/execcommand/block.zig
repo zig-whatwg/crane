@@ -289,6 +289,21 @@ pub fn fixDisallowedAncestors(edit: *Edit, node_in: *Instance) anyerror!void {
         if (!try common.isAllowedChild(.{ .name = "p" }, host)) return;
         // Step 2.3.
         if (!try common.isProhibitedParagraphChild(node)) return;
+        // A list item left in a table cell gives way to its contents rather
+        // than becoming the default single-line container: Chrome 156 and
+        // Firefox 158 turn `<td>[fsdf]</td>` + insertOrderedList twice back
+        // into `<td>fsdf</td>` (editing/run/insert-list-items-in-table-cell
+        // .html, wpt.fyi 5af3c135c9); in the editing host itself the item
+        // becomes the default container, as the spec says and the data
+        // expects.
+        if (try common.isHtmlElementNamed(node, "li")) {
+            if (try common.parent(node)) |p| {
+                if (try common.isHtmlElementIn(p, &.{ "td", "th" })) {
+                    try split_parent.removePreservingDescendants(edit, node);
+                    return;
+                }
+            }
+        }
         // Step 2.4.
         node = try edit.setTagName(node, try defaultSingleLineContainerName(edit));
         // Step 2.5.
