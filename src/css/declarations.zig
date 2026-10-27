@@ -745,6 +745,7 @@ fn logicalGroup(l: Longhand) ?properties.Logical.Group {
         .width, .height => return .size,
         .min_width, .min_height => return .min_size,
         .max_width, .max_height => return .max_size,
+        .overflow_x, .overflow_y => return .overflow,
         else => {},
     }
     const sides = [_]PhysicalSides{

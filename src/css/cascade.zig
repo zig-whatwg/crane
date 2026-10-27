@@ -1331,6 +1331,7 @@ const Builder = struct {
             const geometry_length = switch (l.info().grammar) {
                 .length_percentage_auto, .length_percentage_nonneg, .size, .max_size, .line_width, .gap, .signed_length, .fit_tolerance => true,
                 .column_size, .scroll_padding, .shape_outside => true,
+                .box_overflow => l == .overflow_clip_margin,
                 else => false,
             };
             // Q25/Q83/Q88: this is the single unavailable-input decision,
@@ -1477,6 +1478,7 @@ const Builder = struct {
             defer selected.release();
             return self.computeValue(l, selected, source);
         }
+        if (v == .box_numeric) return .{ .box_numeric = try v.box_numeric.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         if (v == .animation_list) return .{ .animation_list = try v.animation_list.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         if (v == .transform) return .{ .transform = try v.transform.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         if (v == .grid_line) return .{ .grid_line = try v.grid_line.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
@@ -1559,6 +1561,20 @@ const Builder = struct {
             // Writing Modes 4 §5.1: retain the legacy spelling only until
             // computation (Blink/Gecko ship it; their specified forms differ).
             .text_orientation => if (v.isKeyword(.sideways_right)) return Value.kw(.sideways),
+            // Legacy box-orient aliases are physical, not writing-mode relative.
+            ._webkit_box_orient => {
+                if (v.isKeyword(.inline_axis)) return Value.kw(.horizontal);
+                if (v.isKeyword(.block_axis)) return Value.kw(.vertical);
+            },
+            // Q31/probe31: retain Chrome/Safari's specified overlay spelling,
+            // then compute auto on all four axes as every browser does.
+            .overflow_x, .overflow_y, .overflow_block, .overflow_inline => if (v.isKeyword(.overlay)) return Value.kw(.auto),
+            // Overflow 5 §3.1.3: the omitted mode computes to links (Q12).
+            .scroll_marker_group => if (v == .box_keywords) {
+                var pair = v.box_keywords;
+                if (pair.second == null) pair.second = .links;
+                return .{ .box_keywords = pair };
+            },
             .content => {
                 if (v == .content) {
                     if (try v.content.compute(self.ctx.allocator, self.ctx.content_attributes)) |content| {
@@ -1797,6 +1813,14 @@ const Builder = struct {
         // Display 4 2.8: "a display of contents computes to block on the root
         // element."
         if (self.ctx.is_root and display.box == .contents) display = Display.block_flow;
+        // Overflow 4 §5.3: clamping a vertical legacy box converts it after
+        // blockification; its already-computed outer type is preserved.
+        if (s.keyword(.@"continue") != .normal and s.keyword(._webkit_box_orient) == .vertical and
+            display.box == .normal and display.legacy_webkit_box)
+        {
+            display.inner = .flow_root;
+            display.legacy_webkit_box = false;
+        }
         s.values[@intFromEnum(Longhand.display)] = .{ .display = display };
 
         // Contain 2 §2: aliases share the computed flag set and shortest
@@ -1820,9 +1844,8 @@ const Builder = struct {
         s.subgrid_ineligible = s.box_context != .suppressed and display.box == .normal and display.inner == .grid and
             (parent_box != .grid or out_of_flow or independent);
 
-        // CSS Overflow 3: "as specified, except with visible/clip computing
-        // to auto/hidden (respectively) if one of overflow-x or overflow-y is
-        // neither visible nor clip."
+        // Overflow 3 §3.1: visible computes to auto when either axis is
+        // scrollable. The current rule keeps clip as clip (row125 Q13).
         const ox = s.keyword(.overflow_x);
         const oy = s.keyword(.overflow_y);
         const x_plain = ox == .visible or ox == .clip;
@@ -1837,7 +1860,6 @@ const Builder = struct {
 fn fixOverflow(k: Keyword) Keyword {
     return switch (k) {
         .visible => .auto,
-        .clip => .hidden,
         else => k,
     };
 }

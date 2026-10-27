@@ -327,6 +327,20 @@ pub const Longhand = enum(u16) {
     scroll_padding_inline_start,
     scroll_padding_inline_end,
 
+    // CSS Overflow 3–5: parsing/computation, independent of used geometry.
+    overflow_block,
+    overflow_inline,
+    overflow_clip_margin,
+    scrollbar_gutter,
+    text_overflow,
+    max_lines,
+    block_ellipsis,
+    @"continue",
+    scroll_axis_lock,
+    scroll_marker_group,
+    scroll_target_group,
+    _webkit_box_orient,
+
     pub const count = @typeInfo(Longhand).@"enum".fields.len;
 
     /// The property name.
@@ -359,6 +373,11 @@ pub const lexicographic: [Longhand.count]Longhand = blk: {
     for (0..Longhand.count) |i| out[i] = @enumFromInt(i);
     std.mem.sort(Longhand, &out, {}, struct {
         fn lessThan(_: void, a: Longhand, b: Longhand) bool {
+            // CSSOM §7.2 / Q36: all three browsers enumerate standard
+            // names before prefixed names, bytewise within each group.
+            const a_prefixed = std.mem.startsWith(u8, a.name(), "-");
+            const b_prefixed = std.mem.startsWith(u8, b.name(), "-");
+            if (a_prefixed != b_prefixed) return !a_prefixed;
             return std.mem.lessThan(u8, a.name(), b.name());
         }
     }.lessThan);
@@ -378,7 +397,7 @@ pub const Logical = struct {
     group: Group,
     side: Side,
 
-    pub const Group = enum { margin, padding, inset, border_width, border_style, border_color, size, min_size, max_size, scroll_margin, scroll_padding };
+    pub const Group = enum { margin, padding, inset, border_width, border_style, border_color, size, min_size, max_size, scroll_margin, scroll_padding, overflow };
     pub const Side = enum { block_start, block_end, inline_start, inline_end };
 };
 
@@ -419,6 +438,10 @@ pub fn physicalSide(side: Logical.Side, writing_mode: Keyword, direction: Keywor
 /// The physical longhand of `group` on `side`.
 pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
     return switch (group) {
+        .overflow => switch (side) {
+            .top, .bottom => .overflow_y,
+            .left, .right => .overflow_x,
+        },
         .scroll_margin => switch (side) {
             .top => .scroll_margin_top,
             .right => .scroll_margin_right,
@@ -484,6 +507,7 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
 
 /// A longhand's grammar.
 pub const Grammar = enum {
+    box_overflow,
     shape_outside,
     box,
     column_count,
@@ -581,6 +605,18 @@ const infos: [Longhand.count]Info = blk: {
     const zero = Value.px(0);
     const medium_width = Value.kw(.medium);
     const defs = [_]Info{
+        .{ .longhand = .overflow_block, .inherited = false, .initial = Value.kw(.visible), .grammar = .box_overflow, .logical = .{ .group = .overflow, .side = .block_start } },
+        .{ .longhand = .overflow_inline, .inherited = false, .initial = Value.kw(.visible), .grammar = .box_overflow, .logical = .{ .group = .overflow, .side = .inline_start } },
+        .{ .longhand = .overflow_clip_margin, .inherited = false, .initial = zero, .grammar = .box_overflow },
+        .{ .longhand = .scrollbar_gutter, .inherited = false, .initial = Value.kw(.auto), .grammar = .box_overflow },
+        .{ .longhand = .text_overflow, .inherited = false, .initial = Value.kw(.clip), .grammar = .box_overflow },
+        .{ .longhand = .max_lines, .inherited = false, .initial = Value.kw(.auto), .grammar = .box_overflow },
+        .{ .longhand = .block_ellipsis, .inherited = true, .initial = Value.kw(.no_ellipsis), .grammar = .box_overflow },
+        .{ .longhand = .@"continue", .inherited = false, .initial = Value.kw(.normal), .grammar = .keywords, .keywords = &.{ .normal, .discard, .collapse, ._webkit_legacy } },
+        .{ .longhand = .scroll_axis_lock, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .none } },
+        .{ .longhand = .scroll_marker_group, .inherited = false, .initial = Value.kw(.none), .grammar = .box_overflow },
+        .{ .longhand = .scroll_target_group, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .auto } },
+        .{ .longhand = ._webkit_box_orient, .inherited = false, .initial = Value.kw(.horizontal), .grammar = .keywords, .keywords = &.{ .horizontal, .vertical, .inline_axis, .block_axis } },
         .{ .longhand = .translate, .inherited = false, .initial = Value.kw(.none), .grammar = .individual_transform },
         .{ .longhand = .rotate, .inherited = false, .initial = Value.kw(.none), .grammar = .individual_transform },
         .{ .longhand = .scale, .inherited = false, .initial = Value.kw(.none), .grammar = .individual_transform },
@@ -745,8 +781,8 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .min_inline_size, .inherited = false, .initial = Value.kw(.auto), .grammar = .size, .logical = .{ .group = .min_size, .side = .inline_start } },
         .{ .longhand = .min_width, .inherited = false, .initial = Value.kw(.auto), .grammar = .size, .quirky_length = true },
         .{ .longhand = .opacity, .inherited = false, .initial = .{ .number = 1 }, .grammar = .opacity },
-        .{ .longhand = .overflow_x, .inherited = false, .initial = Value.kw(.visible), .grammar = .keywords, .keywords = &.{ .visible, .hidden, .clip, .scroll, .auto } },
-        .{ .longhand = .overflow_y, .inherited = false, .initial = Value.kw(.visible), .grammar = .keywords, .keywords = &.{ .visible, .hidden, .clip, .scroll, .auto } },
+        .{ .longhand = .overflow_x, .inherited = false, .initial = Value.kw(.visible), .grammar = .box_overflow },
+        .{ .longhand = .overflow_y, .inherited = false, .initial = Value.kw(.visible), .grammar = .box_overflow },
         .{ .longhand = .padding_block_end, .inherited = false, .initial = zero, .grammar = .length_percentage_nonneg, .logical = .{ .group = .padding, .side = .block_end } },
         .{ .longhand = .padding_block_start, .inherited = false, .initial = zero, .grammar = .length_percentage_nonneg, .logical = .{ .group = .padding, .side = .block_start } },
         .{ .longhand = .padding_bottom, .inherited = false, .initial = zero, .grammar = .length_percentage_nonneg, .quirky_length = true },
@@ -866,6 +902,8 @@ const infos: [Longhand.count]Info = blk: {
 // ============================================================================
 
 pub const Shorthand = enum(u8) {
+    line_clamp,
+    _webkit_line_clamp,
     _webkit_text_orientation,
     all,
     background,
@@ -994,6 +1032,7 @@ pub const Shorthand = enum(u8) {
             .animation => &.{ .animation_duration, .animation_timing_function, .animation_delay, .animation_iteration_count, .animation_direction, .animation_fill_mode, .animation_play_state, .animation_name, .animation_timeline, .animation_range_start, .animation_range_end },
             .animation_range => &.{ .animation_range_start, .animation_range_end },
             .flex => &.{ .flex_grow, .flex_shrink, .flex_basis },
+            .line_clamp, ._webkit_line_clamp => &.{ .max_lines, .block_ellipsis, .@"continue" },
             .flex_flow => &.{ .flex_direction, .flex_wrap },
             .columns => &.{ .column_width, .column_count, .column_height },
             .column_rule => &.{ .column_rule_width, .column_rule_style, .column_rule_color },
@@ -1546,6 +1585,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .reference => return @import("svg_paint.zig").parseReference(options, stream),
         .shape => return @import("shape_values.zig").parse(options, stream),
         .shape_outside => return @import("box_shape_values.zig").parse(options, stream),
+        .box_overflow => return @import("box_overflow_values.zig").consume(options, l, stream),
         .border_radius_corner => return @import("border_radius.zig").parseCorner(options, stream),
         .filter => return @import("filter_values.zig").parse(options, stream),
         .box_shadow => return @import("box_shadow_values.zig").parse(options, stream),
@@ -1809,6 +1849,10 @@ fn displayValue(stream: *Stream) ?Value {
     const first = identKeywordText(stream.peek()) orelse return null;
     // Single-keyword forms.
     const single = std.StaticStringMap(Display).initComptime(.{
+        .{ "-webkit-box", Display{ .outer = .block, .inner = .flex, .legacy_webkit_box = true } },
+        .{ "-webkit-inline-box", Display{ .inner = .flex, .legacy_webkit_box = true } },
+        .{ "-webkit-flex", Display{ .outer = .block, .inner = .flex } },
+        .{ "-webkit-inline-flex", Display{ .inner = .flex } },
         .{ "none", Display.none },
         .{ "contents", Display.contents },
         .{ "inline-block", Display{ .inner = .flow_root } },
@@ -2021,6 +2065,7 @@ fn append(options: ParseOptions, out: *std.ArrayList(Assignment), l: Longhand, v
 
 fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
     switch (s) {
+        .line_clamp, ._webkit_line_clamp => return @import("box_overflow_values.zig").parseClamp(options, s == ._webkit_line_clamp, stream, out),
         .flex_flow => return @import("box_values.zig").parseFlexFlow(options, stream, out),
         .columns => return @import("box_multicol_values.zig").parseColumns(options, stream, out),
         .column_rule => return borderSide(options, .column_rule_width, .column_rule_style, .column_rule_color, &.{.column_rule_width}, &.{.column_rule_style}, &.{.column_rule_color}, stream, out),
@@ -2413,6 +2458,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
     switch (value) {
         .keyword => |k| try out.appendSlice(allocator, k.name()),
         .box_keywords => |pair| try pair.serialize(out, allocator),
+        .box_numeric => |numeric| try numeric.serialize(out, allocator),
         .length => |len| try values.appendLength(len, out, allocator),
         .number => |n| {
             try values.appendNumber(n, out, allocator);
@@ -2515,6 +2561,7 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
     if (s == .all) return false;
     const ls = s.longhands();
     switch (s) {
+        .line_clamp, ._webkit_line_clamp => return @import("box_overflow_values.zig").serializeClamp(s == ._webkit_line_clamp, vs, out, allocator),
         .flex_flow => return @import("box_values.zig").serializeFlexFlow(vs, out, allocator),
         .columns => return @import("box_multicol_values.zig").serializeColumns(vs, out, allocator),
         .column_rule => return @import("box_multicol_values.zig").serializeRule(vs, mode, out, allocator),
@@ -2980,13 +3027,23 @@ test "logical sides map by writing mode and direction" {
 
 test "CSSOM enumeration sorts names independently of property blocks" {
     var seen = [_]bool{false} ** Longhand.count;
+    var last_standard: ?Longhand = null;
+    var saw_prefixed = false;
     for (lexicographic, 0..) |l, i| {
         try testing.expect(!seen[@intFromEnum(l)]);
         seen[@intFromEnum(l)] = true;
-        if (i > 0) try testing.expect(std.mem.lessThan(u8, lexicographic[i - 1].name(), l.name()));
+        const prefixed = std.mem.startsWith(u8, l.name(), "-");
+        if (prefixed) {
+            saw_prefixed = true;
+        } else {
+            try testing.expect(!saw_prefixed);
+            last_standard = l;
+        }
+        if (i > 0 and std.mem.startsWith(u8, lexicographic[i - 1].name(), "-") == prefixed)
+            try testing.expect(std.mem.lessThan(u8, lexicographic[i - 1].name(), l.name()));
     }
     for (seen) |present| try testing.expect(present);
-    try testing.expectEqualStrings("z-index", lexicographic[Longhand.count - 1].name());
+    try testing.expectEqual(Longhand.z_index, last_standard.?);
 }
 
 test "cursor sorts between content and direction" {

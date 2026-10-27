@@ -370,6 +370,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Native font status precedes its script promise](architecture-native-font-status-precedes-its-script-promise.md) - Preserve automatic outcomes until script requests the promise.
 
 ### Spec Compliance
+- [A legacy value alias can retain its specified spelling](spec-compliance-a-legacy-value-alias-can-retain-its-specified-spelling.md) - Probe specified and computed aliases separately; normalize at the observed boundary.
+- [A shorthand spelling must reproduce its constituents](spec-compliance-a-shorthand-spelling-must-reproduce-its-constituents.md) - Repair parsing and serialization as a pair, retaining initial tuples and prior passing behavior.
 
 - [Register geometric grammars in the unavailable-input gate](spec-compliance-register-geometric-grammars-in-unavailable-input-gate.md) - Preserve unknown geometric lengths through candidate selection while retaining scalar fallback.
 - [Resolve automatic minimums without changing computed storage](spec-compliance-resolve-automatic-minimums-without-changing-computed-storage.md) - Resolve box-dependent CSSOM values at serialization while preserving the stored computed value.
