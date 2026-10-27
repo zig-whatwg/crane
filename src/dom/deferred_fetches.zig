@@ -80,6 +80,11 @@ const fetch = @import("fetch");
 const global_settings = @import("global_settings.zig");
 const abort_algorithms = @import("abort_algorithms.zig");
 const keepalive_fetch = @import("keepalive_fetch.zig");
+const browser_state = @import("browser_state.zig");
+const document_origin = @import("document_origin.zig");
+const origin_record = @import("origin_record.zig");
+const interfaces = @import("interfaces");
+const BrowsingContext = @import("html_core").BrowsingContext;
 
 const log = std.log.scoped(.deferred_fetches);
 const InternalRequest = fetch.internal.InternalRequest;
@@ -392,4 +397,164 @@ fn processAll(environment: runtime.Context) void {
     while (group.deferred.items.items.len > 0) {
         process(group.deferred.items.items[0], .leaving);
     }
+}
+
+// ============================================================================
+// The deferred-fetch quota (Fetch 4.12.1)
+// ============================================================================
+//
+// Pure reads over the navigables and their fetch groups: fetchLater() (Codex
+// row 126) asks `availableQuota` at its step 11, with the "allowed to use"
+// answers for the control document, which it computes - this module never
+// computes a permissions policy. A navigable container's "reserved
+// deferred-fetch quota" is 0 here: nothing reserves one yet (feature-queue
+// "DEFERRED-FETCH QUOTA RESERVATION ON NAVIGABLE CONTAINERS", which adds
+// HTML navigate step 23's reservation and "create and initialize a Document
+// object" step 21's release); "unless stated otherwise, it is 0".
+
+/// "Allowed to use" answers for a document - or, for a container's
+/// reservation, the inherited policy's - given by the caller for the call.
+pub const Policy = struct {
+    /// The policy-controlled feature "deferred-fetch" (default allowlist
+    /// "self").
+    deferred_fetch: bool,
+    /// "deferred-fetch-minimal" (default allowlist "*").
+    deferred_fetch_minimal: bool,
+};
+
+const kib: i64 = 1024;
+/// 640 kibibytes for a top-level traversable ("640kb should be enough for
+/// everyone").
+pub const top_level_quota: i64 = 640 * kib;
+/// "The quota reserved for deferred-fetch-minimal is 128 kibibytes."
+pub const minimal_reserve: i64 = 128 * kib;
+/// "normal quota": 64 kibibytes.
+pub const normal_quota: i64 = 64 * kib;
+/// "minimal quota": 8 kibibytes.
+pub const minimal_quota: i64 = 8 * kib;
+/// Step 7's quotaForRequestOrigin.
+pub const per_origin_quota: i64 = 64 * kib;
+
+/// Fetch 4.12.1 "the deferred-fetch control document" of `document`: itself
+/// when its node navigable's container document is null or not same origin
+/// with it; otherwise its container document's control document.
+pub fn controlDocumentOf(document: *runtime.Instance) *runtime.Instance {
+    var current = document;
+    // Each step goes up one navigable: the chain ends at the top.
+    while (containerDocumentOf(current)) |container_document| {
+        if (!sameOriginDocuments(container_document, current)) break;
+        current = container_document;
+    }
+    return current;
+}
+
+/// Fetch 4.12.1 "the available deferred-fetch quota" given `document` and
+/// `request_origin` - the request URL's origin, serialized (null, or
+/// "null" for an opaque one, which no record's origin is same origin
+/// with). `policy` is the control document's "allowed to use" answers
+/// (steps 4-5), which the caller computes for `controlDocumentOf(document)`.
+pub fn availableQuota(document: *runtime.Instance, request_origin: ?[]const u8, policy: Policy) u64 {
+    // 1. Let controlDocument be document's deferred-fetch control document.
+    const control = controlDocumentOf(document);
+    // 2-3. Its node navigable, and whether that is a top-level traversable.
+    const navigable = navigableOf(control);
+    const is_top_level = if (navigable) |bc| bc.parent == null else true;
+    // 6. quota: the first statement that matches. A nested control
+    //    document's container has reserved nothing (see above), so its two
+    //    cases - normal quota with deferred-fetch, minimal quota with
+    //    deferred-fetch-minimal - do not match yet.
+    var quota: i64 = if (is_top_level)
+        (if (!policy.deferred_fetch) 0 else if (!policy.deferred_fetch_minimal) top_level_quota else top_level_quota - minimal_reserve)
+    else
+        0;
+    // 7. Let quotaForRequestOrigin be 64 kibibytes.
+    var for_request_origin: i64 = per_origin_quota;
+    // 8. For each navigable in controlDocument's node navigable's inclusive
+    //    descendant navigables whose active document's control document is
+    //    controlDocument: (8.1, its containers' reserved quota, is 0 for
+    //    every container) 8.2, its active document's relevant settings
+    //    object's fetch group's pending records.
+    if (navigable) |top| {
+        var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
+        defer tree.deinit(std.heap.page_allocator);
+        // Inclusive: collectDescendants puts `top` first.
+        top.collectDescendants(std.heap.page_allocator, &tree) catch {};
+        for (tree.items) |bc| {
+            const active: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveDocument() orelse continue));
+            if (bc != top and controlDocumentOf(active) != control) continue;
+            const window: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveWindow() orelse continue));
+            subtractPending(window, request_origin, &quota, &for_request_origin);
+        }
+    } else {
+        // A document with no navigable: its own window's records, if any.
+        if (windowOf(control)) |window| subtractPending(window, request_origin, &quota, &for_request_origin);
+    }
+    // 9. If quota is equal or less than 0, then return 0.
+    if (quota <= 0) return 0;
+    // 10. If quota is less than quotaForRequestOrigin, then return quota.
+    if (quota < for_request_origin) return @intCast(quota);
+    // 11. Return quotaForRequestOrigin.
+    return @intCast(@max(for_request_origin, 0));
+}
+
+/// Step 8.2 for one fetch group: each pending record's total request
+/// length leaves `quota`, and - same origin with `request_origin` - leaves
+/// `for_request_origin` too.
+fn subtractPending(window: *runtime.Instance, request_origin: ?[]const u8, quota: *i64, for_request_origin: *i64) void {
+    const group = global_settings.fetchGroupOf(window) orelse return;
+    for (group.deferred.items.items) |record| {
+        const length: i64 = @intCast(@min(record.total_request_length, std.math.maxInt(i32)));
+        quota.* -= length;
+        if (sameSerializedOrigin(record.url_origin, request_origin)) for_request_origin.* -= length;
+    }
+}
+
+/// Whether two serialized origins are the same tuple origin: an opaque
+/// one ("null") is same origin with nothing a serialization can name.
+fn sameSerializedOrigin(a: []const u8, b: ?[]const u8) bool {
+    const other = b orelse return false;
+    if (std.mem.eql(u8, a, "null")) return false;
+    return std.mem.eql(u8, a, other);
+}
+
+/// HTML "same origin" for two documents' origins.
+fn sameOriginDocuments(a: *runtime.Instance, b: *runtime.Instance) bool {
+    if (a == b) return true;
+    const a_record = (document_origin.shareable(a) catch return false) orelse return false;
+    const b_record = (document_origin.shareable(b) catch return false) orelse return false;
+    return origin_record.sameOrigin(
+        .{ .serialized = a_record.serialized orelse return false, .record = a_record },
+        .{ .serialized = b_record.serialized orelse return false, .record = b_record },
+    );
+}
+
+/// `document`'s window, if it has one.
+fn windowOf(document: *runtime.Instance) ?*runtime.Instance {
+    return interfaces.Document.get_defaultView(document) catch null;
+}
+
+/// `document`'s node navigable: its window's browsing context.
+fn navigableOf(document: *runtime.Instance) ?*BrowsingContext {
+    const window = windowOf(document) orelse return null;
+    const bc = browser_state.browsingContextOf(window) orelse return null;
+    // A window a later document took over is not this document's navigable.
+    const active = bc.getActiveDocument() orelse return null;
+    if (@as(*runtime.Instance, @ptrCast(@alignCast(active))) != document) return null;
+    return bc;
+}
+
+/// "Its node navigable's container document": the node document of the
+/// navigable's container, or null for a top-level traversable.
+fn containerDocumentOf(document: *runtime.Instance) ?*runtime.Instance {
+    const bc = navigableOf(document) orelse return null;
+    if (bc.parent == null) return null;
+    const container: *runtime.Instance = @ptrCast(@alignCast(bc.container orelse return null));
+    return interfaces.Node.get_ownerDocument(container) catch null;
+}
+
+test "two serialized origins are same origin only as the same tuple origin" {
+    try std.testing.expect(sameSerializedOrigin("https://a.test", "https://a.test"));
+    try std.testing.expect(!sameSerializedOrigin("https://a.test", "https://b.test"));
+    try std.testing.expect(!sameSerializedOrigin("https://a.test", null));
+    try std.testing.expect(!sameSerializedOrigin("null", "null"));
 }
