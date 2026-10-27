@@ -730,27 +730,113 @@ fn freeOwnedString(allocator: std.mem.Allocator, result: runtime.JSValue) void {
     text.deinit(allocator);
 }
 
-/// Free a string an indexed or named property interceptor's getter returned
-/// owned: a DOMString whose arm says `.owned` (DOMTokenList's item() copies
-/// its token), or a JSValue string flagged owned. Interned and empty strings,
-/// and a JSValue reference, are left alone - the union says whose memory it
-/// is. Each interceptor converted the result and dropped it: one leaked copy
-/// per `classList[0]` read, where `classList.item(0)` - an operation, which
-/// frees its result - leaked nothing.
-fn freeOwnedResult(comptime T: type, allocator: std.mem.Allocator, value: T) void {
-    if (T == runtime.DOMString) {
+/// Whether the binding knows what to free of a special operation's value of
+/// type `T` - an indexed or named getter's result, or the value an indexed or
+/// named setter converted (`freeSpecialOperationValue`). An ALLOWLIST of the
+/// types whose ownership is understood:
+///
+/// - DOMString: its arm says whose memory it is (`.owned` is freed,
+///   `.interned` and `.empty` are not).
+/// - `[]const u8` (USVString, ByteString): the binding's, as an operation's
+///   USVString result is (its `needs_string_cleanup`) and as a converted
+///   argument is: freed when not empty. An impl returns a copy made with
+///   its context's allocator, never its own storage or a literal.
+/// - runtime.JSValue: its `.string` arm by its `owned` flag; every handle arm
+///   is released with the V8 value (`specialResultHandleIsOwned`, or the
+///   setter's own Global).
+/// - `*runtime.Instance`, numbers, booleans, enumerations, void: nothing to
+///   free.
+/// - an optional of one; a tagged union whose every arm is one (the active
+///   arm decides: CSSUnparsedSegment's `usvstring` is freed, its interface
+///   arm is not).
+///
+/// Anything else - a struct, a sequence, a buffer source, `*anyopaque`, an
+/// untagged union - answers FALSE, and the binding refuses to compile a
+/// special operation of that type (`requireUnderstoodSpecialValue`), so a new
+/// shape gets a rule before it can leak or free what an impl keeps.
+/// tests/v8/bindfix1_special_value_ownership_test.zig pins the default.
+pub fn specialOperationValueIsUnderstood(comptime T: type) bool {
+    comptime {
+        if (T == runtime.DOMString or T == []const u8 or T == runtime.JSValue or T == *runtime.Instance) return true;
+        switch (@typeInfo(T)) {
+            .int, .float, .bool, .@"enum", .void => return true,
+            .optional => |o| return specialOperationValueIsUnderstood(o.child),
+            .@"union" => |u| {
+                if (u.tag_type == null) return false;
+                for (u.fields) |field| {
+                    if (!specialOperationValueIsUnderstood(field.type)) return false;
+                }
+                return true;
+            },
+            else => return false,
+        }
+    }
+}
+
+/// Free what a special operation's value holds once the interceptor is done
+/// with it, on every path - the getter's result after it is converted (or
+/// failed to be), the setter's converted value after the setter returned or
+/// threw. The rules are `specialOperationValueIsUnderstood`'s; a union frees
+/// its active arm. The getters used to free only a DOMString or a JSValue
+/// string, so a union's USVString arm leaked on every read
+/// (CSSUnparsedValue's `value[0]`, Codex row 128 Q74), and the indexed setter
+/// freed nothing it converted.
+pub fn freeSpecialOperationValue(comptime T: type, allocator: std.mem.Allocator, value: T) void {
+    if (comptime T == runtime.DOMString) {
         var text = value;
         text.deinit(allocator);
-    } else if (T == ?runtime.DOMString) {
-        if (value) |present| {
-            var text = present;
-            text.deinit(allocator);
-        }
-    } else if (T == runtime.JSValue) {
+    } else if (comptime T == []const u8) {
+        if (value.len > 0) allocator.free(value);
+    } else if (comptime T == runtime.JSValue) {
         freeOwnedString(allocator, value);
-    } else if (T == ?runtime.JSValue) {
-        if (value) |present| freeOwnedString(allocator, present);
+    } else switch (@typeInfo(T)) {
+        .optional => |o| if (value) |present| freeSpecialOperationValue(o.child, allocator, present),
+        .@"union" => |u| if (comptime u.tag_type != null) switch (value) {
+            inline else => |payload| freeSpecialOperationValue(@TypeOf(payload), allocator, payload),
+        },
+        else => {},
     }
+}
+
+/// A special getter's result type: its return type's payload.
+fn specialResultType(comptime function: anytype) type {
+    const Return = @typeInfo(@TypeOf(function)).@"fn".return_type.?;
+    return switch (@typeInfo(Return)) {
+        .error_union => |eu| eu.payload,
+        else => Return,
+    };
+}
+
+/// A special setter's value type: its third parameter's (instance, key,
+/// value), or void for one the interceptors do not bind.
+fn specialValueType(comptime function: anytype) type {
+    const params = @typeInfo(@TypeOf(function)).@"fn".params;
+    if (params.len < 3) return void;
+    return params[2].type.?;
+}
+
+/// Refuse, at compile time, a special operation whose value type has no
+/// ownership rule (`specialOperationValueIsUnderstood`).
+fn requireUnderstoodSpecialValue(comptime T: type, comptime what: []const u8) void {
+    if (!specialOperationValueIsUnderstood(T)) {
+        @compileError(what ++ ": the binding has no ownership rule for " ++ @typeName(T) ++ " (interface.specialOperationValueIsUnderstood)");
+    }
+}
+
+/// Whether the V8 value made of a special getter's result `value` is the
+/// binding's to release once set: decided by the VALUE, as an operation's
+/// result is (`convertReturnValue`). A union by its active arm
+/// (`conv.unionValueIsOwned`: a String made for a string arm is fresh, a
+/// wrapper is the cache's); a JSValue unless it is an `.instance` (its
+/// wrapper) - a handle is what the impl handed over, every other arm is made
+/// here; anything else by its type (`getterValueIsOwned`). By type alone every
+/// union answered "kept", so each `value[0]` of a union string kept its
+/// String Global.
+pub fn specialResultHandleIsOwned(comptime T: type, value: T) bool {
+    if (comptime getterValueIsOwned(T)) return true;
+    if (comptime T == runtime.JSValue) return value != .instance;
+    if (comptime @typeInfo(T) == .@"union") return conv.unionValueIsOwned(T, value);
+    return false;
 }
 
 /// Types `argHandleIsCopied` names by identity, re-exported so `tests/v8` can
@@ -2078,6 +2164,14 @@ pub fn V8Interface(comptime Interface: type) type {
     const has_named_getter = comptime special.named_getter != null;
     const has_named_setter = comptime special.named_setter != null;
     const has_named_deleter = comptime special.named_deleter != null;
+    // Every special operation's result and value has an ownership rule the
+    // interceptors apply on every path (`freeSpecialOperationValue`).
+    comptime {
+        if (special.indexed_getter) |fn_name| requireUnderstoodSpecialValue(specialResultType(@field(Interface, fn_name)), interface_name ++ "." ++ fn_name);
+        if (special.named_getter) |fn_name| requireUnderstoodSpecialValue(specialResultType(@field(Interface, fn_name)), interface_name ++ "." ++ fn_name);
+        if (special.indexed_setter) |fn_name| requireUnderstoodSpecialValue(specialValueType(@field(Interface, fn_name)), interface_name ++ "." ++ fn_name);
+        if (special.named_setter) |fn_name| requireUnderstoodSpecialValue(specialValueType(@field(Interface, fn_name)), interface_name ++ "." ++ fn_name);
+    }
     // An interface with named properties and no indexed ones (none declared:
     // HTMLAllCollection's unimplemented anonymous getter is still its
     // indexed one) takes an array index as a name (WebIDL 3.9 knows only
@@ -6539,7 +6633,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 conv.throwWebIDLErrorFromContext(isolate, v8_context, @errorName(err));
                 return;
             };
-            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
+            defer freeSpecialOperationValue(@TypeOf(result), result_allocator, result);
 
             // (HTMLCollection or Element)?: null, or the impl's value. A
             // wrapper is the wrapper cache's; anything else is made here.
@@ -6663,7 +6757,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 return .kNo;
             };
             // A string item() made for the result is the binding's.
-            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
+            defer freeSpecialOperationValue(@TypeOf(result), result_allocator, result);
 
             // Convert result to V8 value based on return type
             const ReturnType = @typeInfo(@TypeOf(indexed_getter)).@"fn".return_type.?;
@@ -6701,7 +6795,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         info.setReturnValue(@ptrCast(v8_value));
                         // setReturnValue reads the handle into a Local; one the
                         // conversion made is the binding's to release.
-                        if (comptime getterValueIsOwned(ChildType)) v8.v8_Global_Dispose(@ptrCast(v8_value));
+                        if (specialResultHandleIsOwned(ChildType, unwrapped_result)) v8.v8_Global_Dispose(@ptrCast(v8_value));
                     }
                     return .kYes;
                 } else {
@@ -6719,7 +6813,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     return .kNo;
                 };
                 info.setReturnValue(@ptrCast(v8_value));
-                if (comptime getterValueIsOwned(ActualReturnType)) v8.v8_Global_Dispose(@ptrCast(v8_value));
+                if (specialResultHandleIsOwned(ActualReturnType, result)) v8.v8_Global_Dispose(@ptrCast(v8_value));
                 return .kYes;
             }
         }
@@ -6897,7 +6991,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const result_allocator = instance.ctx.allocator;
             const result = indexed_getter(instance, index) catch return .kNo;
             // A string item() made for the result is the binding's.
-            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
+            defer freeSpecialOperationValue(@TypeOf(result), result_allocator, result);
 
             // Convert result to V8 value
             const ReturnType = @typeInfo(@TypeOf(indexed_getter)).@"fn".return_type.?;
@@ -6922,7 +7016,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         value_owned = v8.v8_Value_IsUndefined(v8_value.?);
                     } else {
                         v8_value = convertSpecialResult(ChildType, special.indexed_getter.?, isolate, v8_context, unwrapped_result) catch return .kNo;
-                        value_owned = comptime getterValueIsOwned(ChildType);
+                        value_owned = specialResultHandleIsOwned(ChildType, unwrapped_result);
                     }
                 } else {
                     // null value - use undefined
@@ -6930,7 +7024,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             } else {
                 v8_value = convertSpecialResult(ActualReturnType, special.indexed_getter.?, isolate, v8_context, result) catch return .kNo;
-                value_owned = comptime getterValueIsOwned(ActualReturnType);
+                value_owned = specialResultHandleIsOwned(ActualReturnType, result);
             }
 
             if (v8_value == null) return .kNo;
@@ -7129,6 +7223,10 @@ pub fn V8Interface(comptime Interface: type) type {
                 if (err != conv.ConversionError.ExceptionPending) conv.throwTypeError(isolate, @errorName(err));
                 return .kYes;
             };
+            // Borrowed for the call, as an argument is: what the conversion
+            // made goes whether the setter returned or threw (a union's
+            // USVString arm leaked on every `value[i] = "..."`).
+            defer freeSpecialOperationValue(ValueType, instance.ctx.allocator, zig_value);
 
             // Step 7: the operation's method steps (in a binding catch scope
             // when it is [CEReactions]). What they throw is the [[Set]]'s
@@ -7208,6 +7306,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             if (err != conv.ConversionError.ExceptionPending) conv.throwTypeError(isolate, @errorName(err));
                             return .kYes;
                         };
+                        defer freeSpecialOperationValue(value_type, instance.ctx.allocator, zig_value);
                         // The setter's own exception, as itself: a
                         // HierarchyRequestError was a TypeError whose message
                         // was its name.
@@ -7424,7 +7523,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const result_allocator = instance.ctx.allocator;
             const result = getter_fn(instance, runtime.DOMString.initInterned(key)) catch return null;
             // A string the named getter made for the result is the binding's.
-            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
+            defer freeSpecialOperationValue(@TypeOf(result), result_allocator, result);
 
             const ReturnType = @typeInfo(@TypeOf(getter_fn)).@"fn".return_type.?;
             const ActualReturnType = @typeInfo(ReturnType).error_union.payload;
@@ -7444,14 +7543,14 @@ pub fn V8Interface(comptime Interface: type) type {
                     return .{ .value = string, .owned = true };
                 }
                 const v8_value = convertSpecialResult(ChildType, special.named_getter.?, isolate, v8_context, unwrapped) catch return null;
-                return .{ .value = @ptrCast(v8_value), .owned = comptime getterValueIsOwned(ChildType) };
+                return .{ .value = @ptrCast(v8_value), .owned = specialResultHandleIsOwned(ChildType, unwrapped) };
             }
             // DOMStringMap's anonymous getter comes here: one string per
             // `el.dataset.x` read - 60,000 a page on the legacy multi-byte
             // decode tests - each kept for the life of the process until the
             // conversion's handle was released.
             const v8_value = convertSpecialResult(ActualReturnType, special.named_getter.?, isolate, v8_context, result) catch return null;
-            return .{ .value = @ptrCast(v8_value), .owned = comptime getterValueIsOwned(ActualReturnType) };
+            return .{ .value = @ptrCast(v8_value), .owned = specialResultHandleIsOwned(ActualReturnType, result) };
         }
 
         /// LegacyPlatformObjectGetOwnProperty step 2, for [[Get]]: the value
@@ -7561,7 +7660,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 if (err != conv.ConversionError.ExceptionPending) conv.throwWebIDLError(isolate, @errorName(err));
                 return false;
             };
-            defer freeConvertedValue(ValueType, instance.ctx.allocator, zig_value);
+            defer freeSpecialOperationValue(ValueType, instance.ctx.allocator, zig_value);
             // Step 6: the operation's method steps with « P, value » (in a
             // binding catch scope when it is [CEReactions]).
             callInCatchScopeIfListed(Interface, setter_name, isolate, setter_fn, .{ instance, runtime.DOMString.initInterned(key), zig_value }) catch |err| {
