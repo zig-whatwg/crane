@@ -123,3 +123,23 @@ fn caretAndEvents() !void {
 test "insertParagraph and insertLineBreak: caret and input event" {
     try helpers.onFreshThread(caretAndEvents);
 }
+
+fn typingStyleAcrossTheSplit() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(harness.setup_script);
+    // The style of the text insertParagraph deletes carries into the new
+    // paragraph, as it does after an explicit delete: Chrome 156, Firefox
+    // 158 and Safari 27 answer true for the bold state, and type bold
+    // (editing/run/multitest.html ?9001-last, [styleWithCSS false,
+    // insertparagraph, inserttext] rows; wpt.fyi 5af3c135c9).
+    try harness.expectEval(page, "runCommands('<div>abc<b>[def]</b></div>', [['stylewithcss','false'],['insertparagraph','']]); document.queryCommandState('bold')", "true");
+    try harness.expectEval(page, "runCommands('<div>abc<b>[def]</b></div>', [['stylewithcss','false'],['insertparagraph',''],['inserttext','d']]); hostHTML() + '|' + document.queryCommandState('bold')", "<div>abc</div><div><b>d</b></div>|true");
+    try harness.expectEval(page, "runCommands('<div>abc<b>[def]</b></div>', [['stylewithcss','false'],['delete',''],['insertparagraph',''],['inserttext','d']]); hostHTML() + '|' + document.queryCommandState('bold')", "<div>abc</div><div><b>d</b></div>|true");
+    // Nothing deleted, nothing carried: the caret's own style decides.
+    try harness.expectEval(page, "runCommands('<div><b>abc</b>[]def</div>', [['stylewithcss','false'],['insertparagraph',''],['inserttext','x']]); hostHTML()", "<div><b>abc</b></div><div>xdef</div>");
+}
+
+test "insertParagraph keeps the style of the text it deletes" {
+    try helpers.onFreshThread(typingStyleAcrossTheSplit);
+}

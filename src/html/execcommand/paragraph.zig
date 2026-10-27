@@ -17,6 +17,7 @@ const block = @import("block.zig");
 const delete = @import("delete.zig");
 const split_parent = @import("split_parent.zig");
 const wrap_mod = @import("wrap.zig");
+const overrides = @import("overrides.zig");
 
 const Edit = common.Edit;
 const Point = common.Point;
@@ -292,6 +293,30 @@ fn nextWithin(node: *Instance, root: *Instance) !?*Instance {
 pub fn insertParagraphAction(edit: *Edit) !bool {
     // Step 1.
     try delete.deleteTheSelection(edit, true, true, .forward);
+    // The typing style the deletion leaves (delete the selection records
+    // and restores it at the caret) carries into the new paragraph: the
+    // split moves the caret, which unsets the overrides, so they are
+    // recorded here and restored once the caret is in place. All three
+    // browsers type the deleted text's style there (editing/run/
+    // multitest.html ?9001-last, [styleWithCSS false, insertparagraph,
+    // inserttext] on `<div>abc<b>[def]</b></div>` and `<div><b>[abc]</b>
+    // </div>`: Chrome 156, Firefox 158 and Safari 27 pass the bold state
+    // after; wpt.fyi 5af3c135c9), as they do after an explicit delete.
+    // Blink: InsertParagraphSeparatorCommand::DoApply calls
+    // CalculateStyleBeforeInsertion before it deletes the selection and
+    // ApplyStyleAfterInsertion after the split (third_party/blink/
+    // renderer/core/editing/commands/insert_paragraph_separator_command.cc,
+    // chromium main 2026-10-27); its heading exception is not taken, no
+    // WPT row needs it. The command's own "preserves overrides" record
+    // (blocks.zig) was taken before the deletion and holds none of this.
+    const typing = try overrides.recordCurrentOverrides(edit);
+    const result = try insertParagraphAfterDeletion(edit);
+    if (typing.items.len > 0 and try edit.rangeCollapsed()) try overrides.restoreStatesAndValues(edit, typing);
+    return result;
+}
+
+/// insertParagraph's steps 2-34, after step 1's deletion.
+fn insertParagraphAfterDeletion(edit: *Edit) !bool {
     // Step 2.
     const range_start = (try edit.rangeStart()) orelse return true;
     if (!try common.isEditableOrEditingHost(range_start.node)) return true;
