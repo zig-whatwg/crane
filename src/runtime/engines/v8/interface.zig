@@ -1550,6 +1550,27 @@ fn throwMemberError(isolate: *v8.Isolate, member_context: *v8.Context, err: anye
     conv.throwWebIDLErrorFromContext(isolate, member_context, @errorName(err));
 }
 
+/// A special operation's own exception - an indexed or named setter's, a
+/// named deleter's - thrown as the [[Set]], [[DefineOwnProperty]] or
+/// [[Delete]] that invoked it: WebIDL 3.9.7 "invoke an indexed property
+/// setter" and "invoke a named property setter" end in the operation's method
+/// steps (3.9.4 step 2.4 the deleter's), and 3.9.2 step 1.1.1, 3.9.3 step 1.3
+/// and 2.2.2.2 return true only after them - so what they throw is the
+/// internal method's abrupt completion, in sloppy code as in strict. The
+/// interceptor answers kYes with it pending, never kNo: kNo let V8 go on to
+/// define an ordinary own property, so `select[0] = ancestorOption` swallowed
+/// the HierarchyRequestError and left an expando `0` (Codex row 128 Q74).
+/// Blink converts and calls under one ExceptionState and answers kYes on
+/// every path (bind_gen/interface.py make_indexed_property_setter_callback,
+/// make_named_property_setter_callback, chromium 23520b2ec9fc).
+///
+/// ExceptionPending throws nothing: the steps ran script that threw, and
+/// script catches its own object (`throwMemberError`).
+fn throwSpecialOperationError(isolate: *v8.Isolate, err: anyerror) void {
+    if (err == error.ExceptionPending) return;
+    conv.throwWebIDLError(isolate, @errorName(err));
+}
+
 // ============================================================================
 // Argument cleanup: what a converted argument, dictionary member or
 // sequence element holds once its call is over
@@ -7109,9 +7130,13 @@ pub fn V8Interface(comptime Interface: type) type {
                 return .kYes;
             };
 
-            // Call the setter (in a binding catch scope when it is [CEReactions])
-            callInCatchScopeIfListed(Interface, setter_name, isolate, setter_fn, .{ instance, index, zig_value }) catch {
-                return .kNo;
+            // Step 7: the operation's method steps (in a binding catch scope
+            // when it is [CEReactions]). What they throw is the [[Set]]'s
+            // (`throwSpecialOperationError`): kYes with it pending, so V8
+            // defines nothing.
+            callInCatchScopeIfListed(Interface, setter_name, isolate, setter_fn, .{ instance, index, zig_value }) catch |err| {
+                throwSpecialOperationError(isolate, err);
+                return .kYes;
             };
 
             return .kYes;
@@ -7179,11 +7204,15 @@ pub fn V8Interface(comptime Interface: type) type {
                         const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kYes;
                         defer if (comptime !typeRetainsContext(value_type)) v8.v8_Context_Dispose(v8_context);
                         const zig_value = conv.fromV8ValueAs(value_type, comptime argumentInterface(Interface, setter_name, 1), instance.ctx.allocator, isolate, v8_context, value) catch |err| {
-                            conv.throwTypeError(isolate, @errorName(err));
+                            // ExceptionPending: the conversion rethrew script's exception.
+                            if (err != conv.ConversionError.ExceptionPending) conv.throwTypeError(isolate, @errorName(err));
                             return .kYes;
                         };
+                        // The setter's own exception, as itself: a
+                        // HierarchyRequestError was a TypeError whose message
+                        // was its name.
                         callInCatchScopeIfListed(Interface, setter_name, isolate, setter_fn, .{ instance, index, zig_value }) catch |err| {
-                            conv.throwTypeError(isolate, @errorName(err));
+                            throwSpecialOperationError(isolate, err);
                         };
                     }
                 }
@@ -7513,8 +7542,10 @@ pub fn V8Interface(comptime Interface: type) type {
         /// the setter's second argument type, then run it. False when it
         /// threw - the exception is pending (an exception the setter raises
         /// propagates, in sloppy code too: `dataset['-x'] = v` is a
-        /// SyntaxError).
-        fn invokeNamedSetter(isolate: *v8.Isolate, instance: *runtime.Instance, key: []const u8, value: *v8.Value, rethrow: bool) bool {
+        /// SyntaxError; `getComputedStyle(e).color = v` a
+        /// NoModificationAllowedError, CSSOM 6.7's camel-cased attribute
+        /// setter: "Any exceptions thrown must be re-thrown").
+        fn invokeNamedSetter(isolate: *v8.Isolate, instance: *runtime.Instance, key: []const u8, value: *v8.Value) bool {
             const setter_name = comptime special.named_setter.?;
             const setter_fn = @field(Interface, setter_name);
             const ValueType = comptime @typeInfo(@TypeOf(setter_fn)).@"fn".params[2].type.?;
@@ -7527,14 +7558,14 @@ pub fn V8Interface(comptime Interface: type) type {
             // Step 4: convert V to an IDL value of type T.
             const zig_value = conv.fromV8ValueAs(ValueType, comptime argumentInterface(Interface, setter_name, 1), instance.ctx.allocator, isolate, v8_context, value) catch |err| {
                 // ExceptionPending: the conversion rethrew script's exception.
-                if (err != conv.ConversionError.ExceptionPending and rethrow) conv.throwWebIDLError(isolate, @errorName(err));
+                if (err != conv.ConversionError.ExceptionPending) conv.throwWebIDLError(isolate, @errorName(err));
                 return false;
             };
             defer freeConvertedValue(ValueType, instance.ctx.allocator, zig_value);
             // Step 6: the operation's method steps with « P, value » (in a
             // binding catch scope when it is [CEReactions]).
             callInCatchScopeIfListed(Interface, setter_name, isolate, setter_fn, .{ instance, runtime.DOMString.initInterned(key), zig_value }) catch |err| {
-                if (rethrow) conv.throwWebIDLError(isolate, @errorName(err));
+                throwSpecialOperationError(isolate, err);
                 return false;
             };
             return true;
@@ -7562,10 +7593,12 @@ pub fn V8Interface(comptime Interface: type) type {
             // a Global<Value>*.
             const value_global = v8.v8_Value_Persist(isolate, @ptrCast(value)) orelse return .kNo;
             defer v8.v8_Value_Dispose(value_global);
-            // A CSS property's setter fails quietly in sloppy code, as an
-            // attribute's would not: kept as it was.
-            const rethrow = comptime !special.crane_css_properties;
-            _ = invokeNamedSetter(isolate, instance, key, value_global, rethrow or info.shouldThrowOnError());
+            // A CSS property's setter throws in sloppy code too, as the
+            // camel-cased attribute it stands for does (CSSOM 6.7: "Any
+            // exceptions thrown must be re-thrown"); it failed quietly
+            // there, so `getComputedStyle(e).color = "red"` threw nothing
+            // (css/cssom/computed-style-set-property.html).
+            _ = invokeNamedSetter(isolate, instance, key, value_global);
             return .kYes;
         }
 
@@ -7625,7 +7658,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // only [[Writable]]). A fresh Global the wrapper made: ours.
             const value = v8.v8_PropertyDescriptor_GetValue(desc) orelse (v8.v8_Undefined(isolate) orelse return .kYes);
             defer v8.v8_Value_Dispose(value);
-            _ = invokeNamedSetter(isolate, instance, key, value, true);
+            _ = invokeNamedSetter(isolate, instance, key, value);
             return .kYes;
         }
 
@@ -7661,7 +7694,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 const deleter_fn = @field(Interface, deleter_name);
                 // Step 2.4.1: the operation's method steps with « P ».
                 const result = callInCatchScopeIfListed(Interface, deleter_name, isolate, deleter_fn, .{ instance, runtime.DOMString.initInterned(key) }) catch |err| {
-                    conv.throwWebIDLError(isolate, @errorName(err));
+                    throwSpecialOperationError(isolate, err);
                     return .kYes;
                 };
                 // Step 2.4.2: a deleter declared to return boolean that
