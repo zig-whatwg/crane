@@ -103,15 +103,19 @@ fn executeCommandImpl(
         .justifyRight => formatting.executeJustify(allocator, document, .right),
         .justifyFull => formatting.executeJustify(allocator, document, .full),
 
-        // Structure commands
-        .insertParagraph => structure.executeInsertParagraph(allocator, document),
-        .insertLineBreak => structure.executeInsertLineBreak(allocator, document),
-        .insertHorizontalRule => structure.executeInsertHorizontalRule(allocator, document),
-        .formatBlock => structure.executeFormatBlock(allocator, document, value),
-        .insertOrderedList => structure.executeInsertOrderedList(allocator, document),
-        .insertUnorderedList => structure.executeInsertUnorderedList(allocator, document),
-        .indent => structure.executeIndent(allocator, document),
-        .outdent => structure.executeOutdent(allocator, document),
+        // The block formatting commands are the html module's
+        // (src/html/execcommand/blocks.zig, on the generated interfaces,
+        // which html_core cannot reach); Document.execCommand dispatches
+        // them there before this executor, so they never arrive here.
+        .insertParagraph,
+        .insertLineBreak,
+        .insertHorizontalRule,
+        .formatBlock,
+        .insertOrderedList,
+        .insertUnorderedList,
+        .indent,
+        .outdent,
+        => .{ .success = false },
 
         // Link commands
         .createLink => structure.executeCreateLink(allocator, document, value),
