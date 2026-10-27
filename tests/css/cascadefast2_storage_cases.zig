@@ -4,7 +4,8 @@
 //! cascadefast2_storage_test.zig compares the rendering with
 //! cascadefast2_storage_golden.txt, which was rendered from the flat
 //! one-slot-per-longhand storage (main ed32910c383, and byte-identical
-//! again from main b847f16a4db) before the grouped storage replaced it: every resolved value of every longhand, for initial,
+//! again from mains b847f16a4db and 45e43dd24c6) before the grouped
+//! storage replaced it: every resolved value of every longhand, for initial,
 //! inherited, explicit inherit/initial/unset, the root, a display:contents
 //! parent, pseudo-elements, registered custom properties, `all`, revert,
 //! revert-layer, logical longhands and the adjustments between values.
