@@ -2773,6 +2773,12 @@ pub fn call_queryCommandState(instance: *runtime.Instance, commandId: runtime.DO
     const internal = getInternal(instance) orelse return false;
     const command_name = commandId.asSlice();
 
+    // The html module's commands (src/html/execcommand/) answer first; a
+    // command with no state answers false.
+    if (@import("html").execcommand.Command.fromName(command_name)) |command| {
+        return @import("html").execcommand.queryState(instance, command) orelse false;
+    }
+
     return editing.queryCommandState(
         internal.allocator,
         @ptrCast(instance),
@@ -3250,7 +3256,7 @@ pub fn call_execCommand(instance: *runtime.Instance, commandId: runtime.DOMStrin
     // in the html module (src/html/execcommand/), which runs the method's
     // enabled check and input event itself.
     if (@import("html").execcommand.Command.fromName(command_name)) |command| {
-        return @import("html").execcommand.execCommand(instance, command);
+        return @import("html").execcommand.execCommand(instance, command, value_slice orelse "");
     }
 
     // Parse command and determine action
@@ -3549,6 +3555,11 @@ pub fn call_clear(instance: *runtime.Instance) anyerror!void {
 pub fn call_queryCommandIndeterm(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!bool {
     const internal = getInternal(instance) orelse return false;
     const command_name = commandId.asSlice();
+
+    // The html module's commands answer first; no indeterminacy is false.
+    if (@import("html").execcommand.Command.fromName(command_name)) |command| {
+        return @import("html").execcommand.queryIndeterm(instance, command) orelse false;
+    }
 
     return editing.queryCommandIndeterm(
         internal.allocator,
@@ -4081,6 +4092,17 @@ pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Inst
 pub fn call_queryCommandValue(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
     const command_name = commandId.asSlice();
+
+    // The html module's commands answer first; no value is "". The string
+    // is owned by the document's allocator, which frees a returned DOMString.
+    if (@import("html").execcommand.Command.fromName(command_name)) |command| {
+        const value = (@import("html").execcommand.queryValue(instance, command, instance.ctx.allocator) catch null) orelse return runtime.DOMString.initEmpty();
+        if (value.len == 0) {
+            instance.ctx.allocator.free(value);
+            return runtime.DOMString.initEmpty();
+        }
+        return runtime.DOMString.initOwned(value);
+    }
 
     const result = editing.queryCommandValue(
         internal.allocator,

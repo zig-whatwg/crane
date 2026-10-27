@@ -1,7 +1,8 @@
-//! "Recording and restoring overrides" and the block formatting steps the
-//! delete commands lean on (specs/w3c/execCommand.md): state and value
-//! overrides, "record the values" / "restore the values", normalize
-//! sublists, fix disallowed ancestors, block-extend and outdent.
+//! "Recording and restoring overrides" (specs/w3c/execCommand.md): state
+//! and value overrides and "record the values" / "restore the values".
+//! The block formatting steps the delete commands lean on (normalize
+//! sublists, fix disallowed ancestors, outdent) are lists.zig, block.zig
+//! and indent.zig.
 //!
 //! None of the machinery these need exists yet (golden rule 5: mock it,
 //! never skip it): every formatting command's state and value is a stub
@@ -78,32 +79,6 @@ pub fn recordTheValues(edit: *Edit, nodes: []const *Instance) !Values {
 pub fn restoreTheValues(edit: *Edit, values: Values) !void {
     _ = edit;
     _ = values;
-}
-
-/// "normalize sublists" in `item` (line 3988).
-/// TODO(editing, list commands): split an li around its ol/ul children.
-pub fn normalizeSublists(edit: *Edit, item: *Instance) !void {
-    _ = edit;
-    _ = item;
-}
-
-/// "fix disallowed ancestors" of `node` (line 3882).
-/// TODO(editing, block commands): split the parent until node is an
-/// allowed child of its ancestors, converting stray list items and cells
-/// to the default single-line container.
-pub fn fixDisallowedAncestors(edit: *Edit, node: *Instance) !void {
-    _ = edit;
-    _ = node;
-}
-
-/// The delete command's step 10: at the start of an indentation element,
-/// block-extend the caret's range and "outdent" each of its nodes
-/// ("Indenting and outdenting", line 5697).
-/// TODO(editing, indent/outdent): the outdent algorithm; until it exists
-/// the caret stays and nothing changes.
-pub fn outdentAtIndentationElement(edit: *Edit, node: *Instance) !void {
-    _ = edit;
-    _ = node;
 }
 
 test "the mocks record nothing" {

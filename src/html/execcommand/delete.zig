@@ -29,6 +29,9 @@ const whitespace = @import("whitespace.zig");
 const split_parent = @import("split_parent.zig");
 const dom = @import("dom");
 const overrides = @import("overrides.zig");
+const block_formatting = @import("block.zig");
+const lists = @import("lists.zig");
+const indent = @import("indent.zig");
 
 const Edit = common.Edit;
 const Point = common.Point;
@@ -979,14 +982,36 @@ pub fn deleteAction(edit: *Edit) !bool {
     }
     // Step 6.
     if (common.isInlineNode(point.node)) return true;
-    // Step 7: the first item of a list outdents.
+    // Step 10 outdents the start of an indentation element. The browsers
+    // do that only where there is no previous line to join with; with one,
+    // the line joins it like any other block (golden rule 2, no newer spec;
+    // integrator ruling 2026-10-26): Chrome 156, Firefox 158 and Safari 27
+    // all give `foo<blockquote>[]bar</blockquote>` -> `foobar`
+    // (editing/run/delete.html) and join `<pre>abc</pre><blockquote>[]def
+    // </blockquote>` into `<pre>abcdef</pre>`
+    // (editing/other/join-pre-and-other-block.html), wpt.fyi 5af3c135c9,
+    // where the data file expects the spec's outdent.
+    const joins_previous_line = blk: {
+        const host = (try common.editingHostOf(point.node)) orelse break :blk false;
+        break :blk try hasVisibleContentBefore(point, host);
+    };
+    // Step 7: the first item of a list outdents. Spec kept: all three
+    // browsers join this line into the previous one too (`foo<ol><li>[]bar
+    // <li>baz</ol>` -> `foobar<ol><li>baz</li></ol>`), but following them
+    // would lose 6 subtests that pass on the spec's outdent (never-trade;
+    // integrator ruling 2026-10-26): `foo<dl><dt>[]bar<dd>baz</dl>` and
+    // `foo<dl><dd>[]bar</dl>` under both separators, where Crane would then
+    // match all three browsers but not the data, and `foo<ol><ol><li>[]bar
+    // </ol></ol>` and `foo<blockquote><ol><li>bar</li><ol><li>[]baz</ol>
+    // <li>quz</ol></blockquote>`, where Firefox 158 matches the data
+    // (editing/run/delete.html, wpt.fyi 5af3c135c9).
     if ((try common.isHtmlElementIn(point.node, &list_item_names)) and point.offset == 0) {
         if (try common.parent(point.node)) |p| {
             if ((try common.firstChild(p)) == point.node) {
                 // Steps 7.1-7.2.
                 var ancestor = try common.parent(point.node);
                 while (ancestor) |a| : (ancestor = try common.parent(a)) {
-                    if (try common.isHtmlElementNamed(a, "li")) try overrides.normalizeSublists(edit, a);
+                    if (try common.isHtmlElementNamed(a, "li")) try lists.normalizeSublists(edit, a);
                 }
                 // Steps 7.3-7.5.
                 const values = try overrides.recordTheValues(edit, &.{point.node});
@@ -995,10 +1020,10 @@ pub fn deleteAction(edit: *Edit) !bool {
                 // Step 7.6.
                 var node = point.node;
                 if ((try common.isHtmlElementIn(node, &.{ "dd", "dt" })) and !try isAllowedChildOfAnAncestorInHost(node)) {
-                    node = try edit.setTagName(node, try defaultSingleLineContainerName(edit));
+                    node = try edit.setTagName(node, try block_formatting.defaultSingleLineContainerName(edit));
                 }
                 // Step 7.7.
-                try overrides.fixDisallowedAncestors(edit, node);
+                try block_formatting.fixDisallowedAncestors(edit, node);
                 // Step 7.8.
                 return true;
             }
@@ -1022,12 +1047,13 @@ pub fn deleteAction(edit: *Edit) !bool {
         }
         break;
     }
-    // Step 10: at the start of an indentation element, outdent.
-    if (point.offset == 0) {
+    // Step 10: at the start of an indentation element, outdent - unless
+    // there is a previous line to join (above).
+    if (!joins_previous_line and point.offset == 0) {
         var current: ?*Instance = point.node;
         while (current) |c| : (current = try common.parent(c)) {
             if ((try common.isEditable(c)) and (try common.inSameEditingHost(point.node, c)) and try common.isIndentationElement(c)) {
-                try overrides.outdentAtIndentationElement(edit, point.node);
+                try indent.outdentAtIndentationElement(edit, point.node);
                 return true;
             }
         }
@@ -1389,12 +1415,4 @@ fn isAllowedChildOfAnAncestorInHost(node: *Instance) !bool {
         if (try common.isAllowedChild(.{ .node = node }, c)) return true;
     }
     return false;
-}
-
-/// The document's "default single-line container name": the
-/// defaultParagraphSeparator command's value, "div" when unset.
-fn defaultSingleLineContainerName(edit: *Edit) ![]const u8 {
-    var value = try interfaces.Document.call_queryCommandValue(edit.document, runtime.DOMString.initInterned("defaultParagraphSeparator"));
-    defer value.deinit(edit.document.ctx.allocator);
-    return if (std.mem.eql(u8, value.asSlice(), "p")) "p" else "div";
 }

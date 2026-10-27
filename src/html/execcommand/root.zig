@@ -37,6 +37,7 @@ pub const split_parent = @import("split_parent.zig");
 pub const delete = @import("delete.zig");
 pub const overrides = @import("overrides.zig");
 pub const wrap = @import("wrap.zig");
+pub const blocks = @import("blocks.zig");
 
 const Instance = runtime.Instance;
 const Edit = common.Edit;
@@ -46,20 +47,57 @@ const log = std.log.scoped(.editing);
 pub const Command = enum {
     delete,
     forward_delete,
+    // The block formatting commands (lane editing4; blocks.zig).
+    format_block,
+    indent,
+    outdent,
+    insert_ordered_list,
+    insert_unordered_list,
+    insert_paragraph,
+    insert_line_break,
+    insert_horizontal_rule,
+
+    const Row = struct { []const u8, Command };
+    /// One row per command, matched ASCII case-insensitively.
+    const rows = [_]Row{
+        .{ "delete", .delete },
+        .{ "forwarddelete", .forward_delete },
+    } ++ blockRows();
+
+    fn blockRows() [blocks.names.len]Row {
+        var out: [blocks.names.len]Row = undefined;
+        for (blocks.names, 0..) |row, i| out[i] = .{ row[0], @field(Command, @tagName(row[1])) };
+        return out;
+    }
 
     /// The command named by `name`, ASCII case-insensitively, or null.
     pub fn fromName(name: []const u8) ?Command {
-        if (std.ascii.eqlIgnoreCase(name, "delete")) return .delete;
-        if (std.ascii.eqlIgnoreCase(name, "forwarddelete")) return .forward_delete;
+        for (rows) |row| {
+            if (std.ascii.eqlIgnoreCase(name, row[0])) return row[1];
+        }
         return null;
+    }
+
+    /// The block formatting command this is, or null.
+    fn block(self: Command) ?blocks.Command {
+        return std.meta.stringToEnum(blocks.Command, @tagName(self));
     }
 
     /// "map an edit command to input type value".
     pub fn inputType(self: Command) []const u8 {
+        if (self.block()) |b| return b.inputType();
         return switch (self) {
             .delete => "deleteContentBackward",
             .forward_delete => "deleteContentForward",
+            else => "",
         };
+    }
+
+    /// False for a command that "must not be enabled if the editing host
+    /// is in the plaintext-only state".
+    pub fn enabledInPlaintextOnly(self: Command) bool {
+        if (self.block()) |b| return b.enabledInPlaintextOnly();
+        return true;
     }
 };
 
@@ -83,9 +121,25 @@ fn isEnabledIn(edit: *Edit) !bool {
 
 /// queryCommandEnabled for a command of this module.
 pub fn isEnabled(document: *Instance, command: Command) bool {
-    _ = command;
     var edit = (beginEdit(document) catch return false) orelse return false;
-    return isEnabledIn(&edit) catch false;
+    return isCommandEnabledIn(&edit, command) catch false;
+}
+
+/// "enabled" for `command`: the shared rule, then the plaintext-only rule.
+fn isCommandEnabledIn(edit: *Edit, command: Command) !bool {
+    if (!try isEnabledIn(edit)) return false;
+    if (command.enabledInPlaintextOnly()) return true;
+    const host = (try affectedEditingHost(edit)) orelse return false;
+    return !try hostIsPlaintextOnly(host);
+}
+
+/// Whether the editing host's contenteditable is in the plaintext-only
+/// state.
+fn hostIsPlaintextOnly(host: *Instance) !bool {
+    if (!try common.isHtmlElement(host)) return false;
+    var state = try interfaces.HTMLElement.get_contentEditable(host);
+    defer state.deinit(host.ctx.allocator);
+    return std.mem.eql(u8, state.asSlice(), "plaintext-only");
 }
 
 /// The "affected editing host": the editing host that is an inclusive
@@ -106,23 +160,26 @@ fn affectedEditingHost(edit: *Edit) !?*Instance {
     return try affectedEditingHostOf(start.node, end.node);
 }
 
-fn runAction(edit: *Edit, command: Command) !bool {
+fn runAction(edit: *Edit, command: Command, value: []const u8) !bool {
+    if (command.block()) |b| return try blocks.action(edit, b, value);
     return switch (command) {
         .delete => try delete.deleteAction(edit),
         .forward_delete => try delete.forwardDeleteAction(edit),
+        else => false,
     };
 }
 
-/// document.execCommand(command) for a command of this module: the method's
-/// steps 3 and 5-8 (no beforeinput, see the module comment).
-pub fn execCommand(document: *Instance, command: Command) bool {
+/// document.execCommand(command, showUI, value) for a command of this
+/// module: the method's steps 3 and 5-8 (no beforeinput, see the module
+/// comment). `value` has the IDL default "" applied (step 2).
+pub fn execCommand(document: *Instance, command: Command, value: []const u8) bool {
     var edit = (beginEdit(document) catch return false) orelse return false;
     // Step 3: not enabled -> false.
-    if (!(isEnabledIn(&edit) catch false)) return false;
+    if (!(isCommandEnabledIn(&edit, command) catch false)) return false;
     // Step 4.5: the host the input event goes to, computed beforehand.
     const host = (affectedEditingHost(&edit) catch null) orelse return false;
     // Step 5: the action.
-    const result = runAction(&edit, command) catch |err| {
+    const result = runAction(&edit, command, value) catch |err| {
         log.debug("{s}: {}", .{ @tagName(command), err });
         return false;
     };
@@ -132,6 +189,42 @@ pub fn execCommand(document: *Instance, command: Command) bool {
     if (edit.modified and isConnected(host)) _ = fireInputEvent(host, "input", command.inputType());
     // Step 8.
     return true;
+}
+
+/// queryCommandState for a command of this module; null when the command
+/// has no state (the caller answers false).
+pub fn queryState(document: *Instance, command: Command) ?bool {
+    var edit = (beginEdit(document) catch return null) orelse return null;
+    if (command.block()) |b| return blocks.state(&edit, b) catch |err| {
+        log.debug("{s} state: {}", .{ @tagName(command), err });
+        return false;
+    };
+    return null;
+}
+
+/// queryCommandIndeterm for a command of this module; null when the
+/// command has no indeterminacy (the caller answers false).
+pub fn queryIndeterm(document: *Instance, command: Command) ?bool {
+    var edit = (beginEdit(document) catch return null) orelse return null;
+    if (command.block()) |b| return blocks.indeterm(&edit, b) catch |err| {
+        log.debug("{s} indeterm: {}", .{ @tagName(command), err });
+        return false;
+    };
+    return null;
+}
+
+/// queryCommandValue for a command of this module, OWNED by `allocator`;
+/// null when the command has no value (the caller answers "").
+pub fn queryValue(document: *Instance, command: Command, allocator: std.mem.Allocator) !?[]u8 {
+    var edit = (try beginEdit(document)) orelse return null;
+    if (command.block()) |b| {
+        const result = blocks.value(&edit, b) catch |err| {
+            log.debug("{s} value: {}", .{ @tagName(command), err });
+            return try allocator.dupe(u8, "");
+        };
+        return if (result) |v| try allocator.dupe(u8, v) else null;
+    }
+    return null;
 }
 
 /// The insertText command's first step (specs/w3c/execCommand.md, "The
@@ -194,7 +287,7 @@ pub fn deleteByKey(target: *Instance, command: Command) void {
     // selection.
     if (!(isEnabledIn(&edit) catch false)) return;
     const affected = (affectedEditingHost(&edit) catch null) orelse return;
-    const result = runAction(&edit, command) catch |err| {
+    const result = runAction(&edit, command, "") catch |err| {
         log.debug("{s} by key: {}", .{ @tagName(command), err });
         return;
     };
