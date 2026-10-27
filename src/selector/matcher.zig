@@ -324,6 +324,8 @@ pub const Matcher = struct {
             .Class => |class_sel| self.matchesClass(element, class_sel.class_name),
             .Id => |id_sel| self.matchesId(element, id_sel.id),
             .Attribute => |*attr_sel| self.matchesAttribute(element, attr_sel),
+            .NamespaceURI => |constraint| std.mem.eql(u8, element.namespace_uri orelse "", constraint.uri),
+            .NamespacedAttribute => |attribute| self.matchesNamespacedAttribute(element, &attribute.attribute, attribute.uri),
             .PseudoClass => |*pseudo_sel| try self.matchesPseudoClass(element, pseudo_sel),
             .PseudoElement => false, // Pseudo-elements don't match elements in querySelector
         };
@@ -378,6 +380,29 @@ pub const Matcher = struct {
             .Includes => |m| matchAttributeIncludes(value, m.value, case_sensitive),
             .DashMatch => |m| matchAttributeDashMatch(value, m.value, case_sensitive),
         };
+    }
+
+    /// The URI-qualified arm only; ordinary attributes retain their old path.
+    fn matchesNamespacedAttribute(self: *const Matcher, element: *Element, attr_sel: *const AttributeSelector, uri: []const u8) bool {
+        _ = self;
+        const html = if (element.namespace_uri) |ns| std.mem.eql(u8, ns, "http://www.w3.org/1999/xhtml") else false;
+        const name = if (html) attr_sel.lower_name else attr_sel.name;
+        for (0..element.attributes.size()) |i| {
+            const attribute = element.attributes.get(i) orelse continue;
+            if (!std.mem.eql(u8, attribute.namespace_uri orelse "", uri) or !std.mem.eql(u8, attribute.local_name, name)) continue;
+            const value = attribute.value;
+            const case_sensitive = attr_sel.case != .insensitive and !(attr_sel.case == .default and html and attr_sel.html_case_insensitive_value);
+            return switch (attr_sel.matcher) {
+                .Presence => true,
+                .Exact => |m| matchAttributeExact(value, m.value, case_sensitive),
+                .Prefix => |m| matchAttributePrefix(value, m.value, case_sensitive),
+                .Suffix => |m| matchAttributeSuffix(value, m.value, case_sensitive),
+                .Substring => |m| matchAttributeSubstring(value, m.value, case_sensitive),
+                .Includes => |m| matchAttributeIncludes(value, m.value, case_sensitive),
+                .DashMatch => |m| matchAttributeDashMatch(value, m.value, case_sensitive),
+            };
+        }
+        return false;
     }
 
     /// Match pseudo-class selector

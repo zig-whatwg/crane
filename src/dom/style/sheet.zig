@@ -49,8 +49,6 @@ const MediaValues = css.media_queries.MediaValues;
 pub const Rule = rules_mod.Rule;
 pub const ObjectLink = rules_mod.ObjectLink;
 
-const html_namespace = "http://www.w3.org/1999/xhtml";
-
 /// What a sheet is parsed with, captured when it is created.
 pub const ParseMode = struct {
     quirks: bool = false,
@@ -625,7 +623,7 @@ const Compiler = struct {
                 const import_layer: ?u16 = if (import.layer) |name| try self.declareLayer(null, name) else null;
                 try self.contents.imports.append(self.contents.allocator, .{ .media = &import.media, .layer = import_layer, .child = import.child });
             },
-            .namespace => |n| self.namespaceRule(n.prefix, n.uri),
+            .namespace => {}, // URI constraints are already in each parsed selector.
             // A statement declares its layers' order.
             .layer_statement => |l| for (l.names) |name| {
                 _ = try self.declareLayer(layer, name);
@@ -689,12 +687,6 @@ const Compiler = struct {
         errdefer self.contents.allocator.free(copy);
         try self.contents.layers.append(self.contents.allocator, copy);
         return @intCast(self.contents.layers.items.len - 1);
-    }
-
-    /// CSS Namespaces 3: the default namespace (no prefix) declared as
-    /// HTML's.
-    fn namespaceRule(self: *Compiler, prefix: []const u8, uri: []const u8) void {
-        if (prefix.len == 0 and std.mem.eql(u8, uri, html_namespace)) self.contents.html_only = true;
     }
 
     fn styleRule(self: *Compiler, rule: *Rule, condition: ?u32, layer: ?u16) Allocator.Error!void {
@@ -859,10 +851,12 @@ test "an @import whose URL holds a parenthesis keeps its media" {
     try testing.expectEqual(@as(usize, 1), contents.imports.items[1].media.queries.len);
 }
 
-test "the HTML default namespace marks the sheet HTML-only" {
+test "a default namespace constrains selectors rather than the whole sheet" {
     const contents = try Contents.parse(testing.allocator, "@namespace \"http://www.w3.org/1999/xhtml\"; div { display: block }", .{});
     defer contents.destroy();
-    try testing.expect(contents.html_only);
+    try testing.expect(!contents.html_only);
+    const simples = contents.rules.items[0].complex.compound.simple_selectors;
+    try testing.expectEqualStrings("http://www.w3.org/1999/xhtml", simples[1].NamespaceURI.uri);
 }
 
 test "a record parses lazily, keeps its media, and owns its imports" {

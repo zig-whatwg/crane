@@ -13,7 +13,7 @@ fn decl(property: []const u8, value: []const u8) bool {
 }
 
 fn condition(text: []const u8) bool {
-    return css.supports.supportsCondition(testing.allocator, text, null);
+    return css.supports.supportsCondition(testing.allocator, text, null, null);
 }
 
 test "a valid var() or env() value is supported for any property" {

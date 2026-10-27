@@ -500,23 +500,20 @@ pub fn build(options: BuildOptions, parsed: *const css.rules.Rule, position: Pos
     switch (parsed.kind) {
         .qualified => {
             if (parsed.prelude.len == 0) return null;
-            const prelude = try a.dupe(u8, parsed.prelude);
-            var owns_prelude = true;
-            errdefer if (owns_prelude) a.free(prelude);
-            var selectors = selector.parse(a, prelude) catch |err| switch (err) {
+            var parsed_selector = parseCssomSelector(a, try a.dupe(u8, parsed.prelude), options.parse.namespaces) catch |err| switch (err) {
                 error.OutOfMemory => return error.OutOfMemory,
                 // "A style rule whose selector is invalid is dropped."
-                else => {
-                    a.free(prelude);
-                    return null;
-                },
+                else => return null,
             };
-            errdefer selectors.deinit();
+            const prelude = parsed_selector.text;
+            var owns_prelude = true;
+            errdefer if (owns_prelude) a.free(prelude);
+            errdefer parsed_selector.selectors.deinit();
             var declarations = try DeclarationBlock.fromDeclarations(options.parse, parsed.declarations);
             errdefer declarations.deinit();
             // make consumes the prelude even when its Rule allocation fails.
             owns_prelude = false;
-            return make(a, prelude, .{ .style = .{ .selectors = selectors, .block = declarations } });
+            return make(a, prelude, .{ .style = .{ .selectors = parsed_selector.selectors, .block = declarations } });
         },
         .at_rule => {},
     }
@@ -575,7 +572,7 @@ pub fn build(options: BuildOptions, parsed: *const css.rules.Rule, position: Pos
     }
     if (std.mem.eql(u8, name, "supports")) {
         if (!parsed.has_block) return null;
-        const holds = css.supports.supportsCondition(a, parsed.prelude, &selectorSupported);
+        const holds = css.supports.supportsCondition(a, parsed.prelude, &selectorSupported, options.parse.namespaces);
         const rule = try make(a, try a.dupe(u8, std.mem.trim(u8, parsed.prelude, " \t\n\r\x0c")), .{ .supports = .{ .holds = holds } });
         errdefer rule.unref();
         try buildChildren(options, rule, parsed.children);
@@ -829,11 +826,32 @@ fn buildNamespace(a: Allocator, prelude_text: []const u8) Allocator.Error!?*Rule
     return try make(a, try a.dupe(u8, prelude), .{ .namespace = .{ .prefix = owned_prefix, .uri = owned_uri } });
 }
 
-/// supports()'s selector() function: whether `text` parses as a selector.
-pub fn selectorSupported(allocator: Allocator, text: []const u8) bool {
-    var list = selector.parse(allocator, text) catch return false;
-    list.deinit();
-    return true;
+/// CSS Namespaces 3 section 2: this immutable map is borrowed only while
+/// parsing. SelectorList owns every resolved URI its AST needs afterward.
+fn selectorOptions(map: ?*const css.namespace_map.NamespaceMap) selector.parser.ParseOptions {
+    const bindings = map orelse return .{};
+    return .{ .namespaces = .{ .context = bindings, .resolve = resolveSelectorPrefix, .default = bindings.default } };
+}
+
+fn resolveSelectorPrefix(context: ?*const anyopaque, prefix: []const u8) ?[]const u8 {
+    const map: *const css.namespace_map.NamespaceMap = @ptrCast(@alignCast(context.?));
+    return map.lookup(prefix);
+}
+
+pub fn parseSelector(allocator: Allocator, text: []const u8, map: ?*const css.namespace_map.NamespaceMap) selector.ParserError!selector.SelectorList {
+    if (map == null) return selector.parse(allocator, text);
+    return selector.parseWithOptions(allocator, text, selectorOptions(map));
+}
+
+/// Consumes the owned component-value text, also on parse failure.
+pub fn parseCssomSelector(allocator: Allocator, text: []u8, map: ?*const css.namespace_map.NamespaceMap) selector.ParserError!selector.CssomSelector {
+    return selector.parseCssomOwned(allocator, text, selectorOptions(map));
+}
+
+/// CSS Conditional 4 section 2.1: declared prefixes apply, and no part of
+/// selector() is parsed forgivingly. Normal stylesheet parsing stays forgiving.
+pub fn selectorSupported(allocator: Allocator, text: []const u8, map: ?*const css.namespace_map.NamespaceMap) bool {
+    return selector.isSupported(allocator, text, selectorOptions(map)) catch false;
 }
 
 /// A sheet's top-level rules from `text` ("parse a stylesheet's contents"),

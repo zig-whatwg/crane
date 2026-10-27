@@ -748,6 +748,21 @@ fn freeDeclarations(allocator: Allocator, declarations: []Declaration) void {
     allocator.free(declarations);
 }
 
+/// CSS Syntax 3 section 3.3 and CSSOM component serialization: filter
+/// Unicode input through tokenization, preserving distinct token boundaries
+/// and invalid tokens. The returned text is owned by the caller.
+pub fn serializeComponentValues(allocator: Allocator, text: []const u8) Allocator.Error![]u8 {
+    var stream = Tokenizer.init(text);
+    var serializer = Serializer{ .allocator = allocator };
+    defer serializer.deinit();
+    while (true) {
+        const token = stream.next();
+        if (token.token_type == .eof) break;
+        try serializer.token(token);
+    }
+    return serializer.finish();
+}
+
 /// Component values as text: each token serialized, a run of whitespace
 /// (and the comments in it) one space, none at either end.
 const Serializer = struct {

@@ -1125,9 +1125,9 @@ const Builder = struct {
         return @import("media_queries.zig").MediaQueryList.evaluateTest(self.ctx.allocator, query_text, media);
     }
 
-    fn supportsCallback(context: *anyopaque, text: []const u8, quirks: bool) substitution.Error!bool {
+    fn supportsCallback(context: *anyopaque, text: []const u8, quirks: bool, namespaces: ?*const substitution.NamespaceMap) substitution.Error!bool {
         const self: *Builder = @ptrCast(@alignCast(context));
-        return @import("supports.zig").evaluateTest(self.ctx.allocator, text, quirks, self.ctx.selector_check);
+        return @import("supports.zig").evaluateTest(self.ctx.allocator, text, quirks, self.ctx.selector_check, namespaces);
     }
 
     const Substituted = struct { text: []const u8, tainted: bool };
@@ -2699,7 +2699,7 @@ fn withRegisteredHost(allocator: Allocator, registered: ?*registered_mod.Snapsho
 
 /// A stand-in for src/selector's check, as supports.zig's tests use: a
 /// selector with `:unknown` does not parse.
-fn hostTestSelectorCheck(allocator: Allocator, text: []const u8) bool {
+fn hostTestSelectorCheck(allocator: Allocator, text: []const u8, _: ?*const substitution.NamespaceMap) bool {
     _ = allocator;
     return text.len != 0 and std.mem.indexOf(u8, text, ":unknown") == null;
 }
@@ -2708,9 +2708,9 @@ test "if() supports(selector(...)) asks the context's selector check, as CSS.sup
     try withHost(testing.allocator, "--a: 1", null, struct {
         fn body(host: substitution.Host) anyerror!void {
             const supports = host.supports.?;
-            try testing.expect(try supports(host.context, "selector(h2 > p)", false));
-            try testing.expect(!try supports(host.context, "selector(h2:unknown)", false));
-            try testing.expect(try supports(host.context, "not selector(h2:unknown)", false));
+            try testing.expect(try supports(host.context, "selector(h2 > p)", false, null));
+            try testing.expect(!try supports(host.context, "selector(h2:unknown)", false, null));
+            try testing.expect(try supports(host.context, "not selector(h2:unknown)", false, null));
         }
     }.body);
 }
@@ -2922,15 +2922,15 @@ test "if() media() and supports() tests: true, false, or unknown (error.Invalid)
             try testing.expectError(error.Invalid, media(host.context, "(frobnicate)"));
             try testing.expectError(error.Invalid, media(host.context, "screen"));
             const supports = host.supports.?;
-            try testing.expect(try supports(host.context, "color: red", false));
-            try testing.expect(try supports(host.context, "(color: red) and (width: 1px)", false));
-            try testing.expect(!try supports(host.context, "color: 10px", false));
-            try testing.expect(try supports(host.context, "not (color: 10px)", false));
+            try testing.expect(try supports(host.context, "color: red", false, null));
+            try testing.expect(try supports(host.context, "(color: red) and (width: 1px)", false, null));
+            try testing.expect(!try supports(host.context, "color: 10px", false, null));
+            try testing.expect(try supports(host.context, "not (color: 10px)", false, null));
             // The consuming declaration's quirks mode: unitless lengths.
-            try testing.expect(try supports(host.context, "width: 10", true));
-            try testing.expect(!try supports(host.context, "width: 10", false));
-            try testing.expectError(error.Invalid, supports(host.context, "color red", false));
-            try testing.expectError(error.Invalid, supports(host.context, "(color: red) and", false));
+            try testing.expect(try supports(host.context, "width: 10", true, null));
+            try testing.expect(!try supports(host.context, "width: 10", false, null));
+            try testing.expectError(error.Invalid, supports(host.context, "color red", false, null));
+            try testing.expectError(error.Invalid, supports(host.context, "(color: red) and", false, null));
         }
     }.body);
 }

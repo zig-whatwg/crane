@@ -26,6 +26,10 @@ pub const parser = @import("parser.zig");
 pub const Parser = parser.Parser;
 /// Selectors 4 17.1 "parse a selector".
 pub const parse = parser.parseSelectorList;
+pub const parseWithOptions = parser.parseWithOptions;
+pub const parseCssomOwned = parser.parseCssomOwned;
+pub const CssomSelector = parser.CssomSelector;
+pub const isSupported = parser.isSupported;
 pub const ParserError = parser.ParserError;
 pub const NamespaceConstraint = parser.NamespaceConstraint;
 pub const AttributeCase = parser.AttributeCase;

@@ -47,18 +47,18 @@ pub fn get_selectorText(instance: *runtime.Instance) anyerror!typedefs.CSSOMStri
 pub fn set_selectorText(instance: *runtime.Instance, value: typedefs.CSSOMString) anyerror!void {
     const rule = styleRuleOf(instance) orelse return;
     const a = rule.allocator;
-    const text = try a.dupe(u8, std.mem.trim(u8, value.asSlice(), " \t\n\r\x0c"));
-    var parsed = selector.parse(a, text) catch |err| {
-        a.free(text);
+    const namespaces = if (rule.sheet()) |record| try record.namespaceMap(instance) else null;
+    const text = try dom.style.css.rules.serializeComponentValues(a, value.asSlice());
+    var parsed = dom.style.rules.parseCssomSelector(a, text, namespaces) catch |err| {
         if (err == error.OutOfMemory) return err;
         return;
     };
-    errdefer parsed.deinit();
+    errdefer parsed.selectors.deinit();
     // The old selectors borrow the old text: both go together.
     rule.data.style.selectors.deinit();
     a.free(rule.prelude);
-    rule.prelude = text;
-    rule.data.style.selectors = parsed;
+    rule.prelude = parsed.text;
+    rule.data.style.selectors = parsed.selectors;
     if (rule.sheet()) |record| record.changed();
 }
 
