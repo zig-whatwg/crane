@@ -315,7 +315,7 @@ test "a fragment parsed with an svg context element is SVG: the context is the a
     defer builder.deinit();
     const root = try TreeNode.initElement(allocator, "html", .html);
     builder.document.appendChild(root);
-    try builder.open_elements.append(root);
+    try builder.pushOpenElement(root);
     builder.insertion_mode = .in_body;
     const context = try TreeNode.initElement(allocator, "svg", .svg);
     defer context.deinit();
