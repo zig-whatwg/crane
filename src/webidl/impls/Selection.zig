@@ -414,6 +414,11 @@ pub fn call_collapse(instance: *runtime.Instance, node: ?*runtime.Instance, offs
     // Steps 5-7: make and associate a live Range now, before any DOM mutation.
     const range = try newRange(instance, target, off, target, off);
     internal.setRange(instance, range, .none);
+    // Browsers also synchronize editable focus after step 7. The helper
+    // follows the canonical position's editable root (row129 Q10/Q20),
+    // without changing the exposed Range. Keep this last: a focus listener
+    // may replace the selection or navigate.
+    @import("html").focus.focusSelectionPosition(target, off);
 }
 
 /// Selection API - setPosition(node, offset)
@@ -746,87 +751,18 @@ fn moveByWord(node: *runtime.Instance, offset: u32, forward: bool) !PositionResu
         else => return err,
     };
     defer text.deinit(node.ctx.allocator);
-    // The data is WTF-8 and offsets are UTF-16 code units (DOM node length):
-    // walk the bytes a code point at a time from the offset's byte, and count
-    // the code units back at the end. Word boundaries are ASCII, so every
-    // other code point is a word character - one an offset splits included
-    // (between the two halves of a surrogate pair).
     const data = text.asSlice();
-    const at = infra.wtf8.positionOfCodeUnit(data, offset);
-
-    if (forward) {
-        // Find end of current word, then start of next word. From inside a
-        // pair, its low half is the rest of the current word's character.
-        var pos = if (at.mid_pair) nextCodePoint(data, at.byte) else at.byte;
-
-        // Skip current word (non-whitespace)
-        while (pos < data.len and !isWordBoundaryAt(data, pos)) pos = nextCodePoint(data, pos);
-
-        // Skip whitespace between words (ASCII: one byte each)
-        while (pos < data.len and isWordBoundaryAt(data, pos)) : (pos += 1) {}
-
-        if (pos >= data.len and at.byte == data.len) {
-            // Only leave a node when starting at its end. Reaching the end
-            // of its last word is itself a movement result (Selection.modify
-            // steps 10-11). Blink NextWordPositionInternal likewise returns
-            // the end of the current text segment before advancing to the
-            // next block; all three browsers pass the generated-content
-            // word-extension WPT at 23b0b89b1a.
-            if (try getNextTextPosition(node)) |next| {
-                return next;
-            }
-        }
-
-        return .{ .node = node, .offset = codeUnitsBefore(data, pos) };
-    } else {
-        // Find start of current/previous word. From inside a pair, its high
-        // half (before the offset) ends a word: no boundary to skip first.
-        var pos = at.byte;
-
-        // Skip whitespace going backward
-        if (!at.mid_pair) {
-            while (pos > 0 and isWordBoundaryAt(data, pos - 1)) : (pos -= 1) {}
-        }
-
-        // Skip word going backward
-        while (pos > 0 and !isWordBoundaryAt(data, pos - 1)) pos = previousCodePoint(data, pos);
-
-        if (pos == 0 and offset == 0) {
-            // Already at start, try previous text node
-            if (try getPreviousTextPosition(node)) |prev| {
-                return prev;
-            }
-        }
-
-        return .{ .node = node, .offset = codeUnitsBefore(data, pos) };
+    // Selection.modify steps 10-11: only leave a node when starting at its
+    // boundary. Reaching the end of its last word is itself a movement
+    // result. Blink NextWordPositionInternal does the same before advancing
+    // to the next block; all three browsers pass the generated-content
+    // word-extension WPT at 23b0b89b1a.
+    if (forward and infra.wtf8.positionOfCodeUnit(data, offset).byte == data.len) {
+        if (try getNextTextPosition(node)) |next| return next;
+    } else if (!forward and offset == 0) {
+        if (try getPreviousTextPosition(node)) |previous| return previous;
     }
-}
-
-/// Whether the byte at `pos` of WTF-8 `data` is a word boundary: one of the
-/// ASCII boundaries (`isWordBoundary`). A byte of a multi-byte sequence never is.
-fn isWordBoundaryAt(data: []const u8, pos: usize) bool {
-    return data[pos] < 0x80 and isWordBoundary(data[pos]);
-}
-
-/// The byte offset after the code point that starts at `pos` of WTF-8 `data`
-/// (a stray continuation byte counts as one), never past the end.
-fn nextCodePoint(data: []const u8, pos: usize) usize {
-    const lead = data[pos];
-    const len: usize = if (lead < 0xC0) 1 else if (lead < 0xE0) 2 else if (lead < 0xF0) 3 else 4;
-    return @min(pos + len, data.len);
-}
-
-/// The byte offset of the code point that ends at `pos` (> 0) of WTF-8 `data`.
-fn previousCodePoint(data: []const u8, pos: usize) usize {
-    var i = pos - 1;
-    while (i > 0 and (data[i] & 0xC0) == 0x80) i -= 1;
-    return i;
-}
-
-/// The UTF-16 code units of `data` before byte offset `pos`, a code point
-/// boundary.
-fn codeUnitsBefore(data: []const u8, pos: usize) u32 {
-    return @intCast(infra.wtf8.codeUnitLength(data[0..pos]));
+    return .{ .node = node, .offset = @import("html").word_navigation.move(data, offset, forward) };
 }
 
 /// Move to document boundary
@@ -857,15 +793,6 @@ fn moveToDocumentBoundary(node: *runtime.Instance, forward: bool) !PositionResul
         // No text nodes, position at start of root
         return .{ .node = current, .offset = 0 };
     }
-}
-
-/// Check if character is a word boundary (whitespace or punctuation)
-fn isWordBoundary(c: u8) bool {
-    return std.ascii.isWhitespace(c) or
-        c == '.' or c == ',' or c == '!' or c == '?' or
-        c == ';' or c == ':' or c == '"' or c == '\'' or
-        c == '(' or c == ')' or c == '[' or c == ']' or
-        c == '{' or c == '}' or c == '-' or c == '/';
 }
 
 /// Count children of a node

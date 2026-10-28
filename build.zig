@@ -6517,6 +6517,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     });
     intl_mod.addImport("infra", infra_mod);
     intl_mod.addImport("host", host_mod);
+    html_mod.addImport("intl", intl_mod);
 
     // V8 module needs intl for pure Zig Intl.DateTimeFormat implementation
     v8_mod.addImport("intl", intl_mod);

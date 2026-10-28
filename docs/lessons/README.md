@@ -623,6 +623,10 @@ A lane brief now carries the lessons chosen for its batch.
 - [Control font selection uses displayed text](spec-compliance-control-font-selection-uses-displayed-text.md) - Match rendered characters/metrics and invalidate on value changes.
 - [Re-tokenize Unicode Ranges From Original Source](spec-compliance-unicode-ranges-need-original-declaration-source.md) - Preserve source before a grammar-specific tokenization mode.
 - [Substitution continues past a guaranteed-invalid function](spec-compliance-substitution-continues-past-a-guaranteed-invalid-function.md) - When an algorithm's side effects (dependency edges, cycle marks) come from visiting the input, an early return on the first failure is a behaviour change, not an optimization - walk what the spec walks.
+- [Blur unfocuses the designation](spec-compliance-blur-unfocuses-the-designation.md) - Keep designation, eligibility and fixup separate.
+- [Selection focus is a position decision](spec-compliance-selection-focus-is-a-position-decision.md) - Pin position, focus and unchanged Range independently.
+- [Shadow focus sorts each navigation scope](spec-compliance-shadow-focus-sorts-each-navigation-scope.md) - Sort before flattening; preserve radio-group tree boundaries.
+- [Word boundaries and movement policy are separate](spec-compliance-word-segmentation-and-movement-policy-are-separate.md) - Pin segmentation, movement convention and key bindings separately.
 
 ### Codegen
 - [Unforgeable accessors must be installed on derived instances](codegen-unforgeable-accessors-must-be-installed-on-derived-instances.md) - An inherited WebIDL member still needs explicit instance installation when the engine template does not inherit that property representation.
@@ -837,6 +841,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [A subtest missing from all three browsers on wpt.fyi was changed upstream](testing-a-subtest-missing-from-all-three-browsers-on-wpt-fyi-was-changed-upstream.md) - wpt.fyi reports upstream master, not Crane's pin: a subtest that no browser reports was removed or renamed upstream, so read the file's history before treating it as a requirement.
 - [A cost bar that moves with no new instructions is code placement](testing-a-cost-bar-that-moves-with-no-new-instructions-is-code-placement.md) - A sub-microsecond per-operation metric in a whole-program optimized runner moves with code placement; when its path reaches no changed code, instructions retired (page minus a zero-iteration control) decide, not time.
 - [A srcdoc document's relative URLs resolve against its parent's](testing-a-srcdoc-documents-relative-urls-resolve-against-its-parent.md) - In a test that changes a srcdoc frame's URL, write the URL absolute: a relative one resolves against the parent document.
+- [Zig can print failed command for successful stderr](testing-zig-successful-stderr-can-say-failed-command.md) - Read the actual results and final summary.
+- [Equal pass counts can hide a regression](testing-equal-pass-counts-can-hide-a-regression.md) - Compare PASS identities; gains never cancel losses.
+- [JSON Lines uses LF, not Unicode line boundaries](testing-json-lines-uses-lf-not-unicode-line-boundaries.md) - Preserve Unicode separators in names and reconcile full records.
 
 ### Debugging
 - [A kernel that frees its only object each op measures the allocator's page churn](debugging-a-one-object-kernel-measures-the-allocators-page-churn.md) - Before reading a size effect off an instruction count, check page reclaims per op and the spread across runs: one object at a time under DebugAllocator measures mmap, not the object.
@@ -986,3 +993,4 @@ A lane brief now carries the lessons chosen for its batch.
 - [An Empty Bash Array Can Stop a Measurement Launcher](workflow-a-tmux-launch-is-not-proof-a-runner-started.md) - Verify runner startup and make optional arguments safe for the host shell.
 - [A merge that adapts one reader of a changed type must find them all](workflow-a-merge-that-adapts-one-reader-of-a-changed-type-must-find-them-all.md) - A failing test names one reader; a changed type has as many readers as the grep finds.
 - [Pseudo applicability probes need distinct controls](testing-pseudo-applicability-probes-need-distinct-controls.md) - A default-valued control cannot distinguish an applied declaration from a filtered one.
+- [Measure estimates for timing windows from complete pairs](workflow-measure-timing-window-estimates.md) - Include every expanded URL and both arms in a measured scheduling estimate.
