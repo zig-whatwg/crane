@@ -204,7 +204,19 @@ fn sweep(navigation: Navigation, rounds: usize) !void {
             return err;
         };
         const policies = switch (found) {
-            .none => continue,
+            // No document: the frame shows nothing, which runs nothing.
+            // The sweep's end is still the round that failed nothing - a
+            // navigation the rate limiter refused. It used to skip that
+            // check, and the frame never showed .none for long: it went on
+            // naming the destroyed document a failed commit left, until the
+            // collector freed it under the navigable (lane nav2, item 0).
+            // Now the Window's teardown clears it, the srcdoc frame shows
+            // .none until a navigation commits, and once the limiter refused
+            // them all the sweep ran its 4,000 rounds (SweepDidNotEnd).
+            .none => {
+                if (!failing.has_induced_failure) return;
+                continue;
+            },
             .no_container => {
                 const after = frameWindowDocument(page, realm, navigation) catch null;
                 std.debug.print("{s}: failing allocation {d}: the frame's document has no policy container; before {?*} gen {d}, after {?*} gen {d}\n", .{

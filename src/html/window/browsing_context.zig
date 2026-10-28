@@ -110,20 +110,34 @@ pub const Navigables = struct {
         return null;
     }
 
-    /// A Window's teardown: no browsing context of this Browser - live or
-    /// retired - names `window` as its active window from here on, nor, when
-    /// it was that Window's, `document` as its active document (lane
-    /// winslot1, kind 1). A retired context - a removed iframe's, kept while
-    /// a Window might still read it (`discard`) - named its torn-down Window
+    /// A Window's teardown, which frees its associated `document` with it: no
+    /// browsing context of this Browser - live or retired (a retired context
+    /// stays on `live` until `freeRetired` frees it) - names `window` as its
+    /// active window from here on, and none names `document` as its active
+    /// document, WHATEVER its active window is (lane winslot1, kind 1; lane
+    /// nav2, item 0). A retired context - a removed iframe's, kept while a
+    /// Window might still read it (`discard`) - named its torn-down Window
     /// for the rest of the Browser's life, and every reader of it (user
     /// activation, the opener, frames[i], a frame's named property) read
-    /// whatever the slab put at that address next. Blink clears both sides
-    /// when a window leaves its frame (DOMWindow::DisconnectFromFrame).
+    /// whatever the slab put at that address next.
+    ///
+    /// The document is cleared on its own, not only where the window
+    /// matches: a context's two pointers diverge whenever a navigation gave
+    /// it a new Window before that Window's document became active - a
+    /// frame commit that failed after the realm swap (HTMLIFrameElement
+    /// replaceRealm, then no new document), or a kept page whose commit
+    /// failed. The context then named the old Window's freed document, and
+    /// the next navigation's abort read it (a Bus error hashing the freed
+    /// Document's interface name in template_registry, under
+    /// Document.abortDocument's retainValue; tests/html/nav2_failed_
+    /// navigation_active_document_test.zig). Blink has no second pointer to
+    /// forget: a frame's document IS its window's document
+    /// (Frame::GetDocument reads DomWindow()->document()), and it clears both
+    /// sides when a window leaves its frame (DOMWindow::DisconnectFromFrame).
     /// Compares only; reads neither.
     pub fn forgetWindow(self: *Navigables, window: InstancePtr, document: ?InstancePtr) void {
         for (self.live.items) |ctx| {
-            if (ctx.active_window != window) continue;
-            ctx.active_window = null;
+            if (ctx.active_window == window) ctx.active_window = null;
             if (document) |d| {
                 if (ctx.active_document == d) ctx.active_document = null;
             }

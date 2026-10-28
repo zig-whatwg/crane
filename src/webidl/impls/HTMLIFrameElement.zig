@@ -2434,6 +2434,21 @@ fn runCommit(context: ?*anyopaque) void {
     // entry's identity is reserved where pageswap names it
     // (docs/lessons/architecture-reserve-what-a-step-names-before-the-engine-makes-it.md).
     const unload_start = fetch_mod.algorithms.http_fetch.getCurrentTimeMs();
+    // A navigable an earlier commit left with no realm - its replacement
+    // realm could not be made after the old document unloaded (replaceRealm;
+    // then the old Window's teardown cleared its document, lane nav2 item
+    // 0) - makes its child navigable's realm and initial about:blank
+    // document again, as `get_contentWindow` does, so that this navigation
+    // commits: without it the frame never navigated again through src (the
+    // unload below needs the navigable's realm), only once script read its
+    // contentWindow. HTML has no such state - a navigable always has an
+    // active document - and Gecko's frame whose inner window could not be
+    // made (SetupNewViewer) loads again on its next navigation.
+    if (navigableContext(integration) == null) {
+        const container: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse return endLoadDelay(integration)));
+        if (!dom_module.navigables.createChildNavigable(container, integration)) return endLoadDelay(integration);
+        if (integration.state == .discarded or integration.browsing_context == null) return;
+    }
     // The back/forward cache may keep the displayed page (unload step 5).
     var kept: ?KeptDocument = null;
     if (!unloadActiveDocument(integration, if (swap) |*step| step else null, &kept)) return endLoadDelay(integration);
