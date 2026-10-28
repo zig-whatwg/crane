@@ -41,7 +41,34 @@ pub const SelectorList = struct {
     /// outermost list of a parse owns any; nested lists' are empty.
     strings: [][]u8 = &.{},
 
+    /// Null for parsed/unique roots. Both immutable parent views point
+    /// to their sole shared owner; the view is never separately destroyed.
+    shared_owner: ?*@import("nesting.zig").SharedList = null,
+
     pub fn deinit(self: *SelectorList) void {
+        std.debug.assert(self.shared_owner == null);
+        self.deinitContents();
+    }
+
+    /// The single release dispatch for every initialized boxed list.
+    /// Shared and unique ownership are disjoint by construction.
+    pub fn releaseBoxed(self: *SelectorList) void {
+        if (self.shared_owner) |owner| {
+            owner.unref();
+        } else {
+            const allocator = self.allocator;
+            self.deinit();
+            allocator.destroy(self);
+        }
+    }
+
+    /// Only the owner's zero-count path may destroy shared contents.
+    pub fn deinitSharedContents(self: *SelectorList, owner: *@import("nesting.zig").SharedList) void {
+        std.debug.assert(self.shared_owner == owner and owner.refs == 0);
+        self.deinitContents();
+    }
+
+    fn deinitContents(self: *SelectorList) void {
         for (self.selectors) |*selector| {
             selector.deinit();
         }
@@ -352,6 +379,8 @@ pub const SimpleSelector = union(enum) {
     /// Box this rare arm so SimpleSelector's size does not increase for
     /// every ordinary selector merely to hold the additional URI.
     NamespacedAttribute: *const struct { uri: []const u8, attribute: AttributeSelector },
+    /// CSSOM keeps this unresolved; nesting.zig resolves it before matching.
+    Nesting,
     PseudoClass: PseudoClassSelector,
     PseudoElement: PseudoElementSelector,
 
@@ -367,7 +396,7 @@ pub const SimpleSelector = union(enum) {
     /// Calculate specificity contribution of this simple selector
     pub fn calculateSpecificity(self: *const SimpleSelector) Specificity {
         return switch (self.*) {
-            .Universal, .NamespaceURI => Specificity{}, // 0,0,0
+            .Universal, .NamespaceURI, .Nesting => Specificity{}, // 0,0,0
             .Type => Specificity{ .element = 1 }, // 0,0,1
             .Class => Specificity{ .class = 1 }, // 0,1,0
             .Id => Specificity{ .id = 1 }, // 1,0,0
@@ -425,16 +454,13 @@ pub const PseudoClassSelector = struct {
     pub fn deinit(self: *PseudoClassSelector, allocator: Allocator) void {
         switch (self.kind) {
             .Not, .Is, .Where, .Has => |selector_list_ptr| {
-                selector_list_ptr.deinit();
-                allocator.destroy(selector_list_ptr);
+                selector_list_ptr.releaseBoxed();
             },
             .Host => |maybe| if (maybe) |selector_list_ptr| {
-                selector_list_ptr.deinit();
-                allocator.destroy(selector_list_ptr);
+                selector_list_ptr.releaseBoxed();
             },
             .NthChild, .NthLastChild => |pattern| if (pattern.of) |selector_list_ptr| {
-                selector_list_ptr.deinit();
-                allocator.destroy(selector_list_ptr);
+                selector_list_ptr.releaseBoxed();
             },
             .Lang => |ranges| allocator.free(ranges),
             else => {},
@@ -604,8 +630,7 @@ pub const PseudoElementSelector = struct {
 
     pub fn deinit(self: *PseudoElementSelector, allocator: Allocator) void {
         if (self.argument) |list| {
-            list.deinit();
-            allocator.destroy(list);
+            list.releaseBoxed();
             self.argument = null;
         }
         if (self.part_names.len != 0) allocator.free(self.part_names);
@@ -645,8 +670,12 @@ pub const NamespaceResolver = struct {
     default: ?[]const u8 = null,
 };
 
+pub const NestingContext = enum { style, scope };
+
 pub const ParseOptions = struct {
     namespaces: ?NamespaceResolver = null,
+    /// Nearest style/scope ancestor, ignoring intervening group rules.
+    nesting: ?NestingContext = null,
 };
 
 pub fn parseWithOptions(allocator: Allocator, source: []const u8, options: ParseOptions) ParserError!SelectorList {
@@ -674,6 +703,7 @@ fn parseWithMode(allocator: Allocator, source: []const u8, options: ParseOptions
     var parser = try Parser.initWithScratch(allocator, scratch, &tokenizer);
     defer parser.deinit();
     parser.namespaces = options.namespaces;
+    parser.nesting = options.nesting;
     parser.support_check = support_check;
     return parser.parse();
 }
@@ -695,7 +725,9 @@ pub fn parseCssomOwned(allocator: Allocator, source: []u8, options: ParseOptions
     var rewrites: std.ArrayList(AnBRewrite) = .empty;
     defer rewrites.deinit(scratch);
     parser.namespaces = options.namespaces;
+    parser.nesting = options.nesting;
     parser.anb_rewrites = &rewrites;
+    parser.preserve_nesting = true;
     var list = try parser.parse();
     errdefer list.deinit();
     if (rewrites.items.len == 0) return .{ .text = source, .selectors = list };
@@ -731,12 +763,14 @@ pub fn parseCssomOwned(allocator: Allocator, source: []u8, options: ParseOptions
 const AnBRewrite = struct {
     start: usize,
     end: usize,
-    a: i32,
-    b: i32,
-    has_of: bool,
+    a: i32 = 0,
+    b: i32 = 0,
+    has_of: bool = false,
+    prefix: bool = false,
 
     /// CSS Syntax 3 section 9.1, steps 1–5.
     fn text(self: AnBRewrite, buffer: *[64]u8) []const u8 {
+        if (self.prefix) return "& ";
         var written: usize = 0;
         if (self.a == 0) {
             written = (std.fmt.bufPrint(buffer, "{d}", .{self.b}) catch unreachable).len;
@@ -821,6 +855,8 @@ pub const Parser = struct {
     current_token: ?Token = null,
     namespaces: ?NamespaceResolver = null,
     support_check: bool = false,
+    nesting: ?NestingContext = null,
+    preserve_nesting: bool = false,
     /// Present only for CSSOM: successful An+B spans, never a failed branch.
     anb_rewrites: ?*std.ArrayList(AnBRewrite) = null,
 
@@ -859,7 +895,7 @@ pub const Parser = struct {
     /// <selector-list>. The list owns the strings the parse decoded.
     pub fn parse(self: *Parser) ParserError!SelectorList {
         const all = self.tokens[0 .. self.tokens.len - 1];
-        var list = try self.parseList(all, .{}, .{ .forgiving = false, .relative = false });
+        var list = try self.parseList(all, .{}, .{ .forgiving = false, .relative = self.nesting != null, .nesting = self.nesting });
         errdefer list.deinit();
         self.current_token = self.tokens[self.tokens.len - 1];
         list.strings = try self.strings.toOwnedSlice(self.allocator);
@@ -875,6 +911,7 @@ pub const Parser = struct {
         forgiving: bool,
         /// <relative-selector-list>.
         relative: bool,
+        nesting: ?NestingContext = null,
     };
 
     /// A comma-separated list of complex (or relative) selectors over
@@ -892,7 +929,7 @@ pub const Parser = struct {
             if (i >= tokens.len or at_comma) {
                 const piece = tokens[piece_start..i];
                 const rewrite_count = if (self.anb_rewrites) |rewrites| rewrites.items.len else 0;
-                if (self.parseComplex(piece, ctx, kind.relative)) |selector| {
+                if (self.parseComplex(piece, ctx, kind.relative, kind.nesting)) |selector| {
                     selectors.append(self.scratch, selector) catch |err| {
                         var dropped = selector;
                         dropped.deinit();
@@ -965,9 +1002,21 @@ pub const Parser = struct {
 
     /// <complex-selector> (or <relative-selector>) over all of `tokens`,
     /// whitespace around it allowed. Stored right to left.
-    fn parseComplex(self: *Parser, tokens: []const Token, ctx: Context, relative: bool) ParserError!ComplexSelector {
+    fn parseComplex(self: *Parser, tokens: []const Token, ctx: Context, relative: bool, nesting: ?NestingContext) ParserError!ComplexSelector {
         var stream = Stream{ .tokens = tokens };
         _ = stream.skipWhitespace();
+
+        const first_token = stream.peek();
+        const explicit_combinator = combinatorOf(first_token) != null;
+        var contains_nesting = false;
+        if (nesting != null) for (tokens) |token| {
+            // Nesting 1 section 3.1 counts a delim '&' even inside a
+            // forgiven unknown pseudo-class, but never inside a string.
+            if (token.isDelim('&')) {
+                contains_nesting = true;
+                break;
+            }
+        };
 
         var ltr_compounds: std.ArrayList(CompoundSelector) = .empty;
         defer ltr_compounds.deinit(self.scratch);
@@ -1033,6 +1082,29 @@ pub const Parser = struct {
             .is_relative = relative,
             .initial_combinator = initial_combinator,
         };
+        errdefer result.deinit();
+        if (nesting) |context_kind| {
+            const has_scope = context_kind == .scope and @import("nesting.zig").containsScope(&result);
+            if (explicit_combinator or (!contains_nesting and !has_scope)) {
+                const simples = try self.allocator.alloc(SimpleSelector, 1);
+                var owns_simples = true;
+                errdefer if (owns_simples) self.allocator.free(simples);
+                simples[0] = if (context_kind == .style) .Nesting else .{ .PseudoClass = .{ .kind = .Scope } };
+                const old_len = result.combinators.len;
+                result.combinators = try self.allocator.realloc(result.combinators, old_len + 1);
+                result.combinators[old_len] = .{
+                    .combinator = initial_combinator orelse .Descendant,
+                    .compound = .{ .allocator = self.allocator, .simple_selectors = simples },
+                };
+                owns_simples = false;
+                // Scope's implicit anchor is omitted by CSSOM. A style
+                // rule's implicit & is serialized (Nesting 1 section 3.1).
+                if (context_kind == .style) if (self.anb_rewrites) |rewrites|
+                    try rewrites.append(self.scratch, .{ .start = first_token.start, .end = first_token.start, .prefix = true });
+            }
+            result.is_relative = false;
+            result.initial_combinator = null;
+        }
         result.computeAncestorHashes();
         result.computeBacktrackingInfo();
         return result;
@@ -1080,6 +1152,11 @@ pub const Parser = struct {
                     break :blk .{ .Id = .{ .id = token.value } };
                 },
                 .delim => blk: {
+                    if (token.delim == '&') {
+                        if (pseudo_element != null) return error.InvalidSelector;
+                        stream.advance();
+                        break :blk if (self.preserve_nesting) .Nesting else try @import("nesting.zig").scopeReference(self.allocator);
+                    }
                     // <class-selector> = '.' <ident-token>
                     if (token.delim != '.') break;
                     if (pseudo_element != null) return error.InvalidSelector;
@@ -1429,8 +1506,7 @@ pub const Parser = struct {
             var stream = Stream{ .tokens = args };
             var pattern = try parseAnPlusB(&stream);
             errdefer if (pattern.of) |list| {
-                list.deinit();
-                self.allocator.destroy(list);
+                list.releaseBoxed();
             };
             _ = stream.skipWhitespace();
             const anb_end = stream.pos;

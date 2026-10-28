@@ -13,9 +13,9 @@
 //!
 //! Stated deviations: a declaration's value is its component values
 //! serialized, not the property's parsed value serialized canonically
-//! (`color: RED` reads back as `RED`); nested style rules and at-rules inside
-//! a style rule's block are dropped; an at-rule's block is skipped, not
-//! parsed.
+//! (`color: RED` reads back as `RED`). Style and group blocks retain their
+//! interleaved rules and declaration runs. The DOM rule model decides which
+//! grammars are valid in each context; unknown at-rule bodies are skipped.
 //!
 //! Spec: https://drafts.csswg.org/css-syntax-3/#parse-stylesheet-contents
 //! Spec: https://drafts.csswg.org/cssom-1/#serialize-an-identifier
@@ -42,7 +42,7 @@ pub const Declaration = struct {
     important: bool,
 };
 
-/// One rule of a style sheet's top level.
+/// A parsed rule or a declaration run within a style/group block.
 pub const Rule = struct {
     kind: Kind,
     /// An at-rule's name, decoded and ASCII-lowercased; empty for a
@@ -54,13 +54,12 @@ pub const Rule = struct {
     declarations: []Declaration,
     /// The rule ended in a {}-block (an at-rule may end in `;` instead).
     has_block: bool,
-    /// The rules of a conditional or layer group rule's block (`@media`,
-    /// `@supports`, `@layer`, `@container`, `@scope`, `@starting-style`,
-    /// `@document`): a <rule-list>, parsed as the top level is. Empty for
-    /// every other rule.
+    /// Ordered nested rules and declaration runs in a style/group block.
+    /// A style rule's first declaration run lives in `declarations`; later
+    /// runs are children of kind `declarations` (CSS Syntax 3 section 5.5.4).
     children: []Rule = &.{},
 
-    pub const Kind = enum { qualified, at_rule };
+    pub const Kind = enum { qualified, at_rule, declarations };
 
     /// Free a rule `parseRule` returned.
     pub fn deinitOwned(self: *Rule, allocator: Allocator) void {
@@ -308,7 +307,7 @@ const Parser = struct {
                     prelude_end = self.tokens.pos - 1;
                     _ = self.next();
                     if (isGroupRule(name)) {
-                        children = try self.consumeRuleList();
+                        children = (try self.consumeBlockContents(false)).children;
                     } else if (isDeclarationBlockRule(name)) {
                         const previous = self.property_descriptors;
                         self.property_descriptors = std.mem.eql(u8, name, "property");
@@ -346,95 +345,141 @@ const Parser = struct {
         };
     }
 
-    /// A group rule's block, its `{` consumed: a list of rules, as the
-    /// top level's, through the block's `}` (or EOF).
-    fn consumeRuleList(self: *Parser) Allocator.Error![]Rule {
-        var rules: std.ArrayList(Rule) = .empty;
+    const BlockContents = struct {
+        declarations: []Declaration = &.{},
+        children: []Rule = &.{},
+    };
+
+    /// CSS Syntax 3 sections 5.5.4–5.5.5. The opening brace is consumed;
+    /// preserve declaration runs and rules, including invalid-rule boundaries.
+    fn consumeBlockContents(self: *Parser, style: bool) Allocator.Error!BlockContents {
+        var first: []Declaration = &.{};
+        errdefer freeDeclarations(self.allocator, first);
+        var children: std.ArrayList(Rule) = .empty;
         errdefer {
-            for (rules.items) |*rule| rule.deinit(self.allocator);
-            rules.deinit(self.allocator);
+            for (children.items) |*child| child.deinit(self.allocator);
+            children.deinit(self.allocator);
         }
+        var declarations: std.ArrayList(Declaration) = .empty;
+        defer declarations.deinit(self.allocator);
+        errdefer for (declarations.items) |d| {
+            self.allocator.free(d.name);
+            self.allocator.free(d.value);
+        };
         while (true) {
             const token = self.peek();
             switch (token.token_type) {
-                .eof => break,
-                .right_brace => {
-                    _ = self.next();
+                .whitespace, .semicolon => _ = self.next(),
+                .eof, .right_brace => {
+                    try self.flushDeclarations(&declarations, &children, &first, style);
+                    if (token.token_type == .right_brace) _ = self.next();
                     break;
                 },
-                .whitespace, .semicolon => _ = self.next(),
                 .at_keyword => {
+                    // At-rules always terminate the preceding run, even
+                    // when their grammar is unsupported by the CSSOM model.
+                    try self.flushDeclarations(&declarations, &children, &first, style);
                     var rule = try self.consumeAtRule(true);
                     errdefer rule.deinit(self.allocator);
-                    try rules.append(self.allocator, rule);
+                    try children.append(self.allocator, rule);
                 },
                 else => {
-                    if (try self.consumeNestedQualifiedRule()) |rule| {
-                        var owned = rule;
-                        errdefer owned.deinit(self.allocator);
-                        try rules.append(self.allocator, owned);
+                    const mark = self.markStream();
+                    if (token.token_type == .ident) {
+                        if (try self.consumeDeclaration()) |declaration| {
+                            errdefer self.allocator.free(declaration.name);
+                            errdefer self.allocator.free(declaration.value);
+                            try declarations.append(self.allocator, declaration);
+                            continue;
+                        }
+                        self.restoreStream(mark);
+                    }
+                    if (try self.consumeQualified(true, true)) |parsed| {
+                        var rule = parsed;
+                        errdefer rule.deinit(self.allocator);
+                        // A complete qualified block is a boundary even
+                        // if the selector parser later reports it invalid.
+                        try self.flushDeclarations(&declarations, &children, &first, style);
+                        try children.append(self.allocator, rule);
                     }
                 },
             }
         }
-        return rules.toOwnedSlice(self.allocator);
+        return .{ .declarations = first, .children = try children.toOwnedSlice(self.allocator) };
     }
 
-    /// A qualified rule inside a group rule's block: as the top level's,
-    /// except that the block's `}` ends it (a parse error, nothing).
-    fn consumeNestedQualifiedRule(self: *Parser) Allocator.Error!?Rule {
-        var prelude: Serializer = .{ .allocator = self.allocator };
-        defer prelude.deinit();
-        while (true) {
-            const token = self.peek();
-            switch (token.token_type) {
-                .eof, .right_brace => return null,
-                .left_brace => {
-                    _ = self.next();
-                    const declarations = try self.consumeDeclarationList();
-                    errdefer freeDeclarations(self.allocator, declarations);
-                    return .{
-                        .kind = .qualified,
-                        .name = try self.allocator.alloc(u8, 0),
-                        .prelude = try prelude.finish(),
-                        .declarations = declarations,
-                        .has_block = true,
-                    };
-                },
-                else => try self.consumeComponentValue(&prelude),
-            }
-        }
+    fn flushDeclarations(self: *Parser, declarations: *std.ArrayList(Declaration), children: *std.ArrayList(Rule), first: *[]Declaration, style: bool) Allocator.Error!void {
+        if (declarations.items.len == 0) return;
+        const owned = try declarations.toOwnedSlice(self.allocator);
+        errdefer freeDeclarations(self.allocator, owned);
+        // 5.5.3: only the first run becomes a style rule's own declarations.
+        if (style and children.items.len == 0 and first.len == 0) {
+            first.* = owned;
+        } else try children.append(self.allocator, .{
+            .kind = .declarations,
+            .name = &.{},
+            .prelude = &.{},
+            .declarations = owned,
+            .has_block = false,
+        });
     }
 
-    /// "Consume a qualified rule" at the top level (nested false, no stop
-    /// token): its prelude up to a {}-block, whose contents are its
-    /// declarations. Null for a rule EOF cut off.
     fn consumeQualifiedRule(self: *Parser) Allocator.Error!?Rule {
+        return self.consumeQualified(false, false);
+    }
+
+    /// CSS Syntax 3 section 5.5.3, including the custom-property ambiguity
+    /// exclusion. A stop token or enclosing brace stays for the block loop.
+    fn consumeQualified(self: *Parser, nested: bool, stop_at_semicolon: bool) Allocator.Error!?Rule {
         var prelude: Serializer = .{ .allocator = self.allocator };
         defer prelude.deinit();
         while (true) {
             const token = self.peek();
             switch (token.token_type) {
-                // A parse error: nothing.
                 .eof => return null,
-                // <}-token> at the top level: a parse error, appended to
-                // the prelude.
-                .right_brace => try prelude.token(self.next()),
+                .semicolon => if (stop_at_semicolon) return null else try prelude.token(self.next()),
+                .right_brace => if (nested) return null else try prelude.token(self.next()),
                 .left_brace => {
+                    if (try customPropertyPrelude(self.allocator, prelude.out.items)) {
+                        if (nested) {
+                            try self.consumeBadDeclaration();
+                        } else {
+                            _ = self.next();
+                            try self.skipBlock(.right_brace);
+                        }
+                        return null;
+                    }
                     _ = self.next();
-                    const declarations = try self.consumeDeclarationList();
-                    errdefer freeDeclarations(self.allocator, declarations);
+                    const contents = try self.consumeBlockContents(true);
+                    errdefer freeDeclarations(self.allocator, contents.declarations);
+                    errdefer freeRules(self.allocator, contents.children);
+                    const text = try prelude.finish();
                     return .{
                         .kind = .qualified,
-                        .name = try self.allocator.alloc(u8, 0),
-                        .prelude = try prelude.finish(),
-                        .declarations = declarations,
+                        .name = &.{},
+                        .prelude = text,
+                        .declarations = contents.declarations,
+                        .children = contents.children,
                         .has_block = true,
                     };
                 },
                 else => try self.consumeComponentValue(&prelude),
             }
         }
+    }
+
+    /// Syntax 5.5.6's remnants, nested=true. A bad custom declaration
+    /// consumes its entire value; a brace in it cannot reveal a new rule.
+    fn consumeBadDeclaration(self: *Parser) Allocator.Error!void {
+        var sink = Serializer{ .allocator = self.allocator, .discard = true };
+        while (true) switch (self.peek().token_type) {
+            .eof, .right_brace => return,
+            .semicolon => {
+                _ = self.next();
+                return;
+            },
+            else => try self.consumeComponentValue(&sink),
+        };
     }
 
     /// "Consume a block's contents", as far as its declarations: the block
@@ -719,6 +764,22 @@ const Parser = struct {
         }
     }
 };
+
+/// First two non-whitespace components: a custom-property ident and ':'?
+fn customPropertyPrelude(a: Allocator, text: []const u8) Allocator.Error!bool {
+    var tokens = Tokenizer.init(text);
+    var first = tokens.next();
+    while (first.token_type == .whitespace) first = tokens.next();
+    if (first.token_type != .ident) return false;
+    // Most type selectors cannot start '--'; don't allocate to decode them.
+    if (!std.mem.startsWith(u8, first.value, "--") and std.mem.indexOfScalar(u8, first.value, '\\') == null) return false;
+    var second = tokens.next();
+    while (second.token_type == .whitespace) second = tokens.next();
+    if (second.token_type != .colon) return false;
+    const name = try tokenizer.decode(a, first.value);
+    defer a.free(name);
+    return std.mem.startsWith(u8, name, "--");
+}
 
 /// Whether a value's top-level component values hold a {}-block and any
 /// other non-whitespace value.
@@ -1105,10 +1166,17 @@ test "parseStyleSheetContents: nested blocks and functions stay in their value" 
     try testing.expectEqualStrings("{ x ; y }", d[2].value);
 }
 
-test "parseStyleSheetContents: a declaration without a colon, and a nested rule, are dropped" {
+test "parseStyleSheetContents: malformed declarations drop, nested rules and later declaration runs remain" {
     var rules = try parseStyleSheetContents(testing.allocator, "a { color red; & b { x: y } width: 1px }");
     defer rules.deinit();
-    const d = rules.items[0].declarations;
+    const parent = rules.items[0];
+    // The malformed color declaration contributes no initial declaration.
+    try testing.expectEqual(@as(usize, 0), parent.declarations.len);
+    try testing.expectEqual(@as(usize, 2), parent.children.len);
+    try testing.expectEqual(.qualified, parent.children[0].kind);
+    try testing.expectEqualStrings("& b", parent.children[0].prelude);
+    try testing.expectEqualStrings("declarations", @tagName(parent.children[1].kind));
+    const d = parent.children[1].declarations;
     try testing.expectEqual(@as(usize, 1), d.len);
     try testing.expectEqualStrings("width", d[0].name);
     try testing.expectEqualStrings("1px", d[0].value);

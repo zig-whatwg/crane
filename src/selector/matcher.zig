@@ -319,6 +319,9 @@ pub const Matcher = struct {
     /// Check if element matches simple selector
     fn matchesSimpleSelector(self: *const Matcher, element: *Element, simple: *const SimpleSelector) MatcherError!bool {
         return switch (simple.*) {
+            // CSSOM's unresolved AST never reaches matching: stylesheet
+            // build resolves it; DOM parsing lowers & to :where(:scope).
+            .Nesting => false,
             .Universal => true,
             .Type => |type_sel| self.matchesType(element, type_sel.tag_name) or self.matchesType(element, type_sel.lower_name),
             .Class => |class_sel| self.matchesClass(element, class_sel.class_name),

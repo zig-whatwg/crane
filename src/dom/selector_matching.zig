@@ -659,6 +659,9 @@ const Matcher = struct {
 
     fn matchesSimple(self: *const Matcher, node: *NodeBase, data: *const ElementData, simple: *const SimpleSelector) bool {
         return switch (simple.*) {
+            // CSSOM's unresolved AST never reaches matching: stylesheet
+            // build resolves it; DOM parsing lowers & to :where(:scope).
+            .Nesting => false,
             .Universal => |universal| universal.namespace == .any or data.namespace_uri == null,
             .Type => |type_selector| self.matchesType(data, type_selector.tag_name, type_selector.lower_name, type_selector.namespace),
             .Class => |class| self.hasClass(data, class.class_name),

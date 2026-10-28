@@ -49,17 +49,14 @@ pub fn set_selectorText(instance: *runtime.Instance, value: typedefs.CSSOMString
     const a = rule.allocator;
     const namespaces = if (rule.sheet()) |record| try record.namespaceMap(instance) else null;
     const text = try dom.style.css.rules.serializeComponentValues(a, value.asSlice());
-    var parsed = dom.style.rules.parseCssomSelector(a, text, namespaces) catch |err| {
+    const context = if (rule.parent_rule) |parent| dom.style.rules.nestingKindInside(parent) else null;
+    var parsed = dom.style.rules.parseCssomSelectorIn(a, text, namespaces, context) catch |err| {
         if (err == error.OutOfMemory) return err;
         return;
     };
     errdefer parsed.selectors.deinit();
-    // The old selectors borrow the old text: both go together.
-    rule.data.style.selectors.deinit();
-    a.free(rule.prelude);
-    rule.prelude = parsed.text;
-    rule.data.style.selectors = parsed.selectors;
-    if (rule.sheet()) |record| record.changed();
+    errdefer a.free(parsed.text);
+    try dom.style.rules.replaceStyleSelector(rule, parsed);
 }
 
 /// Getter for style ([SameObject]): "a CSSStyleProperties object for the

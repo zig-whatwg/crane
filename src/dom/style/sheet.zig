@@ -616,10 +616,16 @@ const Compiler = struct {
     /// stands where one may).
     fn ruleList(self: *Compiler, items: []const *Rule, condition: ?u32, layer: ?u16) Allocator.Error!void {
         for (items) |rule| switch (rule.data) {
-            .style => try self.styleRule(rule, condition, layer),
-            // Container evaluation awaits real host facts; parsed children
-            // must never become unconditional style rules.
-            .container => {},
+            .style => |*style| {
+                try self.styleRule(rule, condition, layer);
+                try self.ruleList(style.children.items, condition, layer);
+            },
+            .nested_declarations => try self.styleRule(rule, condition, layer),
+            // Container query evaluation needs the host's real container
+            // facts; CSS @SCOPE EVALUATION supplies scoping/proximity.
+            // Until those capabilities arrive, neither conditional body
+            // is compiled as an unconditional style rule.
+            .container, .scope => {},
             .import => |*import| {
                 // Cascade 5 2: `layer` puts the imported sheet in a new
                 // anonymous layer, `layer(name)` in that layer.
@@ -694,17 +700,18 @@ const Compiler = struct {
 
     fn styleRule(self: *Compiler, rule: *Rule, condition: ?u32, layer: ?u16) Allocator.Error!void {
         const a = self.contents.allocator;
-        const style = &rule.data.style;
+        const selectors = rule.matchingSelectors().?;
+        const block = rule.block().?;
         try self.contents.style_rules.append(a, rule);
         const position = self.position;
         self.position += 1;
-        for (style.selectors.selectors) |*complex| {
+        for (selectors.selectors) |*complex| {
             const spec = complex.calculateSpecificity();
             const index: u32 = @intCast(self.contents.rules.items.len);
             try self.contents.rules.append(a, .{
                 .complex = complex,
                 .specificity = .{ .a = spec.id, .b = spec.class, .c = spec.element },
-                .block = &style.block,
+                .block = block,
                 .position = position,
                 .layer = layer,
                 .condition = condition,

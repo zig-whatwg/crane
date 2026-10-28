@@ -23,6 +23,7 @@ pub const Tokenizer = tokenizer.Tokenizer;
 pub const Token = tokenizer.Token;
 
 pub const parser = @import("parser.zig");
+pub const nesting = @import("nesting.zig");
 pub const Parser = parser.Parser;
 /// Selectors 4 17.1 "parse a selector".
 pub const parse = parser.parseSelectorList;

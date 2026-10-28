@@ -88,8 +88,10 @@ pub fn setDeliveredSheetPolicy(owner: *@import("runtime").Instance, path: []cons
 // the resolver's functions reach the engine. Each file's tests run as it
 // is imported; tests/v8/style_engine_test.zig drives the resolver.
 
-// Q73/Q95: discover the private helper's pure inline test without forcing
-// resolver functions that reach the engine. Deliberately not refAllDecls.
+// Q73/Q95 and CP-UA-TEST-DISCOVERY: discover the engine and ua_sheet
+// pure inline tests without forcing resolver functions that reach the engine.
+// Deliberately not refAllDecls.
 test {
     _ = engine;
+    _ = ua_sheet;
 }
