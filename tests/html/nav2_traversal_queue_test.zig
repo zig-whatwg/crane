@@ -546,3 +546,54 @@ test "an item waiting between its phases is destroyed once when its traversable 
     try testing.expectEqualStrings("r", harness.log.items);
     try testing.expectEqual(@as(usize, 1), harness.destroyed);
 }
+
+const apply_history_step = html_core.navigation.apply_history_step;
+
+// Lane nav2 C2: "update for navigable creation/destruction" items coalesce,
+// stated as unobservable in apply_history_step.zig - each applies the
+// current step, so a second one right behind the first changes nothing. A
+// document's n frames, created or destroyed back to back, queue ONE item,
+// not n (integrator, 2026-10-28: O(n) teardown).
+test "a document's n frames created or destroyed back to back queue one update for navigable creation/destruction" {
+    var harness = Harness.init();
+    defer harness.deinit();
+    const top = try BrowsingContext.initTopLevel(testing.allocator, &harness.navigables);
+    defer top.deinit();
+    for (0..64) |_| apply_history_step.updateForNavigableCreationDestruction(top);
+    const queue = top.traversal_queue orelse return error.NoQueue;
+    try testing.expectEqual(@as(usize, 1), queue.items.items.len);
+    // Something else queued between them: the next update is an item of its
+    // own, and the ones right behind it coalesce into it.
+    try testing.expect(queue.append(&(try Step.make(&harness, 'T', .done, null)).item));
+    for (0..64) |_| apply_history_step.updateForNavigableCreationDestruction(top);
+    try testing.expectEqual(@as(usize, 3), queue.items.items.len);
+}
+
+// Lane nav2 C2, liveness (integrator's condition 2): an apply whose
+// per-navigable task cannot be queued - no loop takes it - ends that change
+// job at once; the apply proceeds, sets the step (20) and the queue moves
+// on. Driven by hand: with no window, no loop takes the service task either.
+test "an apply whose per-navigable task cannot be queued still finishes and sets the step" {
+    var harness = Harness.init();
+    defer harness.deinit();
+    const top = try BrowsingContext.initTopLevel(testing.allocator, &harness.navigables);
+    defer top.deinit();
+    const history = try top.jointHistory();
+    try history.addInitialEntry(top.id, "http://x.test/t", null, "http://x.test");
+    try history.commitDocument(top.id, "http://x.test/t2", null, "http://x.test", .push);
+    try testing.expectEqual(@as(u32, 1), history.current_step);
+
+    apply_history_step.traverse(top, testing.allocator, .{ .delta = -1 }, .{});
+    const queue = top.traversal_queue orelse return error.NoQueue;
+    try testing.expectEqual(@as(usize, 1), queue.items.items.len);
+    // The service task: the run, whose one change job ended unqueued...
+    TraversalQueue.service(&harness.navigables, top.id);
+    try testing.expect(queue.running != null);
+    try testing.expectEqual(@as(u32, 1), history.current_step);
+    // ...then its proceed steps (no navigable left to update): step 20.
+    TraversalQueue.service(&harness.navigables, top.id);
+    try testing.expect(queue.running == null);
+    try testing.expectEqual(@as(usize, 0), queue.items.items.len);
+    try testing.expectEqual(@as(u32, 0), history.current_step);
+    try testing.expect(!history.isApplying(1));
+}

@@ -246,9 +246,24 @@ pub fn createChildNavigable(container: *runtime.Instance, integration: *IFrameIn
     const impl = implementation orelse return false;
     if (!impl.create_browsing_context_and_document(container, integration)) return false;
     // Step 12: "Append the following session history traversal steps to
-    // traversable: ... Insert historyEntry into the navigable's session
-    // history entries".
-    if (integration.browsing_context) |bc| _ = bc.ensureHistoryEntries(&historyDocumentInfo) catch {};
+    // traversable: ... [insert historyEntry into the navigable's session
+    // history entries] ... Update for navigable creation/destruction given
+    // traversable."
+    //
+    // Deviation, stated (golden rule 2, integrator 2026-10-28): the entry is
+    // inserted now, not in the queued steps. It adds no used step - it sits
+    // at the step its parent's document began at - so no traversal's
+    // endpoint can see it, and the new document's History length is the
+    // joint one at once, as in Chrome 156, Firefox 158 and Safari 27, where
+    // the spec has it read 1 until the queued update's step 18 (the
+    // integrator's probe, lane nav2's worktree tmp/probes/nav3-creation-length/:
+    // a new iframe's history.length is the joint length synchronously, in a
+    // microtask and in a task, with and without src=about:blank). The update
+    // itself is queued as the spec says.
+    if (integration.browsing_context) |bc| {
+        _ = bc.ensureHistoryEntries(&historyDocumentInfo) catch {};
+        html_core.navigation.apply_history_step.updateForNavigableCreationDestruction(bc.getTop());
+    }
     return true;
 }
 
@@ -345,6 +360,12 @@ pub fn destroyChildNavigable(container: *runtime.Instance, integration: *IFrameI
                 const top_id = bc.getTop().id;
                 for (tree.items) |gone| html_core.navigation.traversal_queue.TraversalQueue.navigableGone(navigables, top_id, gone.id);
             }
+            // Step 9: "Append the following session history traversal steps
+            // to traversable: Update for navigable creation/destruction given
+            // traversable" - the used step, the documents' History length and
+            // index (its step 18) and the current step (its step 20) move
+            // there, not now.
+            html_core.navigation.apply_history_step.updateForNavigableCreationDestruction(bc.getTop());
         }
     }
     // Step 5: "destroy a document and its descendants" given its active

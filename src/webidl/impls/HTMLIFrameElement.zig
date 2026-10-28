@@ -983,6 +983,18 @@ const Navigation = struct {
         // after the record is gone (lane nav2 C1).
         const wait = self.traversal_wait;
         defer if (wait) |w| html_core.navigation.traversal_queue.TraversalQueue.populationEnded(w.navigables, w.traversable_id, w.token, w.navigable);
+        // A traversal's population that ends without unloading its navigable's
+        // document - it failed, was aborted, or made no document - ends the
+        // navigable's "traversal" ("apply the history step" 14.10.1 for an
+        // update-only change: new navigations may start). Its commit ended it
+        // already ("deactivate a document for a cross-document navigation"
+        // step 5.2). The integration outlives its records (its deinit
+        // abandons them first).
+        const integration = self.integration;
+        if (integration.ongoing_navigation == .traversal and integration.traversal_navigation == self.id) {
+            integration.ongoing_navigation = .none;
+            integration.traversal_navigation = 0;
+        }
         // Terminating a fetch runs neither `done` nor `gone`.
         if (self.fetch) |f| f.terminate();
         dom_module.service_worker_clients.release(self.reserved_client);
@@ -1145,8 +1157,12 @@ fn setOngoingNavigation(integration: *IFrameIntegration, value: navigate_steps.O
                 (if (navigationById(old)) |record| navigate_steps.isJavascript(record.url) else false);
             if (!queued_javascript) endNavigation(old);
         },
-        else => {},
+        // A traversal's population (its navigable going, or "stop" - which
+        // only a navigation ID's reaches).
+        .traversal => if (integration.traversal_navigation != 0) endNavigation(integration.traversal_navigation),
+        .none => {},
     }
+    integration.traversal_navigation = 0;
     // Step 3.
     integration.ongoing_navigation = value;
 }
@@ -1155,6 +1171,20 @@ fn setOngoingNavigation(integration: *IFrameIntegration, value: navigate_steps.O
 /// navigation in flight.
 fn abandonNavigationsOf(integration: *IFrameIntegration) void {
     setOngoingNavigation(integration, .none);
+}
+
+/// IFrameIntegration's end_ongoing_navigation_callback: the navigation in
+/// flight - an ID's, or a traversal's population - ends, and the navigation
+/// API is not informed ("apply the history step" 8.3 replaces it directly;
+/// a traversal's population replacing another's, as a coalesced delta
+/// traversal does, the same).
+fn endOngoingNavigationOf(integration: *IFrameIntegration) void {
+    switch (integration.ongoing_navigation) {
+        .id => |old| endNavigation(old),
+        .traversal => if (integration.traversal_navigation != 0) endNavigation(integration.traversal_navigation),
+        .none => {},
+    }
+    integration.traversal_navigation = 0;
 }
 
 /// The navigable's active document, as its browsing context records it -
@@ -1302,9 +1332,11 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // delaying load events to true." A popup has no parent.
     if (integration.iframe_element != null) integration.delaying_load = true;
 
-    // Step 18: a navigable that is traversing ignores navigations. Nothing
-    // traverses yet, so this never holds.
-    if (integration.ongoing_navigation == .traversal) return;
+    // Step 18: "If navigable's ongoing navigation is "traversal", then ...
+    // return" - a navigable that is traversing ("apply the history step"
+    // step 8.4, until its target document unloads the old one) ignores
+    // navigations. Not the traversal's own population.
+    if (options.traversal_entry == 0 and integration.ongoing_navigation == .traversal) return;
 
     // Step 7's navigation ID, and step 19: set the ongoing navigation - which
     // ends any earlier one.
@@ -1318,11 +1350,14 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         // that led here, and its API method tracker, stay ongoing: a
         // cross-document traversal's promises never settle
         // (navigation-methods/return-value/reload.html, reload-no-args.html).
-        switch (integration.ongoing_navigation) {
-            .id => |old| endNavigation(old),
-            else => {},
-        }
-        integration.ongoing_navigation = .{ .id = id };
+        const traversing = integration.ongoing_navigation == .traversal;
+        endOngoingNavigationOf(integration);
+        // A traversal's population is the navigation in flight while its
+        // navigable is "traversal" (step 8.4); a reload's, and one whose apply
+        // did not mark it, a navigation ID's.
+        if (traversing and options.traversal_entry != options.traversal_from) {
+            integration.traversal_navigation = id;
+        } else integration.ongoing_navigation = .{ .id = id };
     } else setOngoingNavigation(integration, .{ .id = id });
 
     const record = allocator.create(Navigation) catch return;
@@ -1594,7 +1629,12 @@ fn idOf(context: ?*anyopaque) u64 {
 
 /// Whether navigation `id` is still `integration`'s ongoing navigation.
 fn isOngoing(integration: *IFrameIntegration, id: u64) bool {
-    return integration.ongoing_navigation.eql(.{ .id = id });
+    return switch (integration.ongoing_navigation) {
+        .id => |ongoing| ongoing == id,
+        // "Apply the history step" step 8.4: the traversal's population.
+        .traversal => integration.traversal_navigation != 0 and integration.traversal_navigation == id,
+        .none => false,
+    };
 }
 
 /// The runtime context of `integration`'s content navigable, if it has one.
@@ -3453,7 +3493,8 @@ fn traversalInFlight(integration: *IFrameIntegration, waiter: ?dom_module.naviga
     if (std.mem.indexOfScalar(*IFrameIntegration, live_navigables.items, integration) == null) return false;
     const id = switch (integration.ongoing_navigation) {
         .id => |id| id,
-        else => return false,
+        .traversal => integration.traversal_navigation,
+        .none => return false,
     };
     const record = navigationById(id) orelse return false;
     const wait = record.traversal_wait orelse return false;
@@ -5139,6 +5180,7 @@ fn attachRealm(
     // in flight when the navigable goes, and how a retired realm ends.
     integration.navigate_callback = &navigateFromIntegration;
     integration.abandon_navigations_callback = &abandonNavigationsOf;
+    integration.end_ongoing_navigation_callback = &endOngoingNavigationOf;
     integration.retired_realm_destroy = &destroyRetiredRealm;
     integration.deinit_callback = &leaveLiveNavigables;
     joinLiveNavigables(integration);
@@ -5884,6 +5926,7 @@ fn createHostTraversable(allocator: std.mem.Allocator, window: *runtime.Instance
     integration.update_location_callback = &updateIframeLocation;
     integration.navigate_callback = &navigateFromIntegration;
     integration.abandon_navigations_callback = &abandonNavigationsOf;
+    integration.end_ongoing_navigation_callback = &endOngoingNavigationOf;
     // HTML "create and initialize a Document object" steps 6-7 are the
     // host's: its realms are parentless and entered for their life.
     integration.realm_for_document_callback = &realmForHostDocument;
