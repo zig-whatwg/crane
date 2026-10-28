@@ -66,8 +66,12 @@ const Step = struct {
     name: u8,
     outcome: Outcome = .done,
     /// Run-time behaviour beyond logging.
-    action: enum { none, complete_self, end_traversable } = .none,
+    action: enum { none, complete_self, end_traversable, wait_for, wait_and_end_one } = .none,
     traversable: ?*BrowsingContext = null,
+    /// `.wait_for`: the navigables whose populations the run waits for.
+    /// `.wait_and_end_one`: the same, and the first one's population ends
+    /// inside the run.
+    waits: []const u64 = &.{},
 
     fn make(harness: *Harness, name: u8, outcome: Outcome, target: ?u64) !*Step {
         const step = try testing.allocator.create(Step);
@@ -90,6 +94,15 @@ const Step = struct {
                 TraversalQueue.completeById(&self.harness.navigables, top.id, item.token);
             },
             .end_traversable => self.traversable.?.deinit(),
+            .wait_for, .wait_and_end_one => {
+                const top = self.traversable.?;
+                for (self.waits) |navigable| {
+                    if (!TraversalQueue.waitFor(&self.harness.navigables, top.id, item.token, navigable)) return .done;
+                }
+                if (self.action == .wait_and_end_one) {
+                    TraversalQueue.populationEnded(&self.harness.navigables, top.id, item.token, self.waits[0]);
+                }
+            },
         }
         return self.outcome;
     }
@@ -259,4 +272,110 @@ test "only the traversable keeps a queue: a child context reaches its top's" {
     try testing.expect(from_child == from_top);
     try testing.expect(child.traversal_queue == null);
     try testing.expectEqual(top.id, from_top.traversable_id);
+}
+
+test "a traversal waiting on populations completes when the last one ends, by its own token only" {
+    var harness = Harness.init();
+    defer harness.deinit();
+    const top = try BrowsingContext.initTopLevel(testing.allocator, &harness.navigables);
+    defer top.deinit();
+    const queue = try top.traversalQueue(Harness.schedule);
+
+    const waiting = try Step.make(&harness, 'A', .pending, null);
+    waiting.action = .wait_for;
+    waiting.traversable = top;
+    waiting.waits = &.{ 7, 8 };
+    try testing.expect(queue.append(&waiting.item));
+    const token = waiting.item.token;
+    try testing.expect(queue.append(&(try Step.make(&harness, 'B', .done, null)).item));
+    _ = harness.runTasks();
+    try testing.expectEqualStrings("A", harness.log.items);
+
+    // Another token's end, or another traversable's, changes nothing.
+    TraversalQueue.populationEnded(&harness.navigables, top.id, token + 1, 7);
+    TraversalQueue.populationEnded(&harness.navigables, top.id + 1000, token, 7);
+    // A navigable it does not wait for, nothing either.
+    TraversalQueue.populationEnded(&harness.navigables, top.id, token, 9);
+    try testing.expectEqual(@as(usize, 0), harness.runTasks());
+    try testing.expect(TraversalQueue.isRunning(&harness.navigables, top.id, token));
+
+    // One of two: still waiting.
+    TraversalQueue.populationEnded(&harness.navigables, top.id, token, 7);
+    try testing.expect(TraversalQueue.isRunning(&harness.navigables, top.id, token));
+    // The last: the queue moves on.
+    TraversalQueue.populationEnded(&harness.navigables, top.id, token, 8);
+    try testing.expect(!TraversalQueue.isRunning(&harness.navigables, top.id, token));
+    _ = harness.runTasks();
+    try testing.expectEqualStrings("AB", harness.log.items);
+    try testing.expectEqual(@as(usize, 2), harness.destroyed);
+}
+
+test "a destroyed navigable ends the running traversal's wait for it, and the queue continues" {
+    var harness = Harness.init();
+    defer harness.deinit();
+    const top = try BrowsingContext.initTopLevel(testing.allocator, &harness.navigables);
+    defer top.deinit();
+    const queue = try top.traversalQueue(Harness.schedule);
+
+    const waiting = try Step.make(&harness, 'A', .pending, null);
+    waiting.action = .wait_for;
+    waiting.traversable = top;
+    waiting.waits = &.{7};
+    try testing.expect(queue.append(&waiting.item));
+    try testing.expect(queue.append(&(try Step.make(&harness, 'B', .done, null)).item));
+    _ = harness.runTasks();
+    try testing.expectEqualStrings("A", harness.log.items);
+    TraversalQueue.navigableGone(&harness.navigables, top.id, 7);
+    _ = harness.runTasks();
+    try testing.expectEqualStrings("AB", harness.log.items);
+    try testing.expectEqual(@as(usize, 2), harness.destroyed);
+}
+
+test "a population that ends inside its traversal's run leaves the traversal waiting for the others" {
+    var harness = Harness.init();
+    defer harness.deinit();
+    const top = try BrowsingContext.initTopLevel(testing.allocator, &harness.navigables);
+    defer top.deinit();
+    const queue = try top.traversalQueue(Harness.schedule);
+
+    // Its only population ends in the run: finished when the run returns.
+    const quick = try Step.make(&harness, 'A', .pending, null);
+    quick.action = .wait_and_end_one;
+    quick.traversable = top;
+    quick.waits = &.{7};
+    try testing.expect(queue.append(&quick.item));
+    // One of two ends in the run: still waiting on the other.
+    const slow = try Step.make(&harness, 'B', .pending, null);
+    slow.action = .wait_and_end_one;
+    slow.traversable = top;
+    slow.waits = &.{ 7, 8 };
+    try testing.expect(queue.append(&slow.item));
+    try testing.expect(queue.append(&(try Step.make(&harness, 'C', .done, null)).item));
+    _ = harness.runTasks();
+    try testing.expectEqualStrings("AB", harness.log.items);
+    try testing.expectEqual(@as(usize, 1), harness.destroyed);
+    TraversalQueue.populationEnded(&harness.navigables, top.id, slow.item.token, 8);
+    _ = harness.runTasks();
+    try testing.expectEqualStrings("ABC", harness.log.items);
+    try testing.expectEqual(@as(usize, 3), harness.destroyed);
+}
+
+test "a traversable that ends while its traversal waits frees the wait, and a later end finds nothing" {
+    var harness = Harness.init();
+    defer harness.deinit();
+    const top = try BrowsingContext.initTopLevel(testing.allocator, &harness.navigables);
+    const top_id = top.id;
+    const queue = try top.traversalQueue(Harness.schedule);
+    const waiting = try Step.make(&harness, 'A', .pending, null);
+    waiting.action = .wait_for;
+    waiting.traversable = top;
+    waiting.waits = &.{ 7, 8 };
+    try testing.expect(queue.append(&waiting.item));
+    const token = waiting.item.token;
+    _ = harness.runTasks();
+    top.deinit();
+    try testing.expectEqual(@as(usize, 1), harness.destroyed);
+    TraversalQueue.populationEnded(&harness.navigables, top_id, token, 7);
+    TraversalQueue.navigableGone(&harness.navigables, top_id, 8);
+    try testing.expectEqual(@as(usize, 1), harness.destroyed);
 }

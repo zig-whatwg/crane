@@ -84,6 +84,12 @@ pub const Item = struct {
     /// `completeById` named it while its run was on the stack: finished
     /// whatever the run returns.
     completed: bool = false,
+    /// The navigables whose population this item waits for (`waitFor`): a
+    /// cross-document traversal's fetch and commit. The item completes when
+    /// the last one ends - its population finished, failed, was aborted or
+    /// superseded (`populationEnded`), or the navigable was destroyed
+    /// (`navigableGone`). Owned by the queue.
+    waiting_on: std.ArrayListUnmanaged(u64) = .empty,
 };
 
 /// Queue one service task - `TraversalQueue.service(navigables, id)` - on the
@@ -120,13 +126,25 @@ pub const TraversalQueue = struct {
     pub fn deinit(self: *TraversalQueue) void {
         if (self.running) |item| {
             self.running = null;
-            if (item.in_run) item.orphaned = true else item.destroy(item);
+            if (item.in_run) {
+                // Destroyed by the service once its run returns.
+                item.waiting_on.deinit(self.allocator);
+                item.waiting_on = .empty;
+                item.orphaned = true;
+            } else self.release(item);
         }
         const items = self.items;
         self.items = .empty;
-        for (items.items) |item| item.destroy(item);
+        for (items.items) |item| self.release(item);
         var list = items;
         list.deinit(self.allocator);
+    }
+
+    /// Destroy `item`, and what the queue keeps for it.
+    fn release(self: *TraversalQueue, item: *Item) void {
+        item.waiting_on.deinit(self.allocator);
+        item.waiting_on = .empty;
+        item.destroy(item);
     }
 
     /// HTML "append session history traversal steps" (`item.target` null) or
@@ -139,6 +157,7 @@ pub const TraversalQueue = struct {
         item.orphaned = false;
         item.in_run = false;
         item.completed = false;
+        item.waiting_on = .empty;
         self.items.append(self.allocator, item) catch {
             item.destroy(item);
             return false;
@@ -176,6 +195,46 @@ pub const TraversalQueue = struct {
         }
     }
 
+    /// The running item `token` of `traversable_id`'s queue waits for
+    /// `navigable`'s population: it stays running until that ends
+    /// (`populationEnded` or `navigableGone`). Looked up by IDs - the item's
+    /// run may have ended the traversable. False when the traversable or the
+    /// item is gone, or it could not be recorded (out of memory): the item
+    /// does not wait for it.
+    pub fn waitFor(navigables: *Navigables, traversable_id: u64, token: u64, navigable: u64) bool {
+        const self = queueOf(navigables, traversable_id) orelse return false;
+        const item = self.running orelse return false;
+        if (item.token != token) return false;
+        if (std.mem.indexOfScalar(u64, item.waiting_on.items, navigable) != null) return true;
+        item.waiting_on.append(self.allocator, navigable) catch return false;
+        return true;
+    }
+
+    /// The population of `navigable` that the item `token` of
+    /// `traversable_id`'s queue waits for has ended - committed, failed,
+    /// aborted or superseded: when it was the last, the item completes.
+    /// Nothing happens when the traversable or the item is gone.
+    pub fn populationEnded(navigables: *Navigables, traversable_id: u64, token: u64, navigable: u64) void {
+        const self = queueOf(navigables, traversable_id) orelse return;
+        const item = self.running orelse return;
+        if (item.token != token) return;
+        self.stopWaiting(item, navigable);
+    }
+
+    /// `navigable` was destroyed: the running item of `traversable_id`'s
+    /// queue no longer waits for its population.
+    pub fn navigableGone(navigables: *Navigables, traversable_id: u64, navigable: u64) void {
+        const self = queueOf(navigables, traversable_id) orelse return;
+        const item = self.running orelse return;
+        self.stopWaiting(item, navigable);
+    }
+
+    fn stopWaiting(self: *TraversalQueue, item: *Item, navigable: u64) void {
+        const index = std.mem.indexOfScalar(u64, item.waiting_on.items, navigable) orelse return;
+        _ = item.waiting_on.swapRemove(index);
+        if (item.waiting_on.items.len == 0) completeById(self.navigables, self.traversable_id, item.token);
+    }
+
     /// The waiting item `token` of `traversable_id`'s queue is finished: it
     /// is destroyed and the queue moves on. Nothing happens when the
     /// traversable or the item is gone, or `token` is not the running item's.
@@ -190,7 +249,7 @@ pub const TraversalQueue = struct {
             return;
         }
         self.running = null;
-        item.destroy(item);
+        self.release(item);
         self.wake();
     }
 
