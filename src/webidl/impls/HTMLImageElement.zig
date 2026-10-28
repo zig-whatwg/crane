@@ -154,6 +154,12 @@ pub const InternalState = struct {
     /// is held: a restarted update keeps no second one (the keep is
     /// counted), and only the first release of it ends it.
     kept_alive: bool = false,
+    /// The update's counted reference on the element, taken and ended with
+    /// the keep: refcount step 5d's GCReachableRef in shadow mode - the keep
+    /// (the old net, until step 9) plus this. WebKit's ImageLoader holds
+    /// `RefPtr<Element> m_protectedElement` while an event is pending
+    /// (Source/WebCore/loader/ImageLoader.h).
+    load_ref: dom.node_holds.CountedRef = .{},
     /// The document whose load event the element's update of the image data
     /// delays, with its slab generation (HTML "update the image data" step
     /// 26: an eager img's fetch "must delay the load event of element's node
@@ -169,6 +175,7 @@ pub const InternalState = struct {
         if (self.kept_alive) return;
         self.kept_alive = true;
         engine.keepPlatformObjectAlive(instance);
+        self.load_ref.take(instance, dom.instance_bridge.getNodeBase(instance));
     }
 
     fn releaseLoad(self: *InternalState, instance: *runtime.Instance) void {
@@ -177,6 +184,7 @@ pub const InternalState = struct {
         if (!self.kept_alive) return;
         self.kept_alive = false;
         engine.releasePlatformObject(instance);
+        self.load_ref.release(instance);
     }
 
     /// Delay `document`'s load event for this element's update ("delay the
@@ -230,6 +238,9 @@ pub const InternalState = struct {
         self.endLoadDelay();
         self.cancelFetch();
         self.forgetRequests();
+        // The element is going: a reference its update still held went with
+        // it (forgotten, never released).
+        self.load_ref = .{};
     }
 };
 

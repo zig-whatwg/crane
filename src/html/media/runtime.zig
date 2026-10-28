@@ -88,6 +88,9 @@ pub const Event = struct {
     target: *runtime.Instance,
     event_hold: engine.Owned,
     target_hold: engine.Owned,
+    /// A node target's counted reference beside `target_hold` (refcount
+    /// step 5d; chainless, as the event moves by value).
+    target_ref: dom.node_holds.CountedRef = .{},
     pub fn init(target: *runtime.Instance, name: []const u8) !Event {
         const event = try interfaces.Event.call_constructor(target.ctx, runtime.DOMString.initInterned(name), webidl.Opt(dictionaries.EventInit).notPassed());
         return take(target, event);
@@ -102,12 +105,16 @@ pub const Event = struct {
         const event_hold = try engine.retainValue(target.ctx, .{ .instance = event });
         errdefer event_hold.release();
         const target_hold = try engine.retainValue(target.ctx, .{ .instance = target });
-        return .{ .event = event, .target = target, .event_hold = event_hold, .target_hold = target_hold };
+        var made: Event = .{ .event = event, .target = target, .event_hold = event_hold, .target_hold = target_hold };
+        made.target_ref.take(target, dom.instance_bridge.getNodeBase(target));
+        return made;
     }
     pub fn dispatch(self: Event) void {
         _ = dom.fire_event.dispatchTrusted(self.target, self.event) catch {};
     }
     pub fn deinit(self: Event) void {
+        var target_ref = self.target_ref;
+        target_ref.release(self.target);
         self.event_hold.release();
         self.target_hold.release();
     }
@@ -275,13 +282,24 @@ pub const Activity = struct {
     /// its activity begins and released when it ends: the keep is counted,
     /// so a keep per `sync` would hold the element until its realm ended.
     kept_alive: bool = false,
+    /// The activity's counted reference on its element, taken and ended
+    /// with the keep: refcount step 5d's GCReachableRef in shadow mode - the
+    /// keep (the old net, until step 9) plus this (WebKit's ActiveDOMObject
+    /// pending activity holds a `Ref` to its object).
+    activity_ref: dom.node_holds.CountedRef = .{},
 
     pub fn sync(self: *Activity) void {
         const instance = self.instance orelse return;
         const active = self.fetching or self.playing or self.head != null or self.microtasks.items.len != 0 or self.running_stable != 0;
         if (active == self.kept_alive) return;
         self.kept_alive = active;
-        if (active) engine.keepPlatformObjectAlive(instance) else engine.releasePlatformObject(instance);
+        if (active) {
+            engine.keepPlatformObjectAlive(instance);
+            self.activity_ref.take(instance, dom.instance_bridge.getNodeBase(instance));
+        } else {
+            engine.releasePlatformObject(instance);
+            self.activity_ref.release(instance);
+        }
     }
     /// HTML await-a-stable-state steps 1–2: enqueue one synchronous section.
     /// The fulfilled reaction uses the engine's FIFO microtask queue and its
@@ -377,8 +395,12 @@ pub const Activity = struct {
     pub fn detach(self: *Activity) void {
         const instance = self.instance;
         self.instance = null;
-        if (instance) |object| if (self.kept_alive) engine.releasePlatformObject(object);
+        if (instance) |object| if (self.kept_alive) {
+            engine.releasePlatformObject(object);
+            self.activity_ref.release(object);
+        };
         self.kept_alive = false;
+        self.activity_ref = .{};
     }
     pub fn maybeFree(self: *Activity) void {
         if (self.instance == null and self.head == null and self.microtasks.items.len == 0 and self.running_stable == 0) self.free(self.owner);

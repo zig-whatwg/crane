@@ -735,8 +735,9 @@ fn handleScriptSchedulingOf(
         // do not recreate an execution owner with no remaining producer.
         if (state.preparation_time_document != doc) return false;
         if (state.execution_root == null and script_element.ctx.hasEngine()) {
-            state.execution_root = engine.retainValue(script_element.ctx, .{ .instance = script_element }) catch
+            const root = engine.retainValue(script_element.ctx, .{ .instance = script_element }) catch
                 return ScriptExecutionError.OutOfMemory;
+            state.execution_root = script_element_state.ExecutionHold.take(script_element, root);
         }
 
         if (has_async or force_async) {
@@ -852,7 +853,9 @@ fn queueMarkAsReady(script_element: *runtime.Instance, document: *runtime.Instan
         .document_generation = runtime.SlabAllocator.generationOf(document),
         .allocator = ctx.allocator,
     };
-    engine.keepPlatformObjectAlive(script_element);
+    // The element's GCReachableRef (refcount step 5d): the keep this task
+    // always took, and a counted reference.
+    if (dom.instance_bridge.getNodeBase(script_element)) |base| task.hold.take(script_element, base);
     loop.queueTask(.{ .callback = &runQueuedMarkAsReady, .context = task, .drop = &dropQueuedMarkAsReady });
 }
 
@@ -912,12 +915,16 @@ const QueuedMarkAsReady = struct {
     document: *runtime.Instance,
     document_generation: u64,
     allocator: std.mem.Allocator,
+    /// The element's pending activity and counted reference, from queueing
+    /// to the task's end (refcount step 5d; WebKit
+    /// queueTaskKeepingObjectAlive).
+    hold: dom.node_holds.ReachableHold = .{},
 
     fn destroy(self: *QueuedMarkAsReady) void {
         // The pending activity ends with the task - unless the element went
-        // anyway (its tree was freed), and its address is someone else's.
-        if (runtime.SlabAllocator.generationOf(self.element) == self.generation)
-            engine.releasePlatformObject(self.element);
+        // anyway (its tree was freed), and its address is someone else's:
+        // the hold's own check.
+        self.hold.release();
         self.allocator.destroy(self);
     }
 };
@@ -1038,7 +1045,7 @@ pub fn parsingFinishedScriptsPending(document: *runtime.Instance) bool {
     return lists.scripts_to_execute_when_parsing_finished.items.len != 0;
 }
 
-fn takeExecutionRoot(script: *runtime.Instance) ?engine.Owned {
+fn takeExecutionRoot(script: *runtime.Instance) ?script_element_state.ExecutionHold {
     const state = script_element_state.of(script) orelse return null;
     return state.takeExecutionRoot();
 }
@@ -1797,6 +1804,11 @@ const QueuedSvgScript = struct {
     /// dropped. Null with no engine behind the element's realm (nothing to
     /// collect it), or when holding it failed.
     element_root: ?engine.Owned = null,
+    /// The element's counted reference beside `element_root`, from
+    /// queueing to the task's end (refcount step 5d: the design's
+    /// QueuedSvgScript GCReachableRef; WebKit's PendingScript holds
+    /// `Ref<ScriptElement>`).
+    element_ref: dom.node_holds.CountedRef = .{},
     /// Null for a failed fetch: the task fires error.
     source: ?[]u8,
     url: []u8,
@@ -1806,6 +1818,7 @@ const QueuedSvgScript = struct {
 
     fn destroy(self: *QueuedSvgScript) void {
         const root = self.element_root;
+        self.element_ref.release(self.element);
         if (self.source) |b| std.heap.c_allocator.free(b);
         std.heap.c_allocator.free(self.url);
         std.heap.c_allocator.destroy(self);
@@ -1831,6 +1844,7 @@ fn queueSvgScriptRun(element: *runtime.Instance, body: ?[]const u8, url: []const
     // (out of memory) the generation checks below still keep a freed
     // element from being run or fired at.
     if (element.ctx.hasEngine()) task.element_root = engine.retainValue(element.ctx, .{ .instance = element }) catch null;
+    task.element_ref.take(element, dom.instance_bridge.getNodeBase(element));
     loop.queueTask(.{ .callback = &runQueuedSvgScript, .context = task, .drop = &dropQueuedSvgScript });
 }
 
@@ -2189,6 +2203,8 @@ fn loadImport(realm: runtime.Context, base: ImportBase, specifier: []const u8, t
             task.destroy();
             return finishImportWithTypeError(realm, request, "Out of memory loading module");
         };
+        task.document = document;
+        task.document_ref.take(document, dom.instance_bridge.getNodeBase(document));
         // HostLoadImportedModule: each imported URL takes its own map entry.
         var import_options = options;
         import_options.integrity = env.resolveIntegrity(url);
@@ -2236,6 +2252,10 @@ const DynamicImportTask = struct {
     /// The host's until finished.
     request: *engine.ImportRequest,
     document_root: ?engine.Owned = null,
+    /// The document's counted reference beside `document_root`, and the
+    /// document it is on (refcount step 5d).
+    document_ref: dom.node_holds.CountedRef = .{},
+    document: ?*runtime.Instance = null,
 
     fn create(realm: runtime.Context, window: *runtime.Instance, url: []const u8, module_type: module_script.ModuleType, options: module_script.FetchOptions, request: *engine.ImportRequest, referrer: []const u8) !*DynamicImportTask {
         const allocator = std.heap.c_allocator;
@@ -2264,6 +2284,7 @@ const DynamicImportTask = struct {
 
     fn destroy(self: *DynamicImportTask) void {
         const root = self.document_root;
+        if (self.document) |document| self.document_ref.release(document);
         std.heap.c_allocator.free(self.url);
         if (self.nonce.len > 0) std.heap.c_allocator.free(self.nonce);
         if (self.referrer.len > 0) std.heap.c_allocator.free(self.referrer);
@@ -2500,11 +2521,17 @@ const ModuleElementGraph = struct {
     /// Independent roots; releasing one owner never releases the queue's.
     element_root: engine.Owned,
     document_root: engine.Owned,
+    /// Their counted references, beside the roots, for the graph's whole
+    /// fetch (refcount step 5d).
+    element_ref: dom.node_holds.CountedRef = .{},
+    document_ref: dom.node_holds.CountedRef = .{},
 
     fn destroy(self: *ModuleElementGraph) void {
         const allocator = self.allocator;
         const element_root = self.element_root;
         const document_root = self.document_root;
+        self.element_ref.release(self.element);
+        self.document_ref.release(self.document);
         allocator.destroy(self);
         element_root.release();
         document_root.release();
@@ -2548,6 +2575,8 @@ fn startModuleElementGraph(loader: *module_script.AsyncModuleLoader, element: *r
         .element_root = element_root,
         .document_root = document_root,
     };
+    owner.element_ref.take(element, dom.instance_bridge.getNodeBase(element));
+    owner.document_ref.take(document, dom.instance_bridge.getNodeBase(document));
     loader.start(url, .javascript, inline_script, options, .{
         .context = owner,
         .done = ModuleElementGraph.done,
@@ -3445,6 +3474,10 @@ const ClassicScriptFetch = struct {
     task_queued: bool = false,
     /// Marked before any document-abort callback can start new fetches.
     cancel_requested: bool = false,
+    /// The element's pending activity and counted reference, from the
+    /// fetch's start to its end (refcount step 5d's GCReachableRef; WebKit's
+    /// PendingScript holds `Ref<ScriptElement>`).
+    hold: dom.node_holds.ReachableHold = .{},
 
     fn elementIsLive(self: *const ClassicScriptFetch) bool {
         return runtime.SlabAllocator.generationOf(self.element) == self.element_generation;
@@ -3512,7 +3545,7 @@ fn startClassicScriptFetch(element: *runtime.Instance, document: *runtime.Instan
     // The fetch owns the request from here, even when it fails to start.
     self.fetch = AsyncFetch.start(allocator, request, .{}, dom.agent_fetches.of(document.ctx), self.client()) catch
         return abandonStart(self);
-    engine.keepPlatformObjectAlive(element);
+    if (dom.instance_bridge.getNodeBase(element)) |base| self.hold.take(element, base);
     return true;
 }
 
@@ -3727,7 +3760,7 @@ fn finishFetch(self: *ClassicScriptFetch, ending: FetchEnding) void {
     }
     if (ending == .teardown)
         discardUndeliveredScript(self.element, self.element_generation, self.document, self.document_generation);
-    if (self.elementIsLive()) engine.releasePlatformObject(self.element);
+    self.hold.release();
     if (self.body) |b| self.allocator.free(b);
     const document = self.document;
     const document_live = self.documentIsLive();
@@ -4961,7 +4994,7 @@ pub const delivery_drop_test_cases = if (@import("builtin").is_test) struct {
             state.preparation_time_document_generation = runtime.SlabAllocator.generationOf(self.document);
             state.delaying_the_load_event = true;
             state.script_type = .module;
-            state.execution_root = .{ .value = .undefined };
+            state.execution_root = .{ .root = .{ .value = .undefined }, .element = self.element };
             try dom.document_rendering.block(self.element);
         }
 
