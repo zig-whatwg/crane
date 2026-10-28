@@ -105,6 +105,16 @@ pub fn get_title(instance: *runtime.Instance) anyerror!?runtime.DOMString {
 /// over the sheet's media.
 pub fn get_media(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const record = recordOf(instance) orelse return error.InvalidStateError;
+    // CSSOM 6.4.4: the import rule and its associated sheet expose one media
+    // object. User ruling, 2026-10-27 (liaison Q79, tmp/probe-q79/): follow
+    // Firefox 158's shared identity and writes; Chrome 156 and Safari 27
+    // returned separate objects with an empty sheet view in both getter orders.
+    // Blink fixed this in 2870b09ab93d. The generated [SameObject] accessors
+    // retain the shared view through the rule's accessor.
+    if (record.owner_rule) |rule| {
+        const owner = try dom.style.objects.ruleObject(rule, instance.ctx);
+        return interfaces.CSSImportRule.get_media(owner);
+    }
     return interfaces.MediaList.initWith(instance.ctx.allocator, instance.ctx, .{ .media_of = dom.style.MediaOf{ .sheet = record } });
 }
 
