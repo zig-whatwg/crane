@@ -454,26 +454,63 @@ pub const DocumentCounts = struct {
     /// collection caches its walk under it and walks again once it has moved
     /// (Blink's InvalidateNodeListCaches); an XPath iterator is invalid once
     /// it has moved (Blink and WebKit `XPathResult::invalidIteratorState`).
-    tree_version: u64 = 0,
+    ///
+    /// Beside it, in the same word (Document's state stays in its 2,048-byte
+    /// allocation class), the RENDERING WATCH (dom.update_the_rendering):
+    /// while set, the next move asks the document's event loop for a
+    /// rendering opportunity, once, and clears it - an element is focused,
+    /// and any mutation may make it unfocusable (update the rendering step
+    /// 17, the focus fixup), which re-arms it.
+    version: Version = .{},
+
+    pub const Version = packed struct(u64) {
+        tree: u63 = 0,
+        rendering_watch: bool = false,
+    };
 };
 
-fn bumpTreeVersion(counts: *DocumentCounts) void {
-    counts.tree_version +%= 1;
+/// What moved a document's tree version: the node, whose document a
+/// rendering watch asks a frame of.
+const Mutated = union(enum) { instance: *runtime.Instance, node: *NodeBase };
+
+fn bumpTreeVersion(counts: *DocumentCounts, mutated: Mutated) void {
+    counts.version.tree +%= 1;
+    if (!counts.version.rendering_watch) return;
+    counts.version.rendering_watch = false;
+    renderingWatchFired(mutated);
 }
 
-/// `document`'s DOM tree version (see `DocumentCounts.tree_version`), or
+/// A watched document mutated: its node's document asks for a frame.
+noinline fn renderingWatchFired(mutated: Mutated) void {
+    const instance: *runtime.Instance = switch (mutated) {
+        .instance => |node_instance| node_instance,
+        .node => |node| @ptrCast(@alignCast(node.owner_instance orelse return)),
+    };
+    // A Document's ownerDocument is null: the node is its own document.
+    const document = (interfaces.Node.get_ownerDocument(instance) catch return) orelse instance;
+    @import("update_the_rendering.zig").requestFrame(document);
+}
+
+/// Start (`on`) or stop watching `document`'s rendering
+/// (`DocumentCounts.version.rendering_watch`). dom.update_the_rendering's.
+pub fn watchRendering(document: *runtime.Instance, on: bool) void {
+    const counts = documentCounts(document) orelse return;
+    counts.version.rendering_watch = on;
+}
+
+/// `document`'s DOM tree version (see `DocumentCounts.version`), or
 /// null for an instance that is not a live Document. A cache keyed on it is
 /// valid while the number is unchanged.
 pub fn treeVersion(document: *runtime.Instance) ?u64 {
     const counts = documentCounts(document) orelse return null;
-    return counts.tree_version;
+    return counts.version.tree;
 }
 
 /// An attribute of `element` was set, changed or removed (DOM "handle
 /// attribute changes"): its node document's tree version moves.
 pub fn attributeChanged(element: *runtime.Instance) void {
     const accessor = hooks.node_document_counts orelse return;
-    if (accessor(element)) |counts| bumpTreeVersion(counts);
+    if (accessor(element)) |counts| bumpTreeVersion(counts, .{ .instance = element });
 }
 
 /// `node`'s data changed (DOM "replace data", steps 5-7): its node
@@ -483,7 +520,7 @@ pub fn attributeChanged(element: *runtime.Instance) void {
 /// elements does not read data, but an XPath iterator's nodes may.
 pub fn characterDataChanged(node: *runtime.Instance) void {
     const accessor = hooks.node_document_counts orelse return;
-    if (accessor(node)) |counts| bumpTreeVersion(counts);
+    if (accessor(node)) |counts| bumpTreeVersion(counts, .{ .instance = node });
 }
 
 /// Which form owns `element`, or whether it is listed at all, changed without
@@ -497,7 +534,7 @@ pub fn characterDataChanged(node: *runtime.Instance) void {
 /// the form's listed elements and collections the same way.
 pub fn formAssociationChanged(element: *runtime.Instance) void {
     const accessor = hooks.node_document_counts orelse return;
-    if (accessor(element)) |counts| bumpTreeVersion(counts);
+    if (accessor(element)) |counts| bumpTreeVersion(counts, .{ .instance = element });
 }
 
 /// What the owners supply: the Document impl its counts, the Node impl the
@@ -868,7 +905,7 @@ pub fn linkChild(node: *NodeBase, parent: *NodeBase) void {
     const delta: i64 = holds;
     const tree_root = if (holds != 0) walkAdd(null, parent, delta) else root(null, parent);
     const document = countsAt(parent, tree_root);
-    if (document) |counts| bumpTreeVersion(counts);
+    if (document) |counts| bumpTreeVersion(counts, .{ .node = parent });
     if (holds == 0) return;
     // Within one document's detached trees, a move changes nothing there.
     if (was_foreign and tree_root.rc_flags.foreign and node.owner_document == tree_root.owner_document) return;
@@ -900,7 +937,7 @@ pub fn unlinkChild(node: *NodeBase) void {
         if (holds != 0) auditLowered(tree_root);
     };
     const document = countsAt(parent, tree_root);
-    if (document) |counts| bumpTreeVersion(counts);
+    if (document) |counts| bumpTreeVersion(counts, .{ .node = parent });
     if (holds == 0) return;
     if (foreign and tree_root.rc_flags.foreign and node.owner_document == tree_root.owner_document) return;
     adjustForeign(tree_root, -delta);
@@ -924,7 +961,7 @@ pub fn moveChild(node: *NodeBase, new_parent: *NodeBase) void {
     const delta: i64 = holds;
     const moves = holds != 0 and old_parent != new_parent;
     const new_root = if (moves) walkAdd(null, new_parent, delta) else root(null, new_parent);
-    if (countsAt(new_parent, new_root)) |counts| bumpTreeVersion(counts);
+    if (countsAt(new_parent, new_root)) |counts| bumpTreeVersion(counts, .{ .node = new_parent });
     if (!moves) return;
     const old_root = walkAdd(null, old_parent, -delta);
     if (new_root != old_root) {
@@ -1009,11 +1046,11 @@ pub fn nodeDocumentChanged(node: *NodeBase, old: ?*DocumentCounts, new: ?*Docume
     if (node.node_type == NodeBase.DOCUMENT_NODE) return;
     if (old) |counts| {
         addTo(&counts.referencing_nodes, -1, "referencing_nodes");
-        bumpTreeVersion(counts);
+        bumpTreeVersion(counts, .{ .node = node });
     }
     if (new) |counts| {
         addTo(&counts.referencing_nodes, 1, "referencing_nodes");
-        if (old != null) bumpTreeVersion(counts);
+        if (old != null) bumpTreeVersion(counts, .{ .node = node });
     }
     if (node.parent_node != null or node.rc_flags.hosted) return;
     const holds: i64 = node.subtree_holds;

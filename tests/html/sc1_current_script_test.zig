@@ -29,7 +29,17 @@ fn currentScript() !void {
         \\  root.appendChild(script);
         \\}
     );
-    try page.turn();
+    // Both data: scripts load and run, however the loop's turns fall (a
+    // rendering opportunity may end a turn early): pump until they have, at
+    // most 2 s.
+    var turns: usize = 0;
+    while (true) : (turns += 1) {
+        const loaded = try page.evaluate("String(sc1Loaded === 2)");
+        defer std.testing.allocator.free(loaded);
+        if (std.mem.eql(u8, loaded, "true")) break;
+        if (turns == 200) return error.ScriptsNeverLoaded;
+        _ = try page.browser.runEventLoopBlocking(10);
+    }
     const result = try page.evaluate("sc1Loaded + ':' + sc1Log.join(',') + ':' + (document.currentScript === null)");
     defer std.testing.allocator.free(result);
     try std.testing.expectEqualStrings("2:shadow,inner,restored,moved,shadow,inner,restored,moved:true", result);

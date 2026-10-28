@@ -47,6 +47,10 @@ fn fresh(comptime body: fn () anyerror!void) !void {
     const Run = struct {
         fn run(failure: *?anyerror) void {
             body() catch |err| {
+                // The thread's own error: name it and its return trace, which
+                // the test runner, seeing only `failure`, cannot.
+                std.debug.print("style_font_set_state_test: {s}\n", .{@errorName(err)});
+                if (@errorReturnTrace()) |trace| std.debug.dumpErrorReturnTrace(trace);
                 failure.* = err;
             };
         }
@@ -55,6 +59,26 @@ fn fresh(comptime body: fn () anyerror!void) !void {
     const thread = try std.Thread.spawn(.{}, Run.run, .{&failure});
     thread.join();
     if (failure) |err| return err;
+}
+
+/// Pump `browser`'s loop until its document's FontFaceSet is ready - the
+/// settled environment the cases below assert, which waits for the window's
+/// load and a rendering opportunity after it - at most 2 s. One fixed 30 ms
+/// turn was the FLAKY TEST of feature-queue (row 122 D42): the frame clock's
+/// first opportunity may come before the load (src/browser/rendering.zig).
+fn untilFontsReady(browser: *browser_mod.Browser) !void {
+    const realm = browser.getRealm() orelse return error.NoRealm;
+    const value = try browser.evaluateScript("document");
+    defer value.release();
+    const document = engine.convertToPlatformObject(realm, value.borrow()) orelse return error.NoDocument;
+    const set = try interfaces.Document.get_fonts(document);
+    const state = dom.style.hooks.fontSetOf(set) orelse return error.NoFontSetState;
+    var turns: usize = 0;
+    while (turns < 200) : (turns += 1) {
+        if (state.ready.fulfilled) return;
+        _ = try browser.runEventLoopBlocking(10);
+    }
+    return error.FontsNeverReady;
 }
 
 fn loadingEnvironment() !void {
@@ -786,7 +810,8 @@ fn neverStyledControlsAfterReady() !void {
                 "input,textarea{font-family:LateControl}</style><body></body>",
             .{ .base_url = "about:blank" },
         );
-        _ = try browser.runEventLoopBlocking(30);
+        errdefer std.debug.print("style_font_set_state_test: neverStyledControlsAfterReady <{s}>\n", .{tag});
+        try untilFontsReady(browser);
         const realm = browser.getRealm() orelse return error.NoRealm;
         const value = try browser.evaluateScript("document");
         defer value.release();
@@ -853,7 +878,8 @@ fn controlStyleLifetimes() !void {
                     "input,textarea{font-family:ControlLife}</style><body></body>",
                 .{ .base_url = "about:blank" },
             );
-            _ = try browser.runEventLoopBlocking(30);
+            errdefer std.debug.print("style_font_set_state_test: controlStyleLifetimes <{s}> {s}\n", .{ tag, @tagName(case) });
+            try untilFontsReady(browser);
             const realm = browser.getRealm() orelse return error.NoRealm;
             const value = try browser.evaluateScript("document");
             defer value.release();

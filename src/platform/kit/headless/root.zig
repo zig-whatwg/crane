@@ -76,6 +76,13 @@ pub fn systemVisibility(browser: *BrowserPlatform, tab: TabId) platform.Visibili
     return .visible;
 }
 
+/// A 60 Hz display: the platform knows no other.
+pub fn displayRefreshInterval(browser: *BrowserPlatform, tab: TabId) u64 {
+    _ = browser;
+    _ = tab;
+    return 16_666_667;
+}
+
 /// Window Management unsupported: the one screen `screenInfo` gives.
 pub fn screenDetails(browser: *BrowserPlatform, requester: *const Requester, reply: Reply(platform.ScreenList)) void {
     _ = requester;

@@ -587,6 +587,7 @@ or background use) the operation drops its Reply and Crane takes the spec's unsu
 | `isOnline` | `(browser) bool` | HTML 8.10.1.3. Default true. |
 | `userPreferences` | `(browser) UserPreferences` | prefers-color-scheme, -reduced-motion, -contrast, forced-colors (Media Queries 5). Default: light, no-preference. |
 | `systemVisibility` | `(browser, tab) Visibility` | HTML's system visibility state. Default visible (docs/instances.md). |
+| `displayRefreshInterval` | `(browser, tab) u64` | Any thread. The refresh interval (ns) of the display the tab is on - HTML's rendering opportunities account for "hardware refresh rate constraints". Crane's frame clock (src/browser/rendering.zig) puts the tab's rendering opportunities, and its dedicated workers' animation frames, on a grid of this interval, on demand. Default 60 Hz (16,666,667 ns); the testing platform answers 60 Hz, so WPT's frames are deterministic intervals. PLANNED, not declared: a `display_link` capability for a host that drives frames itself (darwin CADisplayLink, a host compositor) - Crane asks it to start and stop frames and it posts a frame event per vsync (the shape of WebKit's DisplayRefreshMonitor and Blink's BeginFrame source); this emulated grid stays its fallback. It lands with its first real implementation. |
 | `screenDetails` [screen_details] | `(browser, requester, reply: Reply(ScreenList))` | Window Management. Unsupported: a single screen from `screenInfo`. |
 
 #### 6.10.5 Media

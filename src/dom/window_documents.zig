@@ -33,12 +33,9 @@ pub const Implementation = struct {
     /// had to - HTML "reactivate" step 2 shifts each by the suspension's
     /// length - and its animation frame callbacks may run again.
     resume_timers: *const fn (realm: runtime.Context) void = &noTimers,
-    /// Native rendering work exists even without animation callbacks.
-    request_rendering: *const fn (document: *runtime.Instance) void = &noRendering,
 };
 
 fn noTimers(_: runtime.Context) void {}
-fn noRendering(_: *runtime.Instance) void {}
 
 var implementation: ?Implementation = null;
 
@@ -56,10 +53,11 @@ pub fn destroyed(realm: runtime.Context) void {
     impl.destroyed(realm);
 }
 
-/// Request a rendering opportunity for Document-owned native work.
+/// Request a rendering opportunity for Document-owned native work: the
+/// event loop's frame request (dom.update_the_rendering.requestFrame), which
+/// this forwards to for its existing callers.
 pub fn requestRendering(document: *runtime.Instance) void {
-    const impl = implementation orelse return;
-    impl.request_rendering(document);
+    @import("update_the_rendering.zig").requestFrame(document);
 }
 
 /// The back/forward cache keeps `realm`'s window's document (see
