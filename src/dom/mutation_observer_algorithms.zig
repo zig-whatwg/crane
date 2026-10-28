@@ -597,13 +597,15 @@ fn queueMutationRecordInternal(
             .old_value = mapped_old_value,
         } });
 
-        // Step 4.2: Enqueue record to observer's record queue
+        // Step 4.2: Enqueue record to observer's record queue - and its
+        // target to the observer's pending targets (WebKit
+        // MutationObserver::enqueueMutationRecord, `m_pendingTargets.add`).
         std.log.debug("[MutationObserver] Enqueueing record to observer", .{});
         const queue = observer_registrations.recordQueueOf(observer) orelse {
             runtime.Instance.deinit(record);
             continue;
         };
-        queue.enqueue(record) catch {
+        queue.enqueue(record, target, target_nodebase) catch {
             // If enqueueing fails, clean up the record
             std.log.debug("[MutationObserver] Failed to enqueue record!", .{});
             runtime.Instance.deinit(record);
@@ -752,15 +754,14 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
         // "Empty mo's record queue." Together a move: the queue's list is
         // taken whole, which allocates nothing. (A clone appended `catch
         // continue`: out of memory, a record left the queue without
-        // reaching the clone, and was neither delivered nor freed.)
+        // reaching the clone, and was neither delivered nor freed.) The
+        // pending targets go with them, and are let go when this iteration
+        // ends - after the callback returned, as WebKit's deliver keeps its
+        // swapped-out `pendingTargets` until it returns.
         const queue = observer_registrations.recordQueueOf(mo_instance);
-        var records: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
-        const records_allocator = if (queue) |q| q.allocator else allocator;
-        if (queue) |q| {
-            records = q.records;
-            q.records = .empty;
-        }
-        defer records.deinit(records_allocator);
+        var taken: observer_registrations.RecordQueue.Taken = if (queue) |q| q.take() else .{ .allocator = allocator };
+        defer taken.deinit();
+        const records = &taken.records;
 
         std.log.debug("[MutationObserver] Processing observer {*}, records.len={}", .{ mo_instance, records.items.len });
 

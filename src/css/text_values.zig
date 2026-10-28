@@ -15,6 +15,14 @@ const Stream = properties.Stream;
 /// parent's logical alignment before inheritance, using the parent's bidi
 /// direction. Safari applies the same rule to text-align-last (Q7 probe).
 pub fn computeAlignment(property: properties.Longhand, value: Value, parent: ?*const @import("computed_style.zig").ComputedStyle) Value {
+    // HTML 15.3.8's th rule (the UA sheet's -internal-th-center): center
+    // under a parent whose text-align is the initial value, else the
+    // parent's value - all three browsers (integrator probe 1027a).
+    if (value.isKeyword(._internal_th_center)) {
+        const source = parent orelse return Value.kw(.center);
+        const inherited = source.keyword(property);
+        return Value.kw(if (inherited == .start) .center else inherited);
+    }
     if (!value.isKeyword(.match_parent)) return value;
     const source = parent orelse return Value.kw(.start);
     const inherited = source.keyword(property);

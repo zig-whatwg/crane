@@ -311,6 +311,16 @@ pub const Keyword = enum(u16) {
     ex,
     ideographic_ink,
     trim_end,
+    // text-align's "align descendants" values (HTML 15.3 presentational
+    // hints), as Chrome and Safari compute them (integrator probe 1027a,
+    // lane editing4): -webkit-center, -webkit-left, -webkit-right.
+    _webkit_center,
+    _webkit_left,
+    _webkit_right,
+    // The UA sheet's th rule (HTML 15.3.8): center while the parent's
+    // text-align is the initial value, else the parent's. Only a UA sheet
+    // may declare it; text_values.computeAlignment resolves it.
+    _internal_th_center,
 
     /// The keyword's CSS spelling.
     pub fn name(self: Keyword) []const u8 {

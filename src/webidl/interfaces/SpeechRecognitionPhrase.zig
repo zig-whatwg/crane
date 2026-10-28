@@ -167,6 +167,13 @@ pub const SpeechRecognitionPhrase = struct {
         return try SpeechRecognitionPhraseImpl.call_constructor(ctx, phrase, boost);
     }
 
+    /// WebIDL `double` and `float` constructor arguments (not `unrestricted`):
+    /// NaN and the infinities throw a TypeError for (ConstructorArgs variant -
+    /// "" for a sole constructor -, bit i = argument i).
+    pub const constructor_restricted_floats = .{
+        .{ "", 0b10 },
+    };
+
     pub fn get_phrase(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try SpeechRecognitionPhraseImpl.get_phrase(instance);
     }

@@ -404,6 +404,8 @@ const CandidateIndex = struct {
     const none = std.math.maxInt(usize);
     heads: [Longhand.count]usize = @splat(none),
     links: []usize,
+    /// The longhands with a chain (a logical one until merge moves it).
+    declared: LonghandSet = .initEmpty(),
 
     fn init(candidates: []const Candidate, links: []usize) CandidateIndex {
         std.debug.assert(candidates.len == links.len);
@@ -416,6 +418,7 @@ const CandidateIndex = struct {
             const property = @intFromEnum(candidates[i].decl.longhand);
             links[i] = index.heads[property];
             index.heads[property] = i;
+            index.declared.insert(candidates[i].decl.longhand);
         }
         return index;
     }
@@ -427,6 +430,8 @@ const CandidateIndex = struct {
         var a = self.heads[@intFromEnum(logical)];
         if (a == none) return;
         self.heads[@intFromEnum(logical)] = none;
+        self.declared.remove(logical);
+        self.declared.insert(physical);
         var b = self.heads[@intFromEnum(physical)];
         var destination = &self.heads[@intFromEnum(physical)];
         while (a != none and b != none) {
@@ -467,10 +472,10 @@ pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*Computed
         .custom_candidates = custom_candidates.items,
     };
     defer builder.deinit();
-    const style = try allocator.create(ComputedStyle);
-    style.* = .{ .allocator = allocator, .values = computed_mod.initial_values };
-    // `initial_values` holds no counted text; every slot is overwritten
-    // below, each holding its own reference.
+    // Every longhand starts at its default (Cascade 5 7.1) without a
+    // per-longhand step: the inherited groups are the parent's, shared, and
+    // the others the initial values (computed_style.zig, storage).
+    const style = try ComputedStyle.inheriting(allocator, ctx.parent);
     builder.style = style;
     errdefer style.destroy();
     if (ctx.registered) |r| {
@@ -487,9 +492,10 @@ pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*Computed
 pub const DefaultPath = enum {
     /// Today's specified() -> compute() walk: the safe answer.
     compute,
-    /// Store the parent's computed value (initialComputed at the root).
+    /// The parent's computed value (initialComputed at the root): the
+    /// style shares the parent's group (ComputedStyle.inheriting).
     inherit,
-    /// Keep the shared initial computed value already in the slot.
+    /// The initial computed value: the group's static initial values.
     initial,
 };
 
@@ -533,6 +539,35 @@ pub fn defaultPathFor(l: Longhand, initial: Value) DefaultPath {
         else => .compute,
     };
 }
+
+/// The longhands Builder.run computes after the high-priority prefix: every
+/// physical one that is not high-priority.
+const low_priority: LonghandSet = blk: {
+    @setEvalBranchQuota(100_000);
+    var set: LonghandSet = .initEmpty();
+    for (0..Longhand.count) |i| {
+        const l: Longhand = @enumFromInt(i);
+        if (l.logical() == null and !isHighPriority(l)) set.insert(l);
+    }
+    break :blk set;
+};
+
+/// The logical longhands, whose chains merge into physical ones.
+const logical_longhands: LonghandSet = blk: {
+    @setEvalBranchQuota(100_000);
+    var set: LonghandSet = .initEmpty();
+    for (0..Longhand.count) |i| if (@as(Longhand, @enumFromInt(i)).logical() != null) set.insert(@enumFromInt(i));
+    break :blk set;
+};
+
+/// The untouched longhands whose default computes per element
+/// (default_path .compute, high-priority ones aside).
+const computed_when_untouched: LonghandSet = blk: {
+    @setEvalBranchQuota(100_000);
+    var set: LonghandSet = .initEmpty();
+    for (0..Longhand.count) |i| if (default_path[i] == .compute) set.insert(@enumFromInt(i));
+    break :blk set;
+};
 
 /// Each longhand's default path, from its initial computed value.
 pub const default_path: [Longhand.count]DefaultPath = blk: {
@@ -1362,11 +1397,10 @@ const Builder = struct {
     }
 
     fn mapLogicalChains(self: *Builder) void {
-        for (0..Longhand.count) |i| {
-            const l: Longhand = @enumFromInt(i);
-            if (self.index.heads[i] == CandidateIndex.none or l.logical() == null) continue;
-            self.index.merge(l, self.target(l));
-        }
+        var logical = self.index.declared;
+        logical.setIntersection(logical_longhands);
+        var it = logical.iterator();
+        while (it.next()) |l| self.index.merge(l, self.target(l));
     }
 
     fn run(self: *Builder) Allocator.Error!void {
@@ -1392,42 +1426,21 @@ const Builder = struct {
         // UpdateFont and line-height, pulling them in earlier on demand).
         try self.resolveCustomProperties();
         _ = try self.computeAndStore(.color);
-        for (0..Longhand.count) |i| {
-            const l: Longhand = @enumFromInt(i);
-            if (l.logical() != null or isHighPriority(l)) continue;
-            // Untouched: the defaulting step without the compute walk
-            // (design: Blink StyleResolver::InitStyle -> CreateNewStyle takes
-            // non-inherited data from the initial style and inherited data
-            // from the parent, and StyleCascade applies only declared
-            // properties; WebKit's Resolver::initializeStateAndStyle does
-            // inheritFrom(parent) and its Builder applies only the
-            // PropertyCascade). A longhand with candidates, even all of them
-            // later skipped, takes specified() below, unchanged.
-            if (self.index.heads[i] == CandidateIndex.none) switch (default_path[i]) {
-                // compute(.inherit) without the dispatch: the parent's value,
-                // or initialComputed at the root (color is high-priority).
-                .inherit => {
-                    const v = self.parentValue(l);
-                    v.retain();
-                    self.style.values[i] = v;
-                    continue;
-                },
-                // The slot already holds initial_values[i], which is what
-                // compute(.initial) yields for an allowlisted longhand.
-                .initial => continue,
-                .compute => {},
-            };
-            _ = try self.computeAndStore(l);
-        }
-        self.adjust();
-        // A logical longhand reads the physical one it maps to.
-        for (0..Longhand.count) |i| {
-            const l: Longhand = @enumFromInt(i);
-            if (l.logical() == null) continue;
-            const v = self.style.values[@intFromEnum(self.target(l))];
-            v.retain();
-            self.style.values[i] = v;
-        }
+        // Untouched longhands already hold their defaults: the style began
+        // with the parent's inherited groups (default_path .inherit: the
+        // parent's value, initialComputed at the root) and the initial
+        // non-inherited ones (.initial: what compute(.initial) yields for an
+        // allowlisted longhand). As Blink's StyleCascade, WebKit's Builder
+        // (propertyIsPresent) and Stylo's cascade, only the declared
+        // longhands are visited - a longhand with candidates, even all of
+        // them later skipped, takes specified() - with the untouched ones
+        // whose default must compute; in Longhand order, as before.
+        var todo = self.index.declared;
+        todo.setUnion(computed_when_untouched);
+        todo.setIntersection(low_priority);
+        var it = todo.iterator();
+        while (it.next()) |l| _ = try self.computeAndStore(l);
+        try self.adjust();
     }
 
     /// CSS Color Adjustment 1 2.2, the element color scheme of a computed
@@ -1444,9 +1457,8 @@ const Builder = struct {
 
     /// Compute `l` and store it (holding its own reference).
     fn computeAndStore(self: *Builder, l: Longhand) Allocator.Error!Value {
-        const v = try self.compute(l, try self.specified(l));
-        self.style.values[@intFromEnum(l)] = v;
-        return v;
+        try self.style.set(l, try self.compute(l, try self.specified(l)));
+        return self.style.get(l);
     }
 
     /// Section 4.4: the computed value of `l` from its specified value.
@@ -1479,7 +1491,7 @@ const Builder = struct {
     }
 
     fn fontSize(self: *const Builder) f64 {
-        return self.style.values[@intFromEnum(Longhand.font_size)].length.value;
+        return self.style.get(.font_size).length.value;
     }
 
     fn computeValue(self: *Builder, l: Longhand, v: Value, source: ValueSource) Allocator.Error!Value {
@@ -1796,14 +1808,14 @@ const Builder = struct {
     }
 
     /// The adjustments between computed values.
-    fn adjust(self: *Builder) void {
+    fn adjust(self: *Builder) Allocator.Error!void {
         const s = self.style;
         // CSS 2.1 9.7: "if position has the value absolute or fixed, ... the
         // computed value of float is none, and display is set according to
         // the table below" - blockified (Display 4 2.7).
         const position = s.keyword(.position);
         const out_of_flow = position == .absolute or position == .fixed;
-        if (out_of_flow) s.values[@intFromEnum(Longhand.float)] = Value.kw(.none);
+        if (out_of_flow) try s.set(.float, Value.kw(.none));
         const floated = s.keyword(.float) != .none;
         var display = s.display();
         // "A parent with a grid or flex display value blockifies the box's
@@ -1816,12 +1828,12 @@ const Builder = struct {
         // Display 4 2.8: "a display of contents computes to block on the root
         // element."
         if (self.ctx.is_root and display.box == .contents) display = Display.block_flow;
-        s.values[@intFromEnum(Longhand.display)] = .{ .display = display };
+        try s.set(.display, .{ .display = display });
 
         // Contain 2 §2: aliases share the computed flag set and shortest
         // serialization. No layout state or allocation is needed here.
         const containment = s.get(.contain).containment.computed();
-        s.values[@intFromEnum(Longhand.contain)] = .{ .containment = containment };
+        try s.set(.contain, .{ .containment = containment });
         const parent_box = if (self.ctx.parent) |p| p.box_context else .other;
         s.box_context = if (parent_box == .suppressed or display.box == .none)
             .suppressed
@@ -1847,8 +1859,8 @@ const Builder = struct {
         const x_plain = ox == .visible or ox == .clip;
         const y_plain = oy == .visible or oy == .clip;
         if (!x_plain or !y_plain) {
-            s.values[@intFromEnum(Longhand.overflow_x)] = Value.kw(fixOverflow(ox));
-            s.values[@intFromEnum(Longhand.overflow_y)] = Value.kw(fixOverflow(oy));
+            try s.set(.overflow_x, Value.kw(fixOverflow(ox)));
+            try s.set(.overflow_y, Value.kw(fixOverflow(oy)));
         }
     }
 };
@@ -2551,8 +2563,7 @@ test "ci1 nested component context copies its winning declaration source" {
         .candidates = candidates.items,
         .index = CandidateIndex.init(candidates.items, links),
     };
-    const style = try allocator.create(ComputedStyle);
-    style.* = .{ .allocator = allocator, .values = computed_mod.initial_values };
+    const style = try ComputedStyle.initial(allocator);
     defer style.destroy();
     builder.style = style;
     try builder.run();
@@ -2602,8 +2613,7 @@ fn ci1NestedColorSource(allocator: Allocator, allowed: bool) !void {
         .candidates = candidates.items,
         .index = CandidateIndex.init(candidates.items, links),
     };
-    const style = try allocator.create(ComputedStyle);
-    style.* = .{ .allocator = allocator, .values = computed_mod.initial_values };
+    const style = try ComputedStyle.initial(allocator);
     defer style.destroy();
     builder.style = style;
     try builder.run();
@@ -2688,8 +2698,7 @@ fn withRegisteredHost(allocator: Allocator, registered: ?*registered_mod.Snapsho
         .custom_candidates = customs.items,
     };
     defer builder.deinit();
-    const style = try allocator.create(ComputedStyle);
-    style.* = .{ .allocator = allocator, .values = computed_mod.initial_values };
+    const style = try ComputedStyle.initial(allocator);
     defer style.destroy();
     builder.style = style;
     try builder.collectCustomStates();

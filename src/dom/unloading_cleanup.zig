@@ -25,7 +25,7 @@ const runtime = @import("runtime");
 /// One specification's unloading document cleanup step, for `environment`.
 pub const Step = *const fn (environment: runtime.Context) void;
 
-const max_steps = 16;
+const max_steps = 24;
 var steps: [max_steps]Step = undefined;
 var count: usize = 0;
 

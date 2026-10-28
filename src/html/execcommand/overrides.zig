@@ -1,8 +1,8 @@
 //! "Recording and restoring overrides" (specs/w3c/execCommand.md), the
 //! Document's state and value overrides, "record the values" / "restore
-//! the values" (Assorted block formatting command algorithms) - and, below
-//! them, the block formatting steps the delete commands lean on (normalize
-//! sublists, fix disallowed ancestors, outdent: lane editing4's).
+//! the values" (Assorted block formatting command algorithms). The block
+//! formatting steps the delete commands lean on (normalize sublists, fix
+//! disallowed ancestors, outdent) are lists.zig, block.zig and indent.zig.
 //!
 //! The overrides live on the Document's editor state
 //! (html_core editing.state.FormattingOverrides, freed with the Document),
@@ -404,32 +404,6 @@ pub fn restoreTheValues(edit: *Edit, values: Values) !void {
             try inline_formatting.forceValue(edit, triple.node, triple.command, triple.value);
         }
     }
-}
-
-/// "normalize sublists" in `item` (line 3988).
-/// TODO(editing, list commands): split an li around its ol/ul children.
-pub fn normalizeSublists(edit: *Edit, item: *Instance) !void {
-    _ = edit;
-    _ = item;
-}
-
-/// "fix disallowed ancestors" of `node` (line 3882).
-/// TODO(editing, block commands): split the parent until node is an
-/// allowed child of its ancestors, converting stray list items and cells
-/// to the default single-line container.
-pub fn fixDisallowedAncestors(edit: *Edit, node: *Instance) !void {
-    _ = edit;
-    _ = node;
-}
-
-/// The delete command's step 10: at the start of an indentation element,
-/// block-extend the caret's range and "outdent" each of its nodes
-/// ("Indenting and outdenting", line 5697).
-/// TODO(editing, indent/outdent): the outdent algorithm; until it exists
-/// the caret stays and nothing changes.
-pub fn outdentAtIndentationElement(edit: *Edit, node: *Instance) !void {
-    _ = edit;
-    _ = node;
 }
 
 test "an empty record restores nothing" {
