@@ -223,11 +223,52 @@ pub fn fromV8Boolean(
 /// exception when the binding returns, so the call runs with that first - a
 /// known gap.
 fn toNumber(context: *v8.Context, value: *v8.Value) ConversionError!f64 {
+    // A Number is its own ToNumber - by far the common case, and the one each
+    // test below would only slow down: one FFI call to ask, one to read. (The
+    // object test below was one more call per numeric conversion, and priced
+    // at +3.4% cycles on 1M CSSNumberish conversions in lane bindfix1's timed
+    // series; asking IsNumber first makes a Number cheaper than before.)
+    if (v8.v8_Value_IsNumber(value)) return v8.v8_Value_NumberValue(value, context);
     if (v8.v8_Value_IsSymbol(value) or v8.v8_Value_IsBigInt(value)) {
         return ConversionError.TypeError;
     }
-    return v8.v8_Value_NumberValue(value, context);
+    // Any other primitive's ToNumber runs no script and cannot throw (a Symbol
+    // and a BigInt were refused above): no TryCatch for it.
+    if (!v8.v8_Value_IsObject(value)) return v8.v8_Value_NumberValue(value, context);
+    // An object's runs its @@toPrimitive, valueOf or toString, and what they
+    // throw is the abrupt completion of "? ToNumber(V)" (WebIDL 3.2.4
+    // ConvertToInt step 1, 3.2.5-3.2.8 step 1): the conversion's, so the
+    // operation, setter or constructor never runs, and script catches its
+    // own exception. NumberValue alone answered 0 with the exception left
+    // pending (FromMaybe(0)): the call ran with 0 - a setter stored it - and
+    // a call that then threw an error of its own threw that instead.
+    // Blink's ToRestrictedDouble/ToDouble return early on the
+    // ExceptionState the same way (bindings/core/v8/
+    // native_value_traits_impl.h, chromium 23520b2ec9fc).
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return v8.v8_Value_NumberValue(value, context);
+    var to_number: ObjectToNumber = .{ .value = value, .context = context };
+    var exception: ?*v8.Value = null;
+    if (v8.v8_RunCatching(isolate, ObjectToNumber.run, &to_number, &exception)) {
+        if (exception) |thrown| {
+            v8.v8_Isolate_ThrowException(isolate, thrown);
+            v8.v8_Global_Dispose(thrown);
+        }
+        return ConversionError.ExceptionPending;
+    }
+    return to_number.result;
 }
+
+/// ToNumber of an object, run under `v8_RunCatching` (`toNumber`).
+const ObjectToNumber = struct {
+    value: *v8.Value,
+    context: *v8.Context,
+    result: f64 = 0,
+
+    fn run(data: ?*anyopaque) callconv(.c) void {
+        const self: *ObjectToNumber = @ptrCast(@alignCast(data.?));
+        self.result = v8.v8_Value_NumberValue(self.value, self.context);
+    }
+};
 
 /// WebIDL `long`: ToNumber, then ConvertToInt. These helpers used to reject
 /// anything that was not already a number, which made `el.colSpan = "3"` a
@@ -1709,7 +1750,65 @@ fn callbackFunctionValue(comptime T: type, value: *v8.Value) T {
 /// cannot, since every interface type is `*runtime.Instance`. A union's arms
 /// name their own interfaces (`unionArmInterface`), and a dictionary's
 /// members theirs (`interface_members`), so neither takes `Interface`.
+///
+/// A union with restricted `double` or `float` arms (codegen's
+/// `restricted_arms`) checks the arm its conversion took (`requireFiniteArm`),
+/// wherever the union is converted: an argument, a nullable or variadic one,
+/// a dictionary member, a sequence element, an attribute's value.
 pub fn fromV8ValueAs(
+    comptime T: type,
+    comptime Interface: ?type,
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    value: *v8.Value,
+) ConversionError!T {
+    if (comptime hasRestrictedArms(T)) {
+        const converted = try convertValueAs(T, Interface, allocator, isolate, context, value);
+        requireFiniteArm(T, converted) catch |err| {
+            interface_mod.freeConvertedArg(T, allocator, converted);
+            return err;
+        };
+        return converted;
+    }
+    return convertValueAs(T, Interface, allocator, isolate, context, value);
+}
+
+/// Whether `T` is a union codegen marked with restricted arms.
+fn hasRestrictedArms(comptime T: type) bool {
+    return @typeInfo(T) == .@"union" and @hasDecl(T, "restricted_arms");
+}
+
+/// Whether union `T` lists arm `name` in `restricted_arms`.
+fn isRestrictedArm(comptime T: type, comptime name: []const u8) bool {
+    comptime {
+        if (!hasRestrictedArms(T)) return false;
+        for (T.restricted_arms) |arm| {
+            if (std.mem.eql(u8, arm, name)) return true;
+        }
+        return false;
+    }
+}
+
+/// WebIDL 3.2.25 steps 13 and 17: a value a union's numeric arm takes is
+/// "the result of converting V to that numeric type" - for a `double` or
+/// `float` arm (not `unrestricted`), 3.2.7 or 3.2.5, whose step 2 is a
+/// TypeError for NaN and the infinities. `double` and `unrestricted double`
+/// are both f64 and both arms are named `double`, so codegen lists the
+/// restricted ones on the union (`restricted_arms`: CSSNumberish's `double`,
+/// GPUColor's `double_sequence`); an arm not listed is unrestricted or not a
+/// number. Blink converts each arm with its own type's traits
+/// (NativeValueTraits<IDLDouble> -> ToRestrictedDouble,
+/// bindings/core/v8/native_value_traits_impl.h, chromium 23520b2ec9fc).
+pub fn requireFiniteArm(comptime T: type, value: T) ConversionError!void {
+    switch (value) {
+        inline else => |payload, tag| {
+            if (comptime isRestrictedArm(T, @tagName(tag))) try requireFinite(@TypeOf(payload), payload);
+        },
+    }
+}
+
+fn convertValueAs(
     comptime T: type,
     comptime Interface: ?type,
     allocator: std.mem.Allocator,
@@ -2186,6 +2285,27 @@ pub fn fromV8ValueAs(
                     // exception propagates (ExceptionPending).
                     const str_idx = string_idx.?;
                     return @unionInit(T, fields[str_idx].name, try fromV8Value(fields[str_idx].type, allocator, isolate, context, value));
+                } else if (comptime string_idx == null and dict_idx == null and function_idx == null and
+                    sequence_idx == null and object_idx == null and anyopaque_idx == null and
+                    (number_idx != null or boolean_idx != null))
+                {
+                    // An object that is no platform object an arm names -
+                    // {valueOf() {...}} for CSSNumberish (double or
+                    // CSSNumericValue) - in a union with no string type and
+                    // none of step 11's arms (WebIDL 3.2.25): step 5.1 took
+                    // no arm, steps 6-11 have nothing to try, and step 15
+                    // has no string type. Step 17: "If types includes a
+                    // numeric type, then return the result of converting V
+                    // to that numeric type" - ToNumber, so the valueOf runs
+                    // and what it throws propagates (ExceptionPending), and a
+                    // restricted arm still refuses NaN (`requireFiniteArm`).
+                    // Step 18 is the boolean arm's. It was a TypeError.
+                    if (number_idx) |idx| {
+                        return @unionInit(T, fields[idx].name, try fromV8Value(fields[idx].type, allocator, isolate, context, value));
+                    }
+                    if (boolean_idx) |idx| {
+                        return @unionInit(T, fields[idx].name, try fromV8Value(fields[idx].type, allocator, isolate, context, value));
+                    }
                 } else if (comptime dict_idx == null) {
                     // A union with one of step 11's arms as well, but no
                     // dictionary: as before (a toString attempt, then the
@@ -2303,13 +2423,9 @@ pub fn fromV8ValueAs(
     // [EnforceRange] nor [Clamp].
     if (type_info == .int) {
         // Step 1: x = ToNumber(V). ToNumber throws a TypeError for a Symbol or
-        // a BigInt. An object's valueOf can throw too; NumberValue then
-        // answers 0 and V8 rethrows the pending exception when the binding
-        // returns, so the call runs with 0 first - a known gap.
-        if (v8.v8_Value_IsSymbol(value) or v8.v8_Value_IsBigInt(value)) {
-            return ConversionError.TypeError;
-        }
-        return convertToInt(T, v8.v8_Value_NumberValue(value, context));
+        // a BigInt. An object's valueOf can throw too: that is the
+        // conversion's exception (`toNumber`), and the call does not run.
+        return convertToInt(T, try toNumber(context, value));
     }
 
     // Handle enums: WebIDL §3.2.23 - S = ? ToString(V), then a TypeError
