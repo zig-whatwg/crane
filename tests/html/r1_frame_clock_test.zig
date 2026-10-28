@@ -185,17 +185,79 @@ test "a page that asks for no frame keeps no rendering opportunity armed" {
 fn idleDeadlineStopsAtThePendingFrame() !void {
     const page = try helpers.Page.open();
     defer page.close();
+    // A frame is wanted for as long as the idle callback can run: a rAF loop
+    // asks for the next one from every frame.
     try page.run(
         \\globalThis.remaining = null;
-        \\requestAnimationFrame(() => {});
-        \\requestIdleCallback(d => { remaining = d.timeRemaining(); });
+        \\globalThis.stopLoop = false;
+        \\(function loop() { if (!stopLoop) requestAnimationFrame(loop); })();
+        \\requestIdleCallback(d => { remaining = d.timeRemaining(); stopLoop = true; });
     );
     try pumpUntil(page, "remaining !== null", 400);
-    const result = try page.evaluate("remaining <= 1000 / 60 + 0.1 ? 'ok' : String(remaining)");
+    // computeDeadline's nextRenderDeadline is the refresh moment itself, not
+    // the frame timer's whole-millisecond deadline (which reads 17).
+    const result = try page.evaluate("remaining <= 1000 / 60 + 0.001 ? 'ok' : String(remaining)");
     defer std.testing.allocator.free(result);
     try std.testing.expectEqualStrings("ok", result);
+    // requestidlecallback/deadline-max-rAF-dynamic.html: a frame asked for
+    // inside the idle callback brings its deadline to that refresh moment.
+    try page.run(
+        \\globalThis.dynamic = null;
+        \\requestIdleCallback(d => {
+        \\  const before = d.timeRemaining();
+        \\  requestAnimationFrame(() => {});
+        \\  dynamic = [before, d.timeRemaining()];
+        \\});
+    );
+    try pumpUntil(page, "dynamic !== null", 400);
+    const dynamic = try page.evaluate("dynamic[1] <= dynamic[0] && dynamic[1] <= 1000 / 60 + 0.001 ? 'ok' : String(dynamic)");
+    defer std.testing.allocator.free(dynamic);
+    try std.testing.expectEqualStrings("ok", dynamic);
 }
 
 test "an idle period ends at the next rendering opportunity while a frame is wanted" {
     try helpers.onFreshThread(idleDeadlineStopsAtThePendingFrame);
+}
+
+fn navigatedPageTimestampNeverAfterNow() !void {
+    const dom = @import("dom");
+    const fetch = @import("fetch");
+    const page = try helpers.Page.open();
+    defer page.close();
+    // A navigation moves the time origin to its start (Navigation Timing's
+    // "create the navigation timing entry", as Context's load does for a
+    // fetched page), which helpers.Page never does. Its start here is 3 ms
+    // after the Window recorded its creation, as a fetched navigation's is.
+    const realm = page.browser.current_context.?.document_instance.?.ctx;
+    const start_ms = @as(f64, @floatFromInt(@import("platform").monotonicNow().ns)) / std.time.ns_per_ms + 3;
+    var timing_info = fetch.internal.FetchTimingInfo.init(std.testing.allocator);
+    defer timing_info.deinit();
+    timing_info.start_time = start_ms;
+    const report: fetch.internal.TimingReport = .{
+        .timing_info = &timing_info,
+        .url = "https://example.test/navigated",
+        .initiator_type = .other,
+        .cache_state = "",
+        .body_info = .{},
+        .response_status = 200,
+    };
+    try dom.performance_timeline.createNavigationTimingEntry(realm, .{ .report = &report, .redirect_count = 0, .navigation_type = .navigate });
+    const entries = try page.evaluate("String(performance.getEntriesByType('navigation').length)");
+    defer std.testing.allocator.free(entries);
+    try std.testing.expectEqualStrings("1", entries);
+    try page.run(
+        \\globalThis.stamps = [];
+        \\requestAnimationFrame(function tick(t) {
+        \\  stamps.push([t, performance.now()]);
+        \\  if (stamps.length < 3) requestAnimationFrame(tick);
+        \\});
+    );
+    try pumpUntil(page, "stamps.length === 3", 400);
+    const result = try page.evaluate("stamps.every(([t, now]) => t <= now) ? 'ok' : JSON.stringify(stamps)");
+    defer std.testing.allocator.free(result);
+    try std.testing.expectEqualStrings("ok", result);
+}
+
+test "after a navigation, a rAF timestamp is never after performance.now() in its callback" {
+    try helpers.onFreshThread(navigatedPageTimestampNeverAfterNow);
 }

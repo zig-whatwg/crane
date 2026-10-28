@@ -48,7 +48,6 @@ const log = std.log.scoped(.rendering);
 const engine = @import("engine");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const hr_time = @import("hr_time");
 const platform = @import("platform");
 const dom_mod = @import("dom");
 const html_mod = @import("html");
@@ -195,6 +194,14 @@ pub const Frames = struct {
         return update_the_rendering.latestRefreshAtOrBefore(self.origin_ns, self.interval_ns, at_ns);
     }
 };
+
+/// computeDeadline's "nextRenderDeadline" (HTML 8.1.7.3 step 5.2.4): the
+/// refresh moment the clock is armed for, when a frame is wanted - exact,
+/// where the frame timer's own deadline is rounded up to the millisecond.
+pub fn nextRenderDeadline(frames: *const Frames) ?i64 {
+    if (frames.timer_id == null) return null;
+    return frames.timer_due_ns;
+}
 
 /// The rendering state of `realm`'s event loop, when it is a Browser loop.
 fn framesOf(realm: runtime.Context) ?*Frames {
@@ -524,7 +531,7 @@ fn updateTheRendering(frames: *Frames) void {
         defer if (dispatchState(frames, &token)) |live| {
             live.running = &.{};
         };
-        const timestamp = runtime.JSValue{ .number = relativeHighResolutionTime(document.window, frame.timestamp_ns) };
+        const timestamp = runtime.JSValue{ .number = relativeHighResolutionTime(document.realm, frame.timestamp_ns) };
         for (batch.items) |*entry| {
             defer entry.deinit();
             if (entry.cancelled or dispatchState(frames, &token) == null) continue;
@@ -591,17 +598,13 @@ fn dispatchState(frames: *Frames, token: *const u8) ?*Frames {
 }
 
 /// HR-Time's relative high resolution time given `moment` (monotonic ns)
-/// and `global`, in milliseconds: the coarsened moment less the coarsened
-/// time origin of the global's settings object - how performance.now()
-/// measures, so a frame's timestamp is never after its callback's now.
-fn relativeHighResolutionTime(global: *runtime.Instance, moment: i64) f64 {
-    const settings = dom_mod.global_settings.of(global) orelse return 0;
-    const isolated = settings.cross_origin_isolated(global);
-    const origin = if (settings.time_origin) |time_origin| time_origin(global) else null;
-    const coarse = hr_time.coarsenTime(moment, isolated);
-    const coarse_origin = hr_time.coarsenTime(origin orelse return 0, isolated);
-    const relative: f64 = @floatFromInt(coarse - coarse_origin);
-    return relative / std.time.ns_per_ms;
+/// and the global of `realm`, in milliseconds: the coarsened moment less the
+/// time origin of the global's Performance - exactly how performance.now()
+/// measures (the navigation's start once a navigation set it), so a frame's
+/// timestamp is never after its callback's now.
+fn relativeHighResolutionTime(realm: runtime.Context, moment: i64) f64 {
+    const unsafe_ms = @as(f64, @floatFromInt(moment)) / std.time.ns_per_ms;
+    return dom_mod.performance_timeline.relativeCoarseTime(realm, unsafe_ms) orelse 0;
 }
 
 /// Reserve storage before moving any callback owner. Snapshot only THIS

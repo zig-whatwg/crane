@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Frames on demand need every owner whose state shows at a rendering opportunity to ask for one](architecture-frames-on-demand-need-every-owner-to-ask.md) - With frames on demand, every owner whose state is read at a rendering opportunity must ask for one when it changes - and a test of that ask must start from a settled loop, or an unrelated frame passes it.
 - [Flat per-element storage makes every property cost every element](architecture-flat-per-element-storage-makes-every-property-cost-every-element.md) - Per-element storage should cost what the element writes, not what the engine supports: share untouched groups by pointer and copy on first write.
 - [Architecture: A browser's strong hold comes with the step that ends it - copy both or neither](architecture-a-browsers-strong-hold-comes-with-the-step-that-ends-it.md) - A strong hold is only as safe as the step that ends it: when you copy a browser's hold, copy its release, or keep the hold weak.
 - [Architecture: A new Window per load moves what belongs to the navigable, and swaps the realm only when nothing of it is on the stack](architecture-a-new-window-per-load-moves-what-belongs-to-the-navigable.md) - when a page-lifetime object starts dying per navigation, give each thing it held to its spec owner; swap an engine realm only where nothing of it is on the stack
@@ -670,6 +671,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Refresh aliases with their realm's interface objects](codegen-refresh-aliases-with-their-realms-interface-objects.md) - An alias names the realm's interface object, not the current contents of another global property.
 
 ### Testing
+- [A test page that was never navigated has the wrong time origin](testing-a-page-never-navigated-has-the-wrong-time-origin.md) - Convert a moment for script through the global's Performance (performance_timeline.relativeCoarseTime), and test any time conversion on a navigated page - helpers.Page never sets the navigation start.
 - [A subset variant can skip a row's commands but not its queries](testing-a-subset-variant-can-skip-a-rows-commands-but-not-its-queries.md) - In the editing suites a variant boundary can cut a row between its commands and its queries; a lost after-query there must be compared with the row's before-query before anyone calls it a regression.
 - [A connectedCallback is a deterministic collection point](testing-a-connectedcallback-is-a-deterministic-collection-point.md) - A connectedCallback inside a native call's [CEReactions] scope is a deterministic collection point between a snapshot and its write-back - use it to make a weak-list use-after-free go red on the first run.
 - [Enum Capacity and Container Layout Are Separate Invariants](testing-enum-capacity-and-container-layout.md) - Audit ID storage and reflected counts, then measure containing types instead of inferring their size from the tag.

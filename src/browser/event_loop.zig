@@ -872,12 +872,17 @@ pub const EventLoop = struct {
         if (end - start >= long_work_ns) self.idle_blocked_until_ns = end + long_work_ns;
     }
 
-    /// When the next timer of this loop comes due (ns), if one is armed.
+    /// When the next timer of this loop comes due (ns), if one is armed -
+    /// and no later than the next rendering opportunity the frame clock is
+    /// armed for (computeDeadline's nextRenderDeadline, exact: the frame
+    /// timer itself counts whole milliseconds).
     fn nextTimerDueNs(self: *Self, now: i64) ?i64 {
-        const mgr = self.timer_manager orelse return null;
+        const render = rendering.nextRenderDeadline(&self.frames);
+        const mgr = self.timer_manager orelse return render;
         // Whole milliseconds, rounded down: never later than the timer.
-        const due_in_ms = mgr.getNextTimerDeadline() orelse return null;
-        return now + @as(i64, @intCast(due_in_ms)) * std.time.ns_per_ms;
+        const due_in_ms = mgr.getNextTimerDeadline() orelse return render;
+        const due = now + @as(i64, @intCast(due_in_ms)) * std.time.ns_per_ms;
+        return if (render) |r| @min(r, due) else due;
     }
 
     /// dom.idle_periods' loop half: the browser layer installs it at process
