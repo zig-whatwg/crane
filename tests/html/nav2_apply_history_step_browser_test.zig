@@ -281,3 +281,51 @@ fn endsWithChangeTasksQueued() !void {
 test "a Browser that ends with an apply's per-navigable tasks queued frees them" {
     try onFreshThread(endsWithChangeTasksQueued);
 }
+
+// "Perform a navigation API traversal" 12.1-12.3 run in the queued steps,
+// first: the frame's traverse navigate event - fired in its step-12 task -
+// carries the traversal's info, and no check rejects the promises before it
+// (WPT navigation-api/navigate-event/navigate-navigation-back-cross-document).
+fn frameNavigationBackKeepsInfo() !void {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    const page = try frameOnSecond(browser);
+    try page.runScript(
+        \\globalThis.info = 'none'; globalThis.rejected = false;
+        \\frames[0].navigation.onnavigate = e => { info = String(e.info); };
+        \\const result = frames[0].navigation.back({ info: 'hi' });
+        \\result.committed.catch(() => { rejected = true; });
+        \\result.finished.catch(() => { rejected = true; });
+    );
+    try runUntil(browser, page, "String(frames[0].location.href === 'about:blank?1' && frames[0].document.readyState === 'complete')");
+    try settle(browser, 100);
+    try expectEval(page, "info + ',' + rejected", "hi,false");
+}
+
+test "a frame's navigation.back() fires its traverse navigate event with its info, and nothing rejects its promises first" {
+    try onFreshThread(frameNavigationBackKeepsInfo);
+}
+
+// A delta traversal is pending - for the top-level rule that ignores the
+// next - only until its target document is active: a go(1) from the load
+// handler of the document a back() made is applied (WPT
+// html/browsers/history/the-history-interface/joint_session_history/001).
+fn goFromLoadHandlerAfterTraversal() !void {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    const page = try frameOnSecond(browser);
+    try page.runScript(
+        \\document.querySelector('iframe').onload = () => {
+        \\  loads.push(frames[0].location.href);
+        \\  if (frames[0].location.href === 'about:blank?1') history.go(1);
+        \\};
+        \\history.go(-1);
+    );
+    try runUntil(browser, page, "String(loads.join() === 'about:blank?1,about:blank?2')");
+    try settle(browser, 100);
+    try expectEval(page, "loads.join()", "about:blank?1,about:blank?2");
+}
+
+test "a top-level go(1) from the load handler of the document its back() traversal made is applied, not ignored" {
+    try onFreshThread(goFromLoadHandlerAfterTraversal);
+}

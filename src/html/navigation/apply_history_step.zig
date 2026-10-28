@@ -149,6 +149,11 @@ pub const ApplyItem = struct {
     reload_api_state: ?joint_history.SerializedState = null,
     /// `.reload` made by history.go(0) (the reload rules in History).
     go_zero: bool = false,
+    /// A navigation API traversal ("perform a navigation API traversal" step
+    /// 12): its key's checks, which run first (12.1-12.3), and the navigable
+    /// whose navigation API asked. Owned until rejected or dropped.
+    api: ?history_traversal.ApiTraversal = null,
+    api_navigable: u64 = 0,
 
     // What the run decided, for the later phases.
     phase: enum { start, changes, nonchanging } = .start,
@@ -191,6 +196,7 @@ pub const ApplyItem = struct {
         if (self.navigables.byId(self.top_id)) |top| {
             if (top.joint_history) |history| history.endApply(item.token);
         }
+        if (self.api) |api| api.drop(api.context);
         for (self.changes.items) |c| self.allocator.free(c.old_url);
         self.changes.deinit(self.allocator);
         self.nonchanging.deinit(self.allocator);
@@ -212,6 +218,28 @@ pub const ApplyItem = struct {
         try top.collectDescendants(allocator, &tree);
         const history = try top.jointHistory();
         for (tree.items) |bc| _ = ensureEntries(bc) catch {};
+
+        // "Perform a navigation API traversal" 12.1-12.3, in the queued steps
+        // before they apply: "Let targetSHE be the session history entry in
+        // navigableSHEs whose navigation API key is key. If no such entry
+        // exists ... reject the finished promise ... with an
+        // "InvalidStateError" DOMException. Abort these steps." "If targetSHE
+        // is navigable's active session history entry" - a traversal queued
+        // before took it there - the same. Step 4 applies targetSHE's step:
+        // the nearest one that shows it (JointHistory.nearestStepOf, as
+        // browsers do), asked now that the traversals queued before have run.
+        if (self.api) |api| {
+            const target_she = history.entryByKey(self.api_navigable, &api.key);
+            const active = history.activeEntry(self.api_navigable);
+            if (target_she == null or target_she == active) {
+                self.api = null;
+                api.reject(api.context);
+                return .done;
+            }
+            self.target = .{ .step = history.nearestStepOf(target_she.?) };
+            self.api = null;
+            api.drop(api.context);
+        }
 
         // Step 2: "Let targetStep be the result of getting the used step
         // given traversable and step" - for a traversal its target ("traverse
@@ -446,6 +474,17 @@ pub const ApplyItem = struct {
         return .done;
     }
 
+    /// Whether a change job of a cross-document change is still waited for
+    /// (step 14): its target document is not active yet.
+    fn awaitsCrossDocumentChange(self: *const ApplyItem) bool {
+        if (self.phase != .changes) return false;
+        for (self.changes.items) |c| {
+            if (c.same_document) continue;
+            if (std.mem.indexOfScalar(u64, self.item.waiting_on.items, c.navigable) != null) return true;
+        }
+        return false;
+    }
+
     /// The change of `navigable`, if this apply changes it.
     fn changeOf(self: *ApplyItem, navigable: u64) ?*Change {
         for (self.changes.items) |*c| {
@@ -620,8 +659,16 @@ pub fn traverse(top: *BrowsingContext, allocator: Allocator, target: Target, opt
     initiator: ?Initiator = null,
     cross_document_delta: bool = false,
     delta_navigable: u64 = 0,
+    /// Taken: rejected or dropped exactly once.
+    api: ?history_traversal.ApiTraversal = null,
+    api_navigable: u64 = 0,
 }) void {
-    const self = ApplyItem.make(top, allocator, .traverse) orelse return;
+    const self = ApplyItem.make(top, allocator, .traverse) orelse {
+        if (options.api) |api| api.drop(api.context);
+        return;
+    };
+    self.api = options.api;
+    self.api_navigable = options.api_navigable;
     self.target = target;
     self.resumed = options.resumed;
     self.initiator = options.initiator;
@@ -690,6 +737,10 @@ fn crossDocumentDelta(item: *Item, navigable: ?u64) ?*ApplyItem {
     const apply: *ApplyItem = @fieldParentPtr("item", item);
     if (apply.kind != .traverse or apply.target != .delta or !apply.cross_document_delta) return null;
     if (navigable) |id| if (apply.delta_navigable != id) return null;
+    // Running, it is pending until its cross-document populations have made
+    // their documents active (the rules' "target document is not yet
+    // active"); its steps 15-20 after that are not.
+    if (apply.item.started and !apply.awaitsCrossDocumentChange()) return null;
     return apply;
 }
 
@@ -714,7 +765,9 @@ pub fn coalesceDelta(top: *BrowsingContext, pending: *ApplyItem, delta: i32) voi
     if (history.stepByDelta(delta) == null) return;
     const self = ApplyItem.make(top, pending.allocator, .traverse) orelse return;
     self.target = .{ .delta = delta };
-    self.cross_document_delta = true;
+    // Whether it takes a document elsewhere, from the pending one's target
+    // (the step its documents read meanwhile).
+    self.cross_document_delta = if (history.stepByDelta(delta)) |step| changesDocument(top, history, step) else false;
     self.delta_navigable = pending.delta_navigable;
     // Ahead of anything queued after the pending one: it replaces it.
     queue.items.insert(queue.allocator, 0, &self.item) catch {

@@ -25,9 +25,27 @@ pub const Task = struct {
     drop: *const fn (context: ?*anyopaque) void,
 };
 
+/// HTML "perform a navigation API traversal" step 12's own steps, which run
+/// in the queued traversal before it applies (12.1-12.3): the navigation
+/// API's key of the destination, and how the navigation API hears that the
+/// traversal ended there - no entry of the navigable has the key, or it is
+/// already the navigable's active entry (a traversal queued before took it
+/// there). The traversal owns it: exactly one of `reject` and `drop` is
+/// called, once.
+pub const ApiTraversal = struct {
+    key: [36]u8,
+    context: *anyopaque,
+    /// Steps 12.2.1 and 12.3.1: queue a global task to reject the finished
+    /// promise with an "InvalidStateError" DOMException.
+    reject: *const fn (context: *anyopaque) void,
+    /// The traversal went on to apply, or never ran: nothing to reject.
+    drop: *const fn (context: *anyopaque) void,
+};
+
 pub const Implementation = struct {
-    /// Queue a traversal of `window`'s traversable to `step`.
-    traverse_to_step: *const fn (window: *runtime.Instance, step: u32) void,
+    /// Queue a traversal of `window`'s traversable to `step` - for the
+    /// navigation API, with its key's checks (`api`, taken).
+    traverse_to_step: *const fn (window: *runtime.Instance, step: u32, api: ?ApiTraversal) void,
     /// Reload `window`'s navigable ("reload"), if the engine can.
     reload: *const fn (window: *runtime.Instance) void,
     /// The navigation API's reload with an explicit serialized state.
@@ -87,9 +105,12 @@ pub fn isInstalled() bool {
 
 /// Queue a traversal of `window`'s traversable to its session history step
 /// `step`.
-pub fn traverseToStep(window: *runtime.Instance, step: u32) void {
-    const impl = implementation orelse return;
-    impl.traverse_to_step(window, step);
+pub fn traverseToStep(window: *runtime.Instance, step: u32, api: ?ApiTraversal) void {
+    const impl = implementation orelse {
+        if (api) |a| a.drop(a.context);
+        return;
+    };
+    impl.traverse_to_step(window, step, api);
 }
 
 /// Reload `window`'s navigable.
@@ -155,6 +176,6 @@ test "without an installed implementation nothing traverses" {
     defer implementation = saved;
     implementation = null;
     var window: runtime.Instance = undefined;
-    traverseToStep(&window, 1);
+    traverseToStep(&window, 1, null);
     reload(&window);
 }

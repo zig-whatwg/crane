@@ -400,12 +400,22 @@ fn reloadWindowWithNavigationApiState(window: *runtime.Instance, state: joint_hi
 }
 
 /// dom.history_traversal: queue a traversal of `window`'s traversable to
-/// `step` (the navigation API's "perform a navigation API traversal").
-fn traverseWindowToStep(window: *runtime.Instance, step: u32) void {
-    const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
-    const history_instance = interfaces.Window.get_history(window) catch return;
-    const internal = getInternal(history_instance) orelse return;
-    apply_history_step.traverse(bc.getTop(), internal.allocator, .{ .step = step }, .{ .initiator = initiatorOf(window, bc) });
+/// `step` (the navigation API's "perform a navigation API traversal"), with
+/// its key's checks (`api`, taken).
+fn traverseWindowToStep(window: *runtime.Instance, step: u32, api: ?@import("dom").history_traversal.ApiTraversal) void {
+    const drop = struct {
+        fn of(a: ?@import("dom").history_traversal.ApiTraversal) void {
+            if (a) |given| given.drop(given.context);
+        }
+    }.of;
+    const bc = @import("dom").browser_state.browsingContextOf(window) orelse return drop(api);
+    const history_instance = interfaces.Window.get_history(window) catch return drop(api);
+    const internal = getInternal(history_instance) orelse return drop(api);
+    apply_history_step.traverse(bc.getTop(), internal.allocator, .{ .step = step }, .{
+        .initiator = initiatorOf(window, bc),
+        .api = api,
+        .api_navigable = bc.id,
+    });
 }
 
 /// dom.history_traversal: "resume applying the traverse history step" to
