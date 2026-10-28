@@ -418,8 +418,8 @@ pub const StyleEngine = struct {
     /// the preferred CSS style sheet set name. 2. Set [it] to name. 3. If
     /// name is not a case-sensitive match for current and last CSS style
     /// sheet set name is null enable a CSS style sheet set with name name":
-    /// the active sheets are rebuilt with that set enabled and every other
-    /// set disabled, synchronously for the next style read.
+    /// each titled sheet's actual disabled flag changes synchronously.
+    /// StyleSheet.disabled reads the same flag buildActive uses.
     pub fn changePreferredStyleSheetSetName(self: *StyleEngine, name: []const u8) Error!void {
         const rare = try self.ensureRare();
         if (rare.preferred_set_name) |current| {
@@ -428,7 +428,18 @@ pub const StyleEngine = struct {
         const owned = try self.allocator.dupe(u8, name);
         if (rare.preferred_set_name) |current| self.allocator.free(current);
         rare.preferred_set_name = owned;
+        self.enableStyleSheetSet(name);
         self.sheetsChanged();
+    }
+
+    /// CSSOM 6.2 "enable a CSS style sheet set", steps 1–2. Untitled
+    /// persistent sheets are not in a named set and keep their flags.
+    fn enableStyleSheetSet(self: *StyleEngine, name: []const u8) void {
+        for (self.owners.items) |owner| {
+            if (!owner.live()) continue;
+            const record = hooks.sheetOf(owner.element) orelse continue;
+            if (record.title.len != 0) record.disabled = !std.mem.eql(u8, record.title, name);
+        }
     }
 
     /// A style read begins. Re-entering one - matching or a hook reaching
@@ -470,6 +481,16 @@ pub const StyleEngine = struct {
         };
         try self.owners.append(self.allocator, .{ .element = element, .generation = runtime.SlabAllocator.generationOf(element) });
         self.sheetsChanged();
+        // CSSOM 6.2 "add a CSS style sheet", steps 3–6. Registration
+        // order establishes the preferred name; cascade order remains tree
+        // order. Removing the first sheet never selects a different name.
+        const record = hooks.sheetOf(element) orelse return;
+        if (record.disabled) return;
+        const preferred = if (self.rare) |rare| rare.preferred_set_name orelse "" else "";
+        if (record.title.len != 0 and !record.alternate and preferred.len == 0)
+            try self.changePreferredStyleSheetSetName(record.title);
+        const current = if (self.rare) |rare| rare.preferred_set_name orelse "" else "";
+        record.disabled = record.title.len != 0 and !std.mem.eql(u8, record.title, current);
     }
 
     /// `element` no longer owns a sheet in this document.
@@ -563,23 +584,6 @@ pub const StyleEngine = struct {
         sortTreeOrder(shadow_owners.items);
         try self.buildScopes(document, active, shadow_owners.items);
 
-        // CSSOM "add a CSS style sheet" steps 4-6: the preferred CSS style
-        // sheet set name is the first titled, non-alternate sheet's title;
-        // a titled sheet is enabled only when its title is that name. (The
-        // spec sets it as sheets are added; tree order stands in, stated.)
-        // Once "change the preferred CSS style sheet set name" has run (the
-        // default-style pragma), the name it set holds: step 4 changes it
-        // only while it is the empty string, and the change enabled that
-        // set and disabled every other (CSSOM "enable a CSS style sheet
-        // set"). Stated: the set enabling is derived here, apart from each
-        // sheet's own disabled flag, which it never touches.
-        var preferred: ?[]const u8 = if (self.rare) |rare| rare.preferred_set_name else null;
-        if (preferred == null) for (owners.items) |owner| {
-            const record = hooks.sheetOf(owner) orelse continue;
-            if (record.disabled) continue;
-            if (record.title.len != 0 and !record.alternate and preferred == null) preferred = record.title;
-        };
-
         var layers = LayerTree.init(self.allocator);
         defer layers.deinit();
         var pending: std.ArrayList(Pending) = .empty;
@@ -588,10 +592,6 @@ pub const StyleEngine = struct {
             const record = hooks.sheetOf(owner) orelse continue;
             try active.watch(self.allocator, record);
             if (record.disabled) continue;
-            if (record.title.len != 0) {
-                const p = preferred orelse continue;
-                if (!std.mem.eql(u8, p, record.title)) continue;
-            }
             if (!record.mediaMatches(&active.media)) continue;
             try self.addSheet(document, record, null, &active.media, &layers, &pending, 0);
         }
