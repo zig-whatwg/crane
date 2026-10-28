@@ -7,8 +7,6 @@ src/browser/Browser.zig clock.@import 1
 src/browser/Browser.zig clock.monotonicMillis 2
 src/browser/Browser.zig host.@import 1
 src/browser/Browser.zig platform.media_backend 3
-src/browser/Context.zig clock.@import 1
-src/browser/Context.zig clock.monotonicMillis 2
 src/browser/event_loop.zig clock.@import 1
 src/browser/event_loop.zig clock.monotonicNanos 1
 src/browser/navigation.zig host.@import 1

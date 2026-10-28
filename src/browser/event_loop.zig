@@ -40,6 +40,7 @@ const engine = @import("engine");
 const runtime = @import("runtime");
 const dom = @import("dom");
 const idle_periods = dom.idle_periods;
+const rendering = @import("rendering.zig");
 
 const TimerManager = runtime.native_timer.NativeTimerManager;
 const Task = runtime.EventLoopTask;
@@ -132,6 +133,11 @@ pub const EventLoop = struct {
     /// The thread the loop runs on - the one that made it.
     owner_thread: std.Thread.Id,
 
+    /// The window event loop's rendering opportunities: the frame clock, the
+    /// documents' maps of animation frame callbacks and "update the
+    /// rendering" (rendering.zig). Its timer is one of this loop's.
+    frames: rendering.Frames,
+
     const Self = @This();
 
     /// Default maximum wait time when no explicit timeout is provided.
@@ -155,6 +161,7 @@ pub const EventLoop = struct {
             .timer_manager = timer_mgr,
             .frozen = false,
             .owner_thread = std.Thread.getCurrentId(),
+            .frames = rendering.Frames.init(allocator, monotonicNs()),
         };
     }
 
@@ -164,6 +171,10 @@ pub const EventLoop = struct {
     /// still in the agent's queue are the engine's.
     pub fn deinit(self: *Self) void {
         if (self.timer_manager) |mgr| mgr.deinit();
+        // What the page's end left in the maps of animation frame callbacks
+        // (nothing, normally: Context.deinit ends the page first) is
+        // released while the agent lives.
+        self.frames.deinit();
         // Other threads post nothing more; what they posted is dropped.
         self.sink.close();
         // A task still queued will never run: let it free what it carries.
@@ -723,13 +734,17 @@ pub const EventLoop = struct {
     // Idle periods (HTML 8.1.7.3 step 5; requestIdleCallback)
     // ========================================================================
     //
-    // Crane renders nothing. Its rendering opportunities are the animation
-    // frame timer (browser/Context.zig, a timer every 16 ms while frame
-    // callbacks or native autofocus candidates wait), so the timers bound a
-    // deadline as the next rendering opportunity would. Every timer counts,
-    // not only the windows' maps of active timers: the engine's own and idle
-    // callbacks' timeouts make deadlines earlier, which a user agent may
-    // always do ("The user agent is free to end an idle period early").
+    // Crane renders nothing, but its rendering opportunities are real: the
+    // frame clock (rendering.zig) arms one timer of this loop for the next
+    // refresh moment while any window has animation frame callbacks or asked
+    // for a frame - computeDeadline's "hasPendingRenders" - and none
+    // otherwise. So the loop's timers bound a deadline exactly as
+    // computeDeadline step 4's nextRenderDeadline does (WebKit's
+    // computeIdleDeadline: the next timer and the next scheduled rendering
+    // update). Every timer counts, not only the windows' maps of active
+    // timers: the engine's own and idle callbacks' timeouts make deadlines
+    // earlier, which a user agent may always do ("The user agent is free to
+    // end an idle period early").
 
     /// The longest an idle period lasts: "last idle period start time plus
     /// 50" (computeDeadline step 1).

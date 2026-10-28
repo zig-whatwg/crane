@@ -6492,6 +6492,9 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     browser_mod.addImport("webidl", webidl_mod);
     browser_mod.addImport("dom", dom_mod);
     browser_mod.addImport("html", html_mod);
+    // A frame's timestamp is the relative high resolution time of its
+    // instant for each document (src/browser/rendering.zig): HR-Time's coarsening.
+    browser_mod.addImport("hr_time", hr_time_mod);
     // BrowserConfig.media_backend: the host's media decoding.
     browser_mod.addImport("platform", platform_mod);
     // A navigation's URL string is parsed and serialized before it is fetched.
