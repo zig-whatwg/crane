@@ -263,6 +263,13 @@ pub const Keyword = enum(u16) {
     block_axis,
     overlay,
 
+    // CSS Transforms 1/2.
+    flat,
+    preserve_3d,
+    fill_box,
+    stroke_box,
+    view_box,
+
     /// The keyword's CSS spelling.
     pub fn name(self: Keyword) []const u8 {
         return switch (self) {
@@ -830,6 +837,8 @@ pub const Value = union(enum) {
     caret_pair: *@import("ui_values.zig").CaretPair,
     animation_list: *@import("animation_values.zig").List,
     transform: *@import("transform_values.zig").Transform,
+    transform_list: *@import("box_transform_values.zig").List,
+    transform_origin: *@import("box_transform_values.zig").Origin,
     alignment: @import("alignment.zig").Value,
     position_area: @import("position_area.zig").Area,
     position_visibility: @import("position_visibility.zig").Value,
@@ -897,6 +906,8 @@ pub const Value = union(enum) {
         if (self == .caret_pair) return self.caret_pair.ref();
         if (self == .animation_list) return self.animation_list.ref();
         if (self == .transform) return self.transform.ref();
+        if (self == .transform_list) return self.transform_list.ref();
+        if (self == .transform_origin) return self.transform_origin.ref();
         if (self == .pending) return self.pending.ref();
         if (self == .try_fallbacks) return self.try_fallbacks.list.ref();
         if (self == .paint) return self.paint.ref();
@@ -933,6 +944,8 @@ pub const Value = union(enum) {
         if (self == .caret_pair) return self.caret_pair.unref();
         if (self == .animation_list) return self.animation_list.unref();
         if (self == .transform) return self.transform.unref();
+        if (self == .transform_list) return self.transform_list.unref();
+        if (self == .transform_origin) return self.transform_origin.unref();
         if (self == .pending) return self.pending.unref();
         if (self == .try_fallbacks) return self.try_fallbacks.list.unref();
         if (self == .paint) return self.paint.unref();
@@ -987,6 +1000,8 @@ pub const Value = union(enum) {
             .caret_pair => |pair| pair.eql(b.caret_pair),
             .animation_list => |list| list.eql(b.animation_list),
             .transform => |transform| transform.eql(b.transform),
+            .transform_list => |list| list.eql(b.transform_list),
+            .transform_origin => |origin| origin.eql(b.transform_origin),
             .alignment => |a_value| a_value.eql(b.alignment),
             .position_area => |a_area| a_area.eql(b.position_area),
             .position_visibility => |v| std.meta.eql(v, b.position_visibility),
@@ -1036,6 +1051,8 @@ pub const Value = union(enum) {
             .caret_pair => |pair| pair.needsUnavailableMetrics(),
             .animation_list => |list| list.needsUnavailableMetrics(),
             .transform => |transform| transform.needsUnavailableMetrics(geometry_length),
+            .transform_list => |list| list.needsUnavailableMetrics(geometry_length),
+            .transform_origin => |origin| origin.needsUnavailableMetrics(geometry_length),
             .grid_areas,
             .grid_flow,
             .keyword,
@@ -1089,6 +1106,8 @@ pub const Value = union(enum) {
             .grid_tracks => |tracks| tracks.needsTreeCounts(),
             .animation_list => |list| list.needsTreeCounts(),
             .transform => |transform| transform.needsTreeCounts(),
+            .transform_list => |list| list.needsTreeCounts(),
+            .transform_origin => |origin| origin.needsTreeCounts(),
             .grid_areas,
             .grid_flow,
             .keyword,
@@ -1140,6 +1159,8 @@ pub const Value = union(enum) {
             .grid_tracks => |tracks| tracks.needsRandomBase(),
             .animation_list => |list| list.needsRandomBase(),
             .transform => |transform| transform.needsRandomBase(),
+            .transform_list => |list| list.needsRandomBase(),
+            .transform_origin => |origin| origin.needsRandomBase(),
             .grid_areas,
             .grid_flow,
             .keyword,

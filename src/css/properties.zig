@@ -341,6 +341,15 @@ pub const Longhand = enum(u16) {
     scroll_target_group,
     _webkit_box_orient,
 
+    // CSS Transforms 1/2: typed values, with host geometry left unresolved.
+    transform,
+    transform_origin,
+    transform_box,
+    transform_style,
+    perspective,
+    perspective_origin,
+    backface_visibility,
+
     pub const count = @typeInfo(Longhand).@"enum".fields.len;
 
     /// The property name.
@@ -507,6 +516,9 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
 
 /// A longhand's grammar.
 pub const Grammar = enum {
+    transform_list,
+    transform_origin,
+    perspective,
     box_overflow,
     shape_outside,
     box,
@@ -605,6 +617,13 @@ const infos: [Longhand.count]Info = blk: {
     const zero = Value.px(0);
     const medium_width = Value.kw(.medium);
     const defs = [_]Info{
+        .{ .longhand = .transform, .inherited = false, .initial = Value.kw(.none), .grammar = .transform_list },
+        .{ .longhand = .transform_origin, .inherited = false, .initial = Value.kw(.center), .grammar = .transform_origin },
+        .{ .longhand = .transform_box, .inherited = false, .initial = Value.kw(.view_box), .grammar = .keywords, .keywords = &.{ .content_box, .border_box, .fill_box, .stroke_box, .view_box } },
+        .{ .longhand = .transform_style, .inherited = false, .initial = Value.kw(.flat), .grammar = .keywords, .keywords = &.{ .flat, .preserve_3d } },
+        .{ .longhand = .perspective, .inherited = false, .initial = Value.kw(.none), .grammar = .perspective },
+        .{ .longhand = .perspective_origin, .inherited = false, .initial = Value.kw(.center), .grammar = .image_position },
+        .{ .longhand = .backface_visibility, .inherited = false, .initial = Value.kw(.visible), .grammar = .keywords, .keywords = &.{ .visible, .hidden } },
         .{ .longhand = .overflow_block, .inherited = false, .initial = Value.kw(.visible), .grammar = .box_overflow, .logical = .{ .group = .overflow, .side = .block_start } },
         .{ .longhand = .overflow_inline, .inherited = false, .initial = Value.kw(.visible), .grammar = .box_overflow, .logical = .{ .group = .overflow, .side = .inline_start } },
         .{ .longhand = .overflow_clip_margin, .inherited = false, .initial = zero, .grammar = .box_overflow },
@@ -902,6 +921,8 @@ const infos: [Longhand.count]Info = blk: {
 // ============================================================================
 
 pub const Shorthand = enum(u8) {
+    _webkit_transform,
+    _webkit_perspective,
     line_clamp,
     _webkit_line_clamp,
     _webkit_text_orientation,
@@ -980,6 +1001,8 @@ pub const Shorthand = enum(u8) {
     /// The longhands, in canonical order (CSSOM "shorthand ... maps to").
     pub fn longhands(self: Shorthand) []const Longhand {
         return switch (self) {
+            ._webkit_transform => &.{.transform},
+            ._webkit_perspective => &.{.perspective},
             ._webkit_text_orientation => &.{.text_orientation},
             .all => &all_longhands,
             .background => &@import("background_values.zig").longhands,
@@ -1076,6 +1099,11 @@ pub const Property = union(enum) {
 /// property (and is not enumerated). CSS UI 4: "-webkit-appearance" is a
 /// legacy name alias of appearance.
 const legacy_aliases = .{
+    // Compat §3.4.1: these four aliases have unchanged canonical grammars.
+    .{ "-webkit-transform-origin", Property{ .longhand = .transform_origin } },
+    .{ "-webkit-transform-style", Property{ .longhand = .transform_style } },
+    .{ "-webkit-perspective-origin", Property{ .longhand = .perspective_origin } },
+    .{ "-webkit-backface-visibility", Property{ .longhand = .backface_visibility } },
     // CSS Flexbox 2 Appendix B: legacy names share canonical declarations.
     .{ "-webkit-align-content", Property{ .longhand = .align_content } },
     .{ "-webkit-align-items", Property{ .longhand = .align_items } },
@@ -1391,6 +1419,13 @@ pub const Stream = struct {
 pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Allocator.Error!?Value {
     const def = l.info();
     switch (def.grammar) {
+        .transform_list => return @import("box_transform_values.zig").consumeList(options, stream, false),
+        .transform_origin => return @import("box_transform_values.zig").consumeOrigin(options, stream),
+        .perspective => {
+            // Transforms 2 §8: none | <length [0,∞]>, with no legacy numbers.
+            if (takeKeyword(stream, &.{.none})) |keyword| return Value.kw(keyword);
+            return lengthPercentage(options, stream, .{ .negative = false, .percent = false, .quirky = false });
+        },
         .box => return @import("box_values.zig").consume(options, l, stream),
         .scroll_snap => return @import("box_scroll_values.zig").consume(l, stream),
         .scroll_padding => {
@@ -2158,6 +2193,16 @@ fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *st
             out.appendAssumeCapacity(.{ .longhand = .position_try_fallbacks, .value = .{ .value = fallbacks } });
             return true;
         },
+        ._webkit_transform, ._webkit_perspective => {
+            const owner = @import("box_transform_values.zig");
+            const value = (if (s == ._webkit_transform) try owner.consumeList(options, stream, true) else try owner.consumeLegacyPerspective(options, stream)) orelse return false;
+            defer value.release();
+            if (!stream.atEnd()) return false;
+            try out.ensureUnusedCapacity(options.allocator, 1);
+            value.retain();
+            out.appendAssumeCapacity(.{ .longhand = s.longhands()[0], .value = .{ .value = value } });
+            return true;
+        },
         ._webkit_text_orientation => {
             // Chrome accepts vertical-right, Safari mixed, and Firefox
             // does not ship this alias. Use Blink's complete mechanism so
@@ -2450,6 +2495,7 @@ fn backgroundRepeat(stream: *Stream) bool {
 pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
     // Scalar initial sentinels avoid one allocation per untouched style.
     if (l == .object_position and value.isKeyword(.center)) return out.appendSlice(allocator, "50% 50%");
+    if ((l == .transform_origin or l == .perspective_origin) and value.isKeyword(.center)) return out.appendSlice(allocator, "50% 50%");
     if (l == .mask_position and value == .length) {
         try values.appendLength(value.length, out, allocator);
         try out.append(allocator, ' ');
@@ -2483,13 +2529,19 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .caret_pair => |pair| try pair.serialize(out, allocator),
         .animation_list => |list| try list.serialize(out, allocator),
         .transform => |transform| try transform.serialize(out, allocator),
+        .transform_list => |list| try list.serialize(out, allocator),
+        .transform_origin => |origin| try origin.serialize(false, out, allocator),
         .alignment => |a| try a.serialize(out, allocator),
         .position_area => |a| try a.serialize(out, allocator),
         .position_visibility => |v| try v.serialize(out, allocator),
         .containment => |v| try v.serialize(out, allocator),
         .try_fallbacks => |f| try f.list.serialize(f.computed, out, allocator),
         .text => |t| try out.appendSlice(allocator, t.bytes),
-        .pending => |pending| if (pending.property != null and pending.property.? == .longhand) try out.appendSlice(allocator, pending.text),
+        .pending => |pending| if (pending.property) |declared| {
+            // Q16: only transform has cross-name pending getter readback.
+            if (declared == .longhand or (l == .transform and declared == .shorthand and declared.shorthand == ._webkit_transform))
+                try out.appendSlice(allocator, pending.text);
+        },
         .cursor => |c| try out.appendSlice(allocator, c.text.bytes),
         .indent => |v| try v.serialize(out, allocator),
         .paint => |v| try v.serialize(out, allocator, null),
@@ -2553,7 +2605,8 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
     for (vs) |v| if (v.value == .pending) {
         const pending = v.value.pending;
         const declared = pending.property orelse return false;
-        if (declared != .shorthand or declared.shorthand != s) return false;
+        const transform_alias = s == ._webkit_transform and declared == .longhand and declared.longhand == .transform;
+        if (!transform_alias and (declared != .shorthand or declared.shorthand != s)) return false;
         for (vs) |other| if (other.value != .pending or other.value.pending != pending) return false;
         try out.appendSlice(allocator, pending.text);
         return true;
@@ -2561,6 +2614,13 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
     if (s == .all) return false;
     const ls = s.longhands();
     switch (s) {
+        ._webkit_transform, ._webkit_perspective => {
+            if (s == ._webkit_transform and mode == .computed and vs[0].value == .transform_list)
+                try vs[0].value.transform_list.serializeResolved(out, allocator)
+            else
+                try serializeValue(ls[0], vs[0].value, out, allocator);
+            return true;
+        },
         .line_clamp, ._webkit_line_clamp => return @import("box_overflow_values.zig").serializeClamp(s == ._webkit_line_clamp, vs, out, allocator),
         .flex_flow => return @import("box_values.zig").serializeFlexFlow(vs, out, allocator),
         .columns => return @import("box_multicol_values.zig").serializeColumns(vs, out, allocator),

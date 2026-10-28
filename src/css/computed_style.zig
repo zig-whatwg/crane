@@ -198,6 +198,29 @@ pub const ComputedStyle = struct {
         });
     }
 
+    /// Cascade 5 §3.1 / CSSOM §9: resolve a one-member shorthand through
+    /// its longhand first. Q61/probe1026s preserves the wrapper's own spelling
+    /// afterward. The text carrier is serialization, never reparsed CSS:
+    /// resolved matrices may contain infinity or NaN.
+    pub fn serializeResolvedShorthand(self: *const ComputedStyle, s: properties.Shorthand, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!bool {
+        const longhands = s.longhands();
+        if (longhands.len != 1) return false;
+        var resolved: std.ArrayList(u8) = .empty;
+        defer resolved.deinit(allocator);
+        try self.serializeResolved(longhands[0], &resolved, allocator);
+        const carrier: Value = if (values.Keyword.parse(resolved.items)) |parsed_keyword|
+            Value.kw(parsed_keyword)
+        else
+            .{ .text = try values.SharedText.create(allocator, resolved.items) };
+        defer carrier.release();
+        const start = out.items.len;
+        if (!try properties.serializeShorthand(s, &.{.{ .value = carrier }}, .computed, out, allocator)) {
+            out.shrinkRetainingCapacity(start);
+            return false;
+        }
+        return true;
+    }
+
     /// CSSOM section 9: the resolved value of `l`, serialized into `out`.
     pub fn serializeResolved(self: *const ComputedStyle, l: Longhand, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
         const v = self.get(l);
@@ -206,6 +229,23 @@ pub const ComputedStyle = struct {
         if ((l == .min_width or l == .min_height) and v.isKeyword(.auto) and
             (self.box_context == .suppressed or self.display().box == .contents))
             return out.appendSlice(allocator, "0px");
+        // Transforms 1 §3.2 / Transforms 2 §2.1: only this property's list
+        // becomes a matrix. Origins and individual transforms are independent.
+        if (l == .transform and v == .transform_list) {
+            // Q55 / probe1026q: Chrome and Safari resolve the element's own
+            // display:none to none. Ancestor suppression and contents do not
+            // enter this guard; the stored computed list remains unchanged.
+            if (self.display().box == .none) return out.appendSlice(allocator, "none");
+            return v.transform_list.serializeResolved(out, allocator);
+        }
+        if (l == .transform_origin and v == .transform_origin) {
+            const box = self.display().box;
+            return v.transform_origin.serializeResolved(self.box_context != .suppressed and box != .none and box != .contents, out, allocator);
+        }
+        if (l == .perspective_origin and v == .image_position) {
+            const box = self.display().box;
+            return @import("box_transform_values.zig").serializePerspectiveOrigin(v.image_position, self.box_context != .suppressed and box != .none and box != .contents, out, allocator);
+        }
         // Grid 2 §§7.2.6, 9: only the resolved value of an ineligible
         // subgrid becomes none. The computed track object is unchanged.
         if ((l == .grid_template_columns or l == .grid_template_rows) and self.subgrid_ineligible and v == .grid_tracks and v.grid_tracks.subgrid)

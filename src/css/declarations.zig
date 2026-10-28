@@ -601,6 +601,14 @@ pub const DeclarationBlock = struct {
                     // "If property maps to one or more shorthand properties,
                     // let shorthands be an array of those shorthand
                     // properties, in preferred order."
+                    // Q16: this alias alone keeps its declaring name in
+                    // pending cssText, while item() stays canonical.
+                    if (d.longhand == .perspective and d.value == .value and d.value.value == .pending) {
+                        if (d.value.value.pending.property) |declared| {
+                            if (declared == .shorthand and declared.shorthand == ._webkit_perspective and
+                                try self.serializeAsShorthand(._webkit_perspective, done, out, &first)) continue;
+                        }
+                    }
                     var wrote_shorthand = false;
                     for (preferred_shorthands) |s| {
                         if (!containsLonghand(s.longhands(), d.longhand)) continue;
@@ -714,12 +722,12 @@ fn containsLonghand(ls: []const Longhand, l: Longhand) bool {
 const preferred_shorthands = blk: {
     @setEvalBranchQuota(100_000);
     const fields = @typeInfo(Shorthand).@"enum".fields;
-    var out: [fields.len - 2]Shorthand = undefined;
+    var out: [fields.len - 4]Shorthand = undefined;
     var n: usize = 0;
     for (fields) |f| {
         const s: Shorthand = @enumFromInt(f.value);
         // Legacy one-member aliases are emitted with their canonical longhand.
-        if (s == .all or s == ._webkit_text_orientation) continue;
+        if (s == .all or s == ._webkit_text_orientation or s == ._webkit_transform or s == ._webkit_perspective) continue;
         out[n] = s;
         n += 1;
     }

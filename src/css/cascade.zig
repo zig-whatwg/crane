@@ -1330,8 +1330,9 @@ const Builder = struct {
             const assigned = preflight.assigned;
             const geometry_length = switch (l.info().grammar) {
                 .length_percentage_auto, .length_percentage_nonneg, .size, .max_size, .line_width, .gap, .signed_length, .fit_tolerance => true,
-                .column_size, .scroll_padding, .shape_outside => true,
+                .column_size, .scroll_padding, .shape_outside, .transform_list, .transform_origin, .perspective => true,
                 .box_overflow => l == .overflow_clip_margin,
+                .image_position => l == .perspective_origin,
                 else => false,
             };
             // Q25/Q83/Q88: this is the single unavailable-input decision,
@@ -1481,6 +1482,8 @@ const Builder = struct {
         if (v == .box_numeric) return .{ .box_numeric = try v.box_numeric.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         if (v == .animation_list) return .{ .animation_list = try v.animation_list.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         if (v == .transform) return .{ .transform = try v.transform.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
+        if (v == .transform_list) return .{ .transform_list = try v.transform_list.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
+        if (v == .transform_origin) return .{ .transform_origin = try v.transform_origin.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         if (v == .grid_line) return .{ .grid_line = try v.grid_line.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         if (v == .grid_tracks) return .{ .grid_tracks = try v.grid_tracks.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         if (v == .caret_pair) return .{ .caret_pair = try v.caret_pair.compute(self.ctx.allocator, .{

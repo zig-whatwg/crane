@@ -9,6 +9,7 @@ pub const Block = css.declarations.DeclarationBlock;
 pub fn read(style: *const Style, name: []const u8, out: *std.ArrayList(u8), allocator: Allocator) !void {
     const property = css.properties.lookup(name) orelse return error.MissingBoxProperty;
     if (property == .longhand) return style.serializeResolved(property.longhand, out, allocator);
+    if (try style.serializeResolvedShorthand(property.shorthand, out, allocator)) return;
     var assignments: [css.properties.max_assignments]css.properties.Assigned = undefined;
     const longhands = property.shorthand.longhands();
     for (longhands, 0..) |longhand, i| assignments[i] = .{ .value = style.get(longhand) };

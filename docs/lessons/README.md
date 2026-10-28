@@ -615,6 +615,10 @@ A lane brief now carries the lessons chosen for its batch.
 - [Re-tokenize Unicode Ranges From Original Source](spec-compliance-unicode-ranges-need-original-declaration-source.md) - Preserve source before a grammar-specific tokenization mode.
 - [Substitution continues past a guaranteed-invalid function](spec-compliance-substitution-continues-past-a-guaranteed-invalid-function.md) - When an algorithm's side effects (dependency edges, cycle marks) come from visiting the input, an early return on the first failure is a behaviour change, not an optimization - walk what the spec walks.
 
+- [Equivalent matrix formulas differ after overflow](spec-compliance-transform-composition-after-overflow.md) - Preserve browser operation boundaries when finite inputs produce nonfinite matrix entries.
+- [Resolve a single-member shorthand before applying its spelling](spec-compliance-single-member-shorthand-resolved-value.md) - Apply the longhand resolver and then the shorthand spelling through the real CSSOM caller.
+- [Accept typed lengths independently of their storage tag](spec-compliance-typed-length-storage-tag.md) - Accept the scalar parser’s semantic result without inferring storage from token shape.
+
 ### Codegen
 - [Unforgeable accessors must be installed on derived instances](codegen-unforgeable-accessors-must-be-installed-on-derived-instances.md) - An inherited WebIDL member still needs explicit instance installation when the engine template does not inherit that property representation.
 - [Constructor arity removes only trailing optional arguments](codegen-constructor-arity-removes-only-trailing-optional-arguments.md) - Test non-trailing optional arguments explicitly; optional, nullable, variadic and overloaded cases alone do not cover the effective-list algorithm.
