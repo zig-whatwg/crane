@@ -226,11 +226,15 @@ fn printReport(key: u64, path: Path, node: *NodeBase, frames: []const usize) voi
     });
 }
 
-/// The URL of `node`'s node document (a WPT file's page, for the nodes its
-/// script makes), so a report names the file it came from; null when the
+/// The URL a report names, so a sweep's interleaved stderr attributes it to
+/// its file: the URL the node's realm navigated to (a WPT file's page, for
+/// every node its script makes - a navigated window document keeps its URL
+/// on its realm, not in its own state), else the URL of `node`'s node
+/// document (createHTMLDocument's, DOMParser's), else null when that
 /// document is gone (the Node impl's generation check, through refcount).
-/// Read through the Document's own state: no Node state read, no report.
+/// Neither reads Node state: no report of its own.
 fn documentUrlOf(node: *NodeBase) ?[]const u8 {
+    if (instanceOf(node)) |instance| if (instance.ctx.documentUrl()) |url| if (url.len > 0) return url[0..@min(url.len, 160)];
     const document = refcount.liveNodeDocument(node) orelse return null;
     const instance = instanceOf(document) orelse return null;
     const url = document_internals.getURL(instance) orelse return null;
