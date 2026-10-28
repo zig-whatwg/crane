@@ -111,8 +111,7 @@ const Checks = if (@hasDecl(css, "font_request")) struct {
         // Defensive typed checks reject a deliberately non-computed value.
         const style = try css.computed_style.ComputedStyle.initial(allocator);
         defer style.destroy();
-        style.values[@intFromEnum(css.properties.Longhand.font_size)].release();
-        style.values[@intFromEnum(css.properties.Longhand.font_size)] = .{ .length = .em(2) };
+        try style.set(.font_size, .{ .length = .em(2) });
         try testing.expect(requests.fromComputed(style) == null);
     }
 } else struct {};

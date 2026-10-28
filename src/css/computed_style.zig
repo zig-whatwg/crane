@@ -2,9 +2,35 @@
 //! value per supported longhand, and the resolved value getComputedStyle
 //! serializes (CSSOM section 9).
 //!
-//! A logical longhand holds the value of the physical longhand it maps to
-//! for this element's writing mode and direction, so that every supported
-//! longhand reads directly.
+//! Storage (lane cascadefast2): the values live in groups
+//! (computed_groups.zig), shared between styles and copied on write, so an
+//! element pays for the groups it writes into and not for every longhand
+//! Crane supports (Blink's ComputedStyleBase groups, WebKit's DataRef groups,
+//! Stylo's StyleStructRef). The ownership rule:
+//! - A style holds exactly one reference on each group whose bit is set in
+//!   `held`, and on no other; an unheld group's values are its static
+//!   initial values (`initial_storage`), never written and never freed.
+//! - Each value in a group holds one reference (Value.retain). Copying a
+//!   group retains every counted value it copies; the group's last release
+//!   releases them and frees the group with the allocator that made it.
+//! - So teardown order does not matter: a child that shares its parent's
+//!   group keeps it alive after the parent's style is destroyed.
+//! - Group refcounts are not atomic, which is safe because a group never
+//!   crosses threads. Its owner is the Document's style engine
+//!   (src/dom/style/engine.zig, one per Document within one Browser):
+//!   it creates, shares and destroys styles only on its Browser's
+//!   window-agent thread (docs/instances.md: one thread per Browser's
+//!   window agent; workers have no style engine), and a style shares
+//!   groups only with its flat-tree parent's style, which is the same
+//!   engine's. The one other maker, font_request's style for a font
+//!   string (Font Loading, on any agent's thread), has no parent and lives
+//!   for its call. custom_properties.CustomProperties.refs rests on the same
+//!   rule. The static initial values are shared by every thread and are
+//!   never written or released: only a held group is.
+//!
+//! A logical longhand has no storage: get() answers the physical longhand
+//! it maps to for this element's writing mode and direction - what the
+//! cascade's mapping (Builder.target) stores for it.
 //!
 //! Resolved values without layout (stated; design section 6.3): CSSOM
 //! makes the resolved value of width, height, the margins and the paddings
@@ -24,13 +50,173 @@ const color_scheme = @import("color_scheme.zig");
 const custom_properties = @import("custom_properties.zig");
 const registered_properties = @import("registered_properties.zig");
 
+pub const groups = @import("computed_groups.zig");
+
 const Longhand = properties.Longhand;
 const Value = values.Value;
 const Color = values.Color;
 
+/// The groups a style holds a reference on: bit g for groups g.
+pub const Held = std.bit_set.IntegerBitSet(groups.count);
+
+/// A counted group of values: this header, then `len` Values. One reference
+/// per style holding it (ComputedStyle.held).
+pub const Group = struct {
+    refs: u32,
+    len: u16,
+    allocator: Allocator,
+
+    const header = std.mem.alignForward(usize, @sizeOf(Group), @alignOf(Value));
+    const alignment: std.mem.Alignment = .of(Group);
+
+    fn bytes(len: usize) usize {
+        return header + len * @sizeOf(Value);
+    }
+
+    /// A group holding a copy of `from`, each counted value retained; one
+    /// reference, the caller's.
+    fn copy(allocator: Allocator, from: []const Value) Allocator.Error!*Group {
+        const memory = try allocator.alignedAlloc(u8, alignment, bytes(from.len));
+        const self: *Group = @ptrCast(memory.ptr);
+        self.* = .{ .refs = 1, .len = @intCast(from.len), .allocator = allocator };
+        const slots = self.values();
+        @memcpy(slots[0..from.len], from);
+        for (slots[0..from.len]) |v| retainValue(v);
+        return self;
+    }
+
+    pub fn values(self: *Group) [*]Value {
+        return @ptrCast(@alignCast(@as([*]u8, @ptrCast(self)) + header));
+    }
+
+    /// The group whose values start at `slots`.
+    pub fn of(slots: [*]const Value) *Group {
+        return @ptrCast(@alignCast(@as([*]u8, @ptrCast(@constCast(slots))) - header));
+    }
+
+    fn release(self: *Group) void {
+        self.refs -= 1;
+        if (self.refs != 0) return;
+        const slots = self.values();
+        for (slots[0..self.len]) |v| releaseValue(v);
+        const memory: [*]align(alignment.toByteUnits()) u8 = @ptrCast(@alignCast(self));
+        self.allocator.free(memory[0..bytes(self.len)]);
+    }
+};
+
+/// Whether a value of `T` can hold a reference: any pointer, at any depth,
+/// or any type this cannot see into. The default is "counted" (AGENTS.md:
+/// a gate on ownership defaults to the safe answer): only a payload proven
+/// pointer-free skips Value.retain/release, which can then do nothing.
+pub fn mayHoldReference(comptime T: type) bool {
+    return comptime analyse(T);
+}
+
+fn analyse(comptime T: type) bool {
+    return switch (@typeInfo(T)) {
+        .bool, .int, .float, .comptime_int, .comptime_float, .void, .@"enum", .enum_literal => false,
+        .array => |a| analyse(a.child),
+        .optional => |o| analyse(o.child),
+        .@"struct" => |s| blk: {
+            if (s.layout == .@"packed") break :blk analyse(s.backing_integer.?);
+            for (s.fields) |f| if (analyse(f.type)) break :blk true;
+            break :blk false;
+        },
+        .@"union" => |u| blk: {
+            for (u.fields) |f| if (analyse(f.type)) break :blk true;
+            break :blk false;
+        },
+        else => true,
+    };
+}
+
+/// Value tags whose payload may hold a reference.
+const counted_tags: std.EnumSet(std.meta.Tag(Value)) = blk: {
+    @setEvalBranchQuota(100_000);
+    var set: std.EnumSet(std.meta.Tag(Value)) = .initEmpty();
+    for (@typeInfo(Value).@"union".fields) |f| {
+        if (mayHoldReference(f.type)) set.insert(@field(std.meta.Tag(Value), f.name));
+    }
+    break :blk set;
+};
+
+/// Whether Value.retain/release can do anything for `v`.
+pub inline fn isCounted(v: Value) bool {
+    return counted_tags.contains(std.meta.activeTag(v));
+}
+
+inline fn retainValue(v: Value) void {
+    if (isCounted(v)) v.retain();
+}
+
+inline fn releaseValue(v: Value) void {
+    if (isCounted(v)) v.release();
+}
+
+/// Whether `a` and `b` are the same computed value in every bit that means
+/// anything: the same tag, pointers at the same address, floats with the
+/// same bits. Storing `b` over an identical `a` changes nothing a reader
+/// can see, so set() keeps the group shared (Blink's and WebKit's setters
+/// compare before writing). Not Value.eql, which compares text.
+pub fn identical(a: Value, b: Value) bool {
+    if (std.meta.activeTag(a) != std.meta.activeTag(b)) return false;
+    return switch (a) {
+        inline else => |payload, tag| same(@TypeOf(payload), payload, @field(b, @tagName(tag))),
+    };
+}
+
+fn same(comptime T: type, a: T, b: T) bool {
+    return switch (@typeInfo(T)) {
+        .float => @as(std.meta.Int(.unsigned, @bitSizeOf(T)), @bitCast(a)) == @as(std.meta.Int(.unsigned, @bitSizeOf(T)), @bitCast(b)),
+        .bool, .int, .@"enum", .void => a == b,
+        .pointer => |p| if (p.size == .slice) a.ptr == b.ptr and a.len == b.len else a == b,
+        .optional => |o| if (a) |x| (if (b) |y| same(o.child, x, y) else false) else b == null,
+        .array => |arr| for (a, b) |x, y| {
+            if (!same(arr.child, x, y)) break false;
+        } else true,
+        .@"struct" => |s| if (s.layout == .@"packed") @as(s.backing_integer.?, @bitCast(a)) == @as(s.backing_integer.?, @bitCast(b)) else inline for (s.fields) |f| {
+            if (!same(f.type, @field(a, f.name), @field(b, f.name))) break false;
+        } else true,
+        .@"union" => |u| blk: {
+            if (u.tag_type == null) @compileError("untagged union in a computed value: " ++ @typeName(T));
+            if (std.meta.activeTag(a) != std.meta.activeTag(b)) break :blk false;
+            break :blk switch (a) {
+                inline else => |x, tag| same(@TypeOf(x), x, @field(b, @tagName(tag))),
+            };
+        },
+        else => @compileError("no identity for " ++ @typeName(T)),
+    };
+}
+
+/// Every group's initial values, in group order: what an unheld group's
+/// slots point into.
+const initial_storage: [groups.stored]Value = blk: {
+    @setEvalBranchQuota(100_000);
+    var out: [groups.stored]Value = undefined;
+    for (0..Longhand.count) |i| {
+        const loc = groups.location[i];
+        if (loc.stored) out[groups.offsets[loc.group] + loc.index] = initial_values[i];
+    }
+    break :blk out;
+};
+
+fn initialSlots(g: usize) [*]const Value {
+    return @ptrCast(&initial_storage[groups.offsets[g]]);
+}
+
+const all_initial: [groups.count][*]const Value = blk: {
+    var out: [groups.count][*]const Value = undefined;
+    for (0..groups.count) |g| out[g] = initialSlots(g);
+    break :blk out;
+};
+
 pub const ComputedStyle = struct {
     allocator: Allocator,
-    values: [Longhand.count]Value,
+    /// Each group's values: a held group's (a counted Group), otherwise the
+    /// group's initial values.
+    slots: [groups.count][*]const Value = all_initial,
+    /// The groups this style holds one reference on.
+    held: Held = .initEmpty(),
     /// CSS Color Adjustment 1 2.2, the element color scheme: what its system
     /// colors were resolved against.
     used_color_scheme: color_scheme.Scheme = .light,
@@ -59,12 +245,32 @@ pub const ComputedStyle = struct {
     /// (the root's parent; an element no rule styles).
     pub fn initial(allocator: Allocator) Allocator.Error!*ComputedStyle {
         const self = try allocator.create(ComputedStyle);
-        self.* = .{ .allocator = allocator, .values = initial_values };
+        self.* = .{ .allocator = allocator };
+        return self;
+    }
+
+    /// A style whose inherited groups are `parent`'s (shared: one more
+    /// reference on each one the parent holds) and whose other groups are
+    /// the initial values - every longhand at its default (Cascade 5 7.1)
+    /// before the cascade writes any. The root's (null parent) inherited
+    /// groups are the initial values too, its "inherited value".
+    pub fn inheriting(allocator: Allocator, parent: ?*const ComputedStyle) Allocator.Error!*ComputedStyle {
+        const self = try allocator.create(ComputedStyle);
+        self.* = .{ .allocator = allocator };
+        const p = parent orelse return self;
+        inline for (0..groups.count) |g| if (comptime groups.inherited[g]) {
+            self.slots[g] = p.slots[g];
+            if (p.held.isSet(g)) {
+                Group.of(p.slots[g]).refs += 1;
+                self.held.set(g);
+            }
+        };
         return self;
     }
 
     pub fn destroy(self: *ComputedStyle) void {
-        for (self.values) |v| v.release();
+        var it = self.held.iterator(.{});
+        while (it.next()) |g| Group.of(self.slots[g]).release();
         if (self.custom) |c| c.release();
         if (self.custom_own) |c| c.release();
         if (self.registered) |r| r.release();
@@ -135,7 +341,47 @@ pub const ComputedStyle = struct {
     }
 
     pub fn get(self: *const ComputedStyle, l: Longhand) Value {
-        return self.values[@intFromEnum(l)];
+        const loc = groups.location[@intFromEnum(self.physical(l))];
+        return self.slots[loc.group][loc.index];
+    }
+
+    /// `l`, or for a logical longhand the physical one it maps to for this
+    /// element's writing mode and direction (CSS Logical 1 §4).
+    pub fn physical(self: *const ComputedStyle, l: Longhand) Longhand {
+        const lg = l.logical() orelse return l;
+        return properties.physicalLonghand(lg.group, properties.physicalSide(lg.side, self.keyword(.writing_mode), self.keyword(.direction)));
+    }
+
+    /// Store `v` as the computed value of physical longhand `l`, taking the
+    /// reference `v` holds (released on error, and when `v` is identical to
+    /// the stored value, which then stays shared). Copies `l`'s group first
+    /// when this style does not hold it alone.
+    pub fn set(self: *ComputedStyle, l: Longhand, v: Value) Allocator.Error!void {
+        const loc = groups.location[@intFromEnum(l)];
+        std.debug.assert(loc.stored);
+        if (identical(self.slots[loc.group][loc.index], v)) return releaseValue(v);
+        const slots = self.mutable(loc.group) catch |err| {
+            releaseValue(v);
+            return err;
+        };
+        releaseValue(slots[loc.index]);
+        slots[loc.index] = v;
+    }
+
+    /// Group `g`'s values, writable: held by this style alone, copied first
+    /// when shared or initial (copy on write).
+    fn mutable(self: *ComputedStyle, g: usize) Allocator.Error![*]Value {
+        if (self.held.isSet(g)) {
+            const group = Group.of(self.slots[g]);
+            if (group.refs == 1) return group.values();
+        }
+        const fresh = try Group.copy(self.allocator, self.slots[g][0..groups.lengths[g]]);
+        // A shared group keeps another holder: dropping this reference
+        // cannot free it.
+        if (self.held.isSet(g)) Group.of(self.slots[g]).release();
+        self.slots[g] = fresh.values();
+        self.held.set(g);
+        return fresh.values();
     }
 
     pub fn keyword(self: *const ComputedStyle, l: Longhand) values.Keyword {
