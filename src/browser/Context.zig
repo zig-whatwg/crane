@@ -2390,7 +2390,8 @@ pub const Context = struct {
             // Content-Type; the markup made for other types is characters.
             .byte_stream = if (kind == .html or kind == .xml) .{ .content_type = result.content_type } else null,
         };
-        const made = try self.createLoadDocument(html_options, null);
+        const policy_headers = if (result.permissions_policy_headers) |headers| headers.values else @import("dom").policy_containers.permissions_policy.Headers{};
+        const made = try self.createLoadDocument(html_options, null, policy_headers);
         const document = made.document;
         const hold = self.holdDocument(document);
         defer if (hold) |held| held.release();
@@ -2551,7 +2552,7 @@ pub const Context = struct {
             self.pending_load = pending;
             return;
         }
-        const made = try self.createLoadDocument(options, html_content);
+        const made = try self.createLoadDocument(options, html_content, .{});
         const hold = self.holdDocument(made.document);
         defer if (hold) |held| held.release();
         try self.parseLoadDocument(made, html_content, options);
@@ -2595,7 +2596,7 @@ pub const Context = struct {
     /// old Window, have run. Nothing observes the new Document earlier: no
     /// script of it runs before "scripts may run for the newly-created
     /// document".
-    fn createLoadDocument(self: *Context, options: LoadHTMLOptions, markup: ?[]const u8) !LoadDocument {
+    fn createLoadDocument(self: *Context, options: LoadHTMLOptions, markup: ?[]const u8, policy_headers: @import("dom").policy_containers.permissions_policy.Headers) !LoadDocument {
         if (self.realm == null or self.window_instance == null) return error.NotInitialized;
         const replaced = self.document_instance;
         // Step 6's condition, read before anything of the document goes.
@@ -2654,18 +2655,25 @@ pub const Context = struct {
         // Its origin: "determining the origin" step 1 makes it a new opaque
         // one when the final sandboxing flag set has the sandboxed origin
         // browsing context flag; else one of its own, from its URL.
-        const opaque_origin: ?*dom_mod.origin_record.OriginRecord = if (options.sandboxing_flags.origin)
+        const document_origin = if (options.sandboxing_flags.origin)
             try dom_mod.origin_record.OriginRecord.create(self.allocator, "null")
         else
-            null;
-        defer if (opaque_origin) |record| record.release();
+            try dom_mod.origin_record.OriginRecord.createOwn(self.allocator);
+        defer document_origin.release();
+        // Permissions Policy §9.5: the response declarations use this same
+        // origin record. A parentless document has no inherited restriction.
+        var permissions = try dom_mod.policy_containers.permissionsForNavigable(self.allocator, null, document_origin, policy_headers);
+        var permissions_taken = false;
+        defer if (!permissions_taken) permissions.deinit();
         const document = try interfaces.Document.initWith(self.allocator, runtime_ctx, .{
-            .origin = opaque_origin,
+            .origin = document_origin,
+            .permissions_policy = permissions,
             .sandboxing_flags = options.sandboxing_flags,
             // HTML create and initialize a Document, step 9.
             .ready_state = ._loading_,
             .last_modified = options.last_modified,
         });
+        permissions_taken = true;
         dom_mod.document_internals.setDocumentType(document, .html) catch {};
         // Step 10: "Set window's associated Document to document." From here
         // the window keeps it, and the document it replaces is unlinked.

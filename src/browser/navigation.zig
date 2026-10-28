@@ -49,6 +49,9 @@ pub const NavigationResult = struct {
     /// parses as a structured field item. Owned; null when it has none, and
     /// for a response from no network.
     origin_agent_cluster: ?[]const u8 = null,
+    /// Both Permissions Policy headers, owned until the result is freed.
+    /// The document parses them with its actual origin before script runs.
+    permissions_policy_headers: ?@import("dom").policy_containers.permissions_policy.OwnedHeaders = null,
     /// What Navigation Timing's "create the navigation timing entry" takes
     /// from an HTTP(S) navigation's fetch: its timing info, redirect count
     /// and response status. Owned; null for a response from no network.
@@ -74,6 +77,7 @@ pub const NavigationResult = struct {
         self.allocator.free(self.content_type);
         if (self.policy_container) |*container| container.deinit();
         if (self.origin_agent_cluster) |value| self.allocator.free(value);
+        if (self.permissions_policy_headers) |*headers| headers.deinit();
         if (self.timing) |*timing| timing.timing_info.deinit();
     }
 
@@ -406,6 +410,8 @@ fn fetchHttpUrl(
     else
         null;
     const origin_agent_cluster = response.header_list.get(allocator, "Origin-Agent-Cluster") catch return NavigationError.OutOfMemory;
+    errdefer if (origin_agent_cluster) |value| allocator.free(value);
+    const permissions_policy_headers = @import("dom").policy_containers.permissions_policy.OwnedHeaders.fromResponse(allocator, response) catch return NavigationError.OutOfMemory;
 
     // Navigation Timing: the fetch's timing info, its redirect count (the
     // response's URL list beyond the first URL) and status.
@@ -418,6 +424,7 @@ fn fetchHttpUrl(
         .allocator = allocator,
         .policy_container = policy_container,
         .origin_agent_cluster = origin_agent_cluster,
+        .permissions_policy_headers = permissions_policy_headers,
         .last_modified = last_modified,
         .timing = .{
             .timing_info = result.timing_info,

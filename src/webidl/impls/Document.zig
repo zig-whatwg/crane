@@ -92,19 +92,24 @@ pub const Mode = enum {
 /// Spec: https://html.spec.whatwg.org/multipage/speculative-loading.html#speculation-rule-eagerness
 pub const SpeculationEagerness = @import("dom").document_scripts.SpeculationEagerness;
 
-/// Independently lazy interaction state behind one Document-owned pointer.
-/// A second inline pointer would cross Document's 2048-byte allocation class.
+/// Independently owned state behind one Document-owned pointer. The policy
+/// pointer is always set at construction; interaction members stay lazy.
+/// New Document extension pointers join this block so the inline state stays
+/// within its pinned 2048-byte allocation class.
 const InteractionState = struct {
     top_layer: ?*@import("dom").top_layer.State = null,
     autofocus: ?*@import("dom").document_autofocus.State = null,
+    /// Permissions Policy §§9.5–9.6: an owned construction fact, separate
+    /// from Fetch's policy container.
+    permissions_policy: ?*html_core.permissions_policy.Policies = null,
 };
 
 /// Internal state for Document implementation
 /// Spec: https://dom.spec.whatwg.org/#concept-document
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
-    /// Allocated only by top-layer use, autofocus insertion or dialog
-    /// completion. The document owns both states and all their holds.
+    /// Prepared at construction for the policy. The Document owns all
+    /// members; top-layer and autofocus state remain independently lazy.
     interaction_state: ?*InteractionState = null,
 
     /// Cached DOMImplementation instance ([SameObject])
@@ -415,7 +420,6 @@ pub const InternalState = struct {
     /// every request the document's settings object makes takes a clone.
     /// Reached from outside through `dom.policy_containers`.
     policy_container: fetch.internal.PolicyContainer,
-
     // === Content Security Policy (CSP Level 3) ===
     // The CSP list is the policy container's (`policy_container.csp_list`).
 
@@ -579,6 +583,7 @@ pub const InternalState = struct {
 
     pub fn deinit(self: *InternalState) void {
         const interaction = self.interaction_state;
+        const permissions = if (interaction) |shared| shared.permissions_policy else null;
         self.interaction_state = null;
         if (interaction) |shared| if (shared.autofocus) |state| state.destroy(self.allocator);
         // domindex1: the maps go first, and keep nothing after: a node the
@@ -716,6 +721,10 @@ pub const InternalState = struct {
         }
 
         self.policy_container.deinit();
+        if (permissions) |policy| {
+            policy.deinit();
+            self.allocator.destroy(policy);
+        }
 
         // CSP origin (the list is the policy container's)
         if (self.csp_self_origin) |*origin| {
@@ -751,9 +760,10 @@ pub const InternalState = struct {
     }
 
     /// Roll back a newly allocated container when its first child allocation
-    /// fails. An existing sibling's state is never discarded by this path.
+    /// fails. An existing sibling or policy is never discarded by this path.
     fn discardEmptyInteractionState(self: *InternalState, shared: *InteractionState) void {
         std.debug.assert(self.interaction_state == shared);
+        if (shared.permissions_policy != null) return;
         std.debug.assert(shared.top_layer == null and shared.autofocus == null);
         self.interaction_state = null;
         self.allocator.destroy(shared);
@@ -870,6 +880,13 @@ fn policyContainerOf(document: *runtime.Instance) ?*fetch.internal.PolicyContain
     return &internal.policy_container;
 }
 
+/// dom.policy_containers: both policies, owned by this Document.
+fn permissionsPolicyOf(document: *runtime.Instance) ?*html_core.permissions_policy.Policies {
+    const internal = getInternal(document) orelse return null;
+    const shared = internal.interaction_state orelse return null;
+    return shared.permissions_policy;
+}
+
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
@@ -939,7 +956,7 @@ pub fn installHooks() void {
     });
     // Its policy container, for whatever sets or reads one without naming
     // this impl (navigation, meta referrer, a Window's settings object).
-    @import("dom").policy_containers.install(.{ .of = &policyContainerOf });
+    @import("dom").policy_containers.install(.{ .of = &policyContainerOf, .permissions = &permissionsPolicyOf });
     // A clone of a Document keeps its mode. Installed here, before any
     // Document exists to be cloned.
     @import("dom").cloning_steps.install(&cloningSteps);
@@ -1127,6 +1144,16 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     const origin = if (given) |record| record.retain() else try OriginRecord.createOwn(allocator);
     errdefer origin.release();
 
+    // Keep the policy pair outside Document's pinned 2048-byte state class.
+    // Until registry construction succeeds, this block is uninitialized and
+    // the caller still owns any supplied pair (liaison Q30).
+    const permissions = try allocator.create(html_core.permissions_policy.Policies);
+    errdefer allocator.destroy(permissions);
+    // Prepare the existing extension block before the registry too, so
+    // either allocation failure leaves the caller's policy pair untouched.
+    const shared = try allocator.create(InteractionState);
+    errdefer allocator.destroy(shared);
+
     // Initialize Document's own internal state in registry
     // The registry owns this block, so `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
@@ -1134,6 +1161,14 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
     internal.origin = origin;
+    // HTML create-and-initialize step 9. The generated chain transfers
+    // the pair ONLY once construction succeeds; no fallible work follows.
+    permissions.* = if (@hasField(@TypeOf(args), "permissions_policy"))
+        args.permissions_policy
+    else
+        html_core.permissions_policy.Policies.init(allocator, origin);
+    shared.* = .{ .permissions_policy = permissions };
+    internal.interaction_state = shared;
     // HTML "create and initialize a Document object" step 9, and "create a
     // new browsing context and document" step 15: the active sandboxing flag
     // set the navigation (or the creation flags) gave it - empty otherwise.
@@ -1155,8 +1190,9 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
 /// retains it), or null for an origin of its own; `sandboxing_flags`, its
 /// active sandboxing flag set (a `dom.sandboxing.SandboxingFlagSet`), empty
 /// when not given; `ready_state`, its initial HTML readiness; and
-/// `last_modified`, the source's optional platform.WallTime (null: unknown).
-pub const construction_args = .{ "origin", "sandboxing_flags", "ready_state", "last_modified" };
+/// `last_modified`, the source's optional platform.WallTime (null: unknown);
+/// and `permissions_policy`, the owned pair TAKEN only on success.
+pub const construction_args = .{ "origin", "sandboxing_flags", "ready_state", "last_modified", "permissions_policy" };
 
 /// dom.target_element: `document`'s target element, or null once the
 /// element it names has been freed.
