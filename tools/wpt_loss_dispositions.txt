@@ -419,3 +419,11 @@ why = The same timing-bound file as the generation 179, 184, 186 and 188 disposi
 pair.1 = base 4/6; tip 4/6
 pair.2 = base 4/6; tip 3/6
 pair.3 = base 4/6; tip 4/6
+
+[xhr/send-redirect.htm]
+generation = 192
+kind = flake
+why = The same intermittent redirect subtests as the generation 173, 185 and 189 dispositions (a redirected request reads a null method): "(301, HEAD, content.py)" 34 -> 33 in the generation 192 sweep (main 68168574bfa: refcount6's parser and element-task holds, no networking code). Isolated, one process each, alternating, frozen main-cc0fcdcbf9 (base, generation 191) vs main-68168574bf (tip, generation 192), integrator 2026-10-28 on chat through crane-measure.sh (~/crane-work/integrator-pairs-192/pairs.sh): the tip passed 34/34 three times; the base dropped "(303, CHICKEN, redirect.py?location=content.py)" once.
+pair.1 = base 34/34; tip 34/34
+pair.2 = base 34/34; tip 34/34
+pair.3 = base 33/34; tip 34/34
