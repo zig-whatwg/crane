@@ -28,7 +28,7 @@ fn realmIsLive(_: u32) bool {
     return true;
 }
 const Returns = html_core.custom_element_returns.PendingReturns(u32, Root);
-const State = AgentState(u32, u32, Payload, Root, Returns, realmIsLive);
+const State = AgentState(u32, u32, Payload, Root, Root, Returns, realmIsLive);
 fn acquire(_: void, _: u32) !Root {
     return .{};
 }

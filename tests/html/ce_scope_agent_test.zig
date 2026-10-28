@@ -11,8 +11,8 @@ fn makeWindow(realm: runtime.Context, _: runtime.JSValue, _: ?*anyopaque) ?*runt
     return interfaces.Window.init(testing.allocator, realm) catch null;
 }
 fn report(_: ?*anyopaque, _: *const engine.ErrorInfo) void {}
-fn acquire(_: void, element: *runtime.Instance) !engine.Owned {
-    return engine.retainValue(element.ctx, .{ .instance = element });
+fn acquire(_: void, element: *runtime.Instance) !ce.ElementHold {
+    return ce.ElementHold.take(element);
 }
 
 fn exercise() !void {
