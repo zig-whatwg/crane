@@ -223,11 +223,17 @@ pub fn fromV8Boolean(
 /// exception when the binding returns, so the call runs with that first - a
 /// known gap.
 fn toNumber(context: *v8.Context, value: *v8.Value) ConversionError!f64 {
+    // A Number is its own ToNumber - by far the common case, and the one each
+    // test below would only slow down: one FFI call to ask, one to read. (The
+    // object test below was one more call per numeric conversion, and priced
+    // at +3.4% cycles on 1M CSSNumberish conversions in lane bindfix1's timed
+    // series; asking IsNumber first makes a Number cheaper than before.)
+    if (v8.v8_Value_IsNumber(value)) return v8.v8_Value_NumberValue(value, context);
     if (v8.v8_Value_IsSymbol(value) or v8.v8_Value_IsBigInt(value)) {
         return ConversionError.TypeError;
     }
-    // A primitive's ToNumber runs no script and cannot throw (a Symbol and a
-    // BigInt were refused above): no TryCatch on the hot path.
+    // Any other primitive's ToNumber runs no script and cannot throw (a Symbol
+    // and a BigInt were refused above): no TryCatch for it.
     if (!v8.v8_Value_IsObject(value)) return v8.v8_Value_NumberValue(value, context);
     // An object's runs its @@toPrimitive, valueOf or toString, and what they
     // throw is the abrupt completion of "? ToNumber(V)" (WebIDL 3.2.4
