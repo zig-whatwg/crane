@@ -198,6 +198,8 @@ fn sweep(rounds: usize) !void {
 
     var round: usize = 0;
     var script_buffer: [128]u8 = undefined;
+    // Rounds after which the frame showed no document.
+    var without_document: usize = 0;
     while (round < rounds) : (round += 1) {
         // "Allowed to perform a navigation or history update" (200 per 10 s)
         // would stop the rounds otherwise: not this test's.
@@ -221,10 +223,33 @@ fn sweep(rounds: usize) !void {
             std.debug.print("failing allocation {d}: the frame's navigable shows a document the collection freed\n", .{round});
             return error.ShownDocumentFreed;
         };
+        // A frame a failed commit left with no document still navigates: the
+        // next navigation the rate limiter allows, with memory to spare,
+        // commits a new document - through src alone, never contentWindow,
+        // which makes a new child navigable of its own.
+        if (after == null) {
+            without_document += 1;
+            (try frameNavigable(browser)).navigation_rate_count = 0;
+            const recovery = try std.fmt.bufPrint(&script_buffer, "document.getElementById('n').src = 'data:text/html,<p>recovered {d}</p>';", .{round});
+            try page.runScript(recovery);
+            var recovered = false;
+            for (0..40) |_| {
+                _ = try browser.runEventLoopBlocking(50);
+                if (try shownDocument(browser) != null) {
+                    recovered = true;
+                    break;
+                }
+            }
+            if (!recovered) {
+                std.debug.print("failing allocation {d}: the frame left with no document never navigated again\n", .{round});
+                return error.FrameNeverNavigatesAgain;
+            }
+        }
         // A round past the navigation's last allocation failed nothing.
-        if (!induced) return;
-    }
-    return error.SweepDidNotEnd;
+        if (!induced) break;
+    } else return error.SweepDidNotEnd;
+    // The sweep reached the state the recovery is for.
+    if (without_document == 0) return error.NoRoundLeftTheFrameWithoutADocument;
 }
 
 test "a frame navigation that runs out of memory never leaves its navigable showing a document a collection frees" {
