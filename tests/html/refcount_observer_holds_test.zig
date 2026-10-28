@@ -16,8 +16,9 @@
 //!
 //! The mutations are made from native code through the interfaces, so no
 //! script ends and no checkpoint delivers the record before the count is
-//! read. Counts through dom.refcount.count: born (1) + the wrapper's (1, a
-//! global keeps the node) + the holders'.
+//! read. Counts through dom.refcount.count: the wrapper's (1, a global keeps
+//! the node; it adopted the node's born reference, lane refcount7) + the
+//! holders'.
 const std = @import("std");
 const testing = std.testing;
 const runtime = @import("runtime");
@@ -46,19 +47,19 @@ fn pendingTargetUntilDelivery() !void {
     try page.run(setup);
     const host = try page.node("host");
     const child = try page.node("child");
-    try expectCount(2, host, "the target, before any record");
+    try expectCount(1, host, "the target, before any record");
     _ = try interfaces.Node.call_appendChild(instanceOf(host), instanceOf(child));
-    try expectCount(4, host, "the target: its record's reference and the observer's pending target");
+    try expectCount(3, host, "the target: its record's reference and the observer's pending target");
     _ = try interfaces.Node.call_removeChild(instanceOf(host), instanceOf(child));
-    try expectCount(5, host, "two records, ONE pending target (a set)");
+    try expectCount(4, host, "two records, ONE pending target (a set)");
     // A script's end is a microtask checkpoint: the callback runs, and the
     // observer lets its pending target go once it has returned.
     try page.run("0;");
     try page.run("if (delivered.length !== 2) throw new Error('delivered ' + delivered.length); 0;");
-    try expectCount(4, host, "delivered and kept by script: the two records' references only");
+    try expectCount(3, host, "delivered and kept by script: the two records' references only");
     try page.run("delivered = null; 0;");
     try page.collect();
-    try expectCount(2, host, "the target, after its records went");
+    try expectCount(1, host, "the target, after its records went");
 }
 
 test "a queued record's target is a pending target: counted once, released after delivery" {
@@ -72,12 +73,12 @@ fn pendingTargetTakenRecords() !void {
     const host = try page.node("host");
     const child = try page.node("child");
     _ = try interfaces.Node.call_appendChild(instanceOf(host), instanceOf(child));
-    try expectCount(4, host, "queued");
+    try expectCount(3, host, "queued");
     try page.run("globalThis.taken = mo.takeRecords(); 0;");
-    try expectCount(3, host, "taken: the record's reference only");
+    try expectCount(2, host, "taken: the record's reference only");
     try page.run("if (taken.length !== 1 || delivered.length !== 0) throw new Error('taken ' + taken.length); taken = null; 0;");
     try page.collect();
-    try expectCount(2, host, "after the taken record went");
+    try expectCount(1, host, "after the taken record went");
 }
 
 test "takeRecords() lets the pending targets go" {
@@ -91,11 +92,11 @@ fn pendingTargetDisconnect() !void {
     const host = try page.node("host");
     const child = try page.node("child");
     _ = try interfaces.Node.call_appendChild(instanceOf(host), instanceOf(child));
-    try expectCount(4, host, "queued");
+    try expectCount(3, host, "queued");
     // disconnect() empties the record queue - the record goes unwrapped -
     // and the pending targets with it, at once.
     try page.run("mo.disconnect(); 0;");
-    try expectCount(2, host, "disconnected");
+    try expectCount(1, host, "disconnected");
     try page.run("if (delivered.length !== 0) throw new Error('delivered ' + delivered.length); 0;");
 }
 
@@ -110,7 +111,7 @@ fn pendingTargetObserverTeardown() !void {
     const host = try page.node("host");
     const child = try page.node("child");
     _ = try interfaces.Node.call_appendChild(instanceOf(host), instanceOf(child));
-    try expectCount(4, host, "queued");
+    try expectCount(3, host, "queued");
     // The page's end tears the observer down with a record still queued:
     // its pending target is released or forgotten, never released twice
     // (an underflow is an error log, which fails the test).
@@ -133,16 +134,16 @@ fn listsHoldNothing() !void {
     );
     const host = try page.node("host");
     const child = try page.node("child");
-    try expectCount(2, host, "observed: the node list holds no reference");
-    try expectCount(2, child, "observed: the node list holds no reference");
+    try expectCount(1, host, "observed: the node list holds no reference");
+    try expectCount(1, child, "observed: the node list holds no reference");
     // The removal gives the child a transient registered observer: the
     // observer's transient node set holds no reference either (no childList,
     // so no record names it).
     _ = try interfaces.Node.call_removeChild(instanceOf(host), instanceOf(child));
-    try expectCount(2, child, "a transient registered observer's node");
+    try expectCount(1, child, "a transient registered observer's node");
     try page.run("mo.disconnect(); 0;");
-    try expectCount(2, host, "disconnected");
-    try expectCount(2, child, "disconnected");
+    try expectCount(1, host, "disconnected");
+    try expectCount(1, child, "disconnected");
 }
 
 test "a MutationObserver's node list and transient node set hold no reference" {

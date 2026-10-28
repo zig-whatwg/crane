@@ -145,14 +145,18 @@ test "a wrap whose cache insert runs out of memory fails, and takes nothing" {
     // node's alias, and the wrapper's counted reference was never taken.
     try testing.expect(!protocol.hasWrapper(div));
     try testing.expect(node.bound_v8_wrapper == null);
+    // Its creator still offers its born reference: no wrapper adopted it.
+    try testing.expect(node.rc_flags.creator);
     try testing.expectEqual(@as(u32, 1), dom.refcount.count(node));
 
-    // With memory, the same instance wraps.
+    // With memory, the same instance wraps, and the wrapper adopts the
+    // born reference (refcount7): one reference, the wrapper's.
     var again: Attempt = .{ .instance = div, .realm = page.realm };
     try protocol.runInRealm(page.realm, Attempt.steps, &again);
     try testing.expect(again.wrapped);
     try testing.expect(protocol.hasWrapper(div));
-    try testing.expectEqual(@as(u32, 2), dom.refcount.count(node));
+    try testing.expect(!node.rc_flags.creator);
+    try testing.expectEqual(@as(u32, 1), dom.refcount.count(node));
 }
 
 test "the protocol's wrap (retainValue of an instance) reports the failed insert as OutOfMemory, not an undefined value" {

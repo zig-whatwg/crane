@@ -49,6 +49,7 @@ const instance_bridge = @import("instance_bridge.zig");
 const process_start = @import("process_start.zig");
 const shadow_hosts = @import("shadow_hosts.zig");
 const template_contents = @import("template_contents.zig");
+const refcount_audit = @import("refcount_audit.zig");
 
 const log = std.log.scoped(.refcount);
 
@@ -283,7 +284,7 @@ fn hostOf(node: *NodeBase) ?*NodeBase {
     const raw = node.owner_instance orelse return null;
     const instance: *runtime.Instance = @ptrCast(@alignCast(raw));
     const host = template_contents.host(instance) orelse return null;
-    return instance_bridge.getNodeBase(host);
+    return instance_bridge.getNodeBaseUnaudited(host);
 }
 
 /// The root of `node`'s host-including tree.
@@ -306,7 +307,12 @@ fn walkAdd(ledger: ?*Ledger, start: *NodeBase, delta: i64) *NodeBase {
             return current;
         }
         current.subtree_holds = @intCast(next_total);
-        current = up(ledger, current) orelse return current;
+        current = up(ledger, current) orelse {
+            // The audit (step 6): a tree the counts called garbage, held
+            // again before its teardown slice, is a resurrection.
+            if (delta > 0 and refcount_audit.on() and current.rc_flags.audit_pending) refcount_audit.noteResurrected(current);
+            return current;
+        };
     }
 }
 
@@ -529,9 +535,18 @@ pub fn install(owned: Hooks) void {
 
 /// runtime.lifetime's acquire hook: `instance` (a node: its VTable is
 /// counted) got a wrapper, which takes one reference on its NodeBase - the
-/// target the adapter keeps beside the wrapper.
+/// target the adapter keeps beside the wrapper. A node's first wrapper adopts
+/// the reference the node was born with when its creator still offers it
+/// (refcount7): WebKit's binding moves the created `Ref` into the new wrapper
+/// (bindings/js/JSDOMWrapperCache.h `createWrapper`, reached from
+/// `toJSNewlyCreated`), so a node script made counts its wrapper's alone.
 pub fn wrapperAcquire(instance: *runtime.Instance) ?*anyopaque {
     const node = instance_bridge.getNodeBase(instance) orelse return null;
+    if (node.rc_flags.creator) {
+        // Adopted: the count already holds it.
+        node.rc_flags.creator = false;
+        return node;
+    }
     wrapperRef(node);
     return node;
 }
@@ -581,6 +596,7 @@ pub fn holderDeref(node: *NodeBase) void {
 /// `ref` without a ledger, for the references production takes before step 7
 /// wires one to the agent: a violation is an error log naming `who`.
 fn unledgeredRef(node: *NodeBase, comptime who: []const u8) void {
+    refcount_audit.checkRead(node, .reference, @returnAddress());
     if (node.rc_flags.garbage or node.rc_flags.destroying) {
         violate(null, who ++ " took a reference on node {*}, {s}", .{ node, if (node.rc_flags.garbage) "the root of a garbage tree" else "during its teardown" });
         return;
@@ -602,7 +618,170 @@ fn unledgeredDeref(node: *NodeBase, comptime who: []const u8) void {
     }
     node.rc -= NodeBase.rc_one;
     if (isHeld(node)) return;
-    adjustForeign(walkAdd(null, node, -1), -1);
+    const tree_root = walkAdd(null, node, -1);
+    adjustForeign(tree_root, -1);
+    auditLowered(tree_root);
+}
+
+// ---- The zombie audit's garbage moments (step 6: refcount_audit) ------------
+
+/// `tree_root`'s total was lowered: the audit queues it when that left it
+/// garbage.
+fn auditLowered(tree_root: *NodeBase) void {
+    if (!refcount_audit.on()) return;
+    refcount_audit.noteLowered(tree_root, if (tree_root.node_type == NodeBase.DOCUMENT_NODE) documentForeignHolds(tree_root) else null);
+}
+
+/// The foreign holds of `node`'s node document fell: the document may be
+/// garbage now (decision D6: its tree waits for them).
+fn auditDocumentOf(node: *NodeBase) void {
+    if (!refcount_audit.on()) return;
+    const raw = node.owner_document orelse return;
+    auditLowered(@ptrCast(@alignCast(raw)));
+}
+
+/// `node`'s node document's NodeBase while that document is alive (the
+/// Node impl's generation check answers counts for it), else null; a
+/// Document is its own. Diagnostics only (refcount_audit's report URLs).
+pub fn liveNodeDocument(node: *NodeBase) ?*NodeBase {
+    if (node.node_type == NodeBase.DOCUMENT_NODE) return node;
+    _ = countsOfNodeDocument(node) orelse return null;
+    const raw = node.owner_document orelse return null;
+    return @ptrCast(@alignCast(raw));
+}
+
+/// The foreign holds of `document` (a Document's NodeBase), or null when it
+/// has no counts.
+pub fn documentForeignHolds(document: *NodeBase) ?u32 {
+    const counts = countsOfDocumentNode(document) orelse return null;
+    return counts.foreign_holds;
+}
+
+// ============================================================================
+// The creator's reference (refcount7; design 1.2, "the creator of a node
+// until it hands the node on"). A node is born with one reference, its
+// creator's (`rc_one`), flagged `RcFlags.creator` while the creator still has
+// it to offer. WebKit's create functions return `Ref<T>` (Document::
+// createTextNode returns `Text::create(...)`): the binding moves it into the
+// new wrapper (bindings/js/JSDOMWrapperCache.h `createWrapper`, reached from
+// `toJSNewlyCreated`: "domObject is moved into the wrapper, which keeps it
+// alive"), and a native creator's `Ref` ends at its scope once the parent bit
+// keeps the node. Blink has no such reference: `MakeGarbageCollected` objects
+// live while traced (core/dom/text.cc `Text::Create`). Here the creator's
+// reference is handed on in one of four ways:
+//   * the node's first wrapper adopts it (`wrapperAcquire`): every node a
+//     script-facing creator returns - Document's create methods, the
+//     constructors, cloneNode/importNode, createContextualFragment, a custom
+//     element's construction - is wrapped as it is returned;
+//   * the node's first insertion ends it (`linkChild`, `hostAttached`): every
+//     node a native creator builds into a tree - the fragment parser,
+//     DOMParser, cloning's descendants, createHTMLDocument's elements, a
+//     shadow root, a template's contents;
+//   * a creator that hands its reference on itself claims it at creation
+//     (`claimCreatorReference`): the HTML parser (decision D-A);
+//   * a creator that drops its node unwrapped and uninserted frees it
+//     (`dom.node_creation.destroyUninserted`: the old net, until step 7 makes
+//     that a release, `releaseCreatorReference`).
+// A Document's creator keeps it (a navigable's, step 5i) unless it hands the
+// document to script, which offers it (`offerCreatorReference`).
+// ============================================================================
+
+/// A holder that would take a reference on `node` takes its creator's over
+/// instead, when the creator still offers it (the HTML parser's structures,
+/// decision D-A): true when it did - the count is unchanged, the claimer
+/// holds it now; false when something took it first (a custom element
+/// constructor's wrapper can), and the claimer takes its own.
+pub fn claimCreatorReference(node: *NodeBase) bool {
+    if (!node.rc_flags.creator) return false;
+    node.rc_flags.creator = false;
+    return true;
+}
+
+/// A Document's creator hands the document to script (DOMParser,
+/// DOMImplementation, `new Document()`, parseHTMLUnsafe, a document's
+/// clone, XHR's response document): its born reference, which a document's
+/// creator otherwise keeps, goes to the document's first wrapper. Before
+/// anything wraps it.
+pub fn offerCreatorReference(node: *NodeBase) void {
+    node.rc_flags.creator = true;
+}
+
+/// `offerCreatorReference` for a document given as its instance.
+pub fn offerDocument(document: *runtime.Instance) void {
+    const node = instance_bridge.getNodeBase(document) orelse return;
+    offerCreatorReference(node);
+}
+
+/// The creator drops `node` neither wrapped nor inserted: its born reference
+/// ends, if it still has it. Nothing is freed here (shadow mode: the
+/// creator's `dom.node_creation.destroyUninserted` frees it; step 7 makes
+/// this the free's cause).
+pub fn releaseCreatorReference(node: *NodeBase) void {
+    if (!node.rc_flags.creator) return;
+    node.rc_flags.creator = false;
+    unledgeredDeref(node, "a creator");
+}
+
+/// `node`, a root about to be linked under a parent or a host, has its
+/// creator's reference still: the tree takes it over, so it ends now (the
+/// parent bit, or the hosted link, keeps the node). O(1): only the node's
+/// own total moves (and, a detached root of its document, its document's
+/// foreign holds) - the link then carries what is left. Never garbage: the
+/// node is being linked.
+fn endCreatorReferenceForLink(node: *NodeBase) void {
+    if (!node.rc_flags.creator) return;
+    node.rc_flags.creator = false;
+    if (node.rc < NodeBase.rc_one) {
+        violate(null, "node {*} offered a creator's reference it does not hold", .{node});
+        return;
+    }
+    node.rc -= NodeBase.rc_one;
+    if (isHeld(node)) return;
+    if (node.subtree_holds == 0) {
+        violate(null, "subtree_holds of node {*} would become -1", .{node});
+        return;
+    }
+    node.subtree_holds -= 1;
+    adjustForeign(node, -1);
+}
+
+/// The nodes of `tree_root`'s host-including tree whose born reference is
+/// still their creator's: all of them, and those it alone holds (count 1).
+/// CRANE_REFCOUNT_CHECK's census at a document's free (Document.deinitOwn).
+pub const CreatorCensus = struct { holding: u64 = 0, alone: u64 = 0 };
+
+pub fn creatorCensus(tree_root: *NodeBase) CreatorCensus {
+    var census: CreatorCensus = .{};
+    addCreatorCensus(tree_root, &census);
+    return census;
+}
+
+/// Iterative over the tree (a deep tree must not overflow the stack);
+/// recursive only into hosted roots, which nest as shallowly as shadow trees
+/// and templates do.
+fn addCreatorCensus(tree_root: *NodeBase, census: *CreatorCensus) void {
+    var node: *NodeBase = tree_root;
+    while (true) {
+        if (node.rc_flags.creator) {
+            census.holding += 1;
+            if (count(node) == 1) census.alone += 1;
+        }
+        var hosted: [2]?*NodeBase = undefined;
+        for (hostedRootsOf(node, &hosted)) |maybe| if (maybe) |hosted_root| addCreatorCensus(hosted_root, census);
+        node = nextInTree(tree_root, node) orelse return;
+    }
+}
+
+/// The node after `node` in tree order within `tree_root`'s tree (not into
+/// hosted roots), or null at the end.
+pub fn nextInTree(tree_root: *NodeBase, node: *NodeBase) ?*NodeBase {
+    if (node.first_child) |child| return child;
+    var current = node;
+    while (current != tree_root) {
+        if (current.next_sibling) |sibling| return sibling;
+        current = current.parent_node orelse return null;
+    }
+    return null;
 }
 
 /// `list`, the childNodes list of `node` (live, and holding `node`), is
@@ -654,6 +833,7 @@ fn adjustForeign(tree_root: *NodeBase, delta: i64) void {
     if (delta == 0 or !tree_root.rc_flags.foreign) return;
     const document = countsOfNodeDocument(tree_root) orelse return;
     addTo(&document.foreign_holds, delta, "foreign_holds");
+    if (delta < 0) auditDocumentOf(tree_root);
 }
 
 /// Whether `node` may be a detached root that counts in its document: not a
@@ -676,6 +856,11 @@ fn countsAsForeign(node: *const NodeBase) bool {
 pub fn linkChild(node: *NodeBase, parent: *NodeBase) void {
     if (node.parent_node != null) violate(null, "linkChild: node {*} already has a parent", .{node});
     if (node.rc_flags.hosted) violate(null, "linkChild: node {*} is a shadow root or template contents", .{node});
+    // The tree takes the node over: its creator's reference ends (refcount7).
+    endCreatorReferenceForLink(node);
+    refcount_audit.checkRead(node, .reinsertion, @returnAddress());
+    refcount_audit.checkRead(parent, .reinsertion, @returnAddress());
+    if (node.rc_flags.audit_pending) refcount_audit.noteResurrected(node);
     const holds = node.subtree_holds;
     const was_foreign = node.rc_flags.foreign;
     node.rc_flags.foreign = false;
@@ -690,6 +875,7 @@ pub fn linkChild(node: *NodeBase, parent: *NodeBase) void {
     if (was_foreign) {
         const own = if (sameNodeDocument(node, parent)) document else countsOfNodeDocument(node);
         if (own) |counts| addTo(&counts.foreign_holds, -delta, "foreign_holds");
+        auditDocumentOf(node);
     }
     adjustForeign(tree_root, delta);
 }
@@ -708,6 +894,11 @@ pub fn unlinkChild(node: *NodeBase) void {
     node.rc_flags.foreign = foreign;
     const delta: i64 = holds;
     const tree_root = if (holds != 0) walkAdd(null, parent, -delta) else root(null, parent);
+    // The audit: the removed subtree, and the tree it left, may be garbage.
+    defer if (refcount_audit.on()) {
+        auditLowered(node);
+        if (holds != 0) auditLowered(tree_root);
+    };
     const document = countsAt(parent, tree_root);
     if (document) |counts| bumpTreeVersion(counts);
     if (holds == 0) return;
@@ -726,6 +917,8 @@ pub fn moveChild(node: *NodeBase, new_parent: *NodeBase) void {
         violate(null, "moveChild: node {*} has no parent", .{node});
         return;
     };
+    refcount_audit.checkRead(node, .reinsertion, @returnAddress());
+    refcount_audit.checkRead(new_parent, .reinsertion, @returnAddress());
     node.setParent(new_parent);
     const holds = node.subtree_holds;
     const delta: i64 = holds;
@@ -766,13 +959,21 @@ pub fn unlinkForTeardown(node: *NodeBase) void {
 /// template (`root` is parentless): its holds join the host's chain.
 pub fn hostAttached(hosted_root: *NodeBase, host: *NodeBase) void {
     if (hosted_root.parent_node != null) violate(null, "hostAttached: node {*} has a parent", .{hosted_root});
+    // The host takes it over: its creator's reference ends (refcount7).
+    endCreatorReferenceForLink(hosted_root);
+    refcount_audit.checkRead(hosted_root, .reinsertion, @returnAddress());
+    refcount_audit.checkRead(host, .reinsertion, @returnAddress());
+    if (hosted_root.rc_flags.audit_pending) refcount_audit.noteResurrected(hosted_root);
     const holds = hosted_root.subtree_holds;
     const was_foreign = hosted_root.rc_flags.foreign;
     hosted_root.rc_flags.foreign = false;
     hosted_root.rc_flags.hosted = true;
     if (holds == 0) return;
     const delta: i64 = holds;
-    if (was_foreign) if (countsOfNodeDocument(hosted_root)) |counts| addTo(&counts.foreign_holds, -delta, "foreign_holds");
+    if (was_foreign) if (countsOfNodeDocument(hosted_root)) |counts| {
+        addTo(&counts.foreign_holds, -delta, "foreign_holds");
+        auditDocumentOf(hosted_root);
+    };
     adjustForeign(walkAdd(null, host, delta), delta);
 }
 
@@ -786,6 +987,8 @@ pub fn hostGone(hosted_root: *NodeBase) void {
     hosted_root.rc_flags.hosted = false;
     const foreign = countsAsForeign(hosted_root);
     hosted_root.rc_flags.foreign = foreign;
+    // The audit: a hosted root whose host is gone is a root of its own now.
+    defer auditLowered(hosted_root);
     if (!foreign or hosted_root.subtree_holds == 0) return;
     if (countsOfNodeDocument(hosted_root)) |counts| addTo(&counts.foreign_holds, hosted_root.subtree_holds, "foreign_holds");
 }
@@ -828,6 +1031,15 @@ pub fn nodeDocumentChanged(node: *NodeBase, old: ?*DocumentCounts, new: ?*Docume
 /// garbage (crane/xp2-result-gc.html). Nothing a version-keyed cache
 /// remembers is freed under it: see `live_collections.IndexCache.fresh`.
 pub fn nodeFreed(node: *NodeBase, counts: ?*DocumentCounts) void {
+    // The audit: a realm's teardown frees its nodes; its re-checks go first.
+    if (refcount_audit.on() and runtime.cleanup_coordinator.isContextTearingDown()) refcount_audit.realmTearingDown(node);
+    // A node freed while its creator still had its born reference to offer:
+    // its creator neither handed it to a wrapper or a tree nor dropped it
+    // through `dom.node_creation.destroyUninserted` - a silent drop, which
+    // step 7's counts would never free (refcount7; for step 7's agent-end
+    // assertion). A Document's creator keeps its reference by design.
+    if (diagnosticsOn() and node.rc_flags.creator and node.node_type != NodeBase.DOCUMENT_NODE)
+        log.warn("a node was freed holding its creator's reference (node type {d}, {s})", .{ node.node_type, if (node.parent_node == null) "a root" else "in a tree" });
     if (node.node_type == NodeBase.DOCUMENT_NODE) return;
     const document = counts orelse return;
     addTo(&document.referencing_nodes, -1, "referencing_nodes");
@@ -897,16 +1109,19 @@ pub fn verifyTree(tree_root: *NodeBase) CheckError!void {
     for (hostedRootsOf(tree_root, &hosted)) |maybe| if (maybe) |hosted_root| try verifyTree(hosted_root);
 }
 
-/// The shadow root and the template contents `node` hosts.
+/// The shadow root and the template contents `node` hosts (read without the
+/// audit's report: refcount's own walk).
+pub const hostedRoots = hostedRootsOf;
+
 fn hostedRootsOf(node: *NodeBase, out: *[2]?*NodeBase) []?*NodeBase {
     out.* = .{ null, null };
     const raw = node.owner_instance orelse return out[0..0];
     const instance: *runtime.Instance = @ptrCast(@alignCast(raw));
     if (node.is_shadow_host) {
-        if (shadow_hosts.rootForHost(instance)) |shadow| out[0] = instance_bridge.getNodeBase(shadow);
+        if (shadow_hosts.rootForHost(instance)) |shadow| out[0] = instance_bridge.getNodeBaseUnaudited(shadow);
     }
     if (instance.stateAs(interfaces.HTMLTemplateElement.State) != null) {
-        if (template_contents.contentOf(instance)) |content| out[1] = instance_bridge.getNodeBase(content);
+        if (template_contents.contentOf(instance)) |content| out[1] = instance_bridge.getNodeBaseUnaudited(content);
     }
     return out[0..2];
 }

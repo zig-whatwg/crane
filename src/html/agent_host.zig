@@ -14,6 +14,11 @@ pub const AgentHost = struct {
     /// deferred_teardown) - freed a slice at a time by the agent's event
     /// loop, and fully at the ends of their realms and of the agent.
     deferred_teardown: dom.tree_teardown.DeferredTeardown,
+    /// The zombie audit's books (refcount step 6, dom.refcount_audit): what
+    /// the agent's trees the counts called garbage were read after their
+    /// teardown slice. Empty unless CRANE_REFCOUNT_AUDIT is on; its end
+    /// prints the totals.
+    refcount_audit: dom.refcount_audit.Audit,
     /// The rejected-promise bookkeeping of every global of the agent's
     /// realms (html.rejected_promises; each entry its `*Tracked`, OWNED by
     /// it): the agent's handles, read and released only on the agent's
@@ -57,6 +62,7 @@ pub const AgentHost = struct {
             .embedded_contents = @import("eventsource").Registry(*anyopaque, *anyopaque).init(allocator),
             .hyperlink_pings = @import("eventsource").Registry(*anyopaque, *anyopaque).init(allocator),
             .deferred_teardown = dom.tree_teardown.DeferredTeardown.init(allocator),
+            .refcount_audit = dom.refcount_audit.Audit.init(allocator),
             .form_past_names = dom.form_past_names.Registry.init(allocator),
         };
     }
@@ -67,6 +73,7 @@ pub const AgentHost = struct {
         self.classic_scripts.deinit();
         self.form_past_names.deinit();
         self.deferred_teardown.deinit();
+        self.refcount_audit.deinit();
         self.indexeddb_cleanup.deinit();
         self.event_sources.deinit();
         self.media_elements.deinit();

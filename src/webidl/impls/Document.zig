@@ -1297,11 +1297,19 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
         // Shadow mode (refcount step 3): what the counts would have said.
         // Nodes outside this document's own tree that still name it are
         // the ones step 7 makes its storage wait for.
-        if (@import("dom").refcount.diagnosticsOn()) refcount_log.warn("document freed: {d} referencing nodes, {d} holds in its tree, {d} foreign holds", .{
-            internal.refcounts.referencing_nodes,
-            if (@import("dom").instance_bridge.getNodeBase(instance)) |document_base| document_base.subtree_holds -| 1 else 0,
-            internal.refcounts.foreign_holds,
-        });
+        if (@import("dom").refcount.diagnosticsOn()) {
+            const document_base = @import("dom").instance_bridge.getNodeBase(instance);
+            // refcount7: of the nodes in its tree, those whose born reference
+            // is still their creator's, and those it alone holds.
+            const census = if (document_base) |base| @import("dom").refcount.creatorCensus(base) else @import("dom").refcount.CreatorCensus{};
+            refcount_log.warn("document freed: {d} referencing nodes, {d} holds in its tree, {d} foreign holds, {d} creator references in its tree ({d} alone)", .{
+                internal.refcounts.referencing_nodes,
+                if (document_base) |base| base.subtree_holds -| 1 else 0,
+                internal.refcounts.foreign_holds,
+                census.holding,
+                census.alone,
+            });
+        }
         engine.forgetTracedChild(instance, .{ .name = "template owner document" });
         // The template contents owner document goes with this document: now
         // when nothing else can reach it - no engine realm, no wrapper (the
@@ -1354,6 +1362,8 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     internal.url = try ctx.allocator.dupe(u8, "about:blank");
     internal.encoding = try runtime.DOMString.initDupe(ctx.allocator, "UTF-8");
 
+    // The binding wraps it: its wrapper takes its born reference (refcount7).
+    @import("dom").refcount.offerDocument(instance);
     return instance;
 }
 
@@ -2800,6 +2810,8 @@ pub fn call_static_parseHTML(instance: *runtime.Instance, html: runtime.DOMStrin
     errdefer @import("dom").node_creation.destroyUninserted(document);
     try @import("dom").document_internals.setContentType(document, "text/html");
     try @import("html").sanitizer.filterDocument(document, &converted, true);
+    // To script: its first wrapper takes its born reference (refcount7).
+    @import("dom").refcount.offerDocument(document);
     return document;
 }
 
@@ -2832,6 +2844,8 @@ pub fn call_static_parseHTMLUnsafe(instance: *runtime.Instance, html: typedefs.T
     // only when a sanitizer was given (row 41 review M2/S2: an absent one
     // filters nothing, so skip the tree walk).
     if (options.getOrDefault(.{}).sanitizer != null) try @import("html").sanitizer.filterDocument(document, &converted, false);
+    // To script: its first wrapper takes its born reference (refcount7).
+    @import("dom").refcount.offerDocument(document);
     return document;
 }
 

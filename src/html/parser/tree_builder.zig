@@ -357,13 +357,12 @@ pub const TreeNode = struct {
     structure_refs: u8 = 0,
     /// The DOM adapter's state for this node's counted references, kept
     /// here as the mapping is (html_core does not import the DOM): the tree
-    /// node of the DOM node (a NodeBase, typed opaquely) once it is made;
-    /// whether the adapter holds the structures' reference on it; and
-    /// whether it still holds the reference the DOM node was born with
-    /// (its creator's: the parser's until it hands it on).
+    /// node of the DOM node (a NodeBase, typed opaquely) once it is made,
+    /// and whether the adapter holds the structures' reference on it. The
+    /// reference the DOM node was born with is the node's own state
+    /// (NodeBase.RcFlags.creator).
     dom_base: ?*anyopaque = null,
     dom_held: bool = false,
-    dom_creator: bool = false,
     /// A declarative shadow root (HTML "in head", template start tag, step
     /// 7): on its template, which owns it, and - in the tree-then-convert
     /// path - on its host. Null for every other node.

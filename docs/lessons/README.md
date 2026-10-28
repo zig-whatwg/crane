@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [A move is a removal and an insertion - under counts, hold what you move](architecture-a-move-is-a-removal-and-an-insertion-hold-what-you-move.md) - A move is a removal and an insertion. Under reference counting, anything that moves a node it holds no reference to must hold the node across the two steps (WebKit's NodeVector of Refs), or the removal makes the tree garbage in between.
 - [Flat per-element storage makes every property cost every element](architecture-flat-per-element-storage-makes-every-property-cost-every-element.md) - Per-element storage should cost what the element writes, not what the engine supports: share untouched groups by pointer and copy on first write.
 - [Architecture: A browser's strong hold comes with the step that ends it - copy both or neither](architecture-a-browsers-strong-hold-comes-with-the-step-that-ends-it.md) - A strong hold is only as safe as the step that ends it: when you copy a browser's hold, copy its release, or keep the hold weak.
 - [Architecture: A new Window per load moves what belongs to the navigable, and swaps the realm only when nothing of it is on the stack](architecture-a-new-window-per-load-moves-what-belongs-to-the-navigable.md) - when a page-lifetime object starts dying per navigation, give each thing it held to its spec owner; swap an engine realm only where nothing of it is on the stack

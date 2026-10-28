@@ -144,7 +144,10 @@ const Registry = runtime.InstanceRegistry(.node, InternalState);
 
 /// Get the internal state from an instance
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return Registry.get(instance);
+    const internal = Registry.get(instance) orelse return null;
+    // Refcount step 6: a read of a node step 7 would have freed is reported.
+    if (dom_module.refcount_audit.on()) if (internal.node_base) |base| dom_module.refcount_audit.checkRead(base, .node_state, @returnAddress());
+    return internal;
 }
 
 /// The hooks this type owns (src/dom), installed once, at process start,
@@ -161,7 +164,7 @@ pub fn installHooks() void {
     // And a parser's DOM adapter frees a node it made and never inserted
     // through `dom.node_creation`, as the tree teardown frees a child.
     dom_module.node_creation.installNode(.{
-        .destroy_uninserted = &deinitNodeByType,
+        .destroy_uninserted = &destroyUninsertedHook,
         .clone = &cloneANode,
     });
     // A realm's end frees the orphans its removals recorded (dom.mutation's
@@ -221,6 +224,10 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
         .owner_document = null,
         .registered_observers = infra.List(dom_module.node_base.RegisteredObserverType).init(allocator),
         .is_connected = false,
+        // Born with one reference, its creator's (rc_one), which a Document's
+        // creator keeps and every other node's offers to whoever takes it on
+        // first (NodeBase.RcFlags.creator; refcount7).
+        .rc_flags = .{ .creator = node_type != NodeBase.DOCUMENT_NODE },
     };
     internal.node_base = node_base;
 
@@ -249,7 +256,10 @@ fn nodeTypeOf(comptime StateType: type) u16 {
 
 /// Get Node's internal state from the registry
 pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
-    return Registry.get(instance);
+    const internal = Registry.get(instance) orelse return null;
+    // Refcount step 6: a read of a node step 7 would have freed is reported.
+    if (dom_module.refcount_audit.on()) if (internal.node_base) |base| dom_module.refcount_audit.checkRead(base, .node_state, @returnAddress());
+    return internal;
 }
 
 /// Deinitialize instance
@@ -399,6 +409,15 @@ pub fn deinit(instance: *runtime.Instance) void {
 
     // EventTarget cleanup happens via inheritance chain
     interfaces.EventTarget.deinitChain(instance);
+}
+
+/// `dom.node_creation.destroyUninserted` (and `destroyRoot`): the creator
+/// drops `instance` neither wrapped nor inserted, so its born reference ends
+/// first (refcount7's hand-on point H4; shadow mode frees it now, as before -
+/// step 7 makes the release the free's cause), then the node is torn down.
+fn destroyUninsertedHook(instance: *runtime.Instance) void {
+    if (instance_bridge.getNodeBase(instance)) |base| dom_module.refcount.releaseCreatorReference(base);
+    deinitNodeByType(instance);
 }
 
 /// Deinitialize a node based on its node type.
@@ -1520,6 +1539,10 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
             if (try interfaces.Document.get_customElementRegistry(node)) |registry| {
                 if (dom_module.custom_elements.isScoped(registry)) try dom_module.custom_elements.setDocumentRegistry(copy, registry);
             }
+            // A clone goes to script (cloneNode) or into nothing: unlike a
+            // navigable's document, its born reference is offered to its
+            // first wrapper (refcount7).
+            dom_module.refcount.offerDocument(copy);
             return copy;
         },
         NodeType.DOCUMENT_TYPE_NODE => {

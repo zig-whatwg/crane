@@ -255,6 +255,8 @@ pub const node_base = @import("node_base.zig");
 /// agent's ledger (lane rc12, tmp/plans/refcount-design.md). Unused by
 /// production code until step 3.
 pub const refcount = @import("refcount.zig");
+/// Refcount step 6, the zombie audit (CRANE_REFCOUNT_AUDIT; lane refcount7).
+pub const refcount_audit = @import("refcount_audit.zig");
 pub const NodeBase = node_base.NodeBase;
 
 // Instance bridge for runtime.Instance <-> NodeBase conversion
