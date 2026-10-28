@@ -18,6 +18,7 @@
 //! - Scripting flag, frameset-ok flag
 
 const std = @import("std");
+const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const infra = @import("infra");
 // The pseudo-attributes of a processing instruction ("find markers").
@@ -341,6 +342,28 @@ pub const TreeNode = struct {
     /// adapter made, or the parser removed, unwrapped and not taken by an
     /// insertion, which the adapter frees at its end - or `not_an_orphan`.
     dom_orphan_index: u32 = not_an_orphan,
+    /// How many of its tree builder's structures name this node: the stack of
+    /// open elements, the list of active formatting elements (its element
+    /// entries), the head and form element pointers, and the script being
+    /// processed at its end tag. WebKit's structures each hold an
+    /// `HTMLStackItem`, whose `RefPtr<ContainerNode> m_node` counts the DOM
+    /// node (Source/WebCore/html/parser/HTMLStackItem.h), and the form
+    /// pointer is a `RefPtr<HTMLFormElement>` (HTMLConstructionSite.h);
+    /// Blink traces the same structures (HTMLConstructionSite::Trace). The
+    /// builder tells its DOM adapter when this goes 0 -> 1 and 1 -> 0
+    /// (`dom_adapter_on_structure_hold` / `_release`): one counted reference
+    /// on the DOM node, however many structures name it (refcount design
+    /// step 5a). Only the builder's helpers change it.
+    structure_refs: u8 = 0,
+    /// The DOM adapter's state for this node's counted references, kept
+    /// here as the mapping is (html_core does not import the DOM): the tree
+    /// node of the DOM node (a NodeBase, typed opaquely) once it is made;
+    /// whether the adapter holds the structures' reference on it; and
+    /// whether it still holds the reference the DOM node was born with
+    /// (its creator's: the parser's until it hands it on).
+    dom_base: ?*anyopaque = null,
+    dom_held: bool = false,
+    dom_creator: bool = false,
     /// A declarative shadow root (HTML "in head", template start tag, step
     /// 7): on its template, which owns it, and - in the tree-then-convert
     /// path - on its host. Null for every other node.
@@ -779,6 +802,19 @@ pub const TreeBuilder = struct {
     dom_adapter_on_inserted: ?*const fn (InsertionLocation, *TreeNode, ?*anyopaque) void = null,
     dom_adapter_on_removed: ?*const fn (*TreeNode, ?*anyopaque) void = null,
     dom_adapter_on_children_moved: ?*const fn (*TreeNode, *TreeNode, ?*anyopaque) void = null,
+    /// A tree node became named by one of the builder's structures, having
+    /// been named by none (`TreeNode.structure_refs` 0 -> 1), and the last
+    /// structure naming it let go (1 -> 0). Called with
+    /// `dom_adapter_context`; a release is called after whatever the
+    /// structure change ran (a pop's finished-parsing-children steps).
+    dom_adapter_on_structure_hold: ?*const fn (*TreeNode, ?*anyopaque) void = null,
+    dom_adapter_on_structure_release: ?*const fn (*TreeNode, ?*anyopaque) void = null,
+    /// The script elements whose end tag is being processed - one per
+    /// nesting of document.write - from their pop to the end of their
+    /// execution callback: WebKit's HTMLTreeBuilder keeps
+    /// `RefPtr<Element> m_scriptToProcess` across that span. A structure, so
+    /// each one is held.
+    scripts_to_process: infra.List(*TreeNode),
     /// An attribute was added to an element the adapter already made: a
     /// second <html> or <body> start tag's attributes, which "in body" adds
     /// to the existing element. Called with `dom_adapter_context`.
@@ -872,6 +908,7 @@ pub const TreeBuilder = struct {
             .original_insertion_mode = .initial,
             .open_elements = infra.List(*TreeNode).init(allocator),
             .active_formatting_elements = infra.List(FormattingEntry).init(allocator),
+            .scripts_to_process = infra.List(*TreeNode).init(allocator),
             .template_insertion_modes = infra.List(InsertionMode).init(allocator),
             .head_element = null,
             .form_element = null,
@@ -910,6 +947,7 @@ pub const TreeBuilder = struct {
             .original_insertion_mode = .initial,
             .open_elements = infra.List(*TreeNode).init(allocator),
             .active_formatting_elements = infra.List(FormattingEntry).init(allocator),
+            .scripts_to_process = infra.List(*TreeNode).init(allocator),
             .template_insertion_modes = infra.List(InsertionMode).init(allocator),
             .head_element = null,
             .form_element = null,
@@ -967,6 +1005,17 @@ pub const TreeBuilder = struct {
         self.dom_adapter_on_node_created = on_node_created;
         self.dom_adapter_on_child_appended = on_child_appended;
         self.dom_adapter_on_text_content_changed = on_text_content_changed;
+    }
+
+    /// Set the adapter's structure-hold callbacks (see
+    /// `dom_adapter_on_structure_hold`); they share `dom_adapter_context`.
+    pub fn setDomAdapterStructureHoldCallbacks(
+        self: *TreeBuilder,
+        on_hold: ?*const fn (*TreeNode, ?*anyopaque) void,
+        on_release: ?*const fn (*TreeNode, ?*anyopaque) void,
+    ) void {
+        self.dom_adapter_on_structure_hold = on_hold;
+        self.dom_adapter_on_structure_release = on_release;
     }
 
     /// Set the adapter's mode callback (see `dom_adapter_on_mode_set`); it
@@ -1054,6 +1103,10 @@ pub const TreeBuilder = struct {
 
     /// Free all resources.
     pub fn deinit(self: *TreeBuilder) void {
+        // The structures let go first, while every tree node is alive. A
+        // live parser has done so already, before its adapter went
+        // (`releaseStructureHolds`): this releases only the counts then.
+        self.releaseStructureHolds();
         // Free all nodes (document tree)
         self.freeTree(self.document);
         while (self.detached_nodes) |node| {
@@ -1061,8 +1114,8 @@ pub const TreeBuilder = struct {
             node.deinit();
         }
         self.open_elements.deinit();
-        while (self.active_formatting_elements.len > 0) self.removeFormattingAt(self.active_formatting_elements.len - 1);
         self.active_formatting_elements.deinit();
+        self.scripts_to_process.deinit();
         self.template_insertion_modes.deinit();
         self.pending_table_char_tokens.deinit();
     }
@@ -1139,6 +1192,10 @@ pub const TreeBuilder = struct {
         if (self.input_stream_manager) |stream| {
             if (stream.eof_processed) return;
         }
+        // Under test, every parse pins the structures' counts (refcount
+        // step 5a): an error log fails the test.
+        defer if (builtin.is_test and !self.structureHoldsConsistent())
+            std.log.scoped(.tree_builder).err("a tree node's structure count disagrees with the structures that name it", .{});
         // Whatever stops the loop, the adapter hears the last run of text.
         defer self.flushPendingText();
         while (true) {
@@ -1699,7 +1756,7 @@ pub const TreeBuilder = struct {
             callback(element, self.dom_adapter_context);
         }
         self.insertAtAppropriatePlace(element);
-        try self.open_elements.append(element);
+        try self.pushOpenElement(element);
         return element;
     }
 
@@ -1879,7 +1936,7 @@ pub const TreeBuilder = struct {
                         callback(self.document, html, self.dom_adapter_context);
                     }
 
-                    try self.open_elements.append(html);
+                    try self.pushOpenElement(html);
                     self.insertion_mode = .before_head;
                 } else {
                     try self.handleBeforeHtmlAnythingElse();
@@ -1930,7 +1987,7 @@ pub const TreeBuilder = struct {
             callback(self.document, html, self.dom_adapter_context);
         }
 
-        try self.open_elements.append(html);
+        try self.pushOpenElement(html);
         self.insertion_mode = .before_head;
     }
 
@@ -1957,7 +2014,7 @@ pub const TreeBuilder = struct {
                     try self.handleInBodyMode(token);
                 } else if (std.mem.eql(u8, name, "head")) {
                     const head = try self.insertHtmlElement(tag);
-                    self.head_element = head;
+                    self.setHeadElement(head);
                     self.insertion_mode = .in_head;
                 } else {
                     try self.handleBeforeHeadAnythingElse();
@@ -2000,8 +2057,8 @@ pub const TreeBuilder = struct {
         }
 
         self.insertAtAppropriatePlace(head);
-        try self.open_elements.append(head);
-        self.head_element = head;
+        try self.pushOpenElement(head);
+        self.setHeadElement(head);
         self.insertion_mode = .in_head;
     }
 
@@ -2142,7 +2199,7 @@ pub const TreeBuilder = struct {
             self.insertion_mode = .in_template;
             try self.template_insertion_modes.append(.in_template);
             const template = try self.createElementForToken(tag, .html, self.appropriateLocation(null));
-            try self.open_elements.append(template);
+            try self.pushOpenElement(template);
             return;
         };
         // Step 7's condition first: a template with no shadowrootmode (in
@@ -2180,7 +2237,7 @@ pub const TreeBuilder = struct {
         // Step 7.3: insert a foreign element for the token, HTML namespace,
         // only adding it to the stack of open elements.
         const template = try self.createElementForToken(tag, .html, location);
-        try self.open_elements.append(template);
+        try self.pushOpenElement(template);
         // Steps 7.4-7.9 were read from the token.
         request.template = template;
         request.host = host;
@@ -2231,7 +2288,7 @@ pub const TreeBuilder = struct {
         // Steps 8-10.
         const location = self.appropriateLocation(null);
         const template = try self.createElementForToken(tag, .html, location);
-        try self.open_elements.append(template);
+        try self.pushOpenElement(template);
         // "Keep" steps 2.1-2.3, with the template's own `for` value: the
         // token's attribute storage does not outlive the element's creation.
         if (try self.prepareContentPatching(template, location, template.getAttribute("for") orelse "")) return;
@@ -2420,7 +2477,7 @@ pub const TreeBuilder = struct {
     fn insertHtmlElementAt(self: *TreeBuilder, tag: TagToken, location: InsertionLocation) !void {
         const element = try self.createElementForToken(tag, .html, location);
         self.insertNodeAt(location, element);
-        try self.open_elements.append(element);
+        try self.pushOpenElement(element);
     }
 
     fn childCount(node: *const TreeNode) usize {
@@ -2603,7 +2660,7 @@ pub const TreeBuilder = struct {
                     self.reportError(.invalid_first_character_of_tag_name);
                     // Push head back onto stack
                     if (self.head_element) |head| {
-                        try self.open_elements.append(head);
+                        try self.pushOpenElement(head);
                         try self.handleInHeadMode(token);
                         // Remove head from stack
                         var i: usize = 0;
@@ -2658,7 +2715,7 @@ pub const TreeBuilder = struct {
         }
 
         self.insertAtAppropriatePlace(body);
-        try self.open_elements.append(body);
+        try self.pushOpenElement(body);
         self.insertion_mode = .in_body;
     }
 
@@ -2794,7 +2851,7 @@ pub const TreeBuilder = struct {
             // Otherwise, steps 1–2.
             try self.closePElementIfInButtonScope();
             const form = try self.insertHtmlElement(tag);
-            if (!in_template) self.form_element = form;
+            if (!in_template) self.setFormElement(form);
         } else if (std.mem.eql(u8, name, "noembed") or
             (std.mem.eql(u8, name, "noscript") and self.scripting_enabled))
         {
@@ -3096,7 +3153,7 @@ pub const TreeBuilder = struct {
                 // "In body", form end tag, steps 1–6. Remove only the form
                 // from the stack; descendants stay open in malformed markup.
                 const form = self.form_element;
-                self.form_element = null;
+                self.setFormElement(null);
                 if (form == null or !self.hasNodeInScope(form.?)) {
                     self.reportError(.invalid_first_character_of_tag_name);
                     return;
@@ -3147,7 +3204,7 @@ pub const TreeBuilder = struct {
                     callback(p_element, self.dom_adapter_context);
                 }
                 self.insertAtAppropriatePlace(p_element);
-                try self.open_elements.append(p_element);
+                try self.pushOpenElement(p_element);
             }
             // Close the p element
             self.generateImpliedEndTags("p");
@@ -3288,6 +3345,16 @@ pub const TreeBuilder = struct {
                     // HTML Standard §13.2.6.4.20: Script end tag processing
                     // 1. Pop the current node (script element)
                     const script_element = self.open_elements.get(self.open_elements.len - 1);
+                    // The script to process is held from its pop to the end
+                    // of its execution callback (WebKit's HTMLTreeBuilder
+                    // `RefPtr<Element> m_scriptToProcess`): its script can
+                    // remove it. Out of memory, it is not held.
+                    const processing: ?*TreeNode = if (script_element) |script| blk: {
+                        self.scripts_to_process.append(script) catch break :blk null;
+                        self.holdNode(script);
+                        break :blk script;
+                    } else null;
+                    defer if (processing) |script| self.finishProcessingScript(script);
                     _ = self.popCurrentNode();
 
                     // 2. Switch back to original insertion mode
@@ -3336,6 +3403,8 @@ pub const TreeBuilder = struct {
         self.flushPendingText();
         if (self.dom_adapter_on_element_popped) |callback| callback(element, self.dom_adapter_context);
         self.finishedParsingChildren(element);
+        // The stack's hold ends after the steps the pop ran.
+        self.releaseNode(element);
     }
 
     /// Pop the current node off the stack of open elements, and tell the
@@ -3344,6 +3413,7 @@ pub const TreeBuilder = struct {
         if (self.open_elements.len == 0) return null;
         const node = self.open_elements.remove(self.open_elements.len - 1) catch return null;
         self.finishedParsingChildren(node);
+        self.releaseNode(node);
         return node;
     }
 
@@ -3354,7 +3424,160 @@ pub const TreeBuilder = struct {
     fn removeOpenElementAt(self: *TreeBuilder, index: usize) ?*TreeNode {
         const node = self.open_elements.remove(index) catch return null;
         self.finishedParsingChildren(node);
+        self.releaseNode(node);
         return node;
+    }
+
+    // =========================================================================
+    // Structure holds (refcount design step 5a): every change to a structure
+    // that names tree nodes goes through these, so `TreeNode.structure_refs`
+    // is exact and the adapter hears each 0 -> 1 and 1 -> 0.
+    // =========================================================================
+
+    /// One more structure names `node`.
+    fn holdNode(self: *TreeBuilder, node: *TreeNode) void {
+        node.structure_refs += 1;
+        if (node.structure_refs != 1) return;
+        if (self.dom_adapter_on_structure_hold) |callback| callback(node, self.dom_adapter_context);
+    }
+
+    /// A structure no longer names `node`.
+    fn releaseNode(self: *TreeBuilder, node: *TreeNode) void {
+        std.debug.assert(node.structure_refs != 0);
+        node.structure_refs -= 1;
+        if (node.structure_refs != 0) return;
+        if (self.dom_adapter_on_structure_release) |callback| callback(node, self.dom_adapter_context);
+    }
+
+    /// Push `node` onto the stack of open elements. (Also the fragment
+    /// parsing algorithm's step 9, for its root.)
+    pub fn pushOpenElement(self: *TreeBuilder, node: *TreeNode) Allocator.Error!void {
+        try self.open_elements.append(node);
+        self.holdNode(node);
+    }
+
+    fn insertOpenElement(self: *TreeBuilder, index: usize, node: *TreeNode) !void {
+        try self.open_elements.insert(index, node);
+        self.holdNode(node);
+    }
+
+    /// Replace the entry at `index` of the stack of open elements with
+    /// `node` (the adoption agency's step 4.13.6).
+    fn replaceOpenElement(self: *TreeBuilder, index: usize, node: *TreeNode) void {
+        const slot = &self.open_elements.toSliceMut()[index];
+        const old = slot.*;
+        slot.* = node;
+        self.holdNode(node);
+        self.releaseNode(old);
+    }
+
+    /// Point the element entry at `index` of the list of active formatting
+    /// elements at `node` instead.
+    fn replaceFormattingNode(self: *TreeBuilder, index: usize, node: *TreeNode) void {
+        const entry = &self.active_formatting_elements.toSliceMut()[index].element;
+        const old = entry.node;
+        entry.node = node;
+        self.holdNode(node);
+        self.releaseNode(old);
+    }
+
+    /// `script`'s end tag is processed: the script to process lets go (the
+    /// last entry for it - a document.write in its script processed its own
+    /// scripts on top of it and let them go first).
+    fn finishProcessingScript(self: *TreeBuilder, script: *TreeNode) void {
+        var index = self.scripts_to_process.len;
+        while (index > 0) {
+            index -= 1;
+            if (self.scripts_to_process.get(index).? != script) continue;
+            _ = self.scripts_to_process.remove(index) catch return;
+            self.releaseNode(script);
+            return;
+        }
+    }
+
+    /// Set the head element pointer.
+    fn setHeadElement(self: *TreeBuilder, node: ?*TreeNode) void {
+        const old = self.head_element;
+        self.head_element = node;
+        if (node) |held| self.holdNode(held);
+        if (old) |released| self.releaseNode(released);
+    }
+
+    /// Set the form element pointer. (Also the fragment parsing algorithm's
+    /// step 15, for the context element's nearest form.)
+    pub fn setFormElement(self: *TreeBuilder, node: ?*TreeNode) void {
+        const old = self.form_element;
+        self.form_element = node;
+        if (node) |held| self.holdNode(held);
+        if (old) |released| self.releaseNode(released);
+    }
+
+    /// The parser lets go of every node its structures name - the stack of
+    /// open elements (with no finished-parsing-children steps: the parser is
+    /// going, as a detached one runs none), the list of active formatting
+    /// elements, the head and form pointers and any script still being
+    /// processed. A document parser calls this at its release, BEFORE its
+    /// adapter goes, so each release reaches the adapter; the builder's own
+    /// end calls it again, which then has nothing to do. The structures are
+    /// empty afterwards.
+    pub fn releaseStructureHolds(self: *TreeBuilder) void {
+        while (self.open_elements.len > 0) {
+            const node = self.open_elements.remove(self.open_elements.len - 1) catch break;
+            self.releaseNode(node);
+        }
+        while (self.active_formatting_elements.len > 0) self.removeFormattingAt(self.active_formatting_elements.len - 1);
+        self.setHeadElement(null);
+        self.setFormElement(null);
+        while (self.scripts_to_process.len > 0) {
+            const node = self.scripts_to_process.remove(self.scripts_to_process.len - 1) catch break;
+            self.releaseNode(node);
+        }
+    }
+
+    /// Whether every tree node's `structure_refs` is the number of the
+    /// builder's structures that name it. Checked after each parse under
+    /// test, so every parser test pins the counts; O(tree), never in a
+    /// running parser.
+    pub fn structureHoldsConsistent(self: *const TreeBuilder) bool {
+        var expected: std.AutoHashMapUnmanaged(*TreeNode, u8) = .empty;
+        defer expected.deinit(self.allocator);
+        const Named = struct {
+            fn add(map: *std.AutoHashMapUnmanaged(*TreeNode, u8), allocator: Allocator, node: *TreeNode) bool {
+                const slot = map.getOrPut(allocator, node) catch return false;
+                if (!slot.found_existing) slot.value_ptr.* = 0;
+                slot.value_ptr.* += 1;
+                return true;
+            }
+        };
+        for (self.open_elements.toSlice()) |node| if (!Named.add(&expected, self.allocator, node)) return true;
+        for (self.active_formatting_elements.toSlice()) |entry| switch (entry) {
+            .element => |element| if (!Named.add(&expected, self.allocator, element.node)) return true,
+            .marker => {},
+        };
+        if (self.head_element) |node| if (!Named.add(&expected, self.allocator, node)) return true;
+        if (self.form_element) |node| if (!Named.add(&expected, self.allocator, node)) return true;
+        for (self.scripts_to_process.toSlice()) |node| if (!Named.add(&expected, self.allocator, node)) return true;
+        var it = expected.iterator();
+        while (it.next()) |entry| {
+            if (entry.key_ptr.*.structure_refs != entry.value_ptr.*) return false;
+        }
+        // A node no structure names counts none: the tree, and the nodes
+        // the builder detached from it.
+        if (!subtreeCountsOnly(self.document, &expected)) return false;
+        var detached = self.detached_nodes;
+        while (detached) |node| : (detached = node.detached_next) {
+            if (!subtreeCountsOnly(node, &expected)) return false;
+        }
+        return true;
+    }
+
+    fn subtreeCountsOnly(root: *TreeNode, expected: *const std.AutoHashMapUnmanaged(*TreeNode, u8)) bool {
+        if (root.structure_refs != (expected.get(root) orelse 0)) return false;
+        var child = root.first_child;
+        while (child) |node| : (child = node.next_sibling) {
+            if (!subtreeCountsOnly(node, expected)) return false;
+        }
+        return true;
     }
 
     /// HTML "stop parsing" (13.2.7 "the end") step 4: "Pop all the nodes off
@@ -3451,7 +3674,7 @@ pub const TreeBuilder = struct {
                         callback(colgroup, self.dom_adapter_context);
                     }
                     self.insertAtAppropriatePlace(colgroup);
-                    try self.open_elements.append(colgroup);
+                    try self.pushOpenElement(colgroup);
                     self.insertion_mode = .in_column_group;
                     try self.processToken(token);
                 } else if (std.mem.eql(u8, name, "tbody") or
@@ -3474,7 +3697,7 @@ pub const TreeBuilder = struct {
                         callback(tbody, self.dom_adapter_context);
                     }
                     self.insertAtAppropriatePlace(tbody);
-                    try self.open_elements.append(tbody);
+                    try self.pushOpenElement(tbody);
                     self.insertion_mode = .in_table_body;
                     try self.processToken(token);
                 } else if (std.mem.eql(u8, name, "table")) {
@@ -3510,7 +3733,7 @@ pub const TreeBuilder = struct {
                         return; // Ignore
                     }
                     const form = try self.insertHtmlElement(tag);
-                    if (!in_template) self.form_element = form;
+                    if (!in_template) self.setFormElement(form);
                     _ = self.popCurrentNode();
                 } else {
                     // Anything else
@@ -3818,7 +4041,7 @@ pub const TreeBuilder = struct {
                         callback(tr, self.dom_adapter_context);
                     }
                     self.insertAtAppropriatePlace(tr);
-                    try self.open_elements.append(tr);
+                    try self.pushOpenElement(tr);
                     self.insertion_mode = .in_row;
                     try self.processToken(token);
                 } else if (std.mem.eql(u8, name, "caption") or
@@ -4450,7 +4673,7 @@ pub const TreeBuilder = struct {
     fn insertHtmlElement(self: *TreeBuilder, tag: TagToken) !*TreeNode {
         const element = try self.createElementForToken(tag, .html, self.appropriateLocation(null));
         self.insertAtAppropriatePlace(element);
-        try self.open_elements.append(element);
+        try self.pushOpenElement(element);
         return element;
     }
 
@@ -4984,7 +5207,10 @@ pub const TreeBuilder = struct {
 
     fn removeFormattingAt(self: *TreeBuilder, index: usize) void {
         var entry = self.active_formatting_elements.remove(index) catch unreachable;
-        if (entry == .element) entry.element.token.deinit();
+        if (entry == .element) {
+            entry.element.token.deinit();
+            self.releaseNode(entry.element.node);
+        }
     }
 
     fn formattingIndex(self: *TreeBuilder, node: *TreeNode) ?usize {
@@ -5019,6 +5245,7 @@ pub const TreeBuilder = struct {
         errdefer copy.deinit();
         if (count >= 3) self.removeFormattingAt(earliest.?);
         try self.active_formatting_elements.append(.{ .element = .{ .node = element, .token = copy } });
+        self.holdNode(element);
     }
 
     /// HTML 13.2.4.3, clear steps 1–4.
@@ -5045,7 +5272,7 @@ pub const TreeBuilder = struct {
         while (index < self.active_formatting_elements.len) : (index += 1) {
             const token = self.active_formatting_elements.get(index).?.element.token;
             const element = try self.insertHtmlElement(token);
-            self.active_formatting_elements.toSliceMut()[index].element.node = element;
+            self.replaceFormattingNode(index, element);
         }
     }
 
@@ -5131,8 +5358,8 @@ pub const TreeBuilder = struct {
                 };
                 const token = self.active_formatting_elements.get(active_index).?.element.token;
                 const replacement = try self.createElementForToken(token, .html, .{ .parent = ancestor });
-                self.active_formatting_elements.toSliceMut()[active_index].element.node = replacement;
-                self.open_elements.toSliceMut()[node_index] = replacement;
+                self.replaceFormattingNode(active_index, replacement);
+                self.replaceOpenElement(node_index, replacement);
                 if (last == furthest) bookmark = active_index + 1;
                 self.insertNode(replacement, last, null);
                 last = replacement;
@@ -5160,9 +5387,11 @@ pub const TreeBuilder = struct {
             if (current_index < bookmark) bookmark -= 1;
             // Removal leaves enough capacity for this insertion.
             self.active_formatting_elements.insert(bookmark, .{ .element = .{ .node = replacement, .token = entry.element.token } }) catch unreachable;
+            self.holdNode(replacement);
+            self.releaseNode(entry.element.node);
             // Step 4.21.
             _ = self.removeOpenElementAt(self.openIndex(formatting).?);
-            self.open_elements.insert(self.openIndex(furthest).? + 1, replacement) catch unreachable;
+            self.insertOpenElement(self.openIndex(furthest).? + 1, replacement) catch unreachable;
         }
     }
 
@@ -5852,10 +6081,10 @@ test "TreeBuilder - clearStackBackToTableContext" {
     table.appendChild(div);
     div.appendChild(p);
 
-    try builder.open_elements.append(html);
-    try builder.open_elements.append(table);
-    try builder.open_elements.append(div);
-    try builder.open_elements.append(p);
+    try builder.pushOpenElement(html);
+    try builder.pushOpenElement(table);
+    try builder.pushOpenElement(div);
+    try builder.pushOpenElement(p);
 
     // Clear back to table context
     builder.clearStackBackToTableContext();
@@ -5891,11 +6120,11 @@ test "TreeBuilder - hasElementInTableScope" {
     tbody.appendChild(tr);
     tr.appendChild(td);
 
-    try builder.open_elements.append(html);
-    try builder.open_elements.append(table);
-    try builder.open_elements.append(tbody);
-    try builder.open_elements.append(tr);
-    try builder.open_elements.append(td);
+    try builder.pushOpenElement(html);
+    try builder.pushOpenElement(table);
+    try builder.pushOpenElement(tbody);
+    try builder.pushOpenElement(tr);
+    try builder.pushOpenElement(td);
 
     // td is in table scope
     try std.testing.expect(builder.hasElementInTableScope("td"));
@@ -5925,8 +6154,8 @@ test "TreeBuilder - hasTableBodyElementInTableScope" {
     builder.document.appendChild(html);
     html.appendChild(table);
 
-    try builder.open_elements.append(html);
-    try builder.open_elements.append(table);
+    try builder.pushOpenElement(html);
+    try builder.pushOpenElement(table);
 
     // No tbody/thead/tfoot in scope
     try std.testing.expect(!builder.hasTableBodyElementInTableScope());
@@ -5934,7 +6163,7 @@ test "TreeBuilder - hasTableBodyElementInTableScope" {
     // Add tbody
     const tbody = try TreeNode.initElement(allocator, "tbody", .html);
     table.appendChild(tbody); // Connect to tree
-    try builder.open_elements.append(tbody);
+    try builder.pushOpenElement(tbody);
 
     // Now has tbody in scope
     try std.testing.expect(builder.hasTableBodyElementInTableScope());

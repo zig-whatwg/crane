@@ -411,3 +411,11 @@ why = The timing intermittent already disposed at generation 171 (fetchStart som
 pair.1 = base 1/1; tip 0/1
 pair.2 = base 1/1; tip 1/1
 pair.3 = base 1/1; tip 1/1
+
+[html/webappapis/dynamic-markup-insertion/opening-the-input-stream/abort-refresh-immediate.window.js]
+generation = 191
+kind = flake
+why = The same timing-bound file as the generation 179, 184, 186 and 188 dispositions (it times out on both sides; its fetch() Refresh/meta variants pass from run to run): 4 -> 2 in the generation 191 sweep (main cc0fcdcbf9b: keepalive2, cascadefast2, refcount5 - none touches navigation or document.open). Isolated, one process each, alternating, frozen main-59cdb72552 (base, generation 190) vs main-cc0fcdcbf9 (tip, generation 191), integrator 2026-10-28 on chat through crane-measure.sh (~/crane-work/integrator-pairs-191/pairs.sh): 4/6 in five of six runs, 3/6 once on the tip. Lane nav2's 9 instrumented pairs (wpt-results/lanes/nav2-item0-7c7e9473fc/) show the same "Refresh header with timeout 0 (fetch())" subtest moving with no code path of its change firing.
+pair.1 = base 4/6; tip 4/6
+pair.2 = base 4/6; tip 3/6
+pair.3 = base 4/6; tip 4/6

@@ -180,7 +180,7 @@ pub fn parseFragment(
     tree_builder.document.appendChild(root);
 
     // Step 9: Set up stack of open elements with just the root element
-    try tree_builder.open_elements.append(root);
+    try tree_builder.pushOpenElement(root);
 
     // Step 10: If context is a template element, push "in template" mode
     if (std.mem.eql(u8, context_name, "template") and context_element.namespace == .html) {
@@ -196,10 +196,13 @@ pub fn parseFragment(
 
     // Step 13: Set form element pointer to nearest form ancestor
     // Walk up the context element's ancestors to find a form
-    tree_builder.form_element = findAncestorForm(context_element);
+    tree_builder.setFormElement(findAncestorForm(context_element));
 
     // Steps 14-15: Parse the input
     try tree_builder.parse();
+    // The parse is over: the structures let go now, while the context's
+    // tree (the caller's, where the form pointer may point) is alive.
+    tree_builder.releaseStructureHolds();
 
     // Step 16: Return root's children in tree order
     const children = try collectChildren(allocator, root);

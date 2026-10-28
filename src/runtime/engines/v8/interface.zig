@@ -730,27 +730,113 @@ fn freeOwnedString(allocator: std.mem.Allocator, result: runtime.JSValue) void {
     text.deinit(allocator);
 }
 
-/// Free a string an indexed or named property interceptor's getter returned
-/// owned: a DOMString whose arm says `.owned` (DOMTokenList's item() copies
-/// its token), or a JSValue string flagged owned. Interned and empty strings,
-/// and a JSValue reference, are left alone - the union says whose memory it
-/// is. Each interceptor converted the result and dropped it: one leaked copy
-/// per `classList[0]` read, where `classList.item(0)` - an operation, which
-/// frees its result - leaked nothing.
-fn freeOwnedResult(comptime T: type, allocator: std.mem.Allocator, value: T) void {
-    if (T == runtime.DOMString) {
+/// Whether the binding knows what to free of a special operation's value of
+/// type `T` - an indexed or named getter's result, or the value an indexed or
+/// named setter converted (`freeSpecialOperationValue`). An ALLOWLIST of the
+/// types whose ownership is understood:
+///
+/// - DOMString: its arm says whose memory it is (`.owned` is freed,
+///   `.interned` and `.empty` are not).
+/// - `[]const u8` (USVString, ByteString): the binding's, as an operation's
+///   USVString result is (its `needs_string_cleanup`) and as a converted
+///   argument is: freed when not empty. An impl returns a copy made with
+///   its context's allocator, never its own storage or a literal.
+/// - runtime.JSValue: its `.string` arm by its `owned` flag; every handle arm
+///   is released with the V8 value (`specialResultHandleIsOwned`, or the
+///   setter's own Global).
+/// - `*runtime.Instance`, numbers, booleans, enumerations, void: nothing to
+///   free.
+/// - an optional of one; a tagged union whose every arm is one (the active
+///   arm decides: CSSUnparsedSegment's `usvstring` is freed, its interface
+///   arm is not).
+///
+/// Anything else - a struct, a sequence, a buffer source, `*anyopaque`, an
+/// untagged union - answers FALSE, and the binding refuses to compile a
+/// special operation of that type (`requireUnderstoodSpecialValue`), so a new
+/// shape gets a rule before it can leak or free what an impl keeps.
+/// tests/v8/bindfix1_special_value_ownership_test.zig pins the default.
+pub fn specialOperationValueIsUnderstood(comptime T: type) bool {
+    comptime {
+        if (T == runtime.DOMString or T == []const u8 or T == runtime.JSValue or T == *runtime.Instance) return true;
+        switch (@typeInfo(T)) {
+            .int, .float, .bool, .@"enum", .void => return true,
+            .optional => |o| return specialOperationValueIsUnderstood(o.child),
+            .@"union" => |u| {
+                if (u.tag_type == null) return false;
+                for (u.fields) |field| {
+                    if (!specialOperationValueIsUnderstood(field.type)) return false;
+                }
+                return true;
+            },
+            else => return false,
+        }
+    }
+}
+
+/// Free what a special operation's value holds once the interceptor is done
+/// with it, on every path - the getter's result after it is converted (or
+/// failed to be), the setter's converted value after the setter returned or
+/// threw. The rules are `specialOperationValueIsUnderstood`'s; a union frees
+/// its active arm. The getters used to free only a DOMString or a JSValue
+/// string, so a union's USVString arm leaked on every read
+/// (CSSUnparsedValue's `value[0]`, Codex row 128 Q74), and the indexed setter
+/// freed nothing it converted.
+pub fn freeSpecialOperationValue(comptime T: type, allocator: std.mem.Allocator, value: T) void {
+    if (comptime T == runtime.DOMString) {
         var text = value;
         text.deinit(allocator);
-    } else if (T == ?runtime.DOMString) {
-        if (value) |present| {
-            var text = present;
-            text.deinit(allocator);
-        }
-    } else if (T == runtime.JSValue) {
+    } else if (comptime T == []const u8) {
+        if (value.len > 0) allocator.free(value);
+    } else if (comptime T == runtime.JSValue) {
         freeOwnedString(allocator, value);
-    } else if (T == ?runtime.JSValue) {
-        if (value) |present| freeOwnedString(allocator, present);
+    } else switch (@typeInfo(T)) {
+        .optional => |o| if (value) |present| freeSpecialOperationValue(o.child, allocator, present),
+        .@"union" => |u| if (comptime u.tag_type != null) switch (value) {
+            inline else => |payload| freeSpecialOperationValue(@TypeOf(payload), allocator, payload),
+        },
+        else => {},
     }
+}
+
+/// A special getter's result type: its return type's payload.
+fn specialResultType(comptime function: anytype) type {
+    const Return = @typeInfo(@TypeOf(function)).@"fn".return_type.?;
+    return switch (@typeInfo(Return)) {
+        .error_union => |eu| eu.payload,
+        else => Return,
+    };
+}
+
+/// A special setter's value type: its third parameter's (instance, key,
+/// value), or void for one the interceptors do not bind.
+fn specialValueType(comptime function: anytype) type {
+    const params = @typeInfo(@TypeOf(function)).@"fn".params;
+    if (params.len < 3) return void;
+    return params[2].type.?;
+}
+
+/// Refuse, at compile time, a special operation whose value type has no
+/// ownership rule (`specialOperationValueIsUnderstood`).
+fn requireUnderstoodSpecialValue(comptime T: type, comptime what: []const u8) void {
+    if (!specialOperationValueIsUnderstood(T)) {
+        @compileError(what ++ ": the binding has no ownership rule for " ++ @typeName(T) ++ " (interface.specialOperationValueIsUnderstood)");
+    }
+}
+
+/// Whether the V8 value made of a special getter's result `value` is the
+/// binding's to release once set: decided by the VALUE, as an operation's
+/// result is (`convertReturnValue`). A union by its active arm
+/// (`conv.unionValueIsOwned`: a String made for a string arm is fresh, a
+/// wrapper is the cache's); a JSValue unless it is an `.instance` (its
+/// wrapper) - a handle is what the impl handed over, every other arm is made
+/// here; anything else by its type (`getterValueIsOwned`). By type alone every
+/// union answered "kept", so each `value[0]` of a union string kept its
+/// String Global.
+pub fn specialResultHandleIsOwned(comptime T: type, value: T) bool {
+    if (comptime getterValueIsOwned(T)) return true;
+    if (comptime T == runtime.JSValue) return value != .instance;
+    if (comptime @typeInfo(T) == .@"union") return conv.unionValueIsOwned(T, value);
+    return false;
 }
 
 /// Types `argHandleIsCopied` names by identity, re-exported so `tests/v8` can
@@ -891,6 +977,54 @@ pub fn convertArgReleasingWith(
     // callback, an optional argument not passed - leaves the handle to the
     // binding (`conversionLeavesHandle`).
     if (conversionLeavesHandle(T, value)) v8.v8_Value_Dispose(arg);
+    return value;
+}
+
+/// One argument's whole conversion by its `mode` (`convertArgReleasingWith`),
+/// then the steps codegen's tables add to it: for a restricted `double` or
+/// `float` (`restricted_floats`, `constructor_restricted_floats`) that
+/// conversion's last step - NaN and the infinities are a TypeError (WebIDL
+/// 3.2.5 step 2, 3.2.7 step 2); for a ByteString (`byte_string_arguments`), a
+/// code unit above 0xFF is; for an `object` (`object_arguments`), a value
+/// that is not an Object is. Each check is part of this argument's own
+/// conversion, so no later argument is converted first, and what the
+/// conversion made is freed when it fails.
+///
+/// Every path that converts an argument goes through here: an operation's,
+/// a constructor's (sole or overloaded: overload_resolver.zig), a static
+/// operation's and a namespace operation's (namespace.zig). Blink's
+/// conversions carry the restriction in the type (NativeValueTraits<IDLDouble>
+/// calls ToRestrictedDouble, bindings/core/v8/native_value_traits_impl.h,
+/// chromium 23520b2ec9fc); Crane's f64 cannot, so a path that skips this
+/// skips the check - as constructors and namespaces did until lane bindfix1
+/// (`new CSSUnitValue(NaN, "px")`, `CSS.px(Infinity)`).
+pub fn convertArgChecked(
+    comptime T: type,
+    comptime mode: ArgMode,
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    arg: *v8.Value,
+) !T {
+    var value = try convertArgReleasingWith(T, mode, allocator, isolate, context, arg);
+    if (comptime mode.restricted) {
+        conv.requireFinite(T, value) catch |err| {
+            freeConvertedArg(T, allocator, value);
+            return err;
+        };
+    }
+    if (comptime mode.byte_string) {
+        conv.encodeByteStringOwned(T, allocator, &value) catch |err| {
+            freeConvertedArg(T, allocator, value);
+            return err;
+        };
+    }
+    if (comptime mode.object) {
+        conv.requireObject(T, value) catch |err| {
+            freeConvertedArg(T, allocator, value);
+            return err;
+        };
+    }
     return value;
 }
 
@@ -1271,7 +1405,7 @@ pub fn restrictedFloatMask(comptime Interface: type, comptime fn_name: []const u
     return 0;
 }
 
-fn restrictedBit(comptime mask: u32, comptime index: usize) bool {
+pub fn restrictedBit(comptime mask: u32, comptime index: usize) bool {
     return index < 32 and (mask >> @intCast(index)) & 1 != 0;
 }
 
@@ -1294,13 +1428,35 @@ pub fn integerConversionMask(comptime Interface: type, comptime fn_name: []const
     return 0;
 }
 
-/// A sole constructor's argument `index`: its ConvertToInt branch and the
-/// interface it converts to (`constructorArgumentInterface`).
+/// A sole constructor's argument `index`: its ConvertToInt branch, the
+/// interface it converts to (`constructorArgumentInterface`), and whether it
+/// is a restricted float (`constructorRestrictedFloatMask`).
 fn constructorArgMode(comptime Interface: type, comptime index: usize) ArgMode {
     return .{
         .integer = constructorIntegerConversion(Interface, index),
         .interface = constructorArgumentInterface(Interface, "", index),
+        .restricted = restrictedBit(constructorRestrictedFloatMask(Interface, ""), index),
     };
+}
+
+/// WebIDL `double` and `float`, not `unrestricted` (3.2.5, 3.2.7): the
+/// constructor arguments - bit i for argument i - of the ConstructorArgs
+/// variant `variant` for an overloaded constructor, of the constructor ("")
+/// otherwise, whose NaN and infinities are a TypeError. Codegen writes the
+/// table (`constructor_restricted_floats`); an interface without one answers
+/// 0 for every variant.
+pub fn constructorRestrictedFloatMask(comptime Interface: type, comptime variant: []const u8) u32 {
+    if (!@hasDecl(Interface, "constructor_restricted_floats")) return 0;
+    return restrictedFloatTableMask(Interface.constructor_restricted_floats, variant);
+}
+
+/// The mask a `restricted_floats`-shaped table (`.{ .{ key, mask }, ... }`)
+/// gives `key`, or 0.
+pub fn restrictedFloatTableMask(comptime table: anytype, comptime key: []const u8) u32 {
+    inline for (table) |entry| {
+        if (comptime std.mem.eql(u8, entry[0], key)) return entry[1];
+    }
+    return 0;
 }
 
 /// The constructor's [EnforceRange] and [Clamp] arguments (codegen's
@@ -1478,6 +1634,27 @@ fn throwMemberError(isolate: *v8.Isolate, member_context: *v8.Context, err: anye
         }
     }
     conv.throwWebIDLErrorFromContext(isolate, member_context, @errorName(err));
+}
+
+/// A special operation's own exception - an indexed or named setter's, a
+/// named deleter's - thrown as the [[Set]], [[DefineOwnProperty]] or
+/// [[Delete]] that invoked it: WebIDL 3.9.7 "invoke an indexed property
+/// setter" and "invoke a named property setter" end in the operation's method
+/// steps (3.9.4 step 2.4 the deleter's), and 3.9.2 step 1.1.1, 3.9.3 step 1.3
+/// and 2.2.2.2 return true only after them - so what they throw is the
+/// internal method's abrupt completion, in sloppy code as in strict. The
+/// interceptor answers kYes with it pending, never kNo: kNo let V8 go on to
+/// define an ordinary own property, so `select[0] = ancestorOption` swallowed
+/// the HierarchyRequestError and left an expando `0` (Codex row 128 Q74).
+/// Blink converts and calls under one ExceptionState and answers kYes on
+/// every path (bind_gen/interface.py make_indexed_property_setter_callback,
+/// make_named_property_setter_callback, chromium 23520b2ec9fc).
+///
+/// ExceptionPending throws nothing: the steps ran script that threw, and
+/// script catches its own object (`throwMemberError`).
+fn throwSpecialOperationError(isolate: *v8.Isolate, err: anyerror) void {
+    if (err == error.ExceptionPending) return;
+    conv.throwWebIDLError(isolate, @errorName(err));
 }
 
 // ============================================================================
@@ -1987,6 +2164,14 @@ pub fn V8Interface(comptime Interface: type) type {
     const has_named_getter = comptime special.named_getter != null;
     const has_named_setter = comptime special.named_setter != null;
     const has_named_deleter = comptime special.named_deleter != null;
+    // Every special operation's result and value has an ownership rule the
+    // interceptors apply on every path (`freeSpecialOperationValue`).
+    comptime {
+        if (special.indexed_getter) |fn_name| requireUnderstoodSpecialValue(specialResultType(@field(Interface, fn_name)), interface_name ++ "." ++ fn_name);
+        if (special.named_getter) |fn_name| requireUnderstoodSpecialValue(specialResultType(@field(Interface, fn_name)), interface_name ++ "." ++ fn_name);
+        if (special.indexed_setter) |fn_name| requireUnderstoodSpecialValue(specialValueType(@field(Interface, fn_name)), interface_name ++ "." ++ fn_name);
+        if (special.named_setter) |fn_name| requireUnderstoodSpecialValue(specialValueType(@field(Interface, fn_name)), interface_name ++ "." ++ fn_name);
+    }
     // An interface with named properties and no indexed ones (none declared:
     // HTMLAllCollection's unimplemented anonymous getter is still its
     // indexed one) takes an array index as a name (WebIDL 3.9 knows only
@@ -4924,12 +5109,8 @@ pub fn V8Interface(comptime Interface: type) type {
             return true;
         }
 
-        /// Convert one argument, then - for a restricted `double` or `float`
-        /// (`restricted_floats`) - apply that conversion's last step: NaN and
-        /// the infinities are a TypeError; for a ByteString
-        /// (`byte_string_arguments`), a code unit above 0xFF is. The check is
-        /// part of this argument's own conversion, so no later argument is
-        /// converted first.
+        /// One argument's conversion with the checks codegen's tables add
+        /// (`convertArgChecked`).
         fn convertArg(
             comptime T: type,
             comptime mode: ArgMode,
@@ -4938,36 +5119,20 @@ pub fn V8Interface(comptime Interface: type) type {
             context: *v8.Context,
             arg: *v8.Value,
         ) !T {
-            var value = try convertArgReleasingWith(T, mode, allocator, isolate, context, arg);
-            if (comptime mode.restricted) {
-                conv.requireFinite(T, value) catch |err| {
-                    freeConvertedArg(T, allocator, value);
-                    return err;
-                };
-            }
-            if (comptime mode.byte_string) {
-                conv.encodeByteStringOwned(T, allocator, &value) catch |err| {
-                    freeConvertedArg(T, allocator, value);
-                    return err;
-                };
-            }
-            // An `object` (`object_arguments`): a value that is not an
-            // Object is a TypeError, as part of this argument's conversion.
-            if (comptime mode.object) {
-                conv.requireObject(T, value) catch |err| {
-                    freeConvertedArg(T, allocator, value);
-                    return err;
-                };
-            }
-            return value;
+            return convertArgChecked(T, mode, allocator, isolate, context, arg);
         }
 
-        /// Convert multiple JS arguments into a slice for variadic parameters
+        /// Convert multiple JS arguments into a slice for variadic parameters:
+        /// each one as the variadic argument's own conversion
+        /// (`convertArgChecked` with its `mode`: the interface an
+        /// interface-typed one converts to, and the restricted float, ByteString,
+        /// object and integer steps codegen's tables give its index), one at a
+        /// time - a NaN for a restricted `double...` is a TypeError before the
+        /// next argument converts, as for a fixed argument. One that fails
+        /// frees the ones before it.
         fn collectVariadicArgs(
             comptime ElemType: type,
-            /// The interface each argument converts to, for a variadic
-            /// argument of an interface type (`argumentInterface`).
-            comptime element_interface: ?type,
+            comptime mode: ArgMode,
             allocator_inner: std.mem.Allocator,
             isolate_inner: *v8.Isolate,
             context_inner: *v8.Context,
@@ -4989,11 +5154,14 @@ pub fn V8Interface(comptime Interface: type) type {
             // Convert each JS argument to the element type. Each handle is
             // owned; released when the conversion copied out of it, as for a
             // fixed argument - a leaked one per `append(...nodes)` argument
-            // kept its page alive.
+            // kept its page alive. The ones converted before one that fails
+            // are freed (docs/lessons/architecture-a-conversion-that-fails-
+            // part-way-converted-the-rest.md).
             var i: usize = 0;
+            errdefer for (result[0..i]) |done| freeArgument(ElemType, allocator_inner, done);
             while (i < variadic_count) : (i += 1) {
                 const v8_arg = info_inner.get(@intCast(start_idx + i));
-                result[i] = try convertArgReleasingWith(ElemType, .{ .interface = element_interface }, allocator_inner, isolate_inner, context_inner, v8_arg);
+                result[i] = try convertArgChecked(ElemType, mode, allocator_inner, isolate_inner, context_inner, v8_arg);
             }
 
             return result;
@@ -5033,15 +5201,12 @@ pub fn V8Interface(comptime Interface: type) type {
                     if (comptime isVariadicParam(Param1Type)) {
                         // Collect all JS arguments into a slice
                         const ElemType = @typeInfo(Param1Type).pointer.child;
-                        const arg1 = try collectVariadicArgs(ElemType, comptime argMode(modes, 0).interface, allocator, isolate, v8_context, info.raw, 0);
+                        const arg1 = try collectVariadicArgs(ElemType, comptime argMode(modes, 0), allocator, isolate, v8_context, info.raw, 0);
                         // Free each element in the slice, then free the slice itself
                         defer {
                             for (arg1) |elem| freeArgument(ElemType, allocator, elem);
                             if (arg1.len > 0) allocator.free(arg1);
                         }
-                        // Each element is a restricted float conversion; the
-                        // defer above releases the slice if one fails.
-                        if (comptime restrictedBit(modes.restricted, 0)) try conv.requireFinite(Param1Type, arg1);
                         break :blk try method_fn(instance, arg1);
                     }
 
@@ -5086,12 +5251,11 @@ pub fn V8Interface(comptime Interface: type) type {
                     // createHTML("x", "a") and console.assert(c, "m").
                     if (comptime isVariadicParam(Param2Type)) {
                         const ElemType = @typeInfo(Param2Type).pointer.child;
-                        const rest = try collectVariadicArgs(ElemType, comptime argMode(modes, 1).interface, allocator, isolate, v8_context, info.raw, 1);
+                        const rest = try collectVariadicArgs(ElemType, comptime argMode(modes, 1), allocator, isolate, v8_context, info.raw, 1);
                         defer {
                             for (rest) |elem| freeArgument(ElemType, allocator, elem);
                             if (rest.len > 0) allocator.free(rest);
                         }
-                        if (comptime restrictedBit(modes.restricted, 1)) try conv.requireFinite(Param2Type, rest);
                         break :blk try method_fn(instance, arg1, rest);
                     }
 
@@ -5148,12 +5312,11 @@ pub fn V8Interface(comptime Interface: type) type {
                     // A trailing variadic, as in the two-parameter branch.
                     if (comptime isVariadicParam(Param3Type)) {
                         const ElemType = @typeInfo(Param3Type).pointer.child;
-                        const rest = try collectVariadicArgs(ElemType, comptime argMode(modes, 2).interface, allocator, isolate, v8_context, info.raw, 2);
+                        const rest = try collectVariadicArgs(ElemType, comptime argMode(modes, 2), allocator, isolate, v8_context, info.raw, 2);
                         defer {
                             for (rest) |elem| freeArgument(ElemType, allocator, elem);
                             if (rest.len > 0) allocator.free(rest);
                         }
-                        if (comptime restrictedBit(modes.restricted, 2)) try conv.requireFinite(Param3Type, rest);
                         break :blk try method_fn(instance, arg1, arg2, rest);
                     }
 
@@ -6152,10 +6315,11 @@ pub fn V8Interface(comptime Interface: type) type {
                 if (comptime @hasDecl(Interface, "ConstructorArgs") and Param1Type == Interface.ConstructorArgs) {
                     // Overloaded: the overload resolution algorithm picks
                     // the variant over codegen's `constructor_overloads`.
-                    const args = try overload_resolver.resolveConstructorOverload(
+                    const args = try overload_resolver.resolveConstructorOverloadWith(
                         Param1Type,
                         Interface.constructor_overloads,
                         if (@hasDecl(Interface, "constructor_interface_arguments")) Interface.constructor_interface_arguments else .{},
+                        if (@hasDecl(Interface, "constructor_restricted_floats")) Interface.constructor_restricted_floats else .{},
                         info,
                         allocator,
                         isolate,
@@ -6169,7 +6333,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // argument, as an operation's does.
                 if (comptime isVariadicParam(Param1Type)) {
                     const ElemType = @typeInfo(Param1Type).pointer.child;
-                    const rest = try collectVariadicArgs(ElemType, comptime constructorArgumentInterface(Interface, "", 0), allocator, isolate, v8_context, info, 0);
+                    const rest = try collectVariadicArgs(ElemType, comptime constructorArgMode(Interface, 0), allocator, isolate, v8_context, info, 0);
                     defer {
                         for (rest) |elem| freeArgument(ElemType, allocator, elem);
                         if (rest.len > 0) allocator.free(rest);
@@ -6184,7 +6348,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         log.debug("[CTOR_ARGS] MutationObserver converting arg from V8...\n", .{});
                     }
                     const v8_arg1 = info.get(0);
-                    const converted = try convertArgReleasingWith(Param1Type, comptime constructorArgMode(Interface, 0), allocator, isolate, v8_context, v8_arg1);
+                    const converted = try convertArg(Param1Type, comptime constructorArgMode(Interface, 0), allocator, isolate, v8_context, v8_arg1);
                     if (comptime std.mem.eql(u8, interface_name, "MutationObserver")) {
                         log.debug("[CTOR_ARGS] MutationObserver arg converted OK\n", .{});
                     }
@@ -6217,7 +6381,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Check if first param has a default (e.g., webidl.Opt or optional)
                 const arg1 = if (js_arg_count >= 1) blk: {
                     const v8_arg1 = info.get(0);
-                    break :blk try convertArgReleasingWith(Param1Type, comptime constructorArgMode(Interface, 0), allocator, isolate, v8_context, v8_arg1);
+                    break :blk try convertArg(Param1Type, comptime constructorArgMode(Interface, 0), allocator, isolate, v8_context, v8_arg1);
                 } else blk: {
                     // Try default for first param
                     if (comptime getDefaultArgValue(Param1Type)) |default_val| {
@@ -6233,7 +6397,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // A trailing variadic collects every argument from its index.
                 if (comptime isVariadicParam(Param2Type)) {
                     const ElemType = @typeInfo(Param2Type).pointer.child;
-                    const rest = try collectVariadicArgs(ElemType, comptime constructorArgumentInterface(Interface, "", 1), allocator, isolate, v8_context, info, 1);
+                    const rest = try collectVariadicArgs(ElemType, comptime constructorArgMode(Interface, 1), allocator, isolate, v8_context, info, 1);
                     defer {
                         for (rest) |elem| freeArgument(ElemType, allocator, elem);
                         if (rest.len > 0) allocator.free(rest);
@@ -6244,7 +6408,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Second param may be optional (use default if not provided)
                 const arg2 = if (js_arg_count >= 2) blk: {
                     const v8_arg2 = info.get(1);
-                    break :blk try convertArgReleasingWith(Param2Type, comptime constructorArgMode(Interface, 1), allocator, isolate, v8_context, v8_arg2);
+                    break :blk try convertArg(Param2Type, comptime constructorArgMode(Interface, 1), allocator, isolate, v8_context, v8_arg2);
                 } else blk: {
                     // Use getDefaultArgValue for consistent handling
                     if (comptime getDefaultArgValue(Param2Type)) |default_val| {
@@ -6267,7 +6431,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle first parameter - may be optional
                 const arg1 = if (js_arg_count >= 1) blk: {
                     const v8_arg1 = info.get(0);
-                    break :blk try convertArgReleasingWith(Param1Type, comptime constructorArgMode(Interface, 0), allocator, isolate, v8_context, v8_arg1);
+                    break :blk try convertArg(Param1Type, comptime constructorArgMode(Interface, 0), allocator, isolate, v8_context, v8_arg1);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param1Type)) |default_val| {
                         break :blk default_val;
@@ -6282,7 +6446,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle second parameter - may be optional
                 const arg2 = if (js_arg_count >= 2) blk: {
                     const v8_arg2 = info.get(1);
-                    break :blk try convertArgReleasingWith(Param2Type, comptime constructorArgMode(Interface, 1), allocator, isolate, v8_context, v8_arg2);
+                    break :blk try convertArg(Param2Type, comptime constructorArgMode(Interface, 1), allocator, isolate, v8_context, v8_arg2);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param2Type)) |default_val| {
                         break :blk default_val;
@@ -6297,7 +6461,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle third parameter - may be optional
                 const arg3 = if (js_arg_count >= 3) blk: {
                     const v8_arg3 = info.get(2);
-                    break :blk try convertArgReleasingWith(Param3Type, comptime constructorArgMode(Interface, 2), allocator, isolate, v8_context, v8_arg3);
+                    break :blk try convertArg(Param3Type, comptime constructorArgMode(Interface, 2), allocator, isolate, v8_context, v8_arg3);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param3Type)) |default_val| {
                         break :blk default_val;
@@ -6320,7 +6484,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle first parameter - may be optional
                 const arg1 = if (js_arg_count >= 1) blk: {
                     const v8_arg1 = info.get(0);
-                    break :blk try convertArgReleasingWith(Param1Type, comptime constructorArgMode(Interface, 0), allocator, isolate, v8_context, v8_arg1);
+                    break :blk try convertArg(Param1Type, comptime constructorArgMode(Interface, 0), allocator, isolate, v8_context, v8_arg1);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param1Type)) |default_val| {
                         break :blk default_val;
@@ -6335,7 +6499,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle second parameter - may be optional
                 const arg2 = if (js_arg_count >= 2) blk: {
                     const v8_arg2 = info.get(1);
-                    break :blk try convertArgReleasingWith(Param2Type, comptime constructorArgMode(Interface, 1), allocator, isolate, v8_context, v8_arg2);
+                    break :blk try convertArg(Param2Type, comptime constructorArgMode(Interface, 1), allocator, isolate, v8_context, v8_arg2);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param2Type)) |default_val| {
                         break :blk default_val;
@@ -6350,7 +6514,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle third parameter - may be optional
                 const arg3 = if (js_arg_count >= 3) blk: {
                     const v8_arg3 = info.get(2);
-                    break :blk try convertArgReleasingWith(Param3Type, comptime constructorArgMode(Interface, 2), allocator, isolate, v8_context, v8_arg3);
+                    break :blk try convertArg(Param3Type, comptime constructorArgMode(Interface, 2), allocator, isolate, v8_context, v8_arg3);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param3Type)) |default_val| {
                         break :blk default_val;
@@ -6365,7 +6529,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle fourth parameter - may be optional
                 const arg4 = if (js_arg_count >= 4) blk: {
                     const v8_arg4 = info.get(3);
-                    break :blk try convertArgReleasingWith(Param4Type, comptime constructorArgMode(Interface, 3), allocator, isolate, v8_context, v8_arg4);
+                    break :blk try convertArg(Param4Type, comptime constructorArgMode(Interface, 3), allocator, isolate, v8_context, v8_arg4);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param4Type)) |default_val| {
                         break :blk default_val;
@@ -6469,7 +6633,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 conv.throwWebIDLErrorFromContext(isolate, v8_context, @errorName(err));
                 return;
             };
-            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
+            defer freeSpecialOperationValue(@TypeOf(result), result_allocator, result);
 
             // (HTMLCollection or Element)?: null, or the impl's value. A
             // wrapper is the wrapper cache's; anything else is made here.
@@ -6593,7 +6757,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 return .kNo;
             };
             // A string item() made for the result is the binding's.
-            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
+            defer freeSpecialOperationValue(@TypeOf(result), result_allocator, result);
 
             // Convert result to V8 value based on return type
             const ReturnType = @typeInfo(@TypeOf(indexed_getter)).@"fn".return_type.?;
@@ -6631,7 +6795,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         info.setReturnValue(@ptrCast(v8_value));
                         // setReturnValue reads the handle into a Local; one the
                         // conversion made is the binding's to release.
-                        if (comptime getterValueIsOwned(ChildType)) v8.v8_Global_Dispose(@ptrCast(v8_value));
+                        if (specialResultHandleIsOwned(ChildType, unwrapped_result)) v8.v8_Global_Dispose(@ptrCast(v8_value));
                     }
                     return .kYes;
                 } else {
@@ -6649,7 +6813,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     return .kNo;
                 };
                 info.setReturnValue(@ptrCast(v8_value));
-                if (comptime getterValueIsOwned(ActualReturnType)) v8.v8_Global_Dispose(@ptrCast(v8_value));
+                if (specialResultHandleIsOwned(ActualReturnType, result)) v8.v8_Global_Dispose(@ptrCast(v8_value));
                 return .kYes;
             }
         }
@@ -6827,7 +6991,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const result_allocator = instance.ctx.allocator;
             const result = indexed_getter(instance, index) catch return .kNo;
             // A string item() made for the result is the binding's.
-            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
+            defer freeSpecialOperationValue(@TypeOf(result), result_allocator, result);
 
             // Convert result to V8 value
             const ReturnType = @typeInfo(@TypeOf(indexed_getter)).@"fn".return_type.?;
@@ -6852,7 +7016,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         value_owned = v8.v8_Value_IsUndefined(v8_value.?);
                     } else {
                         v8_value = convertSpecialResult(ChildType, special.indexed_getter.?, isolate, v8_context, unwrapped_result) catch return .kNo;
-                        value_owned = comptime getterValueIsOwned(ChildType);
+                        value_owned = specialResultHandleIsOwned(ChildType, unwrapped_result);
                     }
                 } else {
                     // null value - use undefined
@@ -6860,7 +7024,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             } else {
                 v8_value = convertSpecialResult(ActualReturnType, special.indexed_getter.?, isolate, v8_context, result) catch return .kNo;
-                value_owned = comptime getterValueIsOwned(ActualReturnType);
+                value_owned = specialResultHandleIsOwned(ActualReturnType, result);
             }
 
             if (v8_value == null) return .kNo;
@@ -7059,10 +7223,18 @@ pub fn V8Interface(comptime Interface: type) type {
                 if (err != conv.ConversionError.ExceptionPending) conv.throwTypeError(isolate, @errorName(err));
                 return .kYes;
             };
+            // Borrowed for the call, as an argument is: what the conversion
+            // made goes whether the setter returned or threw (a union's
+            // USVString arm leaked on every `value[i] = "..."`).
+            defer freeSpecialOperationValue(ValueType, instance.ctx.allocator, zig_value);
 
-            // Call the setter (in a binding catch scope when it is [CEReactions])
-            callInCatchScopeIfListed(Interface, setter_name, isolate, setter_fn, .{ instance, index, zig_value }) catch {
-                return .kNo;
+            // Step 7: the operation's method steps (in a binding catch scope
+            // when it is [CEReactions]). What they throw is the [[Set]]'s
+            // (`throwSpecialOperationError`): kYes with it pending, so V8
+            // defines nothing.
+            callInCatchScopeIfListed(Interface, setter_name, isolate, setter_fn, .{ instance, index, zig_value }) catch |err| {
+                throwSpecialOperationError(isolate, err);
+                return .kYes;
             };
 
             return .kYes;
@@ -7130,11 +7302,16 @@ pub fn V8Interface(comptime Interface: type) type {
                         const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kYes;
                         defer if (comptime !typeRetainsContext(value_type)) v8.v8_Context_Dispose(v8_context);
                         const zig_value = conv.fromV8ValueAs(value_type, comptime argumentInterface(Interface, setter_name, 1), instance.ctx.allocator, isolate, v8_context, value) catch |err| {
-                            conv.throwTypeError(isolate, @errorName(err));
+                            // ExceptionPending: the conversion rethrew script's exception.
+                            if (err != conv.ConversionError.ExceptionPending) conv.throwTypeError(isolate, @errorName(err));
                             return .kYes;
                         };
+                        defer freeSpecialOperationValue(value_type, instance.ctx.allocator, zig_value);
+                        // The setter's own exception, as itself: a
+                        // HierarchyRequestError was a TypeError whose message
+                        // was its name.
                         callInCatchScopeIfListed(Interface, setter_name, isolate, setter_fn, .{ instance, index, zig_value }) catch |err| {
-                            conv.throwTypeError(isolate, @errorName(err));
+                            throwSpecialOperationError(isolate, err);
                         };
                     }
                 }
@@ -7346,7 +7523,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const result_allocator = instance.ctx.allocator;
             const result = getter_fn(instance, runtime.DOMString.initInterned(key)) catch return null;
             // A string the named getter made for the result is the binding's.
-            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
+            defer freeSpecialOperationValue(@TypeOf(result), result_allocator, result);
 
             const ReturnType = @typeInfo(@TypeOf(getter_fn)).@"fn".return_type.?;
             const ActualReturnType = @typeInfo(ReturnType).error_union.payload;
@@ -7366,14 +7543,14 @@ pub fn V8Interface(comptime Interface: type) type {
                     return .{ .value = string, .owned = true };
                 }
                 const v8_value = convertSpecialResult(ChildType, special.named_getter.?, isolate, v8_context, unwrapped) catch return null;
-                return .{ .value = @ptrCast(v8_value), .owned = comptime getterValueIsOwned(ChildType) };
+                return .{ .value = @ptrCast(v8_value), .owned = specialResultHandleIsOwned(ChildType, unwrapped) };
             }
             // DOMStringMap's anonymous getter comes here: one string per
             // `el.dataset.x` read - 60,000 a page on the legacy multi-byte
             // decode tests - each kept for the life of the process until the
             // conversion's handle was released.
             const v8_value = convertSpecialResult(ActualReturnType, special.named_getter.?, isolate, v8_context, result) catch return null;
-            return .{ .value = @ptrCast(v8_value), .owned = comptime getterValueIsOwned(ActualReturnType) };
+            return .{ .value = @ptrCast(v8_value), .owned = specialResultHandleIsOwned(ActualReturnType, result) };
         }
 
         /// LegacyPlatformObjectGetOwnProperty step 2, for [[Get]]: the value
@@ -7464,8 +7641,10 @@ pub fn V8Interface(comptime Interface: type) type {
         /// the setter's second argument type, then run it. False when it
         /// threw - the exception is pending (an exception the setter raises
         /// propagates, in sloppy code too: `dataset['-x'] = v` is a
-        /// SyntaxError).
-        fn invokeNamedSetter(isolate: *v8.Isolate, instance: *runtime.Instance, key: []const u8, value: *v8.Value, rethrow: bool) bool {
+        /// SyntaxError; `getComputedStyle(e).color = v` a
+        /// NoModificationAllowedError, CSSOM 6.7's camel-cased attribute
+        /// setter: "Any exceptions thrown must be re-thrown").
+        fn invokeNamedSetter(isolate: *v8.Isolate, instance: *runtime.Instance, key: []const u8, value: *v8.Value) bool {
             const setter_name = comptime special.named_setter.?;
             const setter_fn = @field(Interface, setter_name);
             const ValueType = comptime @typeInfo(@TypeOf(setter_fn)).@"fn".params[2].type.?;
@@ -7478,14 +7657,14 @@ pub fn V8Interface(comptime Interface: type) type {
             // Step 4: convert V to an IDL value of type T.
             const zig_value = conv.fromV8ValueAs(ValueType, comptime argumentInterface(Interface, setter_name, 1), instance.ctx.allocator, isolate, v8_context, value) catch |err| {
                 // ExceptionPending: the conversion rethrew script's exception.
-                if (err != conv.ConversionError.ExceptionPending and rethrow) conv.throwWebIDLError(isolate, @errorName(err));
+                if (err != conv.ConversionError.ExceptionPending) conv.throwWebIDLError(isolate, @errorName(err));
                 return false;
             };
-            defer freeConvertedValue(ValueType, instance.ctx.allocator, zig_value);
+            defer freeSpecialOperationValue(ValueType, instance.ctx.allocator, zig_value);
             // Step 6: the operation's method steps with « P, value » (in a
             // binding catch scope when it is [CEReactions]).
             callInCatchScopeIfListed(Interface, setter_name, isolate, setter_fn, .{ instance, runtime.DOMString.initInterned(key), zig_value }) catch |err| {
-                if (rethrow) conv.throwWebIDLError(isolate, @errorName(err));
+                throwSpecialOperationError(isolate, err);
                 return false;
             };
             return true;
@@ -7513,10 +7692,12 @@ pub fn V8Interface(comptime Interface: type) type {
             // a Global<Value>*.
             const value_global = v8.v8_Value_Persist(isolate, @ptrCast(value)) orelse return .kNo;
             defer v8.v8_Value_Dispose(value_global);
-            // A CSS property's setter fails quietly in sloppy code, as an
-            // attribute's would not: kept as it was.
-            const rethrow = comptime !special.crane_css_properties;
-            _ = invokeNamedSetter(isolate, instance, key, value_global, rethrow or info.shouldThrowOnError());
+            // A CSS property's setter throws in sloppy code too, as the
+            // camel-cased attribute it stands for does (CSSOM 6.7: "Any
+            // exceptions thrown must be re-thrown"); it failed quietly
+            // there, so `getComputedStyle(e).color = "red"` threw nothing
+            // (css/cssom/computed-style-set-property.html).
+            _ = invokeNamedSetter(isolate, instance, key, value_global);
             return .kYes;
         }
 
@@ -7576,7 +7757,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // only [[Writable]]). A fresh Global the wrapper made: ours.
             const value = v8.v8_PropertyDescriptor_GetValue(desc) orelse (v8.v8_Undefined(isolate) orelse return .kYes);
             defer v8.v8_Value_Dispose(value);
-            _ = invokeNamedSetter(isolate, instance, key, value, true);
+            _ = invokeNamedSetter(isolate, instance, key, value);
             return .kYes;
         }
 
@@ -7612,7 +7793,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 const deleter_fn = @field(Interface, deleter_name);
                 // Step 2.4.1: the operation's method steps with « P ».
                 const result = callInCatchScopeIfListed(Interface, deleter_name, isolate, deleter_fn, .{ instance, runtime.DOMString.initInterned(key) }) catch |err| {
-                    conv.throwWebIDLError(isolate, @errorName(err));
+                    throwSpecialOperationError(isolate, err);
                     return .kYes;
                 };
                 // Step 2.4.2: a deleter declared to return boolean that

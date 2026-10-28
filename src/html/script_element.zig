@@ -34,6 +34,31 @@ const runtime = @import("runtime");
 const engine = @import("engine");
 const module_script = @import("module_script.zig");
 const ScriptText = @import("dom").script_elements.ScriptText;
+const node_holds = @import("dom").node_holds;
+
+/// A document script queue's hold on its element, from prepare step 35 until
+/// the element executes or its queue discards it: the wrapper root it always
+/// had (the old net, until refcount step 9) and a counted reference - WebKit's
+/// PendingScript holds `Ref<ScriptElement>` and the ScriptRunner queues hold
+/// their PendingScripts (refcount step 5d). Released exactly once.
+pub const ExecutionHold = struct {
+    root: engine.Owned,
+    element: *runtime.Instance,
+    ref: node_holds.CountedRef = .{},
+
+    /// The hold on `element`, rooted by `root` (owned from here).
+    pub fn take(element: *runtime.Instance, root: engine.Owned) ExecutionHold {
+        var held: ExecutionHold = .{ .root = root, .element = element };
+        held.ref.take(element, @import("dom").instance_bridge.getNodeBase(element));
+        return held;
+    }
+
+    pub fn release(self: ExecutionHold) void {
+        var ref = self.ref;
+        ref.release(self.element);
+        self.root.release();
+    }
+};
 
 /// A script element's type.
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#concept-script-type
@@ -155,7 +180,7 @@ pub const State = struct {
     /// it into a local before execution, or releases it when discarded. A
     /// response task's pending activity ends before an out-of-order deferred
     /// script can run, so that task's shared flag cannot own this root.
-    execution_root: ?engine.Owned = null,
+    execution_root: ?ExecutionHold = null,
 
     /// Part of the current document-abort snapshot. Abort callbacks may
     /// enqueue new scripts, which must remain outside that snapshot.
@@ -229,7 +254,7 @@ pub const State = struct {
     }
 
     /// Transfer the queue's root to its executor or discard step, exactly once.
-    pub fn takeExecutionRoot(self: *State) ?engine.Owned {
+    pub fn takeExecutionRoot(self: *State) ?ExecutionHold {
         const root = self.execution_root;
         self.execution_root = null;
         return root;
