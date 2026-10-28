@@ -270,14 +270,19 @@ const Parser = struct {
         return token;
     }
 
-    /// "Consume an at-rule" at the top level (nested false). The block of
-    /// an at-rule is skipped: the CSSOM objects that would read it are not
-    /// made yet.
+    /// CSS Syntax 3 section 5.5.2: consume the prelude and the block's
+    /// declarations or nested rules, according to the at-rule's grammar.
     fn consumeAtRule(self: *Parser, nested: bool) Allocator.Error!Rule {
         const keyword = self.next();
         const name = try tokenizer.decode(self.allocator, keyword.value);
         errdefer self.allocator.free(name);
         _ = std.ascii.lowerString(name, name);
+        // Conditional 5 sections 6 and 9.1: general-enclosed and custom
+        // style features keep authored source. Token payloads cannot
+        // recover function/url starts, so bound it by stream positions.
+        const authored_prelude = std.mem.eql(u8, name, "container");
+        const prelude_start = self.tokens.pos;
+        var prelude_end = prelude_start;
         var prelude: Serializer = .{ .allocator = self.allocator };
         errdefer prelude.deinit();
         var has_block = false;
@@ -290,12 +295,17 @@ const Parser = struct {
                 // <semicolon-token>: the rule ends. <EOF-token>: a parse
                 // error; the rule ends.
                 .semicolon => {
+                    prelude_end = self.tokens.pos - 1;
                     _ = self.next();
                     break;
                 },
-                .eof => break,
+                .eof => {
+                    prelude_end = self.tokens.pos;
+                    break;
+                },
                 // <{-token>: consume a block; the rule ends.
                 .left_brace => {
+                    prelude_end = self.tokens.pos - 1;
                     _ = self.next();
                     if (isGroupRule(name)) {
                         children = try self.consumeRuleList();
@@ -313,15 +323,23 @@ const Parser = struct {
                 // <}-token> at the top level: a parse error, appended to
                 // the prelude; nested, it ends the rule (left for the
                 // enclosing block).
-                .right_brace => if (nested) break else try prelude.token(self.next()),
+                .right_brace => if (nested) {
+                    prelude_end = self.tokens.pos - 1;
+                    break;
+                } else try prelude.token(self.next()),
                 else => try self.consumeComponentValue(&prelude),
             }
         }
         errdefer freeRules(self.allocator, children);
+        const prelude_text = if (authored_prelude) blk: {
+            const owned = try self.allocator.dupe(u8, std.mem.trim(u8, self.tokens.input[prelude_start..prelude_end], " \t\n\r\x0c"));
+            prelude.deinit();
+            break :blk owned;
+        } else try prelude.finish();
         return .{
             .kind = .at_rule,
             .name = name,
-            .prelude = try prelude.finish(),
+            .prelude = prelude_text,
             .declarations = declarations,
             .has_block = has_block,
             .children = children,

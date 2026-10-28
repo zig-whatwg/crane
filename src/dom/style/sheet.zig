@@ -617,6 +617,9 @@ const Compiler = struct {
     fn ruleList(self: *Compiler, items: []const *Rule, condition: ?u32, layer: ?u16) Allocator.Error!void {
         for (items) |rule| switch (rule.data) {
             .style => try self.styleRule(rule, condition, layer),
+            // Container evaluation awaits real host facts; parsed children
+            // must never become unconditional style rules.
+            .container => {},
             .import => |*import| {
                 // Cascade 5 2: `layer` puts the imported sheet in a new
                 // anonymous layer, `layer(name)` in that layer.

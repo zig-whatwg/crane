@@ -334,6 +334,8 @@ pub const Longhand = enum(u16) {
 
     // CSS Will Change 1 section 2: parsing and computed value only.
     will_change,
+    container_name,
+    container_type,
 
     pub const count = @typeInfo(Longhand).@"enum".fields.len;
 
@@ -480,6 +482,7 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
 
 /// A longhand's grammar.
 pub const Grammar = enum {
+    container,
     will_change,
     text_value,
     decoration_value,
@@ -685,6 +688,8 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .justify_self, .inherited = false, .initial = .{ .alignment = .{ .position = .auto } }, .grammar = .alignment },
         .{ .longhand = .anchor_name, .inherited = false, .initial = Value.kw(.none), .grammar = .anchor_names },
         .{ .longhand = .anchor_scope, .inherited = false, .initial = Value.kw(.none), .grammar = .anchor_scope },
+        .{ .longhand = .container_name, .inherited = false, .initial = Value.kw(.none), .grammar = .container },
+        .{ .longhand = .container_type, .inherited = false, .initial = Value.kw(.normal), .grammar = .container },
         .{ .longhand = .will_change, .inherited = false, .initial = Value.kw(.auto), .grammar = .will_change },
         .{ .longhand = .appearance, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .auto, .base, .base_select, .searchfield, .textarea, .checkbox, .radio, .menulist, .listbox, .meter, .progress_bar, .button, .textfield, .menulist_button } },
         .{ .longhand = .background_color, .inherited = false, .initial = .{ .color = Color.transparent }, .grammar = .color, .quirky_color = true },
@@ -877,6 +882,7 @@ const infos: [Longhand.count]Info = blk: {
 // ============================================================================
 
 pub const Shorthand = enum(u8) {
+    container,
     _webkit_text_orientation,
     all,
     background,
@@ -950,6 +956,7 @@ pub const Shorthand = enum(u8) {
     /// The longhands, in canonical order (CSSOM "shorthand ... maps to").
     pub fn longhands(self: Shorthand) []const Longhand {
         return switch (self) {
+            .container => &.{ .container_name, .container_type },
             ._webkit_text_orientation => &.{.text_orientation},
             .all => &all_longhands,
             .background => &@import("background_values.zig").longhands,
@@ -1342,6 +1349,7 @@ pub const Stream = struct {
 pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Allocator.Error!?Value {
     const def = l.info();
     switch (def.grammar) {
+        .container => return @import("container_values.zig").consume(options, l, stream),
         .will_change => return willChange(options, stream),
         .text_value => return @import("text_values.zig").parse(options, l, stream),
         .decoration_value => return @import("decoration_values.zig").parse(options, l, stream),
@@ -2051,6 +2059,7 @@ fn append(options: ParseOptions, out: *std.ArrayList(Assignment), l: Longhand, v
 
 fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
     switch (s) {
+        .container => return @import("container_values.zig").consumeShorthand(options, stream, out),
         .text_wrap => return @import("text_values.zig").parseWrap(options, stream, out),
         .text_spacing => return @import("text_values.zig").parseSpacing(options, stream, out),
         .text_decoration, .text_emphasis => return @import("decoration_values.zig").parseShorthand(options, s, stream, out),
@@ -2549,6 +2558,7 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
     if (s == .all) return false;
     const ls = s.longhands();
     switch (s) {
+        .container => return @import("container_values.zig").serializeShorthand(vs, out, allocator),
         .font_variant => return @import("font_variants.zig").serialize(vs, out, allocator),
         .font => return @import("font_shorthand.zig").serialize(vs, mode, out, allocator),
         .text_wrap => return @import("text_values.zig").serializeWrap(vs, out, allocator),

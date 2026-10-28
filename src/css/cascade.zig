@@ -136,6 +136,9 @@ pub const Context = struct {
     /// Q83: absent random input skips the candidate at the same availability
     /// boundary as missing metrics. Real DOM resolution supplies this lazily.
     random_base: ?@import("random_values.zig").Provider = null,
+    /// Conditional 5 §7: synchronous per-axis eligibility. The note is
+    /// rebound to each candidate's stack lifetime before computation.
+    container: ?@import("math_values.zig").ContainerInput = null,
     /// Borrowed and called at most once, only for a tree-dependent value.
     tree_counts: ?struct { context: *anyopaque, get: *const fn (*anyopaque) @import("math_values.zig").TreeCounts } = null,
     /// The root element's computed font-size (rem); the initial 16px for
@@ -714,7 +717,7 @@ const Builder = struct {
     /// ConvertRegisteredPropertyVariableData; WebKit
     /// computeCustomPropertyValueForSyntax). A failed parse is invalid at
     /// computed-value time: unset. Retained.
-    fn typedCustom(self: *Builder, name: []const u8, reg: *const registered_mod.Snapshot.Entry, text: []const u8, taint: []const substitution.TaintRange, pending: ?*const @import("pending_values.zig").Pending) Allocator.Error!?*custom_mod.Text {
+    fn typedCustom(self: *Builder, name: []const u8, reg: *const registered_mod.Snapshot.Entry, text: []const u8, taint: []const substitution.TaintRange, pending: ?*const @import("pending_values.zig").Pending, unavailable: *bool) Allocator.Error!?*custom_mod.Text {
         // §2.5 / unit-cycles.html: font-relative units make font-size (and
         // lh line-height) a dependency. While that property is itself being
         // substituted - its var() reached here - both are in a cycle (Blink
@@ -735,7 +738,12 @@ const Builder = struct {
             if (deps.line_height) try self.ensureLineHeight();
         }
         const allocator = self.ctx.allocator;
-        const bytes = (try self.computeTyped(allocator, reg, text, taint, pending)) orelse return retained(self.defaultCustom(name));
+        const result = try self.computeTypedResult(allocator, reg, text, taint, pending);
+        if (result.unavailable) {
+            unavailable.* = true;
+            return null;
+        }
+        const bytes = result.bytes orelse return retained(self.defaultCustom(name));
         errdefer allocator.free(bytes);
         // Computation reorders tokens, so taint covers the whole value when
         // any input token was tainted (both shipping browsers taint a var()
@@ -753,12 +761,20 @@ const Builder = struct {
     /// context, serialized (owned by `allocator`); null when the syntax
     /// does not match.
     fn computeTyped(self: *Builder, allocator: Allocator, reg: *const registered_mod.Snapshot.Entry, text: []const u8, taint: []const substitution.TaintRange, pending: ?*const @import("pending_values.zig").Pending) Allocator.Error!?[]u8 {
+        return (try self.computeTypedResult(allocator, reg, text, taint, pending)).bytes;
+    }
+
+    // Q102: a synchronous return value, never a flag in custom storage.
+    // Invalid syntax defaults; unavailable input retries the next candidate.
+    const TypedResult = struct { bytes: ?[]u8 = null, unavailable: bool = false };
+
+    fn computeTypedResult(self: *Builder, allocator: Allocator, reg: *const registered_mod.Snapshot.Entry, text: []const u8, taint: []const substitution.TaintRange, pending: ?*const @import("pending_values.zig").Pending) Allocator.Error!TypedResult {
         // A declaration's own url()s resolve against its base (the
         // pending value keeps them); a query value's are left as written.
         var value = (if (pending) |p|
             try p.parseSyntax(allocator, &reg.syntax, text, taint, self.ctx.url_resolver)
         else
-            try reg.syntax.parseValue(.{ .allocator = allocator, .tainted_ranges = taint }, text)) orelse return null;
+            try reg.syntax.parseValue(.{ .allocator = allocator, .tainted_ranges = taint }, text)) orelse return .{};
         defer value.deinit();
         var computed = try value.compute(allocator, .{
             .math = self.mathContext(.width),
@@ -767,10 +783,16 @@ const Builder = struct {
             .direction = self.direction,
         });
         defer computed.deinit();
+        // Q104 / Properties and Values API §2.4: registered values must
+        // compute at their declaring element. Even an unresolved length
+        // cannot enter inherited text and be reinterpreted by a consumer.
+        if (self.ctx.container) |input| {
+            if (unavailableContainerInput(input.note.*, false)) return .{ .unavailable = true };
+        }
         var out: std.ArrayList(u8) = .empty;
         defer out.deinit(allocator);
         try computed.serialize(&out, allocator);
-        return try out.toOwnedSlice(allocator);
+        return .{ .bytes = try out.toOwnedSlice(allocator) };
     }
 
     const FontDependencies = struct { font_size: bool = false, line_height: bool = false };
@@ -992,17 +1014,42 @@ const Builder = struct {
         while (position < state.end) : (position += 1) {
             const c = self.custom_candidates[position];
             if (excluded.excludesSource(c.source, c.decl.important)) continue;
+            var note: @import("math_values.zig").UnavailableNote = .{};
+            const outer = self.ctx.container;
+            defer self.ctx.container = outer;
+            if (self.ctx.container) |*input| input.note = &note;
             const keyword: values.CssWide = switch (c.decl.value) {
                 .css_wide => |k| k,
                 .text => |t| {
-                    if (self.typedRegistration(name)) |reg| return self.typedCustom(name, reg, t.bytes, t.taint, null);
+                    if (self.typedRegistration(name)) |reg| {
+                        var unavailable = false;
+                        const result = try self.typedCustom(name, reg, t.bytes, t.taint, null, &unavailable);
+                        if (unavailable) continue;
+                        return result;
+                    }
                     t.retain();
                     return t;
                 },
                 .pending => |pending| blk: {
+                    // Q99: control math must not choose text using an
+                    // unavailable placeholder. Restore the candidate's note
+                    // before computing the selected typed value.
+                    var control_note: @import("math_values.zig").UnavailableNote = .{};
+                    const candidate_input = self.ctx.container;
+                    defer self.ctx.container = candidate_input;
+                    if (self.ctx.container) |*input| input.note = &control_note;
                     var host = self.substitutionHost(self.mathContext(.width));
                     host.tree_scope = c.source.tree_scope.serial;
-                    switch (try pending.substituteCustom(self.ctx.allocator, host, name)) {
+                    const outcome = try pending.substituteCustom(self.ctx.allocator, host, name);
+                    self.ctx.container = candidate_input;
+                    if (unavailableContainerInput(control_note, false)) {
+                        if (outcome == .substituted) {
+                            self.ctx.allocator.free(outcome.substituted.text);
+                            self.ctx.allocator.free(outcome.substituted.taint);
+                        }
+                        continue;
+                    }
+                    switch (outcome) {
                         // Values 5 "Invalid Substitution": an unregistered
                         // (or universal) custom property's computed value is
                         // the guaranteed-invalid value; a registered one with
@@ -1026,7 +1073,10 @@ const Builder = struct {
                                     self.ctx.allocator.free(result.text);
                                     self.ctx.allocator.free(result.taint);
                                 }
-                                return self.typedCustom(name, reg, result.text, result.taint, pending);
+                                var unavailable = false;
+                                const typed = try self.typedCustom(name, reg, result.text, result.taint, pending, &unavailable);
+                                if (unavailable) continue;
+                                return typed;
                             }
                             errdefer {
                                 self.ctx.allocator.free(result.text);
@@ -1255,6 +1305,13 @@ const Builder = struct {
             break;
         };
         const index = found orelse blk: {
+            // Q98: every consumer of a pending shorthand shares this cached
+            // outcome. Never cache text selected by an unavailable control
+            // input, and never leave its note on a later candidate.
+            var note: @import("math_values.zig").UnavailableNote = .{};
+            const outer = self.ctx.container;
+            defer self.ctx.container = outer;
+            if (self.ctx.container) |*input| input.note = &note;
             // Pending key math may need counts; the selected assignment's
             // normal dependency query still runs below after substitution.
             var context = self.mathContext(l);
@@ -1271,6 +1328,10 @@ const Builder = struct {
             if (self.unguard(guarded)) {
                 outcome.deinit(self.ctx.allocator);
                 outcome = .invalid;
+            }
+            if (unavailableContainerInput(note, false)) {
+                outcome.deinit(self.ctx.allocator);
+                outcome = .unavailable;
             }
             errdefer outcome.deinit(self.ctx.allocator);
             const at = self.pending.items.len;
@@ -1325,11 +1386,16 @@ const Builder = struct {
     /// default. Borrowed (not retained).
     fn specified(self: *Builder, l: Longhand) Allocator.Error!Specified {
         var excluded = Exclusions{};
+        defer excluded.positions.deinit(self.ctx.allocator);
+        return self.specifiedExcluding(l, &excluded);
+    }
+
+    fn specifiedExcluding(self: *Builder, l: Longhand, excluded: *Exclusions) Allocator.Error!Specified {
         while (true) {
-            const picked = (try self.pick(l, &excluded)) orelse return self.defaulted(l);
+            const picked = (try self.pick(l, excluded)) orelse return self.defaulted(l);
             const winner = picked.candidate;
             switch (picked.assigned) {
-                .value => |v| return .{ .value = .{ .value = v, .source = .{
+                .value => |v| return .{ .value = .{ .value = v, .position = picked.position, .source = .{
                     .tree_scope = winner.source.tree_scope,
                     .tree_count_allowed = winner.source.tree_count_allowed,
                 } } },
@@ -1367,11 +1433,11 @@ const Builder = struct {
         return self.unset(l);
     }
 
-    fn pick(self: *Builder, l: Longhand, excluded: *const Exclusions) Allocator.Error!?struct { candidate: Candidate, assigned: properties.Assigned } {
+    fn pick(self: *Builder, l: Longhand, excluded: *const Exclusions) Allocator.Error!?struct { candidate: Candidate, assigned: properties.Assigned, position: usize } {
         var position = self.index.heads[@intFromEnum(l)];
         while (position != CandidateIndex.none) : (position = self.index.links[position]) {
             const c = self.candidates[position];
-            if (excluded.excludes(c)) continue;
+            if (excluded.excludes(c) or std.mem.indexOfScalar(usize, excluded.positions.items, position) != null) continue;
             // Q17/Q23–25: unavailable cap-height/ascent cannot enter scalar
             // consumers. Only geometry lengths may remain unresolved; the
             // next retained candidate/default wins, with no hidden CSSOM history.
@@ -1391,7 +1457,7 @@ const Builder = struct {
                     (assigned.value == .font_size_adjust and assigned.value.font_size_adjust.fromFont() and
                         (self.ctx.font_metric_ratios == null or @import("font_request.zig").fromComputed(self.style) == null))));
             if (unavailable) continue;
-            return .{ .candidate = c, .assigned = assigned };
+            return .{ .candidate = c, .assigned = assigned, .position = position };
         }
         return null;
     }
@@ -1457,8 +1523,33 @@ const Builder = struct {
 
     /// Compute `l` and store it (holding its own reference).
     fn computeAndStore(self: *Builder, l: Longhand) Allocator.Error!Value {
-        try self.style.set(l, try self.compute(l, try self.specified(l)));
-        return self.style.get(l);
+        var excluded = Exclusions{};
+        defer excluded.positions.deinit(self.ctx.allocator);
+        while (true) {
+            var note: @import("math_values.zig").UnavailableNote = .{};
+            const outer = self.ctx.container;
+            defer self.ctx.container = outer;
+            if (self.ctx.container) |*input| input.note = &note;
+            const spec = try self.specifiedExcluding(l, &excluded);
+            // Preflight may have skipped candidates. Only this winner's
+            // computation contributes to its post-compute decision.
+            note = .{};
+            const computed = try self.compute(l, spec);
+            const geometry_length = switch (l.info().grammar) {
+                .length_percentage_auto, .length_percentage_nonneg, .size, .max_size, .line_width, .gap, .signed_length, .fit_tolerance => true,
+                else => false,
+            };
+            if (unavailableContainerInput(note, geometry_length)) {
+                computed.release();
+                std.debug.assert(spec == .value);
+                // Q97: one indexed candidate, never its whole layer. The
+                // set allocates only on this uncommon retry path.
+                try excluded.positions.append(self.ctx.allocator, spec.value.position);
+                continue;
+            }
+            try self.style.set(l, computed);
+            return self.style.get(l);
+        }
     }
 
     /// Section 4.4: the computed value of `l` from its specified value.
@@ -1734,6 +1825,7 @@ const Builder = struct {
         const orientation = if (font_affecting) self.parentValue(.text_orientation).keyword else self.style.keyword(.text_orientation);
         return .{
             .random_base = self.ctx.random_base,
+            .container = self.ctx.container,
             .font_size = em,
             .root_font_size = root_em,
             .line_height = own_lh,
@@ -1881,13 +1973,22 @@ fn snapBorderWidth(px: f64) f64 {
     return @floor(px);
 }
 
+/// Q25/Q95: unavailable inputs may remain only in a geometry length.
+/// All scalar placeholders are discarded before any value is stored.
+fn unavailableContainerInput(note: @import("math_values.zig").UnavailableNote, geometry_length: bool) bool {
+    return note.scalar or (note.retained_length and !geometry_length);
+}
+
 const Specified = union(enum) {
-    value: struct { value: Value, source: ValueSource },
+    value: struct { value: Value, source: ValueSource, position: usize },
     initial,
     inherit,
 };
 
 const Exclusions = struct {
+    /// Q97: exact indexed winners rejected after computation, stack-owned
+    /// by the caller. Unlike revert-layer, this has no fixed depth limit.
+    positions: std.ArrayList(usize) = .empty,
     /// Candidates of this revert class or later are discarded (`revert`).
     revert_class_at_least: u4 = 15,
     /// (origin, layer, important) levels `revert-layer` discarded.

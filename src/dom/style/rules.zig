@@ -28,7 +28,7 @@
 //! parse, an @import after any rule but @charset, @layer statements and
 //! other @imports, an @namespace after any other rule, an unknown at-rule.
 //! Stated deviations: @charset is dropped (CSSOM has no object for it);
-//! @counter-style, @container, @scope,
+//! @counter-style, @scope,
 //! @starting-style and the other at-rules Crane does not model are left out
 //! of the rule lists, as the cascade left them out before; nested style
 //! rules (CSS Nesting) are dropped, as css.rules drops them.
@@ -74,6 +74,7 @@ pub const ObjectLink = struct {
 
 pub const Kind = enum {
     style,
+    container,
     import,
     media,
     supports,
@@ -101,14 +102,14 @@ pub const Kind = enum {
             .namespace => 10,
             .supports => 12,
             .layer_block, .layer_statement => 0,
-            .position_try, .property => 0,
+            .position_try, .property, .container => 0,
         };
     }
 
     /// Whether the kind's rules have child CSS rules.
     pub fn isGroup(self: Kind) bool {
         return switch (self) {
-            .media, .supports, .layer_block => true,
+            .media, .supports, .layer_block, .container => true,
             else => false,
         };
     }
@@ -136,6 +137,7 @@ pub const Data = union(Kind) {
         selectors: selector.SelectorList,
         block: DeclarationBlock,
     },
+    container: struct { conditions: css.container_queries.List, children: std.ArrayList(*Rule) = .empty },
     import: Import,
     media: struct {
         list: MediaQueryList,
@@ -198,6 +200,10 @@ pub const Rule = struct {
                 s.selectors.deinit();
                 s.block.deinit();
             },
+            .container => |*c| {
+                c.conditions.deinit();
+                releaseChildren(a, &c.children);
+            },
             .import => |*i| {
                 a.free(i.href);
                 i.media.deinit();
@@ -242,6 +248,7 @@ pub const Rule = struct {
     /// A group rule's child CSS rules; null for every other kind.
     pub fn children(self: *Rule) ?*std.ArrayList(*Rule) {
         return switch (self.data) {
+            .container => |*c| &c.children,
             .media => |*m| &m.children,
             .supports => |*s| &s.children,
             .layer_block => |*l| &l.children,
@@ -295,6 +302,12 @@ pub const Rule = struct {
                     out.items.len = start;
                     try out.appendSlice(allocator, " }");
                 } else try out.appendSlice(allocator, " }");
+            },
+            .container => |*c| {
+                try out.appendSlice(allocator, "@container ");
+                try out.appendSlice(allocator, self.prelude);
+                try out.appendSlice(allocator, " {");
+                try serializeChildren(allocator, out, c.children.items);
             },
             // "@import" SP, serialize a URL of the rule's location, the
             // layer and supports() when given, SP and the media list when
@@ -439,7 +452,11 @@ fn serializeChildren(allocator: Allocator, out: *std.ArrayList(u8), items: []con
         try out.appendSlice(allocator, "  ");
         try out.appendSlice(allocator, text);
     }
-    try out.appendSlice(allocator, "\n}");
+    // CSSOM media serialization steps 3/5 literally add two newlines;
+    // Chrome 156, Firefox 158 and Safari 27 all use one when empty
+    // (serialize-media-rule.html 12/12, WPT ffc4686d11, Q46 2026-10-27).
+    if (wrote) try out.append(allocator, '\n');
+    try out.append(allocator, '}');
 }
 
 /// CSSOM "serialize a URL": `url(` the URL serialized as a string `)`.
@@ -574,6 +591,18 @@ pub fn build(options: BuildOptions, parsed: *const css.rules.Rule, position: Pos
         if (!parsed.has_block) return null;
         const holds = css.supports.supportsCondition(a, parsed.prelude, &selectorSupported, options.parse.namespaces);
         const rule = try make(a, try a.dupe(u8, std.mem.trim(u8, parsed.prelude, " \t\n\r\x0c")), .{ .supports = .{ .holds = holds } });
+        errdefer rule.unref();
+        try buildChildren(options, rule, parsed.children);
+        return rule;
+    }
+    if (std.mem.eql(u8, name, "container")) {
+        if (!parsed.has_block) return null;
+        var conditions = try css.container_queries.parse(a, parsed.prelude) orelse return null;
+        var owns_conditions = true;
+        errdefer if (owns_conditions) conditions.deinit();
+        const prelude = try conditions.serialize(a);
+        const rule = try make(a, prelude, .{ .container = .{ .conditions = conditions } });
+        owns_conditions = false;
         errdefer rule.unref();
         try buildChildren(options, rule, parsed.children);
         return rule;

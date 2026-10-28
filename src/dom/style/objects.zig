@@ -70,6 +70,7 @@ pub fn ruleObject(rule: *Rule, realm: runtime.Context) anyerror!*runtime.Instanc
     const a = realm.allocator;
     const object = try switch (rule.kind()) {
         .style => interfaces.CSSStyleRule.initWith(a, realm, args),
+        .container => interfaces.CSSContainerRule.initWith(a, realm, args),
         .import => interfaces.CSSImportRule.initWith(a, realm, args),
         .media => interfaces.CSSMediaRule.initWith(a, realm, args),
         .supports => interfaces.CSSSupportsRule.initWith(a, realm, args),
