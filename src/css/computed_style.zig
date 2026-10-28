@@ -444,6 +444,34 @@ pub const ComputedStyle = struct {
         });
     }
 
+    /// CSSOM §9 and Positioned Layout 3 §3.3: only an auto inset of an
+    /// applicable relatively positioned box can be resolved without geometry.
+    /// Its opposite's computed px length is already absolute; percentages and
+    /// unresolved calculations remain computed until a layout host supplies them.
+    /// Both specified sides stay computed because CSSOM treats them as
+    /// over-constrained, regardless of the containing block's writing mode.
+    pub fn relativeAutoInset(self: *const ComputedStyle, l: Longhand) ?f64 {
+        const opposite: Longhand = switch (l) {
+            .top => .bottom,
+            .bottom => .top,
+            .left => .right,
+            .right => .left,
+            .inset_block_start => .inset_block_end,
+            .inset_block_end => .inset_block_start,
+            .inset_inline_start => .inset_inline_end,
+            .inset_inline_end => .inset_inline_start,
+            else => return null,
+        };
+        if (self.keyword(l) != .auto or self.keyword(.position) != .relative) return null;
+        const box = self.display();
+        if (box.box == .none or box.box == .contents) return null;
+        if (box.box == .internal and (box.internal == .table_column or box.internal == .table_column_group)) return null;
+        const other = self.get(opposite);
+        if (other == .keyword and other.keyword == .auto) return 0;
+        if (other == .length and other.length.unit == .px) return -other.length.value;
+        return null;
+    }
+
     /// CSSOM section 9: the resolved value of `l`, serialized into `out`.
     pub fn serializeResolved(self: *const ComputedStyle, l: Longhand, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
         const v = self.get(l);
@@ -459,6 +487,10 @@ pub const ComputedStyle = struct {
         // Backgrounds 3 §3.3: a side whose style is none or hidden keeps its
         // computed width (inherit passes it on) but resolves to zero.
         if (self.undrawnBorderWidth(l)) return out.appendSlice(allocator, "0px");
+        if (self.relativeAutoInset(l)) |inset| {
+            try values.appendNumber(inset, out, allocator);
+            return out.appendSlice(allocator, "px");
+        }
         if (v == .color) {
             const color = try self.resolvedColor(l, allocator);
             defer color.release();

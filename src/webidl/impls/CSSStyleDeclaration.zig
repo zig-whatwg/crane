@@ -313,6 +313,9 @@ fn computedValue(internal: *InternalState, name: []const u8, out: *std.ArrayList
                 } else if (style.undrawnBorderWidth(l)) {
                     // Backgrounds 3 §3.3: an undrawn side's resolved width.
                     resolved[i] = css.style_values.Value.px(0);
+                } else if (style.relativeAutoInset(l)) |inset| {
+                    // CSSOM §9: shorthand and longhand use the same resolved inset.
+                    resolved[i] = css.style_values.Value.px(inset);
                 } else {
                     value.retain();
                     resolved[i] = value;
