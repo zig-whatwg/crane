@@ -198,3 +198,112 @@ test "every tree node's structure count equals the structures that name it, with
     }
 }
 
+// ============================================================================
+// The DOM side: the adapter's counted references (shadow mode). Counts read
+// through dom.refcount.count, natively - no wrapper is made, so a count is
+// the parser's alone: the structures' one reference (the creator's, adopted
+// at the push), or none once the parser let go. A node no structure names
+// counts nothing after its insertion (decision D-A: the parser hands its
+// born reference on).
+// ============================================================================
+
+const h = @import("refcount_holders_helpers.zig");
+const runtime = h.runtime;
+const dom = h.dom;
+const interfaces = @import("interfaces");
+
+fn document(page: h.Page) !*runtime.Instance {
+    const context = page.browser.current_context orelse return error.NoPage;
+    return context.document_instance orelse error.NoDocument;
+}
+
+/// The element with `id`, found natively: no wrapper is made.
+fn base(page: h.Page, id: []const u8) !*dom.NodeBase {
+    const element = (try interfaces.Document.call_getElementById(try document(page), runtime.DOMString.initInterned(id))) orelse return error.NoSuchElement;
+    return dom.instance_bridge.getNodeBase(@ptrCast(element)) orelse error.NotANode;
+}
+
+fn firstChildOf(node: *dom.NodeBase) !*dom.NodeBase {
+    return node.first_child orelse error.NoChild;
+}
+
+/// `node`'s count is the parser's `held` references plus its wrapper's,
+/// if it has one: a parser move's shadow-mode net (engine.retainValue on the
+/// moved node and its new parent) wraps both, and in a document a wrapper
+/// stays with its tree.
+fn expectParserCount(held: u32, node: *dom.NodeBase, what: []const u8) !void {
+    const instance: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(node) orelse return error.NotANode));
+    const wrapper: u32 = if (h.engine.hasWrapper(instance)) 1 else 0;
+    try h.expectCount(held + wrapper, node, what);
+}
+
+fn stackHoldsWhatIsOpen() !void {
+    const page = try h.Page.open();
+    defer page.close();
+    try page.run("document.open(); document.write('<!doctype html><head><title>t</title></head><body><div id=a><p id=b>text')");
+    const a = try base(page, "a");
+    const b = try base(page, "b");
+    try h.expectCount(1, a, "an open element: the stack's reference (its creator's, adopted)");
+    try h.expectCount(1, b, "the current node");
+    try h.expectCount(0, try firstChildOf(b), "a text node, inserted: its creator's reference handed to the tree");
+    const head = (try base(page, "a")).parent_node.?.parent_node.?.first_child.?;
+    try h.expectCount(1, head, "the popped head: the head element pointer still names it");
+    try page.run("document.write('</p></div><span id=c></span><b id=x>bold')");
+    try h.expectCount(0, a, "popped: nothing of the parser holds it");
+    try h.expectCount(0, b, "popped");
+    try h.expectCount(0, try base(page, "c"), "pushed and popped");
+    try h.expectCount(1, try base(page, "x"), "open, and an active formatting element: one reference");
+    try page.run("document.write('</b>')");
+    try h.expectCount(0, try base(page, "x"), "off the stack and out of the formatting list");
+    try page.run("document.close()");
+    try h.expectCount(0, head, "the parser was released: the head pointer let go");
+}
+
+test "a suspended parser's open elements and head pointer hold one counted reference each, and a popped or inserted node none" {
+    try h.onFreshThread(stackHoldsWhatIsOpen);
+}
+
+fn formPointerAndFormattingList() !void {
+    const page = try h.Page.open();
+    defer page.close();
+    try page.run("document.open(); document.write('<!doctype html><body><form id=f><input id=i><b id=b1>x<p id=p>y')");
+    const f = try base(page, "f");
+    try h.expectCount(1, f, "open and the form element pointer: one reference");
+    try h.expectCount(0, try base(page, "i"), "a void element: pushed, popped");
+    // The adoption agency: </b> with a block inside the formatting element
+    // moves the block and makes replacement elements (moves are held across
+    // their removal; every hold ends).
+    try page.run("document.write('</b>z</form>')");
+    try expectParserCount(0, f, "closed: popped and the pointer cleared (the move's new parent: wrapped)");
+    try expectParserCount(0, try base(page, "b1"), "the adoption agency took it off both lists");
+    // The furthest block, moved under the form; the outer loop's second
+    // turn closes the new b, and </form>'s implied end tags close the p.
+    try expectParserCount(0, try base(page, "p"), "moved by the adoption agency, then closed by </form>");
+    try page.run("document.write('<table><b id=t>fostered<tr><td>c</table>'); document.close()");
+    try expectParserCount(0, try base(page, "t"), "foster-parented, then closed");
+}
+
+test "the form pointer and the formatting list hold their elements, and every hold of an adoption agency run ends" {
+    try h.onFreshThread(formPointerAndFormattingList);
+}
+
+fn scriptRemovedWhileOpen() !void {
+    const page = try h.Page.open();
+    defer page.close();
+    try page.run("document.open(); document.write('<!doctype html><body><div id=host><section id=s><em>e')");
+    const s = try base(page, "s");
+    try h.expectCount(1, s, "open");
+    // Script detaches an open element: the stack still names it - its
+    // count is the parser's, and its tree is held through it.
+    try page.run("window.kept = document.getElementById('s'); kept.expando = 1; document.getElementById('host').remove();");
+    try h.expectCount(2, s, "open and wrapped (a global keeps the wrapper)");
+    try page.collect();
+    try page.run("document.write('still</em></section>more</div>');");
+    try page.run("if (kept.textContent !== 'estill') throw new Error(kept.textContent); if (kept.expando !== 1) throw new Error('expando');");
+    try h.expectCount(1, s, "popped: the wrapper's reference alone");
+    try page.run("document.close()");
+}
+
+test "an element script detaches while it is open stays counted by the stack and keeps receiving its content" {
+    try h.onFreshThread(scriptRemovedWhileOpen);
+}

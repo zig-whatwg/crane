@@ -352,8 +352,27 @@ pub fn domAdapterOnInserted(location: TreeBuilder.InsertionLocation, child: *Tre
     adapter.inserting = if (child.node_type == .element) child else null;
     defer adapter.inserting = outer;
     const inserted = parser_mutation.insert(adapter, location, child) catch false;
-    if (inserted) adapter.removeOrphan(child) else adapter.keepFailedInsertion(child);
+    if (inserted) {
+        adapter.removeOrphan(child);
+        adapter.handOnCreatorReference(child);
+    } else adapter.keepFailedInsertion(child);
     adapter.endPendingHold(child);
+}
+
+/// The tree builder's structures began to name `tree_node` (a stack entry,
+/// a formatting entry, the head or form pointer, the script being
+/// processed): one counted reference on its DOM node (refcount step 5a;
+/// WebKit's HTMLStackItem `RefPtr<ContainerNode> m_node`). Passed to
+/// tree_builder.setDomAdapterStructureHoldCallbacks().
+pub fn domAdapterOnStructureHold(tree_node: *TreeNode, context: ?*anyopaque) void {
+    const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
+    adapter.holdForStructures(tree_node);
+}
+
+/// The last structure naming `tree_node` let go: its counted reference ends.
+pub fn domAdapterOnStructureRelease(tree_node: *TreeNode, context: ?*anyopaque) void {
+    const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
+    adapter.releaseForStructures(tree_node);
 }
 
 pub fn domAdapterOnRemoved(node: *TreeNode, context: ?*anyopaque) void {
@@ -424,6 +443,8 @@ pub fn domAdapterPrepareContentPatching(patch: *html_core.parser.ContentPatch, l
         patch.end = end;
         patch.end_generation = runtime.SlabAllocator.generationOf(end);
     }
+    // The parser holds them counted until the template's end tag.
+    adapter.holdPatch(patch);
     // Step 9.
     if (markers.end == start) return true;
     // Steps 10-12: removedNodes, start's following siblings up to end.
@@ -458,6 +479,7 @@ pub fn domAdapterFinishContentPatching(patch: *html_core.parser.ContentPatch, co
         parser_mutation.remove(start) catch {};
     if (parser_mutation.liveNode(end, end_generation)) |marker| if (adapter.isAlive())
         parser_mutation.remove(marker) catch {};
+    adapter.releasePatch(patch);
 }
 
 const Markers = struct { start: ?*runtime.Instance = null, end: ?*runtime.Instance = null };
@@ -712,6 +734,20 @@ pub const DomTreeAdapter = struct {
         tree_node: *TreeNode,
     };
 
+    /// A patching `<template for>`'s live nodes - its insertion target and
+    /// markers - held counted from "prepare content patching" until the
+    /// template's end tag (or the adapter's end): Blink keeps the patch's
+    /// parent strongly (Patch::parent_). Refcount step 5a.
+    pub const PatchHold = struct {
+        patch: *const html_core.parser.ContentPatch,
+        nodes: [3]?*runtime.Instance = .{ null, null, null },
+        refs: [3]dom.node_holds.CountedRef = .{ .{}, .{}, .{} },
+
+        fn release(self: *PatchHold) void {
+            for (&self.refs, self.nodes) |*ref, node| if (node) |instance| ref.release(instance);
+        }
+    };
+
     allocator: Allocator,
     ctx: runtime.Context,
     document: *runtime.Instance,
@@ -731,6 +767,8 @@ pub const DomTreeAdapter = struct {
     /// attempt (usually empty).
     pending: std.ArrayListUnmanaged(PendingHold) = .empty,
     rescuer: ?Rescuer = null,
+    /// The patching templates' counted holds (`PatchHold`); usually empty.
+    patch_holds: std.ArrayListUnmanaged(PatchHold) = .empty,
     /// What the node being created can have done (`mustCheckWrapper`); set by
     /// the create step, consumed by onNodeCreated.
     last_creation: ?Creation = null,
@@ -782,6 +820,36 @@ pub const DomTreeAdapter = struct {
         self.orphans.deinit(self.allocator);
         for (self.pending.items) |held| held.owned.release();
         self.pending.deinit(self.allocator);
+        for (self.patch_holds.items) |*held| held.release();
+        self.patch_holds.deinit(self.allocator);
+    }
+
+    /// Hold `patch`'s live target and markers counted (see `PatchHold`),
+    /// once: a patch prepared again lets go of what it held.
+    pub fn holdPatch(self: *DomTreeAdapter, patch: *const html_core.parser.ContentPatch) void {
+        self.releasePatch(patch);
+        var held: PatchHold = .{ .patch = patch };
+        const live = [3]?*runtime.Instance{
+            parser_mutation.liveNode(patch.target, patch.target_generation),
+            parser_mutation.liveNode(patch.start, patch.start_generation),
+            parser_mutation.liveNode(patch.end, patch.end_generation),
+        };
+        for (live, &held.nodes, &held.refs) |maybe, *slot, *ref| {
+            const node = maybe orelse continue;
+            slot.* = node;
+            ref.take(node, dom.instance_bridge.getNodeBase(node));
+        }
+        self.patch_holds.append(self.allocator, held) catch held.release();
+    }
+
+    /// `patch` is finished: its holds end.
+    pub fn releasePatch(self: *DomTreeAdapter, patch: *const html_core.parser.ContentPatch) void {
+        for (self.patch_holds.items, 0..) |*held, index| {
+            if (held.patch != patch) continue;
+            held.release();
+            _ = self.patch_holds.swapRemove(index);
+            return;
+        }
     }
 
     /// The tree builder's document node names this adapter's Document.
@@ -821,6 +889,11 @@ pub const DomTreeAdapter = struct {
         const dom_node = try self.createDomNode(tree_node);
         const creation = self.last_creation;
         self.last_creation = null;
+        // A tree node made again lets go of what it held of its first DOM
+        // node: the creator's reference, and the structures' (which the new
+        // node's creator's reference then becomes).
+        const was_held = tree_node.dom_held;
+        self.dropReferences(tree_node);
         // A tree node is mapped once; should it be made again, an unwrapped
         // orphan of the first creation is still the adapter's to free.
         if (tree_node.dom_orphan_index != TreeNode.not_an_orphan) {
@@ -835,6 +908,20 @@ pub const DomTreeAdapter = struct {
         tree_node.dom_node = dom_node;
         tree_node.dom_generation = runtime.SlabAllocator.generationOf(dom_node);
         tree_node.dom_revoked = false;
+        // The DOM node was born with one reference, its creator's: the
+        // parser holds it until it hands it on (refcount step 5a, decision
+        // D-A) - a non-element's to the tree at its first successful
+        // insertion, an element's to the structure that names it first.
+        if (dom_node != self.document) {
+            tree_node.dom_base = dom.instance_bridge.getNodeBase(dom_node);
+            tree_node.dom_creator = tree_node.dom_base != null;
+            if (was_held) {
+                // Still named by a structure: the new node's creator's
+                // reference is the structures' now.
+                tree_node.dom_creator = false;
+                tree_node.dom_held = tree_node.dom_base != null;
+            }
+        }
         // Wrapped nodes belong to engine cleanup (a pending hold, a rescue,
         // or script that wrapped them); an unwrapped one is the adapter's
         // until an insertion takes it.
@@ -857,7 +944,9 @@ pub const DomTreeAdapter = struct {
         };
         if (!inserted) self.keepFailedInsertion(child);
         self.endPendingHold(child);
-        if (inserted) self.removeOrphan(child) else return;
+        if (!inserted) return;
+        self.removeOrphan(child);
+        self.handOnCreatorReference(child);
         if (!self.isAlive() or self.getDomNode(child) == null) return;
 
         // CRITICAL: If appending <html> to document, set documentElement
@@ -910,6 +999,72 @@ pub const DomTreeAdapter = struct {
             owned.release();
             return;
         }
+    }
+
+    // =========================================================================
+    // Counted references (refcount design step 5a). SHADOW MODE: the counts
+    // decide nothing yet; the parser's rescues (parser_holds) are what keeps
+    // a held node from the collector until step 7. A node freed under one
+    // of these (its realm's end) is forgotten, never released.
+    // =========================================================================
+
+    /// `tree_node`'s DOM node as a live tree node, or null once it is gone
+    /// (freed, or its teardown begun): node_holds.CountedRef's check.
+    fn liveBase(tree_node: *const TreeNode) ?*dom.NodeBase {
+        const opaque_base = tree_node.dom_base orelse return null;
+        const instance: *runtime.Instance = @ptrCast(@alignCast(tree_node.dom_node orelse return null));
+        if (runtime.SlabAllocator.generationOf(instance) != tree_node.dom_generation) return null;
+        if (runtime.instance_lifecycle.isCleanupStarted(instance)) return null;
+        return @ptrCast(@alignCast(opaque_base));
+    }
+
+    /// The first structure names `tree_node`: its DOM node is held - by the
+    /// creator's reference, adopted, if the parser still has it (an
+    /// element's push after its insertion, or before it for a template the
+    /// builder only adds to the stack), else by a new one.
+    pub fn holdForStructures(self: *DomTreeAdapter, tree_node: *TreeNode) void {
+        _ = self;
+        if (tree_node.dom_held) return;
+        if (tree_node.dom_creator) {
+            tree_node.dom_creator = false;
+            tree_node.dom_held = true;
+            return;
+        }
+        const base = liveBase(tree_node) orelse return;
+        dom.refcount.holderRef(base);
+        tree_node.dom_held = true;
+    }
+
+    /// The last structure let go of `tree_node`: so does its reference.
+    pub fn releaseForStructures(self: *DomTreeAdapter, tree_node: *TreeNode) void {
+        _ = self;
+        if (!tree_node.dom_held) return;
+        tree_node.dom_held = false;
+        const base = liveBase(tree_node) orelse return;
+        dom.refcount.holderDeref(base);
+    }
+
+    /// `tree_node`'s DOM node was inserted: a node that is not an element
+    /// hands its creator's reference to the tree (its parent bit keeps it
+    /// from here). An element keeps it for the structure that names it
+    /// first, which its insertion steps are followed by.
+    pub fn handOnCreatorReference(self: *DomTreeAdapter, tree_node: *TreeNode) void {
+        _ = self;
+        if (tree_node.node_type == .element or !tree_node.dom_creator) return;
+        tree_node.dom_creator = false;
+        const base = liveBase(tree_node) orelse return;
+        dom.refcount.holderDeref(base);
+    }
+
+    /// `tree_node` is made again, or its creation failed: it lets go of its
+    /// DOM node's creator's reference and the structures' reference.
+    pub fn dropReferences(self: *DomTreeAdapter, tree_node: *TreeNode) void {
+        _ = self;
+        const base = liveBase(tree_node);
+        if (tree_node.dom_creator) if (base) |node| dom.refcount.holderDeref(node);
+        if (tree_node.dom_held) if (base) |node| dom.refcount.holderDeref(node);
+        tree_node.dom_creator = false;
+        tree_node.dom_held = false;
     }
 
     /// Get the DOM element for a TreeNode.
