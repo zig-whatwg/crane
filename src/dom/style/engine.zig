@@ -237,6 +237,8 @@ pub const StyleEngine = struct {
         /// The environment revision the cached styles were computed with
         /// (hooks.environmentRevision; 0 until a provider reports one).
         environment_revision: u64 = 0,
+        /// The last observed Document-owned top-layer entry revision.
+        top_layer_revision: u64 = 0,
         /// Used style resources, absent on documents with no resource
         /// values. Kept out of the embedded StyleEngine's size class.
         resources: ?*resource_loading.State = null,
@@ -513,6 +515,17 @@ pub const StyleEngine = struct {
         self.environmentChanged();
     }
 
+    /// Selectors 4 section 9: top-layer membership changes ancestor state
+    /// matching even when the focused/hovered/active element is unchanged.
+    /// Pull its revision like environment variables; absent state stays 0
+    /// and allocates no Rare data. No mutation path enters style resolution.
+    pub fn observeTopLayer(self: *StyleEngine, revision: u64) Error!void {
+        const seen: u64 = if (self.rare) |r| r.top_layer_revision else 0;
+        if (revision == seen) return;
+        (try self.ensureRare()).top_layer_revision = revision;
+        self.environmentChanged();
+    }
+
     /// A sheet of this document was made, removed or changed one of its
     /// flags: the active sheets are rebuilt when style is next read.
     pub fn sheetsChanged(self: *StyleEngine) void {
@@ -523,6 +536,7 @@ pub const StyleEngine = struct {
     /// The active sheets, rebuilt first if anything they depend on moved.
     fn ensureActive(self: *StyleEngine, document: *runtime.Instance) Error!*Active {
         try self.observeEnvironment(hooks.environmentRevision(document));
+        try self.observeTopLayer(@import("../top_layer.zig").revisionOf(document));
         const media = hooks.mediaValues(document);
         const quirks = isQuirks(document);
         if (self.active) |*a| {

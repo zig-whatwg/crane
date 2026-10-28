@@ -249,6 +249,7 @@ dominant-baseline: auto
 initial-letter: normal
 text-box-trim: none
 text-box-edge: auto
+will-change: auto
 == initial root and child / 0
 display: block
 == initial root and child / 1

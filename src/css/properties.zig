@@ -332,6 +332,9 @@ pub const Longhand = enum(u16) {
     text_box_trim,
     text_box_edge,
 
+    // CSS Will Change 1 section 2: parsing and computed value only.
+    will_change,
+
     pub const count = @typeInfo(Longhand).@"enum".fields.len;
 
     /// The property name.
@@ -477,6 +480,7 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
 
 /// A longhand's grammar.
 pub const Grammar = enum {
+    will_change,
     text_value,
     decoration_value,
     inline_value,
@@ -681,6 +685,7 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .justify_self, .inherited = false, .initial = .{ .alignment = .{ .position = .auto } }, .grammar = .alignment },
         .{ .longhand = .anchor_name, .inherited = false, .initial = Value.kw(.none), .grammar = .anchor_names },
         .{ .longhand = .anchor_scope, .inherited = false, .initial = Value.kw(.none), .grammar = .anchor_scope },
+        .{ .longhand = .will_change, .inherited = false, .initial = Value.kw(.auto), .grammar = .will_change },
         .{ .longhand = .appearance, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .auto, .base, .base_select, .searchfield, .textarea, .checkbox, .radio, .menulist, .listbox, .meter, .progress_bar, .button, .textfield, .menulist_button } },
         .{ .longhand = .background_color, .inherited = false, .initial = .{ .color = Color.transparent }, .grammar = .color, .quirky_color = true },
         .{ .longhand = .background_image, .inherited = false, .initial = Value.kw(.none), .grammar = .image },
@@ -1337,6 +1342,7 @@ pub const Stream = struct {
 pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Allocator.Error!?Value {
     const def = l.info();
     switch (def.grammar) {
+        .will_change => return willChange(options, stream),
         .text_value => return @import("text_values.zig").parse(options, l, stream),
         .decoration_value => return @import("decoration_values.zig").parse(options, l, stream),
         .inline_value => return @import("inline_values.zig").parse(options, l, stream),
@@ -1530,6 +1536,37 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .stroke_width => return @import("svg_paint.zig").parseStrokeWidth(options, stream),
         .background => return @import("background_values.zig").parse(options, l, stream),
     }
+}
+
+/// CSS Will Change 1 section 2: auto | <animateable-feature>#. Unknown
+/// property names, spelling case, order and duplicates are significant.
+fn willChange(options: ParseOptions, stream: *Stream) Allocator.Error!?Value {
+    if (takeKeyword(stream, &.{.auto})) |keyword| return Value.kw(keyword);
+    const a = options.allocator;
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(a);
+    while (true) {
+        const token = stream.next();
+        if (token.token_type != .ident) return null;
+        const name = try tokenizer_mod.decode(a, token.value);
+        defer a.free(name);
+        for ([_][]const u8{ "initial", "inherit", "unset", "revert", "revert-layer", "revert-rule", "default", "will-change", "none", "all", "auto" }) |reserved| {
+            if (std.ascii.eqlIgnoreCase(name, reserved)) return null;
+        }
+        if (std.ascii.eqlIgnoreCase(name, "scroll-position")) {
+            try out.appendSlice(a, "scroll-position");
+        } else if (std.ascii.eqlIgnoreCase(name, "contents")) {
+            try out.appendSlice(a, "contents");
+        } else {
+            const escaped = try serialize_mod.serializeIdentifier(a, name);
+            defer a.free(escaped);
+            try out.appendSlice(a, escaped);
+        }
+        if (stream.peek().token_type != .comma) break;
+        _ = stream.next();
+        try out.appendSlice(a, ", ");
+    }
+    return .{ .text = try SharedText.create(a, out.items) };
 }
 
 /// Anchor Position 1 §§2.1–2.2: names remain case-sensitive, including

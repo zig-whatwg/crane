@@ -190,6 +190,8 @@ const Registry = runtime.InstanceRegistry(.html_input_element, InternalState);
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
     validation: forms.Validation = .{},
+    /// HTML 4.10.18.1: reset/commit state, independent of script value writes.
+    user_validity: bool = false,
     labels: form_associated.LabelsCache = .{},
     /// HTML 4.10.5.1.19: persists across leaving/re-entering Image Button.
     image_src: ?[]u8 = null,
@@ -494,7 +496,7 @@ pub fn installHooks() void {
         .legacy_pre_activation = &legacyPreActivation,
         .legacy_canceled_activation = &legacyCanceledActivation,
     });
-    dom.form_controls.install(.{ .is = &isInput, .reset = &resetAlgorithm, .validity_flags = &constraintFlags, .user_edit = &userEdit, .editor_text = &editorText, .has_range_limitations = &hasRangeLimitations });
+    dom.form_controls.install(.{ .is = &isInput, .reset = &resetAlgorithm, .validity_flags = &constraintFlags, .user_validity = &userValidity, .set_user_validity = &setUserValidity, .user_edit = &userEdit, .editor_text = &editorText, .has_range_limitations = &hasRangeLimitations });
     dom.mutation.registerInsertionStepsCallback(&insertionStepsCallback) catch |err| {
         log.warn("input insertion steps not registered: {}", .{err});
     };
@@ -898,6 +900,12 @@ fn runActivationBehavior(instance: *runtime.Instance, event: *runtime.Instance) 
             }
             // 1. If the element is not connected, then return.
             if (!(interfaces.Node.get_isConnected(instance) catch false)) return;
+            // Firefox 158 + Safari 27 (integrator Q24 probe, 2026-10-27)
+            // mark user validity for successful scripted activation too;
+            // Chrome 156 differs. WebKit didDispatchClick reaches
+            // dispatchFormControlChangeEvent without a trusted-event gate.
+            // Cancellation has already run legacyCanceledActivation instead.
+            setUserValidity(instance, true) catch return;
             // 2. Fire input, bubbling and composed. 3. Fire change, bubbling.
             fireEvent(instance, "input", .{ .bubbles = true, .composed = true }) catch |err| {
                 log.warn("input event not fired: {}", .{err});
@@ -962,6 +970,15 @@ fn isMutable(instance: *runtime.Instance, input_type: InputType) bool {
     return !(readonly_applies and hasAttribute(instance, "readonly"));
 }
 
+fn userValidity(instance: *runtime.Instance) bool {
+    return if (getInternal(instance)) |internal| internal.user_validity else false;
+}
+
+fn setUserValidity(instance: *runtime.Instance, value: bool) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    internal.user_validity = value;
+}
+
 /// dom.form_controls: "The reset algorithm for input elements is to set the
 /// user validity, dirty value flag, and dirty checkedness flag back to
 /// false, set the value of the element to the value of the value content
@@ -972,6 +989,7 @@ fn isMutable(instance: *runtime.Instance, input_type: InputType) bool {
 /// attribute's current state defines one."
 fn resetAlgorithm(instance: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
+    internal.user_validity = false;
     internal.clearValue();
     emptySelectedFiles(instance);
     internal.dirty_checkedness = false;

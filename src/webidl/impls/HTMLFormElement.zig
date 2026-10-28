@@ -1398,6 +1398,15 @@ fn submit(form: *runtime.Instance, submitter: *runtime.Instance, options: Submit
         defer if (Registry.get(form)) |after| {
             after.firing_submission_events = false;
         };
+        // HTML form submission step 5.3, before constraint validation:
+        // every owned input/select/textarea, including barred controls.
+        // No script runs during this owner-state-only traversal.
+        const root = form_associated.rootOf(form);
+        var node: ?*runtime.Instance = root;
+        while (node) |element| : (node = nextInTree(element, root, false)) {
+            if (form_associated.formOwner(element) == form)
+                try @import("dom").form_controls.setUserValidity(element, true);
+        }
         const no_validate = hasAttribute(form, "novalidate") or
             (submitter != form and hasAttribute(submitter, "formnovalidate"));
         if (!no_validate and !(try validateControls(form))) return;

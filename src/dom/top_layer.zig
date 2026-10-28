@@ -68,6 +68,9 @@ pub const State = struct {
     /// Stable allocated entries: linked MemberHolds must never be moved by
     /// ArrayList growth. Non-showing entries pin synchronous event snapshots.
     entries: std.ArrayListUnmanaged(*Entry) = .empty,
+    /// Pulled by the style engine. Scoped pins share this entry list;
+    /// every insertion, promotion and removal advances its revision.
+    revision: u64 = 0,
     /// Non-owning index into the stable entries above. Removal updates this
     /// before freeing an entry; no modal means a single null check.
     last_modal: ?*Entry = null,
@@ -112,6 +115,7 @@ pub const State = struct {
         const entry = try self.pin(node);
         entry.modal = true;
         self.last_modal = entry;
+        self.revision +%= 1;
         return entry;
     }
 
@@ -129,6 +133,7 @@ pub const State = struct {
         entry.source_slot_len = (try std.fmt.bufPrint(&entry.source_slot, "top_layer:{d}:source", .{id})).len;
         entry.focus_slot_len = (try std.fmt.bufPrint(&entry.focus_slot, "top_layer:{d}:focus", .{id})).len;
         try self.entries.append(self.allocator, entry);
+        self.revision +%= 1;
         entry.element.take(self.owner, node, entry.nodeSlot());
         return entry;
     }
@@ -137,6 +142,7 @@ pub const State = struct {
         for (self.entries.items, 0..) |entry, index| {
             if (entry.id != id) continue;
             _ = self.entries.orderedRemove(index);
+            self.revision +%= 1;
             if (self.last_modal == entry) {
                 self.last_modal = null;
                 var remaining = self.entries.items.len;
@@ -191,6 +197,7 @@ pub const State = struct {
         self.releaseOrphanHold(&self.pointerdown_target, .{ .name = "top_layer:pointerdown" }, owner_live);
         self.releaseOrphanHold(&self.hint_parent, .{ .name = "top_layer:hint_parent" }, owner_live);
         for (self.entries.items) |entry| {
+            self.revision +%= 1;
             self.releaseOrphanHold(&entry.previous_focus, entry.focusSlot(), owner_live);
             self.releaseOrphanHold(&entry.source, entry.sourceSlot(), owner_live);
             self.releaseOrphanHold(&entry.element, entry.nodeSlot(), owner_live);
@@ -220,6 +227,12 @@ pub fn install(implementation: Access) void {
 
 pub fn ofDocument(document: *runtime.Instance, create: bool) !?*State {
     return (access orelse return error.NotSupported).get(document, create);
+}
+
+/// Read without allocating the Document's optional top-layer state.
+pub fn revisionOf(document: *runtime.Instance) u64 {
+    const state = (ofDocument(document, false) catch null) orelse return 0;
+    return state.revision;
 }
 
 pub fn ofElement(element: *runtime.Instance, create: bool) !?*State {
