@@ -1,52 +1,28 @@
-//! Implementation for CSSMarginRule interface
-
-const std = @import("std");
+//! CSSOM §6.4.8: a margin at-rule belonging to a page rule.
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const CSSMarginRule = interfaces.CSSMarginRule;
-
-pub const State = CSSMarginRule.State;
-
-pub const ImplError = error{
-    NotImplemented,
-};
-
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
+const dom = @import("dom");
+pub const State = interfaces.CSSMarginRule.State;
 pub const InternalState = struct {};
+pub const ImplError = error{InvalidStateError};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+fn ruleOf(instance: *runtime.Instance) !*dom.style.Rule {
+    const rule = dom.style.hooks.cssRuleOf(instance) orelse return error.InvalidStateError;
+    if (rule.kind() != .margin) return error.InvalidStateError;
+    return rule;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-/// Getter for name
 pub fn get_name(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const rule = try ruleOf(instance);
+    return runtime.DOMString.initDupe(instance.ctx.allocator, rule.data.margin.name);
 }
 
-/// Getter for style
 pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const rule = try ruleOf(instance);
+    // The pinned IDL returns CSSStyleDeclaration. Updating that snapshot
+    // is the separately owned webref/codegen procedure.
+    const style = try interfaces.CSSStyleDeclaration.initWith(instance.ctx.allocator, instance.ctx, .{ .rule_block_of = rule });
+    dom.style.objects.keepFrom(style, instance, dom.style.objects.slots.parent_rule);
+    return style;
 }

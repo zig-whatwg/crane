@@ -641,7 +641,7 @@ const Compiler = struct {
             .font_face => try self.contents.font_rules.append(self.contents.allocator, .{ .rule = rule, .condition = condition }),
             .property => try self.contents.property_rules.append(self.contents.allocator, .{ .rule = rule, .condition = condition }),
             // Fonts 4 §6.9: feature maps contribute no element selector.
-            .page, .font_feature_values => {},
+            .page, .margin, .font_feature_values => {},
             // Anchor Position 1 §6.5 applies these only while trying a
             // geometry-dependent fallback; they are not author rules.
             .position_try => {},

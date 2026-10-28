@@ -207,6 +207,13 @@ pub fn set_cssText(instance: *runtime.Instance, value: typedefs.CSSOMString) any
         try changed(internal);
         return;
     };
+    if (internal.kind == .rule) if (internal.rule) |rule| if (rule.kind() == .page) {
+        var context = try parseOptions(instance, internal, value.asSlice());
+        defer context.deinit();
+        try rule.data.page.descriptors.setCssText(context.options(), value.asSlice());
+        try changed(internal);
+        return;
+    };
     if (internal.kind == .computed) return error.NoModificationAllowedError;
     const block = (try writableBlock(internal)) orelse return;
     var context = try parseOptions(instance, internal, value.asSlice());
@@ -272,6 +279,8 @@ pub fn call_getPropertyValue(instance: *runtime.Instance, property: typedefs.CSS
     defer out.deinit(internal.allocator);
     if (internal.kind == .computed) {
         try computedValue(internal, property.asSlice(), &out);
+    } else if (internal.kind == .rule and internal.rule != null and internal.rule.?.kind() == .page) {
+        try internal.rule.?.data.page.descriptors.getPropertyValue(property.asSlice(), &out);
     } else {
         const block = (try writableBlock(internal)) orelse return runtime.DOMString.initEmpty();
         try block.getPropertyValue(property.asSlice(), &out);
@@ -333,6 +342,8 @@ fn computedValue(internal: *InternalState, name: []const u8, out: *std.ArrayList
 pub fn call_getPropertyPriority(instance: *runtime.Instance, property: typedefs.CSSOMString) anyerror!typedefs.CSSOMString {
     const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
     if (internal.kind == .rule) if (internal.rule) |rule| if (rule.kind() == .font_face) return runtime.DOMString.initEmpty();
+    if (internal.kind == .rule) if (internal.rule) |rule| if (rule.kind() == .page)
+        return if (rule.data.page.descriptors.getPropertyPriority(property.asSlice())) runtime.DOMString.initInterned("important") else runtime.DOMString.initEmpty();
     if (internal.kind == .computed) return runtime.DOMString.initEmpty();
     const block = (try writableBlock(internal)) orelse return runtime.DOMString.initEmpty();
     return if (block.getPropertyPriority(property.asSlice())) runtime.DOMString.initInterned("important") else runtime.DOMString.initEmpty();
@@ -349,6 +360,13 @@ pub fn call_setProperty(instance: *runtime.Instance, property: typedefs.CSSOMStr
         var context = try parseOptions(instance, internal, value.asSlice());
         defer context.deinit();
         if (try rule.data.font_face.setProperty(context.options(), property.asSlice(), value.asSlice(), priority_text)) try changed(internal);
+        return;
+    };
+    if (internal.kind == .rule) if (internal.rule) |rule| if (rule.kind() == .page) {
+        var context = try parseOptions(instance, internal, value.asSlice());
+        defer context.deinit();
+        const prio: []const u8 = if (priority.wasPassed()) priority.getValue().asSlice() else "";
+        if (try rule.data.page.descriptors.setProperty(context.options(), property.asSlice(), value.asSlice(), prio)) try changed(internal);
         return;
     };
     if (internal.kind == .computed) return error.NoModificationAllowedError;
@@ -368,6 +386,12 @@ pub fn call_removeProperty(instance: *runtime.Instance, property: typedefs.CSSOM
         defer internal.allocator.free(previous);
         if (try rule.data.font_face.setProperty(.{ .allocator = internal.allocator }, property.asSlice(), "", "")) try changed(internal);
         return ownedString(instance.ctx.allocator, previous);
+    };
+    if (internal.kind == .rule) if (internal.rule) |rule| if (rule.kind() == .page) {
+        var old: std.ArrayList(u8) = .empty;
+        defer old.deinit(internal.allocator);
+        if (try rule.data.page.descriptors.removeProperty(property.asSlice(), &old)) try changed(internal);
+        return ownedString(instance.ctx.allocator, old.items);
     };
     if (internal.kind == .computed) return error.NoModificationAllowedError;
     const block = (try writableBlock(internal)) orelse return runtime.DOMString.initEmpty();

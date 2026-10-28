@@ -83,6 +83,7 @@ pub const Kind = enum {
     font_face,
     font_feature_values,
     page,
+    margin,
     position_try,
     property,
     keyframes,
@@ -98,6 +99,7 @@ pub const Kind = enum {
             .font_face => 5,
             .font_feature_values => 14,
             .page => 6,
+            .margin => 9,
             .keyframes => 7,
             .keyframe => 8,
             .namespace => 10,
@@ -110,7 +112,7 @@ pub const Kind = enum {
     /// Whether the kind's rules have child CSS rules.
     pub fn isGroup(self: Kind) bool {
         return switch (self) {
-            .media, .supports, .layer_block => true,
+            .media, .supports, .layer_block, .page => true,
             else => false,
         };
     }
@@ -167,7 +169,8 @@ pub const Data = union(Kind) {
     },
     font_face: @import("font_loading.zig").FontRule,
     font_feature_values: *FontFeaturePayload,
-    page: DeclarationBlock,
+    page: struct { descriptors: css.page_data.Data, children: std.ArrayList(*Rule) = .empty },
+    margin: struct { name: []u8, block: DeclarationBlock },
     position_try: DeclarationBlock,
     property: *css.property_registry.Registration,
     keyframes: struct { children: std.ArrayList(*Rule) = .empty },
@@ -222,7 +225,14 @@ pub const Rule = struct {
                 payload.descriptors.deinit();
                 a.destroy(payload);
             },
-            .page => |*b| b.deinit(),
+            .page => |*p| {
+                p.descriptors.deinit();
+                releaseChildren(a, &p.children);
+            },
+            .margin => |*m| {
+                a.free(m.name);
+                m.block.deinit();
+            },
             .position_try => |*b| b.deinit(),
             .property => |registration| registration.unref(),
             .keyframes => |*k| releaseChildren(a, &k.children),
@@ -259,6 +269,7 @@ pub const Rule = struct {
             .supports => |*s| &s.children,
             .layer_block => |*l| &l.children,
             .keyframes => |*k| &k.children,
+            .page => |*p| &p.children,
             else => null,
         };
     }
@@ -268,7 +279,8 @@ pub const Rule = struct {
         return switch (self.data) {
             .style => |*s| &s.block,
             .font_face => |*font| &font.block,
-            .page => |*b| b,
+            .page => |*p| &p.descriptors.block,
+            .margin => |*m| &m.block,
             .position_try => |*b| b,
             .keyframe => |*k| &k.block,
             else => null,
@@ -414,21 +426,40 @@ pub const Rule = struct {
                 if (out.items.len != start) try out.append(allocator, ' ');
                 try out.append(allocator, '}');
             },
+            .page => |*p| {
+                // CSSOM serialize a CSS rule; Q53 browser probe: all
+                // descriptors precede the margin children, on one line.
+                try out.appendSlice(allocator, "@page");
+                if (self.prelude.len != 0) {
+                    try out.append(allocator, ' ');
+                    try out.appendSlice(allocator, self.prelude);
+                }
+                try out.appendSlice(allocator, " { ");
+                const start = out.items.len;
+                try p.descriptors.block.serialize(out);
+                if (out.items.len != start) try out.append(allocator, ' ');
+                for (p.children.items) |child| {
+                    try child.serializeInto(allocator, out);
+                    try out.append(allocator, ' ');
+                }
+                try out.append(allocator, '}');
+            },
+            .margin => |*m| {
+                try out.append(allocator, '@');
+                try out.appendSlice(allocator, m.name);
+                try out.appendSlice(allocator, " { ");
+                const start = out.items.len;
+                try m.block.serialize(out);
+                if (out.items.len != start) try out.append(allocator, ' ');
+                try out.append(allocator, '}');
+            },
             // "@font-face {", each descriptor, " }" (CSSOM leaves the
             // descriptors' serialization undefined: the block's own).
-            .font_face, .page => {
-                const b = self.block().?;
-                try out.appendSlice(allocator, if (self.data == .font_face) "@font-face {" else "@page");
-                if (self.data == .page) {
-                    if (self.prelude.len != 0) {
-                        try out.append(allocator, ' ');
-                        try out.appendSlice(allocator, self.prelude);
-                    }
-                    try out.appendSlice(allocator, " {");
-                }
+            .font_face => |*font| {
+                try out.appendSlice(allocator, "@font-face {");
                 const start = out.items.len;
                 try out.append(allocator, ' ');
-                try b.serialize(out);
+                try font.block.serialize(out);
                 if (out.items.len == start + 1) out.items.len = start;
                 try out.appendSlice(allocator, " }");
             },
@@ -668,13 +699,40 @@ pub fn build(options: BuildOptions, parsed: *const css.rules.Rule, position: Pos
     }
     if (std.mem.eql(u8, name, "page")) {
         if (!parsed.has_block) return null;
-        var declarations = try DeclarationBlock.fromDeclarations(options.parse, parsed.declarations);
-        errdefer declarations.deinit();
-        const prelude = try a.dupe(u8, std.mem.trim(u8, parsed.prelude, " \t\n\r\x0c"));
-        // make consumes the prelude, including allocation failure.
-        return make(a, prelude, .{ .page = declarations });
+        const prelude = try css.page_values.selectors(a, parsed.prelude) orelse return null;
+        var owns_prelude = true;
+        errdefer if (owns_prelude) a.free(prelude);
+        var descriptors = try css.page_data.Data.fromDeclarations(options.parse, parsed.declarations);
+        var owns_descriptors = true;
+        errdefer if (owns_descriptors) descriptors.deinit();
+        owns_prelude = false; // make consumes it, including failure.
+        const parent = try make(a, prelude, .{ .page = .{ .descriptors = descriptors } });
+        owns_descriptors = false;
+        errdefer parent.unref();
+        for (parsed.children) |*child| {
+            const margin = try buildPageMargin(options, child) orelse continue;
+            parent.data.page.children.append(a, margin) catch |err| {
+                margin.unref();
+                return err;
+            };
+            margin.parent_rule = parent;
+        }
+        return parent;
     }
     return null;
+}
+
+/// Paged Media 3 §4.3: only named page-margin at-rules are children of
+/// a page rule, with an empty prelude and an ordinary declaration block.
+pub fn buildPageMargin(options: BuildOptions, parsed: *const css.rules.Rule) Allocator.Error!?*Rule {
+    if (parsed.kind != .at_rule or !parsed.has_block or !css.rules.isPageMarginRule(parsed.name) or parsed.prelude.len != 0) return null;
+    const a = options.parse.allocator;
+    var block_value = try DeclarationBlock.fromDeclarations(options.parse, parsed.declarations);
+    errdefer block_value.deinit();
+    const name = try a.dupe(u8, parsed.name);
+    errdefer a.free(name);
+    const prelude = try a.dupe(u8, "");
+    return make(a, prelude, .{ .margin = .{ .name = name, .block = block_value } });
 }
 
 /// Animations 1 §3: a qualified keyframe block, not a style selector.

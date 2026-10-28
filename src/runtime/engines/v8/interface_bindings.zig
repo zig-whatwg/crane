@@ -46,7 +46,6 @@ const global_constructor_handler = @import("global_constructor_handler.zig");
 /// This is the SINGLE SOURCE OF TRUTH for problematic interfaces.
 /// All entry points (WPT runner, REPL) use this list.
 pub const interface_skip_list = .{
-    "CSSMarginRule", // References undefined CSSMarginDescriptors
     "ViewCSS", // References undefined AbstractView
     "AbstractView", // Missing implementation
     "AuthenticatorAssertionResponse", // ArrayBuffer type issues

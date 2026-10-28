@@ -61,14 +61,23 @@ pub fn insertRule(object: *runtime.Instance, of: RulesOf, text: []const u8, inde
     // "Parse a CSS rule": parse a rule, then by the CSS specifications -
     // where it would stand, so that its own validity is all that decides
     // (its position is step 6's).
-    var parsed = (try css.rules.parseRule(allocator, text)) orelse return error.SyntaxError;
+    const in_page = of == .rule and of.rule.kind() == .page;
+    // Q53: parse the margin grammar here, but let valid non-margin rules
+    // reach the placement check (HierarchyRequestError), not SyntaxError.
+    var parsed = (if (in_page)
+        (try css.rules.parsePageMarginRule(allocator, text)) orelse (try css.rules.parseRule(allocator, text))
+    else
+        try css.rules.parseRule(allocator, text)) orelse return error.SyntaxError;
     defer parsed.deinitOwned(allocator);
     var context = if (record) |r|
         try @import("resource_loading.zig").ParseContext.forSheet(r, object, text)
     else
         @import("resource_loading.zig").ParseContext{ .parse = .{ .allocator = allocator }, .url_context = .{ .instance = object, .base = "" } };
     defer context.deinit();
-    const new_rule = (try rules_mod.build(.{ .parse = context.options() }, &parsed, .imports_allowed)) orelse return error.SyntaxError;
+    const new_rule = (if (in_page and css.rules.isPageMarginRule(parsed.name))
+        try rules_mod.buildPageMargin(.{ .parse = context.options() }, &parsed)
+    else
+        try rules_mod.build(.{ .parse = context.options() }, &parsed, .imports_allowed)) orelse return error.SyntaxError;
     var inserted = false;
     defer if (!inserted) new_rule.unref();
     const kind = new_rule.kind();
@@ -81,6 +90,7 @@ pub fn insertRule(object: *runtime.Instance, of: RulesOf, text: []const u8, inde
     // HierarchyRequestError": an @import or @namespace only at a sheet's
     // top level, @imports (and @layer statements) before everything else,
     // @namespace after them and before every other rule.
+    if (in_page and kind != .margin) return error.HierarchyRequestError;
     try checkPosition(list.items, index, kind, nested);
     // 7. "If new rule is an @namespace at-rule, and list contains anything
     // other than @import at-rules, and @namespace at-rules, throw an
