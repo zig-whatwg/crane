@@ -102,3 +102,42 @@ fn idleWithNothingFocused() !void {
 test "mutations of a document with nothing focused ask for no frame" {
     try helpers.onFreshThread(idleWithNothingFocused);
 }
+
+fn watchArmsFiresOnceAndRestsUnarmed() !void {
+    const dom = @import("dom");
+    const page = try helpers.Page.open();
+    defer page.close();
+    try settle(page);
+    const document = page.browser.current_context.?.document_instance.?;
+    const frames = &page.browser.event_loop.?.frames;
+    const counts = dom.refcount.documentCounts(document) orelse return error.NoCounts;
+    // Unarmed: nothing focused, a mutation asks for no frame.
+    try std.testing.expect(!counts.version.rendering_watch);
+    try page.run("document.body.appendChild(document.createElement('p'));");
+    try std.testing.expect(!counts.version.rendering_watch);
+    try std.testing.expect(frames.timer_id == null);
+    // A focused element arms it (and asks for its own frame); let that frame
+    // run - its fixup finds the element focusable and arms it again.
+    try page.run("globalThis.input = document.body.appendChild(document.createElement('input')); input.focus();");
+    try std.testing.expect(counts.version.rendering_watch);
+    try settle(page);
+    try std.testing.expect(counts.version.rendering_watch);
+    try std.testing.expectEqual(@as(usize, 0), frames.requests.items.len);
+    // The next mutation fires it exactly once: a frame is requested and the
+    // bit is spent; further mutations before that frame ask for nothing more.
+    const version = dom.refcount.treeVersion(document).?;
+    try page.run("document.body.appendChild(document.createElement('p'));");
+    try std.testing.expect(!counts.version.rendering_watch);
+    try std.testing.expect(frames.timer_id != null);
+    try std.testing.expectEqual(@as(usize, 1), frames.requests.items.len);
+    try page.run("for (let i = 0; i < 10; i++) document.body.appendChild(document.createElement('p'));");
+    try std.testing.expectEqual(@as(usize, 1), frames.requests.items.len);
+    try std.testing.expect(dom.refcount.treeVersion(document).? > version);
+    // Blurred: the viewport is focused, and the watch rests.
+    try page.run("input.blur();");
+    try std.testing.expect(!counts.version.rendering_watch);
+}
+
+test "the rendering watch arms on a focused element, fires once per frame, and rests unarmed" {
+    try helpers.onFreshThread(watchArmsFiresOnceAndRestsUnarmed);
+}
