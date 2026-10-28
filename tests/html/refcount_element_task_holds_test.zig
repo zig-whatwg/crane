@@ -56,6 +56,28 @@ test "an img's update of the image data holds its element with one counted refer
     try onFreshThread(imageUpdateCountsItsElement);
 }
 
+fn queuedScriptErrorCountsItsElement() !void {
+    const page = try h.Page.open();
+    defer page.close();
+    try page.run(
+        \\globalThis.errors = 0;
+        \\globalThis.s = document.createElement('script');
+        \\s.onerror = () => { errors += 1; };
+        \\s.setAttribute('src', '');
+        \\0;
+    );
+    const s = try page.node("s");
+    try expectCount(2, s, "a script element not yet prepared");
+    try page.run("document.body.appendChild(s); s.remove(); 0;");
+    try expectCount(3, s, "its error event is queued (prepare step 33.3): the task's TaskHold");
+    try runUntil(page, "errors === 1");
+    try expectCount(2, s, "the task ran: its hold ended");
+}
+
+test "a script's queued error event task holds its element until it ran" {
+    try onFreshThread(queuedScriptErrorCountsItsElement);
+}
+
 fn externalScriptCountsItsElement() !void {
     const page = try h.Page.open();
     defer page.close();
@@ -107,9 +129,11 @@ fn queuedTasksAtThePagesEnd() !void {
         \\globalThis.img = new Image(); img.src = '
     ++ gif ++
         \\';
+        \\globalThis.s = document.createElement('script'); s.setAttribute('src', ''); document.body.appendChild(s);
         \\0;
     );
     try expectCount(3, try page.node("img"), "update pending");
+    try expectCount(3, try page.node("s"), "error event pending");
     // The page ends with every task still queued: each lets go once (an
     // underflow is an error log, which fails the test).
 }

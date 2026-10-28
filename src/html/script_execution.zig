@@ -905,9 +905,9 @@ fn markReadyNow(allocator: std.mem.Allocator, script_element: *runtime.Instance,
 /// The task's activity ends after delivery; the independent execution root
 /// continues to hold an element waiting behind an unready queue head.
 ///
-/// The document is held as (address, slab generation), like
-/// `QueuedElementEvent`'s element: nothing keeps it alive while the task
-/// waits, and the slab reuses a freed Instance's address.
+/// The document is held as (address, slab generation): nothing keeps it
+/// alive while the task waits, and the slab reuses a freed Instance's
+/// address.
 const QueuedMarkAsReady = struct {
     element: *runtime.Instance,
     generation: u64,
@@ -3022,26 +3022,45 @@ fn queueErrorEventTask(script_element: *runtime.Instance) void {
         .generation = runtime.SlabAllocator.generationOf(script_element),
         .allocator = ctx.allocator,
     };
-    loop.queueTask(.{ .callback = &runQueuedErrorEvent, .context = task });
+    // The queued task keeps its element until it has run or is dropped:
+    // WebKit queues this event with queueTaskKeepingObjectAlive(*this,
+    // TaskSource::DOMManipulation, ...) (ScriptElement::requestClassicScript
+    // and requestModuleScript), Blink's element tasks hold their element. A
+    // removed script nothing else names once lost its error event to a
+    // collection in between (crane/rc6-script-error-event-gc.html). Refcount
+    // step 5d: the shadow-mode GCReachableRef.
+    task.hold.take(script_element);
+    loop.queueTask(.{ .callback = &runQueuedErrorEvent, .context = task, .drop = &dropQueuedErrorEvent });
 }
 
-/// What a queued element task needs to find its element again.
-///
-/// The element is held as (address, slab generation), never as a bare
-/// pointer: nothing keeps the element alive between queueing and running, and
-/// the slab REUSES a freed Instance's address. A task that compared only the
-/// address would fire at whatever element took the slot over.
+/// A queued error event task: its element, held (`hold`) from queueing to
+/// the task's end, with its slab generation for the teardown net (a realm's
+/// end frees the element whatever the task holds).
 const QueuedElementEvent = struct {
     element: *runtime.Instance,
     generation: u64,
     allocator: std.mem.Allocator,
+    hold: dom.node_holds.TaskHold = .{},
+
+    fn destroy(self: *QueuedElementEvent) void {
+        self.hold.release();
+        self.allocator.destroy(self);
+    }
 };
+
+/// `Task.drop`: the loop let the task go unrun.
+fn dropQueuedErrorEvent(data: ?*anyopaque) void {
+    const task: *QueuedElementEvent = @ptrCast(@alignCast(data orelse return));
+    task.destroy();
+}
 
 fn runQueuedErrorEvent(data: ?*anyopaque) void {
     const task: *QueuedElementEvent = @ptrCast(@alignCast(data orelse return));
-    defer task.allocator.destroy(task);
+    // The hold ends after the event: the running task is its holder.
+    defer task.destroy();
 
-    // The element was collected and its slot reissued: nobody is left to hear it.
+    // The teardown net: the element went with its realm, or its slot was
+    // reissued - nobody is left to hear it.
     if (runtime.SlabAllocator.generationOf(task.element) != task.generation) return;
 
     // An element task: it runs in the element's realm. An error means the
