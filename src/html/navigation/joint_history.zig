@@ -305,6 +305,10 @@ pub const JointHistory = struct {
     /// How many changes of the history are in progress (`beginChange`): the
     /// views are rewritten when the outermost one ends.
     change_depth: u32 = 0,
+    /// The navigables whose views are held (`holdView`): a traversal is
+    /// changing their entries, and their documents keep reading what they
+    /// read before until their target document is made active.
+    held: std.ArrayListUnmanaged(u64) = .empty,
 
     /// A navigable's kept active entry, and the step it was kept at.
     const UpdateOnly = struct { entry: u64, step: u32 };
@@ -342,6 +346,7 @@ pub const JointHistory = struct {
         self.update_only.deinit(self.allocator);
         for (self.views.values()) |*view| view.deinit(self.allocator);
         self.views.deinit(self.allocator);
+        self.held.deinit(self.allocator);
     }
 
     /// A change of the entries, the current step or a kept active entry
@@ -990,6 +995,39 @@ pub const JointHistory = struct {
         return null;
     }
 
+    /// "Apply the history step" changes `navigable`'s current entry: its
+    /// view is not rewritten until `releaseView` - HTML updates a document's
+    /// History and navigation API when the target entry's document becomes
+    /// active ("update document for history step application", after
+    /// "unload a document and its descendants" for another document), so
+    /// the document it leaves keeps reading the history it last saw in its
+    /// navigate, pageswap, pagehide and unload handlers. Out of memory, it is
+    /// not held.
+    pub fn holdView(self: *JointHistory, navigable: u64) void {
+        if (std.mem.indexOfScalar(u64, self.held.items, navigable) != null) return;
+        self.held.append(self.allocator, navigable) catch {};
+    }
+
+    /// `navigable`'s target entry's document is active: its view is written
+    /// again, from the history as it is now.
+    pub fn releaseView(self: *JointHistory, navigable: u64) void {
+        const index = std.mem.indexOfScalar(u64, self.held.items, navigable) orelse return;
+        _ = self.held.swapRemove(index);
+        self.updateViews();
+    }
+
+    /// Every held view is written again: the traversal that held them ended.
+    pub fn releaseAllViews(self: *JointHistory) void {
+        if (self.held.items.len == 0) return;
+        self.held.clearRetainingCapacity();
+        self.updateViews();
+    }
+
+    /// Whether `navigable`'s view is held.
+    pub fn isViewHeld(self: *const JointHistory, navigable: u64) bool {
+        return std.mem.indexOfScalar(u64, self.held.items, navigable) != null;
+    }
+
     /// `navigable`'s view, when the views are current and it has one.
     fn validView(self: *JointHistory, navigable: u64) ?*View {
         if (!self.views_valid) return null;
@@ -1045,6 +1083,8 @@ pub const JointHistory = struct {
             if (!slot.found_existing) slot.value_ptr.* = .{};
             const view = slot.value_ptr;
             view.epoch = epoch;
+            // A held view keeps what it has (`holdView`).
+            if (slot.found_existing and self.isViewHeld(navigable)) continue;
             view.length = length_index.length;
             view.index = length_index.index;
             view.api_ids.clearRetainingCapacity();
@@ -1117,6 +1157,7 @@ pub const JointHistory = struct {
         self.beginChange();
         defer self.endChange();
         _ = self.update_only.remove(navigable);
+        if (std.mem.indexOfScalar(u64, self.held.items, navigable)) |index| _ = self.held.swapRemove(index);
         var i: usize = 0;
         while (i < self.entries.items.len) {
             if (self.entries.items[i].navigable == navigable) {
