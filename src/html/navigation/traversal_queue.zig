@@ -90,6 +90,9 @@ pub const Item = struct {
     /// superseded (`populationEnded`), or the navigable was destroyed
     /// (`navigableGone`). Owned by the queue.
     waiting_on: std.ArrayListUnmanaged(u64) = .empty,
+    /// `waitFor` recorded a wait for this item: it is finished once it has
+    /// none left, even if the last ended inside its own run.
+    uses_waits: bool = false,
 };
 
 /// Queue one service task - `TraversalQueue.service(navigables, id)` - on the
@@ -158,6 +161,7 @@ pub const TraversalQueue = struct {
         item.in_run = false;
         item.completed = false;
         item.waiting_on = .empty;
+        item.uses_waits = false;
         self.items.append(self.allocator, item) catch {
             item.destroy(item);
             return false;
@@ -189,7 +193,10 @@ pub const TraversalQueue = struct {
             item.destroy(item);
             return;
         }
-        if (outcome == .done or item.completed) {
+        // An item whose every population ended inside its run is finished
+        // too: nothing is left to complete it.
+        const waits_over = item.uses_waits and item.waiting_on.items.len == 0;
+        if (outcome == .done or item.completed or waits_over) {
             item.completed = false;
             completeById(navigables, traversable_id, item.token);
         }
@@ -207,6 +214,7 @@ pub const TraversalQueue = struct {
         if (item.token != token) return false;
         if (std.mem.indexOfScalar(u64, item.waiting_on.items, navigable) != null) return true;
         item.waiting_on.append(self.allocator, navigable) catch return false;
+        item.uses_waits = true;
         return true;
     }
 
@@ -232,7 +240,18 @@ pub const TraversalQueue = struct {
     fn stopWaiting(self: *TraversalQueue, item: *Item, navigable: u64) void {
         const index = std.mem.indexOfScalar(u64, item.waiting_on.items, navigable) orelse return;
         _ = item.waiting_on.swapRemove(index);
-        if (item.waiting_on.items.len == 0) completeById(self.navigables, self.traversable_id, item.token);
+        // Its population is over: the navigable's view of the history is
+        // written again (JointHistory.holdView), if its commit did not.
+        if (self.history()) |h| h.releaseView(navigable);
+        // Its last wait: finished - by the service, once its run returns, if
+        // the wait ended inside the run (more waits may follow there).
+        if (item.waiting_on.items.len == 0 and !item.in_run) completeById(self.navigables, self.traversable_id, item.token);
+    }
+
+    /// The traversable's session history, if it has one.
+    fn history(self: *TraversalQueue) ?*@import("joint_history.zig").JointHistory {
+        const traversable = self.navigables.byId(self.traversable_id) orelse return null;
+        return traversable.joint_history;
     }
 
     /// The waiting item `token` of `traversable_id`'s queue is finished: it
@@ -250,6 +269,8 @@ pub const TraversalQueue = struct {
         }
         self.running = null;
         self.release(item);
+        // Whatever views the item held are written again.
+        if (self.history()) |h| h.releaseAllViews();
         self.wake();
     }
 
