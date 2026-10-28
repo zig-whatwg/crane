@@ -23,10 +23,11 @@ fn liveHandles() !i64 {
     return error.SkipZigTest;
 }
 
-fn inertRoot(_: void, _: *runtime.Instance) !engine.Owned {
+fn inertRoot(_: void, element: *runtime.Instance) !ce.ElementHold {
     // The poisoned element stands for an Instance that the realm already
     // freed. The reaction's actual callback is still an owned engine value.
-    return .{ .value = .null };
+    // The hold counts nothing: a counted reference is never taken on it.
+    return .{ .root = .{ .value = .null }, .element = element };
 }
 
 fn exercise() !void {
@@ -92,8 +93,10 @@ fn exercise() !void {
     const Hold = struct {
         realm: runtime.Context,
         value: runtime.JSValue,
-        fn acquire(self: @This(), _: *runtime.Instance) !engine.Owned {
-            return engine.retainValue(self.realm, self.value);
+        fn acquire(self: @This(), element: *runtime.Instance) !ce.ElementHold {
+            // A root for the test's value; no counted reference on the
+            // poisoned element.
+            return .{ .root = try engine.retainValue(self.realm, self.value), .element = element };
         }
         fn never(_: void, _: *runtime.Instance, _: *ce.Reaction) void {
             unreachable;
