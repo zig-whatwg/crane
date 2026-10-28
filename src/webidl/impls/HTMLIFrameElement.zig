@@ -3261,6 +3261,18 @@ fn recordInHistory(integration: *IFrameIntegration, record: *Navigation, url: []
         // the new one's script has run - its view of the history is written
         // now (JointHistory.holdView).
         history.releaseView(bc.id);
+        // "Apply the history step" step 14 waits for this navigable's change
+        // job - its new document made active - and no longer: the document
+        // parses and loads in tasks after, while the traversable's next
+        // queued traversal may already run (a same-document back() after a
+        // cross-document one lands before the new document's load event,
+        // overlapping-navigations-and-traversals/cross-document-traversal-
+        // same-document-traversal.html). Reported once; the record's end
+        // reports nothing more.
+        if (record.traversal_wait) |wait| {
+            record.traversal_wait = null;
+            html_core.navigation.traversal_queue.TraversalQueue.populationEnded(wait.navigables, wait.traversable_id, wait.token, wait.navigable);
+        }
         return state;
     }
     const handling = jointHandling(record.history_handling);
