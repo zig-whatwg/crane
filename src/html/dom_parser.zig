@@ -504,7 +504,7 @@ pub fn parseFragmentWith(
     tree_builder.document.appendChild(root);
 
     // Step 9: Set up stack of open elements with just the root element
-    tree_builder.open_elements.append(root) catch return error.OutOfMemory;
+    tree_builder.pushOpenElement(root) catch return error.OutOfMemory;
 
     // "The adjusted current node is the context element if the parser was
     // created as part of the HTML fragment parsing algorithm and the stack of
@@ -579,13 +579,17 @@ pub fn parseFragmentWith(
     // the ancestor form is only a pointer, not an entry on the open stack.
     if (context_node != null) tree_builder.resetInsertionModeAppropriately();
     var form_context: ?*TreeNode = null;
-    defer if (form_context) |form| form.deinit();
+    // The form pointer lets go of the context form before it is freed.
+    defer if (form_context) |form| {
+        tree_builder.setFormElement(null);
+        form.deinit();
+    };
     var ancestor = context_element;
     while (ancestor) |element| : (ancestor = interfaces.Node.get_parentElement(element) catch null) {
         if (element.stateAs(interfaces.HTMLFormElement.State) != null) {
             const form = TreeNode.initElement(allocator, "form", .html) catch return error.OutOfMemory;
             form_context = form;
-            tree_builder.form_element = form;
+            tree_builder.setFormElement(form);
             break;
         }
     }

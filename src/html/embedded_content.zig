@@ -132,6 +132,10 @@ pub const Content = struct {
     delayed_document: ?*runtime.Instance = null,
     delayed_document_generation: u64 = 0,
     kept_alive: bool = false,
+    /// The pending work's counted reference on the element, taken and ended
+    /// with the keep: refcount step 5d's GCReachableRef in shadow mode (the
+    /// keep is the old net, until step 9).
+    pending_ref: dom.node_holds.CountedRef = .{},
 
     fn ref(self: *Content) void {
         self.references += 1;
@@ -822,6 +826,7 @@ fn beginPending(content: *Content) !void {
     if (!content.kept_alive and content.ctx.hasEngine()) {
         engine.keepPlatformObjectAlive(content.element);
         content.kept_alive = true;
+        content.pending_ref.take(content.element, dom.instance_bridge.getNodeBase(content.element));
     }
 }
 
@@ -832,6 +837,8 @@ fn endPending(content: *Content) void {
     if (content.pending > 0) return;
     unregister(content);
     if (content.kept_alive and content.elementIsLive()) engine.releasePlatformObject(content.element);
+    if (!content.element_gone) content.pending_ref.release(content.element);
+    content.pending_ref = .{};
     content.kept_alive = false;
     endDelay(content);
 }
