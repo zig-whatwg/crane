@@ -1,46 +1,22 @@
-//! Implementation for CSSMathValue interface
-
-const std = @import("std");
+//! CSS Typed OM 1 §4.3.4: the operator of each concrete math value.
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
 const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const CSSMathValue = interfaces.CSSMathValue;
+const dom = @import("dom");
 
-pub const State = CSSMathValue.State;
-
-pub const ImplError = error{
-    NotImplemented,
-};
-
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
+pub const State = interfaces.CSSMathValue.State;
+pub const ImplError = error{TypeError};
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
-}
-
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-/// Getter for operator
 pub fn get_operator(instance: *runtime.Instance) anyerror!enums.CSSMathOperator {
-    _ = instance;
-    return error.NotImplemented;
+    return switch (try dom.style.typed_om.numericKind(instance)) {
+        .unit => error.TypeError,
+        .sum => ._sum_,
+        .product => ._product_,
+        .negate => ._negate_,
+        .invert => ._invert_,
+        .min => ._min_,
+        .max => ._max_,
+        .clamp => ._clamp_,
+    };
 }

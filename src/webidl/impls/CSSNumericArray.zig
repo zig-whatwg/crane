@@ -1,46 +1,40 @@
-//! Implementation for CSSNumericArray interface
-
+//! CSS Typed OM 1 §4.3.4: immutable, traced numeric operands.
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const CSSNumericArray = interfaces.CSSNumericArray;
+const dom = @import("dom");
 
-pub const State = CSSNumericArray.State;
+pub const State = interfaces.CSSNumericArray.State;
+pub const ImplError = error{ TypeError, SyntaxError, RangeError };
+pub const InternalState = dom.style.typed_om.NumericLinks;
+pub const construction_args = .{"numeric_operands"};
 
-pub const ImplError = error{
-    NotImplemented,
-};
-
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
-
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = allocator;
+    _ = StateType;
+    const values: []const *runtime.Instance = if (@hasField(@TypeOf(args), "numeric_operands")) args.numeric_operands else &.{};
+    const internal = try runtime.arenaOf(instance).create(InternalState);
+    errdefer runtime.arenaOf(instance).destroy(InternalState, internal);
+    internal.* = try dom.style.typed_om.numericLinks(instance, values);
+    instance.getState(State).own._internal = internal;
+    dom.style.typed_om.traceNumericLinks(instance, values);
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+pub fn deinitOwn(instance: *runtime.Instance) void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return;
+    state.own._internal = null;
+    dom.style.typed_om.dropNumericLinks(instance, internal.*);
+    runtime.arenaOf(instance).destroy(InternalState, internal);
 }
 
-/// Getter for length
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    return @intCast(internal.values.len);
+}
+
+pub fn call_getter(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    return dom.style.typed_om.numericLink(internal.*, index);
 }

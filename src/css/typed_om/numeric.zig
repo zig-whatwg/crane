@@ -29,3 +29,65 @@ pub fn serialize(allocator: std.mem.Allocator, number: math.Numeric) std.mem.All
     try out.appendSlice(allocator, number.unit.name());
     return out.toOwnedSlice(allocator);
 }
+
+const Type = math.Type;
+const Base = math.Base;
+pub const Error = error{Invalid};
+
+/// Apply a percentage hint, steps 1–4, with Q84's wrapping WebIDL long exponents.
+fn applyHint(value: Type, hint: Base) Error!Type {
+    var result = value;
+    if (hint != .percent) {
+        const h = @intFromEnum(hint);
+        const p = @intFromEnum(Base.percent);
+        result.powers[h] +%= result.powers[p];
+        result.powers[p] = 0;
+    }
+    result.hint = hint;
+    return result;
+}
+
+fn harmonize(a: *Type, b: *Type) Error!void {
+    if (a.hint) |hint| {
+        if (b.hint) |other| {
+            if (hint != other) return error.Invalid;
+        } else b.* = try applyHint(b.*, hint);
+    } else if (b.hint) |hint| a.* = try applyHint(a.*, hint);
+}
+
+/// Add two types, steps 1–3. Unlike property parsing, a context-free value
+/// can have an unhinted percentage; search every non-percent base type.
+pub fn addTypes(lhs: Type, rhs: Type) Error!Type {
+    var a = lhs;
+    var b = rhs;
+    try harmonize(&a, &b);
+    if (std.mem.eql(i32, &a.powers, &b.powers)) return a;
+    const p = @intFromEnum(Base.percent);
+    if (a.powers[p] == 0 and b.powers[p] == 0) return error.Invalid;
+    var has_other = false;
+    for (a.powers[0..p], b.powers[0..p]) |x, y| has_other = has_other or x != 0 or y != 0;
+    if (!has_other) return error.Invalid;
+    for (0..p) |index| {
+        const hint: Base = @enumFromInt(index);
+        const x = applyHint(a, hint) catch continue;
+        const y = applyHint(b, hint) catch continue;
+        if (std.mem.eql(i32, &x.powers, &y.powers)) return x;
+    }
+    return error.Invalid;
+}
+
+/// Multiply two types, steps 1–5; Q84 wraps exponent overflow, never traps.
+pub fn multiplyTypes(lhs: Type, rhs: Type) Error!Type {
+    var a = lhs;
+    var b = rhs;
+    try harmonize(&a, &b);
+    for (&a.powers, b.powers) |*power, other| power.* +%= other;
+    return a;
+}
+
+/// Invert a type, steps 1–3. Q84 wraps the minimum exponent back to itself.
+pub fn invertType(value: Type) Error!Type {
+    var result = value;
+    for (&result.powers) |*power| power.* = 0 -% power.*;
+    return result;
+}

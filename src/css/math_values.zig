@@ -13,19 +13,21 @@ const base_count = @typeInfo(Base).@"enum".fields.len;
 
 /// CSS Typed OM §4.3.2: exponents, with the context's percentage hint.
 pub const Type = struct {
-    powers: [base_count]i16 = .{0} ** base_count,
+    // Q84 Chrome156/Safari27 probe,2026-10-27: full WebIDL long powers.
+    // Overflow wraps like Chrome; zero powers remain absent from dictionaries.
+    powers: [base_count]i32 = .{0} ** base_count,
     hint: ?Base = null,
 
-    fn one(base: ?Base) Type {
+    pub fn one(base: ?Base) Type {
         var result = Type{};
         if (base) |b| result.powers[@intFromEnum(b)] = 1;
         return result;
     }
 
-    fn withHint(self: Type, hint: Base) Type {
+    pub fn withHint(self: Type, hint: Base) Type {
         var result = self;
         if (hint != .percent) {
-            result.powers[@intFromEnum(hint)] += result.powers[@intFromEnum(Base.percent)];
+            result.powers[@intFromEnum(hint)] +%= result.powers[@intFromEnum(Base.percent)];
             result.powers[@intFromEnum(Base.percent)] = 0;
         }
         result.hint = hint;
@@ -40,42 +42,42 @@ pub const Type = struct {
         } else if (b.hint) |h| a.* = a.withHint(h);
     }
 
-    fn add(a0: Type, b0: Type) error{Invalid}!Type {
+    pub fn add(a0: Type, b0: Type) error{Invalid}!Type {
         var a = a0;
         var b = b0;
         try harmonize(&a, &b);
-        if (std.mem.eql(i16, &a.powers, &b.powers)) return a;
+        if (std.mem.eql(i32, &a.powers, &b.powers)) return a;
         // In CSS calculations every percentage already has a context hint
         // (§10.9), so Typed OM's unhinted-percentage search is unnecessary.
         return error.Invalid;
     }
 
-    fn multiply(a0: Type, b0: Type) error{Invalid}!Type {
+    pub fn multiply(a0: Type, b0: Type) error{Invalid}!Type {
         var a = a0;
         var b = b0;
         try harmonize(&a, &b);
         for (&a.powers, b.powers) |*power, other| {
-            power.* = std.math.add(i16, power.*, other) catch return error.Invalid;
+            power.* +%= other;
         }
         return a;
     }
 
-    fn invert(self: Type) Type {
+    pub fn invert(self: Type) Type {
         var result = self;
-        for (&result.powers) |*power| power.* = -power.*;
+        for (&result.powers) |*power| power.* = 0 -% power.*;
         return result;
     }
 
     fn is(self: Type, base: ?Base) bool {
         for (self.powers, 0..) |power, i| {
-            const expected: i16 = if (base != null and i == @intFromEnum(base.?)) 1 else 0;
+            const expected: i32 = if (base != null and i == @intFromEnum(base.?)) 1 else 0;
             if (power != expected) return false;
         }
         return true;
     }
 
-    fn eql(a: Type, b: Type) bool {
-        return a.hint == b.hint and std.mem.eql(i16, &a.powers, &b.powers);
+    pub fn eql(a: Type, b: Type) bool {
+        return a.hint == b.hint and std.mem.eql(i32, &a.powers, &b.powers);
     }
 };
 
@@ -174,7 +176,7 @@ pub const Unit = enum(u8) {
         };
     }
 
-    fn canonical(self: Unit) Unit {
+    pub fn canonical(self: Unit) Unit {
         return switch (self.base() orelse return .number) {
             .length => .px,
             .angle => .deg,
@@ -186,7 +188,7 @@ pub const Unit = enum(u8) {
         };
     }
 
-    fn absoluteScale(self: Unit) ?f64 {
+    pub fn absoluteScale(self: Unit) ?f64 {
         return switch (self) {
             .number, .percent, .px, .deg, .s, .hz, .dppx, .x, .fr => 1,
             .cm => 96.0 / 2.54,
@@ -477,7 +479,7 @@ const Random = struct {
     fixed_math: bool = false,
 };
 
-const Node = struct {
+pub const Node = struct {
     tag: Tag,
     typ: Type,
     numeric: Numeric = .{ .value = 0, .unit = .number },
@@ -488,7 +490,7 @@ const Node = struct {
     no_clamp: bool = false,
     symbol: Symbol = .r,
     random_data: ?*Random = null,
-    const Tag = enum { random, symbol, numeric, sum, product, negate, invert, min, max, clamp, anchor, function, sibling_index, sibling_count };
+    pub const Tag = enum { random, symbol, numeric, sum, product, negate, invert, min, max, clamp, anchor, function, sibling_index, sibling_count };
 
     fn eql(a: *const Node, b: *const Node) bool {
         if (a.tag != b.tag or !a.typ.eql(b.typ) or a.children.len != b.children.len) return false;
@@ -740,6 +742,64 @@ pub fn dimension(allocator: Allocator, number: Numeric, grammar: Grammar) Alloca
     return expression;
 }
 
+/// A context-free calculation owns the same parser's tree without a
+/// property's Grammar, bounds, percentage basis, or computation context.
+pub const NumericExpression = struct {
+    allocator: Allocator,
+    arena: std.heap.ArenaAllocator,
+    root: *Node = undefined,
+
+    pub fn deinit(self: *NumericExpression) void {
+        const allocator = self.allocator;
+        self.arena.deinit();
+        allocator.destroy(self);
+    }
+};
+
+/// Typed OM §4.3.1 parse steps 1–4, using this module's Parser/Builder.
+/// Chrome 156 / Safari 27 probes, 2026-10-27 (liaison Q22/Q23): both
+/// reject newer top-level functions and retain unhinted percentage minima.
+/// Ties follow Values 4 §10.10.1 steps 6.1/8.3: simplify FIRST, then reify
+/// surviving nodes (§5.6), folding numeric Negate and singleton Sum.
+pub fn parseNumeric(allocator: Allocator, text: []const u8) Allocator.Error!?*NumericExpression {
+    const expression = try allocator.create(NumericExpression);
+    expression.* = .{ .allocator = allocator, .arena = std.heap.ArenaAllocator.init(allocator) };
+    errdefer expression.deinit();
+    var parser: Parser = .{
+        .builder = .{ .allocator = expression.arena.allocator(), .hint = .percent, .context_free = true },
+        .tokenizer = tokens.Tokenizer.init(text),
+    };
+    const token = parser.peek();
+    switch (token.token_type) {
+        .number, .percentage, .dimension => parser.builder.preserve_units = true,
+        .function => {
+            if (!tokens.nameEql(token.value, "calc") and !tokens.nameEql(token.value, "min") and
+                !tokens.nameEql(token.value, "max") and !tokens.nameEql(token.value, "clamp"))
+            {
+                expression.deinit();
+                return null;
+            }
+        },
+        else => {
+            expression.deinit();
+            return null;
+        },
+    }
+    const root = parser.primary() catch |err| switch (err) {
+        error.Invalid => {
+            expression.deinit();
+            return null;
+        },
+        error.OutOfMemory => return error.OutOfMemory,
+    };
+    if (parser.next().token_type != .eof) {
+        expression.deinit();
+        return null;
+    }
+    expression.root = try parser.builder.simplify(root);
+    return expression;
+}
+
 const Parser = struct {
     builder: Builder,
     tokenizer: tokens.Tokenizer,
@@ -802,7 +862,7 @@ const Parser = struct {
         if (tokens.nameEql(token.value, "calc")) {
             const result = try self.sum();
             try self.require(.right_paren);
-            return checkedFunction(result);
+            return self.checkedFunction(result);
         }
         if (Function.parse(token.value)) |kind| return self.numericFunction(kind);
         const clamp = tokens.nameEql(token.value, "clamp");
@@ -824,12 +884,12 @@ const Parser = struct {
         }
         if (clamp) {
             if (list.items.len != 3) return error.Invalid;
-            if (missing[0] and missing[2]) return checkedFunction(list.items[1]);
-            if (missing[0]) return checkedFunction(try self.builder.operation(.min, list.items[1..]));
-            if (missing[2]) return checkedFunction(try self.builder.operation(.max, list.items[0..2]));
-            return checkedFunction(try self.builder.operation(.clamp, list.items));
+            if (missing[0] and missing[2]) return self.checkedFunction(list.items[1]);
+            if (missing[0]) return self.checkedFunction(try self.builder.operation(.min, list.items[1..]));
+            if (missing[2]) return self.checkedFunction(try self.builder.operation(.max, list.items[0..2]));
+            return self.checkedFunction(try self.builder.operation(.clamp, list.items));
         }
-        return checkedFunction(try self.builder.operation(if (tokens.nameEql(token.value, "min")) .min else .max, list.items));
+        return self.checkedFunction(try self.builder.operation(if (tokens.nameEql(token.value, "min")) .min else .max, list.items));
     }
 
     /// Values5 §9.1: the optional cache key precedes two or three calc-sums.
@@ -905,7 +965,7 @@ const Parser = struct {
         if (no_clamp) _ = self.next();
         var list: std.ArrayList(*Node) = .empty;
         while (true) {
-            const argument = try checkedFunction(try self.sum());
+            const argument = try self.checkedFunction(try self.sum());
             try list.append(self.builder.allocator, argument);
             if (list.items.len > 4096) return error.Invalid;
             const separator = self.next().token_type;
@@ -921,7 +981,7 @@ const Parser = struct {
             else => if (count != 1) return error.Invalid,
         }
         var input_type = list.items[0].typ;
-        for (list.items[1..]) |child| input_type = try Type.add(input_type, child.typ);
+        for (list.items[1..]) |child| input_type = try self.builder.addTypes(input_type, child.typ);
         switch (kind) {
             .sin, .cos, .tan => if (!input_type.is(null) and !input_type.is(.angle)) return error.Invalid,
             .asin, .acos, .atan, .pow, .sqrt, .log, .exp => if (!input_type.is(null)) return error.Invalid,
@@ -945,7 +1005,7 @@ const Parser = struct {
         if (kind == .progress and output_type.hint == .percent) output_type.hint = null;
         const node = try self.builder.allocator.create(Node);
         node.* = .{ .tag = .function, .function_kind = kind, .rounding = rounding, .no_clamp = no_clamp, .typ = output_type, .children = list.items };
-        return checkedFunction(node);
+        return self.checkedFunction(node);
     }
 
     fn dashedName(self: *Parser) Error!?[]const u8 {
@@ -1017,10 +1077,10 @@ const Parser = struct {
         return result;
     }
 
-    fn checkedFunction(node: *Node) error{Invalid}!*Node {
+    fn checkedFunction(self: *const Parser, node: *Node) error{Invalid}!*Node {
         // §10.9: each math function must resolve to a CSS numeric type.
         // Parenthesized arithmetic may have compound intermediate units.
-        if (node.typ.is(null)) return node;
+        if (self.builder.context_free or node.typ.is(null)) return node;
         inline for (@typeInfo(Base).@"enum".fields) |field| {
             if (node.typ.is(@enumFromInt(field.value))) return node;
         }
@@ -1105,16 +1165,28 @@ const Builder = struct {
     allocator: Allocator,
     hint: Base,
     context: ?Context = null,
+    context_free: bool = false,
+    preserve_units: bool = false,
+
+    fn addTypes(self: *const Builder, a: Type, b: Type) error{Invalid}!Type {
+        return if (self.context_free) @import("typed_om/numeric.zig").addTypes(a, b) else Type.add(a, b);
+    }
+
+    fn multiplyTypes(self: *const Builder, a: Type, b: Type) error{Invalid}!Type {
+        return if (self.context_free) @import("typed_om/numeric.zig").multiplyTypes(a, b) else Type.multiply(a, b);
+    }
 
     fn numeric(self: *Builder, raw: Numeric) Allocator.Error!*Node {
         var number = raw;
-        if (number.unit.absoluteScale()) |scale| {
-            number.value *= scale;
-            number.unit = number.unit.canonical();
+        if (!self.preserve_units) {
+            if (number.unit.absoluteScale()) |scale| {
+                number.value *= scale;
+                number.unit = number.unit.canonical();
+            }
         }
         if (self.context) |context| number = context.resolve(number);
         var typ = Type.one(number.unit.base());
-        if (number.unit == .percent) typ = typ.withHint(self.hint);
+        if (number.unit == .percent and !self.context_free) typ = typ.withHint(self.hint);
         const node = try self.allocator.create(Node);
         node.* = .{ .tag = .numeric, .numeric = number, .typ = typ };
         return node;
@@ -1127,12 +1199,12 @@ const Builder = struct {
         switch (tag) {
             .random, .numeric, .symbol, .anchor, .function, .sibling_index, .sibling_count => unreachable,
             .negate => {},
-            .invert => typ = typ.invert(),
+            .invert => typ = if (self.context_free) try @import("typed_om/numeric.zig").invertType(typ) else typ.invert(),
             .product => for (children[1..]) |child| {
-                typ = try Type.multiply(typ, child.typ);
+                typ = try self.multiplyTypes(typ, child.typ);
             },
             else => for (children[1..]) |child| {
-                typ = try Type.add(typ, child.typ);
+                typ = try self.addTypes(typ, child.typ);
             },
         }
         const node = try self.allocator.create(Node);
@@ -1252,7 +1324,7 @@ const Builder = struct {
                 // majority beyond its literal "all children numeric": fold
                 // the numeric subset around unresolved factors too. Different
                 // unresolved units still wait for computed/used information.
-                var powers: [@typeInfo(Unit).@"enum".fields.len]i16 = .{0} ** @typeInfo(Unit).@"enum".fields.len;
+                var powers: [@typeInfo(Unit).@"enum".fields.len]i32 = .{0} ** @typeInfo(Unit).@"enum".fields.len;
                 var product: f64 = 1;
                 var numeric_count: usize = 0;
                 var numeric_type = Type.one(null);
@@ -1261,9 +1333,10 @@ const Builder = struct {
                     const term = if (invert) child.children[0] else child;
                     if (term.tag != .numeric) continue;
                     numeric_count += 1;
-                    numeric_type = Type.multiply(numeric_type, if (invert) term.typ.invert() else term.typ) catch return root;
+                    const term_type = if (invert and self.context_free) (@import("typed_om/numeric.zig").invertType(term.typ) catch return root) else if (invert) term.typ.invert() else term.typ;
+                    numeric_type = self.multiplyTypes(numeric_type, term_type) catch return root;
                     product *= if (invert) 1.0 / term.numeric.value else term.numeric.value;
-                    if (term.numeric.unit != .number) powers[@intFromEnum(term.numeric.unit)] += if (invert) @as(i16, -1) else 1;
+                    if (term.numeric.unit != .number) powers[@intFromEnum(term.numeric.unit)] +%= if (invert) @as(i32, -1) else 1;
                 }
                 if (numeric_count == 0) return root;
                 var unit: Unit = .number;
@@ -1371,7 +1444,7 @@ const Builder = struct {
 
     fn comparable(self: *const Builder, number: Numeric) bool {
         // §10.10.1 steps 4–5: unresolved percentages can have negative bases.
-        return number.unit != .percent or self.hint == .percent;
+        return number.unit != .percent or (!self.context_free and self.hint == .percent);
     }
 
     fn comparison(self: *Builder, root: *Node) Allocator.Error!*Node {

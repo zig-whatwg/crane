@@ -76,6 +76,7 @@ pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
             .unit = css.typed_om.numeric.parseUnit(unit) orelse return error.TypeError,
         });
     }
+    if (instance.stateAs(interfaces.CSSMathValue.State) != null) return @import("dom").style.typed_om.serializeNumeric(instance);
     // TODO: CSS Typed OM "serialize a CSSStyleValue" (https://drafts.css-houdini.org/css-typed-om-1/#stylevalue-serialization). Until then, the placeholder - as a copy: the binding frees
     // the string toString() returns, and freeing a literal faulted in
     // Allocator.free's memset.
