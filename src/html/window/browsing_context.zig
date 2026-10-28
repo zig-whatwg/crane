@@ -42,6 +42,8 @@ pub const InstancePtr = *anyopaque;
 const security_policies = @import("../navigation/security_policies.zig");
 const joint_history = @import("../navigation/joint_history.zig");
 const JointHistory = joint_history.JointHistory;
+const traversal_queue = @import("../navigation/traversal_queue.zig");
+const TraversalQueue = traversal_queue.TraversalQueue;
 const CoopValue = security_policies.CoopValue;
 const CoepValue = security_policies.CoepValue;
 
@@ -316,6 +318,10 @@ pub const BrowsingContext = struct {
     /// (see `jointHistory`). Owned.
     joint_history: ?*JointHistory = null,
 
+    /// The traversable navigable's session history traversal queue, on a
+    /// top-level context (see `traversalQueue`; HTML 7.4.1.3). Owned.
+    traversal_queue: ?*TraversalQueue = null,
+
     /// CSSOM View "set up browsing context features": the position and
     /// viewport size window.open() asked for this context's window - what
     /// every Window it shows reports as screenX/screenY and
@@ -485,6 +491,13 @@ pub const BrowsingContext = struct {
         self.active_document = null;
         self.active_window = null;
 
+        // Its traversal queue's items go first (each destroyed once; a waiter
+        // that completes later finds no queue): they may name its history.
+        if (self.traversal_queue) |queue| {
+            self.traversal_queue = null;
+            queue.deinit();
+            self.allocator.destroy(queue);
+        }
         if (self.joint_history) |history| {
             history.deinit();
             self.allocator.destroy(history);
@@ -493,6 +506,21 @@ pub const BrowsingContext = struct {
         if (self.navigables) |navigables| navigables.remove(self);
 
         self.allocator.destroy(self);
+    }
+
+    /// The session history traversal queue of this context's traversable
+    /// navigable - its top - made on first use with `schedule`, which queues
+    /// its service task on the traversable's event loop. Null when the
+    /// context is on no Browser's list (the service task finds a traversable
+    /// by ID there).
+    pub fn traversalQueue(self: *BrowsingContext, schedule: traversal_queue.Schedule) !*TraversalQueue {
+        const top = self.getTop();
+        if (top.traversal_queue) |queue| return queue;
+        const navigables = top.navigables orelse return error.NoNavigables;
+        const queue = try top.allocator.create(TraversalQueue);
+        queue.* = TraversalQueue.init(top.allocator, navigables, top.id, schedule);
+        top.traversal_queue = queue;
+        return queue;
     }
 
     /// The session history of this context's traversable navigable - its top

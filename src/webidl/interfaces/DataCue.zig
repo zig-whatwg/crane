@@ -185,6 +185,13 @@ pub const DataCue = struct {
         return try DataCueImpl.call_constructor(ctx, startTime, endTime, value, @"type");
     }
 
+    /// WebIDL `double` and `float` constructor arguments (not `unrestricted`):
+    /// NaN and the infinities throw a TypeError for (ConstructorArgs variant -
+    /// "" for a sole constructor -, bit i = argument i).
+    pub const constructor_restricted_floats = .{
+        .{ "", 0b1 },
+    };
+
     pub fn get_value(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try DataCueImpl.get_value(instance);
     }

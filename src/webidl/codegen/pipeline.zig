@@ -449,7 +449,7 @@ pub fn processFiles(
             var resolve_arena = std.heap.ArenaAllocator.init(allocator);
             defer resolve_arena.deinit();
             const namespace = try resolveNamespaceTypedefs(resolve_arena.allocator(), entry.value_ptr.*, &ir);
-            try generator.generateNamespace(allocator, namespace, namespaces_path);
+            try generator.generateNamespace(allocator, namespace, namespaces_path, &ir);
 
             // Generate impl stub if requested
             if (try cfg.getImplsPath()) |impls_path_for_ns| {

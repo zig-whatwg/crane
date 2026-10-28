@@ -75,7 +75,7 @@ fn exercise() !void {
         state.delaying_the_load_event = true;
         // A primitive owning value exercises the native queue-root transfer
         // without claiming to inject or measure engine handle ownership.
-        state.execution_root = .{ .value = .undefined };
+        state.execution_root = .{ .root = .{ .value = .undefined }, .element = element };
     }
     scripts.pending_parsing_blocking_script = blocker;
     try scripts.addWhenParsingFinished(deferred);

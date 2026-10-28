@@ -4,8 +4,10 @@
 //!
 //! A History reads and changes the session history of its window's
 //! navigable's traversable (`html_core` JointHistory, kept on the top-level
-//! BrowsingContext): length and index from the traversable's used steps,
-//! state from the navigable's current entry, pushState/replaceState as "the
+//! BrowsingContext): length and index from its navigable's view of that
+//! history (joint_history View, written when the history changes - HTML
+//! keeps them per History object), state from the navigable's current
+//! entry, pushState/replaceState as "the
 //! URL and history update steps", and back/forward/go as "traverse the
 //! history by a delta".
 //!
@@ -181,7 +183,9 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const bc = activeNavigable(internal) orelse return error.SecurityError;
     const history = try ensureEntries(bc);
-    return history.lengthAndIndex().length;
+    // This's length: the view of the session history its document last had
+    // written (joint_history View).
+    return history.historyView(bc.id).length;
 }
 
 /// Getter for scrollRestoration: the active entry's scroll restoration mode.
@@ -748,7 +752,7 @@ fn runTraversal(context: ?*anyopaque) void {
     if (navigables.byId(task.top_id) != top) return;
 
     // Step 20: the traversable's current session history step.
-    history.current_step = target;
+    history.setCurrentStep(target);
 
     for (changes.items) |change| {
         // Looked up again for each change: an earlier change's script may

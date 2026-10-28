@@ -39,12 +39,6 @@ pub const ImplError = error{
 
 /// The element's own state.
 pub const InternalState = struct {
-    /// HTML: the details toggle task tracker - the toggle task queued and not
-    /// yet run, with the old state it carries; null when none is.
-    toggle_task: ?*ToggleTask = null,
-    /// Toggle tasks in the loop's queue, cancelled ones included; the element
-    /// has pending activity while any waits.
-    queued_toggle_tasks: u32 = 0,
     allocator: std.mem.Allocator,
 };
 
@@ -142,12 +136,11 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
 }
 
 /// HTMLDetailsElement's own teardown: the generated chain runs HTMLElement's after it.
-/// A toggle task still queued finds the element gone
-/// (its generation) and does nothing.
+/// A toggle task still queued finds its hold emptied (node_holds) and does
+/// nothing.
 pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        if (internal.toggle_task) |task| task.cancelled = true;
         runtime.arenaOf(instance).destroy(InternalState, internal);
         state.own._internal = null;
     }
@@ -300,71 +293,48 @@ fn ensureExclusivityClosingGiven(element: *runtime.Instance) void {
 // The toggle event
 // ============================================================================
 
-/// A queued details toggle event task: the element, and the states it fires
-/// `toggle` with. `cancelled` is the spec's "remove the task from its task
-/// queue" - a later toggle took its place, or the element went. A cancelled
-/// task stays in the loop's queue and does nothing when it comes up.
-const ToggleTask = struct {
-    element: *runtime.Instance,
-    generation: u64,
+/// A queued details toggle event task (HTML "queue a details toggle event
+/// task", step 2): the states it fires `toggle` with, and its element, kept
+/// until the task runs, is cancelled or is dropped (dom.node_holds.ElementTask:
+/// a TaskHold - a counted reference plus one pending-activity keep - refcount
+/// step 5d's GCReachableRef). WebKit queues it through ToggleEventTask with
+/// queueTaskKeepingThisNodeAlive (Source/WebCore/dom/ToggleEventTask.cpp;
+/// HTMLDetailsElement::queueDetailsToggleEventTask); Blink posts
+/// WrapPersistent(this). The task's element was once held by a flag keep
+/// alone, and the tracker was a pointer stored after `queueTask` - which may
+/// drop and free the record before it returns (lesson: a queued native task
+/// holds its nodes with a TaskHold, and its tracker is a lookup); a details
+/// in a detached tree nothing wrapped went with that tree's collected root
+/// (crane/rc6-details-toggle-detached-unwrapped.html).
+const DetailsToggle = struct {
+    /// The element the task is queued given.
+    pub const held_count = 1;
+    /// Queued given the element's relevant global (HTML "queue an element
+    /// task"): a details in a DOMParser document still toggles
+    /// (the-details-element/toggleEvent.html, "Setting open from the parser
+    /// fires a toggle event"; the task this replaced named no document).
+    pub const queued_given_relevant_global = true;
     old_state: []const u8,
     new_state: []const u8,
-    cancelled: bool = false,
-    allocator: std.mem.Allocator,
 
-    fn run(data: ?*anyopaque) void {
-        const self: *ToggleTask = @ptrCast(@alignCast(data orelse return));
-        defer self.finish();
-        if (self.cancelled or !self.elementIsLive()) return;
-        // A realm retired by a navigation: its document is no longer fully
-        // active, and the event loop runs none of its tasks.
-        if (self.element.ctx.engine_ctx == null) return;
-        // A task runs from the event loop, in no realm: it runs in the
-        // element's.
-        engine.runTaskInRealm(self.element.ctx, steps, self) catch |err| {
-            log.warn("details toggle task not run: {}", .{err});
-        };
-    }
-
-    /// `Task.drop`: the loop is ending with the task still queued.
-    fn drop(data: ?*anyopaque) void {
-        const self: *ToggleTask = @ptrCast(@alignCast(data orelse return));
-        self.finish();
-    }
-
-    /// The task's steps.
-    fn steps(data: ?*anyopaque) void {
-        const self: *ToggleTask = @ptrCast(@alignCast(data orelse return));
-        const element = self.element;
+    pub fn steps(self: *DetailsToggle, held: []const dom_module.node_holds.TaskHold) void {
+        // A teardown freed the element: nothing to fire at.
+        const element = held[0].get() orelse return;
         // 1. Fire an event named toggle at element, using ToggleEvent, with
         // the oldState attribute initialized to oldState and the newState
-        // attribute initialized to newState.
+        // attribute initialized to newState. 2 (set the tracker to null)
+        // happened when the task started, as WebKit's ToggleEventTask
+        // exchanges its data out before dispatching: a listener that toggles
+        // the element again queues a task of its own from its own state.
         fireToggleEvent(element, self.old_state, self.new_state) catch |err| {
             log.warn("toggle not fired at a details element: {}", .{err});
         };
-        // 2. Set element's details toggle task tracker to null. (A listener
-        // that toggled the element again queued a task of its own, which
-        // runs whatever the tracker says.)
-        if (getInternal(element)) |internal| internal.toggle_task = null;
-    }
-
-    fn elementIsLive(self: *const ToggleTask) bool {
-        return runtime.SlabAllocator.generationOf(self.element) == self.generation;
-    }
-
-    /// The task has left the queue, run or not: no tracker may name it, and
-    /// the element needs keeping only while another task waits.
-    fn finish(self: *ToggleTask) void {
-        if (self.elementIsLive()) {
-            if (getInternal(self.element)) |internal| {
-                if (internal.toggle_task == self) internal.toggle_task = null;
-                internal.queued_toggle_tasks -= 1;
-                if (internal.queued_toggle_tasks == 0) engine.releasePlatformObject(self.element);
-            }
-        }
-        self.allocator.destroy(self);
     }
 };
+
+/// The details toggle task tracker is the queued DetailsToggle task given
+/// the element (`ToggleTask.pending`), never a stored pointer.
+const ToggleTask = dom_module.node_holds.ElementTask(DetailsToggle);
 
 /// DOM "fire an event": a trusted ToggleEvent, made in the element's realm.
 fn fireToggleEvent(element: *runtime.Instance, old_state: []const u8, new_state: []const u8) !void {
@@ -387,45 +357,18 @@ fn fireToggleEvent(element: *runtime.Instance, old_state: []const u8, new_state:
 /// HTML "queue a details toggle event task" given element, oldState and
 /// newState.
 fn queueToggleEventTask(element: *runtime.Instance, old_state_given: []const u8, new_state: []const u8) void {
-    const internal = getInternal(element) orelse return;
     var old_state = old_state_given;
     // 1. If element's details toggle task tracker is not null: take its old
-    // state, remove its task from its task queue, and set the tracker to null.
-    // Toggling several times in succession fires one event, from the first
-    // state to the last.
-    if (internal.toggle_task) |pending| {
-        old_state = pending.old_state;
-        pending.cancelled = true;
-        internal.toggle_task = null;
+    // state, remove its task from its task queue, and set the tracker to
+    // null. Toggling several times in succession fires one event, from the
+    // first state to the last.
+    if (ToggleTask.pending(element)) |tracker| {
+        old_state = tracker.payload.old_state;
+        tracker.cancel();
     }
     // 2. Queue an element task on the DOM manipulation task source given
-    // element.
-    const loop = element.ctx.getOptionalEventLoop() orelse {
-        // A Window realm always has a loop (an iframe's is its parent's); a
-        // realm without one is a test's, and the event is lost - loudly.
-        log.warn("details toggle event not queued: the element's realm has no event loop", .{});
-        return;
-    };
-    const task = internal.allocator.create(ToggleTask) catch |err| {
-        log.warn("details toggle event not queued: {}", .{err});
-        return;
-    };
-    task.* = .{
-        .element = element,
-        .generation = runtime.SlabAllocator.generationOf(element),
-        .old_state = old_state,
-        .new_state = new_state,
-        .allocator = internal.allocator,
-    };
-    // A queued task keeps its element alive: `createElement("details")`,
-    // `ontoggle` and `open` set, and the element dropped - the toggle still
-    // fires, as every browser's queued task keeps the element it targets.
-    // The hold is a flag, not a count, so it is taken for the first waiting
-    // task and ended with the last.
-    if (internal.queued_toggle_tasks == 0) engine.keepPlatformObjectAlive(element);
-    internal.queued_toggle_tasks += 1;
-    loop.queueTask(.{ .callback = &ToggleTask.run, .context = task, .drop = &ToggleTask.drop });
-    // 3. Set element's details toggle task tracker to the task and its old
-    // state.
-    internal.toggle_task = task;
+    // element. 3. Set the tracker to the task and its old state: the task is
+    // the tracker while it is pending. (A realm without an event loop is a
+    // test's; the task is not queued, and says so.)
+    _ = ToggleTask.queue(.{element}, .{ .old_state = old_state, .new_state = new_state });
 }

@@ -719,16 +719,27 @@ pub fn V8Namespace(comptime Namespace: type) type {
                         // handle goes as the operation path's does: at once
                         // for a conversion that copies (and on a failed one),
                         // after the call for one whose value refers to it.
+                        // The steps codegen's tables add are part of the
+                        // conversion, as an interface operation's are
+                        // (`interface.convertArgChecked`): a restricted
+                        // `double` or `float` (`restricted_floats`) refuses
+                        // NaN and the infinities - `CSS.px(Infinity)`
+                        // converted before lane bindfix1.
                         const v8_value = info.get(js_arg_idx);
-                        args[i] = interface.convertArgReleasing(
+                        args[i] = interface.convertArgChecked(
                             ParamType,
+                            comptime argModeOf(method.zig_name, i),
                             allocator,
                             isolate,
                             context,
                             v8_value,
-                        ) catch {
-                            // Type conversion failed
-                            conv.throwTypeError(isolate, "Type error in argument");
+                        ) catch |err| {
+                            // A conversion that ran script that threw - a
+                            // valueOf, a toString - has that exception
+                            // pending, and it is the call's ("? ToNumber(V)",
+                            // WebIDL 3.2.7 step 1): a TypeError thrown over it
+                            // replaced script's own object.
+                            if (err != error.ExceptionPending) conv.throwTypeError(isolate, "Type error in argument");
                             return;
                         };
                         converted = i + 1;
@@ -775,6 +786,21 @@ pub fn V8Namespace(comptime Namespace: type) type {
             };
 
             return Wrapper.callback;
+        }
+
+        /// Parameter `param_index` of `zig_name`'s conversion steps from the
+        /// namespace's tables: whether it is a restricted float
+        /// (`restricted_floats`, keyed and numbered as an interface
+        /// operation's: bit i for the operation's argument i, which is
+        /// parameter i once the realm parameters before it are skipped).
+        fn argModeOf(comptime zig_name: []const u8, comptime param_index: usize) interface.ArgMode {
+            const params = @typeInfo(@TypeOf(@field(Namespace, zig_name))).@"fn".params;
+            comptime var argument_index: usize = 0;
+            inline for (params[0..param_index]) |param| {
+                if (param.type.? != runtime.Context) argument_index += 1;
+            }
+            const table = if (@hasDecl(Namespace, "restricted_floats")) Namespace.restricted_floats else .{};
+            return .{ .restricted = interface.restrictedBit(interface.restrictedFloatTableMask(table, zig_name), argument_index) };
         }
 
         /// Release what the first `converted` arguments of a call still hold

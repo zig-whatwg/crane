@@ -264,6 +264,13 @@ pub const OfflineAudioContext = struct {
         return try OfflineAudioContextImpl.call_constructor(ctx, args);
     }
 
+    /// WebIDL `double` and `float` constructor arguments (not `unrestricted`):
+    /// NaN and the infinities throw a TypeError for (ConstructorArgs variant -
+    /// "" for a sole constructor -, bit i = argument i).
+    pub const constructor_restricted_floats = .{
+        .{ "unsigned_long_unsigned_long_float", 0b100 },
+    };
+
     pub fn get_length(instance: *runtime.Instance) anyerror!?u32 {
         return try OfflineAudioContextImpl.get_length(instance);
     }
