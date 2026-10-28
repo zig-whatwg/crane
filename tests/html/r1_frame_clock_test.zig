@@ -261,3 +261,38 @@ fn navigatedPageTimestampNeverAfterNow() !void {
 test "after a navigation, a rAF timestamp is never after performance.now() in its callback" {
     try helpers.onFreshThread(navigatedPageTimestampNeverAfterNow);
 }
+
+fn eachDocumentNumbersItsOwnHandles() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    // HTML 8.12: each target object's animation frame callback identifier
+    // starts at 0 and requestAnimationFrame increments it: a document's first
+    // handle is 1, whatever the loop's other documents asked before
+    // (html/webappapis/animation-frames/no-interference-timers.html).
+    try page.run(
+        \\globalThis.child = document.createElement('iframe');
+        \\child.srcdoc = '<!doctype html><body>';
+        \\globalThis.loaded = false;
+        \\child.onload = () => { loaded = true; };
+        \\document.body.appendChild(child);
+    );
+    try pumpUntil(page, "loaded", 400);
+    const ids = try page.evaluate(
+        \\[requestAnimationFrame(() => {}), requestAnimationFrame(() => {}),
+        \\ child.contentWindow.requestAnimationFrame(() => {}), setTimeout(() => {}, 0) > 0,
+        \\ requestAnimationFrame(() => {})].join()
+    );
+    defer std.testing.allocator.free(ids);
+    try std.testing.expectEqualStrings("1,2,1,true,3", ids);
+    // A new document of the same Window starts again at 1, and cancelling
+    // its handle 1 does not reach the old document's callback 1.
+    const context = page.browser.current_context.?;
+    try context.loadHTML("<!doctype html><body>next", .{ .base_url = "about:blank" });
+    const next = try page.evaluate("String(requestAnimationFrame(() => {}))");
+    defer std.testing.allocator.free(next);
+    try std.testing.expectEqualStrings("1", next);
+}
+
+test "each document numbers its animation frame handles from 1" {
+    try helpers.onFreshThread(eachDocumentNumbersItsOwnHandles);
+}

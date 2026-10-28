@@ -129,6 +129,13 @@ const FrameRequest = struct {
     asked_in: u64 = 0,
 };
 
+/// One document's animation frame callback identifier.
+const Identifier = struct {
+    document: *runtime.Instance,
+    generation: u64,
+    last: u32 = 0,
+};
+
 /// A Browser event loop's rendering state (`EventLoop.frames`).
 pub const Frames = struct {
     allocator: Allocator,
@@ -161,9 +168,17 @@ pub const Frames = struct {
     /// Borrowed stack identity for the entire rendering turn, including gaps
     /// between document batches. Replaced state never inherits the identity.
     dispatch_token: ?*const u8 = null,
-    /// Handles are their own space, not the timer id space: per spec
-    /// cancelAnimationFrame(someTimeoutId) must do nothing.
-    next_handle: u32 = 1,
+    /// Each target object's "animation frame callback identifier" (HTML
+    /// 8.12): a Window's target is its associated Document, whose first
+    /// requestAnimationFrame returns 1 (no-interference-timers.html). Keyed
+    /// by borrowed document identity and slab generation; a document that
+    /// is gone leaves at the next retirement. Handles are their own space,
+    /// not the timer id space: cancelAnimationFrame(someTimeoutId) does
+    /// nothing.
+    identifiers: std.ArrayListUnmanaged(Identifier) = .empty,
+    /// The identifier of a Window that has no document to key it by (a
+    /// realm that ended, a navigable between documents).
+    unkeyed_identifier: u32 = 0,
 
     pub fn init(allocator: Allocator, origin_ns: i64) Frames {
         return .{ .allocator = allocator, .origin_ns = origin_ns };
@@ -177,6 +192,7 @@ pub const Frames = struct {
         for (self.pending.items) |*entry| entry.deinit();
         self.pending.deinit(self.allocator);
         self.requests.deinit(self.allocator);
+        self.identifiers.deinit(self.allocator);
         self.* = .{ .allocator = self.allocator, .origin_ns = self.origin_ns };
     }
 
@@ -227,19 +243,19 @@ pub fn requestAnimationFrame(realm: runtime.Context, callback: runtime.JSValue) 
 }
 
 fn requestAnimationFrameIn(frames: *Frames, realm: runtime.Context, callback: runtime.JSValue) u32 {
-    const handle = frames.next_handle;
+    // 2. "Let target be this's target object": the Window's associated
+    // Document (a cached page's Window has no navigable: untargeted, its map
+    // waits for its document's restore).
+    const target = targetDocument(realm);
+    // 3. "Increment target's animation frame callback identifier by one,
+    // and let handle be the result."
+    const handle = nextIdentifier(frames, target);
     if (realmIsTerminal(realm)) {
         // A saved removed Window remains callable, but retaining an engine
         // callback here would root a realm no rendering turn can visit.
-        frames.next_handle += 1;
         releaseValue(callback);
         return handle;
     }
-    // Not terminal: a Window with a navigable, or one the back/forward
-    // cache keeps (whose map waits for its document's restore, untargeted).
-    const window = Context.realmWindow(realm) orelse unreachable;
-    const active: ?*anyopaque = if (Context.realmNavigable(realm, window)) |navigable| navigable.active_document else null;
-    const target: ?*runtime.Instance = if (active) |document| @ptrCast(@alignCast(document)) else null;
     frames.pending.append(frames.allocator, .{
         .handle = handle,
         .callback = callback,
@@ -250,9 +266,39 @@ fn requestAnimationFrameIn(frames: *Frames, realm: runtime.Context, callback: ru
         releaseValue(callback);
         return 0;
     };
-    frames.next_handle += 1;
     schedule(frames);
     return handle;
+}
+
+/// The active document of `realm`'s Window's navigable: its target object.
+/// Null for a realm that ended, or a Window no navigable shows.
+fn targetDocument(realm: runtime.Context) ?*runtime.Instance {
+    if (!realm.hasEngine()) return null;
+    const window = Context.realmWindow(realm) orelse return null;
+    const navigable = Context.realmNavigable(realm, window) orelse return null;
+    const active = navigable.active_document orelse return null;
+    return @ptrCast(@alignCast(active));
+}
+
+/// `target`'s animation frame callback identifier, incremented (HTML 8.12
+/// requestAnimationFrame step 3).
+fn nextIdentifier(frames: *Frames, target: ?*runtime.Instance) u32 {
+    const document = target orelse {
+        frames.unkeyed_identifier +%= 1;
+        return frames.unkeyed_identifier;
+    };
+    const generation = runtime.SlabAllocator.generationOf(document);
+    for (frames.identifiers.items) |*identifier| {
+        if (identifier.document == document and identifier.generation == generation) {
+            identifier.last +%= 1;
+            return identifier.last;
+        }
+    }
+    frames.identifiers.append(frames.allocator, .{ .document = document, .generation = generation, .last = 1 }) catch {
+        frames.unkeyed_identifier +%= 1;
+        return frames.unkeyed_identifier;
+    };
+    return 1;
 }
 
 /// cancelAnimationFrame(handle). An unknown handle must do nothing.
@@ -267,16 +313,19 @@ fn cancelAnimationFrameIn(frames: *Frames, realm: runtime.Context, handle: u32) 
     // The frame in progress first: a callback cancelling a sibling registered
     // for the same frame is the case `pending` alone cannot answer.
     //
-    // A handle names a callback in THIS window's map only, so another
-    // window's callback with that handle is not cancelled.
+    // A handle names a callback in THIS target's map only (each document
+    // numbers its own from 1), so another window's callback with that
+    // handle - or the previous document's of a reused Window - is not
+    // cancelled.
+    const target = targetDocument(realm);
     for (frames.running) |*entry| {
-        if (!entry.consumed and entry.handle == handle and entry.realm == realm) {
+        if (!entry.consumed and entry.handle == handle and entry.realm == realm and entry.target_document == target) {
             entry.cancelled = true;
             return;
         }
     }
     for (frames.pending.items) |*entry| {
-        if (entry.handle == handle and entry.realm == realm) {
+        if (entry.handle == handle and entry.realm == realm and entry.target_document == target) {
             entry.cancelled = true;
             return;
         }
@@ -343,7 +392,15 @@ fn retireRequests(frames: *Frames) void {
 
 /// Terminal owners cannot be invoked by any future rendering opportunity.
 /// A live hidden/inactive/blocked document keeps its owners until a later turn.
+/// A document that is gone takes its identifier with it.
 fn retireAnimationFrameCallbacks(frames: *Frames) void {
+    var at: usize = 0;
+    while (at < frames.identifiers.items.len) {
+        const identifier = frames.identifiers.items[at];
+        if (runtime.SlabAllocator.generationOf(identifier.document) != identifier.generation) {
+            _ = frames.identifiers.swapRemove(at);
+        } else at += 1;
+    }
     var index: usize = 0;
     while (index < frames.pending.items.len) {
         const entry = frames.pending.items[index];
@@ -853,6 +910,7 @@ pub fn endPage(realm: runtime.Context) void {
     for (frames.pending.items) |*entry| entry.deinit();
     frames.pending.clearAndFree(frames.allocator);
     frames.requests.clearAndFree(frames.allocator);
+    frames.identifiers.clearAndFree(frames.allocator);
     // A turn in progress keeps its token, and finds its state emptied.
 }
 
@@ -927,6 +985,7 @@ test "terminal frame requests advance handles without retaining owners" {
     defer realm.deinit();
     var frames = Frames.init(allocator, 0);
     defer frames.pending.deinit(allocator);
+    defer frames.identifiers.deinit(allocator);
     try std.testing.expectEqual(Disposition.terminal, disposition(&realm));
     try std.testing.expectEqual(@as(u32, 1), requestAnimationFrameIn(&frames, &realm, .undefined));
     try std.testing.expectEqual(@as(u32, 2), requestAnimationFrameIn(&frames, &realm, .undefined));
