@@ -25,6 +25,7 @@ pub const navigate_steps = @import("navigate_steps.zig");
 pub const declarative_refresh = @import("declarative_refresh.zig");
 pub const termination_nesting = @import("termination_nesting.zig");
 pub const joint_history = @import("joint_history.zig");
+pub const traversal_queue = @import("traversal_queue.zig");
 pub const document_type = @import("document_type.zig");
 pub const object_resource_type = @import("object_resource_type.zig");
 pub const security_policies = @import("security_policies.zig");

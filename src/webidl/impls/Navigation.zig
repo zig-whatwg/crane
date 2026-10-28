@@ -8,7 +8,9 @@
 //! which each entry records its navigation API key, ID, state and origin.
 //! The entry list is the navigable's contiguous same-origin run of entries
 //! around its current one ("get session history entries for the navigation
-//! API"), read from the history when asked; each entry is handed out as one
+//! API"), read from the navigable's view of the history (joint_history View,
+//! written when the history changes - HTML keeps the list per Navigation
+//! object); each entry is handed out as one
 //! NavigationHistoryEntry per session history entry, kept (pinned) for as long
 //! as it is in the list, so `navigation.currentEntry === navigation.currentEntry`.
 //!
@@ -375,7 +377,9 @@ fn entryObject(internal: *InternalState, window: *runtime.Instance, entry: *cons
 fn entryList(scope: ?navigation_entries.Scope, allocator: Allocator, out: *std.ArrayListUnmanaged(*joint_history.Entry)) ?usize {
     if (navigation_entries.disabled(scope)) return null;
     const s = scope.?;
-    return s.history.apiEntries(s.navigable.id, allocator, out) catch null;
+    // This navigation's entry list: the view its document last had written
+    // (joint_history View).
+    return s.history.apiView(s.navigable.id, allocator, out) catch null;
 }
 
 /// "The current entry": null when entries and events are disabled. It is
@@ -386,7 +390,7 @@ fn currentEntryObject(instance: *runtime.Instance, internal: *InternalState) !?*
     const scope = scopeOf(instance, internal);
     if (navigation_entries.disabled(scope)) return null;
     const s = scope.?;
-    const entry = s.history.activeEntry(s.navigable.id) orelse return null;
+    const entry = s.history.apiCurrentView(s.navigable.id) orelse return null;
     if (internal.current_entry_id == 0) internal.current_entry_id = entry.id;
     return try entryObject(internal, s.window, entry);
 }
