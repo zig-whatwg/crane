@@ -157,7 +157,14 @@ pub const NodeBase = struct {
         /// (the HTML parser, decision D-A). Set and cleared only by
         /// refcount.zig.
         creator: bool = true,
-        _unused: u3 = 0,
+        /// The zombie audit (refcount step 6, dom.refcount_audit): the root
+        /// of a tree the counts called garbage, queued for its re-check at
+        /// the agent's next teardown slice. Set and cleared only there.
+        audit_pending: bool = false,
+        /// The zombie audit: a node of a tree that re-check found garbage -
+        /// one step 7 would have freed. A read of it is reported.
+        zombie: bool = false,
+        _unused: u1 = 0,
     };
 
     /// The one write of `parent_node` (WebKit `Node::setParentNode`): the

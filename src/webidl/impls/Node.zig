@@ -144,7 +144,10 @@ const Registry = runtime.InstanceRegistry(.node, InternalState);
 
 /// Get the internal state from an instance
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return Registry.get(instance);
+    const internal = Registry.get(instance) orelse return null;
+    // Refcount step 6: a read of a node step 7 would have freed is reported.
+    if (dom_module.refcount_audit.on()) if (internal.node_base) |base| dom_module.refcount_audit.checkRead(base, .node_state, @returnAddress());
+    return internal;
 }
 
 /// The hooks this type owns (src/dom), installed once, at process start,
@@ -253,7 +256,10 @@ fn nodeTypeOf(comptime StateType: type) u16 {
 
 /// Get Node's internal state from the registry
 pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
-    return Registry.get(instance);
+    const internal = Registry.get(instance) orelse return null;
+    // Refcount step 6: a read of a node step 7 would have freed is reported.
+    if (dom_module.refcount_audit.on()) if (internal.node_base) |base| dom_module.refcount_audit.checkRead(base, .node_state, @returnAddress());
+    return internal;
 }
 
 /// Deinitialize instance
