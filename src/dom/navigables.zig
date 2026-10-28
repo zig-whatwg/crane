@@ -741,7 +741,8 @@ test "without an installed implementation nothing navigates" {
     navigateByTarget(&element, .{ .target = "", .url = "about:blank" });
     followHyperlink(&element, .activation);
     downloadHyperlink(&element, .activation);
-    traverseNavigable(@ptrCast(&element), 1, "about:blank", null, 1);
+    // No population starts.
+    try std.testing.expect(!traverseNavigable(@ptrCast(&element), 1, "about:blank", null, 1, .{ .traversable_id = 1, .token = 1 }));
     try std.testing.expect(findByName(&element, "name") == null);
 }
 
