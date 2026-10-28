@@ -274,29 +274,33 @@ pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!voi
     // checks.
     const top = bc.getTop();
     // Stated exception to the spec's queue (golden rule 2; the integrator's
-    // ruling of 2026-10-27 on traverse_the_history_2-5): while an earlier
-    // delta traversal of this traversable that changes some navigable's
-    // document is queued or running - until that document is active - a
-    // further history.go()/back()/forward() is ignored. "Traverse the
+    // ruling of 2026-10-27 on traverse_the_history_2-5, scope pending its
+    // ruling on the overlapping-navigations conflict): while an earlier
+    // delta traversal of a TOP-LEVEL traversable that takes its document
+    // elsewhere is queued or running - until that document is active - a
+    // further history.go()/back()/forward() on it is ignored. "Traverse the
     // history by a delta" step 4 would append it, and the queue would apply
     // every delta in turn. Chrome 156 and Firefox 158 land on the FIRST
-    // call's target for three calls in one task, in separate tasks, and from
-    // the leaving page's pagehide (lane nav2's probe,
+    // call's target when a top-level page makes the calls - three in one
+    // task, in separate tasks, or from its pagehide (lane nav2's probe,
     // tmp/probes/nav2-tth-probe.html: tth2 -3,-2,+1 -> page 3; tth3 -2,-1,+3
-    // -> 4; tth4 -10,-1,-2 -> 5; tth5 +10,-1,-2 -> 5; the same with each
-    // call in its own task; Chrome also from pagehide); Safari 27 sums them
+    // -> 4; tth4 -10,-1,-2 -> 5; tth5 +10,-1,-2 -> 5); Safari 27 sums them
     // (WebKit bug 313808) and is outvoted. WPT
     // html/browsers/history/the-history-interface/traverse_the_history_2..5
-    // expect the browsers' result. Scope: delta traversals only, and only
-    // while the earlier one is cross-document - the navigation API's
-    // traversals and same-document traversals keep the spec's queue.
-    if (crossDocumentDeltaPending(top)) return;
-    // Step 4.4 asked now: a delta past either end is ignored, and is no
-    // earlier traversal for the exception (tth4's -10, tth5's +10). The
-    // queued steps ask again when they run.
+    // expect the browsers' result. For a child navigable's traversals the
+    // same browsers follow the queue (overlapping-navigations-and-traversals
+    // /cross-document-traversal-same-document-traversal.html: Chrome 2/2,
+    // Firefox 2/2), and so does Crane. The navigation API's traversals keep
+    // the queue too.
+    if (bc == top and crossDocumentDeltaPending(top)) return;
+    // Whether this one would be such an earlier traversal: its target, asked
+    // now, takes the traversable's document elsewhere. One out of range is
+    // appended all the same - the queued steps ask again when they run
+    // (step 4.4), and an earlier traversal may have made it valid - but does
+    // not count (tth4's -10, tth5's +10).
     const history = ensureEntries(bc) catch return;
-    const target = history.stepByDelta(delta_val) orelse return;
-    appendTraversal(internal, top, .{ .delta = delta_val }, false, null, changesDocument(top, history, target));
+    const cross_document = if (bc == top) (if (history.stepByDelta(delta_val)) |target| changesDocument(top, history, target) else false) else false;
+    appendTraversal(internal, top, .{ .delta = delta_val }, false, null, cross_document);
 }
 
 /// HTML "reload" `bc`'s navigable: its current entry, repopulated - a

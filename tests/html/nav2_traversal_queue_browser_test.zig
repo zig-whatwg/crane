@@ -3,11 +3,13 @@
 //! a time, each waiting for the populations it starts.
 //!
 //! - The go() exception (integrator's ruling of 2026-10-27, from lane nav2's
-//!   three-browser probe tmp/probes/nav2-tth-probe.html): while an earlier
-//!   delta traversal that takes a navigable to another document is queued or
-//!   running, history.go()/back()/forward() is ignored; one out of range is
-//!   not appended and does not count. Chrome 156 and Firefox 158 land as
-//!   these cases expect (WPT traverse_the_history_2..5).
+//!   three-browser probe tmp/probes/nav2-tth-probe.html, on a TOP-LEVEL
+//!   page): while an earlier delta traversal of a top-level traversable that
+//!   takes its document elsewhere is queued or running, history.go()/back()/
+//!   forward() on it is ignored; one out of range does not count. Chrome 156
+//!   and Firefox 158 land as these cases expect (WPT
+//!   traverse_the_history_2..5). A child navigable's traversals follow the
+//!   queue, each delta in turn.
 //! - Same-document delta traversals keep the spec's queue: each applies.
 //! - Liveness (condition 2): a frame its own unload handler removes during
 //!   its traversal does not hold the queue - the next traversal runs.
@@ -90,40 +92,70 @@ fn sixEntries(browser: *browser_mod.Browser) !*browser_mod.Context {
     return page;
 }
 
-/// From the frame's sixth entry, `calls` (a script making the go() calls);
-/// the frame lands on `expected` with exactly one load.
+/// A top-level page with six cross-document entries: about:blank?1 .. ?6,
+/// each navigated to after the one before has loaded.
+fn sixTopLevelEntries(browser: *browser_mod.Browser) !*browser_mod.Context {
+    try browser.navigate("about:blank", .window);
+    const page = browser.current_context orelse return error.NoPage;
+    try page.loadHTML("<!doctype html><p>0</p>", .{ .base_url = "http://example.test/top" });
+    try runUntil(browser, page, "String(document.readyState === 'complete')");
+    var n: u8 = 1;
+    while (n <= 6) : (n += 1) {
+        var script: [96]u8 = undefined;
+        try page.runScript(try std.fmt.bufPrint(&script, "location.href = 'about:blank?{d}';", .{n}));
+        var condition: [128]u8 = undefined;
+        try runUntil(browser, page, try std.fmt.bufPrint(&condition, "String(location.href === 'about:blank?{d}' && document.readyState === 'complete')", .{n}));
+    }
+    return page;
+}
+
+/// From the top-level page's sixth entry, `calls` (a script making the
+/// go() calls); the page lands on `expected` and stays there.
 fn landsOn(calls: []const u8, expected: []const u8) !void {
     const browser = try startBrowser();
     defer browser.deinit();
-    const page = try sixEntries(browser);
+    const page = try sixTopLevelEntries(browser);
     try page.runScript(calls);
-    try runUntil(browser, page, "String(loads.length >= 1)");
+    var condition: [128]u8 = undefined;
+    try runUntil(browser, page, try std.fmt.bufPrint(&condition, "String(location.href === '{s}' && document.readyState === 'complete')", .{expected}));
     try settle(browser, 300);
-    var check: [160]u8 = undefined;
-    try expectEval(page, try std.fmt.bufPrint(&check, "loads.join() === '{s}' ? 'one load' : JSON.stringify(loads)", .{expected}), "one load");
+    try expectEval(page, "location.href", expected);
 }
 
 fn tth2() !void {
-    try landsOn("for (const d of [-3, -2, 1]) frames[0].history.go(d);", "about:blank?3");
+    try landsOn("for (const d of [-3, -2, 1]) history.go(d);", "about:blank?3");
 }
 
 fn tth3() !void {
-    try landsOn("for (const d of [-2, -1, 3]) frames[0].history.go(d);", "about:blank?4");
+    try landsOn("for (const d of [-2, -1, 3]) history.go(d);", "about:blank?4");
 }
 
 fn tth4() !void {
-    try landsOn("for (const d of [-10, -1, -2]) frames[0].history.go(d);", "about:blank?5");
+    try landsOn("for (const d of [-10, -1, -2]) history.go(d);", "about:blank?5");
 }
 
 fn tth5() !void {
-    try landsOn("for (const d of [10, -1, -2]) frames[0].history.go(d);", "about:blank?5");
+    try landsOn("for (const d of [10, -1, -2]) history.go(d);", "about:blank?5");
 }
 
 fn fromPagehide() !void {
     try landsOn(
-        \\frames[0].addEventListener('pagehide', () => frames[0].history.go(-1));
-        \\frames[0].history.go(-3);
+        \\addEventListener('pagehide', () => history.go(-1));
+        \\history.go(-3);
     , "about:blank?3");
+}
+
+/// A child navigable follows the queue: from the frame's sixth entry,
+/// go(-3), go(-2), go(1) in one task apply in turn - ?3, then the srcdoc
+/// document, then ?2.
+fn childFollowsQueue() !void {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    const page = try sixEntries(browser);
+    try page.runScript("for (const d of [-3, -2, 1]) frames[0].history.go(d);");
+    try runUntil(browser, page, "String(frames[0].location.href === 'about:blank?2' && frames[0].document.readyState === 'complete')");
+    try settle(browser, 300);
+    try expectEval(page, "frames[0].location.href", "about:blank?2");
 }
 
 test "go(-3), go(-2), go(1) in one task: the first cross-document traversal wins (traverse_the_history_2)" {
@@ -144,6 +176,10 @@ test "go(10), go(-1), go(-2): the same forward (traverse_the_history_5)" {
 
 test "a go() from the leaving page's pagehide is ignored while its traversal is in progress" {
     try onFreshThread(fromPagehide);
+}
+
+test "a child navigable's delta traversals follow the queue, each in turn" {
+    try onFreshThread(childFollowsQueue);
 }
 
 fn sameDocumentDeltas() !void {
