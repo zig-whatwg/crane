@@ -251,7 +251,9 @@ pub fn call_createDocument(instance: *runtime.Instance, namespace: ?runtime.DOMS
 
     try document_internals.setContentType(document, content_type);
 
-    // Step 8: Return document
+    // Step 8: Return document - to script: its first wrapper takes its born
+    // reference (refcount7).
+    dom.refcount.offerDocument(document);
     return document;
 }
 
@@ -344,7 +346,9 @@ pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(ru
     // Use interface instead of impl (per Golden Rule #13)
     _ = try interfaces.Node.call_appendChild(html, body);
 
-    // Step 9: Return doc
+    // Step 9: Return doc - to script: its first wrapper takes its born
+    // reference (refcount7).
+    dom.refcount.offerDocument(doc);
     return doc;
 }
 

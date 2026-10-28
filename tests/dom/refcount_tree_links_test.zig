@@ -67,8 +67,17 @@ const Fixture = struct {
         runtime.deinitializeRuntime();
     }
 
+    /// An element the test makes and KEEPS: it claims the reference the
+    /// node was born with (refcount7: a creator that keeps its node, as the
+    /// parser's structures do), so each node it makes is held - one hold
+    /// per node, which is what these cases count.
     fn element(document: *runtime.Instance, name: []const u8) !*runtime.Instance {
-        return interfaces.Document.call_createElement(document, runtime.DOMString.initInterned(name), .{ .was_passed = false, .value = undefined });
+        return kept(try interfaces.Document.call_createElement(document, runtime.DOMString.initInterned(name), .{ .was_passed = false, .value = undefined }));
+    }
+
+    fn kept(node: *runtime.Instance) *runtime.Instance {
+        _ = refcount.claimCreatorReference(base(node));
+        return node;
     }
 
     /// A detached `div` with two `span` children, made in `document`.
@@ -147,7 +156,7 @@ test "a fragment's children move out of it: the fragment keeps only itself" {
     var f: Fixture = undefined;
     try f.init();
     defer f.deinit();
-    const fragment = try interfaces.Document.call_createDocumentFragment(f.document);
+    const fragment = Fixture.kept(try interfaces.Document.call_createDocumentFragment(f.document));
     defer dom.node_creation.destroyUninserted(fragment);
     _ = try interfaces.Node.call_appendChild(fragment, try Fixture.element(f.document, "p"));
     _ = try interfaces.Node.call_appendChild(fragment, try Fixture.smallTree(f.document));
@@ -251,18 +260,21 @@ test "a shadow root's holds count in its host's chain" {
     f.shadow = shadow;
     try std.testing.expect(base(shadow).rc_flags.hosted);
     try std.testing.expect(!base(shadow).rc_flags.foreign);
-    try std.testing.expectEqual(@as(u32, 2), base(host).subtree_holds);
-    try std.testing.expectEqual(doc_total + 1, base(f.document).subtree_holds);
+    // attachShadow's attachment to its host ended the shadow root's
+    // creator's reference (refcount7): the root itself holds nothing.
+    try std.testing.expectEqual(@as(u32, 0), refcount.count(base(shadow)));
+    try std.testing.expectEqual(@as(u32, 1), base(host).subtree_holds);
+    try std.testing.expectEqual(doc_total, base(f.document).subtree_holds);
     try std.testing.expectEqual(foreign, counts(f.document).foreign_holds);
 
     _ = try interfaces.Node.call_appendChild(shadow, try Fixture.smallTree(f.document));
-    try std.testing.expectEqual(doc_total + 4, base(f.document).subtree_holds);
+    try std.testing.expectEqual(doc_total + 3, base(f.document).subtree_holds);
     try refcount.verifyTree(base(f.document));
 
     // The host leaves the document; the shadow tree goes with it.
     _ = try interfaces.Node.call_removeChild(f.body, host);
     try std.testing.expectEqual(doc_total - 1, base(f.document).subtree_holds);
-    try std.testing.expectEqual(foreign + 5, counts(f.document).foreign_holds);
+    try std.testing.expectEqual(foreign + 4, counts(f.document).foreign_holds);
     try refcount.verifyTree(base(host));
     _ = try interfaces.Node.call_appendChild(f.body, host);
 }
@@ -275,7 +287,10 @@ test "a template's contents count in the template's chain, and name the inert do
     _ = try interfaces.Node.call_appendChild(f.body, template);
     const content = try interfaces.HTMLTemplateElement.get_content(template);
     try std.testing.expect(base(content).rc_flags.hosted);
-    try std.testing.expectEqual(@as(u32, 2), base(template).subtree_holds);
+    // Hosted by its template, which ended its creator's reference
+    // (refcount7): the contents hold nothing of their own.
+    try std.testing.expectEqual(@as(u32, 0), refcount.count(base(content)));
+    try std.testing.expectEqual(@as(u32, 1), base(template).subtree_holds);
     const inert = (try interfaces.Node.get_ownerDocument(content)).?;
     try std.testing.expect(inert != f.document);
     const inert_counts = counts(inert).*;

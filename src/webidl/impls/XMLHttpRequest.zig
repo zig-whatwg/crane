@@ -556,7 +556,9 @@ fn setDocumentResponse(instance: *runtime.Instance) !void {
     // A document no navigation loads is ready at once.
     dom_mod.document_lifecycle.markReadyForPostLoadTasks(document);
     // 12. Set xhr's response object to document - kept by an edge from the
-    //     XHR's wrapper, as `response`'s other objects are.
+    //     XHR's wrapper, as `response`'s other objects are. That wrapper
+    //     takes its born reference (refcount7).
+    dom_mod.refcount.offerDocument(document);
     const made = try engine.retainValue(instance.ctx, .{ .instance = document });
     defer made.release();
     engine.traceValue(instance, made.value, response_slot);

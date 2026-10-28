@@ -20,14 +20,14 @@ fn htmlCollectionsCountTheirRoots() !void {
         \\root.innerHTML = '<p class=x></p>';
     );
     const root = try page.node("root");
-    try expectCount(2, root, "the root, before any collection");
+    try expectCount(1, root, "the root, before any collection");
     try page.run("globalThis.classes = root.getElementsByClassName('x'); globalThis.again = root.getElementsByClassName('y');");
-    try expectCount(4, root, "the root of two getElementsByClassName collections");
+    try expectCount(3, root, "the root of two getElementsByClassName collections");
     try page.run("classes = null; again = null;");
     try page.collect();
-    try expectCount(2, root, "the root, after its collections were collected");
+    try expectCount(1, root, "the root, after its collections were collected");
     try page.run("root.children; root.children;");
-    try expectCount(3, root, "the owner of its children, read twice ([SameObject])");
+    try expectCount(2, root, "the owner of its children, read twice ([SameObject])");
 }
 
 test "a live HTMLCollection takes one counted reference on its root, and releases it" {

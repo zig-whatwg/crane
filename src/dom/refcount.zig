@@ -529,9 +529,18 @@ pub fn install(owned: Hooks) void {
 
 /// runtime.lifetime's acquire hook: `instance` (a node: its VTable is
 /// counted) got a wrapper, which takes one reference on its NodeBase - the
-/// target the adapter keeps beside the wrapper.
+/// target the adapter keeps beside the wrapper. A node's first wrapper adopts
+/// the reference the node was born with when its creator still offers it
+/// (refcount7): WebKit's binding moves the created `Ref` into the new wrapper
+/// (bindings/js/JSDOMWrapperCache.h `createWrapper`, reached from
+/// `toJSNewlyCreated`), so a node script made counts its wrapper's alone.
 pub fn wrapperAcquire(instance: *runtime.Instance) ?*anyopaque {
     const node = instance_bridge.getNodeBase(instance) orelse return null;
+    if (node.rc_flags.creator) {
+        // Adopted: the count already holds it.
+        node.rc_flags.creator = false;
+        return node;
+    }
     wrapperRef(node);
     return node;
 }
@@ -605,6 +614,133 @@ fn unledgeredDeref(node: *NodeBase, comptime who: []const u8) void {
     adjustForeign(walkAdd(null, node, -1), -1);
 }
 
+// ============================================================================
+// The creator's reference (refcount7; design 1.2, "the creator of a node
+// until it hands the node on"). A node is born with one reference, its
+// creator's (`rc_one`), flagged `RcFlags.creator` while the creator still has
+// it to offer. WebKit's create functions return `Ref<T>` (Document::
+// createTextNode returns `Text::create(...)`): the binding moves it into the
+// new wrapper (bindings/js/JSDOMWrapperCache.h `createWrapper`, reached from
+// `toJSNewlyCreated`: "domObject is moved into the wrapper, which keeps it
+// alive"), and a native creator's `Ref` ends at its scope once the parent bit
+// keeps the node. Blink has no such reference: `MakeGarbageCollected` objects
+// live while traced (core/dom/text.cc `Text::Create`). Here the creator's
+// reference is handed on in one of four ways:
+//   * the node's first wrapper adopts it (`wrapperAcquire`): every node a
+//     script-facing creator returns - Document's create methods, the
+//     constructors, cloneNode/importNode, createContextualFragment, a custom
+//     element's construction - is wrapped as it is returned;
+//   * the node's first insertion ends it (`linkChild`, `hostAttached`): every
+//     node a native creator builds into a tree - the fragment parser,
+//     DOMParser, cloning's descendants, createHTMLDocument's elements, a
+//     shadow root, a template's contents;
+//   * a creator that hands its reference on itself claims it at creation
+//     (`claimCreatorReference`): the HTML parser (decision D-A);
+//   * a creator that drops its node unwrapped and uninserted frees it
+//     (`dom.node_creation.destroyUninserted`: the old net, until step 7 makes
+//     that a release, `releaseCreatorReference`).
+// A Document's creator keeps it (a navigable's, step 5i) unless it hands the
+// document to script, which offers it (`offerCreatorReference`).
+// ============================================================================
+
+/// A holder that would take a reference on `node` takes its creator's over
+/// instead, when the creator still offers it (the HTML parser's structures,
+/// decision D-A): true when it did - the count is unchanged, the claimer
+/// holds it now; false when something took it first (a custom element
+/// constructor's wrapper can), and the claimer takes its own.
+pub fn claimCreatorReference(node: *NodeBase) bool {
+    if (!node.rc_flags.creator) return false;
+    node.rc_flags.creator = false;
+    return true;
+}
+
+/// A Document's creator hands the document to script (DOMParser,
+/// DOMImplementation, `new Document()`, parseHTMLUnsafe, a document's
+/// clone, XHR's response document): its born reference, which a document's
+/// creator otherwise keeps, goes to the document's first wrapper. Before
+/// anything wraps it.
+pub fn offerCreatorReference(node: *NodeBase) void {
+    node.rc_flags.creator = true;
+}
+
+/// `offerCreatorReference` for a document given as its instance.
+pub fn offerDocument(document: *runtime.Instance) void {
+    const node = instance_bridge.getNodeBase(document) orelse return;
+    offerCreatorReference(node);
+}
+
+/// The creator drops `node` neither wrapped nor inserted: its born reference
+/// ends, if it still has it. Nothing is freed here (shadow mode: the
+/// creator's `dom.node_creation.destroyUninserted` frees it; step 7 makes
+/// this the free's cause).
+pub fn releaseCreatorReference(node: *NodeBase) void {
+    if (!node.rc_flags.creator) return;
+    node.rc_flags.creator = false;
+    unledgeredDeref(node, "a creator");
+}
+
+/// `node`, a root about to be linked under a parent or a host, has its
+/// creator's reference still: the tree takes it over, so it ends now (the
+/// parent bit, or the hosted link, keeps the node). O(1): only the node's
+/// own total moves (and, a detached root of its document, its document's
+/// foreign holds) - the link then carries what is left. Never garbage: the
+/// node is being linked.
+fn endCreatorReferenceForLink(node: *NodeBase) void {
+    if (!node.rc_flags.creator) return;
+    node.rc_flags.creator = false;
+    if (node.rc < NodeBase.rc_one) {
+        violate(null, "node {*} offered a creator's reference it does not hold", .{node});
+        return;
+    }
+    node.rc -= NodeBase.rc_one;
+    if (isHeld(node)) return;
+    if (node.subtree_holds == 0) {
+        violate(null, "subtree_holds of node {*} would become -1", .{node});
+        return;
+    }
+    node.subtree_holds -= 1;
+    adjustForeign(node, -1);
+}
+
+/// The nodes of `tree_root`'s host-including tree whose born reference is
+/// still their creator's: all of them, and those it alone holds (count 1).
+/// CRANE_REFCOUNT_CHECK's census at a document's free (Document.deinitOwn).
+pub const CreatorCensus = struct { holding: u64 = 0, alone: u64 = 0 };
+
+pub fn creatorCensus(tree_root: *NodeBase) CreatorCensus {
+    var census: CreatorCensus = .{};
+    addCreatorCensus(tree_root, &census);
+    return census;
+}
+
+/// Iterative over the tree (a deep tree must not overflow the stack);
+/// recursive only into hosted roots, which nest as shallowly as shadow trees
+/// and templates do.
+fn addCreatorCensus(tree_root: *NodeBase, census: *CreatorCensus) void {
+    var node: *NodeBase = tree_root;
+    while (true) {
+        if (node.rc_flags.creator) {
+            census.holding += 1;
+            if (count(node) == 1) census.alone += 1;
+        }
+        var hosted: [2]?*NodeBase = undefined;
+        for (hostedRootsOf(node, &hosted)) |maybe| if (maybe) |hosted_root| addCreatorCensus(hosted_root, census);
+        node = nextInTree(tree_root, node) orelse return;
+    }
+}
+
+/// The node after `node` in tree order within `tree_root`'s tree (not into
+/// hosted roots), or null at the end.
+fn nextInTree(tree_root: *NodeBase, node: *NodeBase) ?*NodeBase {
+    if (node.first_child) |child| return child;
+    var current = node;
+    while (current != tree_root) {
+        if (current.next_sibling) |sibling| return sibling;
+        current = current.parent_node orelse return null;
+    }
+    return null;
+}
+
 /// `list`, the childNodes list of `node` (live, and holding `node`), is
 /// being freed: `node`'s caches of it let it go. A node's caches of its
 /// collections are RAW - the list holds the node, never the reverse (design
@@ -676,6 +812,8 @@ fn countsAsForeign(node: *const NodeBase) bool {
 pub fn linkChild(node: *NodeBase, parent: *NodeBase) void {
     if (node.parent_node != null) violate(null, "linkChild: node {*} already has a parent", .{node});
     if (node.rc_flags.hosted) violate(null, "linkChild: node {*} is a shadow root or template contents", .{node});
+    // The tree takes the node over: its creator's reference ends (refcount7).
+    endCreatorReferenceForLink(node);
     const holds = node.subtree_holds;
     const was_foreign = node.rc_flags.foreign;
     node.rc_flags.foreign = false;
@@ -766,6 +904,8 @@ pub fn unlinkForTeardown(node: *NodeBase) void {
 /// template (`root` is parentless): its holds join the host's chain.
 pub fn hostAttached(hosted_root: *NodeBase, host: *NodeBase) void {
     if (hosted_root.parent_node != null) violate(null, "hostAttached: node {*} has a parent", .{hosted_root});
+    // The host takes it over: its creator's reference ends (refcount7).
+    endCreatorReferenceForLink(hosted_root);
     const holds = hosted_root.subtree_holds;
     const was_foreign = hosted_root.rc_flags.foreign;
     hosted_root.rc_flags.foreign = false;

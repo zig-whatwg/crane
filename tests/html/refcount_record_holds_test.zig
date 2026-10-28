@@ -31,19 +31,19 @@ fn recordCountsItsNodes() !void {
     const added = try page.node("added");
     // The record, delivered and kept by script, holds its target, its
     // siblings and its added node.
-    try expectCount(3, host, "the target, held by a record");
-    try expectCount(3, before, "the previous sibling");
-    try expectCount(3, after, "the next sibling");
-    try expectCount(3, added, "the added node");
+    try expectCount(2, host, "the target, held by a record");
+    try expectCount(2, before, "the previous sibling");
+    try expectCount(2, after, "the next sibling");
+    try expectCount(2, added, "the added node");
     try page.run("if (records.length !== 1) throw new Error('records: ' + records.length); records[0].addedNodes;");
     // The added-nodes list script read holds its node too.
-    try expectCount(4, added, "the added node, held by the record and its list");
+    try expectCount(3, added, "the added node, held by the record and its list");
     try page.run("records = null; mo.disconnect();");
     try page.collect();
-    try expectCount(2, host, "the target, after the record went");
-    try expectCount(2, before, "the previous sibling, after");
-    try expectCount(2, after, "the next sibling, after");
-    try expectCount(2, added, "the added node, after the record and its list went");
+    try expectCount(1, host, "the target, after the record went");
+    try expectCount(1, before, "the previous sibling, after");
+    try expectCount(1, after, "the next sibling, after");
+    try expectCount(1, added, "the added node, after the record and its list went");
 }
 
 test "a MutationRecord takes one counted reference on each node it names, and releases it" {
@@ -60,11 +60,11 @@ fn removedRecordNodeCounts() !void {
         \\mo.observe(host, { childList: true });
     );
     const child = try page.node("child");
-    try expectCount(2, child, "the child, before any record");
+    try expectCount(1, child, "the child, before any record");
     // Queued and dropped unwrapped in one task: disconnect() empties the
     // queue, which frees the record and its references at once.
     try page.run("child.remove(); host.appendChild(child); child.remove(); mo.disconnect();");
-    try expectCount(2, child, "the removed node, after its records were dropped unwrapped");
+    try expectCount(1, child, "the removed node, after its records were dropped unwrapped");
 }
 
 test "a record dropped unwrapped releases its references at once" {

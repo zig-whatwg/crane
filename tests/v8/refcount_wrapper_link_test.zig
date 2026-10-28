@@ -111,12 +111,15 @@ fn nodeBase(node: *runtime.Instance) *dom.NodeBase {
 }
 
 /// A detached root > middle > leaf chain of divs made natively in a Document
-/// script holds: born with one reference each, none wrapped.
+/// script holds: born with one reference each, which the test keeps (it
+/// claims each, as a creator that keeps its nodes does - refcount7), none
+/// wrapped.
 fn chain(page: Page) ![3]*runtime.Instance {
     const document = try page.instance("globalThis.d = new Document(); d");
     var nodes: [3]*runtime.Instance = undefined;
     for (&nodes) |*node| {
         node.* = try interfaces.Document.call_createElementNS(document, runtime.DOMString.initInterned(xhtml), runtime.DOMString.initInterned("div"), .{ .was_passed = false, .value = undefined });
+        _ = dom.refcount.claimCreatorReference(nodeBase(node.*));
     }
     _ = try interfaces.Node.call_appendChild(nodes[0], nodes[1]);
     _ = try interfaces.Node.call_appendChild(nodes[1], nodes[2]);
@@ -170,6 +173,28 @@ test "a node's wrapper holds one reference, made with the wrapper" {
     try testing.expectEqual(@as(u32, 2), dom.refcount.count(nodeBase(nodes[2])));
     // Holds did not move: every node was held already (its born reference).
     try testing.expectEqual(@as(u32, 3), nodeBase(nodes[0]).subtree_holds);
+}
+
+test "a node's first wrapper adopts the reference its creator offers, and takes none of its own" {
+    const page = try Page.open();
+    defer page.close();
+    const document = try page.instance("globalThis.d = new Document(); d");
+    const div = try interfaces.Document.call_createElementNS(document, runtime.DOMString.initInterned(xhtml), runtime.DOMString.initInterned("div"), .{ .was_passed = false, .value = undefined });
+    const node = nodeBase(div);
+    // Born with one reference, offered (refcount7, H1).
+    try testing.expect(node.rc_flags.creator);
+    try testing.expectEqual(@as(u32, 1), dom.refcount.count(node));
+    const first = try protocol.retainValue(page.realm, .{ .instance = div });
+    defer first.release();
+    try testing.expect(!node.rc_flags.creator);
+    try testing.expectEqual(@as(u32, 1), dom.refcount.count(node));
+    // Removed from the cache: the wrapper's (the adopted) reference goes.
+    try testing.expect(page.cache().remove(div));
+    try testing.expectEqual(@as(u32, 0), dom.refcount.count(node));
+    // A wrapper made again takes a reference of its own.
+    const second = try protocol.retainValue(page.realm, .{ .instance = div });
+    defer second.release();
+    try testing.expectEqual(@as(u32, 1), dom.refcount.count(node));
 }
 
 test "a node whose teardown begins under its live wrapper lets the wrapper's reference go once" {
