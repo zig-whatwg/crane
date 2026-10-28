@@ -161,7 +161,7 @@ pub fn installHooks() void {
     // And a parser's DOM adapter frees a node it made and never inserted
     // through `dom.node_creation`, as the tree teardown frees a child.
     dom_module.node_creation.installNode(.{
-        .destroy_uninserted = &deinitNodeByType,
+        .destroy_uninserted = &destroyUninsertedHook,
         .clone = &cloneANode,
     });
     // A realm's end frees the orphans its removals recorded (dom.mutation's
@@ -403,6 +403,15 @@ pub fn deinit(instance: *runtime.Instance) void {
 
     // EventTarget cleanup happens via inheritance chain
     interfaces.EventTarget.deinitChain(instance);
+}
+
+/// `dom.node_creation.destroyUninserted` (and `destroyRoot`): the creator
+/// drops `instance` neither wrapped nor inserted, so its born reference ends
+/// first (refcount7's hand-on point H4; shadow mode frees it now, as before -
+/// step 7 makes the release the free's cause), then the node is torn down.
+fn destroyUninsertedHook(instance: *runtime.Instance) void {
+    if (instance_bridge.getNodeBase(instance)) |base| dom_module.refcount.releaseCreatorReference(base);
+    deinitNodeByType(instance);
 }
 
 /// Deinitialize a node based on its node type.

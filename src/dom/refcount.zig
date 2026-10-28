@@ -968,6 +968,13 @@ pub fn nodeDocumentChanged(node: *NodeBase, old: ?*DocumentCounts, new: ?*Docume
 /// garbage (crane/xp2-result-gc.html). Nothing a version-keyed cache
 /// remembers is freed under it: see `live_collections.IndexCache.fresh`.
 pub fn nodeFreed(node: *NodeBase, counts: ?*DocumentCounts) void {
+    // A node freed while its creator still had its born reference to offer:
+    // its creator neither handed it to a wrapper or a tree nor dropped it
+    // through `dom.node_creation.destroyUninserted` - a silent drop, which
+    // step 7's counts would never free (refcount7; for step 7's agent-end
+    // assertion). A Document's creator keeps its reference by design.
+    if (diagnosticsOn() and node.rc_flags.creator and node.node_type != NodeBase.DOCUMENT_NODE)
+        log.warn("a node was freed holding its creator's reference (node type {d}, {s})", .{ node.node_type, if (node.parent_node == null) "a root" else "in a tree" });
     if (node.node_type == NodeBase.DOCUMENT_NODE) return;
     const document = counts orelse return;
     addTo(&document.referencing_nodes, -1, "referencing_nodes");
