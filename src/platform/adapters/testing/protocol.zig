@@ -233,6 +233,7 @@ pub const protocol = struct {
     pub const pushMediaData = headless.pushMediaData;
     pub const mediaVideoSize = headless.mediaVideoSize;
     pub const closeMediaDecoder = headless.closeMediaDecoder;
+    pub const imageMimeTypeSupported = image_decoding.imageMimeTypeSupported;
     pub const decodeImage = image_decoding.decodeImage;
     pub const decodeFont = fonts.decodeFont;
     pub const genericFontFace = fonts.genericFontFace;

@@ -539,7 +539,18 @@ pub fn installHooks() void {
     @import("dom").adopting_steps.install(&adoptingSteps);
     @import("dom").document_fetches.install(.{ .discard = discardRealm, .prepare_abort = prepareDocumentAbort, .abort = abortDocument });
     // HTML 4.12.5.1.9: an img is an image source for a 2D context.
-    dom.image_sources.installImageElement(imageUsability, replacedFacts);
+    dom.image_sources.installImageElement(imageUsability, replacedFacts, updateTheImageData);
+    // The img/source steps that count as relevant image mutations. One
+    // dispatcher for both names avoids two generic-DOM callback lookups.
+    dom.mutation.registerInsertionStepsCallback(&pictureInsertionSteps) catch |err| {
+        log.warn("picture insertion steps not registered: {}", .{err});
+    };
+    dom.mutation.registerRemovingStepsCallback(&pictureRemovingSteps) catch |err| {
+        log.warn("picture removing steps not registered: {}", .{err});
+    };
+    dom.mutation.registerMovingStepsCallback(&pictureMovingSteps) catch |err| {
+        log.warn("picture moving steps not registered: {}", .{err});
+    };
     dom.teardown_sweeps.install(.element_types, &sweepRemaining);
 }
 
@@ -691,9 +702,9 @@ fn discardRealm(realm: runtime.Context) void {
 /// to its own value included: that restarts animations, which nothing here
 /// keeps), the crossorigin or referrerpolicy attribute's state changed.
 ///
-/// Not modelled, stated: the other relevant mutations - the img or a source
-/// sibling inserted, removed or moved, a picture parent's source changing,
-/// auto-sizes. The adopting steps are `adoptingSteps`.
+/// Picture-tree mutations are below; source attributes call the image-sources
+/// hook. Auto-sizes rendering changes remain unmodelled. The adopting steps
+/// are `adoptingSteps`.
 fn attributeChangeSteps(element: *runtime.Instance, local_name: []const u8, old_value: ?[]const u8, value: ?[]const u8, namespace: ?[]const u8) void {
     if (namespace != null) return;
     const always = [_][]const u8{ "src", "srcset", "width", "sizes" };
@@ -710,6 +721,87 @@ fn attributeChangeSteps(element: *runtime.Instance, local_name: []const u8, old_
     }
 }
 
+const PictureTarget = struct { element: *runtime.Instance, kind: enum { img, source } };
+
+/// Allocation-free rejection before image state or update work. Ordinary
+/// img/source NodeBases have an empty node_name: ElementData owns their
+/// immutable namespace/local name (Q22). getInstance is a direct field read.
+fn pictureTarget(node: *dom.NodeBase) ?PictureTarget {
+    if (node.node_type != interfaces.Node.get_ELEMENT_NODE()) return null;
+    const element: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(node) orelse return null));
+    const data = dom.element_data.of(element) orelse return null;
+    const name = data.local_name.asSlice();
+    const kind: @FieldType(PictureTarget, "kind") = if (std.mem.eql(u8, name, "img")) .img else if (std.mem.eql(u8, name, "source")) .source else return null;
+    if (!std.mem.eql(u8, data.namespaceSlice() orelse "", "http://www.w3.org/1999/xhtml")) return null;
+    return .{ .element = element, .kind = kind };
+}
+
+fn isPictureNode(node: *dom.NodeBase) bool {
+    if (node.node_type != interfaces.Node.get_ELEMENT_NODE()) return false;
+    const element: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(node) orelse return false));
+    return isHtmlElement(element, "picture");
+}
+
+fn updatePictureImages(picture: *dom.NodeBase) void {
+    for (picture.child_nodes.items()) |node| {
+        const target = pictureTarget(node) orelse continue;
+        if (target.kind == .img) updateTheImageData(target.element);
+    }
+}
+
+/// HTML img insertion step 1; source insertion step 3. Source's media
+/// resource-selection steps belong to the media loading path.
+fn pictureInsertionSteps(node: *dom.NodeBase) void {
+    const target = pictureTarget(node) orelse return;
+    const parent = node.parent_node orelse return;
+    if (!isPictureNode(parent)) return;
+    switch (target.kind) {
+        .img => updateTheImageData(target.element),
+        .source => updatePictureImages(parent),
+    }
+}
+
+/// HTML img/source removing step 1. DOM supplies oldAncestor to every
+/// descendant; only the removed subtree root has no parent after removal.
+fn pictureRemovingSteps(node: *dom.NodeBase, old_parent: ?*dom.NodeBase) void {
+    if (node.parent_node != null) return;
+    pictureOldParentSteps(node, old_parent);
+    // img removing step 2 has no stored last-auto-sizes width to clear:
+    // this engine's media environment has no rendered auto-size input.
+}
+
+/// HTML img moving step 1 / source moving step 2. DOM supplies old_parent
+/// only for the subtree root; descendants get null.
+fn pictureMovingSteps(node: *dom.NodeBase, old_parent: ?*dom.NodeBase) void {
+    const previous = old_parent orelse return;
+    const target = pictureTarget(node) orelse return;
+    const current = node.parent_node;
+    const old_picture = isPictureNode(previous);
+    const new_picture = if (current) |parent| isPictureNode(parent) else false;
+    // Browser ruling, 2026-10-27 (codex-fetchlater Q27): Chrome 156 and
+    // Firefox 158 both reselect in the NEW picture too; Safari 27 did not
+    // ship moveBefore. The live HTML text only names oldAncestor. WebKit's
+    // HTMLImageElement/HTMLSourceElement::movingSteps at 9009501f agrees
+    // with the shippers. Update a same-parent picture exactly once.
+    switch (target.kind) {
+        .img => if (old_picture or new_picture) updateTheImageData(target.element),
+        .source => {
+            if (old_picture) updatePictureImages(previous);
+            if (new_picture and current.? != previous) updatePictureImages(current.?);
+        },
+    }
+}
+
+fn pictureOldParentSteps(node: *dom.NodeBase, old_parent: ?*dom.NodeBase) void {
+    const parent = old_parent orelse return;
+    const target = pictureTarget(node) orelse return;
+    if (!isPictureNode(parent)) return;
+    switch (target.kind) {
+        .img => updateTheImageData(target.element),
+        .source => updatePictureImages(parent),
+    }
+}
+
 /// HTML "update the image data", as far as this engine models it. After a microtask
 /// (step 8, the spec's "allowing the task that invoked this algorithm to
 /// continue"), a selected source is fetched and its response decoded, or -
@@ -717,7 +809,7 @@ fn attributeChangeSteps(element: *runtime.Instance, local_name: []const u8, old_
 /// a task then updates the requests and fires load or error. A newer update
 /// cancels an older one (step 9: the generation counter).
 ///
-/// Not modelled, stated: picture source selection and step 14's
+/// Not modelled, stated: step 14's
 /// "same URL as the pending request"
 /// shortcut (the update restarts); the partially available state (the image
 /// is decoded once its whole body has arrived - and then, when its data
@@ -976,7 +1068,65 @@ const ImageSource = struct { url: []const u8, density: f64 };
 fn selectImageSource(instance: *runtime.Instance) ?ImageSource {
     const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return null;
     const environment = dom.style.hooks.mediaValues(document);
-    var candidates: Srcset = .{ .input = attributeValue(instance, "srcset") orelse "" };
+    // HTML 4.8.4.3.9 steps 2–5: the first eligible preceding source in a
+    // picture supplies the set. Other images and non-source children do
+    // not stop the scan. WebKit HTMLImageElement::bestFitSourceFromPictureElement
+    // (9009501f68d682d9433641b9b926b083ee073b79) uses this same ordering.
+    if (pictureParent(instance)) |picture| {
+        var child = interfaces.Node.get_firstChild(picture) catch null;
+        while (child) |source| : (child = interfaces.Node.get_nextSibling(source) catch null) {
+            if (source == instance) break;
+            if (!isHtmlElement(source, "source")) continue;
+            const srcset = attributeValue(source, "srcset") orelse continue;
+            var candidates: Srcset = .{ .input = srcset };
+            if (candidates.next() == null) continue; // steps 3–5
+            if (attributeValue(source, "media")) |media| {
+                var query = dom.style.css.media_queries.MediaQueryList.parse(instance.ctx.allocator, media) catch continue;
+                defer query.deinit();
+                if (!query.matches(&environment)) continue;
+            }
+            if (attributeValue(source, "type")) |mime| if (!sourceTypeSupported(instance.ctx.allocator, mime)) continue;
+            // Step 5.9 is the routed PICTURE SOURCE DIMENSION ATTRIBUTES
+            // follow-up: the selected source's width/height needs an owned
+            // node hold and the presentational-hint bridge.
+            return selectFromAttributes(instance, "", srcset, attributeValue(source, "sizes") orelse "", environment);
+        }
+    }
+    // Step 5.1: reaching the img uses its own attributes and fallback src.
+    return selectFromAttributes(instance, attributeValue(instance, "src") orelse "", attributeValue(instance, "srcset") orelse "", attributeValue(instance, "sizes") orelse "", environment);
+}
+
+fn isHtmlElement(instance: *runtime.Instance, local_name: []const u8) bool {
+    const data = dom.element_data.of(instance) orelse return false;
+    return std.mem.eql(u8, data.local_name.asSlice(), local_name) and
+        std.mem.eql(u8, data.namespaceSlice() orelse "", "http://www.w3.org/1999/xhtml");
+}
+
+fn pictureParent(instance: *runtime.Instance) ?*runtime.Instance {
+    const parent = (interfaces.Node.get_parentNode(instance) catch null) orelse return null;
+    return if (isHtmlElement(parent, "picture")) parent else null;
+}
+
+fn sourceTypeSupported(allocator: std.mem.Allocator, text: []const u8) bool {
+    // Empty/whitespace type means no restriction (all browsers and WPT
+    // update-the-source-set.html). Parameters do not affect decoder support.
+    if (std.mem.trim(u8, text, " \t\n\r\x0c").len == 0) return true;
+    if (platform.capabilities.image_decoding == .unsupported) return false;
+    var scratch = std.heap.stackFallback(2048, allocator);
+    const temporary = scratch.get();
+    var mime = (@import("mimesniff").mime_type.parseMimeType(temporary, text) catch return false) orelse return false;
+    defer mime.deinit();
+    const essence = temporary.alloc(u8, mime.type.len + 1 + mime.subtype.len) catch return false;
+    defer temporary.free(essence);
+    for (mime.type, essence[0..mime.type.len]) |unit, *byte| byte.* = @intCast(unit);
+    essence[mime.type.len] = '/';
+    for (mime.subtype, essence[mime.type.len + 1 ..]) |unit, *byte| byte.* = @intCast(unit);
+    return platform.imageMimeTypeSupported(.from(essence));
+}
+
+/// 4.8.4.3.8/12: normalize and select from one element's attributes.
+fn selectFromAttributes(instance: *runtime.Instance, default_source: []const u8, srcset: []const u8, sizes: []const u8, environment: dom.style.css.media_queries.MediaValues) ?ImageSource {
+    var candidates: Srcset = .{ .input = srcset };
     var chosen: ?ImageSource = null;
     var width_seen = false;
     var density_one_seen = false;
@@ -985,15 +1135,13 @@ fn selectImageSource(instance: *runtime.Instance) ?ImageSource {
         width_seen = width_seen or candidate.width != null;
         density_one_seen = density_one_seen or candidate.density == 1;
         const density = candidate.density orelse if (candidate.width) |width| blk: {
-            if (size == null) size = sourceSize(instance, environment);
+            if (size == null) size = sourceSize(instance, sizes, environment);
             break :blk width / size.?;
         } else 1;
         considerSource(&chosen, .{ .url = candidate.url, .density = density }, environment.resolution);
     }
-    if (!width_seen and !density_one_seen) {
-        if (attributeValue(instance, "src")) |src| if (src.len > 0) {
-            considerSource(&chosen, .{ .url = src, .density = 1 }, environment.resolution);
-        };
+    if (!width_seen and !density_one_seen and default_source.len > 0) {
+        considerSource(&chosen, .{ .url = default_source, .density = 1 }, environment.resolution);
     }
     return chosen;
 }
@@ -1010,11 +1158,9 @@ fn considerSource(chosen: *?ImageSource, candidate: ImageSource, resolution: f64
 
 /// HTML 4.8.4.3.11. Component values, rather than splitting on commas or
 /// spaces, preserve functions, media conditions, comments and escapes.
-/// Numeric expressions remain subject to Crane's CSS capability (the CSS
-/// value grammar currently has no math functions; see row 91's Q4).
-fn sourceSize(instance: *runtime.Instance, environment: dom.style.css.media_queries.MediaValues) f64 {
+/// `text` belongs to the selected source, or to the img's own fallback set.
+fn sourceSize(instance: *runtime.Instance, text: []const u8, environment: dom.style.css.media_queries.MediaValues) f64 {
     const css = dom.style.css;
-    const text = attributeValue(instance, "sizes") orelse return environment.width;
     var tokenizer = css.tokenizer.Tokenizer.init(text);
     var item_start: usize = 0;
     var last_start: usize = 0;
@@ -1068,11 +1214,55 @@ fn sourceSizeValue(instance: *runtime.Instance, text: []const u8, environment: d
     const token = tokenizer.next();
     if (token.isIdent("auto")) {
         // Step 3.3: no concrete rendered object size in the headless media
-        // environment. Ignore auto and try the following size (Q4).
+        // environment. Ignore auto and try the following size.
         return null;
     }
+    if (token.token_type == .function) {
+        // HTML 4.8.4.3.11 step 3.2: only CSS math functions, yielding a
+        // non-negative length. The existing grammar rejects other functions.
+        const allocator = instance.ctx.allocator;
+        var divided_by_zero = false;
+        const parsed = (css.math_values.parseWithDivisionCheck(allocator, text, .{ .kind = .length, .minimum = 0 }, &divided_by_zero) catch return null) orelse return null;
+        defer parsed.expression.unref();
+        if (parsed.consumed != text.len) return null;
+        // Sizes has the initial font and viewport, not an element's style,
+        // line-height metrics, sibling counts or a random-value provider.
+        // Preflight those inputs before compute; never invent them.
+        if (parsed.expression.needsUnavailableMetrics(false) or parsed.expression.needsLineHeight() or
+            parsed.expression.needsTreeCounts() or parsed.expression.needsRandomBase()) return null;
+        const computed = parsed.expression.computeWithDivisionCheck(allocator, .{
+            .font_size = environment.font_size,
+            .root_font_size = environment.font_size,
+            .viewport_width = environment.width,
+            .viewport_height = environment.height,
+        }, &divided_by_zero) catch return null;
+        defer computed.unref();
+        // Browser probes Q31/Q39-Q41 (2026-10-27, C156/F158/S27):
+        // C/S reject zero division anywhere and nonfinite keyword results,
+        // unlike CSS Values 4's unconditional outer normalization. F/S use
+        // finite keyword branches; C/F normalize numeric overflow (inf to
+        // the largest size, overflow NaN to zero). All clamp finite negative
+        // math to zero. Inspect those distinctions before computedNumber.
+        if (divided_by_zero) return null;
+        const raw = computed.knownNumber() orelse return null;
+        if (raw.unit != .px) return null;
+        if (!std.math.isFinite(raw.value)) {
+            // The evaluator has folded away keyword provenance. Reuse the
+            // CSS tokenizer's decoded identifier comparison, including escapes.
+            while (true) {
+                const keyword = tokenizer.next();
+                if (keyword.token_type == .eof) break;
+                if (keyword.token_type != .ident) continue;
+                if (css.tokenizer.nameEql(keyword.value, "infinity") or
+                    css.tokenizer.nameEql(keyword.value, "-infinity") or
+                    css.tokenizer.nameEql(keyword.value, "nan")) return null;
+            }
+        }
+        const number = computed.computedNumber() orelse return null;
+        return number.value;
+    }
     const value = token.numeric_value orelse return null;
-    if (value < 0 or !std.math.isFinite(value)) return null;
+    if (value < 0) return null;
     if (token.token_type == .number) return if (value == 0) 0 else null;
     if (token.token_type != .dimension) return null;
     const unit_text = token.unit orelse return null;
@@ -1103,7 +1293,9 @@ fn sourceSizeValue(instance: *runtime.Instance, text: []const u8, environment: d
         .vmax => @max(environment.width, environment.height) / 100,
         .percent => return null,
     };
-    return value * factor;
+    // Q39: all three browsers saturate plain lengths, including a numeric
+    // token that already overflowed, at the px conversion boundary.
+    return std.math.clamp(value * factor, 0, std.math.floatMax(f64));
 }
 
 const SelectedLoad = struct {
@@ -1117,7 +1309,7 @@ fn selectedLoad(instance: *runtime.Instance, selection: Selection, url: []const 
     if (selection != .select_source) return .{ .selection = selection, .url = url };
     // The ordinary src path needs neither candidate parsing nor the media
     // environment. Its result is still resolved after the microtask.
-    const source: ImageSource = if (attributeValue(instance, "srcset") != null)
+    const source: ImageSource = if (attributeValue(instance, "srcset") != null or pictureParent(instance) != null)
         selectImageSource(instance) orelse return .{ .selection = .no_source, .url = "" }
     else blk: {
         const src = attributeValue(instance, "src") orelse return .{ .selection = .no_source, .url = "" };
@@ -1172,7 +1364,7 @@ fn startLoad(instance: *runtime.Instance, selection: Selection, url_str: []const
     // can reach step 8 before the microtask has run - waits for the image.
     const has_src = if (attributeValue(instance, "src")) |src| src.len > 0 else false;
     const may_fetch = selection == .fetch or (selection == .select_source and
-        (attributeValue(instance, "srcset") != null or has_src));
+        (attributeValue(instance, "srcset") != null or has_src or pictureParent(instance) != null));
     if (may_fetch and !isLazy(instance)) {
         if (internal.document) |document| internal.delayLoad(document.instance);
     }
@@ -1555,7 +1747,7 @@ fn startImageFetch(instance: *runtime.Instance, url: []const u8, generation: u64
     request.initiator_type = .img;
     // HTML update-the-image-data step 23: responsive image requests use
     // the imageset initiator (distinct from Resource Timing's "img").
-    if (attributeValue(instance, "srcset") != null) request.initiator = .imageset;
+    if (attributeValue(instance, "srcset") != null or pictureParent(instance) != null) request.initiator = .imageset;
     // "Create a potential-CORS request": mode "no-cors" for No CORS,
     // "cors" otherwise; credentials "include", or "same-origin" for
     // Anonymous; the use-URL-credentials flag set.

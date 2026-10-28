@@ -306,6 +306,12 @@ pub fn closeMediaDecoder(decoder: *platform.MediaDecoder) void {
     _ = decoder;
 }
 
+/// This platform has no supported image decoder.
+pub fn imageMimeTypeSupported(essence: Str) bool {
+    _ = essence;
+    return false;
+}
+
 /// No image decodes: every image is broken (HTML "update the image data").
 pub fn decodeImage(allocator: std.mem.Allocator, mime: Str, bytes: Bytes, limits: platform.ImageLimits) platform.ImageError!platform.DecodedImage {
     _ = .{ allocator, mime, bytes, limits };
