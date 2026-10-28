@@ -50,8 +50,14 @@ pub fn upgradeElement(element: *runtime.Instance, definition: *ce.Definition) !?
     if (data.state != .undefined and data.state != .uncustomized) return null;
     const held_definition = definition.retain();
     defer held_definition.deinit();
-    const root = try engine.retainValue(element.ctx, .{ .instance = element });
-    defer root.release();
+    // The element is held across its construction, while the definition's
+    // construction stack names it (steps 6-10, constructForUpgrade): refcount
+    // step 5e's GCReachableRef in shadow mode - its wrapper rooted, as it
+    // always was here, and one counted reference, as WebKit's
+    // JSCustomElementInterface keeps the stack as `Vector<RefPtr<Element>, 1>
+    // m_constructionStack` (bindings/js/JSCustomElementInterface.h).
+    const held = try ce.ElementHold.take(element);
+    defer held.release();
     ce.setDefinition(element, definition);
     ce.setState(element, .failed);
     var alive = true;
@@ -135,6 +141,8 @@ fn constructForUpgrade(element: *runtime.Instance, definition: *ce.Definition, a
 /// CustomElementRegistry.upgrade steps 1–1.3, including a detached root.
 pub fn upgradeSubtree(root: *runtime.Instance, registry: *runtime.Instance) !void {
     const base = dom.instance_bridge.getNodeBase(root) orelse return;
+    const walk = WalkHold.begin(root, base);
+    defer walk.end();
     var candidates = try dom.tree_helpers.getShadowIncludingInclusiveDescendants(registry.ctx.allocator, base);
     defer candidates.deinit();
     for (candidates.toSlice()) |node| {
@@ -146,8 +154,12 @@ pub fn upgradeSubtree(root: *runtime.Instance, registry: *runtime.Instance) !voi
 }
 
 /// Define steps 17–18, "upgrade particular elements within a document".
+/// `document` was checked live by the caller with no engine call since (a
+/// scoped registry's document set is weak), and the walk holds it from here.
 pub fn enqueueCandidates(registry: *runtime.Instance, document: *runtime.Instance, definition: *ce.Definition) !void {
     const base = dom.instance_bridge.getNodeBase(document) orelse return;
+    const walk = WalkHold.begin(document, base);
+    defer walk.end();
     var candidates = try dom.tree_helpers.getShadowIncludingDescendants(registry.ctx.allocator, base);
     defer candidates.deinit();
     for (candidates.toSlice()) |node| {
@@ -158,6 +170,38 @@ pub fn enqueueCandidates(registry: *runtime.Instance, document: *runtime.Instanc
         if (try definitionFor(element, registry) == definition) try driver.enqueueUpgrade(element, definition);
     }
 }
+
+/// What a candidate walk holds while it runs (refcount step 5e, lane
+/// refcount5). The walk keeps bare tree nodes across driver.enqueueUpgrade,
+/// whose wrap of each candidate allocates; a collection there can run
+/// teardowns an earlier collection left pending - a document's that a
+/// scoped registry's weak document set still lists, freed under the walk
+/// when the deferred teardown queue is past its high water
+/// (docs/lessons/architecture-a-weak-list-walked-across-an-engine-call-loses-entries-mid-walk.md).
+/// So the walk holds its agent's teardowns (engine.holdTeardowns: no script
+/// runs in a walk - enqueueUpgrade only queues), and its root with one
+/// counted reference, as WebKit's walks hold `RefPtr document` and a
+/// `RefPtr element` per step (CustomElementRegistry::addElementDefinition,
+/// enqueueUpgradeInShadowIncludingTreeOrder). Each candidate it queues is
+/// then held by its reaction record (dom.custom_elements.ElementHold). The
+/// cost is two counter changes and a teardown-hold counter per walk.
+const WalkHold = struct {
+    teardowns: engine.TeardownHold,
+    root: *runtime.Instance,
+    counted: dom.node_holds.CountedRef,
+
+    fn begin(root: *runtime.Instance, base: *dom.NodeBase) WalkHold {
+        var walk: WalkHold = .{ .teardowns = engine.holdTeardowns(root.ctx), .root = root, .counted = .{} };
+        walk.counted.take(root, base);
+        return walk;
+    }
+
+    fn end(self: WalkHold) void {
+        var counted = self.counted;
+        counted.release(self.root);
+        self.teardowns.release();
+    }
+};
 
 pub fn shouldCreateAsCustomElement(local_name: []const u8, namespace: ?[]const u8, is_value: ?[]const u8, registry: ?*anyopaque) bool {
     return ce.lookup(if (registry) |value| @ptrCast(@alignCast(value)) else null, namespace, local_name, is_value) != null;

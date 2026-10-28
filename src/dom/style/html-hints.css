@@ -12,6 +12,18 @@
 
 pre[wrap] { white-space: pre-wrap; }
 
+/* The prose of 15.3.3 ("The center element, and the div element when it has
+ * an align attribute ... are expected to center text within themselves, as if
+ * they had their 'text-align' property set to 'center' in a presentational
+ * hint, and to align descendants to the center"), with the values the
+ * browsers compute: Chrome and Safari's -webkit-center/-left/-right, which
+ * descendants inherit (integrator probe 1027a; Firefox's -moz-* spelling is
+ * the same mechanism). justify is plain in all three. */
+center, div[align=center i], div[align=middle i] { text-align: -webkit-center; }
+div[align=left i] { text-align: -webkit-left; }
+div[align=right i] { text-align: -webkit-right; }
+div[align=justify i] { text-align: justify; }
+
 /* 15.3.4 Phrasing content */
 @namespace "http://www.w3.org/1999/xhtml";
 
@@ -43,18 +55,42 @@ tr[align=absmiddle i], td[align=absmiddle i], th[align=absmiddle i] {
  text-align: center;
 }
 
+/* The prose of 15.3.8 for thead, tbody, tfoot, tr, td and th with an align
+ * attribute, with the browsers' computed values as above (absmiddle, in the
+ * block before, and justify stay plain in all three). */
+thead[align=center i], tbody[align=center i], tfoot[align=center i],
+tr[align=center i], td[align=center i], th[align=center i],
+thead[align=middle i], tbody[align=middle i], tfoot[align=middle i],
+tr[align=middle i], td[align=middle i], th[align=middle i] {
+ text-align: -webkit-center;
+}
+thead[align=left i], tbody[align=left i], tfoot[align=left i],
+tr[align=left i], td[align=left i], th[align=left i] {
+ text-align: -webkit-left;
+}
+thead[align=right i], tbody[align=right i], tfoot[align=right i],
+tr[align=right i], td[align=right i], th[align=right i] {
+ text-align: -webkit-right;
+}
+thead[align=justify i], tbody[align=justify i], tfoot[align=justify i],
+tr[align=justify i], td[align=justify i], th[align=justify i] {
+ text-align: justify;
+}
+
 caption[align=bottom i] { caption-side: bottom; }
+/* The spec's block below says left/right/center; the browsers compute
+ * -webkit-left/-right/-center for p and h1-h6 too (probe 1027a). */
 p[align=left i], h1[align=left i], h2[align=left i], h3[align=left i],
 h4[align=left i], h5[align=left i], h6[align=left i] {
- text-align: left;
+ text-align: -webkit-left;
 }
 p[align=right i], h1[align=right i], h2[align=right i], h3[align=right i],
 h4[align=right i], h5[align=right i], h6[align=right i] {
- text-align: right;
+ text-align: -webkit-right;
 }
 p[align=center i], h1[align=center i], h2[align=center i], h3[align=center i],
 h4[align=center i], h5[align=center i], h6[align=center i] {
- text-align: center;
+ text-align: -webkit-center;
 }
 p[align=justify i], h1[align=justify i], h2[align=justify i], h3[align=justify i],
 h4[align=justify i], h5[align=justify i], h6[align=justify i] {

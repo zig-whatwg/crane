@@ -434,15 +434,19 @@ pub const InternalRequest = struct {
     /// a request's violation's global object is its client's global), as
     /// "populate request from client" takes it from the client. BORROWED:
     /// main fetch reports only while its client is there - a fetch whose
-    /// client is gone is terminated (async_fetch's `alive`). Null: a request
-    /// with no client, whose violations nobody hears.
+    /// client is gone is terminated, or, keepalive, kept with this dropped
+    /// (async_fetch's `alive`, AsyncFetch.keep). A global's reporter names
+    /// its realm and resolves the global at use (dom.csp_violations
+    /// .reporterFor), answering nothing once the realm retired. Null: a
+    /// request with no client, whose violations nobody hears.
     csp_violation_reporter: ?CspViolationReporter = null,
 
     /// Where this request's timing is reported once its response is over
     /// (Fetch "fetch response handover" step 4.2: its client's global), as
     /// "populate request from client" takes it from the client. BORROWED,
     /// with csp_violation_reporter's lifetime: a fetch whose client is gone
-    /// is terminated before it reports. Null: a request with no client.
+    /// is terminated, or kept with this dropped, before it reports. Null: a
+    /// request with no client.
     timing_reporter: ?TimingReporter = null,
 
     /// Where HTTP fetch step 3 hands the request to a service worker: its
@@ -454,8 +458,9 @@ pub const InternalRequest = struct {
     service_worker: ?ServiceWorkerRoute = null,
 
     /// SRI policy reports go to the client's global. BORROWED with the CSP
-    /// reporter's lifetime: a fetch whose client is gone is terminated
-    /// before it reports. Null for a request whose reports nobody hears.
+    /// reporter's lifetime: a fetch whose client is gone is terminated, or
+    /// kept with this dropped, before it reports. Null for a request whose
+    /// reports nobody hears.
     integrity_violation_reporter: ?IntegrityViolationReporter = null,
 
     /// Top-level navigation initiator origin

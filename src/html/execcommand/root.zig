@@ -21,7 +21,10 @@
 //!
 //! The inline formatting commands (backColor ... unlink, inline.zig) share
 //! the same method steps; their input event's inputType follows the
-//! browsers and Input Events (see Command.inputType).
+//! browsers and Input Events (see Command.inputType). The block formatting
+//! commands (formatBlock, indent, outdent, the list, paragraph, line break,
+//! horizontal rule and justify commands: blocks.zig, over block.zig,
+//! lists.zig, indent.zig, alignment.zig and paragraph.zig) share them too.
 //!
 //! Layout: common.zig (definitions), whitespace.zig (canonical space
 //! sequences), split_parent.zig, wrap.zig, delete.zig (the delete actions),
@@ -50,6 +53,7 @@ pub const inline_formatting = @import("inline.zig");
 pub const style_values = @import("style_values.zig");
 pub const insert_text = @import("insert_text.zig");
 pub const insert_content = @import("insert_content.zig");
+pub const blocks = @import("blocks.zig");
 
 const Instance = runtime.Instance;
 const Edit = common.Edit;
@@ -79,10 +83,25 @@ pub const Command = enum {
     insert_text,
     insert_html,
     insert_image,
+    // The block formatting commands (lane editing4, blocks.zig).
+    format_block,
+    indent,
+    outdent,
+    insert_ordered_list,
+    insert_unordered_list,
+    insert_paragraph,
+    insert_line_break,
+    insert_horizontal_rule,
+    justify_center,
+    justify_full,
+    justify_left,
+    justify_right,
+
+    const Row = struct { []const u8, Command };
 
     /// The command names, matched ASCII case-insensitively: one row per
     /// command.
-    const names = [_]struct { []const u8, Command }{
+    const names = [_]Row{
         .{ "delete", .delete },
         .{ "forwardDelete", .forward_delete },
         // Lane editing3: the inline formatting commands.
@@ -103,7 +122,19 @@ pub const Command = enum {
         .{ "insertText", .insert_text },
         .{ "insertHTML", .insert_html },
         .{ "insertImage", .insert_image },
-    };
+    } ++ blockRows();
+
+    /// Lane editing4: the block formatting commands' rows, from blocks.zig.
+    fn blockRows() [blocks.names.len]Row {
+        var out: [blocks.names.len]Row = undefined;
+        for (blocks.names, 0..) |row, i| out[i] = .{ row[0], @field(Command, @tagName(row[1])) };
+        return out;
+    }
+
+    /// The block formatting command this is, or null.
+    fn block(self: Command) ?blocks.Command {
+        return std.meta.stringToEnum(blocks.Command, @tagName(self));
+    }
 
     /// The command named by `name`, ASCII case-insensitively, or null.
     pub fn fromName(name: []const u8) ?Command {
@@ -137,6 +168,7 @@ pub const Command = enum {
             .unlink => "",
             .insert_text => "insertText",
             .insert_html, .insert_image => "",
+            .format_block, .indent, .outdent, .insert_ordered_list, .insert_unordered_list, .insert_paragraph, .insert_line_break, .insert_horizontal_rule, .justify_center, .justify_full, .justify_left, .justify_right => self.block().?.inputType(),
         };
     }
 
@@ -148,6 +180,7 @@ pub const Command = enum {
             .delete, .forward_delete, .insert_text, .insert_html => true,
             .insert_image => false,
             .back_color, .bold, .create_link, .font_name, .font_size, .fore_color, .hilite_color, .italic, .remove_format, .strikethrough, .subscript, .superscript, .underline, .unlink => false,
+            .format_block, .indent, .outdent, .insert_ordered_list, .insert_unordered_list, .insert_paragraph, .insert_line_break, .insert_horizontal_rule, .justify_center, .justify_full, .justify_left, .justify_right => self.block().?.enabledInPlaintextOnly(),
         };
     }
 
@@ -169,6 +202,7 @@ pub const Command = enum {
             .underline => .underline,
             .unlink => .unlink,
             .delete, .forward_delete, .insert_text, .insert_html, .insert_image => null,
+            .format_block, .indent, .outdent, .insert_ordered_list, .insert_unordered_list, .insert_paragraph, .insert_line_break, .insert_horizontal_rule, .justify_center, .justify_full, .justify_left, .justify_right => null,
         };
     }
 
@@ -265,15 +299,14 @@ fn runAction(edit: *Edit, command: Command, value: []const u8) !bool {
         .insert_text => try insert_text.action(edit, value, insertParagraphAction),
         .insert_html => try insert_content.insertHtml(edit, value),
         .insert_image => try insert_content.insertImage(edit, value),
+        .format_block, .indent, .outdent, .insert_ordered_list, .insert_unordered_list, .insert_paragraph, .insert_line_break, .insert_horizontal_rule, .justify_center, .justify_full, .justify_left, .justify_right => try blocks.action(edit, command.block().?, value),
     };
 }
 
 /// insertText step 5's "take the action for the insertParagraph command",
-/// through this dispatch by name: null while no insertParagraph command is
-/// registered (its action is lane editing4's).
-fn insertParagraphAction(edit: *Edit) anyerror!?bool {
-    const command = Command.fromName("insertParagraph") orelse return null;
-    return try runAction(edit, command, "");
+/// through this dispatch (its action is lane editing4's, blocks.zig).
+fn insertParagraphAction(edit: *Edit) anyerror!bool {
+    return try runAction(edit, .insert_paragraph, "");
 }
 
 /// document.execCommand(command, showUI, value) for a command of this
@@ -304,6 +337,15 @@ pub fn execCommand(document: *Instance, command: Command, value: []const u8) boo
 /// command has no state (the caller answers false). The state override
 /// (step 2) applies to the inline formatting commands that have one.
 pub fn queryState(document: *Instance, command: Command) ?bool {
+    if (command.block()) |b| {
+        var arena = std.heap.ArenaAllocator.init(document.ctx.allocator);
+        defer arena.deinit();
+        var edit = (beginEdit(document, arena.allocator()) catch return false) orelse return false;
+        return blocks.state(&edit, b) catch |err| {
+            log.debug("queryCommandState {s}: {}", .{ @tagName(command), err });
+            return false;
+        };
+    }
     const inline_command = command.inlineCommand() orelse return null;
     if (!inline_command.hasState()) return null;
     var arena = std.heap.ArenaAllocator.init(document.ctx.allocator);
@@ -319,6 +361,15 @@ pub fn queryState(document: *Instance, command: Command) ?bool {
 /// queryCommandIndeterm() for a command of this module: null when the
 /// command has no indeterminacy.
 pub fn queryIndeterm(document: *Instance, command: Command) ?bool {
+    if (command.block()) |b| {
+        var arena = std.heap.ArenaAllocator.init(document.ctx.allocator);
+        defer arena.deinit();
+        var edit = (beginEdit(document, arena.allocator()) catch return false) orelse return false;
+        return blocks.indeterm(&edit, b) catch |err| {
+            log.debug("queryCommandIndeterm {s}: {}", .{ @tagName(command), err });
+            return false;
+        };
+    }
     const inline_command = command.inlineCommand() orelse return null;
     if (!inline_command.hasIndeterm()) return null;
     var arena = std.heap.ArenaAllocator.init(document.ctx.allocator);
@@ -335,6 +386,16 @@ pub fn queryIndeterm(document: *Instance, command: Command) ?bool {
 /// null when the command has no value (the caller answers ""). The value
 /// override steps 2-3 apply to the inline formatting commands.
 pub fn queryValue(document: *Instance, command: Command, allocator: std.mem.Allocator) !?[]u8 {
+    if (command.block()) |b| {
+        var arena = std.heap.ArenaAllocator.init(document.ctx.allocator);
+        defer arena.deinit();
+        var edit = (beginEdit(document, arena.allocator()) catch return try allocator.dupe(u8, "")) orelse return try allocator.dupe(u8, "");
+        const result = blocks.value(&edit, b) catch |err| {
+            log.debug("queryCommandValue {s}: {}", .{ @tagName(command), err });
+            return try allocator.dupe(u8, "");
+        };
+        return if (result) |v| try allocator.dupe(u8, v) else null;
+    }
     const inline_command = command.inlineCommand() orelse return null;
     if (!inline_command.hasValue()) return null;
     var arena = std.heap.ArenaAllocator.init(document.ctx.allocator);
@@ -390,11 +451,33 @@ pub fn typeByKey(target: *Instance, text: []const u8) void {
 }
 
 /// The user's Enter (insertParagraph) or Shift+Enter (insertLineBreak) in
-/// an editing host ("Additional requirements"), by command name: nothing
-/// while no such command is registered (their actions are lane editing4's).
+/// an editing host ("Additional requirements"), by command name (their
+/// actions are lane editing4's, blocks.zig).
 pub fn lineBreakByKey(target: *Instance, name: []const u8) void {
-    const command = Command.fromName(name) orelse return;
+    var command = Command.fromName(name) orelse return;
+    // Enter in a plaintext-only editing host inserts a line break, not a
+    // paragraph; execCommand("insertParagraph") there still makes one.
+    // All three browsers (editing/plaintext-only/insertLineBreak.html
+    // "Pressing Enter ...": Firefox 158 and Safari 27 63/63 at
+    // white-space normal, Chrome 156 45/63; wpt.fyi 5af3c135c9). Gecko:
+    // HTMLEditor::HandleKeyPressEvent's NS_VK_RETURN case runs
+    // InsertLineBreakAsAction for Shift+Enter "or if we're in
+    // plaintext-only mode ... because Chrome does so, but
+    // execCommand("insertParagraph") keeps working as
+    // contenteditable=true" (editor/libeditor/HTMLEditor.cpp, gecko-dev
+    // 5836a062726f). No spec covers it: the Editing draft predates
+    // plaintext-only.
+    if (command == .insert_paragraph and enterMakesLineBreak(target)) command = .insert_line_break;
     commandByKey(target, command, "");
+}
+
+/// Whether Enter with the focus on `target` edits a plaintext-only host.
+fn enterMakesLineBreak(target: *Instance) bool {
+    const document = nodeDocument(target) orelse return false;
+    var arena = std.heap.ArenaAllocator.init(document.ctx.allocator);
+    defer arena.deinit();
+    var edit = (beginEdit(document, arena.allocator()) catch return false) orelse return false;
+    return activeHostIsPlaintextOnly(&edit) catch false;
 }
 
 /// A command the user asked for with a key: beforeinput, re-check, the

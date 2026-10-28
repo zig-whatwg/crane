@@ -574,7 +574,7 @@ const infos: [Longhand.count]Info = blk: {
     const defs = [_]Info{
         // Text4 §§7.1/7.4 values, with the independent longhands shipped by
         // all three engines (Q15; CSSWG3117). No text-align-all expansion.
-        .{ .longhand = .text_align, .inherited = true, .initial = Value.kw(.start), .grammar = .keywords, .keywords = &.{ .start, .end, .left, .right, .center, .justify, .match_parent } },
+        .{ .longhand = .text_align, .inherited = true, .initial = Value.kw(.start), .grammar = .keywords, .keywords = &.{ .start, .end, .left, .right, .center, .justify, .match_parent, ._webkit_center, ._webkit_left, ._webkit_right, ._internal_th_center } },
         .{ .longhand = .text_align_last, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .start, .end, .left, .right, .center, .justify, .match_parent } },
         // Text4 §4.2; independent longhand (WebKit cssWhiteSpaceTrimEnabled).
         .{ .longhand = .white_space_trim, .inherited = false, .initial = Value.kw(.none), .grammar = .text_value },
@@ -1097,6 +1097,9 @@ pub fn lookup(property_name: []const u8) ?Property {
 pub const ParseOptions = struct {
     allocator: Allocator,
     quirks: bool = false,
+    /// A UA sheet's declarations: only they may use an -internal- keyword
+    /// (text-align: -internal-th-center).
+    user_agent: bool = false,
     /// Resolve a url() against the sheet's base URL (CSS Values 4 4.5.1);
     /// null leaves it as written.
     url_resolver: ?UrlResolver = null,
@@ -1399,6 +1402,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .containment => return .{ .containment = @import("containment.zig").Value.consume(stream) orelse return null },
         .keywords => {
             const k = identKeyword(stream.peek()) orelse return null;
+            if (k == ._internal_th_center and !options.user_agent) return null;
             for (def.keywords) |allowed| if (allowed == k) {
                 _ = stream.next();
                 return Value.kw(k);
