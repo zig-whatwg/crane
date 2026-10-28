@@ -42,6 +42,7 @@ const NodeBase = @import("node_base.zig").NodeBase;
 const refcount = @import("refcount.zig");
 const instance_bridge = @import("instance_bridge.zig");
 const node_creation = @import("node_creation.zig");
+const document_internals = @import("document_internals.zig");
 const AgentHost = @import("html_core").agent_host.AgentHost;
 const DeferredTeardown = runtime.gc.DeferredTeardown;
 
@@ -97,6 +98,9 @@ pub const Audit = struct {
     resurrections: u64 = 0,
     /// Stack captures taken (`capture_limit`).
     captured: usize = 0,
+    /// A report is being made: what it reads (the node's document, its
+    /// names) is the audit's own read, never a report of its own.
+    reporting: bool = false,
     /// Re-checks this agent's teardown queue holds (`noteLowered` queues
     /// them; their slice, or a realm's end, takes them out).
     queued: usize = 0,
@@ -140,6 +144,9 @@ pub const Audit = struct {
 
     /// One hit at (`path`, `address`) on `node`.
     pub fn record(self: *Audit, path: Path, node: *NodeBase, address: usize) void {
+        if (self.reporting) return;
+        self.reporting = true;
+        defer self.reporting = false;
         if (path == .resurrection) self.resurrections += 1 else self.accesses += 1;
         var buffer: [24]usize = undefined;
         var frames: []const usize = &.{};
@@ -207,15 +214,27 @@ fn printReport(key: u64, path: Path, node: *NodeBase, frames: []const usize) voi
         const written = std.fmt.bufPrint(line[used..], " 0x{x}", .{address}) catch break;
         used += written.len;
     }
-    log.warn("{s} {s} site={x:0>16} node={*} ({s}) anchor=0x{x} stack:{s}", .{
+    log.warn("{s} {s} site={x:0>16} node={*} ({s}) url={s} anchor=0x{x} stack:{s}", .{
         if (path == .resurrection) "RESURRECTED" else "ZOMBIE",
         @tagName(path),
         key,
         node,
         nameOf(node),
+        documentUrlOf(node) orelse "?",
         auditAnchor(),
         line[0..used],
     });
+}
+
+/// The URL of `node`'s node document (a WPT file's page, for the nodes its
+/// script makes), so a report names the file it came from; null when the
+/// document is gone (the Node impl's generation check, through refcount).
+/// Read through the Document's own state: no Node state read, no report.
+fn documentUrlOf(node: *NodeBase) ?[]const u8 {
+    const document = refcount.liveNodeDocument(node) orelse return null;
+    const instance = instanceOf(document) orelse return null;
+    const url = document_internals.getURL(instance) orelse return null;
+    return url[0..@min(url.len, 160)];
 }
 
 // ============================================================================

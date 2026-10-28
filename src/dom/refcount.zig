@@ -640,6 +640,16 @@ fn auditDocumentOf(node: *NodeBase) void {
     auditLowered(@ptrCast(@alignCast(raw)));
 }
 
+/// `node`'s node document's NodeBase while that document is alive (the
+/// Node impl's generation check answers counts for it), else null; a
+/// Document is its own. Diagnostics only (refcount_audit's report URLs).
+pub fn liveNodeDocument(node: *NodeBase) ?*NodeBase {
+    if (node.node_type == NodeBase.DOCUMENT_NODE) return node;
+    _ = countsOfNodeDocument(node) orelse return null;
+    const raw = node.owner_document orelse return null;
+    return @ptrCast(@alignCast(raw));
+}
+
 /// The foreign holds of `document` (a Document's NodeBase), or null when it
 /// has no counts.
 pub fn documentForeignHolds(document: *NodeBase) ?u32 {
