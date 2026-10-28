@@ -470,6 +470,7 @@ progress = [
   "0b991e733 (merged a9241f56a) - SharedWorker, nested workers with their own timers, worker promise rejection tracking, WorkerLocation from the URL record, MessageEvent source; a timer-map leak fixed (networking lane)",
   "47bd25cb11 - requestIdleCallback on the loop that runs (src/browser/event_loop.zig idle periods); a task whose document is not fully active is dropped (Task.document, dom.document_activity) (eventloop lane)",
   "ccdcd3dd8f - every worker realm has its own event loop (WorkerRealmOptions.event_loop required); the timer fallbacks for loop-less worker realms removed (FileReader, fetch, XHR, webcrypto, CSP violations, performance timeline, rejected promises, IndexedDB) (workers lane, batch 2)",
+  "12a6832a1ed, 7152e5a14ba, 5137e263484, 9fcedaca576, 7a5bb8025de, bbcc042791d, 36c806515b0 - a real rendering opportunity: a frame clock on the display's refresh grid, owned by the Browser event loop and on demand (dom.update_the_rendering.requestFrame); update the rendering's steps in spec order, impl-owned steps installed into the hook module; rAF timestamps through each document's Performance and identifiers per document; pagereveal; the focus fixup's demand; dedicated workers on the grid; the platform's displayRefreshInterval (lane rendering1). Web Animations, IntersectionObserver per frame, ResizeObserver, scroll/resize, fullscreen, paint timing and top layer removals are hook points still to fill",
 ]
 
   [[infra.items]]
@@ -502,7 +503,7 @@ progress = [
 
   [[infra.items]]
   name = "A real rendering opportunity instead of a requestAnimationFrame timer"
-  status = "todo"
+  status = "doing"
 
   [[infra.items]]
   name = "SharedWorker: a shared worker agent whose port is entangled with the creator's (workers/constructors/SharedWorker/ and data-url-shared wait on a reply that an unentangled port now drops, per spec)"
