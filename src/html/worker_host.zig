@@ -1215,10 +1215,14 @@ pub const WorkerHost = struct {
         return self.time_origin_ns orelse 0;
     }
 
-    /// The display's refresh interval (ns): the 60 Hz Crane emulates.
+    /// The display's refresh interval (ns), from the owner Browser's
+    /// platform when the worker's realm reaches one (any thread).
     fn refreshInterval(self: *const Self) i64 {
-        _ = self;
-        return update_the_rendering.default_refresh_interval_ns;
+        const realm = self.realm orelse return update_the_rendering.default_refresh_interval_ns;
+        const browser = @import("platform_state.zig").of(realm) orelse return update_the_rendering.default_refresh_interval_ns;
+        const interval = @import("platform").displayRefreshInterval(browser, 0);
+        if (interval == 0 or interval > std.math.maxInt(i32)) return update_the_rendering.default_refresh_interval_ns;
+        return @intCast(interval);
     }
 
     /// The worker's tasks are discarded (close() step 1, "terminate a

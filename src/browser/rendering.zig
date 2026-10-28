@@ -360,6 +360,7 @@ fn schedule(frames: *Frames) void {
     if (frames.pending.items.len == 0 and frames.requests.items.len == 0) return;
     if (!anyMayRender(frames)) return;
     const timers = frames.loop().timerInterface() orelse return;
+    refreshIntervalFromPlatform(frames);
     const now = monotonicNs();
     // The next refresh moment after the last rendering opportunity: at most
     // one opportunity per refresh.
@@ -394,6 +395,22 @@ fn realmMayRender(realm: runtime.Context) bool {
     const document: *runtime.Instance = @ptrCast(@alignCast(navigable.active_document orelse return true));
     if (runtime.SlabAllocator.generationOf(document) == runtime.SlabAllocator.dead_generation) return false;
     return (interfaces.Document.get_visibilityState(document) catch return true) != ._hidden_;
+}
+
+/// The refresh interval of the display the loop's navigables are on: the
+/// platform's (`displayRefreshInterval`; tab 0 until the platform protocol's
+/// recipes step 7 maps documents to tabs, as html.platform_state does).
+fn refreshIntervalFromPlatform(frames: *Frames) void {
+    const seed = if (frames.pending.items.len != 0)
+        frames.pending.items[0].realm
+    else if (frames.requests.items.len != 0)
+        frames.requests.items[0].document.realm
+    else
+        return;
+    const browser = html_mod.platform_state.of(seed) orelse return;
+    const interval = platform.displayRefreshInterval(browser, 0);
+    if (interval == 0 or interval > std.math.maxInt(i32)) return;
+    frames.interval_ns = @intCast(interval);
 }
 
 /// The clock's timer: a rendering opportunity.
