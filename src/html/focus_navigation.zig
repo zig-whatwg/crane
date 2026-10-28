@@ -87,14 +87,32 @@ const Iterator = struct {
     boundary: *Instance,
     assigned_index: usize = 0,
     search: *Search,
+    slot_contents: bool = false,
 
     fn init(scope: Scope, searcher: *Search) Iterator {
         var result = Iterator{ .scope = scope, .boundary = scope.root, .search = searcher };
         if (searcher.popovers != null) {
-            result.current = interfaces.Node.get_firstChild(searcher.document) catch null;
-            return result;
+            if (scope.owner) |owner| {
+                if (isSlot(owner)) {
+                    // HTML 6.6.2 flattening step 2: visit the slot's own
+                    // contents before its invoked popover. Blink enters
+                    // OwnedByHTMLSlotElement first, then the popover when
+                    // ascending from that scope. Chrome/Firefox agree on
+                    // popover-focus-slotted.html (WPT ffc4686d11).
+                    // scopeOf(popover) can have this same owner but a
+                    // different root; resume from the slot's roots in both
+                    // directions, not from the popover's DOM position.
+                    result.scope = Scope.ownedBy(owner);
+                    result.boundary = owner;
+                    result.slot_contents = true;
+                }
+            }
+            if (!result.slot_contents) {
+                result.current = interfaces.Node.get_firstChild(searcher.document) catch null;
+                return result;
+            }
         }
-        result.current = if (scope.assigned != null) result.nextAssigned() else interfaces.Node.get_firstChild(scope.root) catch null;
+        result.current = if (result.scope.assigned != null) result.nextAssigned() else interfaces.Node.get_firstChild(result.scope.root) catch null;
         return result;
     }
 
@@ -112,6 +130,16 @@ const Iterator = struct {
 
     fn next(self: *Iterator) ?*Instance {
         if (self.search.popovers != null) {
+            if (self.slot_contents) {
+                while (self.nextLocal()) |node| {
+                    if (!associated.isElement(node)) continue;
+                    const scope = self.search.scopeOf(node) orelse continue;
+                    if (scope.owner == self.scope.owner and scope.root == self.scope.root) return node;
+                }
+                self.slot_contents = false;
+                self.current = interfaces.Node.get_firstChild(self.search.document) catch null;
+            }
+            const slot_owner = if (self.scope.owner) |owner| isSlot(owner) else false;
             // A host that also invokes a popover orders both scope parts in
             // shadow-including tree order. Chrome/Safari visit its shadow
             // children first (WPT ffc4686d11); HTML issue #12871 / PR #12916
@@ -120,10 +148,16 @@ const Iterator = struct {
                 self.current = nextIncludingShadow(node, self.search.document);
                 if (!associated.isElement(node)) continue;
                 const scope = self.search.scopeOf(node) orelse continue;
-                if (scope.owner == self.scope.owner) return node;
+                if (scope.owner != self.scope.owner) continue;
+                if (slot_owner and scope.root == self.scope.root) continue;
+                return node;
             }
             return null;
         }
+        return self.nextLocal();
+    }
+
+    fn nextLocal(self: *Iterator) ?*Instance {
         const result = self.current orelse return null;
         // A nested owner belongs to this scope; its descendants belong to
         // its own scope, entered only by the flattening step below.
