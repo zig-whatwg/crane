@@ -379,3 +379,42 @@ test "a traversable that ends while its traversal waits frees the wait, and a la
     TraversalQueue.navigableGone(&harness.navigables, top_id, 8);
     try testing.expectEqual(@as(usize, 1), harness.destroyed);
 }
+
+/// The contexts `serviceContext` may pick (a test's stand-in for "has an
+/// active window with an event loop").
+const WithLoop = struct {
+    contexts: []const *BrowsingContext,
+
+    fn has(self: WithLoop, bc: *BrowsingContext) bool {
+        return std.mem.indexOfScalar(*BrowsingContext, self.contexts, bc) != null;
+    }
+};
+
+test "the service task goes to the traversable's loop, else one in its own tree, else another traversable's on the Browser, else none" {
+    var harness = Harness.init();
+    defer harness.deinit();
+    const top = try BrowsingContext.initTopLevel(testing.allocator, &harness.navigables);
+    defer top.deinit();
+    const child = try BrowsingContext.initChild(testing.allocator, top);
+    defer child.deinit();
+    const grandchild = try BrowsingContext.initChild(testing.allocator, child);
+    defer grandchild.deinit();
+    const other_tab = try BrowsingContext.initTopLevel(testing.allocator, &harness.navigables);
+    defer other_tab.deinit();
+    const pick = struct {
+        fn of(navigables: *Navigables, traversable: *BrowsingContext, contexts: []const *BrowsingContext) ?*BrowsingContext {
+            return TraversalQueue.serviceContext(navigables, traversable, WithLoop{ .contexts = contexts }, WithLoop.has);
+        }
+    }.of;
+
+    // The traversable's own window first.
+    try testing.expectEqual(top, pick(&harness.navigables, top, &.{ child, other_tab, top }).?);
+    // With none of its own (a realm mid-swap), a window in its tree, parents
+    // first - before another Tab's, which also has one.
+    try testing.expectEqual(child, pick(&harness.navigables, top, &.{ grandchild, other_tab, child }).?);
+    try testing.expectEqual(grandchild, pick(&harness.navigables, top, &.{ other_tab, grandchild }).?);
+    // Only when its whole tree has none, another traversable's on the list.
+    try testing.expectEqual(other_tab, pick(&harness.navigables, top, &.{other_tab}).?);
+    // None at all: no task, and nothing runs inline.
+    try testing.expect(pick(&harness.navigables, top, &.{}) == null);
+}

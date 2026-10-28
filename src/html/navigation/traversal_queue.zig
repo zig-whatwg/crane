@@ -51,6 +51,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const browsing_context = @import("../window/browsing_context.zig");
 const Navigables = browsing_context.Navigables;
+const BrowsingContext = browsing_context.BrowsingContext;
 
 /// How an item's run ended.
 pub const Outcome = enum {
@@ -290,6 +291,30 @@ pub const TraversalQueue = struct {
             const target = item.target orelse continue;
             if (std.mem.indexOfScalar(u64, excluded, target) != null) continue;
             return self.items.orderedRemove(i);
+        }
+        return null;
+    }
+
+    /// The browsing context whose window's event loop the service task of
+    /// `top`'s queue is queued on (integrator, condition 3 and its
+    /// 2026-10-28 refinement): `top` - the traversable's active window's
+    /// loop - when `has_loop` says it has one; with none (its realm is being
+    /// replaced, or it shows no document), the first of its own tree,
+    /// parents first; only then a context of another traversable on the
+    /// same Browser's list - a Browser's window realms share one agent loop.
+    /// Null when none has one: the item stays queued until the next append
+    /// or completion asks again. The task never runs inline.
+    pub fn serviceContext(navigables: *Navigables, top: *BrowsingContext, context: anytype, comptime has_loop: fn (@TypeOf(context), *BrowsingContext) bool) ?*BrowsingContext {
+        if (has_loop(context, top)) return top;
+        var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
+        defer tree.deinit(top.allocator);
+        top.collectDescendants(top.allocator, &tree) catch {};
+        for (tree.items) |bc| {
+            if (has_loop(context, bc)) return bc;
+        }
+        for (navigables.live.items) |bc| {
+            if (bc.getTop() == top) continue;
+            if (has_loop(context, bc)) return bc;
         }
         return null;
     }

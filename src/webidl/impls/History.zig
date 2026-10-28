@@ -732,20 +732,15 @@ fn scheduleTraversalService(navigables: *Navigables, traversable_id: u64) bool {
     return true;
 }
 
-/// The loop `scheduleTraversalService` queues on, if any.
+/// The loop `scheduleTraversalService` queues on, if any
+/// (TraversalQueue.serviceContext's order).
 fn serviceLoopOf(navigables: *Navigables, top: *BrowsingContext) ?runtime.EventLoop {
-    if (loopOfContext(top)) |loop| return loop;
-    var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
-    defer tree.deinit(top.allocator);
-    top.collectDescendants(top.allocator, &tree) catch {};
-    for (tree.items) |bc| {
-        if (loopOfContext(bc)) |loop| return loop;
-    }
-    for (navigables.live.items) |bc| {
-        if (bc.getTop() == top) continue;
-        if (loopOfContext(bc)) |loop| return loop;
-    }
-    return null;
+    const bc = traversal_queue.TraversalQueue.serviceContext(navigables, top, {}, hasLoop) orelse return null;
+    return loopOfContext(bc);
+}
+
+fn hasLoop(_: void, bc: *BrowsingContext) bool {
+    return loopOfContext(bc) != null;
 }
 
 fn loopOfContext(bc: *BrowsingContext) ?runtime.EventLoop {
