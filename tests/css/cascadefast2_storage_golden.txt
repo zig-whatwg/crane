@@ -120,6 +120,7 @@ text-wrap-mode: wrap
 top: auto
 unicode-bidi: normal
 user-select: auto
+pointer-events: auto
 visibility: visible
 white-space-collapse: collapse
 width: auto

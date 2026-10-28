@@ -63,6 +63,14 @@ pub const Keyword = enum(u16) {
     underscore,
     manual,
     inert,
+    // CSS UI 4 §6.2 / SVG 2 §15.6 pointer-events.
+    bounding_box,
+    visiblepainted,
+    visiblefill,
+    visiblestroke,
+    painted,
+    fill,
+    stroke,
     // visibility
     visible,
     hidden,

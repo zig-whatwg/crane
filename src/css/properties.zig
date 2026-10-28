@@ -181,6 +181,7 @@ pub const Longhand = enum(u16) {
     top,
     unicode_bidi,
     user_select,
+    pointer_events,
     visibility,
     white_space_collapse,
     width,
@@ -788,6 +789,9 @@ const infos: [Longhand.count]Info = blk: {
         // contain remains in the current grammar: Gecko bug 1036853 is open;
         // Blink/WebKit also describe it as unimplemented, not declined (Q2).
         .{ .longhand = .user_select, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .text, .none, .contain, .all } },
+        // CSS UI 4 §6.2 / SVG 2 §15.6; Q19's browser-supported grammar
+        // is element-independent. Computed value is the inherited keyword.
+        .{ .longhand = .pointer_events, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .none, .bounding_box, .visiblepainted, .visiblefill, .visiblestroke, .visible, .painted, .fill, .stroke, .all } },
         .{ .longhand = .visibility, .inherited = true, .initial = Value.kw(.visible), .grammar = .keywords, .keywords = &.{ .visible, .hidden, .collapse } },
         .{ .longhand = .white_space_collapse, .inherited = true, .initial = Value.kw(.collapse), .grammar = .keywords, .keywords = &.{ .collapse, .discard, .preserve, .preserve_breaks, .preserve_spaces, .break_spaces } },
         .{ .longhand = .width, .inherited = false, .initial = Value.kw(.auto), .grammar = .size, .quirky_length = true },
