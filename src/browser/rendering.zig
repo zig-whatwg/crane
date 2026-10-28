@@ -541,6 +541,10 @@ fn updateTheRendering(frames: *Frames) void {
         if (dom_mod.focused_area.get(document.document) == null) continue;
         if (!dom_mod.document_activity.fullyActive(document.document, document.document_generation)) continue;
         _ = html_mod.focus.focusedAreaOf(document.document);
+        // Still an element: the next mutation that may unfocus it asks for
+        // the next fixup (dom.update_the_rendering's watch).
+        if (!document.current()) continue;
+        if (dom_mod.focused_area.get(document.document) != null) update_the_rendering.watchFocusedArea(document.document);
     }
     // 18. View transitions. 19. Intersection observations. 20. Rendering
     // time. 21. Paint timing. 23. Top layer removals. (22, updating the

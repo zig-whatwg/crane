@@ -22,6 +22,7 @@
 //! lint-impls: hook for Context, Document
 const std = @import("std");
 const process_start = @import("process_start.zig");
+const refcount = @import("refcount.zig");
 const runtime = @import("runtime");
 
 /// The per-document steps of "update the rendering", numbered as the spec
@@ -144,6 +145,41 @@ pub fn installStep(step: Step, document_step: DocumentStep) void {
 pub fn requestFrame(document: *runtime.Instance) void {
     const impl = loop orelse return;
     impl.request_frame(document);
+}
+
+// ============================================================================
+// The focus fixup's demand
+// ============================================================================
+//
+// HTML "update the rendering" step 17 designates the viewport when the
+// focused area "is no longer a focusable area" - a `:focus { display: none }`
+// rule, `disabled`, `hidden`, `inert`. Blink and WebKit find that in the style
+// and layout update any style invalidation schedules (Blink's focused-element
+// check in its lifecycle update, cleared by a posted task; WebKit
+// Document::resolveStyle). Crane computes style lazily and has no such push,
+// but every DOM mutation moves its document's tree version
+// (refcount.bumpTreeVersion: inserts, removals, moves, attribute changes,
+// data changes). So while an element is focused the document is WATCHED: its
+// next tree-version move asks for a frame, once; the fixup step arms the
+// watch again while an element is still focused. A CSSOM-only change
+// (insertRule, a sheet's text) moves no tree version and is not seen.
+
+/// `document`'s focused area is now `element` (null: its viewport)
+/// (dom.focused_area.set). An element can stop being focusable in the very
+/// change that focused it (`:focus { display: none }`), so designating one
+/// asks for a frame and starts the watch.
+pub fn focusedAreaChanged(document: *runtime.Instance, element: ?*runtime.Instance) void {
+    if (element == null) {
+        refcount.watchRendering(document, false);
+        return;
+    }
+    refcount.watchRendering(document, true);
+    requestFrame(document);
+}
+
+/// The focus fixup ran and an element is still focused: watch again.
+pub fn watchFocusedArea(document: *runtime.Instance) void {
+    refcount.watchRendering(document, true);
 }
 
 /// Run `step` for `document`, if its owner installed it. The loop's.
