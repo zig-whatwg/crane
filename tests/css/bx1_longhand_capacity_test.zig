@@ -21,7 +21,9 @@ test "longhand IDs have room beyond u8 without changing declaration or style lay
     try testing.expectEqual(Longhand.count, css.properties.lexicographic.len);
     try testing.expectEqual(Longhand.count, css.computed_style.initial_values.len);
     try testing.expectEqual(Longhand.count, css.cascade.default_path.len);
-    try testing.expectEqual(Longhand.count, @typeInfo(@FieldType(css.computed_style.ComputedStyle, "values")).array.len);
+    // The computed style stores every non-logical longhand once, in a group
+    // (computed_groups.zig); a logical one maps onto a physical one.
+    try testing.expectEqual(Longhand.count, css.computed_style.groups.location.len);
     // Cascade's pseudo-property filters use the same count-derived EnumSet.
     const all = std.EnumSet(Longhand).initFull();
     try testing.expectEqual(Longhand.count, all.count());

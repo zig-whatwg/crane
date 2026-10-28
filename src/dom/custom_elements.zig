@@ -7,6 +7,8 @@ pub const ValidityFlags = @import("dictionaries").ValidityStateFlags;
 pub const ValidationState = enum { inapplicable, valid, invalid };
 const core = @import("html_core");
 const process_start = @import("process_start.zig");
+const node_holds = @import("node_holds.zig");
+const instance_bridge = @import("instance_bridge.zig");
 
 pub const State = core.custom_element_reaction.State;
 pub const Definition = core.custom_element_definition.Definition(runtime, engine);
@@ -17,7 +19,49 @@ fn realmIsLive(realm: runtime.Context) bool {
     return realm.hasEngine();
 }
 const Returns = core.custom_element_returns.PendingReturns(runtime.Context, engine.Owned);
-pub const AgentState = core.custom_element_agent.AgentState(*runtime.Instance, runtime.Context, Reaction, engine.Owned, Returns, realmIsLive);
+pub const AgentState = core.custom_element_agent.AgentState(*runtime.Instance, runtime.Context, Reaction, engine.Owned, ElementHold, Returns, realmIsLive);
+
+/// An element a custom element reaction record, or the upgrade constructing
+/// it, holds for script: refcount design 2.4's GCReachableRef in shadow mode
+/// (lane refcount5, step 5e). A strong root on the element's wrapper - made
+/// by engine.retainValue, which wraps an element script never saw: the
+/// shadow-mode net, since until counts decide a tree with no wrapper is
+/// freed with its collected root - and one counted reference
+/// (node_holds.CountedRef). WebKit keeps a queued element with
+/// `Vector<Ref<Element>, 4> m_elements` (CustomElementQueue, dom/
+/// CustomElementReactionQueue.h) and its wrapper through
+/// isInCustomElementReactionQueue, which JSNodeOwner::isReachableFromOpaqueRoots
+/// reads for a disconnected node (bindings/js/JSNodeCustom.cpp); an upgrading
+/// one with JSCustomElementInterface's `Vector<RefPtr<Element>, 1>
+/// m_constructionStack`.
+///
+/// Chainless and copied by value: every holder lets go before anything can
+/// free its element - a record at its agent's quiescence, its cancellation
+/// (Element.deinitOwn, before Node.deinit frees the NodeBase), its realm's
+/// end (clearRealm runs before the realm's instances are destroyed) or the
+/// agent's (releasePending, before its engine goes); an upgrade at its own
+/// return - and CountedRef forgets a node whose teardown began.
+pub const ElementHold = struct {
+    root: engine.Owned,
+    counted: node_holds.CountedRef = .{},
+    element: *runtime.Instance,
+
+    /// Root `element`'s wrapper and take a counted reference. Runs no
+    /// script (AgentState.enqueue's `acquire` contract).
+    pub fn take(element: *runtime.Instance) !ElementHold {
+        const root = try engine.retainValue(element.ctx, .{ .instance = element });
+        var held: ElementHold = .{ .root = root, .element = element };
+        held.counted.take(element, instance_bridge.getNodeBase(@ptrCast(element)));
+        return held;
+    }
+
+    /// Let go, exactly once: the counted reference first, then the root.
+    pub fn release(self: ElementHold) void {
+        var counted = self.counted;
+        counted.release(self.element);
+        self.root.release();
+    }
+};
 
 pub const ElementData = struct {
     state: State,

@@ -6,7 +6,11 @@ const infra = @import("infra");
 const Reactions = @import("reactions.zig").Reactions;
 pub const FormIdObservers = @import("form_observers.zig").FormIdObservers;
 
-pub fn AgentState(comptime Element: type, comptime Realm: type, comptime Payload: type, comptime Root: type, comptime Returns: type, comptime realmIsLive: fn (Realm) bool) type {
+/// `Root` is what an active constructor entry holds (its constructor and its
+/// registry); `ElementRoot` what a queued element's record holds of its
+/// element until the record goes - refcount step 5e's GCReachableRef
+/// (dom.custom_elements.ElementHold). Both are released with `release()`.
+pub fn AgentState(comptime Element: type, comptime Realm: type, comptime Payload: type, comptime Root: type, comptime ElementRoot: type, comptime Returns: type, comptime realmIsLive: fn (Realm) bool) type {
     return struct {
         const Self = @This();
         pub const ActiveConstructor = struct {
@@ -26,7 +30,7 @@ pub fn AgentState(comptime Element: type, comptime Realm: type, comptime Payload
         const Record = struct {
             element: Element,
             realm: Realm,
-            root: ?Root,
+            root: ?ElementRoot,
             cancelled: bool = false,
             next: ?*Record = null,
 
