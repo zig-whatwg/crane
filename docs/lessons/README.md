@@ -375,6 +375,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A scheduler that walks its id map pays for its biggest moment forever](architecture-a-scheduler-that-walks-its-id-map-pays-its-biggest-moment-forever.md) - What is asked "what comes next" every turn needs a structure in that order - a heap with stored indices, as WebKit and Chromium keep timers - not a walk of its id map, which costs the table's high-water mark on every turn; a long-lived map whose size swings needs a shrink as well as a TombstoneGuard.
 - [Shared resource storage does not imply CSS interest](architecture-shared-resource-cache-is-not-style-interest.md) - Separate storage lifetime from feature activation.
 - [Native font status precedes its script promise](architecture-native-font-status-precedes-its-script-promise.md) - Preserve automatic outcomes until script requests the promise.
+- [Record a wait before you start the work that ends it](architecture-record-a-wait-before-starting-what-ends-it.md) - When work reports its end asynchronously, register the waiter before starting the work, treat "never started" as an end, and finish a waiter only when nothing more can be added to its wait set.
 
 ### Spec Compliance
 
@@ -833,6 +834,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [leaks --atExit sees only the supervisor, not its child runners](testing-leaks-at-exit-sees-only-the-supervisor-not-its-child-runners.md) - A leak check is only as good as the process it watches: run the WPT runner in-process under `leaks`, and read the peak footprint before trusting "0 leaks".
 - [A subtest missing from all three browsers on wpt.fyi was changed upstream](testing-a-subtest-missing-from-all-three-browsers-on-wpt-fyi-was-changed-upstream.md) - wpt.fyi reports upstream master, not Crane's pin: a subtest that no browser reports was removed or renamed upstream, so read the file's history before treating it as a requirement.
 - [A cost bar that moves with no new instructions is code placement](testing-a-cost-bar-that-moves-with-no-new-instructions-is-code-placement.md) - A sub-microsecond per-operation metric in a whole-program optimized runner moves with code placement; when its path reaches no changed code, instructions retired (page minus a zero-iteration control) decide, not time.
+- [A srcdoc document's relative URLs resolve against its parent's](testing-a-srcdoc-documents-relative-urls-resolve-against-its-parent.md) - In a test that changes a srcdoc frame's URL, write the URL absolute: a relative one resolves against the parent document.
 
 ### Debugging
 - [A kernel that frees its only object each op measures the allocator's page churn](debugging-a-one-object-kernel-measures-the-allocators-page-churn.md) - Before reading a size effect off an instruction count, check page reclaims per op and the spread across runs: one object at a time under DebugAllocator measures mmap, not the object.
