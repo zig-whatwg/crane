@@ -303,3 +303,111 @@ why = The same intermittent secureConnectionStart >= connectStart subtest as gen
 pair.1 = base 0/1; tip 0/1
 pair.2 = base 0/1; tip 0/1
 pair.3 = base 0/1; tip 1/1
+
+[css/css-values/attr-security.html]
+generation = 185
+kind = user-ruling
+why = Lane vars1b2's cascade part (merged b146e18921d, main 57ce294e373): passing 20 -> 19 at file level (its A/B lost the two image-set(var(--some-string)) and image-set(var(--some-string-list)) names). They passed by accident while attr() was plain text in a registered <string> custom property; typed registration makes the value valid and image-set() now needs attr()'s taint check (Codex row 122). Evidence wpt-results/lanes/vars1b2-c8722ce1ca7/lost.txt.
+date = 2026-10-26
+decision = The user: "Merge now" for vars1b2 with these attr() names recorded as the user's ruling (memory loss-rulings-2026-10-26); Codex row 122's attr() must restore them
+
+[css/css-values/attr-universal-selector.html]
+generation = 185
+kind = user-ruling
+why = Lane vars1b2's cascade part (merged b146e18921d, main 57ce294e373): passing 1 -> 0, the file's single test, an accidental pass while attr() was plain text; it needs attr()'s security limitation (Codex row 122). Evidence wpt-results/lanes/vars1b2-c8722ce1ca7/lost.txt.
+date = 2026-10-26
+decision = The user: "Merge now" for vars1b2 with these attr() names recorded as the user's ruling (memory loss-rulings-2026-10-26); Codex row 122's attr() must restore it
+
+[html/semantics/scripting-1/the-script-element/module/dynamic-import/microtasks/basic.any.js]
+generation = 185
+kind = flake
+why = 9 -> 8 in the generation 185 sweep only. Isolated, one process each, alternating, frozen main-df896d6560 (base, generation 184) vs main-e95a90e570 (tip, generation 185), integrator 2026-10-26 on chat through crane-measure.sh: 9/9 on both sides in all three pairs. Evidence chat:~/crane-work/integrator-pairs-185/.
+pair.1 = base 9/9; tip 9/9
+pair.2 = base 9/9; tip 9/9
+pair.3 = base 9/9; tip 9/9
+
+[service-workers/service-worker/navigation-timing-extended.https.html]
+generation = 185
+kind = flake
+why = The recurring fetchStart/handler-time clock tie (generations 171, 177, 183; Codex rows 123/124 and lane newwin1 today, isolated pairs identical on both sides): 1 -> 0 in the generation 185 sweep. Isolated, one process each, alternating, frozen main-df896d6560 vs main-e95a90e570, integrator 2026-10-26: 1/1 on both sides in all three pairs. Evidence chat:~/crane-work/integrator-pairs-185/.
+pair.1 = base 1/1; tip 1/1
+pair.2 = base 1/1; tip 1/1
+pair.3 = base 1/1; tip 1/1
+
+[xhr/send-redirect.htm]
+generation = 185
+kind = flake
+why = 34 -> 33 in the generation 185 sweep only; lane newwin1's isolated pairs earlier today were 33-34 on both sides. Isolated, one process each, alternating, frozen main-df896d6560 vs main-e95a90e570, integrator 2026-10-26: 34/34 on both sides in all three pairs. Evidence chat:~/crane-work/integrator-pairs-185/.
+pair.1 = base 34/34; tip 34/34
+pair.2 = base 34/34; tip 34/34
+pair.3 = base 34/34; tip 34/34
+
+[css/css-values/attr-security-if.html]
+generation = 186
+kind = user-ruling
+why = Codex row 123's if() (merged 9c989a72cf2, main f3b9a30d0fb): passing 11 -> 9, the :66 and :76 image-set(if(...)) names. They passed by accident while if() was unsupported (the declaration was invalid and read back "none"); with if() real, rejecting the attr()-derived url needs attr() substitution and its taint, which Codex row 122 delivers (its final tip passes both). Evidence: row 123's isolated pairs base 1/1, tip 0/1 x3 (tmp/plans/codex-condfns-questions.md Q28; wpt-results/lanes/codex-condfns-7eaf8f8f1bf/).
+date = 2026-10-26
+decision = The user: "Accept" for row 123's two attr-security-if losses (memory loss-rulings-2026-10-26); Codex row 122 merges second and must show both PASS
+
+[html/webappapis/dynamic-markup-insertion/opening-the-input-stream/abort-refresh-immediate.window.js]
+generation = 186
+kind = flake
+why = The same timing-bound file as the generation 179 and 184 dispositions (it times out on both sides): 3/6 in the generation 185 sweep, 2/6 in 186's. Isolated, one process each, alternating, frozen main-e95a90e570 (base, generation 185) vs main-904bbf8979 (tip, generation 186), integrator 2026-10-26 on chat through crane-measure.sh: 4/6 on both sides in all three pairs. Evidence chat:~/crane-work/integrator-pairs-186/.
+pair.1 = base 4/6; tip 4/6
+pair.2 = base 4/6; tip 4/6
+pair.3 = base 4/6; tip 4/6
+
+[html/webappapis/dynamic-markup-insertion/opening-the-input-stream/abort-refresh-immediate.window.js]
+generation = 188
+kind = flake
+why = The same timing-bound file as the generation 179, 184 and 186 dispositions (it times out on both sides; its pass count moves between 2 and 4 of 6 from run to run): 3 -> 2 in the generation 188 sweep. Isolated, one process each, alternating, frozen main-25ded92d10 (base, generation 187) vs main-1369efbfde (tip, generation 188: Codex row 124's CSS Text/Decoration/Inline and H6's editing range fix, neither touching navigation or document.open), integrator 2026-10-27 on chat through crane-measure.sh: base 3/6 in all three pairs, tip 3/6, 2/6, 3/6, every run TIMEOUT. Evidence chat:~/crane-work/integrator-pairs-188/.
+pair.1 = base 3/6; tip 3/6
+pair.2 = base 3/6; tip 2/6
+pair.3 = base 3/6; tip 3/6
+
+[navigation-timing/test-performance-attributes.sub.html]
+generation = 188
+kind = flake
+why = The same intermittent secureConnectionStart >= connectStart subtest as generations 175, 177, 179 and 184 and Codex row 119's Q250 (base 2/11 vs tip 1/11, Fisher p = 1.0), which passes about one run in three on every build: 1 -> 0 in the generation 188 sweep. Isolated, one process each, alternating, frozen main-25ded92d10 (base) vs main-1369efbfde (tip; CSS and editing changes only), integrator 2026-10-27: base 1/1, 0/1, 0/1; tip 0/1 in all three pairs - within the file's known rate on both sides (generation 184's pairs had the base at 0/3 and the tip at 1/3). Evidence chat:~/crane-work/integrator-pairs-188/.
+pair.1 = base 1/1; tip 0/1
+pair.2 = base 0/1; tip 0/1
+pair.3 = base 0/1; tip 0/1
+
+[service-workers/service-worker/navigation-timing-extended.https.html]
+generation = 188
+kind = flake
+why = The recurring fetchStart/handler-time clock tie (generations 171, 177, 183 and 185; Codex rows 123/124 and lane newwin1): 1 -> 0 in the generation 188 sweep. Isolated, one process each, alternating, frozen main-25ded92d10 (base) vs main-1369efbfde (tip; CSS and editing changes only), integrator 2026-10-27: base 1/1, 0/1, 1/1; tip 1/1, 0/1, 0/1 - the base fails it too. Evidence chat:~/crane-work/integrator-pairs-188/.
+pair.1 = base 1/1; tip 1/1
+pair.2 = base 0/1; tip 0/1
+pair.3 = base 1/1; tip 0/1
+
+[xhr/send-redirect.htm]
+generation = 189
+kind = flake
+why = The same intermittent redirect subtest as generation 185 (lane newwin1's pairs were 33-34 on both sides): "(302, POST, redirect.py?location=content.py)" read a null method, 34 -> 33 in the generation 189 sweep. Isolated, one process each, alternating, frozen main-1369efbfde (base, generation 188) vs main-7cb783a35b (tip, generation 189: lane editing3's execCommand/typing/<font> hints, no networking code), integrator 2026-10-27: base 34, 34, 33 of 34; tip 34, 33, 33 - the base drops it too. Evidence chat:~/crane-work/integrator-pairs-189/.
+pair.1 = base 34/34; tip 34/34
+pair.2 = base 34/34; tip 33/34
+pair.3 = base 33/34; tip 33/34
+
+[editing/other/undo-insertparagraph-after-moving-split-nodes.html]
+generation = 190
+kind = user-ruling
+why = Lane editing4 (merge 59cdb725527 on main): passing 1 -> 0, the file's one passing name, one of editing4's 14 lost names (three isolated pairs each, evidence wpt-results/lanes/editing4-40b4c3f734/). With editing4's real insertParagraph the undo step the file asserts needs execCommand undo, which the next editing batch builds.
+date = 2026-10-27
+decision = The user: "Accept all 14, merge (Recommended)" for editing4's 14 lost names (memory loss-rulings-2026-10-26); the next editing batch (execCommand undo) must restore it
+
+[html/cross-origin-opener-policy/coop-coep-sandbox.https.html]
+generation = 190
+kind = flake
+why = The generation 190 sweep run timed out (OK 3/4 -> TIMEOUT 0/4); isolated, one process each on chat, it is OK 3/4 on both main-7cb783a35b (generation 189) and main-59cdb72552 (generation 190), the same subtest failing on both sides ('<iframe sandbox="allow-popups allow-scripts allow-same-origin"> Sandboxed ...'). The sweep timeout is load-dependent. Integrator pairs 2026-10-27, ~/crane-work/integrator-pairs-190 (alternating order, ~/crane-measure.sh run, 1 runner).
+pair.1 = base 3/4; tip 3/4
+pair.2 = base 3/4; tip 3/4
+pair.3 = base 3/4; tip 3/4
+
+[service-workers/service-worker/navigation-timing-extended.https.html]
+generation = 190
+kind = flake
+why = The timing intermittent already disposed at generation 171 (fetchStart sometimes equals the fetch event's time at coarse resolution): 1 -> 0 in the generation 190 sweep. Isolated pairs, main-7cb783a35b (base) vs main-59cdb72552 (tip), integrator 2026-10-27, ~/crane-work/integrator-pairs-190: the tip's first run failed "Service worker controlled navigation timing", its other two passed; base passed all three. Editing4's merge does not touch service workers or timing.
+pair.1 = base 1/1; tip 0/1
+pair.2 = base 1/1; tip 1/1
+pair.3 = base 1/1; tip 1/1

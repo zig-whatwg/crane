@@ -172,20 +172,42 @@ pub const Builder = struct {
 pub fn collect(allocator: Allocator, text: []const u8, resolver: ?UrlResolver, source: ?*ResourceSource) Allocator.Error![]ResourceUrl {
     var out = Builder{ .allocator = allocator };
     defer out.deinit();
-    var image_sets: std.ArrayList(usize) = .empty;
-    defer image_sets.deinit(allocator);
+    const StringSource = struct {
+        depth: usize,
+        kind: enum { image_set, image },
+        position: enum { first, source, done } = .first,
+    };
+    var string_sources: std.ArrayList(StringSource) = .empty;
+    defer string_sources.deinit(allocator);
     var depth: usize = 0;
-    var pending_image_set = false;
+    var pending: ?@FieldType(StringSource, "kind") = null;
     var tok = tokenizer.Tokenizer.init(text);
     while (true) {
         tok.skipWhitespace();
         const begin = tok.pos;
         const token = tok.next();
+        // Values 5 §8.7.2: legacy image("url", color) has one string URL
+        // position, optionally after ltr/rtl. Its fallback is not a URL.
+        // Keep this in the existing depth walk used for image-set strings.
+        var image_string = false;
+        if (string_sources.items.len > 0) {
+            const frame = &string_sources.items[string_sources.items.len - 1];
+            if (frame.depth == depth and frame.kind == .image and frame.position != .done) {
+                if (frame.position == .first and token.token_type == .ident and
+                    (tokenizer.nameEql(token.value, "ltr") or tokenizer.nameEql(token.value, "rtl")))
+                {
+                    frame.position = .source;
+                } else if (token.token_type != .left_paren and token.token_type != .right_paren) {
+                    image_string = token.token_type == .string;
+                    frame.position = .done;
+                }
+            }
+        }
         switch (token.token_type) {
             .eof => break,
             .url => try appendToken(&out, token.value, .{ .start = begin, .end = tok.pos }, null, resolver, source),
             .function => {
-                pending_image_set = tokenizer.nameEql(token.value, "image-set") or tokenizer.nameEql(token.value, "-webkit-image-set");
+                pending = if (tokenizer.nameEql(token.value, "image-set") or tokenizer.nameEql(token.value, "-webkit-image-set")) .image_set else if (tokenizer.nameEql(token.value, "image")) .image else null;
                 if (tokenizer.nameEql(token.value, "url") or tokenizer.nameEql(token.value, "src")) {
                     var url_tokens = tok;
                     if (url_tokens.next().token_type != .left_paren) continue;
@@ -211,16 +233,19 @@ pub fn collect(allocator: Allocator, text: []const u8, resolver: ?UrlResolver, s
             },
             .left_paren => {
                 depth += 1;
-                if (pending_image_set) try image_sets.append(allocator, depth);
-                pending_image_set = false;
+                if (pending) |kind| try string_sources.append(allocator, .{ .depth = depth, .kind = kind });
+                pending = null;
             },
             .right_paren => {
-                if (image_sets.items.len > 0 and image_sets.items[image_sets.items.len - 1] == depth) _ = image_sets.pop();
+                if (string_sources.items.len > 0 and string_sources.items[string_sources.items.len - 1].depth == depth) _ = string_sources.pop();
                 depth -|= 1;
             },
             // Images 4 §2.4: a top-level string option is a URL; a string
             // inside type(), gradients or other functions is not.
-            .string => if (image_sets.items.len > 0 and image_sets.items[image_sets.items.len - 1] == depth) {
+            .string => if (image_string or (string_sources.items.len > 0 and
+                string_sources.items[string_sources.items.len - 1].depth == depth and
+                string_sources.items[string_sources.items.len - 1].kind == .image_set))
+            {
                 const range: ResourceUrl.Range = .{ .start = begin, .end = tok.pos };
                 try appendToken(&out, token.stringContents(), range, range, resolver, source);
             },

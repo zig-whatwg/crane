@@ -64,12 +64,16 @@ pub const Session = struct {
     pub fn navigate(self: *Session, url: []const u8) !void {
         std.log.info("Session {s}: navigating to {s}", .{ self.id, url });
 
-        // Navigate using browser
-        try self.browser.navigate(url, .window);
+        // W3C WebDriver "Navigate To" step 7: "navigate the current
+        // top-level browsing context" - the same traversable, its history
+        // kept - then wait for the navigation to complete (the page load
+        // strategy, below): its new document, loaded.
+        const previous = self.shownDocument();
+        try self.browser.navigateInPlace(url);
 
         // Run event loop until page load completes or timeout
         const timeout = self.timeouts.pageLoad orelse protocol.Timeouts.default_page_load;
-        try self.runUntilPageLoad(timeout);
+        try self.runUntilPageLoad(timeout, previous);
     }
 
     /// Get current URL
@@ -164,7 +168,16 @@ pub const Session = struct {
     }
 
     /// Run event loop until page load completes
-    fn runUntilPageLoad(self: *Session, timeout_ms: u64) !void {
+    /// The document the page shows, compared only.
+    fn shownDocument(self: *Session) ?*anyopaque {
+        const ctx = self.browser.current_context orelse return null;
+        const document = ctx.document_instance orelse return null;
+        return @ptrCast(document);
+    }
+
+    /// Run the loop until the page shows a document other than `previous` -
+    /// the one the navigation leaves - and that document has loaded.
+    fn runUntilPageLoad(self: *Session, timeout_ms: u64, previous: ?*anyopaque) !void {
         const start = clock.monotonicMillis();
         const deadline = start + @as(i64, @intCast(timeout_ms));
 
@@ -175,7 +188,7 @@ pub const Session = struct {
             }
 
             // Check if page load complete (document.readyState === 'complete')
-            if (self.isPageLoadComplete()) {
+            if (self.shownDocument() != previous and self.isPageLoadComplete()) {
                 return;
             }
 

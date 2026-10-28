@@ -12,9 +12,9 @@
 //! propagation, the over-long limit), token-boundary splicing and the taint
 //! provenance of §8.7.2. A function is one row of `functions`: its argument
 //! grammar and its "replace an arbitrary substitution function". var()
-//! (CSS Variables 1 §3), env() (CSS Environment Variables 1 §3) and
-//! random-item() (Values 5 §9.2) are the rows today; attr(), if() and
-//! inherit() join the table the same way.
+//! (CSS Variables 1 §3), env() (CSS Environment Variables 1 §3), attr()
+//! (Values 5 §8.7), random-item() (Values 5 §9.2) and if() (Values 5 §8.3)
+//! are the rows today; inherit() joins the table the same way.
 //!
 //! What a replacement reads from the element being styled comes through a
 //! `Host` the caller supplies (the cascade's Builder; a test host in the
@@ -33,6 +33,8 @@ const std = @import("std");
 const tokens = @import("tokenizer.zig");
 const math = @import("math_values.zig");
 const random = @import("random_values.zig");
+const if_function = @import("if_function.zig");
+const attr = @import("attr_function.zig");
 const Allocator = std.mem.Allocator;
 
 pub const Error = Allocator.Error || error{ Invalid, Unavailable };
@@ -82,12 +84,18 @@ pub const Id = enum {
     env,
     /// CSS Values 5 §9.2.
     random_item,
+    /// CSS Values 5 §8.3.
+    @"if",
+    /// CSS Values 5 §8.7.
+    attr,
 
     pub fn name(self: Id) []const u8 {
         return switch (self) {
             .@"var" => "var",
             .env => "env",
             .random_item => "random-item",
+            .@"if" => "if",
+            .attr => "attr",
         };
     }
 };
@@ -126,6 +134,8 @@ pub const functions = [_]Function{
     .{ .id = .@"var", .arguments = varArguments, .replace = replaceVar },
     .{ .id = .env, .arguments = envArguments, .replace = replaceEnv },
     .{ .id = .random_item, .arguments = randomItemArguments, .replace = replaceRandomItem },
+    .{ .id = .@"if", .arguments = if_function.arguments, .replace = if_function.replace },
+    .{ .id = .attr, .arguments = attr.arguments, .replace = attr.replace },
 };
 
 /// The rows a parse or a substitution uses: `functions`, except in tests
@@ -744,6 +754,8 @@ pub const NamespaceMap = @import("namespace_map.zig").NamespaceMap;
 /// An attribute as attr() reads it: its value and expanded name (namespace
 /// URI, null for none; the canonical local name).
 pub const Attribute = struct {
+    /// Identity of the actual element read, borrowed for synchronous resolution.
+    origin: usize = 0,
     value: []const u8,
     namespace: ?[]const u8,
     local_name: []const u8,

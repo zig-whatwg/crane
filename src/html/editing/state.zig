@@ -38,15 +38,74 @@ pub const ParagraphSeparator = enum {
     }
 };
 
+/// The Document's state and value overrides (specs/w3c/execCommand.md,
+/// "Common definitions": "For some commands, each Document must have a
+/// boolean state override and/or a string value override"). Data only: the
+/// html module's execcommand/overrides.zig reads and writes them. The value
+/// override of backColor is hiliteColor's ("setting one sets the other").
+pub const FormattingOverrides = struct {
+    pub const StateCommand = enum { bold, italic, strikethrough, subscript, superscript, underline };
+    pub const ValueCommand = enum { create_link, font_name, font_size, fore_color, hilite_color };
+
+    states: std.EnumArray(StateCommand, ?bool) = .initFill(null),
+    /// When each state override was set (a running count): restoring them
+    /// in that order rebuilds the nesting a deletion recorded.
+    state_order: std.EnumArray(StateCommand, u32) = .initFill(0),
+    next_order: u32 = 1,
+    /// Owned by the EditorState's allocator.
+    values: std.EnumArray(ValueCommand, ?[]u8) = .initFill(null),
+    /// The selection the overrides were set under: "Whenever the number of
+    /// ranges in the selection changes to something different, and whenever
+    /// a boundary point of the range at a given index in the selection
+    /// changes to something different, the state override and value
+    /// override must be unset for every command." An identity record -
+    /// addresses with their slab generations, never dereferenced.
+    selection: SelectionKey = .{},
+
+    pub const SelectionKey = struct {
+        range_count: u32 = 0,
+        range: usize = 0,
+        range_generation: u64 = 0,
+        start: usize = 0,
+        start_generation: u64 = 0,
+        start_offset: u32 = 0,
+        end: usize = 0,
+        end_generation: u64 = 0,
+        end_offset: u32 = 0,
+
+        pub fn eql(a: SelectionKey, b: SelectionKey) bool {
+            return std.meta.eql(a, b);
+        }
+    };
+
+    /// Whether any override is set.
+    pub fn any(self: *const FormattingOverrides) bool {
+        for (self.states.values) |state| if (state != null) return true;
+        for (self.values.values) |value| if (value != null) return true;
+        return false;
+    }
+
+    /// Unset every override.
+    pub fn clear(self: *FormattingOverrides, allocator: std.mem.Allocator) void {
+        self.states = .initFill(null);
+        self.state_order = .initFill(0);
+        self.next_order = 1;
+        for (&self.values.values) |*value| {
+            if (value.*) |owned| allocator.free(owned);
+            value.* = null;
+        }
+    }
+};
+
 /// Editor configuration per document
 /// Tracks all state needed for execCommand operations
 pub const EditorState = struct {
     allocator: std.mem.Allocator,
 
-    /// Whether to use CSS for styling (vs HTML elements)
-    /// Command: styleWithCSS
-    /// When true: uses <span style="...">
-    /// When false: uses <b>, <i>, <u>, etc.
+    /// The Document's CSS styling flag, "initially false"
+    /// (specs/w3c/execCommand.md, "CSS styling flag"). Set by the
+    /// styleWithCSS and useCSS commands; when true, formatting commands
+    /// write <span style="..."> rather than <b>, <i>, <u>, etc.
     style_with_css: bool = false,
 
     /// Default paragraph separator element
@@ -65,15 +124,14 @@ pub const EditorState = struct {
     /// Command: enableObjectResizing
     object_resizing: bool = true, // Enabled by default in most browsers
 
-    /// Whether content is read-only
-    /// Command: contentReadOnly
-    content_read_only: bool = false,
-
     /// Undo/redo history manager
     undo_manager: history.UndoManager,
 
     /// Reference to associated document (weak reference)
     document: ?DocumentHandle = null,
+
+    /// The Document's state and value overrides (execcommand/overrides.zig).
+    formatting_overrides: FormattingOverrides = .{},
 
     /// Create a new editor state
     pub fn init(allocator: std.mem.Allocator) EditorState {
@@ -85,6 +143,7 @@ pub const EditorState = struct {
 
     /// Clean up editor state
     pub fn deinit(self: *EditorState) void {
+        self.formatting_overrides.clear(self.allocator);
         self.undo_manager.deinit();
     }
 
@@ -108,11 +167,6 @@ pub const EditorState = struct {
             };
         }
 
-        // Check read-only state
-        if (self.content_read_only and command.modifiesContent()) {
-            return false;
-        }
-
         // Check undo/redo availability
         return switch (command) {
             .undo => self.undo_manager.canUndo(),
@@ -121,11 +175,26 @@ pub const EditorState = struct {
         };
     }
 
+    /// The state of a configuration command, or null for a command whose
+    /// state is not this object's to answer. styleWithCSS: "True if the CSS
+    /// styling flag is true, otherwise false"; useCSS has no state, so
+    /// queryCommandState answers false (specs/w3c/execCommand.md).
+    pub fn getCommandState(self: *const EditorState, command: Command) ?bool {
+        return switch (command) {
+            .styleWithCSS => self.style_with_css,
+            .useCSS => false,
+            else => null,
+        };
+    }
+
     /// Get the value for a command
     pub fn getCommandValue(self: *const EditorState, command: Command) ?[]const u8 {
         return switch (command) {
             .defaultParagraphSeparator => self.default_paragraph_separator.toString(),
-            .styleWithCSS => if (self.style_with_css) "true" else "false",
+            // Neither defines a value, so queryCommandValue returns the
+            // empty string (Chrome 155, Firefox 158 and Safari 27 agree:
+            // tmp/analysis/integrator-probes-1026l/results/swc-*.json).
+            .styleWithCSS, .useCSS => "",
             // TODO: Query current selection for formatting values
             else => null,
         };
@@ -134,12 +203,17 @@ pub const EditorState = struct {
     /// Set configuration for a command
     pub fn setConfig(self: *EditorState, command: Command, value: ?[]const u8) bool {
         switch (command) {
+            // "If value is an ASCII case-insensitive match for the string
+            // "false", set the CSS styling flag to false. Otherwise, set the
+            // CSS styling flag to true. Either way, return true." No value is
+            // execCommand's IDL default, "".
             .styleWithCSS => {
-                if (value) |v| {
-                    self.style_with_css = std.ascii.eqlIgnoreCase(v, "true");
-                } else {
-                    self.style_with_css = true; // Default to true when called without value
-                }
+                self.style_with_css = !std.ascii.eqlIgnoreCase(value orelse "", "false");
+                return true;
+            },
+            // useCSS: the same with the opposite values.
+            .useCSS => {
+                self.style_with_css = std.ascii.eqlIgnoreCase(value orelse "", "false");
                 return true;
             },
             .defaultParagraphSeparator => {
@@ -167,13 +241,6 @@ pub const EditorState = struct {
             },
             .enableObjectResizing => {
                 self.object_resizing = if (value) |v|
-                    std.ascii.eqlIgnoreCase(v, "true")
-                else
-                    true;
-                return true;
-            },
-            .contentReadOnly => {
-                self.content_read_only = if (value) |v|
                     std.ascii.eqlIgnoreCase(v, "true")
                 else
                     true;
@@ -279,6 +346,16 @@ test "EditorState.setConfig" {
 
     try std.testing.expect(state_obj.setConfig(.styleWithCSS, "true"));
     try std.testing.expect(state_obj.style_with_css);
+    try std.testing.expect(state_obj.setConfig(.styleWithCSS, "FALSE"));
+    try std.testing.expect(!state_obj.style_with_css);
+    try std.testing.expect(state_obj.setConfig(.styleWithCSS, "truer"));
+    try std.testing.expect(state_obj.style_with_css);
+    try std.testing.expect(state_obj.setConfig(.useCSS, "TRUE"));
+    try std.testing.expect(!state_obj.style_with_css);
+    try std.testing.expect(state_obj.setConfig(.useCSS, "False"));
+    try std.testing.expect(state_obj.style_with_css);
+    try std.testing.expectEqual(@as(?bool, true), state_obj.getCommandState(.styleWithCSS));
+    try std.testing.expectEqualStrings("", state_obj.getCommandValue(.styleWithCSS).?);
 
     try std.testing.expect(state_obj.setConfig(.defaultParagraphSeparator, "p"));
     try std.testing.expectEqual(ParagraphSeparator.p, state_obj.default_paragraph_separator);

@@ -304,7 +304,10 @@ fn computedValue(internal: *InternalState, name: []const u8, out: *std.ArrayList
             defer for (resolved[0..initialized]) |value| value.release();
             for (s.longhands(), 0..) |l, i| {
                 const value = style.get(l);
-                if (value == .color) {
+                // Blink's TextDecoration::CSSValueFromComputedStyleInternal
+                // (shorthands_custom.cc, IsCurrentColor) omits symbolic
+                // currentcolor from this shorthand, unlike an explicit color.
+                if (value == .color and !(s == .text_decoration and l == .text_decoration_color and value.color == .current)) {
                     resolved[i] = .{ .color = try style.resolvedColor(l, internal.allocator) };
                 } else if (value == .image or value == .layers or value == .content) {
                     resolved[i] = try style.resolvedImageValue(l, internal.allocator);

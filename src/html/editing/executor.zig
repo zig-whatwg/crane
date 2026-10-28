@@ -81,37 +81,41 @@ fn executeCommandImpl(
     value: ?[]const u8,
 ) !CommandResult {
     return switch (command) {
-        // Formatting commands
-        .bold => formatting.executeBold(allocator, document),
-        .italic => formatting.executeItalic(allocator, document),
-        .underline => formatting.executeUnderline(allocator, document),
-        .strikeThrough => formatting.executeStrikeThrough(allocator, document),
-        .subscript => formatting.executeSubscript(allocator, document),
-        .superscript => formatting.executeSuperscript(allocator, document),
-        .removeFormat => formatting.executeRemoveFormat(allocator, document),
+        // The inline formatting commands are the html module's
+        // (src/html/execcommand/inline.zig, on the generated interfaces,
+        // which html_core cannot reach); Document.execCommand dispatches them
+        // there before this executor, so they never arrive here.
+        .bold,
+        .italic,
+        .underline,
+        .strikeThrough,
+        .subscript,
+        .superscript,
+        .removeFormat,
+        .fontName,
+        .fontSize,
+        .foreColor,
+        .backColor,
+        .hiliteColor,
+        => .{ .success = false },
 
-        // Font commands
-        .fontName => formatting.executeFontName(allocator, document, value),
-        .fontSize => formatting.executeFontSize(allocator, document, value),
-        .foreColor => formatting.executeForeColor(allocator, document, value),
-        .backColor => formatting.executeBackColor(allocator, document, value),
-        .hiliteColor => formatting.executeHiliteColor(allocator, document, value),
-
-        // Alignment commands
-        .justifyLeft => formatting.executeJustify(allocator, document, .left),
-        .justifyCenter => formatting.executeJustify(allocator, document, .center),
-        .justifyRight => formatting.executeJustify(allocator, document, .right),
-        .justifyFull => formatting.executeJustify(allocator, document, .full),
-
-        // Structure commands
-        .insertParagraph => structure.executeInsertParagraph(allocator, document),
-        .insertLineBreak => structure.executeInsertLineBreak(allocator, document),
-        .insertHorizontalRule => structure.executeInsertHorizontalRule(allocator, document),
-        .formatBlock => structure.executeFormatBlock(allocator, document, value),
-        .insertOrderedList => structure.executeInsertOrderedList(allocator, document),
-        .insertUnorderedList => structure.executeInsertUnorderedList(allocator, document),
-        .indent => structure.executeIndent(allocator, document),
-        .outdent => structure.executeOutdent(allocator, document),
+        // The block formatting commands are the html module's
+        // (src/html/execcommand/blocks.zig, on the generated interfaces,
+        // which html_core cannot reach); Document.execCommand dispatches
+        // them there before this executor, so they never arrive here.
+        .insertParagraph,
+        .insertLineBreak,
+        .insertHorizontalRule,
+        .formatBlock,
+        .insertOrderedList,
+        .insertUnorderedList,
+        .indent,
+        .outdent,
+        .justifyLeft,
+        .justifyCenter,
+        .justifyRight,
+        .justifyFull,
+        => .{ .success = false },
 
         // Link commands
         .createLink => structure.executeCreateLink(allocator, document, value),
@@ -143,11 +147,11 @@ fn executeCommandImpl(
 
         // Configuration commands
         .styleWithCSS,
+        .useCSS,
         .defaultParagraphSeparator,
         .enableAbsolutePositionEditor,
         .enableInlineTableEditing,
         .enableObjectResizing,
-        .contentReadOnly,
         => executeConfigCommand(allocator, document, command, value),
     };
 }
@@ -353,6 +357,16 @@ pub fn queryCommandState(
 ) !bool {
     const command = Command.fromString(command_name) orelse return false;
 
+    // The configuration commands' state is the Document's: the CSS styling
+    // flag, false until a command sets it.
+    switch (command) {
+        .styleWithCSS, .useCSS => {
+            const editor_state = existingEditorState(document) orelse return false;
+            return editor_state.getCommandState(command) orelse false;
+        },
+        else => {},
+    }
+
     // Only toggle commands have meaningful state
     if (!command.isToggle()) {
         return false;
@@ -435,6 +449,13 @@ fn getOrCreateEditorState(allocator: std.mem.Allocator, document: DocumentHandle
         return error.OutOfMemory;
     }
     return new_state;
+}
+
+/// The editor state of `document` (a Document instance), made on first use
+/// as `getOrCreateEditorState` does: the html module's execcommand reads the
+/// CSS styling flag and the Document's state and value overrides here.
+pub fn editorStateOf(allocator: std.mem.Allocator, document: DocumentHandle) error{OutOfMemory}!*EditorState {
+    return getOrCreateEditorState(allocator, document);
 }
 
 /// `document`'s editor state, or null before its first editing command.

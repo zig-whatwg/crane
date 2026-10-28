@@ -200,6 +200,9 @@ pub fn cssWideKeyword(text: []const u8) ?values.CssWide {
 /// file comment). Values are guaranteed-invalid when null: such an entry
 /// hides an inherited value.
 pub const CustomProperties = struct {
+    /// Not atomic: a record is shared only between the computed styles of
+    /// one Document's style engine, on its Browser's window-agent thread
+    /// (the rule computed_style.zig's groups rest on; docs/instances.md).
     refs: u32 = 1,
     allocator: Allocator,
     parent: ?*CustomProperties = null,

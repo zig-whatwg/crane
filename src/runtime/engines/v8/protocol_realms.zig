@@ -50,8 +50,14 @@ const WindowRealmState = struct {
     /// for a realm with a parent (a frame's), which is made while its parent's
     /// script runs.
     context_entered: bool = true,
-    /// The parent navigable's realm (WindowRealmOptions.parent), or null.
+    /// The parent navigable's realm (WindowRealmOptions.parent), or null. A
+    /// parentless (top-level) realm whose WindowProxy a later realm took over
+    /// becomes that realm's child: its page is the later realm now, and it
+    /// ends with it if the collector has not ended it first.
     parent: ?Context = null,
+    /// An auxiliary navigable's realm (WindowRealmOptions.auxiliary): a realm
+    /// built around its parent's WindowProxy adopts it.
+    auxiliary: bool = false,
     /// The realms made with this one as their parent that have not ended:
     /// they end first when this one does.
     children: std.ArrayListUnmanaged(Context) = .empty,
@@ -214,6 +220,25 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     // reaches the new Window. The old realm's end must then leave it alone.
     var reused_proxy: ?*ffi.Object = null;
     defer if (reused_proxy) |proxy| ffi.v8_Object_Dispose(proxy);
+    // The realm whose WindowProxy this one takes over, while it is still a
+    // Window realm made here: its auxiliary children follow the proxy, and a
+    // parentless one becomes this realm's child (lane newwin1, E1/E2).
+    var predecessor: ?*WindowRealmState = null;
+    var predecessor_realm: ?Context = null;
+    // A parentless predecessor's entries pass to this realm: its context's
+    // (exited below, this one entered in its place) and its isolate's. Its
+    // end must not exit the isolate under the realm that lives on.
+    var takes_isolate_entry = false;
+    var exited_predecessor: ?*ffi.Context = null;
+    errdefer if (predecessor) |state| {
+        // No realm was made: what was handed over goes back, so that the
+        // predecessor's end balances them as before.
+        if (takes_isolate_entry) state.entered_isolate = true;
+        if (exited_predecessor) |old_context| {
+            ffi.v8_Context_Enter(old_context);
+            state.context_entered = true;
+        }
+    };
     switch (options.global_this) {
         .new_window_proxy => {},
         .window_proxy_of => |old| {
@@ -230,12 +255,23 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
             }
             if (old_state) |state| {
                 state.window_proxy_handed_on = true;
+                predecessor = state;
+                predecessor_realm = old;
                 // The new realm is entered in the old one's place: V8 exits
                 // contexts only in reverse order, and the old realm ends
                 // while the new one lives.
                 if (state.context_entered and isLastEntered(isolate, old_context)) {
                     ffi.v8_Context_Exit(old_context);
                     state.context_entered = false;
+                    exited_predecessor = old_context;
+                }
+                // A top-level page's realm entered its isolate for its life:
+                // that entry is the new realm's now. Left with the old realm,
+                // its end - at collection, or a detach that could not be made
+                // - would exit the isolate under the page that lives on.
+                if (state.parent == null and state.entered_isolate) {
+                    state.entered_isolate = false;
+                    takes_isolate_entry = true;
                 }
             }
         },
@@ -351,18 +387,55 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     errdefer allocator.destroy(state);
     state.* = .{
         .isolate = isolate,
-        .entered_isolate = entered_isolate,
+        .entered_isolate = entered_isolate or takes_isolate_entry,
         .is_platform_object_same_origin = options.is_platform_object_same_origin,
         .host = options.host,
         .parent = options.parent,
+        .auxiliary = options.auxiliary and options.parent != null,
         .window = window,
         .window_generation = runtime.SlabAllocator.generationOf(window),
         .allocator = allocator,
     };
+    errdefer state.children.deinit(std.heap.c_allocator);
+    // Room for what follows the proxy (below), taken before the realm is
+    // recorded: nothing fails once it is.
+    if (predecessor) |old_state| {
+        var following: usize = if (old_state.parent == null) 1 else 0;
+        for (old_state.children.items) |child| {
+            const child_state = realms.get(child) orelse continue;
+            if (child_state.auxiliary and child_state.detached == null) following += 1;
+        }
+        state.children.ensureTotalCapacity(std.heap.c_allocator, following) catch return error.OutOfMemory;
+    }
     const parent_state: ?*WindowRealmState = if (options.parent) |parent| realms.get(parent) else null;
     if (parent_state) |ps| ps.children.append(std.heap.c_allocator, realm) catch return error.OutOfMemory;
     errdefer if (parent_state) |ps| removeChild(ps, realm);
     realms.put(std.heap.c_allocator, realm, state) catch return error.OutOfMemory;
+
+    if (predecessor) |old_state| {
+        // E2: the auxiliary navigables' realms - window.open's popups - the
+        // predecessor parented follow its WindowProxy here. HTML's top-level
+        // traversables are the user agent's, not their opener's Window: a
+        // popup outlives its opener's navigation. Frames stay: they are
+        // destroyed with the predecessor's document.
+        var i = old_state.children.items.len;
+        while (i > 0) {
+            i -= 1;
+            const child = old_state.children.items[i];
+            const child_state = realms.get(child) orelse continue;
+            if (!child_state.auxiliary or child_state.detached != null) continue;
+            _ = old_state.children.swapRemove(i);
+            child_state.parent = realm;
+            state.children.appendAssumeCapacity(child);
+        }
+        // E1: a top-level predecessor's page is this realm now: detached by
+        // its navigation (destroyWindowRealm .global_detached, as a frame's),
+        // it ends when the collector takes it or when this realm ends.
+        if (old_state.parent == null) {
+            old_state.parent = realm;
+            state.children.appendAssumeCapacity(predecessor_realm.?);
+        }
+    }
 
     if (options.parent != null) {
         // A frame's window gets the window operations its parent's has.

@@ -19,3 +19,5 @@ Neither run spoiled a measurement, because the series had not started. Both dela
 The lane brief template (tmp/orchestration/brief-template.md) now carries steps 1-4.
 
 **Takeaway**: **A lane cannot react to a notice it has not read: give every lane a watcher that sets STOP the moment a CLOSING NOTICE appears, and make its stop kill the remote job too.**
+
+**Addendum** (2026-10-27, lane refcount5): the watcher worked and the lane still posted PAUSED nine minutes after the notice, for two reasons. First, the watcher's notice reaches the agent only when the agent's current tool call returns, and the agent was blocked in a ten-minute foreground wait. Second, a crane-remote gate job launched just before the notice was still waiting for a build slot when the watcher ran its one-shot kill. Its build started a minute later, so the kill found nothing. Two rules follow. Wait in the background, never in a long foreground call, so a notice wakes you at once. And after a stop, check directly that nothing of yours runs on chat - including a job that was still queued for a slot - before you post PAUSED.

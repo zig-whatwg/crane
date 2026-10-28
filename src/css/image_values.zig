@@ -685,7 +685,9 @@ fn parseSet(options: properties.ParseOptions, stream: *properties.Stream, policy
         const token = stream.peek();
         const argument_start = stream.*;
         const image = if (token.token_type == .string) blk: {
+            const begin = stream.peeked_offset;
             _ = stream.next();
+            if (properties.urlRangeTainted(options, .{ .start = begin, .end = stream.tok.pos })) return null;
             const decoded = try tokenizer.decode(allocator, token.stringContents());
             defer allocator.free(decoded);
             break :blk try properties.urlValue(options, decoded);

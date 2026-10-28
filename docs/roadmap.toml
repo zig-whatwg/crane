@@ -57,6 +57,7 @@ progress = [
   "c56db978f7 (bdb825ff43, 7d66a42020, 8ddc8c99a0, 41cf0a5923, d6aeb934b1, 4bb0603f07, 27a27d0bc0) - refcount step 4 (rc4): VTable.counted; a node's wrapper owns one counted reference (runtime.lifetime.wrapperAcquired in WrapperCache.set, wrapperReleased in the second pass, the CacheEntry keeping the NodeBase); keepPlatformObjectAlive is counted and twelve owners keep once and release once; the host drives node tracing through joinOpaqueRoot / leaveOpaqueRoot from dom.mutation (the adapter's installTreeHooks gone) and keepOpaqueRoot; a wrap whose cache insert fails fails; shadow mode",
   "6fd7524b0a (aec5eb1025, ca84560138, e1e9ede18a, 379358ded5, 085dfa5bb6) - refcount step 5b and 5h (rc5): MutationRecord and static NodeList hold counted references; live HTMLCollections and NodeLists hold their root (node_holds.MemberHold), a node's childNodes caches are raw, getElementsByTagName(NS) live; window[i] releases what it reads; shadow mode",
   "c0dff60b394 (8cd9a5a8bd, b31c3d77a9, 5db4ea55d1, bb26669e3d) - refcount steps 5f and 5g (refcount4): ranges, StaticRange, Selection, NodeIterator and TreeWalker hold counted references (node_holds.RefHold); an event counts its target, relatedTarget, path (chainless node_holds.CountedRef, no per-dispatch allocation) and activation target, and ToggleEvent/CommandEvent/SubmitEvent/NavigateEvent their node members; shadow mode, the counts decide nothing until step 7",
+  "a40227f0163, c7e50b6cbb0, ac555724de4, e2105685a23, e097e31c5e2, d5e65433e3d - refcount steps 5c and 5e (refcount5): a MutationObserver's pending targets are GCReachableRefs (node_holds.ReachableHold: a counted hold plus a counted wrapper keep, no wrap net; WebKit m_pendingTargets), released after delivery, takeRecords() and disconnect(); its node list and transient node set are WeakRef lists, as DOM gives them; a custom element reaction record and the upgrade's construction-stack frame hold their element with an ElementHold (the wrapper root they had plus a counted reference); define() and upgrade() walk inside a teardown hold with their root counted (defensive); shadow mode",
   "77781a10b6 - an `any` attribute setter's value is released once the setter returns, fails or its conversion fails (every `any` setter read for keepers, setterValueIsBorrowed); ElementInternals' ARIA arrays no longer root their inputs, and a setter's ExceptionPending reaches script as script's own exception (setterleak)",
   "8321e646e2, 8a73cd6881 - a returned record's JSValue values and a returned sequence's union elements made for the call are released, by value (jsValueConversionIsFresh, unionValueIsOwned): URLPattern exec() leaked its groups and its input String every call (regexop)",
   "20b73238c6..475f16540a - every node type's own state has an exit for an orphan (a node removed while nothing wrapped it): dom.orphan_states (an arena block, a registry entry and a teardown sweep), applied to 20 types (fieldset, canvas, audio/video, source, track leaked a block per parsed orphan); lint-refcount's state rules keep the class from regrowing (orphanleak)",
@@ -147,11 +148,20 @@ progress = [
   "79327bce39 (merged a3c966f636) - navigation batch 7: blob: documents load with their source's policies, noopener name lookup and browsing context groups, <frame> content navigables, the response URL is the request's, history and javascript: URL policy containers, window.postMessage transfer (nav7 lane)",
   "c4be0eb872 - every load makes a new Document; the replaced one is aborted, unloaded when it had loaded, and never emptied (newdoc)",
   "3852465fda - browsers-first flips: form.submit() cancellation, NavigationHistoryEntry.url censoring, blob: history policy containers, intercept() promise identity (promiseResolve), cross-origin top navigation without activation blocked, parent load after its last child (navflip)",
+  "372e36cb58c - a top-level realm a navigation replaced is detached like a frame's (its successor takes its context and isolate entries); window.open's realm follows its opener's WindowProxy (WindowRealmOptions.auxiliary) (newwin1 E1/E2)",
+  "14f95a7742c - the host page's top-level traversable is a navigable record that owns its browsing context across Windows (dom.top_level_traversables) (newwin1 B2)",
+  "493207da804 - a load that replaces a page's loaded document gives it a new Window behind the same WindowProxy; the old realm detached and its cleanup steps run; a load asked for under the page's own parse waits for it (newwin1 B3)",
+  "873d6e9bcf4 - pushState on an initial about:blank document replaces its entry (URL and history update steps step 4) (newwin1 S4)",
+  "0c100a019f5 - a frame's initial about:blank Window is reused only when same origin-domain with the next document (newwin1 B6)",
+  "6933bdd6ccd - an embedder's loads push or replace session history entries (navigate steps 13-14), keeping their markup so a traversal re-creates the page (newwin1 B4)",
+  "7581660bc4f, 5277a774ad0, b7627990b98 - the host page keeps its old Location path's file: refusal and queued javascript: URLs, and window.stop cancels a document's forms' planned navigations (Blink CancelFormSubmission, WebKit NavigationScheduler) (newwin1)",
+  "47356e5067b - popups move with their opener's navigable at a Window swap (the new Window keeps them; their realms are auxiliary and follow the opener's WindowProxy; their parent realm is the opener's current one) (newwin1 B7)",
+  "cb3d11033ed - the host page navigates as a popup does: Location, hyperlinks, forms, Refresh, javascript: URLs, reload and traversal reach its traversable record (dom.top_level_navigation retired); Context.navigate / Browser.navigateInPlace for the embedder; WebDriver Navigate To in place (newwin1 B5)",
 ]
 
   [[infra.items]]
   name = "A navigated document gets a new Window"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Navigation runs as tasks, not synchronously inside the caller"

@@ -289,6 +289,52 @@ pub const Longhand = enum(u16) {
     border_bottom_right_radius,
     border_bottom_left_radius,
 
+    // CSS Text4 §§6.1–6.4: line-breaking controls (row 124).
+    hyphens,
+    line_break,
+    word_break,
+    overflow_wrap,
+    hyphenate_character,
+    hyphenate_limit_chars,
+    tab_size,
+    word_spacing,
+    text_fit,
+    text_wrap_style,
+    text_justify,
+    hyphenate_limit_lines,
+    text_group_align,
+    text_autospace,
+    text_spacing_trim,
+    word_space_transform,
+    hanging_punctuation,
+    text_align,
+    text_align_last,
+    white_space_trim,
+
+    // CSS Text Decoration3/4 (row124).
+    text_decoration_line,
+    text_decoration_style,
+    text_decoration_color,
+    text_decoration_thickness,
+    text_decoration_inset,
+    text_decoration_skip_ink,
+    text_decoration_skip_spaces,
+    text_underline_position,
+    text_underline_offset,
+    text_emphasis_style,
+    text_emphasis_color,
+    text_emphasis_position,
+    text_shadow,
+
+    // CSS Inline3 (row124).
+    alignment_baseline,
+    baseline_shift,
+    baseline_source,
+    dominant_baseline,
+    initial_letter,
+    text_box_trim,
+    text_box_edge,
+
     // CSS Flexbox 2 §§5–6.1 and CSS Display 4 §3.
     flex_direction,
     flex_wrap,
@@ -516,6 +562,10 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
 
 /// A longhand's grammar.
 pub const Grammar = enum {
+    text_value,
+    decoration_value,
+    inline_value,
+    text_shadow,
     transform_list,
     transform_origin,
     perspective,
@@ -617,6 +667,57 @@ const infos: [Longhand.count]Info = blk: {
     const zero = Value.px(0);
     const medium_width = Value.kw(.medium);
     const defs = [_]Info{
+        // Text4 §§7.1/7.4 values, with the independent longhands shipped by
+        // all three engines (Q15; CSSWG3117). No text-align-all expansion.
+        .{ .longhand = .text_align, .inherited = true, .initial = Value.kw(.start), .grammar = .keywords, .keywords = &.{ .start, .end, .left, .right, .center, .justify, .match_parent, ._webkit_center, ._webkit_left, ._webkit_right, ._internal_th_center } },
+        .{ .longhand = .text_align_last, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .start, .end, .left, .right, .center, .justify, .match_parent } },
+        // Text4 §4.2; independent longhand (WebKit cssWhiteSpaceTrimEnabled).
+        .{ .longhand = .white_space_trim, .inherited = false, .initial = Value.kw(.none), .grammar = .text_value },
+        // Decor3/4; Q16 initializes emphasis position over right, computed over.
+        .{ .longhand = .text_decoration_line, .inherited = false, .initial = Value.kw(.none), .grammar = .decoration_value },
+        .{ .longhand = .text_decoration_style, .inherited = false, .initial = Value.kw(.solid), .grammar = .keywords, .keywords = &.{ .solid, .double, .dotted, .dashed, .wavy } },
+        .{ .longhand = .text_decoration_color, .inherited = false, .initial = .{ .color = .current }, .grammar = .color },
+        .{ .longhand = .text_decoration_thickness, .inherited = false, .initial = Value.kw(.auto), .grammar = .decoration_value },
+        .{ .longhand = .text_decoration_inset, .inherited = false, .initial = Value.px(0), .grammar = .decoration_value },
+        .{ .longhand = .text_decoration_skip_ink, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .all, .none } },
+        .{ .longhand = .text_decoration_skip_spaces, .inherited = true, .initial = @import("decoration_values.zig").Keywords.init(.text_decoration_skip_spaces, &.{ .start, .end }).value(), .grammar = .decoration_value },
+        .{ .longhand = .text_underline_position, .inherited = true, .initial = Value.kw(.auto), .grammar = .decoration_value },
+        .{ .longhand = .text_underline_offset, .inherited = true, .initial = Value.kw(.auto), .grammar = .decoration_value },
+        .{ .longhand = .text_emphasis_style, .inherited = true, .initial = Value.kw(.none), .grammar = .decoration_value },
+        .{ .longhand = .text_emphasis_color, .inherited = true, .initial = .{ .color = .current }, .grammar = .color },
+        .{ .longhand = .text_emphasis_position, .inherited = true, .initial = @import("decoration_values.zig").Keywords.init(.text_emphasis_position, &.{.over}).value(), .grammar = .decoration_value },
+        .{ .longhand = .text_shadow, .inherited = true, .initial = Value.kw(.none), .grammar = .text_shadow },
+        // Inline3; Q18 edge inherits, trim does not. Q19 preserves legacy edge spellings.
+        .{ .longhand = .alignment_baseline, .inherited = false, .initial = Value.kw(.baseline), .grammar = .keywords, .keywords = &.{ .baseline, .text_bottom, .alphabetic, .ideographic, .middle, .central, .mathematical, .hanging, .text_top, .text_before_edge, .text_after_edge } },
+        .{ .longhand = .baseline_shift, .inherited = false, .initial = Value.px(0), .grammar = .inline_value },
+        .{ .longhand = .baseline_source, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .first, .last } },
+        .{ .longhand = .dominant_baseline, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .text_bottom, .alphabetic, .ideographic, .middle, .central, .mathematical, .hanging, .text_top, .text_before_edge, .text_after_edge } },
+        .{ .longhand = .initial_letter, .inherited = false, .initial = Value.kw(.normal), .grammar = .inline_value },
+        .{ .longhand = .text_box_trim, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .trim_start, .trim_end, .trim_both } },
+        .{ .longhand = .text_box_edge, .inherited = true, .initial = Value.kw(.auto), .grammar = .inline_value },
+        .{ .longhand = .hanging_punctuation, .inherited = true, .initial = Value.kw(.none), .grammar = .text_value },
+        .{ .longhand = .hyphenate_limit_lines, .inherited = true, .initial = Value.kw(.no_limit), .grammar = .text_value },
+        // Text4 §7.6, WebKit's cssTextGroupAlignEnabled implementation.
+        .{ .longhand = .text_group_align, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .start, .end, .left, .right, .center } },
+        .{ .longhand = .text_autospace, .inherited = true, .initial = Value.kw(.normal), .grammar = .text_value },
+        // Text4 §8.5: stable Chrome ships part; pinned WPT covers all seven.
+        .{ .longhand = .text_spacing_trim, .inherited = true, .initial = Value.kw(.normal), .grammar = .keywords, .keywords = &.{ .space_all, .normal, .space_first, .trim_start, .trim_both, .trim_all, .auto } },
+        .{ .longhand = .word_space_transform, .inherited = true, .initial = Value.kw(.none), .grammar = .text_value },
+        // CSS Text4 §§4.4, 5.4, 6.3, 7.5, 8.1; Text5 §2.
+        .{ .longhand = .hyphenate_character, .inherited = true, .initial = Value.kw(.auto), .grammar = .text_value },
+        .{ .longhand = .hyphenate_limit_chars, .inherited = true, .initial = Value.kw(.auto), .grammar = .text_value },
+        .{ .longhand = .tab_size, .inherited = true, .initial = .{ .number = 8 }, .grammar = .text_value },
+        .{ .longhand = .word_spacing, .inherited = true, .initial = Value.kw(.normal), .grammar = .letter_spacing, .quirky_length = true },
+        .{ .longhand = .text_fit, .inherited = true, .initial = Value.kw(.none), .grammar = .text_value },
+        .{ .longhand = .text_wrap_style, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .balance, .stable, .pretty } },
+        .{ .longhand = .text_justify, .inherited = true, .initial = Value.kw(.auto), .grammar = .text_value },
+        // CSS Text4 §§6.1–6.4: computed values are the specified keywords.
+        .{ .longhand = .hyphens, .inherited = true, .initial = Value.kw(.manual), .grammar = .keywords, .keywords = &.{ .none, .manual, .auto } },
+        .{ .longhand = .line_break, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .loose, .normal, .strict, .anywhere } },
+        // manual: CSSWG PR9242 (2023-08-31), pinned by word-break-valid.html.
+        // No engine has declined it; Q6 applies the spec's parse/compute rule.
+        .{ .longhand = .word_break, .inherited = true, .initial = Value.kw(.normal), .grammar = .keywords, .keywords = &.{ .normal, .break_all, .keep_all, .manual, .auto_phrase, .break_word } },
+        .{ .longhand = .overflow_wrap, .inherited = true, .initial = Value.kw(.normal), .grammar = .keywords, .keywords = &.{ .normal, .break_word, .anywhere } },
         .{ .longhand = .transform, .inherited = false, .initial = Value.kw(.none), .grammar = .transform_list },
         .{ .longhand = .transform_origin, .inherited = false, .initial = Value.kw(.center), .grammar = .transform_origin },
         .{ .longhand = .transform_box, .inherited = false, .initial = Value.kw(.view_box), .grammar = .keywords, .keywords = &.{ .content_box, .border_box, .fill_box, .stroke_box, .view_box } },
@@ -970,6 +1071,12 @@ pub const Shorthand = enum(u8) {
     place_self,
     position_try,
     white_space,
+    text_wrap,
+    text_spacing,
+    text_decoration,
+    text_emphasis,
+    vertical_align,
+    text_box,
     animation,
     animation_range,
     flex,
@@ -1052,6 +1159,12 @@ pub const Shorthand = enum(u8) {
             .place_self => &.{ .align_self, .justify_self },
             .position_try => &.{ .position_try_order, .position_try_fallbacks },
             .white_space => &.{ .white_space_collapse, .text_wrap_mode },
+            .text_wrap => &.{ .text_wrap_mode, .text_wrap_style },
+            .text_spacing => &.{ .text_spacing_trim, .text_autospace },
+            .text_decoration => &.{ .text_decoration_line, .text_decoration_thickness, .text_decoration_style, .text_decoration_color },
+            .text_emphasis => &.{ .text_emphasis_style, .text_emphasis_color },
+            .vertical_align => &.{ .alignment_baseline, .baseline_shift, .baseline_source },
+            .text_box => &.{ .text_box_trim, .text_box_edge },
             .animation => &.{ .animation_duration, .animation_timing_function, .animation_delay, .animation_iteration_count, .animation_direction, .animation_fill_mode, .animation_play_state, .animation_name, .animation_timeline, .animation_range_start, .animation_range_end },
             .animation_range => &.{ .animation_range_start, .animation_range_end },
             .flex => &.{ .flex_grow, .flex_shrink, .flex_basis },
@@ -1099,6 +1212,8 @@ pub const Property = union(enum) {
 /// property (and is not enumerated). CSS UI 4: "-webkit-appearance" is a
 /// legacy name alias of appearance.
 const legacy_aliases = .{
+    // CSS Text4 §6.4: both spellings address one property.
+    .{ "word-wrap", Property{ .longhand = .overflow_wrap } },
     // Compat §3.4.1: these four aliases have unchanged canonical grammars.
     .{ "-webkit-transform-origin", Property{ .longhand = .transform_origin } },
     .{ "-webkit-transform-style", Property{ .longhand = .transform_style } },
@@ -1185,6 +1300,9 @@ pub fn lookup(property_name: []const u8) ?Property {
 pub const ParseOptions = struct {
     allocator: Allocator,
     quirks: bool = false,
+    /// A UA sheet's declarations: only they may use an -internal- keyword
+    /// (text-align: -internal-th-center).
+    user_agent: bool = false,
     /// Resolve a url() against the sheet's base URL (CSS Values 4 4.5.1);
     /// null leaves it as written.
     url_resolver: ?UrlResolver = null,
@@ -1203,6 +1321,9 @@ pub const ParseOptions = struct {
     /// brought from a tainted source (substitution.zig), for a grammar that
     /// must reject a tainted url(). Empty for text that was not substituted.
     tainted_ranges: []const @import("substitution.zig").TaintRange = &.{},
+    /// Byte offset of this parser's input within the substituted declaration.
+    /// Sliced content and copied raw functions keep the original coordinates.
+    taint_offset: usize = 0,
     /// The declaring sheet's namespace prefixes, borrowed; a pending value
     /// retains it (attr(): Codex row 122 fills it where sheets parse).
     namespaces: ?*@import("namespace_map.zig").NamespaceMap = null,
@@ -1419,6 +1540,10 @@ pub const Stream = struct {
 pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Allocator.Error!?Value {
     const def = l.info();
     switch (def.grammar) {
+        .text_value => return @import("text_values.zig").parse(options, l, stream),
+        .decoration_value => return @import("decoration_values.zig").parse(options, l, stream),
+        .inline_value => return @import("inline_values.zig").parse(options, l, stream),
+        .text_shadow => return @import("text_shadow_values.zig").parse(options, stream),
         .transform_list => return @import("box_transform_values.zig").consumeList(options, stream, false),
         .transform_origin => return @import("box_transform_values.zig").consumeOrigin(options, stream),
         .perspective => {
@@ -1504,6 +1629,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .containment => return .{ .containment = @import("containment.zig").Value.consume(stream) orelse return null },
         .keywords => {
             const k = identKeyword(stream.peek()) orelse return null;
+            if (k == ._internal_th_center and !options.user_agent) return null;
             for (def.keywords) |allowed| if (allowed == k) {
                 _ = stream.next();
                 return Value.kw(k);
@@ -1549,8 +1675,10 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .content => {
             if (takeKeyword(stream, &.{ .normal, .none })) |k| return Value.kw(k);
             const generated = @import("generated_content.zig");
-            const resolver: ?generated.UrlResolver = if (options.url_resolver) |r| .{ .context = r.context, .resolve = r.resolve } else null;
-            const parsed = try generated.parseWithSourceAndScope(options.allocator, stream.text[stream.offset()..], resolver, options.resource_source, options.random_scope) orelse return null;
+            const begin = stream.offset();
+            var content_options = options;
+            content_options.taint_offset += begin;
+            const parsed = try generated.parseWithOptions(content_options, stream.text[begin..]) orelse return null;
             while (!stream.atEnd()) _ = stream.next();
             return .{ .content = parsed };
         },
@@ -1807,12 +1935,25 @@ fn imageOnly(options: ParseOptions, stream: *Stream) Allocator.Error!?Value {
     return @import("image_values.zig").parse(options, stream, .{});
 }
 
+/// Values 5 §8.7.2: check the URL's original component before serialization.
+/// Container taint covers its marked opener, not unrelated sibling arguments.
+pub fn urlRangeTainted(options: ParseOptions, range: resources.ResourceUrl.Range) bool {
+    if (options.tainted_ranges.len == 0) return false;
+    const original: resources.ResourceUrl.Range = .{ .start = options.taint_offset + range.start, .end = options.taint_offset + range.end };
+    for (options.tainted_ranges) |taint| {
+        if (taint.kind != .none and @import("attr_function.zig").urlIsTainted(original, &.{.{ .start = taint.start, .end = taint.end }})) return true;
+    }
+    return false;
+}
+
 /// The pre-existing URL and raw gradient parser; no choice is made here.
 pub fn parseImageLeaf(options: ParseOptions, stream: *Stream) Allocator.Error!?Value {
+    const begin = stream.offset();
     const t = stream.peek();
     switch (t.token_type) {
         .url => {
             _ = stream.next();
+            if (urlRangeTainted(options, .{ .start = begin, .end = stream.tok.pos })) return null;
             const raw = try tokenizer_mod.decode(options.allocator, t.value);
             defer options.allocator.free(raw);
             return try urlValue(options, raw);
@@ -1832,13 +1973,13 @@ pub fn parseImageLeaf(options: ParseOptions, stream: *Stream) Allocator.Error!?V
                     stream.restore(m);
                     return null;
                 }
+                if (urlRangeTainted(options, .{ .start = begin, .end = stream.tok.pos })) return null;
                 const raw = try tokenizer_mod.decode(options.allocator, s.stringContents());
                 defer options.allocator.free(raw);
                 return try urlValue(options, raw);
             }
             for (image_functions) |f| {
                 if (!tokenizer_mod.nameEql(t.value, f)) continue;
-                const begin = stream.offset();
                 _ = stream.next();
                 stream.skipArguments();
                 const end = stream.tok.pos;
@@ -1855,6 +1996,12 @@ pub fn parseImageLeaf(options: ParseOptions, stream: *Stream) Allocator.Error!?V
                 const shared = try SharedText.create(options.allocator, text);
                 errdefer shared.unref();
                 shared.resource_urls = try resources.collect(options.allocator, text, options.url_resolver, options.resource_source);
+                for (shared.resource_urls) |url| {
+                    if (urlRangeTainted(options, .{ .start = begin + url.range.start, .end = begin + url.range.end })) {
+                        shared.unref();
+                        return null;
+                    }
+                }
                 shared.image_kind = if (std.mem.endsWith(u8, f, "gradient")) .gradient else .other;
                 return .{ .text = shared };
             }
@@ -2100,6 +2247,11 @@ fn append(options: ParseOptions, out: *std.ArrayList(Assignment), l: Longhand, v
 
 fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
     switch (s) {
+        .text_wrap => return @import("text_values.zig").parseWrap(options, stream, out),
+        .text_spacing => return @import("text_values.zig").parseSpacing(options, stream, out),
+        .text_decoration, .text_emphasis => return @import("decoration_values.zig").parseShorthand(options, s, stream, out),
+        .vertical_align => return @import("inline_values.zig").parseVerticalAlign(options, stream, out),
+        .text_box => return @import("inline_values.zig").parseTextBox(options, stream, out),
         .line_clamp, ._webkit_line_clamp => return @import("box_overflow_values.zig").parseClamp(options, s == ._webkit_line_clamp, stream, out),
         .flex_flow => return @import("box_values.zig").parseFlexFlow(options, stream, out),
         .columns => return @import("box_multicol_values.zig").parseColumns(options, stream, out),
@@ -2502,6 +2654,9 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         return values.appendLength(value.length, out, allocator);
     }
     switch (value) {
+        .text_values => |v| try v.serialize(out, allocator),
+        .decoration_keywords => |v| try v.serialize(out, allocator),
+        .text_shadow => |v| try v.serialize(null, out, allocator),
         .keyword => |k| try out.appendSlice(allocator, k.name()),
         .box_keywords => |pair| try pair.serialize(out, allocator),
         .box_numeric => |numeric| try numeric.serialize(out, allocator),
@@ -2627,6 +2782,11 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
         .column_rule => return @import("box_multicol_values.zig").serializeRule(vs, mode, out, allocator),
         .font_variant => return @import("font_variants.zig").serialize(vs, out, allocator),
         .font => return @import("font_shorthand.zig").serialize(vs, mode, out, allocator),
+        .text_wrap => return @import("text_values.zig").serializeWrap(vs, out, allocator),
+        .text_spacing => return @import("text_values.zig").serializeSpacing(vs, out, allocator),
+        .text_decoration, .text_emphasis => return @import("decoration_values.zig").serializeShorthand(s, vs, mode, out, allocator),
+        .vertical_align => return @import("inline_values.zig").serializeVerticalAlign(vs, out, allocator),
+        .text_box => return @import("inline_values.zig").serializeTextBox(vs, out, allocator),
         .flex => return @import("flex_values.zig").serializeShorthand(vs, out, allocator),
         .animation, .animation_range, .transition => return @import("animation_values.zig").serializeShorthand(s, vs, mode, out, allocator),
         .grid_template => return @import("grid_tracks.zig").serializeTemplate(.{ .rows = vs[0].value, .columns = vs[1].value, .areas = vs[2].value }, out, allocator),

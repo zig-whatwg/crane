@@ -232,18 +232,24 @@ pub const Command = enum {
     /// Value: "div", "p", or "br"
     defaultParagraphSeparator,
 
-    /// Sets CSS styling mode
+    /// Sets the Document's CSS styling flag: false for an ASCII
+    /// case-insensitive "false", true otherwise. Its state is the flag; it
+    /// has no value.
     /// Command: "styleWithCSS"
-    /// Value: "true" or "false"
     styleWithCSS,
 
-    /// Sets content read-only state
-    /// Command: "contentReadOnly"
-    contentReadOnly,
+    /// styleWithCSS with the opposite values, and with no state and no value
+    /// (specs/w3c/execCommand.md, "The useCSS command").
+    /// Command: "useCSS"
+    useCSS,
 
-    /// Parse from string command name
+    /// Parse a command name. The query and execute methods "must treat
+    /// their command argument ASCII case-insensitively"
+    /// (specs/w3c/execCommand.md, "Methods to query and execute commands").
     pub fn fromString(name: []const u8) ?Command {
-        return string_to_command.get(name);
+        var buffer: [max_name_length]u8 = undefined;
+        if (name.len > buffer.len) return null;
+        return string_to_command.get(std.ascii.lowerString(buffer[0..name.len], name));
     }
 
     /// Convert to string command name
@@ -291,7 +297,7 @@ pub const Command = enum {
             .enableObjectResizing => "enableObjectResizing",
             .defaultParagraphSeparator => "defaultParagraphSeparator",
             .styleWithCSS => "styleWithCSS",
-            .contentReadOnly => "contentReadOnly",
+            .useCSS => "useCSS",
         };
     }
 
@@ -376,46 +382,37 @@ pub fn getCategory(command: Command) CommandCategory {
     };
 }
 
-/// Map from string to Command for efficient lookup
+/// Every supported command, by its name converted to ASCII lowercase.
+/// contentReadOnly is not one: the Editing spec does not define it and none
+/// of Chrome, Firefox and Safari supports it (WPT
+/// editing/other/legacy-edit-command.html?command=contentReadOnly, 8/8 in
+/// each at wpt.fyi df642c4142).
 const string_to_command = std.StaticStringMap(Command).initComptime(.{
     // Formatting
     .{ "bold", .bold },
     .{ "italic", .italic },
     .{ "underline", .underline },
-    .{ "strikethrough", .strikeThrough }, // lowercase variant
-    .{ "strikeThrough", .strikeThrough },
+    .{ "strikethrough", .strikeThrough },
     .{ "subscript", .subscript },
     .{ "superscript", .superscript },
     .{ "removeformat", .removeFormat },
-    .{ "removeFormat", .removeFormat },
 
     // Font
     .{ "fontname", .fontName },
-    .{ "fontName", .fontName },
     .{ "fontsize", .fontSize },
-    .{ "fontSize", .fontSize },
     .{ "forecolor", .foreColor },
-    .{ "foreColor", .foreColor },
     .{ "backcolor", .backColor },
-    .{ "backColor", .backColor },
     .{ "hilitecolor", .hiliteColor },
-    .{ "hiliteColor", .hiliteColor },
 
     // Alignment
     .{ "justifyleft", .justifyLeft },
-    .{ "justifyLeft", .justifyLeft },
     .{ "justifycenter", .justifyCenter },
-    .{ "justifyCenter", .justifyCenter },
     .{ "justifyright", .justifyRight },
-    .{ "justifyRight", .justifyRight },
     .{ "justifyfull", .justifyFull },
-    .{ "justifyFull", .justifyFull },
 
     // Lists
     .{ "insertorderedlist", .insertOrderedList },
-    .{ "insertOrderedList", .insertOrderedList },
     .{ "insertunorderedlist", .insertUnorderedList },
-    .{ "insertUnorderedList", .insertUnorderedList },
 
     // Indentation
     .{ "indent", .indent },
@@ -423,26 +420,18 @@ const string_to_command = std.StaticStringMap(Command).initComptime(.{
 
     // Structure
     .{ "insertparagraph", .insertParagraph },
-    .{ "insertParagraph", .insertParagraph },
     .{ "insertlinebreak", .insertLineBreak },
-    .{ "insertLineBreak", .insertLineBreak },
     .{ "inserthorizontalrule", .insertHorizontalRule },
-    .{ "insertHorizontalRule", .insertHorizontalRule },
     .{ "formatblock", .formatBlock },
-    .{ "formatBlock", .formatBlock },
 
     // Links
     .{ "createlink", .createLink },
-    .{ "createLink", .createLink },
     .{ "unlink", .unlink },
 
     // Media
     .{ "insertimage", .insertImage },
-    .{ "insertImage", .insertImage },
     .{ "inserthtml", .insertHTML },
-    .{ "insertHTML", .insertHTML },
     .{ "inserttext", .insertText },
-    .{ "insertText", .insertText },
 
     // Clipboard
     .{ "copy", .copy },
@@ -455,25 +444,24 @@ const string_to_command = std.StaticStringMap(Command).initComptime(.{
 
     // Selection
     .{ "selectall", .selectAll },
-    .{ "selectAll", .selectAll },
     .{ "delete", .delete },
     .{ "forwarddelete", .forwardDelete },
-    .{ "forwardDelete", .forwardDelete },
 
     // Other
     .{ "enableabsolutepositioneditor", .enableAbsolutePositionEditor },
-    .{ "enableAbsolutePositionEditor", .enableAbsolutePositionEditor },
     .{ "enableinlinetableediting", .enableInlineTableEditing },
-    .{ "enableInlineTableEditing", .enableInlineTableEditing },
     .{ "enableobjectresizing", .enableObjectResizing },
-    .{ "enableObjectResizing", .enableObjectResizing },
     .{ "defaultparagraphseparator", .defaultParagraphSeparator },
-    .{ "defaultParagraphSeparator", .defaultParagraphSeparator },
     .{ "stylewithcss", .styleWithCSS },
-    .{ "styleWithCSS", .styleWithCSS },
-    .{ "contentreadonly", .contentReadOnly },
-    .{ "contentReadOnly", .contentReadOnly },
+    .{ "usecss", .useCSS },
 });
+
+/// The longest supported command name.
+const max_name_length = blk: {
+    var longest: usize = 0;
+    for (string_to_command.keys()) |key| longest = @max(longest, key.len);
+    break :blk longest;
+};
 
 test "Command.fromString" {
     const testing = std.testing;
@@ -483,6 +471,12 @@ test "Command.fromString" {
     try testing.expectEqual(Command.strikeThrough, Command.fromString("strikeThrough").?);
     try testing.expectEqual(Command.strikeThrough, Command.fromString("strikethrough").?);
     try testing.expect(Command.fromString("unknown") == null);
+    // ASCII case-insensitive, and nothing more.
+    try testing.expectEqual(Command.styleWithCSS, Command.fromString("STYLEWITHCSS").?);
+    try testing.expectEqual(Command.useCSS, Command.fromString("UseCss").?);
+    try testing.expect(Command.fromString("contentReadOnly") == null);
+    try testing.expect(Command.fromString("bold ") == null);
+    try testing.expect(Command.fromString("enableabsolutepositioneditorx") == null);
 }
 
 test "Command.toString" {

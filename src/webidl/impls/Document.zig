@@ -36,7 +36,6 @@ const Registry = runtime.InstanceRegistry(.document, InternalState);
 
 // Import impls ONLY for internal initialization methods not exposed via interfaces
 const NodeImpl = @import("Node.zig");
-const RangeImpl = @import("Range.zig");
 const same_object = @import("same_object.zig");
 
 // Import ParentNode mixin for shared ParentNode interface methods
@@ -2773,6 +2772,12 @@ pub fn call_queryCommandState(instance: *runtime.Instance, commandId: runtime.DO
     const internal = getInternal(instance) orelse return false;
     const command_name = commandId.asSlice();
 
+    // The Editing spec's commands in the html module (src/html/execcommand/):
+    // null is "has no state" (step 1: false).
+    if (@import("html").execcommand.Command.fromName(command_name)) |command| {
+        return @import("html").execcommand.queryState(instance, command) orelse false;
+    }
+
     return editing.queryCommandState(
         internal.allocator,
         @ptrCast(instance),
@@ -3246,37 +3251,11 @@ pub fn call_execCommand(instance: *runtime.Instance, commandId: runtime.DOMStrin
     else
         null;
 
-    // The delete and forwardDelete commands: the Editing spec's actions,
-    // in the html module (src/html/execcommand/), which runs the method's
-    // enabled check and input event itself.
+    // The Editing spec's commands in the html module
+    // (src/html/execcommand/), which runs the method's enabled check and
+    // input event itself; value is "" when not passed (step 2).
     if (@import("html").execcommand.Command.fromName(command_name)) |command| {
-        return @import("html").execcommand.execCommand(instance, command);
-    }
-
-    // Parse command and determine action
-    // Formatting commands that wrap selection in elements
-    if (std.ascii.eqlIgnoreCase(command_name, "bold")) {
-        return applyInlineFormatting(instance, internal, "b");
-    } else if (std.ascii.eqlIgnoreCase(command_name, "italic")) {
-        return applyInlineFormatting(instance, internal, "i");
-    } else if (std.ascii.eqlIgnoreCase(command_name, "underline")) {
-        return applyInlineFormatting(instance, internal, "u");
-    } else if (std.ascii.eqlIgnoreCase(command_name, "strikethrough") or
-        std.ascii.eqlIgnoreCase(command_name, "strikeThrough"))
-    {
-        return applyInlineFormatting(instance, internal, "s");
-    } else if (std.ascii.eqlIgnoreCase(command_name, "subscript")) {
-        return applyInlineFormatting(instance, internal, "sub");
-    } else if (std.ascii.eqlIgnoreCase(command_name, "superscript")) {
-        return applyInlineFormatting(instance, internal, "sup");
-    } else if (std.ascii.eqlIgnoreCase(command_name, "createLink")) {
-        // createLink requires a URL value
-        const url = value_slice orelse return false;
-        return applyCreateLink(instance, internal, url);
-    } else if (std.ascii.eqlIgnoreCase(command_name, "insertText")) {
-        // insertText requires text value
-        const text = value_slice orelse return false;
-        return applyInsertText(instance, internal, text);
+        return @import("html").execcommand.execCommand(instance, command, value_slice orelse "");
     }
 
     // For unsupported commands, delegate to the editing module for stub handling
@@ -3292,96 +3271,6 @@ pub fn call_execCommand(instance: *runtime.Instance, commandId: runtime.DOMStrin
         }
         return false;
     };
-}
-
-/// Apply inline formatting by wrapping selection in an element
-/// Used for bold, italic, underline, strikethrough, subscript, superscript
-fn applyInlineFormatting(document: *runtime.Instance, internal: *InternalState, tag_name: []const u8) bool {
-    // Step 1: Get selection
-    const selection_opt = call_getSelection(document) catch return false;
-    const selection = selection_opt orelse return false;
-
-    // Step 2: Check if selection has content (not collapsed)
-    const is_collapsed = interfaces.Selection.get_isCollapsed(selection) catch return false;
-    if (is_collapsed) {
-        // No content selected - nothing to format
-        // TODO: Toggle "future typing" state
-        return true;
-    }
-
-    // Step 3: Get the range
-    const range = interfaces.Selection.call_getRangeAt(selection, 0) catch return false;
-
-    // Step 4: Create the formatting element
-    const element = call_createElement(document, runtime.DOMString.initInterned(tag_name), webidl.Opt(runtime.JSValue).notPassed()) catch return false;
-
-    // Step 5: Surround the selection with the element
-    RangeImpl.call_surroundContents(range, element) catch |err| {
-        if (@import("builtin").mode == .Debug) {
-            log.err("surroundContents failed: {any}", .{err});
-        }
-        // surroundContents can fail if range partially contains non-text nodes
-        return false;
-    };
-
-    _ = internal; // Will be used for undo history
-    return true;
-}
-
-/// Apply createLink by wrapping selection in an anchor element
-fn applyCreateLink(document: *runtime.Instance, _: *InternalState, url: []const u8) bool {
-    // Step 1: Get selection
-    const selection_opt = call_getSelection(document) catch return false;
-    const selection = selection_opt orelse return false;
-
-    // Step 2: Check if selection has content
-    const is_collapsed = interfaces.Selection.get_isCollapsed(selection) catch return false;
-    if (is_collapsed) {
-        // No content selected - can't create link without text
-        return false;
-    }
-
-    // Step 3: Get the range
-    const range = interfaces.Selection.call_getRangeAt(selection, 0) catch return false;
-
-    // Step 4: Create anchor element
-    const anchor = call_createElement(document, runtime.DOMString.initInterned("a"), webidl.Opt(runtime.JSValue).notPassed()) catch return false;
-
-    // Step 5: Set href attribute
-    // Use Element interface to set attribute
-    interfaces.Element.call_setAttribute(anchor, runtime.DOMString.initInterned("href"), .{ .domstring = runtime.DOMString.initInterned(url) }) catch return false;
-
-    // Step 6: Surround selection with anchor
-    RangeImpl.call_surroundContents(range, anchor) catch return false;
-
-    return true;
-}
-
-/// Apply insertText by inserting text at selection
-fn applyInsertText(document: *runtime.Instance, _: *InternalState, text: []const u8) bool {
-    // Step 1: Get selection
-    const selection_opt = call_getSelection(document) catch return false;
-    const selection = selection_opt orelse return false;
-
-    // Step 2: Get the range (or create one if collapsed)
-    const range = interfaces.Selection.call_getRangeAt(selection, 0) catch return false;
-
-    // Step 3: Delete selected content if any
-    const is_collapsed = interfaces.Selection.get_isCollapsed(selection) catch false;
-    if (!is_collapsed) {
-        RangeImpl.call_deleteContents(range) catch return false;
-    }
-
-    // Step 4: Create text node
-    const text_node = call_createTextNode(document, runtime.DOMString.initInterned(text)) catch return false;
-
-    // Step 5: Insert text node at range position
-    RangeImpl.call_insertNode(range, text_node) catch return false;
-
-    // Step 6: Collapse selection after the inserted text
-    interfaces.Selection.call_collapseToEnd(selection) catch {};
-
-    return true;
 }
 
 /// Operation: measureElement
@@ -3548,6 +3437,12 @@ pub fn call_clear(instance: *runtime.Instance) anyerror!void {
 pub fn call_queryCommandIndeterm(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!bool {
     const internal = getInternal(instance) orelse return false;
     const command_name = commandId.asSlice();
+
+    // The Editing spec's commands in the html module: null is "has no
+    // indeterminacy" (step 1: false).
+    if (@import("html").execcommand.Command.fromName(command_name)) |command| {
+        return @import("html").execcommand.queryIndeterm(instance, command) orelse false;
+    }
 
     return editing.queryCommandIndeterm(
         internal.allocator,
@@ -4080,6 +3975,17 @@ pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Inst
 pub fn call_queryCommandValue(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
     const command_name = commandId.asSlice();
+
+    // The Editing spec's commands in the html module: null is "has no
+    // value" (step 1: the empty string).
+    if (@import("html").execcommand.Command.fromName(command_name)) |command| {
+        const value = (@import("html").execcommand.queryValue(instance, command, instance.ctx.allocator) catch null) orelse return runtime.DOMString.initEmpty();
+        if (value.len == 0) {
+            instance.ctx.allocator.free(value);
+            return runtime.DOMString.initEmpty();
+        }
+        return runtime.DOMString.initOwned(value);
+    }
 
     const result = editing.queryCommandValue(
         internal.allocator,
@@ -5160,14 +5066,9 @@ fn refreshComesDue(data: ?*anyopaque) void {
         dom.history_traversal.reload(window);
         return;
     }
-    if (dom.navigables.isInstalled()) {
-        dom.navigables.navigateByTarget(document, .{ .target = "_self", .url = refresh.url, .history_behavior = .replace });
-        return;
-    }
-    // No navigable container on this thread has made the hook: the
-    // document is its page's, which its Location navigates.
-    if (!dom.top_level_navigation.isInstalled()) _ = interfaces.Window.get_location(window) catch return;
-    dom.top_level_navigation.navigate(window, refresh.url, .{ .history_behavior = .replace, .source_document = document });
+    // The document's navigable - a frame's, a popup's or the host page's
+    // traversable - navigated as any hyperlink targeting "_self" navigates it.
+    dom.navigables.navigateByTarget(document, .{ .target = "_self", .url = refresh.url, .history_behavior = .replace });
 }
 
 /// Whether `document`'s active sandboxing flag set has the sandboxed

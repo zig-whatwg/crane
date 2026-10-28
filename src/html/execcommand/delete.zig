@@ -27,7 +27,11 @@ const interfaces = @import("interfaces");
 const common = @import("common.zig");
 const whitespace = @import("whitespace.zig");
 const split_parent = @import("split_parent.zig");
+const dom = @import("dom");
 const overrides = @import("overrides.zig");
+const block_formatting = @import("block.zig");
+const lists = @import("lists.zig");
+const indent = @import("indent.zig");
 
 const Edit = common.Edit;
 const Point = common.Point;
@@ -69,6 +73,9 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
     // The range's start as given, for the browsers' caret placement (see
     // collapseForward).
     const original_start = (try edit.rangeStart()) orelse return;
+    // Step 25.4's anchor without strip wrappers: the element holding the
+    // range's start as given (its Text node may be deleted).
+    const wrapper_anchor = if (common.isText(original_start.node)) (try common.parent(original_start.node)) orelse original_start.node else original_start.node;
     // Steps 4-5.
     var start = try common.lastEquivalentPoint(original_start);
     var end = try common.firstEquivalentPoint((try edit.rangeEnd()) orelse return);
@@ -122,8 +129,20 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
             end_block = null;
         }
     }
-    // Steps 18-19.
-    const recorded = try overrides.recordCurrentStatesAndValues(edit);
+    // Step 32's browser rule, decided on the range before anything goes.
+    const keeps_child_block = if (!edit.range_from_caret and start_block != null and end_block != null and common.isAncestorOf(start_block.?, end_block.?))
+        try rangeKeepsChildBlock(start, end_block.?)
+    else
+        false;
+    // Steps 18-19, with the values in effect where the deletion STARTS (the
+    // range's start as given, before steps 4-5 moved it): golden rule 2,
+    // the browsers' majority - Blink saves its typing style from the start
+    // of the selection it deletes (DeleteSelectionCommand::
+    // SaveTypingStyleState, chromium f31874d8d6d0), Chrome 156 and Safari
+    // 27 pass multitest.html ?9001-last's class-B rows, Firefox 158 follows
+    // the spec's first formattable node (wpt.fyi c645564b0e). See
+    // overrides.recordCurrentStatesAndValues.
+    const recorded = try overrides.recordCurrentStatesAndValues(edit, original_start.node);
     // Step 21: one editable Text node.
     if (start.node == end.node and common.isText(start.node) and try common.isEditable(start.node)) {
         try edit.deleteData(start.node, start.offset, end.offset - start.offset);
@@ -171,8 +190,15 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
         var p = (try common.parent(node)) orelse continue;
         // Step 25.2.
         try edit.removeNode(node);
-        // Step 25.4: strip the emptied inline wrappers.
-        if (strip_wrappers or !common.isInclusiveDescendantOf(start.node, p)) {
+        // Step 25.4: strip the emptied inline wrappers. Without strip
+        // wrappers (insertText), the wrappers kept are those around the
+        // range's start as given, not the start steps 4 and 7 normalized
+        // into the next inline: `foo<b>[bar]</b>baz` keeps the <b>,
+        // `abc[<b><i><img>def]</i></b>ghi` loses both (Chrome 155 and
+        // Firefox 158 type `abcdefghi`; editing/run/inserttext.html at
+        // wpt.fyi df642c4142; golden rule 2, no newer spec).
+        const kept_start = if (strip_wrappers) start.node else wrapper_anchor;
+        if (strip_wrappers or !common.isInclusiveDescendantOf(kept_start, p)) {
             while ((try common.isEditable(p)) and common.isInlineNode(p) and (try common.nodeLength(p)) == 0) {
                 const grandparent = (try common.parent(p)) orelse break;
                 try edit.removeNode(p);
@@ -246,24 +272,45 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
             try overrides.restoreStatesAndValues(edit, recorded);
             return;
         }
-        // Steps 32.6-32.8: the end block's first line.
-        var children: std.ArrayList(*Instance) = .empty;
-        defer children.deinit(edit.allocator);
-        try children.append(edit.allocator, (try common.firstChild(eb)).?);
-        while (!(try isBr(children.items[children.items.len - 1]))) {
-            const next = (try common.nextSibling(children.items[children.items.len - 1])) orelse break;
-            if (!common.isInlineNode(next)) break;
-            try children.append(edit.allocator, next);
+        // A range from the start of a line into a child block deletes the
+        // lines before the block and leaves the block whole, the caret at
+        // its start (golden rule 2, no newer spec: the spec's steps 32.6-
+        // 32.11 unwrap its first line) - unless the block would be left
+        // with nothing visible. See rangeKeepsChildBlock.
+        if (keeps_child_block and try hasVisibleChild(eb)) {
+            try edit.collapse(eb, 0);
+            try overrides.restoreStatesAndValues(edit, recorded);
+            return;
         }
-        // Step 32.9.
-        values = try overrides.recordTheValues(edit, children.items);
-        // Step 32.10.
-        while ((try common.parent(children.items[0])) != sb) {
-            try split_parent.splitParent(edit, children.items);
-        }
-        // Step 32.11.
-        if (try common.previousSibling(children.items[0])) |previous| {
-            if ((try common.isEditable(previous)) and try isBr(previous)) try edit.removeNode(previous);
+        // Steps 32.6-32.8: the end block's first line - under the
+        // browsers' line rule (see extractFirstLine), which also ends it at
+        // a preserved line feed and inside an inline.
+        var line: Line = .{};
+        defer line.deinit(edit.allocator);
+        try extractFirstLine(edit, (try common.firstChild(eb)).?, &line, .move);
+        if (line.nodes.items.len == 0) {
+            // Nothing on the line to move (a line feed, or an inline that
+            // held only its br): an end block left empty goes, with its
+            // emptied ancestors.
+            while (!try common.hasChildren(eb) and eb != sb and try common.isEditable(eb)) {
+                const p = (try common.parent(eb)) orelse break;
+                try edit.removeNode(eb);
+                eb = p;
+            }
+        } else {
+            const children = line.nodes.items;
+            try line.recordWhiteSpace(edit, sb);
+            // Step 32.9.
+            values = try overrides.recordTheValues(edit, children);
+            // Step 32.10.
+            while ((try common.parent(children[0])) != sb) {
+                try split_parent.splitParent(edit, children);
+            }
+            // Step 32.11.
+            if (try common.previousSibling(children[0])) |previous| {
+                if ((try common.isEditable(previous)) and try isBr(previous)) try edit.removeNode(previous);
+            }
+            try line.preserveWhiteSpace(edit);
         }
     } else if (common.isDescendantOf(sb, eb)) {
         // Step 33: the start block is inside the end block - pull in what
@@ -281,23 +328,21 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
                 }
             }
         }
-        // Steps 33.5-33.7.
-        var nodes_to_move: std.ArrayList(*Instance) = .empty;
-        defer nodes_to_move.deinit(edit.allocator);
+        // Steps 33.5-33.7: the line after reference, under the browsers'
+        // line rule (see extractFirstLine).
+        var line: Line = .{};
+        defer line.deinit(edit.allocator);
         if (try common.nextSibling(reference)) |next| {
-            if (!common.isBlockNode(next)) try nodes_to_move.append(edit.allocator, next);
+            try extractFirstLine(edit, next, &line, .move);
         }
-        while (nodes_to_move.items.len > 0 and !try isBr(nodes_to_move.items[nodes_to_move.items.len - 1])) {
-            const next = (try common.nextSibling(nodes_to_move.items[nodes_to_move.items.len - 1])) orelse break;
-            if (common.isBlockNode(next)) break;
-            try nodes_to_move.append(edit.allocator, next);
-        }
+        try line.recordWhiteSpace(edit, sb);
         // Step 33.8.
-        values = try overrides.recordTheValues(edit, nodes_to_move.items);
+        values = try overrides.recordTheValues(edit, line.nodes.items);
         // Step 33.9.
-        for (nodes_to_move.items) |node| {
+        for (line.nodes.items) |node| {
             try edit.movePreservingRanges(node, sb, try common.childCount(sb));
         }
+        try line.preserveWhiteSpace(edit);
     } else {
         // Step 34: sibling blocks - the end block's first line joins the
         // start block (the browsers' rule, see the module comment).
@@ -315,7 +360,14 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
         values = try overrides.recordTheValues(edit, &.{eb});
         // Step 34.4 (first line): move the children up to the line's end;
         // the br or line feed that ended it is deleted.
-        try moveFirstLine(edit, eb, sb);
+        var line: Line = .{};
+        defer line.deinit(edit.allocator);
+        if (try common.firstChild(eb)) |first| try extractFirstLine(edit, first, &line, .delete);
+        try line.recordWhiteSpace(edit, sb);
+        for (line.nodes.items) |node| {
+            try edit.movePreservingRanges(node, sb, try common.childCount(sb));
+        }
+        try line.preserveWhiteSpace(edit);
         // Step 34.5.
         while (!try common.hasChildren(eb)) {
             const p = (try common.parent(eb)) orelse break;
@@ -374,36 +426,457 @@ fn collapseForward(edit: *Edit, original_start: Point) !void {
     try edit.collapseToStart();
 }
 
-/// Step 34.4 under the first-line rule: move `end_block`'s first child and
-/// the inline siblings after it into `start_block`, up to the line's end -
-/// a br (deleted), a block node, or a line feed in text whose white-space
-/// preserves segment breaks (the text is split there and the LF deleted).
-fn moveFirstLine(edit: *Edit, end_block: *Instance, start_block: *Instance) !void {
-    while (try common.firstChild(end_block)) |child| {
+/// forwardDelete at an empty line right before a block: the browsers delete
+/// that line alone - its br, or its preserved line feed, with an inline
+/// wrapper it empties - and put the caret at the block's start, where the
+/// spec's step 5 or 7 range reaches into the block and joins it (golden
+/// rule 2, no newer spec): `abc<br>{}<br><div>def</div>` -> `abc<br><div>[]def</div>`,
+/// `<b>{}<br></b><div>def</div>` -> `<div>[]def</div>`. Gecko:
+/// AutoBlockElementsJoiner's DeletePrecedingBRElementOfBlock and
+/// DeletePrecedingPreformattedLineBreak (mozilla-firefox/firefox
+/// 6cb22fec8a1e); editing/other/delete-without-unwrapping-first-line-of-
+/// child-block.html ?method=forwardDeleteCommand, Chrome 155 and Firefox
+/// 158 25/25 (wpt.fyi df642c4142). Whether it did.
+fn deleteEmptyLineBeforeBlock(edit: *Edit, point: Point) !bool {
+    if (common.isText(point.node)) {
+        const length = try common.nodeLength(point.node);
+        if (point.offset + 1 != length or !try isPreservedLineFeedBefore(point.node, length)) return false;
+        const block = (try blockRightAfter(point.node)) orelse return false;
+        if ((try lineStartKind(point)) == .none) return false;
+        try edit.deleteData(point.node, point.offset, 1);
+        if ((try common.nodeLength(point.node)) == 0) try removeWithEmptiedWrappers(edit, point.node);
+        try edit.collapse(block, 0);
+        return true;
+    }
+    const br = (try common.childAt(point.node, point.offset)) orelse return false;
+    if (!try isBr(br) or !try common.isEditable(br)) return false;
+    const block = (try blockRightAfter(br)) orelse return false;
+    if ((try lineStartKind(point)) == .none) return false;
+    try removeWithEmptiedWrappers(edit, br);
+    try edit.collapse(block, 0);
+    return true;
+}
+
+/// The block that follows `node` directly - its next sibling, or its inline
+/// ancestors' - or null when something else comes first.
+fn blockRightAfter(node: *Instance) !?*Instance {
+    var current = node;
+    while (true) {
+        if (try common.nextSibling(current)) |next| {
+            // A nested list is not this rule's: Gecko joins it through its
+            // list handling, and so does the spec (editing/run/
+            // forwarddelete.html `<li>{}<br><ol><li>bar</ol></li>`).
+            if (try common.isHtmlElementIn(next, &.{ "ol", "ul" })) return null;
+            return if (common.isBlockNode(next) and try common.isEditable(next)) next else null;
+        }
+        const p = (try common.parent(current)) orelse return null;
+        if (!common.isInlineNode(p) or !try common.isEditable(p)) return null;
+        current = p;
+    }
+}
+
+/// Remove `node`, then the editable inline ancestors it leaves empty.
+fn removeWithEmptiedWrappers(edit: *Edit, node: *Instance) !void {
+    var p = (try common.parent(node)) orelse return edit.removeNode(node);
+    try edit.removeNode(node);
+    while ((try common.isEditable(p)) and common.isInlineNode(p) and (try common.nodeLength(p)) == 0) {
+        const grandparent = (try common.parent(p)) orelse break;
+        try edit.removeNode(p);
+        p = grandparent;
+    }
+}
+
+const EmptyLineBreak = union(enum) {
+    br: *Instance,
+    /// A Text node whose last character is the line feed.
+    line_feed: *Instance,
+};
+
+/// The line break that ends what `node` (the node before a block) ends
+/// with - its last br, or a preserved line feed at the end of its last
+/// text, looking into inline elements - when that line break starts a line
+/// itself (it makes an empty line).
+fn emptyLineBreakBefore(node: *Instance) !?EmptyLineBreak {
+    var current = node;
+    while (common.isElement(current) and !(try isBr(current)) and common.isInlineNode(current)) {
+        current = (try common.lastChild(current)) orelse return null;
+    }
+    if (try isBr(current)) {
+        const p = (try common.parent(current)) orelse return null;
+        if ((try lineStartKind(try common.pointBefore(current, p))) == .none) return null;
+        return .{ .br = current };
+    }
+    if (common.isText(current)) {
+        const length = try common.nodeLength(current);
+        if (length == 0 or !try isPreservedLineFeedBefore(current, length)) return null;
+        if ((try lineStartKind(.{ .node = current, .offset = length - 1 })) == .none) return null;
+        return .{ .line_feed = current };
+    }
+    return null;
+}
+
+/// Whether deleting from `start` into `child_block`, a block inside the
+/// start block, leaves the child block whole instead of unwrapping its
+/// first line: Gecko's AutoBlockElementsJoiner mode
+/// DeletePrecedingLinesAndContentInRange ("If the range starts immediately
+/// after a line end and ends in a child right block, we should not unwrap
+/// the right block"; editor/libeditor/HTMLEditorDeleteHandler.cpp,
+/// mozilla-firefox/firefox 6cb22fec8a1e, the ComputeRangesToDelete
+/// prologue of AutoBlockElementsJoiner::Prepare). The range must start at a
+/// line start - after a br, a preserved line feed, a block or at its
+/// block's start - and either select something visible before the child
+/// block or start right after a line break that itself starts a line (an
+/// empty line). editing/other/delete-without-unwrapping-first-line-of-
+/// child-block.html at wpt.fyi df642c4142: the deleteCommand variants pass
+/// in Chrome 155 and Firefox 158 (25/25 each); Safari 27 passes the
+/// preformatted ones (25/25) and 9/25 of the br ones. Golden rule 2, no
+/// newer spec (the spec's steps 32.6-32.11 unwrap the first line):
+/// `abc<br>{<br><div>]def<br>ghi</div>` -> `abc<br><div>def<br>ghi</div>`,
+/// while `foo<br><p>[]bar</p>` still joins.
+fn rangeKeepsChildBlock(start: Point, child_block: *Instance) !bool {
+    return switch (try lineStartKind(start)) {
+        .none => false,
+        .block => try selectsVisibleBefore(start, child_block),
+        .line_break => |starts_line| starts_line or try selectsVisibleBefore(start, child_block),
+    };
+}
+
+const LineStart = union(enum) {
+    none,
+    /// At the start of a block, or right after one.
+    block,
+    /// Right after a br or a preserved line feed; whether that line break
+    /// itself starts a line (it makes an empty line).
+    line_break: bool,
+};
+
+/// What, if anything, makes `point` a line start, looking back past
+/// nothing visible.
+fn lineStartKind(point: Point) anyerror!LineStart {
+    var node = point.node;
+    var offset = point.offset;
+    if (common.isText(node)) {
+        if (offset > 0) {
+            if (!try isPreservedLineFeedBefore(node, offset)) return .none;
+            return .{ .line_break = (try lineStartKind(.{ .node = node, .offset = offset - 1 })) != .none };
+        }
+        offset = try common.indexOf(node);
+        node = (try common.parent(node)) orelse return .block;
+    }
+    while (true) {
+        if (offset == 0) {
+            if (common.isBlockNode(node) or try common.isEditingHost(node)) return .block;
+            const p = (try common.parent(node)) orelse return .block;
+            offset = try common.indexOf(node);
+            node = p;
+            continue;
+        }
+        const before = (try common.childAt(node, offset - 1)) orelse return .none;
+        if (common.isBlockNode(before)) return .block;
+        if (try isBr(before)) {
+            return .{ .line_break = (try lineStartKind(try common.pointBefore(before, node))) != .none };
+        }
+        if (common.isText(before)) {
+            const length = try common.nodeLength(before);
+            if (length == 0) {
+                offset -= 1;
+                continue;
+            }
+            if (!try isPreservedLineFeedBefore(before, length)) return .none;
+            return .{ .line_break = (try lineStartKind(.{ .node = before, .offset = length - 1 })) != .none };
+        }
+        // An inline element: what ends it.
+        if (common.isElement(before) and try common.hasChildren(before)) {
+            node = before;
+            offset = try common.childCount(before);
+            continue;
+        }
+        return .none;
+    }
+}
+
+/// Whether the code unit before `offset` in `text` is a line feed its
+/// white-space preserves.
+fn isPreservedLineFeedBefore(text: *Instance, offset: u32) !bool {
+    if (!(try common.whiteSpaceAround(text)).preservesNewlines()) return false;
+    var data = try common.textData(text);
+    defer data.deinit(text.ctx.allocator);
+    return common.codeUnitAt(data.asSlice(), offset - 1) == '\n';
+}
+
+/// Whether something visible lies between `start` and `block` in tree
+/// order: a br, an img, visible text, a block other than `block`'s
+/// ancestors.
+fn selectsVisibleBefore(start: Point, block: *Instance) !bool {
+    var current: ?*Instance = undefined;
+    if (common.isText(start.node)) {
+        var data = try common.textData(start.node);
+        defer data.deinit(start.node.ctx.allocator);
+        const preserves = (try common.whiteSpaceAround(start.node)).preservesSpaces();
+        const from = common.byteOffsetOfUnits(data.asSlice(), start.offset);
+        for (data.asSlice()[from..]) |byte| switch (byte) {
+            ' ', '\t', '\n', '\r', '\x0c' => if (preserves) return true,
+            else => return true,
+        };
+        current = try common.nextSkippingChildren(start.node);
+    } else {
+        current = (try common.childAt(start.node, start.offset)) orelse try common.nextSkippingChildren(start.node);
+    }
+    while (current) |node| {
+        if (node == block) return false;
+        if (common.isAncestorOf(node, block)) {
+            current = try common.firstChild(node);
+            continue;
+        }
+        if ((try isBr(node)) or try common.isVisible(node)) return true;
+        current = try common.nextSkippingChildren(node);
+    }
+    return false;
+}
+
+/// One line of a block that a join moves (steps 32-34), with what it needs
+/// to keep its white-space where it lands.
+const Line = struct {
+    /// The line's top-level nodes, consecutive children of one container.
+    nodes: std.ArrayList(*Instance) = .empty,
+    /// Each node's computed white-space before the move (null: none).
+    styles: std.ArrayList(?common.WhiteSpaceStyles) = .empty,
+    /// False when the <pre> exception below applies to this join.
+    preserve: bool = false,
+
+    fn deinit(self: *Line, allocator: std.mem.Allocator) void {
+        self.nodes.deinit(allocator);
+        self.styles.deinit(allocator);
+    }
+
+    /// Record the nodes' white-space before they move into `destination`
+    /// (Gecko: HTMLEditor::AutoMoveOneLineHandler::Prepare, then
+    /// MoveNodeOrChildrenWithTransaction reads the source's computed
+    /// white-space before moving it).
+    fn recordWhiteSpace(self: *Line, edit: *Edit, destination: *Instance) !void {
+        self.styles.clearRetainingCapacity();
+        if (self.nodes.items.len == 0) return;
+        self.preserve = try considerPreservingWhiteSpace(self.nodes.items[0], destination);
+        for (self.nodes.items) |node| {
+            try self.styles.append(edit.allocator, if (self.preserve) try common.whiteSpaceStylesAround(node) else null);
+        }
+    }
+
+    /// After the move: a node whose white-space differs from its new
+    /// parent's keeps its own (Gecko, MoveNodeOrChildrenWithTransaction):
+    /// an HTML element gets `white-space` in its style attribute; anything
+    /// else - a Text node - is wrapped in a new <span style="white-space: v">,
+    /// one per node, where the parent may hold a span and the span the node.
+    /// Gecko's output is the first accepted entry of every
+    /// editing/other/join-different-white-space-style-*.html expectation;
+    /// Chrome 155, Firefox 158 and Safari 27 pass those files in full
+    /// (wpt.fyi df642c4142).
+    fn preserveWhiteSpace(self: *Line, edit: *Edit) !void {
+        if (!self.preserve) return;
+        for (self.nodes.items, self.styles.items) |node, recorded| {
+            const source = recorded orelse continue;
+            if (try isBr(node)) continue;
+            const value = source.shorthandValue() orelse continue;
+            const new_parent = (try common.parent(node)) orelse continue;
+            if (!common.isElement(new_parent)) continue;
+            const destination = common.whiteSpaceStylesOf(new_parent) orelse continue;
+            if (destination.collapse == .preserve_spaces or destination.eql(source)) continue;
+            if (common.isElement(node)) {
+                if (try common.setInlineStyleProperty(node, "white-space", value)) {
+                    edit.modified = true;
+                    continue;
+                }
+            }
+            if (!try common.isAllowedChild(.{ .name = "span" }, new_parent)) continue;
+            const span = try edit.createElement("span");
+            if (!try common.isAllowedChild(.{ .node = node }, span)) continue;
+            var buffer: [64]u8 = undefined;
+            try common.setAttribute(span, "style", try std.fmt.bufPrint(&buffer, "white-space: {s}", .{value}));
+            try edit.insertBefore(new_parent, span, node);
+            try edit.movePreservingRanges(node, span, 0);
+        }
+    }
+};
+
+const white_space_property_names = [_][]const u8{ "white-space", "white-space-collapse", "text-wrap-mode", "text-wrap" };
+
+/// Gecko's AutoMoveOneLineHandler::ConsiderWhetherPreserveWhiteSpaceStyle:
+/// a join from or into a <pre> keeps no white-space style, as every browser
+/// does for a <pre> styled by the UA sheet alone - but where an AUTHOR
+/// declaration sets that white-space, Chrome 155 and Safari 27 keep it
+/// (`<div>abc[]</div><pre>def</pre>` with `pre { white-space: pre }` ->
+/// `<div>abc<span style="white-space:pre">def</span></div>`), which Gecko's
+/// TODO there names as its target ("If `white-space` is specified by non-UA
+/// stylesheet, we should preserve it even if the right block is <pre> for
+/// compatibility with the other browsers"; mozilla-firefox/firefox main,
+/// editor/libeditor/HTMLEditorDeleteHandler.cpp, 2026-10-26).
+/// editing/other/join-pre-and-other-block.html at wpt.fyi df642c4142:
+/// Chrome 46/46, Firefox 28/46, Safari 46/46 (the ?method=backspace&block=div
+/// variant; the others alike). Majority with Gecko's stated target.
+fn considerPreservingWhiteSpace(content_in_line: *Instance, destination: *Instance) !bool {
+    if (try isUserAgentPre(destination)) return false;
+    return !try isUserAgentPre(content_in_line);
+}
+
+/// Whether `node` is an inclusive descendant of a <pre> whose computed
+/// white-space is `pre` and that no author declaration sets on the <pre> or
+/// on an element between it and `node`.
+fn isUserAgentPre(node: *Instance) !bool {
+    const element = if (common.isElement(node)) node else ((try common.parent(node)) orelse return false);
+    if (!common.isElement(element)) return false;
+    const styles = common.whiteSpaceStylesOf(element) orelse return false;
+    if (styles.collapse != .preserve or !styles.nowrap) return false;
+    var pre: ?*Instance = element;
+    while (pre) |p| : (pre = try common.parent(p)) {
+        if (!common.isElement(p)) return false;
+        if (try common.isHtmlElementNamed(p, "pre")) break;
+    }
+    const found = pre orelse return false;
+    var current = element;
+    while (true) {
+        if (try dom.style.engine.authorDeclares(current, &white_space_property_names)) return false;
+        if (current == found) return true;
+        current = (try common.parent(current)) orelse return false;
+    }
+}
+
+/// Where a line ends inside one of its top-level nodes: before `node` in
+/// `parent` (null: at `parent`'s end).
+const LineEnd = struct { parent: *Instance, node: ?*Instance };
+
+/// The first line of a block from its child `first`, isolated: the
+/// browsers' line (Chrome and Safari move a block's first line when blocks
+/// join, the integrator's ruling 2026-10-23; see the module comment), found
+/// on the DOM as Gecko's AutoMoveOneLineHandler does. The line runs through
+/// `first` and its following siblings and ends at a block node (before it),
+/// a br (removed) or a line feed in text whose white-space preserves
+/// segment breaks (the text is split there and the line feed removed). An
+/// end inside an inline is isolated by splitting the inline's descendants
+/// and the inline itself there (Gecko's SplitNodeDeep; the clones take
+/// what follows). Appends the line's top-level nodes - `first` and its
+/// following siblings - to `line`.
+fn extractFirstLine(edit: *Edit, first: *Instance, line: *Line, lone_br: LoneBr) !void {
+    var current: ?*Instance = first;
+    while (current) |child| {
         if (common.isBlockNode(child)) return;
         if (try isBr(child)) {
+            // A line that is only a br: steps 32 and 33 move it, as the spec
+            // does, and their later steps drop it where it is extraneous;
+            // step 34 deletes it (the browsers' first line).
+            if (child == first and lone_br == .move) {
+                try line.nodes.append(edit.allocator, child);
+                return;
+            }
             try edit.removeNode(child);
             return;
         }
-        if (common.isText(child) and (try common.whiteSpaceAround(child)).preservesNewlines()) {
-            var data = try common.textData(child);
-            defer data.deinit(child.ctx.allocator);
-            if (std.mem.indexOfScalar(u8, data.asSlice(), '\n')) |lf| {
-                const units = common.utf16Length(data.asSlice()[0..lf]);
-                if (units == 0) {
-                    try edit.deleteData(child, 0, 1);
-                    return;
+        if (common.isText(child)) {
+            if (try splitAtLineFeed(edit, child)) |split| {
+                if (split.text_on_line) try line.nodes.append(edit.allocator, child);
+                return;
+            }
+        } else if (common.isElement(child)) {
+            if (try findLineEndInside(edit, child)) |end| {
+                try splitDeep(edit, child, end.parent, end.node);
+                // An inline the line end emptied (it held only the br) is
+                // invisible: it goes instead of moving (Gecko's
+                // MoveNodeOrChildrenWithTransaction, RemoveIfInvisibleNode).
+                if (!try common.hasChildren(child)) {
+                    try edit.removeNode(child);
+                } else {
+                    try line.nodes.append(edit.allocator, child);
                 }
-                // Text.splitText keeps the first part in place and inserts
-                // the rest after it; the first part moves, the LF goes.
-                const rest = try interfaces.Text.call_splitText(child, units);
-                edit.modified = true;
-                try edit.movePreservingRanges(child, start_block, try common.childCount(start_block));
-                try edit.deleteData(rest, 0, 1);
                 return;
             }
         }
-        try edit.movePreservingRanges(child, start_block, try common.childCount(start_block));
+        try line.nodes.append(edit.allocator, child);
+        current = try common.nextSibling(child);
+    }
+}
+
+/// What a line that is only a br does with it.
+const LoneBr = enum { move, delete };
+
+/// A Text node split at the line feed that ends a line.
+const LineFeedSplit = struct {
+    /// Whether the text keeps a part on the line (the line feed was not its
+    /// first character).
+    text_on_line: bool,
+    /// The first node after the line's end at the text's level; null when
+    /// nothing follows there.
+    after: ?*Instance,
+};
+
+/// Split `text` at its first line feed when its white-space preserves
+/// segment breaks, removing the line feed (and a Text node it empties);
+/// null when it ends no line.
+fn splitAtLineFeed(edit: *Edit, text: *Instance) !?LineFeedSplit {
+    if (!(try common.whiteSpaceAround(text)).preservesNewlines()) return null;
+    var data = try common.textData(text);
+    defer data.deinit(text.ctx.allocator);
+    const lf = std.mem.indexOfScalar(u8, data.asSlice(), '\n') orelse return null;
+    const units = common.utf16Length(data.asSlice()[0..lf]);
+    // Text.splitText keeps the first part in place and inserts the rest
+    // after it; the line feed starts the rest.
+    const rest = if (units == 0) text else try interfaces.Text.call_splitText(text, units);
+    if (rest != text) edit.modified = true;
+    try edit.deleteData(rest, 0, 1);
+    var after: ?*Instance = rest;
+    if ((try common.nodeLength(rest)) == 0) {
+        after = try common.nextSibling(rest);
+        try edit.removeNode(rest);
+    }
+    return .{ .text_on_line = units != 0, .after = after };
+}
+
+/// The end of the line inside `element` (an inline), in tree order: before
+/// a descendant block, at a descendant br (removed here), or at a line feed
+/// in a descendant text (split and removed here). Null when the line runs
+/// through the whole element.
+fn findLineEndInside(edit: *Edit, element: *Instance) !?LineEnd {
+    var current = try common.firstChild(element);
+    while (current) |node| {
+        if (!common.isDescendantOf(node, element)) return null;
+        const p = (try common.parent(node)).?;
+        if (common.isBlockNode(node)) return .{ .parent = p, .node = node };
+        if (try isBr(node)) {
+            const next = try common.nextSibling(node);
+            try edit.removeNode(node);
+            return .{ .parent = p, .node = next };
+        }
+        if (common.isText(node)) {
+            if (try splitAtLineFeed(edit, node)) |split| return .{ .parent = p, .node = split.after };
+        }
+        current = try common.nextInTreeOrder(node);
+    }
+    return null;
+}
+
+/// Split `top` and its descendants down to `parent` at (parent, before `node`):
+/// everything from `node` on moves into shallow clones inserted after each
+/// split element, so `top` keeps what comes before the point (Gecko's
+/// SplitNodeDeepWithTransaction). A level with nothing after the point is
+/// not split. The clones drop an id, as "split the parent" step 7.2 keeps
+/// it on one element only.
+fn splitDeep(edit: *Edit, top: *Instance, parent: *Instance, node: ?*Instance) !void {
+    var level = parent;
+    var from = node;
+    while (true) {
+        if (from) |first_moved| {
+            const clone = try common.cloneNode(level, false);
+            if (try common.hasAttribute(clone, "id")) try common.removeAttribute(clone, "id");
+            const grandparent = (try common.parent(level)) orelse return;
+            try edit.insertBefore(grandparent, clone, try common.nextSibling(level));
+            var moving: ?*Instance = first_moved;
+            while (moving) |m| {
+                const next = try common.nextSibling(m);
+                try edit.movePreservingRanges(m, clone, try common.childCount(clone));
+                moving = next;
+            }
+        }
+        if (level == top) return;
+        from = try common.nextSibling(level);
+        level = (try common.parent(level)) orelse return;
     }
 }
 
@@ -443,6 +916,7 @@ pub fn deleteAction(edit: *Edit) !bool {
         try deleteTheSelection(edit, true, true, .forward);
         return true;
     }
+    edit.range_from_caret = true;
     // Browser step (golden rule 2, no newer spec): with nothing visible
     // between the editing host's start and the caret - only collapsed
     // white-space, invisible nodes and the caret's own block's start -
@@ -515,14 +989,36 @@ pub fn deleteAction(edit: *Edit) !bool {
     }
     // Step 6.
     if (common.isInlineNode(point.node)) return true;
-    // Step 7: the first item of a list outdents.
+    // Step 10 outdents the start of an indentation element. The browsers
+    // do that only where there is no previous line to join with; with one,
+    // the line joins it like any other block (golden rule 2, no newer spec;
+    // integrator ruling 2026-10-26): Chrome 156, Firefox 158 and Safari 27
+    // all give `foo<blockquote>[]bar</blockquote>` -> `foobar`
+    // (editing/run/delete.html) and join `<pre>abc</pre><blockquote>[]def
+    // </blockquote>` into `<pre>abcdef</pre>`
+    // (editing/other/join-pre-and-other-block.html), wpt.fyi 5af3c135c9,
+    // where the data file expects the spec's outdent.
+    const joins_previous_line = blk: {
+        const host = (try common.editingHostOf(point.node)) orelse break :blk false;
+        break :blk try hasVisibleContentBefore(point, host);
+    };
+    // Step 7: the first item of a list outdents. Spec kept: all three
+    // browsers join this line into the previous one too (`foo<ol><li>[]bar
+    // <li>baz</ol>` -> `foobar<ol><li>baz</li></ol>`), but following them
+    // would lose 6 subtests that pass on the spec's outdent (never-trade;
+    // integrator ruling 2026-10-26): `foo<dl><dt>[]bar<dd>baz</dl>` and
+    // `foo<dl><dd>[]bar</dl>` under both separators, where Crane would then
+    // match all three browsers but not the data, and `foo<ol><ol><li>[]bar
+    // </ol></ol>` and `foo<blockquote><ol><li>bar</li><ol><li>[]baz</ol>
+    // <li>quz</ol></blockquote>`, where Firefox 158 matches the data
+    // (editing/run/delete.html, wpt.fyi 5af3c135c9).
     if ((try common.isHtmlElementIn(point.node, &list_item_names)) and point.offset == 0) {
         if (try common.parent(point.node)) |p| {
             if ((try common.firstChild(p)) == point.node) {
                 // Steps 7.1-7.2.
                 var ancestor = try common.parent(point.node);
                 while (ancestor) |a| : (ancestor = try common.parent(a)) {
-                    if (try common.isHtmlElementNamed(a, "li")) try overrides.normalizeSublists(edit, a);
+                    if (try common.isHtmlElementNamed(a, "li")) try lists.normalizeSublists(edit, a);
                 }
                 // Steps 7.3-7.5.
                 const values = try overrides.recordTheValues(edit, &.{point.node});
@@ -531,10 +1027,10 @@ pub fn deleteAction(edit: *Edit) !bool {
                 // Step 7.6.
                 var node = point.node;
                 if ((try common.isHtmlElementIn(node, &.{ "dd", "dt" })) and !try isAllowedChildOfAnAncestorInHost(node)) {
-                    node = try edit.setTagName(node, try defaultSingleLineContainerName(edit));
+                    node = try edit.setTagName(node, try block_formatting.defaultSingleLineContainerName(edit));
                 }
                 // Step 7.7.
-                try overrides.fixDisallowedAncestors(edit, node);
+                try block_formatting.fixDisallowedAncestors(edit, node);
                 // Step 7.8.
                 return true;
             }
@@ -558,12 +1054,13 @@ pub fn deleteAction(edit: *Edit) !bool {
         }
         break;
     }
-    // Step 10: at the start of an indentation element, outdent.
-    if (point.offset == 0) {
+    // Step 10: at the start of an indentation element, outdent - unless
+    // there is a previous line to join (above).
+    if (!joins_previous_line and point.offset == 0) {
         var current: ?*Instance = point.node;
         while (current) |c| : (current = try common.parent(c)) {
             if ((try common.isEditable(c)) and (try common.inSameEditingHost(point.node, c)) and try common.isIndentationElement(c)) {
-                try overrides.outdentAtIndentationElement(edit, point.node);
+                try indent.outdentAtIndentationElement(edit, point.node);
                 return true;
             }
         }
@@ -595,6 +1092,41 @@ pub fn deleteAction(edit: *Edit) !bool {
                 try deleteTheSelection(edit, true, true, .forward);
                 try edit.collapse(point.node, point.offset);
                 return true;
+            }
+            // The browsers go further (golden rule 2, no newer spec): at the
+            // start of a block, a line break before it that makes an empty
+            // line of its own - a br or a preserved line feed at a line
+            // start, at the end of what precedes the block, inside inlines
+            // too - is deleted alone and the block stays, the caret in it:
+            // `<br><div>[]def</div>` -> `<div>def</div>`,
+            // `<b>abc<br><br></b><div>[]def</div>` -> `<b>abc<br></b><div>def</div>`.
+            // Gecko's AutoBlockElementsJoiner modes
+            // DeletePrecedingBRElementOfBlock and
+            // DeletePrecedingPreformattedLineBreak (editor/libeditor/
+            // HTMLEditorDeleteHandler.cpp, mozilla-firefox/firefox
+            // 6cb22fec8a1e); editing/other/delete-without-unwrapping-first-
+            // line-of-child-block.html, passed by Chrome 155 and Firefox 158
+            // (wpt.fyi df642c4142). A br that only ends the line before
+            // (`foo<br><p>[]bar</p>`) still joins.
+            if (common.isBlockNode(point.node)) {
+                if (try emptyLineBreakBefore(child)) |line_break| {
+                    switch (line_break) {
+                        .br => |br| {
+                            const p = (try common.parent(br)).?;
+                            const index = try common.indexOf(br);
+                            try edit.collapse(p, index);
+                            try edit.extend(p, index + 1);
+                        },
+                        .line_feed => |text| {
+                            const length = try common.nodeLength(text);
+                            try edit.collapse(text, length - 1);
+                            try edit.extend(text, length);
+                        },
+                    }
+                    try deleteTheSelection(edit, true, true, .forward);
+                    try edit.collapse(point.node, point.offset);
+                    return true;
+                }
             }
         }
     }
@@ -671,6 +1203,7 @@ pub fn forwardDeleteAction(edit: *Edit) !bool {
         try deleteTheSelection(edit, true, true, .forward);
         return true;
     }
+    edit.range_from_caret = true;
     // Browser step: with nothing visible between the caret and the editing
     // host's end, Delete does nothing. Chrome 156 and Safari 27 leave
     // `<div>abc[] </div>` and `<div>abc [] </div>` unchanged; Firefox 158
@@ -720,6 +1253,8 @@ pub fn forwardDeleteAction(edit: *Edit) !bool {
         // Step 4.5.
         break;
     }
+    // The browsers' empty line before a block (see deleteEmptyLineBeforeBlock).
+    if (try deleteEmptyLineBeforeBlock(edit, point)) return true;
     // Step 5: a character and its combining marks.
     if (common.isText(point.node) and point.offset != try common.nodeLength(point.node)) {
         // Step 5.1.
@@ -887,12 +1422,4 @@ fn isAllowedChildOfAnAncestorInHost(node: *Instance) !bool {
         if (try common.isAllowedChild(.{ .node = node }, c)) return true;
     }
     return false;
-}
-
-/// The document's "default single-line container name": the
-/// defaultParagraphSeparator command's value, "div" when unset.
-fn defaultSingleLineContainerName(edit: *Edit) ![]const u8 {
-    var value = try interfaces.Document.call_queryCommandValue(edit.document, runtime.DOMString.initInterned("defaultParagraphSeparator"));
-    defer value.deinit(edit.document.ctx.allocator);
-    return if (std.mem.eql(u8, value.asSlice(), "p")) "p" else "div";
 }

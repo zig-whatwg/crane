@@ -834,6 +834,25 @@ fn defaultKeyDownAction(keyboard: *Keyboard, target: *Instance, key: Key, modifi
             return;
         }
     }
+    // Typing in an editing host (Editing spec, "Additional requirements"):
+    // a character runs insertText, Enter insertParagraph and Shift+Enter
+    // insertLineBreak, each announced by a cancelable beforeinput at the
+    // editing host. Ctrl and Meta combinations are shortcuts, not text.
+    {
+        const execcommand = @import("execcommand/root.zig");
+        if (execcommand.isEditableTarget(target)) {
+            if (isKey(key, "Enter")) {
+                if (!modifiers.ctrl and !modifiers.alt and !modifiers.meta) {
+                    execcommand.lineBreakByKey(target, if (modifiers.shift) "insertLineBreak" else "insertParagraph");
+                }
+                return;
+            }
+            if (key.text) |text| {
+                if (!modifiers.ctrl and !modifiers.meta) execcommand.typeByKey(target, text);
+                return;
+            }
+        }
+    }
     // A radio button: the arrow keys move the checkedness through its group.
     // Blink RadioInputType::HandleKeydownEvent and Gecko HTMLInputElement::
     // PostHandleEvent's eKeyPress radio branch leave modified arrows alone.

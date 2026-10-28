@@ -77,6 +77,9 @@ pub const document_fetches = @import("document_fetches.zig");
 /// Fire-and-forget fetches (sendBeacon, Reporting uploads, hyperlink
 /// auditing): self-freeing, accepted or rejected synchronously.
 pub const keepalive_fetch = @import("keepalive_fetch.zig");
+/// fetchLater()'s deferred fetch records: queued in their fetch group,
+/// sent when it is terminated, cached, or their activateAfter comes.
+pub const deferred_fetches = @import("deferred_fetches.zig");
 /// HTML's origin as the object documents share, reference counted.
 pub const origin_record = @import("origin_record.zig");
 pub const document_origin = @import("document_origin.zig");
@@ -119,7 +122,7 @@ pub const event_construction = @import("event_construction.zig");
 pub const navigables = @import("navigables.zig");
 pub const navigation_api = @import("navigation_api.zig");
 pub const navigation_objects = @import("navigation_objects.zig");
-pub const top_level_navigation = @import("top_level_navigation.zig");
+pub const top_level_traversables = @import("top_level_traversables.zig");
 pub const intersection_targets = @import("intersection_targets.zig");
 pub const navigation_history_entries = @import("navigation_history_entries.zig");
 pub const history_traversal = @import("history_traversal.zig");

@@ -82,8 +82,10 @@ fn invokeCurrentQueue(data: ?*anyopaque) void {
     state.end({}, invokeReaction);
 }
 
-fn acquireRoot(_: void, element: *runtime.Instance) !engine.Owned {
-    return engine.retainValue(element.ctx, .{ .instance = element });
+/// A queued element's record holds it with a GCReachableRef in shadow mode
+/// (refcount step 5e): its wrapper rooted and one counted reference.
+fn acquireRoot(_: void, element: *runtime.Instance) !ce.ElementHold {
+    return ce.ElementHold.take(element);
 }
 
 fn enqueue(state: *AgentState, element: *runtime.Instance, reaction: Reaction) !void {

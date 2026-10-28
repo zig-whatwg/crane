@@ -261,12 +261,6 @@ pub const ParserScriptContext = parser_script_execution.ParserScriptContext;
 /// Event utilities for firing events during script processing
 pub const event_utils = @import("event_utils.zig");
 
-/// Selection command implementations with DOM integration
-/// (Used by execCommand for selectAll, delete, forwardDelete)
-/// Formatting command implementations with DOM integration
-/// (Used by execCommand for font/color/alignment commands)
-pub const formatting_commands = @import("formatting_commands.zig");
-
 /// Structure command implementations with DOM integration
 /// (Used by execCommand for list, paragraph, link, and media commands)
 pub const structure_commands = @import("structure_commands.zig");

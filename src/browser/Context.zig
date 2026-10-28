@@ -26,7 +26,6 @@ const storage_mod = @import("storage/Storage.zig");
 const cookiestore = @import("cookiestore");
 const Storage = storage_mod.Storage;
 const navigation = @import("navigation.zig");
-const impls = @import("impls");
 
 // Threadlocal state cleanup modules
 const dom_mod = @import("dom");
@@ -1675,10 +1674,28 @@ pub const Context = struct {
     location_instance: ?*runtime.Instance = null,
     history_instance: ?*runtime.Instance = null,
     performance_instance: ?*runtime.Instance = null,
-    /// The parse of the load that made `document_instance` - null for the
-    /// initial about:blank document, which no load made. One reference,
-    /// handed to the document's deferred destroy when a load replaces it.
-    current_load: ?*LoadParse = null,
+    /// How many of the page's own parses are on the native stack
+    /// (parseLoadDocument, parseXmlLoadDocument). A load asked for under one
+    /// - a ScriptLoader loading another page - waits until the outermost
+    /// returns (`pending_load`): no document is replaced, and no realm
+    /// swapped, under a parser of the page or the script it runs. Blink
+    /// detaches a document only once its construction site has left the
+    /// stack (HTMLTreeBuilder::Detach keeps the open elements "because
+    /// HTMLConstructionSite might be on the callstack").
+    parse_depth: u32 = 0,
+    /// The load asked for while a parse of the page was on the stack, run
+    /// when the outermost one returns. OWNED.
+    pending_load: ?*PendingLoad = null,
+    /// The page's top-level browsing context, which its first Window made
+    /// and handed over: every Window of the page shows it. Owned by
+    /// `traversable` once that exists; by the Context only when no record
+    /// could be made.
+    browsing_context: ?*html_mod.BrowsingContext = null,
+    /// The page's top-level traversable (dom.top_level_traversables): the
+    /// navigable record that owns its top-level browsing context, session
+    /// history and WindowProxy record across every Window its loads make.
+    /// OWNED; null for a worker page, or when no record could be made.
+    traversable: ?*anyopaque = null,
 
     // Debug counter for tracking context lifecycle
     var context_id_counter: u32 = 0;
@@ -1732,30 +1749,7 @@ pub const Context = struct {
     /// then what a Window global has beyond its interfaces: its document,
     /// navigator, location and performance, its timers and animation frames.
     fn createRealm(self: *Context) !void {
-        const realm = engine.createWindowRealm(&.{
-            .agent = self.agent,
-            .allocator = self.allocator,
-            .from_snapshot = self.from_snapshot,
-            .timer = self.timer,
-            .event_loop = self.event_loop,
-            .origin = null,
-            // The realm's Browser, recorded before its Window is made.
-            .browser_scope = self.browser_scope,
-            .create_global_object = createWindow,
-            // HTML IsPlatformObjectSameOrigin, which the engine asks on every
-            // access to this realm's WindowProxy or Locations from another
-            // realm [cross_origin_objects]; without it, the Window's own
-            // checks (Window.get_document).
-            .is_platform_object_same_origin = if (engine.capabilities.cross_origin_objects != .unsupported) dom_mod.cross_origin.isPlatformObjectSameOrigin else null,
-            .host = self,
-            // HTML 8.1.3.5, for [SecureContext] exposure (WebIDL 3.3.13):
-            // the page's document is this URL's, with no parent or creator
-            // (html.secure_context.ofDocument). Out of memory answers not
-            // secure - the realm then exposes less, never more. The realm
-            // keeps this creation answer across in-page loads; the Window's
-            // isSecureContext asks its document each time.
-            .secure_context = html_mod.secure_context.ofDocument(self.allocator, .{ .url = self.url, .parent = null, .creator = null }) catch false,
-        }) catch |err| {
+        const realm = engine.createWindowRealm(&self.windowRealmOptions(.new_window_proxy, null, self.url)) catch |err| {
             log.debug("the page's realm was not made: {}", .{err});
             return error.ContextCreateFailed;
         };
@@ -1770,10 +1764,57 @@ pub const Context = struct {
 
         try self.registerBrowserGlobals(realm);
 
+        // HTML "create a new top-level traversable": the record that keeps
+        // the page's browsing context, session history and WindowProxy record
+        // from now on, across every Window its loads make.
+        if (self.context_type == .window) {
+            if (self.window_instance) |window| if (self.browsing_context) |bc| {
+                self.traversable = dom_mod.top_level_traversables.create(self.allocator, window, @ptrCast(bc), .{
+                    .context = self,
+                    .realm_for_document = &realmForTraversableDocument,
+                    .committed = &traversableCommitted,
+                });
+            };
+        }
+
         // The timers this realm's Window sets run on the Browser's loop.
         if (self.timer) |timer| setTimerInterface(timer, self.allocator);
 
         self.initialized = true;
+    }
+
+    /// HTML "create a new realm" for a Window of the page whose global this
+    /// is `global_this` - a new WindowProxy (the page's first realm), or the
+    /// page's WindowProxy (a later document's: "create and initialize a
+    /// Document object" step 7) - made for a document at `document_url` whose
+    /// origin is `origin` (serialized; null for an opaque one).
+    fn windowRealmOptions(self: *Context, global_this: engine.GlobalThis, origin: ?[]const u8, document_url: []const u8) engine.WindowRealmOptions {
+        return .{
+            .agent = self.agent,
+            .allocator = self.allocator,
+            .from_snapshot = self.from_snapshot,
+            .timer = self.timer,
+            .event_loop = self.event_loop,
+            .origin = origin,
+            .global_this = global_this,
+            // The realm's Browser, recorded before its Window is made.
+            .browser_scope = self.browser_scope,
+            .create_global_object = createWindow,
+            // HTML IsPlatformObjectSameOrigin, which the engine asks on every
+            // access to this realm's WindowProxy or Locations from another
+            // realm [cross_origin_objects]; without it, the Window's own
+            // checks (Window.get_document).
+            .is_platform_object_same_origin = if (engine.capabilities.cross_origin_objects != .unsupported) dom_mod.cross_origin.isPlatformObjectSameOrigin else null,
+            .host = self,
+            // HTML 8.1.3.5, for [SecureContext] exposure (WebIDL 3.3.13):
+            // the document the realm is made for is this URL's, with no
+            // parent or creator (html.secure_context.ofDocument). Out of
+            // memory answers not secure - the realm then exposes less, never
+            // more. A realm reused for its initial about:blank document's
+            // successor keeps this creation answer; the Window's
+            // isSecureContext asks its document each time.
+            .secure_context = html_mod.secure_context.ofDocument(self.allocator, .{ .url = document_url, .parent = null, .creator = null }) catch false,
+        };
     }
 
     /// HTML "create a new realm", the customization for the global object: the
@@ -1786,18 +1827,23 @@ pub const Context = struct {
         };
         self.window_instance = window;
 
-        // HTML 7.3.1: the Window is its browsing context's active window -
-        // what frames[index], contentWindow.parent and the WindowProxy's
-        // [[GetOwnProperty]] read.
-        if (impls.Window.getInternal(window)) |internal| {
-            internal.browsing_context.setActiveWindow(@ptrCast(window));
+        // HTML 7.3.1.2: the page's top-level browsing context - its first
+        // Window made it and hands it over, for it outlives every Window the
+        // page's loads make (dom.top_level_traversables) - with this Window
+        // its active window: what frames[index], contentWindow.parent and the
+        // WindowProxy's [[GetOwnProperty]] read.
+        if (self.browsing_context == null) {
+            self.browsing_context = @ptrCast(@alignCast(dom_mod.window_globals.releaseBrowsingContext(window)));
+        }
+        if (self.browsing_context) |bc| {
+            dom_mod.window_globals.adoptBrowsingContext(window, @ptrCast(bc));
             // The page's top-level browsing context has the Browser's
             // cookie jar; its frames reach it through it.
-            internal.browsing_context.cookie_jar = self.cookie_jar;
+            bc.cookie_jar = self.cookie_jar;
         }
         // The global the Window is bound to, for cross-realm access.
         switch (global_this) {
-            .handle => |h| impls.Window.setBoundV8Global(window, h.ptr),
+            .handle => |h| dom_mod.window_globals.bind(window, h.ptr),
             else => {},
         }
         return window;
@@ -1823,6 +1869,24 @@ pub const Context = struct {
     /// use, linked to the window's browsing context, whose traversable keeps
     /// the session history (HTML 7.2.5).
     fn registerWindowGlobals(self: *Context, realm: runtime.Context, global: runtime.JSValue) !void {
+        // The realm's first document: the top-level traversable's initial
+        // about:blank document ("create a new browsing context and
+        // document"), its Window's associated Document.
+        const doc_instance = interfaces.Document.init(self.allocator, realm) catch |err| {
+            log.debug("the initial about:blank document was not made: {}", .{err});
+            return;
+        };
+        initializeInitialAboutBlank(doc_instance);
+        self.associateDocument(realm, doc_instance, null);
+        try self.registerWindowSingletons(realm, global);
+    }
+
+    /// What a Window of the page has from its realm's creation: its
+    /// Navigator, Location (HTML 7.2.1: made with the Window, in its realm)
+    /// and Performance - each made by the Window's own getter, so in its
+    /// realm and kept by it - also stored in `__internal`, and the
+    /// HTMLDocument alias of Document.
+    fn registerWindowSingletons(self: *Context, realm: runtime.Context, global: runtime.JSValue) !void {
         const internal = engine.getProperty(realm, global, "__internal") catch |err| {
             log.debug("__internal is not on the global: {}", .{err});
             return error.ObjectNotFound;
@@ -1831,48 +1895,27 @@ pub const Context = struct {
 
         const win = self.window_instance orelse return error.NotInitialized;
 
-        // Document (__internal.document): the top-level traversable's initial
-        // about:blank document (HTML "create a new browsing context and
-        // document"), which the page's first load replaces with a document of
-        // its own, as every later load does (loadHTML) - and as browsers do.
-        const doc_instance = interfaces.Document.init(self.allocator, realm) catch |err| {
-            log.debug("the initial about:blank document was not made: {}", .{err});
-            return;
-        };
-        initializeInitialAboutBlank(doc_instance);
-        self.associateDocument(realm, doc_instance);
-
-        // Navigator (__internal.navigator).
-        const nav_instance = interfaces.Navigator.init(self.allocator, realm) catch |err| {
+        const nav_instance = interfaces.Window.get_navigator(win) catch |err| {
             log.debug("the navigator was not made: {}", .{err});
             return;
         };
         self.navigator_instance = nav_instance;
-        impls.Window.setNavigator(win, nav_instance);
         storeInternal(realm, internal.value, "navigator", nav_instance);
 
-        // Location (__internal.location), which knows its Window.
-        const loc_instance = interfaces.Location.init(self.allocator, realm) catch |err| {
+        const loc_instance = interfaces.Window.get_location(win) catch |err| {
             log.debug("the location was not made: {}", .{err});
             return;
         };
         self.location_instance = loc_instance;
-        impls.Window.setLocation(win, loc_instance);
-        impls.Location.setWindow(loc_instance, win);
         storeInternal(realm, internal.value, "location", loc_instance);
 
-        // Performance (__internal.performance).
-        const perf_instance = interfaces.Performance.init(self.allocator, realm) catch |err| {
+        const perf_instance = interfaces.Window.get_performance(win) catch |err| {
             log.debug("the performance object was not made: {}", .{err});
             return;
         };
         self.performance_instance = perf_instance;
-        impls.Window.setPerformance(win, perf_instance);
         storeInternal(realm, internal.value, "performance", perf_instance);
 
-        // HTML's HTMLDocument: "for historical reasons, Window objects must
-        // also have a writable, configurable, non-enumerable property named
-        // HTMLDocument whose value is the Document interface object."
         const document_interface = engine.getProperty(realm, global, "Document") catch return;
         defer document_interface.release();
         engine.defineOwnProperty(realm, global, "HTMLDocument", document_interface.value, .{
@@ -1882,8 +1925,6 @@ pub const Context = struct {
         }) catch |err| log.debug("HTMLDocument was not defined: {}", .{err});
     }
 
-    /// `__internal[name] = instance` - a plain object's data property, whose
-    /// value the engine wraps.
     fn storeInternal(realm: runtime.Context, internal: runtime.JSValue, name: []const u8, instance: *runtime.Instance) void {
         engine.setProperty(realm, internal, name, .{ .instance = instance }) catch |err| {
             log.debug("__internal.{s} was not stored: {}", .{ name, err });
@@ -1941,13 +1982,14 @@ pub const Context = struct {
     /// the window keeps its wrapper (dom.document_browsing_context);
     /// `__internal.document`; and `document_instance`.
     ///
-    /// The session history entries that showed the document it replaces show
-    /// this one: an entry names its document by pointer, and the replaced
-    /// one is the collector's from here (Crane's loads into one Context
-    /// commit no entries of their own; Browser.navigate makes a new Context).
-    fn associateDocument(self: *Context, realm: runtime.Context, document: *runtime.Instance) void {
+    /// The session history entries that showed `replaced` - the document it
+    /// replaces, of this Window or of the Window before it - show this one:
+    /// an entry names its document by pointer, and the replaced one is the
+    /// collector's from here (an embedder's load into a Context commits no
+    /// entry of its own yet; Browser.navigate makes a new Context).
+    fn associateDocument(self: *Context, realm: runtime.Context, document: *runtime.Instance, replaced_document: ?*runtime.Instance) void {
         const window = self.window_instance orelse return;
-        const previous = self.document_instance;
+        const previous = replaced_document;
         dom_mod.window_globals.setDocument(window, document);
         dom_mod.document_browsing_context.setWindow(document, window);
         self.document_instance = document;
@@ -1960,13 +2002,18 @@ pub const Context = struct {
         const navigable = dom_mod.browser_state.browsingContextOf(window) orelse return;
         const history = navigable.getTop().joint_history orelse return;
         history.forgetDocument(@ptrCast(replaced));
+        // The page's traversable records the new document's own entry
+        // (createLoadDocument); with no record, the entry that showed the
+        // replaced document shows this one.
+        if (self.traversable != null) return;
         if (history.currentEntry(navigable.id)) |entry| history.setDocumentOfState(entry.document_state, @ptrCast(document));
     }
 
-    /// The page's current document goes, because a load replaces it. True
-    /// when the document left current was unloaded - and with it destroyed
-    /// ("unload a document" step 20) - here; false when its "destroy a
-    /// document" is still to come (createLoadDocument queues it).
+    /// The page's current document goes, because a load replaces it, and
+    /// the load keeps its Window (HTML "create and initialize a Document
+    /// object" step 6: the initial about:blank document's successor). True
+    /// when it was unloaded - and with it destroyed ("unload a document" step
+    /// 20) - here; false when it is left for the caller to destroy.
     ///
     /// First HTML "abort a document": its active parser aborted, its
     /// parser-owned scripts discarded, its fetches canceled. Then, as the
@@ -1980,33 +2027,17 @@ pub const Context = struct {
     /// initial about:blank document has completely loaded
     /// (markInitialAboutBlank), so the page's first load unloads it.
     ///
-    /// Its storage is never freed here: a parser of it may still be on the
-    /// native stack - a script of the page started this load - and script
-    /// may hold its nodes. It is left to its owner: its wrapper
-    /// (associateDocument made one when it became the window's), whose
-    /// collection frees it once neither script nor an active parser call
-    /// (DocumentParser.protect) reaches it, or the realm's end. Blink keeps
-    /// a detached parser's open-elements stack "because HTMLConstructionSite
-    /// might be on the callstack" (HTMLTreeBuilder::Detach); WebKit's parser
-    /// keeps itself with `Ref protectedThis`. For the same reason the unload,
-    /// whose last step destroys the document's script and parser state,
-    /// runs only when no parser of the document can be on the stack: not the
-    /// load's that made it, none document.open() made (mayUnloadNow).
-    /// Otherwise "destroy a document" comes from a task
-    /// (DestroyReplacedDocument). A document still loading fires no unload
-    /// events in Chrome and Safari either; one that loaded and was then
-    /// opened by document.open() would, after its parser returned - a
-    /// deviation, stated: Crane commits the load synchronously, and the
-    /// events could only reach the Window after the new document is its
-    /// own, and so the new page's listeners.
+    /// Its storage is never freed here: script may hold its nodes. It is
+    /// left to its wrapper (associateDocument made one when it became the
+    /// window's), whose collection frees it, or the realm's end. No parser
+    /// of it is on the native stack: a load asked for under one waits for it
+    /// (`parse_depth`, `pending_load`).
     ///
     /// Not run, stated: the unloading document cleanup steps, keyed on the
-    /// realm here (dom.unloading_cleanup), which would end the new
-    /// document's timers and sockets too: HTML gives a document that
-    /// replaces a non-initial one a new Window ("create and initialize a
-    /// Document object" step 7), and a Context keeps its one Window across
-    /// loads. Browser.navigate makes a new Context, with a new realm, for
-    /// each navigation.
+    /// realm (dom.unloading_cleanup), which would end the new document's
+    /// timers and sockets too - this document's successor keeps its Window.
+    /// A load that replaces any other document gives its successor a new
+    /// Window (`unloadForNewWindow`), whose old realm's steps all run.
     ///
     /// Abort and unload run script: a load that script starts replaces the
     /// document meanwhile, and that one goes too - the document replaced is
@@ -2016,9 +2047,7 @@ pub const Context = struct {
         var rounds: usize = 0;
         while (self.document_instance) |previous| : (rounds += 1) {
             if (rounds == max_replaced_documents) return false;
-            // Asked before the abort, which ends a script-created parser's
-            // stream and with it the "loading" readiness that tells of it.
-            const may_unload = self.mayUnloadNow(previous);
+            const may_unload = mayUnloadNow(previous);
             dom_mod.document_lifecycle.abort(previous);
             if (self.document_instance != previous) continue;
             if (!may_unload or dom_mod.document_lifecycle.isUnloading(previous)) return false;
@@ -2028,26 +2057,50 @@ pub const Context = struct {
         return false;
     }
 
-    /// Whether the page's current `document` is unloaded by the load that
-    /// replaces it (endCurrentDocument, before the abort): its load event
-    /// has run, and no parser of it can be on the stack - not
-    /// the load's that made it, and none document.open() made, which keeps
-    /// readiness "loading" until its stream closes (the document open
-    /// steps, step 17). Script of it may be: unloading runs script, and its
-    /// destroy discards only script and parser state no script frame holds,
-    /// as a frame that removes itself does.
-    fn mayUnloadNow(self: *Context, document: *runtime.Instance) bool {
-        if (!dom_mod.document_lifecycle.isCompletelyLoaded(document)) return false;
-        if (self.current_load) |load| if (load.parsing) return false;
-        const readiness = interfaces.Document.get_readyState(document) catch return false;
-        return readiness == ._complete_;
+    /// HTML "abort a document" and then "unload a document and its
+    /// descendants" for the page's current document, whose successor gets a
+    /// new Window (HTML "create and initialize a Document object" step 7):
+    /// the page's traversable unloads it as any navigable's navigation does -
+    /// children first, then the document, each document's unloading cleanup
+    /// steps (its window's timers, animation frames, blob URLs, sockets...),
+    /// its child navigables destroyed. A document whose load event never ran
+    /// is destroyed with no pagehide and no unload (`endCurrentDocument`).
+    fn unloadForNewWindow(self: *Context, document: *runtime.Instance) void {
+        const may_unload = mayUnloadNow(document);
+        dom_mod.document_lifecycle.abort(document);
+        if (dom_mod.document_lifecycle.isUnloading(document)) return;
+        if (self.traversable) |record| {
+            dom_mod.top_level_traversables.unloadActiveDocument(record, may_unload);
+            return;
+        }
+        if (may_unload) dom_mod.document_lifecycle.unload(document) else dom_mod.document_lifecycle.destroy(document);
+        if (self.realm) |realm| dom_mod.window_documents.destroyed(realm);
     }
 
-    /// How many documents loads started by abort and unload listeners may
-    /// replace in one `endCurrentDocument`, before it stops chasing them.
+    /// HTML "checking if unloading is canceled" for a navigation of the page
+    /// (navigate step 24.1): beforeunload at its current document and each
+    /// of its descendants' active documents, before anything is aborted. A
+    /// browser UI navigation shows no prompt without sticky activation, and
+    /// none is shown here: the navigation continues whatever the handlers do.
+    fn fireBeforeUnload(self: *Context, document: *runtime.Instance) void {
+        var documents = dom_mod.navigables.inclusiveDescendantDocuments(document, self.allocator);
+        defer documents.deinit(self.allocator);
+        for (documents.items) |entry| {
+            if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+            _ = dom_mod.document_lifecycle.fireBeforeUnload(entry.document);
+        }
+    }
+
+    /// Whether `document` may fire its unload events: its load event has run
+    /// - it completely loaded, which document.open() leaves as it was (the
+    /// document open steps "do not affect whether a Document is ... completely
+    /// loaded").
+    fn mayUnloadNow(document: *runtime.Instance) bool {
+        return dom_mod.document_lifecycle.isCompletelyLoaded(document);
+    }
+
     const max_replaced_documents = 16;
 
-    /// A worker context's globals: `self`, and its WorkerNavigator.
     fn registerWorkerGlobals(self: *Context, realm: runtime.Context, global: runtime.JSValue) !void {
         engine.defineOwnProperty(realm, global, "self", global, .{
             .writable = true,
@@ -2181,6 +2234,64 @@ pub const Context = struct {
     /// 3. Execute inline and external scripts (in document order)
     /// 4. Fire DOMContentLoaded event
     /// 5. Fire load event
+    /// HTML "navigate" the page's top-level traversable to `url` - the
+    /// embedder's own "browser UI" navigation of the page it shows, as an
+    /// address bar navigates a tab: the same traversable (its session history
+    /// gains an entry, its WindowProxy keeps its identity), beforeunload, the
+    /// fetch and the commit as the navigation's tasks - run the event loop
+    /// for them. The next document gets a new Window unless the page shows
+    /// its initial about:blank document (create and initialize a Document
+    /// object steps 6-7). error.NoTraversable for a page with no record.
+    pub fn navigate(self: *Context, url: []const u8) !void {
+        const record = self.traversable orelse return error.NoTraversable;
+        const serialized = serializedUrlOf(self.allocator, url);
+        defer if (serialized) |s| self.allocator.free(s);
+        dom_mod.top_level_traversables.navigate(record, serialized orelse url);
+    }
+
+    /// `url` parsed and serialized; null when it does not parse.
+    fn serializedUrlOf(allocator: std.mem.Allocator, url: []const u8) ?[]u8 {
+        var record = @import("basic_parser").parse(allocator, url, null) catch return null;
+        defer record.deinit();
+        return @constCast(@import("url_serializer").serialize(allocator, &record, false) catch return null);
+    }
+
+    /// dom.top_level_traversables: HTML "create and initialize a Document
+    /// object" steps 6-7 for a document of `origin` that one of the page's
+    /// own navigations - Location, a hyperlink, a form, a javascript: URL, a
+    /// reload, a traversal - is about to commit. Step 6 keeps the Window of
+    /// the page's initial about:blank document (the deviation embedder loads
+    /// state, `createLoadDocument`); step 7 makes the realm of a new one.
+    fn realmForTraversableDocument(context: *anyopaque, origin: html_mod.Origin) bool {
+        const self: *Context = @ptrCast(@alignCast(context));
+        const shown = self.document_instance orelse return true;
+        if (dom_mod.document_lifecycle.isInitialAboutBlank(shown)) return true;
+        var buffer: [512]u8 = undefined;
+        const serialized: ?[]const u8 = if (origin.is_opaque) null else (if (origin.port) |port|
+            std.fmt.bufPrint(&buffer, "{s}://{s}:{d}", .{ origin.scheme, origin.host, port }) catch null
+        else
+            std.fmt.bufPrint(&buffer, "{s}://{s}", .{ origin.scheme, origin.host }) catch null);
+        self.replaceRealm(serialized orelse "about:blank", serialized) catch return false;
+        return true;
+    }
+
+    /// dom.top_level_traversables: one of the page's navigations committed
+    /// `document` - the page's document, and URL, from here.
+    fn traversableCommitted(context: *anyopaque, document_ptr: *anyopaque) void {
+        const self: *Context = @ptrCast(@alignCast(context));
+        const document: *runtime.Instance = @ptrCast(@alignCast(document_ptr));
+        self.document_instance = document;
+        if (self.realm) |realm| if (self.window_instance) |window| {
+            if (engine.getProperty(realm, .{ .instance = window }, "__internal")) |internal| {
+                defer internal.release();
+                storeInternal(realm, internal.value, "document", document);
+            } else |_| {}
+        };
+        const url = interfaces.Document.get_URL(document) catch return;
+        defer document.ctx.allocator.free(url);
+        self.setUrl(url) catch {};
+    }
+
     pub fn loadPage(self: *Context) !void {
         return self.loadPageWithOptions(.{});
     }
@@ -2191,6 +2302,9 @@ pub const Context = struct {
         if (std.mem.eql(u8, self.url, "about:blank")) {
             return;
         }
+        // Not under one of the page's own parses (`parse_depth`): a load
+        // asked for there waits for it, and only loadHTML can wait.
+        if (self.parse_depth > 0) return error.LoadDuringParse;
 
         // Step 1: Fetch URL content via HTTP
         //
@@ -2204,26 +2318,6 @@ pub const Context = struct {
             .network = if (self.browser_scope) |scope| scope.of(fetch.network.NetworkContext) catch null else null,
         });
         defer result.deinit();
-
-        // HTML "create and initialize a Document object": Navigation
-        // Timing's "create the navigation timing entry" for the new document,
-        // from the navigation's fetch - before its parser, and any of its
-        // script, runs.
-        if (result.timing) |*timing| {
-            const report: fetch.internal.TimingReport = .{
-                .timing_info = &timing.timing_info,
-                .url = self.url,
-                .initiator_type = .other,
-                .cache_state = "",
-                .body_info = .{ .encoded_size = result.body.len, .decoded_size = result.body.len, .content_encoding = timing.content_encoding },
-                .response_status = timing.response_status,
-            };
-            if (self.realm) |realm| dom_mod.performance_timeline.createNavigationTimingEntry(realm, .{
-                .report = &report,
-                .redirect_count = timing.redirect_count,
-                .navigation_type = .navigate,
-            }) catch |err| log.debug("the navigation timing entry was not made: {}", .{err});
-        }
 
         // Step 2: HTML "load a document" - the response's type decides which
         // document it makes, as a navigable container's navigation does
@@ -2296,10 +2390,29 @@ pub const Context = struct {
             // Content-Type; the markup made for other types is characters.
             .byte_stream = if (kind == .html or kind == .xml) .{ .content_type = result.content_type } else null,
         };
-        const made = try self.createLoadDocument(html_options);
+        const made = try self.createLoadDocument(html_options, null);
         const document = made.document;
         const hold = self.holdDocument(document);
         defer if (hold) |held| held.release();
+        // HTML "create and initialize a Document object" steps 15-16:
+        // Navigation Timing's "create the navigation timing entry" for the
+        // new document, in its Window's realm, from the navigation's fetch -
+        // before its parser, and any of its script, runs.
+        if (result.timing) |*timing| {
+            const report: fetch.internal.TimingReport = .{
+                .timing_info = &timing.timing_info,
+                .url = url,
+                .initiator_type = .other,
+                .cache_state = "",
+                .body_info = .{ .encoded_size = result.body.len, .decoded_size = result.body.len, .content_encoding = timing.content_encoding },
+                .response_status = timing.response_status,
+            };
+            if (self.realm) |realm| dom_mod.performance_timeline.createNavigationTimingEntry(realm, .{
+                .report = &report,
+                .redirect_count = timing.redirect_count,
+                .navigation_type = .navigate,
+            }) catch |err| log.debug("the navigation timing entry was not made: {}", .{err});
+        }
         // "Create and initialize a Document object" step 9: the document's
         // policy container is the one "determine navigation params policy
         // container" chose - for a top-level page with no initiator, the
@@ -2428,31 +2541,94 @@ pub const Context = struct {
     /// // result === "Hello"
     /// ```
     pub fn loadHTML(self: *Context, html_content: []const u8, options: LoadHTMLOptions) !void {
-        const made = try self.createLoadDocument(options);
+        // Asked for under one of the page's own parses - a ScriptLoader that
+        // loads another page: it runs once that parse has returned
+        // (`parse_depth`), and the latest such request wins, as a later
+        // navigation aborts an earlier one ("set the ongoing navigation").
+        if (self.parse_depth > 0) {
+            const pending = try PendingLoad.create(self.allocator, html_content, options);
+            if (self.pending_load) |earlier| earlier.destroy(self.allocator);
+            self.pending_load = pending;
+            return;
+        }
+        const made = try self.createLoadDocument(options, html_content);
         const hold = self.holdDocument(made.document);
         defer if (hold) |held| held.release();
         try self.parseLoadDocument(made, html_content, options);
     }
 
-    /// A load's new document, and its parse (LoadParse) - BORROWED from the
-    /// Context, which holds both while the document is the page's.
+    /// A load's new document - BORROWED from the Context, which holds it
+    /// while it is the page's.
     const LoadDocument = struct {
         document: *runtime.Instance,
-        load: *LoadParse,
     };
 
     /// HTML "create and initialize a Document object", as much of it as a
-    /// page's load is: the document the page shows goes (endCurrentDocument),
-    /// the load's URL and origin become the page's, and a NEW Document (step
-    /// 9) becomes its Window's (step 10, associateDocument) - before any
-    /// parser exists, so the page's own scripts, which the parser runs, see
-    /// the document they are in. Every load makes one: the page's first
-    /// replaces the initial about:blank document registerWindowGlobals made.
-    fn createLoadDocument(self: *Context, options: LoadHTMLOptions) !LoadDocument {
+    /// page's load is - a "browser UI" navigation of the page's top-level
+    /// traversable with a response its embedder gave, committed now:
+    ///
+    /// 1. "Checking if unloading is canceled" (navigate step 24.1):
+    ///    beforeunload at the document the page shows and its descendants'.
+    /// 2. That document goes: aborted, then unloaded - with its descendants,
+    ///    their cleanup steps run and their child navigables destroyed - or,
+    ///    when its load event never ran, destroyed with no unload events.
+    /// 3. Step 6: its Window is kept when it is the initial about:blank
+    ///    document. Step 7 otherwise: a new realm whose global object is a
+    ///    new Window and whose global this binding is the page's WindowProxy
+    ///    (`replaceRealm`).
+    /// 4. The load's URL and origin become the page's, and a NEW Document
+    ///    (step 9) becomes its Window's (step 10, associateDocument) - before
+    ///    any parser exists, so the page's own scripts, which the parser
+    ///    runs, see the document they are in.
+    ///
+    /// Stated deviation, as both engines do it and as the engine must: the
+    /// new Document and Window are made AFTER the old document unloaded,
+    /// where the spec makes them in "populate", before "finalize" and the
+    /// unload. Blink's DocumentLoader::CommitNavigation runs once FrameLoader
+    /// has detached the old document (it DCHECKs the old document is no
+    /// longer active); WebKit's FrameLoader::transitionToCommitted runs
+    /// closeURL - the unload - before DocumentWriter::begin makes the new
+    /// document, and FrameLoader::clear makes the window after detaching the
+    /// old one. And one WindowProxy is attached to one global object at a
+    /// time: the new realm can be built around the page's proxy only after
+    /// the old document's unload handlers, which still see `window` as the
+    /// old Window, have run. Nothing observes the new Document earlier: no
+    /// script of it runs before "scripts may run for the newly-created
+    /// document".
+    fn createLoadDocument(self: *Context, options: LoadHTMLOptions, markup: ?[]const u8) !LoadDocument {
         if (self.realm == null or self.window_instance == null) return error.NotInitialized;
-        // The document the load replaces goes first - its listeners see it
-        // at its own URL.
-        const unloaded = self.endCurrentDocument();
+        const replaced = self.document_instance;
+        // Step 6's condition, read before anything of the document goes.
+        const keeps_window = if (replaced) |document| dom_mod.document_lifecycle.isInitialAboutBlank(document) else true;
+        // Navigate steps 13-14: a load to the shown document's own URL, or
+        // from the initial about:blank document ("the navigation must be a
+        // replace"), replaces its session history entry; any other pushes
+        // one. The traversable's history has the shown document's entry
+        // first.
+        const replace_entry = keeps_window or self.showsUrl(options.base_url);
+        if (self.traversable) |record| dom_mod.top_level_traversables.prepareHistory(record);
+        if (replaced) |document| self.fireBeforeUnload(document);
+        if (keeps_window) {
+            // Step 6, with a stated deviation: the page's realm-creation
+            // about:blank document is opaque, so the text would give its
+            // successor a new Window too - step 6 reuses it only when "same
+            // origin-domain with navigationParams's origin". It is the
+            // embedder's injection point (the WPT runner puts testharness.js
+            // in it before the page loads), and nothing of the page can
+            // observe the difference: no script of the page ran in it, and
+            // what the embedder put there it put there for the page.
+            if (!self.endCurrentDocument()) {
+                // Not unloaded: its load event never ran. No parser of it is
+                // on the stack (`parse_depth`), so it is destroyed now - the
+                // re-queued task that waited for its parse is gone.
+                if (self.document_instance) |current| if (!dom_mod.document_lifecycle.isUnloading(current)) {
+                    dom_mod.document_lifecycle.destroy(current);
+                };
+            }
+        } else {
+            if (replaced) |document| self.unloadForNewWindow(document);
+            try self.replaceRealm(options.base_url, if (options.sandboxing_flags.origin) null else originPrefix(options.base_url));
+        }
         const runtime_ctx = self.realm orelse return error.NotInitialized;
 
         // The realm's document URL, for fetch's relative URL resolution.
@@ -2466,13 +2642,8 @@ pub const Context = struct {
         // Set the Window's origin from the base URL for storage access
         // This is needed for sessionStorage/localStorage to work properly
         if (self.window_instance) |win| {
-            if (std.mem.startsWith(u8, options.base_url, "http://") or std.mem.startsWith(u8, options.base_url, "https://")) {
-                // Extract origin from URL (scheme://host:port)
-                const scheme_end = std.mem.indexOf(u8, options.base_url, "://") orelse options.base_url.len;
-                const after_scheme = options.base_url[scheme_end + 3 ..];
-                const path_start = std.mem.indexOf(u8, after_scheme, "/") orelse after_scheme.len;
-                const origin = options.base_url[0 .. scheme_end + 3 + path_start];
-                impls.Window.setOrigin(win, origin) catch |err| {
+            if (originPrefix(options.base_url)) |origin| {
+                dom_mod.window_globals.setOrigin(win, origin) catch |err| {
                     log.debug("Warning: Failed to set Window origin: {}\n", .{err});
                 };
             }
@@ -2480,42 +2651,127 @@ pub const Context = struct {
 
         // Step 9: "Let document be a new Document" whose type is "html"
         // ("load an HTML document"); the parser gives it its content type.
-        const load = try LoadParse.create(self.allocator);
         // Its origin: "determining the origin" step 1 makes it a new opaque
         // one when the final sandboxing flag set has the sandboxed origin
         // browsing context flag; else one of its own, from its URL.
         const opaque_origin: ?*dom_mod.origin_record.OriginRecord = if (options.sandboxing_flags.origin)
-            (dom_mod.origin_record.OriginRecord.create(self.allocator, "null") catch |err| {
-                load.release();
-                return err;
-            })
+            try dom_mod.origin_record.OriginRecord.create(self.allocator, "null")
         else
             null;
         defer if (opaque_origin) |record| record.release();
-        const document = interfaces.Document.initWith(self.allocator, runtime_ctx, .{
+        const document = try interfaces.Document.initWith(self.allocator, runtime_ctx, .{
             .origin = opaque_origin,
             .sandboxing_flags = options.sandboxing_flags,
             // HTML create and initialize a Document, step 9.
             .ready_state = ._loading_,
             .last_modified = options.last_modified,
-        }) catch |err| {
-            load.release();
-            return err;
-        };
+        });
         dom_mod.document_internals.setDocumentType(document, .html) catch {};
         // Step 10: "Set window's associated Document to document." From here
         // the window keeps it, and the document it replaces is unlinked.
-        const replaced = self.document_instance;
-        const replaced_load = self.current_load;
-        self.associateDocument(runtime_ctx, document);
-        self.current_load = load;
-        // A replaced document that was not unloaded - and so destroyed -
-        // above reaches "destroy a document" from a task, once no parse of
-        // it is on the stack (DestroyReplacedDocument).
-        if (replaced != null and !unloaded) {
-            DestroyReplacedDocument.queue(self.allocator, replaced.?, replaced_load);
-        } else if (replaced_load) |done| done.release();
-        return .{ .document = document, .load = load };
+        self.associateDocument(runtime_ctx, document, replaced);
+        // The traversable's active document's origin, which its next
+        // navigation compares with; and its session history entry ("finalize
+        // a cross-document navigation" steps 5-10), whose resource is the
+        // embedder's markup - a traversal back re-creates the page from it,
+        // the embedder never having served its URL - or none, for a page
+        // fetched from its URL. Recorded before the parser exists, so the
+        // page's own scripts see their entry (lesson
+        // architecture-a-commit-that-parses-synchronously-must-record-history-first),
+        // and after the old document unloaded (the stated order of runCommit).
+        if (self.traversable) |record| {
+            const origin = if (options.sandboxing_flags.origin) "null" else originPrefix(options.base_url) orelse "null";
+            dom_mod.top_level_traversables.setActiveOrigin(record, origin);
+            dom_mod.top_level_traversables.recordLoad(record, @ptrCast(document), options.base_url, origin, markup, replace_entry);
+        }
+        return .{ .document = document };
+    }
+
+    /// Whether the page shows a document at `url` (navigate step 13.1's
+    /// "url equals navigable's active document's URL").
+    fn showsUrl(self: *Context, url: []const u8) bool {
+        const document = self.document_instance orelse return false;
+        const current = interfaces.Document.get_URL(document) catch return false;
+        defer document.ctx.allocator.free(current);
+        return std.mem.eql(u8, current, url);
+    }
+
+    /// "scheme://host[:port]" of an http(s) `url`, the origin the page's
+    /// Window keeps its storage by; null for any other scheme.
+    fn originPrefix(url: []const u8) ?[]const u8 {
+        if (!std.mem.startsWith(u8, url, "http://") and !std.mem.startsWith(u8, url, "https://")) return null;
+        const scheme_end = std.mem.indexOf(u8, url, "://") orelse return null;
+        const after_scheme = url[scheme_end + 3 ..];
+        const path_start = std.mem.indexOfAny(u8, after_scheme, "/?#") orelse after_scheme.len;
+        return url[0 .. scheme_end + 3 + path_start];
+    }
+
+    /// HTML "create and initialize a Document object" step 7 for the page's
+    /// next document, at `url` and of origin `origin` (serialized; null for
+    /// an opaque one): "create a new realm" whose global object is a new
+    /// Window and whose global this binding is the page's WindowProxy
+    /// (engine.createWindowRealm .window_proxy_of: V8 detaches the proxy from
+    /// the old context and builds the new one around it - Blink's
+    /// LocalWindowProxy::DisposeContext(kGlobalObjectIsDetached), then
+    /// CreateContext with its saved global_proxy_; WebKit's
+    /// WindowProxy::setDOMWindow). Every holder of the WindowProxy - a
+    /// popup's opener, a MessageEvent's source, a saved `window` - reaches
+    /// the new Window from here. The new Window shows the page's browsing
+    /// context, and the traversable's documents and navigations go in its
+    /// realm.
+    ///
+    /// The old realm is handed to the engine: its document was unloaded and
+    /// destroyed first, its Window lives on while script reaches anything of
+    /// the realm, and the engine ends it once the collector takes it or with
+    /// the page (engine.WindowRealmEnd.global_detached) - winslot1 returns
+    /// its Window's slot then.
+    ///
+    /// [reuse_window_proxy] unsupported (JavaScriptCore, QuickJS): the
+    /// declared fallback keeps the page's one Window.
+    fn replaceRealm(self: *Context, url: []const u8, origin: ?[]const u8) !void {
+        if (comptime engine.capabilities.reuse_window_proxy == .unsupported) return;
+        const old = self.realm orelse return error.NotInitialized;
+        const old_window = self.window_instance;
+        const realm = engine.createWindowRealm(&self.windowRealmOptions(.{ .window_proxy_of = old }, origin, url)) catch |err| {
+            self.window_instance = old_window;
+            log.debug("the page's next realm was not made: {}", .{err});
+            return error.ContextCreateFailed;
+        };
+        self.realm = realm;
+        // The inbox other threads post the realm's tasks to.
+        realm.task_sink = self.task_sink;
+        self.document_instance = null;
+        self.navigator_instance = null;
+        self.location_instance = null;
+        self.history_instance = null;
+        self.performance_instance = null;
+        // __internal and GLOBAL, then what a Window of the page has from its
+        // realm's creation, then the window operations.
+        self.setupGlobalAliases() catch |err| {
+            log.debug("setupGlobalAliases failed: {} - continuing", .{err});
+        };
+        if (self.window_instance) |window| try self.registerWindowSingletons(realm, .{ .instance = window });
+        try registerCommonGlobals(realm);
+        if (self.traversable) |record| dom_mod.top_level_traversables.attachRealm(record, realm);
+        // The popups the old Window opened move with the page's navigable:
+        // the new Window keeps them, and their next realms are made under the
+        // new realm (lane newwin1, B7).
+        if (old_window) |from| if (self.window_instance) |to| dom_mod.window_globals.moveAuxiliaryNavigables(from, to);
+        engine.destroyWindowRealm(old, .global_detached);
+    }
+
+    /// One of the page's parses returned: when it was the outermost, the load
+    /// asked for under it runs now - Blink's order, the document detached
+    /// once its construction site has left the stack.
+    fn endParse(self: *Context) void {
+        self.parse_depth -= 1;
+        if (self.parse_depth != 0) return;
+        const pending = self.pending_load orelse return;
+        self.pending_load = null;
+        defer pending.destroy(self.allocator);
+        self.loadHTML(pending.html, pending.loadOptions()) catch |err| {
+            log.debug("the load asked for under the page's parse failed: {}", .{err});
+        };
     }
 
     /// Keep `document` alive while a load works on it: a load its own
@@ -2533,12 +2789,10 @@ pub const Context = struct {
     fn parseLoadDocument(self: *Context, made: LoadDocument, html_content: []const u8, options: LoadHTMLOptions) !void {
         const runtime_ctx = self.realm orelse return error.NotInitialized;
         const document = made.document;
-        // On the stack from here until the parse returns: a load its scripts
-        // start defers the replaced document's destroy past it.
-        made.load.retain();
-        defer made.load.release();
-        made.load.parsing = true;
-        defer made.load.parsing = false;
+        // On the stack from here until the parse returns: a load asked for
+        // under it waits for it (`pending_load`).
+        self.parse_depth += 1;
+        defer self.endParse();
         var parser_canceled = false;
         _ = html_mod.dom_parser.parseHTMLWithScripting(
             self.allocator,
@@ -2584,10 +2838,8 @@ pub const Context = struct {
     /// Then "the end", which XML shares with HTML (§14.2).
     fn parseXmlLoadDocument(self: *Context, made: LoadDocument, bytes: []const u8, content_type: []const u8, script_loader: ?ScriptLoader) !void {
         const document = made.document;
-        made.load.retain();
-        defer made.load.release();
-        made.load.parsing = true;
-        defer made.load.parsing = false;
+        self.parse_depth += 1;
+        defer self.endParse();
         const xml_parser = html_mod.xml_document_parser;
         const sniffing = html_mod.parser.encoding_sniffing;
         const transport = if (content_type.len > 0) sniffing.transportEncoding(self.allocator, content_type) else null;
@@ -2746,8 +2998,8 @@ pub const Context = struct {
         self.location_instance = null;
         self.history_instance = null;
         self.performance_instance = null;
-        if (self.current_load) |load| load.release();
-        self.current_load = null;
+        if (self.pending_load) |pending| pending.destroy(self.allocator);
+        self.pending_load = null;
 
         // The end of the page's realm (engine.destroyWindowRealm): its
         // Window, document and frames torn down, its WindowProxy detached,
@@ -2760,6 +3012,14 @@ pub const Context = struct {
             engine.destroyWindowRealm(realm, .global_detached);
             self.realm = null;
         }
+        // The traversable goes once every Window it showed is gone: it frees
+        // the browsing context they read - or, with no record, the Context
+        // does.
+        if (self.traversable) |record| {
+            dom_mod.top_level_traversables.destroy(record);
+        } else if (self.browsing_context) |bc| bc.deinit();
+        self.traversable = null;
+        self.browsing_context = null;
 
         self.allocator.free(self.url);
         self.initialized = false;
@@ -2770,105 +3030,60 @@ pub const Context = struct {
 // A replaced document's end
 // ============================================================================
 
-/// One load's parse, as the deferred destroy of the document it made sees it:
-/// whether that parse is still on the native stack. The Context holds a
-/// reference while the document is the page's (`current_load`), a running
-/// parse holds its own, and the Context's passes to the document's
-/// DestroyReplacedDocument when a load replaces it.
-const LoadParse = struct {
-    allocator: std.mem.Allocator,
-    references: u32 = 1,
-    /// Context.parseLoadDocument is running this load's parser.
-    parsing: bool = false,
+/// A load asked for while one of the page's parses was on the native stack
+/// (Context.parse_depth), kept until the outermost returns: the markup, and
+/// copies of what its options borrow. The embedder's script loader is held
+/// (`acquire`) until then.
+const PendingLoad = struct {
+    html: []u8,
+    base_url: []u8,
+    content_type: ?[]u8,
+    has_byte_stream: bool,
+    scripting_enabled: bool,
+    script_loader: ?Context.ScriptLoader,
+    sandboxing_flags: dom_mod.sandboxing.SandboxingFlagSet,
+    last_modified: ?@import("platform").WallTime,
 
-    fn create(allocator: std.mem.Allocator) !*LoadParse {
-        const self = try allocator.create(LoadParse);
-        self.* = .{ .allocator = allocator };
+    fn create(allocator: std.mem.Allocator, html_content: []const u8, options: Context.LoadHTMLOptions) !*PendingLoad {
+        const self = try allocator.create(PendingLoad);
+        errdefer allocator.destroy(self);
+        const html_copy = try allocator.dupe(u8, html_content);
+        errdefer allocator.free(html_copy);
+        const base_url = try allocator.dupe(u8, options.base_url);
+        errdefer allocator.free(base_url);
+        const content_type: ?[]u8 = if (options.byte_stream) |stream| (if (stream.content_type) |ct| try allocator.dupe(u8, ct) else null) else null;
+        self.* = .{
+            .html = html_copy,
+            .base_url = base_url,
+            .content_type = content_type,
+            .has_byte_stream = options.byte_stream != null,
+            .scripting_enabled = options.scripting_enabled,
+            .script_loader = options.script_loader,
+            .sandboxing_flags = options.sandboxing_flags,
+            .last_modified = options.last_modified,
+        };
+        if (options.script_loader) |loader| loader.retain(loader.context);
         return self;
     }
 
-    fn retain(self: *LoadParse) void {
-        self.references += 1;
-    }
-
-    fn release(self: *LoadParse) void {
-        std.debug.assert(self.references > 0);
-        self.references -= 1;
-        if (self.references == 0) self.allocator.destroy(self);
-    }
-};
-
-/// HTML "destroy a document" for a document a load replaced without
-/// unloading it (Context.endCurrentDocument: it had not loaded, or something
-/// of it was on the stack). Its state - salvageable false, destroyed, its
-/// scripts and parser discarded (dom.document_lifecycle.destroy) - changes
-/// from a task on its event loop, never
-/// inside the load, where the parser of that document, or script holding its
-/// nodes, may still be on the stack. A task that finds the load's parse still
-/// running (a script of the replaced page started the load, and the loop was
-/// pumped from under that parse) queues itself again.
-///
-/// The task does not keep the document: its wrapper's owners do, and one the
-/// collector took - or the realm's end freed - needs no destroy; the slab
-/// generation says which. Nor does it name the document as its task
-/// document: that document is not fully active, so the loop would drop it.
-/// It frees no storage; that stays the wrapper's (Context.endCurrentDocument).
-const DestroyReplacedDocument = struct {
-    allocator: std.mem.Allocator,
-    /// BORROWED, checked against `generation` before every use.
-    document: *runtime.Instance,
-    generation: u64,
-    /// The parse of the load that made `document`, OWNED (one reference);
-    /// null for the initial about:blank document.
-    load: ?*LoadParse,
-
-    /// Queue the destroy of `document`, taking `load`'s reference on every
-    /// path. Without an event loop (a host that has none) the document stays
-    /// as abort left it.
-    fn queue(allocator: std.mem.Allocator, document: *runtime.Instance, load: ?*LoadParse) void {
-        const loop = document.ctx.getOptionalEventLoop() orelse {
-            if (load) |held| held.release();
-            return;
+    /// The load's options, borrowing this record.
+    fn loadOptions(self: *const PendingLoad) Context.LoadHTMLOptions {
+        return .{
+            .base_url = self.base_url,
+            .scripting_enabled = self.scripting_enabled,
+            .script_loader = self.script_loader,
+            .byte_stream = if (self.has_byte_stream) .{ .content_type = self.content_type } else null,
+            .sandboxing_flags = self.sandboxing_flags,
+            .last_modified = self.last_modified,
         };
-        const self = allocator.create(DestroyReplacedDocument) catch {
-            if (load) |held| held.release();
-            return;
-        };
-        self.* = .{
-            .allocator = allocator,
-            .document = document,
-            .generation = runtime.SlabAllocator.generationOf(document),
-            .load = load,
-        };
-        loop.queueTask(self.task());
     }
 
-    fn task(self: *DestroyReplacedDocument) runtime.EventLoopTask {
-        return .{ .callback = &run, .context = self, .drop = &drop };
-    }
-
-    fn run(context: ?*anyopaque) void {
-        const self: *DestroyReplacedDocument = @ptrCast(@alignCast(context.?));
-        if (runtime.SlabAllocator.generationOf(self.document) == self.generation and self.document.ctx.hasEngine()) {
-            const parsing = if (self.load) |load| load.parsing else false;
-            if (!parsing) {
-                dom_mod.document_lifecycle.destroy(self.document);
-            } else if (self.document.ctx.getOptionalEventLoop()) |loop| {
-                loop.queueTask(self.task());
-                return;
-            }
-        }
-        self.deinit();
-    }
-
-    fn drop(context: ?*anyopaque) void {
-        const self: *DestroyReplacedDocument = @ptrCast(@alignCast(context.?));
-        self.deinit();
-    }
-
-    fn deinit(self: *DestroyReplacedDocument) void {
-        if (self.load) |load| load.release();
-        self.allocator.destroy(self);
+    fn destroy(self: *PendingLoad, allocator: std.mem.Allocator) void {
+        if (self.script_loader) |loader| loader.release(loader.context);
+        allocator.free(self.html);
+        allocator.free(self.base_url);
+        if (self.content_type) |ct| allocator.free(ct);
+        allocator.destroy(self);
     }
 };
 

@@ -1,0 +1,1286 @@
+== initial
+align-content: normal
+align-items: normal
+align-self: auto
+anchor-name: none
+anchor-scope: none
+appearance: none
+background-color: rgba(0, 0, 0, 0)
+background-image: none
+block-size: auto
+border-block-end-color: rgb(0, 0, 0)
+border-block-end-style: none
+border-block-end-width: 0px
+border-block-start-color: rgb(0, 0, 0)
+border-block-start-style: none
+border-block-start-width: 0px
+border-bottom-color: rgb(0, 0, 0)
+border-bottom-style: none
+border-bottom-width: 0px
+border-inline-end-color: rgb(0, 0, 0)
+border-inline-end-style: none
+border-inline-end-width: 0px
+border-inline-start-color: rgb(0, 0, 0)
+border-inline-start-style: none
+border-inline-start-width: 0px
+border-left-color: rgb(0, 0, 0)
+border-left-style: none
+border-left-width: 0px
+border-right-color: rgb(0, 0, 0)
+border-right-style: none
+border-right-width: 0px
+border-top-color: rgb(0, 0, 0)
+border-top-style: none
+border-top-width: 0px
+bottom: auto
+color: rgb(0, 0, 0)
+color-scheme: normal
+column-gap: normal
+content: normal
+content-visibility: visible
+direction: ltr
+display: inline
+float: none
+font-family: serif
+font-size: 16px
+font-style: normal
+font-weight: 400
+grid-column-end: auto
+grid-column-start: auto
+grid-row-end: auto
+grid-row-start: auto
+grid-auto-columns: auto
+grid-auto-rows: auto
+grid-auto-flow: row
+grid-template-columns: none
+grid-template-rows: none
+grid-template-areas: none
+fit-tolerance: normal
+accent-color: auto
+box-sizing: content-box
+caret-animation: auto
+caret-color: rgb(0, 0, 0)
+caret-shape: auto
+field-sizing: fixed
+interactivity: auto
+outline-color: rgb(0, 0, 0)
+outline-offset: 0px
+outline-style: none
+outline-width: 3px
+resize: none
+height: auto
+inline-size: auto
+inset-block-end: auto
+inset-block-start: auto
+inset-inline-end: auto
+inset-inline-start: auto
+justify-content: normal
+justify-items: normal
+justify-self: auto
+left: auto
+letter-spacing: normal
+line-height: normal
+margin-block-end: 0px
+margin-block-start: 0px
+margin-bottom: 0px
+margin-inline-end: 0px
+margin-inline-start: 0px
+margin-left: 0px
+margin-right: 0px
+margin-top: 0px
+max-block-size: none
+max-height: none
+max-inline-size: none
+max-width: none
+min-block-size: auto
+min-height: auto
+min-inline-size: auto
+min-width: auto
+opacity: 1
+overflow-x: visible
+overflow-y: visible
+padding-block-end: 0px
+padding-block-start: 0px
+padding-bottom: 0px
+padding-inline-end: 0px
+padding-inline-start: 0px
+padding-left: 0px
+padding-right: 0px
+padding-top: 0px
+position: static
+position-anchor: normal
+position-area: none
+position-try-fallbacks: none
+position-try-order: normal
+right: auto
+row-gap: normal
+text-orientation: mixed
+text-transform: none
+text-wrap-mode: wrap
+top: auto
+unicode-bidi: normal
+user-select: auto
+visibility: visible
+white-space-collapse: collapse
+width: auto
+writing-mode: horizontal-tb
+z-index: auto
+animation-duration: 0s
+animation-timing-function: ease
+animation-delay: 0s
+animation-iteration-count: 1
+animation-direction: normal
+animation-fill-mode: none
+animation-play-state: running
+animation-name: none
+animation-composition: replace
+animation-timeline: auto
+animation-range-start: normal
+animation-range-end: normal
+translate: none
+rotate: none
+scale: none
+flex-grow: 0
+flex-shrink: 1
+flex-basis: auto
+transition-property: all
+transition-duration: 0s
+transition-timing-function: ease
+transition-delay: 0s
+transition-behavior: normal
+cursor: auto
+list-style-image: none
+image-resolution: 1dppx
+text-indent: 0px
+fill: rgb(0, 0, 0)
+stroke: none
+marker-start: none
+marker-mid: none
+marker-end: none
+clip-path: none
+shape-outside: none
+shape-margin: 0px
+shape-image-threshold: 0
+filter: none
+box-shadow: none
+object-position: 50% 50%
+mask-image: none
+mask-position: 0% 0%
+mask-size: auto
+mask-repeat: repeat
+mask-origin: border-box
+mask-clip: border-box
+mask-composite: add
+mask-mode: match-source
+mask-border-source: none
+mask-border-slice: 0
+mask-border-width: auto
+mask-border-outset: 0
+mask-border-repeat: stretch
+stroke-width: 1px
+mask-type: luminance
+border-image-source: none
+border-image-slice: 100%
+border-image-width: 1
+border-image-outset: 0
+border-image-repeat: stretch
+position-visibility: anchor-visible
+interpolate-size: numeric-only
+contain: none
+background-position-x: 0%
+background-position-y: 0%
+background-size: auto
+background-repeat: repeat
+background-attachment: scroll
+background-origin: padding-box
+background-clip: border-box
+font-width: 100%
+font-feature-settings: normal
+font-kerning: auto
+font-language-override: normal
+font-optical-sizing: auto
+font-variant-alternates: normal
+font-variant-caps: normal
+font-variant-east-asian: normal
+font-variant-emoji: normal
+font-variant-ligatures: normal
+font-variant-numeric: normal
+font-variant-position: normal
+font-variation-settings: normal
+font-size-adjust: none
+border-top-left-radius: 0px
+border-top-right-radius: 0px
+border-bottom-right-radius: 0px
+border-bottom-left-radius: 0px
+hyphens: manual
+line-break: auto
+word-break: normal
+overflow-wrap: normal
+hyphenate-character: auto
+hyphenate-limit-chars: auto
+tab-size: 8
+word-spacing: 0px
+text-fit: none
+text-wrap-style: auto
+text-justify: auto
+hyphenate-limit-lines: no-limit
+text-group-align: none
+text-autospace: normal
+text-spacing-trim: normal
+word-space-transform: none
+hanging-punctuation: none
+text-align: start
+text-align-last: auto
+white-space-trim: none
+text-decoration-line: none
+text-decoration-style: solid
+text-decoration-color: rgb(0, 0, 0)
+text-decoration-thickness: auto
+text-decoration-inset: 0px
+text-decoration-skip-ink: auto
+text-decoration-skip-spaces: start end
+text-underline-position: auto
+text-underline-offset: auto
+text-emphasis-style: none
+text-emphasis-color: rgb(0, 0, 0)
+text-emphasis-position: over
+text-shadow: none
+alignment-baseline: baseline
+baseline-shift: 0px
+baseline-source: auto
+dominant-baseline: auto
+initial-letter: normal
+text-box-trim: none
+text-box-edge: auto
+flex-direction: row
+flex-wrap: nowrap
+flex-line-count: 1
+order: 0
+column-count: auto
+column-width: auto
+column-height: auto
+column-fill: balance
+column-span: none
+column-rule-color: rgb(0, 0, 0)
+column-rule-style: none
+column-rule-width: 3px
+scroll-snap-type: none
+scroll-snap-align: none
+scroll-snap-stop: normal
+scroll-initial-target: none
+scroll-margin-top: 0px
+scroll-margin-right: 0px
+scroll-margin-bottom: 0px
+scroll-margin-left: 0px
+scroll-margin-block-start: 0px
+scroll-margin-block-end: 0px
+scroll-margin-inline-start: 0px
+scroll-margin-inline-end: 0px
+scroll-padding-top: auto
+scroll-padding-right: auto
+scroll-padding-bottom: auto
+scroll-padding-left: auto
+scroll-padding-block-start: auto
+scroll-padding-block-end: auto
+scroll-padding-inline-start: auto
+scroll-padding-inline-end: auto
+overflow-block: visible
+overflow-inline: visible
+overflow-clip-margin: 0px
+scrollbar-gutter: auto
+text-overflow: clip
+max-lines: auto
+block-ellipsis: no-ellipsis
+continue: normal
+scroll-axis-lock: auto
+scroll-marker-group: none
+scroll-target-group: none
+-webkit-box-orient: horizontal
+transform: none
+transform-origin: 50% 50%
+transform-box: view-box
+transform-style: flat
+perspective: none
+perspective-origin: 50% 50%
+backface-visibility: visible
+== initial root and child / 0
+display: block
+== initial root and child / 1
+== inherited and counted values / 0
+background-image: url("b.png"), radial-gradient(rgb(255, 0, 0), rgb(255, 0, 0))
+border-block-end-color: rgb(255, 0, 0)
+border-block-start-color: rgb(255, 0, 0)
+border-bottom-color: rgb(255, 0, 0)
+border-inline-end-color: rgb(255, 0, 0)
+border-inline-start-color: rgb(255, 0, 0)
+border-left-color: rgb(255, 0, 0)
+border-right-color: rgb(255, 0, 0)
+border-top-color: rgb(255, 0, 0)
+color: rgb(255, 0, 0)
+content: "a" counter(c) url("i.png")
+display: block
+font-family: A Font, monospace
+font-size: 20px
+grid-template-columns: [x] 10px repeat(2, 1fr)
+grid-template-areas: "a b" "c d"
+caret-color: rgb(255, 0, 0)
+outline-color: rgb(255, 0, 0)
+inline-size: 50px
+letter-spacing: 2px
+line-height: 30px
+margin-inline-start: 5px
+margin-left: 5px
+visibility: hidden
+width: 50px
+animation-duration: 1s, 2s
+animation-name: one, two
+cursor: url("c.png") 2 3, pointer
+list-style-image: url("l.png")
+text-indent: 40px
+clip-path: circle(10px at 2px 3px)
+filter: blur(2px) drop-shadow(rgb(255, 0, 0) 1px 1px 0px)
+box-shadow: rgb(0, 128, 0) 1px 1px 2px 0px inset
+mask-image: url("m.png"), linear-gradient(rgb(255, 0, 0), rgb(0, 0, 255))
+border-image-source: url("bi.png")
+background-size: auto, auto
+font-feature-settings: "liga" 0
+border-top-left-radius: 3px 4px
+word-spacing: 3px
+text-decoration-color: rgb(255, 0, 0)
+text-emphasis-style: "x"
+text-emphasis-color: rgb(255, 0, 0)
+text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
+column-rule-color: rgb(255, 0, 0)
+transform: matrix(0.984808, 0.173648, -0.173648, 0.984808, -8.44928, 59.4358)
+== inherited and counted values / 1
+border-block-end-color: rgb(255, 0, 0)
+border-block-start-color: rgb(255, 0, 0)
+border-bottom-color: rgb(255, 0, 0)
+border-inline-end-color: rgb(255, 0, 0)
+border-inline-start-color: rgb(255, 0, 0)
+border-left-color: rgb(255, 0, 0)
+border-right-color: rgb(255, 0, 0)
+border-top-color: rgb(255, 0, 0)
+color: rgb(255, 0, 0)
+font-family: A Font, monospace
+font-size: 20px
+caret-color: rgb(255, 0, 0)
+outline-color: rgb(255, 0, 0)
+letter-spacing: 2px
+line-height: 30px
+visibility: hidden
+cursor: url("c.png") 2 3, pointer
+list-style-image: url("l.png")
+text-indent: 40px
+font-feature-settings: "liga" 0
+word-spacing: 3px
+text-decoration-color: rgb(255, 0, 0)
+text-emphasis-style: "x"
+text-emphasis-color: rgb(255, 0, 0)
+text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
+column-rule-color: rgb(255, 0, 0)
+== inherited and counted values / 2
+border-block-end-color: rgb(255, 0, 0)
+border-block-start-color: rgb(255, 0, 0)
+border-bottom-color: rgb(255, 0, 0)
+border-inline-end-color: rgb(255, 0, 0)
+border-inline-start-color: rgb(255, 0, 0)
+border-left-color: rgb(255, 0, 0)
+border-right-color: rgb(255, 0, 0)
+border-top-color: rgb(255, 0, 0)
+color: rgb(255, 0, 0)
+font-family: A Font, monospace
+font-size: 40px
+caret-color: rgb(255, 0, 0)
+outline-color: rgb(255, 0, 0)
+letter-spacing: 2px
+line-height: 60px
+visibility: hidden
+cursor: url("c.png") 2 3, pointer
+list-style-image: url("l.png")
+text-indent: 40px
+font-feature-settings: "liga" 0
+word-spacing: 3px
+text-decoration-color: rgb(255, 0, 0)
+text-emphasis-style: "x"
+text-emphasis-color: rgb(255, 0, 0)
+text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
+column-rule-color: rgb(255, 0, 0)
+== explicit inherit initial unset / 0
+background-color: rgb(0, 128, 0)
+background-image: url("b.png"), radial-gradient(rgb(255, 0, 0), rgb(0, 0, 255))
+border-block-end-color: rgb(0, 0, 255)
+border-block-start-color: rgb(0, 0, 255)
+border-block-start-style: solid
+border-block-start-width: 7px
+border-bottom-color: rgb(0, 0, 255)
+border-inline-end-color: rgb(0, 0, 255)
+border-inline-start-color: rgb(0, 0, 255)
+border-left-color: rgb(0, 0, 255)
+border-right-color: rgb(0, 0, 255)
+border-top-color: rgb(0, 0, 255)
+border-top-style: solid
+border-top-width: 7px
+color: rgb(0, 0, 255)
+content: "a" counter(c) url("i.png")
+display: flex
+font-family: A Font, monospace
+grid-template-columns: [x] 10px repeat(2, 1fr)
+grid-template-areas: "a b" "c d"
+caret-color: rgb(0, 0, 255)
+outline-color: rgb(0, 0, 255)
+inline-size: 42px
+margin-block-start: 5px
+margin-inline-start: 5px
+margin-left: 5px
+margin-top: 5px
+width: 42px
+animation-duration: 1s, 2s
+animation-name: one, two
+cursor: url("c.png") 2 3, pointer
+list-style-image: url("l.png")
+clip-path: circle(10px at 2px 3px)
+filter: blur(2px) drop-shadow(rgb(255, 0, 0) 1px 1px 0px)
+box-shadow: rgb(0, 128, 0) 1px 1px 2px 0px inset
+mask-image: url("m.png"), linear-gradient(rgb(255, 0, 0), rgb(0, 0, 255))
+border-image-source: url("bi.png")
+background-size: auto, auto
+font-feature-settings: "liga" 0
+border-top-left-radius: 3px 4px
+text-decoration-color: rgb(0, 0, 255)
+text-emphasis-style: "x"
+text-emphasis-color: rgb(0, 0, 255)
+text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
+column-rule-color: rgb(0, 0, 255)
+transform: matrix(0.984808, 0.173648, -0.173648, 0.984808, -6.3655, 47.6181)
+== explicit inherit initial unset / 1
+background-color: rgb(0, 128, 0)
+border-block-start-style: solid
+border-block-start-width: 7px
+border-top-style: solid
+border-top-width: 7px
+display: block
+inline-size: 42px
+margin-block-start: 5px
+margin-top: 5px
+width: 42px
+cursor: url("c.png") 2 3, pointer
+list-style-image: url("l.png")
+box-shadow: rgb(0, 128, 0) 1px 1px 2px 0px inset
+font-feature-settings: "liga" 0
+text-emphasis-style: "x"
+text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
+transform: matrix(0.984808, 0.173648, -0.173648, 0.984808, -6.3655, 47.6181)
+== explicit inherit initial unset / 2
+cursor: url("c.png") 2 3, pointer
+list-style-image: url("l.png")
+font-feature-settings: "liga" 0
+text-emphasis-style: "x"
+text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
+== root display contents and none / 0
+border-block-end-color: rgb(0, 128, 0)
+border-block-start-color: rgb(0, 128, 0)
+border-bottom-color: rgb(0, 128, 0)
+border-inline-end-color: rgb(0, 128, 0)
+border-inline-start-color: rgb(0, 128, 0)
+border-left-color: rgb(0, 128, 0)
+border-right-color: rgb(0, 128, 0)
+border-top-color: rgb(0, 128, 0)
+color: rgb(0, 128, 0)
+display: block
+caret-color: rgb(0, 128, 0)
+outline-color: rgb(0, 128, 0)
+text-decoration-color: rgb(0, 128, 0)
+text-emphasis-color: rgb(0, 128, 0)
+column-rule-color: rgb(0, 128, 0)
+== root display contents and none / 1
+border-block-end-color: rgb(0, 128, 0)
+border-block-start-color: rgb(0, 128, 0)
+border-bottom-color: rgb(0, 128, 0)
+border-inline-end-color: rgb(0, 128, 0)
+border-inline-start-color: rgb(0, 128, 0)
+border-left-color: rgb(0, 128, 0)
+border-right-color: rgb(0, 128, 0)
+border-top-color: rgb(0, 128, 0)
+color: rgb(0, 128, 0)
+display: none
+caret-color: rgb(0, 128, 0)
+outline-color: rgb(0, 128, 0)
+min-height: 0px
+min-width: 0px
+text-decoration-color: rgb(0, 128, 0)
+text-emphasis-color: rgb(0, 128, 0)
+column-rule-color: rgb(0, 128, 0)
+== root display contents and none / 2
+border-block-end-color: rgb(0, 128, 0)
+border-block-start-color: rgb(0, 128, 0)
+border-bottom-color: rgb(0, 128, 0)
+border-inline-end-color: rgb(0, 128, 0)
+border-inline-start-color: rgb(0, 128, 0)
+border-left-color: rgb(0, 128, 0)
+border-right-color: rgb(0, 128, 0)
+border-top-color: rgb(0, 128, 0)
+color: rgb(0, 128, 0)
+display: grid
+grid-template-columns: subgrid
+caret-color: rgb(0, 128, 0)
+outline-color: rgb(0, 128, 0)
+min-height: 0px
+min-width: 0px
+text-decoration-color: rgb(0, 128, 0)
+text-emphasis-color: rgb(0, 128, 0)
+column-rule-color: rgb(0, 128, 0)
+== display contents parent in a grid / 0
+display: grid
+justify-items: legacy center
+== display contents parent in a grid / 1
+border-block-end-color: rgb(0, 128, 0)
+border-block-start-color: rgb(0, 128, 0)
+border-bottom-color: rgb(0, 128, 0)
+border-inline-end-color: rgb(0, 128, 0)
+border-inline-start-color: rgb(0, 128, 0)
+border-left-color: rgb(0, 128, 0)
+border-right-color: rgb(0, 128, 0)
+border-top-color: rgb(0, 128, 0)
+color: rgb(0, 128, 0)
+display: contents
+font-size: 30px
+caret-color: rgb(0, 128, 0)
+outline-color: rgb(0, 128, 0)
+justify-items: legacy center
+min-height: 0px
+min-width: 0px
+padding-inline-start: 3px
+padding-left: 3px
+text-decoration-color: rgb(0, 128, 0)
+text-emphasis-color: rgb(0, 128, 0)
+column-rule-color: rgb(0, 128, 0)
+== display contents parent in a grid / 2
+border-block-end-color: rgb(0, 128, 0)
+border-block-start-color: rgb(0, 128, 0)
+border-bottom-color: rgb(0, 128, 0)
+border-inline-end-color: rgb(0, 128, 0)
+border-inline-start-color: rgb(0, 128, 0)
+border-left-color: rgb(0, 128, 0)
+border-right-color: rgb(0, 128, 0)
+border-top-color: rgb(0, 128, 0)
+color: rgb(0, 128, 0)
+display: grid
+font-size: 30px
+grid-template-columns: subgrid
+grid-template-rows: subgrid
+caret-color: rgb(0, 128, 0)
+outline-color: rgb(0, 128, 0)
+justify-items: legacy center
+padding-inline-start: 3px
+padding-left: 3px
+text-decoration-color: rgb(0, 128, 0)
+text-emphasis-color: rgb(0, 128, 0)
+column-rule-color: rgb(0, 128, 0)
+== display contents parent in a grid / 3
+border-block-end-color: rgb(0, 128, 0)
+border-block-start-color: rgb(0, 128, 0)
+border-bottom-color: rgb(0, 128, 0)
+border-inline-end-color: rgb(0, 128, 0)
+border-inline-start-color: rgb(0, 128, 0)
+border-left-color: rgb(0, 128, 0)
+border-right-color: rgb(0, 128, 0)
+border-top-color: rgb(0, 128, 0)
+color: rgb(0, 128, 0)
+display: block
+font-size: 30px
+caret-color: rgb(0, 128, 0)
+outline-color: rgb(0, 128, 0)
+justify-items: legacy center
+text-decoration-color: rgb(0, 128, 0)
+text-emphasis-color: rgb(0, 128, 0)
+column-rule-color: rgb(0, 128, 0)
+== pseudo-elements / 0
+border-block-end-color: rgb(128, 0, 128)
+border-block-start-color: rgb(128, 0, 128)
+border-bottom-color: rgb(128, 0, 128)
+border-inline-end-color: rgb(128, 0, 128)
+border-inline-start-color: rgb(128, 0, 128)
+border-left-color: rgb(128, 0, 128)
+border-right-color: rgb(128, 0, 128)
+border-top-color: rgb(128, 0, 128)
+color: rgb(128, 0, 128)
+content: "p"
+display: block
+font-size: 12px
+caret-color: rgb(128, 0, 128)
+outline-color: rgb(128, 0, 128)
+text-decoration-color: rgb(128, 0, 128)
+text-emphasis-color: rgb(128, 0, 128)
+column-rule-color: rgb(128, 0, 128)
+== pseudo-elements / 1 ::before
+border-block-end-color: rgb(128, 0, 128)
+border-block-start-color: rgb(128, 0, 128)
+border-bottom-color: rgb(128, 0, 128)
+border-inline-end-color: rgb(128, 0, 128)
+border-inline-start-color: rgb(128, 0, 128)
+border-left-color: rgb(128, 0, 128)
+border-right-color: rgb(128, 0, 128)
+border-top-color: rgb(128, 0, 128)
+color: rgb(128, 0, 128)
+content: none
+font-size: 12px
+caret-color: rgb(128, 0, 128)
+outline-color: rgb(128, 0, 128)
+margin-inline-start: 12px
+margin-left: 12px
+text-decoration-color: rgb(128, 0, 128)
+text-emphasis-color: rgb(128, 0, 128)
+column-rule-color: rgb(128, 0, 128)
+== pseudo-elements / 2 ::after
+border-block-end-color: rgb(128, 0, 128)
+border-block-start-color: rgb(128, 0, 128)
+border-bottom-color: rgb(128, 0, 128)
+border-inline-end-color: rgb(128, 0, 128)
+border-inline-start-color: rgb(128, 0, 128)
+border-left-color: rgb(128, 0, 128)
+border-right-color: rgb(128, 0, 128)
+border-top-color: rgb(128, 0, 128)
+color: rgb(128, 0, 128)
+content: none
+font-size: 12px
+caret-color: rgb(128, 0, 128)
+outline-color: rgb(128, 0, 128)
+text-decoration-color: rgb(128, 0, 128)
+text-emphasis-color: rgb(128, 0, 128)
+column-rule-color: rgb(128, 0, 128)
+== registered custom properties / 0
+--any: foo
+--col: rgb(0, 0, 255)
+--em: 36px
+--len: 10px
+background-color: rgb(0, 0, 255)
+display: block
+font-size: 18px
+inline-size: 10px
+width: 10px
+== registered custom properties / 1
+--any: foo
+--col: rgb(0, 0, 255)
+--em: 36px
+--len: 4px
+block-size: 4px
+border-block-end-color: rgb(0, 0, 255)
+border-block-start-color: rgb(0, 0, 255)
+border-bottom-color: rgb(0, 0, 255)
+border-inline-end-color: rgb(0, 0, 255)
+border-inline-start-color: rgb(0, 0, 255)
+border-left-color: rgb(0, 0, 255)
+border-right-color: rgb(0, 0, 255)
+border-top-color: rgb(0, 0, 255)
+color: rgb(0, 0, 255)
+font-size: 18px
+caret-color: rgb(0, 0, 255)
+outline-color: rgb(0, 0, 255)
+height: 4px
+margin-inline-start: 36px
+margin-left: 36px
+padding-inline-start: 4px
+padding-left: 4px
+text-decoration-color: rgb(0, 0, 255)
+text-emphasis-color: rgb(0, 0, 255)
+column-rule-color: rgb(0, 0, 255)
+== registered custom properties / 2
+--any: foo
+--col: rgb(0, 0, 255)
+--em: 36px
+--len: 3px
+border-block-end-color: rgb(0, 0, 255)
+border-block-start-color: rgb(0, 0, 255)
+border-block-start-style: solid
+border-block-start-width: 3px
+border-bottom-color: rgb(0, 0, 255)
+border-inline-end-color: rgb(0, 0, 255)
+border-inline-start-color: rgb(0, 0, 255)
+border-left-color: rgb(0, 0, 255)
+border-right-color: rgb(0, 0, 255)
+border-top-color: rgb(0, 0, 255)
+border-top-style: solid
+border-top-width: 3px
+color: rgb(0, 0, 255)
+font-size: 18px
+caret-color: rgb(0, 0, 255)
+outline-color: rgb(0, 0, 255)
+text-decoration-color: rgb(0, 0, 255)
+text-emphasis-color: rgb(0, 0, 255)
+column-rule-color: rgb(0, 0, 255)
+== all / 0
+background-image: url("b.png"), radial-gradient(rgb(255, 0, 0), rgb(255, 0, 0))
+border-block-end-color: rgb(255, 0, 0)
+border-block-start-color: rgb(255, 0, 0)
+border-bottom-color: rgb(255, 0, 0)
+border-inline-end-color: rgb(255, 0, 0)
+border-inline-start-color: rgb(255, 0, 0)
+border-left-color: rgb(255, 0, 0)
+border-right-color: rgb(255, 0, 0)
+border-top-color: rgb(255, 0, 0)
+color: rgb(255, 0, 0)
+content: "a" counter(c) url("i.png")
+direction: rtl
+display: block
+font-family: A Font, monospace
+grid-template-columns: [x] 10px repeat(2, 1fr)
+grid-template-areas: "a b" "c d"
+caret-color: rgb(255, 0, 0)
+outline-color: rgb(255, 0, 0)
+inline-size: 42px
+margin-inline-end: 5px
+margin-left: 5px
+width: 42px
+animation-duration: 1s, 2s
+animation-name: one, two
+cursor: url("c.png") 2 3, pointer
+list-style-image: url("l.png")
+clip-path: circle(10px at 2px 3px)
+filter: blur(2px) drop-shadow(rgb(255, 0, 0) 1px 1px 0px)
+box-shadow: rgb(0, 128, 0) 1px 1px 2px 0px inset
+mask-image: url("m.png"), linear-gradient(rgb(255, 0, 0), rgb(0, 0, 255))
+border-image-source: url("bi.png")
+background-size: auto, auto
+font-feature-settings: "liga" 0
+border-top-left-radius: 3px 4px
+text-decoration-color: rgb(255, 0, 0)
+text-emphasis-style: "x"
+text-emphasis-color: rgb(255, 0, 0)
+text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
+column-rule-color: rgb(255, 0, 0)
+transform: matrix(0.984808, 0.173648, -0.173648, 0.984808, -6.3655, 47.6181)
+== all / 1
+background-image: url("b.png"), radial-gradient(rgb(255, 0, 0), rgb(255, 0, 0))
+border-block-end-color: rgb(255, 0, 0)
+border-block-start-color: rgb(255, 0, 0)
+border-bottom-color: rgb(255, 0, 0)
+border-inline-end-color: rgb(255, 0, 0)
+border-inline-start-color: rgb(255, 0, 0)
+border-left-color: rgb(255, 0, 0)
+border-right-color: rgb(255, 0, 0)
+border-top-color: rgb(255, 0, 0)
+color: rgb(255, 0, 0)
+content: "a" counter(c) url("i.png")
+direction: rtl
+display: block
+font-family: A Font, monospace
+grid-template-columns: [x] 10px repeat(2, 1fr)
+grid-template-areas: "a b" "c d"
+caret-color: rgb(255, 0, 0)
+outline-color: rgb(255, 0, 0)
+inline-size: 42px
+margin-inline-end: 5px
+margin-left: 5px
+width: 42px
+animation-duration: 1s, 2s
+animation-name: one, two
+cursor: url("c.png") 2 3, pointer
+list-style-image: url("l.png")
+clip-path: circle(10px at 2px 3px)
+filter: blur(2px) drop-shadow(rgb(255, 0, 0) 1px 1px 0px)
+box-shadow: rgb(0, 128, 0) 1px 1px 2px 0px inset
+mask-image: url("m.png"), linear-gradient(rgb(255, 0, 0), rgb(0, 0, 255))
+border-image-source: url("bi.png")
+background-size: auto, auto
+font-feature-settings: "liga" 0
+border-top-left-radius: 3px 4px
+text-decoration-color: rgb(255, 0, 0)
+text-emphasis-style: "x"
+text-emphasis-color: rgb(255, 0, 0)
+text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
+column-rule-color: rgb(255, 0, 0)
+transform: matrix(0.984808, 0.173648, -0.173648, 0.984808, -6.3655, 47.6181)
+== all / 2
+border-block-end-color: rgb(0, 128, 0)
+border-block-start-color: rgb(0, 128, 0)
+border-bottom-color: rgb(0, 128, 0)
+border-inline-end-color: rgb(0, 128, 0)
+border-inline-start-color: rgb(0, 128, 0)
+border-left-color: rgb(0, 128, 0)
+border-right-color: rgb(0, 128, 0)
+border-top-color: rgb(0, 128, 0)
+color: rgb(0, 128, 0)
+direction: rtl
+caret-color: rgb(0, 128, 0)
+outline-color: rgb(0, 128, 0)
+text-decoration-color: rgb(0, 128, 0)
+text-emphasis-color: rgb(0, 128, 0)
+column-rule-color: rgb(0, 128, 0)
+== all / 3
+border-block-end-color: rgb(0, 128, 0)
+border-block-start-color: rgb(0, 128, 0)
+border-bottom-color: rgb(0, 128, 0)
+border-inline-end-color: rgb(0, 128, 0)
+border-inline-start-color: rgb(0, 128, 0)
+border-left-color: rgb(0, 128, 0)
+border-right-color: rgb(0, 128, 0)
+border-top-color: rgb(0, 128, 0)
+color: rgb(0, 128, 0)
+direction: rtl
+caret-color: rgb(0, 128, 0)
+outline-color: rgb(0, 128, 0)
+margin-inline-end: 9px
+margin-left: 9px
+text-decoration-color: rgb(0, 128, 0)
+text-emphasis-color: rgb(0, 128, 0)
+column-rule-color: rgb(0, 128, 0)
+== all / 4
+border-block-end-color: rgb(0, 128, 0)
+border-block-start-color: rgb(0, 128, 0)
+border-bottom-color: rgb(0, 128, 0)
+border-inline-end-color: rgb(0, 128, 0)
+border-inline-start-color: rgb(0, 128, 0)
+border-left-color: rgb(0, 128, 0)
+border-right-color: rgb(0, 128, 0)
+border-top-color: rgb(0, 128, 0)
+color: rgb(0, 128, 0)
+direction: rtl
+caret-color: rgb(0, 128, 0)
+outline-color: rgb(0, 128, 0)
+text-decoration-color: rgb(0, 128, 0)
+text-emphasis-color: rgb(0, 128, 0)
+column-rule-color: rgb(0, 128, 0)
+== revert and revert-layer / 0
+border-block-end-color: rgb(128, 128, 0)
+border-block-start-color: rgb(128, 128, 0)
+border-bottom-color: rgb(128, 128, 0)
+border-inline-end-color: rgb(128, 128, 0)
+border-inline-start-color: rgb(128, 128, 0)
+border-left-color: rgb(128, 128, 0)
+border-right-color: rgb(128, 128, 0)
+border-top-color: rgb(128, 128, 0)
+color: rgb(128, 128, 0)
+display: block
+font-weight: 300
+caret-color: rgb(128, 128, 0)
+outline-color: rgb(128, 128, 0)
+margin-block-end: 2px
+margin-block-start: 8px
+margin-bottom: 2px
+margin-top: 8px
+text-decoration-color: rgb(128, 128, 0)
+text-emphasis-color: rgb(128, 128, 0)
+column-rule-color: rgb(128, 128, 0)
+== revert and revert-layer / 1
+border-block-end-color: rgb(255, 0, 0)
+border-block-start-color: rgb(255, 0, 0)
+border-bottom-color: rgb(255, 0, 0)
+border-inline-end-color: rgb(255, 0, 0)
+border-inline-start-color: rgb(255, 0, 0)
+border-left-color: rgb(255, 0, 0)
+border-right-color: rgb(255, 0, 0)
+border-top-color: rgb(255, 0, 0)
+color: rgb(255, 0, 0)
+font-weight: 300
+caret-color: rgb(255, 0, 0)
+outline-color: rgb(255, 0, 0)
+margin-inline-start: 1px
+margin-left: 1px
+padding-block-start: 6px
+padding-top: 6px
+text-decoration-color: rgb(255, 0, 0)
+text-emphasis-color: rgb(255, 0, 0)
+column-rule-color: rgb(255, 0, 0)
+== logical longhands / 0
+direction: rtl
+display: block
+writing-mode: vertical-rl
+== logical longhands / 1
+border-block-start-color: rgb(255, 0, 0)
+border-inline-end-style: solid
+border-inline-end-width: 5px
+border-right-color: rgb(255, 0, 0)
+border-top-style: solid
+border-top-width: 5px
+direction: rtl
+height: 50px
+inline-size: 50px
+inset-block-start: 2px
+margin-bottom: 7px
+margin-inline-end: 4px
+margin-inline-start: 7px
+margin-top: 4px
+max-block-size: 10px
+max-width: 10px
+min-height: 1px
+min-inline-size: 1px
+padding-block-end: 3px
+padding-left: 3px
+right: 2px
+writing-mode: vertical-rl
+== logical longhands / 2
+direction: rtl
+padding-inline-end: 9px
+padding-inline-start: 2px
+padding-left: 9px
+padding-right: 2px
+== logical inherit across writing modes / 0
+block-size: 11px
+border-block-end-style: dashed
+border-block-end-width: 10px
+border-block-start-color: rgb(255, 0, 0)
+border-inline-end-style: solid
+border-inline-end-width: 9px
+border-left-style: dashed
+border-left-width: 10px
+border-right-color: rgb(255, 0, 0)
+border-top-style: solid
+border-top-width: 9px
+bottom: 17px
+direction: rtl
+display: block
+height: 12px
+inline-size: 12px
+inset-block-end: 18px
+inset-block-start: 16px
+inset-inline-end: 15px
+inset-inline-start: 17px
+left: 18px
+margin-block-end: 4px
+margin-block-start: 2px
+margin-bottom: 3px
+margin-inline-end: 1px
+margin-inline-start: 3px
+margin-left: 4px
+margin-right: 2px
+margin-top: 1px
+max-height: 14px
+max-inline-size: 14px
+min-block-size: 13px
+min-width: 13px
+padding-block-end: 8px
+padding-block-start: 6px
+padding-bottom: 7px
+padding-inline-end: 5px
+padding-inline-start: 7px
+padding-left: 8px
+padding-right: 6px
+padding-top: 5px
+right: 16px
+top: 15px
+width: 11px
+writing-mode: vertical-rl
+== logical inherit across writing modes / 1
+(parent 0)
+block-size: 12px
+border-block-start-style: solid
+border-block-start-width: 9px
+border-inline-end-color: rgb(255, 0, 0)
+border-inline-start-style: dashed
+border-inline-start-width: 10px
+border-left-style: dashed
+border-left-width: 10px
+border-right-color: rgb(255, 0, 0)
+border-top-style: solid
+border-top-width: 9px
+bottom: 17px
+height: 12px
+inline-size: 11px
+inset-block-end: 17px
+inset-inline-start: 18px
+left: 18px
+margin-block-start: 1px
+margin-inline-end: 2px
+margin-inline-start: 4px
+margin-left: 4px
+margin-right: 2px
+margin-top: 1px
+max-block-size: 14px
+max-height: 14px
+min-inline-size: 13px
+min-width: 13px
+padding-block-end: 7px
+padding-bottom: 7px
+padding-inline-start: 8px
+padding-left: 8px
+width: 11px
+== logical inherit across writing modes / 2
+(parent 0)
+block-size: 12px
+border-block-start-style: solid
+border-block-start-width: 9px
+border-inline-end-style: dashed
+border-inline-end-width: 10px
+border-left-style: dashed
+border-left-width: 10px
+border-top-style: solid
+border-top-width: 9px
+direction: rtl
+height: 12px
+inline-size: 11px
+inset-block-start: 15px
+inset-inline-end: 18px
+left: 18px
+margin-block-start: 1px
+margin-inline-end: 4px
+margin-left: 4px
+margin-top: 1px
+padding-inline-start: 6px
+padding-right: 6px
+top: 15px
+width: 11px
+== logical inherit across writing modes / 3
+(parent 0)
+border-inline-start-style: solid
+border-inline-start-width: 9px
+border-top-style: solid
+border-top-width: 9px
+bottom: 17px
+inset-inline-end: 17px
+inset-inline-start: 15px
+margin-bottom: 3px
+margin-inline-end: 3px
+margin-inline-start: 1px
+margin-top: 1px
+padding-block-end: 8px
+padding-block-start: 6px
+padding-left: 8px
+padding-right: 6px
+top: 15px
+writing-mode: vertical-rl
+== logical inherit across writing modes / 4
+(parent 0)
+direction: rtl
+height: 12px
+inline-size: 12px
+margin-block-start: 4px
+margin-left: 4px
+padding-inline-end: 5px
+padding-top: 5px
+writing-mode: vertical-lr
+== logical inherit across writing modes / 5
+(parent 1)
+block-size: 12px
+border-block-start-style: solid
+border-block-start-width: 9px
+border-inline-end-color: rgb(255, 0, 0)
+border-inline-start-style: dashed
+border-inline-start-width: 10px
+border-left-style: dashed
+border-left-width: 10px
+border-right-color: rgb(255, 0, 0)
+border-top-style: solid
+border-top-width: 9px
+bottom: 17px
+height: 12px
+inline-size: 11px
+inset-block-end: 17px
+inset-inline-start: 18px
+left: 18px
+margin-block-start: 1px
+margin-inline-end: 2px
+margin-inline-start: 4px
+margin-left: 4px
+margin-right: 2px
+margin-top: 1px
+max-block-size: 14px
+max-height: 14px
+min-inline-size: 13px
+min-width: 13px
+padding-block-end: 7px
+padding-bottom: 7px
+padding-inline-start: 8px
+padding-left: 8px
+width: 11px
+== logical inherit across writing modes / 6
+(parent 4)
+direction: rtl
+margin-block-end: 4px
+margin-bottom: 5px
+margin-inline-start: 5px
+margin-left: 4px
+writing-mode: sideways-rl
+== pseudo-elements of one originating element / 0
+border-block-end-color: rgb(0, 128, 128)
+border-block-start-color: rgb(0, 128, 128)
+border-bottom-color: rgb(0, 128, 128)
+border-inline-end-color: rgb(0, 128, 128)
+border-inline-start-color: rgb(0, 128, 128)
+border-left-color: rgb(0, 128, 128)
+border-right-color: rgb(0, 128, 128)
+border-top-color: rgb(0, 128, 128)
+color: rgb(0, 128, 128)
+display: block
+font-size: 20px
+caret-color: rgb(0, 128, 128)
+outline-color: rgb(0, 128, 128)
+letter-spacing: 1px
+text-decoration-color: rgb(0, 128, 128)
+text-emphasis-color: rgb(0, 128, 128)
+column-rule-color: rgb(0, 128, 128)
+== pseudo-elements of one originating element / 1
+border-block-end-color: rgb(0, 0, 128)
+border-block-start-color: rgb(0, 0, 128)
+border-bottom-color: rgb(0, 0, 128)
+border-inline-end-color: rgb(0, 0, 128)
+border-inline-start-color: rgb(0, 0, 128)
+border-left-color: rgb(0, 0, 128)
+border-right-color: rgb(0, 0, 128)
+border-top-color: rgb(0, 0, 128)
+color: rgb(0, 0, 128)
+display: block
+font-size: 20px
+font-weight: 700
+caret-color: rgb(0, 0, 128)
+outline-color: rgb(0, 0, 128)
+letter-spacing: 1px
+margin-block-end: 3px
+margin-left: 3px
+text-transform: uppercase
+writing-mode: vertical-rl
+text-decoration-color: rgb(0, 0, 128)
+text-emphasis-color: rgb(0, 0, 128)
+column-rule-color: rgb(0, 0, 128)
+== pseudo-elements of one originating element / 2 ::before
+(parent 1)
+border-block-end-color: rgb(255, 0, 0)
+border-block-start-color: rgb(255, 0, 0)
+border-bottom-color: rgb(255, 0, 0)
+border-inline-end-color: rgb(255, 0, 0)
+border-inline-start-color: rgb(255, 0, 0)
+border-left-color: rgb(255, 0, 0)
+border-right-color: rgb(255, 0, 0)
+border-top-color: rgb(255, 0, 0)
+color: rgb(255, 0, 0)
+content: "b"
+display: block
+float: left
+font-size: 20px
+font-weight: 700
+caret-color: rgb(255, 0, 0)
+outline-color: rgb(255, 0, 0)
+letter-spacing: 1px
+margin-block-end: 2px
+margin-left: 2px
+text-transform: uppercase
+writing-mode: vertical-rl
+text-decoration-color: rgb(255, 0, 0)
+text-emphasis-color: rgb(255, 0, 0)
+column-rule-color: rgb(255, 0, 0)
+== pseudo-elements of one originating element / 3 ::after
+(parent 1)
+border-block-end-color: rgb(0, 0, 128)
+border-block-start-color: rgb(0, 0, 128)
+border-bottom-color: rgb(0, 0, 128)
+border-inline-end-color: rgb(0, 0, 128)
+border-inline-start-color: rgb(0, 0, 128)
+border-left-color: rgb(0, 0, 128)
+border-right-color: rgb(0, 0, 128)
+border-top-color: rgb(0, 0, 128)
+color: rgb(0, 0, 128)
+content: "a"
+display: block
+font-size: 40px
+font-weight: 700
+caret-color: rgb(0, 0, 128)
+outline-color: rgb(0, 0, 128)
+letter-spacing: 1px
+position: absolute
+text-transform: uppercase
+writing-mode: vertical-rl
+text-decoration-color: rgb(0, 0, 128)
+text-emphasis-color: rgb(0, 0, 128)
+column-rule-color: rgb(0, 0, 128)
+== pseudo-elements of one originating element / 4 ::first-line
+(parent 1)
+background-color: rgb(255, 255, 0)
+border-block-end-color: rgb(0, 128, 0)
+border-block-start-color: rgb(0, 128, 0)
+border-bottom-color: rgb(0, 128, 0)
+border-inline-end-color: rgb(0, 128, 0)
+border-inline-start-color: rgb(0, 128, 0)
+border-left-color: rgb(0, 128, 0)
+border-right-color: rgb(0, 128, 0)
+border-top-color: rgb(0, 128, 0)
+color: rgb(0, 128, 0)
+font-size: 20px
+font-style: italic
+font-weight: 700
+caret-color: rgb(0, 128, 0)
+outline-color: rgb(0, 128, 0)
+letter-spacing: 3px
+text-transform: uppercase
+writing-mode: vertical-rl
+word-spacing: 4px
+text-decoration-line: underline
+text-decoration-color: rgb(0, 128, 0)
+text-emphasis-color: rgb(0, 128, 0)
+column-rule-color: rgb(0, 128, 0)
+== pseudo-elements of one originating element / 5 ::first-letter
+(parent 1)
+border-block-end-color: rgb(0, 128, 0)
+border-block-start-color: rgb(0, 128, 0)
+border-bottom-color: rgb(0, 128, 0)
+border-inline-end-color: rgb(0, 128, 0)
+border-inline-start-color: rgb(0, 128, 0)
+border-inline-start-style: solid
+border-inline-start-width: 3px
+border-left-color: rgb(0, 128, 0)
+border-right-color: rgb(0, 128, 0)
+border-top-color: rgb(0, 128, 0)
+border-top-style: solid
+border-top-width: 3px
+color: rgb(0, 128, 0)
+display: block
+float: left
+font-size: 60px
+font-weight: 700
+caret-color: rgb(0, 128, 0)
+outline-color: rgb(0, 128, 0)
+letter-spacing: 1px
+margin-block-end: 5px
+margin-left: 5px
+padding-block-end: 2px
+padding-left: 2px
+text-transform: uppercase
+writing-mode: vertical-rl
+text-decoration-color: rgb(0, 128, 0)
+text-emphasis-color: rgb(0, 128, 0)
+initial-letter: 2
+column-rule-color: rgb(0, 128, 0)
+== pseudo-elements of one originating element / 6 ::marker
+(parent 1)
+border-block-end-color: rgb(255, 0, 0)
+border-block-start-color: rgb(255, 0, 0)
+border-bottom-color: rgb(255, 0, 0)
+border-inline-end-color: rgb(255, 0, 0)
+border-inline-start-color: rgb(255, 0, 0)
+border-left-color: rgb(255, 0, 0)
+border-right-color: rgb(255, 0, 0)
+border-top-color: rgb(255, 0, 0)
+color: rgb(255, 0, 0)
+content: "*"
+font-size: 10px
+font-weight: 700
+caret-color: rgb(255, 0, 0)
+outline-color: rgb(255, 0, 0)
+letter-spacing: 1px
+margin-inline-start: 4px
+margin-top: 4px
+text-transform: uppercase
+writing-mode: vertical-rl
+text-decoration-color: rgb(255, 0, 0)
+text-emphasis-color: rgb(255, 0, 0)
+column-rule-color: rgb(255, 0, 0)
+== adjustments / 0
+display: flex
+== adjustments / 1
+display: block
+overflow-x: hidden
+overflow-y: auto
+position: absolute
+contain: strict
+overflow-block: auto
+overflow-inline: hidden
+== adjustments / 2
+content-visibility: auto
+display: block
+float: right
+overflow-x: clip
+overflow-y: scroll
+contain: size layout
+overflow-block: scroll
+overflow-inline: clip
+== adjustments / 3
+display: grid

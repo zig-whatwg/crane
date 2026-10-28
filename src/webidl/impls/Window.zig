@@ -302,6 +302,9 @@ pub const InternalState = struct {
         // The close watchers stop being active, and let their owners go.
         self.close_watcher_manager.deinit();
         self.reporting.deinit(self.allocator);
+        // Its fetch group's deferred fetch records still pending go unsent
+        // (dom.deferred_fetches: the unloading cleanup steps sent them).
+        self.fetch_group.deinit();
         if (self.crypto) |*crypto| crypto.edge.release(crypto.owner);
         if (self.own_performance) |*performance| performance.edge.release(performance.owner);
         if (self.trusted_types) |*factory| factory.edge.release(factory.owner);
@@ -479,10 +482,23 @@ pub fn installHooks() void {
     // "Destroy a document" and "unload a document" end the window's idle
     // callbacks and their timeouts (an unloading document cleanup step).
     @import("dom").unloading_cleanup.install(&endIdleCallbacks);
+    // Fetch "when a fetch group is terminated" step 2, "process deferred
+    // fetches", as the window's document goes - and as the back/forward
+    // cache stores it (dom.deferred_fetches).
+    @import("dom").unloading_cleanup.install(&@import("dom").deferred_fetches.terminate);
+    @import("dom").bfcache.installStoreStep(&@import("dom").deferred_fetches.storeInCache);
     // Other types reach a window's container through this hook.
     @import("dom").navigable_container.install(.{ .of = &containerOf });
     // A frame's host binds the Window to the global its realm made here.
-    @import("dom").window_globals.install(.{ .bind = &setBoundV8Global, .set_document = &setDocument, .bound_global = &getBoundV8Global });
+    @import("dom").window_globals.install(.{
+        .bind = &setBoundV8Global,
+        .set_document = &setDocument,
+        .bound_global = &getBoundV8Global,
+        .release_browsing_context = &releaseBrowsingContext,
+        .adopt_browsing_context = &replaceBrowsingContext,
+        .set_origin = &setOrigin,
+        .move_auxiliary_navigables = &moveAuxiliaryNavigables,
+    });
     // A hyperlink's or form's target that names no frame: the popups this
     // window keeps, or a new one (the rules for choosing a navigable).
     @import("dom").auxiliary_navigables.installTopLevelChooser(.{ .choose = &chooseTopLevelTraversable });
@@ -1171,6 +1187,36 @@ pub fn replaceBrowsingContext(instance: *runtime.Instance, bc_ptr: *anyopaque) v
     // The window's position and viewport size window.open() set up for the
     // browsing context: every Window it shows reports them.
     applyRequestedWindow(internal);
+}
+
+/// dom.window_globals: a navigation gave the opener's navigable a new
+/// Window, `to`: the popups `from` opened move to it (HTML 7.3.1.2:
+/// top-level traversables are the user agent's, and window.opener is the
+/// opener browsing context's WindowProxy - the popup is not the old Window's
+/// to take down), and the realm their next realms are made under is `to`'s
+/// (`IFrameIntegration.parent_realm`, which the old realm's end would leave
+/// naming freed memory - runtime.window_holders .popup_parent_realm). Their
+/// realms follow the opener's WindowProxy in the engine (WindowRealmOptions
+/// .auxiliary). Out of memory leaves them with `from`, which ends them as
+/// before.
+fn moveAuxiliaryNavigables(from: *runtime.Instance, to: *runtime.Instance) void {
+    if (from == to) return;
+    const source = getInternal(from) orelse return;
+    const target = getInternal(to) orelse return;
+    target.auxiliary_navigables.appendSlice(target.allocator, source.auxiliary_navigables.items) catch return;
+    for (source.auxiliary_navigables.items) |integration| integration.parent_realm = @ptrCast(to.ctx);
+    source.auxiliary_navigables.clearRetainingCapacity();
+}
+
+/// dom.window_globals: the Window stops owning the top-level browsing
+/// context Window.init made, and hands it to the caller - the host page's
+/// top-level traversable keeps it across every Window a navigation makes
+/// (lane newwin1). Null when this Window owns none (a frame's, a popup's).
+fn releaseBrowsingContext(instance: *runtime.Instance) ?*anyopaque {
+    const internal = getInternal(instance) orelse return null;
+    if (!internal.owns_browsing_context) return null;
+    internal.owns_browsing_context = false;
+    return @ptrCast(internal.browsing_context);
 }
 
 /// CSSOM View "set up browsing context features", as a Window of the
