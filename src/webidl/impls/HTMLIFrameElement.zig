@@ -807,6 +807,9 @@ pub const NavigateOptions = struct {
     /// With it, the entry the navigable was on before the traversal (the
     /// entry itself for a reload): the new document's activation names it.
     traversal_from: u64 = 0,
+    /// With it, the traversal item that waits for this population: the
+    /// navigation reports its end there (dom.navigables.traverseNavigable).
+    traversal_waiter: ?dom_module.navigables.TraversalWaiter = null,
     /// "sourceElement": the hyperlink or form submitter that navigates.
     source_element: ?*runtime.Instance = null,
     user_involvement: dom_module.navigation_api.UserInvolvement = .none,
@@ -826,6 +829,24 @@ pub const NavigateOptions = struct {
     csp_navigation_type: @import("csp").navigation_check.NavigationType = .other,
 };
 
+/// Where a traversal's population reports its end: the traversable's
+/// Browser's list (it outlives every browsing context on it, and so every
+/// navigation of theirs), the traversable and the waiting item's token, and
+/// the navigable populated.
+const TraversalWait = struct {
+    navigables: *html_core.window.Navigables,
+    traversable_id: u64,
+    token: u64,
+    navigable: u64,
+
+    fn of(integration: *IFrameIntegration, waiter: ?dom_module.navigables.TraversalWaiter) ?TraversalWait {
+        const w = waiter orelse return null;
+        const bc = integration.browsing_context orelse return null;
+        const navigables = bc.navigables orelse return null;
+        return .{ .navigables = navigables, .traversable_id = w.traversable_id, .token = w.token, .navigable = bc.id };
+    }
+};
+
 /// One navigation, from "navigate" step 19 until its document commits or it
 /// is abandoned.
 const Navigation = struct {
@@ -840,6 +861,12 @@ const Navigation = struct {
     initial_insertion: bool,
     traversal_entry: u64 = 0,
     traversal_from: u64 = 0,
+    /// A traversal item of the traversable's session history traversal
+    /// queue waits for this population ("apply the history step" 12.8): the
+    /// record reports its end there when it is destroyed - on every way a
+    /// navigation ends (committed, failed, aborted, superseded, its
+    /// navigable gone).
+    traversal_wait: ?TraversalWait = null,
     /// What the commit decides before the active document unloads, for the
     /// pageswap event and the new document's activation: the entry a push
     /// or replace will make, and the new document's origin (serialized,
@@ -952,6 +979,10 @@ const Navigation = struct {
     final_sandboxing_flags: SandboxingFlagSet = .empty,
 
     fn destroy(self: *Navigation) void {
+        // The traversal waiting for this population hears that it ended,
+        // after the record is gone (lane nav2 C1).
+        const wait = self.traversal_wait;
+        defer if (wait) |w| html_core.navigation.traversal_queue.TraversalQueue.populationEnded(w.navigables, w.traversable_id, w.token, w.navigable);
         // Terminating a fetch runs neither `done` nor `gone`.
         if (self.fetch) |f| f.terminate();
         dom_module.service_worker_clients.release(self.reserved_client);
@@ -1307,6 +1338,7 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         .initial_insertion = options.initial_insertion,
         .traversal_entry = options.traversal_entry,
         .traversal_from = options.traversal_from,
+        .traversal_wait = TraversalWait.of(integration, options.traversal_waiter),
         .browser_initiated = options.user_involvement == .browser_ui,
         .csp_navigation_type = options.csp_navigation_type,
         // Step 8: "Let targetSnapshotParams be the result of snapshotting
@@ -3224,6 +3256,23 @@ fn recordInHistory(integration: *IFrameIntegration, record: *Navigation, url: []
         const taken = previous;
         previous = null;
         history.recordActivation(entry.id, kind, taken) catch {};
+        // "Update document for history step application" for the document
+        // the traversal makes: the leaving document has unloaded, and none of
+        // the new one's script has run - its view of the history is written
+        // now (JointHistory.holdView).
+        history.releaseView(bc.id);
+        // "Apply the history step" step 14 waits for this navigable's change
+        // job - its new document made active - and no longer: the document
+        // parses and loads in tasks after, while the traversable's next
+        // queued traversal may already run (a same-document back() after a
+        // cross-document one lands before the new document's load event,
+        // overlapping-navigations-and-traversals/cross-document-traversal-
+        // same-document-traversal.html). Reported once; the record's end
+        // reports nothing more.
+        if (record.traversal_wait) |wait| {
+            record.traversal_wait = null;
+            html_core.navigation.traversal_queue.TraversalQueue.populationEnded(wait.navigables, wait.traversable_id, wait.token, wait.navigable);
+        }
         return state;
     }
     const handling = jointHandling(record.history_handling);
@@ -3368,13 +3417,13 @@ fn jointHandling(handling: navigate_steps.HistoryHandling) html_core.navigation.
 /// navigable to the entry it traverses to - from its document state's
 /// resource, when that is a srcdoc document's markup. The top-level page
 /// cannot be replaced, so only a frame or popup can.
-fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64) void {
+fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64, waiter: ?dom_module.navigables.TraversalWaiter) bool {
     for (live_navigables.items) |integration| {
         const bc = integration.browsing_context orelse continue;
         if (@as(*anyopaque, @ptrCast(bc)) != browsing_context_ptr) continue;
         // The entry's document is kept in the back/forward cache: shown
         // again, with no fetch.
-        if (restoreFromBfcache(integration, bc, entry_id, from_entry_id)) return;
+        if (restoreFromBfcache(integration, bc, entry_id, from_entry_id)) return false;
         // A srcdoc entry's document takes its container document's base URL
         // as its about base URL. Deviation, stated: the spec restores the one
         // the entry's document state recorded when it was first navigated to;
@@ -3382,16 +3431,33 @@ fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []con
         // The host page's entry an embedder's load made keeps the
         // embedder's markup: re-created from it at the entry's URL.
         if (integration.host_realms != null) {
-            navigate(integration, url, .{ .history_behavior = .replace, .traversal_entry = entry_id, .traversal_from = from_entry_id, .markup = resource });
-            return;
+            navigate(integration, url, .{ .history_behavior = .replace, .traversal_entry = entry_id, .traversal_from = from_entry_id, .markup = resource, .traversal_waiter = waiter });
+            return traversalInFlight(integration, waiter);
         }
         const source: ?*runtime.Instance = if (resource != null) blk: {
             const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse break :blk null));
             break :blk @import("Node.zig").getOwnerDocument(element);
         } else null;
-        navigate(integration, url, .{ .source_document = source, .history_behavior = .replace, .traversal_entry = entry_id, .traversal_from = from_entry_id, .srcdoc = resource });
-        return;
+        navigate(integration, url, .{ .source_document = source, .history_behavior = .replace, .traversal_entry = entry_id, .traversal_from = from_entry_id, .srcdoc = resource, .traversal_waiter = waiter });
+        return traversalInFlight(integration, waiter);
     }
+    return false;
+}
+
+/// Whether `integration`'s ongoing navigation is the population `waiter`
+/// waits for, still in flight: it will report its end when its record goes.
+/// `integration` is checked to be live first - the navigation may have
+/// ended its navigable.
+fn traversalInFlight(integration: *IFrameIntegration, waiter: ?dom_module.navigables.TraversalWaiter) bool {
+    const w = waiter orelse return false;
+    if (std.mem.indexOfScalar(*IFrameIntegration, live_navigables.items, integration) == null) return false;
+    const id = switch (integration.ongoing_navigation) {
+        .id => |id| id,
+        else => return false,
+    };
+    const record = navigationById(id) orelse return false;
+    const wait = record.traversal_wait orelse return false;
+    return wait.token == w.token and wait.traversable_id == w.traversable_id;
 }
 
 /// HTML §14.2: XML EOF uses the same "the end" as HTML. The XML parser is
@@ -5557,6 +5623,9 @@ fn restoreFromBfcache(integration: *IFrameIntegration, bc: *html_core.BrowsingCo
     );
     record.apply();
     bc.setActiveDocument(@ptrCast(page.document), @ptrCast(page.window));
+    // Its view of the history is the traversable's again, before pageshow
+    // (JointHistory.holdView).
+    if (bc.getTop().joint_history) |joint| joint.releaseView(bc.id);
 
     if (leaving_realm) |realm| {
         if (kept) |leaving| {

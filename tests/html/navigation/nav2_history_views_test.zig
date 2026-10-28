@@ -186,3 +186,42 @@ test "views that could not be written are read from the entries until a write su
     }
     try testing.expect(fail_index > 10);
 }
+
+test "a held view keeps what its document read until it is released (a traversal's changing navigable)" {
+    var h = joint.JointHistory.init(testing.allocator);
+    defer h.deinit();
+    try h.addInitialEntry(top, "http://x.test/t", null, "http://x.test");
+    try h.addChildInitialEntry(frame_a, top, "http://x.test/f0", null, "http://x.test");
+    try h.commitDocument(frame_a, "http://x.test/f1", null, "http://x.test", .push);
+    const f1 = h.apiCurrentView(frame_a).?.id;
+    const f0 = h.entryAt(frame_a, 0).?.id;
+
+    // A traversal back holds the frame's view, then moves the step: the
+    // frame's document still reads f1 as current; the top's view moves.
+    h.holdView(frame_a);
+    h.setCurrentStep(h.stepByDelta(-1).?);
+    try testing.expectEqual(f1, h.apiCurrentView(frame_a).?.id);
+    try testing.expectEqual(@as(?usize, 1), h.apiIndexOf(frame_a, f1, testing.allocator));
+    try testing.expectEqual(@as(u32, 1), h.historyView(frame_a).index);
+    try testing.expectEqual(@as(u32, 0), h.historyView(top).index);
+    // Other changes meanwhile leave it held.
+    try h.commitSameDocument(top, "http://x.test/t#a", .null, .replace, null);
+    try testing.expectEqual(f1, h.apiCurrentView(frame_a).?.id);
+
+    // The target document is active: the view is the live one again.
+    h.releaseView(frame_a);
+    try testing.expectEqual(f0, h.apiCurrentView(frame_a).?.id);
+    try expectViewsLive(&h);
+
+    // releaseAllViews, and a removed navigable's hold, end holds too.
+    h.holdView(frame_a);
+    h.holdView(top);
+    h.setCurrentStep(h.stepByDelta(1).?);
+    try testing.expectEqual(f0, h.apiCurrentView(frame_a).?.id);
+    h.releaseAllViews();
+    try expectViewsLive(&h);
+    h.holdView(frame_a);
+    h.removeNavigable(frame_a);
+    try testing.expect(!h.isViewHeld(frame_a));
+    try expectViewsLive(&h);
+}

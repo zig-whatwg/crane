@@ -99,7 +99,7 @@ pub const Implementation = struct {
     navigate_by_target: *const fn (source_document: *runtime.Instance, request: Request) void,
     follow_hyperlink: *const fn (subject: *runtime.Instance, user_involvement: navigation_api.UserInvolvement) void,
     download_hyperlink: *const fn (subject: *runtime.Instance, user_involvement: navigation_api.UserInvolvement) void,
-    traverse_navigable: *const fn (browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64) void,
+    traverse_navigable: *const fn (browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64, waiter: ?TraversalWaiter) bool,
     find_by_name: *const fn (source_document: *runtime.Instance, name: []const u8) ?*runtime.Instance,
     /// The owner's integration for this browsing context, borrowed for the
     /// synchronous navigation step. Null when no integration owns it.
@@ -166,10 +166,26 @@ pub fn downloadHyperlink(subject: *runtime.Instance, user_involvement: navigatio
 /// the entry itself, for a reload - which the new document's
 /// navigation.activation names (HTML "apply the history step" 12.1's
 /// previousEntry).
-pub fn traverseNavigable(browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64) void {
-    const impl = implementation orelse return;
-    impl.traverse_navigable(browsing_context, entry_id, url, resource, from_entry_id);
+///
+/// `waiter`, when given, is the traversal item of the traversable's session
+/// history traversal queue that waits for this population ("apply the
+/// history step" 12.8): the navigation reports its end - committed,
+/// failed, aborted, superseded or its navigable gone - to
+/// `html_core.navigation.traversal_queue.TraversalQueue.populationEnded`,
+/// by these IDs. True when a population started that will report; false
+/// when none did (nothing to fetch, or a document shown again from the
+/// back/forward cache, which is done when this returns).
+pub fn traverseNavigable(browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64, waiter: ?TraversalWaiter) bool {
+    const impl = implementation orelse return false;
+    return impl.traverse_navigable(browsing_context, entry_id, url, resource, from_entry_id, waiter);
 }
+
+/// The traversal item a traversal's population reports its end to: its
+/// traversable's ID and the item's token (`traverseNavigable`).
+pub const TraversalWaiter = struct {
+    traversable_id: u64,
+    token: u64,
+};
 
 /// HTML "find a navigable by target name" among the frames of
 /// `current_document`'s page: the active window of the first whose target
@@ -323,6 +339,12 @@ pub fn destroyChildNavigable(container: *runtime.Instance, integration: *IFrameI
             defer tree.deinit(std.heap.page_allocator);
             bc.collectDescendants(std.heap.page_allocator, &tree) catch {};
             for (tree.items) |gone| history.removeNavigable(gone.id);
+            // A traversal waiting on one of them no longer does (lane nav2
+            // C1: the queue's liveness when a navigable goes).
+            if (bc.navigables) |navigables| {
+                const top_id = bc.getTop().id;
+                for (tree.items) |gone| html_core.navigation.traversal_queue.TraversalQueue.navigableGone(navigables, top_id, gone.id);
+            }
         }
     }
     // Step 5: "destroy a document and its descendants" given its active
@@ -719,7 +741,8 @@ test "without an installed implementation nothing navigates" {
     navigateByTarget(&element, .{ .target = "", .url = "about:blank" });
     followHyperlink(&element, .activation);
     downloadHyperlink(&element, .activation);
-    traverseNavigable(@ptrCast(&element), 1, "about:blank", null, 1);
+    // No population starts.
+    try std.testing.expect(!traverseNavigable(@ptrCast(&element), 1, "about:blank", null, 1, .{ .traversable_id = 1, .token = 1 }));
     try std.testing.expect(findByName(&element, "name") == null);
 }
 
