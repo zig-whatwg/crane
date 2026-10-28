@@ -273,34 +273,87 @@ pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!voi
     // sandboxing-back-sibling: 1/1 each), which Navigation's traverseToKey
     // checks.
     const top = bc.getTop();
-    // Stated exception to the spec's queue (golden rule 2; the integrator's
-    // ruling of 2026-10-27 on traverse_the_history_2-5, scope pending its
-    // ruling on the overlapping-navigations conflict): while an earlier
-    // delta traversal of a TOP-LEVEL traversable that takes its document
-    // elsewhere is queued or running - until that document is active - a
-    // further history.go()/back()/forward() on it is ignored. "Traverse the
-    // history by a delta" step 4 would append it, and the queue would apply
-    // every delta in turn. Chrome 156 and Firefox 158 land on the FIRST
-    // call's target when a top-level page makes the calls - three in one
-    // task, in separate tasks, or from its pagehide (lane nav2's probe,
-    // tmp/probes/nav2-tth-probe.html: tth2 -3,-2,+1 -> page 3; tth3 -2,-1,+3
-    // -> 4; tth4 -10,-1,-2 -> 5; tth5 +10,-1,-2 -> 5); Safari 27 sums them
-    // (WebKit bug 313808) and is outvoted. WPT
-    // html/browsers/history/the-history-interface/traverse_the_history_2..5
-    // expect the browsers' result. For a child navigable's traversals the
-    // same browsers follow the queue (overlapping-navigations-and-traversals
-    // /cross-document-traversal-same-document-traversal.html: Chrome 2/2,
-    // Firefox 2/2), and so does Crane. The navigation API's traversals keep
-    // the queue too.
-    if (bc == top and crossDocumentDeltaPending(top)) return;
-    // Whether this one would be such an earlier traversal: its target, asked
-    // now, takes the traversable's document elsewhere. One out of range is
-    // appended all the same - the queued steps ask again when they run
-    // (step 4.4), and an earlier traversal may have made it valid - but does
-    // not count (tth4's -10, tth5's +10).
+    // Stated exceptions to the spec's queue (golden rule 2: Chrome 156 and
+    // Firefox 158 agree in every variant; Safari 27 coalesces everywhere,
+    // WebKit bug 313808, and is outvoted). "Traverse the history by a delta"
+    // step 4 appends every call, and the queue would apply each delta in turn
+    // once the one before had finished. The browsers, while an earlier delta
+    // traversal that takes a document elsewhere is pending (queued, or its
+    // population in flight):
+    // - of a TOP-LEVEL traversable: ignore further delta traversals - the
+    //   first call's target wins (lane nav2's probes
+    //   tmp/probes/nav2-tth-probe.html, tth2 -3,-2,+1 -> page 3 ... tth5, and
+    //   nav2-axes-probe.html a/b: back(),back() -> p2, p1#2, one load; WPT
+    //   html/browsers/history/the-history-interface/traverse_the_history_2..5);
+    // - of a CHILD navigable, made through its own History: coalesce - the
+    //   target is the pending target plus the new delta, range-checked from
+    //   the pending target (out of range: ignored), replacing the pending
+    //   traversal, so only the final target loads (nav2-axes-probe.html c-e:
+    //   p1 with one load, whether the parent or the frame calls and whether
+    //   the second step is cross- or same-document; WPT
+    //   overlapping-navigations-and-traversals/cross-document-traversal-
+    //   cross-document-traversal.html "-2 with only one load event" and
+    //   cross-document-traversal-same-document-traversal.html "coalesced",
+    //   both from WPT #36364). Chrome computes a renderer's offset from the
+    //   pending entry (NavigationControllerImpl::GetIndexForOffset), and the
+    //   new navigation replaces the pending one.
+    // The navigation API's traversals, same-document delta traversals and
+    // traversals of other navigables keep the queue. Integrator's rulings of
+    // 2026-10-27 and 2026-10-28.
+    if (pendingCrossDocumentDelta(top, if (bc == top) null else bc.id)) |pending| {
+        if (bc == top) return;
+        coalesceDelta(top, pending, delta_val);
+        return;
+    }
+    // Whether this one takes a document elsewhere, asked now. One out of
+    // range is appended all the same - the queued steps ask again when they
+    // run (step 4.4), and an earlier traversal may have made it valid - but
+    // it is no pending traversal for the rules above (tth4's -10, tth5's +10).
     const history = ensureEntries(bc) catch return;
-    const cross_document = if (bc == top) (if (history.stepByDelta(delta_val)) |target| changesDocument(top, history, target) else false) else false;
-    appendTraversal(internal, top, .{ .delta = delta_val }, false, null, cross_document);
+    const cross_document = if (history.stepByDelta(delta_val)) |target| changesDocument(top, history, target) else false;
+    appendTraversal(internal, top, .{ .delta = delta_val }, false, null, cross_document, bc.id);
+}
+
+/// The child navigable rule above: `pending`, a delta traversal of the same
+/// navigable that takes a document elsewhere, is replaced by one to its
+/// target plus `delta`. Queued, its delta grows; running - the current step
+/// already moved to its target (deviation, stated in runTraversal), its
+/// population in flight - it is finished now, and a traversal by `delta`
+/// from there is appended: it runs next, and its population supersedes the
+/// pending one's (HTMLIFrameElement's navigation for a traversal ends the
+/// ongoing one), so one document loads.
+fn coalesceDelta(top: *BrowsingContext, pending: *TraversalItem, delta: i32) void {
+    const history = top.jointHistory() catch return;
+    const queue = top.traversal_queue orelse return;
+    const running = if (queue.running) |item| item == &pending.item else false;
+    if (!running) {
+        const sum = pending.target.delta + delta;
+        if (history.stepByDelta(sum) == null) return;
+        pending.target = .{ .delta = sum };
+        return;
+    }
+    if (history.stepByDelta(delta) == null) return;
+    const navigables = top.navigables orelse return;
+    const allocator = pending.allocator;
+    const task = allocator.create(TraversalItem) catch return;
+    task.* = .{
+        .item = .{ .run = &TraversalItem.run, .destroy = &TraversalItem.destroy },
+        .navigables = navigables,
+        .top_id = top.id,
+        .target = .{ .delta = delta },
+        .allocator = allocator,
+        .resumed = false,
+        .cross_document_delta = true,
+        .delta_navigable = pending.delta_navigable,
+    };
+    // Ahead of anything queued after the pending one: it replaces it.
+    queue.items.insert(queue.allocator, 0, &task.item) catch {
+        allocator.destroy(task);
+        return;
+    };
+    task.item.token = queue.next_token;
+    queue.next_token += 1;
+    traversal_queue.TraversalQueue.completeById(navigables, top.id, pending.item.token);
 }
 
 /// HTML "reload" `bc`'s navigable: its current entry, repopulated - a
@@ -384,7 +437,7 @@ fn traverseWindowToStep(window: *runtime.Instance, step: u32) void {
     const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
     const history_instance = interfaces.Window.get_history(window) catch return;
     const internal = getInternal(history_instance) orelse return;
-    appendTraversal(internal, bc.getTop(), .{ .step = step }, false, initiatorOf(window, bc), false);
+    appendTraversal(internal, bc.getTop(), .{ .step = step }, false, initiatorOf(window, bc), false, 0);
 }
 
 /// dom.history_traversal: "resume applying the traverse history step" to
@@ -394,7 +447,7 @@ fn resumeTraversalOfWindow(window: *runtime.Instance, step: u32) void {
     const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
     const history_instance = interfaces.Window.get_history(window) catch return;
     const internal = getInternal(history_instance) orelse return;
-    appendTraversal(internal, bc.getTop(), .{ .step = step }, true, null, false);
+    appendTraversal(internal, bc.getTop(), .{ .step = step }, true, null, false, 0);
 }
 
 /// dom.history_traversal: the URL and history update steps for `window`'s
@@ -626,8 +679,10 @@ const TraversalItem = struct {
     initiator: ?Initiator = null,
     /// A delta traversal ("traverse the history by a delta") whose target
     /// step, when it was appended, took some navigable to another document:
-    /// the go() exception's earlier traversal (`crossDocumentDeltaPending`).
+    /// a pending traversal for the delta rules in `call_go`.
     cross_document_delta: bool = false,
+    /// A delta traversal: the navigable whose History asked for it.
+    delta_navigable: u64 = 0,
 
     fn run(item: *traversal_queue.Item) traversal_queue.Outcome {
         const self: *TraversalItem = @fieldParentPtr("item", item);
@@ -667,7 +722,7 @@ fn initiatorOf(window: ?*runtime.Instance, bc: *BrowsingContext) ?Initiator {
 /// to `target`. Out of memory, or with no queue to append to (a traversable
 /// on no Browser's list), nothing is appended - as a task that could not be
 /// queued.
-fn appendTraversal(internal: *InternalState, top: *BrowsingContext, target: Target, resumed: bool, initiator: ?Initiator, cross_document_delta: bool) void {
+fn appendTraversal(internal: *InternalState, top: *BrowsingContext, target: Target, resumed: bool, initiator: ?Initiator, cross_document_delta: bool, delta_navigable: u64) void {
     const navigables = top.navigables orelse return;
     const queue = top.traversalQueue(&scheduleTraversalService) catch return;
     const task = internal.allocator.create(TraversalItem) catch return;
@@ -680,27 +735,32 @@ fn appendTraversal(internal: *InternalState, top: *BrowsingContext, target: Targ
         .resumed = resumed,
         .initiator = initiator,
         .cross_document_delta = cross_document_delta,
+        .delta_navigable = delta_navigable,
     };
     _ = queue.append(&task.item);
 }
 
-/// Whether a delta traversal of `top` that takes some navigable to another
-/// document is queued or running (the go() exception in `call_go`).
-fn crossDocumentDeltaPending(top: *BrowsingContext) bool {
-    const queue = top.traversal_queue orelse return false;
-    if (queue.running) |item| {
-        if (isCrossDocumentDelta(item)) return true;
+/// The latest delta traversal of `top` that takes some navigable to another
+/// document and is queued or running - one asked for by the navigable
+/// `navigable`'s History when given, by any otherwise (the delta rules in
+/// `call_go`).
+fn pendingCrossDocumentDelta(top: *BrowsingContext, navigable: ?u64) ?*TraversalItem {
+    const queue = top.traversal_queue orelse return null;
+    var i = queue.items.items.len;
+    while (i > 0) {
+        i -= 1;
+        if (crossDocumentDelta(queue.items.items[i], navigable)) |pending| return pending;
     }
-    for (queue.items.items) |item| {
-        if (isCrossDocumentDelta(item)) return true;
-    }
-    return false;
+    if (queue.running) |item| return crossDocumentDelta(item, navigable);
+    return null;
 }
 
-fn isCrossDocumentDelta(item: *traversal_queue.Item) bool {
-    if (item.run != &TraversalItem.run) return false;
+fn crossDocumentDelta(item: *traversal_queue.Item, navigable: ?u64) ?*TraversalItem {
+    if (item.run != &TraversalItem.run) return null;
     const traversal: *TraversalItem = @fieldParentPtr("item", item);
-    return traversal.target == .delta and traversal.cross_document_delta;
+    if (traversal.target != .delta or !traversal.cross_document_delta) return null;
+    if (navigable) |id| if (traversal.delta_navigable != id) return null;
+    return traversal;
 }
 
 /// Whether applying `step` would take some navigable of `top`'s tree to

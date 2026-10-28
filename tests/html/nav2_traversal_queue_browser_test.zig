@@ -8,8 +8,11 @@
 //!   takes its document elsewhere is queued or running, history.go()/back()/
 //!   forward() on it is ignored; one out of range does not count. Chrome 156
 //!   and Firefox 158 land as these cases expect (WPT
-//!   traverse_the_history_2..5). A child navigable's traversals follow the
-//!   queue, each delta in turn.
+//!   traverse_the_history_2..5). A child navigable's coalesce instead: the
+//!   pending target plus the new delta, one load (the axes probe,
+//!   tmp/probes/nav2-axes-probe.html, Chrome = Firefox in all six variants;
+//!   in Crane the History's navigable decides, so its self- and
+//!   parent-called variants take one path).
 //! - Same-document delta traversals keep the spec's queue: each applies.
 //! - Liveness (condition 2): a frame its own unload handler removes during
 //!   its traversal does not hold the queue - the next traversal runs.
@@ -145,17 +148,78 @@ fn fromPagehide() !void {
     , "about:blank?3");
 }
 
-/// A child navigable follows the queue: from the frame's sixth entry,
-/// go(-3), go(-2), go(1) in one task apply in turn - ?3, then the srcdoc
-/// document, then ?2.
-fn childFollowsQueue() !void {
+/// A child navigable coalesces: from the frame's sixth entry, go(-3),
+/// go(-2), go(1) in one task make one traversal by -4, to ?2, with one load.
+fn childCoalesces() !void {
     const browser = try startBrowser();
     defer browser.deinit();
     const page = try sixEntries(browser);
     try page.runScript("for (const d of [-3, -2, 1]) frames[0].history.go(d);");
     try runUntil(browser, page, "String(frames[0].location.href === 'about:blank?2' && frames[0].document.readyState === 'complete')");
     try settle(browser, 300);
-    try expectEval(page, "frames[0].location.href", "about:blank?2");
+    try expectEval(page, "loads.join()", "about:blank?2");
+}
+
+/// lane nav2's axes probe (tmp/probes/nav2-axes-probe.html): three entries -
+/// ?1, then ?2 (`cross`) or ?1#2 (`crossSame`, a fragment step), then ?3 -
+/// and history.back(); history.back() in one task. `frame`: in an iframe,
+/// the parent calling the frame's history; else the top-level page itself.
+fn axes(frame: bool, cross_same: bool, expected: []const u8) !void {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    const page = browser.current_context orelse return error.NoPage;
+    const markup = if (frame) "<!doctype html><body><iframe srcdoc='<p>0</p>'></iframe></body>" else "<!doctype html><p>0</p>";
+    try page.loadHTML(markup, .{ .base_url = "http://example.test/top" });
+    const w = if (frame) "frames[0]" else "window";
+    var buffer: [256]u8 = undefined;
+    try runUntil(browser, page, try std.fmt.bufPrint(&buffer, "String(document.readyState === 'complete' && {s}.document.readyState === 'complete')", .{w}));
+    const steps = if (cross_same) [_][]const u8{ "about:blank?1", "about:blank?1#2", "about:blank?3" } else [_][]const u8{ "about:blank?1", "about:blank?2", "about:blank?3" };
+    for (steps) |url| {
+        var script: [128]u8 = undefined;
+        try page.runScript(try std.fmt.bufPrint(&script, "{s}.location.href = '{s}';", .{ w, url }));
+        try runUntil(browser, page, try std.fmt.bufPrint(&buffer, "String({s}.location.href === '{s}' && {s}.document.readyState === 'complete')", .{ w, url, w }));
+        try settle(browser, 20);
+    }
+    if (frame) try page.runScript("globalThis.loads = []; document.querySelector('iframe').onload = () => loads.push(frames[0].location.href);");
+    try page.runScript(try std.fmt.bufPrint(&buffer, "{s}.history.back(); {s}.history.back();", .{ w, w }));
+    try runUntil(browser, page, try std.fmt.bufPrint(&buffer, "String({s}.location.href === '{s}' && {s}.document.readyState === 'complete')", .{ w, expected, w }));
+    try settle(browser, 300);
+    try expectEval(page, try std.fmt.bufPrint(&buffer, "{s}.location.href", .{w}), expected);
+    // In a frame, only the final target loaded.
+    if (frame) try expectEval(page, "loads.join()", expected);
+}
+
+fn axesA() !void {
+    try axes(false, false, "about:blank?2");
+}
+
+fn axesB() !void {
+    try axes(false, true, "about:blank?1#2");
+}
+
+fn axesC() !void {
+    try axes(true, false, "about:blank?1");
+}
+
+fn axesD() !void {
+    try axes(true, true, "about:blank?1");
+}
+
+test "axes a: a top-level page's back(), back() across cross-document entries lands on the first target" {
+    try onFreshThread(axesA);
+}
+
+test "axes b: a top-level page's back(), back() with a fragment entry between lands on the first target" {
+    try onFreshThread(axesB);
+}
+
+test "axes c: a frame's back(), back() across cross-document entries coalesce: -2, one load" {
+    try onFreshThread(axesC);
+}
+
+test "axes d: a frame's back(), back() with a fragment entry between coalesce: -2, one load" {
+    try onFreshThread(axesD);
 }
 
 test "go(-3), go(-2), go(1) in one task: the first cross-document traversal wins (traverse_the_history_2)" {
@@ -178,8 +242,8 @@ test "a go() from the leaving page's pagehide is ignored while its traversal is 
     try onFreshThread(fromPagehide);
 }
 
-test "a child navigable's delta traversals follow the queue, each in turn" {
-    try onFreshThread(childFollowsQueue);
+test "a child navigable's delta traversals coalesce into one, with one load" {
+    try onFreshThread(childCoalesces);
 }
 
 fn sameDocumentDeltas() !void {
