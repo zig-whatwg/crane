@@ -726,8 +726,9 @@ fn changesDocument(top: *BrowsingContext, history: *joint_history.JointHistory, 
 fn scheduleTraversalService(navigables: *Navigables, traversable_id: u64) bool {
     const top = navigables.byId(traversable_id) orelse return false;
     const loop = serviceLoopOf(navigables, top) orelse return false;
-    const task = navigables.allocator.create(ServiceTask) catch return false;
-    task.* = .{ .navigables = navigables, .traversable_id = traversable_id };
+    const allocator = navigables.allocator;
+    const task = allocator.create(ServiceTask) catch return false;
+    task.* = .{ .navigables = navigables, .traversable_id = traversable_id, .allocator = allocator };
     loop.queueTask(.{ .callback = &ServiceTask.run, .context = task, .drop = &ServiceTask.drop });
     return true;
 }
@@ -754,18 +755,20 @@ fn loopOfContext(bc: *BrowsingContext) ?runtime.EventLoop {
 const ServiceTask = struct {
     navigables: *Navigables,
     traversable_id: u64,
+    /// Its own copy: a task dropped at teardown reads nothing else.
+    allocator: Allocator,
 
     fn run(context: ?*anyopaque) void {
         const self: *ServiceTask = @ptrCast(@alignCast(context orelse return));
         const navigables = self.navigables;
         const id = self.traversable_id;
-        navigables.allocator.destroy(self);
+        self.allocator.destroy(self);
         traversal_queue.TraversalQueue.service(navigables, id);
     }
 
     fn drop(context: ?*anyopaque) void {
         const self: *ServiceTask = @ptrCast(@alignCast(context orelse return));
-        self.navigables.allocator.destroy(self);
+        self.allocator.destroy(self);
     }
 };
 
