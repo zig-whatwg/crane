@@ -100,6 +100,54 @@ test "an external script's fetch and its document queue each hold the element co
     try onFreshThread(externalScriptCountsItsElement);
 }
 
+fn detailsToggleCountsItsElement() !void {
+    const page = try h.Page.open();
+    defer page.close();
+    try page.run(
+        \\globalThis.toggles = [];
+        \\globalThis.d = document.createElement('details');
+        \\d.ontoggle = e => toggles.push(e.oldState + '>' + e.newState);
+        \\0;
+    );
+    const d = try page.node("d");
+    try expectCount(2, d, "a closed details");
+    try page.run("d.open = true; 0;");
+    try expectCount(3, d, "its toggle task is queued: the task's TaskHold");
+    // Coalesced: the second toggle cancels the first task (its hold ends at
+    // once) and queues one from the first old state.
+    try page.run("d.open = false; d.open = true; 0;");
+    try expectCount(3, d, "one pending toggle task");
+    try runUntil(page, "toggles.length === 1");
+    try page.run("if (toggles[0] !== 'closed>open') throw new Error(toggles[0]); 0;");
+    try expectCount(2, d, "the task ran: its hold ended");
+}
+
+test "a details toggle task holds its element counted until it ran, and a coalesced one lets go at once" {
+    try onFreshThread(detailsToggleCountsItsElement);
+}
+
+fn domParserDetailsToggles() !void {
+    const page = try h.Page.open();
+    defer page.close();
+    // A document no browsing context shows: its elements' relevant global is
+    // the parser's Window, and HTML queues their element tasks given it
+    // (node_holds.ElementTask's queued_given_relevant_global).
+    try page.run(
+        \\globalThis.fired = 0;
+        \\globalThis.pd = new DOMParser().parseFromString('<details open>', 'text/html').querySelector('details');
+        \\pd.ontoggle = e => { if (e.target.open) fired += 1; };
+        \\0;
+    );
+    const d = try page.node("pd");
+    try expectCount(3, d, "parsed open: its toggle task is queued, holding it");
+    try runUntil(page, "fired === 1");
+    try expectCount(2, d, "the task ran in the Window's loop and let go");
+}
+
+test "a details a DOMParser document's parser opened gets its toggle, queued given its relevant global" {
+    try onFreshThread(domParserDetailsToggles);
+}
+
 fn styleSheetEventCountsItsElement() !void {
     const page = try h.Page.open();
     defer page.close();
@@ -129,10 +177,12 @@ fn queuedTasksAtThePagesEnd() !void {
         \\globalThis.img = new Image(); img.src = '
     ++ gif ++
         \\';
+        \\globalThis.d = document.createElement('details'); d.open = true;
         \\globalThis.s = document.createElement('script'); s.setAttribute('src', ''); document.body.appendChild(s);
         \\0;
     );
     try expectCount(3, try page.node("img"), "update pending");
+    try expectCount(3, try page.node("d"), "toggle pending");
     try expectCount(3, try page.node("s"), "error event pending");
     // The page ends with every task still queued: each lets go once (an
     // underflow is an error log, which fails the test).
