@@ -309,6 +309,31 @@ pub const JointHistory = struct {
     /// changing their entries, and their documents keep reading what they
     /// read before until their target document is made active.
     held: std.ArrayListUnmanaged(u64) = .empty,
+    /// The "apply the history step" that is running, from its step 8 to its
+    /// step 20 (`beginApply`, `endApply`): null when none is.
+    apply: ?Apply = null,
+
+    /// HTML "apply the history step" as the session history sees it while
+    /// one runs (lane nav2 C2). The traversable's current session history
+    /// step stays where it was until step 20; each changing navigable's
+    /// current session history entry is its target entry from step 8.2; and
+    /// what the documents read is computed given targetStep (steps 14.7,
+    /// 14.9 and 17), so a view written meanwhile - a changing navigable's at
+    /// its "update document for history step application", a non-changing
+    /// one's at step 18, a navigable made meanwhile - reads `target`.
+    pub const Apply = struct {
+        /// The queue item running it (traversal_queue Item.token).
+        token: u64,
+        /// Step 2's targetStep.
+        target: u32,
+        /// Step 8.2: "set navigable's current session history entry to
+        /// targetEntry" - entry ids, by navigable id.
+        current: std.AutoArrayHashMapUnmanaged(u64, u64) = .empty,
+
+        fn deinit(self: *Apply, allocator: Allocator) void {
+            self.current.deinit(allocator);
+        }
+    };
 
     /// A navigable's kept active entry, and the step it was kept at.
     const UpdateOnly = struct { entry: u64, step: u32 };
@@ -347,6 +372,7 @@ pub const JointHistory = struct {
         for (self.views.values()) |*view| view.deinit(self.allocator);
         self.views.deinit(self.allocator);
         self.held.deinit(self.allocator);
+        if (self.apply) |*apply| apply.deinit(self.allocator);
     }
 
     /// A change of the entries, the current step or a kept active entry
@@ -371,6 +397,86 @@ pub const JointHistory = struct {
         self.current_step = step;
     }
 
+    /// The step what the documents read is computed at: the running
+    /// apply's targetStep, else the current session history step (see
+    /// `Apply`).
+    pub fn viewStep(self: *const JointHistory) u32 {
+        if (self.apply) |apply| return apply.target;
+        return self.current_step;
+    }
+
+    /// "Apply the history step" step 8 begins for the queue item `token`,
+    /// whose targetStep is `target`. One runs at a time: the queue runs one
+    /// item at a time, and a commit made inside one settles it first
+    /// (`settleApply`).
+    pub fn beginApply(self: *JointHistory, token: u64, target: u32) void {
+        if (self.apply) |*running| running.deinit(self.allocator);
+        self.apply = .{ .token = token, .target = target };
+    }
+
+    /// Whether the apply of the queue item `token` is running (begun, not
+    /// ended or settled).
+    pub fn isApplying(self: *const JointHistory, token: u64) bool {
+        const apply = self.apply orelse return false;
+        return apply.token == token;
+    }
+
+    /// Step 8.2 for `navigable`: its current session history entry is the
+    /// entry `entry_id` until step 20. Out of memory, it is read from the
+    /// current step meanwhile.
+    pub fn setCurrentEntry(self: *JointHistory, navigable: u64, entry_id: u64) void {
+        const apply = if (self.apply) |*a| a else return;
+        apply.current.put(self.allocator, navigable, entry_id) catch {};
+    }
+
+    /// Step 20 for the apply of the queue item `token`: the current session
+    /// history step becomes its targetStep, and every navigable's current
+    /// entry is the one at that step again. Nothing when that apply is not
+    /// the running one (another item's, or settled).
+    pub fn endApply(self: *JointHistory, token: u64) void {
+        if (!self.isApplying(token)) return;
+        self.beginChange();
+        defer self.endChange();
+        var apply = self.apply.?;
+        self.apply = null;
+        self.current_step = apply.target;
+        apply.deinit(self.allocator);
+    }
+
+    /// Stated deviation, until E and F1 (integrator, 2026-10-28): HTML
+    /// queues "finalize a cross-document navigation" and a same-document
+    /// navigation's finalize steps on the traversal queue, so neither runs
+    /// inside an apply; Crane commits both inline. A commit made while an
+    /// apply runs settles it first - the step moves to its target (step 20
+    /// early, and the apply's own does nothing) and the views of the
+    /// navigables it does not change are released (their step 18 early) -
+    /// so the commit lands after the apply, as it would from the queue, and
+    /// the changing navigables' documents keep reading what they read until
+    /// their targets are active (lane nav2 C1's behaviour for this case;
+    /// tests/html/navigation/nav2_apply_history_step_test.zig pins it).
+    fn settleApply(self: *JointHistory) void {
+        var apply = self.apply orelse return;
+        self.apply = null;
+        self.current_step = apply.target;
+        var i: usize = 0;
+        while (i < self.held.items.len) {
+            if (apply.current.contains(self.held.items[i])) {
+                i += 1;
+            } else _ = self.held.swapRemove(i);
+        }
+        apply.deinit(self.allocator);
+    }
+
+    /// HTML "getting the used step" for `step`: the greatest used step at
+    /// or before it, or null when there is none.
+    pub fn usedStepAtOrBefore(self: *const JointHistory, step: u32) ?u32 {
+        var best: ?u32 = null;
+        for (self.entries.items) |entry| {
+            if (entry.step <= step and (best == null or entry.step > best.?)) best = entry.step;
+        }
+        return best;
+    }
+
     /// `navigable`'s entry at `step`: "get the target history entry" - the
     /// one with the greatest step less than or equal to `step` - or null when
     /// it has none there yet.
@@ -383,8 +489,15 @@ pub const JointHistory = struct {
         return best;
     }
 
-    /// `navigable`'s current session history entry.
+    /// `navigable`'s current session history entry: its target entry while
+    /// an apply that changes it runs (step 8.2), else its entry at the
+    /// current step.
     pub fn currentEntry(self: *JointHistory, navigable: u64) ?*Entry {
+        if (self.apply) |apply| {
+            if (apply.current.get(navigable)) |id| {
+                if (self.entryById(id)) |entry| return entry;
+            }
+        }
         return self.entryAt(navigable, self.current_step);
     }
 
@@ -394,7 +507,7 @@ pub const JointHistory = struct {
     /// navigation API's current entry is this one.
     pub fn activeEntry(self: *JointHistory, navigable: u64) ?*Entry {
         if (self.update_only.get(navigable)) |kept| {
-            if (kept.step == self.current_step) {
+            if (kept.step == self.viewStep()) {
                 if (self.entryById(kept.entry)) |entry| return entry;
             }
         }
@@ -409,12 +522,12 @@ pub const JointHistory = struct {
     /// (step 14.12.2), and its active session history entry stays
     /// `displayed`, the entry it was on, though the traversable's current
     /// step moved (step 20). Kept for this step, until a document is
-    /// committed to the navigable or it goes. Crane's traversal moves the
-    /// step before it fetches, so the result arrives here afterwards.
+    /// committed to the navigable or it goes. Kept at the step the apply
+    /// running goes to (`viewStep`): the population ends before its step 20.
     pub fn keepActiveEntry(self: *JointHistory, navigable: u64, displayed: u64) !void {
         self.beginChange();
         defer self.endChange();
-        try self.update_only.put(self.allocator, navigable, .{ .entry = displayed, .step = self.current_step });
+        try self.update_only.put(self.allocator, navigable, .{ .entry = displayed, .step = self.viewStep() });
     }
 
     /// Give `document` to every entry of `document_state` - a document the
@@ -457,7 +570,7 @@ pub const JointHistory = struct {
         defer self.endChange();
         const doc_state = self.next_document_state;
         self.next_document_state += 1;
-        try self.append(navigable, self.current_step, url, doc_state, document, .null, .undefined, origin, null, null);
+        try self.append(navigable, self.viewStep(), url, doc_state, document, .null, .undefined, origin, null, null);
     }
 
     /// HTML "create a new child navigable" step 12 for `navigable`, a child
@@ -470,7 +583,7 @@ pub const JointHistory = struct {
         if (self.hasNavigable(navigable)) return;
         self.beginChange();
         defer self.endChange();
-        var step = self.current_step;
+        var step = self.viewStep();
         if (self.currentEntry(parent)) |parent_entry| {
             step = parent_entry.step;
             for (self.entries.items) |entry| {
@@ -517,10 +630,11 @@ pub const JointHistory = struct {
     }
 
     /// "Clear the forward session history": every entry past the current
-    /// step goes.
+    /// step goes. A running apply is settled first (`settleApply`).
     pub fn clearForward(self: *JointHistory) void {
         self.beginChange();
         defer self.endChange();
+        self.settleApply();
         var i: usize = 0;
         while (i < self.entries.items.len) {
             if (self.entries.items[i].step > self.current_step) {
@@ -554,10 +668,12 @@ pub const JointHistory = struct {
         return .{ .id = id, .api_key = kept orelse self.randomUuid(), .api_id = self.randomUuid() };
     }
 
-    /// `commitDocument` with the entry `prepareDocument` reserved.
+    /// `commitDocument` with the entry `prepareDocument` reserved. A running
+    /// apply is settled first (`settleApply`).
     pub fn commitPreparedDocument(self: *JointHistory, navigable: u64, url: []const u8, document: ?*anyopaque, origin: []const u8, handling: HistoryHandling, prepared: Prepared) !void {
         self.beginChange();
         defer self.endChange();
+        self.settleApply();
         const doc_state = self.next_document_state;
         self.next_document_state += 1;
         try self.commit(navigable, url, doc_state, document, .null, .undefined, origin, handling, true, prepared);
@@ -630,10 +746,12 @@ pub const JointHistory = struct {
     /// origin - with classic history API `state`, pushed or replacing the
     /// current one (a replace keeps the navigation API key). Its navigation
     /// API state is `api_state`, or, when null, carried over from the
-    /// current entry (a fragment navigation's).
+    /// current entry (a fragment navigation's). A running apply is settled
+    /// first (`settleApply`).
     pub fn commitSameDocument(self: *JointHistory, navigable: u64, url: []const u8, state: SerializedState, handling: HistoryHandling, api_state: ?SerializedState) !void {
         self.beginChange();
         defer self.endChange();
+        self.settleApply();
         const current = self.currentEntry(navigable) orelse return error.NoCurrentEntry;
         // The document state is shared, so its resource is too.
         const resource: ?[]u8 = if (current.resource) |r| try self.allocator.dupe(u8, r) else null;
@@ -900,7 +1018,8 @@ pub const JointHistory = struct {
         for (steps.items) |step| {
             const at = self.entryAt(entry.navigable, step) orelse continue;
             if (at != entry) continue;
-            const distance = if (step > self.current_step) step - self.current_step else self.current_step - step;
+            const from = self.viewStep();
+            const distance = if (step > from) step - from else from - step;
             if (distance < best_distance) {
                 best = step;
                 best_distance = distance;
@@ -909,40 +1028,53 @@ pub const JointHistory = struct {
         return best orelse entry.step;
     }
 
-    /// "Get the history object length and index" for the current step:
-    /// (the number of used steps, the current step's index among them).
+    /// "Get the history object length and index" for the step the
+    /// documents read (`viewStep`): (the number of used steps, that step's
+    /// index among them).
     pub fn lengthAndIndex(self: *const JointHistory) LengthAndIndex {
         var steps: std.ArrayListUnmanaged(u32) = .empty;
         defer steps.deinit(self.allocator);
         self.usedSteps(self.allocator, &steps) catch return self.lengthAndIndexInPlace();
-        return lengthAndIndexIn(steps.items, self.current_step);
+        return lengthAndIndexIn(steps.items, self.viewStep());
     }
 
     /// `lengthAndIndex` with no allocation, for when there is no memory for
     /// the sorted steps: quadratic in the entries.
     fn lengthAndIndexInPlace(self: *const JointHistory) LengthAndIndex {
         const entries = self.entries.items;
+        const step = self.viewStep();
         var length: u32 = 0;
-        var below: u32 = 0;
-        var current_used = false;
+        var at_or_below: u32 = 0;
         for (entries, 0..) |entry, i| {
             const seen = for (entries[0..i]) |earlier| {
                 if (earlier.step == entry.step) break true;
             } else false;
             if (seen) continue;
             length += 1;
-            if (entry.step < self.current_step) below += 1;
-            if (entry.step == self.current_step) current_used = true;
+            if (entry.step <= step) at_or_below += 1;
         }
         if (length == 0) return .{ .length = 1, .index = 0 };
-        return .{ .length = length, .index = if (current_used) below else length - 1 };
+        return .{ .length = length, .index = if (at_or_below > 0) at_or_below - 1 else 0 };
     }
 
-    /// `lengthAndIndex` given the used steps, sorted and unique.
-    fn lengthAndIndexIn(steps: []const u32, current_step: u32) LengthAndIndex {
+    /// `lengthAndIndex` given the used steps, sorted and unique, at `step`
+    /// - taken as its used step ("getting the used step"): a destroyed
+    /// navigable can leave the current step unused until the queued update
+    /// for its destruction runs.
+    fn lengthAndIndexIn(steps: []const u32, step: u32) LengthAndIndex {
         if (steps.len == 0) return .{ .length = 1, .index = 0 };
-        const index = std.mem.indexOfScalar(u32, steps, current_step) orelse steps.len - 1;
-        return .{ .length = @intCast(steps.len), .index = @intCast(index) };
+        return .{ .length = @intCast(steps.len), .index = @intCast(usedIndexIn(steps, step)) };
+    }
+
+    /// The index among `steps` (sorted, unique, non-empty) of the used step
+    /// for `step`: the greatest at or before it, else the first.
+    fn usedIndexIn(steps: []const u32, step: u32) usize {
+        var index: usize = 0;
+        for (steps, 0..) |used, i| {
+            if (used > step) break;
+            index = i;
+        }
+        return index;
     }
 
     // =========================================================================
@@ -1008,6 +1140,15 @@ pub const JointHistory = struct {
         self.held.append(self.allocator, navigable) catch {};
     }
 
+    /// "Apply the history step" begins: every navigable's view is held, and
+    /// written again only where the spec writes it - a changing navigable's
+    /// at its "update document for history step application", the others'
+    /// at step 18 - or when the apply ends. Out of memory, a view is not
+    /// held.
+    pub fn holdAllViews(self: *JointHistory) void {
+        for (self.views.keys()) |navigable| self.holdView(navigable);
+    }
+
     /// `navigable`'s target entry's document is active: its view is written
     /// again, from the history as it is now.
     pub fn releaseView(self: *JointHistory, navigable: u64) void {
@@ -1057,7 +1198,8 @@ pub const JointHistory = struct {
         var steps: std.ArrayListUnmanaged(u32) = .empty;
         defer steps.deinit(allocator);
         try self.usedSteps(allocator, &steps);
-        const length_index = lengthAndIndexIn(steps.items, self.current_step);
+        const step = self.viewStep();
+        const length_index = lengthAndIndexIn(steps.items, step);
 
         // Each navigable's entries, by step - in list order among equal
         // steps, as `apiEntries` and `entryAt` have them (a stable sort).
@@ -1096,11 +1238,16 @@ pub const JointHistory = struct {
             // order among equal steps) at or before it.
             var current: ?*const Entry = null;
             if (self.update_only.get(navigable)) |kept| {
-                if (kept.step == self.current_step) current = self.entryById(kept.entry);
+                if (kept.step == step) current = self.entryById(kept.entry);
+            }
+            if (current == null) {
+                if (self.apply) |apply| {
+                    if (apply.current.get(navigable)) |id| current = self.entryById(id);
+                }
             }
             if (current == null) {
                 for (group) |position| {
-                    if (entries[position].step > self.current_step) break;
+                    if (entries[position].step > step) break;
                     current = &entries[position];
                 }
             }
@@ -1140,24 +1287,30 @@ pub const JointHistory = struct {
 
     /// "Traverse the history by a delta" step 4.1-4.4: the used step `delta`
     /// away from the current one, or null when there is none.
+    /// Counted from the step the documents read (`viewStep`), taken as its
+    /// used step.
     pub fn stepByDelta(self: *const JointHistory, delta: i64) ?u32 {
         var steps: std.ArrayListUnmanaged(u32) = .empty;
         defer steps.deinit(self.allocator);
         self.usedSteps(self.allocator, &steps) catch return null;
-        const current = std.mem.indexOfScalar(u32, steps.items, self.current_step) orelse return null;
+        if (steps.items.len == 0) return null;
+        const current = usedIndexIn(steps.items, self.viewStep());
         const target = @as(i64, @intCast(current)) + delta;
         if (target < 0 or target >= @as(i64, @intCast(steps.items.len))) return null;
         return steps.items[@intCast(target)];
     }
 
-    /// A navigable was destroyed: its entries go ("update for navigable
-    /// creation/destruction"), and the current step becomes the used step at
-    /// or before it ("get the used step").
+    /// A navigable was destroyed: its entries go - "destroy a child
+    /// navigable" step 7 removes its nested history - and so does its view.
+    /// The current step and the other documents' views are left to the
+    /// "update for navigable creation/destruction" its destruction queues
+    /// (step 9): that apply takes the used step at or before the current one
+    /// (`usedStepAtOrBefore`, "getting the used step") and writes the views.
+    /// Until then the step may be unused, and its readers take its used step.
     pub fn removeNavigable(self: *JointHistory, navigable: u64) void {
-        self.beginChange();
-        defer self.endChange();
         _ = self.update_only.remove(navigable);
         if (std.mem.indexOfScalar(u64, self.held.items, navigable)) |index| _ = self.held.swapRemove(index);
+        if (self.apply) |*apply| _ = apply.current.swapRemove(navigable);
         var i: usize = 0;
         while (i < self.entries.items.len) {
             if (self.entries.items[i].navigable == navigable) {
@@ -1165,15 +1318,10 @@ pub const JointHistory = struct {
                 removed.deinit(self.allocator);
             } else i += 1;
         }
-        var used: u32 = 0;
-        var found = false;
-        for (self.entries.items) |entry| {
-            if (entry.step <= self.current_step and (!found or entry.step > used)) {
-                used = entry.step;
-                found = true;
-            }
+        if (self.views.fetchSwapRemove(navigable)) |kv| {
+            var view = kv.value;
+            view.deinit(self.allocator);
         }
-        if (found) self.current_step = used;
     }
 
     /// A document was destroyed: entries that held it keep their URL, to be
