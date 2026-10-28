@@ -87,6 +87,15 @@ fn isDeclarationBlockRule(name: []const u8) bool {
     return false;
 }
 
+/// Fonts 4 §6.9: these names are declaration blocks only inside
+/// @font-feature-values. An unrelated @swash remains an unknown at-rule.
+fn isFontFeatureBlock(name: []const u8) bool {
+    for ([_][]const u8{ "annotation", "ornaments", "stylistic", "swash", "character-variant", "styleset", "historical-forms" }) |block| {
+        if (std.mem.eql(u8, name, block)) return true;
+    }
+    return false;
+}
+
 /// The at-rules whose block is a list of rules.
 fn isGroupRule(name: []const u8) bool {
     for ([_][]const u8{ "media", "supports", "layer", "container", "scope", "starting-style", "document", "-moz-document", "keyframes", "-webkit-keyframes" }) |group| {
@@ -247,6 +256,9 @@ const Parser = struct {
     tokens: Tokenizer,
     peeked: ?Token = null,
     property_descriptors: bool = false,
+    /// Fonts 4 §6.9: feature declaration names are case-sensitive.
+    /// Set only while consuming one child of @font-feature-values.
+    font_feature_names: bool = false,
     /// Whether a pending value cut off by the end of the input reads as its
     /// tokens there (substitution.closeAtEof): a style sheet's, not a
     /// declaration list's (parseDeclarationList). Other values always do.
@@ -294,7 +306,15 @@ const Parser = struct {
                 // <{-token>: consume a block; the rule ends.
                 .left_brace => {
                     _ = self.next();
-                    if (isGroupRule(name)) {
+                    if (self.font_feature_names) {
+                        if (isFontFeatureBlock(name)) {
+                            declarations = try self.consumeDeclarationList();
+                        } else try self.skipBlock(.right_brace);
+                    } else if (std.mem.eql(u8, name, "font-feature-values")) {
+                        const body = try self.consumeFontFeatureBody();
+                        declarations = body.declarations;
+                        children = body.children;
+                    } else if (isGroupRule(name)) {
                         children = try self.consumeRuleList();
                     } else if (isDeclarationBlockRule(name)) {
                         const previous = self.property_descriptors;
@@ -323,6 +343,61 @@ const Parser = struct {
             .has_block = has_block,
             .children = children,
         };
+    }
+
+    const FontFeatureBody = struct { declarations: []Declaration, children: []Rule };
+
+    /// Fonts 4 §6.9 / Syntax 3 "consume a block's contents": retain both
+    /// outer descriptors and nested feature blocks. Grammar validation stays
+    /// in the descriptor layer; no other at-rule gains a mixed body.
+    fn consumeFontFeatureBody(self: *Parser) Allocator.Error!FontFeatureBody {
+        var declarations: std.ArrayList(Declaration) = .empty;
+        errdefer {
+            for (declarations.items) |declaration| {
+                self.allocator.free(declaration.name);
+                self.allocator.free(declaration.value);
+            }
+            declarations.deinit(self.allocator);
+        }
+        var children: std.ArrayList(Rule) = .empty;
+        errdefer {
+            for (children.items) |*child| child.deinit(self.allocator);
+            children.deinit(self.allocator);
+        }
+        while (true) {
+            switch (self.peek().token_type) {
+                .whitespace, .semicolon => _ = self.next(),
+                .eof => break,
+                .right_brace => {
+                    _ = self.next();
+                    break;
+                },
+                .at_keyword => {
+                    const previous = self.font_feature_names;
+                    self.font_feature_names = true;
+                    defer self.font_feature_names = previous;
+                    var child = try self.consumeAtRule(true);
+                    errdefer child.deinit(self.allocator);
+                    try children.append(self.allocator, child);
+                },
+                else => {
+                    if (self.peek().token_type == .ident) {
+                        const mark = self.markStream();
+                        if (try self.consumeDeclaration()) |declaration| {
+                            errdefer self.allocator.free(declaration.name);
+                            errdefer self.allocator.free(declaration.value);
+                            try declarations.append(self.allocator, declaration);
+                            continue;
+                        }
+                        self.restoreStream(mark);
+                    }
+                    try self.skipNestedQualifiedRule();
+                },
+            }
+        }
+        const owned_declarations = try declarations.toOwnedSlice(self.allocator);
+        errdefer freeDeclarations(self.allocator, owned_declarations);
+        return .{ .declarations = owned_declarations, .children = try children.toOwnedSlice(self.allocator) };
     }
 
     /// A group rule's block, its `{` consumed: a list of rules, as the
@@ -584,7 +659,7 @@ const Parser = struct {
         // block-beside-other-tokens restriction (probe 1025l, Q16).
         const property_initial = self.property_descriptors and std.ascii.eqlIgnoreCase(name, "initial-value");
         if (!custom) {
-            _ = std.ascii.lowerString(name, name);
+            if (!self.font_feature_names) _ = std.ascii.lowerString(name, name);
             if (!property_initial and holdsBlockBesideOthers(list[i..end])) {
                 self.allocator.free(name);
                 return null;

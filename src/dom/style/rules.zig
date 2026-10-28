@@ -81,6 +81,7 @@ pub const Kind = enum {
     layer_statement,
     namespace,
     font_face,
+    font_feature_values,
     page,
     position_try,
     property,
@@ -95,6 +96,7 @@ pub const Kind = enum {
             .import => 3,
             .media => 4,
             .font_face => 5,
+            .font_feature_values => 14,
             .page => 6,
             .keyframes => 7,
             .keyframe => 8,
@@ -131,6 +133,12 @@ pub const Import = struct {
     child: ?*SheetRecord = null,
 };
 
+/// Q55: rare payloads do not enlarge every ordinary style rule.
+pub const FontFeaturePayload = struct {
+    descriptors: css.font_feature_values.Data,
+    objects: [6]ObjectLink = [1]ObjectLink{.{}} ** 6,
+};
+
 pub const Data = union(Kind) {
     style: struct {
         selectors: selector.SelectorList,
@@ -158,6 +166,7 @@ pub const Data = union(Kind) {
         uri: []u8,
     },
     font_face: @import("font_loading.zig").FontRule,
+    font_feature_values: *FontFeaturePayload,
     page: DeclarationBlock,
     position_try: DeclarationBlock,
     property: *css.property_registry.Registration,
@@ -209,6 +218,10 @@ pub const Rule = struct {
                 }
             },
             .font_face => |*font| font.deinit(),
+            .font_feature_values => |payload| {
+                payload.descriptors.deinit();
+                a.destroy(payload);
+            },
             .page => |*b| b.deinit(),
             .position_try => |*b| b.deinit(),
             .property => |registration| registration.unref(),
@@ -282,6 +295,11 @@ pub const Rule = struct {
     fn serializeInto(self: *Rule, allocator: Allocator, out: *std.ArrayList(u8)) Allocator.Error!void {
         switch (self.data) {
             .property => |registration| try registration.serializeRule(out, allocator),
+            .font_feature_values => |payload| {
+                const text = try payload.descriptors.cssText(allocator);
+                defer allocator.free(text);
+                try out.appendSlice(allocator, text);
+            },
             // "The result of performing serialize a group of selectors on
             // the rule's associated selectors, followed by the string " {"
             // ... decls ... " }"" (no nested rules here: stated).
@@ -628,6 +646,16 @@ pub fn build(options: BuildOptions, parsed: *const css.rules.Rule, position: Pos
         // make consumes the owned prelude, including allocation failure.
         const prelude = try css.serialize.serializeIdentifier(a, decoded);
         return make(a, prelude, .{ .position_try = declarations });
+    }
+    if (std.mem.eql(u8, name, "font-feature-values")) {
+        var native = try css.font_feature_values.fromParsed(a, parsed) orelse return null;
+        errdefer native.deinit();
+        const payload = try a.create(FontFeaturePayload);
+        errdefer a.destroy(payload);
+        payload.* = .{ .descriptors = native };
+        // The payload moves only when make succeeds. The general rule's
+        // prelude is empty: the parsed family already owns its spelling.
+        return make(a, try a.dupe(u8, ""), .{ .font_feature_values = payload });
     }
     if (std.mem.eql(u8, name, "font-face")) {
         if (!parsed.has_block) return null;
