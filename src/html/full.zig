@@ -332,3 +332,4 @@ test {
 }
 
 pub const popover = @import("popover.zig");
+pub const dialog = @import("dialog.zig");

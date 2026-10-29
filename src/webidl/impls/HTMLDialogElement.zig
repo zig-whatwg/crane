@@ -143,6 +143,35 @@ fn requestCloseDialog(subject: *Instance, return_value: webidl.Opt(runtime.DOMSt
     const window = close_watchers.relevantWindow(subject) orelse return;
     if (!close_watchers.isActive(window, .dialog, subject)) return;
     const internal = try internalState(subject);
+    // Request payloads have call scope, like WebKit's requestClose arguments.
+    // HTML request-to-close steps 5–8 leave canceled payloads stored, but
+    // browsers do not: wpt.fyi dialog-toggle-source.html's "open with button,
+    // close with light dismiss" passes in Chrome 154 and Firefox 157
+    // (aligned stable, revision cc74d2669f; Safari 27 has a driver failure).
+    // Save an outer request before a cancel listener reenters: the watcher
+    // ignores that inner request, so it must not replace the outer payload.
+    var subject_hold: dom.node_holds.TaskHold = .{};
+    subject_hold.take(subject);
+    defer subject_hold.release();
+    const allocator = internal.allocator;
+    const previous_enabled = internal.enable_close_watcher_for_request_close;
+    var previous_result = internal.request_close_return_value;
+    internal.request_close_return_value = null;
+    var previous_source: dom.node_holds.TaskHold = .{};
+    if (internal.request_close_source.get()) |element| previous_source.take(element);
+    defer previous_source.release();
+    defer {
+        if (subject_hold.get()) |live| {
+            if (live.getState(State).own._internal) |state| {
+                state.enable_close_watcher_for_request_close = previous_enabled;
+                state.setRequestCloseReturnValue(null);
+                state.request_close_return_value = previous_result;
+                previous_result = null;
+                state.setRequestCloseSource(previous_source.get());
+            }
+        }
+        if (previous_result) |*value| value.deinit(allocator);
+    }
     // 4. Set subject's enable close watcher for request close to true.
     internal.enable_close_watcher_for_request_close = true;
     // 5. Set subject's request close return value to returnValue.
@@ -152,8 +181,8 @@ fn requestCloseDialog(subject: *Instance, return_value: webidl.Opt(runtime.DOMSt
     // 7. Request to close subject's close watcher with false. Its cancel
     // action runs script; the watcher keeps subject meanwhile.
     _ = close_watchers.requestClose(window, .dialog, subject, false);
-    // 8. Set subject's enable close watcher for request close to false.
-    if (subject.getState(State).own._internal) |state| state.enable_close_watcher_for_request_close = false;
+    // 8. The defer ends this request's enable flag and payload; an outer
+    // request remains enabled until its own cancel/close action returns.
 }
 
 /// "Set the dialog close watcher" step 3's actions, given the dialog.
@@ -209,17 +238,22 @@ fn setCloseWatcher(dialog: *Instance) void {
 /// HTML "dialog setup steps" given `subject`.
 fn setupSteps(subject: *Instance) void {
     // 1-3. Asserts: open, connected, not in the open dialogs list.
-    // 4. Add subject to its node document's open dialogs list. The list
-    // serves only dialog light dismiss (4.11.5, closedby=any by pointer),
-    // which Crane does not run yet: no list is kept.
+    // 4. Add subject to its node document's open dialogs list.
+    if (dom.top_layer.ofElement(subject, true) catch null) |layer| {
+        if (layer.hasOpenDialog(subject)) return;
+        layer.addOpenDialog(subject) catch {};
+    }
     // 5. Set the dialog close watcher with subject.
+    // Registration is best effort on OOM; it must not suppress the watcher.
     setCloseWatcher(subject);
 }
 
 /// HTML "dialog cleanup steps" given `subject`.
 fn cleanupSteps(subject: *Instance) void {
-    // 1. Remove subject from its node document's open dialogs list (none
-    // is kept, see setupSteps).
+    // 1. Remove subject from its node document's open dialogs list. A close
+    // preserves the separate pointerdown target; light dismiss step 3 can
+    // preserve that target across a pointerup while every dialog is closed.
+    if (dom.top_layer.ofElement(subject, false) catch null) |layer| layer.removeOpenDialog(subject);
     // 2. If subject's close watcher is not null: destroy it, set it to null.
     const window = close_watchers.relevantWindow(subject) orelse return;
     close_watchers.destroy(window, .dialog, subject);
@@ -545,6 +579,9 @@ fn removingSteps(node: *dom.NodeBase, _: ?*dom.NodeBase) void {
     if (hasOpen(subject)) cleanupSteps(subject);
     // Steps 2–3 remove modal membership without closing or restoring focus.
     const layer = (dom.top_layer.ofElement(subject, false) catch null) orelse return;
+    // Q47 addendum: release the pending node even after an earlier close,
+    // but preserve the gesture mismatch with a non-owning removed marker.
+    layer.removeDialogPointerdownTarget(subject);
     if (layer.findModal(subject)) |entry| layer.remove(entry.id);
 }
 
