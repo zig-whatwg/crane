@@ -1019,3 +1019,6 @@ A lane brief now carries the lessons chosen for its batch.
 - [A merge that adapts one reader of a changed type must find them all](workflow-a-merge-that-adapts-one-reader-of-a-changed-type-must-find-them-all.md) - A failing test names one reader; a changed type has as many readers as the grep finds.
 - [Pseudo applicability probes need distinct controls](testing-pseudo-applicability-probes-need-distinct-controls.md) - A default-valued control cannot distinguish an applied declaration from a filtered one.
 - [Measure estimates for timing windows from complete pairs](workflow-measure-timing-window-estimates.md) - Include every expanded URL and both arms in a measured scheduling estimate.
+
+- [Event-order reductions must preserve the entry task](testing-event-order-reductions-must-preserve-the-entry-task.md) - A task-order reproducer must preserve the task that starts it, not only the code it runs.
+- [Pool Moves Use Both Hosts](workflow-pool-moves-use-both-hosts.md) - A timed-window check must cover both ends of a mirror transfer.
