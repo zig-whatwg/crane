@@ -97,7 +97,7 @@ fn cancellationAndTarget() !void {
         \\if (!inner.open || !outer.open) throw new Error('unrelated dialog closed');
         \\inner.append(form);
         \\form.submit();
-        \\if (inner.open || inner.returnValue !== 'accepted') throw new Error('submit without submitter');
+        \\if (inner.open || inner.returnValue !== '') throw new Error('submit without submitter must clear returnValue');
     );
 }
 
@@ -149,4 +149,48 @@ test "dialog form submission event sources are null and close is queued" {
 
 test "dialog submission result capture releases every allocation on failure" {
     try helpers.onFreshThread(captureAllocationFailures);
+}
+
+fn noSubmitterTrial(comptime operation: []const u8) !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(
+        \\for (const modal of [false, true]) {
+        \\  for (const seed of ['seed', undefined, '']) {
+        \\    const dialog = document.body.appendChild(document.createElement('dialog'));
+        \\    dialog.innerHTML = '<form method=dialog><button value=ignored>Submit</button></form>';
+        \\    const form = dialog.firstElementChild;
+        \\    dialog.returnValue = seed;
+        \\    if (modal) dialog.showModal(); else dialog.show();
+    ++ operation ++
+        \\    if (dialog.open) throw new Error('no-submitter submission left the dialog open');
+        \\    if (dialog.returnValue !== '') throw new Error('no-submitter submission preserved ' + JSON.stringify(dialog.returnValue));
+        \\    dialog.remove();
+        \\  }
+        \\}
+    );
+}
+
+fn submitWithoutSubmitter() !void {
+    try noSubmitterTrial("form.submit();\n");
+}
+
+fn requestSubmitWithoutSubmitter() !void {
+    try noSubmitterTrial("form.requestSubmit();\n");
+}
+
+fn requestSubmitNull() !void {
+    try noSubmitterTrial("form.requestSubmit(null);\n");
+}
+
+test "dialog form.submit without a submitter clears returnValue" {
+    try helpers.onFreshThread(submitWithoutSubmitter);
+}
+
+test "dialog requestSubmit without a submitter clears returnValue" {
+    try helpers.onFreshThread(requestSubmitWithoutSubmitter);
+}
+
+test "dialog requestSubmit null clears returnValue" {
+    try helpers.onFreshThread(requestSubmitNull);
 }

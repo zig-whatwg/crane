@@ -10,6 +10,13 @@ const close_watchers = @import("close_watchers.zig");
 /// Form submission step 11.3–5. The caller owns a passed value: closing the
 /// dialog dispatches beforetoggle, which can replace the submitter's attribute.
 pub fn submissionResult(allocator: std.mem.Allocator, submitter: *runtime.Instance) !webidl.Opt(runtime.DOMString) {
+    // Stated deviation from step 11.3: form-as-submitter submissions clear
+    // returnValue. Chrome 156, Firefox 158 and Safari 27 agree for submit(),
+    // requestSubmit() and requestSubmit(null), with every initial value.
+    // No newer spec is involved; PR #11280 changes only submit buttons.
+    // Probe: tmp/probes/q62/RESULT.md (2026-10-29); all three also pass
+    // dialog-form-submission.html's final no-submitter case on wpt.fyi.
+    if (submitter.stateAs(interfaces.HTMLFormElement.State) != null) return .passed(runtime.DOMString.initEmpty());
     if (form_associated.isInput(submitter)) {
         var buffer: [16]u8 = undefined;
         if (std.mem.eql(u8, form_associated.inputType(submitter, &buffer), "image")) {

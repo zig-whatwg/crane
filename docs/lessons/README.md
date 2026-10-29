@@ -1022,3 +1022,7 @@ A lane brief now carries the lessons chosen for its batch.
 
 - [Event-order reductions must preserve the entry task](testing-event-order-reductions-must-preserve-the-entry-task.md) - A task-order reproducer must preserve the task that starts it, not only the code it runs.
 - [Pool Moves Use Both Hosts](workflow-pool-moves-use-both-hosts.md) - A timed-window check must cover both ends of a mirror transfer.
+
+- [A File Pass Count Is Not a Browser Vote](testing-a-file-pass-count-is-not-a-browser-vote.md) - Resolve browser agreement by the exact subtest and failure message, not aggregate passing counts.
+- [Detached inputs need a verified transfer](workflow-detached-inputs-need-a-verified-transfer.md) - Transfer and verify scratch inputs explicitly, and stop before detached execution when preflight fails.
+- [A Worklist Filename Does Not Exempt Its Result](testing-a-worklist-filename-does-not-exempt-its-result.md) - Gate membership and explicit exemptions decide blocking, not a filename suffix.
