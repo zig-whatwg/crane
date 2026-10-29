@@ -196,6 +196,13 @@ pub const CSSUnitValue = struct {
         return try CSSUnitValueImpl.call_constructor(ctx, value, unit);
     }
 
+    /// WebIDL `double` and `float` constructor arguments (not `unrestricted`):
+    /// NaN and the infinities throw a TypeError for (ConstructorArgs variant -
+    /// "" for a sole constructor -, bit i = argument i).
+    pub const constructor_restricted_floats = .{
+        .{ "", 0b1 },
+    };
+
     pub fn get_value(instance: *runtime.Instance) anyerror!f64 {
         return try CSSUnitValueImpl.get_value(instance);
     }

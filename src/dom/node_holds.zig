@@ -572,7 +572,12 @@ pub const ElementTasks = struct {
 ///   * `fn steps(payload: *Payload, held: []const TaskHold) void`: the task's
 ///     steps, run as a task of the element's realm; `held[i].get()` reads a
 ///     member (null only after a teardown - the task then skips it);
-///   * optionally `fn deinit(payload: *Payload) void`: what the payload owns.
+///   * optionally `fn deinit(payload: *Payload) void`: what the payload owns;
+///   * optionally `queued_given_relevant_global = true`: the task is HTML's
+///     "queue an element task" read to the letter - a global task given the
+///     element's relevant global object, whose document is that global's
+///     associated Document (`taskDocument`). Without it the task's document
+///     is the element's node document.
 ///
 /// The record goes when the task ends: when it runs (after its steps: the
 /// running task is the holder while they run script), when it is cancelled
@@ -635,7 +640,7 @@ pub fn ElementTask(comptime Payload: type) type {
                 self.tasks = books;
                 self.linked = true;
             }
-            const document = interfaces.Node.get_ownerDocument(element) catch null;
+            const document = taskDocument(element);
             // The handoff: from here the loop owns the record, which may be
             // gone before queueTask returns.
             loop.queueTask(.{
@@ -646,6 +651,23 @@ pub fn ElementTask(comptime Payload: type) type {
                 .document_generation = if (document) |d| runtime.SlabAllocator.generationOf(d) else 0,
             });
             return true;
+        }
+
+        /// The document the loop runs the task for: HTML "queue an element
+        /// task ... given element" queues a global task given element's
+        /// relevant global object, whose document is the global's
+        /// associated Document when it is a Window - here the Window
+        /// itself, which the loop classifies through its navigable
+        /// (dom.document_activity), as html/media's tasks do. So an element
+        /// of a document no browsing context shows (DOMParser's) still has
+        /// its task run in its realm's Window. A Payload that does not opt
+        /// in keeps its node document.
+        fn taskDocument(element: *runtime.Instance) ?*runtime.Instance {
+            const relevant_global = comptime @hasDecl(Payload, "queued_given_relevant_global") and Payload.queued_given_relevant_global;
+            if (!relevant_global) return interfaces.Node.get_ownerDocument(element) catch null;
+            const realm = element.ctx.getRealm() orelse return null;
+            const global: *runtime.Instance = @ptrCast(@alignCast(realm.global_object orelse return null));
+            return if (std.mem.eql(u8, global.vtable.name, "Window")) global else null;
         }
 
         /// The task of this kind queued given `element` that has neither run

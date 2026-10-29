@@ -314,6 +314,13 @@ pub const DocumentParser = struct {
     /// no independent root, so an unreachable Document/parser graph collects.
     active_calls: usize = 0,
     active_document: ?engine.Owned = null,
+    /// The outermost active call's counted reference on the Document,
+    /// beside `active_document` (refcount step 5a: a step that can run
+    /// script holds what it works on, as WebKit's protect-across-a-call
+    /// does). The parser's own link to its Document stays raw: the Document
+    /// owns the parser (WebKit HTMLConstructionSite `WeakRef<Document>
+    /// m_document`).
+    active_document_ref: dom.node_holds.CountedRef = .{},
     /// A terminal failure (an allocation in node creation or a rescue):
     /// input is discarded and parsing never resumes.
     trace_failure: ?anyerror = null,
@@ -476,6 +483,12 @@ pub const DocumentParser = struct {
         self.tree_builder.setDomAdapterModeCallback(&parser_scripts.domAdapterOnModeSet);
         self.tree_builder.setDomAdapterPoppedCallback(&parser_scripts.domAdapterOnElementPopped);
         self.tree_builder.setDomAdapterFinishedCallback(&parser_scripts.domAdapterOnChildrenFinished);
+        // The builder's structures hold their DOM nodes counted (refcount
+        // step 5a; WebKit HTMLStackItem / HTMLConstructionSite m_form).
+        self.tree_builder.setDomAdapterStructureHoldCallbacks(
+            &parser_scripts.domAdapterOnStructureHold,
+            &parser_scripts.domAdapterOnStructureRelease,
+        );
         self.tree_builder.setDomAdapterDeclarativeShadowCallback(&parser_scripts.domAdapterAttachDeclarativeShadow);
         // "Insert a character" appends to the LIVE DOM's previous sibling.
         self.tree_builder.setDomAdapterTextBeforeCallback(&parser_scripts.domAdapterTextBefore);
@@ -554,6 +567,8 @@ pub const DocumentParser = struct {
             if (runtime.SlabAllocator.generationOf(instance) == node.dom_generation and engine.hasWrapper(instance))
                 self.adapter.removeOrphan(node);
         }
+        // Its counted references go with the mapping.
+        self.adapter.dropReferences(node);
         node.dom_revoked = true;
         self.trace_failure = err;
         self.input_stream.discardInput();
@@ -571,9 +586,16 @@ pub const DocumentParser = struct {
             parser.active_calls -= 1;
             const document = if (parser.active_calls == 0) parser.active_document else null;
             if (parser.active_calls == 0) parser.active_document = null;
+            var document_ref: dom.node_holds.CountedRef = .{};
+            const document_instance = parser.document;
+            if (parser.active_calls == 0) {
+                document_ref = parser.active_document_ref;
+                parser.active_document_ref = .{};
+            }
             // release may destroy parser. The extracted root stays alive
             // through adapter cleanup; nothing below dereferences parser.
             parser.release();
+            document_ref.release(document_instance);
             if (document) |held| held.release();
         }
     };
@@ -595,6 +617,7 @@ pub const DocumentParser = struct {
             if (!self.isCurrent()) return error.InvalidStateError;
             self.active_document = document;
         }
+        if (self.active_calls == 0) self.active_document_ref.take(self.document, dom.instance_bridge.getNodeBase(self.document));
         self.active_calls += 1;
         self.retain();
         return .{ .parser = self };
@@ -612,6 +635,9 @@ pub const DocumentParser = struct {
         self.releaseRescues();
         if (self.registry) |registry| registry.unregister(self);
         self.registry = null;
+        // The structures' counted references end while the adapter that
+        // took them is still here.
+        self.tree_builder.releaseStructureHolds();
         self.adapter.deinit();
         self.tree_builder.deinit();
         self.input_stream.deinit();

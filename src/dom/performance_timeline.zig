@@ -1678,6 +1678,16 @@ pub fn now(realm: runtime.Context) ?f64 {
     return impl.now(realm);
 }
 
+/// HR-Time's relative high resolution coarse time of `unsafe_ms` - a moment
+/// of the monotonic clock, in milliseconds - for `realm`'s global: the
+/// moment coarsened, less its Performance's time origin (the navigation's
+/// start, once a navigation set it), as performance.now() measures. Null
+/// without a Performance.
+pub fn relativeCoarseTime(realm: runtime.Context, unsafe_ms: f64) ?f64 {
+    const impl = hooks.performances orelse return null;
+    return impl.relative_coarse_time(realm, unsafe_ms);
+}
+
 /// A new PerformanceMeasure (see Measures.create).
 pub fn createMeasure(realm: runtime.Context, measure_name: []const u8, start_time: f64, end_time: f64, detail: ?runtime.JSValue) !*Instance {
     const impl = hooks.measures orelse return error.NotSupported;

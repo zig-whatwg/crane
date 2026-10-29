@@ -271,6 +271,11 @@ pub const Shape = struct {
     }
 
     pub fn serialize(self: *const Shape, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
+        return self.serializeWithDefaultBox(.border_box, out, allocator);
+    }
+
+    /// CSS Shapes 1 §6.1 uses margin-box; Masking §5.1 uses border-box.
+    pub fn serializeWithDefaultBox(self: *const Shape, default_box: GeometryBox, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
         switch (self.data) {
             .box => return out.appendSlice(allocator, self.box.?.name()),
             .rect => |r| {
@@ -339,7 +344,7 @@ pub const Shape = struct {
             .commands => |c| try c.serialize(out, allocator),
         }
         try out.append(allocator, ')');
-        if (self.box) |box| if (box != .border_box) {
+        if (self.box) |box| if (box != default_box) {
             try out.append(allocator, ' ');
             try out.appendSlice(allocator, box.name());
         };
@@ -497,6 +502,11 @@ pub fn parse(options: properties.ParseOptions, stream: *properties.Stream) Alloc
     if (box == null) box = GeometryBox.parse(stream);
     shape.box = box;
     return .{ .shape = shape };
+}
+
+/// The shared CSS Shapes §3 grammar, without the owning property's boxes.
+pub fn consumeBasicShape(options: properties.ParseOptions, stream: *properties.Stream) Allocator.Error!?*Shape {
+    return parseShape(options, stream);
 }
 
 fn parseShape(options: properties.ParseOptions, stream: *properties.Stream) Allocator.Error!?*Shape {

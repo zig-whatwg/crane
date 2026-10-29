@@ -62,6 +62,7 @@ test {
     _ = @import("Browser.zig");
     _ = @import("process.zig");
     _ = @import("Context.zig");
+    _ = @import("rendering.zig");
     _ = @import("navigation.zig");
     _ = @import("storage/Storage.zig");
 }

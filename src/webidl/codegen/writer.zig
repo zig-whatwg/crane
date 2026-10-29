@@ -3556,7 +3556,11 @@ fn writeLegacyNullToEmpty(
 /// each one at its own conversion step:
 ///
 ///     pub const restricted_floats = .{ .{ "set_max", 0b1 }, .{ "call_seek", 0b101 } };
-fn writeRestrictedFloats(
+///
+/// A namespace writes the same table for its operations (generator.zig,
+/// generateNamespace): the namespace binding reads it as an interface's
+/// operation binding does.
+pub fn writeRestrictedFloats(
     writer: anytype,
     own_attributes: []const types.Attribute,
     overload_ops: []const types.Operation,
@@ -3700,6 +3704,43 @@ pub fn writeConstructorIntegerConversions(writer: anytype, constructor: types.Co
     }
 }
 
+/// A constructor's restricted `double` and `float` arguments (WebIDL 3.2.5,
+/// 3.2.7: NaN and the infinities are a TypeError), for the binding's
+/// constructor path - keyed by the ConstructorArgs variant for an overloaded
+/// constructor ("" for a sole one), bit i for argument i, as
+/// `restricted_floats` is for an operation:
+///
+///     pub const constructor_restricted_floats = .{ .{ "", 0b1 } };
+///
+/// Every constructor of the interface is listed, each overload under its
+/// own variant (overload.generateConstructorVariantName). Without the table
+/// `new CSSUnitValue(NaN, "px")` made a value Chrome and Safari refuse.
+pub fn writeConstructorRestrictedFloats(
+    writer: anytype,
+    constructors: []const types.Constructor,
+    model: ?*const ir.IR,
+) !void {
+    const allocator = std.heap.page_allocator;
+    var any = false;
+    for (constructors) |ctor| {
+        if (argumentsRestrictedFloatMask(ctor.arguments, model) != 0) any = true;
+    }
+    if (!any) return;
+
+    try writer.writeAll("    /// WebIDL `double` and `float` constructor arguments (not `unrestricted`):\n");
+    try writer.writeAll("    /// NaN and the infinities throw a TypeError for (ConstructorArgs variant -\n");
+    try writer.writeAll("    /// \"\" for a sole constructor -, bit i = argument i).\n");
+    try writer.writeAll("    pub const constructor_restricted_floats = .{\n");
+    for (constructors) |ctor| {
+        const mask = argumentsRestrictedFloatMask(ctor.arguments, model);
+        if (mask == 0) continue;
+        const variant = if (constructors.len == 1) try allocator.dupe(u8, "") else try overload.generateConstructorVariantName(allocator, ctor);
+        defer allocator.free(variant);
+        try writer.print("        .{{ \"{s}\", 0b{b} }},\n", .{ variant, mask });
+    }
+    try writer.writeAll("    };\n\n");
+}
+
 /// A dictionary's [EnforceRange] and [Clamp] members, for the dictionary
 /// converter:
 ///
@@ -3734,8 +3775,13 @@ fn restrictedSetter(attr: types.Attribute, model: ?*const ir.IR) bool {
 }
 
 fn restrictedFloatMask(op: types.Operation, model: ?*const ir.IR) u32 {
+    return argumentsRestrictedFloatMask(op.arguments, model);
+}
+
+/// Bit i set when argument i converts as a restricted float (`isRestrictedFloat`).
+fn argumentsRestrictedFloatMask(arguments: []const types.Argument, model: ?*const ir.IR) u32 {
     var mask: u32 = 0;
-    for (op.arguments, 0..) |arg, i| {
+    for (arguments, 0..) |arg, i| {
         if (i >= 32) break;
         if (isRestrictedFloat(arg.idlType, model)) mask |= @as(u32, 1) << @intCast(i);
     }
@@ -3746,14 +3792,18 @@ fn restrictedFloatMask(op: types.Operation, model: ?*const ir.IR) u32 {
 /// conversion: the type itself, a typedef of one (DOMHighResTimeStamp), its
 /// nullable form, or a sequence or FrozenArray of one (each element is such a
 /// conversion). Not a union: a union's conversion picks the member type
-/// itself, and not a record.
+/// itself, and the union carries its own restricted arms
+/// (`restricted_arms`, written with the union: generator.zig's typedef
+/// writer). Not a record.
 pub fn isRestrictedFloat(idl_type: types.IDLType, model: ?*const ir.IR) bool {
     if (idl_type.unionTypes != null or idl_type.record != null) return false;
     if (std.mem.eql(u8, idl_type.type, "sequence") or std.mem.eql(u8, idl_type.type, "FrozenArray")) {
         const inner = idl_type.generic orelse return false;
         return isRestrictedFloatName(std.mem.trimEnd(u8, std.mem.trim(u8, inner, " \t"), "?"), model);
     }
-    if (idl_type.generic != null or idl_type.sequence != null) return false;
+    // The parser's other shape for a sequence: its element type.
+    if (idl_type.sequence) |element| return isRestrictedFloat(element.*, model);
+    if (idl_type.generic != null) return false;
     return isRestrictedFloatName(idl_type.type, model);
 }
 

@@ -24,6 +24,7 @@
 
 const std = @import("std");
 const NodeBase = @import("node_base.zig").NodeBase;
+const refcount_audit = @import("refcount_audit.zig");
 const runtime = @import("runtime");
 const tombstones = @import("webidl").utils.tombstones;
 
@@ -178,6 +179,15 @@ pub fn unregister(instance: *anyopaque) void {
 ///
 /// Returns null if the instance is not registered or has no NodeBase.
 pub fn getNodeBase(instance: *anyopaque) ?*NodeBase {
+    const found = getNodeBaseUnaudited(instance);
+    // Refcount step 6: a read of a node step 7 would have freed is reported.
+    if (refcount_audit.on()) if (found) |node_base| refcount_audit.checkRead(node_base, .get_node_base, @returnAddress());
+    return found;
+}
+
+/// `getNodeBase` without the zombie audit's report: the reference counting's
+/// own walks (dom.refcount, dom.refcount_audit).
+pub fn getNodeBaseUnaudited(instance: *anyopaque) ?*NodeBase {
     const bridge = bridgeOf(instance) orelse return null;
     bridge.lock();
     defer bridge.unlock();

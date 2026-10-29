@@ -299,6 +299,12 @@ pub const Gradient = struct {
                 if (self.computed) try color.serializeComputed(out, allocator) else try color.serializeSpecified(out, allocator);
             }
             for (stop.offsets, 0..) |number, j| if (number) |value| {
+                // Images 4 §3 / Q40: a two-position color stop serializes
+                // as two stops, through the same specified/computed color path.
+                if (j != 0) if (stop.color) |color| {
+                    try out.appendSlice(allocator, ", ");
+                    if (self.computed) try color.serializeComputed(out, allocator) else try color.serializeSpecified(out, allocator);
+                };
                 if (stop.color != null or j != 0) try out.append(allocator, ' ');
                 try value.serialize(out, allocator);
             };

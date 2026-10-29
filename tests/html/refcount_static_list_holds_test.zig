@@ -22,17 +22,17 @@ fn staticListCountsItsNodes() !void {
     );
     const a = try page.node("a");
     const b = try page.node("b");
-    try expectCount(2, a, "a, before any list");
+    try expectCount(1, a, "a, before any list");
     try page.run("globalThis.list1 = document.querySelectorAll('p'); globalThis.list2 = document.body.querySelectorAll('#b');");
-    try expectCount(3, a, "a, held by one list");
-    try expectCount(4, b, "b, held by two lists");
+    try expectCount(2, a, "a, held by one list");
+    try expectCount(3, b, "b, held by two lists");
     try page.run("list1 = null;");
     try page.collect();
-    try expectCount(2, a, "a, after its list was collected");
-    try expectCount(3, b, "b, held by the other list");
+    try expectCount(1, a, "a, after its list was collected");
+    try expectCount(2, b, "b, held by the other list");
     try page.run("list2 = null;");
     try page.collect();
-    try expectCount(2, b, "b, after both lists");
+    try expectCount(1, b, "b, after both lists");
 }
 
 test "a static NodeList takes one counted reference on each node it holds, and releases it" {

@@ -188,6 +188,9 @@ pub fn call_parseFromString(instance: *runtime.Instance, string: typedefs.Truste
             // Set the document's URL to the DOMParser's realm's document URL
             try document_internals.setURL(document, realm_url);
 
+            // Handed to script: its first wrapper takes its born reference
+            // (refcount7).
+            dom.refcount.offerDocument(document);
             return document;
         },
         ._text_xml_,
@@ -250,6 +253,8 @@ fn parseXml(
     if (try xml_parser.parseInto(document, string, .{ .scripting = false })) |failure| {
         try xml_parser.insertErrorMessageBlock(document, failure);
     }
+    // Handed to script: its first wrapper takes its born reference (refcount7).
+    dom.refcount.offerDocument(document);
     return document;
 }
 

@@ -134,6 +134,11 @@ const Load = struct {
     failed: bool = false,
     /// The event's task is queued.
     event_queued: bool = false,
+    /// The queued event task's counted reference on the element, beside the
+    /// element's shared keep, from queueing to the task's end: refcount step
+    /// 5d's GCReachableRef in shadow mode (WebKit keeps a node a queued task
+    /// will fire at with queueTaskKeepingThisNodeAlive).
+    event_ref: dom.node_holds.CountedRef = .{},
     /// The event is not to fire: the element fetches again (a link whose
     /// href changed), or is gone. The queued task only ends the load.
     superseded: bool = false,
@@ -857,6 +862,7 @@ fn complete(load: *Load) void {
     // inserted and dropped still fires. The hold is a flag, so it is taken
     // for an element's first waiting task and ended with its last.
     if (!otherEventQueued(load)) engine.keepPlatformObjectAlive(load.element);
+    load.event_ref.take(load.element, dom.instance_bridge.getNodeBase(load.element));
     load.event_queued = true;
     loop.queueTask(.{ .callback = &runEventTask, .context = load, .drop = &dropEventTask });
 }
@@ -892,6 +898,7 @@ fn dropEventTask(data: ?*anyopaque) void {
 fn finishEventTask(load: *Load, ending: Ending) void {
     load.event_queued = false;
     if (load.elementIsLive() and !otherEventQueued(load)) engine.releasePlatformObject(load.element);
+    load.event_ref.release(load.element);
     release(load, ending);
 }
 

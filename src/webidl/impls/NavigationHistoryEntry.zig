@@ -176,13 +176,10 @@ pub fn get_index(instance: *runtime.Instance) anyerror!i64 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const scope = scopeOf(internal) orelse return -1;
     if (navigation_entries.disabled(scope)) return -1;
-    var entries: std.ArrayListUnmanaged(*joint_history.Entry) = .empty;
-    defer entries.deinit(internal.allocator);
-    _ = scope.history.apiEntries(scope.navigable.id, internal.allocator, &entries) catch return -1;
-    for (entries.items, 0..) |entry, i| {
-        if (entry.id == internal.entry_id) return @intCast(i);
-    }
-    return -1;
+    // The navigation's entry list: the view the document last had written
+    // (joint_history View).
+    const index = scope.history.apiIndexOf(scope.navigable.id, internal.entry_id, internal.allocator) orelse return -1;
+    return @intCast(index);
 }
 
 /// "1. Let document be this's relevant global object's associated Document.

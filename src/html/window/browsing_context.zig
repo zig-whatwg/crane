@@ -42,6 +42,8 @@ pub const InstancePtr = *anyopaque;
 const security_policies = @import("../navigation/security_policies.zig");
 const joint_history = @import("../navigation/joint_history.zig");
 const JointHistory = joint_history.JointHistory;
+const traversal_queue = @import("../navigation/traversal_queue.zig");
+const TraversalQueue = traversal_queue.TraversalQueue;
 const CoopValue = security_policies.CoopValue;
 const CoepValue = security_policies.CoepValue;
 
@@ -110,20 +112,34 @@ pub const Navigables = struct {
         return null;
     }
 
-    /// A Window's teardown: no browsing context of this Browser - live or
-    /// retired - names `window` as its active window from here on, nor, when
-    /// it was that Window's, `document` as its active document (lane
-    /// winslot1, kind 1). A retired context - a removed iframe's, kept while
-    /// a Window might still read it (`discard`) - named its torn-down Window
+    /// A Window's teardown, which frees its associated `document` with it: no
+    /// browsing context of this Browser - live or retired (a retired context
+    /// stays on `live` until `freeRetired` frees it) - names `window` as its
+    /// active window from here on, and none names `document` as its active
+    /// document, WHATEVER its active window is (lane winslot1, kind 1; lane
+    /// nav2, item 0). A retired context - a removed iframe's, kept while a
+    /// Window might still read it (`discard`) - named its torn-down Window
     /// for the rest of the Browser's life, and every reader of it (user
     /// activation, the opener, frames[i], a frame's named property) read
-    /// whatever the slab put at that address next. Blink clears both sides
-    /// when a window leaves its frame (DOMWindow::DisconnectFromFrame).
+    /// whatever the slab put at that address next.
+    ///
+    /// The document is cleared on its own, not only where the window
+    /// matches: a context's two pointers diverge whenever a navigation gave
+    /// it a new Window before that Window's document became active - a
+    /// frame commit that failed after the realm swap (HTMLIFrameElement
+    /// replaceRealm, then no new document), or a kept page whose commit
+    /// failed. The context then named the old Window's freed document, and
+    /// the next navigation's abort read it (a Bus error hashing the freed
+    /// Document's interface name in template_registry, under
+    /// Document.abortDocument's retainValue; tests/html/nav2_failed_
+    /// navigation_active_document_test.zig). Blink has no second pointer to
+    /// forget: a frame's document IS its window's document
+    /// (Frame::GetDocument reads DomWindow()->document()), and it clears both
+    /// sides when a window leaves its frame (DOMWindow::DisconnectFromFrame).
     /// Compares only; reads neither.
     pub fn forgetWindow(self: *Navigables, window: InstancePtr, document: ?InstancePtr) void {
         for (self.live.items) |ctx| {
-            if (ctx.active_window != window) continue;
-            ctx.active_window = null;
+            if (ctx.active_window == window) ctx.active_window = null;
             if (document) |d| {
                 if (ctx.active_document == d) ctx.active_document = null;
             }
@@ -302,6 +318,10 @@ pub const BrowsingContext = struct {
     /// (see `jointHistory`). Owned.
     joint_history: ?*JointHistory = null,
 
+    /// The traversable navigable's session history traversal queue, on a
+    /// top-level context (see `traversalQueue`; HTML 7.4.1.3). Owned.
+    traversal_queue: ?*TraversalQueue = null,
+
     /// CSSOM View "set up browsing context features": the position and
     /// viewport size window.open() asked for this context's window - what
     /// every Window it shows reports as screenX/screenY and
@@ -471,6 +491,13 @@ pub const BrowsingContext = struct {
         self.active_document = null;
         self.active_window = null;
 
+        // Its traversal queue's items go first (each destroyed once; a waiter
+        // that completes later finds no queue): they may name its history.
+        if (self.traversal_queue) |queue| {
+            self.traversal_queue = null;
+            queue.deinit();
+            self.allocator.destroy(queue);
+        }
         if (self.joint_history) |history| {
             history.deinit();
             self.allocator.destroy(history);
@@ -479,6 +506,21 @@ pub const BrowsingContext = struct {
         if (self.navigables) |navigables| navigables.remove(self);
 
         self.allocator.destroy(self);
+    }
+
+    /// The session history traversal queue of this context's traversable
+    /// navigable - its top - made on first use with `schedule`, which queues
+    /// its service task on the traversable's event loop. Null when the
+    /// context is on no Browser's list (the service task finds a traversable
+    /// by ID there).
+    pub fn traversalQueue(self: *BrowsingContext, schedule: traversal_queue.Schedule) !*TraversalQueue {
+        const top = self.getTop();
+        if (top.traversal_queue) |queue| return queue;
+        const navigables = top.navigables orelse return error.NoNavigables;
+        const queue = try top.allocator.create(TraversalQueue);
+        queue.* = TraversalQueue.init(top.allocator, navigables, top.id, schedule);
+        top.traversal_queue = queue;
+        return queue;
     }
 
     /// The session history of this context's traversable navigable - its top

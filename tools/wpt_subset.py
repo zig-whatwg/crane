@@ -842,6 +842,12 @@ EXCLUDE = [
     # (#600). Dropped by the user 2026-10-27; revisit when that resolves.
     ('fetch/fetch-later/permissions-policy/deferred-fetch-supported-by-permissions-policy.window.js',
      'needs document.permissionsPolicy, which no browser ships (spec PRs #582/#600 pending)'),
+    # Needs the background-sync permission (test_driver.set_permission fails
+    # before fetchLater runs). Background Synchronization is a WICG draft that
+    # only Chrome ships - outside the 0.1 line (ratified spec + one shipping
+    # browser). Dropped by the user 2026-10-28 (Codex row 126 Q70).
+    ('fetch/fetch-later/send-on-deactivate-with-background-sync.https.window.js',
+     'needs Background Sync, a WICG draft only Chrome ships; dropped by the user 2026-10-28'),
     # Its abort-reason case waits for the service worker to see the page's
     # abort while its respondWith() promise is pending, and that promise
     # resolves only in the abort listener. ServiceWorker "Handle Fetch" waits

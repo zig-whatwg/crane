@@ -99,7 +99,7 @@ pub const Implementation = struct {
     navigate_by_target: *const fn (source_document: *runtime.Instance, request: Request) void,
     follow_hyperlink: *const fn (subject: *runtime.Instance, user_involvement: navigation_api.UserInvolvement) void,
     download_hyperlink: *const fn (subject: *runtime.Instance, user_involvement: navigation_api.UserInvolvement) void,
-    traverse_navigable: *const fn (browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64) void,
+    traverse_navigable: *const fn (browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64, waiter: ?TraversalWaiter) bool,
     find_by_name: *const fn (source_document: *runtime.Instance, name: []const u8) ?*runtime.Instance,
     /// The owner's integration for this browsing context, borrowed for the
     /// synchronous navigation step. Null when no integration owns it.
@@ -166,10 +166,26 @@ pub fn downloadHyperlink(subject: *runtime.Instance, user_involvement: navigatio
 /// the entry itself, for a reload - which the new document's
 /// navigation.activation names (HTML "apply the history step" 12.1's
 /// previousEntry).
-pub fn traverseNavigable(browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64) void {
-    const impl = implementation orelse return;
-    impl.traverse_navigable(browsing_context, entry_id, url, resource, from_entry_id);
+///
+/// `waiter`, when given, is the traversal item of the traversable's session
+/// history traversal queue that waits for this population ("apply the
+/// history step" 12.8): the navigation reports its end - committed,
+/// failed, aborted, superseded or its navigable gone - to
+/// `html_core.navigation.traversal_queue.TraversalQueue.populationEnded`,
+/// by these IDs. True when a population started that will report; false
+/// when none did (nothing to fetch, or a document shown again from the
+/// back/forward cache, which is done when this returns).
+pub fn traverseNavigable(browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64, waiter: ?TraversalWaiter) bool {
+    const impl = implementation orelse return false;
+    return impl.traverse_navigable(browsing_context, entry_id, url, resource, from_entry_id, waiter);
 }
+
+/// The traversal item a traversal's population reports its end to: its
+/// traversable's ID and the item's token (`traverseNavigable`).
+pub const TraversalWaiter = struct {
+    traversable_id: u64,
+    token: u64,
+};
 
 /// HTML "find a navigable by target name" among the frames of
 /// `current_document`'s page: the active window of the first whose target
@@ -230,9 +246,24 @@ pub fn createChildNavigable(container: *runtime.Instance, integration: *IFrameIn
     const impl = implementation orelse return false;
     if (!impl.create_browsing_context_and_document(container, integration)) return false;
     // Step 12: "Append the following session history traversal steps to
-    // traversable: ... Insert historyEntry into the navigable's session
-    // history entries".
-    if (integration.browsing_context) |bc| _ = bc.ensureHistoryEntries(&historyDocumentInfo) catch {};
+    // traversable: ... [insert historyEntry into the navigable's session
+    // history entries] ... Update for navigable creation/destruction given
+    // traversable."
+    //
+    // Deviation, stated (golden rule 2, integrator 2026-10-28): the entry is
+    // inserted now, not in the queued steps. It adds no used step - it sits
+    // at the step its parent's document began at - so no traversal's
+    // endpoint can see it, and the new document's History length is the
+    // joint one at once, as in Chrome 156, Firefox 158 and Safari 27, where
+    // the spec has it read 1 until the queued update's step 18 (the
+    // integrator's probe, lane nav2's worktree tmp/probes/nav3-creation-length/:
+    // a new iframe's history.length is the joint length synchronously, in a
+    // microtask and in a task, with and without src=about:blank). The update
+    // itself is queued as the spec says.
+    if (integration.browsing_context) |bc| {
+        _ = bc.ensureHistoryEntries(&historyDocumentInfo) catch {};
+        html_core.navigation.apply_history_step.updateForNavigableCreationDestruction(bc.getTop());
+    }
     return true;
 }
 
@@ -323,6 +354,18 @@ pub fn destroyChildNavigable(container: *runtime.Instance, integration: *IFrameI
             defer tree.deinit(std.heap.page_allocator);
             bc.collectDescendants(std.heap.page_allocator, &tree) catch {};
             for (tree.items) |gone| history.removeNavigable(gone.id);
+            // A traversal waiting on one of them no longer does (lane nav2
+            // C1: the queue's liveness when a navigable goes).
+            if (bc.navigables) |navigables| {
+                const top_id = bc.getTop().id;
+                for (tree.items) |gone| html_core.navigation.traversal_queue.TraversalQueue.navigableGone(navigables, top_id, gone.id);
+            }
+            // Step 9: "Append the following session history traversal steps
+            // to traversable: Update for navigable creation/destruction given
+            // traversable" - the used step and the current step (its step 20)
+            // move there. The other documents' History length is written at
+            // once (JointHistory.removeNavigable states why).
+            html_core.navigation.apply_history_step.updateForNavigableCreationDestruction(bc.getTop());
         }
     }
     // Step 5: "destroy a document and its descendants" given its active
@@ -719,7 +762,8 @@ test "without an installed implementation nothing navigates" {
     navigateByTarget(&element, .{ .target = "", .url = "about:blank" });
     followHyperlink(&element, .activation);
     downloadHyperlink(&element, .activation);
-    traverseNavigable(@ptrCast(&element), 1, "about:blank", null, 1);
+    // No population starts.
+    try std.testing.expect(!traverseNavigable(@ptrCast(&element), 1, "about:blank", null, 1, .{ .traversable_id = 1, .token = 1 }));
     try std.testing.expect(findByName(&element, "name") == null);
 }
 

@@ -239,6 +239,13 @@ pub const VTTCue = struct {
         return try VTTCueImpl.call_constructor(ctx, startTime, endTime, text);
     }
 
+    /// WebIDL `double` and `float` constructor arguments (not `unrestricted`):
+    /// NaN and the infinities throw a TypeError for (ConstructorArgs variant -
+    /// "" for a sole constructor -, bit i = argument i).
+    pub const constructor_restricted_floats = .{
+        .{ "", 0b1 },
+    };
+
     pub fn get_region(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try VTTCueImpl.get_region(instance);
     }

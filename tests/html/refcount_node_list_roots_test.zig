@@ -23,14 +23,14 @@ fn nodeListsCountTheirRoots() !void {
     );
     const doc = try page.node("doc");
     const owner = try page.node("owner");
-    try expectCount(2, doc, "the document, before any list");
+    try expectCount(1, doc, "the document, before any list");
     try page.run("globalThis.named = doc.getElementsByName('n');");
-    try expectCount(3, doc, "the root of a getElementsByName list");
+    try expectCount(2, doc, "the root of a getElementsByName list");
     try page.run("named = null;");
     try page.collect();
-    try expectCount(2, doc, "the document, after its list was collected");
+    try expectCount(1, doc, "the document, after its list was collected");
     try page.run("owner.childNodes; owner.childNodes;");
-    try expectCount(3, owner, "the owner of its childNodes, read twice ([SameObject])");
+    try expectCount(2, owner, "the owner of its childNodes, read twice ([SameObject])");
 }
 
 test "a live NodeList takes one counted reference on its root, and releases it" {
@@ -58,18 +58,18 @@ fn childNodesCacheLetsAFreedListGo() !void {
     const interfaces = @import("interfaces");
     const list = try interfaces.Node.get_childNodes(parent);
     try testing.expectEqual(list, try interfaces.Node.get_childNodes(parent));
-    try expectCount(3, base, "the owner of a childNodes list");
+    try expectCount(2, base, "the owner of a childNodes list");
     const generation = runtime.SlabAllocator.generationOf(list);
     engine.forgetTracedChild(parent, .{ .name = "SameObject:childNodes" });
     try page.collect();
     try testing.expect(runtime.SlabAllocator.generationOf(list) != generation);
-    try expectCount(2, base, "the owner, after its list was freed");
+    try expectCount(1, base, "the owner, after its list was freed");
 
     // The owner's caches let the freed list go: a new one answers.
     const again = try interfaces.Node.get_childNodes(parent);
     try testing.expect(runtime.SlabAllocator.generationOf(again) != runtime.SlabAllocator.dead_generation);
     try testing.expectEqual(@as(u32, 2), try interfaces.NodeList.get_length(again));
-    try expectCount(3, base, "the owner of the new list");
+    try expectCount(2, base, "the owner of the new list");
 }
 
 test "a node's childNodes caches let a freed list go" {

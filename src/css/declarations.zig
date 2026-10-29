@@ -608,6 +608,14 @@ pub const DeclarationBlock = struct {
                     // "If property maps to one or more shorthand properties,
                     // let shorthands be an array of those shorthand
                     // properties, in preferred order."
+                    // Q16: this alias alone keeps its declaring name in
+                    // pending cssText, while item() stays canonical.
+                    if (d.longhand == .perspective and d.value == .value and d.value.value == .pending) {
+                        if (d.value.value.pending.property) |declared| {
+                            if (declared == .shorthand and declared.shorthand == ._webkit_perspective and
+                                try self.serializeAsShorthand(._webkit_perspective, done, out, &first)) continue;
+                        }
+                    }
                     var wrote_shorthand = false;
                     for (preferred_shorthands) |s| {
                         if (!containsLonghand(s.longhands(), d.longhand)) continue;
@@ -721,12 +729,12 @@ fn containsLonghand(ls: []const Longhand, l: Longhand) bool {
 const preferred_shorthands = blk: {
     @setEvalBranchQuota(100_000);
     const fields = @typeInfo(Shorthand).@"enum".fields;
-    var out: [fields.len - 2]Shorthand = undefined;
+    var out: [fields.len - 4]Shorthand = undefined;
     var n: usize = 0;
     for (fields) |f| {
         const s: Shorthand = @enumFromInt(f.value);
         // Legacy one-member aliases are emitted with their canonical longhand.
-        if (s == .all or s == ._webkit_text_orientation) continue;
+        if (s == .all or s == ._webkit_text_orientation or s == ._webkit_transform or s == ._webkit_perspective) continue;
         out[n] = s;
         n += 1;
     }
@@ -752,6 +760,7 @@ fn logicalGroup(l: Longhand) ?properties.Logical.Group {
         .width, .height => return .size,
         .min_width, .min_height => return .min_size,
         .max_width, .max_height => return .max_size,
+        .overflow_x, .overflow_y => return .overflow,
         else => {},
     }
     const sides = [_]PhysicalSides{
@@ -761,6 +770,8 @@ fn logicalGroup(l: Longhand) ?properties.Logical.Group {
         .{ .group = .border_width, .ls = .{ .border_top_width, .border_right_width, .border_bottom_width, .border_left_width } },
         .{ .group = .border_style, .ls = .{ .border_top_style, .border_right_style, .border_bottom_style, .border_left_style } },
         .{ .group = .border_color, .ls = .{ .border_top_color, .border_right_color, .border_bottom_color, .border_left_color } },
+        .{ .group = .scroll_margin, .ls = .{ .scroll_margin_top, .scroll_margin_right, .scroll_margin_bottom, .scroll_margin_left } },
+        .{ .group = .scroll_padding, .ls = .{ .scroll_padding_top, .scroll_padding_right, .scroll_padding_bottom, .scroll_padding_left } },
     };
     for (sides) |g| for (g.ls) |x| if (x == l) return g.group;
     return null;

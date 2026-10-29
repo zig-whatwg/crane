@@ -6313,6 +6313,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     html_core_mod.addImport("eventsource", eventsource_mod);
     html_core_mod.addImport("platform", platform_mod);
     html_core_mod.addImport("fetch", fetch_mod);
+    html_core_mod.addImport("csp", csp_mod);
     html_core_mod.addImport("storage", storage_mod); // For web_storage.zig Storage backend
     html_core_mod.addImport("encoding", encoding_mod); // For iframe document loading encoding detection
     // HTML "determining the character encoding": the transport layer's charset
@@ -6518,6 +6519,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     });
     intl_mod.addImport("infra", infra_mod);
     intl_mod.addImport("host", host_mod);
+    html_mod.addImport("intl", intl_mod);
 
     // V8 module needs intl for pure Zig Intl.DateTimeFormat implementation
     v8_mod.addImport("intl", intl_mod);
