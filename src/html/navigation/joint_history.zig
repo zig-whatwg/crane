@@ -1302,12 +1302,28 @@ pub const JointHistory = struct {
 
     /// A navigable was destroyed: its entries go - "destroy a child
     /// navigable" step 7 removes its nested history - and so does its view.
-    /// The current step and the other documents' views are left to the
-    /// "update for navigable creation/destruction" its destruction queues
-    /// (step 9): that apply takes the used step at or before the current one
-    /// (`usedStepAtOrBefore`, "getting the used step") and writes the views.
-    /// Until then the step may be unused, and its readers take its used step.
+    /// The current step is left to the "update for navigable
+    /// creation/destruction" its destruction queues (step 9), which takes the
+    /// used step at or before it (`usedStepAtOrBefore`, "getting the used
+    /// step"); until then the step may be unused, and its readers take its
+    /// used step.
+    ///
+    /// Deviation, stated (golden rule 2; integrator's ruling of 2026-10-28):
+    /// the other documents' views - their History length - are written now,
+    /// not at that update's step 18. The browsers split three ways: Firefox
+    /// 158 removes the entries at once, which is what WPT expects
+    /// (discard_iframe_history_3 and _4, Firefox 1/1, read history.length
+    /// right after removeChild; initial-empty-document/iframe-nosrc and
+    /// iframe-src-204 read it right after the previous case's frame was
+    /// removed); Chrome 156 and Safari 27 keep the entries (0/1 at wpt.fyi
+    /// ffc4686d11); the spec writes the length at the queued update's step 18.
+    /// Crane keeps main's existing behaviour, because both the literal spec
+    /// timing and the Chrome/Safari majority would lose 8 PASS names (lane
+    /// nav2 C2's full A/B). Open question for the user (feature queue). A held
+    /// view (an apply running) stays held.
     pub fn removeNavigable(self: *JointHistory, navigable: u64) void {
+        self.beginChange();
+        defer self.endChange();
         _ = self.update_only.remove(navigable);
         if (std.mem.indexOfScalar(u64, self.held.items, navigable)) |index| _ = self.held.swapRemove(index);
         if (self.apply) |*apply| _ = apply.current.swapRemove(navigable);

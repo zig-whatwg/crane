@@ -11,9 +11,11 @@
 //! - an update-only change (a population that made no document) keeps the
 //!   displayed entry at the target step;
 //! - a destroyed navigable's entries go at once ("destroy a child navigable"
-//!   step 7), and the step and the other documents' views move only with the
-//!   queued "update for navigable creation/destruction" ("getting the used
-//!   step");
+//!   step 7), and so do the other documents' History lengths - main's
+//!   behaviour, a stated deviation from the queued update's step 18 (see
+//!   JointHistory.removeNavigable: the browsers split three ways) -
+//!   while the step moves only with the queued "update for navigable
+//!   creation/destruction" ("getting the used step");
 //! - a commit made inline while an apply runs settles the apply first - the
 //!   stated deviation until E and F1 make those commits queue items (the
 //!   test that pins it says what flips it).
@@ -119,7 +121,7 @@ test "an update-only change during an apply keeps the displayed entry at the tar
     try testing.expectEqual(f0, h.currentEntry(frame).?.id);
 }
 
-test "a destroyed navigable's entries go at once; the step and the views move with the queued update" {
+test "a destroyed navigable's entries and the other documents' lengths go at once; the step moves with the queued update" {
     var h = joint.JointHistory.init(testing.allocator);
     defer h.deinit();
     try twoFrames(&h);
@@ -130,9 +132,12 @@ test "a destroyed navigable's entries go at once; the step and the views move wi
     // Step 7: its entries are gone...
     try testing.expect(!h.hasNavigable(frame));
     try testing.expect(!h.views.contains(frame));
-    // ...and the step stays until the update: no longer a used step.
+    // ...the other documents' History lengths with them (stated deviation,
+    // see removeNavigable), and the step stays until the update: no longer a
+    // used step.
     try testing.expectEqual(@as(u32, 1), h.current_step);
-    try testing.expectEqual(@as(u32, 2), h.historyView(top).length);
+    try testing.expectEqual(@as(u32, 1), h.historyView(top).length);
+    try testing.expectEqual(@as(u32, 0), h.historyView(top).index);
     // "Getting the used step": the greatest used step at or before it.
     try testing.expectEqual(@as(?u32, 0), h.usedStepAtOrBefore(h.current_step));
     // Readers of the step treat it as that used step meanwhile.

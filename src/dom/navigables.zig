@@ -362,9 +362,9 @@ pub fn destroyChildNavigable(container: *runtime.Instance, integration: *IFrameI
             }
             // Step 9: "Append the following session history traversal steps
             // to traversable: Update for navigable creation/destruction given
-            // traversable" - the used step, the documents' History length and
-            // index (its step 18) and the current step (its step 20) move
-            // there, not now.
+            // traversable" - the used step and the current step (its step 20)
+            // move there. The other documents' History length is written at
+            // once (JointHistory.removeNavigable states why).
             html_core.navigation.apply_history_step.updateForNavigableCreationDestruction(bc.getTop());
         }
     }

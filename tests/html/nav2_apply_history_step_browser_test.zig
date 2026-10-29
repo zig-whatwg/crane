@@ -14,8 +14,11 @@
 //!   traversal went to. A top-level page's history.go(0) follows the stated
 //!   exceptions (integrator's ruling from lane nav2's probe): ignored while a
 //!   cross-document delta traversal is pending, and cancelled by a later one.
-//! - "Destroy a child navigable" leaves the other documents' History length
-//!   to its queued "update for navigable creation/destruction" (step 18).
+//! - "Destroy a child navigable": the other documents' History length drops at
+//!   once - main's behaviour, a stated deviation from its queued update's step
+//!   18 (JointHistory.removeNavigable: the browsers split three ways, and both
+//!   the spec's timing and the Chrome/Safari majority would lose 8 PASS
+//!   names).
 //! - Liveness (integrator's condition 2): a navigable removed by its own
 //!   traverse navigate handler, or before its step-18 task runs, does not
 //!   hold the queue; a Browser that ends with an apply's tasks queued frees
@@ -228,14 +231,16 @@ fn destructionUpdatesLengthLater() !void {
         \\frames[0].history.pushState(null, '', 'about:srcdoc#2');
     );
     try expectEval(page, "String(history.length)", "3");
-    // "Destroy a child navigable": its entries go at once, and the parent's
-    // History length moves with the queued update's step 18.
+    // "Destroy a child navigable": its entries go at once, and so does the
+    // parent's History length (stated deviation, see removeNavigable) - the
+    // queued update changes it no further.
     try page.runScript("document.querySelector('iframe').remove(); globalThis.at_once = history.length;");
-    try expectEval(page, "String(at_once)", "3");
-    try runUntil(browser, page, "String(history.length === 1)");
+    try expectEval(page, "String(at_once)", "1");
+    try settle(browser, 100);
+    try expectEval(page, "String(history.length)", "1");
 }
 
-test "a destroyed frame's entries leave the parent's history.length at its queued update, not at once" {
+test "a destroyed frame's entries leave the parent's history.length at once (main's behaviour, a stated deviation)" {
     try onFreshThread(destructionUpdatesLengthLater);
 }
 

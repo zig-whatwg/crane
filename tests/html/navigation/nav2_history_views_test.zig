@@ -5,9 +5,9 @@
 //! read of the entries (lengthAndIndex, apiEntries, activeEntry). The spec's
 //! moments replace that writer one by one; until then a view that differs
 //! from the live read is a regression of what script sees. Since C2 a
-//! navigable's destruction leaves the step and the other views to the
-//! "update for navigable creation/destruction" it queues (`updateAfterRemoval`
-//! here runs it), and an apply holds every view until the spec writes it
+//! navigable's destruction leaves the current step to the "update for
+//! navigable creation/destruction" it queues (`updateAfterRemoval` here runs
+//! it), and an apply holds every view until the spec writes it
 //! (tests/html/navigation/nav2_apply_history_step_test.zig).
 
 const std = @import("std");
