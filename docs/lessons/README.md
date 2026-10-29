@@ -383,10 +383,15 @@ A lane brief now carries the lessons chosen for its batch.
 - [A queued session history update has two kinds of reader](architecture-a-queued-history-update-has-two-readers.md) - Before moving a spec step behind a queue, list who reads its effect. Script's views follow the browsers, which show the update at once; only the readers the spec's ordering exists for - here the traversal endpoints - wait for the queue.
 
 ### Spec Compliance
+- [Serialization arithmetic can overflow finite inputs](spec-compliance-serialization-arithmetic-can-overflow-finite-inputs.md) - Check coordinate sums where they happen and retain the whole original value when the ruled fallback requires it.
 - [Sizes validates math before CSS clamping](spec-compliance-sizes-validates-math-before-css-clamping.md) - **Preserve only the diagnostic a consumer needs before shared simplification erases it; keep the common arithmetic unchanged.**
 - [Picture moves update both parents](spec-compliance-picture-moves-update-both-parents.md) - **A state-preserving move still changes the structural inputs to source selection. Preserve the object; recompute the affected image selection.**
 - [Deferred quota counts the constructor's referrer](spec-compliance-deferred-quota-counts-the-constructor-referrer.md) - **A quota checked before preparation must count the representation present at that point, rather than a later network representation.**
+- [A legacy value alias can retain its specified spelling](spec-compliance-a-legacy-value-alias-can-retain-its-specified-spelling.md) - Probe specified and computed aliases separately; normalize at the observed boundary.
+- [A shorthand spelling must reproduce its constituents](spec-compliance-a-shorthand-spelling-must-reproduce-its-constituents.md) - Repair parsing and serialization as a pair, retaining initial tuples and prior passing behavior.
 
+- [Register geometric grammars in the unavailable-input gate](spec-compliance-register-geometric-grammars-in-unavailable-input-gate.md) - Preserve unknown geometric lengths through candidate selection while retaining scalar fallback.
+- [Resolve automatic minimums without changing computed storage](spec-compliance-resolve-automatic-minimums-without-changing-computed-storage.md) - Resolve box-dependent CSSOM values at serialization while preserving the stored computed value.
 - [A new typed case must preserve legacy parser fallbacks](spec-compliance-a-new-typed-case-must-preserve-legacy-parser-fallbacks.md) - Share the new alternative without replacing the caller's existing recovery.
 - [Check source when cached Markdown drops grammar](spec-compliance-check-source-when-cached-markdown-drops-grammar.md) - Resolve missing punctuation in the original specification source before interpreting the converted grammar.
 - [Environment defaults distinguish absence from zero](spec-compliance-environment-defaults-distinguish-absence-from-zero.md) - Probe availability, parsing and value separately; zero and undefined are different environment answers.
@@ -636,6 +641,10 @@ A lane brief now carries the lessons chosen for its batch.
 - [Shadow focus sorts each navigation scope](spec-compliance-shadow-focus-sorts-each-navigation-scope.md) - Sort before flattening; preserve radio-group tree boundaries.
 - [Word boundaries and movement policy are separate](spec-compliance-word-segmentation-and-movement-policy-are-separate.md) - Pin segmentation, movement convention and key bindings separately.
 
+- [Equivalent matrix formulas differ after overflow](spec-compliance-transform-composition-after-overflow.md) - Preserve browser operation boundaries when finite inputs produce nonfinite matrix entries.
+- [Resolve a single-member shorthand before applying its spelling](spec-compliance-single-member-shorthand-resolved-value.md) - Apply the longhand resolver and then the shorthand spelling through the real CSSOM caller.
+- [Accept typed lengths independently of their storage tag](spec-compliance-typed-length-storage-tag.md) - Accept the scalar parser’s semantic result without inferring storage from token shape.
+
 ### Codegen
 - [Unforgeable accessors must be installed on derived instances](codegen-unforgeable-accessors-must-be-installed-on-derived-instances.md) - An inherited WebIDL member still needs explicit instance installation when the engine template does not inherit that property representation.
 - [Constructor arity removes only trailing optional arguments](codegen-constructor-arity-removes-only-trailing-optional-arguments.md) - Test non-trailing optional arguments explicitly; optional, nullable, variadic and overloaded cases alone do not cover the effective-list algorithm.
@@ -857,6 +866,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [JSON Lines uses LF, not Unicode line boundaries](testing-json-lines-uses-lf-not-unicode-line-boundaries.md) - Preserve Unicode separators in names and reconcile full records.
 
 ### Debugging
+- [Registry-wide scratch bounds grow per-call work](debugging-registry-wide-scratch-bounds-grow-per-call-work.md) - Size scratch storage for the values the call can reach, and inspect the compiled initialization cost.
 - [A kernel that frees its only object each op measures the allocator's page churn](debugging-a-one-object-kernel-measures-the-allocators-page-churn.md) - Before reading a size effect off an instruction count, check page reclaims per op and the spread across runs: one object at a time under DebugAllocator measures mmap, not the object.
 - [Allocate before transferring an arena](debugging-allocate-before-transferring-an-arena.md) - Transfer an arena only after its last allocation; struct field evaluation can otherwise copy stale ownership state.
 - [Computed shorthands may need symbolic colors](debugging-computed-shorthands-may-need-symbolic-colors.md) - Preserve symbolic values until the consumer decides whether to omit them; early resolution can erase a CSSOM distinction.
