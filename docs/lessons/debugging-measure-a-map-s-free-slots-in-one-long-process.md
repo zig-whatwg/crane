@@ -1,6 +1,15 @@
 # Debugging: Measure a map's free slots in one long process, and lint the rest
 
 **Date**: 2026-10-23
+**Status** (2026-10-29, lane leakattr1): there is a better fix than a guard for an ADDRESS MAP WHOSE KEYS ONLY COME AND GO. The WPT runner's `CRANE_LEAK_FILES` attribution map (tests/wpt_runner/runner_allocator.zig `Attributing.live`, address -> file) was a std.HashMap, and lint-tombstones never flagged it, because the lint scans only src/: tests/ and tools/ maps are unchecked. Files after a heavy one ran up to 550x slower. A ReleaseSafe bench over a DebugAllocator's addresses, ns per alloc+free cycle, with the DebugAllocator alone at 31:
+
+| | std.HashMap | rehashed in place (this lesson's TombstoneGuard policy) | AutoArrayHashMap + swapRemove |
+|---|---|---|---|
+| 50,000 live, 15x capacity in cycles | 79,742 | 135 | 67 |
+| after a 1,000,000-entry peak (2M slots) | 113 | 111 | 61 |
+| 5,000 live after a 100,000 peak, 8 rounds | 60 -> 76, rising | 48, flat | 46, flat |
+
+The array map's index deletes by backward shift (Robin Hood), so it keeps no tombstones and needs no guard. Its entries are dense, so a walk visits only the live ones, not the table's high-water capacity. **Rule: for an address map whose keys only come and go, use an array hash map with swapRemove.** Keep TombstoneGuard where a map cannot change type, or where a `*V` taken from it must stay valid across removals: swapRemove moves the last entry into the hole.
 **Lesson**: Whether a long-lived std hash map loses its free slots is a property of its keys and its owner's lifetime, not of any one page: measure it in ONE long runner process over a worklist sample, and let `zig build lint-tombstones` keep every map that removes from itself in view.
 
 **Why**: std.HashMap deletes by tombstone and never counts one against its load (lib/std/hash_map.zig `removeByIndex`, `growIfNeeded`). A map whose puts and removes balance never grows, and growing is the only thing that clears tombstones. An insert of a key the map never saw takes a FREE slot unless a tombstone lies on its probe path, and nothing gives one back, so free slots fall toward zero; then every insert of a new key and every lookup that misses walks the whole table. Three things decide whether a map gets there:

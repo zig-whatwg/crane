@@ -1,0 +1,20 @@
+# Debugging: Never return `&.{runtime_value}` - it points into the callee's own frame
+
+**Date**: 2026-10-29
+**Lesson**: In Zig, `&.{x}` with a runtime `x` is a pointer to a temporary array in the CURRENT function's stack frame. Returned as a slice, it points into a frame that is dead at the return. The bug hides in Debug builds and in most optimized runs. It shows when something else reuses that slot before the caller reads it: under an optimizer, or with a different allocator in front.
+
+**Why**: Only an array literal whose elements are all comptime-known gets static storage. One runtime element makes it a stack temporary, whose lifetime is the function's. Zig does not reject returning its address. The caller then reads memory below its own stack pointer. A Debug build usually reads it at once, before anything has written there, so unit tests pass. An optimized build may let another value share the slot (LLVM stack colouring), or a call may land on it first. Then the caller reads whatever was written there last: a saved frame pointer, a spilled register.
+
+**What Happened**: `src/csp/fallback.zig` `getFallbackChain` answered a directive with no fallback chain (base-uri, form-action, frame-ancestors, an unknown name) with `return &.{effective_directive};` (present since 2025-11-30). CSP embedded enforcement (`subsumes`) asks for base-uri, frame-ancestors and form-action on every iframe with a `csp` attribute.
+- In the ReleaseSafe WPT runner with `CRANE_LEAK_FILES=1`, four content-security-policy/embedded-enforcement files aborted 3/3. The element read as a stack address with a garbage length, and wyhash hashed off the top of the stack: "Bus error at address 0x16d598000", page-aligned, in `getIndexAdapted` <- `getEffectiveDirective` <- `subsumes` <- `HTMLIFrameElement.runCommit`.
+- With the variable unset: 0/0. The Debug runner, variable set: 0/3.
+- The attribution allocator was not at fault. It adds a frame and a lock to every allocation, which only changed what was left in the dead slot. Lane leaks1 first queued the crash as "the leak-attribution mode aborts".
+- The existing unit test `getFallbackChain("unknown-directive")` checked exactly this return and passed for eleven months, because it read the element before anything else ran.
+
+**Fix**:
+1. Return only static data, or say "none": `getFallbackChain` now returns `?[]const []const u8`, null for a chainless directive, and its two callers look the name up directly (lane leakattr1).
+2. A red test that does not depend on the optimizer. Call the function, then a `noinline` function that fills a 4 KB local array (`@memset` plus `std.mem.doNotOptimizeAway`), then compare the returned element's pointer and length with the input. Do not dereference: the pointer may be garbage. In a Debug test build the red read `0xff0a000000000000`.
+3. Prove the fix where the bug fires. A dead slot that is read at once survives unoptimized code, so a Debug WPT runner cannot show this crash, before the fix or after it. The before/after belongs on the optimized (ReleaseSafe) runner: frozen main crashed in 3/3 runs, the tip must crash in 0 of 3, with the same list and the same environment. The scribbled-stack unit test is the proof that does not depend on the optimizer.
+4. Grep for the shape: `grep -rnE 'return &\.\{[a-z_]' src tests tools --include='*.zig'`. On 2026-10-29 it found three. Only fallback.zig's took a runtime value. `src/webidl/helpers.zig:280` (`comptime attrs`) and `tests/wpt_runner/test_parser.zig:153` (an `inline for` capture) are comptime, so their arrays are static. The same rule covers `&[_]T{x}`, a slice of a local array, and a pointer to a local or a by-value parameter that escapes in a returned struct.
+
+**Takeaway**: **A slice of `&.{runtime}` dies with the function that made it. Return static data, caller-owned storage or an optional, never a pointer into your own frame. A crash that appears only with an instrumentation allocator or only in release is the slot's contents changing, so look for a dead frame before blaming the instrument.**
