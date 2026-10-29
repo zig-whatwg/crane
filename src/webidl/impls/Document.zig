@@ -4676,6 +4676,7 @@ fn queueScriptDeliveryContinuation(document: *runtime.Instance, removed_parser_b
     const loop = document.ctx.getOptionalEventLoop() orelse return;
     const queued = task.allocator.create(LifecycleTask) catch return;
     queued.* = task;
+    queued.ref.take(document, @import("dom").instance_bridge.getNodeBase(@ptrCast(document)));
     loop.queueTask(.{
         .callback = &runLifecycleTask,
         .context = queued,
@@ -5180,6 +5181,13 @@ const LifecycleTask = struct {
     load_token: u64 = 0,
     had_engine: bool = false,
     removed_parser_blocker: bool = false,
+    /// The task's counted reference on its document, from its queueing to
+    /// its run or drop (refcount step 7's missed holder, lane refcount8,
+    /// H-RC8-DOC-LIFECYCLE: the zombie audit's full sweep found a windowless
+    /// document's readystatechange and DOMContentLoaded taking it on after
+    /// its tree counted zero). WebKit's document event tasks keep their
+    /// document alive the same way.
+    ref: @import("dom").node_holds.CountedRef = .{},
 };
 
 fn queueLifecycleTask(target: *runtime.Instance, step: LifecycleStep) void {
@@ -5196,6 +5204,7 @@ fn queueLifecycleTaskWith(target: *runtime.Instance, step: LifecycleStep, load_t
         .step = step,
         .load_token = load_token,
     };
+    task.ref.take(target, @import("dom").instance_bridge.getNodeBase(@ptrCast(target)));
     const loop = target.ctx.getOptionalEventLoop() orelse {
         // No loop to queue on (a context built for tests): the events are
         // still owed, so fire them now rather than lose them.
@@ -5207,12 +5216,14 @@ fn queueLifecycleTaskWith(target: *runtime.Instance, step: LifecycleStep, load_t
 
 fn dropLifecycleTask(context: ?*anyopaque) void {
     const task: *LifecycleTask = @ptrCast(@alignCast(context orelse return));
+    task.ref.release(task.target);
     task.allocator.destroy(task);
 }
 
 fn runLifecycleTask(context: ?*anyopaque) void {
     const task: *LifecycleTask = @ptrCast(@alignCast(context orelse return));
     defer task.allocator.destroy(task);
+    defer task.ref.release(task.target);
     // Collected and its slot reissued: nothing is left to finish loading.
     if (runtime.SlabAllocator.generationOf(task.target) != task.generation) return;
     if (task.step == .resume_script_delivery) {
