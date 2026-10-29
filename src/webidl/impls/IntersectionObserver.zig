@@ -16,7 +16,6 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const engine = @import("engine");
 const IntersectionObserver = interfaces.IntersectionObserver;
-const IntersectionObserverEntryImpl = @import("IntersectionObserverEntry.zig");
 const same_object = @import("same_object.zig");
 const clock = @import("clock");
 
@@ -562,6 +561,11 @@ fn computeIntersections(internal: *InternalState) !void {
         // Get target's bounding rect
         std.log.debug("[IntersectionObserver] Getting bounding rect for target", .{});
         const bounding_rect = try interfaces.Element.call_getBoundingClientRect(target);
+        // The entry made below takes the rect; an observation that queues
+        // none lets it go (nothing else ever names it).
+        const bounding_generation = runtime.SlabAllocator.generationOf(bounding_rect);
+        var bounding_taken = false;
+        defer if (!bounding_taken) bounding_rect.releaseIfUnwrapped(bounding_generation);
 
         // Get the bounding rect values
         const rect_state = bounding_rect.getState(interfaces.DOMRectReadOnly.State);
@@ -647,6 +651,9 @@ fn computeIntersections(internal: *InternalState) !void {
                 webidl.Opt(f64).passed(root_width),
                 webidl.Opt(f64).passed(root_height),
             );
+            const root_generation = runtime.SlabAllocator.generationOf(root_bounds);
+            var rects_taken = false;
+            defer if (!rects_taken) root_bounds.releaseIfUnwrapped(root_generation);
 
             // Create intersection rect
             const intersection_rect = try interfaces.DOMRectReadOnly.call_constructor(
@@ -656,22 +663,28 @@ fn computeIntersections(internal: *InternalState) !void {
                 webidl.Opt(f64).passed(intersect_width),
                 webidl.Opt(f64).passed(intersect_height),
             );
+            const intersection_generation = runtime.SlabAllocator.generationOf(intersection_rect);
+            defer if (!rects_taken) intersection_rect.releaseIfUnwrapped(intersection_generation);
 
-            // Create entry
-            const entry = try IntersectionObserverEntryImpl.createEntry(
-                internal.ctx,
-                time,
-                root_bounds,
-                bounding_rect,
-                intersection_rect,
-                is_intersecting,
-                false, // isVisible (would need visibility computation)
-                intersection_ratio,
-                target,
-            );
+            // Create the entry: it takes the three rects and holds the target.
+            const entry = try interfaces.IntersectionObserverEntry.initWith(internal.ctx.allocator, internal.ctx, .{
+                .time = time,
+                .root_bounds = @as(?*runtime.Instance, root_bounds),
+                .bounding_client_rect = bounding_rect,
+                .intersection_rect = intersection_rect,
+                .is_intersecting = is_intersecting,
+                .is_visible = false, // isVisible (would need visibility computation)
+                .intersection_ratio = intersection_ratio,
+                .target = target,
+            });
+            rects_taken = true;
+            bounding_taken = true;
 
             // Queue the entry
-            try internal.queued_entries.append(internal.allocator, entry);
+            internal.queued_entries.append(internal.allocator, entry) catch |err| {
+                runtime.Instance.deinit(entry);
+                return err;
+            };
 
             // Update previous state
             obs.previous_threshold_index = threshold_index;

@@ -54,7 +54,6 @@ src/webidl/impls/HTMLIFrameElement.zig Window.replaceBrowsingContext 1
 src/webidl/impls/HTMLIFrameElement.zig Window.setDocument 2
 src/webidl/impls/HTMLIFrameElement.zig Window.setOrigin 1
 src/webidl/impls/HTMLScriptElement.zig Node.setLocalName 1
-src/webidl/impls/IntersectionObserver.zig IntersectionObserverEntry.createEntry 1
 src/webidl/impls/Node.zig NodeList.createLiveChildNodes 1
 src/webidl/impls/Node.zig ShadowRoot.getInternalState 1
 src/webidl/impls/NodeList.zig Node.getChildCount 1
