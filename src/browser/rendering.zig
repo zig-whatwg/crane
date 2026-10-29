@@ -179,9 +179,13 @@ pub const Frames = struct {
     /// The identifier of a Window that has no document to key it by (a
     /// realm that ended, a navigable between documents).
     unkeyed_identifier: u32 = 0,
+    /// The loop's animations (Web Animations): the global animation list,
+    /// each document's default timeline, animation time and pending
+    /// animation event queue. Step 11 runs them.
+    animations: dom_mod.animations.Registry,
 
     pub fn init(allocator: Allocator, origin_ns: i64) Frames {
-        return .{ .allocator = allocator, .origin_ns = origin_ns };
+        return .{ .allocator = allocator, .origin_ns = origin_ns, .animations = dom_mod.animations.Registry.init(allocator) };
     }
 
     /// The loop ends (EventLoop.deinit, before its agent): what the page's
@@ -193,7 +197,8 @@ pub const Frames = struct {
         self.pending.deinit(self.allocator);
         self.requests.deinit(self.allocator);
         self.identifiers.deinit(self.allocator);
-        self.* = .{ .allocator = self.allocator, .origin_ns = self.origin_ns };
+        self.animations.deinit();
+        self.* = .{ .allocator = self.allocator, .origin_ns = self.origin_ns, .animations = dom_mod.animations.Registry.init(self.allocator) };
     }
 
     fn loop(self: *Frames) *EventLoop {
@@ -338,7 +343,23 @@ fn cancelAnimationFrameIn(frames: *Frames, realm: runtime.Context, handle: u32) 
 
 /// dom.update_the_rendering's loop half, installed at process start
 /// (Context.installHooks).
-pub const loop_hooks: update_the_rendering.Loop = .{ .request_frame = requestFrame };
+pub const loop_hooks: update_the_rendering.Loop = .{
+    .request_frame = requestFrame,
+    .animation_registry = animationRegistryOf,
+    .latest_refresh = latestRefreshOf,
+};
+
+/// The animations of `realm`'s event loop (update_the_rendering's Loop).
+fn animationRegistryOf(realm: runtime.Context) ?*dom_mod.animations.Registry {
+    const frames = framesOf(realm) orelse return null;
+    return &frames.animations;
+}
+
+/// The latest refresh moment at or before now on `realm`'s loop's grid.
+fn latestRefreshOf(realm: runtime.Context) ?i64 {
+    const frames = framesOf(realm) orelse return null;
+    return frames.latestRefreshAtOrBefore(monotonicNs());
+}
 
 /// `document` has work for its event loop's next rendering opportunity.
 /// The Document owns that work; this records only a borrowed identity, and
@@ -567,9 +588,16 @@ fn updateTheRendering(frames: *Frames) void {
         if (dispatchState(frames, &token) == null) break;
         if (document.current()) dom_mod.style.reportMediaQueryChanges(document.document);
     }
-    // 11. Update animations and send events. 12. The fullscreen steps.
-    // 13. The context lost steps.
-    runOwnerStep(frames, &token, documents.items, .animations, frame);
+    // 11. Update animations and send events (Web Animations 4.4), passing
+    // in frameTimestamp, for each document in turn: its timelines, pending
+    // tasks and finished states, removed animations, a microtask
+    // checkpoint, then its events. Script runs: revalidate after each.
+    for (documents.items) |document| {
+        if (dispatchState(frames, &token) == null) break;
+        if (!document.current()) continue;
+        dom_mod.animations.updateAnimationsAndSendEvents(document.document, frame);
+    }
+    // 12. The fullscreen steps. 13. The context lost steps.
     runOwnerStep(frames, &token, documents.items, .fullscreen, frame);
     runOwnerStep(frames, &token, documents.items, .context_lost, frame);
 
@@ -879,6 +907,9 @@ pub fn windowDestroyed(realm: runtime.Context) void {
             _ = frames.requests.orderedRemove(index);
         } else index += 1;
     }
+    // Its documents' queued animation events go undispatched, and its
+    // animations stop keeping themselves alive.
+    frames.animations.windowDestroyed(realm);
 }
 
 /// HTML "reactivate" step 2's share: `realm`'s window's animation frame
@@ -890,7 +921,9 @@ pub fn windowResumed(realm: runtime.Context) void {
     if (Context.realmWindow(realm)) |window| if (Context.realmNavigable(realm, window)) |navigable| {
         if (navigable.getActiveDocument()) |document| {
             const instance: *runtime.Instance = @ptrCast(@alignCast(document));
-            if (ownersPending(instance)) requestFrame(instance);
+            // Its animations too: a running one, a pending task or a queued
+            // event waits for its document's next frame.
+            if (ownersPending(instance) or dom_mod.animations.registry.needsFrames(instance)) requestFrame(instance);
         }
     };
     schedule(frames);
@@ -911,6 +944,8 @@ pub fn endPage(realm: runtime.Context) void {
     frames.pending.clearAndFree(frames.allocator);
     frames.requests.clearAndFree(frames.allocator);
     frames.identifiers.clearAndFree(frames.allocator);
+    // The queued animation events are released, never dispatched.
+    frames.animations.endPage();
     // A turn in progress keeps its token, and finds its state emptied.
 }
 

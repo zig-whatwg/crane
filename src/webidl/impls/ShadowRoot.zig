@@ -496,11 +496,10 @@ pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTM
     try @import("html").sanitizer.setHTML(instance, instance, compliant, &converted, false, options.getOrDefault(.{}).sanitizer != null);
 }
 
-/// getAnimations() - Get all animations in shadow tree
+/// getAnimations() (Web Animations 1 6.10): the relevant animations for
+/// this shadow root's subtree, in composite order.
 pub fn call_getAnimations(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    // TODO: Implement animation collection - return proper V8 Array
-    _ = instance;
-    return runtime.JSValue.jsUndefined;
+    return @import("dom").animations.rootAnimations(instance);
 }
 
 // ============================================================================

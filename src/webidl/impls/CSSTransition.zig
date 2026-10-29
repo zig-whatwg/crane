@@ -1,4 +1,10 @@
-//! Implementation for CSSTransition interface
+//! Implementation for CSSTransition interface (CSS Transitions 2 6.1): an
+//! Animation made by the style engine when a transition starts. Its model
+//! is Animation's; its owning element, property and events are
+//! dom.animations.css_events'. Nothing makes one from CSS yet (the style
+//! engine's batch).
+//!
+//! Spec: https://drafts.csswg.org/css-transitions-2/#the-CSSTransition-interface
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -7,6 +13,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const animations = @import("dom").animations;
 const CSSTransition = interfaces.CSSTransition;
 
 pub const State = CSSTransition.State;
@@ -15,32 +22,10 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
-}
-
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-/// Getter for transitionProperty
+/// Getter for transitionProperty: the transitioning property's name.
 pub fn get_transitionProperty(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const animation = animations.hooks.animationOf(instance) orelse return runtime.DOMString.initEmpty();
+    return runtime.DOMString.initInterned(animations.css_events.nameOf(animation));
 }

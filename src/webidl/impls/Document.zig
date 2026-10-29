@@ -1566,10 +1566,10 @@ pub fn get_fullscreen(instance: *runtime.Instance) anyerror!bool {
     return internal.fullscreen_element != null;
 }
 
-/// Getter for timeline
+/// Getter for timeline (Web Animations 1 6.9): the default document
+/// timeline, the same object for the document's life.
 pub fn get_timeline(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return @import("dom").animations.defaultTimeline(instance);
 }
 
 /// Getter for pictureInPictureEnabled
@@ -3644,10 +3644,10 @@ pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionarie
     return error.NotImplemented;
 }
 
-/// Operation: getAnimations
+/// Operation: getAnimations (Web Animations 1 6.10): the relevant
+/// animations for this document's subtree, in composite order.
 pub fn call_getAnimations(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
+    return @import("dom").animations.rootAnimations(instance);
 }
 
 /// Operation: getElementsByClassName

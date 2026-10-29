@@ -2036,16 +2036,12 @@ pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionarie
     return error.NotImplemented;
 }
 
-/// Operation: getAnimations
-/// Web Animations §4.4.4 - Returns animations targeting this element
+/// Operation: getAnimations (Web Animations 1 6.8): the relevant animations
+/// for this element, or with `subtree` for its subtree, in composite order.
 /// Spec: https://drafts.csswg.org/web-animations-1/#dom-animatable-getanimations
-///
-/// Returns sentinel for empty array (no animations without rendering engine)
 pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetAnimationsOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
-    // Returns undefined (empty array) - no animations without rendering engine
-    return runtime.JSValue.jsUndefined;
+    const given = options.getOrDefault(.{});
+    return @import("dom").animations.elementAnimations(instance, given.subtree orelse false, if (given.pseudoElement) |p| p.asSlice() else null);
 }
 
 /// Operation: getElementsByClassName
@@ -2236,17 +2232,11 @@ pub fn call_requestFullscreen(instance: *runtime.Instance, options: webidl.Opt(d
     return runtime.JSValue.jsUndefined;
 }
 
-/// Operation: animate
-/// Web Animations §4.4.3 - Creates and runs a new Animation
+/// Operation: animate (Web Animations 1 6.8): a new KeyframeEffect and
+/// Animation for this element, played.
 /// Spec: https://drafts.csswg.org/web-animations-1/#dom-animatable-animate
-///
-/// Note: Returns null - requires Web Animations API and rendering engine
 pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = keyframes;
-    _ = options;
-    // Animation requires rendering engine - return null
-    return error.NotImplemented;
+    return @import("dom").animations.animate(instance, keyframes, if (options.was_passed) options.value else null);
 }
 
 /// Operation: getHTML
