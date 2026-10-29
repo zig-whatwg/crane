@@ -58,7 +58,10 @@ pub fn wantsTraces(value: ?[]const u8) bool {
 /// `CRANE_LEAK_FILES`. Off: it costs too much to run always - a 1,244-file
 /// sample (one in eight of the worklist, ReleaseSafe, 4 runners) took
 /// 224-225 s without it and 264-268 s with it, +18% (lane leaks6; the bar
-/// for on-by-default was 5%). Main's sweep sets CRANE_LEAK_FILES=1.
+/// for on-by-default was 5%). Main's generation sweeps do NOT set it
+/// (~/crane-gate-main.sh, tmp/remote/gate-main.sh), so their `leaked:`
+/// reports name no file, and an A/B compared with a sweep runs without it
+/// too; set CRANE_LEAK_FILES=1 for the run that needs the files named.
 pub const attribution_by_default = false;
 
 /// Whether `CRANE_LEAK_FILES` asks for per-file leak attribution: unset is
@@ -123,7 +126,20 @@ pub fn reportCount() usize {
 pub const Attributing = struct {
     child: std.mem.Allocator,
     mutex: std.Io.Mutex = .init,
-    live: std.AutoHashMapUnmanaged(usize, Live) = .empty,
+    /// Address -> who made it. An ARRAY hash map, removed from by
+    /// swapRemove: its index deletes by shifting entries back (Robin Hood),
+    /// so it keeps no tombstones. A std.HashMap deletes by tombstone and
+    /// never grows while puts and removes balance, so new addresses used up
+    /// its free slots and every insert and removal then walked the whole
+    /// table - a table sized by the most the process had held at once: under
+    /// CRANE_LEAK_FILES=1, files after a heavy one ran up to 550x slower
+    /// (lane leaks1). Measured in a ReleaseSafe bench over a
+    /// DebugAllocator's addresses (lane leakattr1), ns per alloc+free cycle:
+    /// with 50,000 live for 15 times its capacity in cycles, the std.HashMap
+    /// 79,742, the same map rehashed in place whenever tombstones could take
+    /// half its free slots 135, this map 67; after a 1,000,000-entry peak
+    /// (2M slots), 113, 111 and 61; the DebugAllocator alone 31.
+    live: std.AutoArrayHashMapUnmanaged(usize, Live) = .empty,
     /// Every file entered, copied; index 0 is the time before the first.
     files: std.ArrayListUnmanaged([]const u8) = .empty,
     current: u32 = 0,
@@ -198,7 +214,7 @@ pub const Attributing = struct {
         self.lock();
         defer self.unlock();
         // The same allocation, moved: it keeps the file that made it.
-        if (self.live.fetchRemove(@intFromPtr(memory.ptr))) |old| {
+        if (self.live.fetchSwapRemove(@intFromPtr(memory.ptr))) |old| {
             if (!self.closed) self.live.put(self.meta, @intFromPtr(ptr), .{ .file = old.value.file, .len = new_len }) catch {
                 self.unrecorded += 1;
             };
@@ -213,7 +229,7 @@ pub const Attributing = struct {
             // thread's allocation may be given the same address.
             self.lock();
             defer self.unlock();
-            _ = self.live.remove(@intFromPtr(memory.ptr));
+            _ = self.live.swapRemove(@intFromPtr(memory.ptr));
         }
         self.child.rawFree(memory, alignment, ret_addr);
     }
@@ -272,8 +288,7 @@ pub const Attributing = struct {
         };
         var count: usize = 0;
         var bytes: usize = 0;
-        var it = self.live.valueIterator();
-        while (it.next()) |entry| {
+        for (self.live.values()) |entry| {
             per_file[entry.file].count += 1;
             per_file[entry.file].bytes += entry.len;
             count += 1;
@@ -611,6 +626,95 @@ test "attribution: allocations from many threads are all recorded and all remove
     const after = try attributing.summarize(testing.allocator);
     defer Attributing.freeSummary(testing.allocator, after);
     try testing.expectEqual(@as(usize, 0), after.count);
+}
+
+/// A child allocator that hands out a NEW address for every allocation and
+/// never touches memory: the worst case for the live map, whose keys then
+/// never come back (DebugAllocator does much the same - it bumps through a
+/// bucket's slots and reuses none until the whole bucket is free). Only for
+/// rawAlloc/rawFree through the attribution, which never dereferences.
+const FreshAddresses = struct {
+    next: usize = 0x1000_0000,
+
+    fn allocator(self: *FreshAddresses) std.mem.Allocator {
+        return .{ .ptr = self, .vtable = &.{ .alloc = alloc, .resize = std.mem.Allocator.noResize, .remap = std.mem.Allocator.noRemap, .free = free } };
+    }
+
+    fn alloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ret_addr: usize) ?[*]u8 {
+        _ = ret_addr;
+        const self: *FreshAddresses = @ptrCast(@alignCast(ctx));
+        const address = alignment.forward(self.next);
+        self.next = address + @max(len, 1);
+        return @ptrFromInt(address);
+    }
+
+    fn free(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, ret_addr: usize) void {
+        _ = .{ ctx, memory, alignment, ret_addr };
+    }
+};
+
+test "attribution: an alloc/free costs the same late in a long process as early, after a peak" {
+    // The runner's process makes and frees allocations at new addresses for
+    // its whole life. The live map was a std.HashMap, which deletes by
+    // tombstone: a removal hands the slot back to `available`, so a map whose
+    // puts and removes balance never grows, and growing was the only thing
+    // that cleared tombstones. Inserts of new addresses used up the FREE
+    // slots, and once none was left every miss and every insert walked the
+    // whole table - a table sized by the most the process had ever held.
+    // Under CRANE_LEAK_FILES=1 files after a heavy one ran up to 550x slower
+    // (lane leaks1, 2026-10-29: editing join-different-white-space-style-
+    // paragraphs 3.9 s -> 2,172 s). Measured in thread CPU time, so a
+    // preempted batch does not count against it.
+    var child: FreshAddresses = .{};
+    var attributing = Attributing.init(child.allocator());
+    attributing.meta = testing.allocator;
+    defer attributing.deinit();
+    const a = attributing.allocator();
+    attributing.enterFile("heavy.html");
+
+    // The peak: 1,024 live allocations at once (a 2,048-slot table for the
+    // std.HashMap this replaced).
+    const peak = 1024;
+    var at_peak: [peak][*]u8 = undefined;
+    for (&at_peak) |*p| p.* = a.rawAlloc(32, .@"8", @returnAddress()).?;
+    for (at_peak) |p| a.rawFree(p[0..32], .@"8", @returnAddress());
+
+    // Then the steady state of every later file: 64 live, each freed and
+    // replaced by an allocation at a new address, in 16 batches of 2,048
+    // cycles - 16 times that table's size in all.
+    attributing.enterFile("light.html");
+    var ring: [64][*]u8 = undefined;
+    for (&ring) |*p| p.* = a.rawAlloc(32, .@"8", @returnAddress()).?;
+    const batches = 16;
+    const batch = 2048;
+    var cost: [batches]i96 = undefined;
+    var cycle: usize = 0;
+    for (&cost) |*c| {
+        const start = std.Io.Clock.cpu_thread.now(testing.io);
+        for (0..batch) |_| {
+            const slot = &ring[cycle % ring.len];
+            a.rawFree(slot.*[0..32], .@"8", @returnAddress());
+            slot.* = a.rawAlloc(32, .@"8", @returnAddress()).?;
+            cycle += 1;
+        }
+        c.* = @max(1, std.Io.Clock.cpu_thread.now(testing.io).nanoseconds - start.nanoseconds);
+    }
+    // The std.HashMap: the last batches walked all 2,048 slots for every
+    // insert and every removal - tens of times the first batches' cost.
+    const early = @min(cost[0], cost[1]);
+    const late = @min(cost[batches - 2], cost[batches - 1]);
+    if (late > 4 * early) {
+        std.debug.print("thread CPU ns per batch of {d} cycles: {any}\n", .{ batch, cost });
+        return error.TestLateChurnSlower;
+    }
+
+    // Every live entry is still attributed to the file that made it.
+    const summary = try attributing.summarize(testing.allocator);
+    defer Attributing.freeSummary(testing.allocator, summary);
+    try testing.expectEqual(@as(usize, 64), summary.count);
+    try testing.expectEqual(@as(usize, 1), summary.files.len);
+    try testing.expectEqualStrings("light.html", summary.files[0].path);
+    for (ring) |p| a.rawFree(p[0..32], .@"8", @returnAddress());
 }
 
 test "attribution: after deinit allocations pass straight through, and frees still reach the child" {
