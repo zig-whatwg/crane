@@ -151,6 +151,12 @@ INCLUDE = [
     # are in: their offset* reads are bare style flushes, not assertions.
     ('css/css-variables/', 'custom properties, var() substitution, cycles and CSSOM serialization'),
     ('css/css-properties-values-api/', 'registered custom properties: @property, registerProperty, typed computation'),
+    # The user, 2026-10-29 ("yes add web-animations to 0.1"): Web Animations Level 1
+    # (CSS WG Working Draft 2023-06-05, shipped by Chrome, Firefox and Safari) - the
+    # Animation/KeyframeEffect API, the timing model, keyframe and effect combination,
+    # responsive animations. Its tentative files (animation-trigger/, scroll-timeline)
+    # stay out by the blanket tentative rule; viewport-resize geometry is excluded below.
+    ('web-animations/', 'Web Animations: the animation API, timing model and effect values'),
     # The user, 2026-10-25: typed attr() files for Codex row 122's attr() work.
     # Not attr-invalidation-after-view-transition.html or the four
     # attr-security-animation/transition files: they need view transitions
@@ -615,6 +621,7 @@ EXCLUDE = [
     ('css/css-properties-values-api/animation/', 'needs an animation engine, which Crane does not have yet (the user, 2026-10-25)'),
     ('css/css-variables/variable-reference-perspective-origin.html', 'every case asserts perspective-origin percentages resolved against the used 200px box'),
     ('css/css-variables/variable-animation-guaranteed-invalid.html', 'check-layout-th asserts each animated box offsetWidth (the invalid case stretches to its container)'),
+    ('web-animations/responsive/fill-forwards-viewport-units.html', 'every assertion resolves vw against an iframe viewport resized through its laid-out width'),
     ('css/css-properties-values-api/at-property-viewport-units.html', 'asserts viewport units against the laid-out 400x200 iframe viewport'),
     ('css/css-properties-values-api/at-property-viewport-units-dynamic.html', 'asserts viewport units after resizing the laid-out iframe viewport'),
     ('css/cssom/caretRangeFromPoint', 'asserts caret ranges from hit-tested viewport coordinates'),
