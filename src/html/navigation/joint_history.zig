@@ -1672,13 +1672,17 @@ pub const JointHistory = struct {
             view.api_index = 0;
             view.api_current = null;
 
-            // `activeEntry`: the kept entry, at the step it was kept at;
-            // else `entryAt` the current step - the last of the group (list
-            // order among equal steps) at or before it, which is the
-            // navigable's latest pending entry when it has one.
-            var current: ?*const Entry = null;
-            if (self.update_only.get(navigable)) |kept| {
-                if (kept.step == step) current = self.entryById(kept.entry);
+            // `activeEntry`: the navigable's latest pending entry - a
+            // synchronous navigation made it active, even while a traversal
+            // that changes the navigable holds its target as the current
+            // entry (step 8.2); else the kept entry, at the step it was kept
+            // at; else `entryAt` the current step - the last of the group
+            // (list order among equal steps) at or before it.
+            var current: ?*const Entry = self.lastPending(navigable);
+            if (current == null) {
+                if (self.update_only.get(navigable)) |kept| {
+                    if (kept.step == step) current = self.entryById(kept.entry);
+                }
             }
             if (current == null) {
                 if (self.apply) |apply| {

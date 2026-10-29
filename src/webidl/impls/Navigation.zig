@@ -789,7 +789,10 @@ fn initiatorAllowedToTraverse(allocator: Allocator, scope: navigation_entries.Sc
     // Out of memory: no navigable can be checked, so none is allowed.
     scope.navigable.getTop().collectDescendants(allocator, &tree) catch return false;
     for (tree.items) |navigable| {
-        const current = scope.history.listedCurrentEntry(navigable.id) orelse continue;
+        // The entry the navigable's document shows - a pending same-document
+        // entry included: its finalize, queued ahead of the traversal, lists
+        // it before the traversal's own step 3 runs (lane nav2 E).
+        const current = scope.history.currentEntry(navigable.id) orelse continue;
         const target = scope.history.entryAt(navigable.id, step) orelse continue;
         if (current == target) continue;
         if (!html_core.navigation.sandbox_navigation.allowedBySandboxingToNavigate(scope.navigable, navigable, snapshot)) return false;

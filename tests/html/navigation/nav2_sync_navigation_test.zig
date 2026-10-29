@@ -297,6 +297,41 @@ test "a finalize that jumps a waiting traversal (14.1) lists its entry, but the 
     try testing.expectEqual(@as(u32, 4), h.lengthAndIndex().length);
 }
 
+test "a pending entry is its navigable's current one in the views, even while a traversal's step 8.2 names another (intercept-and-navigate, navigate-destination-dynamic-index)" {
+    var h = joint.JointHistory.init(testing.allocator);
+    defer h.deinit();
+    try single(&h);
+    const base = h.currentEntry(top).?.id;
+    try h.commitSameDocument(top, "http://x.test/p#1", .null, .push, null);
+    const forward = h.currentEntry(top).?.id;
+    // A traversal back to step 0 has updated the top's document (its view is
+    // released) and has not reached its step 20.
+    h.beginApply(3, 0);
+    h.setCurrentEntry(top, base);
+    h.updateViews();
+    try testing.expectEqual(base, h.apiCurrentView(top).?.id);
+    var ids: std.ArrayListUnmanaged(u64) = .empty;
+    defer ids.deinit(testing.allocator);
+    // A replace of the shown entry: in its place, the forward entry kept.
+    const replaced = try h.navigateSameDocument(top, "http://x.test/p#r", .null, .replace, .undefined);
+    try testing.expectEqual(@as(?u64, base), replaced.replaces);
+    try testing.expectEqual(replaced.entry, h.apiCurrentView(top).?.id);
+    try testing.expectEqual(@as(usize, 0), try apiIds(&h, top, &ids));
+    try testing.expectEqualSlices(u64, &.{ replaced.entry, forward }, ids.items);
+    // Then a push: one on, the forward entry gone from the view.
+    const pushed = try h.navigateSameDocument(top, "http://x.test/p#2", .null, .push, .undefined);
+    try testing.expectEqual(pushed.entry, h.apiCurrentView(top).?.id);
+    try testing.expectEqual(@as(usize, 1), try apiIds(&h, top, &ids));
+    try testing.expectEqualSlices(u64, &.{ replaced.entry, pushed.entry }, ids.items);
+    try testing.expectEqual(@as(u32, 2), h.historyView(top).length);
+    h.endApply(3);
+    _ = h.finalizeSameDocument(top, replaced.entry, replaced.replaces) orelse return error.NotFinalized;
+    _ = h.finalizeSameDocument(top, pushed.entry, pushed.replaces) orelse return error.NotFinalized;
+    try testing.expect(h.entryById(forward) == null);
+    try testing.expectEqual(@as(u32, 1), h.current_step);
+    try testing.expectEqual(pushed.entry, h.apiCurrentView(top).?.id);
+}
+
 test "a same-document navigation while an apply runs does not settle it (E flipped the stated deviation for same-document commits)" {
     var h = joint.JointHistory.init(testing.allocator);
     defer h.deinit();
