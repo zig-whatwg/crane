@@ -459,6 +459,60 @@ pub const DeclarationBlock = struct {
         return updated;
     }
 
+    /// Typed OM §3: install a complete already-validated native value.
+    /// Borrowed assignments are retained before any old declaration can die.
+    /// The existing CSSOM mutation algorithm preserves position and observes
+    /// logical-group ordering; all allocation precedes the first mutation.
+    pub fn setValidatedProperty(self: *DeclarationBlock, property: Property, assignments: []const Assignment) (Allocator.Error || error{Invalid})!bool {
+        if (!self.context.allows(property, false)) return error.Invalid;
+        const longhands: []const Longhand = switch (property) {
+            .longhand => |l| &.{l},
+            .shorthand => |s| s.longhands(),
+        };
+        if (assignments.len != longhands.len or assignments.len > properties.max_assignments) return error.Invalid;
+        var copy: [properties.max_assignments]Assignment = undefined;
+        for (longhands, 0..) |l, i| {
+            var found = false;
+            for (assignments) |assignment| if (assignment.longhand == l) {
+                if (found) return error.Invalid;
+                copy[i] = assignment;
+                found = true;
+            };
+            if (!found) return error.Invalid;
+        }
+        try self.entries.ensureUnusedCapacity(self.allocator, assignments.len);
+        for (copy[0..assignments.len]) |assignment| assignment.value.retain();
+        var changed = false;
+        for (copy[0..assignments.len]) |assignment| {
+            // Capacity was reserved for every append, including replacements
+            // moved by a logical mapping conflict. No failure remains here.
+            if (self.setDeclaration(assignment.longhand, assignment.value, false) catch unreachable) changed = true;
+        }
+        return changed;
+    }
+
+    /// Typed OM's custom-property form; a borrowed, parsed Specified value.
+    /// Q57 keeps CSS declaration tokenization separate from string names.
+    pub fn setValidatedCustom(self: *DeclarationBlock, name: []const u8, value: custom_properties.Specified) (Allocator.Error || error{Invalid})!bool {
+        if (!custom_properties.isName(name) or self.context == .position_try) return error.Invalid;
+        if (self.indexOfCustom(name)) |i| {
+            const existing = &self.entries.items[i].custom;
+            if (!existing.important and existing.value.eql(value)) return false;
+            value.retain();
+            existing.value.release();
+            existing.value = value;
+            existing.important = false;
+            return true;
+        }
+        const name_text = try custom_properties.Text.create(self.allocator, name);
+        errdefer name_text.release();
+        try self.entries.ensureUnusedCapacity(self.allocator, 1);
+        value.retain();
+        self.entries.appendAssumeCapacity(.{ .custom = .{ .name = name_text, .value = value, .important = false } });
+        self.custom_count += 1;
+        return true;
+    }
+
     /// CSSOM "set a CSS declaration": the value consumed (released when not
     /// kept). True when the block changed.
     fn setDeclaration(self: *DeclarationBlock, l: Longhand, value: Assigned, important: bool) Allocator.Error!bool {
@@ -594,7 +648,13 @@ pub const DeclarationBlock = struct {
                     var value: std.ArrayList(u8) = .empty;
                     defer value.deinit(allocator);
                     try c.value.serialize(&value, allocator);
-                    try appendDeclaration(out, allocator, &first, c.name.bytes, value.items, c.important);
+                    // CSSOM block serialization step4.4 / identifier serialization;
+                    // Variables1 §4.1 preserves name code points, including case.
+                    // variable-names.html requires cssText to round-trip escaped
+                    // names; indexed/name getters keep the decoded name unchanged.
+                    const name = try @import("serialize.zig").serializeIdentifier(allocator, c.name.bytes);
+                    defer allocator.free(name);
+                    try appendDeclaration(out, allocator, &first, name, value.items, c.important);
                     done[index] = true;
                 },
                 .typed => |d| {

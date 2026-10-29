@@ -135,7 +135,8 @@ test "setProperty, getPropertyPriority and removeProperty of custom properties (
     // "" removes (setProperty step 3).
     try testing.expect(try block.setProperty(o, "--a", "", ""));
     try expectValue(&block, "--a", "");
-    try expectCssText(&block, "--varUnique2 : green;");
+    // CSSOM serialize an identifier escapes the trailing space in the name.
+    try expectCssText(&block, "--varUnique2\\ : green;");
 }
 
 test "cssText keeps custom declarations in order with their values (variable-cssText.html target1)" {
