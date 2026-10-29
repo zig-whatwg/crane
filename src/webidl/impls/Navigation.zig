@@ -789,7 +789,7 @@ fn initiatorAllowedToTraverse(allocator: Allocator, scope: navigation_entries.Sc
     // Out of memory: no navigable can be checked, so none is allowed.
     scope.navigable.getTop().collectDescendants(allocator, &tree) catch return false;
     for (tree.items) |navigable| {
-        const current = scope.history.currentEntry(navigable.id) orelse continue;
+        const current = scope.history.listedCurrentEntry(navigable.id) orelse continue;
         const target = scope.history.entryAt(navigable.id, step) orelse continue;
         if (current == target) continue;
         if (!html_core.navigation.sandbox_navigation.allowedBySandboxingToNavigate(scope.navigable, navigable, snapshot)) return false;
@@ -2481,13 +2481,23 @@ fn sameDocumentNavigation(window: *runtime.Instance, kind: Kind) void {
     internal.current_entry_id = destination.id;
 
     // Steps 3-6: the entries that fall out - past the new one for a push,
-    // the replaced one for a replace - are those no longer in the history.
+    // the replaced one for a replace - are those no longer in this document's
+    // navigation API entry list. Its view was written by the synchronous
+    // steps (JointHistory.navigateSameDocument); the joint session history
+    // still lists them until "finalize a same-document navigation" runs on
+    // the traversal queue (lane nav2 E).
     var disposed: std.ArrayListUnmanaged(*Handed) = .empty;
     defer disposed.deinit(internal.allocator);
     if (kind == .push or kind == .replace) {
+        var listed: std.ArrayListUnmanaged(*joint_history.Entry) = .empty;
+        defer listed.deinit(internal.allocator);
+        const have_list = if (s.history.apiView(s.navigable.id, internal.allocator, &listed)) |_| listed.items.len > 0 else |_| false;
         var it = internal.handed.iterator();
         while (it.next()) |kv| {
-            if (s.history.entryById(kv.key_ptr.*) == null) disposed.append(internal.allocator, kv.value_ptr.*) catch {};
+            const id = kv.key_ptr.*;
+            if (id == destination.id) continue;
+            const gone = if (have_list) !listsEntry(listed.items, id) else s.history.entryById(id) == null;
+            if (gone) disposed.append(internal.allocator, kv.value_ptr.*) catch {};
         }
         for (disposed.items) |handed| {
             _ = internal.handed.remove(dom.navigation_history_entries.entryId(handed.instance));
@@ -2541,15 +2551,24 @@ fn sameDocumentNavigation(window: *runtime.Instance, kind: Kind) void {
     // events above can start another navigation.
     if (eventForUpdate(internal)) |record| interceptCommitHandlerSteps(navigation, internal, record);
 
-    // A push cleared the forward session history of the whole traversable:
-    // the other navigables' forward entries went with it.
-    if (kind == .push) disposeEntriesRemovedElsewhere(navigation, s);
+    // A push clears the forward session history of the whole traversable,
+    // and the other navigables' NavigationHistoryEntry objects for the
+    // entries it removes fire dispose - when its "finalize a same-document
+    // navigation" lists it, on the traversal queue
+    // (apply_history_step.FinalizeItem, through entriesRemoved).
 }
 
-/// Every other navigation API of `s`'s traversable disposes of the entries
-/// a push by `navigation`'s navigable removed from the session history - a
-/// frame's push truncates its parent's forward entries, and the parent's
-/// NavigationHistoryEntry objects for them fire dispose.
+fn listsEntry(entries: []const *joint_history.Entry, id: u64) bool {
+    for (entries) |entry| {
+        if (entry.id == id) return true;
+    }
+    return false;
+}
+
+/// dom.navigation_api: the traversable whose top-level browsing context is
+/// `top_ptr` lost session history entries to a push - a cross-document one,
+/// or a same-document one as its "finalize a same-document navigation" lists
+/// it - and every navigation API of it disposes of those it handed out.
 ///
 /// HTML's "update the navigation API entries for a same-document
 /// navigation" disposes only the navigating navigable's entries, and "clear
@@ -2559,29 +2578,6 @@ fn sameDocumentNavigation(window: *runtime.Instance, kind: Kind) void {
 /// (per-entry-events/dispose-for-navigation-in-child.html); this is Blink's
 /// NavigationApi::DisposeEntriesForSessionHistoryRemoval, which the browser
 /// process asks of each frame whose entries a navigation removed.
-fn disposeEntriesRemovedElsewhere(navigation: *runtime.Instance, s: navigation_entries.Scope) void {
-    const top = s.navigable.getTop();
-    // Taken before any event is fired: dispose handlers run script, which
-    // can make and free navigation objects.
-    const Other = struct { instance: *runtime.Instance, generation: u64 };
-    var others: std.ArrayListUnmanaged(Other) = .empty;
-    defer others.deinit(std.heap.c_allocator);
-    for (live.items) |other| {
-        if (other == navigation) continue;
-        const other_internal = getInternal(other) orelse continue;
-        const other_scope = scopeOf(other, other_internal) orelse continue;
-        if (other_scope.navigable == s.navigable or other_scope.navigable.getTop() != top) continue;
-        others.append(std.heap.c_allocator, .{ .instance = other, .generation = runtime.SlabAllocator.generationOf(other) }) catch return;
-    }
-    for (others.items) |other| {
-        if (runtime.SlabAllocator.generationOf(other.instance) != other.generation) continue;
-        disposeEntriesForSessionHistoryRemoval(other.instance);
-    }
-}
-
-/// dom.navigation_api: the traversable whose top-level browsing context is
-/// `top_ptr` lost session history entries to a cross-document push -
-/// every navigation API of it disposes of those it handed out.
 fn entriesRemovedHook(top_ptr: *anyopaque) void {
     const top: *html_core.window.BrowsingContext = @ptrCast(@alignCast(top_ptr));
     // Taken before any event is fired: dispose handlers run script, which
@@ -2637,7 +2633,9 @@ fn abortPrunedTraversals(navigation: *runtime.Instance, internal: *InternalState
             i += 1;
             continue;
         };
-        if (s.history.entryByKey(s.navigable.id, &key) != null) {
+        // The push's forward entries leave this document's entry list now and
+        // the joint session history when its finalize runs (lane nav2 E).
+        if (s.history.viewHasKey(s.navigable.id, &key)) {
             i += 1;
             continue;
         }

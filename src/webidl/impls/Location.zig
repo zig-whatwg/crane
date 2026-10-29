@@ -1286,16 +1286,23 @@ fn topLevelFragmentNavigation(
         .navigation_api_state = destination_state,
     })) return;
 
-    // Steps 6-13 and 17: the new entry on the same document, pushed or
-    // replacing the current one in the traversable's history, with the
-    // destination's navigation API state and a null classic history API
-    // state.
+    // Steps 6-14: the new entry on the same document, with the destination's
+    // navigation API state and a null classic history API state, made the
+    // navigable's active entry - pending in the joint session history until
+    // "finalize a same-document navigation" (step 18) lists it - and the
+    // document's History index and length its best guess (steps 10-12, and
+    // step 15's update writes them).
+    var pending: ?joint_history.SameDocumentNavigation = null;
     if (dom.browser_state.browsingContextOf(window)) |b| {
         if (b.ensureHistoryEntries(&@import("history_documents.zig").infoOf)) |history| {
             const api_state = destination_state.clone(allocator) catch null;
-            history.commitSameDocument(b.id, url, .null, if (handling == .push) .push else .replace, api_state) catch {};
+            pending = history.navigateSameDocument(b.id, url, .null, if (handling == .push) .push else .replace, api_state) catch null;
         } else |_| {}
     }
+    // A step below that fails still finalizes the entry made active.
+    errdefer if (pending) |made| {
+        if (dom.browser_state.browsingContextOf(window)) |target| html_core.navigation.apply_history_step.finalizeSameDocument(target, allocator, made);
+    };
 
     // Step 12: "Set navigable's active document's URL to url." A document
     // with a window reads its URL from its realm's record - a same-document
@@ -1324,8 +1331,16 @@ fn topLevelFragmentNavigation(
     // Step 16: "Scroll to the fragment given navigable's active document" -
     // which sets its target element (:target), now that its URL is the
     // fragment's (navigation-api/navigation-methods/navigate-same-document.html).
-    const active = interfaces.Window.get_document(window) catch return;
-    dom.fragment_scroll.scrollToTheFragment(active);
+    if (interfaces.Window.get_document(window)) |active| dom.fragment_scroll.scrollToTheFragment(active) else |_| {}
+
+    // Steps 17-18: "Append the following session history synchronous
+    // navigation steps involving navigable to traversable: finalize a
+    // same-document navigation" (lane nav2 E). The popstate listeners ran
+    // script: the window's navigable is asked again (a navigable gone took
+    // its pending entries with it).
+    const nav = pending orelse return;
+    const navigable = dom.browser_state.browsingContextOf(window) orelse return;
+    html_core.navigation.apply_history_step.finalizeSameDocument(navigable, allocator, nav);
 }
 
 /// "Update document for history step application" step 6.4.3 for a

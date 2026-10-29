@@ -3296,6 +3296,11 @@ fn recordInHistory(integration: *IFrameIntegration, record: *Navigation, url: []
         const taken = previous;
         previous = null;
         history.recordActivation(entry.id, kind, taken) catch {};
+        // "Activate history entry": the leaving document's pending
+        // same-document entries - made after this traversal's continuation
+        // for the navigable - are no longer active; their finalize steps do
+        // nothing (JointHistory.finalizeSameDocument, step 2's case).
+        history.dropPending(bc.id);
         // "Update document for history step application" for the document
         // the traversal makes: the leaving document has unloaded, and none of
         // the new one's script has run - its view of the history is written
@@ -3705,14 +3710,17 @@ fn navigateToFragment(integration: *IFrameIntegration, url: []const u8, old_url:
     // The event's handlers ran script: a navigable taken away is not
     // navigated.
     if (integration.state == .discarded) return;
-    // Steps 6-13: the new entry on the same document, with the destination's
-    // navigation API state and a null classic history API state; "finalize a
-    // same-document navigation" pushes or replaces it in the traversable's
-    // history.
+    // Steps 6-14: the new entry on the same document, with the destination's
+    // navigation API state and a null classic history API state, made the
+    // navigable's active entry - pending in the joint session history until
+    // "finalize a same-document navigation" (step 18) lists it - and the
+    // document's History index and length its best guess (steps 10-12, and
+    // step 15's update writes them).
+    var pending: ?html_core.navigation.joint_history.SameDocumentNavigation = null;
     if (integration.browsing_context) |bc| {
         if (bc.ensureHistoryEntries(&history_documents.infoOf)) |history| {
             const api_state = destination_state.clone(allocator) catch null;
-            history.commitSameDocument(bc.id, url, .null, jointHandling(handling), api_state) catch {};
+            pending = history.navigateSameDocument(bc.id, url, .null, jointHandling(handling), api_state) catch null;
         } else |_| {}
     }
     // Step 12: "Set navigable's active document's URL to url."
@@ -3750,6 +3758,14 @@ fn navigateToFragment(integration: *IFrameIntegration, url: []const u8, old_url:
     // fragment's. The popstate listeners may have taken the frame away.
     if (integration.state == .discarded) return;
     if (activeDocumentOf(integration)) |document| dom_module.fragment_scroll.scrollToTheFragment(document);
+    // Steps 17-18: "Append the following session history synchronous
+    // navigation steps involving navigable to traversable: finalize a
+    // same-document navigation" (lane nav2 E). Not for a navigable gone
+    // meanwhile: its pending entries went with it.
+    const nav = pending orelse return;
+    if (integration.state == .discarded) return;
+    const bc = integration.browsing_context orelse return;
+    html_core.navigation.apply_history_step.finalizeSameDocument(bc, allocator, nav);
 }
 
 /// "Update document for history step application" step 6.4.3 for a
