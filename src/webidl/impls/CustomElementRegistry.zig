@@ -49,8 +49,11 @@ const ScopedDocument = struct {
     instance: *runtime.Instance,
     generation: u64,
 
+    /// A weak link (refcount step 5i, H-RC8-CER-WEAK): once weak references
+    /// see garbage, a document whose tree is garbage reads as gone, so a
+    /// definition's candidate walk never takes it on again.
     fn isLive(self: ScopedDocument) bool {
-        return runtime.SlabAllocator.generationOf(self.instance) == self.generation and
+        return @import("dom").refcount.weakLinkLive(self.instance, self.generation) and
             !runtime.instance_lifecycle.isCleanedUp(self.instance);
     }
 };

@@ -204,6 +204,14 @@ pub const InternalState = struct {
     /// HTML "destroy" has run: the document's browsing context is null. It
     /// stays readable - script elsewhere may hold it - but has no view.
     destroyed: bool = false,
+    /// The window's counted keep of this document's wrapper (refcount step
+    /// 5i, H-RC8-DOC-KEEP): taken when the document gets its default view
+    /// (`setDefaultView`), ended when "destroy a document" clears it
+    /// (`clearDefaultView`) - exactly where wrapper_cache's default-view rule
+    /// holds the wrapper, which it sits beside until refcount step 9(d)
+    /// deletes that rule. A document freed with its window drops it with
+    /// its wrapper-cache entry.
+    window_kept: bool = false,
     /// HTML "bfcache blocking details": the reasons "make document
     /// unsalvageable" recorded (dom.bfcache), in the order first recorded.
     bfcache_blocking_details: @import("html_core").navigation.not_restored_reasons.BlockingDetails = .{},
@@ -1019,6 +1027,14 @@ fn templateOwnerDocument(document: *runtime.Instance) !*runtime.Instance {
     owner_internal.scripting_enabled = false;
     internal.template_owner_document = owner;
     internal.template_owner_generation = runtime.SlabAllocator.generationOf(owner);
+    // The document holds its template contents owner document counted
+    // (refcount step 5i, H-RC8-DOC-TEMPLATE; WebKit's Document keeps
+    // m_templateDocument as a RefPtr<Document>), taking its born reference
+    // over, until its own teardown (deinitOwn).
+    if (@import("dom").instance_bridge.getNodeBase(@ptrCast(owner))) |base| {
+        @import("dom").refcount.holderRef(base);
+        @import("dom").refcount.takeOverCreatorReference(base);
+    }
     engine.traceChild(document, owner, .{ .name = "template owner document" });
     return owner;
 }
@@ -1201,11 +1217,13 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
 pub const construction_args = .{ "origin", "sandboxing_flags", "ready_state", "last_modified", "permissions_policy" };
 
 /// dom.target_element: `document`'s target element, or null once the
-/// element it names has been freed.
+/// element it names has been freed. A weak link (refcount step 5i: the
+/// document's target element never counts): once weak references see
+/// garbage, an element of a garbage tree reads as none too.
 fn targetElement(document: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(document) orelse return null;
     const link = internal.target_element orelse return null;
-    return if (link.isLive()) link.instance else null;
+    return if (@import("dom").refcount.weakLinkLive(link.instance, link.generation)) link.instance else null;
 }
 
 /// dom.target_element: "set document's target element to" `element`.
@@ -1361,6 +1379,11 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
         // Else its wrapper frees it.
         if (internal.template_owner_document) |owner| {
             if (runtime.SlabAllocator.generationOf(owner) == internal.template_owner_generation) {
+                // This document's counted reference on it ends first
+                // (refcount step 5i), unless its teardown began.
+                if (!runtime.instance_lifecycle.isCleanupStarted(owner)) {
+                    if (@import("dom").instance_bridge.getNodeBase(@ptrCast(owner))) |base| @import("dom").refcount.holderDeref(base);
+                }
                 if (!instance.ctx.hasEngine() or
                     (!runtime.cleanup_coordinator.isContextTearingDown() and !engine.hasWrapper(owner)))
                 {
@@ -2232,6 +2255,17 @@ pub fn setDefaultView(instance: *runtime.Instance, window: *runtime.Instance) vo
     const internal = getInternal(instance) orelse return;
     internal.default_view = window;
     engine.traceChild(window, instance, .{ .name = "document" });
+    // The window keeps the document's wrapper for as long as it is the
+    // document's view (refcount step 5i: one counted keep, `window_kept`) -
+    // on the wrapper the edge above made, whose cache entry counts the keep
+    // and cannot fail to: a keep the engine could not record (no wrapper
+    // under memory pressure, no engine realm) is not taken, so its release
+    // ends nothing it did not take. The default-view rule holds the
+    // wrapper meanwhile, until step 9(d) makes this keep the only reason.
+    if (!internal.window_kept and engine.hasWrapper(instance)) {
+        internal.window_kept = true;
+        engine.keepPlatformObjectAlive(instance);
+    }
 }
 
 /// dom.document_browsing_context: this document was destroyed. HTML
@@ -2247,7 +2281,12 @@ fn clearDefaultView(instance: *runtime.Instance) void {
     // HTML 3.1.6: the tree becomes browsing-context disconnected.
     internal.render_blocking_elements.clear();
     internal.default_view = null;
-    engine.keepPlatformObjectAlive(instance);
+    // The window's keep ends here (refcount step 5i), and the release makes
+    // the wrapper cache read the wrapper's strength again; a document that
+    // never had the keep re-reads it with a keep and its release.
+    if (internal.window_kept) {
+        internal.window_kept = false;
+    } else engine.keepPlatformObjectAlive(instance);
     engine.releasePlatformObject(instance);
 }
 
@@ -4673,6 +4712,7 @@ fn queueScriptDeliveryContinuation(document: *runtime.Instance, removed_parser_b
     const loop = document.ctx.getOptionalEventLoop() orelse return;
     const queued = task.allocator.create(LifecycleTask) catch return;
     queued.* = task;
+    queued.ref.take(document, @import("dom").instance_bridge.getNodeBase(@ptrCast(document)));
     loop.queueTask(.{
         .callback = &runLifecycleTask,
         .context = queued,
@@ -5177,6 +5217,13 @@ const LifecycleTask = struct {
     load_token: u64 = 0,
     had_engine: bool = false,
     removed_parser_blocker: bool = false,
+    /// The task's counted reference on its document, from its queueing to
+    /// its run or drop (refcount step 7's missed holder, lane refcount8,
+    /// H-RC8-DOC-LIFECYCLE: the zombie audit's full sweep found a windowless
+    /// document's readystatechange and DOMContentLoaded taking it on after
+    /// its tree counted zero). WebKit's document event tasks keep their
+    /// document alive the same way.
+    ref: @import("dom").node_holds.CountedRef = .{},
 };
 
 fn queueLifecycleTask(target: *runtime.Instance, step: LifecycleStep) void {
@@ -5193,6 +5240,7 @@ fn queueLifecycleTaskWith(target: *runtime.Instance, step: LifecycleStep, load_t
         .step = step,
         .load_token = load_token,
     };
+    task.ref.take(target, @import("dom").instance_bridge.getNodeBase(@ptrCast(target)));
     const loop = target.ctx.getOptionalEventLoop() orelse {
         // No loop to queue on (a context built for tests): the events are
         // still owed, so fire them now rather than lose them.
@@ -5204,12 +5252,14 @@ fn queueLifecycleTaskWith(target: *runtime.Instance, step: LifecycleStep, load_t
 
 fn dropLifecycleTask(context: ?*anyopaque) void {
     const task: *LifecycleTask = @ptrCast(@alignCast(context orelse return));
+    task.ref.release(task.target);
     task.allocator.destroy(task);
 }
 
 fn runLifecycleTask(context: ?*anyopaque) void {
     const task: *LifecycleTask = @ptrCast(@alignCast(context orelse return));
     defer task.allocator.destroy(task);
+    defer task.ref.release(task.target);
     // Collected and its slot reissued: nothing is left to finish loading.
     if (runtime.SlabAllocator.generationOf(task.target) != task.generation) return;
     if (task.step == .resume_script_delivery) {

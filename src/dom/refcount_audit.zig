@@ -51,14 +51,26 @@ const log = std.log.scoped(.refcount_audit);
 // process-wide: a diagnostic switch, set once by the WPT runner from CRANE_REFCOUNT_AUDIT before any page runs (and by a unit test around its body); off, the hooks read it and do nothing, so it changes no behaviour of any Browser
 var audit_requested: bool = false;
 
+/// Whether the audit's hooks are compiled in: always in unit tests, else
+/// only in a build made with -Drefcount-audit=true (refcount8, step 7's
+/// prerequisite (e)): the checks sit on the hottest node paths
+/// (instance_bridge.getNodeBase, Node's state), and a normal build - the
+/// generation runner, a release - pays nothing for them.
+pub const compiled = builtin.is_test or @import("dom_options").refcount_audit;
+
 /// Turn the audit on (the WPT runner's `CRANE_REFCOUNT_AUDIT=1`).
 pub fn enable() void {
+    if (comptime !compiled) {
+        log.err("CRANE_REFCOUNT_AUDIT asked for an audit this build does not have: build with -Drefcount-audit=true", .{});
+        return;
+    }
     audit_requested = true;
     log.warn("on: trees the counts call garbage are marked zombie at their teardown slice, and reads of them reported (CRANE_REFCOUNT_AUDIT)", .{});
 }
 
-/// Whether the audit is on.
+/// Whether the audit is on: never in a build without it.
 pub inline fn on() bool {
+    if (comptime !compiled) return false;
     return audit_requested;
 }
 

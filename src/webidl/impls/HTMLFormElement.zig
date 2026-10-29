@@ -153,7 +153,7 @@ const PastNames = struct {
     /// The element `name` maps to, if its entry stands.
     fn get(self: *const PastNames, name: []const u8) ?*runtime.Instance {
         for (self.entries.items) |entry| {
-            if (std.mem.eql(u8, entry.name, name)) return entry.element.get();
+            if (std.mem.eql(u8, entry.name, name)) return entry.element.getWeak();
         }
         return null;
     }
@@ -396,7 +396,7 @@ pub fn call_getter__1(instance: *runtime.Instance, name: runtime.DOMString) anye
                 try dom.node_lists.namedControls(list, try get_elements(instance), key);
                 return .{ .instance = list };
             }
-            if (first.get()) |element| return single(instance, internal, key, element);
+            if (first.getWeak()) |element| return single(instance, internal, key, element);
         }
         if (candidates.image) |first| {
             // Step 4: the live image list holds the form (codex-lpo Q6).
@@ -406,7 +406,7 @@ pub fn call_getter__1(instance: *runtime.Instance, name: runtime.DOMString) anye
                 try dom.node_lists.namedFormImages(list, instance, key);
                 return .{ .instance = list };
             }
-            if (first.get()) |element| return single(instance, internal, key, element);
+            if (first.getWeak()) |element| return single(instance, internal, key, element);
         }
     }
     // Step 3: no candidate, and the past names map has the name.

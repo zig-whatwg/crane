@@ -123,6 +123,14 @@ pub const InternalState = struct {
 
     /// The associated document (lazily set)
     document: ?*runtime.Instance = null,
+    /// The Window's counted reference on its associated Document (refcount
+    /// step 5i, lane refcount8; H-RC8-WIN-DOCREF): WebKit's LocalDOMWindow
+    /// keeps `RefPtr<Document> m_document`, Blink's LocalDOMWindow traces
+    /// document_. Taken by `setDocument` - it takes the document's born
+    /// reference over - and released when a document replaces it and at the
+    /// Window's end (deinitOwn), the realm's. SHADOW MODE: counted only; the
+    /// Window frees its document itself (deinitOwn) until step 7.
+    document_ref: @import("dom").node_holds.RefHold = .{},
 
     /// The opener Window (if opened via window.open()), as it was when set:
     /// the IDL getter's fallback when the browsing context's opener has no
@@ -1030,6 +1038,8 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
         // whose document's wrapper was collected first - a removed frame's
         // realm, which the collector takes whole - kept the document's slot
         // until its Browser ended (lane pageretention1).
+        // Its reference on the document ends first (refcount step 5i).
+        internal.document_ref.release();
         if (internal.document) |doc| {
             log.debug("[Window.deinit] Cleaning up Document {*}", .{doc});
             @import("dom").node_creation.destroyRoot(doc);
@@ -1256,6 +1266,11 @@ pub fn setDocument(instance: *runtime.Instance, document: *runtime.Instance) voi
         internal.idle.ended = false;
     };
     internal.document = document;
+    // The Window holds its document counted from here (refcount step 5i),
+    // letting go of the one it replaces; the document's born reference is
+    // the Window's now, if its creator still offered it.
+    internal.document_ref.set(document);
+    if (@import("dom").instance_bridge.getNodeBase(@ptrCast(document))) |base| @import("dom").refcount.takeOverCreatorReference(base);
     // A new document is a new environment: its storage key is computed anew.
     if (internal.storage_key) |key| internal.allocator.free(key);
     internal.storage_key = null;

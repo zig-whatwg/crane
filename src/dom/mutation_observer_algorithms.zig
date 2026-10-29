@@ -64,6 +64,7 @@ pub const MutationObserverAgent = struct {
 
     pub fn deinit(self: *MutationObserverAgent) void {
         self.pending_observers.deinit();
+        for (self.signal_slots.items) |*entry| entry.ref.release(entry.slot);
         self.signal_slots.deinit(self.allocator);
         self.signal_slot_set.deinit(self.allocator);
     }
@@ -76,10 +77,16 @@ pub const MutationObserverAgent = struct {
 };
 
 /// A slot in the agent's signal slots, with its slab generation when it
-/// entered.
+/// entered, and the counted reference the set holds it by until its
+/// slotchange is fired (refcount step 7's missed holder, lane refcount8: the
+/// zombie audit's full sweep found the slotchange taking on a slot whose tree
+/// the counts had called garbage). WebKit keeps the signal slot list as
+/// GCReachableRefs: a counted reference beside the pending-activity keep. A
+/// chainless node_holds.CountedRef: the list's items move.
 pub const SignalSlot = struct {
     slot: *runtime.Instance,
     generation: u64,
+    ref: @import("node_holds.zig").CountedRef = .{},
 };
 
 // Thread-local agent state
@@ -120,7 +127,9 @@ pub fn signalSlotChange(slot: *runtime.Instance) void {
         const generation = runtime.SlabAllocator.generationOf(slot);
         agent.signal_slots.ensureUnusedCapacity(agent.allocator, 1) catch return;
         agent.signal_slot_set.put(agent.allocator, slot, generation) catch return;
-        agent.signal_slots.appendAssumeCapacity(.{ .slot = slot, .generation = generation });
+        var entry: SignalSlot = .{ .slot = slot, .generation = generation };
+        entry.ref.take(slot, @import("instance_bridge.zig").getNodeBase(@ptrCast(slot)));
+        agent.signal_slots.appendAssumeCapacity(entry);
         // Until its slotchange is fired, the slot stays alive whatever script
         // holds - the event is pending activity.
         engine.keepPlatformObjectAlive(slot);
@@ -139,7 +148,8 @@ pub fn forgetSlot(slot: *runtime.Instance) void {
     _ = agent.signal_slot_set.remove(slot);
     for (agent.signal_slots.items, 0..) |entry, i| {
         if (entry.slot == slot) {
-            _ = agent.signal_slots.orderedRemove(i);
+            var removed = agent.signal_slots.orderedRemove(i);
+            removed.ref.release(slot);
             break;
         }
     }
@@ -787,7 +797,10 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
 
     // Step 7: "For each slot of signalSet: fire an event named slotchange,
     // with its bubbles attribute set to true, at slot."
-    for (signal_set.items) |entry| {
+    for (signal_set.items) |*entry| {
+        // The set's counted reference ends after the slot's slotchange (or
+        // is forgotten, for a slot freed meanwhile).
+        defer entry.ref.release(entry.slot);
         // A slot its realm's end freed meanwhile (generation), is skipped.
         if (runtime.SlabAllocator.generationOf(entry.slot) != entry.generation) continue;
         fireSlotChange(entry.slot);

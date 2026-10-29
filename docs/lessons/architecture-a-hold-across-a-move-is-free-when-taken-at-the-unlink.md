@@ -1,0 +1,12 @@
+# Architecture: A hold across a move is free when it is taken at the unlink and ended at the link
+
+**Date**: 2026-10-29
+**Lesson**: Under the tree-is-the-unit counts (refcount decision D1), a hold costs a walk to the root when it begins and ends - but a hold that spans a move can be taken at the moment the node becomes a root (its unlink) and ended just before it stops being one (its link), where both are O(1).
+
+**Why**: A move is a removal and an insertion; between them the removed subtree holds nothing and the counts call it garbage (docs/lessons/architecture-a-move-is-a-removal-and-an-insertion-hold-what-you-move.md). WebKit holds what it moves with a `NodeVector` of `Ref<Node>` and `Ref protectedOldChild`; its ref and deref are O(1). Crane's are O(depth): `holderRef` on a node in a tree walks up adding to `subtree_holds`, `holderDeref` walks again. Copying WebKit's shape literally would add two root walks to every moved node - innerHTML, append, replaceChildren, the parser's moves.
+
+**What Happened**: Lane refcount8 built step 7's prerequisites (b)/(b2). `refcount.unlinkChildHeld` adds the remover's reference inside the unlink, after the old chain was decremented: the node is a root then, so only its own total and its document's foreign holds move. `linkChild` ends it as the first thing it does, while the node is still a root, before its own walk carries what is left. `remove()` ends it at its exit (O(1) while the node is still parentless) after its removing steps, transient observers and mutation record; `insert`, `adopt`, the parser's batch inserts, `replace` and `replaceAll` keep it until the link or their own record. One RcFlags bit (`removal_held`) says the node carries one, so the link knows to end it and a double hold is a violation. On the audit run over the Crane tests and the 1,233-file list, resurrections fell from 770,500 to 3 (two registry and one two-call-move holes, fixed separately); the gc_bench rows moved by less than a percent.
+
+**Fix**: For any hold that must bridge a removal and a later re-link, take it in the unlink (the node is a root) and end it in the link (still a root) - never as a holderRef before the removal and a holderDeref after the insertion. Mark it on the node so every link path ends it, and end it explicitly on every path that does not re-link (the remover's exit, its error path).
+
+**Takeaway**: **Under subtree counts a hold's cost is where it begins and ends: begin and end a move's hold while the node is a root, and it costs nothing.**

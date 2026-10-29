@@ -719,8 +719,9 @@ pub fn documentForeignHolds(document: *NodeBase) ?u32 {
 //   * a creator that drops its node unwrapped and uninserted frees it
 //     (`dom.node_creation.destroyUninserted`: the old net, until step 7 makes
 //     that a release, `releaseCreatorReference`).
-// A Document's creator keeps it (a navigable's, step 5i) unless it hands the
-// document to script, which offers it (`offerCreatorReference`).
+// A Document is born offering its reference too (step 5i, lane refcount8):
+// the holder it is made for takes it over (`takeOverCreatorReference`), or
+// its first wrapper does.
 // ============================================================================
 
 /// A holder that would take a reference on `node` takes its creator's over
@@ -735,18 +736,25 @@ pub fn claimCreatorReference(node: *NodeBase) bool {
 }
 
 /// A Document's creator hands the document to script (DOMParser,
-/// DOMImplementation, `new Document()`, parseHTMLUnsafe, a document's
-/// clone, XHR's response document): its born reference, which a document's
-/// creator otherwise keeps, goes to the document's first wrapper. Before
-/// anything wraps it.
-pub fn offerCreatorReference(node: *NodeBase) void {
-    node.rc_flags.creator = true;
+/// DOMImplementation, `new Document()`, parseHTMLUnsafe, XHR's response
+/// document): its first wrapper takes its born reference over. Nothing to
+/// do since refcount step 5i (lane refcount8): a Document is born offering
+/// its reference like every node, and the holder a document is made for
+/// takes it over itself (`takeOverCreatorReference`: a Window, a template's
+/// owner document's holder, an SVG resource). Kept so the creators' hand-offs
+/// stay named where they happen.
+pub fn offerDocument(document: *runtime.Instance) void {
+    _ = document;
 }
 
-/// `offerCreatorReference` for a document given as its instance.
-pub fn offerDocument(document: *runtime.Instance) void {
-    const node = instance_bridge.getNodeBase(document) orelse return;
-    offerCreatorReference(node);
+/// A holder that keeps `node` for as long as it lives - a Window its
+/// associated Document, a document its template contents owner document,
+/// an SVG resource its parsed document - takes its counted reference and
+/// ends the creator's, if the creator still offers it (refcount step 5i):
+/// the count stays one per holder, whoever wrapped the node first. The
+/// caller has taken its own reference (`holderRef`, a node_holds hold).
+pub fn takeOverCreatorReference(node: *NodeBase) void {
+    releaseCreatorReference(node);
 }
 
 /// The creator drops `node` neither wrapped nor inserted: its born reference
@@ -768,8 +776,17 @@ pub fn releaseCreatorReference(node: *NodeBase) void {
 fn endCreatorReferenceForLink(node: *NodeBase) void {
     if (!node.rc_flags.creator) return;
     node.rc_flags.creator = false;
+    dropRootReferenceForLink(node, "a creator's reference");
+}
+
+/// `node`, a root about to be linked, lets go of one reference the link
+/// takes over (the creator's, a remover's): O(1), only the node's own total
+/// and - a detached root of its document - its document's foreign holds
+/// move; the link then carries what is left. Never garbage: the node is
+/// being linked.
+fn dropRootReferenceForLink(node: *NodeBase, comptime what: []const u8) void {
     if (node.rc < NodeBase.rc_one) {
-        violate(null, "node {*} offered a creator's reference it does not hold", .{node});
+        violate(null, "node {*} gave up " ++ what ++ " it does not hold", .{node});
         return;
     }
     node.rc -= NodeBase.rc_one;
@@ -893,8 +910,10 @@ fn countsAsForeign(node: *const NodeBase) bool {
 pub fn linkChild(node: *NodeBase, parent: *NodeBase) void {
     if (node.parent_node != null) violate(null, "linkChild: node {*} already has a parent", .{node});
     if (node.rc_flags.hosted) violate(null, "linkChild: node {*} is a shadow root or template contents", .{node});
-    // The tree takes the node over: its creator's reference ends (refcount7).
+    // The tree takes the node over: its creator's reference ends (refcount7),
+    // and so does the hold its remover kept it by across a move (refcount8).
     endCreatorReferenceForLink(node);
+    endRemovalHoldForLink(node);
     refcount_audit.checkRead(node, .reinsertion, @returnAddress());
     refcount_audit.checkRead(parent, .reinsertion, @returnAddress());
     if (node.rc_flags.audit_pending) refcount_audit.noteResurrected(node);
@@ -903,10 +922,13 @@ pub fn linkChild(node: *NodeBase, parent: *NodeBase) void {
     node.rc_flags.foreign = false;
     node.setParent(parent);
     const delta: i64 = holds;
-    const tree_root = if (holds != 0) walkAdd(null, parent, delta) else root(null, parent);
-    const document = countsAt(parent, tree_root);
+    // Nothing held in the subtree: no walk to the root (refcount step 7's
+    // prerequisite (e)) - the tree version's counts are the parent's node
+    // document's either way.
+    const reached: ?*NodeBase = if (holds != 0) walkAdd(null, parent, delta) else null;
+    const document = if (reached) |r| countsAt(parent, r) else countsOfParent(parent);
     if (document) |counts| bumpTreeVersion(counts, .{ .node = parent });
-    if (holds == 0) return;
+    const tree_root = reached orelse return;
     // Within one document's detached trees, a move changes nothing there.
     if (was_foreign and tree_root.rc_flags.foreign and node.owner_document == tree_root.owner_document) return;
     if (was_foreign) {
@@ -921,6 +943,51 @@ pub fn linkChild(node: *NodeBase, parent: *NodeBase) void {
 /// detached tree of its document from here on. Its holds leave the old
 /// parent's chain and count in its document's foreign holds.
 pub fn unlinkChild(node: *NodeBase) void {
+    unlink(node, false);
+}
+
+/// `unlinkChild` by a remover that keeps `node` across the steps that follow
+/// the removal - the removing steps, transient observers and the mutation
+/// record (DOM remove 11-16), and for a move the insertion that links it
+/// again: WebKit's ContainerNode::removeChild keeps `Ref protectedOldChild`,
+/// insertBefore the NodeVector of Ref<Node> collectChildrenAndRemoveFromOldParent
+/// returns (refcount step 7's prerequisites (b) and (b2), lane refcount8).
+/// One counted reference, taken AT the unlink - O(1): the node is a root by
+/// then, so only its own total and its document's foreign holds move - so
+/// the removed tree's total never passes through zero while the remover
+/// still works on it. Ended by the node's next link (`linkChild`, O(1)
+/// before its walk) or by the remover (`endRemovalHold`).
+pub fn unlinkChildHeld(node: *NodeBase) void {
+    unlink(node, true);
+}
+
+/// A remover's hold on `node` (`unlinkChildHeld`) ends, if its next link did
+/// not end it first: O(1) while the node is still a root, and the moment its
+/// tree may be garbage.
+pub fn endRemovalHold(node: *NodeBase) void {
+    if (!node.rc_flags.removal_held) return;
+    node.rc_flags.removal_held = false;
+    holderDeref(node);
+}
+
+/// `linkChild`'s end of a remover's hold: the link takes the node over.
+fn endRemovalHoldForLink(node: *NodeBase) void {
+    if (!node.rc_flags.removal_held) return;
+    node.rc_flags.removal_held = false;
+    dropRootReferenceForLink(node, "a remover's hold");
+}
+
+/// The remover's hold on `node`, a root just unlinked (`unlinkChildHeld`).
+fn holdRemovedRoot(node: *NodeBase) void {
+    if (node.rc_flags.removal_held) {
+        violate(null, "node {*} already carries a remover's hold", .{node});
+        return;
+    }
+    node.rc_flags.removal_held = true;
+    holderRef(node);
+}
+
+fn unlink(node: *NodeBase, held: bool) void {
     const parent = node.parent_node orelse {
         violate(null, "unlinkChild: node {*} has no parent", .{node});
         return;
@@ -930,15 +997,20 @@ pub fn unlinkChild(node: *NodeBase) void {
     const foreign = countsAsForeign(node);
     node.rc_flags.foreign = foreign;
     const delta: i64 = holds;
-    const tree_root = if (holds != 0) walkAdd(null, parent, -delta) else root(null, parent);
+    // Nothing held in the subtree: no walk (as linkChild).
+    const reached: ?*NodeBase = if (holds != 0) walkAdd(null, parent, -delta) else null;
     // The audit: the removed subtree, and the tree it left, may be garbage.
     defer if (refcount_audit.on()) {
         auditLowered(node);
-        if (holds != 0) auditLowered(tree_root);
+        if (reached) |r| auditLowered(r);
     };
-    const document = countsAt(parent, tree_root);
+    // A remover's hold goes on once the node's own holds are counted where
+    // they now belong, and before the audit looks at it (defers run last
+    // first).
+    defer if (held) holdRemovedRoot(node);
+    const document = if (reached) |r| countsAt(parent, r) else countsOfParent(parent);
     if (document) |counts| bumpTreeVersion(counts, .{ .node = parent });
-    if (holds == 0) return;
+    const tree_root = reached orelse return;
     if (foreign and tree_root.rc_flags.foreign and node.owner_document == tree_root.owner_document) return;
     adjustForeign(tree_root, -delta);
     if (!foreign) return;
@@ -960,14 +1032,26 @@ pub fn moveChild(node: *NodeBase, new_parent: *NodeBase) void {
     const holds = node.subtree_holds;
     const delta: i64 = holds;
     const moves = holds != 0 and old_parent != new_parent;
-    const new_root = if (moves) walkAdd(null, new_parent, delta) else root(null, new_parent);
-    if (countsAt(new_parent, new_root)) |counts| bumpTreeVersion(counts, .{ .node = new_parent });
-    if (!moves) return;
+    const reached: ?*NodeBase = if (moves) walkAdd(null, new_parent, delta) else null;
+    const counts_at = if (reached) |r| countsAt(new_parent, r) else countsOfParent(new_parent);
+    if (counts_at) |counts| bumpTreeVersion(counts, .{ .node = new_parent });
+    const new_root = reached orelse return;
     const old_root = walkAdd(null, old_parent, -delta);
     if (new_root != old_root) {
         adjustForeign(new_root, delta);
         adjustForeign(old_root, -delta);
     }
+}
+
+/// The counts of `parent`'s node document - a Document's own - with no walk
+/// to the root (refcount step 7's prerequisite (e), lane refcount8): a
+/// connected parent's node document is its root, alive while it is; a
+/// detached one's is read through the Node impl's generation-checked
+/// accessor (a document freed under its node answers none).
+fn countsOfParent(parent: *NodeBase) ?*DocumentCounts {
+    if (parent.node_type == NodeBase.DOCUMENT_NODE) return countsOfDocumentNode(parent);
+    if (parent.is_connected) if (parent.owner_document) |raw| return countsOfDocumentNode(@ptrCast(@alignCast(raw)));
+    return countsOfNodeDocument(parent);
 }
 
 /// The counts of `parent`'s node document, where `tree_root` is the root of
@@ -1074,9 +1158,14 @@ pub fn nodeFreed(node: *NodeBase, counts: ?*DocumentCounts) void {
     // its creator neither handed it to a wrapper or a tree nor dropped it
     // through `dom.node_creation.destroyUninserted` - a silent drop, which
     // step 7's counts would never free (refcount7; for step 7's agent-end
-    // assertion). A Document's creator keeps its reference by design.
-    if (diagnosticsOn() and node.rc_flags.creator and node.node_type != NodeBase.DOCUMENT_NODE)
+    // assertion). A Document too, since step 5i: its holder or its first
+    // wrapper takes its reference over, or its creator ends it.
+    if (diagnosticsOn() and node.rc_flags.creator)
         log.warn("a node was freed holding its creator's reference (node type {d}, {s})", .{ node.node_type, if (node.parent_node == null) "a root" else "in a tree" });
+    // A remover that never ended its hold (refcount8: unlinkChildHeld's
+    // pairing) - the counts would keep the tree for good once they decide.
+    if (diagnosticsOn() and node.rc_flags.removal_held)
+        log.warn("a node was freed carrying a remover's hold (node type {d})", .{node.node_type});
     if (node.node_type == NodeBase.DOCUMENT_NODE) return;
     const document = counts orelse return;
     addTo(&document.referencing_nodes, -1, "referencing_nodes");
@@ -1299,11 +1388,41 @@ pub fn GCReachableRef(comptime T: type) type {
     };
 }
 
+/// Whether a weak reference reads a node of a GARBAGE tree as gone (design
+/// 1.4, "weak references see garbage at once": WebKit's WeakPtr is null from
+/// the deletion on). Step 7 makes it true everywhere: from then on a tree
+/// whose total reaches zero is flagged and queued for teardown, and nothing
+/// may hand its nodes out again before its slice frees them. In shadow mode
+/// no production tree is ever flagged, so production builds skip the walk to
+/// the root that reads the flag; unit tests run it, and force a flagged root
+/// to pin what each registry does once roots are flagged (refcount8, step 5i).
+pub const weak_refs_see_garbage = builtin.is_test;
+
+/// A registry's weak link - a raw pointer plus the slab generation it was
+/// taken at, never counted (design 1.3: a node kept alive by its own
+/// registration would be a cycle with no external owner) - still names its
+/// object: `instance` is the one taken at `generation`, and, once weak
+/// references see garbage, not a node of a garbage tree. The step-5i
+/// registries read their links through this: a document's focused area and
+/// target element, a style sheet load's element and document, a form's
+/// named-element cache and past names.
+pub fn weakLinkLive(instance: *const runtime.Instance, generation: u64) bool {
+    if (runtime.SlabAllocator.generationOf(instance) != generation) return false;
+    if (comptime !weak_refs_see_garbage) return true;
+    // Through the bridge, which forgets a node in Node.deinit before its
+    // NodeBase goes: a teardown can leave the slot's generation live
+    // (docs/lessons/debugging-a-nodes-slab-generation-can-outlive-its-nodebase.md).
+    const opaque_instance: *anyopaque = @ptrCast(@constCast(instance));
+    const node = instance_bridge.getNodeBaseUnaudited(opaque_instance) orelse return true;
+    return !root(null, node).rc_flags.garbage;
+}
+
 /// A weak reference: a raw pointer plus the slab generation of the node's
 /// Instance when it was taken. `get` is null once the node was freed (or its
-/// slot reissued) and for a node in a garbage tree. A registry that must not
-/// keep its node alive uses this where it cannot unregister at the node's
-/// removal (design 1.3).
+/// slot reissued) and - once weak references see garbage
+/// (`weak_refs_see_garbage`) - for a node in a garbage tree. A registry that
+/// must not keep its node alive uses this where it cannot unregister at the
+/// node's removal (design 1.3).
 pub fn WeakRef(comptime T: type) type {
     comptime assertNodeLike(T);
     return struct {
@@ -1321,11 +1440,15 @@ pub fn WeakRef(comptime T: type) type {
             return .{ .ptr = ptr, .instance = instance, .generation = runtime.SlabAllocator.generationOf(instance) };
         }
 
-        /// The node, or null when it is gone. O(depth): the garbage flag is
-        /// on the tree's root.
-        pub fn get(self: Self, ledger: *const Ledger) ?*T {
+        /// The node, or null when it is gone. O(depth) once weak references
+        /// see garbage: the flag is on the tree's root. `ledger` is the
+        /// agent's books (a test's hand-linked trees answer their hosts
+        /// through it); production passes null until step 7 wires one.
+        pub fn get(self: Self, ledger: ?*const Ledger) ?*T {
             if (runtime.SlabAllocator.generationOf(self.instance) != self.generation) return null;
-            if (root(ledger, nodeBaseOf(T, self.ptr)).rc_flags.garbage) return null;
+            if (comptime weak_refs_see_garbage) {
+                if (root(ledger, nodeBaseOf(T, self.ptr)).rc_flags.garbage) return null;
+            }
             return self.ptr;
         }
     };

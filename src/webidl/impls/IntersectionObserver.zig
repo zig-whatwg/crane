@@ -16,7 +16,6 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const engine = @import("engine");
 const IntersectionObserver = interfaces.IntersectionObserver;
-const IntersectionObserverEntryImpl = @import("IntersectionObserverEntry.zig");
 const same_object = @import("same_object.zig");
 const clock = @import("clock");
 
@@ -497,6 +496,26 @@ const IntersectionMicrotaskContext = struct {
     generation: u64,
 };
 
+/// The update microtask's ends (engine.queueRealmMicrotask): exactly one
+/// runs, once, and owns the context - its steps when the microtask runs, or
+/// `dropped` when it never will (its realm ended, the agent ended, or a
+/// terminated checkpoint discarded the queue), which only frees it.
+/// engine.queueMicrotask has no dropped end, and its data leaked when the
+/// microtask never ran (lane leaks1's class; the integrator, 2026-10-29).
+const intersection_microtask_steps: engine.PromiseReactionSteps = .{
+    .fulfilled = intersectionMicrotaskRan,
+    .dropped = intersectionMicrotaskDropped,
+};
+
+fn intersectionMicrotaskRan(data: ?*anyopaque, _: runtime.JSValue) void {
+    intersectionMicrotask(data);
+}
+
+fn intersectionMicrotaskDropped(data: ?*anyopaque) void {
+    const ctx: *IntersectionMicrotaskContext = @ptrCast(@alignCast(data orelse return));
+    ctx.allocator.destroy(ctx);
+}
+
 /// The microtask's steps: compute the intersections, then notify.
 fn intersectionMicrotask(data: ?*anyopaque) void {
     std.log.debug("[IntersectionObserver] Microtask callback invoked", .{});
@@ -536,13 +555,16 @@ fn intersectionMicrotask(data: ?*anyopaque) void {
 fn scheduleIntersectionUpdate(instance: *runtime.Instance, internal: *InternalState) !void {
     const ctx = try internal.allocator.create(IntersectionMicrotaskContext);
     ctx.* = .{ .allocator = internal.allocator, .observer = instance, .generation = runtime.SlabAllocator.generationOf(instance) };
-    // The surrounding agent's microtask queue; a realm with no engine behind
-    // it has none.
-    const queued: engine.Error!void = if (internal.ctx.agent) |agent| engine.queueMicrotask(agent, intersectionMicrotask, ctx) else error.NotSupported;
+    // A microtask of the observer's relevant realm, with a dropped end; a
+    // realm with no engine behind it has no microtask queue.
+    const queued: engine.Error!void = if (internal.ctx.agent != null) engine.queueRealmMicrotask(internal.ctx, &intersection_microtask_steps, ctx) else error.NotSupported;
     queued catch |err| {
         internal.allocator.destroy(ctx);
         if (err == error.OutOfMemory) return error.OutOfMemory;
-        // No engine behind the realm, so no microtask queue: compute now.
+        // A realm that has ended notifies nothing.
+        if (err != error.NotSupported) return;
+        // No engine (or no realm microtasks) behind the realm, so no
+        // microtask queue: compute now.
         try computeIntersections(internal);
         if (internal.queued_entries.items.len > 0) try invokeCallback(internal);
     };
@@ -562,6 +584,11 @@ fn computeIntersections(internal: *InternalState) !void {
         // Get target's bounding rect
         std.log.debug("[IntersectionObserver] Getting bounding rect for target", .{});
         const bounding_rect = try interfaces.Element.call_getBoundingClientRect(target);
+        // The entry made below takes the rect; an observation that queues
+        // none lets it go (nothing else ever names it).
+        const bounding_generation = runtime.SlabAllocator.generationOf(bounding_rect);
+        var bounding_taken = false;
+        defer if (!bounding_taken) bounding_rect.releaseIfUnwrapped(bounding_generation);
 
         // Get the bounding rect values
         const rect_state = bounding_rect.getState(interfaces.DOMRectReadOnly.State);
@@ -647,6 +674,9 @@ fn computeIntersections(internal: *InternalState) !void {
                 webidl.Opt(f64).passed(root_width),
                 webidl.Opt(f64).passed(root_height),
             );
+            const root_generation = runtime.SlabAllocator.generationOf(root_bounds);
+            var rects_taken = false;
+            defer if (!rects_taken) root_bounds.releaseIfUnwrapped(root_generation);
 
             // Create intersection rect
             const intersection_rect = try interfaces.DOMRectReadOnly.call_constructor(
@@ -656,22 +686,28 @@ fn computeIntersections(internal: *InternalState) !void {
                 webidl.Opt(f64).passed(intersect_width),
                 webidl.Opt(f64).passed(intersect_height),
             );
+            const intersection_generation = runtime.SlabAllocator.generationOf(intersection_rect);
+            defer if (!rects_taken) intersection_rect.releaseIfUnwrapped(intersection_generation);
 
-            // Create entry
-            const entry = try IntersectionObserverEntryImpl.createEntry(
-                internal.ctx,
-                time,
-                root_bounds,
-                bounding_rect,
-                intersection_rect,
-                is_intersecting,
-                false, // isVisible (would need visibility computation)
-                intersection_ratio,
-                target,
-            );
+            // Create the entry: it takes the three rects and holds the target.
+            const entry = try interfaces.IntersectionObserverEntry.initWith(internal.ctx.allocator, internal.ctx, .{
+                .time = time,
+                .root_bounds = @as(?*runtime.Instance, root_bounds),
+                .bounding_client_rect = bounding_rect,
+                .intersection_rect = intersection_rect,
+                .is_intersecting = is_intersecting,
+                .is_visible = false, // isVisible (would need visibility computation)
+                .intersection_ratio = intersection_ratio,
+                .target = target,
+            });
+            rects_taken = true;
+            bounding_taken = true;
 
             // Queue the entry
-            try internal.queued_entries.append(internal.allocator, entry);
+            internal.queued_entries.append(internal.allocator, entry) catch |err| {
+                runtime.Instance.deinit(entry);
+                return err;
+            };
 
             // Update previous state
             obs.previous_threshold_index = threshold_index;

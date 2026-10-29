@@ -31,9 +31,12 @@ pub const Designation = struct {
     element: *runtime.Instance,
     generation: u64,
 
-    /// Whether the address still means the element that was designated.
+    /// Whether the address still means the element that was designated. A
+    /// weak link (refcount step 5i: a document's focused area never counts):
+    /// once weak references see garbage, an element of a garbage tree reads
+    /// as gone too (dom.refcount.weakLinkLive).
     pub fn isLive(self: Designation) bool {
-        return runtime.SlabAllocator.generationOf(self.element) == self.generation;
+        return @import("refcount.zig").weakLinkLive(self.element, self.generation);
     }
 };
 

@@ -125,6 +125,24 @@ pub fn destroyUninserted(node: *runtime.Instance) void {
     steps.destroy_uninserted(node);
 }
 
+/// A node a native creator made for its own use and is done with - a
+/// scratch DocumentFragment (a selectedcontent's clone, the options length
+/// setter's batch, execCommand's extraction, "converting nodes into a
+/// node") - goes now if nothing wrapped it, its born reference with it
+/// (`destroyUninserted`); a wrapped one is its wrapper's. `generation` is its
+/// slab generation when it was made. Refcount step 7's prerequisite (a),
+/// lane refcount8: `runtime.Instance.releaseIfUnwrapped` freed such a node
+/// without ending its creator's reference, and the converted fragments were
+/// never freed before their realm's end.
+pub fn releaseIfUnwrapped(node: *runtime.Instance, generation: u64) void {
+    if (runtime.SlabAllocator.generationOf(node) != generation) return;
+    // No engine realm behind it: nothing can have wrapped it, and nothing is
+    // known about who else holds it - leave it (as the runtime's does).
+    if (!node.ctx.hasEngine()) return;
+    if (@import("engine").hasWrapper(node)) return;
+    destroyUninserted(node);
+}
+
 /// Free `node`, a root its owner tears down - a window's document, at the
 /// window's end - and its subtree, through Node's own teardown: the step
 /// `destroyUninserted` runs, which frees a node's storage by the rule every

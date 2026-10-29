@@ -224,10 +224,12 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
         .owner_document = null,
         .registered_observers = infra.List(dom_module.node_base.RegisteredObserverType).init(allocator),
         .is_connected = false,
-        // Born with one reference, its creator's (rc_one), which a Document's
-        // creator keeps and every other node's offers to whoever takes it on
-        // first (NodeBase.RcFlags.creator; refcount7).
-        .rc_flags = .{ .creator = node_type != NodeBase.DOCUMENT_NODE },
+        // Born with one reference, its creator's (rc_one), which it offers to
+        // whoever takes it on first (NodeBase.RcFlags.creator; refcount7) -
+        // a Document too, since refcount step 5i (lane refcount8): the
+        // holder it is made for (a Window, a template's owner, a resource
+        // cache) or its first wrapper takes it over.
+        .rc_flags = .{},
     };
     internal.node_base = node_base;
 
@@ -1539,10 +1541,8 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
             if (try interfaces.Document.get_customElementRegistry(node)) |registry| {
                 if (dom_module.custom_elements.isScoped(registry)) try dom_module.custom_elements.setDocumentRegistry(copy, registry);
             }
-            // A clone goes to script (cloneNode) or into nothing: unlike a
-            // navigable's document, its born reference is offered to its
-            // first wrapper (refcount7).
-            dom_module.refcount.offerDocument(copy);
+            // A clone goes to script (cloneNode) or into nothing: its first
+            // wrapper takes its born reference over (refcount7, 5i).
             return copy;
         },
         NodeType.DOCUMENT_TYPE_NODE => {

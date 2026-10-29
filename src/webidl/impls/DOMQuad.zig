@@ -292,14 +292,18 @@ pub fn deserializationSteps(serialized: *runtime.DeserializationRecord, value: *
 /// Spec: https://drafts.fxtf.org/geometry-1/#dom-domquad-tojson
 /// Per WebIDL spec, [Default] toJSON returns an object with all exposed attributes.
 /// For DOMQuad, this serializes p1-p4 as DOMPoint instances.
+///
+/// The points are the [SameObject] attributes' own objects, read through the
+/// generated getters, which cache each and keep it from the quad's wrapper
+/// (dom.same_object_cache) - as Performance.call_toJSON reads its attributes.
+/// Handing out the raw points instead, before any `p1` read had drawn that
+/// edge, let a collection free them under the quad once script dropped the
+/// result (lane refcount8's created-child audit).
 pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.DOMQuad.DOMQuadToJSON {
-    const state = getState(instance);
-    // Return the DOMPoint instances - they will be converted to JS objects
-    // with proper prototype chains by the V8 toV8Value conversion layer
     return .{
-        .p1 = state.own.p1,
-        .p2 = state.own.p2,
-        .p3 = state.own.p3,
-        .p4 = state.own.p4,
+        .p1 = try interfaces.DOMQuad.get_p1(instance),
+        .p2 = try interfaces.DOMQuad.get_p2(instance),
+        .p3 = try interfaces.DOMQuad.get_p3(instance),
+        .p4 = try interfaces.DOMQuad.get_p4(instance),
     };
 }

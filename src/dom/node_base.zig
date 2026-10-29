@@ -150,12 +150,13 @@ pub const NodeBase = struct {
         /// "domObject is moved into the wrapper") - or, inserted first, the
         /// tree takes the node over and the creator's reference ends, as a
         /// WebKit creator's `Ref` ends at its scope after the append (the
-        /// parent bit keeps the node). Clear from birth on a Document, whose
-        /// creator keeps it (a navigable's, until step 5i) unless it hands
-        /// the document to script (`refcount.offerCreatorReference`), and
-        /// once a creator that hands its reference on itself has claimed it
-        /// (the HTML parser, decision D-A). Set and cleared only by
-        /// refcount.zig.
+        /// parent bit keeps the node). A Document offers it too (refcount
+        /// step 5i): the holder it is made for takes it over
+        /// (`refcount.takeOverCreatorReference`: a Window, a template's
+        /// owner document's holder, an SVG resource), or its first wrapper
+        /// does. Cleared once a creator that hands its reference on itself
+        /// has claimed it (the HTML parser, decision D-A). Set and cleared
+        /// only by refcount.zig.
         creator: bool = true,
         /// The zombie audit (refcount step 6, dom.refcount_audit): the root
         /// of a tree the counts called garbage, queued for its re-check at
@@ -164,7 +165,13 @@ pub const NodeBase = struct {
         /// The zombie audit: a node of a tree that re-check found garbage -
         /// one step 7 would have freed. A read of it is reported.
         zombie: bool = false,
-        _unused: u1 = 0,
+        /// A remover holds the node across what follows its removal: one
+        /// counted reference taken at the unlink (`refcount.unlinkChildHeld`;
+        /// WebKit's `Ref protectedOldChild`, insert's NodeVector of
+        /// Ref<Node>), ended by its next link (`refcount.linkChild`) or by
+        /// the remover (`refcount.endRemovalHold`). Set and cleared only by
+        /// refcount.zig.
+        removal_held: bool = false,
     };
 
     /// The one write of `parent_node` (WebKit `Node::setParentNode`): the
