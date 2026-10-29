@@ -4762,24 +4762,28 @@ fn crossOriginFragmentNavigation(integration: *IFrameIntegration, container_docu
     return !std.mem.eql(u8, a, b);
 }
 
-/// The iframe load event steps for `element`, in a task.
+/// "Process the iframe attributes" for a fragment navigation of a document
+/// of another origin: "queue an element task on the DOM manipulation task
+/// source given element to run the iframe load event steps". The task fires
+/// at its element, so it holds it from queueing to its one end - it runs, or
+/// the loop drops it (refcount step 5i, H-RC8-IFRAME-LOADTASK;
+/// node_holds.ElementTask: a TaskHold and the drop). WebKit queues it with
+/// queueTaskKeepingThisNodeAlive, Blink with a WrapPersistent(element). It
+/// was a setTimeout(0) timer task keeping the element's address and slab
+/// generation only, so an iframe script removed and dropped meanwhile could
+/// be collected and its load event lost.
 fn queueIframeLoadEventSteps(element: *runtime.Instance) void {
-    const timer = element.ctx.getOptionalTimer() orelse return;
-    const Task = struct {
-        element: *runtime.Instance,
-        generation: u64,
-        allocator: std.mem.Allocator,
-        fn run(data: ?*anyopaque) void {
-            const task: *@This() = @ptrCast(@alignCast(data orelse return));
-            defer task.allocator.destroy(task);
-            if (runtime.SlabAllocator.generationOf(task.element) != task.generation) return;
-            runIframeLoadEventSteps(task.element);
-        }
-    };
-    const task = element.ctx.allocator.create(Task) catch return;
-    task.* = .{ .element = element, .generation = runtime.SlabAllocator.generationOf(element), .allocator = element.ctx.allocator };
-    if (timer.setTimeout(0, Task.run, task) == 0) task.allocator.destroy(task);
+    _ = dom_module.node_holds.ElementTask(IframeLoadEventTask).queue(.{element}, .{});
 }
+
+const IframeLoadEventTask = struct {
+    pub const held_count = 1;
+
+    pub fn steps(_: *IframeLoadEventTask, held: []const dom_module.node_holds.TaskHold) void {
+        const element = held[0].get() orelse return;
+        runIframeLoadEventSteps(element);
+    }
+};
 
 /// Fire a load event on the iframe element.
 /// Per HTML spec §4.8.5, this is the "iframe load event steps" algorithm:

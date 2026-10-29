@@ -719,8 +719,9 @@ pub fn documentForeignHolds(document: *NodeBase) ?u32 {
 //   * a creator that drops its node unwrapped and uninserted frees it
 //     (`dom.node_creation.destroyUninserted`: the old net, until step 7 makes
 //     that a release, `releaseCreatorReference`).
-// A Document's creator keeps it (a navigable's, step 5i) unless it hands the
-// document to script, which offers it (`offerCreatorReference`).
+// A Document is born offering its reference too (step 5i, lane refcount8):
+// the holder it is made for takes it over (`takeOverCreatorReference`), or
+// its first wrapper does.
 // ============================================================================
 
 /// A holder that would take a reference on `node` takes its creator's over
@@ -735,18 +736,25 @@ pub fn claimCreatorReference(node: *NodeBase) bool {
 }
 
 /// A Document's creator hands the document to script (DOMParser,
-/// DOMImplementation, `new Document()`, parseHTMLUnsafe, a document's
-/// clone, XHR's response document): its born reference, which a document's
-/// creator otherwise keeps, goes to the document's first wrapper. Before
-/// anything wraps it.
-pub fn offerCreatorReference(node: *NodeBase) void {
-    node.rc_flags.creator = true;
+/// DOMImplementation, `new Document()`, parseHTMLUnsafe, XHR's response
+/// document): its first wrapper takes its born reference over. Nothing to
+/// do since refcount step 5i (lane refcount8): a Document is born offering
+/// its reference like every node, and the holder a document is made for
+/// takes it over itself (`takeOverCreatorReference`: a Window, a template's
+/// owner document's holder, an SVG resource). Kept so the creators' hand-offs
+/// stay named where they happen.
+pub fn offerDocument(document: *runtime.Instance) void {
+    _ = document;
 }
 
-/// `offerCreatorReference` for a document given as its instance.
-pub fn offerDocument(document: *runtime.Instance) void {
-    const node = instance_bridge.getNodeBase(document) orelse return;
-    offerCreatorReference(node);
+/// A holder that keeps `node` for as long as it lives - a Window its
+/// associated Document, a document its template contents owner document,
+/// an SVG resource its parsed document - takes its counted reference and
+/// ends the creator's, if the creator still offers it (refcount step 5i):
+/// the count stays one per holder, whoever wrapped the node first. The
+/// caller has taken its own reference (`holderRef`, a node_holds hold).
+pub fn takeOverCreatorReference(node: *NodeBase) void {
+    releaseCreatorReference(node);
 }
 
 /// The creator drops `node` neither wrapped nor inserted: its born reference
