@@ -4132,12 +4132,20 @@ pub fn call_fetchLater(instance: *runtime.Instance, input: typedefs.RequestInfo,
     };
     // 11. The owner traverses the control document's quota group. Policy
     // answers come from its actual document policy, never an all-allowed default.
+    // Stated deviation (golden rule 2, no newer spec; integrator ruling
+    // 2026-10-29): HTML "allowed to use" calls Permissions Policy §9.10 with
+    // report = true, but Chrome - the only browser shipping fetchLater;
+    // Firefox and Safari ship neither it nor policy reporting - queues no
+    // violation report here. Chromium 33aa7cdb fetch_later_util.cc:35-43 and
+    // :108-115 call ec->IsFeatureEnabled(feature), whose ReportOptions
+    // defaults to kDoNotReport (execution_context.h:357-361), and
+    // fetch_manager.cc reports nothing. So neither check reports.
     const control = deferred.controlDocumentOf(document);
     const origin = try fetch.internal.origins.serializedOriginOf(allocator, url);
     defer allocator.free(origin);
     const quota = deferred.availableQuota(document, origin, .{
-        .deferred_fetch = try dom.policy_containers.allowedToUse(control, .deferred_fetch),
-        .deferred_fetch_minimal = try dom.policy_containers.allowedToUse(control, .deferred_fetch_minimal),
+        .deferred_fetch = try dom.policy_containers.allowedToUseWith(control, .deferred_fetch, .{ .report = false }),
+        .deferred_fetch_minimal = try dom.policy_containers.allowedToUseWith(control, .deferred_fetch_minimal, .{ .report = false }),
     });
     // 12. Request's serialization before population: about:client is 12
     // bytes. Chromium FetchLaterUtil::CalculateRequestSize at 33aa7cdb;

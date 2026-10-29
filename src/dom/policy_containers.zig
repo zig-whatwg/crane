@@ -102,12 +102,25 @@ pub fn permissionsOf(document: *runtime.Instance) ?*Policies {
 /// HTML "allowed to use" steps 1-4 and Permissions Policy §9.10.
 /// This is an actual attempted use, so disabled policies queue a report.
 pub fn allowedToUse(document: *runtime.Instance, feature: permissions_policy.Feature) !bool {
+    return allowedToUseWith(document, feature, .{});
+}
+
+/// How a caller of "allowed to use" asks Permissions Policy §9.10.
+pub const UseOptions = struct {
+    /// §9.10's report argument. False only where the shipping browsers
+    /// check the feature without reporting; the caller says why.
+    report: bool = true,
+};
+
+/// `allowedToUse`, with §9.10's report argument given by `options`.
+pub fn allowedToUseWith(document: *runtime.Instance, feature: permissions_policy.Feature, options: UseOptions) !bool {
     const window = (try interfaces.Document.get_defaultView(document)) orelse return false;
     if (@import("browser_state.zig").browsingContextOf(window) == null) return false;
     if (!@import("document_activity.zig").fullyActive(document, runtime.SlabAllocator.generationOf(document))) return false;
     const policies = permissionsOf(document) orelse return false;
     const origin = (try document_origin.shareable(document)) orelse return false;
     const result = try policies.check(feature, .{ .serialized = origin.serialized orelse "null", .record = origin });
+    if (!options.report) return result.enabled;
     if (result.violation) |violation| {
         // A reporting allocation failure cannot widen a denied policy.
         reportViolation(document, window, feature, violation) catch {};

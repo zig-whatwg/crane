@@ -417,3 +417,88 @@ test "navigation header handoff copies both values and cleans every allocation f
     try ownedHeaderValues(std.testing.allocator);
     try std.testing.checkAllAllocationFailures(std.testing.allocator, ownedHeaderValues, .{});
 }
+
+// SHOULD-1 (integrator ruling 2026-10-29, golden rule 2): fetchLater's two
+// "allowed to use" checks deny without queueing a permissions-policy
+// violation report, as Chrome - the only shipping browser - does.
+
+const browser_mod = @import("browser");
+const dom = @import("dom");
+const runtime = @import("runtime");
+
+fn onBrowserThread(comptime body: fn () anyerror!void) !void {
+    const Run = struct {
+        failure: ?anyerror = null,
+        fn thread(self: *@This()) void {
+            body() catch |err| {
+                self.failure = err;
+            };
+        }
+    };
+    var run: Run = .{};
+    const thread = try std.Thread.spawn(.{}, Run.thread, .{&run});
+    thread.join();
+    if (run.failure) |err| return err;
+}
+
+/// A fully active top-level https document whose policy pair is replaced by
+/// one parsed from `headers`, as a response carrying them would give it.
+fn deniedPage(allocator: std.mem.Allocator, headers: policy.Headers) !*browser_mod.Browser {
+    const browser = try browser_mod.Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    errdefer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    const page = browser.current_context orelse return error.TestUnexpectedResult;
+    try page.loadHTML("<!doctype html><body></body>", .{ .base_url = "https://fx1.test/page" });
+    const document = page.document_instance orelse return error.TestUnexpectedResult;
+    const policies = dom.policy_containers.permissionsOf(document) orelse return error.MissingPolicy;
+    const replacement = try policy.Policies.fromHeaders(policies.enforce.allocator, policies.enforce.origin_record, null, null, headers);
+    policies.deinit();
+    policies.* = replacement;
+    return browser;
+}
+
+fn expectNoReport(browser: *browser_mod.Browser) !void {
+    const page = browser.current_context orelse return error.TestUnexpectedResult;
+    const window = page.window_instance orelse return error.TestUnexpectedResult;
+    const state = dom.global_settings.reportingOf(window) orelse return error.MissingReportingState;
+    try std.testing.expectEqual(@as(usize, 0), state.buffer.items.len);
+    try std.testing.expectEqual(@as(usize, 0), state.pending.items.len);
+}
+
+fn evaluateToString(browser: *browser_mod.Browser, script: []const u8) ![]u8 {
+    const page = browser.current_context orelse return error.TestUnexpectedResult;
+    return page.evaluateScriptToString(script, std.testing.allocator);
+}
+
+test "fetchLater denied by an enforced deferred-fetch policy queues no violation report" {
+    try onBrowserThread(struct {
+        fn body() !void {
+            const browser = try deniedPage(std.testing.allocator, .{ .enforce = "deferred-fetch=();report-to=fx1-denied" });
+            defer browser.deinit();
+            const outcome = try evaluateToString(browser,
+                \\(() => { try { fetchLater('https://fx1.test/later', {method: 'POST', body: 'x'}); return 'queued'; }
+                \\  catch (e) { return e.name + ':' + e.quota; } })()
+            );
+            defer std.testing.allocator.free(outcome);
+            try std.testing.expectEqualStrings("QuotaExceededError:0", outcome);
+            try expectNoReport(browser);
+        }
+    }.body);
+}
+
+test "fetchLater under a report-only deferred-fetch policy is allowed and queues no violation report" {
+    try onBrowserThread(struct {
+        fn body() !void {
+            const browser = try deniedPage(std.testing.allocator, .{ .report_only = "deferred-fetch=();report-to=fx1-observe" });
+            defer browser.deinit();
+            const outcome = try evaluateToString(browser,
+                \\(() => { const c = new AbortController();
+                \\  const r = fetchLater('https://fx1.test/later', {method: 'POST', body: 'x', signal: c.signal, activateAfter: 60000});
+                \\  c.abort(); return String(r.activated); })()
+            );
+            defer std.testing.allocator.free(outcome);
+            try std.testing.expectEqualStrings("false", outcome);
+            try expectNoReport(browser);
+        }
+    }.body);
+}
