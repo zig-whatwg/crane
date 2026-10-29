@@ -26,7 +26,7 @@
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-d1a188b596</code>, <span class="nowrap">29 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/d1a188b596"><code>d1a188b596</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-338f50ea20</code>, <span class="nowrap">29 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/338f50ea20"><code>338f50ea20</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/fetch-later/quota/same-origin-iframe/multiple-iframes.https.window.js"><code>fetch/<wbr>fetch-<wbr>later/<wbr>quota/<wbr>same-<wbr>origin-<wbr>iframe/<wbr>multiple-<wbr>iframes.<wbr>https.<wbr>window.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -35,7 +35,13 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-5799916e"><details><summary><span class="mark">FAIL</span><span class="sub-name">fetchLater() request quota are shared by same-origin iframes and root.</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;Error: iframe[src=https://web-platform.test:8443/fetch/fetch-later/resources/fetch-later.html?url=https%253A%252F%252Fweb-platform.test%253A8443%252Ffetch%252Ffetch-later%252Fresources%252Fset_beacon.py%253Fuuid%253D4031d52d-b47a-4a1c-8302-e2881a0123c3&amp;referrer=&amp;method=POST&amp;bodyType=String&amp;bodySize=65386] threw NotSupportedError, expected no error&quot;</pre></details><a class="self" href="#s-5799916e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5799916e"><details><summary><span class="mark">FAIL</span><span class="sub-name">fetchLater() request quota are shared by same-origin iframes and root.</span></summary><pre class="msg">assert_throws_quotaexceedederror: function &quot;() =&gt; fetchLater(requestUrl, {
+        method: &#39;POST&#39;,
+        body: generatePayload(
+            getRemainingQuota(QUOTA_PER_ORIGIN, requestUrl, headers), dataType),
+        // Required, as the size of referrer also take up quota.
+        referrer: &#39;&#39;,
+      })&quot; threw object &quot;QuotaExceededError&quot; that is not a correct QuotaExceededError: property &quot;requested&quot; is equal to 65536, expected null</pre></details><a class="self" href="#s-5799916e" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>
