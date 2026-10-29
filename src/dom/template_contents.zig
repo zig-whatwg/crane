@@ -8,6 +8,7 @@ const refcount = @import("refcount.zig");
 
 pub const Hooks = struct {
     owner_document: ?*const fn (*runtime.Instance) anyerror!*runtime.Instance = null,
+    existing_owner_document: ?*const fn (*runtime.Instance) ?*runtime.Instance = null,
     establish: ?*const fn (*runtime.Instance) anyerror!void = null,
     adopted: ?*const fn (*runtime.Instance) anyerror!void = null,
     set_host: ?*const fn (*runtime.Instance, *runtime.Instance) anyerror!void = null,
@@ -27,6 +28,13 @@ pub fn install(owned: Hooks) void {
 
 pub fn ownerDocument(document: *runtime.Instance) !*runtime.Instance {
     const algorithm = hooks.owner_document orelse return error.InvalidStateError;
+    return algorithm(document);
+}
+
+/// HTML4.12.3's already-existing appropriate template owner, without
+/// running the creating algorithm. Borrowed; null when none is established.
+pub fn existingOwnerDocument(document: *runtime.Instance) ?*runtime.Instance {
+    const algorithm = hooks.existing_owner_document orelse return null;
     return algorithm(document);
 }
 

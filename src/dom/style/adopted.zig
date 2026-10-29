@@ -131,3 +131,12 @@ pub fn set(owner: *runtime.Instance, value: runtime.JSValue) !void {
     defer held.release();
     try engine.replaceObservableArrayItems(held.value, plain);
 }
+
+/// Clear an already-created adoptedStyleSheets array at cross-document
+/// adoption. Its identity and changed hook remain the existing ones; this
+/// never runs the getter and cannot manufacture an array.
+pub fn clearExisting(owner: *runtime.Instance) void {
+    const held = engine.tracedValue(owner, slot) orelse return;
+    defer held.release();
+    engine.replaceObservableArrayItems(held.value, &.{}) catch {};
+}

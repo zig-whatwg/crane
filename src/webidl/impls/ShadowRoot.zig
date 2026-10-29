@@ -551,10 +551,20 @@ fn treeScopeSerial(root: *runtime.Instance) u64 {
 /// DOM adopt §4.5 runs the adopting steps on every shadow-including element
 /// after changing node documents. Each host assigns its own root's new ID;
 /// nested hosts receive this callback too. Same-document adoption skips it.
+// CSSOM6.2.3 / HTML4.12.3, as Blink TreeScopeAdopter::
+// MoveShadowTreeToNewDocument (Chromium cc7021d31c75:154-165): preserve
+// only the associated template-owner round trips, never unrelated documents.
+fn preserveTemplateSheetRelation(old_document: ?*runtime.Instance, document: *runtime.Instance) bool {
+    const old = old_document orelse return false;
+    const templates = @import("dom").template_contents;
+    return templates.existingOwnerDocument(old) == document or templates.existingOwnerDocument(document) == old;
+}
+
 fn adoptingSteps(host: *runtime.Instance, old_document: ?*runtime.Instance) void {
     const shadow = @import("dom").shadow_hosts.rootForHost(host) orelse return;
     const internal = getInternal(shadow) orelse return;
     const document = (interfaces.Node.get_ownerDocument(shadow) catch return) orelse return;
     if (old_document == document) return;
+    if (!preserveTemplateSheetRelation(old_document, document)) @import("dom").style.adopted.clearExisting(shadow);
     internal.tree_scope_serial = @import("dom").tree_scope.nextForDocument(document);
 }
