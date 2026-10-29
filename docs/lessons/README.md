@@ -960,6 +960,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A stream factory that fails after its controller exists leaves the source with two owners](debugging-a-stream-factory-without-failure-cleanup-leaves-its-source-with-two-owners.md) - Once a controller holds the underlying source, a failed setup must clear its algorithms itself; a caller that frees the source on failure turns every late setup failure into a double free at the controller's collection - give every create*Stream the "source is the call's, failure included" contract and a failing-step trial per source kind.
 
 ### Workflow
+- [A worklist change is a code change - run the tests before committing it](workflow-a-worklist-change-is-a-code-change.md) - **A worklist change is a code change: the runner pins the worklist's directories in a test, so regenerate, add the directory to config.zig, and run that test before pushing.**
 
 - [Detached Builds Need an Explicit Environment](workflow-detached-builds-need-an-explicit-environment.md) - Verify the executable and cache inside the detached build; the launcher's environment is not proof of the child's.
 - [Anchor a Tmux Job to Its Own Working Directory](workflow-anchor-tmux-job-cwd.md) - Verify the working directory inside the detached job, and retain evidence from before its first gate starts.
