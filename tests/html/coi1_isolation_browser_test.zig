@@ -75,7 +75,7 @@ fn switchSeversTheOpener() !void {
     // initial about:blank document.
     const document = page.document_instance orelse return error.NoDocument;
     const container = dom.policy_containers.of(document) orelse return error.NoPolicyContainer;
-    container.opener_policy = .{ .value = .noopener_allow_popups };
+    try container.setOpenerPolicy(.{ .value = .noopener_allow_popups });
     try page.runScript(
         \\globalThis.result = null;
         \\globalThis.channel = new BroadcastChannel('coi1');
@@ -103,7 +103,7 @@ fn noSwitchKeepsTheOpener() !void {
     const container = dom.policy_containers.of(document) orelse return error.NoPolicyContainer;
     // same-origin: the same-origin blob: popup inherits it, and matching
     // policies of one origin need no switch (blob-popup.https.html).
-    container.opener_policy = .{ .value = .same_origin };
+    try container.setOpenerPolicy(.{ .value = .same_origin });
     try page.runScript(
         \\globalThis.result = null;
         \\globalThis.channel = new BroadcastChannel('coi1-kept');

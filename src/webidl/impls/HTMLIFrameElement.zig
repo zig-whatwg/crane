@@ -1464,7 +1464,12 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         // top-level traversable's navigation to a local URL - no other
         // navigation reads it, and none pays for it.
         if (integration.browsing_context) |bc| if (bc.parent == null and isLocalScheme(navigate_steps.schemeOf(url))) {
-            record.initiator_policy_container.?.opener_policy = topLevelOpenerPolicyFor(source);
+            // Values only (no endpoints): fails only out of memory, which
+            // stops the navigation as a missing snapshot does.
+            record.initiator_policy_container.?.setOpenerPolicy(topLevelOpenerPolicyFor(source)) catch {
+                record.destroy();
+                return;
+            };
         };
         // The source snapshot params' fetch client is sourceDocument's
         // relevant settings object: the request's client, whose global a
@@ -2834,7 +2839,7 @@ fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Nav
                 // keeps COOP in the policy container a local document
                 // inherits (PolicyContainerPolicies).
                 if (integration.browsing_context) |bc| if (bc.parent == null) {
-                    inherited.opener_policy = .{ .value = container.opener_policy.value, .report_only_value = container.opener_policy.report_only_value };
+                    try inherited.setOpenerPolicy(.{ .value = container.openerPolicy().value, .report_only_value = container.openerPolicy().report_only_value });
                 };
                 break :blk inherited;
             }
@@ -2865,7 +2870,7 @@ fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Nav
         // policy, which becomes the new document's ("create and initialize
         // a Document object" step 9; it rides on the container).
         if (integration.browsing_context) |bc| if (bc.parent == null and !response.is_network_error) {
-            fetched.opener_policy = try fetch_mod.internal.cross_origin_policies.obtainOpenerPolicy(allocator, cross_origin, secure);
+            try fetched.setOpenerPolicy(try fetch_mod.internal.cross_origin_policies.obtainOpenerPolicy(allocator, cross_origin, secure));
         };
         break :blk fetched;
     };
@@ -3001,7 +3006,7 @@ fn embedderPolicyBlocks(integration: *IFrameIntegration, record: *Navigation, re
     if (browsing_context.parent == null) return false;
     const parent = containerDocumentOf(integration) orelse return false;
     const parent_container = dom_module.policy_containers.of(parent) orelse return false;
-    const parent_policy = &parent_container.embedder_policy;
+    const parent_policy = parent_container.embedderPolicy();
     const allocator = integration.allocator;
     const response_url = if (response.final_url.len > 0) response.final_url else record.url;
     // Neither of the parent's values restricts anything: with
@@ -3030,7 +3035,7 @@ fn embedderPolicyBlocks(integration: *IFrameIntegration, record: *Navigation, re
     if (std.mem.eql(u8, navigate_steps.schemeOf(response_url), "about")) return false;
     var container = navigationParamsPolicyContainer(integration, record, response) catch return true;
     defer container.deinit();
-    const compatible = container.embedder_policy.value.compatibleWithCrossOriginIsolation();
+    const compatible = container.embedderPolicy().value.compatibleWithCrossOriginIsolation();
     // "Check a navigation response's adherence to its embedder policy" step
     // 3: the report-only value's violation is reported.
     if (parent_policy.report_only_value.compatibleWithCrossOriginIsolation() and !compatible) {
@@ -3154,12 +3159,13 @@ fn openerPolicySwitch(integration: *IFrameIntegration, record: *Navigation, resp
     const allocator = integration.allocator;
     const opener_policy = html_core.navigation.opener_policy;
     const active_coop: fetch_mod.internal.OpenerPolicy = if (dom_module.policy_containers.of(active)) |c|
-        .{ .value = c.opener_policy.value, .report_only_value = c.opener_policy.report_only_value }
+        .{ .value = c.openerPolicy().value, .report_only_value = c.openerPolicy().report_only_value }
     else
         .{};
     // Two "unsafe-none" policies, enforced and report-only, match whatever
     // the origins: no switch, and nothing allocated.
-    if (allUnsafeNone(active_coop) and allUnsafeNone(container.opener_policy)) return null;
+    const response_coop = container.openerPolicy();
+    if (allUnsafeNone(active_coop) and allUnsafeNone(response_coop.*)) return null;
     const active_origin = documentOriginOf(active, allocator);
     defer if (active_origin) |origin| allocator.free(origin);
     const response_url = if (response.final_url.len > 0) response.final_url else record.url;
@@ -3175,11 +3181,11 @@ fn openerPolicySwitch(integration: *IFrameIntegration, record: *Navigation, resp
     defer allocator.free(response_origin);
     var reports: opener_policy.Reports = .{};
     const enforced = opener_policy.enforce(document_lifecycle.isInitialAboutBlank(active), false, response_origin, .{
-        .value = container.opener_policy.value,
-        .report_only_value = container.opener_policy.report_only_value,
+        .value = response_coop.value,
+        .report_only_value = response_coop.report_only_value,
     }, .{ .origin = active_origin orelse "null", .policy = active_coop }, &reports);
     if (!enforced.needs_switch) return null;
-    return if (container.opener_policy.value == .same_origin_plus_coep) .concrete else .none;
+    return if (response_coop.value == .same_origin_plus_coep) .concrete else .none;
 }
 
 /// An opener policy whose value and report-only value are "unsafe-none".
@@ -5455,8 +5461,9 @@ fn inheritPolicyContainer(document: *runtime.Instance, from: *runtime.Instance) 
 fn inheritOpenerPolicy(document: *runtime.Instance, creator: *runtime.Instance, browsing_context: *html_core.BrowsingContext) void {
     if (browsing_context.parent != null) return;
     const own = dom_module.policy_containers.of(document) orelse return;
-    own.opener_policy.deinit(own.allocator);
-    own.opener_policy = topLevelOpenerPolicyFor(creator);
+    // Out of memory leaves it a new policy (logged): the popup may switch
+    // groups where it would not have, never the other way round.
+    own.setOpenerPolicy(topLevelOpenerPolicyFor(creator)) catch log.warn("[navigation] an initial about:blank document could not take its creator's opener policy", .{});
 }
 
 /// HTML "is local": an about:, blob: or data: URL's scheme.
@@ -5483,7 +5490,7 @@ fn topLevelOpenerPolicyFor(document: *runtime.Instance) fetch_mod.internal.Opene
     defer allocator.free(top_origin);
     if (std.mem.eql(u8, origin, "null") or !std.mem.eql(u8, origin, top_origin)) return .{};
     const top_container = dom_module.policy_containers.of(top_document) orelse return .{};
-    return .{ .value = top_container.opener_policy.value, .report_only_value = top_container.opener_policy.report_only_value };
+    return .{ .value = top_container.openerPolicy().value, .report_only_value = top_container.openerPolicy().report_only_value };
 }
 
 fn failInheritanceClosed(document: *runtime.Instance) void {

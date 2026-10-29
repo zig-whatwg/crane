@@ -482,12 +482,12 @@ fn policyContainerOf(allocator: Allocator, response: *const @import("fetch").int
     // top-level traversable: the response's opener policy, which becomes
     // the new document's ("create and initialize a Document object" step
     // 9; it rides on the container, policy_container.zig).
-    container.opener_policy = try fetch_internal.cross_origin_policies.obtainOpenerPolicy(allocator, .{
+    try container.setOpenerPolicy(try fetch_internal.cross_origin_policies.obtainOpenerPolicy(allocator, .{
         .coop = coop,
         .coop_report_only = coop_report_only,
         .coep = coep,
         .coep_report_only = coep_report_only,
-    }, secure);
+    }, secure));
     return container;
 }
 

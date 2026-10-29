@@ -192,23 +192,23 @@ test "the policy container: the response's embedder policy, cloned; the opener p
         .environment_secure = true,
     });
     defer container.deinit();
-    try testing.expectEqual(policies.EmbedderPolicyValue.require_corp, container.embedder_policy.value);
-    container.opener_policy = try policies.obtainOpenerPolicy(a, .{ .coop = "same-origin; report-to=\"o\"", .coep = "require-corp" }, true);
+    try testing.expectEqual(policies.EmbedderPolicyValue.require_corp, container.embedderPolicy().value);
+    try container.setOpenerPolicy(try policies.obtainOpenerPolicy(a, .{ .coop = "same-origin; report-to=\"o\"", .coep = "require-corp" }, true));
     var copy = try container.clone(a);
     defer copy.deinit();
-    try testing.expectEqual(policies.EmbedderPolicyValue.require_corp, copy.embedder_policy.value);
-    try testing.expectEqualStrings("e", copy.embedder_policy.reporting_endpoint);
-    try testing.expectEqual(policies.OpenerPolicyValue.unsafe_none, copy.opener_policy.value);
-    try testing.expect(copy.opener_policy.reporting_endpoint == null);
+    try testing.expectEqual(policies.EmbedderPolicyValue.require_corp, copy.embedderPolicy().value);
+    try testing.expectEqualStrings("e", copy.embedderPolicy().reporting_endpoint);
+    try testing.expectEqual(policies.OpenerPolicyValue.unsafe_none, copy.openerPolicy().value);
+    try testing.expect(copy.openerPolicy().reporting_endpoint == null);
 
     // No environment: unsafe-none, whatever the response says.
     var no_env = try Container.fromResponseHeaders(a, .{ .url = "https://a.test/", .coep = "require-corp" });
     defer no_env.deinit();
-    try testing.expectEqual(policies.EmbedderPolicyValue.unsafe_none, no_env.embedder_policy.value);
+    try testing.expectEqual(policies.EmbedderPolicyValue.unsafe_none, no_env.embedderPolicy().value);
     // A non-secure environment: unsafe-none.
     var insecure = try Container.fromResponseHeaders(a, .{ .url = "http://a.test/", .coep = "require-corp", .environment_secure = false });
     defer insecure.deinit();
-    try testing.expectEqual(policies.EmbedderPolicyValue.unsafe_none, insecure.embedder_policy.value);
+    try testing.expectEqual(policies.EmbedderPolicyValue.unsafe_none, insecure.embedderPolicy().value);
 }
 
 fn cloneWithPolicies(a: std.mem.Allocator) !void {
@@ -313,4 +313,38 @@ test "Cross-Origin-Embedder-Policy allows credentials" {
     try testing.expect(try policies.coepAllowsCredentials(a, true, .credentialless, "https://a.test", "https://a.test/x", true));
     try testing.expect(!try policies.coepAllowsCredentials(a, true, .credentialless, "https://a.test", "https://a.test/x", false));
     try testing.expect(!try policies.coepAllowsCredentials(a, true, .credentialless, "https://a.test", "https://b.test/x", true));
+}
+
+test "a container whose response sent no COOP/COEP keeps its policies inline: nothing allocated" {
+    var failing = std.testing.FailingAllocator.init(testing.allocator, .{ .fail_index = 0 });
+    const a = failing.allocator();
+    var container = Container.init(a);
+    defer container.deinit();
+    try container.setEmbedderPolicy(try policies.obtainEmbedderPolicy(a, .{}, true));
+    try container.setOpenerPolicy(try policies.obtainOpenerPolicy(a, .{}, true));
+    try testing.expect(container.cross_origin == null);
+    var copy = try container.clone(a);
+    defer copy.deinit();
+    try testing.expect(copy.cross_origin == null);
+    try testing.expectEqual(@as(usize, 0), failing.allocations);
+}
+
+test "setting a policy back to a new one frees the out-of-line block; a failed set releases what it took" {
+    const a = testing.allocator;
+    var container = Container.init(a);
+    defer container.deinit();
+    try container.setEmbedderPolicy(try policies.obtainEmbedderPolicy(a, .{ .coep = "require-corp; report-to=\"e\"" }, true));
+    try testing.expect(container.cross_origin != null);
+    try container.setEmbedderPolicy(.{});
+    try testing.expect(container.cross_origin == null);
+
+    var failing = std.testing.FailingAllocator.init(a, .{ .fail_index = 1 });
+    const f = failing.allocator();
+    var other = Container.init(f);
+    defer other.deinit();
+    // The endpoint is allocation 0; the out-of-line block (allocation 1) fails,
+    // and the endpoint the set took is released (the leak check sees it).
+    const policy: policies.EmbedderPolicy = .{ .value = .require_corp, .reporting_endpoint = try f.dupe(u8, "e") };
+    try testing.expectError(error.OutOfMemory, other.setEmbedderPolicy(policy));
+    try testing.expect(other.cross_origin == null);
 }

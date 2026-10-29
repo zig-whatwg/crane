@@ -1932,7 +1932,7 @@ pub const Context = struct {
     fn enforceOpenerPolicy(self: *Context, result: *const navigation.NavigationResult, url: []const u8, flags: dom_mod.sandboxing.SandboxingFlagSet) !bool {
         // A response from no network has no opener policy: a new one.
         const container = if (result.policy_container) |*c| c else return true;
-        const response_coop = container.opener_policy;
+        const response_coop = container.openerPolicy();
         // 21.12.3. "If finalSandboxFlags is not empty and responseCOOP's
         // value is not "unsafe-none", then set response to an appropriate
         // network error."
@@ -1946,7 +1946,7 @@ pub const Context = struct {
         const active_coop: fetch.internal.OpenerPolicy = blk: {
             const document = shown orelse break :blk .{};
             const active = dom_mod.policy_containers.of(document) orelse break :blk .{};
-            break :blk .{ .value = active.opener_policy.value, .report_only_value = active.opener_policy.report_only_value };
+            break :blk .{ .value = active.openerPolicy().value, .report_only_value = active.openerPolicy().report_only_value };
         };
         // Two "unsafe-none" policies, enforced and report-only, match
         // whatever the origins: nothing to switch, nothing allocated.

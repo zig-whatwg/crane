@@ -2712,8 +2712,8 @@ pub fn workerPolicyContainer(allocator: Allocator, fetched: *workers.FetchedScri
         // only when its owner is one too (HTML 8.1.3.5 step 1.2);
         // script_fetch could ask only the worker's URL.
         if (!ownerIsSecureContext(owner_realm)) {
-            result.embedder_policy.deinit(result.allocator);
-            result.embedder_policy = .{};
+            // A new policy: setting it allocates nothing, and cannot fail.
+            result.setEmbedderPolicy(.{}) catch unreachable;
         }
         if (creatorPolicyContainer(owner_realm)) |owner| {
             if (owner.upgradesInsecureRequests()) result.inherited_upgrade_insecure_requests = true;
@@ -2783,7 +2783,7 @@ fn ownerIsSecureContext(realm: runtime.Context) bool {
 fn workerCrossOriginIsolated(start: *const WorkerStart) bool {
     if (start.shared != null) {
         const container = if (start.policy_container) |*c| c else return false;
-        return container.embedder_policy.value.compatibleWithCrossOriginIsolation();
+        return container.embedderPolicy().value.compatibleWithCrossOriginIsolation();
     }
     if (std.ascii.startsWithIgnoreCase(start.script_url, "data:")) return false;
     return agent_clusters.crossOriginIsolatedCapability(null, start.owner_realm);
@@ -2798,9 +2798,9 @@ fn workerCrossOriginIsolated(start: *const WorkerStart) bool {
 fn dedicatedWorkerEmbedderPolicyAllows(start: *const WorkerStart) bool {
     if (start.shared != null) return true;
     const owner = creatorPolicyContainer(start.owner_realm) orelse return true;
-    const owner_policy = &owner.embedder_policy;
+    const owner_policy = owner.embedderPolicy();
     if (!owner_policy.value.compatibleWithCrossOriginIsolation() and !owner_policy.report_only_value.compatibleWithCrossOriginIsolation()) return true;
-    const compatible = if (start.policy_container) |*c| c.embedder_policy.value.compatibleWithCrossOriginIsolation() else false;
+    const compatible = if (start.policy_container) |*c| c.embedderPolicy().value.compatibleWithCrossOriginIsolation() else false;
     // 4. The report-only value's violation.
     if (owner_policy.report_only_value.compatibleWithCrossOriginIsolation() and !compatible) {
         queueWorkerInheritanceViolation(start, owner_policy.report_only_reporting_endpoint, true);

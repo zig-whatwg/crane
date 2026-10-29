@@ -164,7 +164,7 @@ fn corpBlocks(allocator: Allocator, request: *const InternalRequest, response: *
     const no_policy: cross_origin_policies.EmbedderPolicy = .{};
     const embedder_policy: *const cross_origin_policies.EmbedderPolicy = switch (request.policy_container) {
         .client => &no_policy,
-        .container => |*container| &container.embedder_policy,
+        .container => |*container| container.embedderPolicy(),
     };
     const corp = response.header_list.get(allocator, "Cross-Origin-Resource-Policy") catch return HttpFetchError.OutOfMemory;
     defer if (corp) |value| allocator.free(value);
@@ -1216,7 +1216,7 @@ fn coepAllowsCredentials(request: *const InternalRequest) bool {
         .client => return true,
         .container => |*c| c,
     };
-    if (container.embedder_policy.value != .credentialless) return true;
+    if (container.embedderPolicy().value != .credentialless) return true;
     // 1. Assert: request's origin is not "client" (a request still on it
     // was made by the user agent, with no client to restrict).
     const origin: []const u8 = switch (request.origin) {
@@ -1224,7 +1224,7 @@ fn coepAllowsCredentials(request: *const InternalRequest) bool {
         .origin => |o| o,
     };
     const same_origin_taint = request.redirectTaintIsSameOrigin() catch return false;
-    return cross_origin_policies.coepAllowsCredentials(request.allocator, true, container.embedder_policy.value, origin, request.currentUrl(), same_origin_taint) catch false;
+    return cross_origin_policies.coepAllowsCredentials(request.allocator, true, container.embedderPolicy().value, origin, request.currentUrl(), same_origin_taint) catch false;
 }
 
 /// HTTP-network fetch, once the network has answered with `network_response`
