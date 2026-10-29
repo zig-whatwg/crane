@@ -98,6 +98,7 @@ pub const finish_parsing_children = @import("finish_parsing_children.zig");
 pub const script_elements = @import("script_elements.zig");
 pub const activation = @import("activation.zig");
 pub const form_controls = @import("form_controls.zig");
+pub const selected_content = @import("selected_content.zig");
 pub const top_layer = @import("top_layer.zig");
 pub const dialog = @import("dialog.zig");
 pub const form_submission = @import("form_submission.zig");

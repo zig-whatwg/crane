@@ -514,22 +514,22 @@ fn optionInstance(node: *dom.NodeBase) ?*runtime.Instance {
 
 /// HTML option insertion: update its owner, run selectedness setting, and
 /// intentionally leave cloning to the selected option's post-connection step.
-fn insertedInto(select: *runtime.Instance, option: *runtime.Instance) !void {
+fn insertedInto(select: *runtime.Instance, option: *runtime.Instance) !bool {
     const selected = ownSelectedness(option);
     if (hasAttr(select, "multiple")) {
         if (selected) try controls.setHasSelectedOption(select, true);
-        return;
+        return false;
     }
     // Blink HTMLSelectElement::OptionInserted likewise avoids a reset for
     // an ordinary append when a selection already exists (row61 Q14).
-    if (!selected and controls.hasSelectedOption(select)) return;
+    if (!selected and controls.hasSelectedOption(select)) return false;
     var options: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
     defer options.deinit(select.ctx.allocator);
     try collectOptions(select, select.ctx.allocator, &options);
     // HTML 4.10.7: adding a selected option to a single select deselects
     // its other options, in DOM insertion order (row61 Q25).
     if (selected) try deselectOthersForInsertion(options.items, option, true);
-    _ = try setSelectednessForInsertion(select, options.items, option);
+    return try setSelectednessForInsertion(select, options.items, option);
 }
 
 fn insertionSteps(node: *dom.NodeBase) void {
@@ -538,7 +538,7 @@ fn insertionSteps(node: *dom.NodeBase) void {
     // Updating the nearest ancestor select, step 4: insertion of a whole
     // select preserves its options' owner, including a cleared selection.
     if (controls.optionOwnerUnchanged(select)) return;
-    insertedInto(select, option) catch {};
+    _ = insertedInto(select, option) catch return;
 }
 
 /// Reconstruct only the old ancestor walk, replacing the edge the DOM just
@@ -573,16 +573,19 @@ fn changedOwner(option: *runtime.Instance, old_select: ?*runtime.Instance) void 
     if (old_select == new_select) return;
     if (isSettled(option)) writeSelection(option, ownSelectedness(option), null, false) catch return;
     if (old_select) |select| {
+        var changed = false;
         if (ownSelectedness(option) or !controls.hasSelectedOption(select)) {
             var options: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
             defer options.deinit(select.ctx.allocator);
             collectOptions(select, select.ctx.allocator, &options) catch return;
-            _ = setSelectednessForList(select, options.items) catch return;
+            changed = setSelectednessForList(select, options.items) catch return;
         }
+        if (ownSelectedness(option) or changed) selected_content.queueUpdate(select.ctx.allocator, select, null) catch {};
     }
-    if (new_select) |select| insertedInto(select, option) catch {};
-    // HTML option removing/moving steps queue selectedcontent microtasks.
-    // The unwrapped task holder is row52 Q9 / row61 Q3(c), not an inline clone.
+    if (new_select) |select| {
+        const changed = insertedInto(select, option) catch return;
+        if (ownSelectedness(option) or changed) selected_content.queueUpdate(select.ctx.allocator, select, null) catch {};
+    }
 }
 
 fn removingSteps(node: *dom.NodeBase, old_parent: ?*dom.NodeBase) void {

@@ -129,6 +129,7 @@ src/dom/refcount.zig tree_checks_requested 1 G P-res decl:4b877655cb3bb361
 src/dom/refcount_audit.zig audit_requested 1 G P-res decl:4b877655cb3bb361
 src/dom/script_elements.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/script_elements.zig svg_implementation 1 G H decl:2b000c56b2bcfae5
+src/dom/selected_content.zig read_disabled 1 G P-res decl:845927b41501f890
 src/dom/selection.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/service_worker_clients.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/shadow_hosts.zig implementation 1 G H decl:9c737e7125e9c3d4

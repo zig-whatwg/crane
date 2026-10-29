@@ -383,6 +383,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A step that replaces state directly must still end what it replaced](architecture-a-step-that-replaces-state-directly-must-still-end-what-it-replaced.md) - When a spec step replaces state "directly" and lets the old work notice later, check what the old work holds in this engine: if its record keeps a pointer that only the replacing path's teardown would free, end the record where the spec replaces it.
 
 ### Spec Compliance
+- [Captured Arguments and Stored Flags Survive Tree Changes](spec-compliance-captured-arguments-and-stored-flags-survive-tree-changes.md) - Current structure cannot replace captured arguments or a flag whose last assignment is observable.
 - [Serialization arithmetic can overflow finite inputs](spec-compliance-serialization-arithmetic-can-overflow-finite-inputs.md) - Check coordinate sums where they happen and retain the whole original value when the ruled fallback requires it.
 - [Sizes validates math before CSS clamping](spec-compliance-sizes-validates-math-before-css-clamping.md) - **Preserve only the diagnostic a consumer needs before shared simplification erases it; keep the common arithmetic unchanged.**
 - [Picture moves update both parents](spec-compliance-picture-moves-update-both-parents.md) - **A state-preserving move still changes the structural inputs to source selection. Preserve the object; recompute the affected image selection.**
