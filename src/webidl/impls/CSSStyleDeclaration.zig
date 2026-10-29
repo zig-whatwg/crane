@@ -298,8 +298,8 @@ fn computedValue(internal: *InternalState, name: []const u8, out: *std.ArrayList
         .shorthand => |s| {
             if (s == .all) return;
             if (try style.serializeResolvedShorthand(s, out, internal.allocator)) return;
-            var resolved: [properties.max_assignments]css.style_values.Value = undefined;
-            var assigned: [properties.max_assignments]properties.Assigned = undefined;
+            var resolved: [properties.max_non_all_assignments]css.style_values.Value = undefined;
+            var assigned: [properties.max_non_all_assignments]properties.Assigned = undefined;
             var initialized: usize = 0;
             defer for (resolved[0..initialized]) |value| value.release();
             for (s.longhands(), 0..) |l, i| {

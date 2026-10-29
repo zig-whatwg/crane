@@ -842,6 +842,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A cost bar that moves with no new instructions is code placement](testing-a-cost-bar-that-moves-with-no-new-instructions-is-code-placement.md) - A sub-microsecond per-operation metric in a whole-program optimized runner moves with code placement; when its path reaches no changed code, instructions retired (page minus a zero-iteration control) decide, not time.
 
 ### Debugging
+- [Registry-wide scratch bounds grow per-call work](debugging-registry-wide-scratch-bounds-grow-per-call-work.md) - Size scratch storage for the values the call can reach, and inspect the compiled initialization cost.
 - [A kernel that frees its only object each op measures the allocator's page churn](debugging-a-one-object-kernel-measures-the-allocators-page-churn.md) - Before reading a size effect off an instruction count, check page reclaims per op and the spread across runs: one object at a time under DebugAllocator measures mmap, not the object.
 - [Allocate before transferring an arena](debugging-allocate-before-transferring-an-arena.md) - Transfer an arena only after its last allocation; struct field evaluation can otherwise copy stale ownership state.
 - [Computed shorthands may need symbolic colors](debugging-computed-shorthands-may-need-symbolic-colors.md) - Preserve symbolic values until the consumer decides whether to omit them; early resolution can erase a CSSOM distinction.

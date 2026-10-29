@@ -1353,6 +1353,18 @@ pub const Assigned = union(enum) {
 /// The most longhands one declaration sets (`all`).
 pub const max_assignments = all_longhands.len;
 
+/// The most longhands in a shorthand other than `all`. Computed shorthand
+/// reads reject `all` before reserving scratch space, so their buffers need
+/// not grow for unrelated longhands registered in the property table.
+pub const max_non_all_assignments: usize = blk: {
+    var maximum: usize = 0;
+    for (std.meta.tags(Shorthand)) |shorthand| {
+        if (shorthand == .all) continue;
+        maximum = @max(maximum, shorthand.longhands().len);
+    }
+    break :blk maximum;
+};
+
 /// Parse `text` - a declaration's value, `!important` already taken off -
 /// for `property`, appending the longhands it sets to `out`. False, and
 /// nothing appended, when the value is invalid for the property. The values
