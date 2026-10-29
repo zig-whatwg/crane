@@ -239,6 +239,7 @@ progress = [
   "52c1c078147 - a worker's policy container fails closed: a data: or blob: worker whose creator's container cannot be cloned fails its start (error at the Worker or SharedWorker) instead of running with an empty one (leaks2)",  "4177f4f1981, 903620afd6c - a <meta> CSP that cannot be recorded fails closed (CSPList.unenforceable: every src/csp decision entry point and the hosts' empty-list fast paths answer Blocked), and an iframe's policy-container clones and sandbox read fail closed (leaks4)",
   "ec02b245478, ed58e03a2f6, 2863e2ced88, b9619348994, 1a16294b06f - an iframe src navigation out of memory starts no navigation (resolveSrc panicked); a meta http-equiv that cannot be read fails its CSP closed; a CSP decision whose policy container cannot be found is Blocked (CSPList.unavailable, PolicyContainer.unavailable: a Window with no document, a Document with no state); an iframe navigation whose policies cannot be found does not start, inheritance fails closed, the UIR 3.3 double deinit; contentWindow never answers its WindowProxy struct as a Window (a type confusion) (leaks5)",
   "2db2eb8e9cb, 1c016b202f0, ff366e92c68 - an unenforceable CSP list derives every sandboxing flag; a worker creator whose settings cannot be found has the unavailable policy container; nonce hiding hides the nonce when the document's CSP list cannot be read (leaks6)",
+  "7104774e9f9, 29047f89485, e2980307ea5, 4e67ff64b6c, 8587c694eef - cross-origin isolation (coi1): COOP obtained and enforced with browsing context group switches (a popup severed from its opener: new WindowProxy, closed, no name), COEP on documents, frames (CORP and adherence checks with coep reports) and workers, Fetch's CORP check and COEP credentialless, crossOriginIsolated from the group's concrete mode and the cross-origin-isolated feature, the WPT runner's top-level page isolated by its headers",
 ]
 
   [[infra.items]]
@@ -256,6 +257,10 @@ progress = [
   [[infra.items]]
   name = "messageerror for values that cannot cross a cluster"
   status = "todo"
+
+  [[infra.items]]
+  name = "Cross-origin isolation: COOP browsing context group switches, COEP and CORP enforcement, crossOriginIsolated (COOP reports, per-hop COOP and the SharedArrayBuffer constructor gate remain)"
+  status = "doing"
 
 [[infra]]
 id = "engine-adapter"
