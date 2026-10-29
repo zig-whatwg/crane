@@ -379,6 +379,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Native font status precedes its script promise](architecture-native-font-status-precedes-its-script-promise.md) - Preserve automatic outcomes until script requests the promise.
 - [Record a wait before you start the work that ends it](architecture-record-a-wait-before-starting-what-ends-it.md) - When work reports its end asynchronously, register the waiter before starting the work, treat "never started" as an end, and finish a waiter only when nothing more can be added to its wait set.
 - [A step that replaces state directly must still end what it replaced](architecture-a-step-that-replaces-state-directly-must-still-end-what-it-replaced.md) - When a spec step replaces state "directly" and lets the old work notice later, check what the old work holds in this engine: if its record keeps a pointer that only the replacing path's teardown would free, end the record where the spec replaces it.
+- [A queued session history update has two kinds of reader](architecture-a-queued-history-update-has-two-readers.md) - Before moving a spec step behind a queue, list who reads its effect. Script's views follow the browsers, which show the update at once; only the readers the spec's ordering exists for - here the traversal endpoints - wait for the queue.
 
 ### Spec Compliance
 
