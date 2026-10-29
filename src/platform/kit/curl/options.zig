@@ -69,7 +69,7 @@ pub fn apply(handle: *anyopaque, allocator: Allocator, options: HandleOptions) A
 }
 
 fn setString(handle: *anyopaque, allocator: Allocator, option: c_uint, value: []const u8) Allocator.Error!void {
-    const copy = try allocator.dupeZ(u8, value);
+    const copy = try allocator.dupeSentinel(u8, value, 0);
     defer allocator.free(copy);
     _ = curl_easy_setopt(handle, option, copy.ptr);
 }

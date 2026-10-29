@@ -196,7 +196,7 @@ test "JWK validates duplicate and missing operations, algorithm, use and ext" {
     try std.testing.expectError(error.DataError, validate(.{ .ext = false }, sign, true, "sig", "HS256"));
     try std.testing.expectError(error.DataError, validate(.{ .alg = "HS384" }, sign, true, "sig", "HS256"));
     try std.testing.expectError(error.DataError, validate(.{ .use = "enc" }, sign, true, "sig", "HS256"));
-    try validate(.{ .use = "anything", .ext = false }, keys.Usages.initEmpty(), false, "sig", null);
+    try validate(.{ .use = "anything", .ext = false }, keys.Usages.empty, false, "sig", null);
 }
 
 test "JWK export has canonical algorithm and normalized native usages" {

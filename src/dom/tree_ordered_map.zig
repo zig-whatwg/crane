@@ -295,7 +295,7 @@ pub const Maps = struct {
 
     /// The kinds `key` is one of `facts`'s keys of, in this scope.
     fn kindsWithKey(self: *const Maps, facts: Facts, key: []const u8) std.EnumSet(Kind) {
-        var kinds: std.EnumSet(Kind) = .initEmpty();
+        var kinds: std.EnumSet(Kind) = .empty;
         for (kindsOf(self.scope)) |kind| {
             if (hasKey(facts, kind, key)) kinds.insert(kind);
         }

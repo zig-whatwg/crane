@@ -269,7 +269,7 @@ fn isHeapStateBlock(tree: *const std.zig.Ast, call: std.zig.Ast.full.Call) bool 
     if (tree.nodeTag(call.ast.fn_expr) != .field_access) return false;
     const object, const field_token = tree.nodeData(call.ast.fn_expr).node_and_token;
     if (!std.mem.eql(u8, tree.tokenSlice(field_token), "create")) return false;
-    return std.ascii.indexOfIgnoreCase(nodeText(tree, object), "arena") == null;
+    return std.ascii.findIgnoreCase(nodeText(tree, object), "arena") == null;
 }
 
 /// Rule 3: whether a callee installs a teardown sweep - `dom.teardown_sweeps`'

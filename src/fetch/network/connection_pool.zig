@@ -349,7 +349,7 @@ pub const ConnectionPool = struct {
 
 fn configureRequest(handle: *curl.CURL, request: *const NetworkRequest, ctx: *ConnectionPool.RequestContext) !void {
     // URL (must be null-terminated, stored in ctx to persist until request completes)
-    ctx.url_z = try ctx.allocator.dupeZ(u8, request.url);
+    ctx.url_z = try ctx.allocator.dupeSentinel(u8, request.url, 0);
     _ = curl.easy_setopt(handle, curl.CURLOPT_URL, ctx.url_z.?.ptr);
 
     // Method (stored in ctx to persist until request completes). HEAD needs
@@ -358,7 +358,7 @@ fn configureRequest(handle: *curl.CURL, request: *const NetworkRequest, ctx: *Co
     if (std.mem.eql(u8, request.method, "HEAD")) {
         _ = curl.easy_setopt(handle, curl.CURLOPT_NOBODY, @as(c_long, 1));
     } else if (!std.mem.eql(u8, request.method, "GET")) {
-        ctx.method_z = try ctx.allocator.dupeZ(u8, request.method);
+        ctx.method_z = try ctx.allocator.dupeSentinel(u8, request.method, 0);
         _ = curl.easy_setopt(handle, curl.CURLOPT_CUSTOMREQUEST, ctx.method_z.?.ptr);
     }
 
@@ -373,7 +373,7 @@ fn configureRequest(handle: *curl.CURL, request: *const NetworkRequest, ctx: *Co
     for (request.headers) |header| {
         const header_str = try std.fmt.allocPrint(ctx.allocator, "{s}: {s}", .{ header.name, header.value });
         defer ctx.allocator.free(header_str);
-        const header_z = try ctx.allocator.dupeZ(u8, header_str);
+        const header_z = try ctx.allocator.dupeSentinel(u8, header_str, 0);
         defer ctx.allocator.free(header_z);
         ctx.header_list = curl.slist_append(ctx.header_list, header_z.ptr);
     }
@@ -409,14 +409,14 @@ fn configureRequest(handle: *curl.CURL, request: *const NetworkRequest, ctx: *Co
     _ = curl.easy_setopt(handle, curl.CURLOPT_SSL_VERIFYHOST, @as(c_long, if (request.cert_options.verify_host) 2 else 0));
 
     if (request.cert_options.ca_bundle_path) |ca_path| {
-        const ca_z = try ctx.allocator.dupeZ(u8, ca_path);
+        const ca_z = try ctx.allocator.dupeSentinel(u8, ca_path, 0);
         defer ctx.allocator.free(ca_z);
         _ = curl.easy_setopt(handle, curl.CURLOPT_CAINFO, ca_z.ptr);
     }
 
     // Proxy
     if (request.proxy) |proxy| {
-        const proxy_z = try ctx.allocator.dupeZ(u8, proxy.url);
+        const proxy_z = try ctx.allocator.dupeSentinel(u8, proxy.url, 0);
         defer ctx.allocator.free(proxy_z);
         _ = curl.easy_setopt(handle, curl.CURLOPT_PROXY, proxy_z.ptr);
 
@@ -426,13 +426,13 @@ fn configureRequest(handle: *curl.CURL, request: *const NetworkRequest, ctx: *Co
                 proxy.password.?,
             });
             defer ctx.allocator.free(userpwd);
-            const userpwd_z = try ctx.allocator.dupeZ(u8, userpwd);
+            const userpwd_z = try ctx.allocator.dupeSentinel(u8, userpwd, 0);
             defer ctx.allocator.free(userpwd_z);
             _ = curl.easy_setopt(handle, curl.CURLOPT_PROXYUSERPWD, userpwd_z.ptr);
         }
 
         if (proxy.no_proxy) |no_proxy| {
-            const no_proxy_z = try ctx.allocator.dupeZ(u8, no_proxy);
+            const no_proxy_z = try ctx.allocator.dupeSentinel(u8, no_proxy, 0);
             defer ctx.allocator.free(no_proxy_z);
             _ = curl.easy_setopt(handle, curl.CURLOPT_NOPROXY, no_proxy_z.ptr);
         }

@@ -25,7 +25,7 @@ test "longhand IDs have room beyond u8 without changing declaration or style lay
     // (computed_groups.zig); a logical one maps onto a physical one.
     try testing.expectEqual(Longhand.count, css.computed_style.groups.location.len);
     // Cascade's pseudo-property filters use the same count-derived EnumSet.
-    const all = std.EnumSet(Longhand).initFull();
+    const all = std.EnumSet(Longhand).full;
     try testing.expectEqual(Longhand.count, all.count());
     for (css.properties.lexicographic) |longhand| {
         try testing.expect(all.contains(longhand));
@@ -49,7 +49,7 @@ fn allLonghands(allocator: std.mem.Allocator) !void {
         try testing.expect(try block.setProperty(.{ .allocator = allocator }, longhand.name(), "initial", ""));
     }
     try testing.expectEqual(Longhand.count, block.entries.items.len);
-    var seen = std.EnumSet(Longhand).initEmpty();
+    var seen = std.EnumSet(Longhand).empty;
     for (block.entries.items) |entry| {
         try testing.expect(entry == .typed);
         try testing.expect(!seen.contains(entry.typed.longhand));

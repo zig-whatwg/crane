@@ -606,7 +606,7 @@ pub const HttpMockServer = struct {
             }
             if (std.ascii.eqlIgnoreCase(h[0], "connection")) {
                 // Connection header may contain multiple values
-                if (std.ascii.indexOfIgnoreCase(h[1], "upgrade") != null) {
+                if (std.ascii.findIgnoreCase(h[1], "upgrade") != null) {
                     has_websocket = true;
                 }
             }

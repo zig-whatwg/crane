@@ -9,7 +9,7 @@ const jwk = @import("jwk.zig");
 pub fn usages(realm: runtime.Context, value: runtime.JSValue) engine.Error!keys.Usages {
     const Sequence = struct {
         realm: runtime.Context,
-        result: keys.Usages = keys.Usages.initEmpty(),
+        result: keys.Usages = keys.Usages.empty,
 
         fn each(data: ?*anyopaque, item: runtime.JSValue) engine.Error!void {
             const self: *@This() = @ptrCast(@alignCast(data.?));
