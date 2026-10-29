@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Deferred policy inheritance preserves construction inputs](architecture-deferred-policy-inheritance-preserves-construction-inputs.md) - **Delaying a calculation must preserve the time at which its inputs were defined.**
 - [A move is a removal and an insertion - under counts, hold what you move](architecture-a-move-is-a-removal-and-an-insertion-hold-what-you-move.md) - A move is a removal and an insertion. Under reference counting, anything that moves a node it holds no reference to must hold the node across the two steps (WebKit's NodeVector of Refs), or the removal makes the tree garbage in between.
 - [Frames on demand need every owner whose state shows at a rendering opportunity to ask for one](architecture-frames-on-demand-need-every-owner-to-ask.md) - With frames on demand, every owner whose state is read at a rendering opportunity must ask for one when it changes - and a test of that ask must start from a settled loop, or an unrelated frame passes it.
 - [Flat per-element storage makes every property cost every element](architecture-flat-per-element-storage-makes-every-property-cost-every-element.md) - Per-element storage should cost what the element writes, not what the engine supports: share untouched groups by pointer and copy on first write.
@@ -382,6 +383,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [A queued session history update has two kinds of reader](architecture-a-queued-history-update-has-two-readers.md) - Before moving a spec step behind a queue, list who reads its effect. Script's views follow the browsers, which show the update at once; only the readers the spec's ordering exists for - here the traversal endpoints - wait for the queue.
 
 ### Spec Compliance
+- [Sizes validates math before CSS clamping](spec-compliance-sizes-validates-math-before-css-clamping.md) - **Preserve only the diagnostic a consumer needs before shared simplification erases it; keep the common arithmetic unchanged.**
+- [Picture moves update both parents](spec-compliance-picture-moves-update-both-parents.md) - **A state-preserving move still changes the structural inputs to source selection. Preserve the object; recompute the affected image selection.**
+- [Deferred quota counts the constructor's referrer](spec-compliance-deferred-quota-counts-the-constructor-referrer.md) - **A quota checked before preparation must count the representation present at that point, rather than a later network representation.**
 
 - [A new typed case must preserve legacy parser fallbacks](spec-compliance-a-new-typed-case-must-preserve-legacy-parser-fallbacks.md) - Share the new alternative without replacing the caller's existing recovery.
 - [Check source when cached Markdown drops grammar](spec-compliance-check-source-when-cached-markdown-drops-grammar.md) - Resolve missing punctuation in the original specification source before interpreting the converted grammar.
@@ -681,6 +685,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Refresh aliases with their realm's interface objects](codegen-refresh-aliases-with-their-realms-interface-objects.md) - An alias names the realm's interface object, not the current contents of another global property.
 
 ### Testing
+- [QuotaExceededError needs its dedicated WPT assertion](testing-quotaexceedederror-needs-its-dedicated-wpt-assertion.md) - **Check what the harness actually asserts, and replace invalid failing evidence with a fresh BASE/TIP comparison.**
+- [Inferred error sets need member comparisons](testing-inferred-error-sets-need-member-comparisons.md) - **Compare the contract's members, and correct an invalid RED openly rather than changing product code to satisfy a mistaken test.**
 - [A test page that was never navigated has the wrong time origin](testing-a-page-never-navigated-has-the-wrong-time-origin.md) - Convert a moment for script through the global's Performance (performance_timeline.relativeCoarseTime), and test any time conversion on a navigated page - helpers.Page never sets the navigation start.
 - [A structure with many mutation sites pins its holds by recounting them](testing-a-structure-with-many-mutation-sites-pins-its-holds-by-recounting.md) - Pin a hold that many sites change with a recount under test, so the existing test suite checks it - and after routing calls through a helper by sed, read the helper: it calls itself now.
 - [A subset variant can skip a row's commands but not its queries](testing-a-subset-variant-can-skip-a-rows-commands-but-not-its-queries.md) - In the editing suites a variant boundary can cut a row between its commands and its queries; a lost after-query there must be compared with the row's before-query before anyone calls it a regression.

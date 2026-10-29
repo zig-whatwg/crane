@@ -21,25 +21,34 @@ const bmp = @import("bmp.zig");
 const gif = @import("gif.zig");
 const image_codecs = @import("kit_image_codecs");
 
+const Decoder = struct {
+    essence: []const u8,
+    decode: *const fn (std.mem.Allocator, []const u8, platform.ImageLimits) platform.ImageError!platform.DecodedImage,
+};
+
+// One table answers both selection and decoding, so they cannot drift.
+const decoders = [_]Decoder{
+    .{ .essence = "image/png", .decode = png.decode },
+    .{ .essence = "image/apng", .decode = png.decode },
+    .{ .essence = "image/bmp", .decode = bmp.decode },
+    .{ .essence = "image/x-bmp", .decode = bmp.decode },
+    .{ .essence = "image/x-ms-bmp", .decode = bmp.decode },
+    .{ .essence = "image/gif", .decode = gif.decode },
+    .{ .essence = "image/jpeg", .decode = image_codecs.jpeg },
+    .{ .essence = "image/svg+xml", .decode = image_codecs.svg },
+};
+
+pub fn imageMimeTypeSupported(essence: platform.Str) bool {
+    for (decoders) |decoder| {
+        if (std.mem.eql(u8, essence.slice(), decoder.essence)) return true;
+    }
+    return false;
+}
+
 pub fn decodeImage(allocator: std.mem.Allocator, mime: platform.Str, bytes: platform.Bytes, limits: platform.ImageLimits) platform.ImageError!platform.DecodedImage {
     const essence = mimeEssence(mime.slice());
-    if (std.ascii.eqlIgnoreCase(essence, "image/png") or std.ascii.eqlIgnoreCase(essence, "image/apng")) {
-        return png.decode(allocator, bytes.slice(), limits);
-    }
-    // MIME Sniffing's image type pattern gives image/bmp; image/x-bmp and
-    // image/x-ms-bmp are the names servers also send.
-    if (std.ascii.eqlIgnoreCase(essence, "image/bmp") or std.ascii.eqlIgnoreCase(essence, "image/x-bmp") or std.ascii.eqlIgnoreCase(essence, "image/x-ms-bmp")) {
-        return bmp.decode(allocator, bytes.slice(), limits);
-    }
-    // MIME Sniffing's image type pattern gives image/gif for both versions.
-    if (std.ascii.eqlIgnoreCase(essence, "image/gif")) {
-        return gif.decode(allocator, bytes.slice(), limits);
-    }
-    if (std.ascii.eqlIgnoreCase(essence, "image/jpeg")) {
-        return image_codecs.jpeg(allocator, bytes.slice(), limits);
-    }
-    if (std.ascii.eqlIgnoreCase(essence, "image/svg+xml")) {
-        return image_codecs.svg(allocator, bytes.slice(), limits);
+    for (decoders) |decoder| {
+        if (std.ascii.eqlIgnoreCase(essence, decoder.essence)) return decoder.decode(allocator, bytes.slice(), limits);
     }
     return error.UnsupportedFormat;
 }
