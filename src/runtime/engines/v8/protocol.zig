@@ -539,6 +539,10 @@ pub fn convertToRecordOfStrings(realm: Context, value: JSValue, keys: engine.Str
     return webidl_conversions.convertToRecordOfStrings(realm, value, keys, values, allocator) catch |err| protocolError(err);
 }
 
+pub fn enumerableOwnPropertyKeys(realm: Context, object: JSValue, allocator: Allocator) Error![][]u8 {
+    return webidl_conversions.enumerableOwnPropertyKeys(realm, object, allocator) catch |err| protocolError(err);
+}
+
 pub fn getCopyOfBufferSourceBytes(realm: Context, value: JSValue, allocator: Allocator) Error!?[]u8 {
     return webidl_conversions.getCopyOfBufferSourceBytes(realm, value, allocator) catch |err| protocolError(err);
 }

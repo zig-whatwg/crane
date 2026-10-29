@@ -307,3 +307,71 @@ test "getCopyOfAllowSharedBufferSourceBytes takes a SharedArrayBuffer and a view
     try std.testing.expectEqual(@as(?[]u8, null), try protocol.getCopyOfBufferSourceBytes(ctx, handleValue(shared), allocator));
     try std.testing.expectError(error.TypeError, protocol.getCopyOfBufferSourceBytes(ctx, handleValue(shared_view), allocator));
 }
+
+// ---------------------------------------------------------------------------
+// enumerableOwnPropertyKeys: ECMAScript EnumerableOwnProperties(O, key), the
+// names Web Animations' "process a keyframe-like object" reads (rendering2)
+// ---------------------------------------------------------------------------
+
+fn freeKeys(keys: [][]u8) void {
+    for (keys) |key| std.testing.allocator.free(key);
+    std.testing.allocator.free(keys);
+}
+
+test "enumerableOwnPropertyKeys: own enumerable String keys in property order, nothing Got" {
+    const ctx = try realm();
+    _ = try evalInt("globalThis.keyGetterRan = 0; 1");
+    const object = try eval(
+        \\(() => {
+        \\  const o = { b: 1, a: 2, 1: 3, [Symbol('s')]: 4, get g() { globalThis.keyGetterRan++; return 5; }, __proto__: { inherited: 6 } };
+        \\  Object.defineProperty(o, 'hidden', { value: 7, enumerable: false });
+        \\  o['--custom'] = 8;
+        \\  return o;
+        \\})()
+    );
+    defer ffi.v8_Value_Dispose(object);
+    const keys = try protocol.enumerableOwnPropertyKeys(ctx, handleValue(object), std.testing.allocator);
+    defer freeKeys(keys);
+    const expected = [_][]const u8{ "1", "b", "a", "g", "--custom" };
+    try std.testing.expectEqual(expected.len, keys.len);
+    for (expected, keys) |want, got| try std.testing.expectEqualStrings(want, got);
+    // No property was Got: the getter never ran.
+    try std.testing.expectEqual(@as(i32, 0), try evalInt("globalThis.keyGetterRan"));
+    try std.testing.expectError(error.TypeError, protocol.enumerableOwnPropertyKeys(ctx, .{ .number = 1 }, std.testing.allocator));
+}
+
+test "enumerableOwnPropertyKeys: a Proxy is asked ownKeys, then getOwnPropertyDescriptor for String keys only" {
+    const ctx = try realm();
+    const proxy = try eval(
+        \\(() => {
+        \\  globalThis.trapLog = [];
+        \\  const sym = Symbol('skip');
+        \\  return new Proxy({ k: 1, j: 2 }, {
+        \\    ownKeys(t) { trapLog.push('ownKeys'); return ['k', sym, 'j']; },
+        \\    getOwnPropertyDescriptor(t, key) { trapLog.push(String(key)); return key === 'j' ? { value: 2, enumerable: false, configurable: true } : Reflect.getOwnPropertyDescriptor(t, key); },
+        \\    get() { trapLog.push('get'); return 0; },
+        \\  });
+        \\})()
+    );
+    defer ffi.v8_Value_Dispose(proxy);
+    const keys = try protocol.enumerableOwnPropertyKeys(ctx, handleValue(proxy), std.testing.allocator);
+    defer freeKeys(keys);
+    try std.testing.expectEqual(@as(usize, 1), keys.len);
+    try std.testing.expectEqualStrings("k", keys[0]);
+    try std.testing.expectEqual(@as(i32, 1), try evalInt("trapLog.join() === 'ownKeys,k,j' ? 1 : 0"));
+
+    const throwing = try eval("new Proxy({}, { ownKeys() { throw globalThis.ownKeysError = new Error('trap'); } })");
+    defer ffi.v8_Value_Dispose(throwing);
+    var body: struct {
+        ctx: runtime.Context,
+        object: runtime.JSValue,
+        result: protocol.Error![][]u8 = undefined,
+        fn run(self: *@This()) void {
+            self.result = protocol.enumerableOwnPropertyKeys(self.ctx, self.object, std.testing.allocator);
+        }
+    } = .{ .ctx = ctx, .object = handleValue(throwing) };
+    const thrown = thrownBy(&body) orelse return error.NothingThrown;
+    defer ffi.v8_Global_Dispose(thrown);
+    try std.testing.expectError(error.ExceptionPending, body.result);
+    try std.testing.expect(try holds("ownKeysThrown", thrown, "ownKeysThrown === ownKeysError ? 1 : 0"));
+}
