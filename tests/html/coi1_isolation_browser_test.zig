@@ -114,6 +114,13 @@ fn noSwitchKeepsTheOpener() !void {
     try runUntil(browser, page, "result !== null");
     try expectEval(page, "result", "true");
     try expectEval(page, "[popup.closed, popup.opener === window].join()", "false,true");
+    // The opener navigates the popup to about:blank: the document's origin
+    // is its initiator's, and its opener policy the initiator's top-level
+    // document's - the same policy, of the same origin: no switch
+    // (navigate-to-aboutblank.https.html).
+    try page.runScript("popup.location.href = 'about:blank';");
+    try runUntil(browser, page, "(() => { try { return popup.location.href === 'about:blank'; } catch (e) { return false; } })()");
+    try expectEval(page, "[popup.closed, popup.opener === window].join()", "false,true");
 }
 
 test "matching opener policies keep a popup's opener" {

@@ -3163,10 +3163,15 @@ fn openerPolicySwitch(integration: *IFrameIntegration, record: *Navigation, resp
     const active_origin = documentOriginOf(active, allocator);
     defer if (active_origin) |origin| allocator.free(origin);
     const response_url = if (response.final_url.len > 0) response.final_url else record.url;
-    const response_origin = if (record.final_sandboxing_flags.origin)
+    // navigationParams's origin ("determining the origin"): an about:blank
+    // document's is its initiator's, not its URL's - the origin the commit
+    // gives the document (commitInRealm).
+    const response_origin: []u8 = if (record.final_sandboxing_flags.origin)
         allocator.dupe(u8, "null") catch return null
+    else if (record.target_origin) |known|
+        allocator.dupe(u8, known) catch return null
     else
-        fetch_mod.internal.origins.serializedOriginOf(allocator, response_url) catch return null;
+        navigationParamsOrigin(integration, record.final_sandboxing_flags, response_url, if (record.srcdoc == null) record.initiator_origin else null, allocator) catch return null;
     defer allocator.free(response_origin);
     var reports: opener_policy.Reports = .{};
     const enforced = opener_policy.enforce(document_lifecycle.isInitialAboutBlank(active), false, response_origin, .{
