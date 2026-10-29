@@ -22,6 +22,11 @@
 //!   navigable or document gone). Completion schedules the next service
 //!   task, so other tasks interleave with the queue's items, as they do with
 //!   a parallel queue, and nothing is polled.
+//! - An item whose steps go on after a wait ("apply the history step" waits
+//!   for its change jobs, step 14, and then for its step 18 tasks) has
+//!   `proceed` steps: when its last wait ends they run from a service task
+//!   of their own - never inside the call that ended the wait - and may wait
+//!   again.
 //! - The service task and every waiter carry the traversable's ID - and a
 //!   waiter its item's token - never a pointer to the queue or its context:
 //!   both are looked up again (`Navigables.byId`), so a traversable freed
@@ -91,9 +96,18 @@ pub const Item = struct {
     /// superseded (`populationEnded`), or the navigable was destroyed
     /// (`navigableGone`). Owned by the queue.
     waiting_on: std.ArrayListUnmanaged(u64) = .empty,
-    /// `waitFor` recorded a wait for this item: it is finished once it has
-    /// none left, even if the last ended inside its own run.
+    /// `waitFor` recorded a wait for this item in its current run: it is
+    /// finished - or proceeds - once it has none left, even if the last
+    /// ended inside that run.
     uses_waits: bool = false,
+    /// Steps that go on once every wait has ended, from a service task of
+    /// their own; they may wait again (`waitFor`) and return `.pending`.
+    /// Null: the item is finished when its waits end.
+    proceed: ?*const fn (item: *Item) Outcome = null,
+    /// Its waits ended: the next service task runs `proceed`.
+    proceed_pending: bool = false,
+    /// `run` has been called.
+    started: bool = false,
 };
 
 /// Queue one service task - `TraversalQueue.service(navigables, id)` - on the
@@ -163,6 +177,8 @@ pub const TraversalQueue = struct {
         item.completed = false;
         item.waiting_on = .empty;
         item.uses_waits = false;
+        item.proceed_pending = false;
+        item.started = false;
         self.items.append(self.allocator, item) catch {
             item.destroy(item);
             return false;
@@ -171,36 +187,61 @@ pub const TraversalQueue = struct {
         return true;
     }
 
-    /// Ask for a service task if one is wanted and none is queued.
+    /// Ask for a service task if one is wanted and none is queued: for the
+    /// first queued item when none runs, or for the running item's proceed
+    /// steps.
     fn wake(self: *TraversalQueue) void {
-        if (self.running != null or self.service_queued or self.items.items.len == 0) return;
+        if (self.service_queued) return;
+        if (self.running) |item| {
+            if (!item.proceed_pending) return;
+        } else if (self.items.items.len == 0) return;
         if (self.schedule(self.navigables, self.traversable_id)) self.service_queued = true;
     }
 
     /// The service task: run the first item of `traversable_id`'s queue, if
-    /// the traversable is still there and no item is waiting.
+    /// the traversable is still there and no item is waiting - or the
+    /// waiting item's proceed steps, once its waits have ended.
     pub fn service(navigables: *Navigables, traversable_id: u64) void {
         const self = queueOf(navigables, traversable_id) orelse return;
         self.service_queued = false;
-        if (self.running != null) return;
-        if (self.items.items.len == 0) return;
-        const item = self.items.orderedRemove(0);
-        self.running = item;
+        const item = if (self.running) |running| blk: {
+            if (!running.proceed_pending) return;
+            running.proceed_pending = false;
+            break :blk running;
+        } else blk: {
+            if (self.items.items.len == 0) return;
+            const first = self.items.orderedRemove(0);
+            self.running = first;
+            break :blk first;
+        };
         item.in_run = true;
-        const outcome = item.run(item);
+        item.uses_waits = false;
+        const outcome = if (item.started) item.proceed.?(item) else blk: {
+            item.started = true;
+            break :blk item.run(item);
+        };
         item.in_run = false;
         // The run may have ended the traversable (script ran): look it up again.
         if (item.orphaned) {
             item.destroy(item);
             return;
         }
-        // An item whose every population ended inside its run is finished
-        // too: nothing is left to complete it.
+        // An item whose every wait ended inside its run is finished - or
+        // proceeds - too: nothing else is left to tell it.
         const waits_over = item.uses_waits and item.waiting_on.items.len == 0;
-        if (outcome == .done or item.completed or waits_over) {
+        if (outcome == .done or item.completed) {
             item.completed = false;
             completeById(navigables, traversable_id, item.token);
-        }
+        } else if (waits_over) self.waitsOver(item);
+    }
+
+    /// The running `item`'s last wait ended, outside its run: its proceed
+    /// steps run from the next service task, or - with none - it is
+    /// finished.
+    fn waitsOver(self: *TraversalQueue, item: *Item) void {
+        if (item.proceed == null) return completeById(self.navigables, self.traversable_id, item.token);
+        item.proceed_pending = true;
+        self.wake();
     }
 
     /// The running item `token` of `traversable_id`'s queue waits for
@@ -244,9 +285,10 @@ pub const TraversalQueue = struct {
         // Its population is over: the navigable's view of the history is
         // written again (JointHistory.holdView), if its commit did not.
         if (self.history()) |h| h.releaseView(navigable);
-        // Its last wait: finished - by the service, once its run returns, if
-        // the wait ended inside the run (more waits may follow there).
-        if (item.waiting_on.items.len == 0 and !item.in_run) completeById(self.navigables, self.traversable_id, item.token);
+        // Its last wait: finished or proceeding - by the service, once its
+        // run returns, if the wait ended inside the run (more waits may
+        // follow there).
+        if (item.waiting_on.items.len == 0 and !item.in_run) self.waitsOver(item);
     }
 
     /// The traversable's session history, if it has one.

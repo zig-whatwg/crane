@@ -739,22 +739,39 @@ fn traverseToKey(instance: *runtime.Instance, key: []const u8, info: runtime.JSV
         return derivedResult(instance, internal, tracker);
     }
     ensureHistoryTraversal(scope.window);
-    dom.history_traversal.traverseToStep(scope.window, step);
-    // Step 12.3, when the queued traversal has run: its target already the
-    // navigable's active entry - a traversal queued before it took the
-    // navigable there - rejects the finished promise.
-    queueTraversalCheck(instance, scope.window, tracker, .active_target);
+    // Step 12: the queued steps check the key first - 12.2, no entry of the
+    // navigable has it, and 12.3, it is already the navigable's active entry
+    // (a traversal queued before took it there): the finished promise is
+    // rejected - then apply (html_core apply_history_step).
+    dom.history_traversal.traverseToStep(scope.window, step, apiTraversalOf(instance, tracker));
     // Step 13.
     return derivedResult(instance, internal, tracker);
 }
 
-/// "Perform a navigation API traversal" step 12.3, checked in a task queued
-/// after the traversal's own (History's traversal task, on the same loop):
-/// "If targetSHE is navigable's active session history entry: queue a global
-/// task ... to reject the finished promise for apiMethodTracker with an
-/// "InvalidStateError" DOMException." A traversal that changed the entry
-/// fired its navigate event, which took the tracker out of the upcoming
-/// ones; one that went to another document has not made it active yet.
+/// The key checks a navigation API traversal hands the queued traversal
+/// (dom.history_traversal.ApiTraversal): rejecting queues the
+/// InvalidStateError task. Null out of memory - nothing is rejected then.
+fn apiTraversalOf(navigation: *runtime.Instance, tracker: *Tracker) ?dom.history_traversal.ApiTraversal {
+    const internal = getInternal(navigation) orelse return null;
+    const key = tracker.key orelse return null;
+    const check = internal.allocator.create(ActiveTargetCheck) catch return null;
+    check.* = .{
+        .navigation = navigation,
+        .generation = runtime.SlabAllocator.generationOf(navigation),
+        .tracker = tracker,
+        .allocator = internal.allocator,
+        .kind = .active_target,
+    };
+    return .{ .key = key, .context = check, .reject = &ActiveTargetCheck.rejectLater, .drop = &ActiveTargetCheck.dropContext };
+}
+
+/// "Perform a navigation API traversal" steps 12.2-12.3, decided by the
+/// queued traversal itself (apply_history_step, before it applies): "queue a
+/// global task ... to reject the finished promise for apiMethodTracker with
+/// an "InvalidStateError" DOMException" - this task (ActiveTargetCheck
+/// .rejectLater). (Lane nav2 C2: it used to be a task queued after the
+/// traversal's own, which held only while every navigate event fired inside
+/// that task.)
 /// "Apply the history step" step 3 for a traversal to `step` that `scope`'s
 /// document asks for: whether its navigable is allowed by sandboxing to
 /// navigate every navigable whose current session history entry the step
@@ -782,8 +799,8 @@ fn initiatorAllowedToTraverse(allocator: Allocator, scope: navigation_entries.Sc
 
 /// What a queued look at a navigation API traversal's tracker settles.
 const TraversalCheckKind = enum {
-    /// Step 12.3: the traversal's destination was already the navigable's
-    /// active entry once the traversal ran - an InvalidStateError.
+    /// Steps 12.2-12.3: the queued traversal found no entry with the key, or
+    /// it was already the navigable's active entry - an InvalidStateError.
     active_target,
     /// Step 12.6: the traversal was "initiator-disallowed" - a
     /// SecurityError.
@@ -817,9 +834,7 @@ const ActiveTargetCheck = struct {
             collect(internal);
             return;
         }
-        const scope = scopeOf(self.navigation, internal) orelse return;
-        const current = scope.history.currentEntry(scope.navigable.id) orelse return;
-        if (!std.mem.eql(u8, &current.api_key, &key)) return;
+        _ = key;
         const reason = engine.createDOMException(self.navigation.ctx, "InvalidStateError", "The traversal's destination is already the current entry.") catch {
             cleanUp(internal, self.tracker);
             return;
@@ -831,6 +846,21 @@ const ActiveTargetCheck = struct {
 
     fn drop(data: ?*anyopaque) void {
         const self: *ActiveTargetCheck = @ptrCast(@alignCast(data orelse return));
+        self.allocator.destroy(self);
+    }
+
+    /// dom.history_traversal.ApiTraversal.reject: the global task, queued on
+    /// the navigation's relevant global's loop. The Navigation gone, nothing.
+    fn rejectLater(context: *anyopaque) void {
+        const self: *ActiveTargetCheck = @ptrCast(@alignCast(context));
+        if (runtime.SlabAllocator.generationOf(self.navigation) != self.generation) return self.allocator.destroy(self);
+        const loop = self.navigation.ctx.getOptionalEventLoop() orelse return run(self);
+        loop.queueTask(.{ .callback = &ActiveTargetCheck.run, .context = self, .drop = &ActiveTargetCheck.drop });
+    }
+
+    /// dom.history_traversal.ApiTraversal.drop.
+    fn dropContext(context: *anyopaque) void {
+        const self: *ActiveTargetCheck = @ptrCast(@alignCast(context));
         self.allocator.destroy(self);
     }
 };

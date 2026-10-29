@@ -1,0 +1,12 @@
+# Architecture: A step that replaces state directly must still end what it replaced
+
+**Date**: 2026-10-28
+**Lesson**: HTML "apply the history step" step 8.3 sets a navigable's ongoing navigation to "traversal" directly. In the spec the navigation it replaces just notices at its next step, but in Crane that navigation is a record that holds its navigable, so it has to be ended explicitly.
+
+**Why**: Crane runs a navigation as a record in a map, keyed by ID, with a pointer to its navigable (HTMLIFrameElement's `Navigation.integration`). Every task of the navigation finds its record by ID and checks it is still the ongoing one. The invariant that keeps those pointers safe: a record lives only while it is its navigable's ongoing navigation. "Set the ongoing navigation" ends the old record when it replaces it, and a navigable's deinit ends its ongoing one (the abandon hook). A record left in the map after another navigation replaced it is no longer ended by anyone. If its navigable is freed before the record's next step runs, that step reads a freed integration.
+
+**What Happened**: Lane nav2 C2 moved step 8.3 into the apply itself (the integrator's ruling: the spec order, so that a navigate handler of an earlier navigable that navigates a later one is ignored). From html_core the natural code was `integration.ongoing_navigation = .traversal`, the spec's words, which leaves the in-flight navigation's record orphaned. The spec's "it notices at its next step" was true of every step the record would run, so nothing showed it. The hazard was teardown: an orphan's fetch callback could run after the frame was removed and its integration freed. The design review found it before any code ran.
+
+**Fix**: IFrameIntegration gained `beginTraversal()`, which runs the owner's `end_ongoing_navigation_callback` (HTMLIFrameElement's `endOngoingNavigationOf`: ends the record without informing the navigation API, as 8.3 does not inform it) and then sets "traversal". The traversal's own population is the one record allowed while the navigable is "traversal" (`traversal_navigation`). `isOngoing` accepts it, and its record's `destroy` returns the navigable to "none" when it ends without unloading (14.10.1).
+
+**Takeaway**: **When a spec step replaces state "directly" and lets the old work notice later, check what the old work holds in this engine: if its record keeps a pointer that only the replacing path's teardown would free, end the record where the spec replaces it.**

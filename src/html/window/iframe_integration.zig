@@ -366,6 +366,11 @@ pub const IFrameIntegration = struct {
     /// HTML "ongoing navigation" of the content navigable (§7.4.2.5): a new
     /// navigation replaces it, and an earlier one that finds it changed stops.
     ongoing_navigation: navigate_steps.OngoingNavigation = .none,
+    /// While `ongoing_navigation` is "traversal" ("apply the history step"
+    /// step 8.4): the ID of the navigation populating the traversal's
+    /// target entry, once it has started (0 before) - the one navigation
+    /// that is ongoing then (lane nav2 C2).
+    traversal_navigation: u64 = 0,
 
     /// HTML "is delaying load events": set by "navigate" step 15 and held
     /// until the container's load event steps have run for a navigation (or
@@ -387,6 +392,11 @@ pub const IFrameIntegration = struct {
     /// Abandon the navigation in flight, if any: set by the engine that runs
     /// it, and called when the navigable goes.
     abandon_navigations_callback: ?*const fn (*IFrameIntegration) void = null,
+    /// The owner's step that ends the navigation in flight without
+    /// informing the navigation API - what "apply the history step" step
+    /// 8.3 does to it by setting the ongoing navigation to "traversal"
+    /// directly (`beginTraversal`).
+    end_ongoing_navigation_callback: ?*const fn (*IFrameIntegration) void = null,
 
     /// How many engine steps are running script with this integration in
     /// hand (a commit parsing the new document, a javascript: URL). Script
@@ -885,6 +895,20 @@ pub const IFrameIntegration = struct {
         }
 
         return nested_ctx;
+    }
+
+    /// HTML "apply the history step" step 8.3.4: "Set navigable's ongoing
+    /// navigation to "traversal"" - directly, not through "set the ongoing
+    /// navigation", so the navigation it replaces ends without informing the
+    /// navigation API (the owner's `end_ongoing_navigation_callback`; a
+    /// navigation's record never outlives its being the ongoing one). Until
+    /// the traversal's population starts, no navigation of it is in flight
+    /// (`traversal_navigation` 0); navigate step 18 ignores new navigations
+    /// meanwhile.
+    pub fn beginTraversal(self: *IFrameIntegration) void {
+        if (self.end_ongoing_navigation_callback) |end| end(self);
+        self.ongoing_navigation = .traversal;
+        self.traversal_navigation = 0;
     }
 
     /// The navigable's navigation in flight ends - the owner's abandon hook

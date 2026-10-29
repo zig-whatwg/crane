@@ -161,6 +161,7 @@ progress = [
   "cb3d11033ed - the host page navigates as a popup does: Location, hyperlinks, forms, Refresh, javascript: URLs, reload and traversal reach its traversable record (dom.top_level_navigation retired); Context.navigate / Browser.navigateInPlace for the embedder; WebDriver Navigate To in place (newwin1 B5)",
   "13b9f7bd156 - each navigable's view of the session history (History length/index, the navigation API entry list and current entry) is stored, written when the history changes; the views the later reordering writes at the spec's moments (nav2 D)",
   "e18de2201dc - history and navigation API traversals run on the traversable's session history traversal queue, each waiting for its cross-document populations until their documents are active; the leaving document keeps its view; delta traversals follow the browsers: a top-level traversable ignores further ones while one is pending, a child navigable coalesces them (nav2 C1)",
+  "307e27019ea - \"apply the history step\" proper (apply_history_step.zig): per-navigable change tasks with the traverse navigate event, step 18's length/index updates and the current step set last; a traversing navigable ignores navigations (ongoing navigation \"traversal\"); reload and the updates for navigable creation/destruction are queue items (nav2 C2)",
 ]
 
   [[infra.items]]

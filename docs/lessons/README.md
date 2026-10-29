@@ -379,6 +379,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Shared resource storage does not imply CSS interest](architecture-shared-resource-cache-is-not-style-interest.md) - Separate storage lifetime from feature activation.
 - [Native font status precedes its script promise](architecture-native-font-status-precedes-its-script-promise.md) - Preserve automatic outcomes until script requests the promise.
 - [Record a wait before you start the work that ends it](architecture-record-a-wait-before-starting-what-ends-it.md) - When work reports its end asynchronously, register the waiter before starting the work, treat "never started" as an end, and finish a waiter only when nothing more can be added to its wait set.
+- [A step that replaces state directly must still end what it replaced](architecture-a-step-that-replaces-state-directly-must-still-end-what-it-replaced.md) - When a spec step replaces state "directly" and lets the old work notice later, check what the old work holds in this engine: if its record keeps a pointer that only the replacing path's teardown would free, end the record where the spec replaces it.
 
 ### Spec Compliance
 - [Sizes validates math before CSS clamping](spec-compliance-sizes-validates-math-before-css-clamping.md) - **Preserve only the diagnostic a consumer needs before shared simplification erases it; keep the common arithmetic unchanged.**
