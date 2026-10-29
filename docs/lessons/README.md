@@ -952,6 +952,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Install cleanup before reserving capacity](debugging-install-cleanup-before-reserving-capacity.md) - A failed reserve may already own an allocation.
 - [A Module Bench Attributes What a Page Profile Cannot](debugging-a-module-bench-attributes-what-a-page-profile-cannot.md) - Before calling a cost structural, rebuild the module alone in the release mode and bisect the two trees with one-line edits; a recursion or lost inline costs every caller and shows in no single frame.
 - [A hot-path cost can be the call graph's shape, not an allocation](debugging-a-hot-path-cost-can-be-a-call-graph-shape-not-an-allocation.md) - An allocation count and a flat profile cannot see a recursion that blocks inlining; check the call graph's shape before calling a hot-path cost structural.
+- [A CSS function token is followed by its own "(" token](debugging-a-css-function-token-is-followed-by-its-own-paren-token.md) - In Crane's CSS Stream a function's `(` is a token of its own: consume it after the function token, as grid_tracks.zig does.
 
 ### Workflow
 
