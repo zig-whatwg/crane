@@ -1854,6 +1854,9 @@ pub const Context = struct {
             .byte_stream = if (kind == .html or kind == .xml) .{ .content_type = result.content_type } else null,
         };
         const policy_headers = if (result.permissions_policy_headers) |headers| headers.values else @import("dom").policy_containers.permissions_policy.Headers{};
+        // The response's opener policy, enforced for the page's top-level
+        // traversable before its next document exists (enforceOpenerPolicy).
+        if (!try self.enforceOpenerPolicy(&result, url, sandboxing_flags)) return error.NetworkError;
         const made = try self.createLoadDocument(html_options, null, policy_headers);
         const document = made.document;
         const hold = self.holdDocument(document);
@@ -1908,6 +1911,71 @@ pub const Context = struct {
         }
     }
 
+    /// HTML "create navigation params by fetching" step 21.12 for the page's
+    /// top-level traversable and the response `result` to the fetch of
+    /// `url`, then "obtain a browsing context to use for a navigation
+    /// response" for it: the response's opener policy (navigation.zig put
+    /// it in the response's policy container) is enforced against the
+    /// page's active document's, and a navigation that needs a browsing
+    /// context group switch moves the page's browsing context into a new
+    /// group - cross-origin isolated ("concrete", BrowsingContext) for a
+    /// "same-origin-plus-COEP" response. False for step 21.12.3's network
+    /// error: a sandboxed response with an opener policy.
+    ///
+    /// The page's WindowProxy is kept across the switch: HTML makes a new
+    /// browsing context, but nothing of the page's group can hold the page's
+    /// proxy - the embedder's page has no opener, and its own popups are
+    /// cut off by the switch (BrowsingContext.switchGroup). Stated, as is
+    /// the step 9.1 virtual browsing context group ID, which only COOP
+    /// reports read (queued with them). The violation reports of steps 4.2
+    /// and 5.2 are queued too (lane coi1's follow-up).
+    fn enforceOpenerPolicy(self: *Context, result: *const navigation.NavigationResult, url: []const u8, flags: dom_mod.sandboxing.SandboxingFlagSet) !bool {
+        // A response from no network has no opener policy: a new one.
+        const container = if (result.policy_container) |*c| c else return true;
+        const response_coop = container.opener_policy;
+        // 21.12.3. "If finalSandboxFlags is not empty and responseCOOP's
+        // value is not "unsafe-none", then set response to an appropriate
+        // network error."
+        if (!flags.isEmpty() and response_coop.value != .unsafe_none) return false;
+        const window = self.window_instance orelse return true;
+        const bc = dom_mod.browser_state.browsingContextOf(window) orelse return true;
+        // The current result: the active document's URL, origin and opener
+        // policy (21.14's initial values).
+        const shown = self.document_instance;
+        const is_initial = if (shown) |document| dom_mod.document_lifecycle.isInitialAboutBlank(document) else true;
+        const active_coop: fetch.internal.OpenerPolicy = blk: {
+            const document = shown orelse break :blk .{};
+            const active = dom_mod.policy_containers.of(document) orelse break :blk .{};
+            break :blk .{ .value = active.opener_policy.value, .report_only_value = active.opener_policy.report_only_value };
+        };
+        // Two "unsafe-none" policies, enforced and report-only, match
+        // whatever the origins: nothing to switch, nothing allocated.
+        if (active_coop.value == .unsafe_none and active_coop.report_only_value == .unsafe_none and
+            response_coop.value == .unsafe_none and response_coop.report_only_value == .unsafe_none) return true;
+        const active_origin: ?[]const u8 = if (dom_mod.global_settings.of(window)) |settings| settings.origin(window) catch null else null;
+        // The settings object's origin is the window's realm's allocation.
+        defer if (active_origin) |origin| window.ctx.allocator.free(origin);
+        // 21.11: the response's origin - a new opaque one for the sandboxed
+        // origin flag.
+        const response_origin = if (flags.origin) try self.allocator.dupe(u8, "null") else try fetch.internal.origins.serializedOriginOf(self.allocator, url);
+        defer self.allocator.free(response_origin);
+        const opener_policy = html_mod.navigation.opener_policy;
+        var reports: opener_policy.Reports = .{};
+        const enforced = opener_policy.enforce(is_initial, false, response_origin, .{
+            .value = response_coop.value,
+            .report_only_value = response_coop.report_only_value,
+        }, .{ .origin = active_origin orelse "null", .policy = active_coop }, &reports);
+        // "Obtain a browsing context to use for a navigation response" steps
+        // 4 and 9-14 for a top-level browsing context.
+        if (enforced.needs_switch) {
+            // Step 12: a "same-origin-plus-COEP" navigation's new group is
+            // cross-origin isolated; Crane picks "concrete" (BrowsingContext).
+            const mode: @TypeOf(bc.cross_origin_isolation_mode) = if (response_coop.value == .same_origin_plus_coep) .concrete else .none;
+            bc.switchGroup(mode, flags);
+        }
+        return true;
+    }
+
     /// HTML "create and initialize a Document object" step 7 for the page's
     /// new document, made from the response to a fetch of `url` whose
     /// `Origin-Agent-Cluster` header list value is `header`:
@@ -1933,8 +2001,9 @@ pub const Context = struct {
         const origin = fetch.internal.origins.serializedOriginOf(self.allocator, url) catch return;
         defer self.allocator.free(origin);
         const requests_oac = keys.requestsOAC(self.allocator, header, keys.isSecureTopLevelCreationUrl(self.allocator, url));
-        const isolated = if (dom_mod.global_settings.of(window)) |settings| settings.cross_origin_isolated(window) else false;
-        _ = keys.obtain(runtime.BrowserScope.ofInstance(window), navigable.virtual_group_id, origin, requests_oac, isolated);
+        // Step 3 keys by origin in a cross-origin isolated group, whatever
+        // the window's capability.
+        _ = keys.obtain(runtime.BrowserScope.ofInstance(window), navigable.virtual_group_id, origin, requests_oac, navigable.groupIsCrossOriginIsolated());
     }
 
     // ============================================================================
