@@ -737,6 +737,9 @@ pub extern fn v8_Isolate_SnapshotBlob(isolate: *Isolate, out_size: *usize) ?[*]c
 /// evaluation - the adapter's per-isolate record holds their parsed values
 /// until then. For tests.
 pub extern fn v8_Isolate_PendingSyntheticModuleCount(isolate: *Isolate) usize;
+/// `isolate`'s null, BORROWED for the isolate's life (its record keeps it):
+/// never disposed by the caller. Null for the snapshot creator's isolate.
+pub extern fn v8_Isolate_BorrowedNull(isolate: *Isolate) ?*Value;
 pub extern fn v8_Isolate_Enter(isolate: *Isolate) void;
 pub extern fn v8_Isolate_Exit(isolate: *Isolate) void;
 pub extern fn v8_Isolate_GetCurrentContext(isolate: *Isolate) ?*Context;
