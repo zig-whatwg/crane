@@ -101,6 +101,9 @@ fn selectionCountsItsDocument() !void {
     defer page.close();
     try page.run("globalThis.d = document;");
     const document = try page.node("d");
+    // Settled first: the page's own lifecycle tasks (DOMContentLoaded, load)
+    // each hold their document until they run (refcount8).
+    try page.collect();
     const before = dom.refcount.count(document);
     // The document's Selection, made on first use, keeps its document (a
     // traced edge, and now a counted reference beside it); the document
