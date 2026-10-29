@@ -193,6 +193,8 @@ pub const in_scope_categories: []const TestCategory = &.{
     .{ .name = "web-locks", .description = "Web Locks" },
     .{ .name = "compression", .description = "Compression Streams" },
     .{ .name = "permissions", .description = "Permissions API" },
+    // The user, 2026-10-29: Web Animations joins the 0.1 worklist.
+    .{ .name = "web-animations", .description = "Web Animations" },
     // Approved worklist expansion (the user, 2026-10-22). These categories
     // must also be discoverable without --from-file; the worklist carries
     // their per-file scope, including the approved mixed geometry cases.
