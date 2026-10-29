@@ -333,8 +333,14 @@ pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!voi
     // range is appended all the same - the queued steps ask again when they
     // run (step 4.4), and an earlier traversal may have made it valid - but
     // it is no pending traversal for the rules above (tth4's -10, tth5's +10).
+    // Asked of the history as the queued steps will see it: after the
+    // finalize steps of the synchronous navigations pending now, queued ahead
+    // (lane nav2 E) - a pending push's step is on its own document.
     const history = ensureEntries(bc) catch return;
-    const cross_document = if (history.stepByDelta(delta_val)) |target| apply_history_step.changesDocument(top, history, target) else false;
+    const cross_document = if (history.predictedStepByDelta(delta_val)) |predicted| switch (predicted) {
+        .listed => |target| apply_history_step.changesDocument(top, history, target),
+        .pushed => false,
+    } else false;
     apply_history_step.traverse(top, internal.allocator, .{ .delta = delta_val }, .{ .cross_document_delta = cross_document, .delta_navigable = bc.id });
 }
 
@@ -573,9 +579,12 @@ fn parseRelativeTo(document: *runtime.Instance, url: []const u8, allocator: Allo
 }
 
 /// HTML "URL and history update steps" given the History's document and
-/// `new_url`, taking `serialized`. The document's URL changes now; the entry
-/// is pushed or replaced in the traversable's history - always replaced on
-/// an initial about:blank document (step 4).
+/// `new_url`, taking `serialized`. Steps 1-13 run now: the new entry is the
+/// navigable's active entry and its document's History and navigation API
+/// are written - always a replace on an initial about:blank document (step
+/// 4); step 14 appends "finalize a same-document navigation" to the
+/// traversable's session history traversal queue, which lists the entry in
+/// the joint session history (lane nav2 E).
 fn urlAndHistoryUpdate(
     internal: *InternalState,
     bc: *BrowsingContext,
@@ -593,26 +602,40 @@ fn urlAndHistoryUpdate(
         const document = interfaces.Window.get_document(window) catch break :blk handling;
         break :blk if (@import("dom").document_lifecycle.isInitialAboutBlank(document)) .replace else handling;
     };
-    const history = try ensureEntries(bc);
-    // The new entry's navigation API state is a fresh one (the URL and
-    // history update steps do not carry it over).
-    try history.commitSameDocument(bc.id, new_url, serialized, effective, .undefined);
-    // Step 7: "Restore the history object state" - the next read deserializes
+    var owned = serialized;
+    const history = ensureEntries(bc) catch |err| {
+        owned.deinit(internal.allocator);
+        return err;
+    };
+    // Steps 2-3, 5-7, 10-11: the new entry - its navigation API state a fresh
+    // one (the URL and history update steps do not carry it over) - made the
+    // navigable's active entry, pending in the joint history, and the
+    // document's History index and length its best guess.
+    const nav = try history.navigateSameDocument(bc.id, new_url, owned, effective, .undefined);
+    // Step 8: "Restore the history object state" - the next read deserializes
     // the new entry's state.
     if (restore_state) {
         internal.has_state = false;
-    } else if (history.currentEntry(bc.id)) |entry| {
-        internal.state_entry = entry.id;
+    } else {
+        internal.state_entry = nav.entry;
     }
-    // Step 8: "Set document's URL to newURL."
+    // Step 9: "Set document's URL to newURL."
     setDocumentUrl(window, new_url);
-    // Step 9: "Update the navigation API entries for a same-document
+    // Step 12: "Update the navigation API entries for a same-document
     // navigation given document's relevant global object's navigation API,
     // newEntry, and historyHandling."
     @import("dom").navigation_api.sameDocumentNavigation(window, switch (effective) {
         .push => .push,
         .replace => .replace,
     });
+    // Steps 13-14: "Append the following session history synchronous
+    // navigation steps involving navigable to traversable: finalize a
+    // same-document navigation". The navigation API's handlers ran script:
+    // the navigable may be gone (its pending entries went with it).
+    if (bc.navigables) |navigables| {
+        if (navigables.byId(bc.id) != bc or bc.orphaned) return;
+    }
+    apply_history_step.finalizeSameDocument(bc, internal.allocator, nav);
 }
 
 /// Set the URL of `window`'s associated Document - which its realm records,

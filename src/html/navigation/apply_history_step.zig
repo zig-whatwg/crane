@@ -49,10 +49,21 @@
 //!   is not modelled: with 8.4 no navigation of the navigable can abort them
 //!   before it unloads, and their promises never settle in the spec either
 //!   (integrator, 2026-10-28).
-//! - Step 14.1, synchronous navigation steps jumping the queue, waits for
-//!   piece E (no item has a target navigable yet); a commit made inline
-//!   while an apply runs settles it (JointHistory.settleApply) until E and
+//! - Step 14.1: while a traversal waits for its change jobs, the
+//!   synchronous navigation steps ("finalize a same-document navigation",
+//!   `FinalizeItem`) whose target navigable is not in its must-wait set
+//!   (`mustWait`) run nested, from the queue's service task
+//!   (TraversalQueue.jumpAhead). Only a traversal lets them: the step 20 of
+//!   a reload, an update for navigable creation/destruction or a finalize's
+//!   own push/replace step would set the current step back under a jumped
+//!   push (whatwg/html#10232, #12961). A cross-document commit made inline
+//!   while an apply runs still settles it (JointHistory.settleApply) until
 //!   F1.
+//! - "Apply the push/replace history step" runs inline in the finalize
+//!   (JointHistory.finalizeSameDocument says why).
+//! - A traversal whose target step is forward of the current one, appended
+//!   before a synchronous push that is still pending, does nothing
+//!   (`start`, golden rule 2, whatwg/html#12961).
 //! - Step 18 queues a task only for a navigable whose History length or
 //!   index changes; one that would be written the values it has is not
 //!   (unobservable).
@@ -117,6 +128,9 @@ const Change = struct {
     same_document: bool,
     /// The target entry's origin is the displayed one's (12.6-12.7).
     same_origin: bool,
+    /// Its continuation was dequeued (14.8): it is in
+    /// navigablesThatMustWaitBeforeHandlingSyncNavigation.
+    continued: bool = false,
 };
 
 /// An apply on the traversable's queue (see the file comment).
@@ -165,13 +179,42 @@ pub const ApplyItem = struct {
         const navigables = top.navigables orelse return null;
         const self = allocator.create(ApplyItem) catch return null;
         self.* = .{
-            .item = .{ .run = &run, .destroy = &destroy, .proceed = &proceed },
+            .item = .{
+                .run = &run,
+                .destroy = &destroy,
+                .proceed = &proceed,
+                // Step 14.1: only a traversal lets synchronous navigation
+                // steps jump it (see the file comment).
+                .accepts_sync = if (kind == .traverse) &acceptsSync else null,
+            },
             .navigables = navigables,
             .top_id = top.id,
             .allocator = allocator,
             .kind = kind,
         };
         return self;
+    }
+
+    /// Step 14.1's condition for synchronous navigation steps targeting
+    /// `target`: the apply waits for its change jobs, and `target` is not in
+    /// navigablesThatMustWaitBeforeHandlingSyncNavigation.
+    fn acceptsSync(item: *Item, target: u64) bool {
+        const self: *ApplyItem = @fieldParentPtr("item", item);
+        return self.phase == .changes and !self.mustWait(target);
+    }
+
+    /// Whether `navigable` is in navigablesThatMustWaitBeforeHandlingSyncNavigation:
+    /// a changing navigable whose continuation was dequeued (14.8) - in
+    /// Crane, a same-document change whose step-12 task ran, or a change
+    /// whose job ended (a cross-document one's document was made active
+    /// with its continuation).
+    fn mustWait(self: *const ApplyItem, navigable: u64) bool {
+        for (self.changes.items) |c| {
+            if (c.navigable != navigable) continue;
+            if (c.continued) return true;
+            return std.mem.indexOfScalar(u64, self.item.waiting_on.items, navigable) == null;
+        }
+        return false;
     }
 
     fn run(item: *Item) Outcome {
@@ -254,6 +297,19 @@ pub const ApplyItem = struct {
         };
         const target = history.usedStepAtOrBefore(step) orelse return .done;
         self.target_step = target;
+        // Deviation, stated (golden rule 2): a traversal forward of the
+        // current step that was appended before a synchronous push still
+        // pending does nothing. That push's finalize jumps it (14.1) and
+        // clears the forward history - its target - and the spec activates
+        // the pruned target anyway (whatwg/html#12961, open: no engine keeps
+        // a pre-resolved target; Blink discards a pruned pending entry).
+        // wpt.fyi (WPT 07ce6e987a, Chrome 156 / Firefox 159 / Safari 27):
+        // html/browsers/browsing-the-web/overlapping-navigations-and-
+        // traversals/forward-to-pruned-entry PASS/PASS/PASS - no popstate;
+        // navigation-api/navigation-methods/forward-to-pruned-entry
+        // PASS/FAIL/PASS - the traversal aborts before its navigate event
+        // fires (Firefox rejects with InvalidStateError, not AbortError).
+        if (self.kind == .traverse and target > history.current_step and history.hasPendingPush()) return .done;
 
         // The navigable a reload reloads: its entry's reload is pending.
         const reloading: ?*BrowsingContext = if (self.kind == .reload) blk: {
@@ -271,7 +327,7 @@ pub const ApplyItem = struct {
         if (self.initiator) |initiator| {
             const source = navigables.byId(initiator.navigable) orelse return .done;
             for (tree.items) |bc| {
-                const current = history.currentEntry(bc.id) orelse continue;
+                const current = history.listedCurrentEntry(bc.id) orelse continue;
                 const target_entry = history.entryAt(bc.id, target) orelse continue;
                 if (current == target_entry) continue;
                 if (!sandbox_navigation.allowedBySandboxingToNavigate(source, bc, initiator.snapshot)) return .done;
@@ -297,7 +353,7 @@ pub const ApplyItem = struct {
                     continue;
                 }
             }
-            const current = history.currentEntry(bc.id) orelse continue;
+            const current = history.listedCurrentEntry(bc.id) orelse continue;
             const target_entry = history.entryAt(bc.id, target) orelse continue;
             const reload_pending = reloading == bc;
             if (current == target_entry and !reload_pending) {
@@ -396,7 +452,7 @@ pub const ApplyItem = struct {
         // crosses documents ("because we want beforeunload events to fire
         // before navigate events").
         if (self.kind == .traverse) {
-            const current = history.currentEntry(top.id);
+            const current = history.listedCurrentEntry(top.id);
             const target_entry = history.entryAt(top.id, target);
             if (current != null and target_entry != null and current.? != target_entry.? and
                 std.mem.eql(u8, current.?.origin, target_entry.?.origin))
@@ -569,12 +625,21 @@ const JobTask = struct {
             },
             .update => {
                 // 14.10.2, afterPotentialUnloads for a same-document change:
-                // "update document for history step application". Its
-                // handlers can end the apply: what it reads is copied.
+                // "activate history entry", then "update document for
+                // history step application". Its handlers can end the apply:
+                // what it reads is copied.
                 const c = item.changeOf(self.navigable) orelse return false;
-                const entry = history.entryById(c.target_entry) orelse return false;
+                const entry_id = c.target_entry;
+                if (history.entryById(entry_id) == null) return false;
                 const old_url = self.allocator.dupe(u8, c.old_url) catch return false;
                 defer self.allocator.free(old_url);
+                // 14.12.2 "activate history entry": the navigable's pending
+                // same-document entries - made since this traversal's
+                // continuation for it was dequeued - are no longer active,
+                // and their finalize steps do nothing (JointHistory
+                // .finalizeSameDocument, step 2's case).
+                history.dropPending(self.navigable);
+                const entry = history.entryById(entry_id) orelse return false;
                 history_traversal.updateSameDocument(navigable, old_url, entry);
                 return false;
             },
@@ -603,8 +668,39 @@ const JobTask = struct {
         }
         const entry = history.entryById(c.target_entry) orelse return false;
         if (c.same_document) {
-            // 14.10: a same-document change goes on in an afterPotentialUnloads
-            // task of its own.
+            // 14.2-14.8: its continuation is dequeued - the navigable joins
+            // navigablesThatMustWaitBeforeHandlingSyncNavigation - and 12.1's
+            // displayedEntry is the one its document shows now: a
+            // synchronous navigation that jumped this apply (14.1) moved it
+            // (its URL is the hashchange's oldURL).
+            c.continued = true;
+            if (history.displayedEntry(navigable.id)) |displayed| {
+                if (displayed.id != c.target_entry) {
+                    // The apply's allocator: it frees the changes' URLs.
+                    if (item.allocator.dupe(u8, displayed.url)) |url| {
+                        item.allocator.free(c.old_url);
+                        c.old_url = url;
+                    } else |_| {}
+                }
+            }
+            // 14.10.1: "Set navigable's ongoing navigation to null" - for a
+            // traversal; it ends a navigation of the navigable in flight
+            // (overlapping-navigations-and-traversals/cross-document-nav-
+            // same-document-traversal: Chrome 156 and Safari 27 PASS, Firefox
+            // 159 FAIL, at wpt.fyi 07ce6e987a). A reload is never
+            // same-document here. Not for the push/replace step a finalize
+            // applies (inline, JointHistory.finalizeSameDocument):
+            // whatwg/html#12861 - there it would end a cross-document
+            // navigation started after the synchronous one, which no browser
+            // does (same-document-nav-cross-document-nav, both subtests
+            // PASS/PASS/PASS at 07ce6e987a); its open PR #12942 limits these
+            // writes to traversals and reloads.
+            if (item.kind == .traverse) {
+                if (dom.navigables.integrationOf(@ptrCast(navigable))) |integration| integration.clearOngoingNavigation();
+                if (self.apply() != item) return false;
+                if (navigables.byId(self.navigable) != navigable or navigable.orphaned or navigable.is_closed) return false;
+            }
+            // 14.10.2: it goes on in an afterPotentialUnloads task of its own.
             return JobTask.queue(item, navigable, .update);
         }
         // 12.8: populate the target entry's document - a navigation, whose
@@ -715,6 +811,101 @@ pub fn updateForNavigableCreationDestruction(top: *BrowsingContext) void {
 }
 
 // =============================================================================
+// Synchronous navigations: "finalize a same-document navigation"
+// =============================================================================
+
+/// HTML "URL and history update steps" step 14 and "navigate to a fragment"
+/// step 18: "Append the following session history synchronous navigation
+/// steps involving navigable to traversable: finalize a same-document
+/// navigation" - for `nav`, the pending entry `navigable`'s synchronous
+/// steps made (JointHistory.navigateSameDocument). With no queue to append
+/// to (a traversable on no Browser's list), or no memory to, it is
+/// finalized now.
+pub fn finalizeSameDocument(navigable: *BrowsingContext, allocator: Allocator, nav: joint_history.SameDocumentNavigation) void {
+    const top = navigable.getTop();
+    const queue = queueOf(top) orelse return finalizeNow(top, navigable.id, nav);
+    const self = allocator.create(FinalizeItem) catch return finalizeNow(top, navigable.id, nav);
+    self.* = .{
+        .item = .{ .target = navigable.id, .run = &FinalizeItem.run, .destroy = &FinalizeItem.destroy },
+        .navigables = queue.navigables,
+        .top_id = top.id,
+        .navigable = navigable.id,
+        .nav = nav,
+        .allocator = allocator,
+    };
+    // Out of memory, the queue destroyed it unrun.
+    if (!queue.append(&self.item)) finalizeNow(top, navigable.id, nav);
+}
+
+/// `finalizeSameDocument` at once, from the synchronous steps themselves.
+fn finalizeNow(top: *BrowsingContext, navigable: u64, nav: joint_history.SameDocumentNavigation) void {
+    const history = top.joint_history orelse return;
+    const done = history.finalizeSameDocument(navigable, nav.entry, nav.replaces) orelse return;
+    if (done.removed) dom.navigation_api.entriesRemoved(@ptrCast(top));
+}
+
+/// "Finalize a same-document navigation" as synchronous navigation steps
+/// targeting the navigable (TraversalQueue Item.target): run in turn, or
+/// nested while a traversal waits (step 14.1). Steps 2-6 are
+/// JointHistory.finalizeSameDocument's, its push/replace step applied
+/// inline; it runs no script.
+const FinalizeItem = struct {
+    item: Item,
+    navigables: *Navigables,
+    top_id: u64,
+    navigable: u64,
+    nav: joint_history.SameDocumentNavigation,
+    allocator: Allocator,
+
+    fn run(item: *Item) Outcome {
+        const self: *FinalizeItem = @fieldParentPtr("item", item);
+        const top = self.navigables.byId(self.top_id) orelse return .done;
+        const history = top.joint_history orelse return .done;
+        const done = history.finalizeSameDocument(self.navigable, self.nav.entry, self.nav.replaces) orelse return .done;
+        // A push cleared forward entries of the whole traversable: the
+        // navigation APIs that handed them out dispose of them - in a task of
+        // their own (dispose handlers run script), after the views the push
+        // wrote (dispose-for-navigation-in-child-entries-updated).
+        if (done.removed) EntriesRemovedTask.queue(self.navigables, top);
+        return .done;
+    }
+
+    fn destroy(item: *Item) void {
+        const self: *FinalizeItem = @fieldParentPtr("item", item);
+        self.allocator.destroy(self);
+    }
+};
+
+/// dom.navigation_api.entriesRemoved for a traversable, by id, in a task on
+/// its loop. Not queued (no loop, no memory): no dispose event fires.
+const EntriesRemovedTask = struct {
+    navigables: *Navigables,
+    top_id: u64,
+    allocator: Allocator,
+
+    fn queue(navigables: *Navigables, top: *BrowsingContext) void {
+        const allocator = navigables.allocator;
+        const self = allocator.create(EntriesRemovedTask) catch return;
+        self.* = .{ .navigables = navigables, .top_id = top.id, .allocator = allocator };
+        if (!history_traversal.queueTask(navigables, top, .{ .callback = &run, .context = self, .drop = &drop })) allocator.destroy(self);
+    }
+
+    fn run(context: ?*anyopaque) void {
+        const self: *EntriesRemovedTask = @ptrCast(@alignCast(context orelse return));
+        const navigables = self.navigables;
+        const id = self.top_id;
+        self.allocator.destroy(self);
+        const top = navigables.byId(id) orelse return;
+        dom.navigation_api.entriesRemoved(@ptrCast(top));
+    }
+
+    fn drop(context: ?*anyopaque) void {
+        const self: *EntriesRemovedTask = @ptrCast(@alignCast(context orelse return));
+        self.allocator.destroy(self);
+    }
+};
+
+// =============================================================================
 // The delta rules (History's call_go states them)
 // =============================================================================
 
@@ -820,7 +1011,7 @@ pub fn changesDocument(top: *BrowsingContext, history: *JointHistory, step: u32)
     defer tree.deinit(top.allocator);
     top.collectDescendants(top.allocator, &tree) catch return false;
     for (tree.items) |bc| {
-        const current = history.currentEntry(bc.id) orelse continue;
+        const current = history.listedCurrentEntry(bc.id) orelse continue;
         const target_entry = history.entryAt(bc.id, step) orelse continue;
         if (current == target_entry) continue;
         const same_document = current.document_state == target_entry.document_state and
