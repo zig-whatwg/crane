@@ -15,9 +15,9 @@ const platform = @import("platform");
 const clock = @import("clock");
 const host = @import("host");
 const memory = @import("memory");
-const c_time = @cImport({
-    @cInclude("time.h");
-});
+// <time.h>, translated by build.zig (addCImport) with the target's libc headers,
+// the iPhoneOS SDK's for aarch64-ios.
+const c_time = @import("c_time");
 
 const Str = platform.Str;
 const Bytes = platform.Bytes;

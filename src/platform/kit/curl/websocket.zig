@@ -5,11 +5,8 @@
 const std = @import("std");
 const platform = @import("platform");
 const options = @import("kit_curl_share").options;
-const c = @cImport({
-    @cInclude("curl/curl.h");
-    @cInclude("curl/websockets.h");
-    @cInclude("curl/header.h");
-});
+// curl/curl.h, websockets.h and header.h, translated by build.zig (addCImport).
+const c = @import("curl_c");
 
 const Socket = struct {
     allocator: std.mem.Allocator,

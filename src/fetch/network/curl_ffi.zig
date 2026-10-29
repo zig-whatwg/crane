@@ -11,10 +11,9 @@
 
 const std = @import("std");
 
-/// Import libcurl C API
-pub const c = @cImport({
-    @cInclude("curl/curl.h");
-});
+/// The libcurl C API: curl/curl.h, translated by build.zig (addCImport,
+/// module `curl_c`; Zig 0.17 removes @cImport).
+pub const c = @import("curl_c");
 
 // =============================================================================
 // Type Re-exports

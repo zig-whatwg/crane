@@ -3,9 +3,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const platform = @import("platform");
-const c = @cImport({
-    @cInclude("time.h");
-});
+// <time.h>: the module kit/posix imports (build.zig addCImport).
+const c = @import("c_time");
 
 test "dp1 localDateTime is available and agrees with localtime_r" {
     if (comptime !@hasDecl(platform, "localDateTime")) {

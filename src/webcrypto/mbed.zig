@@ -3,12 +3,10 @@
 const std = @import("std");
 pub const available = @import("options").mbedtls;
 
-pub const c = @cImport({
-    @cInclude("psa/crypto.h");
-    @cInclude("mbedtls/nist_kw.h");
-    @cInclude("mbedtls/rsa.h");
-    @cInclude("mbedtls/pk.h");
-});
+/// psa/crypto.h, mbedtls/nist_kw.h, rsa.h and pk.h of the mbedTLS libcurl links,
+/// translated by build.zig (addCImport, module `mbedtls_c`) with its threading
+/// macros. Present only when that library is (`available`).
+pub const c = @import("mbedtls_c");
 
 pub fn check(status: i32) error{OperationError}!void {
     if (!available) return error.OperationError;
