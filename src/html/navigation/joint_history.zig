@@ -868,7 +868,11 @@ pub const JointHistory = struct {
         // it can.
         try self.entries.ensureUnusedCapacity(allocator, 1);
         if (self.validView(navigable)) |view| try view.api_ids.ensureUnusedCapacity(allocator, 1);
-        const active = self.activeEntry(navigable) orelse return error.NoCurrentEntry;
+        // The active entry as the document shows it: while a traversal that
+        // changes the navigable waits, its step 8.2 has made the target
+        // current, but the document still shows the entry it showed
+        // (`displayedEntry`) until the traversal activates the target.
+        const active = self.displayedEntry(navigable) orelse return error.NoCurrentEntry;
         const owned_url = try allocator.dupe(u8, url);
         errdefer allocator.free(owned_url);
         const origin = try allocator.dupe(u8, active.origin);

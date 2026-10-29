@@ -54,7 +54,7 @@ test "a same-document push is active at once and listed only when finalized: the
     try testing.expect(h.isPending(nav.entry));
     // Not listed: the joint history still has one step.
     try testing.expectEqual(base, h.listedCurrentEntry(top).?.id);
-    try testing.expect(h.entryAt(top, 1) == null);
+    try testing.expectEqual(base, h.entryAt(top, 1).?.id);
     try testing.expect(h.stepByDelta(-1) == null);
     try testing.expectEqual(@as(u32, 1), h.lengthAndIndex().length);
     // The document's view: "temporary best-guess values for immediate
