@@ -2314,6 +2314,10 @@ struct IsolateData {
     /// evaluation, until V8 runs their evaluation steps or the module is
     /// disposed - or the isolate is: v8_Isolate_Dispose resets what is left.
     std::vector<SyntheticJsonExport*> synthetic_json_exports;
+    /// The isolate's null, BORROWED by whoever v8_Isolate_BorrowedNull hands
+    /// it to: made on first use, reset by v8_Isolate_Dispose while the
+    /// isolate lives. Never disposed by a caller.
+    Global<Value> null_value;
     // Inert unless a tests/v8 lifecycle probe is installed. The test clears
     // the hook before its borrowed stack payload expires.
     void (*test_promise_hook)(int, void*) = nullptr;
@@ -2445,6 +2449,24 @@ size_t v8_Isolate_PendingSyntheticModuleCount(Isolate* isolate) {
     return data ? data->synthetic_json_exports.size() : 0;
 }
 
+/// `isolate`'s null as a Global<Value>*, BORROWED: the isolate's record keeps
+/// it for the isolate's life (IsolateData::null_value), so a conversion that
+/// answers null where it would answer a wrapper - a Window whose realm has
+/// ended (conversions.windowProxyOrNull) - acquires nothing, as the wrapper
+/// cache's wrappers it answers otherwise are borrowed. Blink's
+/// DOMWindow::Wrap answers v8::Null as a Local, nothing to release
+/// (core/frame/dom_window.cc). On the isolate's thread. Null for an isolate
+/// this file did not make (the snapshot creator's), which has no record.
+Global<Value>* v8_Isolate_BorrowedNull(Isolate* isolate) {
+    IsolateData* data = isolateData(isolate);
+    if (!data) return nullptr;
+    if (data->null_value.IsEmpty()) {
+        HandleScope handle_scope(isolate);
+        data->null_value.Reset(isolate, Null(isolate));
+    }
+    return &data->null_value;
+}
+
 void v8_Isolate_Dispose(Isolate* isolate) {
     if (isolate) {
         // The adapter's per-isolate record: its handles reset while their
@@ -2456,6 +2478,7 @@ void v8_Isolate_Dispose(Isolate* isolate) {
             isolate->SetData(kIsolateDataSlot, nullptr);
             for (SyntheticJsonExport* entry : record->synthetic_json_exports) deleteSyntheticExport(entry);
             record->synthetic_json_exports.clear();
+            record->null_value.Reset();
         }
 
         // Records that a dispose detached from their Global while V8 still had

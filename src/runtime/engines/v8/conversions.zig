@@ -4746,11 +4746,32 @@ pub fn instanceToV8Checked(isolate: *v8.Isolate, instance: *runtime.Instance) er
 /// tests/v8/window_dead_conversion_test.zig). Blink's DOMWindow::Wrap
 /// answers v8::Null for a window with no frame
 /// (core/frame/dom_window.cc).
+///
+/// Either answer is BORROWED, as every wrapper instanceToV8Checked answers
+/// is: its callers release only an undefined (owned = IsUndefined), so an
+/// owned null here was cloned or kept by every one of them and released by
+/// none - a posted message whose source window's realm ended before its
+/// delivery leaked one through MessageEvent.holdSource -> traceValue ->
+/// relevantWrapper (lane nav2 C2's leak hunt; lane leaks1,
+/// tests/v8/window_realm_ended_null_ownership_test.zig).
 fn windowProxyOrNull(isolate: *v8.Isolate, window: *runtime.Instance) *v8.Value {
-    if (!window.ctx.hasEngine()) return v8.v8_Null(isolate) orelse unreachable;
+    if (!window.ctx.hasEngine()) return borrowedNull(isolate);
     const bound_global = @import("dom").window_globals.boundGlobal(window) orelse
-        return v8.v8_Null(isolate) orelse unreachable;
+        return borrowedNull(isolate);
     return @ptrCast(bound_global);
+}
+
+/// The isolate's null, BORROWED (its adapter record keeps it until the
+/// isolate is disposed): nothing to release.
+///
+/// Only the snapshot creator's isolate has no record, and only the snapshot
+/// generator makes one: a Window with no realm converted while a snapshot is
+/// made gets a new null, owned and never released, in a build-time process
+/// that exits when the snapshot is written. A runtime isolate always has its
+/// record (v8_Isolate_New, v8_Isolate_NewFromSnapshot), so a runtime
+/// conversion never takes that branch.
+fn borrowedNull(isolate: *v8.Isolate) *v8.Value {
+    return v8.v8_Isolate_BorrowedNull(isolate) orelse v8.v8_Null(isolate) orelse unreachable;
 }
 
 /// `instance`'s relevant realm's context, BORROWED from the realm record -
