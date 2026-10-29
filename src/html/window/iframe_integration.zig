@@ -895,6 +895,18 @@ pub const IFrameIntegration = struct {
         self.traversal_navigation = 0;
     }
 
+    /// HTML "apply the history step" 14.10.1, for a same-document traversal
+    /// of the navigable: "Set navigable's ongoing navigation to null" -
+    /// directly, not through "set the ongoing navigation", so the navigation
+    /// in flight ends without informing the navigation API (the owner's
+    /// `end_ongoing_navigation_callback`), as `beginTraversal`'s does.
+    pub fn clearOngoingNavigation(self: *IFrameIntegration) void {
+        if (self.ongoing_navigation == .none) return;
+        if (self.end_ongoing_navigation_callback) |end| end(self);
+        self.ongoing_navigation = .none;
+        self.traversal_navigation = 0;
+    }
+
     /// The navigable's navigation in flight ends - the owner's abandon hook
     /// sets its ongoing navigation to null, so a fetch or a commit it queued
     /// finds it gone - because the navigable is going: its container's

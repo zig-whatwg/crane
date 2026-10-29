@@ -16,9 +16,11 @@
 //!   JointHistory.removeNavigable: the browsers split three ways) -
 //!   while the step moves only with the queued "update for navigable
 //!   creation/destruction" ("getting the used step");
-//! - a commit made inline while an apply runs settles the apply first - the
-//!   stated deviation until E and F1 make those commits queue items (the
-//!   test that pins it says what flips it).
+//! - a cross-document commit made inline while an apply runs settles the
+//!   apply first - the stated deviation until F1 makes those commits queue
+//!   items (the test that pins it says what flips it). Same-document
+//!   navigations no longer do (lane nav2 E: their finalize is a queue item;
+//!   tests/html/navigation/nav2_sync_navigation_test.zig pins the flip).
 
 const std = @import("std");
 const testing = std.testing;
@@ -172,7 +174,7 @@ test "holdAllViews holds every navigable the history has" {
 // released, as C1 had them - and the push lands after the target. When E or
 // F1 lands, this test FLIPS: the commit is queued behind the apply and this
 // settle path goes.
-test "STATED DEVIATION until E/F1: a commit made while an apply runs settles it first" {
+test "STATED DEVIATION until F1: a cross-document commit made while an apply runs settles it first" {
     var h = joint.JointHistory.init(testing.allocator);
     defer h.deinit();
     try twoFrames(&h);

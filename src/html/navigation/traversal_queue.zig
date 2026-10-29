@@ -27,6 +27,14 @@
 //!   `proceed` steps: when its last wait ends they run from a service task
 //!   of their own - never inside the call that ended the wait - and may wait
 //!   again.
+//! - "Apply the history step" step 14.1: while an item waits and lets them
+//!   (`accepts_sync`), synchronous navigation steps whose target navigable it
+//!   lets through run NESTED ("running nested apply history step") from a
+//!   service task - the one whose run or proceed steps just returned, or one
+//!   of their own when they are appended later - never inside the append. A
+//!   nested item never waits and never runs script (lane nav2 E: "finalize a
+//!   same-document navigation" applies its push/replace step inline,
+//!   apply_history_step.zig says why); it is finished when it returns.
 //! - The service task and every waiter carry the traversable's ID - and a
 //!   waiter its item's token - never a pointer to the queue or its context:
 //!   both are looked up again (`Navigables.byId`), so a traversable freed
@@ -108,6 +116,11 @@ pub const Item = struct {
     proceed_pending: bool = false,
     /// `run` has been called.
     started: bool = false,
+    /// "Apply the history step" step 14.1, while this item waits: whether
+    /// synchronous navigation steps targeting the navigable with this ID may
+    /// jump it - run nested now - rather than wait behind it. Null: none
+    /// ever does.
+    accepts_sync: ?*const fn (item: *Item, target: u64) bool = null,
 };
 
 /// Queue one service task - `TraversalQueue.service(navigables, id)` - on the
@@ -128,7 +141,7 @@ pub const TraversalQueue = struct {
     /// The item whose run started and has not completed.
     running: ?*Item = null,
     /// "Running nested apply history step": synchronous navigation steps are
-    /// running from inside a waiting traversal (apply step 14.1).
+    /// running from inside a waiting traversal (apply step 14.1, `jumpAhead`).
     running_nested_apply: bool = false,
     /// A service task is queued and has not run yet.
     service_queued: bool = false,
@@ -193,9 +206,40 @@ pub const TraversalQueue = struct {
     fn wake(self: *TraversalQueue) void {
         if (self.service_queued) return;
         if (self.running) |item| {
-            if (!item.proceed_pending) return;
+            if (!item.proceed_pending and self.firstJumpable(item) == null) return;
         } else if (self.items.items.len == 0) return;
         if (self.schedule(self.navigables, self.traversable_id)) self.service_queued = true;
+    }
+
+    /// The index of the first synchronous navigation steps that the waiting
+    /// `running` item lets jump it (step 14.1.1), or null.
+    fn firstJumpable(self: *const TraversalQueue, running: *Item) ?usize {
+        if (running.in_run or running.proceed_pending) return null;
+        const accepts = running.accepts_sync orelse return null;
+        for (self.items.items, 0..) |item, i| {
+            const target = item.target orelse continue;
+            if (accepts(running, target)) return i;
+        }
+        return null;
+    }
+
+    /// "Apply the history step" step 14.1 for the waiting `running` item:
+    /// while the queue holds synchronous navigation steps it lets through,
+    /// take the first, and run it with "running nested apply history step"
+    /// set. A nested item never waits: it is destroyed when it returns. Its
+    /// steps run no script, so the traversable outlives them.
+    fn jumpAhead(self: *TraversalQueue, running: *Item) void {
+        while (self.running == running) {
+            const index = self.firstJumpable(running) orelse return;
+            const steps = self.items.orderedRemove(index);
+            self.running_nested_apply = true;
+            steps.in_run = true;
+            steps.started = true;
+            _ = steps.run(steps);
+            steps.in_run = false;
+            self.running_nested_apply = false;
+            self.release(steps);
+        }
     }
 
     /// The service task: run the first item of `traversable_id`'s queue, if
@@ -205,7 +249,12 @@ pub const TraversalQueue = struct {
         const self = queueOf(navigables, traversable_id) orelse return;
         self.service_queued = false;
         const item = if (self.running) |running| blk: {
-            if (!running.proceed_pending) return;
+            if (!running.proceed_pending) {
+                // Woken by synchronous navigation steps appended while it
+                // waits (step 14.1).
+                self.jumpAhead(running);
+                return;
+            }
             running.proceed_pending = false;
             break :blk running;
         } else blk: {
@@ -232,7 +281,13 @@ pub const TraversalQueue = struct {
         if (outcome == .done or item.completed) {
             item.completed = false;
             completeById(navigables, traversable_id, item.token);
-        } else if (waits_over) self.waitsOver(item);
+        } else if (waits_over) {
+            self.waitsOver(item);
+        } else {
+            // It waits: the synchronous navigation steps it lets through jump
+            // it now, from this task (step 14.1).
+            self.jumpAhead(item);
+        }
     }
 
     /// The running `item`'s last wait ended, outside its run: its proceed
@@ -327,7 +382,8 @@ pub const TraversalQueue = struct {
     /// "Apply the history step" step 14.1.1-2: remove and return the first
     /// synchronous navigation steps whose target navigable is not in
     /// `excluded`, or null. The caller runs it with `running_nested_apply`
-    /// set, then destroys it.
+    /// set, then destroys it (`jumpAhead` does both, for the running item's
+    /// `accepts_sync`).
     pub fn takeSyncNavigation(self: *TraversalQueue, excluded: []const u64) ?*Item {
         for (self.items.items, 0..) |item, i| {
             const target = item.target orelse continue;

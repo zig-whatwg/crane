@@ -36,6 +36,20 @@
 //! writer one by one (docs/lessons/architecture-the-order-of-a-history-
 //! update-is-observable-only-through-each-documents-view.md).
 //!
+//! Synchronous navigations (lane nav2 E): "the URL and history update steps"
+//! and "navigate to a fragment" make their new entry the navigable's ACTIVE
+//! session history entry at once (`navigateSameDocument`), but the entry is
+//! LISTED - given a step, in the joint history's steps and every traversal
+//! endpoint - only by "finalize a same-document navigation" on the traversal
+//! queue (`finalizeSameDocument`). Until then it is a PENDING entry: in
+//! `entries`, flagged, with no meaningful step; `entryById`, `activeEntry`,
+//! `currentEntry` and the state-wide setters see it; `entryAt`, `usedSteps`,
+//! `stepByDelta` and `lengthAndIndex` do not. A navigable's pending entries
+//! form a FIFO chain (see `finalizeSameDocument`). The views read the
+//! history as the pending entries will make it once listed (`writeViews`),
+//! so what script reads moves at once, as before; only the traversal
+//! endpoints wait.
+//!
 //! Engine-free: documents are opaque, and a state is bytes (the
 //! StructuredSerializeForStorage wire format, or a primitive).
 
@@ -146,6 +160,16 @@ pub const Entry = struct {
     /// kHTTPMethodNotGET). Recorded at the commit; shared by the entries of
     /// the document state.
     keepable_response: bool = false,
+    /// A synchronous navigation made it its navigable's active entry and its
+    /// "finalize a same-document navigation" has not listed it yet: it has
+    /// no step in the joint history (`step` means nothing until then; see
+    /// the file comment).
+    pending: bool = false,
+    /// A pending entry's history handling: a push - which clears the forward
+    /// history when it is listed - or a replace of the entry whose id is
+    /// `pending_replaces`.
+    pending_push: bool = false,
+    pending_replaces: u64 = 0,
 
     fn deinit(self: *Entry, allocator: Allocator) void {
         allocator.free(self.url);
@@ -243,6 +267,22 @@ pub const Prepared = struct {
 };
 
 pub const HistoryHandling = enum { push, replace };
+
+/// What `navigateSameDocument` made: its new entry's id - HTML's newEntry or
+/// historyEntry - and, for a replace, the id of the entry it replaces
+/// (entryToReplace).
+pub const SameDocumentNavigation = struct {
+    entry: u64,
+    replaces: ?u64,
+};
+
+/// What `finalizeSameDocument` did: the step the entry was listed at - the
+/// targetStep its push/replace history step applied - and whether a push
+/// cleared forward entries from the history.
+pub const Finalized = struct {
+    step: u32,
+    removed: bool,
+};
 
 /// What an entry records of a document when it is first given one: its URL
 /// and origin, serialized, owned by the allocator the caller was given.
@@ -472,6 +512,7 @@ pub const JointHistory = struct {
     pub fn usedStepAtOrBefore(self: *const JointHistory, step: u32) ?u32 {
         var best: ?u32 = null;
         for (self.entries.items) |entry| {
+            if (entry.pending) continue;
             if (entry.step <= step and (best == null or entry.step > best.?)) best = entry.step;
         }
         return best;
@@ -483,16 +524,17 @@ pub const JointHistory = struct {
     pub fn entryAt(self: *JointHistory, navigable: u64, step: u32) ?*Entry {
         var best: ?*Entry = null;
         for (self.entries.items) |*entry| {
-            if (entry.navigable != navigable or entry.step > step) continue;
+            if (entry.navigable != navigable or entry.pending or entry.step > step) continue;
             if (best == null or entry.step >= best.?.step) best = entry;
         }
         return best;
     }
 
-    /// `navigable`'s current session history entry: its target entry while
-    /// an apply that changes it runs (step 8.2), else its entry at the
-    /// current step.
-    pub fn currentEntry(self: *JointHistory, navigable: u64) ?*Entry {
+    /// `navigable`'s current session history entry, as the traversal
+    /// endpoints read it: its target entry while an apply that changes it
+    /// runs (step 8.2), else its listed entry at the current step. Pending
+    /// entries are not in it.
+    pub fn listedCurrentEntry(self: *JointHistory, navigable: u64) ?*Entry {
         if (self.apply) |apply| {
             if (apply.current.get(navigable)) |id| {
                 if (self.entryById(id)) |entry| return entry;
@@ -501,17 +543,42 @@ pub const JointHistory = struct {
         return self.entryAt(navigable, self.current_step);
     }
 
-    /// `navigable`'s active session history entry: its current one, unless
-    /// a traversal to this step could not populate its target entry's
+    /// `navigable`'s entry as its document's own steps read it - History's
+    /// state and scroll restoration, the navigation API's current entry, the
+    /// entry a reload or a navigation replaces: its latest pending entry,
+    /// which a synchronous navigation made active, else its listed current
+    /// entry (`listedCurrentEntry`).
+    pub fn currentEntry(self: *JointHistory, navigable: u64) ?*Entry {
+        return self.lastPending(navigable) orelse self.listedCurrentEntry(navigable);
+    }
+
+    /// `navigable`'s active session history entry: its latest pending entry
+    /// (a synchronous navigation made it active); else its current one,
+    /// unless a traversal to this step could not populate its target entry's
     /// document (`keepActiveEntry`) - then the entry it still displays. The
     /// navigation API's current entry is this one.
     pub fn activeEntry(self: *JointHistory, navigable: u64) ?*Entry {
+        if (self.lastPending(navigable)) |entry| return entry;
         if (self.update_only.get(navigable)) |kept| {
             if (kept.step == self.viewStep()) {
                 if (self.entryById(kept.entry)) |entry| return entry;
             }
         }
-        return self.currentEntry(navigable);
+        return self.listedCurrentEntry(navigable);
+    }
+
+    /// The entry `navigable`'s document shows as it last had its view written
+    /// - "displayedEntry" of "apply the history step" 12.1, which a
+    /// synchronous navigation that jumped a waiting traversal moved past the
+    /// entry that traversal's step 8.2 made current: the view's current
+    /// entry; with no view, the active entry.
+    pub fn displayedEntry(self: *JointHistory, navigable: u64) ?*Entry {
+        if (self.validView(navigable)) |view| {
+            if (view.api_current) |id| {
+                if (self.entryById(id)) |entry| return entry;
+            }
+        }
+        return self.activeEntry(navigable);
     }
 
     /// HTML "apply the history step" step 12.8, afterDocumentPopulated
@@ -545,7 +612,9 @@ pub const JointHistory = struct {
     }
 
     /// The size of `navigable`'s session history entries - its own, not the
-    /// steps its descendants add to the joint history.
+    /// steps its descendants add to the joint history - as script sees them:
+    /// with its pending entries, as browsers count an entry pushed in the
+    /// same task (the window's "script-closable").
     pub fn entryCount(self: *const JointHistory, navigable: u64) usize {
         var count: usize = 0;
         for (self.entries.items) |entry| {
@@ -556,7 +625,7 @@ pub const JointHistory = struct {
 
     pub fn hasNavigable(self: *const JointHistory, navigable: u64) bool {
         for (self.entries.items) |entry| {
-            if (entry.navigable == navigable) return true;
+            if (entry.navigable == navigable and !entry.pending) return true;
         }
         return false;
     }
@@ -584,9 +653,10 @@ pub const JointHistory = struct {
         self.beginChange();
         defer self.endChange();
         var step = self.viewStep();
-        if (self.currentEntry(parent)) |parent_entry| {
+        if (self.listedCurrentEntry(parent)) |parent_entry| {
             step = parent_entry.step;
             for (self.entries.items) |entry| {
+                if (entry.pending) continue;
                 if (entry.navigable == parent and entry.document_state == parent_entry.document_state and entry.step < step) step = entry.step;
             }
         }
@@ -635,13 +705,24 @@ pub const JointHistory = struct {
         self.beginChange();
         defer self.endChange();
         self.settleApply();
+        _ = self.clearForwardListed();
+    }
+
+    /// "Clear the forward session history" of the listed entries - pending
+    /// ones have no step - as it runs on the traversal queue, with no apply
+    /// settled: whether any entry went.
+    fn clearForwardListed(self: *JointHistory) bool {
+        var removed_any = false;
         var i: usize = 0;
         while (i < self.entries.items.len) {
-            if (self.entries.items[i].step > self.current_step) {
+            const entry = &self.entries.items[i];
+            if (!entry.pending and entry.step > self.current_step) {
                 var removed = self.entries.orderedRemove(i);
                 removed.deinit(self.allocator);
+                removed_any = true;
             } else i += 1;
         }
+        return removed_any;
     }
 
     /// "Finalize a cross-document navigation" steps 5-10 for a new document
@@ -674,6 +755,11 @@ pub const JointHistory = struct {
         self.beginChange();
         defer self.endChange();
         self.settleApply();
+        // Stated, with settleApply, until F1: the synchronous navigations'
+        // finalize steps queued before this commit would run before it on the
+        // queue - their pending entries are listed first, in order (their
+        // queued finalize steps then find nothing to do).
+        self.flushPending();
         const doc_state = self.next_document_state;
         self.next_document_state += 1;
         try self.commit(navigable, url, doc_state, document, .null, .undefined, origin, handling, true, prepared);
@@ -741,46 +827,323 @@ pub const JointHistory = struct {
         return null;
     }
 
-    /// "URL and history update steps" / "navigate to a fragment": an entry on
-    /// the navigable's current document - sharing its document state and
-    /// origin - with classic history API `state`, pushed or replacing the
-    /// current one (a replace keeps the navigation API key). Its navigation
-    /// API state is `api_state`, or, when null, carried over from the
-    /// current entry (a fragment navigation's). A running apply is settled
-    /// first (`settleApply`).
+    /// `navigateSameDocument` with its finalize at once
+    /// (`finalizeSameDocument`): the entry is listed now - pushed one step on
+    /// and made current, or in place of the current one. For a traversable
+    /// with no traversal queue, and for native tests.
     pub fn commitSameDocument(self: *JointHistory, navigable: u64, url: []const u8, state: SerializedState, handling: HistoryHandling, api_state: ?SerializedState) !void {
+        const nav = try self.navigateSameDocument(navigable, url, state, handling, api_state);
+        _ = self.finalizeSameDocument(navigable, nav.entry, nav.replaces);
+    }
+
+    /// HTML "URL and history update steps" 2-7 and 10-11, and "navigate to a
+    /// fragment" 6-14: a new entry on the navigable's active entry's document
+    /// - sharing its document state, origin, resource, history policy
+    /// container, not restored reasons and scroll restoration mode - with
+    /// classic history API `state`, made the navigable's active entry now,
+    /// and PENDING until `finalizeSameDocument` lists it. A replace keeps the
+    /// replaced entry's navigation API key (step 6 / step 8). Its navigation
+    /// API state is `api_state`, or, when null, the active entry's (a
+    /// fragment navigation's). `state` and `api_state` are taken, on every
+    /// path.
+    ///
+    /// The views read the new entry at once (`writeViews`): for a push,
+    /// History index + 1 and length = index + 1 ("these are temporary
+    /// best-guess values for immediate synchronous access") and the
+    /// navigation API's entry list cut after its current entry with the new
+    /// one appended ("update the navigation API entries for a same-document
+    /// navigation" step 4); for a replace, the current entry replaced in
+    /// place (step 5). A view a waiting traversal holds is written so for the
+    /// navigable's own document only.
+    pub fn navigateSameDocument(self: *JointHistory, navigable: u64, url: []const u8, state: SerializedState, handling: HistoryHandling, api_state: ?SerializedState) !SameDocumentNavigation {
+        const allocator = self.allocator;
+        var owned_state = state;
+        var owned_api_state = api_state;
+        errdefer {
+            owned_state.deinit(allocator);
+            if (owned_api_state) |*a| a.deinit(allocator);
+        }
+        // Room for the entry first - `active` points into the list - and for
+        // the view's new navigation API entry: nothing changes unless all of
+        // it can.
+        try self.entries.ensureUnusedCapacity(allocator, 1);
+        if (self.validView(navigable)) |view| try view.api_ids.ensureUnusedCapacity(allocator, 1);
+        const active = self.activeEntry(navigable) orelse return error.NoCurrentEntry;
+        const owned_url = try allocator.dupe(u8, url);
+        errdefer allocator.free(owned_url);
+        const origin = try allocator.dupe(u8, active.origin);
+        errdefer allocator.free(origin);
+        // The document state is shared, so its resource is too.
+        const resource: ?[]u8 = if (active.resource) |r| try allocator.dupe(u8, r) else null;
+        errdefer if (resource) |r| allocator.free(r);
+        // And so is its history policy container.
+        var history_container: ?PolicyContainer = if (active.history_policy_container) |*c| try c.clone(allocator) else null;
+        errdefer if (history_container) |*c| c.deinit();
+        // And its not restored reasons.
+        var reasons: ?NotRestoredReasons = if (active.not_restored_reasons) |*r| try r.clone(allocator) else null;
+        errdefer if (reasons) |*r| r.deinit(allocator);
+        if (owned_api_state == null) owned_api_state = try active.api_state.clone(allocator);
+        const replaces: ?u64 = if (handling == .replace) active.id else null;
+        const id = self.next_id;
+        self.next_id += 1;
+        self.entries.appendAssumeCapacity(.{
+            .id = id,
+            .navigable = navigable,
+            .step = active.step,
+            .url = owned_url,
+            .document_state = active.document_state,
+            .document = active.document,
+            .state = owned_state,
+            .api_state = owned_api_state.?,
+            .api_key = if (replaces != null) active.api_key else self.randomUuid(),
+            .api_id = self.randomUuid(),
+            .origin = origin,
+            .resource = resource,
+            .history_policy_container = history_container,
+            .scroll_restoration_manual = active.scroll_restoration_manual,
+            .protect_url = active.protect_url,
+            .not_restored_reasons = reasons,
+            .keepable_response = active.keepable_response,
+            .pending = true,
+            .pending_push = handling == .push,
+            .pending_replaces = replaces orelse 0,
+        });
+        // The navigable displays it: a traversal's kept entry no longer is.
+        _ = self.update_only.remove(navigable);
+        // The views read it (`writeViews`); a view a waiting traversal holds
+        // is written as the synchronous steps write their own document's.
+        if (self.isViewHeld(navigable)) self.writeSameDocumentView(navigable, id, handling);
+        self.beginChange();
+        self.endChange();
+        return .{ .entry = id, .replaces = replaces };
+    }
+
+    /// The view the synchronous steps write for `navigable`'s document while
+    /// a waiting traversal holds it (see `navigateSameDocument`); room for it
+    /// was made first.
+    fn writeSameDocumentView(self: *JointHistory, navigable: u64, id: u64, handling: HistoryHandling) void {
+        const view = self.validView(navigable) orelse return;
+        switch (handling) {
+            .push => {
+                view.index += 1;
+                view.length = view.index + 1;
+                if (view.api_ids.items.len > 0) {
+                    view.api_ids.shrinkRetainingCapacity(view.api_index + 1);
+                    view.api_ids.appendAssumeCapacity(id);
+                    view.api_index = view.api_ids.items.len - 1;
+                }
+            },
+            .replace => {
+                if (view.api_ids.items.len > 0) view.api_ids.items[view.api_index] = id;
+            },
+        }
+        view.api_current = id;
+    }
+
+    /// HTML "finalize a same-document navigation" steps 2-6 for the pending
+    /// entry `entry_id` of `navigable`, run on the traversal queue; null when
+    /// it is no longer pending.
+    ///
+    /// Step 2 reads "If targetNavigable's active session history entry is not
+    /// targetEntry, then return." Deviation, stated (golden rule 2): taken
+    /// literally, two synchronous navigations in one task lose an entry - the
+    /// first finalize returns, since the second entry is active by then, and
+    /// a replace of the first then finds nothing to replace
+    /// (whatwg/html#10232, open). Every browser keeps every entry (wpt.fyi,
+    /// WPT 07ce6e987a, Chrome 156 / Firefox 159 / Safari 27 all PASS:
+    /// html/browsers/history/the-history-interface/combination_history_003
+    /// and _004, history_back, history_go_minus; navigation-api/
+    /// navigation-history-entry/current-basic and
+    /// sameDocument-after-fragment-navigate; history-traversal/event-order/
+    /// after-load-hash-twice). So a navigable's pending entries are a FIFO
+    /// chain: this lists every earlier pending entry of the navigable, then
+    /// this one. The case step 2 exists for - a traversal that activated
+    /// another entry for the navigable since - drops the chain
+    /// (`dropPending`), and an inline cross-document commit lists it
+    /// (`flushPending`, until F1).
+    ///
+    /// Step 5: a push clears the forward session history and is listed at
+    /// the current step + 1; a replace takes its replaced entry's place, at
+    /// its step, with the current step as targetStep.
+    ///
+    /// Step 6, "apply the push/replace history step", runs here, inline, not
+    /// as an apply with per-navigable tasks. Deviation, stated (lane nav2 E,
+    /// integrator, 2026-10-29):
+    /// - the spec's own nested apply resets the current step: a finalize that
+    ///   jumps a waiting traversal (14.1) sets the step to its push's at its
+    ///   step 20, and the traversal's step 20 sets it to the traversal's
+    ///   target after; two nested finalize applies leave it at the earlier
+    ///   push's (whatwg/html#10232, #12961: no engine resolves targets so);
+    /// - the push/replace apply fires no event: its tasks are observable only
+    ///   as WHEN the other documents see the new history.length - here, at
+    ///   once - and the navigable's own view is the one its synchronous steps
+    ///   wrote until its chain is listed;
+    /// - the one residual difference: while a traversal waits, the views it
+    ///   holds are written at its own update and step 18, so a non-changing
+    ///   navigable's history.length between the jumped listing and that step
+    ///   18 is the one it had.
+    pub fn finalizeSameDocument(self: *JointHistory, navigable: u64, entry_id: u64, replaces: ?u64) ?Finalized {
+        _ = replaces; // recorded on the pending entry (pending_replaces)
+        if (!self.isPendingOf(navigable, entry_id)) return null;
         self.beginChange();
         defer self.endChange();
-        self.settleApply();
-        const current = self.currentEntry(navigable) orelse return error.NoCurrentEntry;
-        // The document state is shared, so its resource is too.
-        const resource: ?[]u8 = if (current.resource) |r| try self.allocator.dupe(u8, r) else null;
-        errdefer if (resource) |r| self.allocator.free(r);
-        const origin = try self.allocator.dupe(u8, current.origin);
-        defer self.allocator.free(origin);
-        // And so is its history policy container.
-        var history_container: ?PolicyContainer = if (current.history_policy_container) |*c| try c.clone(self.allocator) else null;
-        errdefer if (history_container) |*c| c.deinit();
-        var current_reasons: ?NotRestoredReasons = if (current.not_restored_reasons) |*r| try r.clone(self.allocator) else null;
-        errdefer if (current_reasons) |*r| r.deinit(self.allocator);
-        const new_api_state = api_state orelse try current.api_state.clone(self.allocator);
-        // Read now: the commit below may move the entries.
-        const keepable = current.keepable_response;
-        try self.commit(navigable, url, current.document_state, current.document, state, new_api_state, origin, handling, true, null);
-        const committed = self.currentEntry(navigable) orelse unreachable;
-        if (committed.resource) |old| self.allocator.free(old);
-        committed.resource = resource;
-        committed.dropHistoryPolicyContainer();
-        committed.history_policy_container = history_container;
-        history_container = null;
-        // And its not restored reasons.
-        if (current_reasons) |reasons| {
-            committed.dropNotRestoredReasons(self.allocator);
-            committed.not_restored_reasons = reasons;
-            current_reasons = null;
+        var removed = false;
+        while (self.firstPendingIndex(navigable)) |index| {
+            const id = self.entries.items[index].id;
+            const listed = self.listPending(index);
+            if (listed) |l| removed = removed or l.removed;
+            if (id == entry_id) {
+                const l = listed orelse return null;
+                return .{ .step = l.step, .removed = removed };
+            }
         }
-        // And whether its document's response may be kept.
-        committed.keepable_response = keepable;
+        return null;
+    }
+
+    /// List the pending entry at `index` (see `finalizeSameDocument`): its
+    /// step, or null when the entry it replaces is gone (it is dropped).
+    /// Within a change.
+    fn listPending(self: *JointHistory, index: usize) ?Finalized {
+        const entry = &self.entries.items[index];
+        const id = entry.id;
+        if (entry.pending_push) {
+            const removed = self.clearForwardListed();
+            const at = self.indexOfId(id) orelse return null;
+            const listed = &self.entries.items[at];
+            const step = self.current_step + 1;
+            listed.step = step;
+            listed.pending = false;
+            listed.pending_push = false;
+            // "Apply the push/replace history step" step 20, inline.
+            self.current_step = step;
+            return .{ .step = step, .removed = removed };
+        }
+        const replaced_id = entry.pending_replaces;
+        var moved = self.entries.orderedRemove(index);
+        const slot_index = for (self.entries.items, 0..) |e, i| {
+            if (e.id == replaced_id and !e.pending and e.navigable == moved.navigable) break i;
+        } else {
+            // "Replace entryToReplace with targetEntry in targetEntries": it
+            // is no longer there - nothing to put the entry in place of.
+            moved.deinit(self.allocator);
+            return null;
+        };
+        const slot = &self.entries.items[slot_index];
+        moved.step = slot.step;
+        moved.pending = false;
+        moved.pending_replaces = 0;
+        // One activation per document state: it stays with the state.
+        moved.dropActivation(self.allocator);
+        moved.activation = slot.activation;
+        slot.activation = null;
+        slot.deinit(self.allocator);
+        slot.* = moved;
+        return .{ .step = self.current_step, .removed = false };
+    }
+
+    /// A traversal activated another entry for `navigable` ("activate
+    /// history entry", or a cross-document traversal's new document): its
+    /// pending entries are dropped, unlisted - "finalize a same-document
+    /// navigation" step 2's case - and its view is written from the history
+    /// again (unless held).
+    pub fn dropPending(self: *JointHistory, navigable: u64) void {
+        if (self.lastPending(navigable) == null) return;
+        self.beginChange();
+        defer self.endChange();
+        var i: usize = 0;
+        while (i < self.entries.items.len) {
+            const entry = &self.entries.items[i];
+            if (entry.pending and entry.navigable == navigable) {
+                var removed = self.entries.orderedRemove(i);
+                removed.deinit(self.allocator);
+            } else i += 1;
+        }
+    }
+
+    /// Every pending entry is listed, in order, now - an inline
+    /// cross-document commit (see commitPreparedDocument). Within a change.
+    fn flushPending(self: *JointHistory) void {
+        var i: usize = 0;
+        while (i < self.entries.items.len) {
+            if (!self.entries.items[i].pending) {
+                i += 1;
+                continue;
+            }
+            const navigable = self.entries.items[i].navigable;
+            // Its navigable's chain in order: the first is at or before `i`.
+            const first = self.firstPendingIndex(navigable) orelse i;
+            _ = self.listPending(first);
+            i = 0;
+        }
+    }
+
+    /// Whether the entry `entry_id` is pending (see the file comment).
+    pub fn isPending(self: *const JointHistory, entry_id: u64) bool {
+        for (self.entries.items) |entry| {
+            if (entry.id == entry_id) return entry.pending;
+        }
+        return false;
+    }
+
+    fn isPendingOf(self: *const JointHistory, navigable: u64, entry_id: u64) bool {
+        for (self.entries.items) |entry| {
+            if (entry.id == entry_id) return entry.pending and entry.navigable == navigable;
+        }
+        return false;
+    }
+
+    /// Whether `navigable` has pending entries.
+    pub fn hasPending(self: *const JointHistory, navigable: u64) bool {
+        for (self.entries.items) |entry| {
+            if (entry.pending and entry.navigable == navigable) return true;
+        }
+        return false;
+    }
+
+    /// Whether a pending push - which clears the forward history when it is
+    /// listed - waits to be finalized.
+    pub fn hasPendingPush(self: *const JointHistory) bool {
+        for (self.entries.items) |entry| {
+            if (entry.pending and entry.pending_push) return true;
+        }
+        return false;
+    }
+
+    fn lastPending(self: *JointHistory, navigable: u64) ?*Entry {
+        var i = self.entries.items.len;
+        while (i > 0) {
+            i -= 1;
+            const entry = &self.entries.items[i];
+            if (entry.pending and entry.navigable == navigable) return entry;
+        }
+        return null;
+    }
+
+    fn firstPendingIndex(self: *const JointHistory, navigable: u64) ?usize {
+        for (self.entries.items, 0..) |entry, i| {
+            if (entry.pending and entry.navigable == navigable) return i;
+        }
+        return null;
+    }
+
+    fn indexOfId(self: *const JointHistory, id: u64) ?usize {
+        for (self.entries.items, 0..) |entry, i| {
+            if (entry.id == id) return i;
+        }
+        return null;
+    }
+
+    /// Whether the navigation API entry list `navigable`'s document reads
+    /// has an entry whose key is `key` - with no view, the history does.
+    pub fn viewHasKey(self: *JointHistory, navigable: u64, key: *const [36]u8) bool {
+        if (self.validView(navigable)) |view| {
+            for (view.api_ids.items) |id| {
+                const entry = self.entryById(id) orelse continue;
+                if (std.mem.eql(u8, &entry.api_key, key)) return true;
+            }
+            return false;
+        }
+        return self.entryByKey(navigable, key) != null;
     }
 
     /// Whether `document_state`'s document came from a response the
@@ -896,7 +1259,7 @@ pub const JointHistory = struct {
         var raw: std.ArrayListUnmanaged(*Entry) = .empty;
         defer raw.deinit(allocator);
         for (self.entries.items) |*entry| {
-            if (entry.navigable == navigable) try raw.append(allocator, entry);
+            if (entry.navigable == navigable and !entry.pending) try raw.append(allocator, entry);
         }
         std.mem.sort(*Entry, raw.items, {}, struct {
             fn lessThan(_: void, a: *Entry, b: *Entry) bool {
@@ -945,7 +1308,7 @@ pub const JointHistory = struct {
                 self.current_step = step;
             },
             .replace => {
-                const current = self.currentEntry(navigable) orelse {
+                const current = self.listedCurrentEntry(navigable) orelse {
                     try self.append(navigable, self.current_step, url, doc_state, document, state, api_state, origin, null, prepared);
                     return;
                 };
@@ -990,7 +1353,9 @@ pub const JointHistory = struct {
     pub fn usedSteps(self: *const JointHistory, allocator: Allocator, out: *std.ArrayListUnmanaged(u32)) !void {
         out.clearRetainingCapacity();
         try out.ensureTotalCapacity(allocator, self.entries.items.len);
-        for (self.entries.items) |entry| out.appendAssumeCapacity(entry.step);
+        for (self.entries.items) |entry| {
+            if (!entry.pending) out.appendAssumeCapacity(entry.step);
+        }
         std.mem.sort(u32, out.items, {}, std.sort.asc(u32));
         // Unique, in place.
         var kept: usize = 0;
@@ -1046,8 +1411,9 @@ pub const JointHistory = struct {
         var length: u32 = 0;
         var at_or_below: u32 = 0;
         for (entries, 0..) |entry, i| {
+            if (entry.pending) continue;
             const seen = for (entries[0..i]) |earlier| {
-                if (earlier.step == entry.step) break true;
+                if (!earlier.pending and earlier.step == entry.step) break true;
             } else false;
             if (seen) continue;
             length += 1;
@@ -1194,24 +1560,93 @@ pub const JointHistory = struct {
         self.views_epoch += 1;
         const epoch = self.views_epoch;
 
+        // The history the documents read is the one the synchronous
+        // navigations pending now will make once listed (lane nav2 E): their
+        // finalize steps run in order on the traversal queue, each push one
+        // step on with the forward history cleared, each replace in place of
+        // the entry it replaces. So a document's History and navigation API
+        // read its own and the other navigables' synchronous navigations at
+        // once, as every browser shows them (html/browsers/history/
+        // the-history-interface/001.html: a frame's location.hash and
+        // pushState() change its parent's history.length synchronously,
+        // Chrome/Firefox/Safari), while the traversal endpoints read the
+        // listed history ("same-document traversals ... calculate their
+        // endpoint based on the original placement"). Each entry's projected
+        // step, or null when it is not in that history.
+        const base = self.viewStep();
+        const projected = try allocator.alloc(?u32, entries.len);
+        defer allocator.free(projected);
+        var pushes: u32 = 0;
+        for (entries) |entry| {
+            if (entry.pending and entry.pending_push) pushes += 1;
+        }
+        for (entries, 0..) |entry, i| {
+            projected[i] = if (entry.pending or (pushes > 0 and entry.step > base)) null else entry.step;
+        }
+        var next = base;
+        for (entries, 0..) |entry, i| {
+            if (!entry.pending) continue;
+            if (entry.pending_push) {
+                next += 1;
+                projected[i] = next;
+                continue;
+            }
+            // A replace takes its replaced entry's place - listed, or a
+            // pending one earlier in the list.
+            for (entries, 0..) |replaced, r| {
+                if (replaced.id != entry.pending_replaces) continue;
+                projected[i] = projected[r];
+                projected[r] = null;
+                break;
+            }
+        }
+        const step = next;
+
         // The History length and index: one pair for the traversable.
         var steps: std.ArrayListUnmanaged(u32) = .empty;
         defer steps.deinit(allocator);
-        try self.usedSteps(allocator, &steps);
-        const step = self.viewStep();
+        try steps.ensureTotalCapacity(allocator, entries.len);
+        for (projected) |at| {
+            if (at) |s| steps.appendAssumeCapacity(s);
+        }
+        std.mem.sort(u32, steps.items, {}, std.sort.asc(u32));
+        {
+            var kept: usize = 0;
+            for (steps.items) |s| {
+                if (kept > 0 and steps.items[kept - 1] == s) continue;
+                steps.items[kept] = s;
+                kept += 1;
+            }
+            steps.shrinkRetainingCapacity(kept);
+        }
         const length_index = lengthAndIndexIn(steps.items, step);
 
-        // Each navigable's entries, by step - in list order among equal
-        // steps, as `apiEntries` and `entryAt` have them (a stable sort).
-        const order = try allocator.alloc(u32, entries.len);
+        // Each navigable's entries in that history, by step - in list order
+        // among equal steps, as `apiEntries` and `entryAt` have them (a
+        // stable sort).
+        var count: usize = 0;
+        for (projected) |at| {
+            if (at != null) count += 1;
+        }
+        const order = try allocator.alloc(u32, count);
         defer allocator.free(order);
-        for (order, 0..) |*position, i| position.* = @intCast(i);
-        std.mem.sort(u32, order, @as([]const Entry, entries), struct {
-            fn lessThan(list: []const Entry, a: u32, b: u32) bool {
-                if (list[a].navigable != list[b].navigable) return list[a].navigable < list[b].navigable;
-                return list[a].step < list[b].step;
+        {
+            var o: usize = 0;
+            for (projected, 0..) |at, i| {
+                if (at == null) continue;
+                order[o] = @intCast(i);
+                o += 1;
             }
-        }.lessThan);
+        }
+        const Sort = struct {
+            list: []const Entry,
+            at: []const ?u32,
+            fn lessThan(context: @This(), a: u32, b: u32) bool {
+                if (context.list[a].navigable != context.list[b].navigable) return context.list[a].navigable < context.list[b].navigable;
+                return context.at[a].? < context.at[b].?;
+            }
+        };
+        std.mem.sort(u32, order, Sort{ .list = entries, .at = projected }, Sort.lessThan);
 
         var group_start: usize = 0;
         while (group_start < order.len) {
@@ -1235,7 +1670,8 @@ pub const JointHistory = struct {
 
             // `activeEntry`: the kept entry, at the step it was kept at;
             // else `entryAt` the current step - the last of the group (list
-            // order among equal steps) at or before it.
+            // order among equal steps) at or before it, which is the
+            // navigable's latest pending entry when it has one.
             var current: ?*const Entry = null;
             if (self.update_only.get(navigable)) |kept| {
                 if (kept.step == step) current = self.entryById(kept.entry);
@@ -1247,7 +1683,7 @@ pub const JointHistory = struct {
             }
             if (current == null) {
                 for (group) |position| {
-                    if (entries[position].step > step) break;
+                    if (projected[position].? > step) break;
                     current = &entries[position];
                 }
             }
@@ -1298,6 +1734,42 @@ pub const JointHistory = struct {
         const target = @as(i64, @intCast(current)) + delta;
         if (target < 0 or target >= @as(i64, @intCast(steps.items.len))) return null;
         return steps.items[@intCast(target)];
+    }
+
+    /// Where `stepByDelta`'s traversal goes once the synchronous navigations
+    /// pending now are listed (`PredictedStep`).
+    pub const PredictedStep = union(enum) {
+        /// A listed step.
+        listed: u32,
+        /// The step of one of the pending pushes: on its navigable's
+        /// document.
+        pushed,
+    };
+
+    /// "Traverse the history by a delta" step 4's target for `delta` as its
+    /// queued steps will compute it, asked when they are appended: after the
+    /// finalize steps of the synchronous navigations pending now - queued
+    /// ahead of them - have listed their entries, each push one step on with
+    /// the forward history cleared. Null when out of range.
+    pub fn predictedStepByDelta(self: *const JointHistory, delta: i64) ?PredictedStep {
+        var pushes: usize = 0;
+        for (self.entries.items) |entry| {
+            if (entry.pending and entry.pending_push) pushes += 1;
+        }
+        if (pushes == 0) return .{ .listed = self.stepByDelta(delta) orelse return null };
+        var steps: std.ArrayListUnmanaged(u32) = .empty;
+        defer steps.deinit(self.allocator);
+        self.usedSteps(self.allocator, &steps) catch return null;
+        const base = self.viewStep();
+        var kept: usize = 0;
+        for (steps.items) |step| {
+            if (step <= base) kept += 1;
+        }
+        const length: i64 = @intCast(kept + pushes);
+        const target = length - 1 + delta;
+        if (target < 0 or target >= length) return null;
+        if (target >= kept) return .pushed;
+        return .{ .listed = steps.items[@intCast(target)] };
     }
 
     /// A navigable was destroyed: its entries go - "destroy a child
