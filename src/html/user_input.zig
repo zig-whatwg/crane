@@ -189,6 +189,7 @@ fn firePointerEvent(target: *Instance, comptime event_type: []const u8, pointer:
     const result = dom.fire_event.dispatchTrusted(target, event) catch true;
     if (comptime std.mem.eql(u8, event_type, "pointerdown") or std.mem.eql(u8, event_type, "pointerup")) {
         @import("popover.zig").lightDismiss(target, comptime std.mem.eql(u8, event_type, "pointerdown"));
+        @import("dialog.zig").lightDismiss(target, comptime std.mem.eql(u8, event_type, "pointerdown"));
     }
     return result;
 }

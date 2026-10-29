@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Request Payloads Need Call Scope Across Reentrant Callbacks](architecture-request-payloads-need-call-scope-across-reentrant-callbacks.md) - Save and restore temporary callback arguments as nested call frames, without restoring persistent element state.
 - [Flat per-element storage makes every property cost every element](architecture-flat-per-element-storage-makes-every-property-cost-every-element.md) - Per-element storage should cost what the element writes, not what the engine supports: share untouched groups by pointer and copy on first write.
 - [Architecture: A browser's strong hold comes with the step that ends it - copy both or neither](architecture-a-browsers-strong-hold-comes-with-the-step-that-ends-it.md) - A strong hold is only as safe as the step that ends it: when you copy a browser's hold, copy its release, or keep the hold weak.
 - [Architecture: A new Window per load moves what belongs to the navigable, and swaps the realm only when nothing of it is on the stack](architecture-a-new-window-per-load-moves-what-belongs-to-the-navigable.md) - when a page-lifetime object starts dying per navigation, give each thing it held to its spec owner; swap an engine realm only where nothing of it is on the stack
@@ -932,6 +933,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A hot-path cost can be the call graph's shape, not an allocation](debugging-a-hot-path-cost-can-be-a-call-graph-shape-not-an-allocation.md) - An allocation count and a flat profile cannot see a recursion that blocks inlining; check the call graph's shape before calling a hot-path cost structural.
 
 ### Workflow
+- [Anchor a Tmux Job to Its Own Working Directory](workflow-anchor-tmux-job-cwd.md) - Verify the working directory inside the detached job, and retain evidence from before its first gate starts.
 - [A lane inside a long command cannot see a closing notice](workflow-a-lane-inside-a-long-command-cannot-see-a-closing-notice.md) - A lane cannot react to a notice it has not read: give every lane a watcher that sets STOP the moment a CLOSING NOTICE appears, and make its stop kill the remote job too.
 - [A notice watcher must match every notice format, and only notices](workflow-a-notice-watcher-must-match-every-notice-format.md) - Key a watcher on the notice's exact shapes, every one of them, and test the pattern against the file's history before trusting it.
 - [Relocating inputs must preserve their identity](workflow-relocating-inputs-must-preserve-their-identity.md) - Permit path relocation while pinning every non-location field to immutable evidence.
