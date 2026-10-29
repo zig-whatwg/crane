@@ -165,7 +165,13 @@ pub const NodeBase = struct {
         /// The zombie audit: a node of a tree that re-check found garbage -
         /// one step 7 would have freed. A read of it is reported.
         zombie: bool = false,
-        _unused: u1 = 0,
+        /// A remover holds the node across what follows its removal: one
+        /// counted reference taken at the unlink (`refcount.unlinkChildHeld`;
+        /// WebKit's `Ref protectedOldChild`, insert's NodeVector of
+        /// Ref<Node>), ended by its next link (`refcount.linkChild`) or by
+        /// the remover (`refcount.endRemovalHold`). Set and cleared only by
+        /// refcount.zig.
+        removal_held: bool = false,
     };
 
     /// The one write of `parent_node` (WebKit `Node::setParentNode`): the

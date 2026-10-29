@@ -64,6 +64,7 @@ pub fn call_before(instance: *runtime.Instance, nodes: []const NodeOrString) any
     // Step 4: "Let node be the result of converting nodes into a node, given
     // nodes and this's node document."
     const node = try mutation.convertNodesIntoNode(nodes, try nodeDocument(instance));
+    defer mutation.dropConvertedNode(node, nodes.len);
 
     // Step 5: "If viablePreviousSibling is null, then set it to parent's first
     // child; otherwise to viablePreviousSibling's next sibling." Read after
@@ -87,6 +88,7 @@ pub fn call_after(instance: *runtime.Instance, nodes: []const NodeOrString) anye
     // Step 4: "Let node be the result of converting nodes into a node, given
     // nodes and this's node document."
     const node = try mutation.convertNodesIntoNode(nodes, try nodeDocument(instance));
+    defer mutation.dropConvertedNode(node, nodes.len);
 
     // Step 5: "Pre-insert node into parent before viableNextSibling."
     try mutation.preInsertNode(node, parent, viable_next_sibling);
@@ -105,6 +107,7 @@ pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const NodeOrString
     // Step 4: "Let node be the result of converting nodes into a node, given
     // nodes and this's node document."
     const node = try mutation.convertNodesIntoNode(nodes, try nodeDocument(instance));
+    defer mutation.dropConvertedNode(node, nodes.len);
 
     if ((interfaces.Node.get_parentNode(instance) catch null) == parent) {
         // Step 5: "If this's parent is parent, replace this with node within

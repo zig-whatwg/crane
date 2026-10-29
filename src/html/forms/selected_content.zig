@@ -71,7 +71,7 @@ fn cloneContents(content: *runtime.Instance, option: ?*runtime.Instance) !void {
     const document = (try interfaces.Node.get_ownerDocument(selected)) orelse return error.InvalidStateError;
     const fragment = try interfaces.Document.call_createDocumentFragment(document);
     const generation = runtime.SlabAllocator.generationOf(fragment);
-    defer fragment.releaseIfUnwrapped(generation);
+    defer dom.node_creation.releaseIfUnwrapped(fragment, generation);
     var child = try interfaces.Node.get_firstChild(selected);
     while (child) |node| : (child = try interfaces.Node.get_nextSibling(node)) {
         _ = try dom.node_creation.clone(node, document, true, fragment);

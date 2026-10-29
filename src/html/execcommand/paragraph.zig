@@ -532,7 +532,7 @@ fn insertParagraphAfterDeletion(edit: *Edit) !bool {
     try interfaces.Range.call_setEnd(range, line.end.node, line.end.offset);
     const frag = try interfaces.Range.call_extractContents(range);
     const frag_generation = runtime.SlabAllocator.generationOf(frag);
-    defer frag.releaseIfUnwrapped(frag_generation);
+    defer @import("dom").node_creation.releaseIfUnwrapped(frag, frag_generation);
     edit.modified = true;
     // Step 28: ids of the elements the extraction cloned stay behind.
     try unsetIdsExcept(edit, frag, contained_nodes.items);

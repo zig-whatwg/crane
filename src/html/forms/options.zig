@@ -94,7 +94,7 @@ fn appendBlank(select: *runtime.Instance, count: u32) !void {
     const document = (try interfaces.Node.get_ownerDocument(select)) orelse return error.InvalidStateError;
     const fragment = try interfaces.Document.call_createDocumentFragment(document);
     const generation = runtime.SlabAllocator.generationOf(fragment);
-    defer fragment.releaseIfUnwrapped(generation);
+    defer dom.node_creation.releaseIfUnwrapped(fragment, generation);
     for (0..count) |_| {
         const option = try interfaces.Document.call_createElement(document, runtime.DOMString.initInterned("option"), .notPassed());
         errdefer dom.node_creation.destroyUninserted(option);

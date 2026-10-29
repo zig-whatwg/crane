@@ -776,8 +776,17 @@ pub fn releaseCreatorReference(node: *NodeBase) void {
 fn endCreatorReferenceForLink(node: *NodeBase) void {
     if (!node.rc_flags.creator) return;
     node.rc_flags.creator = false;
+    dropRootReferenceForLink(node, "a creator's reference");
+}
+
+/// `node`, a root about to be linked, lets go of one reference the link
+/// takes over (the creator's, a remover's): O(1), only the node's own total
+/// and - a detached root of its document - its document's foreign holds
+/// move; the link then carries what is left. Never garbage: the node is
+/// being linked.
+fn dropRootReferenceForLink(node: *NodeBase, comptime what: []const u8) void {
     if (node.rc < NodeBase.rc_one) {
-        violate(null, "node {*} offered a creator's reference it does not hold", .{node});
+        violate(null, "node {*} gave up " ++ what ++ " it does not hold", .{node});
         return;
     }
     node.rc -= NodeBase.rc_one;
@@ -901,8 +910,10 @@ fn countsAsForeign(node: *const NodeBase) bool {
 pub fn linkChild(node: *NodeBase, parent: *NodeBase) void {
     if (node.parent_node != null) violate(null, "linkChild: node {*} already has a parent", .{node});
     if (node.rc_flags.hosted) violate(null, "linkChild: node {*} is a shadow root or template contents", .{node});
-    // The tree takes the node over: its creator's reference ends (refcount7).
+    // The tree takes the node over: its creator's reference ends (refcount7),
+    // and so does the hold its remover kept it by across a move (refcount8).
     endCreatorReferenceForLink(node);
+    endRemovalHoldForLink(node);
     refcount_audit.checkRead(node, .reinsertion, @returnAddress());
     refcount_audit.checkRead(parent, .reinsertion, @returnAddress());
     if (node.rc_flags.audit_pending) refcount_audit.noteResurrected(node);
@@ -911,10 +922,13 @@ pub fn linkChild(node: *NodeBase, parent: *NodeBase) void {
     node.rc_flags.foreign = false;
     node.setParent(parent);
     const delta: i64 = holds;
-    const tree_root = if (holds != 0) walkAdd(null, parent, delta) else root(null, parent);
-    const document = countsAt(parent, tree_root);
+    // Nothing held in the subtree: no walk to the root (refcount step 7's
+    // prerequisite (e)) - the tree version's counts are the parent's node
+    // document's either way.
+    const reached: ?*NodeBase = if (holds != 0) walkAdd(null, parent, delta) else null;
+    const document = if (reached) |r| countsAt(parent, r) else countsOfParent(parent);
     if (document) |counts| bumpTreeVersion(counts, .{ .node = parent });
-    if (holds == 0) return;
+    const tree_root = reached orelse return;
     // Within one document's detached trees, a move changes nothing there.
     if (was_foreign and tree_root.rc_flags.foreign and node.owner_document == tree_root.owner_document) return;
     if (was_foreign) {
@@ -929,6 +943,51 @@ pub fn linkChild(node: *NodeBase, parent: *NodeBase) void {
 /// detached tree of its document from here on. Its holds leave the old
 /// parent's chain and count in its document's foreign holds.
 pub fn unlinkChild(node: *NodeBase) void {
+    unlink(node, false);
+}
+
+/// `unlinkChild` by a remover that keeps `node` across the steps that follow
+/// the removal - the removing steps, transient observers and the mutation
+/// record (DOM remove 11-16), and for a move the insertion that links it
+/// again: WebKit's ContainerNode::removeChild keeps `Ref protectedOldChild`,
+/// insertBefore the NodeVector of Ref<Node> collectChildrenAndRemoveFromOldParent
+/// returns (refcount step 7's prerequisites (b) and (b2), lane refcount8).
+/// One counted reference, taken AT the unlink - O(1): the node is a root by
+/// then, so only its own total and its document's foreign holds move - so
+/// the removed tree's total never passes through zero while the remover
+/// still works on it. Ended by the node's next link (`linkChild`, O(1)
+/// before its walk) or by the remover (`endRemovalHold`).
+pub fn unlinkChildHeld(node: *NodeBase) void {
+    unlink(node, true);
+}
+
+/// A remover's hold on `node` (`unlinkChildHeld`) ends, if its next link did
+/// not end it first: O(1) while the node is still a root, and the moment its
+/// tree may be garbage.
+pub fn endRemovalHold(node: *NodeBase) void {
+    if (!node.rc_flags.removal_held) return;
+    node.rc_flags.removal_held = false;
+    holderDeref(node);
+}
+
+/// `linkChild`'s end of a remover's hold: the link takes the node over.
+fn endRemovalHoldForLink(node: *NodeBase) void {
+    if (!node.rc_flags.removal_held) return;
+    node.rc_flags.removal_held = false;
+    dropRootReferenceForLink(node, "a remover's hold");
+}
+
+/// The remover's hold on `node`, a root just unlinked (`unlinkChildHeld`).
+fn holdRemovedRoot(node: *NodeBase) void {
+    if (node.rc_flags.removal_held) {
+        violate(null, "node {*} already carries a remover's hold", .{node});
+        return;
+    }
+    node.rc_flags.removal_held = true;
+    holderRef(node);
+}
+
+fn unlink(node: *NodeBase, held: bool) void {
     const parent = node.parent_node orelse {
         violate(null, "unlinkChild: node {*} has no parent", .{node});
         return;
@@ -938,15 +997,20 @@ pub fn unlinkChild(node: *NodeBase) void {
     const foreign = countsAsForeign(node);
     node.rc_flags.foreign = foreign;
     const delta: i64 = holds;
-    const tree_root = if (holds != 0) walkAdd(null, parent, -delta) else root(null, parent);
+    // Nothing held in the subtree: no walk (as linkChild).
+    const reached: ?*NodeBase = if (holds != 0) walkAdd(null, parent, -delta) else null;
     // The audit: the removed subtree, and the tree it left, may be garbage.
     defer if (refcount_audit.on()) {
         auditLowered(node);
-        if (holds != 0) auditLowered(tree_root);
+        if (reached) |r| auditLowered(r);
     };
-    const document = countsAt(parent, tree_root);
+    // A remover's hold goes on once the node's own holds are counted where
+    // they now belong, and before the audit looks at it (defers run last
+    // first).
+    defer if (held) holdRemovedRoot(node);
+    const document = if (reached) |r| countsAt(parent, r) else countsOfParent(parent);
     if (document) |counts| bumpTreeVersion(counts, .{ .node = parent });
-    if (holds == 0) return;
+    const tree_root = reached orelse return;
     if (foreign and tree_root.rc_flags.foreign and node.owner_document == tree_root.owner_document) return;
     adjustForeign(tree_root, -delta);
     if (!foreign) return;
@@ -968,14 +1032,26 @@ pub fn moveChild(node: *NodeBase, new_parent: *NodeBase) void {
     const holds = node.subtree_holds;
     const delta: i64 = holds;
     const moves = holds != 0 and old_parent != new_parent;
-    const new_root = if (moves) walkAdd(null, new_parent, delta) else root(null, new_parent);
-    if (countsAt(new_parent, new_root)) |counts| bumpTreeVersion(counts, .{ .node = new_parent });
-    if (!moves) return;
+    const reached: ?*NodeBase = if (moves) walkAdd(null, new_parent, delta) else null;
+    const counts_at = if (reached) |r| countsAt(new_parent, r) else countsOfParent(new_parent);
+    if (counts_at) |counts| bumpTreeVersion(counts, .{ .node = new_parent });
+    const new_root = reached orelse return;
     const old_root = walkAdd(null, old_parent, -delta);
     if (new_root != old_root) {
         adjustForeign(new_root, delta);
         adjustForeign(old_root, -delta);
     }
+}
+
+/// The counts of `parent`'s node document - a Document's own - with no walk
+/// to the root (refcount step 7's prerequisite (e), lane refcount8): a
+/// connected parent's node document is its root, alive while it is; a
+/// detached one's is read through the Node impl's generation-checked
+/// accessor (a document freed under its node answers none).
+fn countsOfParent(parent: *NodeBase) ?*DocumentCounts {
+    if (parent.node_type == NodeBase.DOCUMENT_NODE) return countsOfDocumentNode(parent);
+    if (parent.is_connected) if (parent.owner_document) |raw| return countsOfDocumentNode(@ptrCast(@alignCast(raw)));
+    return countsOfNodeDocument(parent);
 }
 
 /// The counts of `parent`'s node document, where `tree_root` is the root of
@@ -1082,9 +1158,14 @@ pub fn nodeFreed(node: *NodeBase, counts: ?*DocumentCounts) void {
     // its creator neither handed it to a wrapper or a tree nor dropped it
     // through `dom.node_creation.destroyUninserted` - a silent drop, which
     // step 7's counts would never free (refcount7; for step 7's agent-end
-    // assertion). A Document's creator keeps its reference by design.
-    if (diagnosticsOn() and node.rc_flags.creator and node.node_type != NodeBase.DOCUMENT_NODE)
+    // assertion). A Document too, since step 5i: its holder or its first
+    // wrapper takes its reference over, or its creator ends it.
+    if (diagnosticsOn() and node.rc_flags.creator)
         log.warn("a node was freed holding its creator's reference (node type {d}, {s})", .{ node.node_type, if (node.parent_node == null) "a root" else "in a tree" });
+    // A remover that never ended its hold (refcount8: unlinkChildHeld's
+    // pairing) - the counts would keep the tree for good once they decide.
+    if (diagnosticsOn() and node.rc_flags.removal_held)
+        log.warn("a node was freed carrying a remover's hold (node type {d})", .{node.node_type});
     if (node.node_type == NodeBase.DOCUMENT_NODE) return;
     const document = counts orelse return;
     addTo(&document.referencing_nodes, -1, "referencing_nodes");

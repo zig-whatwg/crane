@@ -1354,6 +1354,8 @@ const ModuleConfig = struct {
     optimize: std.builtin.OptimizeMode,
     build_options: *std.Build.Step.Options,
     debug_options: *std.Build.Step.Options,
+    /// The dom module's own options (refcount_audit).
+    dom_options: *std.Build.Step.Options,
     engine_choice: []const u8,
     use_system_curl: bool,
     enable_http2: bool,
@@ -1652,6 +1654,16 @@ pub fn build(b: *std.Build) void {
 
     const build_options = b.addOptions();
     build_options.addOption(bool, "enable_test_utils", enable_test_utils);
+    // The refcount zombie audit's hooks (dom.refcount_audit: the checks on
+    // the hottest node paths, instance_bridge.getNodeBase and Node's state)
+    // compile in only when asked, so a normal build pays nothing for them;
+    // unit tests always have them (builtin.is_test). The audit sweep's runner
+    // is built with -Drefcount-audit=true (refcount8, H-RC8-BUILD-AUDIT).
+    // Its own options module, as fetch's curl_options: build_options is
+    // imported by several modules already.
+    const refcount_audit = b.option(bool, "refcount-audit", "Compile in the refcount zombie audit (run it with CRANE_REFCOUNT_AUDIT=1); unit tests always have it") orelse false;
+    const dom_options = b.addOptions();
+    dom_options.addOption(bool, "refcount_audit", refcount_audit);
 
     // Debug options module (separate from build_options for cleaner imports)
     const debug_options = b.addOptions();
@@ -1796,6 +1808,7 @@ pub fn build(b: *std.Build) void {
     const module_config: ModuleConfig = .{
         .optimize = optimize,
         .build_options = build_options,
+        .dom_options = dom_options,
         .debug_options = debug_options,
         .engine_choice = engine_choice,
         .use_system_curl = use_system_curl,
@@ -5467,6 +5480,8 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .root_source_file = b.path("src/dom/root.zig"),
         .target = target,
     });
+    // The refcount audit's comptime switch (dom_options.refcount_audit).
+    dom_mod.addOptions("dom_options", config.dom_options);
     dom_mod.addImport("clock", clock_mod);
     dom_mod.addImport("host", host_mod);
     dom_mod.addImport("infra", infra_mod);

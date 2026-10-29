@@ -803,11 +803,19 @@ pub fn insert(
     // Step 3: If count is 0, then return
     if (count == 0) return;
 
+    // Every node moved here is held from its removal to its link (refcount
+    // step 7's prerequisite (b); WebKit's insertBefore holds the NodeVector
+    // of Ref<Node> collectChildrenAndRemoveFromOldParent returned): each
+    // removal below keeps its remover's hold, and the node's link in step
+    // 7.3 ends it. A node an error leaves unlinked ends it here.
+    var linked: usize = 0;
+    errdefer for (nodes[linked..nodes_count]) |n| refcount.endRemovalHold(n);
+
     // Step 4: If node is a DocumentFragment node:
     if (isDocumentFragment(node)) {
         // Step 4.1: Remove its children with suppress observers flag set
         for (nodes[0..nodes_count]) |child_node| {
-            try remove(child_node, true);
+            try removeHeld(child_node, true);
         }
 
         // Step 4.2: Queue a tree mutation record for node
@@ -862,10 +870,10 @@ pub fn insert(
         // at a time (jQuery's append) never terminated.
         const parent_base: *NodeBase = @ptrCast(parent);
         if (parent_base.getNodeDocument()) |doc| {
-            try adopt(n, doc);
+            try adoptHeld(n, doc);
         } else if (n.parent_node != null) {
             // No document to adopt into: still honour adopt's step 2.
-            try remove(n, false);
+            try removeHeld(n, false);
         }
 
         // Step 7.2-3: Insert node into parent's children
@@ -902,9 +910,11 @@ pub fn insert(
             parent.last_child = n;
         }
 
-        // The parent write, and the holds it moves (refcount, step 3); a
-        // wrapped root joins its new tree's opaque root (step 4).
+        // The parent write, and the holds it moves (refcount, step 3) - its
+        // remover's hold ends here; a wrapped root joins its new tree's
+        // opaque root (step 4).
         refcount.linkChild(n, @ptrCast(parent));
+        linked += 1;
         joinedTree(n, @ptrCast(parent));
         // domindex1: the light subtree joins its new tree scope's ID and
         // named-property maps at the link, before any insertion step, slot
@@ -1039,6 +1049,11 @@ pub fn appendChildren(
         return error.HierarchyRequestError;
     }
 
+    // A child moved out of another parent is held from that removal to its
+    // link below, which ends the hold (refcount step 7's prerequisite (b));
+    // an error leaves it unlinked, and ends it here.
+    errdefer for (children) |child| refcount.endRemovalHold(child);
+
     // Step 2: Validate all children and adopt them
     for (children) |child| {
         // Check child is not an ancestor of parent
@@ -1060,12 +1075,12 @@ pub fn appendChildren(
 
         // Remove child from its current parent if any
         if (child.parent_node != null) {
-            try remove(child, true); // suppress observers for batch efficiency
+            try removeHeld(child, true); // suppress observers for batch efficiency
         }
 
         // Adopt child into parent's document
         if (parent.owner_document) |doc| {
-            try adopt(child, doc);
+            try adoptHeld(child, doc);
         }
     }
 
@@ -1200,6 +1215,9 @@ pub fn insertChildrenBefore(
     // Get insertion index
     const insert_idx = getChildIndex(ref_child) orelse return error.NotFoundError;
 
+    // As appendChildren: a moved child is held from its removal to its link.
+    errdefer for (children) |child| refcount.endRemovalHold(child);
+
     // Validate and adopt all children
     for (children) |child| {
         if (isHostIncludingInclusiveAncestor(child, parent)) {
@@ -1214,10 +1232,10 @@ pub fn insertChildrenBefore(
             return error.HierarchyRequestError;
         }
         if (child.parent_node != null) {
-            try remove(child, true);
+            try removeHeld(child, true);
         }
         if (parent.owner_document) |doc| {
-            try adopt(child, doc);
+            try adoptHeld(child, doc);
         }
     }
 
@@ -1429,18 +1447,25 @@ pub fn replace(
     // document"), so that removal is its own record and its previous sibling
     // is still in place. Blink's ContainerNode::ReplaceChild does the same "to
     // make a separated MutationRecord".
+    //
+    // Moved, `node` is held from that removal to its link in step 13's
+    // insert, which ends the hold (refcount step 7's prerequisite (b)).
     if (!isDocumentFragment(node) and node.parent_node != null) {
-        try remove(node, false);
+        try removeHeld(node, false);
     }
+    errdefer refcount.endRemovalHold(@ptrCast(node));
 
     // Step 10-11: Remove child if its parent is non-null
     var removedNodes: [1]*NodeBase = undefined;
     var removed_count: usize = 0;
 
+    // The removed child is held until step 14's record names it (WebKit's
+    // replaceChild keeps `Ref protectedOldChild`; prerequisite (b2)).
+    defer if (removed_count == 1) refcount.endRemovalHold(child);
     if (child.parent_node != null) {
+        try removeHeld(child, true); // suppress observers
         removedNodes[0] = child;
         removed_count = 1;
-        try remove(child, true); // suppress observers
     }
 
     // Step 12: Let nodes be node's children if DocumentFragment, otherwise
@@ -1501,10 +1526,13 @@ pub fn replaceAll(
     defer if (added_nodes.len > added_buf.len) allocator.free(added_nodes);
 
     // Step 5: "Remove all parent's children, in tree order, with the
-    // suppress observers flag set."
+    // suppress observers flag set." Each is held until step 7's record names
+    // it (prerequisite (b2)): the record takes its removed nodes on a tree
+    // that never counted zero. The holds end at the end, error or not.
+    defer for (removed_nodes) |removed| refcount.endRemovalHold(removed);
     while (parent.child_nodes.size() > 0) {
         const child_to_remove = parent.child_nodes.items()[0];
-        try remove(child_to_remove, true);
+        try removeHeld(child_to_remove, true);
     }
 
     // Step 6: "If node is non-null, then insert node into parent before null
@@ -1561,7 +1589,26 @@ pub fn preRemove(
 /// - Removing steps callbacks
 /// - Custom element disconnection
 /// - Mutation observer notifications
+///
+/// The remover holds `node` across the steps that follow its unlink - the
+/// removing steps, the transient observers, the mutation record - and lets
+/// go at the end (WebKit's ContainerNode::removeChild `Ref
+/// protectedOldChild`; refcount step 7's prerequisite (b2), lane
+/// refcount8): a holder that takes the node on in those steps (a record, an
+/// img's update) takes it on a tree that never counted zero.
 pub fn remove(
+    node: anytype,
+    suppress_observers: bool,
+) (DOMException || error{OutOfMemory})!void {
+    try removeHeld(node, suppress_observers);
+    refcount.endRemovalHold(@ptrCast(node));
+}
+
+/// `remove`, leaving the remover's hold on `node` (refcount.unlinkChildHeld)
+/// for the caller: a move links it again (insert, whose link ends it), and
+/// replace and replace all end it after their own mutation record names it
+/// (refcount.endRemovalHold). On an error after the unlink the hold ends here.
+fn removeHeld(
     node: anytype,
     suppress_observers: bool,
 ) (DOMException || error{OutOfMemory})!void {
@@ -1619,9 +1666,11 @@ pub fn remove(
     if (node_idx) |idx| {
         _ = parent.child_nodes.remove(idx) catch unreachable; // idx is guaranteed valid by getChildIndex
     }
-    // The parent write, and the holds it moves (refcount, step 3); a
-    // wrapped root leaves its old tree's opaque root (step 4).
-    refcount.unlinkChild(@ptrCast(node));
+    // The parent write, and the holds it moves (refcount, step 3), with the
+    // remover's hold (removeHeld); a wrapped root leaves its old tree's
+    // opaque root (step 4).
+    refcount.unlinkChildHeld(@ptrCast(node));
+    errdefer refcount.endRemovalHold(@ptrCast(node));
     leftTree(@ptrCast(node), @ptrCast(parent));
 
     // Update is_connected for the removed node and all its descendants
@@ -1803,6 +1852,23 @@ pub fn convertNodesIntoNode(nodes: anytype, document: *runtime.Instance) !*runti
 
     // Step 5: "Return fragment."
     return fragment;
+}
+
+/// The node "converting nodes into a node" returned, once its caller's
+/// insertion of it is over (`count`: how many nodes were converted). A
+/// fragment it made (more than one) was never exposed: its children moved
+/// out, it is empty and parentless, and nothing but its creator ever named
+/// it - so it goes now, its born reference with it (refcount step 7's
+/// prerequisite (a), lane refcount8: 38 such fragments were freed only at
+/// their realm's end, still holding their creator's reference). One an
+/// error left children in keeps them: only its creator's reference ends.
+/// One node is the caller's own, or a Text node its insertion took over.
+pub fn dropConvertedNode(node: *runtime.Instance, count: usize) void {
+    if (count == 1) return;
+    const base = instance_bridge.getNodeBase(node) orelse return;
+    if (base.first_child == null and base.parent_node == null) {
+        @import("node_creation.zig").releaseIfUnwrapped(node, runtime.SlabAllocator.generationOf(node));
+    } else refcount.releaseCreatorReference(base);
 }
 
 /// A node of a "converting nodes into a node" list: the node itself, or a new
@@ -2755,13 +2821,26 @@ pub fn adopt(
     node: anytype,
     document: anytype,
 ) DOMException!void {
+    try adoptHeld(node, document);
+    refcount.endRemovalHold(@ptrCast(node));
+}
+
+/// `adopt`, leaving the hold of its step 2's removal on `node` for the
+/// insertion that adopts it to end at its link (refcount.linkChild): the
+/// adopting steps run in between (an img's update of the image data takes
+/// the node on), and the moved tree must not count zero there.
+fn adoptHeld(
+    node: anytype,
+    document: anytype,
+) DOMException!void {
     // Step 1: Let oldDocument be node's node document
     const oldDocument = node.owner_document;
 
     // Step 2: If node's parent is non-null, then remove node
     if (node.parent_node != null) {
-        try remove(node, false);
+        try removeHeld(node, false);
     }
+    errdefer refcount.endRemovalHold(@ptrCast(node));
 
     // Step 3: If document is not oldDocument
     if (document != oldDocument) {
