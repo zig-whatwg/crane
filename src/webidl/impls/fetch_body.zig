@@ -753,7 +753,12 @@ const FullRead = struct {
         defer js.dispose(buffer);
         const all = js.bufferBytes(buffer) orelse return self.finishWithTypeError("a body chunk's buffer is detached");
         self.bytes.appendSlice(self.allocator, all[info.byte_offset..][0..info.byte_length]) catch return self.finishWithTypeError("out of memory");
-        js.queueMicrotask(self.realm, FullRead, self, readNext);
+        // The next read, from a microtask - one whose dropped end frees the
+        // read when it never runs (js.queueMicrotask): the agent's queue
+        // discarded by a terminated checkpoint, or the realm's end. Without
+        // it the read, its Deferred and its bytes leaked (lane leaks1: the
+        // WPT runner's three empty-stack reports).
+        js.queueMicrotask(self.realm, FullRead, self, readNext, destroy);
     }
 
     fn close(ctx: *anyopaque, realm: js.Realm) void {

@@ -447,12 +447,37 @@ pub fn createReadableStream(realm: Realm, ctx: runtime.Context, source: Source, 
     return stream_instance;
 }
 
-/// CreateReadableByteStream(startAlgorithm, pullAlgorithm, cancelAlgorithm)
+/// CreateReadableByteStream(startAlgorithm, pullAlgorithm, cancelAlgorithm).
+/// Wrapped before it is returned, as createReadableStream's is.
+///
+/// `source` is this call's, failure included, as createReadableStream's: on
+/// failure its algorithms are cleared before this returns - its deinit runs
+/// once, and nothing made here keeps it - so a caller that frees itself after
+/// a failed setup (fetch_body's PipeStream, Blob's BlobStream) frees it once.
+/// It had no failure path: a setup that failed after its controller was
+/// wrapped (a start reaction refused - the realm's end under way, a stopped
+/// agent) left the wrapper cache's controller holding the source the caller
+/// freed, and the controller's teardown freed it again (lane leaks1: a double
+/// free of PipeStream in FileAPI/BlobURL/cross-partition.https.html); an
+/// earlier failure leaked what was not wrapped. What is not wrapped is freed
+/// here; what is wrapped is the wrapper cache's.
 pub fn createReadableByteStream(realm: Realm, ctx: runtime.Context, source: Source) !*runtime.Instance {
+    var owns_algorithms = true;
+    errdefer if (owns_algorithms) source.vtable.deinit(source.ctx, ctx.allocator);
     const stream_instance = try newStream(ctx);
+    const stream_generation = runtime.SlabAllocator.generationOf(stream_instance);
+    errdefer stream_instance.releaseIfUnwrapped(stream_generation);
     _ = try realm.wrap(stream_instance);
     // Step 4: SetUpReadableByteStreamController(..., 0, undefined).
     const controller = try newByteController(ctx, stream_instance, source, 0, null);
+    owns_algorithms = false;
+    const controller_generation = runtime.SlabAllocator.generationOf(controller);
+    errdefer controller.releaseIfUnwrapped(controller_generation);
+    // First of the two (errdefers run last-declared first): a wrapped
+    // controller outlives the failure as the wrapper cache's, and must not
+    // keep the source; an unwrapped one is released just after, its
+    // algorithms already cleared.
+    errdefer byteClearAlgorithms(byteControllerOf(controller).?);
     try setUpByteController(realm, stream_instance, controller);
     return stream_instance;
 }
@@ -2564,6 +2589,15 @@ fn defaultTeeDrop(ctx: *anyopaque) void {
 const TeeChunk = struct {
     state: *DefaultTee,
     chunk: Value,
+
+    /// Its microtask never ran (js.queueMicrotask): the chunk, the task and
+    /// its hold on the tee go.
+    fn dropped(task: *TeeChunk) void {
+        const state = task.state;
+        js.dispose(task.chunk);
+        state.allocator.destroy(task);
+        state.release();
+    }
 };
 
 fn defaultTeeChunk(ctx: *anyopaque, realm: Realm, chunk: Value) void {
@@ -2575,7 +2609,7 @@ fn defaultTeeChunk(ctx: *anyopaque, realm: Realm, chunk: Value) void {
         state.allocator.destroy(task);
         return state.release();
     } };
-    js.queueMicrotask(realm, TeeChunk, task, defaultTeeChunkMicrotask);
+    js.queueMicrotask(realm, TeeChunk, task, defaultTeeChunkMicrotask, TeeChunk.dropped);
 }
 
 fn defaultTeeChunkMicrotask(task: *TeeChunk) void {
@@ -2836,6 +2870,15 @@ const ByteTeeChunk = struct {
     /// For a BYOB read: which branch it filled.
     for_branch2: bool = false,
     byob: bool = false,
+
+    /// Its microtask never ran (js.queueMicrotask): the chunk, the task and
+    /// its hold on the tee go.
+    fn dropped(task: *ByteTeeChunk) void {
+        const state = task.state;
+        js.dispose(task.chunk);
+        state.allocator.destroy(task);
+        state.release();
+    }
 };
 
 fn byteTeeDefaultChunk(ctx: *anyopaque, realm: Realm, chunk: Value) void {
@@ -2846,7 +2889,7 @@ fn byteTeeDefaultChunk(ctx: *anyopaque, realm: Realm, chunk: Value) void {
         state.allocator.destroy(task);
         return state.release();
     } };
-    js.queueMicrotask(realm, ByteTeeChunk, task, byteTeeDefaultChunkMicrotask);
+    js.queueMicrotask(realm, ByteTeeChunk, task, byteTeeDefaultChunkMicrotask, ByteTeeChunk.dropped);
 }
 
 /// CloneAsUint8Array(O). Owned.
@@ -2967,7 +3010,7 @@ fn byobTeeChunk(ctx: *anyopaque, realm: Realm, chunk: Value) void {
         state.allocator.destroy(task);
         return state.release();
     }, .for_branch2 = for_branch2, .byob = true };
-    js.queueMicrotask(realm, ByteTeeChunk, task, byobTeeChunkMicrotask);
+    js.queueMicrotask(realm, ByteTeeChunk, task, byobTeeChunkMicrotask, ByteTeeChunk.dropped);
 }
 
 fn byobTeeChunkMicrotask(task: *ByteTeeChunk) void {

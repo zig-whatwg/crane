@@ -664,18 +664,17 @@ fn queueMutationObserverMicrotask(allocator: Allocator, realm: ?runtime.Context)
     };
 }
 
-/// Context for the mutation observer microtask callback
-const MutationMicrotaskContext = struct {
-    allocator: std.mem.Allocator,
-};
-
-/// The microtask's steps: notify mutation observers.
-fn mutationMicrotask(data: ?*anyopaque) void {
-    const ctx: *MutationMicrotaskContext = @ptrCast(@alignCast(data orelse return));
-    const allocator = ctx.allocator;
-
-    // Free the context first (we've captured what we need)
-    allocator.destroy(ctx);
+/// The microtask's steps: notify mutation observers, with the agent's
+/// allocator. It carries no data: the agent's state holds what it needs, so
+/// a microtask the agent's queue discards (a terminated checkpoint) leaves
+/// nothing behind. It used to carry a context holding the allocator, which
+/// leaked whenever the microtask never ran (lane leaks1,
+/// tests/v8/microtask_dropped_end_test.zig). It stays an agent microtask, not
+/// a realm one (engine.queueRealmMicrotask): it notifies every pending
+/// observer of the agent, whichever realm queued it, so the end of that
+/// realm must not drop it.
+fn mutationMicrotask(_: ?*anyopaque) void {
+    const allocator = (global_agent orelse return).allocator;
 
     // Out of memory before any observer was notified: the observers stay
     // pending, and the next mutation's microtask notifies them.
@@ -690,12 +689,8 @@ fn mutationMicrotask(data: ?*anyopaque) void {
 ///
 /// Spec: https://dom.spec.whatwg.org/#queue-a-mutation-observer-compound-microtask
 fn queueNotifyMicrotask(allocator: std.mem.Allocator, realm: runtime.Context) !void {
-    const ctx = allocator.create(MutationMicrotaskContext) catch return error.OutOfMemory;
-    ctx.* = .{ .allocator = allocator };
-
-    const queued: engine.Error!void = if (realm.agent) |agent| engine.queueMicrotask(agent, mutationMicrotask, ctx) else error.NotSupported;
+    const queued: engine.Error!void = if (realm.agent) |agent| engine.queueMicrotask(agent, mutationMicrotask, null) else error.NotSupported;
     queued catch |err| {
-        allocator.destroy(ctx);
         switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
             // No engine behind the realm (unit tests of the DOM alone), so
