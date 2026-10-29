@@ -181,6 +181,13 @@ pub const DeclarationBlock = struct {
         return block;
     }
 
+    /// CSS Syntax 3 section 5.5.5: continue a declaration run after a
+    /// discarded rule, preserving importance and specified order without
+    /// reparsing the declarations already in this block.
+    pub fn appendDeclarations(self: *DeclarationBlock, options: properties.ParseOptions, parsed: []const rules.Declaration) Allocator.Error!void {
+        for (parsed) |d| try self.addParsed(options, d.name, d.value, d.important);
+    }
+
     /// One parsed declaration into the block. A later declaration of a
     /// longhand replaces an earlier one, and moves to the end - unless the
     /// earlier is important and the later is not, which the cascade's

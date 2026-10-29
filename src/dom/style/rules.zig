@@ -1025,6 +1025,22 @@ fn buildChildren(options: BuildOptions, parent: *Rule, items: []const css.rules.
     child_options.nesting = contextInside(parent, options.nesting);
     child_options.in_style = options.in_style or parent.kind() == .style;
     for (items) |*item| {
+        // Syntax 3 section 5.5.5's at-keyword/invalid-rule branches flush
+        // raw runs before CSSOM validation. Dropped rules do not split the
+        // resulting blocks: Chrome/Firefox/Safari pass 6/6 at-rule-in-
+        // declaration-list and 14/14 var-with-blocks (wpt.fyi, ffc4686d11).
+        // Blink ConsumeBlockContents (97f9cf6fa75f, :3174-3307) likewise
+        // advances wrappers only for retained children. Nesting 1 section
+        // 6.1 also coalesces adjacent declaration rules on reparsing.
+        if (item.kind == .declarations) {
+            const previous = if (list.items.len == 0) parent else list.items[list.items.len - 1];
+            if (previous.kind() == .nested_declarations or
+                (list.items.len == 0 and parent.kind() == .style))
+            {
+                try previous.block().?.appendDeclarations(child_options.parse, item.declarations);
+                continue;
+            }
+        }
         const child = (try build(child_options, item, .nested)) orelse continue;
         if (child_options.in_style and !allowedNestedKind(child.kind())) {
             child.unref();

@@ -725,7 +725,13 @@ pub fn keyDown(keyboard: *Keyboard, document: *Instance, key: Key, modifiers: Mo
     if (!escape) {
         if (nodeDocument(target)) |d| user_activation.notifyActivation(d);
     }
-    if (nodeDocument(target)) |d| focus.noteInputModality(d, false);
+    // Selectors 4 section 9.4 leaves focus-visible to a UA heuristic.
+    // Ctrl/Alt/Meta shortcuts preserve pointer modality; Shift alone does
+    // not (Blink KeyboardEventManager::KeyEvent, 97f9cf6fa75f :355-359;
+    // wpt.fyi focus-visible-012, ffc4686d11: Chrome/Firefox/Safari 1/1).
+    if (!modifiers.ctrl and !modifiers.alt and !modifiers.meta) {
+        if (nodeDocument(target)) |d| focus.noteInputModality(d, false);
+    }
     if (!fireKeyboardEvent(target, "keydown", key, modifiers, key.key_code, 0)) {
         // A cancelled keydown has no default action, and disarms Space.
         keyboard.space_armed = null;
