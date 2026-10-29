@@ -361,6 +361,59 @@ pub fn convertToRecordOfStrings(
     return result.toOwnedSlice(allocator) catch EngineError.OutOfMemory;
 }
 
+/// Protocol `enumerableOwnPropertyKeys`: ECMAScript EnumerableOwnProperties(O,
+/// key) (7.3.24), with the record conversion's catching steps: no property is
+/// Got, a Symbol key is never asked [[GetOwnProperty]]. OWNED.
+pub fn enumerableOwnPropertyKeys(realm: runtime.Context, value: runtime.JSValue, allocator: std.mem.Allocator) EngineError![][]u8 {
+    switch (value) {
+        .handle, .instance => {},
+        else => return EngineError.TypeError,
+    }
+    const entered = try engine.enterRealm(realm);
+    defer entered.leaveAgent();
+    defer entered.leaveScope();
+    const isolate = entered.isolate;
+    const context = entered.scope.context;
+    const object = try ownHandle(isolate, context, value);
+    defer ffi.v8_Global_Dispose(object);
+    if (!ffi.v8_Value_IsObject(object)) return EngineError.TypeError;
+
+    var results: std.ArrayListUnmanaged([]u8) = .empty;
+    errdefer {
+        for (results.items) |name| allocator.free(name);
+        results.deinit(allocator);
+    }
+    // 1. Let ownKeys be ? O.[[OwnPropertyKeys]]().
+    var threw = false;
+    const own_keys = ffi.v8_Object_OwnPropertyKeysCatching(context, object, &threw);
+    if (threw) return rethrow(isolate, own_keys);
+    const key_array: *ffi.Array = @ptrCast(own_keys orelse return EngineError.OperationFailed);
+    defer ffi.v8_Global_Dispose(@ptrCast(key_array));
+    // 2-3. For each element key of ownKeys:
+    const count = ffi.v8_Array_Length(key_array);
+    var i: u32 = 0;
+    while (i < count) : (i += 1) {
+        const key = ffi.v8_Array_Get(context, key_array, i) orelse return EngineError.OperationFailed;
+        defer ffi.v8_Global_Dispose(key);
+        // a. If key is a String:
+        if (ffi.v8_Value_IsSymbol(key)) continue;
+        // i. Let desc be ? O.[[GetOwnProperty]](key).
+        var enumerable = false;
+        const thrown = ffi.v8_Object_IsOwnEnumerableCatching(context, object, key, &enumerable, &threw);
+        if (threw) return rethrow(isolate, thrown);
+        // ii. If desc is not undefined and desc.[[Enumerable]] is true: kind
+        // is key, so append key.
+        if (!enumerable) continue;
+        const name = try toStringOf(isolate, context, key, allocator);
+        results.append(allocator, name) catch {
+            allocator.free(name);
+            return EngineError.OutOfMemory;
+        };
+    }
+    // 4. Return results.
+    return results.toOwnedSlice(allocator) catch EngineError.OutOfMemory;
+}
+
 /// Engine table `convertToPlatformObject`: the platform object `value` is,
 /// or null.
 pub fn convertToPlatformObject(realm: runtime.Context, value: runtime.JSValue) ?*runtime.Instance {

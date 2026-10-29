@@ -444,6 +444,9 @@ pub fn convertToSequenceOfDOMStrings(_: Context, _: JSValue, _: Allocator) Error
 pub fn convertToRecordOfStrings(_: Context, _: JSValue, _: engine.StringConversion, _: engine.StringConversion, _: Allocator) Error![]engine.StringRecordEntry {
     return error.NotSupported;
 }
+pub fn enumerableOwnPropertyKeys(_: Context, _: JSValue, _: Allocator) Error![][]u8 {
+    return error.NotSupported;
+}
 pub fn getCopyOfBufferSourceBytes(_: Context, _: JSValue, _: Allocator) Error!?[]u8 {
     return error.NotSupported;
 }
