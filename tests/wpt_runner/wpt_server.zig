@@ -566,9 +566,20 @@ fn writeTestLockfile(io: std.Io, dir: std.Io.Dir, pid: posix.pid_t, port: u16) !
 /// has to own its port: listen on one nothing else uses for the adopt case,
 /// and name one nothing listens on for the stale case. Writing :8000 as these
 /// tests once did made their outcome depend on whether a real `wpt serve`
-/// happened to be running on the machine.
-const test_live_port: u16 = 38123;
-const test_dead_port: u16 = 38124;
+/// happened to be running on the machine - and a fixed port of their own on
+/// whether another checkout's tests were running on it at the same time (the
+/// pool runs several gates per host): the kernel picks each port.
+fn listenAnywhere() !std.Io.net.Server {
+    const address = try std.Io.net.IpAddress.parseIp4("127.0.0.1", 0);
+    return address.listen(std.testing.io, .{ .mode = .stream });
+}
+
+/// A port nothing listens on: one the kernel picked and has been given back.
+fn freePort() !u16 {
+    var listener = try listenAnywhere();
+    defer listener.deinit(std.testing.io);
+    return listener.socket.address.getPort();
+}
 
 test "a live lockfile is adopted, not owned" {
     // Under --supervise the parent starts the server and every child finds it
@@ -583,18 +594,18 @@ test "a live lockfile is adopted, not owned" {
     defer allocator.free(root);
 
     // A real listener on the port, so the probe has something to answer it.
-    const live_addr = try std.Io.net.IpAddress.parseIp4("127.0.0.1", test_live_port);
-    var listener = try live_addr.listen(std.testing.io, .{ .mode = .stream });
+    var listener = try listenAnywhere();
     defer listener.deinit(std.testing.io);
+    const port = listener.socket.address.getPort();
 
-    try writeTestLockfile(std.testing.io, tmp.dir, std.c.getpid(), test_live_port);
+    try writeTestLockfile(std.testing.io, tmp.dir, std.c.getpid(), port);
 
     const server = try WptServer.init(allocator, root);
     defer server.deinit();
 
     try std.testing.expect(try server.checkExistingServer());
     try std.testing.expectEqual(std.c.getpid(), server.pid.?);
-    try std.testing.expectEqual(test_live_port, server.port);
+    try std.testing.expectEqual(port, server.port);
     try std.testing.expect(!server.we_spawned);
 
     // Still there: adopting must not consume the lockfile the owner wrote.
@@ -614,7 +625,7 @@ test "a lockfile naming a dead process is cleared" {
     defer allocator.free(root);
 
     // Above any pid_max, so kill() cannot find it and cannot ever be reused.
-    try writeTestLockfile(std.testing.io, tmp.dir, 2147483646, test_dead_port);
+    try writeTestLockfile(std.testing.io, tmp.dir, 2147483646, try freePort());
 
     const server = try WptServer.init(allocator, root);
     defer server.deinit();
@@ -638,7 +649,7 @@ test "no lockfile and nothing on the port means no server to adopt" {
     defer server.deinit();
     // The port is probed with or without a lockfile, so it must be one
     // nothing listens on - not :8000, where a real `wpt serve` may run.
-    server.port = test_dead_port;
+    server.port = try freePort();
     server.probe_window_ms = 300;
 
     try std.testing.expect(!try server.checkExistingServer());
@@ -710,16 +721,15 @@ test "a lockfile naming a dead pid is adopted, and left as it is, while its port
     // spawned, died at bind and wrote its pid anyway). The port is what
     // answers the question, and adopting rewrites nothing.
     const allocator = std.testing.allocator;
-    const port: u16 = 38125;
 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(root);
 
-    const address = try std.Io.net.IpAddress.parseIp4("127.0.0.1", port);
-    var listener = try address.listen(std.testing.io, .{ .mode = .stream });
+    var listener = try listenAnywhere();
     defer listener.deinit(std.testing.io);
+    const port = listener.socket.address.getPort();
     try writeTestLockfile(std.testing.io, tmp.dir, no_such_pid, port);
 
     var launcher: BindingLauncher = .{ .pid = no_such_pid - 1 };
@@ -734,7 +744,8 @@ test "a lockfile naming a dead pid is adopted, and left as it is, while its port
     try std.testing.expect(!server.we_spawned);
     try std.testing.expect(server.pid == null);
     try std.testing.expectEqual(port, server.port);
-    try expectLockfile(tmp.dir, "2147483640:38125\n");
+    var expected: [64]u8 = undefined;
+    try expectLockfile(tmp.dir, try std.fmt.bufPrint(&expected, "{d}:{d}\n", .{ no_such_pid, port }));
 }
 
 test "a missing lockfile is no reason to spawn while the port is served" {
@@ -742,16 +753,15 @@ test "a missing lockfile is no reason to spawn while the port is served" {
     // every runner that started spawned its own `wpt serve`, which died at
     // bind, and then deleted the lock again at exit.
     const allocator = std.testing.allocator;
-    const port: u16 = 38126;
 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(root);
 
-    const address = try std.Io.net.IpAddress.parseIp4("127.0.0.1", port);
-    var listener = try address.listen(std.testing.io, .{ .mode = .stream });
+    var listener = try listenAnywhere();
     defer listener.deinit(std.testing.io);
+    const port = listener.socket.address.getPort();
 
     var launcher: BindingLauncher = .{ .pid = no_such_pid };
     defer launcher.deinit();
@@ -770,16 +780,15 @@ test "a missing lockfile is no reason to spawn while the port is served" {
 
 test "an unreadable lockfile is no reason to spawn while the port is served" {
     const allocator = std.testing.allocator;
-    const port: u16 = 38127;
 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(root);
 
-    const address = try std.Io.net.IpAddress.parseIp4("127.0.0.1", port);
-    var listener = try address.listen(std.testing.io, .{ .mode = .stream });
+    var listener = try listenAnywhere();
     defer listener.deinit(std.testing.io);
+    const port = listener.socket.address.getPort();
     {
         var file = try tmp.dir.createFile(std.testing.io, LOCKFILE_NAME, .{});
         defer file.close(std.testing.io);
@@ -804,7 +813,7 @@ test "a port whose first connects fail is retried before its lockfile is called 
     // One failed connect - a busy shared server's accept queue - used to be
     // enough to delete its lock and spawn a second server.
     const allocator = std.testing.allocator;
-    const port: u16 = 38128;
+    const port = try freePort();
 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -838,16 +847,15 @@ test "a spawned server that dies at bind while the port answers is adopted, and 
     // be served by someone else: our child dies at bind, and the lock must
     // still name the server that answers, not the corpse.
     const allocator = std.testing.allocator;
-    const port: u16 = 38129;
 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(root);
 
-    const address = try std.Io.net.IpAddress.parseIp4("127.0.0.1", port);
-    var listener = try address.listen(std.testing.io, .{ .mode = .stream });
+    var listener = try listenAnywhere();
     defer listener.deinit(std.testing.io);
+    const port = listener.socket.address.getPort();
     try writeTestLockfile(std.testing.io, tmp.dir, std.c.getpid(), port);
 
     var launcher: BindingLauncher = .{ .pid = no_such_pid };
@@ -877,18 +885,19 @@ test "stop removes the lockfile only while it names our own pid" {
 
     const server = try WptServer.init(allocator, root);
     defer server.deinit();
-    server.port = test_dead_port;
+    const port = try freePort();
+    server.port = port;
 
     // Another runner's server has the lock now: ours is not to remove.
-    try writeTestLockfile(std.testing.io, tmp.dir, std.c.getpid(), test_dead_port);
+    try writeTestLockfile(std.testing.io, tmp.dir, std.c.getpid(), port);
     server.pid = no_such_pid;
     server.we_spawned = true;
     server.stop();
     var expected: [64]u8 = undefined;
-    try expectLockfile(tmp.dir, try std.fmt.bufPrint(&expected, "{d}:{d}\n", .{ std.c.getpid(), test_dead_port }));
+    try expectLockfile(tmp.dir, try std.fmt.bufPrint(&expected, "{d}:{d}\n", .{ std.c.getpid(), port }));
 
     // Our own lock goes with our server.
-    try writeTestLockfile(std.testing.io, tmp.dir, no_such_pid, test_dead_port);
+    try writeTestLockfile(std.testing.io, tmp.dir, no_such_pid, port);
     server.pid = no_such_pid;
     server.we_spawned = true;
     server.stop();
@@ -913,7 +922,7 @@ test "two runners starting together spawn one server between them" {
     // finds nothing and would spawn; one at a time decides, and the second
     // adopts what the first started.
     const allocator = std.testing.allocator;
-    const port: u16 = 38130;
+    const port = try freePort();
 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
