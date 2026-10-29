@@ -4551,6 +4551,35 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&b.addRunArtifact(lint_refcount_tests).step);
 
     // ========================================================================
+    // AUDIT: @hasDecl answers that Zig 0.17 changes (roadmap zig-017)
+    // ========================================================================
+    // Zig 0.17 answers @hasDecl true only for pub declarations; 0.16 also for a
+    // non-pub one declared in the same file as the @hasDecl, and nothing fails
+    // to compile when the answer flips. tools/hasdecl_audit.zig reads every
+    // @hasDecl through std.zig.Ast and lists those whose answer can change
+    // (`-- --all` lists every site; `-- --instrument=<dir>` writes probe copies
+    // that a 0.16 build turns into exact HASDECL-FLIP compile logs). A report,
+    // not a ratchet; its tests run in `zig build test`. Flips left for the port
+    // window because another lane holds their file are reported `known`.
+    const hasdecl_audit_module = b.createModule(.{
+        .root_source_file = b.path("tools/hasdecl_audit.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const hasdecl_audit_exe = b.addExecutable(.{
+        .name = "hasdecl_audit",
+        .root_module = hasdecl_audit_module,
+    });
+    const hasdecl_audit = b.addRunArtifact(hasdecl_audit_exe);
+    // It reads the tree, which the build graph does not track.
+    hasdecl_audit.has_side_effects = true;
+    hasdecl_audit.setCwd(b.path("."));
+    if (b.args) |args| hasdecl_audit.addArgs(args);
+    b.step("hasdecl-audit", "List the @hasDecl answers Zig 0.17 changes (-- --all, -- --instrument=<dir>)").dependOn(&hasdecl_audit.step);
+    test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = hasdecl_audit_module })).step);
+
+    // ========================================================================
     // LINT: long-lived hash maps that never clear their tombstones
     // ========================================================================
     // std.HashMap deletes by tombstone and never grows while puts and removes
