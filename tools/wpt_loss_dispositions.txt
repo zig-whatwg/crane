@@ -475,3 +475,43 @@ why = The same sweep-only name as the generation 178 disposition and nav2 C2's i
 pair.1 = base 3/3; tip 3/3
 pair.2 = base 3/3; tip 3/3
 pair.3 = base 3/3; tip 3/3
+
+[permissions/permissions-query-permissions-policy-attribute.https.sub.html]
+generation = 195
+kind = flake
+why = Sweep-only: 3 -> 0 passing in the generation 195 sweep (OK, none passed), so newly blocking for that one sweep. Isolated, one process each, --parallel=1, alternating, frozen main-338f50ea20 (base, generation 194) vs main-63a713a7f2 (tip, generation 195: rendering2, refcount8, nav2 E, leaks1), integrator 2026-10-29 on chat.local: OK 3/3 on both sides in every pair. Evidence ~/crane-work/verify-bins/gen195-losses-1414/ on chat.local.
+pair.1 = base 3/3; tip 3/3
+pair.2 = base 3/3; tip 3/3
+pair.3 = base 3/3; tip 3/3
+
+[html/cross-origin-opener-policy/coep-with-same-origin.https.html]
+generation = 195
+kind = flake
+why = The cross-origin-opener-policy sweep-only stall (as at generations 177, 181, 190 and 194): OK 1/1 -> TIMEOUT in the generation 195 sweep. Isolated, the same method, frozen main-338f50ea20 vs main-63a713a7f2, integrator 2026-10-29: OK 1/1 on both sides in every pair. Evidence ~/crane-work/verify-bins/gen195-losses-1414/.
+pair.1 = base 1/1; tip 1/1
+pair.2 = base 1/1; tip 1/1
+pair.3 = base 1/1; tip 1/1
+
+[service-workers/service-worker/static-router-no-fetch-handler.https.html]
+generation = 195
+kind = flake
+why = The same intermittent name nav2 E's and refcount8's isolated pairs showed equal on both sides (3=3): -1 in the generation 195 sweep. Isolated, the same method, integrator 2026-10-29: 3/3 on both sides in every pair. Evidence ~/crane-work/verify-bins/gen195-losses-1414/.
+pair.1 = base 3/3; tip 3/3
+pair.2 = base 3/3; tip 3/3
+pair.3 = base 3/3; tip 3/3
+
+[navigation-timing/test-performance-attributes.sub.html]
+generation = 195
+kind = flake
+why = The known flake disposed at generations 175, 177, 179, 184 and 188 (secureConnectionStart >= connectStart, which passes about 1 run in 3): 1 -> 0 in the generation 195 sweep. Isolated, the same method, integrator 2026-10-29: base 0, 0, 0 and tip 0, 1, 0. The same assertion fails on both sides.
+pair.1 = base 0/1; tip 0/1
+pair.2 = base 0/1; tip 1/1
+pair.3 = base 0/1; tip 0/1
+
+[html/semantics/scripting-1/the-script-element/module/dynamic-import/microtasks/basic.any.js]
+generation = 195
+kind = flake
+why = The same sweep-only sharedworker name as the generation 179, 185 and 194 dispositions: 9 -> 8 in the generation 195 sweep. Isolated, the same method, integrator 2026-10-29: 9/9 on both sides in every pair.
+pair.1 = base 9/9; tip 9/9
+pair.2 = base 9/9; tip 9/9
+pair.3 = base 9/9; tip 9/9
