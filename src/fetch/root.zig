@@ -31,6 +31,7 @@
 //! ```
 
 pub const internal = @import("internal/root.zig");
+pub const deferred_fetch = @import("deferred_fetch.zig");
 pub const mixed_content = @import("mixed_content.zig");
 pub const referrer_policy = @import("referrer_policy");
 pub const cors = @import("cors/root.zig");

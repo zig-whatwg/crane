@@ -31,6 +31,111 @@ pub const TokenListDictionary = struct {
     }
 };
 
+/// Permissions Policy §9.2 consumes only Tokens and Strings. Other bare
+/// items are validated by the same RFC 9651 parser, then discarded.
+pub const PolicyItem = union(enum) { token: []const u8, string: []u8 };
+pub const PolicyMember = struct {
+    key: []const u8,
+    inner_list: bool,
+    items: []PolicyItem,
+    /// A Token parameter, borrowing the input. A String is not an endpoint.
+    report_to: ?[]const u8,
+
+    fn deinit(self: PolicyMember, allocator: Allocator) void {
+        for (self.items) |item| if (item == .string) allocator.free(item.string);
+        allocator.free(self.items);
+    }
+};
+pub const PolicyDictionary = struct {
+    members: std.ArrayListUnmanaged(PolicyMember) = .empty,
+
+    pub fn deinit(self: *PolicyDictionary, allocator: Allocator) void {
+        for (self.members.items) |member| member.deinit(allocator);
+        self.members.deinit(allocator);
+    }
+};
+
+/// RFC 9651 §4.2's Dictionary projection for Permissions Policy. Keys,
+/// Tokens and report-to borrow the input; item arrays and Strings are owned.
+/// Scalar versus Inner List is preserved for the caller's field semantics.
+pub fn parsePolicyDictionary(allocator: Allocator, input: []const u8) Error!PolicyDictionary {
+    for (input) |c| if (c > 127) return error.InvalidField;
+    var parser: Parser = .{ .allocator = allocator, .input = input };
+    parser.spaces();
+    var result: PolicyDictionary = .{};
+    errdefer result.deinit(allocator);
+    while (parser.peek() != null) {
+        const key = try parser.key();
+        const member = try policyMember(&parser, key);
+        var owned = true;
+        defer if (owned) member.deinit(allocator);
+        // §4.2.2 steps 2.4–5: the last key replaces the value in place.
+        var replaced = false;
+        for (result.members.items) |*entry| {
+            if (!std.mem.eql(u8, entry.key, key)) continue;
+            entry.deinit(allocator);
+            entry.* = member;
+            replaced = true;
+            break;
+        }
+        if (!replaced) try result.members.append(allocator, member);
+        owned = false;
+        parser.ows();
+        if (parser.peek() == null) break;
+        if (!parser.consume(',')) return error.InvalidField;
+        parser.ows();
+        if (parser.peek() == null) return error.InvalidField;
+    }
+    return result;
+}
+
+fn policyMember(parser: *Parser, key: []const u8) Error!PolicyMember {
+    var items: std.ArrayListUnmanaged(PolicyItem) = .empty;
+    errdefer {
+        for (items.items) |item| if (item == .string) parser.allocator.free(item.string);
+        items.deinit(parser.allocator);
+    }
+    var inner_list = false;
+    if (parser.consume('=')) {
+        inner_list = parser.consume('(');
+        if (inner_list) {
+            // §4.2.1.2: each item has its own discarded parameters;
+            // report-to belongs to the list, after its closing parenthesis.
+            while (true) {
+                parser.spaces();
+                if (parser.consume(')')) break;
+                try appendPolicyItem(parser, &items);
+                try parser.parameters();
+                if (parser.peek() != ' ' and parser.peek() != ')') return error.InvalidField;
+            }
+        } else try appendPolicyItem(parser, &items);
+    }
+    const report_to = try policyParameters(parser);
+    return .{ .key = key, .inner_list = inner_list, .items = try items.toOwnedSlice(parser.allocator), .report_to = report_to };
+}
+
+fn appendPolicyItem(parser: *Parser, items: *std.ArrayListUnmanaged(PolicyItem)) Error!void {
+    const item = try parser.bareItem();
+    errdefer if (item.string) |string| parser.allocator.free(string);
+    if (item.string) |string| {
+        try items.append(parser.allocator, .{ .string = string });
+    } else if (item.token) |token| try items.append(parser.allocator, .{ .token = token });
+}
+
+fn policyParameters(parser: *Parser) Error!?[]const u8 {
+    var report_to: ?[]const u8 = null;
+    while (parser.consume(';')) {
+        parser.spaces();
+        const key = try parser.key();
+        const item: Parser.BareItem = if (parser.consume('=')) try parser.bareItem() else .{};
+        defer if (item.string) |string| parser.allocator.free(string);
+        // §4.2.3.2: duplicate parameter names overwrite earlier ones,
+        // including a later non-Token value clearing a Token endpoint.
+        if (std.mem.eql(u8, key, "report-to")) report_to = item.token;
+    }
+    return report_to;
+}
+
 pub fn parseDictionary(allocator: Allocator, input: []const u8) Error!Dictionary {
     return parseDictionaryAs(Dictionary, allocator, input);
 }

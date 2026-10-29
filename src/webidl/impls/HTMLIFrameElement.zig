@@ -301,14 +301,21 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     // the navigable was given for it (takeNextOrigin), and with the
     // sandboxing flags it was given ("create a new browsing context and
     // document" step 15: the creation sandboxing flags).
-    const origin = takeNextOrigin(browsing_ctx_ptr);
-    defer if (origin) |record| record.release();
+    // A missing supplied origin keeps the previous own-origin behavior.
+    // The policy helper captures inheritance until that origin resolves.
+    const origin = takeNextOrigin(browsing_ctx_ptr) orelse (OriginRecord.createOwn(allocator) catch return null);
+    defer origin.release();
+    var permissions = permissionsForNextDocument(allocator, browsing_ctx_ptr, origin) catch return null;
+    var permissions_taken = false;
+    defer if (!permissions_taken) permissions.deinit();
     const document_instance = interfaces.Document.initWith(allocator, runtime_ctx, .{
         .origin = origin,
+        .permissions_policy = permissions,
         .sandboxing_flags = takeNextSandboxingFlags(browsing_ctx_ptr),
     }) catch {
         return null;
     };
+    permissions_taken = true;
     browsing_ctx_ptr.ancestor_origins_policy = takeIframeReferrerPolicy(browsing_ctx_ptr);
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
     givePolicyContainer(document_instance, browsing_ctx_ptr);
@@ -507,19 +514,25 @@ fn createNavigationDocument(
     // Step 4's origin: navigationParams's, which the navigable was given
     // for it (takeNextOrigin) - shared with its container document for
     // srcdoc, its initiator's for a javascript: URL's String.
-    const origin = takeNextOrigin(browsing_ctx_ptr);
-    defer if (origin) |record| record.release();
+    // A missing supplied origin keeps the previous own-origin behavior.
+    // The policy helper captures inheritance until that origin resolves.
+    const origin = takeNextOrigin(browsing_ctx_ptr) orelse (OriginRecord.createOwn(allocator) catch return null);
+    defer origin.release();
+    var permissions = permissionsForNextDocument(allocator, browsing_ctx_ptr, origin) catch return null;
+    var permissions_taken = false;
+    defer if (!permissions_taken) permissions.deinit();
     // Step 9's active sandboxing flag set: navigationParams's final
     // sandboxing flag set, which the commit gave the navigable for it.
     const sandboxing_flags = takeNextSandboxingFlags(browsing_ctx_ptr);
     const last_modified = takeNextLastModified(browsing_ctx_ptr);
     // HTML create and initialize a Document, step 9: navigation starts loading.
     const document_instance = (if (kind == .xml)
-        interfaces.XMLDocument.initWith(allocator, runtime_ctx, .{ .origin = origin, .sandboxing_flags = sandboxing_flags, .ready_state = ._loading_, .last_modified = last_modified })
+        interfaces.XMLDocument.initWith(allocator, runtime_ctx, .{ .origin = origin, .permissions_policy = permissions, .sandboxing_flags = sandboxing_flags, .ready_state = ._loading_, .last_modified = last_modified })
     else
-        interfaces.Document.initWith(allocator, runtime_ctx, .{ .origin = origin, .sandboxing_flags = sandboxing_flags, .ready_state = ._loading_, .last_modified = last_modified })) catch return null;
+        interfaces.Document.initWith(allocator, runtime_ctx, .{ .origin = origin, .permissions_policy = permissions, .sandboxing_flags = sandboxing_flags, .ready_state = ._loading_, .last_modified = last_modified })) catch return null;
     document_internals.setDocumentType(document_instance, kind) catch {};
     document_internals.setContentType(document_instance, content_type) catch {};
+    permissions_taken = true;
     browsing_ctx_ptr.ancestor_origins_policy = takeIframeReferrerPolicy(browsing_ctx_ptr);
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
     givePolicyContainer(document_instance, browsing_ctx_ptr);
@@ -1060,6 +1073,18 @@ fn takeIframeReferrerPolicy(browsing_context: *html_core.BrowsingContext) fetch_
 fn takeNextOrigin(browsing_context: *html_core.BrowsingContext) ?*OriginRecord {
     const integration = integrationOfBrowsingContext(browsing_context) orelse return null;
     return integration.takeNextOrigin();
+}
+
+/// HTML create-and-initialize step 9 and Permissions Policy §§9.4–9.7.
+/// BORROWS the origin, consumes only the pending response header pair;
+/// the caller transfers the resulting policies on Document construction.
+fn permissionsForNextDocument(allocator: std.mem.Allocator, browsing_context: *html_core.BrowsingContext, origin: *OriginRecord) !html_core.permissions_policy.Policies {
+    const integration = integrationOfBrowsingContext(browsing_context) orelse
+        return dom_module.policy_containers.permissionsForNavigable(allocator, null, origin, .{});
+    var headers = integration.takeNextPermissionsPolicy();
+    defer if (headers) |*owned| owned.deinit();
+    const container: ?*runtime.Instance = if (integration.iframe_element) |raw| @ptrCast(@alignCast(raw)) else null;
+    return dom_module.policy_containers.permissionsForNavigable(allocator, container, origin, if (headers) |owned| owned.values else .{});
 }
 
 /// The source timestamp for the document this navigation is creating.
@@ -2545,6 +2570,14 @@ fn runCommit(context: ?*anyopaque) void {
     integration.setNextPolicyContainer(params_container);
     params_container_taken = true;
     defer integration.setNextPolicyContainer(null);
+    // The response declarations are snapshotted before the Document exists;
+    // parsing waits for its own origin and construction-time container.
+    const policy_headers = html_core.permissions_policy.OwnedHeaders.fromValues(integration.allocator, .{
+        .enforce = if (response.headers) |headers| headers.get("permissions-policy") else null,
+        .report_only = if (response.headers) |headers| headers.get("permissions-policy-report-only") else null,
+    }) catch return endLoadDelay(integration);
+    integration.setNextPermissionsPolicy(policy_headers);
+    defer integration.setNextPermissionsPolicy(null);
     // Step 9's active sandboxing flag set, for whatever makes the document.
     integration.setNextSandboxingFlags(record.final_sandboxing_flags);
     defer integration.setNextSandboxingFlags(.empty);
@@ -6213,24 +6246,14 @@ pub fn get_sandbox(instance: *runtime.Instance) anyerror!*runtime.Instance {
 // Permissions Policy Attributes (§4.8.5)
 // ============================================================================
 
-/// Getter for allow
+/// HTML §2.6.1: allow reflects the content attribute. Its new value is
+/// consumed only when creating the NEXT document, never retroactively.
 pub fn get_allow(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return runtime.DOMString.initInterned("");
-
-    if (internal.allow_attr) |allow| {
-        return runtime.DOMString.initInterned(allow);
-    }
-    return runtime.DOMString.initInterned("");
+    return dom_module.reflection.get(runtime.DOMString, instance, .{ .name = "allow" });
 }
 
-/// Setter for allow
 pub fn set_allow(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-
-    if (internal.allow_attr) |old| {
-        internal.allocator.free(old);
-    }
-    internal.allow_attr = try internal.allocator.dupe(u8, value.asSlice());
+    try dom_module.reflection.set(runtime.DOMString, instance, .{ .name = "allow" }, value);
 }
 
 // ============================================================================

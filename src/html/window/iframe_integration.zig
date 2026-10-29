@@ -427,6 +427,8 @@ pub const IFrameIntegration = struct {
     /// parser applies a meta referrer or runs a script - and cleared after
     /// the commit. Owned until taken.
     next_policy_container: ?@import("fetch").internal.PolicyContainer = null,
+    /// Owned response header pair, captured only for the next Document.
+    next_permissions_policy: ?@import("../permissions_policy.zig").OwnedHeaders = null,
 
     /// The origin the next document this navigable makes is created with
     /// (the Document's `origin` construction argument): its creator's
@@ -509,6 +511,7 @@ pub const IFrameIntegration = struct {
         // needs to free it: removing the iframe ends its navigations, and
         // the integration's deinit follows.
         self.setNextPolicyContainer(null);
+        self.setNextPermissionsPolicy(null);
         // Likewise a pending origin record.
         self.setNextOrigin(null);
 
@@ -691,6 +694,19 @@ pub const IFrameIntegration = struct {
         const container = self.next_policy_container;
         self.next_policy_container = null;
         return container;
+    }
+
+    /// Takes the response header pair, replacing and freeing any pending pair.
+    pub fn setNextPermissionsPolicy(self: *IFrameIntegration, headers: ?@import("../permissions_policy.zig").OwnedHeaders) void {
+        if (self.next_permissions_policy) |*old| old.deinit();
+        self.next_permissions_policy = headers;
+    }
+
+    /// Transfers the pair once; no response pointer survives its owner.
+    pub fn takeNextPermissionsPolicy(self: *IFrameIntegration) ?@import("../permissions_policy.zig").OwnedHeaders {
+        const headers = self.next_permissions_policy;
+        self.next_permissions_policy = null;
+        return headers;
     }
 
     /// The origin record for the next document this navigable makes: the
