@@ -296,6 +296,192 @@ test "Typed OM shadows fallback lists and anchor name lists remain whole values 
     );
 }
 
+// Append to granted tests/v8/om1_typed_maps_test.zig after its measured cases.
+// Q86 Chrome156/Firefox158/Safari27 probe,2026-10-27. UNMEASURED.
+
+test "Q86 page child absent computes auto" {
+    try run(
+        \\(() => {
+        \\const parent = d.createElement('div'); d.body.appendChild(parent); parent.appendChild(el);
+        \\parent.style.setProperty('page', 'Foo');
+        \\el.style.setProperty('page', "");
+        \\check(getComputedStyle(el).getPropertyValue('page') === "auto", 'computed page');
+        \\const read = el.computedStyleMap().get('page');
+        \\check(read instanceof CSSKeywordValue && read.value === "auto", 'computed typed keyword');
+        \\return 'ok'; })()
+    );
+}
+
+test "Q86 page child auto computes auto" {
+    try run(
+        \\(() => {
+        \\const parent = d.createElement('div'); d.body.appendChild(parent); parent.appendChild(el);
+        \\parent.style.setProperty('page', 'Foo');
+        \\el.style.setProperty('page', "auto");
+        \\check(getComputedStyle(el).getPropertyValue('page') === "auto", 'computed page');
+        \\const read = el.computedStyleMap().get('page');
+        \\check(read instanceof CSSKeywordValue && read.value === "auto", 'computed typed keyword');
+        \\return 'ok'; })()
+    );
+}
+
+test "Q86 page child inherit computes Foo" {
+    try run(
+        \\(() => {
+        \\const parent = d.createElement('div'); d.body.appendChild(parent); parent.appendChild(el);
+        \\parent.style.setProperty('page', 'Foo');
+        \\el.style.setProperty('page', "inherit");
+        \\check(getComputedStyle(el).getPropertyValue('page') === "Foo", 'computed page');
+        \\const read = el.computedStyleMap().get('page');
+        \\check(read instanceof CSSKeywordValue && read.value === "Foo", 'computed typed keyword');
+        \\return 'ok'; })()
+    );
+}
+
+test "Q86 page child unset computes auto" {
+    try run(
+        \\(() => {
+        \\const parent = d.createElement('div'); d.body.appendChild(parent); parent.appendChild(el);
+        \\parent.style.setProperty('page', 'Foo');
+        \\el.style.setProperty('page', "unset");
+        \\check(getComputedStyle(el).getPropertyValue('page') === "auto", 'computed page');
+        \\const read = el.computedStyleMap().get('page');
+        \\check(read instanceof CSSKeywordValue && read.value === "auto", 'computed typed keyword');
+        \\return 'ok'; })()
+    );
+}
+
+test "Q86 page child initial computes auto" {
+    try run(
+        \\(() => {
+        \\const parent = d.createElement('div'); d.body.appendChild(parent); parent.appendChild(el);
+        \\parent.style.setProperty('page', 'Foo');
+        \\el.style.setProperty('page', "initial");
+        \\check(getComputedStyle(el).getPropertyValue('page') === "auto", 'computed page');
+        \\const read = el.computedStyleMap().get('page');
+        \\check(read instanceof CSSKeywordValue && read.value === "auto", 'computed typed keyword');
+        \\return 'ok'; })()
+    );
+}
+
+test "Q86 page child Bar computes Bar" {
+    try run(
+        \\(() => {
+        \\const parent = d.createElement('div'); d.body.appendChild(parent); parent.appendChild(el);
+        \\parent.style.setProperty('page', 'Foo');
+        \\el.style.setProperty('page', "Bar");
+        \\check(getComputedStyle(el).getPropertyValue('page') === "Bar", 'computed page');
+        \\const read = el.computedStyleMap().get('page');
+        \\check(read instanceof CSSKeywordValue && read.value === "Bar", 'computed typed keyword');
+        \\return 'ok'; })()
+    );
+}
+
+test "Q86 page keyword parse and maps auto" {
+    try run(
+        \\(() => {
+        \\const source = "auto", specified = "auto", value = "auto";
+        \\const parsed = CSSStyleValue.parse('page', source);
+        \\check(parsed instanceof CSSKeywordValue && parsed.value === value && String(parsed) === specified, 'parsed keyword');
+        \\el.attributeStyleMap.set('page', parsed);
+        \\check(el.style.getPropertyValue('page') === specified, 'specified CSS');
+        \\for (const read of [el.attributeStyleMap.get('page'), el.computedStyleMap().get('page')])
+        \\  check(read instanceof CSSKeywordValue && read.value === value && String(read) === specified, 'reified keyword');
+        \\check(getComputedStyle(el).getPropertyValue('page') === specified, 'computed CSS');
+        \\return 'ok'; })()
+    );
+}
+
+test "Q86 page keyword parse and maps AUTO" {
+    try run(
+        \\(() => {
+        \\const source = "AUTO", specified = "auto", value = "auto";
+        \\const parsed = CSSStyleValue.parse('page', source);
+        \\check(parsed instanceof CSSKeywordValue && parsed.value === value && String(parsed) === specified, 'parsed keyword');
+        \\el.attributeStyleMap.set('page', parsed);
+        \\check(el.style.getPropertyValue('page') === specified, 'specified CSS');
+        \\for (const read of [el.attributeStyleMap.get('page'), el.computedStyleMap().get('page')])
+        \\  check(read instanceof CSSKeywordValue && read.value === value && String(read) === specified, 'reified keyword');
+        \\check(getComputedStyle(el).getPropertyValue('page') === specified, 'computed CSS');
+        \\return 'ok'; })()
+    );
+}
+
+test "Q86 page keyword parse and maps Foo" {
+    try run(
+        \\(() => {
+        \\const source = "Foo", specified = "Foo", value = "Foo";
+        \\const parsed = CSSStyleValue.parse('page', source);
+        \\check(parsed instanceof CSSKeywordValue && parsed.value === value && String(parsed) === specified, 'parsed keyword');
+        \\el.attributeStyleMap.set('page', parsed);
+        \\check(el.style.getPropertyValue('page') === specified, 'specified CSS');
+        \\for (const read of [el.attributeStyleMap.get('page'), el.computedStyleMap().get('page')])
+        \\  check(read instanceof CSSKeywordValue && read.value === value && String(read) === specified, 'reified keyword');
+        \\check(getComputedStyle(el).getPropertyValue('page') === specified, 'computed CSS');
+        \\return 'ok'; })()
+    );
+}
+
+test "Q86 page keyword parse and maps FOO" {
+    try run(
+        \\(() => {
+        \\const source = "FOO", specified = "FOO", value = "FOO";
+        \\const parsed = CSSStyleValue.parse('page', source);
+        \\check(parsed instanceof CSSKeywordValue && parsed.value === value && String(parsed) === specified, 'parsed keyword');
+        \\el.attributeStyleMap.set('page', parsed);
+        \\check(el.style.getPropertyValue('page') === specified, 'specified CSS');
+        \\for (const read of [el.attributeStyleMap.get('page'), el.computedStyleMap().get('page')])
+        \\  check(read instanceof CSSKeywordValue && read.value === value && String(read) === specified, 'reified keyword');
+        \\check(getComputedStyle(el).getPropertyValue('page') === specified, 'computed CSS');
+        \\return 'ok'; })()
+    );
+}
+
+test "Q86 page keyword parse and maps f\\6f o" {
+    try run(
+        \\(() => {
+        \\const source = "f\\6f o", specified = "foo", value = "foo";
+        \\const parsed = CSSStyleValue.parse('page', source);
+        \\check(parsed instanceof CSSKeywordValue && parsed.value === value && String(parsed) === specified, 'parsed keyword');
+        \\el.attributeStyleMap.set('page', parsed);
+        \\check(el.style.getPropertyValue('page') === specified, 'specified CSS');
+        \\for (const read of [el.attributeStyleMap.get('page'), el.computedStyleMap().get('page')])
+        \\  check(read instanceof CSSKeywordValue && read.value === value && String(read) === specified, 'reified keyword');
+        \\check(getComputedStyle(el).getPropertyValue('page') === specified, 'computed CSS');
+        \\return 'ok'; })()
+    );
+}
+
+test "Q86 page keyword parse and maps \\31 23" {
+    try run(
+        \\(() => {
+        \\const source = "\\31 23", specified = "\\31 23", value = "123";
+        \\const parsed = CSSStyleValue.parse('page', source);
+        \\check(parsed instanceof CSSKeywordValue && parsed.value === value && String(parsed) === specified, 'parsed keyword');
+        \\el.attributeStyleMap.set('page', parsed);
+        \\check(el.style.getPropertyValue('page') === specified, 'specified CSS');
+        \\for (const read of [el.attributeStyleMap.get('page'), el.computedStyleMap().get('page')])
+        \\  check(read instanceof CSSKeywordValue && read.value === value && String(read) === specified, 'reified keyword');
+        \\check(getComputedStyle(el).getPropertyValue('page') === specified, 'computed CSS');
+        \\return 'ok'; })()
+    );
+}
+
+test "Q86 page keyword parse and maps a\\ b" {
+    try run(
+        \\(() => {
+        \\const source = "a\\ b", specified = "a\\ b", value = "a b";
+        \\const parsed = CSSStyleValue.parse('page', source);
+        \\check(parsed instanceof CSSKeywordValue && parsed.value === value && String(parsed) === specified, 'parsed keyword');
+        \\el.attributeStyleMap.set('page', parsed);
+        \\check(el.style.getPropertyValue('page') === specified, 'specified CSS');
+        \\for (const read of [el.attributeStyleMap.get('page'), el.computedStyleMap().get('page')])
+        \\  check(read instanceof CSSKeywordValue && read.value === value && String(read) === specified, 'reified keyword');
+        \\check(getComputedStyle(el).getPropertyValue('page') === specified, 'computed CSS');
+        \\return 'ok'; })()
+    );
+}
+
 // Q87/Q88: append to the granted native map family. UNMEASURED.
 
 test "Q87 image classes url(a.png)" {

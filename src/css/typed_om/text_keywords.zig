@@ -55,6 +55,7 @@ pub fn classify(allocator: Allocator, longhand: properties.Longhand, canonical: 
         .font_language_override,
         .text_emphasis_style,
         .color_scheme,
+        .page, // Q86's named fifth custom-name exception; singleton only.
         => {},
         else => return null,
     }

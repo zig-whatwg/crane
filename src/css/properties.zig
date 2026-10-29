@@ -333,6 +333,9 @@ pub const Longhand = enum(u16) {
     text_box_trim,
     text_box_edge,
 
+    // Paged Media3 §8.1. Append so existing rare-group members stay put.
+    page,
+
     pub const count = @typeInfo(Longhand).@"enum".fields.len;
 
     /// The property name.
@@ -549,6 +552,7 @@ pub const Grammar = enum {
     stroke_width,
     background,
     border_radius_corner,
+    page_name,
 };
 
 pub const Info = struct {
@@ -601,6 +605,9 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .initial_letter, .inherited = false, .initial = Value.kw(.normal), .grammar = .inline_value },
         .{ .longhand = .text_box_trim, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .trim_start, .trim_end, .trim_both } },
         .{ .longhand = .text_box_edge, .inherited = true, .initial = Value.kw(.auto), .grammar = .inline_value },
+        // Paged Media3 §8.1; Q86 Chrome/Firefox choose noninheritance.
+        // The computed value is specified; ancestor resolution is a used value.
+        .{ .longhand = .page, .inherited = false, .initial = Value.kw(.auto), .grammar = .page_name },
         .{ .longhand = .hanging_punctuation, .inherited = true, .initial = Value.kw(.none), .grammar = .text_value },
         .{ .longhand = .hyphenate_limit_lines, .inherited = true, .initial = Value.kw(.no_limit), .grammar = .text_value },
         // Text4 §7.6, WebKit's cssTextGroupAlignEnabled implementation.
@@ -1592,7 +1599,30 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .border_image => return @import("border_image_values.zig").parse(options, l, stream),
         .stroke_width => return @import("svg_paint.zig").parseStrokeWidth(options, stream),
         .background => return @import("background_values.zig").parse(options, l, stream),
+        .page_name => return pageName(options, stream),
     }
+}
+
+/// Paged Media3 §8.1: auto | <custom-ident>. Q86 keeps the native canonical
+/// identifier in the existing SharedText representation, preserving case.
+fn pageName(options: ParseOptions, stream: *Stream) Allocator.Error!?Value {
+    const token = stream.peek();
+    if (token.token_type != .ident) return null;
+    if (tokenizer_mod.nameEql(token.value, "auto")) {
+        _ = stream.next();
+        return Value.kw(.auto);
+    }
+    const allocator = options.allocator;
+    const decoded = try tokenizer_mod.decode(allocator, token.value);
+    defer allocator.free(decoded);
+    // Values4 §4.2 excludes default and every CSS-wide keyword. The latter
+    // belongs to parseDeclaration's common CSS-wide dispatch, not this grammar.
+    if (values.CssWide.parse(decoded) != null or std.ascii.eqlIgnoreCase(decoded, "default")) return null;
+    const canonical = try serialize_mod.serializeIdentifier(allocator, decoded);
+    defer allocator.free(canonical);
+    const text = try SharedText.create(allocator, canonical);
+    _ = stream.next();
+    return .{ .text = text };
 }
 
 /// Anchor Position 1 §§2.1–2.2: names remain case-sensitive, including
