@@ -210,23 +210,33 @@ pub fn call_queueMicrotask(instance: *runtime.Instance, callback: callbacks.Void
         return error.OutOfMemory;
     };
     task.* = .{ .callback = function, .realm = instance.ctx, .allocator = instance.ctx.allocator };
-    const queued: engine.Error!void = if (instance.ctx.agent) |agent| engine.queueMicrotask(agent, Microtask.run, task) else error.NotSupported;
-    queued catch |err| {
+    // A realm microtask, whose dropped end lets the task go when it never
+    // runs: the realm's end, or the agent's queue discarded under it (a
+    // terminated checkpoint - a worker's termination, a script deadline).
+    // engine.queueMicrotask has none, and the task and its callback leaked
+    // (lane leaks1, tests/v8/microtask_dropped_end_test.zig).
+    engine.queueRealmMicrotask(instance.ctx, &Microtask.steps, task) catch |err| {
         task.deinit();
         return err;
     };
 }
 
 /// A queueMicrotask() callback waiting for its microtask. A realm torn down
-/// meanwhile runs nothing: invoking a callback in it fails, and the task is
-/// let go.
+/// meanwhile runs nothing: the microtask is dropped, and the task let go.
 const Microtask = struct {
     /// OWNED.
     callback: engine.CallbackFunction,
     realm: runtime.Context,
     allocator: std.mem.Allocator,
 
-    fn run(data: ?*anyopaque) void {
+    const steps: engine.PromiseReactionSteps = .{ .fulfilled = run, .dropped = dropped };
+
+    fn dropped(data: ?*anyopaque) void {
+        const self: *Microtask = @ptrCast(@alignCast(data.?));
+        self.deinit();
+    }
+
+    fn run(data: ?*anyopaque, _: runtime.JSValue) void {
         const self: *Microtask = @ptrCast(@alignCast(data.?));
         defer self.deinit();
         const completion = engine.invokeCallbackFunction(self.realm, &self.callback, .undefined, &.{}, .{
