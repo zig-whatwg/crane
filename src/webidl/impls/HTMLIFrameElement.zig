@@ -301,14 +301,21 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     // the navigable was given for it (takeNextOrigin), and with the
     // sandboxing flags it was given ("create a new browsing context and
     // document" step 15: the creation sandboxing flags).
-    const origin = takeNextOrigin(browsing_ctx_ptr);
-    defer if (origin) |record| record.release();
+    // A missing supplied origin keeps the previous own-origin behavior.
+    // The policy helper captures inheritance until that origin resolves.
+    const origin = takeNextOrigin(browsing_ctx_ptr) orelse (OriginRecord.createOwn(allocator) catch return null);
+    defer origin.release();
+    var permissions = permissionsForNextDocument(allocator, browsing_ctx_ptr, origin) catch return null;
+    var permissions_taken = false;
+    defer if (!permissions_taken) permissions.deinit();
     const document_instance = interfaces.Document.initWith(allocator, runtime_ctx, .{
         .origin = origin,
+        .permissions_policy = permissions,
         .sandboxing_flags = takeNextSandboxingFlags(browsing_ctx_ptr),
     }) catch {
         return null;
     };
+    permissions_taken = true;
     browsing_ctx_ptr.ancestor_origins_policy = takeIframeReferrerPolicy(browsing_ctx_ptr);
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
     givePolicyContainer(document_instance, browsing_ctx_ptr);
@@ -507,19 +514,25 @@ fn createNavigationDocument(
     // Step 4's origin: navigationParams's, which the navigable was given
     // for it (takeNextOrigin) - shared with its container document for
     // srcdoc, its initiator's for a javascript: URL's String.
-    const origin = takeNextOrigin(browsing_ctx_ptr);
-    defer if (origin) |record| record.release();
+    // A missing supplied origin keeps the previous own-origin behavior.
+    // The policy helper captures inheritance until that origin resolves.
+    const origin = takeNextOrigin(browsing_ctx_ptr) orelse (OriginRecord.createOwn(allocator) catch return null);
+    defer origin.release();
+    var permissions = permissionsForNextDocument(allocator, browsing_ctx_ptr, origin) catch return null;
+    var permissions_taken = false;
+    defer if (!permissions_taken) permissions.deinit();
     // Step 9's active sandboxing flag set: navigationParams's final
     // sandboxing flag set, which the commit gave the navigable for it.
     const sandboxing_flags = takeNextSandboxingFlags(browsing_ctx_ptr);
     const last_modified = takeNextLastModified(browsing_ctx_ptr);
     // HTML create and initialize a Document, step 9: navigation starts loading.
     const document_instance = (if (kind == .xml)
-        interfaces.XMLDocument.initWith(allocator, runtime_ctx, .{ .origin = origin, .sandboxing_flags = sandboxing_flags, .ready_state = ._loading_, .last_modified = last_modified })
+        interfaces.XMLDocument.initWith(allocator, runtime_ctx, .{ .origin = origin, .permissions_policy = permissions, .sandboxing_flags = sandboxing_flags, .ready_state = ._loading_, .last_modified = last_modified })
     else
-        interfaces.Document.initWith(allocator, runtime_ctx, .{ .origin = origin, .sandboxing_flags = sandboxing_flags, .ready_state = ._loading_, .last_modified = last_modified })) catch return null;
+        interfaces.Document.initWith(allocator, runtime_ctx, .{ .origin = origin, .permissions_policy = permissions, .sandboxing_flags = sandboxing_flags, .ready_state = ._loading_, .last_modified = last_modified })) catch return null;
     document_internals.setDocumentType(document_instance, kind) catch {};
     document_internals.setContentType(document_instance, content_type) catch {};
+    permissions_taken = true;
     browsing_ctx_ptr.ancestor_origins_policy = takeIframeReferrerPolicy(browsing_ctx_ptr);
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
     givePolicyContainer(document_instance, browsing_ctx_ptr);
@@ -983,6 +996,18 @@ const Navigation = struct {
         // after the record is gone (lane nav2 C1).
         const wait = self.traversal_wait;
         defer if (wait) |w| html_core.navigation.traversal_queue.TraversalQueue.populationEnded(w.navigables, w.traversable_id, w.token, w.navigable);
+        // A traversal's population that ends without unloading its navigable's
+        // document - it failed, was aborted, or made no document - ends the
+        // navigable's "traversal" ("apply the history step" 14.10.1 for an
+        // update-only change: new navigations may start). Its commit ended it
+        // already ("deactivate a document for a cross-document navigation"
+        // step 5.2). The integration outlives its records (its deinit
+        // abandons them first).
+        const integration = self.integration;
+        if (integration.ongoing_navigation == .traversal and integration.traversal_navigation == self.id) {
+            integration.ongoing_navigation = .none;
+            integration.traversal_navigation = 0;
+        }
         // Terminating a fetch runs neither `done` nor `gone`.
         if (self.fetch) |f| f.terminate();
         dom_module.service_worker_clients.release(self.reserved_client);
@@ -1060,6 +1085,18 @@ fn takeIframeReferrerPolicy(browsing_context: *html_core.BrowsingContext) fetch_
 fn takeNextOrigin(browsing_context: *html_core.BrowsingContext) ?*OriginRecord {
     const integration = integrationOfBrowsingContext(browsing_context) orelse return null;
     return integration.takeNextOrigin();
+}
+
+/// HTML create-and-initialize step 9 and Permissions Policy §§9.4–9.7.
+/// BORROWS the origin, consumes only the pending response header pair;
+/// the caller transfers the resulting policies on Document construction.
+fn permissionsForNextDocument(allocator: std.mem.Allocator, browsing_context: *html_core.BrowsingContext, origin: *OriginRecord) !html_core.permissions_policy.Policies {
+    const integration = integrationOfBrowsingContext(browsing_context) orelse
+        return dom_module.policy_containers.permissionsForNavigable(allocator, null, origin, .{});
+    var headers = integration.takeNextPermissionsPolicy();
+    defer if (headers) |*owned| owned.deinit();
+    const container: ?*runtime.Instance = if (integration.iframe_element) |raw| @ptrCast(@alignCast(raw)) else null;
+    return dom_module.policy_containers.permissionsForNavigable(allocator, container, origin, if (headers) |owned| owned.values else .{});
 }
 
 /// The source timestamp for the document this navigation is creating.
@@ -1145,8 +1182,12 @@ fn setOngoingNavigation(integration: *IFrameIntegration, value: navigate_steps.O
                 (if (navigationById(old)) |record| navigate_steps.isJavascript(record.url) else false);
             if (!queued_javascript) endNavigation(old);
         },
-        else => {},
+        // A traversal's population (its navigable going, or "stop" - which
+        // only a navigation ID's reaches).
+        .traversal => if (integration.traversal_navigation != 0) endNavigation(integration.traversal_navigation),
+        .none => {},
     }
+    integration.traversal_navigation = 0;
     // Step 3.
     integration.ongoing_navigation = value;
 }
@@ -1155,6 +1196,20 @@ fn setOngoingNavigation(integration: *IFrameIntegration, value: navigate_steps.O
 /// navigation in flight.
 fn abandonNavigationsOf(integration: *IFrameIntegration) void {
     setOngoingNavigation(integration, .none);
+}
+
+/// IFrameIntegration's end_ongoing_navigation_callback: the navigation in
+/// flight - an ID's, or a traversal's population - ends, and the navigation
+/// API is not informed ("apply the history step" 8.3 replaces it directly;
+/// a traversal's population replacing another's, as a coalesced delta
+/// traversal does, the same).
+fn endOngoingNavigationOf(integration: *IFrameIntegration) void {
+    switch (integration.ongoing_navigation) {
+        .id => |old| endNavigation(old),
+        .traversal => if (integration.traversal_navigation != 0) endNavigation(integration.traversal_navigation),
+        .none => {},
+    }
+    integration.traversal_navigation = 0;
 }
 
 /// The navigable's active document, as its browsing context records it -
@@ -1302,9 +1357,11 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // delaying load events to true." A popup has no parent.
     if (integration.iframe_element != null) integration.delaying_load = true;
 
-    // Step 18: a navigable that is traversing ignores navigations. Nothing
-    // traverses yet, so this never holds.
-    if (integration.ongoing_navigation == .traversal) return;
+    // Step 18: "If navigable's ongoing navigation is "traversal", then ...
+    // return" - a navigable that is traversing ("apply the history step"
+    // step 8.4, until its target document unloads the old one) ignores
+    // navigations. Not the traversal's own population.
+    if (options.traversal_entry == 0 and integration.ongoing_navigation == .traversal) return;
 
     // Step 7's navigation ID, and step 19: set the ongoing navigation - which
     // ends any earlier one.
@@ -1318,11 +1375,14 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         // that led here, and its API method tracker, stay ongoing: a
         // cross-document traversal's promises never settle
         // (navigation-methods/return-value/reload.html, reload-no-args.html).
-        switch (integration.ongoing_navigation) {
-            .id => |old| endNavigation(old),
-            else => {},
-        }
-        integration.ongoing_navigation = .{ .id = id };
+        const traversing = integration.ongoing_navigation == .traversal;
+        endOngoingNavigationOf(integration);
+        // A traversal's population is the navigation in flight while its
+        // navigable is "traversal" (step 8.4); a reload's, and one whose apply
+        // did not mark it, a navigation ID's.
+        if (traversing and options.traversal_entry != options.traversal_from) {
+            integration.traversal_navigation = id;
+        } else integration.ongoing_navigation = .{ .id = id };
     } else setOngoingNavigation(integration, .{ .id = id });
 
     const record = allocator.create(Navigation) catch return;
@@ -1594,7 +1654,12 @@ fn idOf(context: ?*anyopaque) u64 {
 
 /// Whether navigation `id` is still `integration`'s ongoing navigation.
 fn isOngoing(integration: *IFrameIntegration, id: u64) bool {
-    return integration.ongoing_navigation.eql(.{ .id = id });
+    return switch (integration.ongoing_navigation) {
+        .id => |ongoing| ongoing == id,
+        // "Apply the history step" step 8.4: the traversal's population.
+        .traversal => integration.traversal_navigation != 0 and integration.traversal_navigation == id,
+        .none => false,
+    };
 }
 
 /// The runtime context of `integration`'s content navigable, if it has one.
@@ -2545,6 +2610,14 @@ fn runCommit(context: ?*anyopaque) void {
     integration.setNextPolicyContainer(params_container);
     params_container_taken = true;
     defer integration.setNextPolicyContainer(null);
+    // The response declarations are snapshotted before the Document exists;
+    // parsing waits for its own origin and construction-time container.
+    const policy_headers = html_core.permissions_policy.OwnedHeaders.fromValues(integration.allocator, .{
+        .enforce = if (response.headers) |headers| headers.get("permissions-policy") else null,
+        .report_only = if (response.headers) |headers| headers.get("permissions-policy-report-only") else null,
+    }) catch return endLoadDelay(integration);
+    integration.setNextPermissionsPolicy(policy_headers);
+    defer integration.setNextPermissionsPolicy(null);
     // Step 9's active sandboxing flag set, for whatever makes the document.
     integration.setNextSandboxingFlags(record.final_sandboxing_flags);
     defer integration.setNextSandboxingFlags(.empty);
@@ -3453,7 +3526,8 @@ fn traversalInFlight(integration: *IFrameIntegration, waiter: ?dom_module.naviga
     if (std.mem.indexOfScalar(*IFrameIntegration, live_navigables.items, integration) == null) return false;
     const id = switch (integration.ongoing_navigation) {
         .id => |id| id,
-        else => return false,
+        .traversal => integration.traversal_navigation,
+        .none => return false,
     };
     const record = navigationById(id) orelse return false;
     const wait = record.traversal_wait orelse return false;
@@ -5139,6 +5213,7 @@ fn attachRealm(
     // in flight when the navigable goes, and how a retired realm ends.
     integration.navigate_callback = &navigateFromIntegration;
     integration.abandon_navigations_callback = &abandonNavigationsOf;
+    integration.end_ongoing_navigation_callback = &endOngoingNavigationOf;
     integration.retired_realm_destroy = &destroyRetiredRealm;
     integration.deinit_callback = &leaveLiveNavigables;
     joinLiveNavigables(integration);
@@ -5884,6 +5959,7 @@ fn createHostTraversable(allocator: std.mem.Allocator, window: *runtime.Instance
     integration.update_location_callback = &updateIframeLocation;
     integration.navigate_callback = &navigateFromIntegration;
     integration.abandon_navigations_callback = &abandonNavigationsOf;
+    integration.end_ongoing_navigation_callback = &endOngoingNavigationOf;
     // HTML "create and initialize a Document object" steps 6-7 are the
     // host's: its realms are parentless and entered for their life.
     integration.realm_for_document_callback = &realmForHostDocument;
@@ -6213,24 +6289,14 @@ pub fn get_sandbox(instance: *runtime.Instance) anyerror!*runtime.Instance {
 // Permissions Policy Attributes (§4.8.5)
 // ============================================================================
 
-/// Getter for allow
+/// HTML §2.6.1: allow reflects the content attribute. Its new value is
+/// consumed only when creating the NEXT document, never retroactively.
 pub fn get_allow(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = getInternal(instance) orelse return runtime.DOMString.initInterned("");
-
-    if (internal.allow_attr) |allow| {
-        return runtime.DOMString.initInterned(allow);
-    }
-    return runtime.DOMString.initInterned("");
+    return dom_module.reflection.get(runtime.DOMString, instance, .{ .name = "allow" });
 }
 
-/// Setter for allow
 pub fn set_allow(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-
-    if (internal.allow_attr) |old| {
-        internal.allocator.free(old);
-    }
-    internal.allow_attr = try internal.allocator.dupe(u8, value.asSlice());
+    try dom_module.reflection.set(runtime.DOMString, instance, .{ .name = "allow" }, value);
 }
 
 // ============================================================================

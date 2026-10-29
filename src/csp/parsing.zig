@@ -105,6 +105,80 @@ pub fn parseSerializedCSP(
 // Parse Source Expression
 // ============================================================================
 
+/// The permissions-source-expression grammar is CSP's scheme-source /
+/// host-source (§2.3.1), excluding keywords, hashes and nonces. A numeric
+/// port has no grammar bound, but a port above 65535 cannot match a URL.
+pub const PermissionsSourceValidity = enum { invalid, valid, unmatchable_port };
+
+/// An allocation-free grammar preflight for Permissions Policy §9.2.
+/// The existing CSP parser and matcher are deliberately unchanged: policy
+/// declarations must not turn their invalid/unrepresentable ports into an
+/// absent/default port. RFC 3986 §§2.1-2.3, 3.1 and 3.3 supply the scheme
+/// and path productions. Chromium's PermissionsPolicyParser likewise
+/// validates an origin expression before retaining it (33aa7cdb).
+pub fn classifyPermissionsSourceExpression(text: []const u8) PermissionsSourceValidity {
+    if (text.len == 0) return .invalid;
+    if (text[text.len - 1] == ':' and isSchemePart(text[0 .. text.len - 1])) return .valid;
+    var rest = text;
+    if (std.mem.indexOf(u8, rest, "://")) |colon| {
+        // A :// sequence in a path is pchar followed by path separators,
+        // not a scheme prefix. The prefix's slash is the FIRST slash.
+        if (std.mem.indexOfScalar(u8, rest, '/').? == colon + 1) {
+            if (!isSchemePart(rest[0..colon])) return .invalid;
+            rest = rest[colon + 3 ..];
+        }
+    }
+    const path_start = std.mem.indexOfScalar(u8, rest, '/') orelse rest.len;
+    const authority = rest[0..path_start];
+    const port_start = std.mem.indexOfScalar(u8, authority, ':') orelse authority.len;
+    if (!permissionsHostValid(authority[0..port_start])) return .invalid;
+    var result: PermissionsSourceValidity = .valid;
+    if (port_start < authority.len) {
+        const port = authority[port_start + 1 ..];
+        if (port.len == 0) return .invalid;
+        if (!std.mem.eql(u8, port, "*")) {
+            var number: u32 = 0;
+            for (port) |digit| {
+                if (!std.ascii.isDigit(digit)) return .invalid;
+                // Saturation preserves leading-zero forms without overflow.
+                number = @min(65536, number * 10 + (digit - '0'));
+            }
+            if (number > 65535) result = .unmatchable_port;
+        }
+    }
+    if (!permissionsPathValid(rest[path_start..])) return .invalid;
+    return result;
+}
+
+fn permissionsHostValid(text: []const u8) bool {
+    if (std.mem.eql(u8, text, "*")) return true;
+    var host = if (std.mem.startsWith(u8, text, "*.")) text[2..] else text;
+    if (host.len != 0 and host[host.len - 1] == '.') host = host[0 .. host.len - 1];
+    if (host.len == 0) return false;
+    var labels = std.mem.splitScalar(u8, host, '.');
+    while (labels.next()) |label| {
+        if (label.len == 0) return false;
+        for (label) |c| if (!std.ascii.isAlphanumeric(c) and c != '-') return false;
+    }
+    return true;
+}
+
+fn permissionsPathValid(path: []const u8) bool {
+    if (path.len == 0) return true;
+    // RFC 3986 path-absolute: "/" [ segment-nz *( "/" segment ) ].
+    if (path[0] != '/' or (path.len > 1 and path[1] == '/')) return false;
+    var i: usize = 1;
+    while (i < path.len) : (i += 1) {
+        const c = path[i];
+        if (c == '%') {
+            if (path.len - i < 3 or !std.ascii.isHex(path[i + 1]) or !std.ascii.isHex(path[i + 2])) return false;
+            i += 2;
+        } else if (!std.ascii.isAlphanumeric(c) and std.mem.indexOfScalar(u8, "-._~!$&'()*+=:@/", c) == null) return false;
+        // CSP excludes literal ; and , even though RFC pchar permits them.
+    }
+    return true;
+}
+
 /// Parse a source expression token into a SourceExpression.
 /// Spec: CSP Level 3 § 6.7
 pub fn parseSourceExpression(

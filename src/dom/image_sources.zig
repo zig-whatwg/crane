@@ -86,6 +86,8 @@ pub const Implementation = struct {
     /// HTMLImageElement: an element's replaced-element facts - null for an
     /// element that is no img. STOPGAP (decision 19b).
     replaced_facts: ?*const fn (element: *runtime.Instance) ?platform.ReplacedElementFacts = null,
+    /// HTMLImageElement: run the image update for a relevant mutation.
+    update_image_data: ?*const fn (image: *runtime.Instance) void = null,
     /// HTMLCanvasElement: its usability as an image source - its bitmap.
     canvas_usability: ?*const fn (canvas: *runtime.Instance) Usability = null,
     /// CanvasRenderingContext2D: its output bitmap; null for a context whose
@@ -106,10 +108,19 @@ var implementation: Implementation = .{};
 pub fn installImageElement(
     usability: *const fn (*runtime.Instance) Usability,
     replaced_facts: *const fn (*runtime.Instance) ?platform.ReplacedElementFacts,
+    update_image_data: *const fn (*runtime.Instance) void,
 ) void {
     process_start.assertInstalling();
     implementation.image_usability = usability;
     implementation.replaced_facts = replaced_facts;
+    implementation.update_image_data = update_image_data;
+}
+
+/// HTML relevant mutations: the source element notifies following img
+/// siblings through the image owner's installed step.
+pub fn updateImageData(image: *runtime.Instance) void {
+    const steps = implementation.update_image_data orelse return;
+    steps(image);
 }
 
 /// `element`'s facts as a replaced element, when it is one (an img).

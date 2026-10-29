@@ -322,6 +322,43 @@ pub const Keyword = enum(u16) {
     // may declare it; text_values.computeAlignment resolves it.
     _internal_th_center,
 
+    // CSS Flexbox 2 §§5.1–5.2.
+    row,
+    row_reverse,
+    column,
+    column_reverse,
+    wrap_reverse,
+    balance_all,
+
+    // CSS Scroll Snap 1 §§4–5 and Scroll Snap 2 §3.1.
+    x,
+    y,
+    pair,
+    mandatory,
+    proximity,
+    always,
+    nearest,
+
+    // CSS Overflow 3–5 and the legacy box-orient compatibility property.
+    both_edges,
+    ellipsis,
+    no_ellipsis,
+    _webkit_legacy,
+    before,
+    after,
+    links,
+    tabs,
+    inline_axis,
+    block_axis,
+    overlay,
+
+    // CSS Transforms 1/2.
+    flat,
+    preserve_3d,
+    fill_box,
+    stroke_box,
+    view_box,
+
     /// The keyword's CSS spelling.
     pub fn name(self: Keyword) []const u8 {
         return switch (self) {
@@ -437,6 +474,7 @@ pub const Display = struct {
     outer: Outer = .inline_,
     inner: Inner = .flow,
     list_item: bool = false,
+    legacy_webkit_box: bool = false,
     /// For `box == .internal`.
     internal: Internal = .table_row_group,
 
@@ -474,7 +512,7 @@ pub const Display = struct {
         return switch (a.box) {
             .none, .contents => true,
             .internal => a.internal == b.internal,
-            .normal => a.outer == b.outer and a.inner == b.inner and a.list_item == b.list_item,
+            .normal => a.outer == b.outer and a.inner == b.inner and a.list_item == b.list_item and a.legacy_webkit_box == b.legacy_webkit_box,
         };
     }
 
@@ -529,6 +567,8 @@ pub const Display = struct {
             .internal => return out.appendSlice(allocator, self.internal.name()),
             .normal => {},
         }
+        // Overflow 4 §5.3 keeps legacy boxes distinct until clamp adjustment.
+        if (self.legacy_webkit_box) return out.appendSlice(allocator, if (self.outer == .inline_) "-webkit-inline-box" else "-webkit-box");
         if (self.list_item) {
             // <display-listitem> = <display-outside>? && [flow | flow-root]? && list-item
             if (self.outer == .inline_) try out.appendSlice(allocator, "inline ");
@@ -867,6 +907,8 @@ pub const SizingFunction = struct {
 /// A property's value, specified or computed.
 pub const Value = union(enum) {
     keyword: Keyword,
+    box_keywords: @import("box_values.zig").KeywordPair,
+    box_numeric: *@import("box_overflow_values.zig").Numeric,
     length: Length,
     number: f64,
     integer: i32,
@@ -884,6 +926,8 @@ pub const Value = union(enum) {
     caret_pair: *@import("ui_values.zig").CaretPair,
     animation_list: *@import("animation_values.zig").List,
     transform: *@import("transform_values.zig").Transform,
+    transform_list: *@import("box_transform_values.zig").List,
+    transform_origin: *@import("box_transform_values.zig").Origin,
     alignment: @import("alignment.zig").Value,
     position_area: @import("position_area.zig").Area,
     position_visibility: @import("position_visibility.zig").Value,
@@ -943,6 +987,7 @@ pub const Value = union(enum) {
     pub fn retain(self: Value) void {
         if (self == .text_values) return self.text_values.ref();
         if (self == .text_shadow) return self.text_shadow.ref();
+        if (self == .box_numeric) return self.box_numeric.ref();
         if (self == .color) return self.color.retain();
         if (self == .content) return self.content.ref();
         if (self == .cursor) return self.cursor.ref();
@@ -955,6 +1000,8 @@ pub const Value = union(enum) {
         if (self == .caret_pair) return self.caret_pair.ref();
         if (self == .animation_list) return self.animation_list.ref();
         if (self == .transform) return self.transform.ref();
+        if (self == .transform_list) return self.transform_list.ref();
+        if (self == .transform_origin) return self.transform_origin.ref();
         if (self == .pending) return self.pending.ref();
         if (self == .try_fallbacks) return self.try_fallbacks.list.ref();
         if (self == .paint) return self.paint.ref();
@@ -980,6 +1027,7 @@ pub const Value = union(enum) {
     pub fn release(self: Value) void {
         if (self == .text_values) return self.text_values.unref();
         if (self == .text_shadow) return self.text_shadow.unref();
+        if (self == .box_numeric) return self.box_numeric.unref();
         if (self == .color) return self.color.release();
         if (self == .content) return self.content.unref();
         if (self == .cursor) return self.cursor.unref();
@@ -992,6 +1040,8 @@ pub const Value = union(enum) {
         if (self == .caret_pair) return self.caret_pair.unref();
         if (self == .animation_list) return self.animation_list.unref();
         if (self == .transform) return self.transform.unref();
+        if (self == .transform_list) return self.transform_list.unref();
+        if (self == .transform_origin) return self.transform_origin.unref();
         if (self == .pending) return self.pending.unref();
         if (self == .try_fallbacks) return self.try_fallbacks.list.unref();
         if (self == .paint) return self.paint.unref();
@@ -1027,6 +1077,8 @@ pub const Value = union(enum) {
         if (std.meta.activeTag(a) != std.meta.activeTag(b)) return false;
         return switch (a) {
             .keyword => |k| k == b.keyword,
+            .box_keywords => |pair| pair.eql(b.box_keywords),
+            .box_numeric => |numeric| numeric.eql(b.box_numeric),
             .length => |l| l.value == b.length.value and l.unit == b.length.unit,
             .number => |n| n == b.number,
             .integer => |n| n == b.integer,
@@ -1044,6 +1096,8 @@ pub const Value = union(enum) {
             .caret_pair => |pair| pair.eql(b.caret_pair),
             .animation_list => |list| list.eql(b.animation_list),
             .transform => |transform| transform.eql(b.transform),
+            .transform_list => |list| list.eql(b.transform_list),
+            .transform_origin => |origin| origin.eql(b.transform_origin),
             .alignment => |a_value| a_value.eql(b.alignment),
             .position_area => |a_area| a_area.eql(b.position_area),
             .position_visibility => |v| std.meta.eql(v, b.position_visibility),
@@ -1087,6 +1141,7 @@ pub const Value = union(enum) {
     /// Keep this switch exhaustive so a new aggregate must choose a rule.
     pub fn needsUnavailableMetrics(self: Value, geometry_length: bool) bool {
         return switch (self) {
+            .box_numeric => |v| v.number.needsUnavailableMetrics(geometry_length),
             .color => |c| c.needsUnavailableMetrics(geometry_length),
             .calculation => |c| c.needsUnavailableMetrics(geometry_length),
             .sizing_function => |s| s.argument.needsUnavailableMetrics(geometry_length),
@@ -1095,9 +1150,12 @@ pub const Value = union(enum) {
             .caret_pair => |pair| pair.needsUnavailableMetrics(),
             .animation_list => |list| list.needsUnavailableMetrics(),
             .transform => |transform| transform.needsUnavailableMetrics(geometry_length),
+            .transform_list => |list| list.needsUnavailableMetrics(geometry_length),
+            .transform_origin => |origin| origin.needsUnavailableMetrics(geometry_length),
             .grid_areas,
             .grid_flow,
             .keyword,
+            .box_keywords,
             .length,
             .number,
             .integer,
@@ -1141,6 +1199,7 @@ pub const Value = union(enum) {
     /// Exhaustive so new wrappers must explicitly carry the dependency.
     pub fn needsTreeCounts(self: Value) bool {
         return switch (self) {
+            .box_numeric => |v| v.number.needsTreeCounts(),
             .color => |c| c.needsTreeCounts(),
             .caret_pair => |p| p.needsTreeCounts(),
             .calculation => |c| c.needsTreeCounts(),
@@ -1149,9 +1208,12 @@ pub const Value = union(enum) {
             .grid_tracks => |tracks| tracks.needsTreeCounts(),
             .animation_list => |list| list.needsTreeCounts(),
             .transform => |transform| transform.needsTreeCounts(),
+            .transform_list => |list| list.needsTreeCounts(),
+            .transform_origin => |origin| origin.needsTreeCounts(),
             .grid_areas,
             .grid_flow,
             .keyword,
+            .box_keywords,
             .length,
             .number,
             .integer,
@@ -1193,6 +1255,7 @@ pub const Value = union(enum) {
 
     pub fn needsRandomBase(self: Value) bool {
         return switch (self) {
+            .box_numeric => |v| v.number.needsRandomBase(),
             .color => |c| c.needsRandomBase(),
             .caret_pair => |p| p.needsRandomBase(),
             .calculation => |c| c.needsRandomBase(),
@@ -1201,9 +1264,12 @@ pub const Value = union(enum) {
             .grid_tracks => |tracks| tracks.needsRandomBase(),
             .animation_list => |list| list.needsRandomBase(),
             .transform => |transform| transform.needsRandomBase(),
+            .transform_list => |list| list.needsRandomBase(),
+            .transform_origin => |origin| origin.needsRandomBase(),
             .grid_areas,
             .grid_flow,
             .keyword,
+            .box_keywords,
             .length,
             .number,
             .integer,

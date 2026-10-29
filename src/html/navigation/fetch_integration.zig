@@ -729,6 +729,9 @@ pub fn resultFromResponse(
         "cross-origin-resource-policy",
         "content-security-policy",
         "content-security-policy-report-only",
+        // Permissions Policy §9.1: preserve both fields for Document creation.
+        "permissions-policy",
+        "permissions-policy-report-only",
         // CSP Embedded Enforcement §4.2 and navigation-response reporting.
         "allow-csp-from",
         "reporting-endpoints",

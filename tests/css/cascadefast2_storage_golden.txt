@@ -158,6 +158,9 @@ marker-start: none
 marker-mid: none
 marker-end: none
 clip-path: none
+shape-outside: none
+shape-margin: 0px
+shape-image-threshold: 0
 filter: none
 box-shadow: none
 object-position: 50% 50%
@@ -249,6 +252,57 @@ dominant-baseline: auto
 initial-letter: normal
 text-box-trim: none
 text-box-edge: auto
+flex-direction: row
+flex-wrap: nowrap
+flex-line-count: 1
+order: 0
+column-count: auto
+column-width: auto
+column-height: auto
+column-fill: balance
+column-span: none
+column-rule-color: rgb(0, 0, 0)
+column-rule-style: none
+column-rule-width: 3px
+scroll-snap-type: none
+scroll-snap-align: none
+scroll-snap-stop: normal
+scroll-initial-target: none
+scroll-margin-top: 0px
+scroll-margin-right: 0px
+scroll-margin-bottom: 0px
+scroll-margin-left: 0px
+scroll-margin-block-start: 0px
+scroll-margin-block-end: 0px
+scroll-margin-inline-start: 0px
+scroll-margin-inline-end: 0px
+scroll-padding-top: auto
+scroll-padding-right: auto
+scroll-padding-bottom: auto
+scroll-padding-left: auto
+scroll-padding-block-start: auto
+scroll-padding-block-end: auto
+scroll-padding-inline-start: auto
+scroll-padding-inline-end: auto
+overflow-block: visible
+overflow-inline: visible
+overflow-clip-margin: 0px
+scrollbar-gutter: auto
+text-overflow: clip
+max-lines: auto
+block-ellipsis: no-ellipsis
+continue: normal
+scroll-axis-lock: auto
+scroll-marker-group: none
+scroll-target-group: none
+-webkit-box-orient: horizontal
+transform: none
+transform-origin: 50% 50%
+transform-box: view-box
+transform-style: flat
+perspective: none
+perspective-origin: 50% 50%
+backface-visibility: visible
 == initial root and child / 0
 display: block
 == initial root and child / 1
@@ -296,6 +350,8 @@ text-decoration-color: rgb(255, 0, 0)
 text-emphasis-style: "x"
 text-emphasis-color: rgb(255, 0, 0)
 text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
+column-rule-color: rgb(255, 0, 0)
+transform: matrix(0.984808, 0.173648, -0.173648, 0.984808, -8.44928, 59.4358)
 == inherited and counted values / 1
 border-block-end-color: rgb(255, 0, 0)
 border-block-start-color: rgb(255, 0, 0)
@@ -322,6 +378,7 @@ text-decoration-color: rgb(255, 0, 0)
 text-emphasis-style: "x"
 text-emphasis-color: rgb(255, 0, 0)
 text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
+column-rule-color: rgb(255, 0, 0)
 == inherited and counted values / 2
 border-block-end-color: rgb(255, 0, 0)
 border-block-start-color: rgb(255, 0, 0)
@@ -348,6 +405,7 @@ text-decoration-color: rgb(255, 0, 0)
 text-emphasis-style: "x"
 text-emphasis-color: rgb(255, 0, 0)
 text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
+column-rule-color: rgb(255, 0, 0)
 == explicit inherit initial unset / 0
 background-color: rgb(0, 128, 0)
 background-image: url("b.png"), radial-gradient(rgb(255, 0, 0), rgb(0, 0, 255))
@@ -393,6 +451,8 @@ text-decoration-color: rgb(0, 0, 255)
 text-emphasis-style: "x"
 text-emphasis-color: rgb(0, 0, 255)
 text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
+column-rule-color: rgb(0, 0, 255)
+transform: matrix(0.984808, 0.173648, -0.173648, 0.984808, -6.3655, 47.6181)
 == explicit inherit initial unset / 1
 background-color: rgb(0, 128, 0)
 border-block-start-style: solid
@@ -410,6 +470,7 @@ box-shadow: rgb(0, 128, 0) 1px 1px 2px 0px inset
 font-feature-settings: "liga" 0
 text-emphasis-style: "x"
 text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
+transform: matrix(0.984808, 0.173648, -0.173648, 0.984808, -6.3655, 47.6181)
 == explicit inherit initial unset / 2
 cursor: url("c.png") 2 3, pointer
 list-style-image: url("l.png")
@@ -431,6 +492,7 @@ caret-color: rgb(0, 128, 0)
 outline-color: rgb(0, 128, 0)
 text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
+column-rule-color: rgb(0, 128, 0)
 == root display contents and none / 1
 border-block-end-color: rgb(0, 128, 0)
 border-block-start-color: rgb(0, 128, 0)
@@ -444,8 +506,11 @@ color: rgb(0, 128, 0)
 display: none
 caret-color: rgb(0, 128, 0)
 outline-color: rgb(0, 128, 0)
+min-height: 0px
+min-width: 0px
 text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
+column-rule-color: rgb(0, 128, 0)
 == root display contents and none / 2
 border-block-end-color: rgb(0, 128, 0)
 border-block-start-color: rgb(0, 128, 0)
@@ -460,8 +525,11 @@ display: grid
 grid-template-columns: subgrid
 caret-color: rgb(0, 128, 0)
 outline-color: rgb(0, 128, 0)
+min-height: 0px
+min-width: 0px
 text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
+column-rule-color: rgb(0, 128, 0)
 == display contents parent in a grid / 0
 display: grid
 justify-items: legacy center
@@ -480,10 +548,13 @@ font-size: 30px
 caret-color: rgb(0, 128, 0)
 outline-color: rgb(0, 128, 0)
 justify-items: legacy center
+min-height: 0px
+min-width: 0px
 padding-inline-start: 3px
 padding-left: 3px
 text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
+column-rule-color: rgb(0, 128, 0)
 == display contents parent in a grid / 2
 border-block-end-color: rgb(0, 128, 0)
 border-block-start-color: rgb(0, 128, 0)
@@ -505,6 +576,7 @@ padding-inline-start: 3px
 padding-left: 3px
 text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
+column-rule-color: rgb(0, 128, 0)
 == display contents parent in a grid / 3
 border-block-end-color: rgb(0, 128, 0)
 border-block-start-color: rgb(0, 128, 0)
@@ -522,6 +594,7 @@ outline-color: rgb(0, 128, 0)
 justify-items: legacy center
 text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
+column-rule-color: rgb(0, 128, 0)
 == pseudo-elements / 0
 border-block-end-color: rgb(128, 0, 128)
 border-block-start-color: rgb(128, 0, 128)
@@ -539,6 +612,7 @@ caret-color: rgb(128, 0, 128)
 outline-color: rgb(128, 0, 128)
 text-decoration-color: rgb(128, 0, 128)
 text-emphasis-color: rgb(128, 0, 128)
+column-rule-color: rgb(128, 0, 128)
 == pseudo-elements / 1 ::before
 border-block-end-color: rgb(128, 0, 128)
 border-block-start-color: rgb(128, 0, 128)
@@ -557,6 +631,7 @@ margin-inline-start: 12px
 margin-left: 12px
 text-decoration-color: rgb(128, 0, 128)
 text-emphasis-color: rgb(128, 0, 128)
+column-rule-color: rgb(128, 0, 128)
 == pseudo-elements / 2 ::after
 border-block-end-color: rgb(128, 0, 128)
 border-block-start-color: rgb(128, 0, 128)
@@ -573,6 +648,7 @@ caret-color: rgb(128, 0, 128)
 outline-color: rgb(128, 0, 128)
 text-decoration-color: rgb(128, 0, 128)
 text-emphasis-color: rgb(128, 0, 128)
+column-rule-color: rgb(128, 0, 128)
 == registered custom properties / 0
 --any: foo
 --col: rgb(0, 0, 255)
@@ -608,6 +684,7 @@ padding-inline-start: 4px
 padding-left: 4px
 text-decoration-color: rgb(0, 0, 255)
 text-emphasis-color: rgb(0, 0, 255)
+column-rule-color: rgb(0, 0, 255)
 == registered custom properties / 2
 --any: foo
 --col: rgb(0, 0, 255)
@@ -631,6 +708,7 @@ caret-color: rgb(0, 0, 255)
 outline-color: rgb(0, 0, 255)
 text-decoration-color: rgb(0, 0, 255)
 text-emphasis-color: rgb(0, 0, 255)
+column-rule-color: rgb(0, 0, 255)
 == all / 0
 background-image: url("b.png"), radial-gradient(rgb(255, 0, 0), rgb(255, 0, 0))
 border-block-end-color: rgb(255, 0, 0)
@@ -670,6 +748,8 @@ text-decoration-color: rgb(255, 0, 0)
 text-emphasis-style: "x"
 text-emphasis-color: rgb(255, 0, 0)
 text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
+column-rule-color: rgb(255, 0, 0)
+transform: matrix(0.984808, 0.173648, -0.173648, 0.984808, -6.3655, 47.6181)
 == all / 1
 background-image: url("b.png"), radial-gradient(rgb(255, 0, 0), rgb(255, 0, 0))
 border-block-end-color: rgb(255, 0, 0)
@@ -709,6 +789,8 @@ text-decoration-color: rgb(255, 0, 0)
 text-emphasis-style: "x"
 text-emphasis-color: rgb(255, 0, 0)
 text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
+column-rule-color: rgb(255, 0, 0)
+transform: matrix(0.984808, 0.173648, -0.173648, 0.984808, -6.3655, 47.6181)
 == all / 2
 border-block-end-color: rgb(0, 128, 0)
 border-block-start-color: rgb(0, 128, 0)
@@ -724,6 +806,7 @@ caret-color: rgb(0, 128, 0)
 outline-color: rgb(0, 128, 0)
 text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
+column-rule-color: rgb(0, 128, 0)
 == all / 3
 border-block-end-color: rgb(0, 128, 0)
 border-block-start-color: rgb(0, 128, 0)
@@ -741,6 +824,7 @@ margin-inline-end: 9px
 margin-left: 9px
 text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
+column-rule-color: rgb(0, 128, 0)
 == all / 4
 border-block-end-color: rgb(0, 128, 0)
 border-block-start-color: rgb(0, 128, 0)
@@ -756,6 +840,7 @@ caret-color: rgb(0, 128, 0)
 outline-color: rgb(0, 128, 0)
 text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
+column-rule-color: rgb(0, 128, 0)
 == revert and revert-layer / 0
 border-block-end-color: rgb(128, 128, 0)
 border-block-start-color: rgb(128, 128, 0)
@@ -776,6 +861,7 @@ margin-bottom: 2px
 margin-top: 8px
 text-decoration-color: rgb(128, 128, 0)
 text-emphasis-color: rgb(128, 128, 0)
+column-rule-color: rgb(128, 128, 0)
 == revert and revert-layer / 1
 border-block-end-color: rgb(255, 0, 0)
 border-block-start-color: rgb(255, 0, 0)
@@ -795,6 +881,7 @@ padding-block-start: 6px
 padding-top: 6px
 text-decoration-color: rgb(255, 0, 0)
 text-emphasis-color: rgb(255, 0, 0)
+column-rule-color: rgb(255, 0, 0)
 == logical longhands / 0
 direction: rtl
 display: block
@@ -1021,6 +1108,7 @@ outline-color: rgb(0, 128, 128)
 letter-spacing: 1px
 text-decoration-color: rgb(0, 128, 128)
 text-emphasis-color: rgb(0, 128, 128)
+column-rule-color: rgb(0, 128, 128)
 == pseudo-elements of one originating element / 1
 border-block-end-color: rgb(0, 0, 128)
 border-block-start-color: rgb(0, 0, 128)
@@ -1043,6 +1131,7 @@ text-transform: uppercase
 writing-mode: vertical-rl
 text-decoration-color: rgb(0, 0, 128)
 text-emphasis-color: rgb(0, 0, 128)
+column-rule-color: rgb(0, 0, 128)
 == pseudo-elements of one originating element / 2 ::before
 (parent 1)
 border-block-end-color: rgb(255, 0, 0)
@@ -1068,6 +1157,7 @@ text-transform: uppercase
 writing-mode: vertical-rl
 text-decoration-color: rgb(255, 0, 0)
 text-emphasis-color: rgb(255, 0, 0)
+column-rule-color: rgb(255, 0, 0)
 == pseudo-elements of one originating element / 3 ::after
 (parent 1)
 border-block-end-color: rgb(0, 0, 128)
@@ -1091,6 +1181,7 @@ text-transform: uppercase
 writing-mode: vertical-rl
 text-decoration-color: rgb(0, 0, 128)
 text-emphasis-color: rgb(0, 0, 128)
+column-rule-color: rgb(0, 0, 128)
 == pseudo-elements of one originating element / 4 ::first-line
 (parent 1)
 background-color: rgb(255, 255, 0)
@@ -1115,6 +1206,7 @@ word-spacing: 4px
 text-decoration-line: underline
 text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
+column-rule-color: rgb(0, 128, 0)
 == pseudo-elements of one originating element / 5 ::first-letter
 (parent 1)
 border-block-end-color: rgb(0, 128, 0)
@@ -1146,6 +1238,7 @@ writing-mode: vertical-rl
 text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
 initial-letter: 2
+column-rule-color: rgb(0, 128, 0)
 == pseudo-elements of one originating element / 6 ::marker
 (parent 1)
 border-block-end-color: rgb(255, 0, 0)
@@ -1169,6 +1262,7 @@ text-transform: uppercase
 writing-mode: vertical-rl
 text-decoration-color: rgb(255, 0, 0)
 text-emphasis-color: rgb(255, 0, 0)
+column-rule-color: rgb(255, 0, 0)
 == adjustments / 0
 display: flex
 == adjustments / 1
@@ -1177,12 +1271,16 @@ overflow-x: hidden
 overflow-y: auto
 position: absolute
 contain: strict
+overflow-block: auto
+overflow-inline: hidden
 == adjustments / 2
 content-visibility: auto
 display: block
 float: right
-overflow-x: hidden
+overflow-x: clip
 overflow-y: scroll
 contain: size layout
+overflow-block: scroll
+overflow-inline: clip
 == adjustments / 3
 display: grid

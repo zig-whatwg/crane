@@ -71,7 +71,7 @@ test "same-document entries share the document state and carry state" {
     try testing.expectEqualStrings("state", current.state.string);
 }
 
-test "a destroyed navigable's entries go, and the current step stays used" {
+test "a destroyed navigable's entries go, and its update applies the used step" {
     var h = joint.JointHistory.init(testing.allocator);
     defer h.deinit();
     try h.addInitialEntry(top, "http://x.test/t", null, "http://x.test");
@@ -79,9 +79,12 @@ test "a destroyed navigable's entries go, and the current step stays used" {
     try h.commitDocument(frame, "http://x.test/f2", null, "http://x.test", .push);
     try testing.expectEqual(@as(u32, 2), h.lengthAndIndex().length);
     h.removeNavigable(frame);
+    // Read as its used step until the queued update applies it.
     const li = h.lengthAndIndex();
     try testing.expectEqual(@as(u32, 1), li.length);
     try testing.expectEqual(@as(u32, 0), li.index);
+    h.setCurrentStep(h.usedStepAtOrBefore(h.current_step).?);
+    try testing.expectEqual(@as(u32, 0), h.current_step);
 }
 
 test "a srcdoc document's resource stays with its entries, and a new document drops it" {
