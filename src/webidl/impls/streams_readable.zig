@@ -454,13 +454,15 @@ pub fn createReadableStream(realm: Realm, ctx: runtime.Context, source: Source, 
 /// failure its algorithms are cleared before this returns - its deinit runs
 /// once, and nothing made here keeps it - so a caller that frees itself after
 /// a failed setup (fetch_body's PipeStream, Blob's BlobStream) frees it once.
-/// It had no failure path: a setup that failed after its controller was
-/// wrapped (a start reaction refused - the realm's end under way, a stopped
-/// agent) left the wrapper cache's controller holding the source the caller
-/// freed, and the controller's teardown freed it again (lane leaks1: a double
-/// free of PipeStream in FileAPI/BlobURL/cross-partition.https.html); an
-/// earlier failure leaked what was not wrapped. What is not wrapped is freed
-/// here; what is wrapped is the wrapper cache's.
+/// It had no failure path: a setup that failed after its controller existed
+/// (its start promise or reaction refused - a terminating agent, a realm
+/// whose end is under way) left the controller holding the source its caller
+/// then freed, and whoever tore the controller down later - the wrapper
+/// cache, or the realm's orphan sweep for one whose wrap made no wrapper (a
+/// wrap under termination answers undefined) - freed it again (lane leaks1: a
+/// double free of PipeStream in FileAPI/BlobURL/cross-partition.https.html);
+/// one nobody tore down leaked. What is not wrapped is freed here; what is
+/// wrapped is the wrapper cache's.
 pub fn createReadableByteStream(realm: Realm, ctx: runtime.Context, source: Source) !*runtime.Instance {
     var owns_algorithms = true;
     errdefer if (owns_algorithms) source.vtable.deinit(source.ctx, ctx.allocator);
