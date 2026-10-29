@@ -1588,8 +1588,13 @@ pub const JointHistory = struct {
             projected[i] = if (entry.pending or (pushes > 0 and entry.step > base)) null else entry.step;
         }
         var next = base;
+        // The pending entries, in list order: few, and each navigable's last
+        // is its current one below.
+        var pending: std.ArrayListUnmanaged(u32) = .empty;
+        defer pending.deinit(allocator);
         for (entries, 0..) |entry, i| {
             if (!entry.pending) continue;
+            try pending.append(allocator, @intCast(i));
             if (entry.pending_push) {
                 next += 1;
                 projected[i] = next;
@@ -1678,7 +1683,17 @@ pub const JointHistory = struct {
             // entry (step 8.2); else the kept entry, at the step it was kept
             // at; else `entryAt` the current step - the last of the group
             // (list order among equal steps) at or before it.
-            var current: ?*const Entry = self.lastPending(navigable);
+            var current: ?*const Entry = null;
+            {
+                var p = pending.items.len;
+                while (p > 0) {
+                    p -= 1;
+                    if (entries[pending.items[p]].navigable == navigable) {
+                        current = &entries[pending.items[p]];
+                        break;
+                    }
+                }
+            }
             if (current == null) {
                 if (self.update_only.get(navigable)) |kept| {
                     if (kept.step == step) current = self.entryById(kept.entry);
