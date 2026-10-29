@@ -141,7 +141,30 @@ pub const NodeBase = struct {
         /// `subtree_holds` count in its document's `foreign_holds`
         /// (decision D6). Set and cleared only by refcount.zig.
         foreign: bool = false,
-        _unused: u4 = 0,
+        /// The reference the node was born with (`rc_one`) is still its
+        /// creator's, offered to whoever takes the node on first
+        /// (refcount7; refcount design 1.2, "the creator of a node until it
+        /// hands the node on"): its first wrapper adopts it - WebKit's
+        /// binding moves the `Ref` a create function returned into the new
+        /// wrapper (bindings/js/JSDOMWrapperCache.h `createWrapper`,
+        /// "domObject is moved into the wrapper") - or, inserted first, the
+        /// tree takes the node over and the creator's reference ends, as a
+        /// WebKit creator's `Ref` ends at its scope after the append (the
+        /// parent bit keeps the node). Clear from birth on a Document, whose
+        /// creator keeps it (a navigable's, until step 5i) unless it hands
+        /// the document to script (`refcount.offerCreatorReference`), and
+        /// once a creator that hands its reference on itself has claimed it
+        /// (the HTML parser, decision D-A). Set and cleared only by
+        /// refcount.zig.
+        creator: bool = true,
+        /// The zombie audit (refcount step 6, dom.refcount_audit): the root
+        /// of a tree the counts called garbage, queued for its re-check at
+        /// the agent's next teardown slice. Set and cleared only there.
+        audit_pending: bool = false,
+        /// The zombie audit: a node of a tree that re-check found garbage -
+        /// one step 7 would have freed. A read of it is reported.
+        zombie: bool = false,
+        _unused: u1 = 0,
     };
 
     /// The one write of `parent_node` (WebKit `Node::setParentNode`): the

@@ -354,7 +354,6 @@ pub fn domAdapterOnInserted(location: TreeBuilder.InsertionLocation, child: *Tre
     const inserted = parser_mutation.insert(adapter, location, child) catch false;
     if (inserted) {
         adapter.removeOrphan(child);
-        adapter.handOnCreatorReference(child);
     } else adapter.keepFailedInsertion(child);
     adapter.endPendingHold(child);
 }
@@ -908,18 +907,21 @@ pub const DomTreeAdapter = struct {
         tree_node.dom_node = dom_node;
         tree_node.dom_generation = runtime.SlabAllocator.generationOf(dom_node);
         tree_node.dom_revoked = false;
-        // The DOM node was born with one reference, its creator's: the
-        // parser holds it until it hands it on (refcount step 5a, decision
-        // D-A) - a non-element's to the tree at its first successful
-        // insertion, an element's to the structure that names it first.
+        // The DOM node was born with one reference, its creator's, which it
+        // offers (NodeBase.RcFlags.creator; refcount step 5a's decision D-A,
+        // generalized by refcount7): the first structure that names an
+        // element adopts it (`holdForStructures`), and a node's first
+        // insertion ends it (refcount.linkChild: the tree takes the node).
         if (dom_node != self.document) {
-            tree_node.dom_base = dom.instance_bridge.getNodeBase(dom_node);
-            tree_node.dom_creator = tree_node.dom_base != null;
+            const base = dom.instance_bridge.getNodeBase(dom_node);
+            tree_node.dom_base = base;
             if (was_held) {
-                // Still named by a structure: the new node's creator's
-                // reference is the structures' now.
-                tree_node.dom_creator = false;
-                tree_node.dom_held = tree_node.dom_base != null;
+                // Still named by a structure: the structures' reference is
+                // the new node's creator's, or one of their own.
+                if (base) |node| {
+                    if (!dom.refcount.claimCreatorReference(node)) dom.refcount.holderRef(node);
+                    tree_node.dom_held = true;
+                }
             }
         }
         // Wrapped nodes belong to engine cleanup (a pending hold, a rescue,
@@ -946,7 +948,6 @@ pub const DomTreeAdapter = struct {
         self.endPendingHold(child);
         if (!inserted) return;
         self.removeOrphan(child);
-        self.handOnCreatorReference(child);
         if (!self.isAlive() or self.getDomNode(child) == null) return;
 
         // CRITICAL: If appending <html> to document, set documentElement
@@ -1019,19 +1020,15 @@ pub const DomTreeAdapter = struct {
     }
 
     /// The first structure names `tree_node`: its DOM node is held - by the
-    /// creator's reference, adopted, if the parser still has it (an
-    /// element's push after its insertion, or before it for a template the
-    /// builder only adds to the stack), else by a new one.
+    /// creator's reference, adopted, if its creator still offers it (a
+    /// template the builder adds to the stack before its insertion, a node
+    /// made again under a structure), else by a new one (an element pushed
+    /// after its insertion ended its creator's: refcount.linkChild).
     pub fn holdForStructures(self: *DomTreeAdapter, tree_node: *TreeNode) void {
         _ = self;
         if (tree_node.dom_held) return;
-        if (tree_node.dom_creator) {
-            tree_node.dom_creator = false;
-            tree_node.dom_held = true;
-            return;
-        }
         const base = liveBase(tree_node) orelse return;
-        dom.refcount.holderRef(base);
+        if (!dom.refcount.claimCreatorReference(base)) dom.refcount.holderRef(base);
         tree_node.dom_held = true;
     }
 
@@ -1044,26 +1041,14 @@ pub const DomTreeAdapter = struct {
         dom.refcount.holderDeref(base);
     }
 
-    /// `tree_node`'s DOM node was inserted: a node that is not an element
-    /// hands its creator's reference to the tree (its parent bit keeps it
-    /// from here). An element keeps it for the structure that names it
-    /// first, which its insertion steps are followed by.
-    pub fn handOnCreatorReference(self: *DomTreeAdapter, tree_node: *TreeNode) void {
-        _ = self;
-        if (tree_node.node_type == .element or !tree_node.dom_creator) return;
-        tree_node.dom_creator = false;
-        const base = liveBase(tree_node) orelse return;
-        dom.refcount.holderDeref(base);
-    }
-
     /// `tree_node` is made again, or its creation failed: it lets go of its
-    /// DOM node's creator's reference and the structures' reference.
+    /// DOM node's creator's reference, if nothing took it over, and the
+    /// structures' reference.
     pub fn dropReferences(self: *DomTreeAdapter, tree_node: *TreeNode) void {
         _ = self;
         const base = liveBase(tree_node);
-        if (tree_node.dom_creator) if (base) |node| dom.refcount.holderDeref(node);
+        if (base) |node| dom.refcount.releaseCreatorReference(node);
         if (tree_node.dom_held) if (base) |node| dom.refcount.holderDeref(node);
-        tree_node.dom_creator = false;
         tree_node.dom_held = false;
     }
 

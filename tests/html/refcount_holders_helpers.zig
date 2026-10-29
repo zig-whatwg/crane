@@ -3,7 +3,10 @@
 //! from script, two collections with a task turn between, and the count
 //! check. SHADOW MODE: the counts decide nothing yet (frees are still the
 //! collector's), so each test reads them through `dom.refcount.count`:
-//! born (1) + the wrapper's (1, the node is kept by a global) + the holders'.
+//! the wrapper's (1, the node is kept by a global; a node's first wrapper
+//! adopts the reference the node was born with, lane refcount7) + the
+//! holders'. A node made natively and inserted, never wrapped, counts only
+//! its holders' (its insertion ended its born reference).
 pub const std = @import("std");
 pub const testing = std.testing;
 pub const browser_mod = @import("browser");

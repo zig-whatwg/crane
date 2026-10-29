@@ -173,6 +173,10 @@ pub const InternalState = struct {
     last_modified_known: bool = false,
     /// HTML "page showing": set when pageshow fires at the end of loading.
     page_showing: bool = false,
+    /// HTML 7.4.6.3 "has been revealed": pagereveal fires once per
+    /// activation - at the first rendering opportunity after the document is
+    /// shown, and again after each reactivation (`revealStep`).
+    has_been_revealed: bool = false,
     /// HTML "completely loaded": "completely finish loading" has run.
     completely_loaded: bool = false,
     /// HTML "ready for post-load tasks", reached by "the end" step 11.
@@ -954,6 +958,8 @@ pub fn installHooks() void {
     // visibility state updates its documents' visibility state, through these
     // hooks.
     @import("dom").focused_area.install(.{ .get = &focusedArea, .set = &setFocusedArea });
+    // HTML "update the rendering" step 6: reveal (dom.update_the_rendering).
+    @import("dom").update_the_rendering.installStep(.reveal, &revealStep);
     @import("dom").visibility_state.install(.{ .update = &updateVisibilityStateFromHook });
     // The selector matchers ask whether an element matches :focus,
     // :focus-within and :focus-visible through this one (html.focus, which
@@ -1297,11 +1303,19 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
         // Shadow mode (refcount step 3): what the counts would have said.
         // Nodes outside this document's own tree that still name it are
         // the ones step 7 makes its storage wait for.
-        if (@import("dom").refcount.diagnosticsOn()) refcount_log.warn("document freed: {d} referencing nodes, {d} holds in its tree, {d} foreign holds", .{
-            internal.refcounts.referencing_nodes,
-            if (@import("dom").instance_bridge.getNodeBase(instance)) |document_base| document_base.subtree_holds -| 1 else 0,
-            internal.refcounts.foreign_holds,
-        });
+        if (@import("dom").refcount.diagnosticsOn()) {
+            const document_base = @import("dom").instance_bridge.getNodeBase(instance);
+            // refcount7: of the nodes in its tree, those whose born reference
+            // is still their creator's, and those it alone holds.
+            const census = if (document_base) |base| @import("dom").refcount.creatorCensus(base) else @import("dom").refcount.CreatorCensus{};
+            refcount_log.warn("document freed: {d} referencing nodes, {d} holds in its tree, {d} foreign holds, {d} creator references in its tree ({d} alone)", .{
+                internal.refcounts.referencing_nodes,
+                if (document_base) |base| base.subtree_holds -| 1 else 0,
+                internal.refcounts.foreign_holds,
+                census.holding,
+                census.alone,
+            });
+        }
         engine.forgetTracedChild(instance, .{ .name = "template owner document" });
         // The template contents owner document goes with this document: now
         // when nothing else can reach it - no engine realm, no wrapper (the
@@ -1354,6 +1368,8 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     internal.url = try ctx.allocator.dupe(u8, "about:blank");
     internal.encoding = try runtime.DOMString.initDupe(ctx.allocator, "UTF-8");
 
+    // The binding wraps it: its wrapper takes its born reference (refcount7).
+    @import("dom").refcount.offerDocument(instance);
     return instance;
 }
 
@@ -2800,6 +2816,8 @@ pub fn call_static_parseHTML(instance: *runtime.Instance, html: runtime.DOMStrin
     errdefer @import("dom").node_creation.destroyUninserted(document);
     try @import("dom").document_internals.setContentType(document, "text/html");
     try @import("html").sanitizer.filterDocument(document, &converted, true);
+    // To script: its first wrapper takes its born reference (refcount7).
+    @import("dom").refcount.offerDocument(document);
     return document;
 }
 
@@ -2832,6 +2850,8 @@ pub fn call_static_parseHTMLUnsafe(instance: *runtime.Instance, html: typedefs.T
     // only when a sanitizer was given (row 41 review M2/S2: an absent one
     // filters nothing, so skip the tree walk).
     if (options.getOrDefault(.{}).sanitizer != null) try @import("html").sanitizer.filterDocument(document, &converted, false);
+    // To script: its first wrapper takes its born reference (refcount7).
+    @import("dom").refcount.offerDocument(document);
     return document;
 }
 
@@ -4421,9 +4441,12 @@ fn reactivateSteps(data: ?*anyopaque) void {
     // Step 4: "If document's current document readiness is "complete", and
     // document's page showing is false":
     if (internal.ready_state != ._complete_ or internal.page_showing) return;
-    // 4.1. "Set document's page showing to true." 4.2, has been revealed,
-    // is pagereveal's (phase C).
+    // 4.1. "Set document's page showing to true."
     internal.page_showing = true;
+    // 4.2. "Set document's has been revealed to false." Its next rendering
+    // opportunity reveals it (pagereveal), so it asks for one.
+    internal.has_been_revealed = false;
+    @import("dom").update_the_rendering.requestFrame(document);
     // 4.3. "Update the visibility state of document to "visible"."
     updateVisibilityState(document, ._visible_);
     // 4.4. "Fire a page transition event named pageshow at document's
@@ -5099,6 +5122,10 @@ fn updateVisibilityState(document: *runtime.Instance, state: enums.DocumentVisib
     // Step 6: "Fire an event named visibilitychange at document, with its
     // bubbles attribute initialized to true."
     fireEvent(document, document, "visibilitychange", true);
+    // A hidden document has no rendering opportunity (update the rendering
+    // step 3) and its loop arms none for it: shown again, it asks for one,
+    // for the animation frame callbacks and the work that waited.
+    if (state == ._visible_) @import("dom").update_the_rendering.requestFrame(document);
 }
 
 const LifecycleStep = enum { dom_content_loaded, load, declarative_refresh, resume_script_delivery };
@@ -5325,6 +5352,10 @@ fn completeLoading(document: *runtime.Instance) void {
     // active, and gets its pageshow.
     if (!isShownByItsWindow(document)) return;
     if (!was_showing) firePageShow(document, window);
+    // The document is shown: its first rendering opportunity reveals it
+    // (HTML "update the rendering" step 6), whether or not script asked for
+    // an animation frame.
+    if (!internal.has_been_revealed) @import("dom").update_the_rendering.requestFrame(document);
     // Step 9.12's "completely finish loading" step 2: the completely loaded
     // time - after pageshow, so a navigation its listeners start is a
     // replace (replace-before-load/*-during-pageshow.html).
@@ -5390,6 +5421,33 @@ fn firePageTransition(document: *runtime.Instance, window: *runtime.Instance, ev
         document.ctx,
         runtime.DOMString.initInterned(event_type),
         webidl.Opt(dictionaries.PageTransitionEventInit).passed(.{ .base = .{}, .persisted = persisted }),
+    ) catch return;
+    const generation = runtime.SlabAllocator.generationOf(event);
+    _ = @import("dom").fire_event.dispatchTrusted(window, event) catch {};
+    event.releaseIfUnwrapped(generation);
+}
+
+/// HTML 7.4.6.3 "reveal" `document`, update the rendering step 6.
+fn revealStep(document: *runtime.Instance, frame: @import("dom").update_the_rendering.Frame) void {
+    _ = frame;
+    const internal = getInternal(document) orelse return;
+    // 1. "If document's has been revealed is true, then return."
+    if (internal.has_been_revealed) return;
+    // 2. "Set document's has been revealed to true."
+    internal.has_been_revealed = true;
+    // 3. "Let transition be the result of resolving inbound cross-document
+    // view-transition for document": null - Crane has no cross-document
+    // view transitions (css-view-transitions-2 is not implemented), so
+    // step 5 never runs.
+    // 4. "Fire an event named pagereveal at document's relevant global
+    // object, using PageRevealEvent with its viewTransition set to
+    // transition." Chrome and Safari fire it (pagereveal/order-in-*: 1/1
+    // each); Firefox does not ship it yet (0/1, wpt.fyi ffc4686d11).
+    const window = (get_defaultView(document) catch null) orelse return;
+    const event = interfaces.PageRevealEvent.call_constructor(
+        document.ctx,
+        runtime.DOMString.initInterned("pagereveal"),
+        webidl.Opt(dictionaries.PageRevealEventInit).passed(.{ .base = .{}, .viewTransition = null }),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
     _ = @import("dom").fire_event.dispatchTrusted(window, event) catch {};

@@ -9,6 +9,8 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [A move is a removal and an insertion - under counts, hold what you move](architecture-a-move-is-a-removal-and-an-insertion-hold-what-you-move.md) - A move is a removal and an insertion. Under reference counting, anything that moves a node it holds no reference to must hold the node across the two steps (WebKit's NodeVector of Refs), or the removal makes the tree garbage in between.
+- [Frames on demand need every owner whose state shows at a rendering opportunity to ask for one](architecture-frames-on-demand-need-every-owner-to-ask.md) - With frames on demand, every owner whose state is read at a rendering opportunity must ask for one when it changes - and a test of that ask must start from a settled loop, or an unrelated frame passes it.
 - [Flat per-element storage makes every property cost every element](architecture-flat-per-element-storage-makes-every-property-cost-every-element.md) - Per-element storage should cost what the element writes, not what the engine supports: share untouched groups by pointer and copy on first write.
 - [Architecture: A browser's strong hold comes with the step that ends it - copy both or neither](architecture-a-browsers-strong-hold-comes-with-the-step-that-ends-it.md) - A strong hold is only as safe as the step that ends it: when you copy a browser's hold, copy its release, or keep the hold weak.
 - [Architecture: A new Window per load moves what belongs to the navigable, and swaps the realm only when nothing of it is on the stack](architecture-a-new-window-per-load-moves-what-belongs-to-the-navigable.md) - when a page-lifetime object starts dying per navigation, give each thing it held to its spec owner; swap an engine realm only where nothing of it is on the stack
@@ -624,6 +626,10 @@ A lane brief now carries the lessons chosen for its batch.
 - [Control font selection uses displayed text](spec-compliance-control-font-selection-uses-displayed-text.md) - Match rendered characters/metrics and invalidate on value changes.
 - [Re-tokenize Unicode Ranges From Original Source](spec-compliance-unicode-ranges-need-original-declaration-source.md) - Preserve source before a grammar-specific tokenization mode.
 - [Substitution continues past a guaranteed-invalid function](spec-compliance-substitution-continues-past-a-guaranteed-invalid-function.md) - When an algorithm's side effects (dependency edges, cycle marks) come from visiting the input, an early return on the first failure is a behaviour change, not an optimization - walk what the spec walks.
+- [Blur unfocuses the designation](spec-compliance-blur-unfocuses-the-designation.md) - Keep designation, eligibility and fixup separate.
+- [Selection focus is a position decision](spec-compliance-selection-focus-is-a-position-decision.md) - Pin position, focus and unchanged Range independently.
+- [Shadow focus sorts each navigation scope](spec-compliance-shadow-focus-sorts-each-navigation-scope.md) - Sort before flattening; preserve radio-group tree boundaries.
+- [Word boundaries and movement policy are separate](spec-compliance-word-segmentation-and-movement-policy-are-separate.md) - Pin segmentation, movement convention and key bindings separately.
 
 ### Codegen
 - [Unforgeable accessors must be installed on derived instances](codegen-unforgeable-accessors-must-be-installed-on-derived-instances.md) - An inherited WebIDL member still needs explicit instance installation when the engine template does not inherit that property representation.
@@ -674,6 +680,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Refresh aliases with their realm's interface objects](codegen-refresh-aliases-with-their-realms-interface-objects.md) - An alias names the realm's interface object, not the current contents of another global property.
 
 ### Testing
+- [A test page that was never navigated has the wrong time origin](testing-a-page-never-navigated-has-the-wrong-time-origin.md) - Convert a moment for script through the global's Performance (performance_timeline.relativeCoarseTime), and test any time conversion on a navigated page - helpers.Page never sets the navigation start.
 - [A structure with many mutation sites pins its holds by recounting them](testing-a-structure-with-many-mutation-sites-pins-its-holds-by-recounting.md) - Pin a hold that many sites change with a recount under test, so the existing test suite checks it - and after routing calls through a helper by sed, read the helper: it calls itself now.
 - [A subset variant can skip a row's commands but not its queries](testing-a-subset-variant-can-skip-a-rows-commands-but-not-its-queries.md) - In the editing suites a variant boundary can cut a row between its commands and its queries; a lost after-query there must be compared with the row's before-query before anyone calls it a regression.
 - [A connectedCallback is a deterministic collection point](testing-a-connectedcallback-is-a-deterministic-collection-point.md) - A connectedCallback inside a native call's [CEReactions] scope is a deterministic collection point between a snapshot and its write-back - use it to make a weak-list use-after-free go red on the first run.
@@ -838,6 +845,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [A subtest missing from all three browsers on wpt.fyi was changed upstream](testing-a-subtest-missing-from-all-three-browsers-on-wpt-fyi-was-changed-upstream.md) - wpt.fyi reports upstream master, not Crane's pin: a subtest that no browser reports was removed or renamed upstream, so read the file's history before treating it as a requirement.
 - [A cost bar that moves with no new instructions is code placement](testing-a-cost-bar-that-moves-with-no-new-instructions-is-code-placement.md) - A sub-microsecond per-operation metric in a whole-program optimized runner moves with code placement; when its path reaches no changed code, instructions retired (page minus a zero-iteration control) decide, not time.
 - [A srcdoc document's relative URLs resolve against its parent's](testing-a-srcdoc-documents-relative-urls-resolve-against-its-parent.md) - In a test that changes a srcdoc frame's URL, write the URL absolute: a relative one resolves against the parent document.
+- [Zig can print failed command for successful stderr](testing-zig-successful-stderr-can-say-failed-command.md) - Read the actual results and final summary.
+- [Equal pass counts can hide a regression](testing-equal-pass-counts-can-hide-a-regression.md) - Compare PASS identities; gains never cancel losses.
+- [JSON Lines uses LF, not Unicode line boundaries](testing-json-lines-uses-lf-not-unicode-line-boundaries.md) - Preserve Unicode separators in names and reconcile full records.
 
 ### Debugging
 - [A kernel that frees its only object each op measures the allocator's page churn](debugging-a-one-object-kernel-measures-the-allocators-page-churn.md) - Before reading a size effect off an instruction count, check page reclaims per op and the spread across runs: one object at a time under DebugAllocator measures mmap, not the object.
@@ -987,3 +997,4 @@ A lane brief now carries the lessons chosen for its batch.
 - [An Empty Bash Array Can Stop a Measurement Launcher](workflow-a-tmux-launch-is-not-proof-a-runner-started.md) - Verify runner startup and make optional arguments safe for the host shell.
 - [A merge that adapts one reader of a changed type must find them all](workflow-a-merge-that-adapts-one-reader-of-a-changed-type-must-find-them-all.md) - A failing test names one reader; a changed type has as many readers as the grep finds.
 - [Pseudo applicability probes need distinct controls](testing-pseudo-applicability-probes-need-distinct-controls.md) - A default-valued control cannot distinguish an applied declaration from a filtered one.
+- [Measure estimates for timing windows from complete pairs](workflow-measure-timing-window-estimates.md) - Include every expanded URL and both arms in a measured scheduling estimate.

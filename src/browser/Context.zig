@@ -16,7 +16,6 @@
 const std = @import("std");
 const log = std.log.scoped(.browser_context);
 const engine = @import("engine");
-const clock = @import("clock");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const webidl = @import("webidl");
@@ -26,6 +25,7 @@ const storage_mod = @import("storage/Storage.zig");
 const cookiestore = @import("cookiestore");
 const Storage = storage_mod.Storage;
 const navigation = @import("navigation.zig");
+const rendering = @import("rendering.zig");
 
 // Threadlocal state cleanup modules
 const dom_mod = @import("dom");
@@ -110,249 +110,8 @@ const TimerMap = struct {
     }
 };
 
-// ============================================================================
-// Animation frames
-// ============================================================================
-//
-// https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html#animation-frames
-//
-// Crane paints nothing, but requestAnimationFrame is an EVENT LOOP feature, not
-// a paint feature: its callbacks run in the "update the rendering" step, which a
-// headless engine still performs. WPT uses rAF as the standard "wait one frame"
-// idiom, so a stubbed rAF does not fail tests - it HANGS them for the full
-// timeout. The WebIDL binding (impls/Window.zig call_requestAnimationFrame)
-// discarded its callback and returned 0, which reached ~90 worklist sources.
-//
-// A frame is a BATCH, which is why this cannot be one timer per callback:
-// documents run in container tree order and each snapshots its callbacks in
-// registration order when its turn starts. New callbacks for that document
-// wait; an earlier parent can still add a callback for a later child turn.
-
-/// ~60Hz. The spec leaves the rate to the implementation.
-const FRAME_INTERVAL_MS: u64 = 16;
-
-const AnimationFrameEntry = struct {
-    handle: u32,
-    /// OWNED: the engine handed it over with requestAnimationFrame. Released
-    /// once the callback has run, once it has been cancelled, or at teardown.
-    callback: runtime.JSValue,
-    /// The realm of the requestAnimationFrame that registered the callback:
-    /// each Window has its own map of animation frame callbacks, so the
-    /// callback runs, and reports what it throws, in the window it came from.
-    /// Not owned: the context manager keeps a realm until teardown, and a
-    /// destroyed window's entries go with it (windowDestroyed).
-    realm: runtime.Context,
-    /// Window reuse must not move the old Document's callback map to its
-    /// successor. Borrowed identity, checked by slab generation before use.
-    target_document: ?*runtime.Instance = null,
-    target_document_generation: u64 = 0,
-    cancelled: bool = false,
-    /// Removed from the callback map immediately before invocation. The local
-    /// batch continues to own its callback until the invocation returns.
-    consumed: bool = false,
-
-    fn deinit(self: *AnimationFrameEntry) void {
-        releaseValue(self.takeCallback());
-    }
-
-    fn takeCallback(self: *AnimationFrameEntry) runtime.JSValue {
-        const callback = self.callback;
-        self.callback = .undefined;
-        self.consumed = true;
-        return callback;
-    }
-};
-
-const AnimationFrameState = struct {
-    /// Each document's callback map, interleaved in registration order. Its
-    /// entries stay pending until that document's turn snapshots its handles.
-    pending: std.ArrayListUnmanaged(AnimationFrameEntry) = .empty,
-    /// Borrowed active-document identities with native rendering work. Their
-    /// navigables own them; generations and replacement retire stale requests.
-    native_pending: std.ArrayListUnmanaged(AnimationFrameDocument) = .empty,
-    /// The single timer driving the next frame, if one is scheduled.
-    timer_id: ?TimerId = null,
-    /// The batch currently being run, borrowed from animationFrameHandler's
-    /// stack for the duration of the loop. cancelAnimationFrame has to be able
-    /// to reach it: per HTML's "run the animation frame callbacks", cancelling
-    /// from INSIDE a callback must still suppress a later callback in the SAME
-    /// frame, and those entries are no longer in `pending`.
-    running: []AnimationFrameEntry = &.{},
-    /// Borrowed stack identity for the entire rendering turn, including gaps
-    /// between document batches. Replaced state never inherits the identity.
-    dispatch_token: ?*const u8 = null,
-    /// Handles are their own space, not the timer id space: per spec
-    /// cancelAnimationFrame(someTimeoutId) must do nothing.
-    next_handle: u32 = 1,
-};
-
-threadlocal var animation_frames: ?AnimationFrameState = null;
-
-const AnimationFrameDisposition = enum { ready, deferred, terminal };
-
-/// A rendering turn captures documents, including ones with no callback yet.
-/// These identities are borrowed; before each turn, resolve the navigable id
-/// again and check both slab generations without dereferencing an old realm.
-const AnimationFrameDocument = struct {
-    navigable_id: u64,
-    window: *runtime.Instance,
-    window_generation: u64,
-    document: *runtime.Instance,
-    document_generation: u64,
-    realm: runtime.Context,
-
-    fn current(self: AnimationFrameDocument) bool {
-        if (runtime.SlabAllocator.generationOf(self.window) != self.window_generation or
-            runtime.SlabAllocator.generationOf(self.document) != self.document_generation) return false;
-        if (instance_lifecycle.isCleanupStarted(self.window) or
-            instance_lifecycle.isCleanupStarted(self.document)) return false;
-        const navigables = dom_mod.browser_state.navigablesOf(self.realm) orelse return false;
-        const navigable = navigables.byId(self.navigable_id) orelse return false;
-        if (navigable.is_closed or navigable.orphaned) return false;
-        if (navigable.active_window != @as(?*anyopaque, @ptrCast(self.window)) or
-            navigable.active_document != @as(?*anyopaque, @ptrCast(self.document))) return false;
-        return self.window.ctx == self.realm and self.realm.hasEngine();
-    }
-};
-
-/// Reserve storage before moving any callback owner. Snapshot only THIS
-/// document's handles when its turn starts (HTML run-animation-callbacks 1–2).
-/// Parent callbacks can therefore register callbacks for a later child turn.
-fn takeAnimationFrameBatch(
-    allocator: std.mem.Allocator,
-    state: *AnimationFrameState,
-    realm: runtime.Context,
-) error{OutOfMemory}!std.ArrayListUnmanaged(AnimationFrameEntry) {
-    var count: usize = 0;
-    for (state.pending.items) |entry| if (entry.realm == realm) {
-        count += 1;
-    };
-    var batch: std.ArrayListUnmanaged(AnimationFrameEntry) = .empty;
-    errdefer batch.deinit(allocator);
-    try batch.ensureTotalCapacity(allocator, count);
-    var index: usize = 0;
-    while (index < state.pending.items.len) {
-        if (state.pending.items[index].realm == realm) {
-            batch.appendAssumeCapacity(state.pending.orderedRemove(index));
-        } else index += 1;
-    }
-    return batch;
-}
-
-/// Terminal owners cannot be invoked by any future rendering opportunity.
-/// A live hidden/inactive/blocked document keeps its owners until a later turn.
-fn retireAnimationFrameCallbacks(state: *AnimationFrameState) void {
-    var index: usize = 0;
-    while (index < state.pending.items.len) {
-        const entry = state.pending.items[index];
-        if (entry.cancelled or animationFrameRealmIsTerminal(entry.realm) or animationFrameTargetReplaced(entry)) {
-            var removed = state.pending.orderedRemove(index);
-            removed.deinit();
-        } else index += 1;
-    }
-}
-
-/// HTML update-rendering steps 2–3 collect and filter all documents before JS.
-/// The no-callback documents matter: an earlier parent turn can add their
-/// first callback. Documents created during a callback wait until next frame.
-fn collectAnimationFrameDocuments(
-    allocator: std.mem.Allocator,
-    seed: runtime.Context,
-) error{OutOfMemory}!std.ArrayListUnmanaged(AnimationFrameDocument) {
-    const navigables = dom_mod.browser_state.navigablesOf(seed) orelse return .empty;
-    const contexts = navigables.contexts();
-    var documents: std.ArrayListUnmanaged(AnimationFrameDocument) = .empty;
-    errdefer documents.deinit(allocator);
-    try documents.ensureTotalCapacity(allocator, contexts.len);
-    const loop = seed.getOptionalEventLoop();
-    for (contexts) |navigable| {
-        if (navigable.is_closed or navigable.orphaned) continue;
-        const window: *runtime.Instance = @ptrCast(@alignCast(navigable.active_window orelse continue));
-        if (runtime.SlabAllocator.generationOf(window) == runtime.SlabAllocator.dead_generation) continue;
-        if (instance_lifecycle.isCleanupStarted(window)) continue;
-        const realm = window.ctx;
-        const document_loop = realm.getOptionalEventLoop();
-        if (loop) |expected| {
-            const actual = document_loop orelse continue;
-            if (actual.ptr != expected.ptr or actual.vtable != expected.vtable) continue;
-        } else if (document_loop != null or realm.agent != seed.agent) continue;
-        if (documentDispositionForAnimationFrame(realm) != .ready) continue;
-        const document: *runtime.Instance = @ptrCast(@alignCast(navigable.active_document orelse continue));
-        documents.appendAssumeCapacity(.{
-            .navigable_id = navigable.id,
-            .window = window,
-            .window_generation = runtime.SlabAllocator.generationOf(window),
-            .document = document,
-            .document_generation = runtime.SlabAllocator.generationOf(document),
-            .realm = realm,
-        });
-    }
-    // No script runs while sorting, so the live navigable tree is stable.
-    std.mem.sort(AnimationFrameDocument, documents.items, @as(*const html_mod.Navigables, navigables), animationFrameDocumentLessThan);
-    return documents;
-}
-
-fn animationFrameDocumentLessThan(navigables: *const html_mod.Navigables, a: AnimationFrameDocument, b: AnimationFrameDocument) bool {
-    var left = navigables.byId(a.navigable_id) orelse return false;
-    var right = navigables.byId(b.navigable_id) orelse return false;
-    var left_depth: usize = 0;
-    var right_depth: usize = 0;
-    var left_root = left;
-    while (left_root.parent) |parent| : (left_depth += 1) left_root = parent;
-    var right_root = right;
-    while (right_root.parent) |parent| : (right_depth += 1) right_root = parent;
-    // HTML permits arbitrary order between unrelated top-level documents.
-    if (left_root != right_root) return left_root.id < right_root.id;
-    const original_left_depth = left_depth;
-    const original_right_depth = right_depth;
-    while (left_depth > right_depth) : (left_depth -= 1) left = left.parent.?;
-    while (right_depth > left_depth) : (right_depth -= 1) right = right.parent.?;
-    if (left == right) return original_left_depth < original_right_depth;
-    while (left.parent != right.parent) {
-        left = left.parent.?;
-        right = right.parent.?;
-    }
-    const parent = left.parent orelse return left.id < right.id;
-    const document: *runtime.Instance = @ptrCast(@alignCast(parent.active_document orelse return left.id < right.id));
-    const left_container: *runtime.Instance = @ptrCast(@alignCast(left.container orelse return left.id < right.id));
-    const right_container: *runtime.Instance = @ptrCast(@alignCast(right.container orelse return left.id < right.id));
-    return shadowIncludingContainerOrder(document, left_container, right_container) orelse (left.id < right.id);
-}
-
-/// Visit a host's shadow tree (including closed roots) before its light tree.
-/// Pure IDL getters and the owning Element hook; no JS getters or allocations.
-fn shadowIncludingContainerOrder(root: *runtime.Instance, a: *runtime.Instance, b: *runtime.Instance) ?bool {
-    var node = root;
-    while (true) {
-        if (node == a) return true;
-        if (node == b) return false;
-        if (dom_mod.shadow_hosts.rootForHost(node)) |shadow| {
-            node = shadow;
-            continue;
-        }
-        if (interfaces.Node.get_firstChild(node) catch null) |child| {
-            node = child;
-            continue;
-        }
-        while (true) {
-            if (node == root) return null;
-            if (interfaces.Node.get_nextSibling(node) catch null) |sibling| {
-                node = sibling;
-                break;
-            }
-            if (interfaces.Node.get_parentNode(node) catch null) |parent| {
-                node = parent;
-            } else if (std.mem.eql(u8, node.vtable.name, "ShadowRoot")) {
-                const host = interfaces.ShadowRoot.get_host(node) catch return null;
-                if (interfaces.Node.get_firstChild(host) catch null) |child| {
-                    node = child;
-                    break;
-                }
-                node = host;
-            } else return null;
-        }
-    }
-}
+// Animation frames: the documents' maps of animation frame callbacks and the
+// rendering opportunity that runs them are the event loop's (rendering.zig).
 
 test "a held timer stays in its window's map until cleared, and clearing it frees it" {
     const allocator = std.testing.allocator;
@@ -553,266 +312,6 @@ test "a suspended timer keeps the wait it had left, and a resumed one is armed f
     try std.testing.expectEqual(@as(usize, 0), timer_contexts.?.count());
 }
 
-test "per-document frame batches include parent additions but defer their own additions" {
-    const allocator = std.testing.allocator;
-    var parent = try runtime.ContextData.init(allocator, .{});
-    defer parent.deinit();
-    var child = try runtime.ContextData.init(allocator, .{});
-    defer child.deinit();
-    var state: AnimationFrameState = .{};
-    defer state.pending.deinit(allocator);
-    try state.pending.appendSlice(allocator, &.{
-        .{ .handle = 1, .callback = .{ .number = 1 }, .realm = &child },
-        .{ .handle = 2, .callback = .{ .number = 2 }, .realm = &parent },
-    });
-    var parent_batch = try takeAnimationFrameBatch(allocator, &state, &parent);
-    defer parent_batch.deinit(allocator);
-    try std.testing.expectEqual(@as(u32, 2), parent_batch.items[0].handle);
-    try state.pending.append(allocator, .{ .handle = 3, .callback = .{ .number = 3 }, .realm = &child });
-    var child_batch = try takeAnimationFrameBatch(allocator, &state, &child);
-    defer child_batch.deinit(allocator);
-    try std.testing.expectEqual(@as(usize, 2), child_batch.items.len);
-    try std.testing.expectEqual(@as(u32, 1), child_batch.items[0].handle);
-    try std.testing.expectEqual(@as(u32, 3), child_batch.items[1].handle);
-    try state.pending.append(allocator, .{ .handle = 4, .callback = .{ .number = 4 }, .realm = &child });
-    try std.testing.expectEqual(@as(usize, 1), state.pending.items.len);
-    try std.testing.expectEqual(@as(u32, 4), state.pending.items[0].handle);
-    // Three distinct owners moved once; the new child owner remains pending.
-    try std.testing.expectEqual(@as(f64, 6), parent_batch.items[0].callback.number + child_batch.items[0].callback.number + child_batch.items[1].callback.number);
-}
-
-test "per-document frame reserve failure leaves every owner and handle pending" {
-    const allocator = std.testing.allocator;
-    var realm = try runtime.ContextData.init(allocator, .{});
-    defer realm.deinit();
-    var state: AnimationFrameState = .{};
-    defer state.pending.deinit(allocator);
-    try state.pending.append(allocator, .{ .handle = 7, .callback = .{ .number = 17 }, .realm = &realm });
-    var failing = std.testing.FailingAllocator.init(allocator, .{ .fail_index = 0 });
-    try std.testing.expectError(error.OutOfMemory, takeAnimationFrameBatch(failing.allocator(), &state, &realm));
-    try std.testing.expectEqual(@as(usize, 1), state.pending.items.len);
-    try std.testing.expectEqual(@as(u32, 7), state.pending.items[0].handle);
-    try std.testing.expectEqual(@as(f64, 17), state.pending.items[0].callback.number);
-    var batch = try takeAnimationFrameBatch(allocator, &state, &realm);
-    defer batch.deinit(allocator);
-    try std.testing.expectEqual(@as(usize, 0), state.pending.items.len);
-    try std.testing.expectEqual(@as(usize, 1), batch.items.len);
-}
-
-test "terminal frame requests advance handles without retaining owners" {
-    const allocator = std.testing.allocator;
-    var realm = try runtime.ContextData.init(allocator, .{});
-    defer realm.deinit();
-    const saved_allocator = current_allocator;
-    const saved_frames = animation_frames;
-    defer {
-        current_allocator = saved_allocator;
-        animation_frames = saved_frames;
-    }
-    current_allocator = allocator;
-    animation_frames = .{};
-    defer animation_frames.?.pending.deinit(allocator);
-    try std.testing.expectEqual(AnimationFrameDisposition.terminal, documentDispositionForAnimationFrame(&realm));
-    try std.testing.expectEqual(@as(u32, 1), requestAnimationFrame(&realm, .undefined));
-    try std.testing.expectEqual(@as(u32, 2), requestAnimationFrame(&realm, .undefined));
-    try std.testing.expectEqual(@as(usize, 0), animation_frames.?.pending.items.len);
-    try std.testing.expect(animation_frames.?.timer_id == null);
-    // An entry accepted before its realm ended is retired as well.
-    try animation_frames.?.pending.append(allocator, .{ .handle = 3, .callback = .undefined, .realm = &realm });
-    retireAnimationFrameCallbacks(&animation_frames.?);
-    try std.testing.expectEqual(@as(usize, 0), animation_frames.?.pending.items.len);
-}
-
-test "animation frame callback owner is released exactly once after transfer" {
-    const allocator = std.testing.allocator;
-    var realm = try runtime.ContextData.init(allocator, .{});
-    defer realm.deinit();
-    var state: AnimationFrameState = .{};
-    defer state.pending.deinit(allocator);
-    try state.pending.append(allocator, .{ .handle = 7, .callback = .{ .number = 17 }, .realm = &realm });
-    var batch = try takeAnimationFrameBatch(allocator, &state, &realm);
-    defer batch.deinit(allocator);
-    const Counter = struct {
-        fn release(count: *usize, value: runtime.JSValue) void {
-            if (value == .number) {
-                std.debug.assert(value.number == 17);
-                count.* += 1;
-            }
-        }
-    };
-    var released: usize = 0;
-    Counter.release(&released, batch.items[0].takeCallback());
-    Counter.release(&released, batch.items[0].takeCallback());
-    try std.testing.expectEqual(@as(usize, 1), released);
-    try std.testing.expect(batch.items[0].consumed);
-    try std.testing.expect(batch.items[0].callback == .undefined);
-    try std.testing.expectEqual(@as(usize, 0), state.pending.items.len);
-}
-
-test "frame cancellation reaches pending and running maps without canceling a consumed handle" {
-    const allocator = std.testing.allocator;
-    var realm = try runtime.ContextData.init(allocator, .{});
-    defer realm.deinit();
-    var state: AnimationFrameState = .{};
-    defer state.pending.deinit(allocator);
-    var running = [_]AnimationFrameEntry{
-        .{ .handle = 1, .callback = .undefined, .realm = &realm, .consumed = true },
-        .{ .handle = 2, .callback = .undefined, .realm = &realm },
-    };
-    state.running = &running;
-    try state.pending.append(allocator, .{ .handle = 3, .callback = .undefined, .realm = &realm });
-    cancelAnimationFrameIn(&state, &realm, 1);
-    try std.testing.expect(!running[0].cancelled);
-    cancelAnimationFrameIn(&state, &realm, 2);
-    try std.testing.expect(running[1].cancelled);
-    cancelAnimationFrameIn(&state, &realm, 3);
-    retireAnimationFrameCallbacks(&state);
-    try std.testing.expectEqual(@as(usize, 0), state.pending.items.len);
-}
-
-test "callable removed Window is terminal but a live navigable awaiting its document is deferred" {
-    const allocator = std.testing.allocator;
-    var dummy_engine: u32 = 0;
-    // The realm's Browser, whose list its navigable is on.
-    var scope = runtime.BrowserScope.init(allocator);
-    defer scope.deinit();
-    var realm = try runtime.ContextData.init(allocator, .{ .engine_ctx = &dummy_engine });
-    defer realm.deinit();
-    realm.browser_scope = &scope;
-    // No engine operation reaches the fake context. These objects are only
-    // read as runtime identities, and no slab-generation check is needed.
-    var window: runtime.Instance = undefined;
-    const record = try runtime.Realm.init(allocator, .{ .global_object = &window });
-    defer record.deinit();
-    realm.setRealm(record);
-    defer realm.clearRealm();
-    const navigable = try html_mod.window.BrowsingContext.init(allocator, try scope.table(.navigables, html_mod.Navigables));
-    defer navigable.deinit();
-    navigable.active_window = &window;
-    try std.testing.expectEqual(AnimationFrameDisposition.deferred, documentDispositionForAnimationFrame(&realm));
-    navigable.is_closed = true;
-    try std.testing.expectEqual(AnimationFrameDisposition.terminal, documentDispositionForAnimationFrame(&realm));
-    navigable.is_closed = false;
-    navigable.orphaned = true;
-    try std.testing.expectEqual(AnimationFrameDisposition.terminal, documentDispositionForAnimationFrame(&realm));
-    navigable.orphaned = false;
-    navigable.active_window = null;
-    try std.testing.expectEqual(AnimationFrameDisposition.terminal, documentDispositionForAnimationFrame(&realm));
-    try std.testing.expect(realm.hasEngine());
-}
-
-test "frame document collection reserve failure leaves callback owners untouched" {
-    const allocator = std.testing.allocator;
-    var scope = runtime.BrowserScope.init(allocator);
-    defer scope.deinit();
-    var realm = try runtime.ContextData.init(allocator, .{});
-    defer realm.deinit();
-    realm.browser_scope = &scope;
-    const navigable = try html_mod.window.BrowsingContext.init(allocator, try scope.table(.navigables, html_mod.Navigables));
-    defer navigable.deinit();
-    var state: AnimationFrameState = .{};
-    defer state.pending.deinit(allocator);
-    try state.pending.append(allocator, .{ .handle = 7, .callback = .{ .number = 17 }, .realm = &realm });
-    var failing = std.testing.FailingAllocator.init(allocator, .{ .fail_index = 0 });
-    try std.testing.expectError(error.OutOfMemory, collectAnimationFrameDocuments(failing.allocator(), &realm));
-    try std.testing.expectEqual(@as(usize, 1), state.pending.items.len);
-    try std.testing.expectEqual(@as(f64, 17), state.pending.items[0].callback.number);
-    try std.testing.expectEqual(@as(u32, 7), state.pending.items[0].handle);
-}
-
-test "whole frame dispatch token survives empty document batches and detects replaced state" {
-    const saved_frames = animation_frames;
-    defer animation_frames = saved_frames;
-    var token: u8 = 0;
-    animation_frames = .{ .dispatch_token = &token };
-    try std.testing.expect(animation_frames.?.running.len == 0);
-    try std.testing.expect(animationFrameDispatchState(&token) != null);
-    animation_frames = .{};
-    try std.testing.expect(animationFrameDispatchState(&token) == null);
-}
-
-test "frame document identities reject replacement and slab reuse of the same address" {
-    // This test needs a fresh per-thread slab, independent of earlier files'
-    // Browser/V8 startup. No engine operation reaches the fake engine pointer.
-    const Worker = struct {
-        fn run(failure: *?anyerror) void {
-            body() catch |err| {
-                failure.* = err;
-            };
-        }
-        fn body() !void {
-            const allocator = std.testing.allocator;
-            var slab_value = runtime.SlabAllocator.init(allocator);
-            defer slab_value.deinit();
-            var scope = runtime.BrowserScope.init(allocator);
-            defer scope.deinit();
-            var dummy_engine: u32 = 0;
-            var realm = try runtime.ContextData.init(allocator, .{ .engine_ctx = &dummy_engine });
-            defer realm.deinit();
-            realm.browser_scope = &scope;
-            const vtable: runtime.VTable = .{ .name = "Window", .deinit = null, .methods_ptr = &dummy_engine };
-            const slab = &slab_value;
-            const window = try slab.alloc(&vtable);
-            defer slab.free(window);
-            window.ctx = &realm;
-            const original = try slab.alloc(&vtable);
-            var original_alive = true;
-            defer if (original_alive) slab.free(original);
-            original.ctx = &realm;
-            const replacement = try slab.alloc(&vtable);
-            defer slab.free(replacement);
-            replacement.ctx = &realm;
-            const record = try runtime.Realm.init(allocator, .{ .global_object = window });
-            defer record.deinit();
-            realm.setRealm(record);
-            defer realm.clearRealm();
-            const navigable = try html_mod.window.BrowsingContext.init(allocator, try scope.table(.navigables, html_mod.Navigables));
-            defer navigable.deinit();
-            navigable.active_window = window;
-            navigable.active_document = original;
-            const document: AnimationFrameDocument = .{
-                .navigable_id = navigable.id,
-                .window = window,
-                .window_generation = runtime.SlabAllocator.generationOf(window),
-                .document = original,
-                .document_generation = runtime.SlabAllocator.generationOf(original),
-                .realm = &realm,
-            };
-            const callback: AnimationFrameEntry = .{
-                .handle = 1,
-                .callback = .undefined,
-                .realm = &realm,
-                .target_document = original,
-                .target_document_generation = document.document_generation,
-            };
-            try std.testing.expect(document.current());
-            try std.testing.expect(!animationFrameTargetReplaced(callback));
-            navigable.active_document = replacement;
-            try std.testing.expect(!document.current());
-            try std.testing.expect(animationFrameTargetReplaced(callback));
-            navigable.active_document = original;
-            slab.free(original);
-            original_alive = false;
-            const reused = try slab.alloc(&vtable);
-            defer slab.free(reused);
-            reused.ctx = &realm;
-            try std.testing.expect(reused == original);
-            try std.testing.expect(!document.current());
-            try std.testing.expect(animationFrameTargetReplaced(callback));
-        }
-    };
-    var failure: ?anyerror = null;
-    const thread = try std.Thread.spawn(.{}, Worker.run, .{&failure});
-    thread.join();
-    if (failure) |err| return err;
-}
-
-/// Captured when the timer interface is installed, which is context setup - close
-/// enough to the spec's time origin, and it avoids taking an hr_time dependency
-/// here. rAF timestamps are therefore ms since context setup, monotonic and
-/// comparable to each other, which is what the frame tests assert.
-threadlocal var animation_frame_origin_ms: i64 = 0;
-
 // ============================================================================
 // HTML timer initialisation steps (HTML Standard s8.6)
 // ============================================================================
@@ -866,7 +365,7 @@ fn releaseValue(value: runtime.JSValue) void {
 }
 
 /// The Window whose realm `realm` is: its realm record's global object.
-fn realmWindow(realm: runtime.Context) ?*runtime.Instance {
+pub fn realmWindow(realm: runtime.Context) ?*runtime.Instance {
     const record = realm.getRealm() orelse return null;
     const global = record.global_object orelse return null;
     return @ptrCast(@alignCast(global));
@@ -875,7 +374,7 @@ fn realmWindow(realm: runtime.Context) ?*runtime.Instance {
 /// The browsing context whose active window is `window`, `realm`'s global,
 /// on the list of `realm`'s Browser - asked of the realm, which stays a
 /// readable record after it retires, never of a Window that may be gone.
-fn realmNavigable(realm: runtime.Context, window: *runtime.Instance) ?*html_mod.BrowsingContext {
+pub fn realmNavigable(realm: runtime.Context, window: *runtime.Instance) ?*html_mod.BrowsingContext {
     const navigables = dom_mod.browser_state.navigablesOf(realm) orelse return null;
     return navigables.ofWindow(@ptrCast(window));
 }
@@ -908,7 +407,7 @@ fn windowReporter(realm: runtime.Context) engine.Reporter {
 /// dropped. The callback this value is the WindowProxy. (For animation frames
 /// the spec gives none, so a strict callback should see undefined; the
 /// WindowProxy is what this binding has always passed, and is kept.)
-fn invokeReporting(realm: runtime.Context, callback: runtime.JSValue, args: []const runtime.JSValue) void {
+pub fn invokeReporting(realm: runtime.Context, callback: runtime.JSValue, args: []const runtime.JSValue) void {
     // BORROWED: the timer or frame entry keeps the function. No callback
     // context was recorded when it was converted.
     const function = engine.CallbackFunction{ .function = .{ .value = callback }, .context = null };
@@ -923,7 +422,7 @@ fn invokeReporting(realm: runtime.Context, callback: runtime.JSValue, args: []co
 
 /// "Clean up after running script" at the end of a timer or frame task: the
 /// microtask checkpoint of the agent `realm` belongs to.
-fn performMicrotaskCheckpoint(realm: runtime.Context) void {
+pub fn performMicrotaskCheckpoint(realm: runtime.Context) void {
     engine.performMicrotaskCheckpoint(realm.agent orelse return) catch {};
 }
 
@@ -935,7 +434,6 @@ pub fn setTimerInterface(timer: TimerInterface, allocator: std.mem.Allocator) vo
     if (timer_contexts == null) {
         timer_contexts = TimerMap.init(allocator);
     }
-    animation_frame_origin_ms = clock.monotonicMillis();
 }
 
 /// Get the current timer interface
@@ -968,22 +466,8 @@ pub fn clearTimerInterface() void {
         timer_contexts = null;
     }
 
-    // Animation frames: cancel the frame timer and drop the pending batch.
-    if (animation_frames) |*state| {
-        if (state.timer_id) |id| {
-            if (current_timer_interface) |timer| _ = timer.clearTimeout(id);
-        }
-        // The handler owns its running batch. Teardown only cancels it; the
-        // handler releases each callback exactly once when it reaches it.
-        for (state.running) |*entry| entry.cancelled = true;
-        // Every pending entry still owns its callback.
-        for (state.pending.items) |*entry| entry.deinit();
-        if (current_allocator) |alloc| {
-            state.pending.deinit(alloc);
-            state.native_pending.deinit(alloc);
-        }
-        animation_frames = null;
-    }
+    // (The animation frame callbacks end with the page: Context.deinit's
+    // rendering.endPage, before this.)
 
     // (The window operations the page's realm installed end with the realm:
     // destroyWindowRealm.)
@@ -997,8 +481,8 @@ pub fn clearTimerInterface() void {
 const window_operations = runtime.WindowOperations{
     .initializeTimer = initializeTimer,
     .clearTimer = clearTimer,
-    .requestAnimationFrame = requestAnimationFrame,
-    .cancelAnimationFrame = cancelAnimationFrame,
+    .requestAnimationFrame = rendering.requestAnimationFrame,
+    .cancelAnimationFrame = rendering.cancelAnimationFrame,
     .windowDestroyed = clearWindowState,
 };
 
@@ -1012,8 +496,9 @@ pub fn installHooks() void {
         .active_timer_handles = activeTimerHandles,
         .suspend_timers = suspendWindowTimers,
         .resume_timers = resumeWindowTimers,
-        .request_rendering = requestNativeRendering,
     });
+    // The event loop's half of "update the rendering": its frame requests.
+    @import("dom").update_the_rendering.installLoop(rendering.loop_hooks);
     // The Browser's back/forward cache, which the navigation code reaches
     // through dom.bfcache.
     @import("back_forward_cache.zig").installHooks();
@@ -1043,27 +528,8 @@ fn clearWindowState(realm: runtime.Context) void {
         for (doomed.items) |id| unregisterTimerContext(id);
     }
 
-    if (animation_frames) |*state| {
-        // The batch in progress sees its own entries through `running`; one
-        // of this window's is skipped rather than removed from under the loop.
-        for (state.running) |*entry| {
-            if (entry.realm == realm) entry.cancelled = true;
-        }
-        var i: usize = 0;
-        while (i < state.pending.items.len) {
-            const entry = state.pending.items[i];
-            if (entry.realm == realm) {
-                var removed = state.pending.orderedRemove(i);
-                removed.deinit();
-            } else i += 1;
-        }
-        i = 0;
-        while (i < state.native_pending.items.len) {
-            if (state.native_pending.items[i].realm == realm) {
-                _ = state.native_pending.orderedRemove(i);
-            } else i += 1;
-        }
-    }
+    // Its map of animation frame callbacks and its frame requests.
+    rendering.windowDestroyed(realm);
 }
 
 /// dom.window_documents: the keys of `realm`'s window's map of active timers
@@ -1091,8 +557,8 @@ fn activeTimerHandles(realm: runtime.Context, allocator: std.mem.Allocator) erro
 /// it by the time the document was suspended, which is the same wait.
 /// Chrome fires them early instead (back-forward-cache/timers.html: Firefox
 /// and Safari pass, Chrome fails, wpt.fyi 23b0b89b1a). Its animation frame
-/// callbacks wait too, without a frame scheduled for them
-/// (`scheduleAnimationFrame`).
+/// callbacks wait too, without a frame scheduled for them (rendering.zig
+/// arms no rendering opportunity for a cached page).
 fn suspendWindowTimers(realm: runtime.Context) void {
     const map = if (timer_contexts) |*m| m else return;
     const timer = current_timer_interface orelse return;
@@ -1135,10 +601,7 @@ fn resumeWindowTimers(realm: runtime.Context) void {
             data.current_timer_id = id;
         }
     };
-    if (realmWindow(realm)) |window| if (realmNavigable(realm, window)) |navigable| {
-        if (navigable.getActiveDocument()) |document| requestNativeRendering(@ptrCast(@alignCast(document)));
-    };
-    scheduleAnimationFrame();
+    rendering.windowResumed(realm);
 }
 
 /// Clear ALL pending timer contexts but keep the timer interface
@@ -2986,8 +2449,10 @@ pub const Context = struct {
         // (Instance lifecycle flags live in each instance's slab slot and go
         // with it: nothing of the page's to clear here.)
 
-        // Clear timer interface and cancel all pending timers, before the
-        // realm ends, so that none fires into it.
+        // The page's animation frame callbacks end with it, and the timer
+        // interface and every pending timer, before the realm ends, so that
+        // none fires into it.
+        if (self.realm) |realm| rendering.endPage(realm);
         clearTimerInterface();
 
         // NOTE: Do NOT explicitly deinit singleton instances here! The
@@ -3087,327 +2552,6 @@ const PendingLoad = struct {
     }
 };
 
-// ============================================================================
-// Animation frames
-// ============================================================================
-
-/// HTML rendering opportunities: callbacks and autofocus share one frame timer.
-/// Documents without either have no native rendering timer.
-fn scheduleAnimationFrame() void {
-    const state = if (animation_frames) |*s| s else return;
-    retireNativeRenderingRequests(state);
-    if (state.timer_id != null) return;
-    // A document turn may add callbacks to a later document this frame, but
-    // nested loop pumping must never start another rendering turn.
-    if (state.dispatch_token != null) return;
-    if (state.pending.items.len == 0 and state.native_pending.items.len == 0) return;
-    // Callbacks of pages the back/forward cache keeps wait without a frame:
-    // a frame every 16 ms for a page that cannot run them would keep the
-    // loop busy for as long as the page is cached. Their restore asks for
-    // one (resumeWindowTimers).
-    if (!anyAnimationFrameRunnable(state)) return;
-    const timer = getTimerInterface() orelse return;
-    const id = timer.setTimeout(FRAME_INTERVAL_MS, animationFrameHandler, null);
-    // 0 is the failure sentinel; leaving timer_id null lets a later rAF retry.
-    if (id != 0) state.timer_id = id;
-}
-
-/// Whether a pending callback's page may run it at a frame: not one the
-/// back/forward cache keeps.
-fn anyAnimationFrameRunnable(state: *const AnimationFrameState) bool {
-    for (state.native_pending.items) |document| {
-        if (!realmIsCached(document.realm)) return true;
-    }
-    for (state.pending.items) |entry| {
-        if (!realmIsCached(entry.realm)) return true;
-    }
-    return false;
-}
-
-/// Native autofocus work can request the first frame before any page script
-/// has called requestAnimationFrame. The Document owns the candidates; this
-/// list is only a scheduling request, not an owner of a document or realm.
-fn requestNativeRendering(document: *runtime.Instance) void {
-    if (!dom_mod.document_autofocus.hasCandidates(document) and !dom_mod.style.engine.resource_loading.hasPending(document)) return;
-    const allocator = current_allocator orelse return;
-    const realm = document.ctx;
-    const window = realmWindow(realm) orelse return;
-    const navigable = realmNavigable(realm, window) orelse return;
-    if (navigable.active_document != @as(?*anyopaque, @ptrCast(document))) return;
-    if (animation_frames == null) animation_frames = .{};
-    const state = &animation_frames.?;
-    retireNativeRenderingRequests(state);
-    for (state.native_pending.items) |pending| {
-        if (pending.document == document) {
-            scheduleAnimationFrame();
-            return;
-        }
-    }
-    state.native_pending.append(allocator, .{
-        .navigable_id = navigable.id,
-        .window = window,
-        .window_generation = runtime.SlabAllocator.generationOf(window),
-        .document = document,
-        .document_generation = runtime.SlabAllocator.generationOf(document),
-        .realm = realm,
-    }) catch return;
-    scheduleAnimationFrame();
-}
-
-fn retireNativeRenderingRequests(state: *AnimationFrameState) void {
-    var index: usize = 0;
-    while (index < state.native_pending.items.len) {
-        const document = state.native_pending.items[index];
-        if (!document.current() or (!dom_mod.document_autofocus.hasCandidates(document.document) and !dom_mod.style.engine.resource_loading.hasPending(document.document))) {
-            _ = state.native_pending.orderedRemove(index);
-        } else index += 1;
-    }
-}
-
-/// Whether `realm`'s Window belongs to a page the back/forward cache keeps:
-/// no navigable shows it, and it may be shown again (dom.bfcache.holds).
-fn realmIsCached(realm: runtime.Context) bool {
-    if (!realm.hasEngine()) return false;
-    const window = realmWindow(realm) orelse return false;
-    return windowIsCached(realm, window);
-}
-
-/// Whether `window`, `realm`'s, is a cached page's - asked of the realm's
-/// event loop first, where a cached page always has its suspended task
-/// group: a realm on no Browser loop, or on one with none, has no cached
-/// page (and its Window is not read).
-fn windowIsCached(realm: runtime.Context, window: *runtime.Instance) bool {
-    const loop = @import("event_loop.zig").EventLoop.of(realm) orelse return false;
-    if (loop.suspended.items.len == 0) return false;
-    return dom_mod.bfcache.holds(window);
-}
-
-/// A removed/replaced Window has no active navigable; no future frame can
-/// invoke its callback map. The realm itself may remain callable from script.
-/// A live navigable with no document yet is temporary, and keeps callbacks.
-/// So does a Window the back/forward cache keeps: its map of animation frame
-/// callbacks is its document's, which may be shown again.
-fn animationFrameRealmIsTerminal(realm: runtime.Context) bool {
-    if (!realm.hasEngine()) return true;
-    const window = realmWindow(realm) orelse return true;
-    if (instance_lifecycle.isCleanupStarted(window)) return true;
-    const navigable = realmNavigable(realm, window) orelse return !windowIsCached(realm, window);
-    if (navigable.is_closed or navigable.orphaned) return true;
-    if (navigable.active_document) |ptr| {
-        const document: *runtime.Instance = @ptrCast(@alignCast(ptr));
-        if (runtime.SlabAllocator.generationOf(document) == runtime.SlabAllocator.dead_generation) return true;
-        if (instance_lifecycle.isCleanupStarted(document)) return true;
-    }
-    return false;
-}
-
-/// The rAF map belongs to the associated Document, not a reusable Window.
-/// When the Window adopts its successor, retire the old document's owners.
-fn animationFrameTargetReplaced(entry: AnimationFrameEntry) bool {
-    const target = entry.target_document orelse return false;
-    if (entry.target_document_generation == runtime.SlabAllocator.dead_generation) return true;
-    if (runtime.SlabAllocator.generationOf(target) != entry.target_document_generation) return true;
-    const window = realmWindow(entry.realm) orelse return true;
-    // A cached page's map stays its document's (`animationFrameRealmIsTerminal`).
-    const navigable = realmNavigable(entry.realm, window) orelse return !windowIsCached(entry.realm, window);
-    // A temporarily unassigned active document is deferred. A different
-    // document is a permanent replacement of this entry's target map.
-    const active = navigable.active_document orelse return false;
-    return active != @as(*anyopaque, @ptrCast(target));
-}
-
-/// HTML update-rendering steps 2–3: eligibility is a document decision made
-/// before any callback, distinct from permanent destruction of its target.
-fn documentDispositionForAnimationFrame(realm: runtime.Context) AnimationFrameDisposition {
-    if (animationFrameRealmIsTerminal(realm)) return .terminal;
-    const window = realmWindow(realm) orelse return .terminal;
-    const navigable = realmNavigable(realm, window) orelse return .terminal;
-    const document: *runtime.Instance = @ptrCast(@alignCast(navigable.active_document orelse return .deferred));
-    if (!dom_mod.document_activity.fullyActive(document, runtime.SlabAllocator.generationOf(document))) return .deferred;
-    if ((interfaces.Document.get_visibilityState(document) catch return .deferred) == ._hidden_) return .deferred;
-    if (dom_mod.document_rendering.isBlocked(document)) return .deferred;
-    return .ready;
-}
-
-/// A token is borrowed from the handler's stack, and covers all document
-/// turns. Re-read it after JS: teardown can replace the threadlocal state.
-fn animationFrameDispatchState(token: *const u8) ?*AnimationFrameState {
-    const state = if (animation_frames) |*s| s else return null;
-    if (state.dispatch_token != token) return null;
-    return state;
-}
-
-/// Capture document eligibility globally, then snapshot handles separately
-/// when each selected document's tree-ordered turn begins (HTML step 14).
-fn animationFrameHandler(_: ?*anyopaque) void {
-    const state = if (animation_frames) |*s| s else return;
-    const allocator = current_allocator orelse return;
-    state.timer_id = null;
-    if (state.dispatch_token != null) return;
-    // Terminal/canceled owners need no allocation to leave the map, even
-    // when reserving the next document snapshot would fail.
-    retireAnimationFrameCallbacks(state);
-    retireNativeRenderingRequests(state);
-    const seed = if (state.pending.items.len != 0)
-        state.pending.items[0].realm
-    else if (state.native_pending.items.len != 0)
-        state.native_pending.items[0].realm
-    else
-        return;
-
-    var documents = collectAnimationFrameDocuments(allocator, seed) catch {
-        scheduleAnimationFrame();
-        return;
-    };
-
-    defer documents.deinit(allocator);
-
-    var token: u8 = 0;
-    state.dispatch_token = &token;
-    defer if (animationFrameDispatchState(&token)) |current| {
-        current.running = &.{};
-        current.dispatch_token = null;
-        retireAnimationFrameCallbacks(current);
-        scheduleAnimationFrame();
-    };
-
-    // HTML update-rendering step 7 precedes resize/scroll/media/rAF. Every
-    // top-level document is visited even when its autofocus handler will
-    // request the first script callback. Revalidate after any script ran.
-    for (documents.items) |document| {
-        if (animationFrameDispatchState(&token) == null) break;
-        if (!document.current()) continue;
-        if (html_mod.focus.topLevelDocumentOf(document.document) != document.document) continue;
-        html_mod.autofocus.flush(document.document);
-    }
-
-    // HTML update the rendering: "For each doc of docs, evaluate media queries
-    // and report changes for doc" (CSSOM View 4.2), before the animation
-    // frame callbacks (lane style2).
-    for (documents.items) |document| {
-        if (animationFrameDispatchState(&token) == null) break;
-        if (document.current()) dom_mod.style.reportMediaQueryChanges(document.document);
-    }
-
-    // Preserve the existing shared frame clock. Each document's relative time
-    // origin remains a separate timing concern from callback ordering.
-    const elapsed = clock.monotonicMillis() - animation_frame_origin_ms;
-    const timestamp = runtime.JSValue{ .number = @floatFromInt(if (elapsed < 0) 0 else elapsed) };
-    var last_realm: ?runtime.Context = null;
-    for (documents.items) |document| {
-        const current = animationFrameDispatchState(&token) orelse break;
-        // Removal cancels a turn; adding/removing a render blocker does not
-        // recalculate the eligibility captured before JS began.
-        if (!document.current()) continue;
-        var batch = takeAnimationFrameBatch(allocator, current, document.realm) catch break;
-        defer batch.deinit(allocator);
-        current.running = batch.items;
-        defer if (animationFrameDispatchState(&token)) |live_state| {
-            live_state.running = &.{};
-        };
-
-        for (batch.items) |*entry| {
-            defer entry.deinit();
-            if (entry.cancelled or animationFrameDispatchState(&token) == null) continue;
-            if (!document.current() or animationFrameTargetReplaced(entry.*)) continue;
-            // HTML run-animation-callbacks step 3.2: remove the handle before
-            // JS so cancellation of an already-invoked handle is a no-op.
-            entry.consumed = true;
-            // Only active documents' callbacks were collected.
-            dom_mod.bfcache.assertNotCached(entry.realm);
-            invokeReporting(entry.realm, entry.callback, &.{timestamp});
-            last_realm = entry.realm;
-        }
-    }
-    if (animationFrameDispatchState(&token) != null) {
-        if (last_realm) |realm| if (realm.hasEngine()) performMicrotaskCheckpoint(realm);
-    }
-    // Used CSS resources are selected at this existing rendering opportunity,
-    // after animation callbacks and their microtasks, never by a style getter.
-    for (documents.items) |document| {
-        if (animationFrameDispatchState(&token) == null) break;
-        if (!document.current()) continue;
-        dom_mod.style.engine.resource_loading.updateRendering(document.document);
-    }
-    // HTML update-the-rendering step 17, after the document turns. Retain
-    // focusedAreaOf's existing no-blur deviation; never fix up in a selector.
-    for (documents.items) |document| {
-        if (animationFrameDispatchState(&token) == null) break;
-        if (!document.current()) continue;
-        if (dom_mod.focused_area.get(document.document) == null) continue;
-        if (!dom_mod.document_activity.fullyActive(document.document, document.document_generation)) continue;
-        _ = html_mod.focus.focusedAreaOf(document.document);
-    }
-}
-
-/// requestAnimationFrame(callback) - HTML "animation frames", step 2 onwards,
-/// after the engine's conversion (`runtime.WindowOperations`). `callback` is
-/// handed over.
-fn requestAnimationFrame(realm: runtime.Context, callback: runtime.JSValue) u32 {
-    const allocator = current_allocator orelse {
-        releaseValue(callback);
-        return 0;
-    };
-
-    if (animation_frames == null) animation_frames = .{};
-    const state = &animation_frames.?;
-
-    const handle = state.next_handle;
-    if (animationFrameRealmIsTerminal(realm)) {
-        // A saved removed Window remains callable, but retaining an engine
-        // callback here would root a realm no rendering turn can visit.
-        state.next_handle += 1;
-        releaseValue(callback);
-        return handle;
-    }
-    const window = realmWindow(realm) orelse unreachable;
-    const navigable = realmNavigable(realm, window) orelse unreachable;
-    const target: ?*runtime.Instance = if (navigable.active_document) |document| @ptrCast(@alignCast(document)) else null;
-    state.pending.append(allocator, .{
-        .handle = handle,
-        .callback = callback,
-        .realm = realm,
-        .target_document = target,
-        .target_document_generation = if (target) |document| runtime.SlabAllocator.generationOf(document) else 0,
-    }) catch {
-        releaseValue(callback);
-        return 0;
-    };
-    state.next_handle += 1;
-
-    scheduleAnimationFrame();
-    return handle;
-}
-
-/// cancelAnimationFrame(handle). An unknown handle must do nothing.
-fn cancelAnimationFrame(realm: runtime.Context, handle: u32) void {
-    const state = if (animation_frames) |*s| s else return;
-    cancelAnimationFrameIn(state, realm, handle);
-}
-
-fn cancelAnimationFrameIn(state: *AnimationFrameState, realm: runtime.Context, handle: u32) void {
-
-    // Mark rather than remove: the batch may already be running, and removing
-    // from under the loop in animationFrameHandler would shift its indices.
-    // The frame in progress first: a callback cancelling a sibling registered
-    // for the same frame is the case `pending` alone cannot answer.
-    //
-    // A handle names a callback in THIS window's map only, so another
-    // window's callback with that handle is not cancelled.
-    for (state.running) |*entry| {
-        if (!entry.consumed and entry.handle == handle and entry.realm == realm) {
-            entry.cancelled = true;
-            return;
-        }
-    }
-    for (state.pending.items) |*entry| {
-        if (entry.handle == handle and entry.realm == realm) {
-            entry.cancelled = true;
-            return;
-        }
-    }
-}
-
 test "a browser started without a snapshot builds its realm afresh and runs a page" {
     // JavaScriptCore has no snapshots, so this is the startup path it runs on:
     // every WebIDL interface defined afresh on the realm's global
@@ -3442,94 +2586,4 @@ test "a browser started without a snapshot builds its realm afresh and runs a pa
     const shape = try ctx.evaluateScriptToString("[globalThis instanceof Window, self === globalThis, typeof addEventListener, document instanceof Document].join()", allocator);
     defer allocator.free(shape);
     try std.testing.expectEqualStrings("true,true,function,true", shape);
-}
-
-test "native autofocus rendering retires replaced and destroyed documents and exhausted queues" {
-    const Exercise = struct {
-        failure: ?anyerror = null,
-        fn run(self: *@This()) void {
-            self.exercise() catch |err| {
-                self.failure = err;
-            };
-        }
-        fn exercise(_: *@This()) !void {
-            const browser = try @import("Browser.zig").Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
-            defer browser.deinit();
-            try browser.navigate("about:blank", .window);
-            const context = browser.current_context.?;
-            try context.loadHTML("<!doctype html><body><input autofocus>", .{ .base_url = "about:blank" });
-            const old_document = context.document_instance.?;
-            try std.testing.expect(animation_frames.?.native_pending.items.len == 1);
-            const request = animation_frames.?.native_pending.items[0];
-            // Replacement changes the navigable's active Document while the
-            // old identity can still exist. A rendering request must not move
-            // to the replacement along with its reusable Window.
-            try context.loadHTML("<!doctype html><body>replacement", .{ .base_url = "about:blank" });
-            try std.testing.expect(context.document_instance.? != old_document);
-            try std.testing.expect(!request.current());
-            retireNativeRenderingRequests(&animation_frames.?);
-            try std.testing.expectEqual(@as(usize, 0), animation_frames.?.native_pending.items.len);
-
-            try context.runScript("document.body.innerHTML = '<input autofocus>'");
-            try std.testing.expect(animation_frames.?.native_pending.items.len == 1);
-            clearWindowState(context.document_instance.?.ctx);
-            try std.testing.expectEqual(@as(usize, 0), animation_frames.?.native_pending.items.len);
-            // Register its live document again and process the last candidate.
-            requestNativeRendering(context.document_instance.?);
-            try std.testing.expect(animation_frames.?.native_pending.items.len == 1);
-            html_mod.autofocus.flush(context.document_instance.?);
-            _ = try browser.runEventLoopBlocking(50);
-            try std.testing.expectEqual(@as(usize, 0), animation_frames.?.native_pending.items.len);
-            try std.testing.expect(animation_frames.?.timer_id == null);
-        }
-    };
-    var exercise: Exercise = .{};
-    const thread = try std.Thread.spawn(.{}, Exercise.run, .{&exercise});
-    thread.join();
-    if (exercise.failure) |err| return err;
-}
-
-test "reactivation restores pending native autofocus rendering without an idle timer" {
-    const Exercise = struct {
-        failure: ?anyerror = null,
-        fn run(self: *@This()) void {
-            self.exercise() catch |err| {
-                self.failure = err;
-            };
-        }
-        fn exercise(_: *@This()) !void {
-            const browser = try @import("Browser.zig").Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
-            defer browser.deinit();
-            try browser.navigate("about:blank", .window);
-            const context = browser.current_context.?;
-            try context.loadHTML("<!doctype html><body><input autofocus>", .{ .base_url = "about:blank" });
-            const document = context.document_instance.?;
-            const realm = document.ctx;
-            const window = realmWindow(realm).?;
-            const navigable = realmNavigable(realm, window).?;
-            const saved = navigable.active_document;
-            defer navigable.active_document = saved;
-            suspendWindowTimers(realm);
-            // A cached Document is retained but not the active document of
-            // its navigable. Keep its native owner while simulating that gap.
-            navigable.active_document = null;
-            _ = try browser.runEventLoopBlocking(50);
-            try std.testing.expectEqual(@as(usize, 0), animation_frames.?.native_pending.items.len);
-            try std.testing.expect(animation_frames.?.timer_id == null);
-
-            navigable.active_document = saved;
-            resumeWindowTimers(realm);
-            try std.testing.expectEqual(@as(usize, 1), animation_frames.?.native_pending.items.len);
-            try std.testing.expect(animation_frames.?.timer_id != null);
-            html_mod.autofocus.flush(document);
-            _ = try browser.runEventLoopBlocking(50);
-            resumeWindowTimers(realm);
-            try std.testing.expectEqual(@as(usize, 0), animation_frames.?.native_pending.items.len);
-            try std.testing.expect(animation_frames.?.timer_id == null);
-        }
-    };
-    var exercise: Exercise = .{};
-    const thread = try std.Thread.spawn(.{}, Exercise.run, .{&exercise});
-    thread.join();
-    if (exercise.failure) |err| return err;
 }

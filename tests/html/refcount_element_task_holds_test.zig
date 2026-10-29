@@ -11,9 +11,9 @@
 //! queueTaskKeepingObjectAlive (dom/ScriptElement.cpp), PendingScript's
 //! `Ref<ScriptElement>`, ToggleEventTask's queueTaskKeepingThisNodeAlive.
 //!
-//! Counts through dom.refcount.count: born (1: script made these elements,
-//! and createElement keeps its born reference until step 6) + the wrapper's
-//! (1, a global keeps it) + the task's.
+//! Counts through dom.refcount.count: the wrapper's (1, a global keeps it;
+//! script made these elements, and the first wrapper adopts a created
+//! node's born reference, lane refcount7) + the task's.
 const std = @import("std");
 const testing = std.testing;
 const h = @import("refcount_holders_helpers.zig");
@@ -45,11 +45,11 @@ fn imageUpdateCountsItsElement() !void {
     defer page.close();
     try page.run("globalThis.loaded = 0; globalThis.img = new Image(); img.onload = () => { loaded += 1; }; 0;");
     const img = try page.node("img");
-    try expectCount(2, img, "an img no update has started for");
+    try expectCount(1, img, "an img no update has started for");
     try page.run("img.src = '" ++ gif ++ "'; 0;");
-    try expectCount(3, img, "its update of the image data runs: the update's counted reference");
+    try expectCount(2, img, "its update of the image data runs: the update's counted reference");
     try runUntil(page, "loaded === 1");
-    try expectCount(2, img, "the load event's task ran: the update let go");
+    try expectCount(1, img, "the load event's task ran: the update let go");
 }
 
 test "an img's update of the image data holds its element with one counted reference until its event task ran" {
@@ -67,11 +67,11 @@ fn queuedScriptErrorCountsItsElement() !void {
         \\0;
     );
     const s = try page.node("s");
-    try expectCount(2, s, "a script element not yet prepared");
+    try expectCount(1, s, "a script element not yet prepared");
     try page.run("document.body.appendChild(s); s.remove(); 0;");
-    try expectCount(3, s, "its error event is queued (prepare step 33.3): the task's TaskHold");
+    try expectCount(2, s, "its error event is queued (prepare step 33.3): the task's TaskHold");
     try runUntil(page, "errors === 1");
-    try expectCount(2, s, "the task ran: its hold ended");
+    try expectCount(1, s, "the task ran: its hold ended");
 }
 
 test "a script's queued error event task holds its element until it ran" {
@@ -88,12 +88,12 @@ fn externalScriptCountsItsElement() !void {
         \\0;
     );
     const s = try page.node("s");
-    try expectCount(2, s, "not yet prepared");
+    try expectCount(1, s, "not yet prepared");
     try page.run("document.body.appendChild(s); 0;");
     // The fetch's GCReachableRef and the document queue's execution hold.
-    try expectCount(4, s, "fetching, and in its document's as-soon-as-possible set");
+    try expectCount(3, s, "fetching, and in its document's as-soon-as-possible set");
     try runUntil(page, "ran === 1");
-    try expectCount(2, s, "fetched, delivered and executed: every hold let go");
+    try expectCount(1, s, "fetched, delivered and executed: every hold let go");
 }
 
 test "an external script's fetch and its document queue each hold the element counted until it executed" {
@@ -110,16 +110,16 @@ fn detailsToggleCountsItsElement() !void {
         \\0;
     );
     const d = try page.node("d");
-    try expectCount(2, d, "a closed details");
+    try expectCount(1, d, "a closed details");
     try page.run("d.open = true; 0;");
-    try expectCount(3, d, "its toggle task is queued: the task's TaskHold");
+    try expectCount(2, d, "its toggle task is queued: the task's TaskHold");
     // Coalesced: the second toggle cancels the first task (its hold ends at
     // once) and queues one from the first old state.
     try page.run("d.open = false; d.open = true; 0;");
-    try expectCount(3, d, "one pending toggle task");
+    try expectCount(2, d, "one pending toggle task");
     try runUntil(page, "toggles.length === 1");
     try page.run("if (toggles[0] !== 'closed>open') throw new Error(toggles[0]); 0;");
-    try expectCount(2, d, "the task ran: its hold ended");
+    try expectCount(1, d, "the task ran: its hold ended");
 }
 
 test "a details toggle task holds its element counted until it ran, and a coalesced one lets go at once" {
@@ -139,9 +139,9 @@ fn domParserDetailsToggles() !void {
         \\0;
     );
     const d = try page.node("pd");
-    try expectCount(3, d, "parsed open: its toggle task is queued, holding it");
+    try expectCount(2, d, "parsed open: its toggle task is queued, holding it");
     try runUntil(page, "fired === 1");
-    try expectCount(2, d, "the task ran in the Window's loop and let go");
+    try expectCount(1, d, "the task ran in the Window's loop and let go");
 }
 
 test "a details a DOMParser document's parser opened gets its toggle, queued given its relevant global" {
@@ -163,7 +163,7 @@ fn styleSheetEventCountsItsElement() !void {
     );
     const link = try page.node("link");
     try runUntil(page, "events === 1");
-    try expectCount(2, link, "its load event's task ran: the task's counted reference ended");
+    try expectCount(1, link, "its load event's task ran: the task's counted reference ended");
 }
 
 test "a style sheet's event task lets go of its element's counted reference when it ran" {
@@ -181,9 +181,9 @@ fn queuedTasksAtThePagesEnd() !void {
         \\globalThis.s = document.createElement('script'); s.setAttribute('src', ''); document.body.appendChild(s);
         \\0;
     );
-    try expectCount(3, try page.node("img"), "update pending");
-    try expectCount(3, try page.node("d"), "toggle pending");
-    try expectCount(3, try page.node("s"), "error event pending");
+    try expectCount(2, try page.node("img"), "update pending");
+    try expectCount(2, try page.node("d"), "toggle pending");
+    try expectCount(2, try page.node("s"), "error event pending");
     // The page ends with every task still queued: each lets go once (an
     // underflow is an error log, which fails the test).
 }

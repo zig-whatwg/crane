@@ -16,12 +16,12 @@
 //! ## is_word_like
 //!
 //! For word granularity, segments have an is_word_like property:
-//! - true: Contains ALetter, Hebrew_Letter, Katakana, or Numeric
+//! - true: Contains ALetter, Hebrew_Letter, Katakana, Numeric, or Hangul syllables
 //! - false: Punctuation, spaces, or other non-word characters
 
 const std = @import("std");
 
-/// Word Break Property from UAX #29
+/// UAX #29 word-break classes plus ICU's Hangul syllable tailoring.
 pub const WordBreakProperty = enum {
     Other,
     CR,
@@ -34,6 +34,8 @@ pub const WordBreakProperty = enum {
     Katakana,
     Hebrew_Letter,
     ALetter,
+    // Internal tailored class, not a Unicode Word_Break property value.
+    Hangul_Syllable,
     Single_Quote,
     Double_Quote,
     MidNumLet,
@@ -44,7 +46,7 @@ pub const WordBreakProperty = enum {
     WSegSpace,
 };
 
-/// Get the Word Break Property for a Unicode code point
+/// Get the iterator's word-break class, including its Hangul tailoring.
 pub fn getWordBreakProperty(cp: u21) WordBreakProperty {
     // CR
     if (cp == 0x000D) return .CR;
@@ -84,15 +86,17 @@ pub fn getWordBreakProperty(cp: u21) WordBreakProperty {
         cp == 0x2044 or cp == 0xFE10 or cp == 0xFE14)
         return .MidNum;
 
-    // ExtendNumLet: _ ‿ ⁀ ⁔ ︳ ︴ ﹍ ﹎ ﹏ ＿
-    if (cp == 0x005F or cp == 0x203F or cp == 0x2040 or cp == 0x2054 or
+    // UAX #29: Connector_Punctuation or U+202F NARROW NO-BREAK SPACE.
+    if (cp == 0x005F or cp == 0x202F or cp == 0x203F or cp == 0x2040 or cp == 0x2054 or
         cp == 0xFE33 or cp == 0xFE34 or cp == 0xFE4D or cp == 0xFE4E or
         cp == 0xFE4F or cp == 0xFF3F)
         return .ExtendNumLet;
 
-    // WSegSpace (word-separating space)
-    if (cp == 0x0020 or cp == 0x00A0 or cp == 0x1680 or
-        (cp >= 0x2000 and cp <= 0x200A) or cp == 0x202F or cp == 0x205F or cp == 0x3000)
+    // UAX #29 / WordBreakProperty-18.0.0: Zs except Line_Break=Glue.
+    // NBSP and FIGURE SPACE are Other; NNBSP is ExtendNumLet above.
+    if (cp == 0x0020 or cp == 0x1680 or
+        (cp >= 0x2000 and cp <= 0x2006) or (cp >= 0x2008 and cp <= 0x200A) or
+        cp == 0x205F or cp == 0x3000)
         return .WSegSpace;
 
     // Hebrew_Letter (Hebrew alphabet)
@@ -164,8 +168,9 @@ pub fn getWordBreakProperty(cp: u21) WordBreakProperty {
     if (cp >= 0x0958 and cp <= 0x0961) return .ALetter;
     // Thai
     if (cp >= 0x0E01 and cp <= 0x0E2E) return .ALetter;
-    // Hangul syllables
-    if (cp >= 0xAC00 and cp <= 0xD7A3) return .ALetter;
+    // ICU word.txt excludes HangulSyllable from ALetterPlus. Its tailored
+    // adjacent-syllable rule keeps a Korean run together, apart from Latin.
+    if (cp >= 0xAC00 and cp <= 0xD7A3) return .Hangul_Syllable;
     // Hangul Jamo
     if (cp >= 0x1100 and cp <= 0x11FF) return .ALetter;
     // Hiragana
@@ -198,7 +203,7 @@ pub fn isWordLike(segment: []const u8) bool {
 
         const prop = getWordBreakProperty(cp);
         switch (prop) {
-            .ALetter, .Hebrew_Letter, .Katakana, .Numeric => return true,
+            .ALetter, .Hebrew_Letter, .Katakana, .Numeric, .Hangul_Syllable => return true,
             else => {},
         }
         pos += len;
@@ -265,6 +270,12 @@ fn shouldBreakBetween(
     // WB4: Ignore Format and Extend (X (Extend | Format | ZWJ)* → X)
     // Simplified: don't break before Extend, Format, ZWJ
     if (curr == .Extend or curr == .Format or curr == .ZWJ) return false;
+
+    // UAX #29 section 4.2 tailoring: ICU word.txt's HangulSyllable rule
+    // (a86a32e67b8d1384b33f8fa48c83a6079b86f8cd) chains syllables outside
+    // ALetterPlus. Chrome/Firefox/Safari agree on Hangul/Latin boundaries
+    // in both directions (row129 Q8/Q15, 2026-10-27).
+    if (prev == .Hangul_Syllable and curr == .Hangul_Syllable) return false;
 
     // WB5: Do not break between letters
     // AHLetter × AHLetter
@@ -468,4 +479,78 @@ test "word property: basic categories" {
     try std.testing.expectEqual(WordBreakProperty.WSegSpace, getWordBreakProperty(' '));
     try std.testing.expectEqual(WordBreakProperty.Katakana, getWordBreakProperty(0x30A2)); // ア
     try std.testing.expectEqual(WordBreakProperty.Hebrew_Letter, getWordBreakProperty(0x05D0)); // א
+}
+
+test "sd1 word iterator keeps Hangul syllables together and separates Latin" {
+    for ([_][]const u8{ "희진DJ", "DJ희진" }, [_][2][]const u8{ .{ "희진", "DJ" }, .{ "DJ", "희진" } }) |text, expected| {
+        var iter = WordIterator.init(text);
+        for (expected) |segment| {
+            try std.testing.expectEqualStrings(segment, iter.next().?);
+            try std.testing.expect(isWordLike(segment));
+        }
+        try std.testing.expect(iter.next() == null);
+    }
+}
+
+// UAX #29 WB3d/WB13a/WB13b and WordBreakProperty-18.0.0.txt.
+// Row129 Q31: Chrome156, Firefox158 and Safari27 agreed on all ten
+// q31seg.html probe strings on 2026-10-27 (tmp/probe-q31/RULING.md).
+fn expectSd1WordSegments(text: []const u8, expected: []const []const u8) !void {
+    var iter = WordIterator.init(text);
+    for (expected) |segment| {
+        try std.testing.expectEqualStrings(segment, iter.next() orelse return error.MissingSegment);
+    }
+    try std.testing.expect(iter.next() == null);
+}
+
+test "sd1 word property NNBSP is ExtendNumLet" {
+    try std.testing.expectEqual(WordBreakProperty.ExtendNumLet, getWordBreakProperty(0x202F));
+}
+
+test "sd1 word property NBSP is Other" {
+    try std.testing.expectEqual(WordBreakProperty.Other, getWordBreakProperty(0x00A0));
+}
+
+test "sd1 word property figure space is Other" {
+    try std.testing.expectEqual(WordBreakProperty.Other, getWordBreakProperty(0x2007));
+}
+
+test "sd1 NNBSP joins adjacent words" {
+    try expectSd1WordSegments("ab\u{202F}cd", &.{"ab\u{202F}cd"});
+}
+
+test "sd1 NBSP separates adjacent words" {
+    try expectSd1WordSegments("ab\u{00A0}cd", &.{ "ab", "\u{00A0}", "cd" });
+}
+
+test "sd1 figure space separates adjacent words" {
+    try expectSd1WordSegments("ab\u{2007}cd", &.{ "ab", "\u{2007}", "cd" });
+}
+
+test "sd1 WB3d does not join ASCII space with NBSP" {
+    try expectSd1WordSegments("a \u{00A0}b", &.{ "a", " ", "\u{00A0}", "b" });
+}
+
+test "sd1 WB3d does not join ASCII space with figure space" {
+    try expectSd1WordSegments("a \u{2007}b", &.{ "a", " ", "\u{2007}", "b" });
+}
+
+test "sd1 WB13b joins NNBSP to a following letter after ASCII space" {
+    try expectSd1WordSegments("a \u{202F}b", &.{ "a", " ", "\u{202F}b" });
+}
+
+test "sd1 WB3d joins adjacent ASCII spaces" {
+    try expectSd1WordSegments("a  b", &.{ "a", "  ", "b" });
+}
+
+test "sd1 WB3d joins adjacent EM spaces" {
+    try expectSd1WordSegments("a\u{2003}\u{2003}b", &.{ "a", "\u{2003}\u{2003}", "b" });
+}
+
+test "sd1 WB999 separates adjacent NBSPs" {
+    try expectSd1WordSegments("a\u{00A0}\u{00A0}b", &.{ "a", "\u{00A0}", "\u{00A0}", "b" });
+}
+
+test "sd1 WB3d joins ASCII space with EM space" {
+    try expectSd1WordSegments("a \u{2003}b", &.{ "a", " \u{2003}", "b" });
 }

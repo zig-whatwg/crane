@@ -73,7 +73,7 @@ test "conformance: the bound platform matches every operation" {
     }
     // Every operation of the contract is declared (section 6): pin the count,
     // so an operation removed by accident shows here.
-    try testing.expectEqual(@as(usize, 218), count);
+    try testing.expectEqual(@as(usize, 219), count);
 }
 
 // ---------------------------------------------------------------------------

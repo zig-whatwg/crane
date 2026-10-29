@@ -7,8 +7,8 @@
 //! Every way a dispatch ends lets them go: a throwing listener, a nested
 //! dispatch, stopImmediatePropagation, a path node removed mid-dispatch, and
 //! an allocation failure while the path is built.
-//! SHADOW MODE: counts read through dom.refcount.count - born (1) + the
-//! wrapper's (1) + the holders'.
+//! SHADOW MODE: counts read through dom.refcount.count - the wrapper's (1;
+//! it adopted the node's born reference, lane refcount7) + the holders'.
 const h = @import("refcount_holders_helpers.zig");
 const std = h.std;
 const testing = h.testing;
@@ -61,7 +61,7 @@ fn openTree(probe: *CountProbe, callback: *engine.BuiltinFunction) !struct { Pag
 }
 
 fn expectAllBack(nodes: []const *dom.NodeBase, what: []const u8) !void {
-    for (nodes) |node| try expectCount(2, node, what);
+    for (nodes) |node| try expectCount(1, node, what);
 }
 
 fn exitsLetTheHoldsGo() !void {
@@ -80,7 +80,7 @@ fn exitsLetTheHoldsGo() !void {
         \\window.onerror = () => true;
         \\leaf.dispatchEvent(new Event('a', { bubbles: true }));
     );
-    try testing.expectEqual(@as(u32, 3), probe.seen[0][1]);
+    try testing.expectEqual(@as(u32, 2), probe.seen[0][1]);
     try page.collect();
     try expectAllBack(&nodes, "after a throwing listener");
 
@@ -92,7 +92,7 @@ fn exitsLetTheHoldsGo() !void {
         \\outer.addEventListener('b', () => { throw new Error('bubbled after stopImmediatePropagation'); });
         \\leaf.dispatchEvent(new Event('b', { bubbles: true }));
     );
-    try testing.expectEqual(@as(u32, 3), probe.seen[1][2]);
+    try testing.expectEqual(@as(u32, 2), probe.seen[1][2]);
     try page.collect();
     try expectAllBack(&nodes, "after stopImmediatePropagation");
 
@@ -105,7 +105,7 @@ fn exitsLetTheHoldsGo() !void {
     );
     // outer, mid and leaf held by the outer dispatch's path; other by the
     // nested one's (its target hold comes only when that dispatch ends).
-    try testing.expectEqual([4]u32{ 3, 3, 3, 3 }, probe.seen[2]);
+    try testing.expectEqual([4]u32{ 2, 2, 2, 2 }, probe.seen[2]);
     try page.collect();
     try expectAllBack(&nodes, "after a nested dispatch");
 
@@ -115,7 +115,7 @@ fn exitsLetTheHoldsGo() !void {
         \\outer.addEventListener('e', ev => { try { leaf.dispatchEvent(ev); throw new Error('no throw'); } catch (x) { if (x.name !== 'InvalidStateError') throw x; probe(); } });
         \\leaf.dispatchEvent(new Event('e', { bubbles: true }));
     );
-    try testing.expectEqual(@as(u32, 3), probe.seen[3][2]);
+    try testing.expectEqual(@as(u32, 2), probe.seen[3][2]);
     try page.collect();
     try expectAllBack(&nodes, "after a re-entrant dispatch was refused");
 
@@ -126,7 +126,7 @@ fn exitsLetTheHoldsGo() !void {
         \\outer.addEventListener('f', () => probe());
         \\leaf.dispatchEvent(new Event('f', { bubbles: true }));
     );
-    try testing.expectEqual([4]u32{ 3, 3, 3, 2 }, probe.seen[4]);
+    try testing.expectEqual([4]u32{ 2, 2, 2, 1 }, probe.seen[4]);
     try page.collect();
     try expectAllBack(&nodes, "after a path node was removed mid-dispatch");
 }
@@ -157,9 +157,9 @@ fn holdAndClear(allocator: std.mem.Allocator, instances: []const *runtime.Instan
     // The path is built (every append above succeeded): its references are
     // taken - no allocation - and `clearPath` lets them go.
     state.holdPath();
-    for (nodes) |node| try expectCount(3, node, "held by the path");
+    for (nodes) |node| try expectCount(2, node, "held by the path");
     state.clearPath();
-    for (nodes) |node| try expectCount(2, node, "after clearPath");
+    for (nodes) |node| try expectCount(1, node, "after clearPath");
 }
 
 fn allocationFailureLeavesNothing() !void {

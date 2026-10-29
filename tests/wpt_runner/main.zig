@@ -1350,6 +1350,11 @@ fn run(init: std.process.Init) !u8 {
     // always do; a violation is an error line in the output
     // ("refcount: ..."). Changes no behaviour.
     if (runner_allocator.wantsTraces(init.minimal.environ.getPosix("CRANE_REFCOUNT_CHECK"))) @import("dom").refcount.enableTreeChecks();
+    // `CRANE_REFCOUNT_AUDIT=1`: refcount step 6's zombie audit - trees the
+    // counts call garbage are marked zombie at their agent's next teardown
+    // slice, and later reads of them reported (src/dom/refcount_audit.zig).
+    // Frees nothing differently.
+    if (runner_allocator.wantsTraces(init.minimal.environ.getPosix("CRANE_REFCOUNT_AUDIT"))) @import("dom").refcount_audit.enable();
     const tracked = if (want_traces) gpa_traced.allocator() else gpa_fast.allocator();
     if (runner_allocator.wantsAttribution(init.minimal.environ.getPosix("CRANE_LEAK_FILES"))) attribution = runner_allocator.Attributing.init(tracked);
     const allocator = if (attribution) |*a| a.allocator() else tracked;

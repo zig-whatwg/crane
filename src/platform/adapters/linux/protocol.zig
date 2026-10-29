@@ -170,6 +170,7 @@ pub const protocol = struct {
     pub const isOnline = headless.isOnline;
     pub const userPreferences = headless.userPreferences;
     pub const systemVisibility = headless.systemVisibility;
+    pub const displayRefreshInterval = headless.displayRefreshInterval;
     pub const screenDetails = headless.screenDetails;
     pub const mediaCanPlayType = headless.mediaCanPlayType;
     pub const openMediaDecoder = headless.openMediaDecoder;
