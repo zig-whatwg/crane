@@ -244,3 +244,107 @@ fn pageObjects() !void {
 test "CSSPageRule and CSSMarginRule serialization insertion validation and live declaration objects" {
     try onThread(pageObjects);
 }
+
+fn counterRuleAllocation(allocator: std.mem.Allocator) anyerror!void {
+    if (comptime !@hasField(dom.style.rules.Data, "counter_style")) return std.testing.expect(false);
+    var rules: std.ArrayList(*dom.style.Rule) = .empty;
+    defer {
+        for (rules.items) |rule| rule.unref();
+        rules.deinit(allocator);
+    }
+    try dom.style.rules.parseSheet(.{ .parse = .{ .allocator = allocator } }, "@counter-style Foo { system: fixed calc(1em / 1px); symbols: a b; pad: calc(2) '0'; }", &rules, null);
+    try std.testing.expectEqual(@as(usize, 1), rules.items.len);
+    const rule = rules.items[0];
+    try std.testing.expectEqual(dom.style.rules.Kind.counter_style, rule.kind());
+    const text = try rule.serialize(allocator);
+    defer allocator.free(text);
+    try std.testing.expectEqualStrings("@counter-style Foo { system: fixed calc(1em / 1px); symbols: a b; pad: calc(2) \"0\"; }", text);
+    rule.ref();
+    defer rule.unref();
+    _ = rules.pop();
+    rule.unref();
+    try std.testing.expect(rule.parent_rule == null);
+    const detached = try rule.serialize(allocator);
+    defer allocator.free(detached);
+    try std.testing.expectEqualStrings(text, detached);
+}
+
+fn counterRuleAllocationFailures() !void {
+    try std.testing.checkAllAllocationFailures(a, counterRuleAllocation, .{});
+}
+
+test "counter style rare payload retains existing math and unwinds every allocation failure" {
+    try onThread(counterRuleAllocationFailures);
+}
+
+fn counterRuleObjects() !void {
+    try script(
+        \\(() => {
+        \\const d = new Document().implementation.createHTMLDocument('om1');
+        \\const style = d.createElement('style');
+        \\style.textContent = '@counter-style Foo { system: cyclic; symbols: a b; }';
+        \\d.head.appendChild(style);
+        \\const sheet = style.sheet, rule = sheet.cssRules[0];
+        \\if (!(rule instanceof CSSCounterStyleRule) || rule.type !== 11) return 'class';
+        \\if (rule.name !== 'Foo' || rule.system !== 'cyclic' || rule.symbols !== 'a b') return 'initial descriptors';
+        \\if (rule.parentStyleSheet !== sheet || rule.parentRule !== null) return 'parent';
+        \\for (const member of ['additiveSymbols', 'negative', 'prefix', 'suffix', 'range', 'pad', 'speakAs', 'fallback']) {
+        \\  if (rule[member] !== '') return member + ':absent';
+        \\}
+        \\rule.name = 'LOWER-ROMAN';
+        \\if (rule.name !== 'lower-roman') return 'predefined canonical name';
+        \\for (const name of ['a b', '123', 'none', 'DECIMAL', 'inherit']) {
+        \\  rule.name = name;
+        \\  if (rule.name !== 'lower-roman') return 'invalid name:' + name;
+        \\}
+        \\rule.negative = "'(' ')'";
+        \\rule.prefix = "'['"; rule.suffix = "']'";
+        \\rule.pad = '"0" 3'; rule.range = 'infinite -1, 1 infinite';
+        \\rule.fallback = 'UPPER-ROMAN'; rule.speakAs = 'WORDS';
+        \\if (rule.negative !== '"(" ")"' || rule.prefix !== '"["' || rule.suffix !== '"]"') return 'symbols';
+        \\if (rule.pad !== '3 "0"' || rule.range !== 'infinite -1, 1 infinite') return 'numeric descriptors';
+        \\if (rule.fallback !== 'upper-roman' || rule.speakAs !== 'words') return 'identifier descriptors';
+        \\const before = rule.cssText;
+        \\rule.system = 'numeric'; rule.symbols = 'url(a.png)'; rule.range = '2 1';
+        \\if (rule.cssText !== before) return 'invalid setter mutated';
+        \\sheet.deleteRule(0);
+        \\if (rule.parentStyleSheet !== null || rule.cssText !== before) return 'detached rule';
+        \\rule.symbols = 'none';
+        \\if (rule.symbols !== 'none' || !rule.cssText.includes('symbols: none;')) return 'detached mutation';
+        \\return 'ok';
+        \\})()
+    );
+}
+
+test "counter style generated getters setters and detached rule preserve descriptor semantics" {
+    try onThread(counterRuleObjects);
+}
+
+// Q90: Blink/WebKit canonical descriptor order; Gecko has a different fixed
+// order. Upstream CSSCounterStyleRule.html notes that ordering is undefined.
+fn counterRuleCanonicalOrder() !void {
+    try script(
+        \\(() => {
+        \\const d = new Document().implementation.createHTMLDocument('om1');
+        \\const style = d.createElement('style');
+        \\style.textContent = `@counter-style Foo { suffix:'.'; symbols:a b; system:cyclic; prefix:'['; range:1 5; negative:'-'; pad:2 '0'; fallback:decimal; speak-as:words; additive-symbols:2 a,1 b }
+        \\@counter-style Bar { symbols: a; system: cyclic; }
+        \\@counter-style Empty { }`;
+        \\d.head.appendChild(style);
+        \\const rules = style.sheet.cssRules;
+        \\const rule = rules[0], minimal = rules[1], empty = rules[2];
+        \\const expected = '@counter-style Foo { system: cyclic; symbols: a b; additive-symbols: 2 a, 1 b; negative: "-"; prefix: "["; suffix: "."; pad: 2 "0"; range: 1 5; fallback: decimal; speak-as: words; }';
+        \\if (rule.cssText !== expected) return 'scrambled:' + rule.cssText;
+        \\rule.symbols = 'x y';
+        \\if (rule.cssText !== expected.replace('symbols: a b;', 'symbols: x y;')) return 'existing:' + rule.cssText;
+        \\minimal.prefix = "'['";
+        \\if (minimal.cssText !== '@counter-style Bar { system: cyclic; symbols: a; prefix: "["; }') return 'missing:' + minimal.cssText;
+        \\if (empty.cssText !== '@counter-style Empty { }') return 'empty:' + empty.cssText;
+        \\return 'ok';
+        \\})()
+    );
+}
+
+test "counter style canonical order ignores author order and setter insertion" {
+    try onThread(counterRuleCanonicalOrder);
+}

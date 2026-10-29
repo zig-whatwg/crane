@@ -249,9 +249,16 @@ pub const Grammar = struct {
     kind: Kind,
     minimum: f64 = -std.math.floatMax(f64),
     maximum: f64 = std.math.floatMax(f64),
+    /// Typed OM native input distinguishes syntactic ranges from clamps.
+    /// Existing CSS parsing/computation/serialization never read these tags.
+    minimum_kind: BoundKind = .grammar,
+    maximum_kind: BoundKind = .grammar,
     anchor_position: bool = false,
     anchor_size: bool = false,
     allowed_symbols: u16 = 0,
+
+    /// Whether a bound restricts syntax, computed values, or representation.
+    pub const BoundKind = enum { grammar, computation, representation };
 
     fn percentHint(self: Grammar) Base {
         return switch (self.kind) {

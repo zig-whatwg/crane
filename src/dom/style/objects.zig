@@ -92,6 +92,7 @@ pub fn ruleObject(rule: *Rule, realm: runtime.Context) anyerror!*runtime.Instanc
         .page => interfaces.CSSPageRule.initWith(a, realm, args),
         .margin => interfaces.CSSMarginRule.initWith(a, realm, args),
         .font_feature_values => interfaces.CSSFontFeatureValuesRule.initWith(a, realm, args),
+        .counter_style => interfaces.CSSCounterStyleRule.initWith(a, realm, args),
         .position_try => interfaces.CSSPositionTryRule.initWith(a, realm, args),
         .property => interfaces.CSSPropertyRule.initWith(a, realm, args),
         .keyframes => interfaces.CSSKeyframesRule.initWith(a, realm, args),

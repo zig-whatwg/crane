@@ -82,6 +82,7 @@ pub const Kind = enum {
     namespace,
     font_face,
     font_feature_values,
+    counter_style,
     page,
     margin,
     position_try,
@@ -98,6 +99,7 @@ pub const Kind = enum {
             .media => 4,
             .font_face => 5,
             .font_feature_values => 14,
+            .counter_style => 11,
             .page => 6,
             .margin => 9,
             .keyframes => 7,
@@ -169,6 +171,7 @@ pub const Data = union(Kind) {
     },
     font_face: @import("font_loading.zig").FontRule,
     font_feature_values: *FontFeaturePayload,
+    counter_style: *css.counter_style_descriptors.Data,
     page: struct { descriptors: css.page_data.Data, children: std.ArrayList(*Rule) = .empty },
     margin: struct { name: []u8, block: DeclarationBlock },
     position_try: DeclarationBlock,
@@ -223,6 +226,10 @@ pub const Rule = struct {
             .font_face => |*font| font.deinit(),
             .font_feature_values => |payload| {
                 payload.descriptors.deinit();
+                a.destroy(payload);
+            },
+            .counter_style => |payload| {
+                payload.deinit();
                 a.destroy(payload);
             },
             .page => |*p| {
@@ -309,6 +316,11 @@ pub const Rule = struct {
             .property => |registration| try registration.serializeRule(out, allocator),
             .font_feature_values => |payload| {
                 const text = try payload.descriptors.cssText(allocator);
+                defer allocator.free(text);
+                try out.appendSlice(allocator, text);
+            },
+            .counter_style => |payload| {
+                const text = try payload.cssText(allocator);
                 defer allocator.free(text);
                 try out.appendSlice(allocator, text);
             },
@@ -687,6 +699,14 @@ pub fn build(options: BuildOptions, parsed: *const css.rules.Rule, position: Pos
         // The payload moves only when make succeeds. The general rule's
         // prelude is empty: the parsed family already owns its spelling.
         return make(a, try a.dupe(u8, ""), .{ .font_feature_values = payload });
+    }
+    if (std.mem.eql(u8, name, "counter-style")) {
+        var native = try css.counter_style_descriptors.fromParsed(a, parsed) orelse return null;
+        errdefer native.deinit();
+        const payload = try a.create(css.counter_style_descriptors.Data);
+        errdefer a.destroy(payload);
+        payload.* = native;
+        return make(a, try a.dupe(u8, ""), .{ .counter_style = payload });
     }
     if (std.mem.eql(u8, name, "font-face")) {
         if (!parsed.has_block) return null;

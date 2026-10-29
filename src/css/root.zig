@@ -68,6 +68,7 @@ pub const property_registry = @import("property_registry.zig");
 pub const font_feature_values = @import("font_feature_values.zig");
 pub const page_values = @import("page_values.zig");
 pub const page_data = @import("page_data.zig");
+pub const counter_style_descriptors = @import("counter_style_descriptors.zig");
 pub const Tokenizer = tokenizer.Tokenizer;
 pub const Token = tokenizer.Token;
 pub const TokenType = tokenizer.TokenType;
