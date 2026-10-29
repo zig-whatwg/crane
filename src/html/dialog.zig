@@ -28,17 +28,23 @@ fn nearestClickedDialog(target: *runtime.Instance) ?*runtime.Instance {
 /// for trusted pointerdown/up, independently of event cancellation.
 pub fn lightDismiss(target: *runtime.Instance, down: bool) void {
     const state = (dom.top_layer.ofElement(target, false) catch null) orelse return;
+    // 3. An empty list preserves the target for BOTH pointer events. A later
+    // press can observe it if a dialog opens after that press's pointerdown
+    // (Q47, 2026-10-29). Do not move target cleanup before this return.
+    if (state.lastOpenDialog() == null) return;
     const ancestor = nearestClickedDialog(target);
     if (down) {
-        if (state.lastOpenDialog() != null) state.setDialogPointerdownTarget(ancestor);
+        // 5.
+        state.setDialogPointerdownTarget(ancestor);
         return;
     }
     // 6.1–3. Compare the remembered dialog even if script closed it between
-    // down and up, then clear even if cleanup emptied the open list.
-    // Q37 probe (2026-10-29, tmp/probes/q37/RESULT.md): Firefox 158 agrees;
-    // Chrome 156 recomputes the open ancestor and dismisses another dialog.
-    // With the shipping browsers split, the integrator ruled for this spec.
-    const same_target = ancestor == state.dialog_pointerdown_target.get();
+    // down and up, then clear. Q37 (tmp/probes/q37/RESULT.md) kept another
+    // dialog open: Firefox 158 follows this spec; Chrome 156 recomputes the
+    // ancestor. The shipping browsers split, so the spec decides. A removed
+    // target's lifetime marker cannot match any ancestor (Q47 addendum).
+    const same_target = !state.dialog_pointerdown_target_removed and
+        ancestor == state.dialog_pointerdown_target.get();
     state.setDialogPointerdownTarget(null);
     if (!same_target) return;
     // 6.4–6. Dismiss only the last opened dialog, and only in the Any state.

@@ -90,6 +90,9 @@ pub const State = struct {
     hint_parent: MemberHold = .{},
     open_dialogs: std.ArrayListUnmanaged(*OpenDialog) = .empty,
     dialog_pointerdown_target: MemberHold = .{},
+    /// A logically non-null removed target, unequal to every node, without
+    /// retaining the detached subtree (Q47 addendum, 2026-10-29).
+    dialog_pointerdown_target_removed: bool = false,
 
     pub fn init(allocator: std.mem.Allocator, owner: *runtime.Instance) State {
         return .{ .allocator = allocator, .owner = owner, .owner_at_creation = KeptInstance.of(owner) };
@@ -210,7 +213,9 @@ pub const State = struct {
 
     pub fn removeOpenDialog(self: *State, dialog: *runtime.Instance) void {
         // Closing ends open-list membership, not the remembered gesture.
-        // Pointerup, removal and document teardown release that other hold.
+        // Light dismiss step 3 preserves the target while the list is empty;
+        // step 6.2 clears it only after that guard. Removal releases its node
+        // through a distinct marker; teardown releases any remaining hold.
         for (self.open_dialogs.items, 0..) |entry, index| {
             if (entry.element.get() != dialog) continue;
             _ = self.open_dialogs.orderedRemove(index);
@@ -227,8 +232,21 @@ pub const State = struct {
 
     pub fn setDialogPointerdownTarget(self: *State, dialog: ?*runtime.Instance) void {
         const slot: engine.TracedSlot = .{ .name = "open_dialog:pointerdown" };
+        self.dialog_pointerdown_target_removed = false;
         self.dialog_pointerdown_target.release(self.owner, slot);
         if (dialog) |node| self.dialog_pointerdown_target.take(self.owner, node, slot);
+    }
+
+    pub fn removeDialogPointerdownTarget(self: *State, dialog: *runtime.Instance) void {
+        if (self.dialog_pointerdown_target.get() != dialog) return;
+        self.setDialogPointerdownTarget(null);
+        // Lifetime form of the spec's retained target: an outside release
+        // must not match null and dismiss another dialog. Chrome 156 and
+        // Firefox 158 agree (tmp/probes/q47-remove/RESULT.md, 2026-10-29).
+        // Identity is lost across removal: if A is reinserted, another dialog
+        // opens after it, and pointerup lands inside A, this marker cannot
+        // match A as the spec's retained node would (Q47 addendum).
+        self.dialog_pointerdown_target_removed = true;
     }
 
     pub fn deinit(self: *State) void {
@@ -255,6 +273,7 @@ pub const State = struct {
     /// without deinitOwn; the saved-state native test pins the ended realm.
     pub fn releaseAfterRealmEnded(self: *State) void {
         const owner_live = self.owner_at_creation.get() != null;
+        self.dialog_pointerdown_target_removed = false;
         self.releaseOrphanHold(&self.dialog_pointerdown_target, .{ .name = "open_dialog:pointerdown" }, owner_live);
         for (self.open_dialogs.items) |entry| {
             self.releaseOrphanHold(&entry.element, entry.slot(), owner_live);

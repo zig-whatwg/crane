@@ -380,6 +380,8 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Spec Compliance
 
+- [Early Returns Can Preserve State for the Next Interaction](spec-compliance-early-returns-can-preserve-state-for-the-next-interaction.md) - An early return can preserve state that the next interaction observes; cleanup placement is part of the algorithm.
+
 - [A new typed case must preserve legacy parser fallbacks](spec-compliance-a-new-typed-case-must-preserve-legacy-parser-fallbacks.md) - Share the new alternative without replacing the caller's existing recovery.
 - [Check source when cached Markdown drops grammar](spec-compliance-check-source-when-cached-markdown-drops-grammar.md) - Resolve missing punctuation in the original specification source before interpreting the converted grammar.
 - [Environment defaults distinguish absence from zero](spec-compliance-environment-defaults-distinguish-absence-from-zero.md) - Probe availability, parsing and value separately; zero and undefined are different environment answers.
@@ -933,6 +935,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A hot-path cost can be the call graph's shape, not an allocation](debugging-a-hot-path-cost-can-be-a-call-graph-shape-not-an-allocation.md) - An allocation count and a flat profile cannot see a recursion that blocks inlining; check the call graph's shape before calling a hot-path cost structural.
 
 ### Workflow
+
+- [Detached Builds Need an Explicit Environment](workflow-detached-builds-need-an-explicit-environment.md) - Verify the executable and cache inside the detached build; the launcher's environment is not proof of the child's.
 - [Anchor a Tmux Job to Its Own Working Directory](workflow-anchor-tmux-job-cwd.md) - Verify the working directory inside the detached job, and retain evidence from before its first gate starts.
 - [A lane inside a long command cannot see a closing notice](workflow-a-lane-inside-a-long-command-cannot-see-a-closing-notice.md) - A lane cannot react to a notice it has not read: give every lane a watcher that sets STOP the moment a CLOSING NOTICE appears, and make its stop kill the remote job too.
 - [A notice watcher must match every notice format, and only notices](workflow-a-notice-watcher-must-match-every-notice-format.md) - Key a watcher on the notice's exact shapes, every one of them, and test the pattern against the file's history before trusting it.

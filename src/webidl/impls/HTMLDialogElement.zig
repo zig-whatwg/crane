@@ -239,17 +239,20 @@ fn setCloseWatcher(dialog: *Instance) void {
 fn setupSteps(subject: *Instance) void {
     // 1-3. Asserts: open, connected, not in the open dialogs list.
     // 4. Add subject to its node document's open dialogs list.
-    const layer = (dom.top_layer.ofElement(subject, true) catch return) orelse return;
-    if (layer.hasOpenDialog(subject)) return;
-    layer.addOpenDialog(subject) catch return;
+    if (dom.top_layer.ofElement(subject, true) catch null) |layer| {
+        if (layer.hasOpenDialog(subject)) return;
+        layer.addOpenDialog(subject) catch {};
+    }
     // 5. Set the dialog close watcher with subject.
+    // Registration is best effort on OOM; it must not suppress the watcher.
     setCloseWatcher(subject);
 }
 
 /// HTML "dialog cleanup steps" given `subject`.
 fn cleanupSteps(subject: *Instance) void {
     // 1. Remove subject from its node document's open dialogs list. A close
-    // preserves the separate pointerdown target until pointerup/removal.
+    // preserves the separate pointerdown target; light dismiss step 3 can
+    // preserve that target across a pointerup while every dialog is closed.
     if (dom.top_layer.ofElement(subject, false) catch null) |layer| layer.removeOpenDialog(subject);
     // 2. If subject's close watcher is not null: destroy it, set it to null.
     const window = close_watchers.relevantWindow(subject) orelse return;
@@ -576,9 +579,9 @@ fn removingSteps(node: *dom.NodeBase, _: ?*dom.NodeBase) void {
     if (hasOpen(subject)) cleanupSteps(subject);
     // Steps 2–3 remove modal membership without closing or restoring focus.
     const layer = (dom.top_layer.ofElement(subject, false) catch null) orelse return;
-    // Q4/Q9: removal ends the pending target hold even if an earlier close
-    // already removed this dialog from the open list.
-    if (layer.dialog_pointerdown_target.get() == subject) layer.setDialogPointerdownTarget(null);
+    // Q47 addendum: release the pending node even after an earlier close,
+    // but preserve the gesture mismatch with a non-owning removed marker.
+    layer.removeDialogPointerdownTarget(subject);
     if (layer.findModal(subject)) |entry| layer.remove(entry.id);
 }
 
