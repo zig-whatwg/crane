@@ -84,6 +84,12 @@ pub const BackgroundHint = struct {
     }
 };
 
+/// Typed OM identity allocated only when computedStyleMap() is called.
+/// Wrapper edges hold the map; this generation-checked link is weak.
+pub const ComputedMapLink = struct {
+    object: @import("rules.zig").ObjectLink = .{},
+};
+
 pub const ElementStyle = struct {
     allocator: Allocator,
     /// The style attribute's declarations, once parsed.
@@ -94,6 +100,9 @@ pub const ElementStyle = struct {
     updating: bool = false,
     sibling_counts: ?*SiblingCounts = null,
     cached: ?Cached = null,
+    /// Typed OM §5.3 method identity. Wrapper edges keep this map live; this
+    /// generation-checked identity is weak and is never read during teardown.
+    computed_map: ?*ComputedMapLink = null,
     pseudo: std.ArrayList(PseudoCached) = .empty,
     background_hint: ?*BackgroundHint = null,
     /// HTML 15.3.4: an HTML font element's color/face/size hint (font_hints.zig).
@@ -117,6 +126,7 @@ pub const ElementStyle = struct {
     pub fn destroy(self: *ElementStyle) void {
         if (self.inline_block) |*block| block.deinit();
         if (self.sibling_counts) |counts| self.allocator.destroy(counts);
+        if (self.computed_map) |link| self.allocator.destroy(link);
         self.dropBackgroundHint();
         self.dropFontHint();
         self.dropCache();

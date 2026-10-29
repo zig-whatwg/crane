@@ -441,9 +441,8 @@ pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// Getter for attributeStyleMap
 /// Spec: https://drafts.css-houdini.org/css-typed-om-1/#dom-elementcssinlinestyle-attributestylemap
 pub fn get_attributeStyleMap(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    // Would return a StylePropertyMap instance
-    _ = instance;
-    return error.NotImplemented;
+    // The generated SameObject accessor supplies identity and the owner edge.
+    return dom.style.typed_om.inlineMap(instance);
 }
 
 // =============================================================================

@@ -758,7 +758,8 @@ fn appendDeclaration(out: *std.ArrayList(u8), allocator: Allocator, first: *bool
     first.* = false;
     try out.appendSlice(allocator, name);
     try out.appendSlice(allocator, ": ");
-    try out.appendSlice(allocator, value);
+    // CSSOM "serialize a CSS declaration", step 4: omit whitespace-only values.
+    if (std.mem.trim(u8, value, " \t\n\r\x0c").len != 0) try out.appendSlice(allocator, value);
     if (important) try out.appendSlice(allocator, " !important");
     try out.append(allocator, ';');
 }

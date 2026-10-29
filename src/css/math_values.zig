@@ -807,6 +807,83 @@ pub fn parseNumeric(allocator: Allocator, text: []const u8) Allocator.Error!?*Nu
     return expression;
 }
 
+/// A borrowed Typed OM tree, converted by the property's existing grammar.
+/// §5.3 internal representation: an in-range unit stays unwrapped; math
+/// values and grammar-range violations acquire the calculation wrapper.
+/// The source is never mutated. Q36/Q40 (Chrome 156, Safari 27, 2026-10-27)
+/// distinguish grammar bounds from computation and representation clamps.
+pub fn fromTypedNumeric(allocator: Allocator, source: *const NumericExpression, is_unit: bool, grammar: Grammar) Allocator.Error!?*Expression {
+    const expression = try Expression.create(allocator, grammar);
+    errdefer expression.unref();
+    var builder = Builder{
+        .allocator = expression.arena.allocator(),
+        .hint = grammar.percentHint(),
+        .preserve_units = is_unit,
+    };
+    const Frame = struct { source: *const Node, next: usize = 0, base: usize };
+    var stack: std.ArrayList(Frame) = .empty;
+    defer stack.deinit(allocator);
+    var completed: std.ArrayList(*Node) = .empty;
+    defer completed.deinit(allocator);
+    try stack.append(allocator, .{ .source = source.root, .base = 0 });
+    while (stack.items.len != 0) {
+        const top = &stack.items[stack.items.len - 1];
+        if (top.next < top.source.children.len) {
+            const child = top.source.children[top.next];
+            top.next += 1;
+            try stack.append(allocator, .{ .source = child, .base = completed.items.len });
+            continue;
+        }
+        const root = switch (top.source.tag) {
+            .numeric => try builder.numeric(top.source.numeric),
+            .sum, .product, .negate, .invert, .min, .max, .clamp => builder.operation(top.source.tag, completed.items[top.base..]) catch |err| switch (err) {
+                error.Invalid => {
+                    expression.unref();
+                    return null;
+                },
+                error.OutOfMemory => return error.OutOfMemory,
+            },
+            else => {
+                expression.unref();
+                return null;
+            },
+        };
+        root.no_clamp = top.source.no_clamp;
+        completed.shrinkRetainingCapacity(top.base);
+        try completed.append(allocator, root);
+        _ = stack.pop();
+    }
+    const root = completed.items[0];
+    if (!grammar.accepts(root.typ)) {
+        expression.unref();
+        return null;
+    }
+    expression.typ = root.typ;
+    expression.root = try builder.simplify(root);
+    expression.wrapper = !is_unit;
+    if (is_unit) {
+        std.debug.assert(root.tag == .numeric);
+        const raw = root.numeric.value;
+        const n = raw * (root.numeric.unit.absoluteScale() orelse 1);
+        // Fractions in an <integer> context round only at computed time.
+        // Percentages use their native scale for grammar bounds. Existing
+        // percent-capable grammars only have a zero grammar minimum.
+        // Q81: derived non-finite units remain real numeric values, but
+        // a property writes them through the existing calculation wrapper.
+        expression.wrapper = !std.math.isFinite(raw) or (grammar.minimum_kind == .grammar and n < grammar.minimum) or
+            (grammar.maximum_kind == .grammar and n > grammar.maximum) or
+            (grammar.kind == .integer and @floor(raw) != raw);
+    }
+    return expression;
+}
+
+/// CSS Values 4 §10.8: TEXT counts nested parser calls (function and
+/// primary); PROPERTY input counts non-unit operation depth (Q85/Q89).
+pub const calculation_max_depth: usize = 128;
+/// CSS Values 4 §10.8: TEXT counts total parser calls; PROPERTY input
+/// counts expanded non-unit operation occurrences, including DAG repeats.
+pub const calculation_max_nodes: usize = 4096;
+
 const Parser = struct {
     builder: Builder,
     tokenizer: tokens.Tokenizer,
@@ -847,7 +924,7 @@ const Parser = struct {
         // These explicit limits also bound recursive simplification/printing.
         self.depth += 1;
         self.count += 1;
-        if (self.depth > 128 or self.count > 4096) return error.Invalid;
+        if (self.depth > calculation_max_depth or self.count > calculation_max_nodes) return error.Invalid;
     }
 
     fn function(self: *Parser) Error!*Node {

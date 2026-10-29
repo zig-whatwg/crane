@@ -6,6 +6,7 @@
 //!
 //! lint-impls: hook for Document, ShadowRoot, Element, HTMLStyleElement, HTMLLinkElement, ProcessingInstruction, MediaQueryList, StyleSheet, CSSRule
 //! lint-impls: hook for FontFace, FontFaceSet, HTMLInputElement, HTMLTextAreaElement
+//! lint-impls: hook for CSSStyleValue, StylePropertyMapReadOnly
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -53,6 +54,10 @@ pub const Hooks = struct {
     sheet_record_of: ?*const fn (object: *runtime.Instance) ?*sheet.SheetRecord = null,
     /// CSSRule: the CSS rule a CSSRule object is over.
     css_rule_of: ?*const fn (object: *runtime.Instance) ?*sheet.Rule = null,
+    /// CSSStyleValue owns its immutable native reification and property identity.
+    style_value_of: ?*const fn (object: *runtime.Instance) ?*@import("typed_om.zig").NativeValue = null,
+    /// StylePropertyMapReadOnly owns the live source shared with its subclass.
+    property_map_of: ?*const fn (object: *runtime.Instance) ?*@import("typed_om.zig").PropertyMap = null,
     /// Document, ShadowRoot: the view of its adoptedStyleSheets each keeps.
     document_adopted_sheets: ?*const fn (scope: *runtime.Instance) ?*adopted.AdoptedSheets = null,
     shadow_root_adopted_sheets: ?*const fn (scope: *runtime.Instance) ?*adopted.AdoptedSheets = null,
@@ -132,6 +137,18 @@ pub fn sheetRecordOf(object: *runtime.Instance) ?*sheet.SheetRecord {
 /// The CSS rule the CSSRule object `object` is over.
 pub fn cssRuleOf(object: *runtime.Instance) ?*sheet.Rule {
     const f = hooks.css_rule_of orelse return null;
+    return f(object);
+}
+
+/// The native CSS representation owned by this CSSStyleValue, if any.
+pub fn styleValueOf(object: *runtime.Instance) ?*@import("typed_om.zig").NativeValue {
+    const f = hooks.style_value_of orelse return null;
+    return f(object);
+}
+
+/// The live source owned by this StylePropertyMapReadOnly.
+pub fn propertyMapOf(object: *runtime.Instance) ?*@import("typed_om.zig").PropertyMap {
+    const f = hooks.property_map_of orelse return null;
     return f(object);
 }
 

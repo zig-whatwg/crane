@@ -155,7 +155,7 @@ pub const Line = struct {
                 count = .{ .integer = @intFromFloat(std.math.clamp(n, @as(f64, std.math.minInt(i32)), @as(f64, std.math.maxInt(i32)))) };
             } else if (math.isFunction(token)) {
                 if (count != null) return null;
-                const value = try properties.mathValue(options, stream, .{ .kind = .integer, .minimum = std.math.minInt(i32), .maximum = std.math.maxInt(i32) }) orelse return null;
+                const value = try properties.mathValue(options, stream, .{ .kind = .integer, .minimum = std.math.minInt(i32), .maximum = std.math.maxInt(i32), .minimum_kind = .representation, .maximum_kind = .representation }) orelse return null;
                 count = .{ .calculation = value.calculation };
             } else return null;
         }
@@ -168,6 +168,7 @@ pub const Line = struct {
             .calculation => |expression| if (span_at != null) {
                 // This expression is fresh and has not escaped this parser.
                 expression.grammar.minimum = 1;
+                expression.grammar.minimum_kind = .grammar;
             },
         };
         return create(allocator, span_at != null, name orelse "", count);

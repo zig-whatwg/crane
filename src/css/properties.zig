@@ -1267,12 +1267,65 @@ fn containsUnsupportedToken(text: []const u8, content_functions: bool, flags: *F
     }
 }
 
+// H-TYPED-NUMERIC-INPUT / H-TYPED-IMAGE-INPUT, Q71 storage form.
+pub const TypedNumericInput = struct {
+    expression: *const math_values.NumericExpression,
+    is_unit: bool,
+};
+const NativeInput = union(enum) { numeric: TypedNumericInput, image: *const Value };
+
+/// Match a borrowed Typed OM numeric tree with the existing grammar.
+pub fn parseTypedNumeric(options: ParseOptions, property: Property, input: TypedNumericInput, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
+    return parseNativeInput(options, property, .{ .numeric = input }, out);
+}
+
+/// The private stream owns no input bytes and no native value. Its sole
+/// marker points into THIS synchronous call, and never escapes the parser.
+fn parseNativeInput(options: ParseOptions, property: Property, input: NativeInput, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
+    const start = out.items.len;
+    var succeeded = false;
+    defer if (!succeeded) {
+        for (out.items[start..]) |assignment| assignment.value.release();
+        out.shrinkRetainingCapacity(start);
+    };
+    var stream = Stream.init("");
+    stream.native_input = &input;
+    defer stream.native_input = null;
+    stream.peeked = .{ .token_type = .function, .value = if (input == .numeric) "calc" else "url" };
+    const matched = switch (property) {
+        .longhand => |longhand| blk: {
+            const value = try parseLonghand(options, longhand, &stream) orelse break :blk false;
+            errdefer value.release();
+            try out.append(options.allocator, .{ .longhand = longhand, .value = .{ .value = value } });
+            break :blk true;
+        },
+        .shorthand => |shorthand| try parseShorthand(options, shorthand, &stream, out),
+    };
+    succeeded = matched and stream.native_input == null and stream.atEnd();
+    return succeeded;
+}
+
+// H-TYPED-IMAGE-INPUT, Q66/Q71, beside the numeric input entry.
+/// Typed OM §3: use a native image's frozen resource provenance through
+/// the existing grammar. No tokenized CSS can create the private marker.
+pub fn parseTypedImage(options: ParseOptions, property: Property, image: Value, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
+    const valid_image = switch (image) {
+        .image => true,
+        .text => |text| text.image_kind != .generic,
+        else => false,
+    };
+    if (!valid_image) return false;
+    return parseNativeInput(options, property, .{ .image = &image }, out);
+}
+
 /// A value's tokens, whitespace skipped.
 pub const Stream = struct {
     tok: Tokenizer,
     peeked: ?Token = null,
     text: []const u8,
     peeked_offset: usize = 0,
+    /// Borrowed only during parseNativeInput; CSS text never creates it.
+    native_input: ?*const NativeInput = null,
 
     pub fn init(text: []const u8) Stream {
         return .{ .tok = Tokenizer.init(text), .text = text };
@@ -1299,16 +1352,17 @@ pub const Stream = struct {
         return self.peek().token_type == .eof;
     }
 
-    const Mark = struct { tok: Tokenizer, peeked: ?Token, peeked_offset: usize };
+    const Mark = struct { tok: Tokenizer, peeked: ?Token, peeked_offset: usize, native_input: ?*const NativeInput };
 
     fn mark(self: *const Stream) Mark {
-        return .{ .tok = self.tok, .peeked = self.peeked, .peeked_offset = self.peeked_offset };
+        return .{ .tok = self.tok, .peeked = self.peeked, .peeked_offset = self.peeked_offset, .native_input = self.native_input };
     }
 
     fn restore(self: *Stream, m: Mark) void {
         self.tok = m.tok;
         self.peeked = m.peeked;
         self.peeked_offset = m.peeked_offset;
+        self.native_input = m.native_input;
     }
 
     /// The position of the next token in the text.
@@ -1452,6 +1506,11 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .content => {
             if (takeKeyword(stream, &.{ .normal, .none })) |k| return Value.kw(k);
             const generated = @import("generated_content.zig");
+            if (stream.native_input) |input| if (input.* == .image) {
+                const image = try parseImageLeaf(options, stream) orelse return null;
+                defer image.release();
+                return .{ .content = try generated.Content.fromImage(options.allocator, image) orelse return null };
+            };
             const begin = stream.offset();
             var content_options = options;
             content_options.taint_offset += begin;
@@ -1500,7 +1559,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         },
         .opacity => {
             const t = stream.peek();
-            if (math_values.isFunction(t)) return mathValue(options, stream, .{ .kind = .number_percentage, .minimum = 0, .maximum = 1 });
+            if (math_values.isFunction(t)) return mathValue(options, stream, .{ .kind = .number_percentage, .minimum = 0, .maximum = 1, .minimum_kind = .computation, .maximum_kind = .computation });
             const n: f64 = switch (t.token_type) {
                 .number => t.numeric_value orelse return null,
                 .percentage => (t.numeric_value orelse return null) / 100,
@@ -1512,7 +1571,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .z_index => {
             if (takeKeyword(stream, &.{.auto})) |k| return Value.kw(k);
             const t = stream.peek();
-            if (math_values.isFunction(t)) return mathValue(options, stream, .{ .kind = .integer, .minimum = std.math.minInt(i32), .maximum = std.math.maxInt(i32) });
+            if (math_values.isFunction(t)) return mathValue(options, stream, .{ .kind = .integer, .minimum = std.math.minInt(i32), .maximum = std.math.maxInt(i32), .minimum_kind = .representation, .maximum_kind = .representation });
             if (t.token_type != .number or !t.is_integer) return null;
             const n = t.numeric_value orelse return null;
             _ = stream.next();
@@ -1632,6 +1691,12 @@ fn lengthPercentage(options: ParseOptions, stream: *Stream, flags: LengthFlags) 
 }
 
 pub fn mathValue(options: ParseOptions, stream: *Stream, grammar: math_values.Grammar) Allocator.Error!?Value {
+    if (stream.native_input) |input| if (input.* == .numeric) {
+        const expression = try math_values.fromTypedNumeric(options.allocator, input.numeric.expression, input.numeric.is_unit, grammar) orelse return null;
+        _ = stream.next();
+        stream.native_input = null;
+        return .{ .calculation = expression };
+    };
     const begin = stream.offset();
     const parsed = try math_values.parseWithScope(options.allocator, stream.text[begin..], grammar, options.random_scope) orelse return null;
     stream.tok = Tokenizer.init(stream.text);
@@ -1723,6 +1788,13 @@ pub fn urlRangeTainted(options: ParseOptions, range: resources.ResourceUrl.Range
 
 /// The pre-existing URL and raw gradient parser; no choice is made here.
 pub fn parseImageLeaf(options: ParseOptions, stream: *Stream) Allocator.Error!?Value {
+    if (stream.native_input) |input| if (input.* == .image) {
+        const image = input.image.*;
+        _ = stream.next();
+        stream.native_input = null;
+        image.retain();
+        return image;
+    };
     const begin = stream.offset();
     const t = stream.peek();
     switch (t.token_type) {

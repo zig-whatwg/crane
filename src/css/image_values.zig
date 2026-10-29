@@ -772,7 +772,7 @@ fn parseCrossFade(options: properties.ParseOptions, stream: *properties.Stream, 
     defer second.release();
     if (stream.next().token_type != .comma) return null;
     if (stream.peek().token_type == .function) {
-        const value = (try properties.mathValue(options, stream, .{ .kind = .number_percentage, .minimum = 0, .maximum = 1 })) orelse return null;
+        const value = (try properties.mathValue(options, stream, .{ .kind = .number_percentage, .minimum = 0, .maximum = 1, .minimum_kind = .computation, .maximum_kind = .computation })) orelse return null;
         defer value.release();
         if (!endFunction(stream)) return null;
         return .{ .image = try Image.create(options.allocator, .{ .cross_fade = .{ .inputs = .{ first, second }, .weight = 0, .weight_value = value } }) };

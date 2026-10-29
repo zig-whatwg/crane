@@ -62,6 +62,29 @@ pub const Content = struct {
         return result;
     }
 
+    /// Content3 §1: a native image is a one-item content list. Borrow the
+    /// input and acquire the same independent image/resource ownership as
+    /// the text parser; no CSS tokenization or second image parser occurs.
+    pub fn fromImage(allocator: Allocator, image: values.Value) Allocator.Error!?*Content {
+        const valid_image = switch (image) {
+            .image => true,
+            .text => |text| text.image_kind != .generic,
+            else => false,
+        };
+        if (!valid_image) return null;
+        const result = try create(allocator);
+        errdefer result.unref();
+        const arena = result.arena.allocator();
+        const items = try arena.alloc(Item, 1);
+        image.retain();
+        items[0] = try ownedImageItem(arena, image);
+        result.items = items;
+        // Install ownership before fallible serialization, so every failure
+        // releases both the native image and its resource occurrences.
+        try result.serialize();
+        return result;
+    }
+
     pub fn ref(self: *Content) void {
         _ = self.refs.fetchAdd(1, .monotonic);
     }
@@ -240,6 +263,15 @@ pub const Content = struct {
     }
 };
 
+/// Takes ownership even on failure. The caller's Content arena owns the
+/// text and occurrences; the native image keeps its original allocator.
+fn ownedImageItem(allocator: Allocator, image: values.Value) Allocator.Error!Item {
+    errdefer image.release();
+    var out: std.ArrayList(u8) = .empty;
+    try properties.serializeValue(.list_style_image, image, &out, allocator);
+    return .{ .kind = .image, .text = out.items, .resource_urls = try resources.cloneAll(allocator, image.resourceUrls(), 0), .image = image };
+}
+
 /// Parse a content-list (normal and none are handled by the property).
 pub fn parse(allocator: Allocator, text: []const u8, resolver: ?UrlResolver) !?*Content {
     return parseWithSource(allocator, text, resolver, null);
@@ -400,10 +432,7 @@ const Parser = struct {
 
     /// Takes ownership even on failure; the value never lives in our arena.
     fn imageItem(self: *Parser, image: values.Value) Allocator.Error!Item {
-        errdefer image.release();
-        var out: std.ArrayList(u8) = .empty;
-        try properties.serializeValue(.list_style_image, image, &out, self.allocator);
-        return .{ .kind = .image, .text = out.items, .resource_urls = try resources.cloneAll(self.allocator, image.resourceUrls(), 0), .image = image };
+        return ownedImageItem(self.allocator, image);
     }
 
     fn typedImage(self: *Parser, start: Token) Allocator.Error!?Item {

@@ -306,6 +306,7 @@ fn parseFunction(options: properties.ParseOptions, stream: *properties.Stream, k
             .kind = .number_percentage,
             .minimum = 0,
             .maximum = if (kind.clamps()) 1 else std.math.floatMax(f64),
+            .maximum_kind = if (kind.clamps()) .computation else .grammar,
         })) orelse return null;
         return .{ .kind = kind, .argument = .{ .scalar = value } };
     }

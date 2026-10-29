@@ -15,55 +15,28 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
+const dom = @import("dom");
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = instance;
+    _ = allocator;
+    _ = StateType;
+    _ = args;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-/// Operation: delete
 pub fn call_delete(instance: *runtime.Instance, property: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = property;
-    return error.NotImplemented;
+    return dom.style.typed_om.mapDelete(instance, property);
 }
 
-/// Operation: append
 pub fn call_append(instance: *runtime.Instance, property: runtime.USVString, values: []const runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = property;
-    _ = values;
-    return error.NotImplemented;
+    return dom.style.typed_om.mapSet(instance, property, values, true);
 }
 
-/// Operation: clear
 pub fn call_clear(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
+    return dom.style.typed_om.mapClear(instance);
 }
 
-/// Operation: set
 pub fn call_set(instance: *runtime.Instance, property: runtime.USVString, values: []const runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = property;
-    _ = values;
-    return error.NotImplemented;
+    return dom.style.typed_om.mapSet(instance, property, values, false);
 }
