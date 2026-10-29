@@ -8,7 +8,13 @@
 //! and a WorkerGlobalScope each own theirs (src/dom/policy_containers.zig
 //! reaches them); a request owns its clone.
 //!
-//! Not modelled, stated: the embedder policy.
+//! The embedder policy is HTML's (7.1.4; cross_origin_policies.zig). The
+//! opener policy rides here too, though HTML keeps it on the Document and
+//! never inherits it through a container - `clone` leaves it at its initial
+//! value - as Chromium's PolicyContainerPolicies carries
+//! cross_origin_opener_policy beside cross_origin_embedder_policy
+//! (content/browser/renderer_host/policy_container_host.h): it is the
+//! document's, set by the navigation that makes the document (stated).
 //!
 //! The CSP list is a list of parsed policies; "a copy of policy" (clone step
 //! 2) is csp.parsing.copyPolicy, the policy's serialization parsed again.
@@ -23,6 +29,9 @@ const request_mod = @import("request.zig");
 const origins = @import("origins.zig");
 const structured_fields = @import("structured_fields.zig");
 const mixed_content = @import("../mixed_content.zig");
+const cross_origin_policies = @import("cross_origin_policies.zig");
+pub const EmbedderPolicy = cross_origin_policies.EmbedderPolicy;
+pub const OpenerPolicy = cross_origin_policies.OpenerPolicy;
 const basic_parser = @import("basic_parser");
 const url_serializer = @import("url_serializer");
 
@@ -67,6 +76,19 @@ pub const PolicyContainer = struct {
     /// names none, and main fetch then falls back to the default.
     referrer_policy: ReferrerPolicy = .strict_origin_when_cross_origin,
 
+    /// "An embedder policy, which is an embedder policy. It is initially a
+    /// new embedder policy." Its endpoints are owned.
+    embedder_policy: EmbedderPolicy = .{},
+
+    /// The Document's opener policy (HTML 7.1.3), carried with its
+    /// container as Chromium's PolicyContainerPolicies does (module doc).
+    /// NOT part of HTML's policy container: `clone` gives a new opener
+    /// policy - a document inheriting a container (srcdoc, about:blank,
+    /// a local URL) gets its opener policy from its own navigation params,
+    /// never from the container - and a request never reads it. Its
+    /// endpoints are owned. Meaningful for a top-level document only.
+    opener_policy: OpenerPolicy = .{},
+
     const NavigationUpgrade = struct { host: []const u8, port: ?u16 };
 
     /// The container a global's settings object answers with when the one
@@ -99,6 +121,9 @@ pub const PolicyContainer = struct {
             .csp_list = csp.parsing.copyList(allocator, &self.csp_list) catch return error.OutOfMemory,
         };
         errdefer copy.deinit();
+        // 3. Set clone's embedder policy to a copy of policyContainer's
+        // embedder policy.
+        copy.embedder_policy = try self.embedder_policy.clone(allocator);
         // 4. Set clone's referrer policy to policyContainer's referrer policy.
         copy.referrer_policy = self.referrer_policy;
         copy.inherited_upgrade_insecure_requests = self.inherited_upgrade_insecure_requests;
@@ -126,6 +151,8 @@ pub const PolicyContainer = struct {
     /// Release the container's owned policies and header values.
     pub fn deinit(self: *PolicyContainer) void {
         self.csp_list.deinit();
+        self.embedder_policy.deinit(self.allocator);
+        self.opener_policy.deinit(self.allocator);
         if (self.endpoints) |endpoints| endpoints.deinit();
         if (self.integrity_policy) |policy| policy.deinit();
         if (self.integrity_policy_report_only) |policy| policy.deinit();
@@ -155,6 +182,13 @@ pub const PolicyContainer = struct {
         // 3. "Set result's CSP list to the result of parsing a response's
         // Content Security Policies given response."
         try parseResponseCsp(allocator, &result.csp_list, response);
+        // 4. "If environment is non-null, then set result's embedder policy
+        // to the result of obtaining an embedder policy given response and
+        // environment. Otherwise, set it to "unsafe-none"."
+        if (response.environment_secure) |secure| result.embedder_policy = try cross_origin_policies.obtainEmbedderPolicy(allocator, .{
+            .coep = response.coep,
+            .coep_report_only = response.coep_report_only,
+        }, secure);
         if (response.reporting_endpoints) |header| result.endpoints = try Endpoints.fromHeader(allocator, response.url, header);
         // 5. Set result's referrer policy to the result of parsing the
         // `Referrer-Policy` header given response: the last token that is a
@@ -269,6 +303,13 @@ pub const ResponseHeaders = struct {
     integrity_policy_report_only: ?[]const u8 = null,
     required_csp: ?[]const u8 = null,
     blanket_csp_acceptance: bool = false,
+    /// `Cross-Origin-Embedder-Policy` and its -Report-Only twin.
+    coep: ?[]const u8 = null,
+    coep_report_only: ?[]const u8 = null,
+    /// Step 4's environment: null when there is none (the embedder policy
+    /// stays "unsafe-none"), else whether it is a secure context - "obtain
+    /// an embedder policy" step 2 returns a new policy for a non-secure one.
+    environment_secure: ?bool = null,
 };
 
 /// SRI §3.8's policy, projected onto the source and destination browsers
