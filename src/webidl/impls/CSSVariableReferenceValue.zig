@@ -1,74 +1,70 @@
-//! Implementation for CSSVariableReferenceValue interface
-
+//! CSS Typed OM 1 §4.1: a custom property name and an optional fallback.
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
 const webidl = @import("webidl");
-const CSSVariableReferenceValue = interfaces.CSSVariableReferenceValue;
+const css = @import("css");
+const dom = @import("dom");
 
-pub const State = CSSVariableReferenceValue.State;
-
-pub const ImplError = error{
-    NotImplemented,
+pub const State = interfaces.CSSVariableReferenceValue.State;
+pub const ImplError = error{TypeError};
+pub const construction_args = .{ "variable_name", "variable_fallback" };
+pub const InternalState = struct {
+    name: []u8,
+    fallback: dom.style.rules.ObjectLink = .{},
 };
+const fallback_slot: engine.TracedSlot = .{ .name = "CSSVariableReferenceValue:fallback" };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
-
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    const name = if (@hasField(@TypeOf(args), "variable_name")) args.variable_name else "--";
+    const fallback: ?*runtime.Instance = if (@hasField(@TypeOf(args), "variable_fallback")) args.variable_fallback else null;
+    if (!css.typed_om.unparsed.isCustomPropertyName(name)) return error.TypeError;
+    if (fallback) |child| if (child.stateAs(interfaces.CSSUnparsedValue.State) == null) return error.TypeError;
+    const copy = try allocator.dupe(u8, name);
+    errdefer allocator.free(copy);
+    const internal = try runtime.arenaOf(instance).create(InternalState);
+    internal.* = .{ .name = copy };
+    instance.getState(State).own._internal = internal;
+    if (fallback) |child| {
+        internal.fallback.set(child);
+        dom.style.objects.keepFrom(instance, child, fallback_slot);
+    }
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+pub fn deinitOwn(instance: *runtime.Instance) void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return;
+    state.own._internal = null;
+    engine.forgetTracedChild(instance, fallback_slot);
+    instance.ctx.allocator.free(internal.name);
+    runtime.arenaOf(instance).destroy(InternalState, internal);
 }
 
-/// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
 pub fn call_constructor(ctx: runtime.Context, variable: runtime.USVString, fallback: webidl.Opt(?*runtime.Instance)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &CSSVariableReferenceValue.vtable, ctx);
-    errdefer deinit(instance);
-
-    _ = variable;
-    _ = fallback;
-    // TODO: Implement constructor logic with parameters
-
-    return instance;
+    // Constructor steps 1–2. The fallback is nullable but is never copied.
+    return interfaces.CSSVariableReferenceValue.initWith(ctx.allocator, ctx, .{
+        .variable_name = variable,
+        .variable_fallback = if (fallback.wasPassed()) fallback.getValue() else @as(?*runtime.Instance, null),
+    });
 }
 
-/// Getter for variable
 pub fn get_variable(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    return instance.ctx.allocator.dupe(u8, internal.name);
 }
 
-/// Getter for fallback
 pub fn get_fallback(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    return internal.fallback.get();
 }
 
-/// Setter for variable
 pub fn set_variable(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    // Setter steps 1–2: validate and copy before replacing the old value.
+    if (!css.typed_om.unparsed.isCustomPropertyName(value)) return error.TypeError;
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    const copy = try instance.ctx.allocator.dupe(u8, value);
+    instance.ctx.allocator.free(internal.name);
+    internal.name = copy;
 }

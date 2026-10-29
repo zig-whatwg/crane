@@ -394,3 +394,42 @@ pub fn parseNumeric(ctx: runtime.Context, text: []const u8) !*runtime.Instance {
         else => err,
     };
 }
+
+/// §6.1: the pure traversal reads the live slots through their owners.
+/// Getter strings are owned, and released after appending each segment.
+pub fn serializeUnparsed(instance: *runtime.Instance) ![]u8 {
+    const Reader = struct {
+        string_allocator: std.mem.Allocator,
+
+        pub fn length(_: *@This(), id: usize) !usize {
+            return try interfaces.CSSUnparsedValue.get_length(@ptrFromInt(id));
+        }
+
+        pub fn segment(self: *@This(), id: usize, index: usize) !css.typed_om.unparsed.Segment {
+            const value: *runtime.Instance = @ptrFromInt(id);
+            self.string_allocator = value.ctx.allocator;
+            const item = try interfaces.CSSUnparsedValue.call_getter(value, @intCast(index));
+            return switch (item) {
+                .usvstring => |string| .{ .string = string },
+                .cssvariable_reference_value => |reference| blk: {
+                    self.string_allocator = reference.ctx.allocator;
+                    const name = try interfaces.CSSVariableReferenceValue.get_variable(reference);
+                    errdefer reference.ctx.allocator.free(name);
+                    const fallback = try interfaces.CSSVariableReferenceValue.get_fallback(reference);
+                    break :blk .{ .variable = .{ .name = name, .fallback = if (fallback) |child| @intFromPtr(child) else null } };
+                },
+            };
+        }
+
+        pub fn release(self: *@This(), item: css.typed_om.unparsed.Segment) void {
+            // The iterative reader has at most one outstanding segment;
+            // its string may belong to another realm's allocator.
+            self.string_allocator.free(switch (item) {
+                .string => |string| string,
+                .variable => |variable| variable.name,
+            });
+        }
+    };
+    var reader: Reader = .{ .string_allocator = instance.ctx.allocator };
+    return css.typed_om.unparsed.serialize(instance.ctx.allocator, @intFromPtr(instance), &reader);
+}
