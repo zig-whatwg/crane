@@ -358,6 +358,13 @@ pub const Keyword = enum(u16) {
     fill_box,
     stroke_box,
     view_box,
+    // CSS Gap Decorations 1 §§3.2-3.5.
+    intersection,
+    overlap_join,
+    around,
+    between,
+    row_over_column,
+    column_over_row,
 
     /// The keyword's CSS spelling.
     pub fn name(self: Keyword) []const u8 {
@@ -961,6 +968,8 @@ pub const Value = union(enum) {
     text_values: *@import("text_values.zig").Components,
     decoration_keywords: @import("decoration_values.zig").Keywords,
     text_shadow: *@import("text_shadow_values.zig").Shadows,
+    /// Gaps 1 §4.5: a gap decoration list of 2+ items or with a repeat().
+    gap_list: *@import("gap_decorations.zig").List,
 
     /// Borrowed URL candidates in serialization order, valid while this
     /// value is retained. No sheet or document lookup is needed to use them.
@@ -987,6 +996,7 @@ pub const Value = union(enum) {
     pub fn retain(self: Value) void {
         if (self == .text_values) return self.text_values.ref();
         if (self == .text_shadow) return self.text_shadow.ref();
+        if (self == .gap_list) return self.gap_list.ref();
         if (self == .box_numeric) return self.box_numeric.ref();
         if (self == .color) return self.color.retain();
         if (self == .content) return self.content.ref();
@@ -1027,6 +1037,7 @@ pub const Value = union(enum) {
     pub fn release(self: Value) void {
         if (self == .text_values) return self.text_values.unref();
         if (self == .text_shadow) return self.text_shadow.unref();
+        if (self == .gap_list) return self.gap_list.unref();
         if (self == .box_numeric) return self.box_numeric.unref();
         if (self == .color) return self.color.release();
         if (self == .content) return self.content.unref();
@@ -1130,6 +1141,7 @@ pub const Value = union(enum) {
             .text_values => |v| v.eql(b.text_values),
             .decoration_keywords => |v| v.eql(b.decoration_keywords),
             .text_shadow => |v| v.eql(b.text_shadow),
+            .gap_list => |v| v.eql(b.gap_list),
         };
     }
 
@@ -1191,6 +1203,7 @@ pub const Value = union(enum) {
             .font_size_adjust => |v| v.needsUnavailableMetrics(),
             .text_values => |v| v.needsUnavailableMetrics(geometry_length),
             .text_shadow => |v| v.needsUnavailableMetrics(geometry_length),
+            .gap_list => |v| v.needsUnavailableMetrics(geometry_length),
             .decoration_keywords => false,
         };
     }
@@ -1249,6 +1262,7 @@ pub const Value = union(enum) {
             .font_size_adjust => |v| v.needsTreeCounts(),
             .text_values => |v| v.needsTreeCounts(),
             .text_shadow => |v| v.needsTreeCounts(),
+            .gap_list => |v| v.needsTreeCounts(),
             .decoration_keywords => false,
         };
     }
@@ -1305,6 +1319,7 @@ pub const Value = union(enum) {
             .font_size_adjust => |v| v.needsRandomBase(),
             .text_values => |v| v.needsRandomBase(),
             .text_shadow => |v| v.needsRandomBase(),
+            .gap_list => |v| v.needsRandomBase(),
             .decoration_keywords => false,
         };
     }

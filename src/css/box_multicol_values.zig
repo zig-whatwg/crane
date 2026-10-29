@@ -88,20 +88,5 @@ pub fn serializeColumns(assigned: []const properties.Assigned, out: *std.ArrayLi
     return true;
 }
 
-pub fn serializeRule(assigned: []const properties.Assigned, mode: properties.ShorthandMode, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!bool {
-    // Multicol 1 §4.5 / CSSOM: omit initial specified components; none is
-    // omitted even in computed readback. The rule's width is not zeroed
-    // when its style is none or hidden (Multicol 1 §4.4, pinned WPT).
-    var wrote = false;
-    for (properties.Shorthand.column_rule.longhands(), assigned) |longhand, assigned_value| {
-        const value = assigned_value.value;
-        if (longhand == .column_rule_style and value.isKeyword(.none)) continue;
-        if (mode == .specified and value.eql(longhand.info().initial)) continue;
-        if (wrote) try out.append(allocator, ' ');
-        try properties.serializeValue(longhand, value, out, allocator);
-        wrote = true;
-    }
-    // The shortest declaration setting all three initials is medium.
-    if (!wrote) try properties.serializeValue(.column_rule_width, assigned[0].value, out, allocator);
-    return true;
-}
+// The column-rule shorthand's serialization (Multicol 1 §4.5, per <gap-rule>)
+// lives in gap_decorations.zig, which extends it to Gaps 1 §4.8's lists.

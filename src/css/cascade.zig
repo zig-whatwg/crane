@@ -1386,6 +1386,8 @@ const Builder = struct {
                 .length_percentage_auto, .length_percentage_nonneg, .size, .max_size, .line_width, .gap, .signed_length, .fit_tolerance => true,
                 .column_size, .scroll_padding, .shape_outside, .transform_list, .transform_origin, .perspective => true,
                 .box_overflow => l == .overflow_clip_margin,
+                .gap_rule => l == .column_rule_width or l == .row_rule_width,
+                .gap_inset => true,
                 .image_position => l == .perspective_origin,
                 else => false,
             };
@@ -1511,6 +1513,8 @@ const Builder = struct {
             return self.computeValue(l, selected, source);
         }
         if (v == .box_numeric) return .{ .box_numeric = try v.box_numeric.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
+        // Gaps 1 §§4.1-4.3: each value as a plain value of `l` computes.
+        if (v == .gap_list) return .{ .gap_list = try v.gap_list.compute(self.ctx.allocator, l, ComponentContext.init(self, source)) };
         if (v == .animation_list) return .{ .animation_list = try v.animation_list.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         if (v == .transform) return .{ .transform = try v.transform.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         if (v == .transform_list) return .{ .transform_list = try v.transform_list.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
@@ -1577,7 +1581,7 @@ const Builder = struct {
             }
             return .{ .calculation = expression };
         }
-        if (l == .outline_width or l == .column_rule_width) {
+        if (l == .outline_width or l == .column_rule_width or l == .row_rule_width) {
             // UI 4 §3.4 computes width independently of outline-style:none.
             // Multicol 1 §4.4 likewise retains an undrawn rule's width.
             const px: f64 = switch (v) {
