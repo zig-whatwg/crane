@@ -1448,13 +1448,7 @@ const Builder = struct {
             // next retained candidate/default wins, with no hidden CSSOM history.
             const preflight = try self.resolvePending(c, l);
             const assigned = preflight.assigned;
-            const geometry_length = switch (l.info().grammar) {
-                .length_percentage_auto, .length_percentage_nonneg, .size, .max_size, .line_width, .gap, .signed_length, .fit_tolerance => true,
-                .column_size, .scroll_padding, .shape_outside, .transform_list, .transform_origin, .perspective => true,
-                .box_overflow => l == .overflow_clip_margin,
-                .image_position => l == .perspective_origin,
-                else => false,
-            };
+            const geometry_length = geometryLength(l);
             // Q25/Q83/Q88: this is the single unavailable-input decision,
             // after pending substitution has selected just its live branch.
             // Q59/Q92: a null font View is defensive; unavailable scalar
@@ -1543,10 +1537,7 @@ const Builder = struct {
             // computation contributes to its post-compute decision.
             note = .{};
             const computed = try self.compute(l, spec);
-            const geometry_length = switch (l.info().grammar) {
-                .length_percentage_auto, .length_percentage_nonneg, .size, .max_size, .line_width, .gap, .signed_length, .fit_tolerance => true,
-                else => false,
-            };
+            const geometry_length = geometryLength(l);
             if (unavailableContainerInput(note, geometry_length)) {
                 computed.release();
                 std.debug.assert(spec == .value);
@@ -2004,6 +1995,19 @@ fn snapBorderWidth(px: f64) f64 {
     if (px <= 0) return 0;
     if (px < 1) return 1;
     return @floor(px);
+}
+
+// Conditional Rules 5 §7 / Q136: geometry lengths may retain an unresolved
+// eligible-container unit. Preflight and post-compute retry use the same
+// classification, including compound values with geometry-length components.
+fn geometryLength(l: Longhand) bool {
+    return switch (l.info().grammar) {
+        .length_percentage_auto, .length_percentage_nonneg, .size, .max_size, .line_width, .gap, .signed_length, .fit_tolerance => true,
+        .column_size, .scroll_padding, .shape_outside, .transform_list, .transform_origin, .perspective => true,
+        .box_overflow => l == .overflow_clip_margin,
+        .image_position => l == .perspective_origin,
+        else => false,
+    };
 }
 
 /// Q25/Q95: unavailable inputs may remain only in a geometry length.
