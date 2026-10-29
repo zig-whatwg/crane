@@ -496,6 +496,26 @@ const IntersectionMicrotaskContext = struct {
     generation: u64,
 };
 
+/// The update microtask's ends (engine.queueRealmMicrotask): exactly one
+/// runs, once, and owns the context - its steps when the microtask runs, or
+/// `dropped` when it never will (its realm ended, the agent ended, or a
+/// terminated checkpoint discarded the queue), which only frees it.
+/// engine.queueMicrotask has no dropped end, and its data leaked when the
+/// microtask never ran (lane leaks1's class; the integrator, 2026-10-29).
+const intersection_microtask_steps: engine.PromiseReactionSteps = .{
+    .fulfilled = intersectionMicrotaskRan,
+    .dropped = intersectionMicrotaskDropped,
+};
+
+fn intersectionMicrotaskRan(data: ?*anyopaque, _: runtime.JSValue) void {
+    intersectionMicrotask(data);
+}
+
+fn intersectionMicrotaskDropped(data: ?*anyopaque) void {
+    const ctx: *IntersectionMicrotaskContext = @ptrCast(@alignCast(data orelse return));
+    ctx.allocator.destroy(ctx);
+}
+
 /// The microtask's steps: compute the intersections, then notify.
 fn intersectionMicrotask(data: ?*anyopaque) void {
     std.log.debug("[IntersectionObserver] Microtask callback invoked", .{});
@@ -535,13 +555,16 @@ fn intersectionMicrotask(data: ?*anyopaque) void {
 fn scheduleIntersectionUpdate(instance: *runtime.Instance, internal: *InternalState) !void {
     const ctx = try internal.allocator.create(IntersectionMicrotaskContext);
     ctx.* = .{ .allocator = internal.allocator, .observer = instance, .generation = runtime.SlabAllocator.generationOf(instance) };
-    // The surrounding agent's microtask queue; a realm with no engine behind
-    // it has none.
-    const queued: engine.Error!void = if (internal.ctx.agent) |agent| engine.queueMicrotask(agent, intersectionMicrotask, ctx) else error.NotSupported;
+    // A microtask of the observer's relevant realm, with a dropped end; a
+    // realm with no engine behind it has no microtask queue.
+    const queued: engine.Error!void = if (internal.ctx.agent != null) engine.queueRealmMicrotask(internal.ctx, &intersection_microtask_steps, ctx) else error.NotSupported;
     queued catch |err| {
         internal.allocator.destroy(ctx);
         if (err == error.OutOfMemory) return error.OutOfMemory;
-        // No engine behind the realm, so no microtask queue: compute now.
+        // A realm that has ended notifies nothing.
+        if (err != error.NotSupported) return;
+        // No engine (or no realm microtasks) behind the realm, so no
+        // microtask queue: compute now.
         try computeIntersections(internal);
         if (internal.queued_entries.items.len > 0) try invokeCallback(internal);
     };
