@@ -734,11 +734,7 @@ fn handleScriptSchedulingOf(
         // failure. Its cancellation already discarded this preparation;
         // do not recreate an execution owner with no remaining producer.
         if (state.preparation_time_document != doc) return false;
-        if (state.execution_root == null and script_element.ctx.hasEngine()) {
-            const root = engine.retainValue(script_element.ctx, .{ .instance = script_element }) catch
-                return ScriptExecutionError.OutOfMemory;
-            state.execution_root = script_element_state.ExecutionHold.take(script_element, root);
-        }
+        try holdForExecution(script_element, state);
 
         if (has_async or force_async) {
             // 35.2: the set of scripts that will execute as soon as possible.
@@ -804,6 +800,14 @@ fn handleScriptSchedulingOf(
         // Spec: https://html.spec.whatwg.org/multipage/semantics.html#has-a-style-sheet-that-is-blocking-scripts
         if (node_document) |doc| {
             if (document_scripts.hasStyleSheetBlockingScripts(doc)) {
+                // The pending parsing-blocking script is held as 35.5's is
+                // (refcount step 5i): a document's script lists are raw, and
+                // each element on them is counted by its execution hold.
+                // WebKit's HTMLScriptRunner keeps it as m_parserBlockingScript,
+                // a RefPtr<PendingScript> holding Ref<ScriptElement>. The
+                // executor takes the hold (executePendingParserBlockingScript),
+                // a discard releases it (discardScheduledScript).
+                if (script_element_state.of(script_element)) |state| try holdForExecution(script_element, state);
                 markReady(script_element);
                 setPendingParsingBlockingScript(parser_document orelse doc, script_element);
                 return true;
@@ -814,6 +818,17 @@ fn handleScriptSchedulingOf(
     // 36.3: otherwise, immediately execute the script element.
     _ = executeScriptElement(allocator, script_element) catch {};
     return true;
+}
+
+/// Prepare step 35 (and 36.2's pending parsing-blocking script): the
+/// document script queue's hold on `script_element` - its execution root, a
+/// wrapper root plus one counted reference (ExecutionHold) - until it
+/// executes or its queue discards it. Once: a held element keeps its hold.
+fn holdForExecution(script_element: *runtime.Instance, state: *script_element_state.State) ScriptExecutionError!void {
+    if (state.execution_root != null or !script_element.ctx.hasEngine()) return;
+    const root = engine.retainValue(script_element.ctx, .{ .instance = script_element }) catch
+        return ScriptExecutionError.OutOfMemory;
+    state.execution_root = script_element_state.ExecutionHold.take(script_element, root);
 }
 
 /// "Ready to be parser-executed", which Crane also reads as "the result is no

@@ -155,12 +155,16 @@ const Load = struct {
     /// removal end eligibility with the load.
     blocks_scripts: bool = false,
 
+    /// The load's element and document are weak links (refcount step 5i: a
+    /// style sheet owner's registration never counts - the queued event's
+    /// `event_ref` is the load's only reference): once weak references see
+    /// garbage, a node of a garbage tree reads as gone too.
     fn elementIsLive(self: *const Load) bool {
-        return runtime.SlabAllocator.generationOf(self.element) == self.element_generation;
+        return dom.refcount.weakLinkLive(self.element, self.element_generation);
     }
 
     fn documentIsLive(self: *const Load) bool {
-        return runtime.SlabAllocator.generationOf(self.document) == self.document_generation;
+        return dom.refcount.weakLinkLive(self.document, self.document_generation);
     }
 };
 

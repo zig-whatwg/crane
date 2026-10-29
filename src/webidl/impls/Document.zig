@@ -1165,11 +1165,13 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
 pub const construction_args = .{ "origin", "sandboxing_flags", "ready_state", "last_modified" };
 
 /// dom.target_element: `document`'s target element, or null once the
-/// element it names has been freed.
+/// element it names has been freed. A weak link (refcount step 5i: the
+/// document's target element never counts): once weak references see
+/// garbage, an element of a garbage tree reads as none too.
 fn targetElement(document: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(document) orelse return null;
     const link = internal.target_element orelse return null;
-    return if (link.isLive()) link.instance else null;
+    return if (@import("dom").refcount.weakLinkLive(link.instance, link.generation)) link.instance else null;
 }
 
 /// dom.target_element: "set document's target element to" `element`.

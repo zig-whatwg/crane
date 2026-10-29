@@ -1299,11 +1299,41 @@ pub fn GCReachableRef(comptime T: type) type {
     };
 }
 
+/// Whether a weak reference reads a node of a GARBAGE tree as gone (design
+/// 1.4, "weak references see garbage at once": WebKit's WeakPtr is null from
+/// the deletion on). Step 7 makes it true everywhere: from then on a tree
+/// whose total reaches zero is flagged and queued for teardown, and nothing
+/// may hand its nodes out again before its slice frees them. In shadow mode
+/// no production tree is ever flagged, so production builds skip the walk to
+/// the root that reads the flag; unit tests run it, and force a flagged root
+/// to pin what each registry does once roots are flagged (refcount8, step 5i).
+pub const weak_refs_see_garbage = builtin.is_test;
+
+/// A registry's weak link - a raw pointer plus the slab generation it was
+/// taken at, never counted (design 1.3: a node kept alive by its own
+/// registration would be a cycle with no external owner) - still names its
+/// object: `instance` is the one taken at `generation`, and, once weak
+/// references see garbage, not a node of a garbage tree. The step-5i
+/// registries read their links through this: a document's focused area and
+/// target element, a style sheet load's element and document, a form's
+/// named-element cache and past names.
+pub fn weakLinkLive(instance: *const runtime.Instance, generation: u64) bool {
+    if (runtime.SlabAllocator.generationOf(instance) != generation) return false;
+    if (comptime !weak_refs_see_garbage) return true;
+    // Through the bridge, which forgets a node in Node.deinit before its
+    // NodeBase goes: a teardown can leave the slot's generation live
+    // (docs/lessons/debugging-a-nodes-slab-generation-can-outlive-its-nodebase.md).
+    const opaque_instance: *anyopaque = @ptrCast(@constCast(instance));
+    const node = instance_bridge.getNodeBaseUnaudited(opaque_instance) orelse return true;
+    return !root(null, node).rc_flags.garbage;
+}
+
 /// A weak reference: a raw pointer plus the slab generation of the node's
 /// Instance when it was taken. `get` is null once the node was freed (or its
-/// slot reissued) and for a node in a garbage tree. A registry that must not
-/// keep its node alive uses this where it cannot unregister at the node's
-/// removal (design 1.3).
+/// slot reissued) and - once weak references see garbage
+/// (`weak_refs_see_garbage`) - for a node in a garbage tree. A registry that
+/// must not keep its node alive uses this where it cannot unregister at the
+/// node's removal (design 1.3).
 pub fn WeakRef(comptime T: type) type {
     comptime assertNodeLike(T);
     return struct {
@@ -1321,11 +1351,15 @@ pub fn WeakRef(comptime T: type) type {
             return .{ .ptr = ptr, .instance = instance, .generation = runtime.SlabAllocator.generationOf(instance) };
         }
 
-        /// The node, or null when it is gone. O(depth): the garbage flag is
-        /// on the tree's root.
-        pub fn get(self: Self, ledger: *const Ledger) ?*T {
+        /// The node, or null when it is gone. O(depth) once weak references
+        /// see garbage: the flag is on the tree's root. `ledger` is the
+        /// agent's books (a test's hand-linked trees answer their hosts
+        /// through it); production passes null until step 7 wires one.
+        pub fn get(self: Self, ledger: ?*const Ledger) ?*T {
             if (runtime.SlabAllocator.generationOf(self.instance) != self.generation) return null;
-            if (root(ledger, nodeBaseOf(T, self.ptr)).rc_flags.garbage) return null;
+            if (comptime weak_refs_see_garbage) {
+                if (root(ledger, nodeBaseOf(T, self.ptr)).rc_flags.garbage) return null;
+            }
             return self.ptr;
         }
     };

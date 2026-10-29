@@ -53,6 +53,16 @@ pub const Link = struct {
             runtime.instance_lifecycle.isCleanedUp(self.instance)) return null;
         return self.instance;
     }
+
+    /// `get` for a registry's weak link that hands its node out (refcount
+    /// step 5i: a form's named-element cache and past names never count):
+    /// once weak references see garbage, a node of a garbage tree reads as
+    /// gone too (dom.refcount.weakLinkLive).
+    pub fn getWeak(self: Link) ?*runtime.Instance {
+        const instance = self.get() orelse return null;
+        if (!@import("refcount.zig").weakLinkLive(instance, self.generation)) return null;
+        return instance;
+    }
 };
 
 /// What a node's tree node names as its node document - the document's own
