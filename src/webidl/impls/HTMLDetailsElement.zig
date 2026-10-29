@@ -50,6 +50,7 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    @import("html").details.installHooks();
     dom_module.attribute_change_steps.install("details", &attributeChangeSteps);
     dom_module.activation.install(.{ .has = &hasSummaryActivation, .run = &runSummaryActivation });
     dom_module.mutation.registerInsertionStepsCallback(&insertionStepsCallback) catch |err| {
