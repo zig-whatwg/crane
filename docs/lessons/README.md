@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Deferred policy inheritance preserves construction inputs](architecture-deferred-policy-inheritance-preserves-construction-inputs.md) - **Delaying a calculation must preserve the time at which its inputs were defined.**
 - [A move is a removal and an insertion - under counts, hold what you move](architecture-a-move-is-a-removal-and-an-insertion-hold-what-you-move.md) - A move is a removal and an insertion. Under reference counting, anything that moves a node it holds no reference to must hold the node across the two steps (WebKit's NodeVector of Refs), or the removal makes the tree garbage in between.
 - [Frames on demand need every owner whose state shows at a rendering opportunity to ask for one](architecture-frames-on-demand-need-every-owner-to-ask.md) - With frames on demand, every owner whose state is read at a rendering opportunity must ask for one when it changes - and a test of that ask must start from a settled loop, or an unrelated frame passes it.
 - [Flat per-element storage makes every property cost every element](architecture-flat-per-element-storage-makes-every-property-cost-every-element.md) - Per-element storage should cost what the element writes, not what the engine supports: share untouched groups by pointer and copy on first write.
@@ -379,9 +380,18 @@ A lane brief now carries the lessons chosen for its batch.
 - [Shared resource storage does not imply CSS interest](architecture-shared-resource-cache-is-not-style-interest.md) - Separate storage lifetime from feature activation.
 - [Native font status precedes its script promise](architecture-native-font-status-precedes-its-script-promise.md) - Preserve automatic outcomes until script requests the promise.
 - [Record a wait before you start the work that ends it](architecture-record-a-wait-before-starting-what-ends-it.md) - When work reports its end asynchronously, register the waiter before starting the work, treat "never started" as an end, and finish a waiter only when nothing more can be added to its wait set.
+- [A step that replaces state directly must still end what it replaced](architecture-a-step-that-replaces-state-directly-must-still-end-what-it-replaced.md) - When a spec step replaces state "directly" and lets the old work notice later, check what the old work holds in this engine: if its record keeps a pointer that only the replacing path's teardown would free, end the record where the spec replaces it.
 
 ### Spec Compliance
+- [Serialization arithmetic can overflow finite inputs](spec-compliance-serialization-arithmetic-can-overflow-finite-inputs.md) - Check coordinate sums where they happen and retain the whole original value when the ruled fallback requires it.
+- [Sizes validates math before CSS clamping](spec-compliance-sizes-validates-math-before-css-clamping.md) - **Preserve only the diagnostic a consumer needs before shared simplification erases it; keep the common arithmetic unchanged.**
+- [Picture moves update both parents](spec-compliance-picture-moves-update-both-parents.md) - **A state-preserving move still changes the structural inputs to source selection. Preserve the object; recompute the affected image selection.**
+- [Deferred quota counts the constructor's referrer](spec-compliance-deferred-quota-counts-the-constructor-referrer.md) - **A quota checked before preparation must count the representation present at that point, rather than a later network representation.**
+- [A legacy value alias can retain its specified spelling](spec-compliance-a-legacy-value-alias-can-retain-its-specified-spelling.md) - Probe specified and computed aliases separately; normalize at the observed boundary.
+- [A shorthand spelling must reproduce its constituents](spec-compliance-a-shorthand-spelling-must-reproduce-its-constituents.md) - Repair parsing and serialization as a pair, retaining initial tuples and prior passing behavior.
 
+- [Register geometric grammars in the unavailable-input gate](spec-compliance-register-geometric-grammars-in-unavailable-input-gate.md) - Preserve unknown geometric lengths through candidate selection while retaining scalar fallback.
+- [Resolve automatic minimums without changing computed storage](spec-compliance-resolve-automatic-minimums-without-changing-computed-storage.md) - Resolve box-dependent CSSOM values at serialization while preserving the stored computed value.
 - [A new typed case must preserve legacy parser fallbacks](spec-compliance-a-new-typed-case-must-preserve-legacy-parser-fallbacks.md) - Share the new alternative without replacing the caller's existing recovery.
 - [Check source when cached Markdown drops grammar](spec-compliance-check-source-when-cached-markdown-drops-grammar.md) - Resolve missing punctuation in the original specification source before interpreting the converted grammar.
 - [Environment defaults distinguish absence from zero](spec-compliance-environment-defaults-distinguish-absence-from-zero.md) - Probe availability, parsing and value separately; zero and undefined are different environment answers.
@@ -631,6 +641,10 @@ A lane brief now carries the lessons chosen for its batch.
 - [Shadow focus sorts each navigation scope](spec-compliance-shadow-focus-sorts-each-navigation-scope.md) - Sort before flattening; preserve radio-group tree boundaries.
 - [Word boundaries and movement policy are separate](spec-compliance-word-segmentation-and-movement-policy-are-separate.md) - Pin segmentation, movement convention and key bindings separately.
 
+- [Equivalent matrix formulas differ after overflow](spec-compliance-transform-composition-after-overflow.md) - Preserve browser operation boundaries when finite inputs produce nonfinite matrix entries.
+- [Resolve a single-member shorthand before applying its spelling](spec-compliance-single-member-shorthand-resolved-value.md) - Apply the longhand resolver and then the shorthand spelling through the real CSSOM caller.
+- [Accept typed lengths independently of their storage tag](spec-compliance-typed-length-storage-tag.md) - Accept the scalar parser’s semantic result without inferring storage from token shape.
+
 ### Codegen
 - [Unforgeable accessors must be installed on derived instances](codegen-unforgeable-accessors-must-be-installed-on-derived-instances.md) - An inherited WebIDL member still needs explicit instance installation when the engine template does not inherit that property representation.
 - [Constructor arity removes only trailing optional arguments](codegen-constructor-arity-removes-only-trailing-optional-arguments.md) - Test non-trailing optional arguments explicitly; optional, nullable, variadic and overloaded cases alone do not cover the effective-list algorithm.
@@ -680,6 +694,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Refresh aliases with their realm's interface objects](codegen-refresh-aliases-with-their-realms-interface-objects.md) - An alias names the realm's interface object, not the current contents of another global property.
 
 ### Testing
+- [QuotaExceededError needs its dedicated WPT assertion](testing-quotaexceedederror-needs-its-dedicated-wpt-assertion.md) - **Check what the harness actually asserts, and replace invalid failing evidence with a fresh BASE/TIP comparison.**
+- [Inferred error sets need member comparisons](testing-inferred-error-sets-need-member-comparisons.md) - **Compare the contract's members, and correct an invalid RED openly rather than changing product code to satisfy a mistaken test.**
 - [A test page that was never navigated has the wrong time origin](testing-a-page-never-navigated-has-the-wrong-time-origin.md) - Convert a moment for script through the global's Performance (performance_timeline.relativeCoarseTime), and test any time conversion on a navigated page - helpers.Page never sets the navigation start.
 - [A structure with many mutation sites pins its holds by recounting them](testing-a-structure-with-many-mutation-sites-pins-its-holds-by-recounting.md) - Pin a hold that many sites change with a recount under test, so the existing test suite checks it - and after routing calls through a helper by sed, read the helper: it calls itself now.
 - [A subset variant can skip a row's commands but not its queries](testing-a-subset-variant-can-skip-a-rows-commands-but-not-its-queries.md) - In the editing suites a variant boundary can cut a row between its commands and its queries; a lost after-query there must be compared with the row's before-query before anyone calls it a regression.
@@ -850,6 +866,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [JSON Lines uses LF, not Unicode line boundaries](testing-json-lines-uses-lf-not-unicode-line-boundaries.md) - Preserve Unicode separators in names and reconcile full records.
 
 ### Debugging
+- [Registry-wide scratch bounds grow per-call work](debugging-registry-wide-scratch-bounds-grow-per-call-work.md) - Size scratch storage for the values the call can reach, and inspect the compiled initialization cost.
 - [A kernel that frees its only object each op measures the allocator's page churn](debugging-a-one-object-kernel-measures-the-allocators-page-churn.md) - Before reading a size effect off an instruction count, check page reclaims per op and the spread across runs: one object at a time under DebugAllocator measures mmap, not the object.
 - [Allocate before transferring an arena](debugging-allocate-before-transferring-an-arena.md) - Transfer an arena only after its last allocation; struct field evaluation can otherwise copy stale ownership state.
 - [Computed shorthands may need symbolic colors](debugging-computed-shorthands-may-need-symbolic-colors.md) - Preserve symbolic values until the consumer decides whether to omit them; early resolution can erase a CSSOM distinction.

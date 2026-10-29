@@ -115,3 +115,59 @@ const Stream = struct {
         return if (std.math.isFinite(result)) result else null;
     }
 };
+
+/// SVG2 §§9.3.1, 9.3.3–9.3.9: resolve canonical, already-validated path text.
+/// Design reference: Blink SVGPathAbsolutizer::EmitSegment. Every relative
+/// point uses the segment's initial current point; close restores its subpath.
+/// Q50: if a finite input produces a non-finite sum, preserve the WHOLE input.
+pub fn serializeAbsolute(input: []const u8, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
+    var converted: std.ArrayList(u8) = .empty;
+    defer converted.deinit(allocator);
+    var stream = Stream{ .input = input };
+    var current: [2]f64 = .{ 0, 0 };
+    var subpath: [2]f64 = .{ 0, 0 };
+    while (!stream.atEnd()) {
+        const command = input[stream.index];
+        stream.index += 1;
+        const absolute = std.ascii.toUpper(command);
+        const count = arity(command).?;
+        var args: [7]f64 = undefined;
+        for (args[0..count], 0..) |*arg, i| {
+            stream.separator();
+            arg.* = (if (absolute == 'A' and (i == 3 or i == 4)) stream.flag() else stream.number()).?;
+        }
+        if (std.ascii.isLower(command)) {
+            switch (absolute) {
+                'H' => args[0] += current[0],
+                'V' => args[0] += current[1],
+                'A' => {
+                    args[5] += current[0];
+                    args[6] += current[1];
+                },
+                else => for (args[0..count], 0..) |*arg, i| {
+                    arg.* += current[i % 2];
+                },
+            }
+            for (args[0..count]) |arg| {
+                if (!std.math.isFinite(arg)) return out.appendSlice(allocator, input);
+            }
+        }
+        switch (absolute) {
+            'Z' => current = subpath,
+            'H' => current[0] = args[0],
+            'V' => current[1] = args[0],
+            else => {
+                current = .{ args[count - 2], args[count - 1] };
+                if (absolute == 'M') subpath = current;
+            },
+        }
+        if (converted.items.len > 0) try converted.append(allocator, ' ');
+        try converted.append(allocator, absolute);
+        for (args[0..count]) |arg| {
+            try converted.append(allocator, ' ');
+            try values.appendNumber(arg, &converted, allocator);
+        }
+        stream.whitespace();
+    }
+    try out.appendSlice(allocator, converted.items);
+}

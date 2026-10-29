@@ -293,7 +293,9 @@ pub fn parse(options: properties.ParseOptions, stream: *properties.Stream, gramm
                 stream.* = saved;
                 break;
             };
-            if (v != .length and !((is_math or grammar == .background) and v == .calculation)) {
+            // Values4 §8.3 / §6.1.1: position offsets accept lengths, including
+            // font-relative units stored as typed calculations (e.g. cap/rcap).
+            if (v != .length and v != .calculation) {
                 v.release();
                 stream.* = saved;
                 break;

@@ -1823,6 +1823,14 @@ pub const ImageError = error{
     TooLarge,
 };
 
+/// Whether this platform can decode a parsed, lowercase image MIME essence.
+/// No allocation, I/O, state or cache; synchronous and callable on any thread.
+/// HTML uses this before fetching a picture source. Guard image_decoding first.
+pub inline fn imageMimeTypeSupported(essence: Str) bool {
+    comptime gate(.image_decoding, "imageMimeTypeSupported");
+    return impl.imageMimeTypeSupported(essence);
+}
+
 /// Decode one complete image resource. `mime` is the image's type as Crane
 /// determined it (MIME Sniffing's rules for images, above the protocol): the
 /// platform decodes by it and does not sniff; a type it does not decode is
