@@ -954,6 +954,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A hot-path cost can be the call graph's shape, not an allocation](debugging-a-hot-path-cost-can-be-a-call-graph-shape-not-an-allocation.md) - An allocation count and a flat profile cannot see a recursion that blocks inlining; check the call graph's shape before calling a hot-path cost structural.
 
 ### Workflow
+- [A worklist change is a code change - run the tests before committing it](workflow-a-worklist-change-is-a-code-change.md) - **A worklist change is a code change: the runner pins the worklist's directories in a test, so regenerate, add the directory to config.zig, and run that test before pushing.**
 
 - [Detached Builds Need an Explicit Environment](workflow-detached-builds-need-an-explicit-environment.md) - Verify the executable and cache inside the detached build; the launcher's environment is not proof of the child's.
 - [Anchor a Tmux Job to Its Own Working Directory](workflow-anchor-tmux-job-cwd.md) - Verify the working directory inside the detached job, and retain evidence from before its first gate starts.
