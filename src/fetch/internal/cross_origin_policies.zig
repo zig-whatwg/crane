@@ -330,14 +330,23 @@ fn sameOrigin(allocator: Allocator, a: []const u8, b: []const u8) error{OutOfMem
     };
 }
 
+/// origins.serializedOriginOf, out of memory its only failure: a value that
+/// does not parse is an opaque origin, "null".
+fn serializedOriginOf(allocator: Allocator, url: []const u8) error{OutOfMemory}![]u8 {
+    return origins.serializedOriginOf(allocator, url) catch |err| switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        else => allocator.dupe(u8, "null"),
+    };
+}
+
 /// HTML "schemelessly same site" for a serialized origin and a URL: both
 /// tuple origins whose hosts are the same site - equal registrable domains,
 /// or equal hosts when either has none (an IP address, a public suffix).
 /// An opaque origin is schemelessly same site with nothing here.
 fn schemelesslySameSite(allocator: Allocator, origin: []const u8, url: []const u8) error{OutOfMemory}!bool {
-    const a = try origins.serializedOriginOf(allocator, origin);
+    const a = try serializedOriginOf(allocator, origin);
     defer allocator.free(a);
-    const b = try origins.serializedOriginOf(allocator, url);
+    const b = try serializedOriginOf(allocator, url);
     defer allocator.free(b);
     const host_a = hostOf(a) orelse return false;
     const host_b = hostOf(b) orelse return false;
