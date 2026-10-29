@@ -152,8 +152,8 @@ pub fn httpFetchFinish(
 /// clone of (populate request from client step 3); a request no client
 /// populated has none to apply (a new embedder policy), and one whose origin
 /// is still "client" was made by the user agent for itself and is not
-/// checked. Steps 4 and 6's reports are not queued here (stated: the
-/// request carries no reporter for them; queued as lane coi1's follow-up).
+/// checked. Steps 4 and 6's reports go to the request's client through its
+/// coep_violation_reporter (dom.coep_reporting), when it has one.
 fn corpBlocks(allocator: Allocator, request: *const InternalRequest, response: *InternalResponse) HttpFetchError!bool {
     if (isNetworkError(response)) return false;
     if (request.response_tainting != .@"opaque" and response.response_type != .@"opaque") return false;
@@ -173,6 +173,23 @@ fn corpBlocks(allocator: Allocator, request: *const InternalRequest, response: *
         .corp = corp,
         .request_includes_credentials = response.request_includes_credentials,
     }, false) catch return HttpFetchError.OutOfMemory;
+    if (request.coep_violation_reporter) |reporter| {
+        const blocked_url = response.url() orelse request.currentUrl();
+        // 4. The report-only value's check blocked: a "reporting" report.
+        if (check.report_only_blocks) reporter.report(reporter.context, &.{
+            .blocked_url = blocked_url,
+            .destination = request.destination,
+            .report_only = true,
+            .endpoint = embedder_policy.report_only_reporting_endpoint,
+        });
+        // 6. The embedder policy's value blocked: an "enforce" report.
+        if (check.enforced_by_embedder_policy) reporter.report(reporter.context, &.{
+            .blocked_url = blocked_url,
+            .destination = request.destination,
+            .report_only = false,
+            .endpoint = embedder_policy.reporting_endpoint,
+        });
+    }
     return check.result == .blocked;
 }
 

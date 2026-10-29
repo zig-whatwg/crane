@@ -111,3 +111,80 @@ test "includeCredentials: a credentialless client omits a cross-origin no-cors r
     corp.request.credentials_mode = .include;
     try testing.expect(http_fetch.httpNetworkFetchUsesCookies(corp.request));
 }
+
+/// A counting stand-in for the client's reporter.
+const Heard = struct {
+    count: usize = 0,
+    report_only: [4]bool = undefined,
+    destination: [4]internal.request.Destination = undefined,
+    endpoint: [4][16]u8 = undefined,
+    endpoint_len: [4]usize = undefined,
+    blocked_https_b: [4]bool = undefined,
+
+    fn report(context: *anyopaque, violation: *const internal.request.CoepViolation) void {
+        const self: *Heard = @ptrCast(@alignCast(context));
+        if (self.count < 4) {
+            self.report_only[self.count] = violation.report_only;
+            self.destination[self.count] = violation.destination;
+            const n = @min(violation.endpoint.len, 16);
+            @memcpy(self.endpoint[self.count][0..n], violation.endpoint[0..n]);
+            self.endpoint_len[self.count] = n;
+            self.blocked_https_b[self.count] = std.mem.eql(u8, violation.blocked_url, "https://b.test/x");
+        }
+        self.count += 1;
+    }
+
+    fn endpointOf(self: *const Heard, i: usize) []const u8 {
+        return self.endpoint[i][0..self.endpoint_len[i]];
+    }
+};
+
+test "HTTP fetch step 5 reports: require-corp blocks a no-cors response without CORP and reports it once" {
+    var setup: Setup = undefined;
+    try setup.init("https://b.test/x", "require-corp; report-to=\"main\"");
+    defer setup.deinit();
+    setup.request.destination = .image;
+    var heard: Heard = .{};
+    setup.request.coep_violation_reporter = .{ .context = &heard, .report = &Heard.report };
+    try testing.expect(!try setup.passes("https://b.test/x", null, true));
+    try testing.expectEqual(@as(usize, 1), heard.count);
+    try testing.expect(!heard.report_only[0]);
+    try testing.expectEqual(internal.request.Destination.image, heard.destination[0]);
+    try testing.expectEqualStrings("main", heard.endpointOf(0));
+    try testing.expect(heard.blocked_https_b[0]);
+    // An allowed response reports nothing; neither does a block by the
+    // header alone (step 3), which is not the embedder policy's.
+    try testing.expect(try setup.passes("https://b.test/x", "cross-origin", true));
+    try testing.expect(!try setup.passes("https://b.test/x", "same-origin", true));
+    try testing.expectEqual(@as(usize, 1), heard.count);
+}
+
+test "HTTP fetch step 5 reports: report-only require-corp reports and does not block" {
+    var setup: Setup = undefined;
+    try setup.init("https://b.test/x", null);
+    defer setup.deinit();
+    setup.request.setPolicyContainer(try internal.PolicyContainer.fromResponseHeaders(testing.allocator, .{
+        .url = "https://a.test/",
+        .coep_report_only = "require-corp; report-to=\"ro\"",
+        .environment_secure = true,
+    }));
+    setup.request.destination = .script;
+    var heard: Heard = .{};
+    setup.request.coep_violation_reporter = .{ .context = &heard, .report = &Heard.report };
+    try testing.expect(try setup.passes("https://b.test/x", null, true));
+    try testing.expectEqual(@as(usize, 1), heard.count);
+    try testing.expect(heard.report_only[0]);
+    try testing.expectEqualStrings("ro", heard.endpointOf(0));
+}
+
+test "a request's CORP reporter is cloned with it" {
+    var setup: Setup = undefined;
+    try setup.init("https://b.test/x", "require-corp");
+    defer setup.deinit();
+    var heard: Heard = .{};
+    setup.request.coep_violation_reporter = .{ .context = &heard, .report = &Heard.report };
+    const copy = try setup.request.clone();
+    defer copy.deinit();
+    try testing.expect(copy.coep_violation_reporter != null);
+    try testing.expect(copy.coep_violation_reporter.?.context == @as(*anyopaque, @ptrCast(&heard)));
+}
