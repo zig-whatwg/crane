@@ -166,6 +166,7 @@ pub fn installHooks() void {
     dom_module.node_creation.installNode(.{
         .destroy_uninserted = &destroyUninsertedHook,
         .clone = &cloneANode,
+        .set_local_name = &setLocalNameHook,
     });
     // A realm's end frees the orphans its removals recorded (dom.mutation's
     // orphanRemoved), each through its own teardown as a tree frees a child.
@@ -1918,6 +1919,12 @@ pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: ?runtime.
 // =============================================================================
 // Helper Functions for External Use
 // =============================================================================
+
+/// `dom.node_creation.setNodeLocalName`: `setLocalName`, with the declared
+/// error set a function pointer needs.
+fn setLocalNameHook(instance: *runtime.Instance, name: runtime.DOMString) dom_module.node_creation.Error!void {
+    return setLocalName(instance, name);
+}
 
 /// Set the local name (used by Element, Attr, etc.)
 /// Also updates the NodeBase's node_name for DOM operations.

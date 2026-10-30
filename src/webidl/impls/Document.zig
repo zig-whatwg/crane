@@ -34,8 +34,8 @@ const Document = interfaces.Document;
 const utils = webidl.utils;
 const Registry = document_state.Registry;
 
-// Import impls ONLY for internal initialization methods not exposed via interfaces
-const NodeImpl = @import("Node.zig");
+// A node's node document, set through Node's step (dom.node_document).
+const node_document = @import("dom").node_document;
 const same_object = @import("same_object.zig");
 
 // Import ParentNode mixin for shared ParentNode interface methods
@@ -770,13 +770,9 @@ pub fn get_implementation(instance: *runtime.Instance) anyerror!*runtime.Instanc
         return impl;
     }
 
-    // Create and cache DOMImplementation
-    // Use interface instead of impl (per Golden Rule #13)
-    const DOMImplementationImpl = @import("DOMImplementation.zig");
-    const impl = interfaces.DOMImplementation.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
-
-    // Set the associated document (internal method)
-    DOMImplementationImpl.setDocument(impl, instance);
+    // Create and cache DOMImplementation, whose associated document is this
+    // one (its construction argument).
+    const impl = interfaces.DOMImplementation.initWith(internal.allocator, instance.ctx, .{ .document = instance }) catch return error.OutOfMemory;
 
     // Cache and return
     internal.implementation = impl;
@@ -1952,7 +1948,7 @@ pub fn set_title(instance: *runtime.Instance, value: runtime.DOMString) anyerror
         //    SVG namespace. Insert element as the first child of the
         //    document element."
         const title = try createTitle(instance, svg_namespace);
-        errdefer NodeImpl.deinitNodeByType(title);
+        errdefer dom_creation.destroyUninserted(title);
         _ = try interfaces.Node.call_insertBefore(svg, title, interfaces.Node.get_firstChild(svg) catch null);
         break :blk title;
     } else if (documentElementInHtmlNamespace(instance)) blk: {
@@ -1967,7 +1963,7 @@ pub fn set_title(instance: *runtime.Instance, value: runtime.DOMString) anyerror
         //    given the document element's node document, "title", and the
         //    HTML namespace. Append element to the head element."
         const title = try createTitle(instance, html_namespace);
-        errdefer NodeImpl.deinitNodeByType(title);
+        errdefer dom_creation.destroyUninserted(title);
         _ = try interfaces.Node.call_appendChild(head, title);
         break :blk title;
     } else {
@@ -2069,7 +2065,7 @@ pub fn set_body(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror
     }
 
     // Set owner document
-    try NodeImpl.setOwnerDocument(actual_value, instance);
+    try node_document.set(actual_value, instance);
 }
 
 /// Setter for designMode
@@ -2817,7 +2813,7 @@ pub fn call_createAttribute(instance: *runtime.Instance, localName: runtime.DOMS
     // document is this."
     const attr = try interfaces.Attr.init(internal.allocator, instance.ctx);
     errdefer interfaces.Attr.deinit(attr);
-    try NodeImpl.setOwnerDocument(attr, instance);
+    try node_document.set(attr, instance);
     try attr_nodes.name(attr, null, null, local_name);
     return attr;
 }
@@ -3236,7 +3232,7 @@ pub fn call_createAttributeNS(instance: *runtime.Instance, namespace: ?runtime.D
     // prefix is prefix, local name is localName, and node document is this."
     const attr = try interfaces.Attr.init(internal.allocator, instance.ctx);
     errdefer interfaces.Attr.deinit(attr);
-    try NodeImpl.setOwnerDocument(attr, instance);
+    try node_document.set(attr, instance);
     try attr_nodes.name(attr, extracted.namespace, extracted.prefix, extracted.local_name);
     return attr;
 }
@@ -3446,7 +3442,7 @@ pub fn call_createDocumentFragment(instance: *runtime.Instance) anyerror!*runtim
     errdefer interfaces.DocumentFragment.deinit(fragment);
 
     // Set owner document
-    try NodeImpl.setOwnerDocument(fragment, instance);
+    try node_document.set(fragment, instance);
 
     return fragment;
 }
