@@ -135,7 +135,7 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     // Other impls fill a static list they created (an element's labels).
-    @import("dom").node_lists.install(.{ .set_static = &setStaticNodes, .set_static_bases = &setStaticBases, .labels = &makeLabels, .named_controls = &makeNamedControls, .named_form_images = &makeNamedFormImages, .elements_by_name = &makeElementsByName });
+    @import("dom").node_lists.install(.{ .set_static = &setStaticNodes, .set_static_bases = &setStaticBases, .labels = &makeLabels, .named_controls = &makeNamedControls, .named_form_images = &makeNamedFormImages, .elements_by_name = &makeElementsByName, .child_nodes = &makeChildNodes });
     // A static list holds its nodes; the removing steps rescue a held tree.
     node_holds.installHooks();
 }
@@ -324,13 +324,11 @@ pub fn clear(instance: *runtime.Instance) void {
 // Live Collection Support
 // ============================================================================
 
-/// Create a live NodeList for Node.childNodes
+/// `dom.node_lists.childNodes`: make `instance` - just created, empty - the
+/// live NodeList of `root`'s children that Node.childNodes returns.
 /// This is a live collection that reflects changes to the DOM tree
 /// Spec: https://dom.spec.whatwg.org/#concept-collection-live
-pub fn createLiveChildNodes(allocator: std.mem.Allocator, ctx: runtime.Context, root: *runtime.Instance) !*runtime.Instance {
-    const instance = try init(allocator, State, &NodeList.vtable, ctx);
-    errdefer deinit(instance);
-
+fn makeChildNodes(instance: *runtime.Instance, root: *runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidState;
 
     // Configure as a live collection
@@ -339,17 +337,12 @@ pub fn createLiveChildNodes(allocator: std.mem.Allocator, ctx: runtime.Context, 
     internal.root_generation = runtime.SlabAllocator.generationOf(root);
     internal.root_hold.take(instance, root, live_collections.root_slot);
     internal.live_type = .children;
-
-    return instance;
 }
 
 /// Get the length of a live collection by querying the root node
 /// For .children type, counts direct children of root
 fn getLiveLength(internal: *InternalState) u32 {
     const root = internal.root orelse return 0;
-
-    // Import Node impl to access helper functions
-    const NodeImpl = @import("Node.zig");
 
     switch (internal.live_type) {
         .elements_by_name => {
@@ -383,13 +376,28 @@ fn getLiveLength(internal: *InternalState) u32 {
                 var walk = ChildrenWalk{ .root = root };
                 return internal.cache.count(&walk);
             }
-            // Keep the existing null-version traversal until the counter is wired.
-            // Count direct children using Node's helper
-            return NodeImpl.getChildCount(root);
+            // Keep the existing null-version traversal until the counter is wired:
+            // count the root's direct children along the tree's links.
+            return childCount(root);
         },
         // Other live collection types can be added here
         else => return 0,
     }
+}
+
+/// The number of `root`'s children, along its NodeBase's sibling links: the
+/// count Node's own helper made. A safety limit stops a corrupted tree's cycle
+/// from hanging the count.
+fn childCount(root: *runtime.Instance) u32 {
+    const base = @import("dom").instance_bridge.getNodeBase(@ptrCast(root)) orelse return 0;
+    const max_iterations: u32 = 1_000_000;
+    var count: u32 = 0;
+    var child = base.first_child;
+    while (child) |c| : (child = c.next_sibling) {
+        count += 1;
+        if (count >= max_iterations) return count;
+    }
+    return count;
 }
 
 /// Get the nth item from a live collection by querying the root node

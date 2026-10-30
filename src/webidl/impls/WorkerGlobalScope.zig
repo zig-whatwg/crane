@@ -25,8 +25,6 @@ const WorkerType = workers.WorkerType;
 
 // A global scope is an EventTarget: it chains to EventTarget's state, and its
 // event handler IDL attributes live in EventTarget's event handler map.
-const WorkerLocationImpl = @import("WorkerLocation.zig");
-const WorkerNavigatorImpl = @import("WorkerNavigator.zig");
 const same_object = @import("same_object.zig");
 const OriginRecord = @import("dom").origin_record.OriginRecord;
 
@@ -648,13 +646,9 @@ pub fn get_location(instance: *runtime.Instance) anyerror!*runtime.Instance {
     if (internal.location_instance) |loc_inst| return loc_inst;
     const loc = internal.internal_location orelse return error.NotImplemented;
 
-    const loc_instance = try WorkerLocation.init(internal.allocator, instance.ctx);
-    const loc_internal = internal.allocator.create(WorkerLocationImpl.InternalState) catch {
-        runtime.Instance.deinit(loc_instance);
-        return error.OutOfMemory;
-    };
-    loc_internal.* = .{ .internal_location = loc, .allocator = internal.allocator, .owned = false };
-    loc_instance.getState(WorkerLocation.State).own._internal = loc_internal;
+    // This scope lends its location record: WorkerLocation's construction
+    // argument.
+    const loc_instance = try WorkerLocation.initWith(internal.allocator, instance.ctx, .{ .location = loc });
 
     internal.location_instance = loc_instance;
     internal.location_pin.hold(loc_instance);
@@ -672,13 +666,9 @@ pub fn get_navigator(instance: *runtime.Instance) anyerror!*runtime.Instance {
     if (internal.navigator_instance) |nav_inst| return nav_inst;
     const nav = internal.internal_navigator orelse return error.NotImplemented;
 
-    const nav_instance = try WorkerNavigator.init(internal.allocator, instance.ctx);
-    const nav_internal = internal.allocator.create(WorkerNavigatorImpl.InternalState) catch {
-        runtime.Instance.deinit(nav_instance);
-        return error.OutOfMemory;
-    };
-    nav_internal.* = .{ .internal_navigator = nav, .allocator = internal.allocator, .owned = false };
-    nav_instance.getState(WorkerNavigator.State).own._internal = nav_internal;
+    // This scope lends its navigator record: WorkerNavigator's construction
+    // argument.
+    const nav_instance = try WorkerNavigator.initWith(internal.allocator, instance.ctx, .{ .navigator = nav });
 
     internal.navigator_instance = nav_instance;
     internal.navigator_pin.hold(nav_instance);

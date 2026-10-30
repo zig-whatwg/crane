@@ -15,9 +15,6 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dictionaries = @import("dictionaries");
 
-// ErrorEvent's factory (createErrorEvent) is still reached through its impl:
-// impls batch B8 (owned sub-objects and factories).
-const impls = @import("impls");
 // The event's dispatch state (DOM 2.2), whose type Event shares with the
 // dispatcher.
 const event_dispatch = @import("dom").event_dispatch;
@@ -186,18 +183,28 @@ pub fn fireErrorEvent(
     };
     defer if (ctx == null) ctx_data.deinit();
 
-    // Create ErrorEvent with the error information. The event holds its own
+    // Create ErrorEvent with the error information, through its constructor
+    // (an ErrorEventInit, as script would give it). The event holds its own
     // copy of the error value, whatever kind it is - a thrown primitive and a
-    // platform object included.
-    const event = try impls.ErrorEvent.createErrorEvent(
-        allocator,
+    // platform object included: the init's `error` is BORROWED.
+    const event = try interfaces.ErrorEvent.call_constructor(
         actual_ctx,
-        error_info.message,
-        error_info.filename,
-        error_info.lineno,
-        error_info.colno,
-        error_info.@"error",
-        true, // cancelable = true per spec
+        runtime.DOMString.initInterned("error"),
+        .{
+            .was_passed = true,
+            .value = .{
+                .base = .{
+                    .bubbles = false, // error events do not bubble
+                    .cancelable = true, // report an exception step 6.2
+                    .composed = false,
+                },
+                .message = runtime.DOMString.initInterned(error_info.message),
+                .filename = error_info.filename, // USVString is []const u8
+                .lineno = error_info.lineno,
+                .colno = error_info.colno,
+                .@"error" = error_info.@"error",
+            },
+        },
     );
     // Ensure event is cleaned up after dispatch
     defer interfaces.ErrorEvent.deinit(event);

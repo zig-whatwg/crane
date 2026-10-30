@@ -20,7 +20,6 @@ const HTMLAnchorElement = interfaces.HTMLAnchorElement;
 // (dom.element_attributes), where "handle attribute changes" runs.
 const dom = @import("dom");
 const element_data = dom.element_data;
-const DOMTokenListImpl = @import("DOMTokenList.zig");
 
 pub const State = HTMLAnchorElement.State;
 
@@ -133,8 +132,9 @@ pub fn get_relList(instance: *runtime.Instance) anyerror!*runtime.Instance {
         interfaces.DOMTokenList.set_value(token_list, runtime.DOMString.initInterned(entry.value)) catch return error.OutOfMemory;
     }
 
-    // Associate with this element and the "rel" attribute
-    DOMTokenListImpl.setElement(token_list, instance, runtime.DOMString.initInterned("rel"));
+    // Associate with this element and the "rel" attribute (DOMTokenList's
+    // step, through dom.token_lists)
+    try dom.token_lists.associate(token_list, instance, "rel");
 
     // Cache for future access
     internal.rel_list = token_list;

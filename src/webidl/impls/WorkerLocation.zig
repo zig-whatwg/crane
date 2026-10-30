@@ -53,48 +53,23 @@ pub const InternalState = struct {
     }
 };
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    return instance;
+/// A WorkerGlobalScope lends its own worker location record at construction
+/// (its location getter): HTML's WorkerLocation "has an associated
+/// WorkerGlobalScope object", whose url it reads. The global scope owns the
+/// record and outlives every object in its realm.
+pub const construction_args = .{"location"};
+
+/// WorkerLocation's own construction steps: its state over the lent record.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    if (!@hasField(@TypeOf(args), "location")) return;
+    const internal = try allocator.create(InternalState);
+    internal.* = .{ .internal_location = args.location, .allocator = allocator, .owned = false };
+    instance.getState(State).own._internal = internal;
 }
 
-/// Initialize with a URL
-pub fn initWithUrl(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-    url: []const u8,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
-
-    // Create internal WorkerLocation
-    const internal_location = try InternalWorkerLocation.init(allocator, url);
-    errdefer internal_location.deinit();
-
-    // Create internal state
-    const internal_state = try allocator.create(InternalState);
-    internal_state.* = .{
-        .internal_location = internal_location,
-        .allocator = allocator,
-    };
-
-    // Store internal state
-    var state = instance.getState(State);
-    state.own._internal = internal_state;
-
-    return instance;
-}
-
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// WorkerLocation's own teardown.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();

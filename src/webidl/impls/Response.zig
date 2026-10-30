@@ -529,15 +529,12 @@ pub fn get_headers(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // The Headers object's list IS this response's header list, by reference,
     // so it keeps this response alive and clears `cached_headers` when it is
     // collected - see Headers.InternalState.Owner.
-    const Headers = @import("Headers.zig");
-    return Headers.initWithHeaderList(
-        internal.allocator,
-        instance.ctx,
-        &internal.response.header_list,
-        internal.headers_guard,
-        instance,
-        &state.own.cached_headers,
-    );
+    return interfaces.Headers.initWith(internal.allocator, instance.ctx, .{
+        .header_list = &internal.response.header_list,
+        .guard = internal.headers_guard,
+        .owner = instance,
+        .cache_slot = &state.own.cached_headers,
+    });
 }
 
 /// Get body
@@ -697,10 +694,9 @@ fn packageSteps(instance: *runtime.Instance, method: fetch_body.Method, bytes: [
         .form_data => {
             var mime_type = try fetch.internal.mime.extractMimeType(allocator, &internal.response.header_list);
             defer if (mime_type) |*mime| mime.deinit();
-            const FormDataImpl = @import("FormData.zig");
             const form_data = try fetch_body.parseFormData(allocator, if (mime_type) |*mime| mime else null, bytes);
             errdefer form_data.deinit();
-            return FormDataImpl.createFromInternal(allocator, instance.ctx, form_data);
+            return interfaces.FormData.initWith(allocator, instance.ctx, .{ .entry_list = form_data });
         },
         .array_buffer, .bytes, .json, .text => unreachable,
     }

@@ -62,11 +62,6 @@ const HTMLIFrameElement = interfaces.HTMLIFrameElement;
 const dom = @import("dom");
 const document_internals = dom.document_internals;
 
-// Import impls only for internal state access (Golden Rule #12 exception - to be migrated)
-const impls = @import("impls");
-const DocumentTypeImpl = impls.DocumentType;
-const HTMLIFrameElementImpl = impls.HTMLIFrameElement;
-
 // WebIDL types
 const webidl = @import("webidl");
 const node_document = @import("dom").node_document;
@@ -459,18 +454,11 @@ pub const DomTreeAdapter = struct {
             self.ctx,
         ) catch return DomTreeAdapterError.OutOfMemory;
 
-        // Set DocumentType-specific fields
-        if (DocumentTypeImpl.getInternal(doctype)) |dt_internal| {
-            if (tree_node.doctype_name) |name| {
-                dt_internal.name = self.allocator.dupe(u8, name) catch return DomTreeAdapterError.OutOfMemory;
-            }
-            if (tree_node.doctype_public_id) |pub_id| {
-                dt_internal.public_id = self.allocator.dupe(u8, pub_id) catch return DomTreeAdapterError.OutOfMemory;
-            }
-            if (tree_node.doctype_system_id) |sys_id| {
-                dt_internal.system_id = self.allocator.dupe(u8, sys_id) catch return DomTreeAdapterError.OutOfMemory;
-            }
-        }
+        // Its name, public ID and system ID from the DOCTYPE token, each ""
+        // where the token had none - DocumentType's step, through
+        // dom.node_creation, as dom_parser.zig and parser_script_execution.zig
+        // set them.
+        dom.node_creation.setDoctypeIds(doctype, tree_node.doctype_name, tree_node.doctype_public_id, tree_node.doctype_system_id);
 
         // Set owner document
         node_document.set(doctype, self.document) catch {

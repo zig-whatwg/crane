@@ -16,7 +16,6 @@ const engine = @import("engine");
 // Import file module for Blob URL store
 const file_mod = @import("file");
 const BlobURLStore = file_mod.BlobURLStore;
-const BlobImpl = @import("Blob.zig");
 // Scheme fetch "blob"'s resolver over the store (a helper module, not an impl).
 const fetch_body = @import("fetch_body.zig");
 
@@ -919,8 +918,8 @@ pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: runtime.JSV
     }
     const blob_instance = object;
 
-    // Get the Blob's internal state
-    const blob_internal = BlobImpl.getInternal(blob_instance) orelse {
+    // The Blob's data, which the entry shares (Blob's step, dom.blob_bytes)
+    const blob_data = @import("dom").blob_bytes.dataOf(blob_instance) orelse {
         return error.TypeError;
     };
 
@@ -937,7 +936,7 @@ pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: runtime.JSV
 
     // Create the blob URL. Its entry's environment is the current settings
     // object - its realm - whose end removes it (`removeBlobURLEntries`).
-    const blob_url = try store.createObjectURLWithOrigin(blob_internal.blob_data, storage_key.value, storage_key.origin_nonce, @ptrCast(realm));
+    const blob_url = try store.createObjectURLWithOrigin(blob_data, storage_key.value, storage_key.origin_nonce, @ptrCast(realm));
 
     // Return as DOMString (take ownership of the allocated URL string)
     return runtime.DOMString.initOwned(blob_url);

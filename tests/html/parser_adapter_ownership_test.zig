@@ -18,11 +18,19 @@ const html_core = @import("html_core");
 const runtime = @import("runtime");
 
 const interfaces = html.interfaces;
-const impls = html.impls;
+const dom = @import("dom");
 const DomTreeAdapter = html.parser_script_execution.DomTreeAdapter;
 const TreeNode = html_core.parser.TreeNode;
 
 const testing = std.testing;
+
+/// Whether `node`'s Node state is still registered: its NodeBase is in the
+/// instance bridge from its construction until its teardown (Node's deinit
+/// unregisters it with its state). Unaudited: a freed node is what these
+/// tests look for.
+fn hasNodeState(node: *runtime.Instance) bool {
+    return dom.instance_bridge.getNodeBaseUnaudited(node) != null;
+}
 
 /// One detached element TreeNode plus its DOM counterpart, created through the
 /// adapter's own callback the way the tree builder does it.
@@ -61,7 +69,7 @@ test "DomTreeAdapter.deinit - frees a node the parser never attached" {
 
     // Never reached the tree, so never reachable from script, so nothing else
     // was ever going to free it.
-    try testing.expect(impls.Node.getInternalState(orphan) == null);
+    try testing.expect(!hasNodeState(orphan));
 }
 
 test "DomTreeAdapter.deinit - leaves a node a script detached after the parser attached it" {
@@ -92,14 +100,14 @@ test "DomTreeAdapter.deinit - leaves a node a script detached after the parser a
     // The parser attached the child, then a script detached it again. Its parent
     // is null now - which is all the sweep used to look at.
     try adapter.onChildAppended(parent_tn, child_tn);
-    try testing.expect(impls.Node.getParent(child) == parent);
+    try testing.expect((interfaces.Node.get_parentNode(child) catch null) == parent);
     _ = try interfaces.Node.call_removeChild(parent, child);
-    try testing.expect(impls.Node.getParent(child) == null);
+    try testing.expect((interfaces.Node.get_parentNode(child) catch null) == null);
 
     adapter.deinit();
 
-    const survived = impls.Node.getInternalState(child) != null;
-    if (survived) impls.Node.deinitNodeByType(child);
+    const survived = hasNodeState(child);
+    if (survived) dom.node_creation.destroyUninserted(child);
     try testing.expect(survived);
 }
 
@@ -148,8 +156,8 @@ test "DomTreeAdapter.deinit - does not follow a slab slot the GC recycled" {
     adapter.deinit();
 
     // Nothing may have followed the stale pointer into the recycled instance.
-    const intact = impls.Node.getInternalState(recycled) != null;
+    const intact = hasNodeState(recycled);
     dead_ctx_data.clearV8WrapperCacheStorage();
-    if (intact) impls.Node.deinitNodeByType(recycled);
+    if (intact) dom.node_creation.destroyUninserted(recycled);
     try testing.expect(intact);
 }

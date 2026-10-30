@@ -485,7 +485,6 @@ pub const HTMLOptionElement = @import("HTMLOptionElement.zig");
 pub const HTMLOptionsCollection = @import("HTMLOptionsCollection.zig");
 pub const HTMLOrSVGOrMathMLElement = @import("HTMLOrSVGOrMathMLElement.zig");
 pub const HTMLOutputElement = @import("HTMLOutputElement.zig");
-pub const HTMLParser = @import("HTMLParser.zig");
 pub const HTMLParagraphElement = @import("HTMLParagraphElement.zig");
 pub const HTMLParamElement = @import("HTMLParamElement.zig");
 pub const HTMLPictureElement = @import("HTMLPictureElement.zig");

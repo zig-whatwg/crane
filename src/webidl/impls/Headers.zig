@@ -78,77 +78,47 @@ pub const InternalState = struct {
     };
 };
 
-/// Initialize instance
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+/// A Request's or Response's headers are given at construction: the owner's
+/// header list (`header_list`, by reference), its guard, the owner and the
+/// owner's generated `cached_headers` field (`cache_slot`) - the four go
+/// together. This object then IS that list and does NOT own it: the owner
+/// frees the header strings. It keeps `owner` alive and clears `cache_slot`
+/// when it is freed - see `InternalState.Owner`.
+pub const construction_args = .{ "header_list", "guard", "owner", "cache_slot" };
 
-    // Create internal state
+/// Headers' own construction steps: an empty list of its own under the guard
+/// "none" (`new Headers()`), or a Request's or Response's list when given.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
     const internal = try allocator.create(InternalState);
     errdefer allocator.destroy(internal);
-
-    internal.* = .{
-        .allocator = allocator,
-        .header_list = HeaderList.init(allocator),
-        .list = undefined,
-        .guard = .none,
-    };
-    internal.list = &internal.header_list;
-
-    // Store in instance
-    const state = instance.getState(StateType);
-    state.own._internal = internal;
-
-    return instance;
-}
-
-/// Initialize with existing HeaderList and guard (for Request/Response)
-/// NOTE: This creates a Headers wrapper that does NOT own the header_list.
-/// The owner (Response/Request) is responsible for freeing the header strings.
-///
-/// `owner` is the Request or Response `header_list` lives in, and
-/// `cache_slot` is its generated `cached_headers` field: this object keeps
-/// `owner` alive and clears `cache_slot` when it is freed - see
-/// `InternalState.Owner`.
-pub fn initWithHeaderList(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    header_list: *HeaderList,
-    guard: HeaderGuard,
-    owner: *runtime.Instance,
-    cache_slot: *?*runtime.Instance,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, State, &Headers.vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
-
-    // Create internal state that wraps existing header list
-    const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
-
-    internal.* = .{
-        .allocator = allocator,
-        .header_list = HeaderList.init(allocator), // unused storage
-        .list = header_list, // the owner's own list, by reference
-        .guard = guard,
-        .owns_headers = false, // We don't own the headers - Response/Request does
-        .owner = .{
-            .link = same_object.Link.to(owner),
-            .edge = .{ .slot = .{ .name = "owner" } },
-            .cache_slot = cache_slot,
-        },
-    };
-    if (internal.owner) |*link| link.edge.hold(instance, owner);
+    if (@hasField(@TypeOf(args), "header_list")) {
+        const owner: *runtime.Instance = args.owner;
+        internal.* = .{
+            .allocator = allocator,
+            .header_list = HeaderList.init(allocator), // unused storage
+            .list = args.header_list, // the owner's own list, by reference
+            .guard = args.guard,
+            .owns_headers = false, // We don't own the headers - Response/Request does
+            .owner = .{
+                .link = same_object.Link.to(owner),
+                .edge = .{ .slot = .{ .name = "owner" } },
+                .cache_slot = args.cache_slot,
+            },
+        };
+        if (internal.owner) |*link| link.edge.hold(instance, owner);
+    } else {
+        internal.* = .{
+            .allocator = allocator,
+            .header_list = HeaderList.init(allocator),
+            .list = undefined,
+            .guard = .none,
+        };
+        internal.list = &internal.header_list;
+    }
 
     // Store in instance
-    const state = instance.getState(State);
-    state.own._internal = internal;
-
-    return instance;
+    instance.getState(State).own._internal = internal;
 }
 
 /// Deinitialize - clean up owned resources only
@@ -157,7 +127,7 @@ pub fn initWithHeaderList(
 /// 1. Calling this deinit function (via vtable.deinit)
 /// 2. Freeing the Instance handle back to the SlabAllocator
 /// Calling Instance.deinit from here would cause infinite recursion.
-pub fn deinit(instance: *runtime.Instance) void {
+pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         const allocator = internal.allocator;
@@ -189,8 +159,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor
 pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(typedefs.HeadersInit)) !*runtime.Instance {
-    const instance = try initHeaders(ctx.allocator, State, &Headers.vtable, ctx);
-    errdefer deinit(instance);
+    const instance = try Headers.init(ctx.allocator, ctx);
+    errdefer Headers.deinit(instance);
 
     // Handle init_data based on its variant
     if (init_data.wasPassed()) {
@@ -211,16 +181,6 @@ pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(typedefs.Hea
     }
 
     return instance;
-}
-
-/// Internal init function (renamed to avoid shadowing)
-fn initHeaders(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    return init(allocator, StateType, vtable, ctx);
 }
 
 /// append(name, value): Fetch "append" under this object's guard.

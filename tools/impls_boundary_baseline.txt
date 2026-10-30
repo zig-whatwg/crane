@@ -2,14 +2,6 @@
 # A ratchet - `zig build lint-impls`, part of `zig build test`, fails if any
 # count rises or a new pair appears. After paying debt down, lower it with
 # `zig build lint-impls -- --update`. Never raise it by hand.
-src/dom/document_internals.zig Document.DocType 1
-src/dom/document_internals.zig Document.InternalState 1
-src/dom/document_internals.zig Document.SpeculationEagerness 1
-src/dom/document_internals.zig Document.getInternal 1
-src/html/dom_tree_adapter.zig DocumentType.getInternal 1
-src/html/event_utils.zig ErrorEvent.createErrorEvent 1
-src/html/full.zig impls.@import 1
-src/lib_exports.zig impls.@import 1
 src/runtime/engines/v8/context_manager.zig Node.getInternalState 1
 src/runtime/engines/v8/context_manager.zig Window.getInternal 2
 src/runtime/engines/v8/context_manager.zig Window.getNamedProperty 1
@@ -21,19 +13,6 @@ src/runtime/engines/v8/wrapper_cache.zig Document.getInternalState 1
 src/runtime/engines/v8/wrapper_cache.zig History.getInternal 1
 src/runtime/engines/v8/wrapper_cache.zig Location.getInternalState 1
 src/runtime/engines/v8/wrapper_cache.zig Node.getInternalState 3
-src/webidl/impls/AbortController.zig AbortSignal.signalAbort 1
-src/webidl/impls/DOMImplementation.zig DocumentType.createDocumentType 2
-src/webidl/impls/DOMParser.zig HTMLParser.parseHTML 1
-src/webidl/impls/Document.zig DOMImplementation.setDocument 1
-src/webidl/impls/Document.zig Node.deinitNodeByType 2
-src/webidl/impls/Document.zig Node.setOwnerDocument 4
-src/webidl/impls/Element.zig DOMTokenList.setElement 2
-src/webidl/impls/Element.zig NamedNodeMap.setOwnerElement 1
-src/webidl/impls/File.zig Blob.processBlobParts 1
-src/webidl/impls/File.zig Blob.setBlobData 2
-src/webidl/impls/HTMLAnchorElement.zig DOMTokenList.setElement 1
-src/webidl/impls/HTMLAreaElement.zig DOMTokenList.setElement 1
-src/webidl/impls/HTMLElement.zig DOMStringMap.create 1
 src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.setElement 1
 src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.setSupportedTokens 1
 src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.set_value 1
@@ -53,23 +32,11 @@ src/webidl/impls/HTMLIFrameElement.zig Window.getInternal 1
 src/webidl/impls/HTMLIFrameElement.zig Window.replaceBrowsingContext 1
 src/webidl/impls/HTMLIFrameElement.zig Window.setDocument 2
 src/webidl/impls/HTMLIFrameElement.zig Window.setOrigin 1
-src/webidl/impls/HTMLScriptElement.zig Node.setLocalName 1
-src/webidl/impls/Node.zig NodeList.createLiveChildNodes 1
-src/webidl/impls/Node.zig ShadowRoot.getInternalState 1
-src/webidl/impls/NodeList.zig Node.getChildCount 1
-src/webidl/impls/Request.zig FormData.createFromInternal 1
-src/webidl/impls/Request.zig Headers.initWithHeaderList 1
-src/webidl/impls/Response.zig FormData.createFromInternal 1
-src/webidl/impls/Response.zig Headers.initWithHeaderList 1
-src/webidl/impls/SVGScriptElement.zig Node.setLocalName 1
-src/webidl/impls/URL.zig Blob.getInternal 1
 src/webidl/impls/Window.zig History.State 1
 src/webidl/impls/Window.zig History.getInternal 1
 src/webidl/impls/Window.zig History.init 1
 src/webidl/impls/Window.zig Screen.init 1
 src/webidl/impls/Window.zig Storage.initWithStorage 2
-src/webidl/impls/WorkerGlobalScope.zig WorkerLocation.InternalState 1
-src/webidl/impls/WorkerGlobalScope.zig WorkerNavigator.InternalState 1
 tests/v8/sa_transform_setup_oom_test.zig TransformStream.streams_transform 1
 tests/v8/streams_wrap_test.zig Response.streams_js 1
 tests/v8/union_arm_interface_test.zig Response.streams_js 1

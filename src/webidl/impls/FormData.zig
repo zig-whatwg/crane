@@ -57,20 +57,35 @@ pub const InternalState = struct {
     }
 };
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+/// A FormData's entry list, given at construction when one exists already -
+/// a body's parsed entries (Fetch's "package data" for FormData), or the
+/// constructor's new empty list. Taken over on success; on error the caller
+/// still owns it.
+pub const construction_args = .{"entry_list"};
+
+/// FormData's own construction steps: its state, over the given entry list.
+/// No wrapper is made before the final, infallible ownership transfer.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    if (!@hasField(@TypeOf(args), "entry_list")) return;
+    const internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal);
+
+    internal.* = .{
+        .form_data = args.entry_list,
+        .allocator = allocator,
+    };
+
+    const trace = try materializeParsedFiles(instance, internal);
+    defer if (trace) |value| value.release();
+
+    const state = instance.getState(State);
+    state.own._internal = internal;
+    setFileTrace(instance, internal, trace);
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// FormData's own teardown.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         if (internal.files_traced) engine.forgetTracedChild(instance, .{ .name = "entryFiles" });
@@ -97,7 +112,7 @@ pub fn call_constructor(ctx: runtime.Context, form: webidl.Opt(*runtime.Instance
     const instance = blk: {
         const form_data = try InternalFormData.init(ctx.allocator);
         errdefer form_data.deinit();
-        break :blk try createFromInternal(ctx.allocator, ctx, form_data);
+        break :blk try FormData.initWith(ctx.allocator, ctx, .{ .entry_list = form_data });
     };
     if (form.was_passed) {
         const given_submitter: ?*runtime.Instance = if (submitter.was_passed) submitter.value else null;
@@ -106,38 +121,6 @@ pub fn call_constructor(ctx: runtime.Context, form: webidl.Opt(*runtime.Instance
             return err;
         };
     }
-    return instance;
-}
-
-/// Create a FormData from internal FormData (internal helper)
-///
-/// This is used by other APIs (fetch, xhr) that need to create FormData
-/// instances from parsed data.
-/// Takes ownership on success; on error the caller still owns the entry list.
-pub fn createFromInternal(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    form_data: *InternalFormData,
-) !*runtime.Instance {
-    const instance = try init(allocator, State, &FormData.vtable, ctx);
-    // No wrapper is made before the final, infallible ownership transfer.
-    errdefer runtime.Instance.deinit(instance);
-
-    const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
-
-    internal.* = .{
-        .form_data = form_data,
-        .allocator = allocator,
-    };
-
-    const trace = try materializeParsedFiles(instance, internal);
-    defer if (trace) |value| value.release();
-
-    const state = instance.getState(State);
-    state.own._internal = internal;
-    setFileTrace(instance, internal, trace);
-
     return instance;
 }
 

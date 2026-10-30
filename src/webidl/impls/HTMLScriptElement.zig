@@ -17,9 +17,6 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const HTMLScriptElement = interfaces.HTMLScriptElement;
 
-// Parent class implementation
-const NodeImpl = @import("Node.zig");
-
 // DOM mutation seam, for the post-connection steps below.
 const dom_module = @import("dom");
 const instance_bridge = dom_module.instance_bridge;
@@ -116,7 +113,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     _ = args;
     // Set node type to ELEMENT_NODE (already set by Element.init)
     // Set local name to "script"
-    try NodeImpl.setLocalName(instance, runtime.DOMString.initInterned("script"));
+    try dom_module.node_creation.setNodeLocalName(instance, runtime.DOMString.initInterned("script"));
 
     // Initialize HTMLScriptElement's internal state in registry
     // The registry owns this block, so `Registry.remove` returns it to the

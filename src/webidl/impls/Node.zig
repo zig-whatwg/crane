@@ -166,6 +166,7 @@ pub fn installHooks() void {
     dom_module.node_creation.installNode(.{
         .destroy_uninserted = &destroyUninsertedHook,
         .clone = &cloneANode,
+        .set_local_name = &setLocalNameHook,
     });
     // A realm's end frees the orphans its removals recorded (dom.mutation's
     // orphanRemoved), each through its own teardown as a tree frees a child.
@@ -706,11 +707,11 @@ fn isConnectedThroughShadow(instance: *runtime.Instance, node_base: *NodeBase) b
         const root_opaque = instance_bridge.getInstance(@constCast(current)) orelse return false;
         const root_instance: *runtime.Instance = @ptrCast(@alignCast(root_opaque));
 
-        // Try to get it as a ShadowRoot and check its host
-        const ShadowRootImpl = @import("ShadowRoot.zig");
-        if (ShadowRootImpl.getInternalState(root_instance)) |shadow_internal| {
-            // This is a ShadowRoot - check if its host is connected
-            if (shadow_internal.host) |host| {
+        // A ShadowRoot (its host getter answers; a plain DocumentFragment,
+        // or a shadow root whose host is gone, has none): check whether its
+        // host is connected.
+        if (root_instance.stateAs(interfaces.ShadowRoot.State) != null) {
+            if (interfaces.ShadowRoot.get_host(root_instance) catch null) |host| {
                 // Recursively check if the host element is connected
                 if (getInternal(host)) |host_internal| {
                     if (host_internal.node_base) |host_node_base| {
@@ -807,9 +808,11 @@ pub fn get_childNodes(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return list;
     }
 
-    // Create a live NodeList for this node's children
-    const NodeListImpl = @import("NodeList.zig");
-    const list = try NodeListImpl.createLiveChildNodes(internal.allocator, instance.ctx, instance);
+    // Create a live NodeList for this node's children: made through its
+    // interface, made live over them by NodeList's step (dom.node_lists).
+    const list = try interfaces.NodeList.init(internal.allocator, instance.ctx);
+    errdefer interfaces.NodeList.deinit(list);
+    try dom_module.node_lists.childNodes(list, instance);
 
     // Cache for [SameObject] semantics
     internal.child_nodes_list = list;
@@ -1918,6 +1921,12 @@ pub fn call_isDefaultNamespace(instance: *runtime.Instance, namespace: ?runtime.
 // =============================================================================
 // Helper Functions for External Use
 // =============================================================================
+
+/// `dom.node_creation.setNodeLocalName`: `setLocalName`, with the declared
+/// error set a function pointer needs.
+fn setLocalNameHook(instance: *runtime.Instance, name: runtime.DOMString) dom_module.node_creation.Error!void {
+    return setLocalName(instance, name);
+}
 
 /// Set the local name (used by Element, Attr, etc.)
 /// Also updates the NodeBase's node_name for DOM operations.

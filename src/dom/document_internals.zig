@@ -24,15 +24,14 @@ const csp = @import("csp");
 const html_core = @import("html_core");
 const StylesheetBlockingTracker = html_core.StylesheetBlockingTracker;
 
-// Import the impl to access InternalState type (needed during migration)
-// TODO: Eventually InternalState should be defined here, not in the impl
-const impls = @import("impls");
-const DocumentImpl = impls.Document;
-pub const InternalState = DocumentImpl.InternalState;
-pub const DocType = DocumentImpl.DocType;
+// Document's state type (dom.document_state): the impl owns each Document's
+// state and registers it in `Registry`; these algorithms read it there.
+const document_state = @import("document_state.zig");
+pub const InternalState = document_state.InternalState;
+pub const DocType = document_state.DocType;
 /// The document mode (DOM): "no-quirks", "quirks" or "limited-quirks".
-pub const Mode = @FieldType(InternalState, "mode");
-pub const SpeculationEagerness = DocumentImpl.SpeculationEagerness;
+pub const Mode = document_state.Mode;
+pub const SpeculationEagerness = @import("document_scripts.zig").SpeculationEagerness;
 
 // =============================================================================
 // Internal State Access
@@ -41,7 +40,7 @@ pub const SpeculationEagerness = DocumentImpl.SpeculationEagerness;
 /// Get the internal state from a Document instance.
 /// This is the canonical way to access Document's internal state.
 pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return DocumentImpl.getInternal(instance);
+    return document_state.Registry.get(instance);
 }
 
 // =============================================================================
@@ -454,7 +453,7 @@ pub fn addImportMapping(instance: *runtime.Instance, specifier: []const u8, reso
         if (internal.import_map_imports.get(old_key)) |old_value| {
             internal.allocator.free(old_value);
         }
-        _ = internal.import_map_imports.remove(old_key);
+        _ = internal.removeImport(old_key);
         internal.allocator.free(old_key);
     }
 

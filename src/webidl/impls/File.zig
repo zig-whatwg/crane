@@ -16,7 +16,7 @@ const file = @import("file");
 const webidl = @import("webidl");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const clock = @import("clock");
-const BlobImpl = @import("Blob.zig");
+const dom = @import("dom");
 const File = interfaces.File;
 
 pub const State = File.State;
@@ -29,7 +29,7 @@ pub const ImplError = error{
 
 /// Internal state for File implementation: what a File adds to its Blob.
 ///
-/// The bytes and type are the Blob part's own state (BlobImpl.setBlobData) -
+/// The bytes and type are the Blob part's own state (dom.blob_bytes.setBytes) -
 /// size, type, slice() and text() are Blob members, answered by Blob's impl.
 pub const InternalState = struct {
     /// The file name, owned.
@@ -77,7 +77,7 @@ pub fn call_constructor(ctx: runtime.Context, fileBits: runtime.JSValue, fileNam
         }
         break :blk .transparent;
     };
-    const bytes = try BlobImpl.processBlobParts(ctx, fileBits, endings);
+    const bytes = try dom.blob_parts.process(ctx, fileBits, endings);
     defer if (bytes.len > 0) ctx.allocator.free(bytes);
 
     // File API steps 3.1-3.2: BlobData rejects outside U+0020-U+007E
@@ -85,39 +85,13 @@ pub fn call_constructor(ctx: runtime.Context, fileBits: runtime.JSValue, fileNam
     // agree on all Blob/File cases (353/955 each, wpt.fyi cc74d2669f):
     // https://wpt.fyi/results/mimesniff/mime-types/parsing.any.html?sha=cc74d2669f
     const mime_type: []const u8 = if (options.wasPassed() and options.value.base.type != null) options.value.base.type.?.asSlice() else "";
-    {
-        const blob_data = try file.BlobData.init(ctx.allocator, bytes, mime_type);
-        errdefer blob_data.deinit();
-        try BlobImpl.setBlobData(instance, ctx.allocator, blob_data);
-    }
+    // The Blob part's bytes and type: Blob's step (dom.blob_bytes), with the
+    // allocator of the File's realm, `ctx`.
+    try dom.blob_bytes.setBytes(instance, bytes, mime_type);
 
     // Steps 2 and 3.3: the name, and lastModified - now, when not given.
     const last_modified = if (options.wasPassed()) options.value.lastModified else null;
     try setFileState(instance, ctx.allocator, fileName, last_modified);
-
-    return instance;
-}
-
-/// Create a File from raw bytes (internal helper)
-///
-/// Used by APIs that need to create File objects directly.
-pub fn createFromBytes(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    bytes: []const u8,
-    name: []const u8,
-    mime_type: []const u8,
-    last_modified: ?i64,
-) !*runtime.Instance {
-    const instance = try File.init(allocator, ctx);
-    errdefer File.deinit(instance);
-
-    {
-        const blob_data = try file.BlobData.init(allocator, bytes, mime_type);
-        errdefer blob_data.deinit();
-        try BlobImpl.setBlobData(instance, allocator, blob_data);
-    }
-    try setFileState(instance, allocator, name, last_modified);
 
     return instance;
 }
@@ -214,77 +188,4 @@ pub fn get_lastModified(instance: *runtime.Instance) anyerror!i64 {
 pub fn get_webkitRelativePath(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return "";
     return internal.webkit_relative_path;
-}
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "File - basic constructor" {
-    const allocator = std.testing.allocator;
-    const ctx = runtime.createNullContext();
-
-    const file_instance = try createFromBytes(
-        allocator,
-        ctx,
-        "Hello, World!",
-        "test.txt",
-        "text/plain",
-        1700000000000,
-    );
-    defer File.deinit(file_instance);
-
-    const name = try get_name(file_instance);
-    try std.testing.expectEqualStrings("test.txt", name.asSlice());
-
-    const last_modified = try get_lastModified(file_instance);
-    try std.testing.expectEqual(@as(i64, 1700000000000), last_modified);
-
-    const size = try interfaces.Blob.get_size(file_instance);
-    try std.testing.expectEqual(@as(u64, 13), size);
-
-    const type_str = try interfaces.Blob.get_type(file_instance);
-    try std.testing.expectEqualStrings("text/plain", type_str.asSlice());
-}
-
-test "File - default lastModified" {
-    const allocator = std.testing.allocator;
-    const ctx = runtime.createNullContext();
-
-    const file_instance = try createFromBytes(
-        allocator,
-        ctx,
-        "test",
-        "test.txt",
-        "",
-        null, // Should use current time
-    );
-    defer File.deinit(file_instance);
-
-    const last_modified = try get_lastModified(file_instance);
-    // Should be a reasonable timestamp (after year 2020)
-    const min_timestamp: i64 = 1577836800000; // 2020-01-01
-    try std.testing.expect(last_modified > min_timestamp);
-}
-
-test "File - empty name" {
-    const allocator = std.testing.allocator;
-    const ctx = runtime.createNullContext();
-
-    const file_instance = try createFromBytes(allocator, ctx, "", "", "", null);
-    defer File.deinit(file_instance);
-
-    const name = try get_name(file_instance);
-    try std.testing.expectEqualStrings("", name.asSlice());
-}
-
-test "File - webkitRelativePath empty by default" {
-    const allocator = std.testing.allocator;
-    const ctx = runtime.createNullContext();
-
-    const file_instance = try createFromBytes(allocator, ctx, "", "test.txt", "", null);
-    defer File.deinit(file_instance);
-
-    const path = try get_webkitRelativePath(file_instance);
-    try std.testing.expectEqualStrings("", path.asSlice());
 }
