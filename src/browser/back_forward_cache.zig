@@ -63,7 +63,7 @@ const Reason = dom.bfcache.Reason;
 /// half of its three BFCache subtests on every run: they run in parallel,
 /// each in a noopener popup, so up to six pages are kept at once, and an
 /// evicted page reloaded fresh on history.back() (crane/
-/// nav6-bfcache-three-popups.window.js).
+/// nav2b6-bfcache-three-popups.window.js).
 /// Not modelled: Firefox's per-tab window (nsSHistory::VIEWER_WINDOW, 3) -
 /// it evicts a tab's pages more than 3 entries from its current one.
 pub const default_size: usize = 8;
