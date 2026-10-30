@@ -233,6 +233,17 @@ test "Typed OM opaque values own native data and pending values retain nested re
     );
 }
 
+test "KNOWN-INCOMPLETE Q32 transform and position subclasses retain an explicit base-value fallback" {
+    try run(
+        \\(() => {
+        \\for (const [p, text] of [['transform','translateX(2px)'], ['object-position','10px 20px']]) {
+        \\  const value = CSSStyleValue.parse(p, text);
+        \\  check(value.constructor === CSSStyleValue && String(value) === text, p + ' routed fallback');
+        \\}
+        \\return 'ok'; })()
+    );
+}
+
 test "Typed OM rejects empty strings but accepts empty custom values with zero segments Q65" {
     try run(
         \\(() => {

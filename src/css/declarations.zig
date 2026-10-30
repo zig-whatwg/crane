@@ -784,9 +784,9 @@ fn containsLonghand(ls: []const Longhand, l: Longhand) bool {
     return false;
 }
 
-/// CSSOM "preferred order": shorthands with more longhands first, then by
-/// name. `all` is never chosen to serialize a block (browsers write the
-/// longhands).
+/// CSSOM "preferred order" steps 1, 3-5: more longhands first, then
+/// unprefixed names, -webkit- names, other prefixed names, and name order.
+/// `all` is never chosen to serialize a block (browsers write the longhands).
 const preferred_shorthands = blk: {
     @setEvalBranchQuota(100_000);
     const fields = @typeInfo(Shorthand).@"enum".fields;
@@ -805,8 +805,16 @@ const preferred_shorthands = blk: {
         while (j > 0) : (j -= 1) {
             const a = out[j - 1];
             const b = out[j];
-            const before = a.longhands().len > b.longhands().len or
-                (a.longhands().len == b.longhands().len and std.mem.lessThan(u8, a.name(), b.name()));
+            const before = order: {
+                const a_count = a.longhands().len;
+                const b_count = b.longhands().len;
+                if (a_count != b_count) break :order a_count > b_count;
+                const a_name = a.name();
+                const b_name = b.name();
+                const a_prefix: u2 = if (std.mem.startsWith(u8, a_name, "-webkit-")) 1 else if (std.mem.startsWith(u8, a_name, "-")) 2 else 0;
+                const b_prefix: u2 = if (std.mem.startsWith(u8, b_name, "-webkit-")) 1 else if (std.mem.startsWith(u8, b_name, "-")) 2 else 0;
+                break :order a_prefix < b_prefix or (a_prefix == b_prefix and std.mem.lessThan(u8, a_name, b_name));
+            };
             if (before) break;
             out[j - 1] = b;
             out[j] = a;

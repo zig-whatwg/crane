@@ -67,6 +67,11 @@ pub fn shape(longhand: Longhand, value: Value) Shape {
     // §5.3 pending values still take precedence over ordinary reification.
     if ((longhand == .mask_position or longhand == .object_position) and value != .pending)
         return .unsupported;
+    // Q179/Q180 Chrome 156 probe, Q60 step 1: overflow-clip-margin is
+    // opaque per §5.2 even when its initial representation is one length.
+    // Pending values retain §5.3 precedence over this property class.
+    if (longhand == .overflow_clip_margin and value != .pending)
+        return .unsupported;
     if (native.numericLeaf(longhand, value)) |number| return .{ .numeric = number };
     return switch (value) {
         .keyword => |keyword| .{ .keyword = keyword.name() },
@@ -76,6 +81,9 @@ pub fn shape(longhand: Longhand, value: Value) Shape {
         .alignment => |alignment| if (alignment.modifier == null) .{ .keyword = alignment.position.name() } else .unsupported,
         .font_width_keyword => |keyword| .{ .keyword = keyword.name() },
         .font_system => |keyword| .{ .keyword = keyword.name() },
+        // Q179 Chrome 156 probe, Q60 step 1 / §5.5: scroll-marker-group
+        // singletons are keywords; its computed pairs remain opaque (§5.2).
+        .box_keywords => |keywords| if (keywords.second == null) .{ .keyword = keywords.first.name() } else .unsupported,
         .display => |display| blk: {
             if (display.box != .normal) break :blk .{ .canonical_keyword = value };
             if (display.list_item) break :blk if (display.outer == .block and display.inner == .flow) .{ .keyword = "list-item" } else .unsupported;
