@@ -1053,6 +1053,8 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
     var parent_style: ?*const ComputedStyle = null;
     var parent_volatile = false;
     var parent_serial: u64 = 0;
+    // H-R3-ENGINE-KEY: the effect stack's view for this read, found once.
+    const animation_reader = animations.effect_stack.reader(element);
     var i = lineage.items.len;
     while (i > 0) {
         i -= 1;
@@ -1061,7 +1063,7 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
         const state = element_style.of(e) orelse return null;
         // H-R3-ENGINE-KEY: the element's own animation component, and its
         // parent's style serial (an animated parent resolves alone).
-        const animated = animations.effect_stack.component(e, null);
+        const animated = animation_reader.component(e, null);
         const must_resolve = parent_volatile or blk: {
             const cached = state.cached orelse break :blk true;
             break :blk cached.@"volatile" or !cached.key.eql(res.key) or cached.animations != animated or cached.parent_serial != parent_serial;
@@ -1097,7 +1099,7 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
 
     // A pseudo-element's style inherits from its originating element's.
     // H-R3-ENGINE-KEY.
-    const pseudo_animated = animations.effect_stack.component(element, p);
+    const pseudo_animated = animation_reader.component(element, p);
     if (state.pseudoCached(p)) |cached| {
         if (!cached.cached.@"volatile" and !own.@"volatile" and cached.cached.key.eql(res.key) and cached.cached.animations == pseudo_animated and cached.cached.parent_serial == own.serial) return cached.cached.style;
     }

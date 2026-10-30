@@ -35,7 +35,7 @@ test "r3: rebuilding an unchanged target index allocates and frees nothing" {
     // The first frame of a running animation builds the index.
     index.begin();
     try index.add(allocator, target_a, effect_a);
-    index.finish(allocator, {}, noOrder);
+    try index.finish(allocator, {}, noOrder);
     try testing.expectEqual(@as(usize, 1), index.effectsOf(target_a).?.len);
 
     // Every later frame: the same effect on the same target.
@@ -44,7 +44,7 @@ test "r3: rebuilding an unchanged target index allocates and frees nothing" {
     for (0..3) |_| {
         index.begin();
         try index.add(allocator, target_a, effect_a);
-        index.finish(allocator, {}, noOrder);
+        try index.finish(allocator, {}, noOrder);
     }
     try testing.expectEqual(frees, failing.deallocations);
     try testing.expectEqual(@as(usize, 1), index.effectsOf(target_a).?.len);
@@ -57,19 +57,19 @@ test "r3: a target no effect applies to any more leaves the target index" {
     index.begin();
     try index.add(testing.allocator, target_a, effect_a);
     try index.add(testing.allocator, target_b, effect_b);
-    index.finish(testing.allocator, {}, noOrder);
+    try index.finish(testing.allocator, {}, noOrder);
 
     // target_b's animation ended: its entry and its list go.
     index.begin();
     try index.add(testing.allocator, target_a, effect_a);
-    index.finish(testing.allocator, {}, noOrder);
+    try index.finish(testing.allocator, {}, noOrder);
     try testing.expectEqual(@as(usize, 1), index.map.count());
     try testing.expect(index.effectsOf(target_b) == null);
     try testing.expectEqual(effect_a.instance, index.effectsOf(target_a).?[0].instance);
 
     // Nothing applies: the index is empty.
     index.begin();
-    index.finish(testing.allocator, {}, noOrder);
+    try index.finish(testing.allocator, {}, noOrder);
     try testing.expectEqual(@as(usize, 0), index.map.count());
     try testing.expect(index.effectsOf(target_a) == null);
 }
@@ -87,10 +87,26 @@ test "r3: targets that come and go leave the target index's probes short" {
         index.begin();
         const key: TargetIndex.Key = .{ .address = 0x10000 + i * 0x100, .generation = 1 };
         try index.add(testing.allocator, key, effect_a);
-        index.finish(testing.allocator, {}, noOrder);
+        try index.finish(testing.allocator, {}, noOrder);
         try testing.expectEqual(@as(usize, 1), index.map.count());
         const counts = tombstones.slotCounts(&index.map);
         try testing.expect(counts.free * 4 >= counts.capacity - counts.live);
+    }
+}
+
+test "r3: the target index answers by scan for a few targets and by hash for many" {
+    var index: TargetIndex = .{};
+    defer index.deinit(testing.allocator);
+    for ([_]usize{ 20, 3, 20 }) |targets| {
+        index.begin();
+        for (0..targets) |i| try index.add(testing.allocator, .{ .address = 0x10000 + i * 0x100, .generation = 1 }, effect_a);
+        try index.finish(testing.allocator, {}, noOrder);
+        for (0..targets) |i| try testing.expect(index.effectsOf(.{ .address = 0x10000 + i * 0x100, .generation = 1 }) != null);
+        // A target's address with another generation is another element.
+        try testing.expect(index.effectsOf(.{ .address = 0x10000, .generation = 2 }) == null);
+        // Elements no effect targets, including one that left.
+        try testing.expect(index.effectsOf(.{ .address = 0x10000 + targets * 0x100, .generation = 1 }) == null);
+        try testing.expect(index.effectsOf(.{ .address = 0x8000, .generation = 1 }) == null);
     }
 }
 
@@ -102,7 +118,7 @@ fn buildTwice(allocator: std.mem.Allocator) !void {
         try index.add(allocator, target_a, effect_a);
         try index.add(allocator, target_b, effect_b);
         try index.add(allocator, target_a, effect_b);
-        index.finish(allocator, {}, noOrder);
+        try index.finish(allocator, {}, noOrder);
     }
     try testing.expectEqual(@as(usize, 2), index.effectsOf(target_a).?.len);
 }

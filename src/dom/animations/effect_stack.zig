@@ -65,13 +65,21 @@ pub const TargetIndex = struct {
     /// tombstones they leave are bounded before each insert
     /// (src/infra/tombstones.zig).
     guard: @import("infra").tombstones.TombstoneGuard = .{},
+    /// Every target's address (storage kept like the lists'), for a style
+    /// read of an element no effect targets: while there are at most
+    /// `scan_max`, a scan answers before the map hashes a key (every
+    /// lineage entry of every read asks).
+    addresses: std.ArrayListUnmanaged(usize) = .empty,
 
     pub const Key = struct { address: usize, generation: u64 };
+
+    const scan_max = 8;
 
     pub fn deinit(self: *TargetIndex, allocator: Allocator) void {
         var it = self.map.valueIterator();
         while (it.next()) |list| list.deinit(allocator);
         self.map.deinit(allocator);
+        self.addresses.deinit(allocator);
         self.* = .{};
     }
 
@@ -87,6 +95,7 @@ pub const TargetIndex = struct {
     /// tests/dom/r3_target_index_test.zig).
     pub fn begin(self: *TargetIndex) void {
         self.revision = 0;
+        self.addresses.clearRetainingCapacity();
         var it = self.map.valueIterator();
         while (it.next()) |list| list.clearRetainingCapacity();
     }
@@ -101,11 +110,12 @@ pub const TargetIndex = struct {
 
     /// The rebuild ends: each target's effects in composite order, and a
     /// target no effect applies to any more leaves with its storage.
-    pub fn finish(self: *TargetIndex, allocator: Allocator, context: anytype, comptime lessThan: fn (@TypeOf(context), model.Link, model.Link) bool) void {
+    pub fn finish(self: *TargetIndex, allocator: Allocator, context: anytype, comptime lessThan: fn (@TypeOf(context), model.Link, model.Link) bool) Allocator.Error!void {
         var it = self.map.iterator();
         while (it.next()) |entry| {
             if (entry.value_ptr.items.len != 0) {
                 std.mem.sort(model.Link, entry.value_ptr.items, context, lessThan);
+                try self.addresses.append(allocator, entry.key_ptr.address);
                 continue;
             }
             entry.value_ptr.deinit(allocator);
@@ -119,6 +129,12 @@ pub const TargetIndex = struct {
     /// The effects that apply to `key`'s target, in composite order; null
     /// when none does.
     pub fn effectsOf(self: *const TargetIndex, key: Key) ?[]const model.Link {
+        if (self.map.count() == 0) return null;
+        if (self.addresses.items.len <= scan_max) {
+            for (self.addresses.items) |address| {
+                if (address == key.address) break;
+            } else return null;
+        }
         const list = self.map.getPtr(key) orelse return null;
         if (list.items.len == 0) return null;
         return list.items;
@@ -161,10 +177,9 @@ fn current(registry: *registry_mod.Registry) ?*TargetIndex {
         const effect = animation.effectModel() orelse continue;
         if (!applies(registry, animation, effect)) continue;
         const target = effect.targetElement().?;
-        const key: TargetIndex.Key = .{ .address = @intFromPtr(target), .generation = runtime.SlabAllocator.generationOf(target) };
-        index.add(registry.allocator, key, model.Link.to(effect.instance)) catch return null;
+        index.add(registry.allocator, keyOf(target), model.Link.to(effect.instance)) catch return null;
     }
-    index.finish(registry.allocator, {}, linkLessThan);
+    index.finish(registry.allocator, {}, linkLessThan) catch return null;
     index.revision = registry.values_revision;
     return index;
 }
@@ -188,7 +203,7 @@ fn effectsOf(element: *runtime.Instance) ?[]const model.Link {
     const registry = registry_mod.of(element.ctx) orelse return null;
     if (registry.animations.items.len == 0) return null;
     const index = current(registry) orelse return null;
-    return index.effectsOf(.{ .address = @intFromPtr(element), .generation = runtime.SlabAllocator.generationOf(element) });
+    return index.effectsOf(keyOf(element));
 }
 
 /// A serial for a style the engine just resolved for `element`
@@ -208,12 +223,41 @@ pub fn nextStyleSerial(element: *runtime.Instance) u64 {
 /// to it, else the values revision (which moves on every change that can
 /// move an effect value).
 pub fn component(element: *runtime.Instance, pseudo: ?[]const u8) u64 {
-    const effects = effectsOf(element) orelse return 0;
-    for (effects) |link| {
-        const effect = liveEffect(link) orelse continue;
-        if (samePseudo(effect, pseudo)) return registry_mod.of(element.ctx).?.values_revision;
+    return reader(element).component(element, pseudo);
+}
+
+/// One style read's view of the effect stack (StyleEngine.computedStyle):
+/// the registry, the index for the current revision and its revision,
+/// found once for the read's whole lineage - every ancestor of every read
+/// asks `component`, and nearly all of them are targeted by nothing.
+pub const Reader = struct {
+    index: ?*const TargetIndex = null,
+    revision: u64 = 0,
+
+    /// `component` (above) of `element`, which is in the same event loop
+    /// as the element the reader was made for.
+    pub fn component(self: Reader, element: *runtime.Instance, pseudo: ?[]const u8) u64 {
+        const index = self.index orelse return 0;
+        const effects = index.effectsOf(keyOf(element)) orelse return 0;
+        for (effects) |link| {
+            const effect = liveEffect(link) orelse continue;
+            if (samePseudo(effect, pseudo)) return self.revision;
+        }
+        return 0;
     }
-    return 0;
+};
+
+/// The reader for a style read of `element` (and its flat-tree ancestors).
+pub fn reader(element: *runtime.Instance) Reader {
+    const registry = registry_mod.of(element.ctx) orelse return .{};
+    if (registry.animations.items.len == 0) return .{};
+    const index = current(registry) orelse return .{};
+    if (index.map.count() == 0) return .{};
+    return .{ .index = index, .revision = registry.values_revision };
+}
+
+fn keyOf(element: *runtime.Instance) TargetIndex.Key {
+    return .{ .address = @intFromPtr(element), .generation = runtime.SlabAllocator.generationOf(element) };
 }
 
 // ============================================================================
