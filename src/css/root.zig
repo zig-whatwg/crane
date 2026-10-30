@@ -153,6 +153,8 @@ pub const ui_values = @import("ui_values.zig");
 pub const keyframe_values = @import("keyframe_values.zig");
 
 pub const animation_values = @import("animation_values.zig");
+/// Web Animations: combining computed values (lane rendering3).
+pub const interpolation = @import("interpolation.zig");
 pub const easing_values = @import("easing_values.zig");
 pub const numeric_values = @import("numeric_values.zig");
 
