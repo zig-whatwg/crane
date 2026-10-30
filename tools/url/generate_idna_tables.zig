@@ -276,7 +276,7 @@ pub fn main(init: std.process.Init) !void {
     try w.writeAll("};\n");
     try w.writeAll(lookups);
     // Emit exactly the formatter's canonical representation.
-    const source = try a.dupeZ(u8, output.written());
+    const source = try a.dupeSentinel(u8, output.written(), 0);
     defer a.free(source);
     var tree = try std.zig.Ast.parse(a, source, .zig);
     defer tree.deinit(a);

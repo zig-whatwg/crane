@@ -120,7 +120,7 @@ fn fcWeight(css: u16) c_int {
 
 /// A NUL-terminated copy of `text`, OWNED.
 fn z(allocator: std.mem.Allocator, text: []const u8) error{OutOfMemory}![:0]u8 {
-    return allocator.dupeZ(u8, text);
+    return allocator.dupeSentinel(u8, text, 0);
 }
 
 /// The best face fontconfig has for `family` and `request`, and whether it

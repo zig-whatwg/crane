@@ -25,6 +25,17 @@ const testing = std.testing;
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 
+/// `s` repeated `n` times: what `s ** n` was (Zig 0.17 removes `**`; roadmap zig-017).
+fn repeat(comptime s: []const u8, comptime n: usize) *const [s.len * n:0]u8 {
+    return comptime blk: {
+        @setEvalBranchQuota(10 * n + 1000);
+        var out: [s.len * n:0]u8 = undefined;
+        for (0..n) |i| @memcpy(out[i * s.len ..][0..s.len], s);
+        const final = out;
+        break :blk &final;
+    };
+}
+
 const allocator = testing.allocator;
 
 fn nodeType(node: *runtime.Instance) !u16 {
@@ -136,7 +147,7 @@ test "a CharacterData node's data is a construction argument of every CharacterD
 
     inline for (.{ interfaces.Text, interfaces.CDATASection, interfaces.Comment, interfaces.ProcessingInstruction }) |Interface| {
         // Long enough for CharacterData's heap storage, past its inline bytes.
-        const long = "data given at construction, " ** 4;
+        const long = repeat("data given at construction, ", 4);
         inline for (.{ "", "x", long }) |data| {
             const node = try Interface.initWith(allocator, &realm.ctx, .{ .data = data });
             defer Interface.deinit(node);

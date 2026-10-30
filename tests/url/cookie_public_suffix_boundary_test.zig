@@ -2,6 +2,17 @@
 const std = @import("std");
 const url = @import("url");
 
+/// `s` repeated `n` times: what `s ** n` was (Zig 0.17 removes `**`; roadmap zig-017).
+fn repeat(comptime s: []const u8, comptime n: usize) *const [s.len * n:0]u8 {
+    return comptime blk: {
+        @setEvalBranchQuota(10 * n + 1000);
+        var out: [s.len * n:0]u8 = undefined;
+        for (0..n) |i| @memcpy(out[i * s.len ..][0..s.len], s);
+        const final = out;
+        break :blk &final;
+    };
+}
+
 fn expectSuffix(host: []const u8, suffix: []const u8, registrable: []const u8) !void {
     const allocator = std.testing.allocator;
     const actual_suffix = (try url.public_suffix.getPublicSuffix(allocator, .{ .domain = host })).?;
@@ -15,25 +26,25 @@ fn expectSuffix(host: []const u8, suffix: []const u8, registrable: []const u8) !
 }
 
 test "exact public suffix survives more than sixty-four labels" {
-    try expectSuffix("x." ** 70 ++ "example.com", "com", "example.com");
+    try expectSuffix(repeat("x.", 70) ++ "example.com", "com", "example.com");
 }
 
 test "private public suffix survives more than sixty-four labels" {
-    try expectSuffix("x." ** 70 ++ "tenant.github.io", "github.io", "tenant.github.io");
+    try expectSuffix(repeat("x.", 70) ++ "tenant.github.io", "github.io", "tenant.github.io");
 }
 
 test "wildcard public suffix survives more than sixty-four labels" {
-    try expectSuffix("x." ** 70 ++ "tenant.a.ck", "a.ck", "tenant.a.ck");
+    try expectSuffix(repeat("x.", 70) ++ "tenant.a.ck", "a.ck", "tenant.a.ck");
 }
 
 test "exception public suffix survives more than sixty-four labels" {
-    try expectSuffix("x." ** 70 ++ "www.ck", "ck", "www.ck");
+    try expectSuffix(repeat("x.", 70) ++ "www.ck", "ck", "www.ck");
 }
 
 test "unknown suffix and trailing dot survive more than sixty-four labels" {
-    try expectSuffix("x." ** 70 ++ "example.invalid.", "invalid.", "example.invalid.");
+    try expectSuffix(repeat("x.", 70) ++ "example.invalid.", "invalid.", "example.invalid.");
 }
 
 test "public suffix remains correct beyond the old serialized scratch size" {
-    try expectSuffix("subdomain." ** 40 ++ "example.co.uk", "co.uk", "example.co.uk");
+    try expectSuffix(repeat("subdomain.", 40) ++ "example.co.uk", "co.uk", "example.co.uk");
 }

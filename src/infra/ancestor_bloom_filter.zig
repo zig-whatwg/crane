@@ -45,7 +45,7 @@ const std = @import("std");
 pub const AncestorBloomFilter = struct {
     /// 8-bit counters for each hash bucket.
     /// Uses saturating arithmetic to prevent overflow.
-    counters: [ARRAY_SIZE]u8 = [_]u8{0} ** ARRAY_SIZE,
+    counters: [ARRAY_SIZE]u8 = @as([ARRAY_SIZE]u8, @splat(0)),
 
     const Self = @This();
 
@@ -172,7 +172,7 @@ pub fn hashStringLower(s: []const u8) u32 {
 pub const AncestorHashes = struct {
     /// Up to 4 precomputed hashes from selector components.
     /// Zero means no hash at that position.
-    hashes: [4]u32 = [_]u32{0} ** 4,
+    hashes: [4]u32 = @as([4]u32, @splat(0)),
 
     /// Number of valid hashes (0-4).
     len: u8 = 0,

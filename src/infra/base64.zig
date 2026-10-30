@@ -107,7 +107,7 @@ fn alphabetValue(c: u8) ?u32 {
 }
 
 const ascii_whitespace_table = blk: {
-    var table: [256]bool = [_]bool{false} ** 256;
+    var table: [256]bool = @as([256]bool, @splat(false));
     table[0x09] = true;
     table[0x0A] = true;
     table[0x0C] = true;

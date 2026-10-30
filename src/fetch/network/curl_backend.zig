@@ -248,7 +248,7 @@ pub const LibcurlBackend = struct {
 
     fn configureRequest(handle: *curl.CURL, request: *const NetworkRequest, ctx: *CallbackContext) !void {
         // URL (must be null-terminated, stored in ctx to persist until request completes)
-        ctx.url_z = try ctx.allocator.dupeZ(u8, request.url);
+        ctx.url_z = try ctx.allocator.dupeSentinel(u8, request.url, 0);
         _ = curl.easy_setopt(handle, curl.CURLOPT_URL, ctx.url_z.?.ptr);
 
         // Method (stored in ctx to persist until request completes)
@@ -266,7 +266,7 @@ pub const LibcurlBackend = struct {
         if (std.mem.eql(u8, request.method, "HEAD")) {
             _ = curl.easy_setopt(handle, curl.CURLOPT_NOBODY, @as(c_long, 1));
         } else if (!std.mem.eql(u8, request.method, "GET")) {
-            ctx.method_z = try ctx.allocator.dupeZ(u8, request.method);
+            ctx.method_z = try ctx.allocator.dupeSentinel(u8, request.method, 0);
             _ = curl.easy_setopt(handle, curl.CURLOPT_CUSTOMREQUEST, ctx.method_z.?.ptr);
         }
 

@@ -3,10 +3,8 @@
 //! terminal state; Compression Streams owns its stricter trailing-data policy.
 const std = @import("std");
 const platform = @import("platform");
-const c = @cImport({
-    @cInclude("brotli/decode.h");
-    @cInclude("brotli/encode.h");
-});
+// brotli/decode.h and encode.h, translated by build.zig (addCImport).
+const c = @import("brotli_c");
 
 // The C API's free callback has no size. A 16-byte aligned prefix records the
 // exact allocation, so even native allocations use the caller's leak checker.

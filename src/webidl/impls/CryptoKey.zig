@@ -215,7 +215,7 @@ pub fn deserializationSteps(serialized: *runtime.DeserializationRecord, value: *
     if (has_exponent) algorithm.public_exponent = exponent;
     if (try readOptionalString(serialized)) |curve| algorithm.named_curve = std.meta.stringToEnum(keys.Curve, curve) orelse return error.DataCloneError;
     // Step 4.
-    var usages = keys.Usages.initEmpty();
+    var usages = keys.Usages.empty;
     const usage_count = try serialized.readUint32();
     for (0..usage_count) |_| usages.insert(try readName(serialized, keys.Usage));
     // Step 5: the material, copied into slots this key owns (Slots.init

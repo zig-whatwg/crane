@@ -30,6 +30,17 @@ const builtin = @import("builtin");
 const host = @import("host");
 const clock = @import("clock");
 
+/// `s` repeated `n` times: what `s ** n` was (Zig 0.17 removes `**`; roadmap zig-017).
+fn repeat(comptime s: []const u8, comptime n: usize) *const [s.len * n:0]u8 {
+    return comptime blk: {
+        @setEvalBranchQuota(10 * n + 1000);
+        var out: [s.len * n:0]u8 = undefined;
+        for (0..n) |i| @memcpy(out[i * s.len ..][0..s.len], s);
+        const final = out;
+        break :blk &final;
+    };
+}
+
 /// The last time the journal was seen to grow.
 ///
 /// `size` is the byte length rather than a record count so that observing it
@@ -498,7 +509,7 @@ test "the in-process deadline's default action ends the process with the timeout
 
 test "a label longer than the slot is truncated, not overflowed" {
     var w: SelfWatchdog = .{ .stall_limit_ms = 0 };
-    const long = "a/" ** 400;
+    const long = repeat("a/", 400);
     w.mark(3, long);
     try std.testing.expectEqual(@as(usize, 3), w.currentIndex());
     try std.testing.expectEqual(w.label_buf.len, w.currentLabel().len);

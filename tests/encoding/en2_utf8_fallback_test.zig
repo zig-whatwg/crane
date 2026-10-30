@@ -36,7 +36,7 @@ test "UTF-8 fallback preserves a scalar at the 256 UTF-16 unit boundary" {
         // exactly 255 ordinary UTF-16 units in the intermediate buffer.
         const input = try std.mem.concat(testing.allocator, u8, &.{ prefix, case.input[ascii.len..] });
         defer testing.allocator.free(input);
-        const expected = try std.mem.concat(testing.allocator, u8, &.{ "a" ** 255, case.expected[1..] });
+        const expected = try std.mem.concat(testing.allocator, u8, &.{ &@as([255:0]u8, @splat('a')), case.expected[1..] });
         defer testing.allocator.free(expected);
         const output = try testing.allocator.alloc(u8, 2048);
         defer testing.allocator.free(output);
@@ -105,12 +105,12 @@ test "UTF-8 decoder drains a supplementary scalar deferred by a one-unit output"
     for ([_][]const u8{ "", "B" }) |next| {
         var decoder = enc.UTF_8.newDecoder();
         var units: [260]u16 = undefined;
-        const input = "a" ** 255 ++ "💩";
+        const input = &@as([255:0]u8, @splat('a')) ++ "💩";
         const first = decoder.decode(input, units[0..256], false);
         try testing.expectEqual(.output_full, first.status);
         try testing.expectEqual(input.len, first.bytes_consumed);
         try testing.expectEqual(@as(usize, 255), first.code_units_written);
-        try testing.expectEqualSlices(u16, &([_]u16{'a'} ** 255), units[0..first.code_units_written]);
+        try testing.expectEqualSlices(u16, &(@as([255]u16, @splat('a'))), units[0..first.code_units_written]);
         const small = decoder.decode(next, units[0..1], true);
         try testing.expectEqual(.output_full, small.status);
         try testing.expectEqual(@as(usize, 0), small.bytes_consumed);

@@ -83,7 +83,7 @@ test "matchArchiveTypePattern - ZIP" {
 test "patternMatchingSIMD - long pattern" {
     const input = "0123456789ABCDEF_Hello_World_Test";
     const pattern = "0123456789ABCDEF";
-    const mask = &[_]u8{0xFF} ** 16;
+    const mask = &@as([16]u8, @splat(0xFF));
     const ignored = &[_]u8{};
 
     try std.testing.expect(mimesniff.patternMatchingSIMD(input, pattern, mask, ignored));

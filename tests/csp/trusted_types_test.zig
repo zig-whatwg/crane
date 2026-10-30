@@ -8,6 +8,17 @@
 const std = @import("std");
 const testing = std.testing;
 const csp = @import("csp");
+
+/// `s` repeated `n` times: what `s ** n` was (Zig 0.17 removes `**`; roadmap zig-017).
+fn repeat(comptime s: []const u8, comptime n: usize) *const [s.len * n:0]u8 {
+    return comptime blk: {
+        @setEvalBranchQuota(10 * n + 1000);
+        var out: [s.len * n:0]u8 = undefined;
+        for (0..n) |i| @memcpy(out[i * s.len ..][0..s.len], s);
+        const final = out;
+        break :blk &final;
+    };
+}
 const types = csp.types;
 const tt = csp.directives.trusted_types;
 const rtt = csp.directives.require_trusted_types;
@@ -229,9 +240,9 @@ test "a 40-character sample never splits a multi-byte character" {
     defer list.deinit();
     var recorder: Recorder = .{ .allocator = testing.allocator };
     defer recorder.deinit();
-    const source = "\u{e9}" ** 50;
+    const source = repeat("\u{e9}", 50);
     _ = try rtt.shouldSinkTypeMismatchViolationBeBlocked(testing.allocator, &list, "s", "'script'", source, recorder.reporter());
-    try testing.expectEqualStrings("s|" ++ "\u{e9}" ** 40, recorder.samples.items[0]);
+    try testing.expectEqualStrings("s|" ++ repeat("\u{e9}", 40), recorder.samples.items[0]);
 }
 
 test "no require-trusted-types-for for the group: allowed, nothing reported" {

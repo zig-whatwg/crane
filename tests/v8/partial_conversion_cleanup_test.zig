@@ -92,7 +92,7 @@ test "a dictionary that converts whole is the caller's to free" {
     defer ffi.v8_Value_Dispose(object);
     const converted = try v8.conversions.fromV8Value(Plain, testing.allocator, e.isolate, e.context, object);
     defer v8.interface_mod.freeConvertedArg(Plain, testing.allocator, converted);
-    try testing.expectEqualStrings("a" ** 64, converted.a.?.asSlice());
+    try testing.expectEqualStrings(&@as([64:0]u8, @splat('a')), converted.a.?.asSlice());
     try testing.expectEqual(@as(f64, 1.5), converted.b.?);
 }
 

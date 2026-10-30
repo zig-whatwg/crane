@@ -64,7 +64,7 @@ test "the length field is the file's length" {
 test "nothing follows the last block (OTS: \"trailing junk\")" {
     const original = try readWpt("fonts/pass.woff");
     defer testing.allocator.free(original);
-    const bytes = try std.mem.concat(testing.allocator, u8, &.{ original, &[_]u8{0} ** 4 });
+    const bytes = try std.mem.concat(testing.allocator, u8, &.{ original, &@as([4]u8, @splat(0)) });
     defer testing.allocator.free(bytes);
     set32(bytes, 8, @intCast(bytes.len));
     try testing.expectError(error.Corrupt, decode(bytes));

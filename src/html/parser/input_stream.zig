@@ -37,7 +37,7 @@ pub const CharClass = struct {
 /// Precomputed character class lookup table for ASCII (0-127).
 /// Each byte contains flags indicating which classes the character belongs to.
 pub const char_class_table: [128]u8 = blk: {
-    var table: [128]u8 = [_]u8{0} ** 128;
+    var table: [128]u8 = @as([128]u8, @splat(0));
 
     // Whitespace: tab (0x09), LF (0x0A), FF (0x0C), CR (0x0D), space (0x20)
     table[0x09] = CharClass.WHITESPACE | CharClass.HTML_WS; // tab

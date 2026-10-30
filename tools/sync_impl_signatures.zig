@@ -313,7 +313,7 @@ fn processFile(allocator: Allocator, io: std.Io, filename: []const u8, dry_run: 
     const stub_bytes = try stub_reader.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024));
     defer allocator.free(stub_bytes);
 
-    const stub_source = try allocator.dupeZ(u8, stub_bytes);
+    const stub_source = try allocator.dupeSentinel(u8, stub_bytes, 0);
     defer allocator.free(stub_source);
 
     // Check if impl file exists
@@ -326,7 +326,7 @@ fn processFile(allocator: Allocator, io: std.Io, filename: []const u8, dry_run: 
         const impl_bytes = try impl_reader.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024));
         defer allocator.free(impl_bytes);
 
-        const impl_source = try allocator.dupeZ(u8, impl_bytes);
+        const impl_source = try allocator.dupeSentinel(u8, impl_bytes, 0);
         defer allocator.free(impl_source);
 
         // Extract functions from both files

@@ -899,7 +899,7 @@ pub fn teardownsHeldInRealm(realm: runtime.Context) bool {
 pub fn resumeTeardowns(realm: runtime.Context) void {
     const holds = holdsOfRealm(realm) orelse return;
     if (holds.count == 0) {
-        if (builtin.mode == .Debug) log.err("resumeTeardowns with no deferTeardowns left to end: a walk released a hold it did not take", .{});
+        if (builtin.mode == std.builtin.OptimizeMode.Debug) log.err("resumeTeardowns with no deferTeardowns left to end: a walk released a hold it did not take", .{});
         return;
     }
     holds.count -= 1;
@@ -1314,7 +1314,7 @@ pub const WrapperCache = struct {
     /// A release of pending activity found no keep to end.
     fn unmatchedRelease(self: *Self, instance: *runtime.Instance) void {
         self.unmatched_releases += 1;
-        if (builtin.mode == .Debug) log.err("releasePlatformObject on {s} {*} with no keepPlatformObjectAlive left to end: an owner released what it did not keep", .{ instance.vtable.name, instance });
+        if (builtin.mode == std.builtin.OptimizeMode.Debug) log.err("releasePlatformObject on {s} {*} with no keepPlatformObjectAlive left to end: an owner released what it did not keep", .{ instance.vtable.name, instance });
     }
 
     /// The queue a collected node of this realm goes to: its agent's - the

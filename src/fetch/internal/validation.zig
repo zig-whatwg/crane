@@ -626,7 +626,7 @@ test "isCORSSafelistedRequestHeader: accept" {
     try std.testing.expect(isCORSSafelistedRequestHeader("Accept", "*/*"));
     try std.testing.expect(isCORSSafelistedRequestHeader("accept", "text/html"));
     try std.testing.expect(!isCORSSafelistedRequestHeader("Accept", "text/html\x00")); // NUL
-    try std.testing.expect(!isCORSSafelistedRequestHeader("Accept", "a" ** 129)); // too long
+    try std.testing.expect(!isCORSSafelistedRequestHeader("Accept", &@as([129:0]u8, @splat('a')))); // too long
 }
 
 test "isCORSSafelistedRequestHeader: accept-language" {
@@ -694,7 +694,7 @@ test "isForbiddenResponseHeaderName" {
 test "isNoCORSSafelistedRequestHeader" {
     try std.testing.expect(isNoCORSSafelistedRequestHeader("Accept", "text/html"));
     try std.testing.expect(isNoCORSSafelistedRequestHeader("Content-Type", "text/plain"));
-    try std.testing.expect(!isNoCORSSafelistedRequestHeader("Accept", "a" ** 129)); // too long
+    try std.testing.expect(!isNoCORSSafelistedRequestHeader("Accept", &@as([129:0]u8, @splat('a')))); // too long
     try std.testing.expect(!isNoCORSSafelistedRequestHeader("Authorization", "Bearer x"));
 }
 
@@ -761,9 +761,9 @@ test "getCORSUnsafeRequestHeaderNames: safelist size exceeded" {
     defer headers.deinit();
 
     // Add safelisted headers with large values (> 1024 total)
-    const large_value = "a" ** 600;
+    const large_value = &@as([600:0]u8, @splat('a'));
     try headers.append("Accept", large_value);
-    try headers.append("Content-Type", "text/plain; charset=" ++ "b" ** 500);
+    try headers.append("Content-Type", "text/plain; charset=" ++ &@as([500:0]u8, @splat('b')));
 
     const unsafe = try getCORSUnsafeRequestHeaderNames(allocator, &headers);
     defer {

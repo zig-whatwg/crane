@@ -196,12 +196,12 @@ test "JWK validates duplicate and missing operations, algorithm, use and ext" {
     try std.testing.expectError(error.DataError, validate(.{ .ext = false }, sign, true, "sig", "HS256"));
     try std.testing.expectError(error.DataError, validate(.{ .alg = "HS384" }, sign, true, "sig", "HS256"));
     try std.testing.expectError(error.DataError, validate(.{ .use = "enc" }, sign, true, "sig", "HS256"));
-    try validate(.{ .use = "anything", .ext = false }, keys.Usages.initEmpty(), false, "sig", null);
+    try validate(.{ .use = "anything", .ext = false }, keys.Usages.empty, false, "sig", null);
 }
 
 test "JWK export has canonical algorithm and normalized native usages" {
     const a = std.testing.allocator;
-    var key = try keys.Slots.init(a, .secret, true, .{ .id = .aes_gcm, .length = 128 }, try keys.usagesFromStrings(&.{ "decrypt", "encrypt", "encrypt" }), &([_]u8{0} ** 16));
+    var key = try keys.Slots.init(a, .secret, true, .{ .id = .aes_gcm, .length = 128 }, try keys.usagesFromStrings(&.{ "decrypt", "encrypt", "encrypt" }), &(@as([16]u8, @splat(0))));
     defer key.deinit();
     const json = try exportOctet(a, &key);
     defer a.free(json);

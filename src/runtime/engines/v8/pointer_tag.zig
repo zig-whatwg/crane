@@ -237,7 +237,7 @@ pub const TaggedPointer = struct {
 
     /// Debug assertion: panic if tag doesn't match expected
     pub fn assertTag(self: TaggedPointer, expected: Tag) void {
-        if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
+        if (builtin.mode == std.builtin.OptimizeMode.Debug or builtin.mode == std.builtin.OptimizeMode.ReleaseSafe) {
             if (self.getTag() != expected) {
                 std.debug.panic(
                     "TaggedPointer tag mismatch: expected {}, got {}",
@@ -249,7 +249,7 @@ pub const TaggedPointer = struct {
 
     /// Debug assertion: panic if pointer is tagged when untagged expected
     pub fn assertUntagged(self: TaggedPointer) void {
-        if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
+        if (builtin.mode == std.builtin.OptimizeMode.Debug or builtin.mode == std.builtin.OptimizeMode.ReleaseSafe) {
             if (self.isTagged()) {
                 std.debug.panic(
                     "Expected untagged pointer, got tag: {}",
@@ -401,7 +401,7 @@ pub const PointerTagError = error{
 /// }
 /// ```
 pub fn assertUntagged(ptr: *const anyopaque) void {
-    if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
+    if (builtin.mode == std.builtin.OptimizeMode.Debug or builtin.mode == std.builtin.OptimizeMode.ReleaseSafe) {
         if (isTagged(ptr)) {
             @panic("Tagged pointer passed to FFI boundary - call untagPointer() first");
         }
@@ -436,7 +436,7 @@ pub fn checkUntagged(ptr: *const anyopaque) PointerTagError!*anyopaque {
 /// This is useful for FFI boundaries where you want to catch bugs in development
 /// but also want automatic untagging in production for resilience.
 pub fn assertUntaggedOrUntag(ptr: *const anyopaque) *anyopaque {
-    if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
+    if (builtin.mode == std.builtin.OptimizeMode.Debug or builtin.mode == std.builtin.OptimizeMode.ReleaseSafe) {
         if (isTagged(ptr)) {
             @panic("Tagged pointer passed to FFI boundary - call untagPointer() first");
         }
@@ -456,7 +456,7 @@ pub fn assertUntaggedOrUntag(ptr: *const anyopaque) *anyopaque {
 ///
 /// Use this when you need to handle tagged pointers gracefully.
 pub fn checkUntaggedOrUntag(ptr: *const anyopaque) PointerTagError!*anyopaque {
-    if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
+    if (builtin.mode == std.builtin.OptimizeMode.Debug or builtin.mode == std.builtin.OptimizeMode.ReleaseSafe) {
         if (isTagged(ptr)) {
             return PointerTagError.TaggedPointerAtFFIBoundary;
         }
@@ -502,7 +502,7 @@ pub const DebugAssertions = struct {
     /// In debug/safe builds: panics with detailed message
     /// In release builds: compiles away completely
     pub fn assertNotTagged(ptr: *const anyopaque) void {
-        if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
+        if (builtin.mode == std.builtin.OptimizeMode.Debug or builtin.mode == std.builtin.OptimizeMode.ReleaseSafe) {
             const addr = @intFromPtr(ptr);
             if (addr & 0x3 != 0) {
                 std.debug.panic(
@@ -521,7 +521,7 @@ pub const DebugAssertions = struct {
     /// In debug/safe builds: panics with detailed message if wrong tag
     /// In release builds: compiles away completely
     pub fn assertTagged(ptr: *const anyopaque, expected: AnyopaqueTag) void {
-        if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
+        if (builtin.mode == std.builtin.OptimizeMode.Debug or builtin.mode == std.builtin.OptimizeMode.ReleaseSafe) {
             const actual = getTag(ptr);
             if (actual != expected) {
                 std.debug.panic(
@@ -540,7 +540,7 @@ pub const DebugAssertions = struct {
     /// In debug/safe builds: panics with detailed message
     /// In release builds: compiles away completely
     pub fn assertV8ReturnedAligned(addr: usize) void {
-        if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
+        if (builtin.mode == std.builtin.OptimizeMode.Debug or builtin.mode == std.builtin.OptimizeMode.ReleaseSafe) {
             if (addr & 0x3 != 0) {
                 std.debug.panic(
                     "V8 returned misaligned pointer: 0x{x} (low bits: 0b{b:0>2})",

@@ -962,7 +962,7 @@ fn scan(
 
 /// Totals per kind and per class.
 fn printTotals(out: *std.Io.Writer, arena: std.mem.Allocator, current: *const Counts, baseline: ?*const Baseline) !void {
-    var per_kind = [_]u32{0} ** std.meta.fields(Kind).len;
+    var per_kind = @as([std.meta.fields(Kind).len]u32, @splat(0));
     var per_class: std.StringArrayHashMapUnmanaged(u32) = .empty;
     var it = current.iterator();
     while (it.next()) |entry| {

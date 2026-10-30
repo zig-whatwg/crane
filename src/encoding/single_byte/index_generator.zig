@@ -25,7 +25,7 @@ pub const Index = struct {
 /// Returns an Index with 128 entries (pointers 0-127 → code points).
 /// Unmapped pointers are set to 0xFFFF.
 pub fn parseIndex(comptime content: []const u8) Index {
-    var index = Index{ .map = [_]u21{0xFFFF} ** 128 };
+    var index = Index{ .map = @as([128]u21, @splat(0xFFFF)) };
 
     var line_iter = std.mem.splitScalar(u8, content, '\n');
     while (line_iter.next()) |line| {

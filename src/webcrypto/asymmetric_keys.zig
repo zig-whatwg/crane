@@ -27,7 +27,7 @@ fn isRsa(id: Id) bool {
 fn allowed(id: Id, kind: keys.Kind) !keys.Usages {
     return switch (id) {
         .ecdsa, .ed25519, .rsa_pkcs1, .rsa_pss => if (kind == .private) keys.Usages.initOne(.sign) else keys.Usages.initOne(.verify),
-        .ecdh, .x25519 => if (kind == .private) keys.Usages.initMany(&.{ .deriveKey, .deriveBits }) else keys.Usages.initEmpty(),
+        .ecdh, .x25519 => if (kind == .private) keys.Usages.initMany(&.{ .deriveKey, .deriveBits }) else keys.Usages.empty,
         .rsa_oaep => if (kind == .private) keys.Usages.initMany(&.{ .decrypt, .unwrapKey }) else keys.Usages.initMany(&.{ .encrypt, .wrapKey }),
         else => error.NotSupportedError,
     };
@@ -39,7 +39,7 @@ fn checkUsages(usages: keys.Usages, permitted: keys.Usages) !void {
 }
 
 fn intersection(left: keys.Usages, right: keys.Usages) keys.Usages {
-    var result = keys.Usages.initEmpty();
+    var result = keys.Usages.empty;
     var iterator = left.iterator();
     while (iterator.next()) |usage| if (right.contains(usage)) {
         result.insert(usage);
@@ -402,8 +402,8 @@ test "OKP DER rejects parameters, trailing data, wrong versions and malformed pr
     const private = hex("302e020100300506032b656e0422042077076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a");
     const algorithm: keys.Algorithm = .{ .id = .x25519 };
     const uses = keys.Usages.initOne(.deriveBits);
-    try std.testing.expectError(error.DataError, importKey(a, .spki, algorithm, &with_null, null, true, keys.Usages.initEmpty()));
-    try std.testing.expectError(error.DataError, importKey(a, .spki, algorithm, &(public ++ [_]u8{0}), null, true, keys.Usages.initEmpty()));
+    try std.testing.expectError(error.DataError, importKey(a, .spki, algorithm, &with_null, null, true, keys.Usages.empty));
+    try std.testing.expectError(error.DataError, importKey(a, .spki, algorithm, &(public ++ [_]u8{0}), null, true, keys.Usages.empty));
     var wrong_version = private;
     wrong_version[4] = 1;
     try std.testing.expectError(error.DataError, importKey(a, .pkcs8, algorithm, &wrong_version, null, true, uses));
@@ -453,7 +453,7 @@ test "asymmetric imports validate usages and reject inconsistent JWK private/pub
     try std.testing.expectError(error.DataError, importKey(a, .jwk, .{ .id = .ed25519 }, "", data, true, keys.Usages.initOne(.sign)));
     // Raw OKP public keys are length-checked here; point validation is deferred
     // until verification/agreement by §§25.3.4/26.3.3's raw import steps.
-    var public = try importKey(a, .raw, .{ .id = .ed25519 }, &([_]u8{0} ** 32), null, true, keys.Usages.initOne(.verify));
+    var public = try importKey(a, .raw, .{ .id = .ed25519 }, &(@as([32]u8, @splat(0))), null, true, keys.Usages.initOne(.verify));
     defer public.deinit();
     try std.testing.expectEqual(keys.Kind.public, public.kind);
 }

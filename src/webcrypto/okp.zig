@@ -74,10 +74,10 @@ test "Ed25519 matches RFC 8032 section 7.1 test 1" {
 }
 
 test "Ed25519 rejects small-order points and noncanonical signatures" {
-    const identity = [_]u8{1} ++ [_]u8{0} ** 31;
-    const identity_signature = identity ++ [_]u8{0} ** 32;
+    const identity = [_]u8{1} ++ @as([31]u8, @splat(0));
+    const identity_signature = identity ++ @as([32]u8, @splat(0));
     try std.testing.expect(!try verify(&identity, &identity_signature, ""));
-    const order_four = [_]u8{0} ** 32;
+    const order_four = @as([32]u8, @splat(0));
     try std.testing.expect(!try verify(&order_four, &identity_signature, ""));
     const public = hex("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a");
     var signature = hex("e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b");
@@ -102,10 +102,10 @@ test "X25519 matches RFC 7748 section 6.1 including bit truncation" {
     try std.testing.expectEqual(@as(usize, 0), empty.len);
     try std.testing.expectError(error.OperationError, derive(std.testing.allocator, &secret, &peer, 257));
     // WebCrypto §26.3.1 step 8 rejects all-zero agreement before truncation.
-    try std.testing.expectError(error.OperationError, derive(std.testing.allocator, &secret, &([_]u8{0} ** 32), 0));
+    try std.testing.expectError(error.OperationError, derive(std.testing.allocator, &secret, &(@as([32]u8, @splat(0))), 0));
 }
 
 test "OKP operations reject malformed native key lengths" {
     try std.testing.expectError(error.DataError, publicKey(.ed25519, ""));
-    try std.testing.expectError(error.DataError, publicKey(.x25519, &([_]u8{1} ** 33)));
+    try std.testing.expectError(error.DataError, publicKey(.x25519, &(@as([33]u8, @splat(1)))));
 }
