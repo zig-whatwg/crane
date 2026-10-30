@@ -78,6 +78,16 @@ pub const Registry = struct {
     /// Retire dead links once the list doubles since the last pass.
     retire_at: usize = 64,
     documents: std.ArrayListUnmanaged(DocumentEntry) = .empty,
+    /// Moves on every change that can move an effect value (any animation's
+    /// timing, state, effect, target or keyframes, and each update of a
+    /// document that has animations): the style key component of every
+    /// element an effect targets (effect_stack.component). Never 0.
+    values_revision: u64 = 1,
+    /// The effects per target for `values_revision` (effect_stack.zig).
+    targets: @import("effect_stack.zig").TargetIndex = .{},
+    /// commitStyles' partial effect stack, armed for one style read
+    /// (effect_stack.Commit; root.commitStyles). Borrowed.
+    commit: ?*@import("effect_stack.zig").Commit = null,
 
     pub fn init(allocator: Allocator) Registry {
         return .{ .allocator = allocator };
@@ -91,6 +101,7 @@ pub const Registry = struct {
         for (self.documents.items) |*entry| entry.events.deinit(self.allocator);
         self.documents.deinit(self.allocator);
         self.animations.deinit(self.allocator);
+        self.targets.deinit(self.allocator);
         self.* = .{ .allocator = self.allocator };
     }
 
@@ -110,6 +121,8 @@ pub const Registry = struct {
             }
         }
         self.animations.clearAndFree(self.allocator);
+        self.targets.deinit(self.allocator);
+        self.values_revision +%= 1;
     }
 
     /// `realm`'s window goes (its document destroyed): its documents' queued
@@ -176,6 +189,14 @@ pub const Registry = struct {
 /// runs (a unit test's).
 pub fn of(realm: runtime.Context) ?*Registry {
     return update_the_rendering.animationRegistry(realm);
+}
+
+/// Something that can move an effect value changed: every targeted
+/// element's style key moves (and only theirs).
+pub fn valuesChanged(realm: runtime.Context) void {
+    const registry = of(realm) orelse return;
+    registry.values_revision +%= 1;
+    if (registry.values_revision == 0) registry.values_revision = 1;
 }
 
 /// A new animation joins the global animation list (4.5).

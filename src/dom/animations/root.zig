@@ -12,12 +12,16 @@ const std = @import("std");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
+const webidl = @import("webidl");
+const css = @import("css");
 
 pub const timing = @import("timing.zig");
 pub const easing = @import("easing.zig");
 pub const model = @import("model.zig");
 pub const registry = @import("registry.zig");
 pub const keyframes = @import("keyframes.zig");
+pub const effect_values = @import("effect_values.zig");
+pub const effect_stack = @import("effect_stack.zig");
 pub const options = @import("options.zig");
 pub const hooks = @import("hooks.zig");
 pub const promise = @import("promise.zig");
@@ -194,4 +198,64 @@ test {
     _ = easing;
     _ = keyframes;
     _ = options;
+}
+
+// ============================================================================
+// commitStyles (6.4)
+// ============================================================================
+
+const html_namespace = "http://www.w3.org/1999/xhtml";
+const svg_namespace = "http://www.w3.org/2000/svg";
+const mathml_namespace = "http://www.w3.org/1998/Math/MathML";
+
+/// "Commit computed styles" (6.4) for `animation`: its effect values,
+/// evaluated over the partial effect stack with the endpoint-inclusive
+/// active interval, written into its target's style attribute through
+/// CSSStyleDeclaration's setProperty (CSSOM "set a CSS declaration" and
+/// "update style attribute for", with CEReactions as script sees them).
+pub fn commitStyles(animation: *model.Animation) !void {
+    // 1. The targets: Crane's effects are keyframe effects with one target.
+    const effect = animation.effectModel() orelse return;
+    const target = effect.targetElement() orelse return;
+    // 2.1. A pseudo-element, or an element with no style attribute.
+    if (effect.pseudo != null) return error.NoModificationAllowedError;
+    var namespace = (interfaces.Element.get_namespaceURI(target) catch null) orelse return error.NoModificationAllowedError;
+    const kind: enum { html, svg, mathml, other } = blk: {
+        defer namespace.deinit(target.ctx.allocator);
+        const ns = namespace.asSlice();
+        if (std.mem.eql(u8, ns, html_namespace)) break :blk .html;
+        if (std.mem.eql(u8, ns, svg_namespace)) break :blk .svg;
+        if (std.mem.eql(u8, ns, mathml_namespace)) break :blk .mathml;
+        break :blk .other;
+    };
+    if (kind == .other) return error.NoModificationAllowedError;
+    // 2.2. "If, after applying any pending style changes, target is not being
+    // rendered": a display:contents element counts as rendered here (the
+    // spec's note).
+    const style_engine = @import("../style/root.zig").engine;
+    if (!try style_engine.isBeingRenderedOrDelegating(target)) return error.InvalidStateError;
+    // 4-5.4. The partial stack's effect values for the targeted properties.
+    const loop_registry = registry.of(target.ctx) orelse return;
+    var commit: effect_stack.Commit = .{ .allocator = target.ctx.allocator, .animation = animation, .target = target };
+    defer commit.deinit();
+    loop_registry.commit = &commit;
+    registry.valuesChanged(target.ctx);
+    const read = style_engine.computedStyle(target, null);
+    loop_registry.commit = null;
+    registry.valuesChanged(target.ctx);
+    _ = try read;
+    if (commit.values.count() == 0) return;
+    // 3, 5.5-5.6.
+    const declaration = switch (kind) {
+        .html => try interfaces.HTMLElement.get_style(target),
+        .svg => try interfaces.SVGElement.get_style(target),
+        .mathml, .other => try interfaces.MathMLElement.get_style(target),
+    };
+    var text: std.ArrayList(u8) = .empty;
+    defer text.deinit(target.ctx.allocator);
+    for (commit.values.keys(), commit.values.values()) |l, v| {
+        text.clearRetainingCapacity();
+        try css.properties.serializeValue(l, v, &text, target.ctx.allocator);
+        try interfaces.CSSStyleDeclaration.call_setProperty(declaration, runtime.DOMString.initInterned(l.name()), runtime.DOMString.initInterned(text.items), webidl.Opt(runtime.DOMString).notPassed());
+    }
 }
