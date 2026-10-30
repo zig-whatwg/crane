@@ -150,6 +150,19 @@ fn effectsOf(element: *runtime.Instance) ?[]const model.Link {
     return list.items;
 }
 
+/// A serial for a style the engine just resolved for `element`
+/// (element_style.Cached.serial): its children compare it with the one they
+/// were resolved under, so an animated parent resolved alone makes them
+/// resolve again. Unique per event loop; 0 where no loop runs (a unit
+/// test's), which keeps the serial check inert there. Kept on the Registry
+/// so the StyleEngine embedded in Document's state does not grow.
+pub fn nextStyleSerial(element: *runtime.Instance) u64 {
+    const registry = registry_mod.of(element.ctx) orelse return 0;
+    registry.style_serial +%= 1;
+    if (registry.style_serial == 0) registry.style_serial = 1;
+    return registry.style_serial;
+}
+
 /// The style-key component of (element, pseudo): 0 when no effect applies
 /// to it, else the values revision (which moves on every change that can
 /// move an effect value).

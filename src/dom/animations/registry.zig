@@ -83,6 +83,8 @@ pub const Registry = struct {
     /// document that has animations): the style key component of every
     /// element an effect targets (effect_stack.component). Never 0.
     values_revision: u64 = 1,
+    /// The last serial a resolved style took (effect_stack.nextStyleSerial).
+    style_serial: u64 = 0,
     /// The effects per target for `values_revision` (effect_stack.zig).
     targets: @import("effect_stack.zig").TargetIndex = .{},
     /// commitStyles' partial effect stack, armed for one style read

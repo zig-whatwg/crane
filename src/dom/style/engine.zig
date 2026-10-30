@@ -62,6 +62,10 @@ const sheet_mod = @import("sheet.zig");
 const style_rules = @import("rules.zig");
 const ua_sheet = @import("ua_sheet.zig");
 const element_style = @import("element_style.zig");
+// H-R3-ENGINE-KEY / H-R3-ENGINE-RESOLVE (lane rendering3): Web Animations.
+const animations = struct {
+    const effect_stack = @import("../animations/effect_stack.zig");
+};
 const environment_variables = @import("environment_variables.zig");
 pub const resource_loading = @import("resource_loading.zig");
 const font_hints = @import("font_hints.zig");
@@ -1048,20 +1052,24 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
     // From the root down: reuse each valid cache, resolve the rest.
     var parent_style: ?*const ComputedStyle = null;
     var parent_volatile = false;
+    var parent_serial: u64 = 0;
     var i = lineage.items.len;
     while (i > 0) {
         i -= 1;
         const entry = lineage.items[i];
         const e = instanceOf(entry.node) orelse return null;
         const state = element_style.of(e) orelse return null;
+        // H-R3-ENGINE-KEY: the element's own animation component, and its
+        // parent's style serial (an animated parent resolves alone).
+        const animated = animations.effect_stack.component(e, null);
         const must_resolve = parent_volatile or blk: {
             const cached = state.cached orelse break :blk true;
-            break :blk cached.@"volatile" or !cached.key.eql(res.key);
+            break :blk cached.@"volatile" or !cached.key.eql(res.key) or cached.animations != animated or cached.parent_serial != parent_serial;
         };
         if (must_resolve) {
             var reads: selector_matching.StateReads = .{};
             const style = try resolveOne(&res, e, entry.node, state, null, parent_style, i == lineage.items.len - 1, &reads);
-            state.setCached(.{ .style = style, .key = res.key, .@"volatile" = reads.@"volatile" or parent_volatile });
+            state.setCached(.{ .style = style, .key = res.key, .@"volatile" = reads.@"volatile" or parent_volatile, .animations = animated, .serial = animations.effect_stack.nextStyleSerial(e), .parent_serial = parent_serial });
         }
         const cached = state.cached.?;
         if (i == lineage.items.len - 1) {
@@ -1080,6 +1088,7 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
         }
         parent_style = cached.style;
         parent_volatile = cached.@"volatile";
+        parent_serial = cached.serial;
     }
     const state = element_style.existingOf(element) orelse return null;
     const own = state.cached orelse return null;
@@ -1087,12 +1096,14 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
     if (!hasPseudoElement(element, p)) return null;
 
     // A pseudo-element's style inherits from its originating element's.
+    // H-R3-ENGINE-KEY.
+    const pseudo_animated = animations.effect_stack.component(element, p);
     if (state.pseudoCached(p)) |cached| {
-        if (!cached.cached.@"volatile" and !own.@"volatile" and cached.cached.key.eql(res.key)) return cached.cached.style;
+        if (!cached.cached.@"volatile" and !own.@"volatile" and cached.cached.key.eql(res.key) and cached.cached.animations == pseudo_animated and cached.cached.parent_serial == own.serial) return cached.cached.style;
     }
     var reads: selector_matching.StateReads = .{};
     const style = try resolveOne(&res, element, node, state, p, own.style, false, &reads);
-    try state.setPseudoCached(p, .{ .style = style, .key = res.key, .@"volatile" = reads.@"volatile" or own.@"volatile" });
+    try state.setPseudoCached(p, .{ .style = style, .key = res.key, .@"volatile" = reads.@"volatile" or own.@"volatile", .animations = pseudo_animated, .serial = animations.effect_stack.nextStyleSerial(element), .parent_serial = own.serial });
     return state.pseudoCached(p).?.cached.style;
 }
 
@@ -1176,7 +1187,7 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
     };
     var container_context: ContainerContext = .{ .node = node, .inclusive = pseudo != null };
     var container_note: css.math_values.UnavailableNote = .{};
-    return css.cascade.cascade(.{
+    const ctx: css.cascade.Context = .{
         .allocator = element.ctx.allocator,
         .parent = parent,
         .environment = .{ .context = res.document, .lookup = environment_variables.lookup },
@@ -1203,7 +1214,12 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
         .selector_check = &style_rules.selectorSupported,
         // Properties and Values API 1: the registrations; null when none.
         .registered = res.registered,
-    }, res.matched.items);
+    };
+    // H-R3-ENGINE-RESOLVE.
+    if (animations.effect_stack.component(element, pseudo) != 0) {
+        if (try resolveAnimated(res, element, pseudo, ctx)) |style| return style;
+    }
+    return css.cascade.cascade(ctx, res.matched.items);
 }
 
 /// Conditional 5 §7: borrowed for one resolution. Ordinary units never
@@ -1246,6 +1262,50 @@ fn containerEligibility(raw: *anyopaque, axis: css.math_values.Context.Container
     }
     return if (eligible) .eligible_geometry_unavailable else .no_eligible_container;
 }
+
+/// H-R3-ENGINE-RESOLVE. Web Animations 1 5.4.5 "applying the composited
+/// result": the base style
+/// (the cascade without animations), the effect stack over it, and the
+/// cascade again with the composited values at the animation origin (Cascade
+/// 5 6.2) - Blink's StyleCascade::ApplyAnimations after the declared
+/// cascade, WebKit's base style then setAnimatedPropertiesInStyle. Null when
+/// no effect applies after all (the caller cascades as usual).
+fn resolveAnimated(res: *Resolution, element: *runtime.Instance, pseudo: ?[]const u8, ctx: css.cascade.Context) Error!?*ComputedStyle {
+    const base = try css.cascade.cascade(ctx, res.matched.items);
+    var base_kept = false;
+    defer if (!base_kept) base.destroy();
+    var above: AboveCascade = .{ .ctx = ctx, .matched = res.matched.items };
+    var block = (try animations.effect_stack.animatedBlock(res.allocator, element, pseudo, base, .{ .context = &above, .cascadeAbove = AboveCascade.run })) orelse {
+        base_kept = true;
+        return base;
+    };
+    defer block.deinit();
+    try res.matched.append(res.allocator, .{ .block = &block, .source = .{ .origin = .animation } });
+    defer _ = res.matched.pop();
+    return try css.cascade.cascade(ctx, res.matched.items);
+}
+
+/// The element's cascade with one more block above every origin (5.3.2
+/// "compute a property value" for a keyframe's declarations).
+const AboveCascade = struct {
+    ctx: css.cascade.Context,
+    matched: []const Matched,
+
+    fn run(context: *anyopaque, under: ?*const css.declarations.DeclarationBlock, block: *const css.declarations.DeclarationBlock) Error!*ComputedStyle {
+        const self: *AboveCascade = @ptrCast(@alignCast(context));
+        const allocator = self.ctx.allocator;
+        const extended = try allocator.alloc(Matched, self.matched.len + 2);
+        defer allocator.free(extended);
+        @memcpy(extended[0..self.matched.len], self.matched);
+        var len = self.matched.len;
+        if (under) |u| {
+            extended[len] = .{ .block = u, .source = .{ .origin = .animation } };
+            len += 1;
+        }
+        extended[len] = .{ .block = block, .source = .{ .origin = .transition } };
+        return css.cascade.cascade(self.ctx, extended[0 .. len + 1]);
+    }
+};
 
 /// A url() substituted into a value, parsed against `base` (the consuming
 /// declaration's base URL); null when it does not parse (it stays as
