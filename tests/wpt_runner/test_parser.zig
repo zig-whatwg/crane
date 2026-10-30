@@ -39,6 +39,17 @@ const host = @import("host");
 const xml = @import("xml");
 const xml_document_encoding = @import("xml_document_encoding");
 
+/// `s` repeated `n` times: what `s ** n` was (Zig 0.17 removes `**`; roadmap zig-017).
+fn repeat(comptime s: []const u8, comptime n: usize) *const [s.len * n:0]u8 {
+    return comptime blk: {
+        @setEvalBranchQuota(10 * n + 1000);
+        var out: [s.len * n:0]u8 = undefined;
+        for (0..n) |i| @memcpy(out[i * s.len ..][0..s.len], s);
+        const final = out;
+        break :blk &final;
+    };
+}
+
 /// Error types for test parsing
 pub const ParseError = error{
     UnsupportedTestFormat,
@@ -891,7 +902,7 @@ test "malformed encoded XML discards metadata even after a complete meta element
 test "XML metadata preserves multibyte text across decoder output buffers" {
     const allocator = std.testing.allocator;
     const text = "<?xml version='1.0' encoding='UTF-16'?><r xmlns='http://www.w3.org/1999/xhtml'>" ++
-        "<x>é😀</x>" ** 1200 ++ "<meta name='variant' content='?é😀'/></r>";
+        repeat("<x>é😀</x>", 1200) ++ "<meta name='variant' content='?é😀'/></r>";
     const units = try std.unicode.utf8ToUtf16LeAlloc(allocator, text);
     defer allocator.free(units);
     var metadata = try parseXmlMetadata(allocator, std.mem.sliceAsBytes(units));

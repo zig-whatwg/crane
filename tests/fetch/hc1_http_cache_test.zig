@@ -291,7 +291,7 @@ test "hc1 cache: one cache shared by two threads stays consistent" {
             var i: usize = 0;
             while (i < 2000) : (i += 1) {
                 const url = std.fmt.bufPrint(&buf, "http://a.test/{d}", .{i % 97}) catch unreachable;
-                const e = entry(a, "p", url, &[_]u8{tag} ** 200) catch continue;
+                const e = entry(a, "p", url, &@as([200]u8, @splat(tag))) catch continue;
                 s.publish(e);
                 if (s.lookup("p", url)) |found| {
                     std.debug.assert(found.body.bytes.len == 200);

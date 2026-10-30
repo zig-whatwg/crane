@@ -1,6 +1,17 @@
 //! URL host parsing applies UTS #46 validity after mapping and normalization.
 const std = @import("std");
 const url = @import("url");
+
+/// `s` repeated `n` times: what `s ** n` was (Zig 0.17 removes `**`; roadmap zig-017).
+fn repeat(comptime s: []const u8, comptime n: usize) *const [s.len * n:0]u8 {
+    return comptime blk: {
+        @setEvalBranchQuota(10 * n + 1000);
+        var out: [s.len * n:0]u8 = undefined;
+        for (0..n) |i| @memcpy(out[i * s.len ..][0..s.len], s);
+        const final = out;
+        break :blk &final;
+    };
+}
 const idna = url.idna;
 
 fn ascii(input: []const u8, expected: []const u8, strict: bool) !void {
@@ -65,9 +76,9 @@ test "IDNA DNS length and hyphen checks are only strict" {
     try invalid("éa--b", true); // Third and fourth characters, not UTF-8 bytes.
     try ascii("é--a", "xn----a-9la", true);
     try invalid(&@as([64:0]u8, @splat('a')), true);
-    try invalid(("a" ** 63 ++ ".") ** 3 ++ &@as([62:0]u8, @splat('a')), true);
+    try invalid(repeat(repeat("a", 63) ++ ".", 3) ++ &@as([62:0]u8, @splat('a')), true);
     try ascii(&@as([64:0]u8, @splat('a')), &@as([64:0]u8, @splat('a')), false);
-    const maximum = ("a" ** 63 ++ ".") ** 3 ++ &@as([61:0]u8, @splat('a'));
+    const maximum = repeat(repeat("a", 63) ++ ".", 3) ++ &@as([61:0]u8, @splat('a'));
     try ascii(maximum, maximum, true);
     try ascii(maximum ++ ".", maximum ++ ".", true);
 }

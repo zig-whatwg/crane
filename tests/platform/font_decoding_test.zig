@@ -147,7 +147,7 @@ test "a single font: its own name matches, another falls back to it" {
 
 test "not a font format: UnsupportedFormat" {
     // css-font-loading/fontface-invalid-arraybuffer.html: eight zero bytes.
-    try testing.expectError(error.UnsupportedFormat, decode(&[_]u8{0} ** 8, ""));
+    try testing.expectError(error.UnsupportedFormat, decode(&@as([8]u8, @splat(0)), ""));
     try testing.expectError(error.UnsupportedFormat, decode("", ""));
     try testing.expectError(error.UnsupportedFormat, decode("<svg xmlns=\"http://www.w3.org/2000/svg\"/>", ""));
     // An EOT header (its magic 0x504C at offset 34) is not an sfnt.
