@@ -970,6 +970,7 @@ A lane brief now carries the lessons chosen for its batch.
 ### Workflow
 - [A worklist change is a code change - run the tests before committing it](workflow-a-worklist-change-is-a-code-change.md) - **A worklist change is a code change: the runner pins the worklist's directories in a test, so regenerate, add the directory to config.zig, and run that test before pushing.**
 
+- [A sweep chunk names its result stream by its runner count](workflow-a-sweep-chunk-names-its-stream-by-its-runner-count.md) - Before trusting a name-level A/B, check that each side's stream has as many records as its journal - a missing chunk looks exactly like a mass regression, or, worse, hides one.
 - [Detached Builds Need an Explicit Environment](workflow-detached-builds-need-an-explicit-environment.md) - Verify the executable and cache inside the detached build; the launcher's environment is not proof of the child's.
 - [Anchor a Tmux Job to Its Own Working Directory](workflow-anchor-tmux-job-cwd.md) - Verify the working directory inside the detached job, and retain evidence from before its first gate starts.
 - [A lane inside a long command cannot see a closing notice](workflow-a-lane-inside-a-long-command-cannot-see-a-closing-notice.md) - A lane cannot react to a notice it has not read: give every lane a watcher that sets STOP the moment a CLOSING NOTICE appears, and make its stop kill the remote job too.
