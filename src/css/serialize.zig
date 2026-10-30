@@ -13,7 +13,13 @@ const std = @import("std");
 pub fn serializeIdentifier(allocator: std.mem.Allocator, ident: []const u8) std.mem.Allocator.Error![]u8 {
     var out: std.ArrayList(u8) = .empty;
     errdefer out.deinit(allocator);
+    try appendIdentifier(&out, allocator, ident);
+    return out.toOwnedSlice(allocator);
+}
 
+/// Append CSSOM §2.1's serialized identifier to caller-owned output.
+/// Character positions are relative to `ident`, independent of `out`'s prefix.
+pub fn appendIdentifier(out: *std.ArrayList(u8), allocator: std.mem.Allocator, ident: []const u8) std.mem.Allocator.Error!void {
     // The code points, for the "first" and "second character" tests.
     var first: ?u21 = null;
     var index: usize = 0;
@@ -33,21 +39,21 @@ pub fn serializeIdentifier(allocator: std.mem.Allocator, ident: []const u8) std.
         if (c == 0) {
             // "If the character is NULL (U+0000), then the REPLACEMENT
             // CHARACTER (U+FFFD)."
-            try appendCodePoint(allocator, &out, 0xFFFD);
+            try appendCodePoint(allocator, out, 0xFFFD);
         } else if ((c >= 0x01 and c <= 0x1F) or c == 0x7F) {
             // "If the character is in the range [\1-\1f] (U+0001 to U+001F)
             // or is U+007F, then the character escaped as code point."
-            try escapeAsCodePoint(allocator, &out, c);
+            try escapeAsCodePoint(allocator, out, c);
         } else if (index == 0 and isDigit(c)) {
             // "If the character is the first character and is in the range
             // [0-9] (U+0030 to U+0039), then the character escaped as code
             // point."
-            try escapeAsCodePoint(allocator, &out, c);
+            try escapeAsCodePoint(allocator, out, c);
         } else if (index == 1 and isDigit(c) and first.? == '-') {
             // "If the character is the second character and is in the range
             // [0-9] (U+0030 to U+0039) and the first character is a "-"
             // (U+002D), then the character escaped as code point."
-            try escapeAsCodePoint(allocator, &out, c);
+            try escapeAsCodePoint(allocator, out, c);
         } else if (index == 0 and c == '-' and count == 1) {
             // "If the character is the first character and is a "-"
             // (U+002D), and there is no second character, then the escaped
@@ -58,14 +64,13 @@ pub fn serializeIdentifier(allocator: std.mem.Allocator, ident: []const u8) std.
             // is greater than or equal to U+0080, is "-" (U+002D) or "_"
             // (U+005F), or is in one of the ranges [0-9], [A-Z] or [a-z],
             // then the character itself."
-            try appendCodePoint(allocator, &out, c);
+            try appendCodePoint(allocator, out, c);
         } else {
             // "Otherwise, the escaped character."
             try out.append(allocator, '\\');
-            try appendCodePoint(allocator, &out, c);
+            try appendCodePoint(allocator, out, c);
         }
     }
-    return out.toOwnedSlice(allocator);
 }
 
 fn isDigit(c: u21) bool {

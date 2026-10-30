@@ -648,7 +648,7 @@ pub const DeclarationBlock = struct {
             if (done[index]) continue;
             switch (e.*) {
                 .unparsed => |u| {
-                    try appendDeclaration(out, allocator, &first, u.name, u.value, u.important);
+                    try appendDeclaration(.raw, out, allocator, &first, u.name, u.value, u.important);
                     done[index] = true;
                 },
                 .custom => |c| {
@@ -659,9 +659,7 @@ pub const DeclarationBlock = struct {
                     // Variables1 §4.1 preserves name code points, including case.
                     // variable-names.html requires cssText to round-trip escaped
                     // names; indexed/name getters keep the decoded name unchanged.
-                    const name = try @import("serialize.zig").serializeIdentifier(allocator, c.name.bytes);
-                    defer allocator.free(name);
-                    try appendDeclaration(out, allocator, &first, name, value.items, c.important);
+                    try appendDeclaration(.identifier, out, allocator, &first, c.name.bytes, value.items, c.important);
                     done[index] = true;
                 },
                 .typed => |d| {
@@ -688,7 +686,7 @@ pub const DeclarationBlock = struct {
                     var value: std.ArrayList(u8) = .empty;
                     defer value.deinit(allocator);
                     try properties.serializeAssigned(d.longhand, d.value, &value, allocator);
-                    try appendDeclaration(out, allocator, &first, d.longhand.name(), value.items, d.important);
+                    try appendDeclaration(.raw, out, allocator, &first, d.longhand.name(), value.items, d.important);
                     done[index] = true;
                 },
             }
@@ -716,7 +714,7 @@ pub const DeclarationBlock = struct {
         defer value.deinit(self.allocator);
         if (!try properties.serializeShorthand(s, vs[0..ls.len], .specified, &value, self.allocator)) return false;
         if (value.items.len == 0) return false;
-        try appendDeclaration(out, self.allocator, first, s.name(), value.items, important.?);
+        try appendDeclaration(.raw, out, self.allocator, first, s.name(), value.items, important.?);
         for (indices[0..ls.len]) |i| done[i] = true;
         return true;
     }
@@ -766,12 +764,16 @@ pub const DeclarationBlock = struct {
     };
 };
 
-fn appendDeclaration(out: *std.ArrayList(u8), allocator: Allocator, first: *bool, name: []const u8, value: []const u8, important: bool) Allocator.Error!void {
+fn appendDeclaration(comptime name_encoding: enum { raw, identifier }, out: *std.ArrayList(u8), allocator: Allocator, first: *bool, name: []const u8, value: []const u8, important: bool) Allocator.Error!void {
     // "serialize a CSS declaration": "property: value[ !important];",
     // joined by a space.
     if (!first.*) try out.append(allocator, ' ');
     first.* = false;
-    try out.appendSlice(allocator, name);
+    if (name_encoding == .identifier) {
+        try @import("serialize.zig").appendIdentifier(out, allocator, name);
+    } else {
+        try out.appendSlice(allocator, name);
+    }
     try out.appendSlice(allocator, ": ");
     // CSSOM "serialize a CSS declaration", step 4: omit whitespace-only values.
     if (std.mem.trim(u8, value, " \t\n\r\x0c").len != 0) try out.appendSlice(allocator, value);
