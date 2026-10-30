@@ -5,10 +5,11 @@
 //!
 //! Crane lays nothing out, so the scrolling itself is the host's; what the
 //! page can observe is the document's target element (`:target`), which this
-//! sets. The steps after it - the ancestor revealing algorithm, scrolling the
-//! target into view, the focusing steps and the sequential focus navigation
-//! starting point - are TODO(fragment): the focusing steps change
-//! document.activeElement and are not run yet.
+//! sets. Ancestor revealing runs through the DOM hook to open closed details;
+//! its hidden-until-found pairs (steps 3.1 and 4.2) are TODO. Scrolling
+//! the target into view is host geometry; the focusing steps and sequential
+//! focus navigation starting point remain TODO(fragment): the focusing steps
+//! change document.activeElement and are not run yet.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -35,7 +36,11 @@ pub fn scrollToTheFragment(document: *runtime.Instance) void {
         .top_of_the_document => target_element.set(document, null),
         // Step 3: "Let target be document's indicated part. Set document's
         // target element to target."
-        .element => |target| target_element.set(document, target),
+        .element => |target| {
+            target_element.set(document, target);
+            // Step 4: reveal before the host scrolls the target into view.
+            @import("ancestor_revealing.zig").reveal(target);
+        },
     }
 }
 

@@ -388,6 +388,7 @@ A lane brief now carries the lessons chosen for its batch.
 
 ### Spec Compliance
 - [Spec Compliance: Browsers inherit COOP into top-level local documents](spec-compliance-browsers-inherit-coop-into-top-level-local-documents.md) - Before enforcing a navigation policy that reads only response headers, check what local-scheme documents get - the browsers inherit where the spec is silent, and the tests encode it - and compare with navigationParams's origin, never the URL's.
+- [Captured Arguments and Stored Flags Survive Tree Changes](spec-compliance-captured-arguments-and-stored-flags-survive-tree-changes.md) - Current structure cannot replace captured arguments or a flag whose last assignment is observable.
 - [Serialization arithmetic can overflow finite inputs](spec-compliance-serialization-arithmetic-can-overflow-finite-inputs.md) - Check coordinate sums where they happen and retain the whole original value when the ruled fallback requires it.
 - [Sizes validates math before CSS clamping](spec-compliance-sizes-validates-math-before-css-clamping.md) - **Preserve only the diagnostic a consumer needs before shared simplification erases it; keep the common arithmetic unchanged.**
 - [Picture moves update both parents](spec-compliance-picture-moves-update-both-parents.md) - **A state-preserving move still changes the structural inputs to source selection. Preserve the object; recompute the affected image selection.**
@@ -871,6 +872,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [Zig can print failed command for successful stderr](testing-zig-successful-stderr-can-say-failed-command.md) - Read the actual results and final summary.
 - [Equal pass counts can hide a regression](testing-equal-pass-counts-can-hide-a-regression.md) - Compare PASS identities; gains never cancel losses.
 - [JSON Lines uses LF, not Unicode line boundaries](testing-json-lines-uses-lf-not-unicode-line-boundaries.md) - Preserve Unicode separators in names and reconcile full records.
+- [Event-Order Reductions Must Preserve the Entry Task](testing-event-order-reductions-must-preserve-the-entry-task.md) - A task-order reproducer must preserve the task that starts it, not only the code it runs.
+- [A File Pass Count Is Not a Browser Vote](testing-a-file-pass-count-is-not-a-browser-vote.md) - A browser votes on an assertion, not on the number of assertions its file passes.
+- [A Worklist Filename Does Not Exempt Its Result](testing-a-worklist-filename-does-not-exempt-its-result.md) - An area's owner and a test's filename do not change whether its measured worklist result blocks.
 
 ### Debugging
 - [Registry-wide scratch bounds grow per-call work](debugging-registry-wide-scratch-bounds-grow-per-call-work.md) - Size scratch storage for the values the call can reach, and inspect the compiled initialization cost.
@@ -1032,3 +1036,5 @@ A lane brief now carries the lessons chosen for its batch.
 - [A pattern kill stops the step, not the job](workflow-a-pattern-kill-stops-the-step-not-the-job.md) - Stop a multi-step remote job at its shell (the pid crane-remote prints), not at the step that happens to be running, and verify with pgrep before saying it stopped.
 - [A full run that restarts loses its place on the host's one full-run slot](workflow-a-full-run-that-restarts-loses-its-place-on-the-full-run-slot.md) - The full-run slot is held by live processes, not by a reservation: start a replacement in the same group before stopping the old run, and run it in tmux so a dropped connection cannot stop it.
 - [A tip-only A/B runs in the environment of the sweep it is compared with](workflow-a-tip-only-a-b-runs-in-the-environment-of-the-sweep-it-is-compared-with.md) - Copy the baseline's environment from its launch line, not from a comment, and check per-file wall times against the baseline early: a run with a different environment measures that environment.
+- [Pool Moves Use Both Hosts](workflow-pool-moves-use-both-hosts.md) - A timed-window check must cover both ends of a mirror transfer.
+- [Detached Inputs Need a Verified Transfer](workflow-detached-inputs-need-a-verified-transfer.md) - Source sync, verified scratch transfer, and detached execution are separate steps; each must succeed before the next starts.

@@ -997,7 +997,8 @@ fn moveInRadioGroup(radio: *Instance, direction: focus.Direction, modifiers: Mod
 
 fn isKeyboardActivatable(element: *Instance) bool {
     if (form_associated.isDisabled(element)) return false;
-    return form_associated.isButtonControl(element) or isCheckable(element);
+    return form_associated.isButtonControl(element) or isCheckable(element) or
+        @import("details.zig").isSummaryForParentDetails(element);
 }
 
 // ============================================================================
