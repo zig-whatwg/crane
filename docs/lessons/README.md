@@ -973,6 +973,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A CSS function token is followed by its own "(" token](debugging-a-css-function-token-is-followed-by-its-own-paren-token.md) - In Crane's CSS Stream a function's `(` is a token of its own: consume it after the function token, as grid_tracks.zig does.
 
 ### Workflow
+- [Workflow: A STOP watcher reads the host from the CLOSING NOTICE's header, never its body](workflow-a-stop-watcher-reads-the-hosts-from-the-notices-header.md) - A notice names the host it closes in its header and the hosts it spares in its body: match the header, and test the parser on real notices before trusting it with kills.
 - [A worklist change is a code change - run the tests before committing it](workflow-a-worklist-change-is-a-code-change.md) - **A worklist change is a code change: the runner pins the worklist's directories in a test, so regenerate, add the directory to config.zig, and run that test before pushing.**
 
 - [A sweep chunk names its result stream by its runner count](workflow-a-sweep-chunk-names-its-stream-by-its-runner-count.md) - Before trusting a name-level A/B, check that each side's stream has as many records as its journal - a missing chunk looks exactly like a mass regression, or, worse, hides one.
