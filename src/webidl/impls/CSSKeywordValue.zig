@@ -1,66 +1,47 @@
-//! Implementation for CSSKeywordValue interface
-
+//! CSS Typed OM 1 §4.2: an identifier string, validated only for emptiness.
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const CSSKeywordValue = interfaces.CSSKeywordValue;
 
-pub const State = CSSKeywordValue.State;
+pub const State = interfaces.CSSKeywordValue.State;
+pub const ImplError = error{TypeError};
+pub const construction_args = .{"keyword_value"};
+pub const InternalState = struct { value: []u8 };
 
-pub const ImplError = error{
-    NotImplemented,
-};
-
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
-
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    const value = if (@hasField(@TypeOf(args), "keyword_value")) args.keyword_value else "";
+    const copy = try allocator.dupe(u8, value);
+    errdefer allocator.free(copy);
+    const internal = try runtime.arenaOf(instance).create(InternalState);
+    internal.* = .{ .value = copy };
+    instance.getState(State).own._internal = internal;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+pub fn deinitOwn(instance: *runtime.Instance) void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return;
+    state.own._internal = null;
+    instance.ctx.allocator.free(internal.value);
+    runtime.arenaOf(instance).destroy(InternalState, internal);
 }
 
-/// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
+/// Constructor steps 1–2: reject the empty string, then copy its value.
 pub fn call_constructor(ctx: runtime.Context, value: runtime.USVString) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &CSSKeywordValue.vtable, ctx);
-    errdefer deinit(instance);
-
-    _ = value;
-    // TODO: Implement constructor logic with parameters
-
-    return instance;
+    if (value.len == 0) return error.TypeError;
+    return interfaces.CSSKeywordValue.initWith(ctx.allocator, ctx, .{ .keyword_value = value });
 }
 
-/// Getter for value
 pub fn get_value(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    return instance.ctx.allocator.dupe(u8, internal.value);
 }
 
-/// Setter for value
+/// Setter steps 1–2: validate before replacing the existing string.
 pub fn set_value(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    if (value.len == 0) return error.TypeError;
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    const copy = try instance.ctx.allocator.dupe(u8, value);
+    instance.ctx.allocator.free(internal.value);
+    internal.value = copy;
 }

@@ -669,58 +669,63 @@ pub fn decode(allocator: std.mem.Allocator, raw: []const u8) std.mem.Allocator.E
     try out.ensureTotalCapacityPrecise(allocator, raw.len * 3 + 3);
     var i: usize = 0;
     while (i < raw.len) {
-        const c = raw[i];
-        if (c == 0) {
-            try out.appendSlice(allocator, "\u{FFFD}");
-            i += 1;
-            continue;
-        }
-        if (c == 0xED and i + 2 < raw.len and raw[i + 1] >= 0xA0 and raw[i + 1] <= 0xBF) {
-            // A surrogate, encoded as if it were a code point.
-            try out.appendSlice(allocator, "\u{FFFD}");
-            i += 3;
-            continue;
-        }
-        if (c != '\\') {
-            try out.append(allocator, c);
-            i += 1;
-            continue;
-        }
-        i += 1;
-        if (i >= raw.len) {
-            try out.appendSlice(allocator, "\u{FFFD}");
-            break;
-        }
-        if (isNewline(raw[i])) {
-            if (raw[i] == '\r' and i + 1 < raw.len and raw[i + 1] == '\n') i += 1;
-            i += 1;
-            continue;
-        }
-        if (isHexDigit(raw[i])) {
-            var value: u32 = 0;
-            var n: usize = 0;
-            while (n < 6 and i < raw.len and isHexDigit(raw[i])) : (n += 1) {
-                value = value * 16 + (std.fmt.charToDigit(raw[i], 16) catch 0);
-                i += 1;
-            }
-            if (i < raw.len and isWhitespace(raw[i])) {
-                if (raw[i] == '\r' and i + 1 < raw.len and raw[i + 1] == '\n') i += 1;
-                i += 1;
-            }
-            const code_point: u21 = if (value == 0 or value > 0x10FFFF or (value >= 0xD800 and value <= 0xDFFF))
-                0xFFFD
-            else
-                @intCast(value);
-            var buffer: [4]u8 = undefined;
-            const len = std.unicode.utf8Encode(code_point, &buffer) catch unreachable;
-            try out.appendSlice(allocator, buffer[0..len]);
-            continue;
-        }
-        const len = @min(std.unicode.utf8ByteSequenceLength(raw[i]) catch 1, raw.len - i);
-        try out.appendSlice(allocator, raw[i .. i + len]);
-        i += len;
+        var buffer: [4]u8 = undefined;
+        try out.appendSlice(allocator, decodedPart(raw, &i, &buffer));
     }
     return out.toOwnedSlice(allocator);
+}
+
+/// The existing token-value decoder's one step, shared by owned decoding
+/// and keyword comparison. Syntax 3 §4.3.7 consumes up to six hex digits
+/// and one whitespace; §4.3.12 appends the escaped code point to the ident.
+/// The result borrows raw or buffer; an escaped newline returns empty.
+fn decodedPart(raw: []const u8, index: *usize, buffer: *[4]u8) []const u8 {
+    var i = index.*;
+    defer index.* = i;
+    const c = raw[i];
+    if (c == 0) {
+        i += 1;
+        return "\u{FFFD}";
+    }
+    if (c == 0xED and i + 2 < raw.len and raw[i + 1] >= 0xA0 and raw[i + 1] <= 0xBF) {
+        // A surrogate, encoded as if it were a code point.
+        i += 3;
+        return "\u{FFFD}";
+    }
+    if (c != '\\') {
+        i += 1;
+        return raw[i - 1 .. i];
+    }
+    i += 1;
+    if (i >= raw.len) {
+        return "\u{FFFD}";
+    }
+    if (isNewline(raw[i])) {
+        if (raw[i] == '\r' and i + 1 < raw.len and raw[i + 1] == '\n') i += 1;
+        i += 1;
+        return "";
+    }
+    if (isHexDigit(raw[i])) {
+        var value: u32 = 0;
+        var n: usize = 0;
+        while (n < 6 and i < raw.len and isHexDigit(raw[i])) : (n += 1) {
+            value = value * 16 + (std.fmt.charToDigit(raw[i], 16) catch 0);
+            i += 1;
+        }
+        if (i < raw.len and isWhitespace(raw[i])) {
+            if (raw[i] == '\r' and i + 1 < raw.len and raw[i + 1] == '\n') i += 1;
+            i += 1;
+        }
+        const code_point: u21 = if (value == 0 or value > 0x10FFFF or (value >= 0xD800 and value <= 0xDFFF))
+            0xFFFD
+        else
+            @intCast(value);
+        const len = std.unicode.utf8Encode(code_point, buffer) catch unreachable;
+        return buffer[0..len];
+    }
+    const len = @min(std.unicode.utf8ByteSequenceLength(raw[i]) catch 1, raw.len - i);
+    i += len;
+    return raw[i - len .. i];
 }
 
 /// Whether the name `raw` (an ident, function or at-keyword value, escapes
@@ -730,12 +735,18 @@ pub fn nameEql(raw: []const u8, name: []const u8) bool {
     if (std.mem.indexOfScalar(u8, raw, '\\') == null and std.mem.indexOfScalar(u8, raw, 0) == null) {
         return std.ascii.eqlIgnoreCase(raw, name);
     }
-    // Names compared this way are keywords, a few bytes long.
-    if (raw.len > 64) return false;
-    var buffer: [64 * 3 + 3]u8 = undefined;
-    var fba = std.heap.FixedBufferAllocator.init(&buffer);
-    const decoded = decode(fba.allocator(), raw) catch return false;
-    return std.ascii.eqlIgnoreCase(decoded, name);
+    // Compare decoded output with the expected name, not escape spelling
+    // length (Syntax 3 §4.3.12). The ordinary fast path stays above.
+    var raw_index: usize = 0;
+    var name_index: usize = 0;
+    while (raw_index < raw.len) {
+        var buffer: [4]u8 = undefined;
+        const part = decodedPart(raw, &raw_index, &buffer);
+        if (part.len > name.len - name_index) return false;
+        if (!std.ascii.eqlIgnoreCase(part, name[name_index .. name_index + part.len])) return false;
+        name_index += part.len;
+    }
+    return name_index == name.len;
 }
 
 // ============================================================================

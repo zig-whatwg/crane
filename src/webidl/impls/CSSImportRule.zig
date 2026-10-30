@@ -39,8 +39,8 @@ pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
 }
 
 /// Getter for media ([SameObject, PutForwards=mediaText]): "the value of
-/// the media attribute of the associated CSS style sheet" - the rule's own
-/// media list here, which the imported sheet's media mirrors.
+/// the media attribute of the associated CSS style sheet". The imported
+/// sheet delegates to this same view of the rule's media list.
 pub fn get_media(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const rule = ruleOf(instance) orelse return error.InvalidStateError;
     return interfaces.MediaList.initWith(instance.ctx.allocator, instance.ctx, .{ .media_of = dom.style.MediaOf{ .rule = rule } });

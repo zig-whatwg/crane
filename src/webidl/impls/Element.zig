@@ -1704,12 +1704,8 @@ pub fn call_releasePointerCapture(instance: *runtime.Instance, pointerId: i32) a
 /// Operation: computedStyleMap
 /// CSS Typed OM §5.3 - Returns the element's computed style as a StylePropertyMapReadOnly
 /// Spec: https://drafts.css-houdini.org/css-typed-om-1/#dom-element-computedstylemap
-///
-/// Note: Returns null - requires CSSOM and layout engine
 pub fn call_computedStyleMap(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    // Requires CSSOM and layout engine - return null
-    return error.NotImplemented;
+    return dom.style.typed_om.computedMap(instance);
 }
 
 /// Operation: scroll

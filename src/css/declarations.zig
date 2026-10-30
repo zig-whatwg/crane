@@ -466,6 +466,60 @@ pub const DeclarationBlock = struct {
         return updated;
     }
 
+    /// Typed OM §3: install a complete already-validated native value.
+    /// Borrowed assignments are retained before any old declaration can die.
+    /// The existing CSSOM mutation algorithm preserves position and observes
+    /// logical-group ordering; all allocation precedes the first mutation.
+    pub fn setValidatedProperty(self: *DeclarationBlock, property: Property, assignments: []const Assignment) (Allocator.Error || error{Invalid})!bool {
+        if (!self.context.allows(property, false)) return error.Invalid;
+        const longhands: []const Longhand = switch (property) {
+            .longhand => |l| &.{l},
+            .shorthand => |s| s.longhands(),
+        };
+        if (assignments.len != longhands.len or assignments.len > properties.max_assignments) return error.Invalid;
+        var copy: [properties.max_assignments]Assignment = undefined;
+        for (longhands, 0..) |l, i| {
+            var found = false;
+            for (assignments) |assignment| if (assignment.longhand == l) {
+                if (found) return error.Invalid;
+                copy[i] = assignment;
+                found = true;
+            };
+            if (!found) return error.Invalid;
+        }
+        try self.entries.ensureUnusedCapacity(self.allocator, assignments.len);
+        for (copy[0..assignments.len]) |assignment| assignment.value.retain();
+        var changed = false;
+        for (copy[0..assignments.len]) |assignment| {
+            // Capacity was reserved for every append, including replacements
+            // moved by a logical mapping conflict. No failure remains here.
+            if (self.setDeclaration(assignment.longhand, assignment.value, false) catch unreachable) changed = true;
+        }
+        return changed;
+    }
+
+    /// Typed OM's custom-property form; a borrowed, parsed Specified value.
+    /// Q57 keeps CSS declaration tokenization separate from string names.
+    pub fn setValidatedCustom(self: *DeclarationBlock, name: []const u8, value: custom_properties.Specified) (Allocator.Error || error{Invalid})!bool {
+        if (!custom_properties.isName(name) or self.context == .position_try) return error.Invalid;
+        if (self.indexOfCustom(name)) |i| {
+            const existing = &self.entries.items[i].custom;
+            if (!existing.important and existing.value.eql(value)) return false;
+            value.retain();
+            existing.value.release();
+            existing.value = value;
+            existing.important = false;
+            return true;
+        }
+        const name_text = try custom_properties.Text.create(self.allocator, name);
+        errdefer name_text.release();
+        try self.entries.ensureUnusedCapacity(self.allocator, 1);
+        value.retain();
+        self.entries.appendAssumeCapacity(.{ .custom = .{ .name = name_text, .value = value, .important = false } });
+        self.custom_count += 1;
+        return true;
+    }
+
     /// CSSOM "set a CSS declaration": the value consumed (released when not
     /// kept). True when the block changed.
     fn setDeclaration(self: *DeclarationBlock, l: Longhand, value: Assigned, important: bool) Allocator.Error!bool {
@@ -594,14 +648,18 @@ pub const DeclarationBlock = struct {
             if (done[index]) continue;
             switch (e.*) {
                 .unparsed => |u| {
-                    try appendDeclaration(out, allocator, &first, u.name, u.value, u.important);
+                    try appendDeclaration(.raw, out, allocator, &first, u.name, u.value, u.important);
                     done[index] = true;
                 },
                 .custom => |c| {
                     var value: std.ArrayList(u8) = .empty;
                     defer value.deinit(allocator);
                     try c.value.serialize(&value, allocator);
-                    try appendDeclaration(out, allocator, &first, c.name.bytes, value.items, c.important);
+                    // CSSOM block serialization step4.4 / identifier serialization;
+                    // Variables1 §4.1 preserves name code points, including case.
+                    // variable-names.html requires cssText to round-trip escaped
+                    // names; indexed/name getters keep the decoded name unchanged.
+                    try appendDeclaration(.identifier, out, allocator, &first, c.name.bytes, value.items, c.important);
                     done[index] = true;
                 },
                 .typed => |d| {
@@ -628,7 +686,7 @@ pub const DeclarationBlock = struct {
                     var value: std.ArrayList(u8) = .empty;
                     defer value.deinit(allocator);
                     try properties.serializeAssigned(d.longhand, d.value, &value, allocator);
-                    try appendDeclaration(out, allocator, &first, d.longhand.name(), value.items, d.important);
+                    try appendDeclaration(.raw, out, allocator, &first, d.longhand.name(), value.items, d.important);
                     done[index] = true;
                 },
             }
@@ -656,7 +714,7 @@ pub const DeclarationBlock = struct {
         defer value.deinit(self.allocator);
         if (!try properties.serializeShorthand(s, vs[0..ls.len], .specified, &value, self.allocator)) return false;
         if (value.items.len == 0) return false;
-        try appendDeclaration(out, self.allocator, first, s.name(), value.items, important.?);
+        try appendDeclaration(.raw, out, self.allocator, first, s.name(), value.items, important.?);
         for (indices[0..ls.len]) |i| done[i] = true;
         return true;
     }
@@ -706,14 +764,19 @@ pub const DeclarationBlock = struct {
     };
 };
 
-fn appendDeclaration(out: *std.ArrayList(u8), allocator: Allocator, first: *bool, name: []const u8, value: []const u8, important: bool) Allocator.Error!void {
+fn appendDeclaration(comptime name_encoding: enum { raw, identifier }, out: *std.ArrayList(u8), allocator: Allocator, first: *bool, name: []const u8, value: []const u8, important: bool) Allocator.Error!void {
     // "serialize a CSS declaration": "property: value[ !important];",
     // joined by a space.
     if (!first.*) try out.append(allocator, ' ');
     first.* = false;
-    try out.appendSlice(allocator, name);
+    if (name_encoding == .identifier) {
+        try @import("serialize.zig").appendIdentifier(out, allocator, name);
+    } else {
+        try out.appendSlice(allocator, name);
+    }
     try out.appendSlice(allocator, ": ");
-    try out.appendSlice(allocator, value);
+    // CSSOM "serialize a CSS declaration", step 4: omit whitespace-only values.
+    if (std.mem.trim(u8, value, " \t\n\r\x0c").len != 0) try out.appendSlice(allocator, value);
     if (important) try out.appendSlice(allocator, " !important");
     try out.append(allocator, ';');
 }
@@ -723,9 +786,9 @@ fn containsLonghand(ls: []const Longhand, l: Longhand) bool {
     return false;
 }
 
-/// CSSOM "preferred order": shorthands with more longhands first, then by
-/// name. `all` is never chosen to serialize a block (browsers write the
-/// longhands).
+/// CSSOM "preferred order" steps 1, 3-5: more longhands first, then
+/// unprefixed names, -webkit- names, other prefixed names, and name order.
+/// `all` is never chosen to serialize a block (browsers write the longhands).
 const preferred_shorthands = blk: {
     @setEvalBranchQuota(100_000);
     const fields = @typeInfo(Shorthand).@"enum".fields;
@@ -744,8 +807,16 @@ const preferred_shorthands = blk: {
         while (j > 0) : (j -= 1) {
             const a = out[j - 1];
             const b = out[j];
-            const before = a.longhands().len > b.longhands().len or
-                (a.longhands().len == b.longhands().len and std.mem.lessThan(u8, a.name(), b.name()));
+            const before = order: {
+                const a_count = a.longhands().len;
+                const b_count = b.longhands().len;
+                if (a_count != b_count) break :order a_count > b_count;
+                const a_name = a.name();
+                const b_name = b.name();
+                const a_prefix: u2 = if (std.mem.startsWith(u8, a_name, "-webkit-")) 1 else if (std.mem.startsWith(u8, a_name, "-")) 2 else 0;
+                const b_prefix: u2 = if (std.mem.startsWith(u8, b_name, "-webkit-")) 1 else if (std.mem.startsWith(u8, b_name, "-")) 2 else 0;
+                break :order a_prefix < b_prefix or (a_prefix == b_prefix and std.mem.lessThan(u8, a_name, b_name));
+            };
             if (before) break;
             out[j - 1] = b;
             out[j] = a;

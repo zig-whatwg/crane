@@ -203,7 +203,7 @@ pub fn parse(options: properties.ParseOptions, property: properties.Longhand, st
         .hyphenate_limit_lines => {
             // Text4 §6.3.5; WebKit bug323934 landed 2026-09-11, WPT PR62629.
             if (keyword(stream, &.{.no_limit})) |k| return Value.kw(k);
-            return numeric(options, stream, .{ .kind = .integer, .minimum = 0, .maximum = std.math.maxInt(i32) }, false);
+            return numeric(options, stream, .{ .kind = .integer, .minimum = 0, .maximum = std.math.maxInt(i32), .maximum_kind = .representation }, false);
         },
         .text_autospace => return parseAutospace(options, stream),
         .word_space_transform => {
@@ -232,7 +232,7 @@ pub fn parse(options: properties.ParseOptions, property: properties.Longhand, st
             defer for (items) |item| item.release();
             var count: usize = 0;
             while (count < 3) : (count += 1) {
-                items[count] = if (keyword(stream, &.{.auto})) |k| Value.kw(k) else (try numeric(options, stream, .{ .kind = .integer, .minimum = 0, .maximum = std.math.maxInt(i32) }, false)) orelse break;
+                items[count] = if (keyword(stream, &.{.auto})) |k| Value.kw(k) else (try numeric(options, stream, .{ .kind = .integer, .minimum = 0, .maximum = std.math.maxInt(i32), .maximum_kind = .representation }, false)) orelse break;
             }
             if (count == 0) return null;
             if (count == 2) {

@@ -120,6 +120,7 @@ text-wrap-mode: wrap
 top: auto
 unicode-bidi: normal
 user-select: auto
+pointer-events: auto
 visibility: visible
 white-space-collapse: collapse
 width: auto
@@ -322,6 +323,7 @@ backface-visibility: visible
 will-change: auto
 container-name: none
 container-type: normal
+page: auto
 == initial root and child / 0
 display: block
 == initial root and child / 1

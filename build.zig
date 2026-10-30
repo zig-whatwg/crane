@@ -5665,6 +5665,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     dom_mod.addImport("engine", engine_mod);
     dom_mod.addImport("dictionaries", dictionaries_mod);
     dom_mod.addImport("enums", enums_mod);
+    dom_mod.addImport("typedefs", typedefs_mod);
 
     // Quirks module (WHATWG Quirks Mode Standard)
     const quirks_mod = graphModule(b, public, "quirks", .{

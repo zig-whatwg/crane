@@ -86,7 +86,7 @@ pub fn parse(options: properties.ParseOptions, property: properties.Longhand, st
             var sink: ?Value = if (prefix) |k| Value.kw(k) else null;
             defer if (sink) |item| item.release();
             if (sink == null) {
-                sink = if (keyword(stream, &.{ .drop, .raise })) |k| Value.kw(k) else try numeric(options, stream, .{ .kind = .integer, .minimum = 1, .maximum = std.math.maxInt(i32) }, false);
+                sink = if (keyword(stream, &.{ .drop, .raise })) |k| Value.kw(k) else try numeric(options, stream, .{ .kind = .integer, .minimum = 1, .maximum = std.math.maxInt(i32), .maximum_kind = .representation }, false);
             }
             return .{ .text_values = try Components.create(options.allocator, property, if (sink) |item| &.{ size, item } else &.{size}) };
         },

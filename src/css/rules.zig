@@ -89,6 +89,26 @@ fn isDeclarationBlockRule(name: []const u8) bool {
     return false;
 }
 
+/// Fonts 4 §6.9: these names are declaration blocks only inside
+/// @font-feature-values. An unrelated @swash remains an unknown at-rule.
+fn isFontFeatureBlock(name: []const u8) bool {
+    for ([_][]const u8{ "annotation", "ornaments", "stylistic", "swash", "character-variant", "styleset", "historical-forms" }) |block| {
+        if (std.mem.eql(u8, name, block)) return true;
+    }
+    return false;
+}
+
+/// Paged Media 3 §4.3: these at-rules exist only directly inside @page.
+pub fn isPageMarginRule(name: []const u8) bool {
+    for ([_][]const u8{
+        "top-left-corner",    "top-left",    "top-center",    "top-right",    "top-right-corner",
+        "bottom-left-corner", "bottom-left", "bottom-center", "bottom-right", "bottom-right-corner",
+        "left-top",           "left-middle", "left-bottom",   "right-top",    "right-middle",
+        "right-bottom",
+    }) |kind| if (std.mem.eql(u8, name, kind)) return true;
+    return false;
+}
+
 /// The at-rules whose block is a list of rules.
 fn isGroupRule(name: []const u8) bool {
     for ([_][]const u8{ "media", "supports", "layer", "container", "scope", "starting-style", "document", "-moz-document", "keyframes", "-webkit-keyframes" }) |group| {
@@ -244,11 +264,31 @@ pub fn parseRule(allocator: Allocator, text: []const u8) Allocator.Error!?Rule {
     return rule;
 }
 
+/// CSSOM insertRule into @page: parse exactly one margin rule in the
+/// same context as the page body's children. Other rules are not valid here.
+pub fn parsePageMarginRule(allocator: Allocator, text: []const u8) Allocator.Error!?Rule {
+    var parser: Parser = .{ .allocator = allocator, .tokens = Tokenizer.init(text), .page_margin_context = true };
+    while (parser.peek().token_type == .whitespace) _ = parser.next();
+    if (parser.peek().token_type != .at_keyword) return null;
+    var rule = try parser.consumeAtRule(false);
+    errdefer rule.deinit(allocator);
+    while (parser.peek().token_type == .whitespace) _ = parser.next();
+    if (parser.peek().token_type != .eof or !isPageMarginRule(rule.name) or !rule.has_block or rule.prelude.len != 0) {
+        rule.deinit(allocator);
+        return null;
+    }
+    return rule;
+}
+
 const Parser = struct {
     allocator: Allocator,
     tokens: Tokenizer,
     peeked: ?Token = null,
     property_descriptors: bool = false,
+    /// Fonts 4 §6.9: feature declaration names are case-sensitive.
+    /// Set only while consuming one child of @font-feature-values.
+    font_feature_names: bool = false,
+    page_margin_context: bool = false,
     /// Whether a pending value cut off by the end of the input reads as its
     /// tokens there (substitution.closeAtEof): a style sheet's, not a
     /// declaration list's (parseDeclarationList). Other values always do.
@@ -306,7 +346,21 @@ const Parser = struct {
                 .left_brace => {
                     prelude_end = self.tokens.pos - 1;
                     _ = self.next();
-                    if (isGroupRule(name)) {
+                    if (self.font_feature_names) {
+                        if (isFontFeatureBlock(name)) {
+                            declarations = try self.consumeDeclarationList();
+                        } else try self.skipBlock(.right_brace);
+                    } else if (self.page_margin_context) {
+                        if (isPageMarginRule(name)) declarations = try self.consumeDeclarationList() else try self.skipBlock(.right_brace);
+                    } else if (std.mem.eql(u8, name, "page")) {
+                        const body = try self.consumePageBody();
+                        declarations = body.declarations;
+                        children = body.children;
+                    } else if (std.mem.eql(u8, name, "font-feature-values")) {
+                        const body = try self.consumeFontFeatureBody();
+                        declarations = body.declarations;
+                        children = body.children;
+                    } else if (isGroupRule(name)) {
                         children = (try self.consumeBlockContents(false)).children;
                     } else if (isDeclarationBlockRule(name)) {
                         const previous = self.property_descriptors;
@@ -343,6 +397,116 @@ const Parser = struct {
             .has_block = has_block,
             .children = children,
         };
+    }
+
+    const FontFeatureBody = struct { declarations: []Declaration, children: []Rule };
+
+    /// Fonts 4 §6.9 / Syntax 3 "consume a block's contents": retain both
+    /// outer descriptors and nested feature blocks. Grammar validation stays
+    /// in the descriptor layer; no other at-rule gains a mixed body.
+    fn consumeFontFeatureBody(self: *Parser) Allocator.Error!FontFeatureBody {
+        var declarations: std.ArrayList(Declaration) = .empty;
+        errdefer {
+            for (declarations.items) |declaration| {
+                self.allocator.free(declaration.name);
+                self.allocator.free(declaration.value);
+            }
+            declarations.deinit(self.allocator);
+        }
+        var children: std.ArrayList(Rule) = .empty;
+        errdefer {
+            for (children.items) |*child| child.deinit(self.allocator);
+            children.deinit(self.allocator);
+        }
+        while (true) {
+            switch (self.peek().token_type) {
+                .whitespace, .semicolon => _ = self.next(),
+                .eof => break,
+                .right_brace => {
+                    _ = self.next();
+                    break;
+                },
+                .at_keyword => {
+                    const previous = self.font_feature_names;
+                    self.font_feature_names = true;
+                    defer self.font_feature_names = previous;
+                    var child = try self.consumeAtRule(true);
+                    errdefer child.deinit(self.allocator);
+                    try children.append(self.allocator, child);
+                },
+                else => {
+                    if (self.peek().token_type == .ident) {
+                        const mark = self.markStream();
+                        if (try self.consumeDeclaration()) |declaration| {
+                            errdefer self.allocator.free(declaration.name);
+                            errdefer self.allocator.free(declaration.value);
+                            try declarations.append(self.allocator, declaration);
+                            continue;
+                        }
+                        self.restoreStream(mark);
+                    }
+                    try self.skipNestedQualifiedRule();
+                },
+            }
+        }
+        const owned_declarations = try declarations.toOwnedSlice(self.allocator);
+        errdefer freeDeclarations(self.allocator, owned_declarations);
+        return .{ .declarations = owned_declarations, .children = try children.toOwnedSlice(self.allocator) };
+    }
+
+    const PageBody = struct { declarations: []Declaration, children: []Rule };
+
+    /// Paged Media 3 §4.3 / Syntax 3 "consume a block's contents": page
+    /// descriptors and margin at-rules may occur in any order. Unknown
+    /// children are consumed here and discarded by the page rule builder.
+    fn consumePageBody(self: *Parser) Allocator.Error!PageBody {
+        var declarations: std.ArrayList(Declaration) = .empty;
+        errdefer {
+            for (declarations.items) |declaration| {
+                self.allocator.free(declaration.name);
+                self.allocator.free(declaration.value);
+            }
+            declarations.deinit(self.allocator);
+        }
+        var children: std.ArrayList(Rule) = .empty;
+        errdefer {
+            for (children.items) |*child| child.deinit(self.allocator);
+            children.deinit(self.allocator);
+        }
+        while (true) {
+            switch (self.peek().token_type) {
+                .whitespace, .semicolon => _ = self.next(),
+                .eof => break,
+                .right_brace => {
+                    _ = self.next();
+                    break;
+                },
+                .at_keyword => {
+                    const previous = self.page_margin_context;
+                    self.page_margin_context = true;
+                    defer self.page_margin_context = previous;
+                    var child = try self.consumeAtRule(true);
+                    errdefer child.deinit(self.allocator);
+                    try children.append(self.allocator, child);
+                },
+                else => {
+                    if (self.peek().token_type == .ident) {
+                        const mark = self.markStream();
+                        if (try self.consumeDeclaration()) |declaration| {
+                            errdefer self.allocator.free(declaration.name);
+                            errdefer self.allocator.free(declaration.value);
+                            try declarations.append(self.allocator, declaration);
+                            continue;
+                        }
+                        self.restoreStream(mark);
+                    }
+                    try self.skipNestedQualifiedRule();
+                },
+            }
+        }
+        const owned_declarations = try declarations.toOwnedSlice(self.allocator);
+        errdefer freeDeclarations(self.allocator, owned_declarations);
+        return .{ .declarations = owned_declarations, .children = try children.toOwnedSlice(self.allocator) };
     }
 
     const BlockContents = struct {
@@ -699,7 +863,7 @@ const Parser = struct {
         // block-beside-other-tokens restriction (probe 1025l, Q16).
         const property_initial = self.property_descriptors and std.ascii.eqlIgnoreCase(name, "initial-value");
         if (!custom) {
-            _ = std.ascii.lowerString(name, name);
+            if (!self.font_feature_names) _ = std.ascii.lowerString(name, name);
             if (!property_initial and holdsBlockBesideOthers(list[i..end])) {
                 self.allocator.free(name);
                 return null;

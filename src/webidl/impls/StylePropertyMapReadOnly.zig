@@ -15,55 +15,58 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+const dom = @import("dom");
+pub const construction_args = .{"property_map_source"};
+pub const InternalState = struct { map: dom.style.typed_om.PropertyMap };
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = allocator;
+    _ = StateType;
+    if (!@hasField(@TypeOf(args), "property_map_source")) return error.InvalidStateError;
+    const internal = try runtime.arenaOf(instance).create(InternalState);
+    errdefer runtime.arenaOf(instance).destroy(InternalState, internal);
+    internal.* = .{ .map = try dom.style.typed_om.PropertyMap.init(instance, args.property_map_source) };
+    instance.getState(State).own._internal = internal;
+    internal.map.trace(instance);
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+pub fn deinitOwn(instance: *runtime.Instance) void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return;
+    state.own._internal = null;
+    internal.map.deinit(instance);
+    runtime.arenaOf(instance).destroy(InternalState, internal);
 }
 
-/// Getter for size
+pub fn installHooks() void {
+    dom.style.hooks.install(.{ .property_map_of = propertyMap });
+}
+
+fn propertyMap(instance: *runtime.Instance) ?*dom.style.typed_om.PropertyMap {
+    const state = instance.stateAs(State) orelse return null;
+    const internal = state.own._internal orelse return null;
+    return &internal.map;
+}
+
 pub fn get_size(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
+    return dom.style.typed_om.mapSize(instance);
 }
 
-/// Operation: get
 pub fn call_get(instance: *runtime.Instance, property: runtime.USVString) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = property;
-    return error.NotImplemented;
+    var values = try dom.style.typed_om.mapGetAll(instance, property);
+    defer values.deinit();
+    if (values.values.items.len == 0) return .undefined;
+    return .{ .instance = values.values.items[0] };
 }
 
-/// Operation: getAll
 pub fn call_getAll(instance: *runtime.Instance, property: runtime.USVString) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = property;
-    return error.NotImplemented;
+    var values = try dom.style.typed_om.mapGetAll(instance, property);
+    defer values.deinit();
+    return values.array();
 }
 
-/// Operation: has
 pub fn call_has(instance: *runtime.Instance, property: runtime.USVString) anyerror!bool {
-    _ = instance;
-    _ = property;
-    return error.NotImplemented;
+    return dom.style.typed_om.mapHas(instance, property);
 }
 
 /// Entry type for pair iterable support
@@ -77,4 +80,11 @@ pub const IterableEntry = struct {
 pub fn getEntriesInternal(instance: *runtime.Instance) ?[]const IterableEntry {
     _ = instance;
     return null; // TODO: Implement when StylePropertyMapReadOnly is fully implemented
+}
+
+/// Q25's real sequence-valued iteration source. The old generated iterable
+/// bridge above remains untouched until the routed binding support lands.
+/// The caller owns this snapshot and must deinit after conversion.
+pub fn iterableSnapshot(instance: *runtime.Instance) !dom.style.typed_om.IterableSnapshot {
+    return dom.style.typed_om.mapEntries(instance);
 }

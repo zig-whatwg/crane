@@ -78,8 +78,8 @@ pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
 /// Getter for attributeStyleMap
 pub fn get_attributeStyleMap(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    // The generated SameObject accessor supplies identity and the owner edge.
+    return dom.style.typed_om.inlineMap(instance);
 }
 
 /// Getter for dataset

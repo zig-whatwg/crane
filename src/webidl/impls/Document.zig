@@ -215,7 +215,7 @@ pub fn installHooks() void {
     // The style engine this document keeps, and the media environment its
     // elements are styled in (lane style1).
     @import("dom").style.hooks.install(.{ .engine_of = &styleEngineOf, .media_values = &styleMediaValues, .document_adopted_sheets = &adoptedSheetsOf, .environment_revision = &@import("dom").style.environment_variables.revision });
-    @import("dom").template_contents.install(.{ .owner_document = &templateOwnerDocument });
+    @import("dom").template_contents.install(.{ .owner_document = &templateOwnerDocument, .existing_owner_document = &existingTemplateOwnerDocument });
     @import("dom").refcount.install(.{ .document_counts = &countsOf });
     // domindex1: its tree scope's ID and named-property maps.
     @import("dom").tree_ordered_map.installDocument(&treeIndexOf);
@@ -314,6 +314,14 @@ pub fn installHooks() void {
         .is_kept = &bfcacheIsKept,
         .reactivate = &bfcacheReactivate,
     });
+}
+
+fn existingTemplateOwnerDocument(document: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(document) orelse return null;
+    // HTML 4.12.3: this is the existing relation, never its creating algorithm.
+    if (internal.is_template_owner_document) return document;
+    const owner = internal.template_owner_document orelse return null;
+    return if (runtime.SlabAllocator.generationOf(owner) == internal.template_owner_generation) owner else null;
 }
 
 fn templateOwnerDocument(document: *runtime.Instance) !*runtime.Instance {

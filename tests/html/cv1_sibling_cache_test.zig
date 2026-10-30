@@ -18,6 +18,8 @@ const Before = struct {
     // both sides (integrator grant).
     font_hint: @FieldType(state.ElementStyle, "font_hint"),
     cached: @FieldType(state.ElementStyle, "cached"),
+    // Integrator Q173: the independent lazy Typed OM pointer is on both sides.
+    computed_map: @FieldType(state.ElementStyle, "computed_map"),
     pseudo: @FieldType(state.ElementStyle, "pseudo"),
 };
 

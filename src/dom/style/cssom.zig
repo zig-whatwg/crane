@@ -61,6 +61,7 @@ pub fn insertRule(object: *runtime.Instance, of: RulesOf, text: []const u8, inde
     // "Parse a CSS rule": parse a rule, then by the CSS specifications -
     // where it would stand, so that its own validity is all that decides
     // (its position is step 6's).
+    const in_page = of == .rule and of.rule.kind() == .page;
     var context = if (record) |r|
         try @import("resource_loading.zig").ParseContext.forSheet(r, object, text)
     else
@@ -76,6 +77,16 @@ pub fn insertRule(object: *runtime.Instance, of: RulesOf, text: []const u8, inde
         .in_style = in_style,
     };
     const new_rule = rule: {
+        if (in_page) {
+            // Q53: valid non-margin rules reach the placement check below.
+            var parsed = (try css.rules.parsePageMarginRule(allocator, text)) orelse
+                (try css.rules.parseRule(allocator, text)) orelse return error.SyntaxError;
+            defer parsed.deinitOwned(allocator);
+            break :rule (if (css.rules.isPageMarginRule(parsed.name))
+                try rules_mod.buildPageMargin(build_options, &parsed)
+            else
+                try rules_mod.build(build_options, &parsed, .imports_allowed)) orelse return error.SyntaxError;
+        }
         if (try css.rules.parseRule(allocator, text)) |value| {
             var parsed = value;
             defer parsed.deinitOwned(allocator);
@@ -105,6 +116,7 @@ pub fn insertRule(object: *runtime.Instance, of: RulesOf, text: []const u8, inde
     // HierarchyRequestError": an @import or @namespace only at a sheet's
     // top level, @imports (and @layer statements) before everything else,
     // @namespace after them and before every other rule.
+    if (in_page and kind != .margin) return error.HierarchyRequestError;
     try checkPosition(list.items, index, kind, nested);
     // Nesting 1 section 3.3. This restriction persists through @scope;
     // its nearest-selector context does not erase a style ancestor.

@@ -68,8 +68,7 @@ pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return interfaces.CSSStyleProperties.initWith(instance.ctx.allocator, instance.ctx, .{ .rule_block_of = rule });
 }
 
-/// Getter for styleMap (CSS Typed OM): not implemented.
+/// Typed OM §3.3: the live map over this rule's native declaration block.
 pub fn get_styleMap(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return dom.style.typed_om.ruleMap(instance);
 }

@@ -67,6 +67,21 @@ pub const Item = union(enum) {
     range: Range,
     timeline: Timeline,
 
+    /// A native Typed OM list borrows existing items. Strings become owned
+    /// copies; immutable numeric/easing subtrees keep their normal references.
+    fn clone(self: Item, allocator: Allocator) Allocator.Error!Item {
+        var result = self;
+        switch (self) {
+            .keyword => {},
+            .name => |name| result.name = try allocator.dupe(u8, name),
+            .number => |number| number.ref(),
+            .easing => |easing| easing.ref(),
+            .range => |range| range.offset.ref(),
+            .timeline => |timeline| for (timeline.insets) |maybe| if (maybe) |number| number.ref(),
+        }
+        return result;
+    }
+
     fn release(self: Item, allocator: Allocator) void {
         switch (self) {
             .keyword => {},
@@ -106,7 +121,7 @@ pub const Item = union(enum) {
             },
         };
     }
-    fn serialize(self: Item, l: Longhand, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
+    pub fn serialize(self: Item, l: Longhand, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
         switch (self) {
             .keyword => |k| try out.appendSlice(allocator, k.name()),
             .number => |n| try n.serialize(out, allocator),
@@ -189,6 +204,33 @@ pub const List = struct {
         errdefer item.release(self.allocator);
         try self.items.append(self.allocator, item);
     }
+    /// Typed OM §3 set/append: concatenate BORROWED, grammar-validated values
+    /// for this longhand. This cold entry does not parse or compute anything.
+    pub fn concat(allocator: Allocator, longhand: Longhand, inputs: []const Value) Allocator.Error!?*List {
+        const result = try create(allocator, longhand);
+        var success = false;
+        defer if (!success) result.unref();
+        for (inputs) |input| {
+            if (input == .animation_list and input.animation_list.property != longhand) return null;
+            if (input != .animation_list and input != .keyword and input != .number) return null;
+            for (0..valueCount(input)) |index| try result.append(try valueItem(longhand, input, index).clone(allocator));
+        }
+        if (result.items.items.len == 0 or (longhand == .transition_property and !result.validTransitionProperties())) return null;
+        success = true;
+        return result;
+    }
+
+    /// Q70: clone an immutable native component range for a reified value.
+    /// Invalid ranges return null; an empty valid range is an empty List.
+    /// Only Typed OM calls this entry; existing parser/compute paths do not.
+    pub fn slice(self: *const List, allocator: Allocator, begin: usize, end: usize) Allocator.Error!?*List {
+        if (begin > end or end > self.items.items.len) return null;
+        const result = try create(allocator, self.property);
+        errdefer result.unref();
+        for (self.items.items[begin..end]) |item| try result.append(try item.clone(allocator));
+        return result;
+    }
+
     pub fn eql(a: *const List, b: *const List) bool {
         if (a == b) return true;
         if (a.property != b.property or a.items.items.len != b.items.items.len) return false;
@@ -610,4 +652,13 @@ fn serializeTransition(assigned: []const properties.Assigned, mode: properties.S
         if (!wrote) try out.appendSlice(allocator, "all");
     }
     return true;
+}
+
+// Q61: the native concatenation entry is not a parser/computation shortcut.
+comptime {
+    @setEvalBranchQuota(2_000_000);
+    for (.{ @embedFile("properties.zig"), @embedFile("cascade.zig"), @embedFile("computed_style.zig") }) |source| {
+        if (std.mem.indexOf(u8, source, "List.concat(") != null or std.mem.indexOf(u8, source, "List.slice(") != null)
+            @compileError("native animation-list concatenation is a cold Typed OM entry");
+    }
 }

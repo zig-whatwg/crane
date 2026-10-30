@@ -17,6 +17,7 @@ pub const environment_variables = @import("environment_variables.zig");
 pub const ua_sheet = @import("ua_sheet.zig");
 pub const engine = @import("engine.zig");
 pub const inline_style = @import("inline_style.zig");
+pub const typed_om = @import("typed_om.zig");
 pub const content_visibility = @import("content_visibility.zig");
 pub const font_hints = @import("font_hints.zig");
 

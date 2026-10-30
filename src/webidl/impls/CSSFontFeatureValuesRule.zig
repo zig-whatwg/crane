@@ -1,95 +1,58 @@
-//! Implementation for CSSFontFeatureValuesRule interface
-
-const std = @import("std");
+//! Fonts 4 §12.2: font families and the six shipping feature-value maps.
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const CSSFontFeatureValuesRule = interfaces.CSSFontFeatureValuesRule;
+const css = @import("css");
+const dom = @import("dom");
 
-pub const State = CSSFontFeatureValuesRule.State;
-
-pub const ImplError = error{
-    NotImplemented,
-};
-
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
+pub const State = interfaces.CSSFontFeatureValuesRule.State;
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+fn ruleOf(instance: *runtime.Instance) !*dom.style.Rule {
+    const rule = dom.style.hooks.cssRuleOf(instance) orelse return error.InvalidStateError;
+    if (rule.data != .font_feature_values) return error.InvalidStateError;
+    return rule;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-/// Getter for fontFamily
 pub fn get_fontFamily(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const data = &(try ruleOf(instance)).data.font_feature_values.descriptors;
+    // Q39 mechanism majorities: generic names stay quoted, ordinary
+    // multiword families do not. The existing family serializer does both.
+    return runtime.DOMString.initDupe(instance.ctx.allocator, data.font_families.text.bytes);
 }
 
-/// Getter for annotation
+pub fn set_fontFamily(instance: *runtime.Instance, value: typedefs.CSSOMString) anyerror!void {
+    const rule = try ruleOf(instance);
+    // Q39: Fonts 4 has no setter algorithm. The integrator ruled to parse
+    // <family-name># and ignore invalid input, matching the rule grammar.
+    if (try rule.data.font_feature_values.descriptors.setFamily(value.asSlice())) if (rule.sheet()) |sheet| sheet.changed();
+}
+
+fn map(instance: *runtime.Instance, block: css.font_feature_values.Block) !*runtime.Instance {
+    return dom.style.objects.fontFeatureMapObject(try ruleOf(instance), instance, block);
+}
 pub fn get_annotation(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return map(instance, .annotation);
 }
-
-/// Getter for ornaments
 pub fn get_ornaments(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return map(instance, .ornaments);
 }
-
-/// Getter for stylistic
 pub fn get_stylistic(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return map(instance, .stylistic);
 }
-
-/// Getter for swash
 pub fn get_swash(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return map(instance, .swash);
 }
-
-/// Getter for characterVariant
 pub fn get_characterVariant(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return map(instance, .character_variant);
 }
-
-/// Getter for styleset
 pub fn get_styleset(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return map(instance, .styleset);
 }
 
-/// Getter for historicalForms
+/// Q41 ROUTED: no browser exposes this pinned-IDL member. The integrator's
+/// "IDL MEMBERS NO BROWSER EXPOSES" item owns suppressing its exposure.
 pub fn get_historicalForms(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for fontFamily
-pub fn set_fontFamily(instance: *runtime.Instance, value: typedefs.CSSOMString) anyerror!void {
-    _ = instance;
-    _ = value;
     return error.NotImplemented;
 }

@@ -99,171 +99,143 @@ pub fn call_parseCommaValueList(ctx: runtime.Context, css: runtime.DOMString) an
 }
 
 pub fn call_ric(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "ric") };
 }
 
 pub fn call_lvmin(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "lvmin") };
 }
 
 pub fn call_cqmax(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "cqmax") };
 }
 
 pub fn call_svmin(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "svmin") };
 }
 
 pub fn call_s(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "s") };
 }
 
 pub fn call_ch(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "ch") };
 }
 
 pub fn call_rcap(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "rcap") };
 }
 
 pub fn call_vi(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "vi") };
 }
 
 pub fn call_lh(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "lh") };
 }
 
 pub fn call_cqh(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "cqh") };
 }
 
 pub fn call_cm(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "cm") };
 }
 
 pub fn call_Hz(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "Hz") };
 }
 
 pub fn call_svb(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "svb") };
 }
 
 pub fn call_svh(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "svh") };
 }
 
 pub fn call_in(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "in") };
 }
 
 pub fn call_vmax(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "vmax") };
 }
 
 pub fn call_deg(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "deg") };
 }
 
 pub fn call_dvb(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "dvb") };
 }
 
 pub fn call_lvw(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "lvw") };
 }
 
 pub fn call_cqb(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "cqb") };
 }
 
 pub fn call_pt(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "pt") };
 }
 
 pub fn call_kHz(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "kHz") };
 }
 
 pub fn call_fr(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "fr") };
 }
 
 pub fn call_ex(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "ex") };
 }
 
 pub fn call_Q(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "Q") };
 }
 
 pub fn call_dpcm(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "dpcm") };
 }
 
 pub fn call_rch(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "rch") };
 }
 
 pub fn call_rex(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "rex") };
 }
 
 pub fn call_parseRuleList(ctx: runtime.Context, css: runtime.JSValue, options: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
@@ -274,99 +246,83 @@ pub fn call_parseRuleList(ctx: runtime.Context, css: runtime.JSValue, options: w
 }
 
 pub fn call_rad(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "rad") };
 }
 
 pub fn call_mm(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "mm") };
 }
 
 pub fn call_svmax(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "svmax") };
 }
 
 pub fn call_cqw(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "cqw") };
 }
 
 pub fn call_percent(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "percent") };
 }
 
 pub fn call_em(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "em") };
 }
 
 pub fn call_grad(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "grad") };
 }
 
 pub fn call_vmin(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "vmin") };
 }
 
 pub fn call_dvh(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "dvh") };
 }
 
 pub fn call_svw(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "svw") };
 }
 
 pub fn call_vb(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "vb") };
 }
 
 pub fn call_lvh(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "lvh") };
 }
 
 pub fn call_rem(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "rem") };
 }
 
 pub fn call_lvb(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "lvb") };
 }
 
 pub fn call_svi(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "svi") };
 }
 
 pub fn call_vw(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "vw") };
 }
 
 pub fn call_parseRule(ctx: runtime.Context, css: runtime.JSValue, options: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
@@ -377,63 +333,53 @@ pub fn call_parseRule(ctx: runtime.Context, css: runtime.JSValue, options: webid
 }
 
 pub fn call_cap(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "cap") };
 }
 
 pub fn call_dvw(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "dvw") };
 }
 
 pub fn call_dvmax(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "dvmax") };
 }
 
 pub fn call_dpi(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "dpi") };
 }
 
 pub fn call_number(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "number") };
 }
 
 pub fn call_lvmax(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "lvmax") };
 }
 
 pub fn call_ic(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "ic") };
 }
 
 pub fn call_rlh(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "rlh") };
 }
 
 pub fn call_turn(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "turn") };
 }
 
 pub fn call_px(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "px") };
 }
 
 pub fn call_parseDeclaration(ctx: runtime.Context, css: runtime.DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
@@ -451,9 +397,8 @@ pub fn call_parseStylesheet(ctx: runtime.Context, css: runtime.JSValue, options:
 }
 
 pub fn call_cqmin(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "cqmin") };
 }
 
 pub fn call_parseValue(ctx: runtime.Context, css: runtime.DOMString) anyerror!runtime.JSValue {
@@ -502,39 +447,33 @@ fn registrationString(ctx: runtime.Context, definition: runtime.JSValue, member:
 }
 
 pub fn call_dvi(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "dvi") };
 }
 
 pub fn call_pc(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "pc") };
 }
 
 pub fn call_dppx(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "dppx") };
 }
 
 pub fn call_cqi(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "cqi") };
 }
 
 pub fn call_ms(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "ms") };
 }
 
 pub fn call_dvmin(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "dvmin") };
 }
 
 pub fn call_parseValueList(ctx: runtime.Context, css: runtime.DOMString) anyerror!runtime.JSValue {
@@ -544,13 +483,11 @@ pub fn call_parseValueList(ctx: runtime.Context, css: runtime.DOMString) anyerro
 }
 
 pub fn call_vh(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "vh") };
 }
 
 pub fn call_lvi(ctx: runtime.Context, value: f64) anyerror!runtime.JSValue {
-    _ = ctx;
-    _ = value;
-    return error.NotImplemented;
+    // CSS Typed OM §4.3.5: a new numeric value in the factory's unit.
+    return .{ .instance = try interfaces.CSSUnitValue.call_constructor(ctx, value, "lvi") };
 }

@@ -44,6 +44,18 @@ pub const slots = struct {
     pub const parent: engine.TracedSlot = .{ .name = "CSSOM:parent" };
     pub const style_sheet: engine.TracedSlot = .{ .name = "CSSOM:styleSheet" };
     pub const parent_rule: engine.TracedSlot = .{ .name = "CSSOM:parentRule" };
+    pub const font_feature_map_owner: engine.TracedSlot = .{ .name = "CSSOM:fontFeatureMapOwner" };
+
+    pub fn fontFeatureMap(block: @import("css").font_feature_values.Block) engine.TracedSlot {
+        return .{ .name = switch (block) {
+            .swash => "CSSOM:fontFeature:swash",
+            .stylistic => "CSSOM:fontFeature:stylistic",
+            .ornaments => "CSSOM:fontFeature:ornaments",
+            .annotation => "CSSOM:fontFeature:annotation",
+            .character_variant => "CSSOM:fontFeature:characterVariant",
+            .styleset => "CSSOM:fontFeature:styleset",
+        } };
+    }
 
     /// A rule list's slot for the object of `rule`.
     pub fn rule(buffer: []u8, model: *const Rule) engine.TracedSlot {
@@ -81,6 +93,9 @@ pub fn ruleObject(rule: *Rule, realm: runtime.Context) anyerror!*runtime.Instanc
         .namespace => interfaces.CSSNamespaceRule.initWith(a, realm, args),
         .font_face => interfaces.CSSFontFaceRule.initWith(a, realm, args),
         .page => interfaces.CSSPageRule.initWith(a, realm, args),
+        .margin => interfaces.CSSMarginRule.initWith(a, realm, args),
+        .font_feature_values => interfaces.CSSFontFeatureValuesRule.initWith(a, realm, args),
+        .counter_style => interfaces.CSSCounterStyleRule.initWith(a, realm, args),
         .position_try => interfaces.CSSPositionTryRule.initWith(a, realm, args),
         .property => interfaces.CSSPropertyRule.initWith(a, realm, args),
         .keyframes => interfaces.CSSKeyframesRule.initWith(a, realm, args),
@@ -184,4 +199,19 @@ pub fn documentOfRule(rule: *Rule) ?*runtime.Instance {
         record = record.parentSheet() orelse return null;
     }
     return null;
+}
+
+/// Fonts 4 §12.2 / Q42: each of the rule's six native maps has one live
+/// wrapper. The model's link is weak; rule and map trace each other.
+pub fn fontFeatureMapObject(rule: *Rule, owner: *runtime.Instance, block: @import("css").font_feature_values.Block) !*runtime.Instance {
+    if (rule.data != .font_feature_values) return error.InvalidStateError;
+    const link = &rule.data.font_feature_values.objects[@intFromEnum(block)];
+    if (link.get()) |object| return object;
+    const object = try interfaces.CSSFontFeatureValuesMap.initWith(owner.ctx.allocator, owner.ctx, .{
+        .font_feature_values_of = rule,
+        .font_feature_block = block,
+    });
+    link.set(object);
+    keepFrom(owner, object, slots.fontFeatureMap(block));
+    return object;
 }

@@ -181,6 +181,7 @@ pub const Longhand = enum(u16) {
     top,
     unicode_bidi,
     user_select,
+    pointer_events,
     visibility,
     white_space_collapse,
     width,
@@ -418,6 +419,9 @@ pub const Longhand = enum(u16) {
     will_change,
     container_name,
     container_type,
+
+    // Paged Media3 §8.1. Append so existing rare-group members stay put.
+    page,
 
     pub const count = @typeInfo(Longhand).@"enum".fields.len;
 
@@ -672,6 +676,7 @@ pub const Grammar = enum {
     gap_rule,
     /// Gaps 1 §3.3: <length-percentage> | overlap-join.
     gap_inset,
+    page_name,
 };
 
 pub const Info = struct {
@@ -724,6 +729,9 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .initial_letter, .inherited = false, .initial = Value.kw(.normal), .grammar = .inline_value },
         .{ .longhand = .text_box_trim, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .trim_start, .trim_end, .trim_both } },
         .{ .longhand = .text_box_edge, .inherited = true, .initial = Value.kw(.auto), .grammar = .inline_value },
+        // Paged Media3 §8.1; Q86 Chrome/Firefox choose noninheritance.
+        // The computed value is specified; ancestor resolution is a used value.
+        .{ .longhand = .page, .inherited = false, .initial = Value.kw(.auto), .grammar = .page_name },
         .{ .longhand = .hanging_punctuation, .inherited = true, .initial = Value.kw(.none), .grammar = .text_value },
         .{ .longhand = .hyphenate_limit_lines, .inherited = true, .initial = Value.kw(.no_limit), .grammar = .text_value },
         // Text4 §7.6, WebKit's cssTextGroupAlignEnabled implementation.
@@ -988,6 +996,9 @@ const infos: [Longhand.count]Info = blk: {
         // contain remains in the current grammar: Gecko bug 1036853 is open;
         // Blink/WebKit also describe it as unimplemented, not declined (Q2).
         .{ .longhand = .user_select, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .text, .none, .contain, .all } },
+        // CSS UI 4 §6.2 / SVG 2 §15.6; Q19's browser-supported grammar
+        // is element-independent. Computed value is the inherited keyword.
+        .{ .longhand = .pointer_events, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .none, .bounding_box, .visiblepainted, .visiblefill, .visiblestroke, .visible, .painted, .fill, .stroke, .all } },
         .{ .longhand = .visibility, .inherited = true, .initial = Value.kw(.visible), .grammar = .keywords, .keywords = &.{ .visible, .hidden, .collapse } },
         .{ .longhand = .white_space_collapse, .inherited = true, .initial = Value.kw(.collapse), .grammar = .keywords, .keywords = &.{ .collapse, .discard, .preserve, .preserve_breaks, .preserve_spaces, .break_spaces } },
         .{ .longhand = .width, .inherited = false, .initial = Value.kw(.auto), .grammar = .size, .quirky_length = true },
@@ -1525,7 +1536,14 @@ fn cssWideKeyword(text: []const u8) ?values.CssWide {
     const token = stream.next();
     if (token.token_type != .ident) return null;
     if (!stream.atEnd()) return null;
-    return values.CssWide.parse(token.value);
+    if (values.CssWide.parse(token.value)) |keyword| return keyword;
+    if (std.mem.indexOfScalar(u8, token.value, '\\') == null) return null;
+    // Syntax 3 §4.3.12 consumes escaped code points into the ident value;
+    // Values 4 §4.1.1 and Cascade 5 §7.3 apply its CSS-wide meaning.
+    inline for (std.meta.tags(values.CssWide)) |keyword| {
+        if (tokenizer_mod.nameEql(token.value, keyword.name())) return keyword;
+    }
+    return null;
 }
 
 /// Unsupported functions cannot pass through opaque grammars; an arbitrary
@@ -1557,12 +1575,65 @@ fn containsUnsupportedToken(text: []const u8, content_functions: bool, flags: *F
     }
 }
 
+// H-TYPED-NUMERIC-INPUT / H-TYPED-IMAGE-INPUT, Q71 storage form.
+pub const TypedNumericInput = struct {
+    expression: *const math_values.NumericExpression,
+    is_unit: bool,
+};
+const NativeInput = union(enum) { numeric: TypedNumericInput, image: *const Value };
+
+/// Match a borrowed Typed OM numeric tree with the existing grammar.
+pub fn parseTypedNumeric(options: ParseOptions, property: Property, input: TypedNumericInput, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
+    return parseNativeInput(options, property, .{ .numeric = input }, out);
+}
+
+/// The private stream owns no input bytes and no native value. Its sole
+/// marker points into THIS synchronous call, and never escapes the parser.
+fn parseNativeInput(options: ParseOptions, property: Property, input: NativeInput, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
+    const start = out.items.len;
+    var succeeded = false;
+    defer if (!succeeded) {
+        for (out.items[start..]) |assignment| assignment.value.release();
+        out.shrinkRetainingCapacity(start);
+    };
+    var stream = Stream.init("");
+    stream.native_input = &input;
+    defer stream.native_input = null;
+    stream.peeked = .{ .token_type = .function, .value = if (input == .numeric) "calc" else "url" };
+    const matched = switch (property) {
+        .longhand => |longhand| blk: {
+            const value = try parseLonghand(options, longhand, &stream) orelse break :blk false;
+            errdefer value.release();
+            try out.append(options.allocator, .{ .longhand = longhand, .value = .{ .value = value } });
+            break :blk true;
+        },
+        .shorthand => |shorthand| try parseShorthand(options, shorthand, &stream, out),
+    };
+    succeeded = matched and stream.native_input == null and stream.atEnd();
+    return succeeded;
+}
+
+// H-TYPED-IMAGE-INPUT, Q66/Q71, beside the numeric input entry.
+/// Typed OM §3: use a native image's frozen resource provenance through
+/// the existing grammar. No tokenized CSS can create the private marker.
+pub fn parseTypedImage(options: ParseOptions, property: Property, image: Value, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
+    const valid_image = switch (image) {
+        .image => true,
+        .text => |text| text.image_kind != .generic,
+        else => false,
+    };
+    if (!valid_image) return false;
+    return parseNativeInput(options, property, .{ .image = &image }, out);
+}
+
 /// A value's tokens, whitespace skipped.
 pub const Stream = struct {
     tok: Tokenizer,
     peeked: ?Token = null,
     text: []const u8,
     peeked_offset: usize = 0,
+    /// Borrowed only during parseNativeInput; CSS text never creates it.
+    native_input: ?*const NativeInput = null,
 
     pub fn init(text: []const u8) Stream {
         return .{ .tok = Tokenizer.init(text), .text = text };
@@ -1589,16 +1660,17 @@ pub const Stream = struct {
         return self.peek().token_type == .eof;
     }
 
-    const Mark = struct { tok: Tokenizer, peeked: ?Token, peeked_offset: usize };
+    const Mark = struct { tok: Tokenizer, peeked: ?Token, peeked_offset: usize, native_input: ?*const NativeInput };
 
     fn mark(self: *const Stream) Mark {
-        return .{ .tok = self.tok, .peeked = self.peeked, .peeked_offset = self.peeked_offset };
+        return .{ .tok = self.tok, .peeked = self.peeked, .peeked_offset = self.peeked_offset, .native_input = self.native_input };
     }
 
     fn restore(self: *Stream, m: Mark) void {
         self.tok = m.tok;
         self.peeked = m.peeked;
         self.peeked_offset = m.peeked_offset;
+        self.native_input = m.native_input;
     }
 
     /// The position of the next token in the text.
@@ -1768,6 +1840,11 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .content => {
             if (takeKeyword(stream, &.{ .normal, .none })) |k| return Value.kw(k);
             const generated = @import("generated_content.zig");
+            if (stream.native_input) |input| if (input.* == .image) {
+                const image = try parseImageLeaf(options, stream) orelse return null;
+                defer image.release();
+                return .{ .content = try generated.Content.fromImage(options.allocator, image) orelse return null };
+            };
             const begin = stream.offset();
             var content_options = options;
             content_options.taint_offset += begin;
@@ -1816,7 +1893,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         },
         .opacity => {
             const t = stream.peek();
-            if (math_values.isFunction(t)) return mathValue(options, stream, .{ .kind = .number_percentage, .minimum = 0, .maximum = 1 });
+            if (math_values.isFunction(t)) return mathValue(options, stream, .{ .kind = .number_percentage, .minimum = 0, .maximum = 1, .minimum_kind = .computation, .maximum_kind = .computation });
             const n: f64 = switch (t.token_type) {
                 .number => t.numeric_value orelse return null,
                 .percentage => (t.numeric_value orelse return null) / 100,
@@ -1828,7 +1905,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .z_index => {
             if (takeKeyword(stream, &.{.auto})) |k| return Value.kw(k);
             const t = stream.peek();
-            if (math_values.isFunction(t)) return mathValue(options, stream, .{ .kind = .integer, .minimum = std.math.minInt(i32), .maximum = std.math.maxInt(i32) });
+            if (math_values.isFunction(t)) return mathValue(options, stream, .{ .kind = .integer, .minimum = std.math.minInt(i32), .maximum = std.math.maxInt(i32), .minimum_kind = .representation, .maximum_kind = .representation });
             if (t.token_type != .number or !t.is_integer) return null;
             const n = t.numeric_value orelse return null;
             _ = stream.next();
@@ -1853,6 +1930,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .background => return @import("background_values.zig").parse(options, l, stream),
         .gap_rule => return @import("gap_decorations.zig").consume(options, l, stream),
         .gap_inset => return @import("gap_decorations.zig").consumeInset(options, stream),
+        .page_name => return pageName(options, stream),
     }
 }
 
@@ -1885,6 +1963,28 @@ fn willChange(options: ParseOptions, stream: *Stream) Allocator.Error!?Value {
         try out.appendSlice(a, ", ");
     }
     return .{ .text = try SharedText.create(a, out.items) };
+}
+
+/// Paged Media3 §8.1: auto | <custom-ident>. Q86 keeps the native canonical
+/// identifier in the existing SharedText representation, preserving case.
+fn pageName(options: ParseOptions, stream: *Stream) Allocator.Error!?Value {
+    const token = stream.peek();
+    if (token.token_type != .ident) return null;
+    if (tokenizer_mod.nameEql(token.value, "auto")) {
+        _ = stream.next();
+        return Value.kw(.auto);
+    }
+    const allocator = options.allocator;
+    const decoded = try tokenizer_mod.decode(allocator, token.value);
+    defer allocator.free(decoded);
+    // Values4 §4.2 excludes default and every CSS-wide keyword. The latter
+    // belongs to parseDeclaration's common CSS-wide dispatch, not this grammar.
+    if (values.CssWide.parse(decoded) != null or std.ascii.eqlIgnoreCase(decoded, "default")) return null;
+    const canonical = try serialize_mod.serializeIdentifier(allocator, decoded);
+    defer allocator.free(canonical);
+    const text = try SharedText.create(allocator, canonical);
+    _ = stream.next();
+    return .{ .text = text };
 }
 
 /// Anchor Position 1 §§2.1–2.2: names remain case-sensitive, including
@@ -1983,6 +2083,12 @@ pub fn lengthPercentage(options: ParseOptions, stream: *Stream, flags: LengthFla
 }
 
 pub fn mathValue(options: ParseOptions, stream: *Stream, grammar: math_values.Grammar) Allocator.Error!?Value {
+    if (stream.native_input) |input| if (input.* == .numeric) {
+        const expression = try math_values.fromTypedNumeric(options.allocator, input.numeric.expression, input.numeric.is_unit, grammar) orelse return null;
+        _ = stream.next();
+        stream.native_input = null;
+        return .{ .calculation = expression };
+    };
     const begin = stream.offset();
     const parsed = try math_values.parseWithScope(options.allocator, stream.text[begin..], grammar, options.random_scope) orelse return null;
     stream.tok = Tokenizer.init(stream.text);
@@ -2074,6 +2180,13 @@ pub fn urlRangeTainted(options: ParseOptions, range: resources.ResourceUrl.Range
 
 /// The pre-existing URL and raw gradient parser; no choice is made here.
 pub fn parseImageLeaf(options: ParseOptions, stream: *Stream) Allocator.Error!?Value {
+    if (stream.native_input) |input| if (input.* == .image) {
+        const image = input.image.*;
+        _ = stream.next();
+        stream.native_input = null;
+        image.retain();
+        return image;
+    };
     const begin = stream.offset();
     const t = stream.peek();
     switch (t.token_type) {
