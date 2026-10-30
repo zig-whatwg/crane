@@ -61,8 +61,12 @@ pub const TargetIndex = struct {
     /// Effects as generation-checked links: an effect collected since the
     /// index was built is skipped, never read.
     map: std.AutoHashMapUnmanaged(Key, std.ArrayListUnmanaged(model.Link)) = .empty,
+    /// Targets leave `map` as their animations end (`finish`): the
+    /// tombstones they leave are bounded before each insert
+    /// (src/infra/tombstones.zig).
+    guard: @import("infra").tombstones.TombstoneGuard = .{},
 
-    const Key = struct { address: usize, generation: u64 };
+    pub const Key = struct { address: usize, generation: u64 };
 
     pub fn deinit(self: *TargetIndex, allocator: Allocator) void {
         var it = self.map.valueIterator();
@@ -71,10 +75,53 @@ pub const TargetIndex = struct {
         self.* = .{};
     }
 
-    fn clear(self: *TargetIndex, allocator: Allocator) void {
+    /// A rebuild starts: every target's list empties and KEEPS its storage,
+    /// so the frames of a running animation rebuild the index without
+    /// allocating. A list freed and allocated again every frame shifted
+    /// which buckets of its size class the WPT runner's DebugAllocator kept
+    /// mapped (it never reuses a freed slot and unmaps a bucket with its
+    /// last live slot), and the short-lived allocations of every style read
+    /// of an UNANIMATED element then mapped and unmapped pages: about one
+    /// extra page fault per getComputedStyle read beside one running
+    /// animation (crane/r3-cost-one-spinner.html, +31%;
+    /// tests/dom/r3_target_index_test.zig).
+    pub fn begin(self: *TargetIndex) void {
+        self.revision = 0;
         var it = self.map.valueIterator();
-        while (it.next()) |list| list.deinit(allocator);
-        self.map.clearRetainingCapacity();
+        while (it.next()) |list| list.clearRetainingCapacity();
+    }
+
+    /// `link` applies to the target `key` names.
+    pub fn add(self: *TargetIndex, allocator: Allocator, key: Key, link: model.Link) Allocator.Error!void {
+        self.guard.beforeInsert(&self.map);
+        const entry = try self.map.getOrPut(allocator, key);
+        if (!entry.found_existing) entry.value_ptr.* = .empty;
+        try entry.value_ptr.append(allocator, link);
+    }
+
+    /// The rebuild ends: each target's effects in composite order, and a
+    /// target no effect applies to any more leaves with its storage.
+    pub fn finish(self: *TargetIndex, allocator: Allocator, context: anytype, comptime lessThan: fn (@TypeOf(context), model.Link, model.Link) bool) void {
+        var it = self.map.iterator();
+        while (it.next()) |entry| {
+            if (entry.value_ptr.items.len != 0) {
+                std.mem.sort(model.Link, entry.value_ptr.items, context, lessThan);
+                continue;
+            }
+            entry.value_ptr.deinit(allocator);
+            // Removal leaves a tombstone and never rehashes: the iterator
+            // goes on over the same slots.
+            self.map.removeByPtr(entry.key_ptr);
+            self.guard.noteRemoval(&self.map);
+        }
+    }
+
+    /// The effects that apply to `key`'s target, in composite order; null
+    /// when none does.
+    pub fn effectsOf(self: *const TargetIndex, key: Key) ?[]const model.Link {
+        const list = self.map.getPtr(key) orelse return null;
+        if (list.items.len == 0) return null;
+        return list.items;
     }
 };
 
@@ -107,8 +154,7 @@ fn linkLessThan(_: void, a: model.Link, b: model.Link) bool {
 fn current(registry: *registry_mod.Registry) ?*TargetIndex {
     const index = &registry.targets;
     if (index.revision == registry.values_revision) return index;
-    index.clear(registry.allocator);
-    index.revision = 0;
+    index.begin();
     for (registry.animations.items) |link| {
         const instance = link.get() orelse continue;
         const animation = hooks.animationOf(instance) orelse continue;
@@ -116,12 +162,9 @@ fn current(registry: *registry_mod.Registry) ?*TargetIndex {
         if (!applies(registry, animation, effect)) continue;
         const target = effect.targetElement().?;
         const key: TargetIndex.Key = .{ .address = @intFromPtr(target), .generation = runtime.SlabAllocator.generationOf(target) };
-        const entry = index.map.getOrPut(registry.allocator, key) catch return null;
-        if (!entry.found_existing) entry.value_ptr.* = .empty;
-        entry.value_ptr.append(registry.allocator, model.Link.to(effect.instance)) catch return null;
+        index.add(registry.allocator, key, model.Link.to(effect.instance)) catch return null;
     }
-    var it = index.map.valueIterator();
-    while (it.next()) |list| std.mem.sort(model.Link, list.items, {}, linkLessThan);
+    index.finish(registry.allocator, {}, linkLessThan);
     index.revision = registry.values_revision;
     return index;
 }
@@ -145,9 +188,7 @@ fn effectsOf(element: *runtime.Instance) ?[]const model.Link {
     const registry = registry_mod.of(element.ctx) orelse return null;
     if (registry.animations.items.len == 0) return null;
     const index = current(registry) orelse return null;
-    const key: TargetIndex.Key = .{ .address = @intFromPtr(element), .generation = runtime.SlabAllocator.generationOf(element) };
-    const list = index.map.getPtr(key) orelse return null;
-    return list.items;
+    return index.effectsOf(.{ .address = @intFromPtr(element), .generation = runtime.SlabAllocator.generationOf(element) });
 }
 
 /// A serial for a style the engine just resolved for `element`
