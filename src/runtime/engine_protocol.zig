@@ -78,6 +78,8 @@ pub const Context = runtime.Context;
 /// An ECMAScript agent: a V8 isolate, a JavaScriptCore context group. Opaque;
 /// a realm records its own (`Context.agent`).
 pub const Agent = runtime.Agent;
+/// An agent's queue of trees to free (AgentOptions.deferred_teardown).
+pub const DeferredTeardown = runtime.gc.DeferredTeardown;
 
 /// The IDL-level value. As a parameter, always BORROWED for the call.
 pub const JSValue = runtime.JSValue;
@@ -513,15 +515,18 @@ pub const AgentOptions = struct {
     /// destroyAgent frees), BORROWED for the agent's life.
     allocator: std.mem.Allocator = std.heap.c_allocator,
     /// The host's queue of native objects whose last owner went away
-    /// (runtime.gc.DeferredTeardown), BORROWED past the agent's end. When the
-    /// collector takes a node's wrapper, the adapter QUEUES the node's
-    /// teardown here instead of running it (4.12): the host's event loop frees
-    /// it a slice at a time between tasks, the end of the node's realm and the
-    /// agent's end drain it, `requestGarbageCollection` and a `.critical`
-    /// `notifyMemoryPressure` drain it after collecting, and past its memory
-    /// bound the adapter frees inline where it queued. The agent's end closes
-    /// it. Null - or an adapter that does not queue yet (JavaScriptCore,
-    /// QuickJS) - tears down inline, as before.
+    /// (runtime.gc.DeferredTeardown), BORROWED past the agent's end: the
+    /// trees whose counts reached zero (refcount step 7, dom.refcount_teardown).
+    /// The host's event loop frees it a slice at a time between tasks, the end
+    /// of a realm and the agent's end drain it, `requestGarbageCollection` and
+    /// a `.critical` `notifyMemoryPressure` drain it after collecting. The
+    /// adapter counts every binding entry and every native-to-script callback
+    /// invocation on its `algorithm_depth`: nothing is freed while it is not
+    /// zero, and what is owed meanwhile runs when the outermost binding exit
+    /// brings it back to zero - never at a callback's return
+    /// (docs/engine-protocol.md, "Deferred teardown"). The agent's end closes
+    /// it. Null - or an adapter that does not count yet (JavaScriptCore,
+    /// QuickJS) - frees at the event loop's slices only.
     deferred_teardown: ?*runtime.gc.DeferredTeardown = null,
 };
 
@@ -990,6 +995,21 @@ pub inline fn agentHost(agent: *Agent) ?*anyopaque {
     return impl.agentHost(agent);
 }
 
+/// The deferred teardown queue `agent` was created with
+/// (AgentOptions.deferred_teardown): the host's own queue handed back, no
+/// engine handle, BORROWED - valid while the agent lives (the host owns it
+/// and outlives the agent). It is where the DOM queues a tree whose counts
+/// reached zero (refcount step 7, dom.refcount_teardown). Null when none was
+/// given, once the agent is destroyed, or for an agent the adapter did not
+/// make - whose garbage the counts then leave to its realm's end; for such an
+/// agent the adapter keeps the old free: a collected wrapper's second pass
+/// frees a root node nothing owns. The sibling of `agentHost`: a host pointer
+/// an agent was given is only its creator's type, so the DOM never casts
+/// `agentHost` to find the queue.
+pub inline fn deferredTeardownOf(agent: *Agent) ?*DeferredTeardown {
+    return impl.deferredTeardownOf(agent);
+}
+
 /// Whether the agent's execution context stack is non-empty.
 pub inline fn hasRunningScript(agent: *Agent) bool {
     return impl.hasRunningScript(agent);
@@ -1015,8 +1035,10 @@ pub inline fn nextEngineTaskDelay(agent: *Agent) ?u64 {
 }
 
 /// Collect `agent`'s garbage now, as completely as the engine can - for
-/// TestUtils.gc() only (never in a shipping configuration). The teardowns the
-/// collection queued (AgentOptions.deferred_teardown) run before it returns.
+/// TestUtils.gc() only (never in a shipping configuration). The teardowns
+/// queued (AgentOptions.deferred_teardown) run before it returns - unless a
+/// DOM algorithm is on the agent's stack (asked from script: TestUtils.gc() is
+/// itself a binding entry), when they run at the outermost binding exit.
 pub inline fn requestGarbageCollection(agent: *Agent) void {
     impl.requestGarbageCollection(agent);
 }

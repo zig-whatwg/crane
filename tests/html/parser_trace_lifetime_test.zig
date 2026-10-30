@@ -142,6 +142,61 @@ test "an unreachable suspended Document parser graph has no independent root" {
     try onFreshThread(unreachableSuspendedCycle);
 }
 
+/// Refcount step 7 (lane refcount9; the integrator's ruling): a Document
+/// whose own count reaches zero with no window detaches its parser - WebKit's
+/// Document::removedLastRef detaches its parser before it tears its children
+/// down. A node of the document held elsewhere is a foreign hold that keeps
+/// the document's tree (decision D6) - and, wrapped, its wrapper keeps the
+/// document's wrapper too (node tracing's upward edge of a detached root, so
+/// `held.ownerDocument` keeps its identity), so the document's own count is
+/// not zero while it is held, and its parser stays attached, as a traced
+/// document's does in Blink. Once the node is dropped, the document's last
+/// reference goes, the parser detaches, and the whole graph is freed - no
+/// cycle between the document and its parser's counted structures survives.
+fn suspendedParserDetachesWhileAForeignHoldKeepsTheTree() !void {
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    var document_owner: ?engine.Owned = try browser.evaluateScript(
+        \\globalThis.parsed = document.implementation.createHTMLDocument('held through an adopted node');
+        \\globalThis.held = parsed.adoptNode(document.createElement('p'));
+        \\parsed
+    );
+    defer if (document_owner) |owned| owned.release();
+    const realm = browser.getRealm() orelse return error.NoRealm;
+    const document = engine.convertToPlatformObject(realm, document_owner.?.borrow()) orelse return error.NoDocument;
+    const document_generation = runtime.SlabAllocator.generationOf(document);
+    var loader = LoaderLifetime{};
+    const parser = try scripted_parser.DocumentParser.createComplete(testing.allocator, realm, document, "<!doctype html><body><div>waiting", .{ .script_loader = loader.descriptor() });
+    try testing.expect(dom.document_lifecycle.associateParser(document, parser));
+    parser.input_stream.complete = false;
+    parser.input_stream.processInserted();
+    try testing.expect(!parser.input_stream.eof_processed);
+    parser.release();
+    document_owner.?.release();
+    document_owner = null;
+    const page = browser.current_context orelse return error.NoPage;
+    try page.runScript("globalThis.parsed = null;");
+    try collect(browser);
+    // The adopted node, held, keeps its document's tree - and its document
+    // (through its wrapper's edge), so the parser stays attached.
+    try testing.expectEqual(document_generation, runtime.SlabAllocator.generationOf(document));
+    try testing.expectEqual(@as(usize, 0), loader.releases);
+    try page.runScript("if (held.ownerDocument.body === null) throw new Error('the held node lost its document tree');");
+    // Dropped: the document's last reference goes, its parser detaches, and
+    // the document, its tree and the parser are all freed.
+    try page.runScript("globalThis.held = null;");
+    try collect(browser);
+    _ = try browser.runEventLoopBlocking(20);
+    try collect(browser);
+    try testing.expectEqual(@as(usize, 1), loader.releases);
+    try testing.expect(document_generation != runtime.SlabAllocator.generationOf(document));
+}
+
+test "a held foreign node keeps a suspended parser's document and tree; dropped, the parser detaches and the graph is freed" {
+    try onFreshThread(suspendedParserDetachesWhileAForeignHoldKeepsTheTree);
+}
+
 const Reentry = struct {
     browser: *browser_mod.Browser,
     page: *browser_mod.Context,

@@ -13,6 +13,8 @@ const helpers = @import("winslot_helpers.zig");
 fn hostWindowSlotReissued() !void {
     const page = try helpers.Page.open();
     defer page.close();
+    // Holders of the page WindowProxy outlive the page on purpose.
+    @import("dom").refcount_teardown.allowLiveNodesAtAgentEnd(&page.browser.agent_host.deferred_teardown, "holders of the old WindowProxy outlive the page, which is what this tests");
     const context = page.browser.current_context orelse return error.NoPage;
     try context.loadHTML("<!doctype html><title>one</title>", .{ .base_url = "http://example.test/one" });
     // Holders of the page's WindowProxy in a realm that outlives the page's

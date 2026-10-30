@@ -72,6 +72,8 @@ fn collect(browser: *browser_mod.Browser) !void {
 fn popupOutlivesOpenersLoad() !void {
     const browser = try startBrowser();
     defer browser.deinit();
+    // The popup realm outlives its opener load on purpose; its nodes are the final sweep's.
+    @import("dom").refcount_teardown.allowLiveNodesAtAgentEnd(&browser.agent_host.deferred_teardown, "a popup outlives the load of its opener, which is what this tests");
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
     try page.loadHTML("<!doctype html><title>one</title>", .{ .base_url = "http://example.test/one" });

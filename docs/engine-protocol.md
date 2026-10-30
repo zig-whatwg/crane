@@ -99,27 +99,45 @@ finalized, removed, replaced or its realm ends, or when the node's own teardown
 begins under it (`wrapperReleased`). The adapter keeps what the acquire
 answered (a node's NodeBase) beside the wrapper, so its second pass looks
 nothing up, and decides nothing about what the reference means: dom.refcount
-does. Until refcount step 7 the counts run in shadow mode - kept and checked,
-deciding nothing; a node the collector freed while its wrapper waited for its
-second pass is forgotten (`wrapperForgotten`), never read. JavaScriptCore's
+does. Since refcount step 7 the counts decide: the release is the whole
+lifetime decision for a node - a tree it leaves with no hold is queued by
+dom.refcount_teardown - and the adapter only lets the wrapper go. A node a
+realm's forced teardown freed while its wrapper waited for its second pass is
+forgotten (`wrapperForgotten`), never read. JavaScriptCore's
 design (2.5): the class finalizer only queues the instance on a thread-safe
 list the agent drains at its next safe point, and derefs there.
 
-**A collected node's teardown is the host's to schedule.** When the host gives
-an agent a queue (`AgentOptions.deferred_teardown`, a
-`runtime.gc.DeferredTeardown` its AgentHost owns), the adapter queues a node
-whose wrapper was collected there instead of tearing it down, and the host's
-event loop frees it a slice at a time between tasks (`runSlice`: at most
-`slice_budget` nodes, leaves first, through `dom.tree_teardown`), so a
-collected tree of thousands of nodes never lands as one pause inside whatever
-script the collection interrupted. The checks above are made again when the
-queue reaches the node, since script has run in between. The node's realm's
-end, `requestGarbageCollection` and a `.critical` `notifyMemoryPressure` drain
-the queue; the agent's end finds it empty and closes it; past `high_water`
-queued nodes, the second pass that queued one frees as many inline. V8 queues
-from the second pass; JavaScriptCore, QuickJS and the test adapter take the
-field and tear down inline. The queue is engine-neutral: a reference-counted
-DOM queues an object whose count reached zero the same way.
+**Deferred teardown: a garbage tree is the host's to free, and never under a
+DOM algorithm.** The host gives an agent a queue (`AgentOptions.deferred_teardown`,
+a `runtime.gc.DeferredTeardown` its AgentHost owns). Since refcount step 7 the
+DOM queues there every tree whose counts reached zero - a removal, a holder's
+or a wrapper's release (dom.refcount_teardown) - and the host's event loop
+frees it a slice at a time between tasks (`runSlice`: at most `slice_budget`
+nodes, leaves first, through `dom.tree_teardown`), re-checking the counts
+first, since script has run in between. The node's realm's end drains its own
+items before its coordinated teardown; the agent's end finds the queue empty
+and closes it. Nothing of the queue is freed while a DOM algorithm is on the
+agent's stack (refcount design 9, risk 4), so an adapter COUNTS, on the
+queue's `algorithm_depth`, every binding entry - script calling a platform
+object's operation, attribute or constructor - and every native-to-script
+callback invocation (`invokeCallbackFunction`, `constructCallbackFunction`,
+`callUserObjectOperation`: a native dispatch, a custom element reaction or an
+observer callback calling script). What the queue owes meanwhile - its memory
+bound past `high_water` queued nodes, a full collection's drain - runs only
+when the outermost binding exit brings the depth back to zero (it returns
+into script, with nothing of the DOM below), or at an event loop slice; a
+callback's return into its native caller never runs it.
+`requestGarbageCollection` and a `.critical` `notifyMemoryPressure` drain the
+queue after collecting, at once when the depth is zero; asked from script
+(TestUtils.gc(), itself a binding entry) the drain waits for the outermost
+binding exit. V8 counts in its binding trampolines (interface.zig) and
+callback operations (protocol.zig) through `dom_algorithm.zig`;
+JavaScriptCore, QuickJS and the test adapter take the field and count nothing
+yet - each must count both kinds of entry when it binds platform objects. An
+agent made WITHOUT a queue (`deferred_teardown` null, `deferredTeardownOf`
+null: a test's own) has nowhere for its counts to queue a tree, so the adapter
+keeps the old free for it: a collected wrapper's second pass frees a root node
+nothing owns.
 
 **A native walk holds teardowns.** A teardown can run inside any engine call
 that allocates: V8 runs every pending second pass in the prologue of the next
@@ -332,7 +350,7 @@ adapter will use Crane's own walker (src/html/structured_clone).
 
 | Area | Operations |
 |---|---|
-| Engine and agents | `initializeEngine`, `deinitializeEngine`, `createAgent` (with the host's `HostHooks` and, optionally, its `deferred_teardown` queue), `destroyAgent`, `hasRunningScript`, `hasPendingEngineWork`, `runEngineTasks`, `nextEngineTaskDelay` (nanoseconds until queued work, zero when due, null when empty; foreign posts wake the optional retained `AgentOptions.engine_task_sink`; the host recomputes its wait bound and only the agent thread runs tasks; teardown closes posting before releasing the sink), `notifyMemoryPressure` (a page let go: `.critical`; a hint: `.moderate`), `agentHost` (the AgentOptions.host pointer the agent was made with, handed back; null once destroyed), `requestGarbageCollection` (testing only), `abortRunningScript` [script_abort] (HTML 8.1.4.5 "abort a running script", from any thread: a resource limit's abort "without an exception") and `resumeScripts` [script_abort] (the agent may run script again) |
+| Engine and agents | `initializeEngine`, `deinitializeEngine`, `createAgent` (with the host's `HostHooks` and, optionally, its `deferred_teardown` queue), `destroyAgent`, `hasRunningScript`, `hasPendingEngineWork`, `runEngineTasks`, `nextEngineTaskDelay` (nanoseconds until queued work, zero when due, null when empty; foreign posts wake the optional retained `AgentOptions.engine_task_sink`; the host recomputes its wait bound and only the agent thread runs tasks; teardown closes posting before releasing the sink), `notifyMemoryPressure` (a page let go: `.critical`; a hint: `.moderate`), `agentHost` (the AgentOptions.host pointer the agent was made with, handed back; null once destroyed), `deferredTeardownOf` (the AgentOptions.deferred_teardown queue it was made with, handed back the same way: where the DOM queues a tree whose counts reached zero), `requestGarbageCollection` (testing only), `abortRunningScript` [script_abort] (HTML 8.1.4.5 "abort a running script", from any thread: a resource limit's abort "without an exception") and `resumeScripts` [script_abort] (the agent may run script again) |
 | Realms | `createWindowRealm`, `destroyWindowRealm` (how, as `WindowRealmEnd`: `.global_detached` - its page is gone or a navigation replaced its Window, Blink kGlobalObjectIsDetached (a frame realm a navigation replaced is detached and ends once collected or with its page); `.navigable_destroyed` - HTML "destroy a child navigable", Blink kFrameIsDetached: the global stays attached, severed from the Window), `createWorkerRealm` (HTML "run a worker" step 5: `WorkerRealmOptions.global` picks the global object, a DedicatedWorkerGlobalScope, for a shared worker a SharedWorkerGlobalScope, or - Service Workers "Setup ServiceWorkerGlobalScope" step 8.1, `.service` - a ServiceWorkerGlobalScope), `destroyWorkerRealm`, `createWorkletRealm` (HTML 11.3.1.2 "create a worklet global scope" step 3: a realm in the agent of `WorkletRealmOptions.owner` - the worklet's outside settings, its owner Window's, on its thread, as Blink's main-thread worklets run - whose global object is the `WorkletRealmOptions.global` type: a PaintWorkletGlobalScope, LayoutWorkletGlobalScope, AnimationWorkletGlobalScope or AudioWorkletGlobalScope, with no `self`), `destroyWorkletRealm` ("terminate a worklet global scope" step 5: the realm ends, its agent and owner go on; JavaScriptCore, QuickJS and the test adapter answer `error.NotSupported`), `currentRealm`, `entryRealm`, `incumbentRealm`, `functionRealm`, `installWindowOperations`, `defineBuiltinFunction`, `globalBuiltinFunction` (ECMAScript CreateBuiltinFunction for a function the realm's global object is associated with - Streams' byte length and count queuing strategy size functions: made once per realm and key and kept by the global object, an edge not a root; not a constructor, no `prototype`; OWNED hold; JavaScriptCore, QuickJS: NotSupported) |
 | Running script (HTML 8.1.4) | (Every classic-script operation takes a `ScriptSource`: `.utf8` text that is its own resource, a `.string` value - a timer's string handler, every code unit kept - or `.embedded` text that starts at a `SourcePosition` in its document - an inline script, whose errors and violations report the document's lines; V8: ScriptOrigin's resource line and column offsets. `compileEventHandler` compiles the body named by `EventHandlerSource.url` at its `lineno`/`colno`, with no [[ScriptOrModule]], so what a handler throws names the document while an import() in it names no referrer.) `runClassicScript`, `runClassicScriptWithOptions` (classic-script host record and muted-errors flag, copied into the script so later calls into its functions suppress HostPromiseRejectionTracker too; the convenience operation defaults false; V8 host-defined options carry the flag without a new Global or registry; JSC/QuickJS NotSupported), `runClassicScriptRethrowingErrors` ("run a classic script" with rethrow errors true, importScripts()'s: the original exception left pending as thrown - its location kept, so an uncaught one is reported in the imported script; V8: TryCatch::ReThrow, as Blink's V8ScriptRunner - or, with muted errors, cleared as `MutedScriptError` for the host's NetworkError. JavaScriptCore and QuickJS: NotSupported, as runClassicScript; their error objects carry their location, so their own rethrow is the route), `evaluateClassicScript`, `evaluateClassicScriptToString`, `compileEventHandler`, `prepareToRunScript` / `cleanUpAfterRunningScript`, `runInRealm`, `runTaskInRealm`, `performMicrotaskCheckpoint` and `queueMicrotask` (the agent's - an event loop's; no dropped end, so host data that must be freed goes through `queueRealmMicrotask`), `extractErrorInformation`, `runningScriptLocation` (CSP 2.4.1 step 2: the agent's running script's URL - its `//# sourceURL=` for eval and Function code - and 1-based line and column, as a `ScriptLocation` whose URL the caller owns; null when no script runs. V8: StackTrace::CurrentStackTrace's top frame. JavaScriptCore and QuickJS: always null - violations carry no source location there; JSContextCreateBacktrace, public, is the JavaScriptCore route to a URL and line) |
 | Modules [module_scripts] | `parseModule` (with the module's `start`: an inline module script's `SourcePosition`, `.{}` for a fetched one), `parseJSONModule`, `createDefaultExportSyntheticModule` (ECMA-262 CreateDefaultExportSyntheticModule, for HTML "create a CSS module script"), `moduleRequests`, `linkModule`, `evaluateModule`, `finishDynamicImport`, `releaseModuleRecord` |

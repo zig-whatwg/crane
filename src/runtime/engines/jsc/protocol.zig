@@ -109,6 +109,13 @@ pub fn destroyAgent(_: *Agent) void {}
 pub fn agentHost(_: *Agent) ?*anyopaque {
     return null;
 }
+/// No agent is made here (createAgent is NotSupported, so the adapter has no
+/// agent record to keep AgentOptions.deferred_teardown in): none has a queue.
+/// When agents are made, the adapter keeps the option beside the host and
+/// answers it, as agentHost does.
+pub fn deferredTeardownOf(_: *Agent) ?*engine.DeferredTeardown {
+    return null;
+}
 pub fn hasRunningScript(_: *Agent) bool {
     return false;
 }
@@ -251,6 +258,13 @@ pub fn releaseModuleRecord(_: *engine.ModuleRecord) void {}
 /// destroyWindowRealm detached - with OperationFailed, nothing called, thrown
 /// or reported, as the V8 adapter does (engine_protocol.zig
 /// invokeCallbackFunction; tests/v8/page_realm_operations_test.zig pins it).
+// TODO(refcount step 7, docs/engine-protocol.md "Deferred teardown"): when
+// this adapter binds platform objects and invokes callbacks, it counts every
+// binding entry and every native-to-script callback invocation on the agent's
+// DeferredTeardown.algorithm_depth (enterAlgorithm; leaveAlgorithmToScript at
+// a binding's return, leaveAlgorithmToNative at a callback's), and
+// requestGarbageCollection drains only at depth zero
+// (oweDrainIfInAlgorithm) - as the V8 adapter's dom_algorithm.zig does.
 pub fn invokeCallbackFunction(_: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {
     return error.NotSupported;
 }

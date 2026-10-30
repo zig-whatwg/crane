@@ -21,6 +21,7 @@ const runtime = @import("runtime");
 const engine = @import("engine");
 
 const ffi = @import("ffi.zig");
+const dom_algorithm = @import("dom_algorithm.zig");
 const v8_engine = @import("engine.zig");
 const realm_entry = @import("realm_entry.zig");
 const context_manager = @import("context_manager.zig");
@@ -182,6 +183,10 @@ pub fn agentHost(agent: *Agent) ?*anyopaque {
     return protocol_agents.agentHost(agent);
 }
 
+pub fn deferredTeardownOf(agent: *Agent) ?*engine.DeferredTeardown {
+    return protocol_agents.deferredTeardownOf(isolateOf(agent));
+}
+
 /// The protocol's contract: whether `agent`'s JavaScript execution context
 /// stack is non-empty. Only the current agent can have one on this thread;
 /// then a realm execution context the host pushed ("prepare to run script",
@@ -212,7 +217,13 @@ pub fn nextEngineTaskDelay(agent: *Agent) ?u64 {
 pub fn requestGarbageCollection(agent: *Agent) void {
     ffi.v8_Isolate_RequestGarbageCollection(isolateOf(agent));
     // "As completely as the engine can": the trees the collection queued for
-    // deferred teardown are freed before it returns.
+    // deferred teardown are freed before it returns - unless a DOM algorithm
+    // is on the agent's stack (TestUtils.gc() from script is itself a binding
+    // entry), when they are freed at the outermost binding exit instead
+    // (dom_algorithm.zig; refcount design 9, risk 4).
+    if (protocol_agents.deferredTeardownOf(isolateOf(agent))) |queue| {
+        if (queue.oweDrainIfInAlgorithm()) return;
+    }
     protocol_agents.drainDeferredTeardown(agent);
 }
 
@@ -383,11 +394,19 @@ pub const releaseModuleRecord = protocol_modules.releaseModuleRecord;
 const protocol_callbacks = @import("protocol_callbacks.zig");
 pub fn invokeCallbackFunction(realm: Context, callback: *const engine.CallbackFunction, this_arg: engine.CallbackThis, args: []const JSValue, behavior: engine.ExceptionBehavior) Error!engine.Completion {
     forbidScriptInHold(realm);
+    // A native algorithm calls script: a DOM algorithm on the agent's stack
+    // until the callback returns to it (dom_algorithm.zig, risk 4).
+    const algorithm = dom_algorithm.enterRealm(realm);
+    defer dom_algorithm.leaveToNative(algorithm);
     return protocol_callbacks.invokeCallbackFunction(realm, callback, this_arg, args, behavior);
 }
 
 pub fn invokeCallbackFunctionWithReturnType(realm: Context, callback: *const engine.CallbackFunction, this_arg: engine.CallbackThis, args: []const JSValue, behavior: engine.ExceptionBehavior, return_type: engine.CallbackReturnType) Error!engine.Completion {
     forbidScriptInHold(realm);
+    // A native algorithm calls script: a DOM algorithm on the agent's stack
+    // until the callback returns to it (dom_algorithm.zig, risk 4).
+    const algorithm = dom_algorithm.enterRealm(realm);
+    defer dom_algorithm.leaveToNative(algorithm);
     return switch (return_type) {
         inline else => |kind| protocol_callbacks.invokeCallbackFunctionWithReturnType(realm, callback, this_arg, args, behavior, kind),
     };
@@ -395,11 +414,19 @@ pub fn invokeCallbackFunctionWithReturnType(realm: Context, callback: *const eng
 
 pub fn constructCallbackFunction(realm: Context, callback: *const engine.CallbackFunction, args: []const JSValue) Error!engine.Completion {
     forbidScriptInHold(realm);
+    // A native algorithm calls script: a DOM algorithm on the agent's stack
+    // until the callback returns to it (dom_algorithm.zig, risk 4).
+    const algorithm = dom_algorithm.enterRealm(realm);
+    defer dom_algorithm.leaveToNative(algorithm);
     return protocol_callbacks.constructCallbackFunction(realm, callback, args);
 }
 
 pub fn callUserObjectOperation(realm: Context, callback: *const engine.CallbackInterface, operation: []const u8, this_arg: engine.CallbackThis, args: []const JSValue, behavior: engine.ExceptionBehavior) Error!engine.Completion {
     forbidScriptInHold(realm);
+    // A native algorithm calls script: a DOM algorithm on the agent's stack
+    // until the callback returns to it (dom_algorithm.zig, risk 4).
+    const algorithm = dom_algorithm.enterRealm(realm);
+    defer dom_algorithm.leaveToNative(algorithm);
     return protocol_callbacks.callUserObjectOperation(realm, callback, operation, this_arg, args, behavior);
 }
 

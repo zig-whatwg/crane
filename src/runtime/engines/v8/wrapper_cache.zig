@@ -945,7 +945,10 @@ fn finalizeEntry(entry: *CacheEntry) void {
 
     // The wrapper's reference goes first, while its node is certainly still
     // there: everything below may free it (refcount design 2.1, "dispose the
-    // handle; deref").
+    // handle; deref"). For a counted instance - a node - that deref is the
+    // whole lifetime decision since refcount step 7: a tree it leaves
+    // garbage is queued by the counts (dom.refcount_teardown), never here.
+    const counted = entry.counted != null;
     releaseCounted(entry);
 
     // Replaced or removed before it was collected: nothing of the instance
@@ -1024,6 +1027,23 @@ fn finalizeEntry(entry: *CacheEntry) void {
         return;
     }
 
+    // A counted instance - a node - lives by its counts (refcount step 7):
+    // the deref above queued its tree if that left it garbage, and its slice
+    // frees it between tasks. Only the wrapper goes here. With no other
+    // realm's wrapper, nothing in script reaches the node now, so its
+    // teardown may return its storage (instance_lifecycle.provablyUnwrapped,
+    // [wrap_tracking]) - the slice's, or its tree's later. An agent made
+    // without a queue (engine.AgentOptions.deferred_teardown null: a test's
+    // own) has nowhere for its counts to queue a tree, and keeps the old
+    // model below: the second pass frees a collected root nothing owns.
+    if (counted and entry.cache.deferredQueue() != null) {
+        if (!wrappedElsewhere(entry.instance, entry.cache))
+            runtime.instance_lifecycle.markWrapperGone(entry.instance);
+        disposeEntryWrapper(entry);
+        entry.cache.allocator.destroy(entry);
+        return;
+    }
+
     // An instance the ENGINE still owns is not freed when JS drops its
     // wrapper: a node in a tree is reachable from its parent, a window's
     // document from its browsing context, and neither pointer is visible to
@@ -1063,18 +1083,6 @@ fn finalizeEntry(entry: *CacheEntry) void {
         return;
     }
 
-    // A node - and with a root, its whole subtree - goes to the agent's
-    // deferred teardown queue: the host's event loop frees it a slice at a
-    // time between tasks (runCollectedNode), not here, wherever the next
-    // collection interrupted script.
-    if (queueCollectedNode(entry)) |queued| {
-        disposeEntryWrapper(entry);
-        entry.cache.allocator.destroy(entry);
-        // The memory bound: past it, this safe point frees what it queued.
-        queued.queue.relieve(queued.weight);
-        return;
-    }
-
     // The type's deinit (e.g., Response.deinit frees headers, body, URL
     // list), which returns the Instance to the SlabAllocator - engine calls
     // allowed: it may release the values it holds.
@@ -1083,108 +1091,7 @@ fn finalizeEntry(entry: *CacheEntry) void {
     entry.cache.allocator.destroy(entry);
 }
 
-// ============================================================================
-// Deferred teardown of collected nodes
-// ============================================================================
-
 const DeferredTeardown = runtime.gc.DeferredTeardown;
-
-/// Queue the teardown of `entry`'s instance when it is a node and its agent
-/// has a deferred teardown queue (engine.AgentOptions.deferred_teardown):
-/// the queue and the nodes it stands for, or null when the teardown must run
-/// here - not a node, no queue, or the queue refused (closed: the agent is
-/// ending). The instance keeps its slab slot - its generation - until the
-/// queue frees it; nothing reaches it meanwhile but the queue and whatever
-/// wraps it again (which then owns it).
-fn queueCollectedNode(entry: *CacheEntry) ?struct { queue: *DeferredTeardown, weight: usize } {
-    const node = @import("dom").instance_bridge.getNodeBase(@ptrCast(entry.instance)) orelse return null;
-    const queue = entry.cache.deferredQueue() orelse return null;
-    // How much it holds, counted no further than the bound itself.
-    const weight = @import("dom").tree_teardown.countUpTo(node, DeferredTeardown.high_water);
-    if (!queue.push(.{
-        .instance = entry.instance,
-        .generation = entry.original_generation,
-        .owner = entry.cache,
-        .steps = &collected_node_steps,
-        .weight = weight,
-    })) return null;
-    return .{ .queue = queue, .weight = weight };
-}
-
-const collected_node_steps: DeferredTeardown.Steps = .{ .run = runCollectedNode };
-
-/// The deferred teardown of a node whose wrapper was collected
-/// (`queueCollectedNode`). Script may have run since the second pass, so
-/// `finalizeEntry`'s checks are made again, as 4.12 requires between the
-/// passes: a node freed since, wrapped again, put back in a tree, or being
-/// torn down by someone else is not the queue's to free. Then the node's
-/// descendants go a budget at a time, leaves first (dom.tree_teardown), and
-/// the node itself last, through its own teardown - as `onObjectFreed` would
-/// have freed it here. A Document goes in one go: its own deinit frees what
-/// it keeps of its tree.
-fn runCollectedNode(item: *DeferredTeardown.Item, budget: usize) DeferredTeardown.Progress {
-    const nothing: DeferredTeardown.Progress = .{ .freed = 0, .done = true };
-    const freed_root: DeferredTeardown.Progress = .{ .freed = 1, .done = true };
-    const instance = item.instance;
-    const cache: *const WrapperCache = @ptrCast(@alignCast(item.owner orelse return nothing));
-
-    // Freed since - its slot free, or another object's now.
-    if (runtime.SlabAllocator.generationOf(instance) != item.generation) return nothing;
-    // Wrapped again: the new wrapper owns it (and a later collection queues
-    // it again).
-    if (wrappedAgain(instance, item.generation, cache)) return nothing;
-
-    // A realm's coordinated end (this one's, or one it is nested in): what
-    // finalizeEntry does then - the teardown in one go, unless something
-    // else frees it.
-    if (runtime.cleanup_coordinator.isContextTearingDown()) {
-        if (!runtime.instance_lifecycle.isCleanupStarted(instance) and
-            !wrappedElsewhere(instance, cache) and
-            !treeOwns(instance))
-        {
-            runtime.gc.onObjectFreed(instance);
-            return freed_root;
-        }
-        return nothing;
-    }
-    // Someone else's teardown began: the storage a completed one left is the
-    // queue's, as it was the wrapper's.
-    if (runtime.instance_lifecycle.isCleanupStarted(instance)) {
-        if (runtime.instance_lifecycle.isCleanedUp(instance)) runtime.gc.releaseStorage(instance);
-        return nothing;
-    }
-    // Owned again - in a tree, a template's contents, held by the engine - or
-    // another realm's cache wraps it.
-    if (engineOwns(instance) or wrappedElsewhere(instance, cache)) return nothing;
-
-    const dom = @import("dom");
-    const node = dom.instance_bridge.getNodeBase(@ptrCast(instance)) orelse {
-        runtime.gc.onObjectFreed(instance);
-        return freed_root;
-    };
-    if (node.node_type == dom.NodeBase.DOCUMENT_NODE) {
-        runtime.gc.onObjectFreed(instance);
-        return freed_root;
-    }
-    const freed = dom.tree_teardown.freeDescendants(node, &item.position, budget);
-    // Children left, or the budget spent on them: the node next slice.
-    if (node.first_child != null or freed >= budget) return .{ .freed = freed, .done = false };
-    runtime.gc.onObjectFreed(instance);
-    return .{ .freed = freed + 1, .done = true };
-}
-
-/// Whether `instance` - a queued node - has a wrapper again: its bound
-/// wrapper (a node has one, whatever realm reads it), or an entry in the
-/// cache it was collected from for this same object.
-fn wrappedAgain(instance: *runtime.Instance, generation: u64, cache: *const WrapperCache) bool {
-    if (@import("dom").instance_bridge.getNodeBase(@ptrCast(instance))) |node| {
-        if (node.bound_v8_wrapper != null) return true;
-    }
-    if (cache.cache.get(instance)) |current| {
-        if (current.original_generation == generation) return true;
-    }
-    return false;
-}
 
 /// V8 Wrapper Identity Cache
 ///
@@ -1321,8 +1228,12 @@ pub const WrapperCache = struct {
     /// isolate collecting, entered in a weak callback.
     fn deferredQueue(self: *Self) ?*DeferredTeardown {
         if (!self.deferred_looked_up) {
-            self.deferred_looked_up = true;
+            // Looked up only with the realm's isolate entered: a lookup made
+            // without one answers nothing and is not remembered (the realm's
+            // end asks too, refcount step 7, and a remembered null would make
+            // every later second pass take the queue-less path).
             const isolate = v8.v8_Isolate_GetCurrent() orelse return null;
+            self.deferred_looked_up = true;
             self.deferred = @import("protocol_agents.zig").deferredTeardownOf(isolate);
         }
         return self.deferred;
@@ -1351,6 +1262,15 @@ pub const WrapperCache = struct {
     pub fn drainDeferred(self: *Self) void {
         const queue = self.deferred orelse return;
         queue.drainOwner(self);
+    }
+
+    /// This cache's realm, `realm`, ends: the garbage trees the counts queued
+    /// under it (dom.refcount_teardown, refcount step 7) are freed now, while
+    /// everything of the realm lives - before its coordinated teardown. The
+    /// isolate is entered (the realm's end runs inside it).
+    pub fn drainRealmGarbage(self: *Self, realm: runtime.Context) void {
+        const queue = self.deferredQueue() orelse return;
+        @import("dom").refcount_teardown.drainRealm(queue, realm);
     }
 
     /// Nodes this realm queued and the queue has not freed yet (tests).

@@ -259,6 +259,16 @@ const CountingAllocator = struct {
 
 const Retained = struct { instances: usize, wrappers: i64, native: usize, arena: usize };
 
+/// One pass of `retainedAfterDroppedLists`: the rounds, then two collections
+/// with a turn between (the deferred teardown queue's slices).
+fn droppedListsPass(browser: *browser_mod.Browser, page: anytype, script: []const u8) !void {
+    try page.runScript(script);
+    _ = try browser.runEventLoopBlocking(20);
+    try page.runScript("TestUtils.gc(); TestUtils.gc();");
+    _ = try browser.runEventLoopBlocking(20);
+    try page.runScript("TestUtils.gc(); TestUtils.gc();");
+}
+
 /// 1,000 rounds of a tree replaced by innerHTML; with `lists`, a
 /// querySelectorAll list over each tree is kept until every round is done,
 /// so each list rescues the tree innerHTML takes from under it. Then every
@@ -273,26 +283,31 @@ fn retainedAfterDroppedLists(lists: bool) !Retained {
     try page.runScript("TestUtils.gc(); TestUtils.gc();");
     const slab = &browser.scope.slab;
     const arena: ?*@import("runtime").ArenaAllocator = &browser.scope.arena;
-    const instances_before = slab.stats().currently_allocated;
-    const native_before = counting.outstanding;
-    const arena_before = if (arena) |a| a.stats().bytes_in_use else 0;
     var buffer: [512]u8 = undefined;
     const script = try std.fmt.bufPrint(&buffer,
         \\globalThis.kept = [];
-        \\const host = document.getElementById('host');
-        \\const markup = '<section><p><b>x</b></p><ul><li>1</li><li>2</li></ul></section>'.repeat(5);
-        \\for (let i = 0; i < 1000; i++) {{
-        \\  host.innerHTML = markup;
-        \\  if ({s}) kept.push(host.querySelectorAll('*'));
+        \\{{
+        \\  const host = document.getElementById('host');
+        \\  const markup = '<section><p><b>x</b></p><ul><li>1</li><li>2</li></ul></section>'.repeat(5);
+        \\  for (let i = 0; i < 1000; i++) {{
+        \\    host.innerHTML = markup;
+        \\    if ({s}) kept.push(host.querySelectorAll('*'));
+        \\  }}
+        \\  host.innerHTML = '';
         \\}}
-        \\host.innerHTML = '';
         \\kept = null;
     , .{if (lists) "true" else "false"});
-    try page.runScript(script);
-    _ = try browser.runEventLoopBlocking(20);
-    try page.runScript("TestUtils.gc(); TestUtils.gc();");
-    _ = try browser.runEventLoopBlocking(20);
-    try page.runScript("TestUtils.gc(); TestUtils.gc();");
+    // Since refcount step 7 the counts free every tree a round removes, with
+    // lists or without, so what a pass leaves in the slab's and the arena's
+    // pages is their PEAK - which the lists raise (they keep trees the next
+    // rounds stack on) - not what anything retains. A first pass sets that
+    // peak; the second, measured, reuses its pages: its growth is what the
+    // lists retain.
+    try droppedListsPass(browser, page, script);
+    const instances_before = slab.stats().currently_allocated;
+    const native_before = counting.outstanding;
+    const arena_before = if (arena) |a| a.stats().bytes_in_use else 0;
+    try droppedListsPass(browser, page, script);
     const wrappers = try wrapperEntries(browser);
     // What the rounds left behind: the page's own growth over the run.
     return .{

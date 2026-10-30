@@ -132,6 +132,21 @@ pub fn entryCount(scope: *runtime.BrowserScope) usize {
     return bridge.map.count();
 }
 
+/// Call `visit` with each live node's NodeBase of `scope`'s Browser, at most
+/// `limit` of them (diagnostics: refcount_teardown.agentEnded). The bridge
+/// stays locked while it walks: `visit` must not reach the bridge.
+pub fn visitNodes(scope: *runtime.BrowserScope, limit: usize, context: anytype, comptime visit: fn (@TypeOf(context), *NodeBase) void) void {
+    const bridge = scope.existingTable(.node_bases, Bridge) orelse return;
+    bridge.lock();
+    defer bridge.unlock();
+    var it = bridge.map.valueIterator();
+    var seen: usize = 0;
+    while (it.next()) |node| : (seen += 1) {
+        if (seen == limit) return;
+        visit(context, node.*);
+    }
+}
+
 /// The table's slots by state (free, live, capacity), for the churn test and
 /// measurements: every node a page makes enters and leaves this map, so its
 /// free slots are what keeps registering the next page's nodes cheap - see

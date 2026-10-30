@@ -50,6 +50,7 @@ const process_start = @import("process_start.zig");
 const shadow_hosts = @import("shadow_hosts.zig");
 const template_contents = @import("template_contents.zig");
 const refcount_audit = @import("refcount_audit.zig");
+const refcount_teardown = @import("refcount_teardown.zig");
 
 const log = std.log.scoped(.refcount);
 
@@ -308,9 +309,10 @@ fn walkAdd(ledger: ?*Ledger, start: *NodeBase, delta: i64) *NodeBase {
         }
         current.subtree_holds = @intCast(next_total);
         current = up(ledger, current) orelse {
-            // The audit (step 6): a tree the counts called garbage, held
-            // again before its teardown slice, is a resurrection.
-            if (delta > 0 and refcount_audit.on() and current.rc_flags.audit_pending) refcount_audit.noteResurrected(current);
+            // A tree the counts called garbage, held again before its
+            // teardown slice, is a resurrection (step 7: the flag goes, and
+            // the slice keeps the tree).
+            if (delta > 0 and current.rc_flags.garbage) refcount_teardown.resurrect(current);
             return current;
         };
     }
@@ -634,8 +636,11 @@ pub fn holderDeref(node: *NodeBase) void {
 /// wires one to the agent: a violation is an error log naming `who`.
 fn unledgeredRef(node: *NodeBase, comptime who: []const u8) void {
     refcount_audit.checkRead(node, .reference, @returnAddress());
-    if (node.rc_flags.garbage or node.rc_flags.destroying) {
-        violate(null, who ++ " took a reference on node {*}, {s}", .{ node, if (node.rc_flags.garbage) "the root of a garbage tree" else "during its teardown" });
+    // A reference on a garbage tree's root is a resurrection (the walk below
+    // reaches the flagged root and clears it): counted, never refused - a
+    // refused reference would leave a holder the slice then frees under.
+    if (node.rc_flags.destroying) {
+        violate(null, who ++ " took a reference on node {*} during its teardown", .{node});
         return;
     }
     if (node.rc > std.math.maxInt(u32) - NodeBase.rc_one) {
@@ -655,26 +660,31 @@ fn unledgeredDeref(node: *NodeBase, comptime who: []const u8) void {
     }
     node.rc -= NodeBase.rc_one;
     if (isHeld(node)) return;
+    // A Document's own last reference (its wrapper's, a holder's, its
+    // creator's; a Window holds its document counted): its parser detaches
+    // (refcount_teardown.documentUnreferenced, WebKit's removedLastRef).
+    if (node.node_type == NodeBase.DOCUMENT_NODE) refcount_teardown.documentUnreferenced(node);
     const tree_root = walkAdd(null, node, -1);
     adjustForeign(tree_root, -1);
-    auditLowered(tree_root);
+    lowered(tree_root);
 }
 
-// ---- The zombie audit's garbage moments (step 6: refcount_audit) ------------
+// ---- The garbage moments (step 7: counts decide, dom.refcount_teardown) -----
 
-/// `tree_root`'s total was lowered: the audit queues it when that left it
-/// garbage.
-fn auditLowered(tree_root: *NodeBase) void {
-    if (!refcount_audit.on()) return;
-    refcount_audit.noteLowered(tree_root, if (tree_root.node_type == NodeBase.DOCUMENT_NODE) documentForeignHolds(tree_root) else null);
+/// `tree_root`'s total was lowered: when that left it garbage, it is flagged
+/// and queued for teardown (never freed here: decision D8).
+fn lowered(tree_root: *NodeBase) void {
+    // Still held, linked or hosted, or queued already: field tests only (the
+    // common case - a removal of a held subtree, a deref that is not the last).
+    if (tree_root.subtree_holds != 0 or tree_root.parent_node != null or tree_root.rc_flags.hosted or tree_root.rc_flags.garbage) return;
+    refcount_teardown.settle(tree_root, if (tree_root.node_type == NodeBase.DOCUMENT_NODE) documentForeignHolds(tree_root) else null);
 }
 
 /// The foreign holds of `node`'s node document fell: the document may be
 /// garbage now (decision D6: its tree waits for them).
-fn auditDocumentOf(node: *NodeBase) void {
-    if (!refcount_audit.on()) return;
+fn documentLowered(node: *NodeBase) void {
     const raw = node.owner_document orelse return;
-    auditLowered(@ptrCast(@alignCast(raw)));
+    lowered(@ptrCast(@alignCast(raw)));
 }
 
 /// `node`'s node document's NodeBase while that document is alive (the
@@ -887,7 +897,7 @@ fn adjustForeign(tree_root: *NodeBase, delta: i64) void {
     if (delta == 0 or !tree_root.rc_flags.foreign) return;
     const document = countsOfNodeDocument(tree_root) orelse return;
     addTo(&document.foreign_holds, delta, "foreign_holds");
-    if (delta < 0) auditDocumentOf(tree_root);
+    if (delta < 0) documentLowered(tree_root);
 }
 
 /// Whether `node` may be a detached root that counts in its document: not a
@@ -916,7 +926,7 @@ pub fn linkChild(node: *NodeBase, parent: *NodeBase) void {
     endRemovalHoldForLink(node);
     refcount_audit.checkRead(node, .reinsertion, @returnAddress());
     refcount_audit.checkRead(parent, .reinsertion, @returnAddress());
-    if (node.rc_flags.audit_pending) refcount_audit.noteResurrected(node);
+    if (node.rc_flags.garbage) refcount_teardown.resurrect(node);
     const holds = node.subtree_holds;
     const was_foreign = node.rc_flags.foreign;
     node.rc_flags.foreign = false;
@@ -934,7 +944,7 @@ pub fn linkChild(node: *NodeBase, parent: *NodeBase) void {
     if (was_foreign) {
         const own = if (sameNodeDocument(node, parent)) document else countsOfNodeDocument(node);
         if (own) |counts| addTo(&counts.foreign_holds, -delta, "foreign_holds");
-        auditDocumentOf(node);
+        documentLowered(node);
     }
     adjustForeign(tree_root, delta);
 }
@@ -999,11 +1009,11 @@ fn unlink(node: *NodeBase, held: bool) void {
     const delta: i64 = holds;
     // Nothing held in the subtree: no walk (as linkChild).
     const reached: ?*NodeBase = if (holds != 0) walkAdd(null, parent, -delta) else null;
-    // The audit: the removed subtree, and the tree it left, may be garbage.
-    defer if (refcount_audit.on()) {
-        auditLowered(node);
-        if (reached) |r| auditLowered(r);
-    };
+    // The removed subtree, and the tree it left, may be garbage (step 7).
+    defer {
+        lowered(node);
+        if (reached) |r| lowered(r);
+    }
     // A remover's hold goes on once the node's own holds are counted where
     // they now belong, and before the audit looks at it (defers run last
     // first).
@@ -1084,7 +1094,7 @@ pub fn hostAttached(hosted_root: *NodeBase, host: *NodeBase) void {
     endCreatorReferenceForLink(hosted_root);
     refcount_audit.checkRead(hosted_root, .reinsertion, @returnAddress());
     refcount_audit.checkRead(host, .reinsertion, @returnAddress());
-    if (hosted_root.rc_flags.audit_pending) refcount_audit.noteResurrected(hosted_root);
+    if (hosted_root.rc_flags.garbage) refcount_teardown.resurrect(hosted_root);
     const holds = hosted_root.subtree_holds;
     const was_foreign = hosted_root.rc_flags.foreign;
     hosted_root.rc_flags.foreign = false;
@@ -1093,7 +1103,7 @@ pub fn hostAttached(hosted_root: *NodeBase, host: *NodeBase) void {
     const delta: i64 = holds;
     if (was_foreign) if (countsOfNodeDocument(hosted_root)) |counts| {
         addTo(&counts.foreign_holds, -delta, "foreign_holds");
-        auditDocumentOf(hosted_root);
+        documentLowered(hosted_root);
     };
     adjustForeign(walkAdd(null, host, delta), delta);
 }
@@ -1108,8 +1118,9 @@ pub fn hostGone(hosted_root: *NodeBase) void {
     hosted_root.rc_flags.hosted = false;
     const foreign = countsAsForeign(hosted_root);
     hosted_root.rc_flags.foreign = foreign;
-    // The audit: a hosted root whose host is gone is a root of its own now.
-    defer auditLowered(hosted_root);
+    // A hosted root whose host is gone is a root of its own now: garbage
+    // when nothing holds it.
+    defer lowered(hosted_root);
     if (!foreign or hosted_root.subtree_holds == 0) return;
     if (countsOfNodeDocument(hosted_root)) |counts| addTo(&counts.foreign_holds, hosted_root.subtree_holds, "foreign_holds");
 }
@@ -1154,6 +1165,19 @@ pub fn nodeDocumentChanged(node: *NodeBase, old: ?*DocumentCounts, new: ?*Docume
 pub fn nodeFreed(node: *NodeBase, counts: ?*DocumentCounts) void {
     // The audit: a realm's teardown frees its nodes; its re-checks go first.
     if (refcount_audit.on() and runtime.cleanup_coordinator.isContextTearingDown()) refcount_audit.realmTearingDown(node);
+    // A hosted root - a template's contents, a shadow root - freed while its
+    // host lives (a realm's coordinated teardown frees what its wrapper cache
+    // names, in the cache's order): its holds leave the host's chain with it,
+    // or the host's tree would count them for good and never be garbage
+    // (refcount step 7a; tests/html/template_content_lifetime_test.zig).
+    if (node.rc_flags.hosted and node.parent_node == null) {
+        node.rc_flags.hosted = false;
+        if (node.subtree_holds != 0) if (hostOf(node)) |host| {
+            const tree_root = walkAdd(null, host, -@as(i64, node.subtree_holds));
+            adjustForeign(tree_root, -@as(i64, node.subtree_holds));
+            lowered(tree_root);
+        };
+    }
     // A node freed while its creator still had its born reference to offer:
     // its creator neither handed it to a wrapper or a tree nor dropped it
     // through `dom.node_creation.destroyUninserted` - a silent drop, which
@@ -1169,8 +1193,13 @@ pub fn nodeFreed(node: *NodeBase, counts: ?*DocumentCounts) void {
     if (node.node_type == NodeBase.DOCUMENT_NODE) return;
     const document = counts orelse return;
     addTo(&document.referencing_nodes, -1, "referencing_nodes");
+    const lowers = node.rc_flags.foreign and node.subtree_holds != 0;
     if (node.rc_flags.foreign) addTo(&document.foreign_holds, -@as(i64, node.subtree_holds), "foreign_holds");
     node.rc_flags.foreign = false;
+    // The document's last foreign hold may have gone with this tree: its own
+    // tree may be garbage now (decision D6), as a release of the hold would
+    // have told it (adjustForeign).
+    if (lowers) documentLowered(node);
 }
 
 /// Whether `tree_root` is `node`'s node document (a pointer compare: no read
@@ -1390,22 +1419,32 @@ pub fn GCReachableRef(comptime T: type) type {
 
 /// Whether a weak reference reads a node of a GARBAGE tree as gone (design
 /// 1.4, "weak references see garbage at once": WebKit's WeakPtr is null from
-/// the deletion on). Step 7 makes it true everywhere: from then on a tree
-/// whose total reaches zero is flagged and queued for teardown, and nothing
-/// may hand its nodes out again before its slice frees them. In shadow mode
-/// no production tree is ever flagged, so production builds skip the walk to
-/// the root that reads the flag; unit tests run it, and force a flagged root
-/// to pin what each registry does once roots are flagged (refcount8, step 5i).
-pub const weak_refs_see_garbage = builtin.is_test;
+/// the deletion on). True since step 7 (lane refcount9): a tree whose total
+/// reaches zero is flagged and queued for teardown, and nothing may hand its
+/// nodes out again before its slice frees them.
+pub const weak_refs_see_garbage = true;
+
+/// Whether `node`'s tree is garbage: its root is flagged. A connected node's
+/// root is its node document, read in O(1); a detached node walks to its
+/// root (O(depth)).
+pub fn inGarbageTree(node: *NodeBase) bool {
+    if (node.rc_flags.garbage) return true;
+    if (node.is_connected and node.node_type != NodeBase.DOCUMENT_NODE) {
+        if (node.owner_document) |raw| {
+            const document: *NodeBase = @ptrCast(@alignCast(raw));
+            if (document.node_type == NodeBase.DOCUMENT_NODE and document.parent_node == null) return document.rc_flags.garbage;
+        }
+    }
+    return root(null, node).rc_flags.garbage;
+}
 
 /// A registry's weak link - a raw pointer plus the slab generation it was
 /// taken at, never counted (design 1.3: a node kept alive by its own
 /// registration would be a cycle with no external owner) - still names its
-/// object: `instance` is the one taken at `generation`, and, once weak
-/// references see garbage, not a node of a garbage tree. The step-5i
-/// registries read their links through this: a document's focused area and
-/// target element, a style sheet load's element and document, a form's
-/// named-element cache and past names.
+/// object: `instance` is the one taken at `generation`, and not a node of a
+/// garbage tree. The step-5i registries read their links through this: a
+/// document's focused area and target element, a style sheet load's element
+/// and document, a form's named-element cache and past names.
 pub fn weakLinkLive(instance: *const runtime.Instance, generation: u64) bool {
     if (runtime.SlabAllocator.generationOf(instance) != generation) return false;
     if (comptime !weak_refs_see_garbage) return true;
@@ -1414,7 +1453,7 @@ pub fn weakLinkLive(instance: *const runtime.Instance, generation: u64) bool {
     // (docs/lessons/debugging-a-nodes-slab-generation-can-outlive-its-nodebase.md).
     const opaque_instance: *anyopaque = @ptrCast(@constCast(instance));
     const node = instance_bridge.getNodeBaseUnaudited(opaque_instance) orelse return true;
-    return !root(null, node).rc_flags.garbage;
+    return !inGarbageTree(node);
 }
 
 /// A weak reference: a raw pointer plus the slab generation of the node's
@@ -1447,7 +1486,8 @@ pub fn WeakRef(comptime T: type) type {
         pub fn get(self: Self, ledger: ?*const Ledger) ?*T {
             if (runtime.SlabAllocator.generationOf(self.instance) != self.generation) return null;
             if (comptime weak_refs_see_garbage) {
-                if (root(ledger, nodeBaseOf(T, self.ptr)).rc_flags.garbage) return null;
+                const node = nodeBaseOf(T, self.ptr);
+                if (if (ledger != null) root(ledger, node).rc_flags.garbage else inGarbageTree(node)) return null;
             }
             return self.ptr;
         }

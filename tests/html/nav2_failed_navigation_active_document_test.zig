@@ -176,6 +176,8 @@ fn sweep(rounds: usize) !void {
     var failing = std.testing.FailingAllocator.init(std.heap.c_allocator, .{});
     const browser = try browser_mod.Browser.init(failing.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
     defer browser.deinit();
+    // Out-of-memory rounds may leave a tree held (an OOM path elsewhere may leak, which is not this test's).
+    @import("dom").refcount_teardown.allowLiveNodesAtAgentEnd(&browser.agent_host.deferred_teardown, "out-of-memory rounds may leave a tree held");
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
     try page.loadHTML(page_html, .{ .base_url = "https://example.test/page.html" });

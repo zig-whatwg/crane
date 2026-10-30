@@ -260,6 +260,7 @@ pub const node_base = @import("node_base.zig");
 pub const refcount = @import("refcount.zig");
 /// Refcount step 6, the zombie audit (CRANE_REFCOUNT_AUDIT; lane refcount7).
 pub const refcount_audit = @import("refcount_audit.zig");
+pub const refcount_teardown = @import("refcount_teardown.zig");
 pub const NodeBase = node_base.NodeBase;
 
 // Instance bridge for runtime.Instance <-> NodeBase conversion

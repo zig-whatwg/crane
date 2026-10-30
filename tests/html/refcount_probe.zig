@@ -20,7 +20,7 @@ const runtime = @import("runtime");
 pub const migrated = struct {
     /// Step 7: counts decide; a garbage tree is freed through the deferred
     /// queue, so a never-wrapped detached tree no longer lives to realm end.
-    pub const switch_step7 = false;
+    pub const switch_step7 = true;
     /// Step 8: listener and observer callbacks are traced from their
     /// target's wrapper instead of owned as strong roots.
     pub const cycle_breakers_step8 = false;
