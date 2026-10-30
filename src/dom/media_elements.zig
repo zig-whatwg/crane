@@ -30,7 +30,21 @@ pub const ListOperations = struct {
     append: *const fn (*runtime.Instance, *runtime.Instance) anyerror!void,
     remove: *const fn (*runtime.Instance, *runtime.Instance) void,
 };
+/// Read-only HTML 4.16.3 inputs; returned by value and never retained.
+pub const SelectorState = struct {
+    paused: bool,
+    seeking: bool,
+    network_state: u16,
+    ready_state: u16,
+    stalled: bool,
+    muted: bool,
+    volume: f64,
+    volume_locked: bool,
+};
+pub const SelectorStateReader = *const fn (*runtime.Instance) ?SelectorState;
+
 pub const Implementation = struct {
+    selector_state: ?SelectorStateReader = null,
     create_error: ?CreateError = null,
     track: ?TrackOperations = null,
     mode_changed: ?ModeChanged = null,
@@ -61,13 +75,19 @@ pub fn installTrackElement(changed: ModeChanged) void {
 pub fn installSourceElement(url: SourceURL) void {
     installing().source_url = url;
 }
-pub fn installMediaElement(delays_load: DelaysLoad, parent_changed: ParentChanged, mode_changed: TrackModeChanged, video_size: NaturalSize) void {
+pub fn installMediaElement(delays_load: DelaysLoad, parent_changed: ParentChanged, mode_changed: TrackModeChanged, video_size: NaturalSize, selector_state: SelectorStateReader) void {
     const table = installing();
     table.delays_load = delays_load;
     table.parent_changed = parent_changed;
     table.track_mode_changed = mode_changed;
     table.video_size = video_size;
+    table.selector_state = selector_state;
 }
+pub fn selectorState(element: *runtime.Instance) ?SelectorState {
+    const read = (implementation orelse return null).selector_state orelse return null;
+    return read(element);
+}
+
 pub fn installTextTrackList(operations: ListOperations) void {
     installing().list = operations;
 }

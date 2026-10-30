@@ -254,6 +254,8 @@ fn isSelectElement(element: *runtime.Instance) bool {
 /// selectElement." Removing sparse entries restores the attributes, then
 /// the algorithm records its implicit selection before returning.
 fn resetSelect(select: *runtime.Instance) void {
+    // HTML select reset step 1: false never allocates owner state.
+    controls.setUserValidity(select, false) catch return;
     // Reset steps 2–3 can share one borrowed traversal: no script runs
     // between clearing dirtiness and normalizing selectedness. Avoid a
     // temporary option list and re-reading every now-absent sparse entry.

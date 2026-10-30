@@ -27,11 +27,11 @@
 //! focus.zig, user_activation.zig): the remote end decides which input a
 //! command is, the user agent what that input does.
 //!
-//! Crane has no layout, so an input source is over an element, not at
-//! coordinates: a pointerMove needs an element origin (or the pointer origin
-//! with no offset), and a coordinate-only move is reported as "unsupported
-//! operation". Offsets from an element origin are not modelled: the pointer
-//! is over the element, as if at its centre.
+//! This runner has no layout. By the user's 2026-10-27 ruling, a viewport
+//! pointerMove targets the document root at every coordinate. Real hosts
+//! hit-test through their layout backend. Element-origin moves retain their
+//! existing target/image-map handling; pointer-origin moves require zero
+//! offsets.
 //!
 //! Lifetimes. Input commands hold elements weakly (their generation): a
 //! listener can remove or collect them. Computed-name and computed-role
@@ -641,7 +641,15 @@ const Command = struct {
                     .pointer => {
                         if (action.x != 0 or action.y != 0) return unsupportedMove();
                     },
-                    .viewport => return unsupportedMove(),
+                    .viewport => {
+                        // User ruling, 2026-10-27: the WPT runner's explicit
+                        // no-layout hit test is documentElement at ANY point.
+                        // Reuse the action context and ordinary pointer path.
+                        const document = self.keyDocument() orelse return noSuchWindow();
+                        const root = (interfaces.Document.get_documentElement(document) catch return outOfMemory()) orelse
+                            return .{ .code = "no such element", .message = "the document has no root element" };
+                        user_input.pointerMove(&driver.mouse, root, driver.globalModifiers());
+                    },
                 }
                 return null;
             },
@@ -873,7 +881,7 @@ fn staleElement() Failure {
 }
 
 fn unsupportedMove() Failure {
-    return .{ .code = "unsupported operation", .message = "Crane has no layout: a pointer moves onto an element origin only" };
+    return .{ .code = "unsupported operation", .message = "Crane has no layout: relative pointer offsets and actions without a target are unsupported" };
 }
 
 fn noSuchWindow() Failure {

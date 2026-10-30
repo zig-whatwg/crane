@@ -319,6 +319,9 @@ transform-style: flat
 perspective: none
 perspective-origin: 50% 50%
 backface-visibility: visible
+will-change: auto
+container-name: none
+container-type: normal
 == initial root and child / 0
 display: block
 == initial root and child / 1

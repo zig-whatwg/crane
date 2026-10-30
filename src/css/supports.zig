@@ -19,13 +19,14 @@ const property_parser = @import("property_parser.zig");
 const properties = @import("properties.zig");
 const rules = @import("rules.zig");
 const substitution = @import("substitution.zig");
+const NamespaceMap = substitution.NamespaceMap;
 const PropertyParser = property_parser.PropertyParser;
 const ParserContext = @import("context.zig").ParserContext;
 
 /// Does the UA support the selector `text` - does it parse as one
 /// <complex-selector>? Supplied by the caller (src/selector is not a
 /// dependency of this module). Null: every selector() is false.
-pub const SelectorCheck = *const fn (allocator: std.mem.Allocator, text: []const u8) bool;
+pub const SelectorCheck = *const fn (allocator: std.mem.Allocator, text: []const u8, namespaces: ?*const NamespaceMap) bool;
 
 /// CSS.supports(property, value): "If property is an ASCII case-insensitive
 /// match for any defined CSS property that the UA supports, or is a custom
@@ -76,8 +77,8 @@ fn declarationSupported(allocator: std.mem.Allocator, property: []const u8, valu
 /// conditionText, wrapped in parentheses and then parsed and evaluated as a
 /// <supports-condition>, would return true, return true. Otherwise, return
 /// false."
-pub fn supportsCondition(allocator: std.mem.Allocator, condition_text: []const u8, selector_check: ?SelectorCheck) bool {
-    const evaluator: Evaluator = .{ .allocator = allocator, .selector_check = selector_check };
+pub fn supportsCondition(allocator: std.mem.Allocator, condition_text: []const u8, selector_check: ?SelectorCheck, namespaces: ?*const NamespaceMap) bool {
+    const evaluator: Evaluator = .{ .allocator = allocator, .selector_check = selector_check, .namespaces = namespaces };
     if (evaluator.condition(condition_text) orelse false) return true;
     const wrapped = std.fmt.allocPrint(allocator, "({s})", .{condition_text}) catch return false;
     defer allocator.free(wrapped);
@@ -97,9 +98,9 @@ fn substitutionValid(allocator: std.mem.Allocator, value: []const u8) std.mem.Al
 /// is CSS.supports()'s own step), and allocation failure propagates.
 /// `selector_check` answers selector(), as CSS.supports()'s and @supports'
 /// callers supply it; null makes every selector() false.
-pub fn evaluateTest(allocator: std.mem.Allocator, text: []const u8, quirks: bool, selector_check: ?SelectorCheck) error{ OutOfMemory, Invalid }!bool {
+pub fn evaluateTest(allocator: std.mem.Allocator, text: []const u8, quirks: bool, selector_check: ?SelectorCheck, namespaces: ?*const NamespaceMap) error{ OutOfMemory, Invalid }!bool {
     var oom = false;
-    const evaluator: Evaluator = .{ .allocator = allocator, .selector_check = selector_check, .quirks = quirks, .oom = &oom };
+    const evaluator: Evaluator = .{ .allocator = allocator, .selector_check = selector_check, .namespaces = namespaces, .quirks = quirks, .oom = &oom };
     const result = evaluator.condition(text) orelse evaluator.declaration(text);
     if (oom) return error.OutOfMemory;
     return result orelse error.Invalid;
@@ -113,6 +114,7 @@ fn isCustomPropertyName(name: []const u8) bool {
 const Evaluator = struct {
     allocator: std.mem.Allocator,
     selector_check: ?SelectorCheck,
+    namespaces: ?*const NamespaceMap,
     quirks: bool = false,
     /// Set when a declaration test ran out of memory (evaluateTest reports
     /// it; CSS.supports() keeps answering false).
@@ -181,7 +183,7 @@ const Evaluator = struct {
                 const inner = block(tok) orelse return null;
                 if (tokenizer_mod.nameEql(open.value, "selector")) {
                     const check = self.selector_check orelse return false;
-                    return check(self.allocator, std.mem.trim(u8, inner, " \t\n\r\x0C"));
+                    return check(self.allocator, std.mem.trim(u8, inner, " \t\n\r\x0C"), self.namespaces);
                 }
                 // Conditional5 §2: one font support identifier, not src() syntax.
                 if (tokenizer_mod.nameEql(open.value, "font-tech")) return @import("font_support.zig").evaluate(.tech, inner);
@@ -276,13 +278,13 @@ fn decl(property: []const u8, value: []const u8) bool {
 }
 
 fn cond(text: []const u8) bool {
-    return supportsCondition(testing.allocator, text, &testSelectorCheck);
+    return supportsCondition(testing.allocator, text, &testSelectorCheck, null);
 }
 
 /// A stand-in for src/selector: `div`, `.a`, `a > b` parse; anything with
 /// `:unknown`, a comma or a parenthesis does not - so a test fails if the
 /// function's own "(" reaches the check.
-fn testSelectorCheck(allocator: std.mem.Allocator, text: []const u8) bool {
+fn testSelectorCheck(allocator: std.mem.Allocator, text: []const u8, _: ?*const NamespaceMap) bool {
     _ = allocator;
     if (text.len == 0) return false;
     for ([_][]const u8{ ":unknown", ",", "(", ")" }) |bad| {
@@ -292,10 +294,10 @@ fn testSelectorCheck(allocator: std.mem.Allocator, text: []const u8) bool {
 }
 
 test "evaluateTest (if()'s supports()) answers selector() through the caller's check" {
-    try testing.expect(try evaluateTest(testing.allocator, "selector(a > b)", false, &testSelectorCheck));
-    try testing.expect(!try evaluateTest(testing.allocator, "selector(a:unknown)", false, &testSelectorCheck));
+    try testing.expect(try evaluateTest(testing.allocator, "selector(a > b)", false, &testSelectorCheck, null));
+    try testing.expect(!try evaluateTest(testing.allocator, "selector(a:unknown)", false, &testSelectorCheck, null));
     // No check: every selector() is false, as CSS.supports() without one.
-    try testing.expect(!try evaluateTest(testing.allocator, "selector(a > b)", false, null));
+    try testing.expect(!try evaluateTest(testing.allocator, "selector(a > b)", false, null, null));
 }
 
 test "supports(property, value): a property Crane parses, with a value that parses for it" {
@@ -389,7 +391,7 @@ test "supports(conditionText): selector()" {
     try testing.expect(!cond("selector(a, b)"));
     try testing.expect(cond("not selector(:unknown)"));
     // With no selector check, selector() is false.
-    try testing.expect(!supportsCondition(testing.allocator, "selector(div)", null));
+    try testing.expect(!supportsCondition(testing.allocator, "selector(div)", null, null));
 }
 
 test "supports(conditionText): never fails - garbage is false" {
@@ -417,5 +419,5 @@ test "a property of the style system's table is supported with its grammar" {
     try testing.expect(!supportsDeclaration(testing.allocator, "display", "blocky"));
     try testing.expect(supportsDeclaration(testing.allocator, "margin", "1px 2px"));
     try testing.expect(!supportsDeclaration(testing.allocator, "display", "block !important"));
-    try testing.expect(supportsCondition(testing.allocator, "(display: block)", null));
+    try testing.expect(supportsCondition(testing.allocator, "(display: block)", null, null));
 }

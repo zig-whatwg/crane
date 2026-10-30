@@ -453,15 +453,6 @@ pub fn pointerMove(pointer: *Pointer, target: *Instance, modifiers: Modifiers) v
         while (common < old_len and common < new_len and
             old_chain[old_len - 1 - common] == new_chain[new_len - 1 - common]) : (common += 1)
         {}
-        if (previous) |old| {
-            _ = firePointerEvent(old, "pointerout", pointer, modifiers, -1, 0, target);
-            for (old_chain[0 .. old_len - common]) |element| _ = firePointerEvent(element, "pointerleave", pointer, modifiers, -1, 0, target);
-            if (!pointer.compatibility_suppressed) {
-                _ = fireMouseEvent(old, "mouseout", modifiers, 0, pointer.buttons, 0, target);
-                for (old_chain[0 .. old_len - common]) |element| _ = fireMouseEvent(element, "mouseleave", modifiers, 0, pointer.buttons, 0, target);
-            }
-        }
-        pointer.hit = Weak.of(target);
         const left = if (pointer.hit_document) |weak| weak.get() else null;
         if (nodeDocument(target)) |document| {
             pointer.hit_document = Weak.of(document);
@@ -472,6 +463,15 @@ pub fn pointerMove(pointer: *Pointer, target: *Instance, modifiers: Modifiers) v
             if (left) |old_document| if (old_document != document) dom.pointer_states.set(old_document, .hovered, null);
             dom.pointer_states.set(document, .hovered, target);
         }
+        if (previous) |old| {
+            _ = firePointerEvent(old, "pointerout", pointer, modifiers, -1, 0, target);
+            for (old_chain[0 .. old_len - common]) |element| _ = firePointerEvent(element, "pointerleave", pointer, modifiers, -1, 0, target);
+            if (!pointer.compatibility_suppressed) {
+                _ = fireMouseEvent(old, "mouseout", modifiers, 0, pointer.buttons, 0, target);
+                for (old_chain[0 .. old_len - common]) |element| _ = fireMouseEvent(element, "mouseleave", modifiers, 0, pointer.buttons, 0, target);
+            }
+        }
+        pointer.hit = Weak.of(target);
         _ = firePointerEvent(target, "pointerover", pointer, modifiers, -1, 0, previous);
         // Enter events go outermost first.
         var i = new_len - common;
@@ -737,7 +737,13 @@ pub fn keyDown(keyboard: *Keyboard, document: *Instance, key: Key, modifiers: Mo
     if (!escape) {
         if (nodeDocument(target)) |d| user_activation.notifyActivation(d);
     }
-    if (nodeDocument(target)) |d| focus.noteInputModality(d, false);
+    // Selectors 4 section 9.4 leaves focus-visible to a UA heuristic.
+    // Ctrl/Alt/Meta shortcuts preserve pointer modality; Shift alone does
+    // not (Blink KeyboardEventManager::KeyEvent, 97f9cf6fa75f :355-359;
+    // wpt.fyi focus-visible-012, ffc4686d11: Chrome/Firefox/Safari 1/1).
+    if (!modifiers.ctrl and !modifiers.alt and !modifiers.meta) {
+        if (nodeDocument(target)) |d| focus.noteInputModality(d, false);
+    }
     if (!fireKeyboardEvent(target, "keydown", key, modifiers, key.key_code, 0)) {
         // A cancelled keydown has no default action, and disarms Space.
         keyboard.space_armed = null;
@@ -1246,6 +1252,8 @@ fn moveSelection(select: *Instance, direction: focus.Direction) void {
         break;
     }
     interfaces.HTMLSelectElement.set_selectedIndex(select, @intCast(index)) catch return;
+    // HTML select update notifications: mark the committed user change.
+    dom.form_controls.setUserValidity(select, true) catch {};
     form_associated.fireSimpleEvent(select, "input", .{ .bubbles = true, .composed = true }) catch {};
     form_associated.fireSimpleEvent(select, "change", .{ .bubbles = true }) catch {};
 }

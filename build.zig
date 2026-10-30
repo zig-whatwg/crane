@@ -5571,6 +5571,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     });
     encoding_mod.addImport("infra", infra_mod);
     encoding_mod.addImport("webidl", webidl_mod);
+    css_mod.addImport("encoding", encoding_mod);
 
     // URL internal modules that generated interfaces need
     // URL internal modules need to be created first for cross-dependencies

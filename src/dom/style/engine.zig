@@ -237,6 +237,8 @@ pub const StyleEngine = struct {
         /// The environment revision the cached styles were computed with
         /// (hooks.environmentRevision; 0 until a provider reports one).
         environment_revision: u64 = 0,
+        /// The last observed Document-owned top-layer entry revision.
+        top_layer_revision: u64 = 0,
         /// Used style resources, absent on documents with no resource
         /// values. Kept out of the embedded StyleEngine's size class.
         resources: ?*resource_loading.State = null,
@@ -513,6 +515,17 @@ pub const StyleEngine = struct {
         self.environmentChanged();
     }
 
+    /// Selectors 4 section 9: top-layer membership changes ancestor state
+    /// matching even when the focused/hovered/active element is unchanged.
+    /// Pull its revision like environment variables; absent state stays 0
+    /// and allocates no Rare data. No mutation path enters style resolution.
+    pub fn observeTopLayer(self: *StyleEngine, revision: u64) Error!void {
+        const seen: u64 = if (self.rare) |r| r.top_layer_revision else 0;
+        if (revision == seen) return;
+        (try self.ensureRare()).top_layer_revision = revision;
+        self.environmentChanged();
+    }
+
     /// A sheet of this document was made, removed or changed one of its
     /// flags: the active sheets are rebuilt when style is next read.
     pub fn sheetsChanged(self: *StyleEngine) void {
@@ -523,6 +536,7 @@ pub const StyleEngine = struct {
     /// The active sheets, rebuilt first if anything they depend on moved.
     fn ensureActive(self: *StyleEngine, document: *runtime.Instance) Error!*Active {
         try self.observeEnvironment(hooks.environmentRevision(document));
+        try self.observeTopLayer(@import("../top_layer.zig").revisionOf(document));
         const media = hooks.mediaValues(document);
         const quirks = isQuirks(document);
         if (self.active) |*a| {
@@ -1160,6 +1174,8 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
             .pseudo = pseudo,
         },
     };
+    var container_context: ContainerContext = .{ .node = node, .inclusive = pseudo != null };
+    var container_note: css.math_values.UnavailableNote = .{};
     return css.cascade.cascade(.{
         .allocator = element.ctx.allocator,
         .parent = parent,
@@ -1167,6 +1183,7 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
         .content_attributes = .{ .context = element, .get = contentAttribute, .scoped = scopedContentAttribute },
         .tree_counts = .{ .context = node, .get = treeCounts },
         .random_base = .{ .context = &random_context, .get = randomBase },
+        .container = .{ .context = &container_context, .get = containerEligibility, .note = &container_note },
         .pseudo = pseudo,
         .root_font_size = if (is_root) 16 else res.root_font_size,
         .root_line_height = if (is_root) 19.2 else res.root_line_height,
@@ -1187,6 +1204,47 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
         // Properties and Values API 1: the registrations; null when none.
         .registered = res.registered,
     }, res.matched.items);
+}
+
+/// Conditional 5 §7: borrowed for one resolution. Ordinary units never
+/// call the provider, and no value keeps this node or stack context.
+const ContainerContext = struct { node: *NodeBase, inclusive: bool };
+
+/// Conditional 5 §§5.1, 7 and Contain 2 §§3.1–3.2: each physical axis
+/// selects an eligible flat ancestor; generated pseudos include their
+/// originating element. Styles on this lineage have already been computed.
+/// Q96/Q100's Chrome/Firefox/Safari probes agree with WebKit's
+/// StyleLengthResolution::resolveContainerUnit: skip boxless containers.
+fn containerEligibility(raw: *anyopaque, axis: css.math_values.Context.ContainerAxis) css.math_values.Context.ContainerEligibility {
+    const context: *const ContainerContext = @ptrCast(@alignCast(raw));
+    var slotted = false;
+    var next: FlatParent = if (context.inclusive) .{ .element = context.node } else flatParent(context.node, &slotted);
+    var eligible = false;
+    while (next == .element) {
+        const node = next.element;
+        const element = instanceOf(node) orelse return .no_eligible_container;
+        const state = element_style.existingOf(element) orelse return .no_eligible_container;
+        const computed = (state.cached orelse return .no_eligible_container).style;
+        if (computed.display().box == .none) {
+            // An inner candidate has no box under display:none. A boxed
+            // container farther outward may still serve a hidden consumer.
+            eligible = false;
+        } else if (!eligible) {
+            const value = computed.get(.container_type);
+            const supports_axis = if (value == .text) blk: {
+                const text = value.text.bytes;
+                if (std.mem.eql(u8, text, "size") or std.mem.eql(u8, text, "size scroll-state")) break :blk true;
+                if (std.mem.eql(u8, text, "inline-size") or std.mem.eql(u8, text, "inline-size scroll-state")) {
+                    const vertical = computed.keyword(.writing_mode) != .horizontal_tb;
+                    break :blk axis == (if (vertical) css.math_values.Context.ContainerAxis.height else .width);
+                }
+                break :blk false;
+            } else false;
+            if (supports_axis and @import("content_visibility.zig").applies(element, computed.display())) eligible = true;
+        }
+        next = flatParent(node, &slotted);
+    }
+    return if (eligible) .eligible_geometry_unavailable else .no_eligible_container;
 }
 
 /// A url() substituted into a value, parsed against `base` (the consuming
