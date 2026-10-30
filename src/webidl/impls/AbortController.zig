@@ -162,14 +162,14 @@ pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValu
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
-    // Signal abort on the associated signal
-    // Per DOM spec, reason is typed as `any` which maps to runtime.JSValue
-    const AbortSignalImpl = @import("AbortSignal.zig");
+    // Signal abort on the associated signal: AbortSignal's step, through
+    // dom.abort_algorithms. Per DOM spec, reason is typed as `any` which maps
+    // to runtime.JSValue
     const reason_value: runtime.JSValue = if (reason.was_passed)
         reason.value
     else
         runtime.JSValue.jsUndefined;
-    AbortSignalImpl.signalAbort(internal.signal, reason_value) catch |err| {
+    @import("dom").abort_algorithms.signalAbort(internal.signal, reason_value) catch |err| {
         return switch (err) {
             error.InvalidState => error.InvalidState,
             else => error.InvalidState,

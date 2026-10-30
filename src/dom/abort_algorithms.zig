@@ -34,6 +34,9 @@ pub const Implementation = struct {
     add: *const fn (signal: *runtime.Instance, algorithm: Algorithm) anyerror!void,
     remove: *const fn (signal: *runtime.Instance, ctx: *anyopaque) void,
     create_dependent: *const fn (ctx: runtime.Context, signals: []const *runtime.Instance) anyerror!*runtime.Instance,
+    /// DOM "signal abort" on `signal` with `reason` (borrowed; undefined for
+    /// none, which makes a new "AbortError" DOMException).
+    signal_abort: *const fn (signal: *runtime.Instance, reason: runtime.JSValue) anyerror!void,
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
@@ -58,6 +61,13 @@ pub fn add(signal: *runtime.Instance, algorithm: Algorithm) !void {
 pub fn createDependent(ctx: runtime.Context, signals: []const *runtime.Instance) !*runtime.Instance {
     const impl = implementation orelse return error.NotSupported;
     return impl.create_dependent(ctx, signals);
+}
+
+/// DOM § 3.3 "signal abort" given `signal` and `reason` (borrowed; undefined
+/// when not given): AbortController's abort() runs it on its signal.
+pub fn signalAbort(signal: *runtime.Instance, reason: runtime.JSValue) !void {
+    const impl = implementation orelse return error.NotSupported;
+    return impl.signal_abort(signal, reason);
 }
 
 /// "Remove an algorithm from an AbortSignal": every algorithm whose `ctx`
