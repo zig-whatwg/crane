@@ -554,8 +554,8 @@ pub fn get_virtualKeyboardPolicy(instance: *runtime.Instance) anyerror!runtime.D
 /// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-dataset
 /// Returns a DOMStringMap for data-* attributes
 pub fn get_dataset(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const DOMStringMapImpl = @import("DOMStringMap.zig");
-    return DOMStringMapImpl.create(instance.ctx.allocator, instance.ctx, instance);
+    // A DOMStringMap whose element is this one (its construction argument).
+    return interfaces.DOMStringMap.initWith(instance.ctx.allocator, instance.ctx, .{ .element = instance });
 }
 
 /// Getter for nonce
