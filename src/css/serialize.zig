@@ -20,6 +20,23 @@ pub fn serializeIdentifier(allocator: std.mem.Allocator, ident: []const u8) std.
 /// Append CSSOM §2.1's serialized identifier to caller-owned output.
 /// Character positions are relative to `ident`, independent of `out`'s prefix.
 pub fn appendIdentifier(out: *std.ArrayList(u8), allocator: std.mem.Allocator, ident: []const u8) std.mem.Allocator.Error!void {
+    // CSSOM §2.1: emit valid UTF-8 unchanged only when no rule escapes it.
+    unescaped: {
+        var j: usize = 0;
+        while (j < ident.len) {
+            const cp = codePointAt(ident, j);
+            const c = cp.value;
+            // A non-ASCII result of length one is a malformed-byte replacement.
+            if (c >= 0x80 and cp.len == 1) break :unescaped;
+            if ((j == 0 and isDigit(c)) or
+                (j == 1 and ident[0] == '-' and isDigit(c)) or
+                (ident.len == 1 and c == '-')) break :unescaped;
+            if (!(c >= 0x80 or c == '-' or c == '_' or isDigit(c) or (c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z'))) break :unescaped;
+            j += cp.len;
+        }
+        return out.appendSlice(allocator, ident);
+    }
+
     // The code points, for the "first" and "second character" tests.
     var first: ?u21 = null;
     var index: usize = 0;
