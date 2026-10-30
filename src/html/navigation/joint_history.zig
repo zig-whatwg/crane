@@ -268,6 +268,15 @@ pub const Prepared = struct {
 
 pub const HistoryHandling = enum { push, replace };
 
+/// What `listCrossDocument` did: the step "apply the push/replace history
+/// step" applies (targetStep), the new entry's id, and whether a push
+/// cleared forward entries.
+pub const ListedCrossDocument = struct {
+    step: u32,
+    entry: u64,
+    removed: bool,
+};
+
 /// What `navigateSameDocument` made: its new entry's id - HTML's newEntry or
 /// historyEntry - and, for a replace, the id of the entry it replaces
 /// (entryToReplace).
@@ -621,11 +630,13 @@ pub const JointHistory = struct {
         apply.deinit(self.allocator);
     }
 
-    /// Stated deviation, until E and F1 (integrator, 2026-10-28): HTML
-    /// queues "finalize a cross-document navigation" and a same-document
-    /// navigation's finalize steps on the traversal queue, so neither runs
-    /// inside an apply; Crane commits both inline. A commit made while an
-    /// apply runs settles it first - the step moves to its target (step 20
+    /// Stated deviation (integrator, 2026-10-28; since lane nav2 E and F1
+    /// only for the commits that are still made inline - an embedder's own
+    /// load, top_level_traversables.recordLoad; a javascript: URL's result;
+    /// a commit that found no queue to append its finalize to): HTML queues
+    /// "finalize a cross-document navigation" on the traversal queue, so it
+    /// never runs inside an apply (`listCrossDocument` is the queued one). A
+    /// commit made inline while an apply runs settles it first - the step moves to its target (step 20
     /// early, and the apply's own does nothing) and the views of the
     /// navigables it does not change are released (their step 18 early) -
     /// so the commit lands after the apply, as it would from the queue, and
@@ -895,14 +906,55 @@ pub const JointHistory = struct {
         self.beginChange();
         defer self.endChange();
         self.settleApply();
-        // Stated, with settleApply, until F1: the synchronous navigations'
-        // finalize steps queued before this commit would run before it on the
-        // queue - their pending entries are listed first, in order (their
+        // Stated, with settleApply, for the inline commits (see there): the
+        // synchronous navigations' finalize steps queued before this commit
+        // would run before it on the queue - their pending entries are listed first, in order (their
         // queued finalize steps then find nothing to do).
         self.flushPending();
         const doc_state = self.next_document_state;
         self.next_document_state += 1;
         try self.commit(navigable, url, doc_state, document, .null, .undefined, origin, handling, true, prepared);
+    }
+
+    /// HTML "finalize a cross-document navigation" steps 5-9 as they run on
+    /// the traversal queue (lane nav2 F1, apply_history_step's .push_replace
+    /// apply): `navigable`'s new entry for a document of `origin` at `url`.
+    /// "push" clears the forward session history - its listed entries past
+    /// the current step; nothing is settled, the caller is the queue's
+    /// running item - and lists the entry at the current step + 1;
+    /// "replace" puts it in place of the navigable's current entry, at its
+    /// step, keeping its navigation API key when the two are same origin,
+    /// and applies the current step (step 9's targetStep).
+    /// The current step does not move: "apply the push/replace history step"
+    /// sets it to the returned step at its step 20 (`endApply`). Unlike
+    /// `commitPreparedDocument`, no pending entry is listed: the synchronous
+    /// navigations' finalize steps queued before this one have run, and
+    /// those queued after it run after it.
+    pub fn listCrossDocument(self: *JointHistory, navigable: u64, url: []const u8, document: ?*anyopaque, origin: []const u8, handling: HistoryHandling, prepared: ?Prepared) !ListedCrossDocument {
+        self.beginChange();
+        defer self.endChange();
+        // The entry's id and keys: those pageswap named, or - with none
+        // reserved - made now (a replace keeps a same-origin key).
+        const reserved = prepared orelse self.prepareDocument(navigable, origin, handling);
+        _ = self.update_only.remove(navigable);
+        const doc_state = self.next_document_state;
+        self.next_document_state += 1;
+        switch (handling) {
+            .push => {
+                const removed = self.clearForwardListed();
+                const step = self.current_step + 1;
+                try self.append(navigable, step, url, doc_state, document, .null, .undefined, origin, null, reserved);
+                return .{ .step = step, .entry = reserved.id, .removed = removed };
+            },
+            .replace => {
+                // Step 9 (replace) 4: "Set targetStep to traversable's
+                // current session history step" - not the replaced entry's
+                // step (a frame's first entry sits at the step its parent's
+                // document began at).
+                try self.commit(navigable, url, doc_state, document, .null, .undefined, origin, .replace, true, reserved);
+                return .{ .step = self.current_step, .entry = reserved.id, .removed = false };
+            },
+        }
     }
 
     /// A copy of `entry` as it is now, owned by this history's allocator.
@@ -1106,7 +1158,9 @@ pub const JointHistory = struct {
     /// this one. The case step 2 exists for - a traversal that activated
     /// another entry for the navigable since - drops the chain
     /// (`dropPending`), and an inline cross-document commit lists it
-    /// (`flushPending`, until F1).
+    /// (`flushPending`; a queued one, `listCrossDocument`, runs after the
+    /// finalize steps queued before it, and drops the navigable's chain
+    /// made after it when its document is made active).
     ///
     /// Step 5: a push clears the forward session history and is listed at
     /// the current step + 1; a replace takes its replaced entry's place, at
@@ -1422,6 +1476,16 @@ pub const JointHistory = struct {
         while (last + 1 < raw.items.len and std.mem.eql(u8, raw.items[last + 1].origin, current.origin)) last += 1;
         try out.appendSlice(allocator, raw.items[first .. last + 1]);
         return start - first;
+    }
+
+    /// Record `resource` - a srcdoc document's markup - as the document
+    /// state's resource of the entry `entry_id` (a cross-document finalize's
+    /// new entry, before its navigable's current entry is it).
+    pub fn setEntryResource(self: *JointHistory, entry_id: u64, resource: ?[]const u8) !void {
+        const entry = self.entryById(entry_id) orelse return error.NoCurrentEntry;
+        const copy: ?[]u8 = if (resource) |r| try self.allocator.dupe(u8, r) else null;
+        if (entry.resource) |old| self.allocator.free(old);
+        entry.resource = copy;
     }
 
     /// Record `resource` - a srcdoc document's markup - as the document

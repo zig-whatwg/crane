@@ -9,6 +9,7 @@ AGENTS.md on every call, and at ~210 lessons the index was 50 KB of its 86 KB.
 A lane brief now carries the lessons chosen for its batch.
 
 ### Architecture
+- [Moving a commit onto a queue - never queue what the running item awaits, and hold readers before the write](architecture-moving-a-commit-onto-a-queue-never-queue-what-the-running-item-awaits.md) - A path the running queue item waits on can never be queued behind it; hold readers before the write; recompute every value a moved step derives from the spec's own branch text; a loss that appears only because work moved later is usually an old race the new timing lost.
 - [Deferred policy inheritance preserves construction inputs](architecture-deferred-policy-inheritance-preserves-construction-inputs.md) - **Delaying a calculation must preserve the time at which its inputs were defined.**
 - [A hold across a move is free when it is taken at the unlink and ended at the link](architecture-a-hold-across-a-move-is-free-when-taken-at-the-unlink.md) - Under subtree counts a hold's cost is where it begins and ends: begin and end a move's hold while the node is a root, and it costs nothing.
 - [A counted keep the engine may fail to record must not be released](architecture-a-counted-keep-the-engine-may-not-record-must-not-be-released.md) - A `void` acquire can fail silently: release only what you know you got - take counted keeps on an existing wrapper, and test the owner under allocation failure.

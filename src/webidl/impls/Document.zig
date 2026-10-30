@@ -4581,6 +4581,25 @@ fn lifecycleTaskSteps(data: ?*anyopaque) void {
             if (getInternal(task.target)) |internal| {
                 // Its last child's load completed the document already.
                 if (task.load_token != 0 and task.load_token == internal.early_load_token) return;
+                // "The end" steps 7-8 (lane nav2 batch 6, H-NAV2-DOC-LOAD-
+                // RECHECK): "spin the event loop until ... nothing delays the
+                // load event". Step 6's DOMContentLoaded task runs inside that
+                // spin, so a frame or script its handlers insert delays the
+                // load; this task was queued before they ran. Delayed again:
+                // wait, and the delayer's end queues the load anew
+                // (lifecycleLoadDelayMayHaveEnded). The browsers wait too
+                // (trusted-types/inheriting-csp-for-local-schemes.html, whose
+                // frames are appended from DOMContentLoaded, posts to them
+                // after the load).
+                if (task.load_token != 0 and internal.pending_load_token == task.load_token) {
+                    const scripts_pending = internal.scripts.scripts_to_execute_asap.items.len > 0 or internal.scripts.scripts_to_execute_in_order_asap.items.len > 0;
+                    if (scripts_pending or lifecycleDelaysLoadEvent(task.target)) {
+                        internal.pending_load_token = 0;
+                        internal.ready_for_post_load_tasks = false;
+                        internal.load_waiting_on_delay = true;
+                        return;
+                    }
+                }
                 if (internal.pending_load_token == task.load_token) internal.pending_load_token = 0;
             }
             completeLoading(task.target);
