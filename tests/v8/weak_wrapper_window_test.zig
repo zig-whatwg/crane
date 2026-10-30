@@ -110,7 +110,7 @@ test "an event handler compiled with a scope only a weak handle holds sees that 
 
     // A long body: its string is most of what each round allocates before
     // the scopes are read.
-    const body_text = "return lk2Scope;" ++ (" " ** 16_000);
+    const body_text = "return lk2Scope;" ++ (&@as([16_000:0]u8, @splat(' ')));
     const name = "onlk2";
     const parameters = [_][*:0]const u8{"event"};
 

@@ -127,7 +127,7 @@ pub fn gcm(allocator: std.mem.Allocator, direction: Direction, key: []const u8, 
     defer cipher.deinit();
     var h: [16]u8 = undefined;
     defer std.crypto.secureZero(u8, &h);
-    try cipher.apply(&h, &([_]u8{0} ** 16)); // Algorithm 4 step 1 / 5 step 2.
+    try cipher.apply(&h, &(@as([16]u8, @splat(0)))); // Algorithm 4 step 1 / 5 step 2.
     var j0: [16]u8 = @splat(0);
     defer std.crypto.secureZero(u8, &j0);
     // Algorithm 4 step 2 / 5 step 3: GHASH derives J0 for every other IV size.
@@ -283,9 +283,9 @@ test "AES-CTR matches SP 800-38A F.5.1" {
 }
 
 test "AES-CTR permits counter wrap but rejects repeated counter blocks" {
-    const key = [_]u8{0} ** 16;
-    var counter = [_]u8{0xff} ** 16;
-    const input = [_]u8{0} ** 33;
+    const key = @as([16]u8, @splat(0));
+    var counter = @as([16]u8, @splat(0xff));
+    const input = @as([33]u8, @splat(0));
     const result = try ctr(std.testing.allocator, &key, &counter, 1, input[0..32]);
     defer std.testing.allocator.free(result);
     // The low counter bit wraps to zero; the other 127 bits remain unchanged.
@@ -320,9 +320,9 @@ test "AES-CBC first block matches SP 800-38A F.2.1 and padding roundtrips all re
 }
 
 test "AES-GCM matches the NIST all-zero single-block vector" {
-    const key = [_]u8{0} ** 16;
-    const iv = [_]u8{0} ** 12;
-    const plaintext = [_]u8{0} ** 16;
+    const key = @as([16]u8, @splat(0));
+    const iv = @as([12]u8, @splat(0));
+    const plaintext = @as([16]u8, @splat(0));
     var expected: [32]u8 = undefined;
     _ = try std.fmt.hexToBytes(&expected, "0388dace60b6a392f328c2b971b2fe78ab6e47d42cec13bdf53a67b21257bddf");
     const encrypted = try gcm(std.testing.allocator, .encrypt, &key, &iv, "", null, &plaintext);
@@ -339,8 +339,8 @@ test "AES-GCM matches the NIST all-zero single-block vector" {
 }
 
 test "AES-GCM short tags are prefixes of the full authentication tag" {
-    const key = [_]u8{0} ** 16;
-    const iv = [_]u8{0} ** 12;
+    const key = @as([16]u8, @splat(0));
+    const iv = @as([12]u8, @splat(0));
     var expected: [16]u8 = undefined;
     _ = try std.fmt.hexToBytes(&expected, "58e2fccefa7e3061367f1d57a4e7455a");
     for ([_]u8{ 32, 64, 96, 104, 112, 120, 128 }) |bits| {
@@ -391,7 +391,7 @@ test "AES-KW matches RFC 3394 section 4.1 and rejects tampering" {
 }
 
 test "AES invalid parameters reject before allocating" {
-    const key = [_]u8{0} ** 16;
+    const key = @as([16]u8, @splat(0));
     const fail = std.testing.failing_allocator;
     try std.testing.expectError(error.OperationError, ctr(fail, &key, key[0..15], 128, ""));
     try std.testing.expectError(error.OperationError, cbc(fail, .encrypt, &key, key[0..15], ""));

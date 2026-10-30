@@ -17,7 +17,8 @@
 //! - **document_type**: which document a response makes
 //! - **object_resource_type**: what an object's or embed's resource is
 //! - **termination_nesting**: the event loop's termination nesting level
-//! - **security_policies**: COOP, COEP, CORP, framing
+//! - **security_policies**: X-Frame-Options framing
+//! - **opener_policy**: COOP matching and browsing context group switches
 //! - **sandbox_navigation**: "allowed by sandboxing to navigate"
 
 pub const fetch_integration = @import("fetch_integration.zig");
@@ -31,6 +32,7 @@ pub const apply_history_step = @import("apply_history_step.zig");
 pub const document_type = @import("document_type.zig");
 pub const object_resource_type = @import("object_resource_type.zig");
 pub const security_policies = @import("security_policies.zig");
+pub const opener_policy = @import("opener_policy.zig");
 /// HTML "allowed by sandboxing to navigate".
 pub const sandbox_navigation = @import("sandbox_navigation.zig");
 /// HTML "not restored reasons" and a Document's bfcache blocking details.
@@ -45,16 +47,6 @@ pub const isXmlResponse = fetch_integration.isXmlResponse;
 pub const shouldNavigationProceed = fetch_integration.shouldNavigationProceed;
 pub const isCrossOrigin = fetch_integration.isCrossOrigin;
 
-pub const CoopValue = security_policies.CoopValue;
-pub const CoepValue = security_policies.CoepValue;
-pub const CorpValue = security_policies.CorpValue;
-pub const CrossOriginOpenerPolicy = security_policies.CrossOriginOpenerPolicy;
-pub const CrossOriginEmbedderPolicy = security_policies.CrossOriginEmbedderPolicy;
-pub const SecurityPolicies = security_policies.SecurityPolicies;
-pub const SecurityPolicyHeaderMap = security_policies.HeaderMap;
-pub const checkCoopEnforcement = security_policies.checkCoopEnforcement;
-pub const checkCoepEnforcement = security_policies.checkCoepEnforcement;
-pub const isCrossOriginIsolated = security_policies.isCrossOriginIsolated;
 pub const XFrameOptions = security_policies.XFrameOptions;
 pub const isFramingAllowed = security_policies.isFramingAllowed;
 

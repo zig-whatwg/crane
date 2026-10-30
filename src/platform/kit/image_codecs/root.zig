@@ -2,9 +2,8 @@
 //! use the caller's allocator; native codec contexts are scoped to one call.
 const std = @import("std");
 const platform = @import("platform");
-const c = @cImport({
-    @cInclude("image_codecs.h");
-});
+// image_codecs.h, translated by build.zig (addCImport).
+const c = @import("image_codecs_c");
 
 fn pixels(allocator: std.mem.Allocator, width: u32, height: u32, limits: platform.ImageLimits) platform.ImageError![]u8 {
     const count = @as(u64, width) * height;

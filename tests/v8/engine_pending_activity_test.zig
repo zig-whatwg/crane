@@ -257,8 +257,8 @@ const Probe = struct {
     other: ?*ffi.Value = null,
     other_empty: ?bool = null,
 };
-var probes: [64]Probe = [_]Probe{.{}} ** 64;
-var probe_states: [64]u64 = [_]u64{0} ** 64;
+var probes: [64]Probe = @as([64]Probe, @splat(.{}));
+var probe_states: [64]u64 = @as([64]u64, @splat(0));
 
 fn probingDeinit(instance: *runtime.Instance) void {
     const index = @as(*u64, @ptrCast(@alignCast(instance.state))).*;

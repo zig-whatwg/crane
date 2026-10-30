@@ -35,7 +35,7 @@ pub fn parse(options: properties.ParseOptions, stream: *properties.Stream, out: 
     // the existing longhand table stores its equivalent computed 400.
     parsed[2] = Value.kw(.normal);
     defer for (parsed) |v| v.release();
-    var seen = [_]bool{false} ** 4;
+    var seen = @as([4]bool, @splat(false));
     var prefix_count: usize = 0;
     while (true) {
         if (take(stream, "normal")) {

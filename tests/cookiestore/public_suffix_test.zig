@@ -2,6 +2,17 @@
 const std = @import("std");
 const cookiestore = @import("cookiestore");
 
+/// `s` repeated `n` times: what `s ** n` was (Zig 0.17 removes `**`; roadmap zig-017).
+fn repeat(comptime s: []const u8, comptime n: usize) *const [s.len * n:0]u8 {
+    return comptime blk: {
+        @setEvalBranchQuota(10 * n + 1000);
+        var out: [s.len * n:0]u8 = undefined;
+        for (0..n) |i| @memcpy(out[i * s.len ..][0..s.len], s);
+        const final = out;
+        break :blk &final;
+    };
+}
+
 test "cookie domains reject private, wildcard and unlisted public suffixes" {
     const allocator = std.testing.allocator;
     for ([_][]const u8{ "github.io", "s3.amazonaws.com", "a.ck", "test" }) |suffix| {
@@ -53,6 +64,6 @@ test "Domain strips exactly one leading dot" {
 test "schemeful cookie sites use the suffix beyond sixty-four labels" {
     // Both valid serialized hosts are shorter than 253 bytes. Their common
     // registrable domain is example.com, however many labels precede it.
-    const prefix = "x." ** 70;
+    const prefix = repeat("x.", 70);
     try std.testing.expect(try cookiestore.sameSite(std.testing.allocator, "https://" ++ prefix ++ "a.example.com/", "https://" ++ prefix ++ "b.example.com/"));
 }

@@ -46,47 +46,22 @@ pub const InternalState = struct {
     }
 };
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    return instance;
+/// A WorkerGlobalScope lends its own worker navigator record at construction
+/// (its navigator getter). The global scope owns the record and outlives
+/// every object in its realm.
+pub const construction_args = .{"navigator"};
+
+/// WorkerNavigator's own construction steps: its state over the lent record.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    if (!@hasField(@TypeOf(args), "navigator")) return;
+    const internal = try allocator.create(InternalState);
+    internal.* = .{ .internal_navigator = args.navigator, .allocator = allocator, .owned = false };
+    instance.getState(State).own._internal = internal;
 }
 
-/// Initialize with internal navigator
-pub fn initWithInternal(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
-
-    // Create internal WorkerNavigator
-    const internal_navigator = try InternalWorkerNavigator.init(allocator);
-    errdefer internal_navigator.deinit();
-
-    // Create internal state
-    const internal_state = try allocator.create(InternalState);
-    internal_state.* = .{
-        .internal_navigator = internal_navigator,
-        .allocator = allocator,
-    };
-
-    // Store internal state
-    var state = instance.getState(State);
-    state.own._internal = internal_state;
-
-    return instance;
-}
-
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// WorkerNavigator's own teardown.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();

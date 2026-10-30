@@ -4,7 +4,7 @@ const sniffing = @import("html_core").parser.encoding_sniffing;
 
 test "prescan reads charset after a long MIME parameter inside the first 1024 bytes" {
     const a = std.testing.allocator;
-    const bytes = try std.fmt.allocPrint(a, "<meta http-equiv=content-type content=\"text/html; note={s}; charset=iso-8859-15\">", .{"x" ** 90});
+    const bytes = try std.fmt.allocPrint(a, "<meta http-equiv=content-type content=\"text/html; note={s}; charset=iso-8859-15\">", .{&@as([90:0]u8, @splat('x'))});
     defer a.free(bytes);
     const result = sniffing.sniff(bytes, .{});
     try std.testing.expectEqualStrings("ISO-8859-15", sniffing.canonicalName(result.encoding));
@@ -13,11 +13,11 @@ test "prescan reads charset after a long MIME parameter inside the first 1024 by
 
 test "encoding labels can have long surrounding ASCII whitespace" {
     const a = std.testing.allocator;
-    const bytes = try std.fmt.allocPrint(a, "<meta charset=\"{s}utf-8{s}\">", .{ " " ** 80, "\t" ** 80 });
+    const bytes = try std.fmt.allocPrint(a, "<meta charset=\"{s}utf-8{s}\">", .{ &@as([80:0]u8, @splat(' ')), &@as([80:0]u8, @splat(0x09)) });
     defer a.free(bytes);
     const result = sniffing.sniff(bytes, .{});
     try std.testing.expectEqualStrings("UTF-8", sniffing.canonicalName(result.encoding));
-    const content_type = try std.fmt.allocPrint(a, "text/html; charset=\"{s}utf-8{s}\"", .{ " " ** 80, "\t" ** 80 });
+    const content_type = try std.fmt.allocPrint(a, "text/html; charset=\"{s}utf-8{s}\"", .{ &@as([80:0]u8, @splat(' ')), &@as([80:0]u8, @splat(0x09)) });
     defer a.free(content_type);
     const transport = sniffing.transportEncoding(a, content_type) orelse return error.MissingTransportEncoding;
     try std.testing.expectEqualStrings("UTF-8", sniffing.canonicalName(transport));

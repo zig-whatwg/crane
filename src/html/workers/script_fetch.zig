@@ -554,12 +554,23 @@ fn fetchHttpWorkerScript(
     defer if (referrer_policy_value) |value| allocator.free(value);
     const reporting_endpoints = response.header_list.get(allocator, "Reporting-Endpoints") catch return WorkerScriptError.OutOfMemory;
     defer if (reporting_endpoints) |value| allocator.free(value);
+    const coep = response.header_list.get(allocator, "Cross-Origin-Embedder-Policy") catch return WorkerScriptError.OutOfMemory;
+    defer if (coep) |value| allocator.free(value);
+    const coep_report_only = response.header_list.get(allocator, "Cross-Origin-Embedder-Policy-Report-Only") catch return WorkerScriptError.OutOfMemory;
+    defer if (coep_report_only) |value| allocator.free(value);
     script.policy_container = fetch.internal.PolicyContainer.fromResponseHeaders(allocator, .{
         .url = final_url,
         .csp = csp_value,
         .csp_report_only = csp_report_only,
         .referrer_policy = referrer_policy_value,
         .reporting_endpoints = reporting_endpoints,
+        // "Initialize worker global scope's policy container" step 2: the
+        // worker's inside settings are the environment. Its secure context
+        // is its URL's answer here; the worker host clears the policy for
+        // an owner that is not one (HTML 8.1.3.5 step 1.2).
+        .coep = coep,
+        .coep_report_only = coep_report_only,
+        .environment_secure = fetch.mixed_content.isAPrioriAuthenticated(allocator, final_url) catch false,
     }) catch return WorkerScriptError.OutOfMemory;
     return script;
 }
@@ -1001,12 +1012,24 @@ pub fn fetchServiceWorkerResource(allocator: Allocator, url: []const u8, options
         defer if (referrer_policy_value) |value| allocator.free(value);
         const reporting_endpoints = response.header_list.get(allocator, "Reporting-Endpoints") catch return error.OutOfMemory;
         defer if (reporting_endpoints) |value| allocator.free(value);
+        const coep = response.header_list.get(allocator, "Cross-Origin-Embedder-Policy") catch return error.OutOfMemory;
+        defer if (coep) |value| allocator.free(value);
+        const coep_report_only = response.header_list.get(allocator, "Cross-Origin-Embedder-Policy-Report-Only") catch return error.OutOfMemory;
+        defer if (coep_report_only) |value| allocator.free(value);
         resource.policy_container = fetch.internal.PolicyContainer.fromResponseHeaders(allocator, .{
             .url = final_url,
             .csp = csp_value,
             .csp_report_only = csp_report_only,
             .referrer_policy = referrer_policy_value,
             .reporting_endpoints = reporting_endpoints,
+            // HTML "create a policy container from a fetch response" step 4:
+            // the service worker's embedder policy - what its own fetches'
+            // CORP checks and credentials obey. Its environment is a secure
+            // context (Service Workers 6.1: only a potentially trustworthy
+            // script URL registers).
+            .coep = coep,
+            .coep_report_only = coep_report_only,
+            .environment_secure = fetch.mixed_content.isAPrioriAuthenticated(allocator, final_url) catch false,
         }) catch return error.OutOfMemory;
     }
     return resource;

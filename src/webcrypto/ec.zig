@@ -363,8 +363,8 @@ test "EC key decoding rejects identity, off-curve points and invalid private sca
             .p521 => 66,
         };
         try std.testing.expectError(error.DataError, normalizePublic(a, curve, &.{0}));
-        try std.testing.expectError(error.DataError, normalizePublic(a, curve, &([_]u8{4} ++ [_]u8{0} ** (2 * n))));
-        try std.testing.expectError(error.DataError, publicKey(a, curve, &([_]u8{0} ** n)));
-        try std.testing.expectError(error.DataError, publicKey(a, curve, &([_]u8{0xff} ** n)));
+        try std.testing.expectError(error.DataError, normalizePublic(a, curve, &([_]u8{4} ++ @as([(2 * n)]u8, @splat(0)))));
+        try std.testing.expectError(error.DataError, publicKey(a, curve, &(@as([n]u8, @splat(0)))));
+        try std.testing.expectError(error.DataError, publicKey(a, curve, &(@as([n]u8, @splat(0xff)))));
     }
 }

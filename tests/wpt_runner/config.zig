@@ -595,7 +595,7 @@ test "the directory allowlist matches every directory in the generated worklist"
     // --from-file bypasses isInScope. A newly approved suite must also be
     // reachable by directory, so compare the real generated worklist with
     // the allowlist in both directions. Per-file exclusions remain separate.
-    var seen = [_]bool{false} ** in_scope_categories.len;
+    var seen = @as([in_scope_categories.len]bool, @splat(false));
     var paths: usize = 0;
     var lines = std.mem.splitScalar(u8, worklist, '\n');
     while (lines.next()) |line| {

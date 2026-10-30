@@ -225,7 +225,7 @@ fn pathHasEscapedSlash(record: *const URLRecord) bool {
 }
 
 fn hasEscapedSlash(segment: []const u8) bool {
-    return std.ascii.indexOfIgnoreCase(segment, "%2f") != null or std.ascii.indexOfIgnoreCase(segment, "%5c") != null;
+    return std.ascii.findIgnoreCase(segment, "%2f") != null or std.ascii.findIgnoreCase(segment, "%5c") != null;
 }
 
 /// "/" followed by the strings in `record`'s path (including empty strings),

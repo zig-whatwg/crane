@@ -867,10 +867,16 @@ pub fn matchesFocusWithin(element: *Instance) bool {
     const chain = focusChain(currentlyFocusedArea(document));
     for (chain.items[0..chain.len]) |entry| {
         if (!isElement(entry)) continue;
+        // A focus chain crosses documents; take each entry's owner once
+        // for this synchronous walk, not the queried element's document.
+        const top_layer = dom.top_layer.ofElement(entry, false) catch null;
         var node: ?*Instance = entry;
         var depth: usize = 0;
         while (node) |n| : (node = shadowIncludingParent(n)) {
             if (n == element) return true;
+            // Selectors 4 section 9: popover and modal boundaries are
+            // inclusive. Non-modal dialogs remain ordinary ancestors.
+            if (top_layer) |layer| if (layer.find(n) != null or layer.findModal(n) != null) break;
             depth += 1;
             if (depth == 4096) break;
         }
@@ -1053,7 +1059,8 @@ fn takePendingEdit(element: *Instance) bool {
 fn commitUserEdit(entry: *Instance) void {
     if (!form_associated.isInput(entry) and !form_associated.isTextArea(entry)) return;
     if (!takePendingEdit(entry)) return;
-    // User validity: not implemented (constraint validation is queued).
+    // HTML focus update step 2.1: commit user validity before change.
+    dom.form_controls.setUserValidity(entry, true) catch {};
     form_associated.fireSimpleEvent(entry, "change", .{ .bubbles = true }) catch {};
 }
 

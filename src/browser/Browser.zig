@@ -124,9 +124,8 @@ pub const BrowserConfig = struct {
     /// WebDriver's acceptInsecureCerts: TLS certificates are not verified.
     accept_insecure_certs: bool = false,
     /// How many pages the back/forward cache keeps (back_forward_cache.zig):
-    /// 2 by default - WebKit's page cache on a small device (CacheModel);
-    /// Blink keeps 6 - for an engine that runs many Browsers in one
-    /// process. 0 keeps none.
+    /// 8 by default - Firefox's desktop cap, for the whole Browser
+    /// (back_forward_cache.zig `default_size` says why). 0 keeps none.
     back_forward_cache_size: usize = @import("back_forward_cache.zig").default_size,
     /// How long a page stays in the back/forward cache, in seconds: 600, as
     /// Blink (BackForwardCacheImpl::GetTimeToLiveInBackForwardCache).

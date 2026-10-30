@@ -121,7 +121,7 @@ pub fn hasProperty(realm: Context, object: JSValue, property: []const u8) Error!
     const target = try objectOf(entered, object);
     defer ffi.v8_Global_Dispose(target);
     // The FFI takes the key NUL-terminated.
-    const key = realm.allocator.dupeZ(u8, property) catch return error.OutOfMemory;
+    const key = realm.allocator.dupeSentinel(u8, property, 0) catch return error.OutOfMemory;
     defer realm.allocator.free(key);
 
     // 1. Return ? O.[[HasProperty]](P).

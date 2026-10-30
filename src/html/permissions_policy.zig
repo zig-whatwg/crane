@@ -114,6 +114,12 @@ pub const Feature = enum {
     deferred_fetch,
     deferred_fetch_minimal,
 
+    // HTML 7.1.4's "cross-origin-isolated" feature: a policy-controlled
+    // feature whose default allowlist is 'self', which a window's
+    // cross-origin isolated capability requires its document to be allowed
+    // to use.
+    cross_origin_isolated,
+
     // Display
     browsing_topics, // Privacy Sandbox
 
@@ -161,6 +167,7 @@ pub const Feature = enum {
             .browsing_topics => "browsing-topics",
             .deferred_fetch => "deferred-fetch",
             .deferred_fetch_minimal => "deferred-fetch-minimal",
+            .cross_origin_isolated => "cross-origin-isolated",
         };
     }
 

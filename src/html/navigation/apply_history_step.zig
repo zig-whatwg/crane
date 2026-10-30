@@ -1,7 +1,12 @@
 //! HTML 7.4.6.1 "apply the history step", run as items of a traversable's
 //! session history traversal queue (traversal_queue.zig): the traversals of
 //! "traverse the history by a delta" and the navigation API, "apply the
-//! reload history step", and "update for navigable creation/destruction".
+//! reload history step", "update for navigable creation/destruction", and
+//! "finalize a cross-document navigation" with the "apply the push/replace
+//! history step" it ends with (lane nav2 F1: `.push_replace`, whose one
+//! changing navigable's step-12 job is the rest of its commit - the entry
+//! listed, then the displayed document unloaded and the new one made active,
+//! dom.navigables.commitNavigation).
 //!
 //! Spec: https://html.spec.whatwg.org/multipage/browsing-the-web.html#apply-the-history-step
 //!
@@ -56,9 +61,11 @@
 //!   (TraversalQueue.jumpAhead). Only a traversal lets them: the step 20 of
 //!   a reload, an update for navigable creation/destruction or a finalize's
 //!   own push/replace step would set the current step back under a jumped
-//!   push (whatwg/html#10232, #12961). A cross-document commit made inline
-//!   while an apply runs still settles it (JointHistory.settleApply) until
-//!   F1.
+//!   push (whatwg/html#10232, #12961). A cross-document navigation's
+//!   finalize is an apply of its own (.push_replace, lane nav2 F1), which
+//!   waits; only the commits still made inline (an embedder's load, a
+//!   javascript: URL's result) settle a running apply
+//!   (JointHistory.settleApply).
 //! - "Apply the push/replace history step" runs inline in the finalize
 //!   (JointHistory.finalizeSameDocument says why).
 //! - A traversal whose target step is forward of the current one, appended
@@ -111,6 +118,11 @@ pub const Kind = enum {
     reload,
     /// "Update for navigable creation/destruction".
     update,
+    /// "Finalize a cross-document navigation" and the "apply the push/replace
+    /// history step" it ends with (lane nav2 F1): one changing navigable,
+    /// whose step-12 job is the rest of its navigation's commit
+    /// (dom.navigables.commitNavigation).
+    push_replace,
 };
 
 /// One navigable whose current session history entry changes (step 6), by
@@ -168,6 +180,11 @@ pub const ApplyItem = struct {
     /// whose navigation API asked. Owned until rejected or dropped.
     api: ?history_traversal.ApiTraversal = null,
     api_navigable: u64 = 0,
+    /// `.push_replace`: the navigable and its cross-document navigation's id,
+    /// and whether its step-12 job handed it the commit.
+    commit_navigable: u64 = 0,
+    commit_id: u64 = 0,
+    commit_ran: bool = false,
 
     // What the run decided, for the later phases.
     phase: enum { start, changes, nonchanging } = .start,
@@ -240,6 +257,15 @@ pub const ApplyItem = struct {
             if (top.joint_history) |history| history.endApply(item.token);
         }
         if (self.api) |api| api.drop(api.context);
+        // A .push_replace apply that ends before its job ran - unrun when
+        // its traversable ended, its job not queued or dropped - ends its
+        // navigation, which otherwise waits for it (liveness, condition 2).
+        // Not for a navigable being destroyed: its navigations end with it.
+        if (self.kind == .push_replace and !self.commit_ran) {
+            if (self.navigables.byId(self.commit_navigable)) |bc| {
+                if (!bc.orphaned and !bc.is_closed and bc.active_document != null) _ = dom.navigables.commitNavigation(@ptrCast(bc), self.commit_id, null);
+            }
+        }
         for (self.changes.items) |c| self.allocator.free(c.old_url);
         self.changes.deinit(self.allocator);
         self.nonchanging.deinit(self.allocator);
@@ -253,6 +279,7 @@ pub const ApplyItem = struct {
 
     /// Steps 2-12.
     fn start(self: *ApplyItem) !Outcome {
+        if (self.kind == .push_replace) return self.startPushReplace();
         const navigables = self.navigables;
         const allocator = self.allocator;
         const top = navigables.byId(self.top_id) orelse return .done;
@@ -294,6 +321,8 @@ pub const ApplyItem = struct {
                 .step => |s| s,
             },
             .reload, .update => history.current_step,
+            // `startPushReplace` took it above.
+            .push_replace => return .done,
         };
         const target = history.usedStepAtOrBefore(step) orelse return .done;
         self.target_step = target;
@@ -440,6 +469,54 @@ pub const ApplyItem = struct {
         }
         if (waiting) return .pending;
         return self.nonchangingJobs() catch self.finish();
+    }
+
+    /// "Finalize a cross-document navigation" and its push/replace step's
+    /// steps 2-12, as far as they run before the navigable's step-12 job
+    /// (lane nav2 F1). The entry is listed - steps 5-9 - and the apply begun
+    /// (step 8: `beginPushReplace`) by that job, from the commit, right
+    /// before the navigable's active document unloads: so a navigation that
+    /// cannot go on lists nothing. Not here:
+    /// - step 5: "apply the push/replace history step" passes
+    ///   checkForCancelation false (beforeunload ran in "navigate");
+    /// - step 8.3-8.4: its target is no traversal;
+    /// - 14.1: only a traversal lets synchronous navigation steps jump it
+    ///   (`make`), so a same-document navigation's finalize appended after
+    ///   this one waits for it.
+    /// Step 7: the non-changing navigables, those not under the navigable,
+    /// whose views step 18 writes.
+    fn startPushReplace(self: *ApplyItem) !Outcome {
+        const navigables = self.navigables;
+        const allocator = self.allocator;
+        const top = navigables.byId(self.top_id) orelse return .done;
+        const bc = navigables.byId(self.commit_navigable) orelse return .done;
+        if (bc.orphaned or bc.is_closed or bc.getTop() != top) return .done;
+        var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
+        defer tree.deinit(allocator);
+        try top.collectDescendants(allocator, &tree);
+        for (tree.items) |other| {
+            if (isSelfOrUnder(other, bc)) continue;
+            try self.nonchanging.append(allocator, other.id);
+        }
+        const old_url = try allocator.dupe(u8, "");
+        self.changes.append(allocator, .{
+            .navigable = bc.id,
+            .old_url = old_url,
+            .from_entry = 0,
+            .target_entry = 0,
+            .same_document = false,
+            .same_origin = false,
+        }) catch |err| {
+            allocator.free(old_url);
+            return err;
+        };
+        self.phase = .changes;
+        const recorded = TraversalQueue.waitFor(navigables, self.top_id, self.token(), bc.id);
+        if (!JobTask.queue(self, bc, .change)) {
+            if (recorded) TraversalQueue.populationEnded(navigables, self.top_id, self.token(), bc.id);
+            return .done;
+        }
+        return if (recorded) .pending else .done;
     }
 
     /// Step 5, "checking if unloading is canceled", for a traversal or a
@@ -650,6 +727,13 @@ const JobTask = struct {
     /// Step 12 for one changing navigable.
     fn changeSteps(self: *JobTask, item: *ApplyItem, navigable: *BrowsingContext, history: *JointHistory) bool {
         const c = item.changeOf(self.navigable) orelse return false;
+        // "Apply the push/replace history step" (lane nav2 F1): the rest of
+        // the navigation's commit, whose new document's activation ends the
+        // job (14.12.6).
+        if (item.kind == .push_replace) {
+            item.commit_ran = true;
+            return dom.navigables.commitNavigation(@ptrCast(navigable), item.commit_id, .{ .traversable_id = self.top_id, .token = self.token });
+        }
         const top_id = self.top_id;
         const navigables = self.navigables;
         // 12.7: "If navigationType is "traverse", navigable is not
@@ -835,6 +919,60 @@ pub fn finalizeSameDocument(navigable: *BrowsingContext, allocator: Allocator, n
     };
     // Out of memory, the queue destroyed it unrun.
     if (!queue.append(&self.item)) finalizeNow(top, navigable.id, nav);
+}
+
+/// "Append session history traversal steps to navigable's traversable
+/// navigable to finalize a cross-document navigation" (navigate step 23.9's
+/// completionSteps; lane nav2 F1): the commit of `navigable`'s
+/// cross-document navigation `navigation_id` goes on as a .push_replace
+/// apply of its traversable's queue. False when no item was appended (no
+/// queue, no memory): the caller commits now, as before F1.
+pub fn finalizeCrossDocument(navigable: *BrowsingContext, allocator: Allocator, navigation_id: u64) bool {
+    const top = navigable.getTop();
+    const queue = queueOf(top) orelse return false;
+    const self = ApplyItem.make(top, allocator, .push_replace) orelse return false;
+    self.commit_navigable = navigable.id;
+    self.commit_id = navigation_id;
+    // Out of memory, the queue destroys it unrun - and the caller, told so,
+    // commits itself: that destroy must not end the navigation.
+    self.commit_ran = true;
+    if (!queue.append(&self.item)) return false;
+    // Appended: never run inside `append`, so its job is still to come.
+    self.commit_ran = false;
+    return true;
+}
+
+/// The .push_replace apply `waiter` names lists `navigable`'s entry
+/// (`listed`, from JointHistory.listCrossDocument) - "finalize a
+/// cross-document navigation" steps 5-9 - and begins its "apply the
+/// push/replace history step" to `listed.step`: step 8 (the navigable's
+/// current entry is the new one), every document's view held until the
+/// spec writes it (the navigable's when its new document is active, the
+/// others' at step 18). The commit calls it right before the navigable's
+/// active document unloads. Nothing when that apply is not the running one.
+pub fn beginPushReplace(navigable: *BrowsingContext, waiter: dom.navigables.TraversalWaiter, listed: joint_history.ListedCrossDocument) void {
+    const top = navigable.getTop();
+    if (top.id != waiter.traversable_id) return;
+    const traversals = top.traversal_queue orelse return;
+    const running = traversals.running orelse return;
+    if (running.token != waiter.token or running.run != &ApplyItem.run) return;
+    const item: *ApplyItem = @fieldParentPtr("item", running);
+    if (item.kind != .push_replace) return;
+    const history = top.joint_history orelse return;
+    item.target_step = listed.step;
+    if (item.changeOf(navigable.id)) |c| c.target_entry = listed.entry;
+    history.beginApply(waiter.token, listed.step);
+    history.setCurrentEntry(navigable.id, listed.entry);
+    history.holdAllViews();
+}
+
+/// Whether `bc` is `ancestor` or one of its descendants.
+fn isSelfOrUnder(bc: *BrowsingContext, ancestor: *BrowsingContext) bool {
+    var at: ?*BrowsingContext = bc;
+    while (at) |current| : (at = current.parent) {
+        if (current == ancestor) return true;
+    }
+    return false;
 }
 
 /// `finalizeSameDocument` at once, from the synchronous steps themselves.

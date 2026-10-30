@@ -121,7 +121,7 @@ pub const CleanupCoordinator = struct {
     handlers: std.ArrayListUnmanaged(CleanupHandler) = .empty,
 
     /// Debug: count of instances cleaned up per phase
-    phase_cleanup_counts: [8]usize = .{0} ** 8,
+    phase_cleanup_counts: [8]usize = @splat(0),
 
     /// The storage of instances this teardown tore down that no engine
     /// object ever reached (runtime.instance_lifecycle.provablyUnwrapped: a
@@ -290,7 +290,7 @@ pub const CleanupCoordinator = struct {
         self.current_phase = .not_started;
         self.context_teardown_started = false;
         self.context_teardown_complete = false;
-        self.phase_cleanup_counts = .{0} ** 8;
+        self.phase_cleanup_counts = @splat(0);
         self.handlers.clearRetainingCapacity();
         self.deferred_storage.clearRetainingCapacity();
     }

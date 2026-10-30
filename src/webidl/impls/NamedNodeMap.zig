@@ -51,30 +51,26 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
 }
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+/// The element whose attribute list this map is, given at construction
+/// (Element's attributes getter): DOM's NamedNodeMap "has an associated
+/// element".
+pub const construction_args = .{"element"};
 
-    // Initialize internal state
-    const state = instance.getState(StateType);
+/// NamedNodeMap's own construction steps.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    const state = instance.getState(State);
     const internal = try runtime.arenaOf(instance).create(InternalState);
     internal.* = InternalState.init(allocator);
+    if (@hasField(@TypeOf(args), "element")) internal.owner_element = args.element;
     state.own._internal = internal;
 
     // Initialize length to 0
     state.own.length = 0;
-
-    return instance;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// NamedNodeMap's own teardown.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();
@@ -169,12 +165,6 @@ pub fn call_removeNamedItemNS(instance: *runtime.Instance, namespace: ?runtime.D
 // ============================================================================
 // Internal helper functions
 // ============================================================================
-
-/// Set the owner element
-pub fn setOwnerElement(instance: *runtime.Instance, element: ?*runtime.Instance) void {
-    const internal = getInternal(instance) orelse return;
-    internal.owner_element = element;
-}
 
 /// The supported property names.
 /// Spec: https://dom.spec.whatwg.org/#ref-for-dfn-supported-property-names

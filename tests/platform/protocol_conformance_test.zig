@@ -133,8 +133,8 @@ test "the monotonic clock never goes backwards and the wall clock is near now" {
 }
 
 test "fillRandom fills, and two draws differ" {
-    var a = [_]u8{0} ** 64;
-    var b = [_]u8{0} ** 64;
+    var a = @as([64]u8, @splat(0));
+    var b = @as([64]u8, @splat(0));
     platform.fillRandom(&a);
     platform.fillRandom(&b);
     try testing.expect(!std.mem.eql(u8, &a, &b));

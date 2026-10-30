@@ -204,7 +204,7 @@ test "a from-scratch run over the default sources matches every committed root's
 
 /// What `zig fmt` would make of `source`.
 fn zigFmt(allocator: std.mem.Allocator, source: []const u8) ![]u8 {
-    const source_z = try allocator.dupeZ(u8, source);
+    const source_z = try allocator.dupeSentinel(u8, source, 0);
     defer allocator.free(source_z);
     var tree = try std.zig.Ast.parse(allocator, source_z, .zig);
     defer tree.deinit(allocator);

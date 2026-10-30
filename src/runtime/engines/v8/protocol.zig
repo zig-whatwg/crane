@@ -302,12 +302,12 @@ pub fn globalBuiltinFunction(realm: Context, key: []const u8, function_name: []c
 /// which a new wrapper's tree edges use - and a walk legitimately wraps the
 /// node a range moves to (lane rangeuaf).
 fn forbidScriptInHold(realm: Context) void {
-    if (builtin.mode != .Debug) return;
+    if (builtin.mode != std.builtin.OptimizeMode.Debug) return;
     if (@import("wrapper_cache.zig").teardownsHeldInRealm(realm)) @panic("script inside a teardown hold (engine.holdTeardowns)");
 }
 
 fn forbidScriptInAgentHold(agent: *Agent) void {
-    if (builtin.mode != .Debug) return;
+    if (builtin.mode != std.builtin.OptimizeMode.Debug) return;
     const holds = protocol_agents.teardownHoldsOf(isolateOf(agent)) orelse return;
     if (holds.count != 0) @panic("script inside a teardown hold (engine.holdTeardowns)");
 }

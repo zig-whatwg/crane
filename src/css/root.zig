@@ -115,6 +115,8 @@ pub const math_values = @import("math_values.zig");
 pub const properties = @import("properties.zig");
 pub const declarations = @import("declarations.zig");
 pub const media_queries = @import("media_queries.zig");
+pub const container_values = @import("container_values.zig");
+pub const container_queries = @import("container_queries.zig");
 pub const computed_style = @import("computed_style.zig");
 pub const cascade = @import("cascade.zig");
 pub const text_transform = @import("text_transform.zig");
@@ -151,6 +153,8 @@ pub const ui_values = @import("ui_values.zig");
 pub const keyframe_values = @import("keyframe_values.zig");
 
 pub const animation_values = @import("animation_values.zig");
+/// Web Animations: combining computed values (lane rendering3).
+pub const interpolation = @import("interpolation.zig");
 pub const easing_values = @import("easing_values.zig");
 pub const numeric_values = @import("numeric_values.zig");
 

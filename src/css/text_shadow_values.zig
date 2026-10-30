@@ -12,7 +12,7 @@ const Stream = properties.Stream;
 
 const Shadow = struct {
     color: ?Color = null,
-    lengths: [3]Value = .{Value.px(0)} ** 3,
+    lengths: [3]Value = @splat(Value.px(0)),
     count: u2 = 0,
 
     fn retain(self: Shadow) void {

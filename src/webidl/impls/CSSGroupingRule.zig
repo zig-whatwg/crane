@@ -2,8 +2,9 @@
 //!
 //! A group rule's child CSS rules: cssRules ([SameObject]) lists them live;
 //! insertRule() and deleteRule() edit them (dom.style.cssom). A style rule
-//! is a grouping rule too (CSS Nesting); Crane's style rules hold no child
-//! rules (stated in dom.style.rules), so theirs is empty and takes none.
+//! inherits this grouping API too (CSS Nesting). Insertion uses the nearest
+//! style or scope context for selectors and declaration runs, while the
+//! style-ancestor restriction on global rules continues through groups.
 //!
 //! Spec: https://drafts.csswg.org/cssom-1/#the-cssgroupingrule-interface
 

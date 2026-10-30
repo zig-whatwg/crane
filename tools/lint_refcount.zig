@@ -90,6 +90,19 @@ pub fn isNodeStateFile(path: []const u8) bool {
     return std.mem.endsWith(u8, stem, "Element");
 }
 
+/// Node state whose TYPE moved out of its node interface's impl into src/dom
+/// (impls batch 7: the type moves, the state stays the impl's): every container
+/// there is node state for rule 2, so a move loses no coverage. Rule 3 stays
+/// with the impl, which still makes, registers, sweeps and frees the state.
+const moved_node_state_files = [_][]const u8{"src/dom/document_state.zig"};
+
+/// Whether every container in `path` is node state moved out of an impl
+/// (rule 2 only).
+pub fn isMovedNodeStateFile(path: []const u8) bool {
+    for (moved_node_state_files) |moved| if (std.mem.eql(u8, path, moved)) return true;
+    return false;
+}
+
 /// One finding: its line and the key it is counted under (after the path).
 pub const Finding = struct {
     line: u32,
@@ -154,6 +167,7 @@ pub fn findings(gpa: std.mem.Allocator, path: []const u8, source: [:0]const u8) 
         break :blk false;
     };
     const every_container_is_node_state = isNodeStateFile(path);
+    const moved_node_state = isMovedNodeStateFile(path);
 
     // The names containers are bound to: `const Name = struct { ... }`.
     var names: std.AutoHashMapUnmanaged(std.zig.Ast.Node.Index, []const u8) = .empty;
@@ -230,7 +244,7 @@ pub fn findings(gpa: std.mem.Allocator, path: []const u8, source: [:0]const u8) 
             const type_node = field.ast.type_expr.unwrap() orelse continue;
             if (isNodeBaseType(nodeText(&tree, type_node))) has_node_base = true;
         }
-        const is_node_state = every_container_is_node_state or has_node_base or
+        const is_node_state = every_container_is_node_state or moved_node_state or has_node_base or
             (std.mem.eql(u8, container_name, "NodeBase") and std.mem.eql(u8, path, "src/dom/node_base.zig"));
         if (!is_node_state) continue;
         for (container.ast.members) |member| {
@@ -269,7 +283,7 @@ fn isHeapStateBlock(tree: *const std.zig.Ast, call: std.zig.Ast.full.Call) bool 
     if (tree.nodeTag(call.ast.fn_expr) != .field_access) return false;
     const object, const field_token = tree.nodeData(call.ast.fn_expr).node_and_token;
     if (!std.mem.eql(u8, tree.tokenSlice(field_token), "create")) return false;
-    return std.ascii.indexOfIgnoreCase(nodeText(tree, object), "arena") == null;
+    return std.ascii.findIgnoreCase(nodeText(tree, object), "arena") == null;
 }
 
 /// Rule 3: whether a callee installs a teardown sweep - `dom.teardown_sweeps`'
@@ -614,6 +628,31 @@ test "ref-in-node-state: every container in a node interface's impl is node stat
         \\pub const State = struct { target: Ref(NodeBase), added: []Ref(NodeBase) };
     , &.{});
     try expectFindings("src/webidl/impls/Range.zig", "const State = struct { start: Ref(NodeBase) };", &.{});
+}
+
+test "ref-in-node-state: node state whose type moved to src/dom is still node state, for rule 2 only" {
+    // Document's state type is dom.document_state's (impls batch 7): a
+    // counted reference there is caught as it was in impls/Document.zig.
+    try expectFindings("src/dom/document_state.zig",
+        \\pub const InternalState = struct {
+        \\    held: Ref(NodeBase),
+        \\    weak: WeakRef(NodeBase),
+        \\    pub fn deinit(self: *InternalState) void {
+        \\        self.allocator.free(self.name);
+        \\    }
+        \\};
+        \\pub const InteractionState = struct { kept: ?refcount.Ref(NodeBase) = null };
+    , &.{
+        "2:ref-in-node-state.InternalState.held",
+        "8:ref-in-node-state.InteractionState.kept",
+    });
+    // Rule 3 is the impl's: the moved file allocates and frees no state block.
+    try expectFindings("src/dom/document_state.zig",
+        \\fn make(allocator: Allocator) !void { _ = try allocator.create(InternalState); }
+    , &.{});
+    try testing.expect(isMovedNodeStateFile("src/dom/document_state.zig"));
+    try testing.expect(!isMovedNodeStateFile("src/dom/document_internals.zig"));
+    try testing.expect(!isNodeStateFile("src/dom/document_state.zig"));
 }
 
 test "ref-in-node-state: a holder struct that is not node state is free to count" {

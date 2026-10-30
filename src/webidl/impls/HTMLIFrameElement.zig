@@ -187,6 +187,7 @@ pub fn installHooks() void {
         .follow_hyperlink = &followHyperlink,
         .download_hyperlink = &downloadHyperlink,
         .traverse_navigable = &traverseNavigable,
+        .commit_navigation = &commitQueuedNavigation,
         .find_by_name = &frameWindowByName,
         .integration_of = &struct {
             fn of(browsing_context: *anyopaque) ?*IFrameIntegration {
@@ -886,6 +887,26 @@ const Navigation = struct {
     /// owned).
     prepared: ?html_core.navigation.joint_history.Prepared = null,
     target_origin: ?[]u8 = null,
+    /// Lane nav2 F1: runCommit handed the commit to the traversable's queue
+    /// ("finalize a cross-document navigation"): the record waits, in
+    /// `navigations`, for its .push_replace apply's step-12 job
+    /// (`commitQueuedNavigation`). A later navigation does not end it - the
+    /// navigation is mature, and commits (see `setOngoingNavigation`) - and
+    /// its navigable's end does (`abandonNavigationsOf`).
+    committing: bool = false,
+    /// What runCommit decided before handing over, for the commit: the
+    /// navigation params' policy container (owned until the document takes
+    /// it) and the browsing context group switch (21.12.2).
+    params_container: ?fetch_mod.internal.PolicyContainer = null,
+    group_switch: ?html_core.window.browsing_context.CrossOriginIsolationMode = null,
+    /// The commit listed the entry before the active document unloaded
+    /// ("finalize a cross-document navigation" steps 5-9, from the queue):
+    /// `recordInHistory` makes that entry's document active, with the
+    /// activation's old entry as it was before the listing (owned).
+    listed: ?html_core.navigation.joint_history.ListedCrossDocument = null,
+    listed_previous: ?html_core.navigation.joint_history.EntrySnapshot = null,
+    /// The history's allocator, which owns `listed_previous`.
+    listed_previous_allocator: ?std.mem.Allocator = null,
     /// The request's referrer, resolved (Fetch "determine request's
     /// referrer" for the source document): its URL, or null for no
     /// referrer. Owned.
@@ -1028,6 +1049,8 @@ const Navigation = struct {
         if (self.javascript_policy_container) |*container| container.deinit();
         if (self.traversal_policy_container) |*container| container.deinit();
         if (self.history_policy_container) |*container| container.deinit();
+        if (self.params_container) |*container| container.deinit();
+        if (self.listed_previous) |*previous| previous.deinit(self.listed_previous_allocator.?);
         if (self.required_csp) |required| self.allocator.free(required);
         self.allocator.free(self.url);
         self.allocator.destroy(self);
@@ -1180,7 +1203,19 @@ fn setOngoingNavigation(integration: *IFrameIntegration, value: navigate_steps.O
             // says why): its record stays for its task.
             const queued_javascript = integration.host_realms != null and
                 (if (navigationById(old)) |record| navigate_steps.isJavascript(record.url) else false);
-            if (!queued_javascript) endNavigation(old);
+            // A navigation whose finalize is queued (lane nav2 F1) is mature:
+            // it commits all the same, as the spec's queued "finalize a
+            // cross-document navigation" never asks whether its navigation is
+            // still the ongoing one, and as browsers do - Chromium's
+            // FrameTreeNode::TakeNavigationRequest resets only the
+            // FrameTreeNode's own request, one not yet ready to commit; a
+            // request ready to commit belongs to its RenderFrameHost
+            // (TransferNavigationRequestOwnership) and commits, and Gecko
+            // swaps the document in at the response, leaving no such gap.
+            // Its commit's "deactivate a document" step 5.2 then ends the
+            // navigation that replaced it (commitAfterFinalize).
+            const committing = if (navigationById(old)) |record| record.committing else false;
+            if (!queued_javascript and !committing) endNavigation(old);
         },
         // A traversal's population (its navigable going, or "stop" - which
         // only a navigation ID's reaches).
@@ -1196,6 +1231,26 @@ fn setOngoingNavigation(integration: *IFrameIntegration, value: navigate_steps.O
 /// navigation in flight.
 fn abandonNavigationsOf(integration: *IFrameIntegration) void {
     setOngoingNavigation(integration, .none);
+    endCommittingNavigationsOf(integration);
+}
+
+/// The navigations of `integration` whose finalize is queued (lane nav2 F1)
+/// end with their navigable: their apply's job then finds nothing, and ends
+/// its wait. (A record never outlives its integration.)
+fn endCommittingNavigationsOf(integration: *IFrameIntegration) void {
+    var ids: [8]u64 = undefined;
+    while (true) {
+        var count: usize = 0;
+        var it = navigations.iterator();
+        while (it.next()) |kv| {
+            if (!kv.value_ptr.*.committing or kv.value_ptr.*.integration != integration) continue;
+            ids[count] = kv.key_ptr.*;
+            count += 1;
+            if (count == ids.len) break;
+        }
+        if (count == 0) return;
+        for (ids[0..count]) |id| endNavigation(id);
+    }
 }
 
 /// IFrameIntegration's end_ongoing_navigation_callback: the navigation in
@@ -1205,7 +1260,8 @@ fn abandonNavigationsOf(integration: *IFrameIntegration) void {
 /// traversal does, the same).
 fn endOngoingNavigationOf(integration: *IFrameIntegration) void {
     switch (integration.ongoing_navigation) {
-        .id => |old| endNavigation(old),
+        // A queued commit is mature (see setOngoingNavigation).
+        .id => |old| if (if (navigationById(old)) |record| !record.committing else true) endNavigation(old),
         .traversal => if (integration.traversal_navigation != 0) endNavigation(integration.traversal_navigation),
         .none => {},
     }
@@ -1457,6 +1513,19 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         record.initiator_policy_container = container.clone(allocator) catch {
             record.destroy();
             return;
+        };
+        // The opener policy a top-level local document this navigation
+        // makes inherits (navigationParamsPolicyContainer), snapshotted with
+        // the source's container: the clone leaves it new. Asked only for a
+        // top-level traversable's navigation to a local URL - no other
+        // navigation reads it, and none pays for it.
+        if (integration.browsing_context) |bc| if (bc.parent == null and isLocalScheme(navigate_steps.schemeOf(url))) {
+            // Values only (no endpoints): fails only out of memory, which
+            // stops the navigation as a missing snapshot does.
+            record.initiator_policy_container.?.setOpenerPolicy(topLevelOpenerPolicyFor(source)) catch {
+                record.destroy();
+                return;
+            };
         };
         // The source snapshot params' fetch client is sourceDocument's
         // relevant settings object: the request's client, whose global a
@@ -2410,7 +2479,9 @@ fn runCommit(context: ?*anyopaque) void {
     const id = idOf(context);
     const kv = navigations.fetchRemove(id) orelse return;
     const record = kv.value;
-    defer record.destroy();
+    // Handed to the traversal queue below, it is the queue's job's to end.
+    var handed_over = false;
+    defer if (!handed_over) record.destroy();
     const integration = record.integration;
     if (!isOngoing(integration, id)) return;
     const response = if (record.response) |*r| r else return;
@@ -2421,6 +2492,19 @@ fn runCommit(context: ?*anyopaque) void {
     // network error - the frame shows an error document, of an opaque
     // origin, and its load event still fires.
     if (frameAncestorsBlock(integration, record, response) or requiredCSPBlocks(integration, record, response)) {
+        response.deinit();
+        record.response = navigation_fetch.networkErrorResult(integration.allocator, record.url) catch null;
+        if (record.response == null) {
+            integration.ongoing_navigation = .none;
+            return endLoadDelay(integration);
+        }
+    }
+    // Cross-origin isolation: a child navigable's response its parent's
+    // embedder policy refuses ("create navigation params by fetching" step
+    // 21.13 and "attempt to populate the history entry's document" step 4),
+    // and a sandboxed response with an opener policy (step 21.12.3), are
+    // network errors too.
+    if (embedderPolicyBlocks(integration, record, response) or sandboxedOpenerPolicyBlocks(integration, record, response)) {
         response.deinit();
         record.response = navigation_fetch.networkErrorResult(integration.allocator, record.url) catch null;
         if (record.response == null) {
@@ -2492,6 +2576,74 @@ fn runCommit(context: ?*anyopaque) void {
     record.final_sandboxing_flags = if (response.is_network_error) .empty else record.target_sandboxing_flags.unionWith(
         if (params_container) |*container| sandboxing.cspDerivedSandboxingFlags(&container.csp_list) else .empty,
     );
+    // Step 21.12.2 for a top-level traversable: whether the response's
+    // opener policy needs a browsing context group switch, read from the
+    // active document before it unloads.
+    const group_switch = if (params_container) |*container| openerPolicySwitch(integration, record, response, container) else null;
+    record.params_container = params_container;
+    params_container_taken = true;
+    record.group_switch = group_switch;
+
+    // Navigate step 23.9's completionSteps (lane nav2 F1): "Append session
+    // history traversal steps to navigable's traversable navigable to
+    // finalize a cross-document navigation". The rest of the commit is that
+    // apply's step-12 job (`commitQueuedNavigation`); until it runs the
+    // record stays the navigable's ongoing navigation, in `navigations`.
+    // Not a traversal's or a reload's population: that is the change job of
+    // the apply running now ("apply the history step" 12.8), which waits for
+    // it - it commits here, as it always did.
+    if (record.traversal_entry == 0) if (integration.browsing_context) |bc| {
+        if (navigations.put(std.heap.page_allocator, record.id, record)) |_| {
+            record.committing = true;
+            if (html_core.navigation.apply_history_step.finalizeCrossDocument(bc, integration.allocator, record.id)) {
+                handed_over = true;
+                return;
+            }
+            record.committing = false;
+            _ = navigations.remove(record.id);
+        } else |_| {}
+    };
+    // A population, or no queue to append to (no memory): the commit goes on
+    // now - a navigation's lists its entry after the unload
+    // (recordInHistory), as before F1.
+    commitAfterFinalize(integration, record, null);
+}
+
+/// The .push_replace apply's step-12 job for `browsing_context_ptr`'s
+/// navigation `navigation_id` (dom.navigables.commitNavigation, lane nav2
+/// F1): the commit runCommit handed to the queue. False when the navigation
+/// is gone - its navigable went (`endCommittingNavigationsOf`): the job ends
+/// its wait. Otherwise the record reports the wait's end - at its new
+/// document's activation (recordInHistory), or when it is destroyed.
+fn commitQueuedNavigation(browsing_context_ptr: *anyopaque, navigation_id: u64, waiter: ?dom_module.navigables.TraversalWaiter) bool {
+    const record = navigationById(navigation_id) orelse return false;
+    if (!record.committing) return false;
+    const integration = record.integration;
+    const bc = integration.browsing_context orelse return false;
+    if (@as(*anyopaque, @ptrCast(bc)) != browsing_context_ptr) return false;
+    _ = navigations.remove(navigation_id);
+    record.committing = false;
+    // Its apply ended before its job ran (the job could not be queued, or
+    // was dropped): the navigation ends here, uncommitted, and stops
+    // delaying its container's load event.
+    const w = waiter orelse {
+        if (integration.ongoing_navigation.eql(.{ .id = navigation_id })) integration.ongoing_navigation = .none;
+        record.destroy();
+        endLoadDelay(integration);
+        return false;
+    };
+    record.traversal_wait = TraversalWait.of(integration, w);
+    defer record.destroy();
+    commitAfterFinalize(integration, record, w);
+    return true;
+}
+
+/// The commit after "finalize a cross-document navigation" was appended
+/// (`waiter`: the .push_replace apply running it) or, with no queue, at once
+/// (`waiter` null): the entry listed, the displayed document unloaded, the
+/// new one made and active.
+fn commitAfterFinalize(integration: *IFrameIntegration, record: *Navigation, waiter: ?dom_module.navigables.TraversalWaiter) void {
+    const response = if (record.response) |*r| r else return endLoadDelay(integration);
 
     // Script runs below and may take the iframe away; the integration stays
     // until this is done with it - and is freed, if it has to be, only after
@@ -2499,16 +2651,38 @@ fn runCommit(context: ?*anyopaque) void {
     integration.busy += 1;
     defer finishBusy(integration);
 
-    // "Deactivate a document for a cross-document navigation" step 5.2: the
-    // ongoing navigation is null - new navigations may start.
-    integration.ongoing_navigation = .none;
-
     // Step 5.1: the pageswap event the unload fires at the displayed
-    // document, naming targetEntry - which "finalize a cross-document
-    // navigation" has put in the session history by now, and Crane commits
-    // once the document is made: its id and keys are reserved here.
+    // document, naming targetEntry - its id and keys reserved here, the
+    // entry listed below with them.
     var swap = pageSwapOf(integration, record, response);
     defer if (swap) |*step| step.deinit();
+
+    // "Finalize a cross-document navigation" steps 5-9 and its "apply the
+    // push/replace history step" step 8, from the traversal queue (lane nav2
+    // F1): the entry is in the session history BEFORE the displayed document
+    // unloads, as the spec has it. Every document keeps the view it had
+    // (JointHistory.holdAllViews) until the new document is made active
+    // (recordInHistory: the navigable's view then, and - stated there - the
+    // others' too, step 18 early), so the leaving document's pageswap,
+    // pagehide and unload handlers, and its parent's and siblings' scripts
+    // meanwhile, read the history as it was.
+    if (waiter) |w| listBeforeUnload(integration, record, response, w);
+
+    // "Deactivate a document for a cross-document navigation" step 5.2: the
+    // ongoing navigation is null - new navigations may start. One that
+    // started while this commit waited on the queue replaced it as the
+    // ongoing navigation: set directly to null, it ends here (the spec's own
+    // next check of it would abort it; its record must not outlive being the
+    // ongoing one) - unless it is mature too, its own finalize queued behind
+    // this one: that commits next, as the spec's would.
+    switch (integration.ongoing_navigation) {
+        .id => |other| if (other != record.id) {
+            const mature = if (navigationById(other)) |later| later.committing else false;
+            if (!mature) endNavigation(other);
+        },
+        else => {},
+    }
+    integration.ongoing_navigation = .none;
 
     // Step 5.3: "Unload a document and its descendants", in its realm. HTML
     // "unload a document" steps 11 and 13 time its unload event for the new
@@ -2516,20 +2690,10 @@ fn runCommit(context: ?*anyopaque) void {
     // around it, made relative to the new document's time origin when its
     // navigation timing entry is created.
     //
-    // Stated deviation in order: HTML's "finalize a cross-document
-    // navigation" puts the new entry in the session history BEFORE this
-    // unload; Crane records it after (commitInRealm), once the document is
-    // made. The order is observable only through each document's own view,
-    // and HTML keeps those views back: the leaving document's History length
-    // and index and its Navigation entry list and currentEntry are never
-    // updated, and the traversable's other documents get theirs from "apply
-    // the history step" step 18, after this unload. Crane reads all of them
-    // live from the joint history, so recording first would show the new
-    // entry to the leaving document's pageswap and unload handlers and to
-    // its parent and siblings. The per-document views land with the session
-    // history traversal queue (lane newwin1's batch 2); until then the
-    // entry's identity is reserved where pageswap names it
-    // (docs/lessons/architecture-reserve-what-a-step-names-before-the-engine-makes-it.md).
+    // The new entry was listed above, before this unload, as HTML's
+    // "finalize a cross-document navigation" has it (lane nav2 F1) - with the
+    // queue to run it on. Without one (no memory) the commit lists it after
+    // the unload (recordInHistory), as Crane did before F1.
     const unload_start = fetch_mod.algorithms.http_fetch.getCurrentTimeMs();
     // A navigable an earlier commit left with no realm - its replacement
     // realm could not be made after the old document unloaded (replaceRealm;
@@ -2570,6 +2734,16 @@ fn runCommit(context: ?*anyopaque) void {
             }
         }
     }
+    // "Obtain a browsing context to use for a navigation response" steps
+    // 10-14 (create and initialize a Document object step 1): the switch,
+    // before the new document's agent is obtained in the new group. A popup's
+    // next realm gets a new WindowProxy (replaceRealm); the host page's
+    // keeps its own (Context.enforceOpenerPolicy says why).
+    if (record.group_switch) |mode| {
+        if (integration.browsing_context) |bc| bc.switchGroup(mode, record.final_sandboxing_flags);
+        integration.next_new_window_proxy = integration.host_realms == null;
+    }
+    defer integration.next_new_window_proxy = false;
     // "Create and initialize a Document object" step 7: the keying of the
     // new document's agent cluster, decided before its realm is chosen and
     // any of its script runs.
@@ -2605,10 +2779,10 @@ fn runCommit(context: ?*anyopaque) void {
     integration.setNextAboutBaseUrl(record.initiator_base_url);
     defer integration.setNextAboutBaseUrl(null);
     // "Create and initialize a Document object" step 9: the document's policy
-    // container, waiting for whatever makes the document (decided above,
-    // with the clone its history entry keeps).
-    integration.setNextPolicyContainer(params_container);
-    params_container_taken = true;
+    // container, waiting for whatever makes the document (decided by
+    // runCommit, with the clone its history entry keeps).
+    integration.setNextPolicyContainer(record.params_container);
+    record.params_container = null;
     defer integration.setNextPolicyContainer(null);
     // The response declarations are snapshotted before the Document exists;
     // parsing waits for its own origin and construction-time container.
@@ -2715,7 +2889,8 @@ fn obtainAgentCluster(integration: *IFrameIntegration, record: *Navigation, resp
         runtime.BrowserScope.ofInstance(document)
     else
         null;
-    _ = keys.obtain(scope, browsing_context.virtual_group_id, origin, requests_oac, browsing_context.isCrossOriginIsolated());
+    // Step 3 keys by origin in a cross-origin isolated group.
+    _ = keys.obtain(scope, browsing_context.virtual_group_id, origin, requests_oac, browsing_context.groupIsCrossOriginIsolated());
 }
 
 /// HTML 8.1.3.5 for a navigation's reserved environment in
@@ -2784,13 +2959,32 @@ fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Nav
         }
         // 3. A local response inherits its initiator's policy container.
         if (is_local) {
-            if (record.initiator_policy_container) |*container| break :blk try container.clone(allocator);
+            if (record.initiator_policy_container) |*container| {
+                var inherited = try container.clone(allocator);
+                // A top-level local document (about:blank, blob:, data:)
+                // inherits its initiator's top-level document's opener
+                // policy, when the initiator is same origin with it - the
+                // snapshot the navigation took. HTML gives it a new one
+                // ("create navigation params by fetching" step 21.12.1 reads
+                // only the response's headers); Chrome 156, Firefox 159 and
+                // Safari 27 all inherit (blob-popup.https.html 1/1 each;
+                // navigate-top-to-aboutblank.https.html 3/3, 1/3, 3/3, whose
+                // text states the rule; wpt.fyi 07ce6e987a), as Chromium
+                // keeps COOP in the policy container a local document
+                // inherits (PolicyContainerPolicies).
+                if (integration.browsing_context) |bc| if (bc.parent == null) {
+                    try inherited.setOpenerPolicy(.{ .value = container.openerPolicy().value, .report_only_value = container.openerPolicy().report_only_value });
+                };
+                break :blk inherited;
+            }
             if (record.traversal_policy_container) |*container| break :blk try container.clone(allocator);
         }
         // 4-5. Otherwise use the response's container, or a new one.
         if (!std.mem.eql(u8, scheme, "http") and !std.mem.eql(u8, scheme, "https") and !std.mem.eql(u8, scheme, "data")) break :blk PolicyContainer.init(allocator);
         const headers = response.headers;
-        break :blk try PolicyContainer.fromResponseHeaders(allocator, .{
+        const secure = if (integration.browsing_context) |bc| reservedEnvironmentIsSecure(bc, response_url, allocator) else false;
+        const cross_origin = crossOriginHeadersOf(response);
+        var fetched = try PolicyContainer.fromResponseHeaders(allocator, .{
             .url = response_url,
             .csp = if (headers) |h| h.get("content-security-policy") else null,
             .csp_report_only = if (headers) |h| h.get("content-security-policy-report-only") else null,
@@ -2798,7 +2992,21 @@ fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Nav
             .reporting_endpoints = if (headers) |h| h.get("reporting-endpoints") else null,
             .integrity_policy = if (headers) |h| h.get("integrity-policy") else null,
             .integrity_policy_report_only = if (headers) |h| h.get("integrity-policy-report-only") else null,
+            // "Create a policy container from a fetch response" step 4: the
+            // navigation's reserved environment.
+            .coep = cross_origin.coep,
+            .coep_report_only = cross_origin.coep_report_only,
+            .environment_secure = secure,
         });
+        errdefer fetched.deinit();
+        // "Create navigation params by fetching" step 21.12.1: a top-level
+        // traversable's response opener policy, navigationParams's opener
+        // policy, which becomes the new document's ("create and initialize
+        // a Document object" step 9; it rides on the container).
+        if (integration.browsing_context) |bc| if (bc.parent == null and !response.is_network_error) {
+            try fetched.setOpenerPolicy(try fetch_mod.internal.cross_origin_policies.obtainOpenerPolicy(allocator, cross_origin, secure));
+        };
+        break :blk fetched;
     };
     errdefer result.deinit();
     // CSPEE §2.4 items 9-11: after inheritance, apply the target snapshot's
@@ -2895,6 +3103,230 @@ fn requiredCSPBlocks(integration: *IFrameIntegration, record: *const Navigation,
 /// documents' origins. The request's own list cannot reject its source in
 /// step 3: frame-ancestors is the only navigation-response directive and
 /// ignores that type.
+/// The response's `Cross-Origin-Opener-Policy` and
+/// `Cross-Origin-Embedder-Policy` headers and their -Report-Only twins, as
+/// the navigation's fetch copied them (fetch_integration's list). BORROWED
+/// from the response.
+fn crossOriginHeadersOf(response: *const navigation_fetch.NavigationFetchResult) fetch_mod.internal.cross_origin_policies.Headers {
+    const headers = response.headers orelse return .{};
+    return .{
+        .coop = headers.get("cross-origin-opener-policy"),
+        .coop_report_only = headers.get("cross-origin-opener-policy-report-only"),
+        .coep = headers.get("cross-origin-embedder-policy"),
+        .coep_report_only = headers.get("cross-origin-embedder-policy-report-only"),
+    };
+}
+
+/// Whether a child navigable's parent's embedder policy refuses `response`:
+///
+/// - "Create navigation params by fetching" step 21.13: "the result of
+///   performing a cross-origin resource policy check with navigable's
+///   container document's origin, navigable's container document's relevant
+///   settings object, request's destination, response, and true is blocked";
+/// - "attempt to populate the history entry's document" step 4: a fetched
+///   response (its reserved environment non-null - not a srcdoc or
+///   about: document) whose navigationParams's policy container's embedder
+///   policy fails "check a navigation response's adherence to its embedder
+///   policy": its parent's value is compatible with cross-origin isolation
+///   and its own is not.
+///
+/// Both checks queue their violation reports on the container document's
+/// relevant settings object (`queueEmbedderPolicyReport`). Out of memory
+/// blocks: never a document its parent's policy did not allow.
+fn embedderPolicyBlocks(integration: *IFrameIntegration, record: *Navigation, response: *const navigation_fetch.NavigationFetchResult) bool {
+    if (response.is_network_error) return false;
+    const browsing_context = integration.browsing_context orelse return false;
+    // "If navigable is not a child navigable, then return true."
+    if (browsing_context.parent == null) return false;
+    const parent = containerDocumentOf(integration) orelse return false;
+    const parent_container = dom_module.policy_containers.of(parent) orelse return false;
+    const parent_policy = parent_container.embedderPolicy();
+    const allocator = integration.allocator;
+    const response_url = if (response.final_url.len > 0) response.final_url else record.url;
+    // Neither of the parent's values restricts anything: with
+    // forNavigation, the check allows every response under "unsafe-none"
+    // (Fetch 3.7's internal check step 1), and step 4 asks only a
+    // compatible value. Nothing is allocated.
+    if (!parent_policy.value.compatibleWithCrossOriginIsolation() and !parent_policy.report_only_value.compatibleWithCrossOriginIsolation()) return false;
+    // Step 21.13: only a response from the network has the header.
+    if (response.headers) |headers| {
+        const parent_origin = documentOriginOf(parent, allocator);
+        defer if (parent_origin) |origin| allocator.free(origin);
+        const check = fetch_mod.internal.cross_origin_policies.corpCheck(allocator, parent_origin orelse "null", parent_policy, .{
+            .url = response_url,
+            .corp = headers.get("cross-origin-resource-policy"),
+            .request_includes_credentials = true,
+        }, true) catch return true;
+        // Fetch 3.7 steps 4 and 6: the reports, "corp" for the request's
+        // destination - the container's local name.
+        const destination = containerLocalName(integration);
+        if (check.report_only_blocks) queueEmbedderPolicyReport(parent, response_url, .{ .corp = destination }, parent_policy.report_only_reporting_endpoint, true);
+        if (check.enforced_by_embedder_policy) queueEmbedderPolicyReport(parent, response_url, .{ .corp = destination }, parent_policy.reporting_endpoint, false);
+        if (check.result == .blocked) return true;
+    }
+    // Step 4: a response with a reserved environment.
+    if (record.srcdoc != null or navigate_steps.matchesAboutSrcdoc(response_url)) return false;
+    if (std.mem.eql(u8, navigate_steps.schemeOf(response_url), "about")) return false;
+    var container = navigationParamsPolicyContainer(integration, record, response) catch return true;
+    defer container.deinit();
+    const compatible = container.embedderPolicy().value.compatibleWithCrossOriginIsolation();
+    // "Check a navigation response's adherence to its embedder policy" step
+    // 3: the report-only value's violation is reported.
+    if (parent_policy.report_only_value.compatibleWithCrossOriginIsolation() and !compatible) {
+        queueEmbedderPolicyReport(parent, response_url, .navigation, parent_policy.report_only_reporting_endpoint, true);
+    }
+    // Steps 4-6.
+    if (!parent_policy.value.compatibleWithCrossOriginIsolation() or compatible) return false;
+    queueEmbedderPolicyReport(parent, response_url, .navigation, parent_policy.reporting_endpoint, false);
+    return true;
+}
+
+/// The local name of the navigable's container ("iframe", "frame", ...): a
+/// child navigable's navigation request's destination. "iframe" when it
+/// cannot be read.
+fn containerLocalName(integration: *IFrameIntegration) []const u8 {
+    const element = containerElement(integration) orelse return "iframe";
+    var local_name = interfaces.Element.get_localName(element) catch return "iframe";
+    defer local_name.deinit(element.ctx.allocator);
+    const name = local_name.asSlice();
+    if (std.mem.eql(u8, name, "frame")) return "frame";
+    if (std.mem.eql(u8, name, "object")) return "object";
+    if (std.mem.eql(u8, name, "embed")) return "embed";
+    return "iframe";
+}
+
+/// A "coep" report's body type: a CORP violation, with the request's
+/// destination, or an inheritance violation of a navigation.
+const EmbedderPolicyReportKind = union(enum) { corp: []const u8, navigation };
+
+/// HTML "queue a cross-origin embedder policy inheritance violation" with
+/// type "navigation", and Fetch "queue a cross-origin embedder policy CORP
+/// violation report", for a child navigable's response at `response_url`,
+/// on `container_document`'s relevant settings object - Reporting's
+/// "generate and queue a report" for its global, of the "coep" type (visible
+/// to ReportingObservers), for `endpoint`. A report that cannot be made is
+/// dropped: reporting never changes what was blocked.
+fn queueEmbedderPolicyReport(container_document: *runtime.Instance, response_url: []const u8, kind: EmbedderPolicyReportKind, endpoint: []const u8, report_only: bool) void {
+    queueEmbedderPolicyReportFallible(container_document, response_url, kind, endpoint, report_only) catch |err| {
+        log.debug("[navigation] no coep report for {s}: {s}", .{ response_url, @errorName(err) });
+    };
+}
+
+fn queueEmbedderPolicyReportFallible(container_document: *runtime.Instance, response_url: []const u8, kind: EmbedderPolicyReportKind, endpoint: []const u8, report_only: bool) !void {
+    const global = (try interfaces.Document.get_defaultView(container_document)) orelse return;
+    const allocator = global.ctx.allocator;
+    // "Serializing a response URL for reporting": no credentials, no
+    // fragment.
+    const blocked_url = try @import("csp").violation_events.stripUrlForReports(allocator, response_url);
+    defer allocator.free(blocked_url);
+    const disposition = if (report_only) "reporting" else "enforce";
+    const body = switch (kind) {
+        .corp => |destination| try std.json.Stringify.valueAlloc(allocator, .{
+            .type = "corp",
+            .blockedURL = blocked_url,
+            .destination = destination,
+            .disposition = disposition,
+        }, .{}),
+        .navigation => try std.json.Stringify.valueAlloc(allocator, .{
+            .type = "navigation",
+            .blockedURL = blocked_url,
+            .disposition = disposition,
+        }, .{}),
+    };
+    defer allocator.free(body);
+    const document_url = try documentUrlOf(container_document, allocator);
+    defer allocator.free(document_url);
+    try dom_module.reporting.generate(global, "coep", endpoint, document_url, body);
+}
+
+/// "Create navigation params by fetching" step 21.12.3, for a top-level
+/// traversable: "If finalSandboxFlags is not empty and responseCOOP's value
+/// is not "unsafe-none", then set response to an appropriate network
+/// error." finalSandboxFlags is the target snapshot's sandboxing flags and
+/// the response's CSP-derived ones (step 21.10). A response without the
+/// header allocates nothing here. Out of memory blocks.
+fn sandboxedOpenerPolicyBlocks(integration: *IFrameIntegration, record: *Navigation, response: *const navigation_fetch.NavigationFetchResult) bool {
+    if (response.is_network_error) return false;
+    const browsing_context = integration.browsing_context orelse return false;
+    if (browsing_context.parent != null) return false;
+    const headers = response.headers orelse return false;
+    const cross_origin = crossOriginHeadersOf(response);
+    if (cross_origin.coop == null) return false;
+    const allocator = integration.allocator;
+    const response_url = if (response.final_url.len > 0) response.final_url else record.url;
+    var coop = fetch_mod.internal.cross_origin_policies.obtainOpenerPolicy(allocator, cross_origin, reservedEnvironmentIsSecure(browsing_context, response_url, allocator)) catch return true;
+    defer coop.deinit(allocator);
+    if (coop.value == .unsafe_none) return false;
+    if (!record.target_sandboxing_flags.isEmpty()) return true;
+    var csp_only = fetch_mod.internal.PolicyContainer.fromResponseHeaders(allocator, .{
+        .url = response_url,
+        .csp = headers.get("content-security-policy"),
+        .csp_report_only = headers.get("content-security-policy-report-only"),
+    }) catch return true;
+    defer csp_only.deinit();
+    return !sandboxing.cspDerivedSandboxingFlags(&csp_only.csp_list).isEmpty();
+}
+
+/// "Create navigation params by fetching" step 21.12.2 - "enforce the
+/// response's opener policy" (html.navigation.opener_policy) - for a
+/// top-level traversable's navigation to `response`, whose navigation
+/// params' policy container is `container` (its opener policy the
+/// response's), and "obtain a browsing context to use for a navigation
+/// response" steps 4 and 12: the new group's cross-origin isolation mode
+/// when the navigation needs a browsing context group switch ("concrete"
+/// for "same-origin-plus-COEP", Crane's choice; BrowsingContext), null when
+/// it needs none. A child navigable never switches. Read from the active
+/// document - its URL, origin and opener policy (step 21.14's current
+/// result) - before it unloads.
+///
+/// Stated: the result is computed once, for the response the navigation
+/// commits; HTML enforces each redirect hop's response in turn (step 21.12
+/// inside the loop), which needs the navigation's fetch to follow redirects
+/// itself (queued with the hop-by-hop navigation fetch). Steps 4.2 and 5.2's
+/// violation reports, and step 9.1's virtual browsing context group ID,
+/// serve COOP reports, queued as lane coi1's follow-up.
+fn openerPolicySwitch(integration: *IFrameIntegration, record: *Navigation, response: *const navigation_fetch.NavigationFetchResult, container: *const fetch_mod.internal.PolicyContainer) ?html_core.window.browsing_context.CrossOriginIsolationMode {
+    if (response.is_network_error) return null;
+    const browsing_context = integration.browsing_context orelse return null;
+    if (browsing_context.parent != null) return null;
+    const active = activeDocumentOf(integration) orelse return null;
+    const allocator = integration.allocator;
+    const opener_policy = html_core.navigation.opener_policy;
+    const active_coop: fetch_mod.internal.OpenerPolicy = if (dom_module.policy_containers.of(active)) |c|
+        .{ .value = c.openerPolicy().value, .report_only_value = c.openerPolicy().report_only_value }
+    else
+        .{};
+    // Two "unsafe-none" policies, enforced and report-only, match whatever
+    // the origins: no switch, and nothing allocated.
+    const response_coop = container.openerPolicy();
+    if (allUnsafeNone(active_coop) and allUnsafeNone(response_coop.*)) return null;
+    const active_origin = documentOriginOf(active, allocator);
+    defer if (active_origin) |origin| allocator.free(origin);
+    const response_url = if (response.final_url.len > 0) response.final_url else record.url;
+    // navigationParams's origin ("determining the origin"): an about:blank
+    // document's is its initiator's, not its URL's - the origin the commit
+    // gives the document (commitInRealm).
+    const response_origin: []u8 = if (record.final_sandboxing_flags.origin)
+        allocator.dupe(u8, "null") catch return null
+    else if (record.target_origin) |known|
+        allocator.dupe(u8, known) catch return null
+    else
+        navigationParamsOrigin(integration, record.final_sandboxing_flags, response_url, if (record.srcdoc == null) record.initiator_origin else null, allocator) catch return null;
+    defer allocator.free(response_origin);
+    var reports: opener_policy.Reports = .{};
+    const enforced = opener_policy.enforce(document_lifecycle.isInitialAboutBlank(active), false, response_origin, .{
+        .value = response_coop.value,
+        .report_only_value = response_coop.report_only_value,
+    }, .{ .origin = active_origin orelse "null", .policy = active_coop }, &reports);
+    if (!enforced.needs_switch) return null;
+    return if (response_coop.value == .same_origin_plus_coep) .concrete else .none;
+}
+
+/// An opener policy whose value and report-only value are "unsafe-none".
+fn allUnsafeNone(policy: fetch_mod.internal.OpenerPolicy) bool {
+    return policy.value == .unsafe_none and policy.report_only_value == .unsafe_none;
+}
+
 fn frameAncestorsBlock(integration: *IFrameIntegration, record: *Navigation, response: *const navigation_fetch.NavigationFetchResult) bool {
     if (integration.iframe_element == null or response.is_network_error) return false;
     const headers = response.headers orelse return false;
@@ -3322,6 +3754,40 @@ fn recordInHistory(integration: *IFrameIntegration, record: *Navigation, url: []
         null;
     // recordActivation takes it; anything left here goes.
     defer if (previous) |*p| p.deinit(history.allocator);
+    // Lane nav2 F1: the commit listed the entry before the unload
+    // (listBeforeUnload) - its "apply the push/replace history step" makes
+    // its document active now: "update document for history step
+    // application" writes the navigable's view, the leaving document's
+    // later same-document entries are no longer active (dropped: their
+    // finalize steps find nothing), and the apply's step 14 stops waiting
+    // for this navigable - its step 20 goes on from the queue.
+    //
+    // Stated deviation: the other documents' views are written here too -
+    // step 18 early, at the activation, not in tasks after it. Crane parses
+    // the new document synchronously inside this commit and queues its load
+    // event from that parse, so step 18's tasks would run after the frame's
+    // load event: its container's onload, and its own inline scripts, would
+    // read the parent's history.length from before the push, which neither
+    // the browsers (Chromium's Navigator::DidNavigate broadcasts the new
+    // index and length to every renderer of the page with the commit,
+    // PageBroadcast::SetHistoryIndexAndLength) nor the spec's own ordering -
+    // where the parser runs long after step 18 - shows (docs/lessons/architecture-a-commit-that-parses-
+    // synchronously-must-record-history-first.md). Only the unload sees the
+    // views held.
+    if (record.listed) |listed| {
+        const entry = history.entryById(listed.entry) orelse return null;
+        const state = entry.document_state;
+        const taken = record.listed_previous;
+        record.listed_previous = null;
+        history.recordActivation(listed.entry, if (record.history_handling == .push) .push else .replace, taken) catch {};
+        history.dropPending(bc.id);
+        history.releaseAllViews();
+        if (record.traversal_wait) |wait| {
+            record.traversal_wait = null;
+            html_core.navigation.traversal_queue.TraversalQueue.populationEnded(wait.navigables, wait.traversable_id, wait.token, wait.navigable);
+        }
+        return state;
+    }
     if (record.traversal_entry != 0) {
         const entry = history.entryById(record.traversal_entry) orelse return null;
         const kind: joint_history.NavigationType = if (record.traversal_entry == record.traversal_from) .reload else .traverse;
@@ -3370,6 +3836,49 @@ fn recordInHistory(integration: *IFrameIntegration, record: *Navigation, url: []
     previous = null;
     history.recordActivation(current.id, if (handling == .push) .push else .replace, taken) catch {};
     return current.document_state;
+}
+
+/// "Finalize a cross-document navigation" steps 5-9 and "apply the
+/// push/replace history step" step 8 for `record`, on the traversal queue
+/// (lane nav2 F1), right before the displayed document unloads: the entry
+/// pageswap names is listed - with the response's URL and the navigation
+/// params' origin pageSwapOf decided - and the apply `waiter` names begins
+/// (apply_history_step.beginPushReplace). The activation's old entry is
+/// taken first, as the listing finds it. Nothing for a traversal's
+/// population (its own apply listed nothing new), or with no history or no
+/// memory: then the commit lists the entry after the unload
+/// (recordInHistory), as before F1.
+fn listBeforeUnload(integration: *IFrameIntegration, record: *Navigation, response: *const navigation_fetch.NavigationFetchResult, waiter: dom_module.navigables.TraversalWaiter) void {
+    if (record.traversal_entry != 0) return;
+    const bc = integration.browsing_context orelse return;
+    const history = bc.jointHistory() catch return;
+    const origin = record.target_origin orelse return;
+    const final_url = if (response.final_url.len > 0) response.final_url else record.url;
+    // "Apply the history step" 12.1's previousEntry, as recordInHistory
+    // takes it: none for the initial about:blank document.
+    const previous_is_initial = if (activeDocumentOf(integration)) |doc| document_lifecycle.isInitialAboutBlank(doc) else false;
+    var previous: ?html_core.navigation.joint_history.EntrySnapshot = if (previous_is_initial)
+        null
+    else if (history.currentEntry(bc.id)) |entry|
+        history.snapshot(entry) catch null
+    else
+        null;
+    // Every view held first: the listing rewrites the views, and the
+    // documents must go on reading what they read until the spec writes it
+    // (the apply's holds, from beginPushReplace, are these).
+    history.holdAllViews();
+    const listed = history.listCrossDocument(bc.id, final_url, null, origin, jointHandling(record.history_handling), record.prepared) catch {
+        history.releaseAllViews();
+        if (previous) |*p| p.deinit(history.allocator);
+        return;
+    };
+    record.listed = listed;
+    record.listed_previous = previous;
+    record.listed_previous_allocator = history.allocator;
+    // Navigate step 24.4: the document state's resource is documentResource.
+    if (record.srcdoc) |markup| history.setEntryResource(listed.entry, markup) catch {};
+    if (record.markup) |markup| history.setEntryResource(listed.entry, markup) catch {};
+    html_core.navigation.apply_history_step.beginPushReplace(bc, waiter, listed);
 }
 
 /// The recorded entry's document state takes the document the commit made:
@@ -5110,6 +5619,8 @@ fn attachNavigableContext(
             // Step 19.2: "Set document's policy container to a clone of
             // creator's policy container."
             inheritPolicyContainer(document, creator_document);
+            // Step 19.3: the creator's top-level document's opener policy.
+            inheritOpenerPolicy(document, creator_document, browsing_context);
         }
     }
     // Service Workers 2.5.1: the browsing context's initial window client,
@@ -5148,6 +5659,49 @@ fn inheritPolicyContainer(document: *runtime.Instance, from: *runtime.Instance) 
     const source = dom_module.policy_containers.of(from) orelse return failInheritanceClosed(document);
     const clone = source.clone(document.ctx.allocator) catch return failInheritanceClosed(document);
     dom_module.policy_containers.set(document, clone);
+}
+
+/// HTML "create a new browsing context and document" step 19.3: "If
+/// creator's origin is same origin with creator's relevant settings
+/// object's top-level origin, then set document's opener policy to
+/// creator's browsing context's top-level browsing context's active
+/// document's opener policy." Only a popup's (a top-level context's) initial
+/// document asks: a child navigable's documents never read their opener
+/// policy. The policy rides on the document's container (policy_container.zig),
+/// which its clone (step 19.2) left at a new opener policy.
+fn inheritOpenerPolicy(document: *runtime.Instance, creator: *runtime.Instance, browsing_context: *html_core.BrowsingContext) void {
+    if (browsing_context.parent != null) return;
+    const own = dom_module.policy_containers.of(document) orelse return;
+    // Out of memory leaves it a new policy (logged): the popup may switch
+    // groups where it would not have, never the other way round.
+    own.setOpenerPolicy(topLevelOpenerPolicyFor(creator)) catch log.warn("[navigation] an initial about:blank document could not take its creator's opener policy", .{});
+}
+
+/// HTML "is local": an about:, blob: or data: URL's scheme.
+fn isLocalScheme(scheme: []const u8) bool {
+    return std.mem.eql(u8, scheme, "about") or std.mem.eql(u8, scheme, "blob") or std.mem.eql(u8, scheme, "data");
+}
+
+/// The opener policy a document `document` creates, or initiates a
+/// navigation of a top-level traversable to a local URL for, gives the new
+/// document: its top-level browsing context's active document's opener
+/// policy when `document`'s origin is same origin with that document's
+/// (its relevant settings object's top-level origin), else a new one -
+/// HTML "create a new browsing context and document" step 19.3's rule.
+/// Values only: the endpoints serve COOP reports, queued as lane coi1's
+/// follow-up, and a copy that allocates nothing cannot fail.
+fn topLevelOpenerPolicyFor(document: *runtime.Instance) fetch_mod.internal.OpenerPolicy {
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return .{};
+    const bc = dom_module.browser_state.browsingContextOf(window) orelse return .{};
+    const top_document: *runtime.Instance = @ptrCast(@alignCast(bc.getTop().getActiveDocument() orelse return .{}));
+    const allocator = document.ctx.allocator;
+    const origin = documentOriginOf(document, allocator) orelse return .{};
+    defer allocator.free(origin);
+    const top_origin = documentOriginOf(top_document, allocator) orelse return .{};
+    defer allocator.free(top_origin);
+    if (std.mem.eql(u8, origin, "null") or !std.mem.eql(u8, origin, top_origin)) return .{};
+    const top_container = dom_module.policy_containers.of(top_document) orelse return .{};
+    return .{ .value = top_container.openerPolicy().value, .report_only_value = top_container.openerPolicy().report_only_value };
 }
 
 fn failInheritanceClosed(document: *runtime.Instance) void {
@@ -5291,6 +5845,10 @@ const FrameWindow = struct {
 /// global this binding is the browsing context's WindowProxy
 /// (`replaceRealm`).
 fn realmForNewDocument(integration: *IFrameIntegration, new_origin: html_core.Origin) bool {
+    // After a browsing context group switch the browsing context is a new
+    // one, whose initial about:blank document is opaque: step 6 never
+    // keeps the Window.
+    if (integration.next_new_window_proxy) return replaceRealm(integration, new_origin);
     const old_document = activeDocumentOf(integration) orelse return true;
     const old_origin = if (integration.window_proxy) |proxy| proxy.document_origin else html_core.Origin.createOpaque();
     if (document_lifecycle.isInitialAboutBlank(old_document) and old_origin.isSameOrigin(new_origin) and
@@ -5338,8 +5896,12 @@ fn replaceRealm(integration: *IFrameIntegration, new_origin: html_core.Origin) b
     // detaches it).
     const secure_context = newDocumentIsSecureContext(browsing_context.parent != null, parent.secure_context, new_origin, allocator);
     const old_window = windowOfRealm(old);
+    // A browsing context group switch: the new document's browsing context
+    // is a new one, with a WindowProxy of its own ("obtain a browsing
+    // context to use for a navigation response" step 10).
+    const switched = integration.next_new_window_proxy;
     const old_data = integration.releaseCurrentRealm() orelse return false;
-    if (attachRealm(integration, parent, browsing_context, origin_copy, .{ .window_proxy_of = old }, secure_context, allocator) == null) {
+    if (attachRealm(integration, parent, browsing_context, origin_copy, if (switched) .new_window_proxy else .{ .window_proxy_of = old }, secure_context, allocator) == null) {
         // No new realm: the old one ends with the integration, as every
         // replaced realm once did.
         integration.keepRetiredRealm(old_data) catch engine.destroyWindowRealm(old, .global_detached);
@@ -5351,6 +5913,16 @@ fn replaceRealm(integration: *IFrameIntegration, new_origin: html_core.Origin) b
     if (old_window) |from| if (browsing_context.getActiveWindow()) |to| {
         dom_module.window_globals.moveAuxiliaryNavigables(from, @ptrCast(@alignCast(to)));
     };
+    // After a switch, the browsing context the old Window showed is
+    // discarded for whoever still holds its WindowProxy - its opener: the
+    // proxy stays attached to the old Window, which reads `closed` true and
+    // no frames, as a removed frame's does (engine.WindowRealmEnd
+    // .navigable_destroyed; Chromium's opener sees a closed popup after a
+    // COOP swap).
+    if (switched) {
+        engine.destroyWindowRealm(old, .navigable_destroyed);
+        return true;
+    }
     // HTML "destroy a document" for the old document: the engine keeps its
     // realm while script reaches it.
     engine.destroyWindowRealm(old, .global_detached);

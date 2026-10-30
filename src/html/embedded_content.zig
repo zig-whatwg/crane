@@ -1005,11 +1005,20 @@ fn inlineDisplayIsNone(style: []const u8) bool {
     var value: ?[]const u8 = null;
     var important = false;
     for (parsed.items) |rule| {
-        for (rule.declarations) |declaration| {
-            if (!std.mem.eql(u8, declaration.name, "display")) continue;
-            if (important and !declaration.important) continue;
-            value = declaration.value;
-            important = declaration.important;
+        // Syntax 3 §5.5.5: invalid/interleaved rules split declaration runs.
+        // Inline style ignores those rules, but still reads the later runs.
+        for (0..rule.children.len + 1) |index| {
+            const declarations = if (index == 0) rule.declarations else blk: {
+                const child = rule.children[index - 1];
+                if (child.kind != .declarations) continue;
+                break :blk child.declarations;
+            };
+            for (declarations) |declaration| {
+                if (!std.mem.eql(u8, declaration.name, "display")) continue;
+                if (important and !declaration.important) continue;
+                value = declaration.value;
+                important = declaration.important;
+            }
         }
     }
     const v = value orelse return false;
@@ -1042,4 +1051,12 @@ test "an inline style's display is none: the last declaration, an important one 
     try testing.expect(!inlineDisplayIsNone("width: 0px; height: 0px"));
     try testing.expect(!inlineDisplayIsNone("display: inline"));
     try testing.expect(!inlineDisplayIsNone(""));
+}
+
+test "inline display keeps declarations after discarded rules" {
+    try std.testing.expect(inlineDisplayIsNone("color: red; @x; display: none"));
+    try std.testing.expect(inlineDisplayIsNone("display: block; :invalid {} display: none"));
+    try std.testing.expect(!inlineDisplayIsNone("display: none; @x; display: block"));
+    try std.testing.expect(inlineDisplayIsNone("display: none !important; @x; display: block"));
+    try std.testing.expect(!inlineDisplayIsNone("display: block !important; @x; display: none"));
 }

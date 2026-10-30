@@ -86,7 +86,7 @@ pub const Matrix = struct {
     /// 4. Set m33 and m44 to 1.
     /// 5. Set is 2D to true.
     pub fn create2d(init: [6]f64) Matrix {
-        var m = [_]f64{0} ** 16;
+        var m = @as([16]f64, @splat(0));
         m[index(1, 1)] = init[0];
         m[index(1, 2)] = init[1];
         m[index(2, 1)] = init[2];

@@ -141,7 +141,7 @@ pub fn shouldBlockInline(
 
 fn containsDanglingMarkup(value: []const u8) bool {
     for ([_][]const u8{ "<script", "<style", "<link" }) |signal| {
-        if (std.ascii.indexOfIgnoreCase(value, signal) != null) return true;
+        if (std.ascii.findIgnoreCase(value, signal) != null) return true;
     }
     return false;
 }

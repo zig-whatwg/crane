@@ -929,9 +929,21 @@ fn parentWindowOf(internal: *InternalState) ?*runtime.Instance {
     return @ptrCast(@alignCast(active));
 }
 
+/// HTML "set up a window environment settings object", the settings
+/// object's cross-origin isolated capability: "true if both of the
+/// following hold: realm's agent cluster's cross-origin-isolation mode is
+/// "concrete", and window's associated Document is allowed to use the
+/// "cross-origin-isolated" feature." The agent cluster's mode is its
+/// browsing context group's (BrowsingContext.cross_origin_isolation_mode).
+/// The feature check makes no violation report: reading the capability is
+/// not an attempted use of a feature (Chromium's
+/// LocalDOMWindow::CrossOriginIsolatedCapability checks the policy without
+/// reporting).
 fn settingsCrossOriginIsolated(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return false;
-    return internal.browsing_context.isCrossOriginIsolated();
+    if (internal.browsing_context.cross_origin_isolation_mode != .concrete) return false;
+    const document = internal.document orelse return false;
+    return @import("dom").policy_containers.allowedToUseWith(document, .cross_origin_isolated, .{ .report = false }) catch false;
 }
 
 /// This window's IDBFactory, made on first use. Its databases are the
@@ -1768,7 +1780,9 @@ pub fn get_originAgentCluster(instance: *runtime.Instance) anyerror!bool {
         runtime.BrowserScope.ofInstance(instance),
         internal.browsing_context.virtual_group_id,
         effectiveOrigin(instance, internal),
-        settingsCrossOriginIsolated(instance),
+        // Step 3 keys by origin in a cross-origin isolated GROUP ("logical"
+        // or "concrete"), whatever the capability says.
+        internal.browsing_context.groupIsCrossOriginIsolated(),
     );
 }
 

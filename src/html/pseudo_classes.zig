@@ -43,21 +43,31 @@ pub fn matches(element: *Instance, which: Kind) bool {
         .placeholder_shown => placeholderShown(element),
         .open => dom.form_controls.pickerOpen(element) or (element.stateAs(interfaces.HTMLDetailsElement.State) != null or element.stateAs(interfaces.HTMLDialogElement.State) != null) and has(element, "open"),
         .popover_open => has(element, "popover") and dom.html_pseudo_classes.popoverShowing(element),
-        // Crane has no autofill or picker UI and never locks media volume.
-        .autofill, .volume_locked => false,
-        // Owner capabilities routed as follow-ups (tables Q4): user validity,
-        // fullscreen modal state, and media's is-currently-stalled flag.
-        .user_valid, .user_invalid, .stalled => false,
+        .autofill => false,
+        .user_valid => dom.form_controls.userValidity(element) and forms.validationState(element) == .valid,
+        .user_invalid => dom.form_controls.userValidity(element) and forms.validationState(element) == .invalid,
         .modal => dom.dialog.isModal(element),
-        .playing => isMedia(element) and !(interfaces.HTMLMediaElement.get_paused(element) catch true),
-        .paused => isMedia(element) and (interfaces.HTMLMediaElement.get_paused(element) catch false),
-        .seeking => isMedia(element) and (interfaces.HTMLMediaElement.get_seeking(element) catch false),
-        .muted => isMedia(element) and (interfaces.HTMLMediaElement.get_muted(element) catch false),
-        .buffering => isMedia(element) and !(interfaces.HTMLMediaElement.get_paused(element) catch true) and
-            (interfaces.HTMLMediaElement.get_networkState(element) catch 0) == interfaces.HTMLMediaElement.get_NETWORK_LOADING() and
-            (interfaces.HTMLMediaElement.get_readyState(element) catch 5) <= interfaces.HTMLMediaElement.get_HAVE_CURRENT_DATA(),
+        .playing, .paused, .seeking, .buffering, .stalled, .muted, .volume_locked => mediaMatches(element, which),
         .heading => |levels| heading(element, levels),
         .dir_ltr, .dir_rtl, .hover, .active => unreachable,
+    };
+}
+
+/// HTML 4.16.3: these states belong to the media element. In particular,
+/// stalled is buffering AND currently stalled, not the stalled event alone.
+fn mediaMatches(element: *Instance, which: Kind) bool {
+    const state = dom.media_elements.selectorState(element) orelse return false;
+    const buffering = !state.paused and state.network_state == interfaces.HTMLMediaElement.get_NETWORK_LOADING() and
+        state.ready_state <= interfaces.HTMLMediaElement.get_HAVE_CURRENT_DATA();
+    return switch (which) {
+        .playing => !state.paused,
+        .paused => state.paused,
+        .seeking => state.seeking,
+        .buffering => buffering,
+        .stalled => buffering and state.stalled,
+        .muted => state.muted,
+        .volume_locked => state.volume_locked,
+        else => unreachable,
     };
 }
 
@@ -86,10 +96,16 @@ fn userActionMatches(element: *Instance, states: []const dom.pointer_states.Stat
             if (designated == element) return true;
             continue;
         }
+        // One owner lookup for this synchronous ancestor walk. A page
+        // with no top-layer state needs no membership search at each node.
+        const top_layer = dom.top_layer.ofDocument(document, false) catch null;
         var current: ?*Instance = designated;
         while (current) |node| : (current = flatTreeParent(node)) {
             if (node == element) return true;
             if (node.stateAs(interfaces.HTMLLabelElement.State) != null and forms.labeledControl(node) == element) return true;
+            // Selectors 4 section 9: include the innermost popover or
+            // modal dialog, then stop. A non-modal dialog is not a boundary.
+            if (top_layer) |layer| if (layer.find(node) != null or layer.findModal(node) != null) break;
         }
     }
     return false;

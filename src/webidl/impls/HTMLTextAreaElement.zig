@@ -119,11 +119,22 @@ fn isTextArea(instance: *runtime.Instance) bool {
     return form_associated.isTextArea(instance);
 }
 
+fn userValidity(instance: *runtime.Instance) bool {
+    return if (StateMap.get(instance)) |internal| internal.user_validity else false;
+}
+
+fn setUserValidity(instance: *runtime.Instance, value: bool) !void {
+    // A reset of an untouched control creates no sparse entry.
+    const internal = if (value) try StateMap.getOrPut(instance) else StateMap.get(instance) orelse return;
+    internal.user_validity = value;
+}
+
 /// dom.form_controls: "The reset algorithm for textarea elements is to set
 /// the user validity and dirty value flag back to false, and set the raw
 /// value of element to its child text content."
 fn resetAlgorithm(instance: *runtime.Instance) void {
     const internal = StateMap.get(instance) orelse return;
+    internal.user_validity = false;
     // HTML 4.10.11 reset: custom validity and its object are not reset.
     if (internal.raw_value) |value| if (internal.allocator) |allocator| allocator.free(value);
     internal.raw_value = null;
@@ -152,6 +163,7 @@ fn resetAlgorithm(instance: *runtime.Instance) void {
 /// `value-defaultValue-textContent.html` asserts in two places.
 pub const InternalState = struct {
     validation: forms.Validation = .{},
+    user_validity: bool = false,
     labels: form_associated.LabelsCache = .{},
     /// Owned by `allocator`. Non-null means the dirty value flag is set.
     raw_value: ?[]u8 = null,
@@ -254,7 +266,7 @@ fn styleStateCreated(instance: *runtime.Instance) void {
 pub fn installHooks() void {
     dom.style.hooks.install(.{ .textarea_style_state_created = &styleStateCreated });
     // The steps other code runs on textareas (each idempotent).
-    dom.form_controls.install(.{ .is = &isTextArea, .reset = &resetAlgorithm, .validity_flags = &constraintFlags, .user_edit = &userEdit, .editor_text = &editorText });
+    dom.form_controls.install(.{ .is = &isTextArea, .reset = &resetAlgorithm, .validity_flags = &constraintFlags, .user_validity = &userValidity, .set_user_validity = &setUserValidity, .user_edit = &userEdit, .editor_text = &editorText });
     dom.teardown_sweeps.install(.element_types, &cleanupAllRemainingInternal);
     dom.cloning_steps.install(&cloningSteps);
     dom.mutation.registerChildrenChangedCallback(&childrenChangedSteps) catch |err| {

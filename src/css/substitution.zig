@@ -837,7 +837,7 @@ pub const Host = struct {
     /// if()'s supports() test with the CONSUMING declaration's quirks mode
     /// (Resolver.quirks). error.Invalid for a malformed test, false for an
     /// unsupported one (css.supports.evaluateTest).
-    supports: ?*const fn (context: *anyopaque, text: []const u8, quirks: bool) Error!bool = null,
+    supports: ?*const fn (context: *anyopaque, text: []const u8, quirks: bool, namespaces: ?*const NamespaceMap) Error!bool = null,
     /// env(): the host's environment variables.
     environment: ?Environment = null,
     /// random-item()'s random base and tree counts; numeric math.

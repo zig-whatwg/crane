@@ -50,14 +50,14 @@ fn scalarContainers(allocator: std.mem.Allocator, random: bool) !void {
     const Layers = std.meta.Child(@FieldType(Value, "layers"));
     const Filter = std.meta.Child(@FieldType(Value, "filter"));
     for (0..4) |index| {
-        var sides = [_]Value{Value.px(0)} ** 4;
+        var sides = @as([4]Value, @splat(Value.px(0)));
         sides[index] = scalar;
         const quad: Value = .{ .image_quad = try Quad.create(allocator, sides, false) };
         defer quad.release();
         try expectDependency(quad, random);
     }
     for (0..2) |index| {
-        var axes = [_]Value{Value.px(0)} ** 2;
+        var axes = @as([2]Value, @splat(Value.px(0)));
         axes[index] = scalar;
         const size: Value = .{ .image_size = try Size.create(allocator, axes) };
         defer size.release();
@@ -72,7 +72,7 @@ fn scalarContainers(allocator: std.mem.Allocator, random: bool) !void {
         try expectDependency(layers, random);
     }
     for (0..3) |index| {
-        var lengths = [_]Value{Value.px(0)} ** 3;
+        var lengths = @as([3]Value, @splat(Value.px(0)));
         lengths[index] = scalar;
         const filter: Value = .{ .filter = try Filter.create(allocator, &.{.{ .function = .{
             .kind = .drop_shadow,

@@ -35,7 +35,7 @@ const log = std.log.scoped(.report_exception);
 const Reporting = struct {
     /// Protects `slots`; held for one scan or one store.
     mutex: std.Io.Mutex = .init,
-    slots: [8]?*runtime.Instance = .{null} ** 8,
+    slots: [8]?*runtime.Instance = @splat(null),
 };
 var reporting: Reporting = .{};
 

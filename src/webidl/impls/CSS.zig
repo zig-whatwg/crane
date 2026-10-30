@@ -40,22 +40,13 @@ pub fn call_supports(ctx: runtime.Context, property: runtime.DOMString, value: r
 /// parentheses; selector() asks src/selector. Never throws.
 /// https://drafts.csswg.org/css-conditional-3/#dom-css-supports-conditiontext
 pub fn call_supports__1(ctx: runtime.Context, conditionText: runtime.DOMString) anyerror!bool {
-    return css_syntax.supports.supportsCondition(ctx.getAllocator(), conditionText.asSlice(), &selectorIsSupported);
+    return css_syntax.supports.supportsCondition(ctx.getAllocator(), conditionText.asSlice(), &selectorIsSupported, null);
 }
 
 /// CSS Conditional 4 <supports-selector-fn>: "true if the UA supports the
 /// selector" - it parses as exactly one <complex-selector>.
-fn selectorIsSupported(allocator: std.mem.Allocator, text: []const u8) bool {
-    var tokenizer = selector.Tokenizer.init(allocator, text);
-    var parser = selector.Parser.init(allocator, &tokenizer) catch return false;
-    defer parser.deinit();
-    var list = parser.parse() catch return false;
-    defer list.deinit();
-    if (list.selectors.len != 1) return false;
-    if (parser.current_token) |token| {
-        if (token.tag != .eof) return false;
-    }
-    return true;
+fn selectorIsSupported(allocator: std.mem.Allocator, text: []const u8, _: ?*const css_syntax.namespace_map.NamespaceMap) bool {
+    return selector.isSupported(allocator, text, .{}) catch false;
 }
 
 // The worklets (CSS Painting API 3, CSS Layout API, CSS Animation Worklet):

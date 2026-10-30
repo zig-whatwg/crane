@@ -230,12 +230,11 @@ pub fn call_persist(instance: *runtime.Instance) anyerror!void {
     animation.persist();
 }
 
-/// Operation: commitStyles (6.4). NOT IMPLEMENTED: it writes the effect
-/// values, and applying keyframe values (interpolation, the effect stack) is
-/// the next Web Animations piece (rendering2 design delta, section 1).
+/// Operation: commitStyles (6.4): "commit computed styles" for this
+/// animation (dom.animations.commitStyles).
 pub fn call_commitStyles(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
+    const animation = try modelOf(instance);
+    try animations.commitStyles(animation);
 }
 
 /// Operation: pause (4.5.9).

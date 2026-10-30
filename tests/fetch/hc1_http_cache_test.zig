@@ -95,18 +95,18 @@ test "hc1 cache: freshening swaps in the updated response only if the old one is
 
 test "hc1 cache: least recently used responses go first, down to 90% of the cap" {
     const allocator = std.testing.allocator;
-    const one = try entry(allocator, "p", "http://a.test/0", "x" ** 100);
+    const one = try entry(allocator, "p", "http://a.test/0", &@as([100:0]u8, @splat('x')));
     const size = one.size;
     one.release();
     // Room for four entries; per-entry cap above one.
     const store = try HttpCache.create(allocator, .{ .max_bytes = size * 4 + size / 2, .max_entry_bytes = size * 2 });
     defer store.close();
     const urls = [_][]const u8{ "http://a.test/0", "http://a.test/1", "http://a.test/2", "http://a.test/3" };
-    for (urls) |url| store.publish(try entry(allocator, "p", url, "x" ** 100));
+    for (urls) |url| store.publish(try entry(allocator, "p", url, &@as([100:0]u8, @splat('x'))));
     try std.testing.expectEqual(@as(usize, 4), store.entryCount());
     // Use /0: /1 is now the least recently used.
     store.lookup("p", urls[0]).?.release();
-    store.publish(try entry(allocator, "p", "http://a.test/4", "x" ** 100));
+    store.publish(try entry(allocator, "p", "http://a.test/4", &@as([100:0]u8, @splat('x'))));
     // Over the cap: evicted from the cold end until at most 90% of it is
     // used - /1 alone here (5 entries -> 4, under 4.05).
     const max = size * 4 + size / 2;
@@ -123,7 +123,7 @@ test "hc1 cache: a response bigger than the entry cap is not stored; the default
     const store = try HttpCache.create(allocator, .{ .max_bytes = 8000 });
     defer store.close();
     try std.testing.expectEqual(@as(usize, 1000), store.maxEntryBytes());
-    store.publish(try entry(allocator, "p", "http://a.test/big", "y" ** 1200));
+    store.publish(try entry(allocator, "p", "http://a.test/big", &@as([1200:0]u8, @splat('y'))));
     try std.testing.expect(store.lookup("p", "http://a.test/big") == null);
     try std.testing.expectEqual(@as(usize, 0), store.byteCount());
     const defaults = try HttpCache.create(allocator, .{});
@@ -291,7 +291,7 @@ test "hc1 cache: one cache shared by two threads stays consistent" {
             var i: usize = 0;
             while (i < 2000) : (i += 1) {
                 const url = std.fmt.bufPrint(&buf, "http://a.test/{d}", .{i % 97}) catch unreachable;
-                const e = entry(a, "p", url, &[_]u8{tag} ** 200) catch continue;
+                const e = entry(a, "p", url, &@as([200]u8, @splat(tag))) catch continue;
                 s.publish(e);
                 if (s.lookup("p", url)) |found| {
                     std.debug.assert(found.body.bytes.len == 200);

@@ -1,8 +1,9 @@
-//! HTML 4.10.17 selectedcontent cloning and synchronous update steps.
+//! HTML 4.10.17 selectedcontent cloning and update microtasks.
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dom = @import("dom");
+const engine = @import("engine");
 const associated = @import("../form_associated.zig");
 const options = @import("options.zig");
 
@@ -15,19 +16,21 @@ pub fn nearestSelect(node: *runtime.Instance) ?*runtime.Instance {
     return null;
 }
 
-/// Recalculate selectedcontent disabledness, steps 1–4. Its current tree
-/// supplies the result, so a move needs no cached node or lifetime state.
-pub fn enabledSelect(content: *runtime.Instance) ?*runtime.Instance {
+pub const Disabledness = struct { select: ?*runtime.Instance, disabled: bool };
+
+/// Recalculate selectedcontent disabledness, steps 1–4. The owner stores
+/// the flag only when the spec asks for recalculation, not on removal.
+pub fn disabledness(content: *runtime.Instance) Disabledness {
     var select: ?*runtime.Instance = null;
     var ancestor = associated.parentOf(content);
     while (ancestor) |element| : (ancestor = associated.parentOf(element)) {
         if (element.stateAs(interfaces.HTMLSelectElement.State) != null) {
-            if (select != null) return null;
+            if (select != null) return .{ .select = select, .disabled = true };
             select = element;
         } else if (element.stateAs(interfaces.HTMLOptionElement.State) != null or
-            element.stateAs(interfaces.HTMLSelectedContentElement.State) != null) return null;
+            element.stateAs(interfaces.HTMLSelectedContentElement.State) != null) return .{ .select = select, .disabled = true };
     }
-    return select;
+    return .{ .select = select, .disabled = false };
 }
 
 pub fn inserted(content: *runtime.Instance) void {
@@ -81,7 +84,7 @@ fn cloneContents(content: *runtime.Instance, option: ?*runtime.Instance) !void {
 
 /// Update a selectedcontent, steps 1–4. The caller checks multiple.
 pub fn updateOne(select: *runtime.Instance, content: *runtime.Instance) !void {
-    if (enabledSelect(content) != select) return;
+    if (dom.selected_content.isDisabled(content)) return;
     try cloneContents(content, try selectedOption(select));
 }
 
@@ -98,7 +101,52 @@ pub fn updateAll(select: *runtime.Instance) !void {
         const content = element.stateAs(interfaces.HTMLSelectedContentElement.State) != null;
         const skip = content or element.stateAs(interfaces.HTMLSelectElement.State) != null or
             element.stateAs(interfaces.HTMLOptionElement.State) != null;
-        if (content and enabledSelect(element) == select) try cloneContents(element, option);
+        if (content and !dom.selected_content.isDisabled(element)) try cloneContents(element, option);
         node = associated.nextInTree(element, select, skip);
     }
+}
+
+/// One spec microtask, never coalesced. Stable TaskHolds keep both captured
+/// arguments until execution or the engine's dropped-reaction callback.
+const Update = struct {
+    allocator: std.mem.Allocator,
+    select: dom.node_holds.TaskHold = .{},
+    content: dom.node_holds.TaskHold = .{},
+    one: bool,
+
+    const steps: engine.PromiseReactionSteps = .{ .fulfilled = fulfilled, .dropped = dropped };
+
+    fn destroy(self: *Update) void {
+        self.content.release();
+        self.select.release();
+        self.allocator.destroy(self);
+    }
+
+    fn fulfilled(data: ?*anyopaque, _: runtime.JSValue) void {
+        const self: *Update = @ptrCast(@alignCast(data.?));
+        defer self.destroy();
+        const select = self.select.get() orelse return;
+        if (self.one) {
+            const content = self.content.get() orelse return;
+            updateOne(select, content) catch {};
+        } else updateAll(select) catch {};
+    }
+
+    fn dropped(data: ?*anyopaque) void {
+        const self: *Update = @ptrCast(@alignCast(data.?));
+        self.destroy();
+    }
+};
+
+/// Explicit allocation domain lets all-OOM tests cover the continuation.
+/// The engine runs exactly one fulfilled/dropped callback after a successful
+/// handoff; on error this function still owns and releases the record.
+pub fn queueUpdate(allocator: std.mem.Allocator, select: *runtime.Instance, content: ?*runtime.Instance) !void {
+    if (!select.ctx.hasEngine()) return;
+    const update = try allocator.create(Update);
+    update.* = .{ .allocator = allocator, .one = content != null };
+    update.select.take(select);
+    if (content) |element| update.content.take(element);
+    errdefer update.destroy();
+    try engine.queueRealmMicrotask(select.ctx, &Update.steps, update);
 }

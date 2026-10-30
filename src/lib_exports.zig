@@ -51,7 +51,6 @@ const engine = @import("engine");
 
 // WebIDL generated interfaces
 const interfaces = @import("interfaces");
-const impls = @import("impls");
 const namespaces = @import("namespaces");
 const dictionaries = @import("dictionaries");
 const typedefs = @import("typedefs");

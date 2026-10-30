@@ -8,8 +8,8 @@
 //! its Document, its Window and its realm, never detached (its global stays
 //! attached to its own WindowProxy), its timers suspended and its tasks
 //! waiting in their group on the Browser's event loop. How many, and for how
-//! long, is the Browser's configuration: `back_forward_cache_size` (2, the
-//! size WebKit's CacheModel gives a page cache on a small device) and
+//! long, is the Browser's configuration: `back_forward_cache_size` (8,
+//! Firefox's desktop cap - see `default_size`) and
 //! `back_forward_cache_ttl_seconds` (600, Blink's
 //! BackForwardCacheImpl::GetTimeToLiveInBackForwardCache). The oldest page
 //! leaves first.
@@ -42,8 +42,31 @@ const EventLoop = @import("event_loop.zig").EventLoop;
 const KeptPage = dom.bfcache.KeptPage;
 const Reason = dom.bfcache.Reason;
 
-/// The default number of pages a Browser keeps (BrowserConfig).
-pub const default_size: usize = 2;
+/// The default number of pages a Browser keeps (BrowserConfig): 8, for the
+/// whole Browser - Firefox's desktop behaviour (lane nav2 batch 6, the
+/// integrator's ruling, 2026-10-30). HTML leaves the cache to the user agent,
+/// so this is golden rule 2 mechanism by mechanism:
+/// - scope: one cache for the whole Browser, as Firefox
+///   (nsSHistory::GloballyEvictDocumentViewers over every session history,
+///   browser.sessionhistory.max_total_viewers) and WebKit (one
+///   WebBackForwardCache per process pool) keep it; Chrome keeps one per tab
+///   (BackForwardCacheImpl is made per WebContents,
+///   content/browser/back_forward_cache/back_forward_cache_impl.h: "the
+///   maximum number of entries the BackForwardCache can hold per tab");
+/// - capacity: enough for several popups' pages at once, as Chrome (6 per
+///   tab: back_forward_cache_impl.cc kBackForwardCacheSize "cache_size" 6)
+///   and Firefox (nsSHistory::CalcMaxTotalViewers: "caps the max at 8", 8
+///   from 1 GB of RAM) do; WebKit keeps 2 (Source/WebKit/Shared/
+///   CacheModel.cpp, PrimaryWebBrowser: backForwardCacheCapacity = 2 from
+///   512 MB), the default here until then.
+/// With 2, fetch/fetch-later/send-on-deactivate.https.window.js lost about
+/// half of its three BFCache subtests on every run: they run in parallel,
+/// each in a noopener popup, so up to six pages are kept at once, and an
+/// evicted page reloaded fresh on history.back() (crane/
+/// nav2b6-bfcache-three-popups.window.js).
+/// Not modelled: Firefox's per-tab window (nsSHistory::VIEWER_WINDOW, 3) -
+/// it evicts a tab's pages more than 3 entries from its current one.
+pub const default_size: usize = 8;
 /// The default time a page stays in the cache, in seconds (BrowserConfig).
 pub const default_ttl_seconds: u64 = 600;
 

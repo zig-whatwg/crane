@@ -341,7 +341,7 @@ test "RSA-PKCS1 verification rejects out-of-range signature representatives with
     var altered = vectors.pkcs_sha256;
     altered[0] = 255 - altered[0];
     try std.testing.expect(!try verify(&public, &altered, &vectors.pkcs_plaintext, null));
-    const above_modulus = [_]u8{0xff} ** vectors.pkcs_sha256.len;
+    const above_modulus = @as([vectors.pkcs_sha256.len]u8, @splat(0xff));
     try std.testing.expect(!try verify(&public, &above_modulus, &vectors.pkcs_plaintext, null));
     const modulus = (try components(public.material, false)).n;
     try std.testing.expect(!try verify(&public, modulus, &vectors.pkcs_plaintext, null));

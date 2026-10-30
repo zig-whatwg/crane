@@ -21,7 +21,7 @@ test "IndexedDB key-path array extraction unwinds an unappended child" {
 
 test "IndexedDB key injection has no arbitrary path-component limit" {
     const allocator = std.testing.allocator;
-    const parts = [_][]const u8{"property"} ** 100;
+    const parts = @as([100][]const u8, @splat("property"));
     const path = try std.mem.join(allocator, ".", &parts);
     defer allocator.free(path);
     try std.testing.expect(key_path.checkKeyInjectable(.{ .object = &.{} }, path));

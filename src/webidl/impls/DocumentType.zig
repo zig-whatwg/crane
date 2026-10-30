@@ -76,17 +76,29 @@ pub fn installHooks() void {
     @import("dom").node_creation.installDocumentType(.{ .set_ids = &setIdsHook });
 }
 
+/// A doctype's name, public ID and system ID, given at construction: DOM's
+/// createDocumentType() and createHTMLDocument() make "a new doctype, with
+/// name as its name, publicId as its public ID, and systemId as its system
+/// ID" (WebKit's DocumentType::create(document, name, publicId, systemId)).
+/// Each one not given is "".
+pub const construction_args = .{ "name", "public_id", "system_id" };
+
 /// DocumentType's own construction steps: the generated chain runs Node's first.
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
     _ = StateType;
-    _ = args;
 
     // Initialize DocumentType internal state in global registry
     // The registry owns this block, so `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
+    errdefer Registry.remove(instance);
     internal.* = InternalState.init(allocator);
+    errdefer internal.deinit();
+    const Args = @TypeOf(args);
+    if (@hasField(Args, "name")) internal.name = try allocator.dupe(u8, args.name);
+    if (@hasField(Args, "public_id")) internal.public_id = try allocator.dupe(u8, args.public_id);
+    if (@hasField(Args, "system_id")) internal.system_id = try allocator.dupe(u8, args.system_id);
 }
 
 /// `dom.node_creation.setDoctypeIds`: the parser's DOCTYPE token's name,
@@ -145,29 +157,6 @@ const mixins = @import("mixins");
 // =============================================================================
 // Helper Functions
 // =============================================================================
-
-/// Create a DocumentType with the given properties
-pub fn createDocumentType(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    name: []const u8,
-    public_id: []const u8,
-    system_id: []const u8,
-) !*runtime.Instance {
-    const instance = try DocumentType.init(allocator, ctx);
-    errdefer DocumentType.deinit(instance);
-
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Node type is already set by init() to DOCUMENT_TYPE_NODE
-
-    // Set doctype properties
-    internal.name = try allocator.dupe(u8, name);
-    internal.public_id = try allocator.dupe(u8, public_id);
-    internal.system_id = try allocator.dupe(u8, system_id);
-
-    return instance;
-}
 
 /// dom.teardown_sweeps: at its Browser's end, every DocumentType state still in
 /// `scope`'s table - an orphan's no teardown reached - frees what it owns.

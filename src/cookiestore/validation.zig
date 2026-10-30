@@ -304,13 +304,13 @@ test "validateValue - invalid characters" {
 }
 
 test "validateNameValue - size limit" {
-    const big_name = "x" ** 2500;
-    const big_value = "y" ** 2500;
+    const big_name = &@as([2500:0]u8, @splat('x'));
+    const big_value = &@as([2500:0]u8, @splat('y'));
     try std.testing.expectError(ValidationError.NameValueTooLarge, validateNameValue(big_name, big_value));
 
     // Just under limit should work
-    const ok_name = "x" ** 2000;
-    const ok_value = "y" ** 2000;
+    const ok_name = &@as([2000:0]u8, @splat('x'));
+    const ok_value = &@as([2000:0]u8, @splat('y'));
     try validateNameValue(ok_name, ok_value);
 }
 

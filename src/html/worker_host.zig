@@ -376,6 +376,10 @@ pub const ScopeSettings = struct {
     /// yet coarsened (dom.global_settings `time_origin`). Null when the host
     /// recorded none.
     time_origin_ns: ?i64 = null,
+    /// The worker global scope's cross-origin isolated capability ("run a
+    /// worker" onComplete steps 5-9), decided on the owner's thread
+    /// (`workerCrossOriginIsolated`).
+    cross_origin_isolated: bool = false,
     /// Whether the worker's owner - owner set[0]'s relevant settings object,
     /// the global that created it - is a secure context (HTML 8.1.3.5 step
     /// 1.2.1), read on the owner's thread when the worker started.
@@ -412,6 +416,7 @@ pub fn scopeSettings(ctx: runtime.Context) ?ScopeSettings {
         .time_origin_ns = wctx.time_origin_ns,
         .owner_is_secure_context = wctx.owner_is_secure_context,
         .owner_prohibits_mixed_security_contexts = wctx.owner_prohibits_mixed_security_contexts,
+        .cross_origin_isolated = wctx.cross_origin_isolated,
         .top_level_site = wctx.top_level_site,
         .top_level_origin = wctx.top_level_origin,
         .storage_top_level_site = wctx.storage_top_level_site,
@@ -820,6 +825,10 @@ pub const WorkerHost = struct {
     /// The creator's captured mixed-content restriction, by value.
     owner_prohibits_mixed_security_contexts: bool = false,
 
+    /// The worker global scope's cross-origin isolated capability, decided
+    /// on the owner's thread (`ScopeSettings.cross_origin_isolated`).
+    cross_origin_isolated: bool = false,
+
     /// The owner's top-level site, for a dedicated worker
     /// (`ScopeSettings.top_level_site`). OWNED.
     top_level_site: ?[]u8 = null,
@@ -977,6 +986,7 @@ pub const WorkerHost = struct {
             .time_origin_ns = start.time_origin_ns,
             .owner_is_secure_context = start.owner_is_secure_context,
             .owner_prohibits_mixed_security_contexts = start.owner_prohibits_mixed_security_contexts,
+            .cross_origin_isolated = start.cross_origin_isolated,
             .animation_frames_owner_supported = start.owner_supports_animation_frames,
         };
         // Taken, not copied: the start's allocator is this one, and a move
@@ -2697,6 +2707,14 @@ pub fn workerPolicyContainer(allocator: Allocator, fetched: *workers.FetchedScri
     // requests policy ("set up a worker environment settings object").
     if (fetched.takePolicyContainer()) |container| {
         var result = container;
+        // "Obtain an embedder policy" step 2: an environment that is not a
+        // secure context gets a new policy. The worker's is a secure context
+        // only when its owner is one too (HTML 8.1.3.5 step 1.2);
+        // script_fetch could ask only the worker's URL.
+        if (!ownerIsSecureContext(owner_realm)) {
+            // A new policy: setting it allocates nothing, and cannot fail.
+            result.setEmbedderPolicy(.{}) catch unreachable;
+        }
         if (creatorPolicyContainer(owner_realm)) |owner| {
             if (owner.upgradesInsecureRequests()) result.inherited_upgrade_insecure_requests = true;
             // UIR 3.3 also inherits navigation tuples. Omitting that copy
@@ -2748,6 +2766,67 @@ fn ownerIsSecureContext(realm: runtime.Context) bool {
     const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return false));
     const settings = @import("dom").global_settings.of(global) orelse return false;
     return settings.is_secure_context(global);
+}
+
+/// HTML "run a worker" onComplete steps 5-9 for the worker `start` starts,
+/// read on its owner's thread: its global scope's cross-origin isolated
+/// capability.
+///
+/// - A shared worker's agent is its own agent cluster (isTopLevel), whose
+///   cross-origin isolation mode step 5 sets - "concrete", Crane's choice
+///   (BrowsingContext.CrossOriginIsolationMode) - when its embedder policy
+///   is compatible with cross-origin isolation: step 7 grants it then.
+/// - A dedicated worker's agent is in its owner's cluster, and step 8 makes
+///   its capability false whenever its owner's is: its owner's capability
+///   (which only a "concrete" cluster grants), except for a data: URL
+///   (step 9).
+fn workerCrossOriginIsolated(start: *const WorkerStart) bool {
+    if (start.shared != null) {
+        const container = if (start.policy_container) |*c| c else return false;
+        return container.embedderPolicy().value.compatibleWithCrossOriginIsolation();
+    }
+    if (std.ascii.startsWithIgnoreCase(start.script_url, "data:")) return false;
+    return agent_clusters.crossOriginIsolatedCapability(null, start.owner_realm);
+}
+
+/// HTML "check a global object's embedder policy" for the dedicated worker
+/// `start` starts, read on its owner's thread: false - the response is a
+/// network error, and `error` is fired at the Worker - when the owner's
+/// embedder policy value is compatible with cross-origin isolation and the
+/// worker's is not (steps 5-7), with the inheritance violations of steps 4
+/// and 6 reported to the owner. Shared workers pass (step 1).
+fn dedicatedWorkerEmbedderPolicyAllows(start: *const WorkerStart) bool {
+    if (start.shared != null) return true;
+    const owner = creatorPolicyContainer(start.owner_realm) orelse return true;
+    const owner_policy = owner.embedderPolicy();
+    if (!owner_policy.value.compatibleWithCrossOriginIsolation() and !owner_policy.report_only_value.compatibleWithCrossOriginIsolation()) return true;
+    const compatible = if (start.policy_container) |*c| c.embedderPolicy().value.compatibleWithCrossOriginIsolation() else false;
+    // 4. The report-only value's violation.
+    if (owner_policy.report_only_value.compatibleWithCrossOriginIsolation() and !compatible) {
+        queueWorkerInheritanceViolation(start, owner_policy.report_only_reporting_endpoint, true);
+    }
+    // 5-7.
+    if (!owner_policy.value.compatibleWithCrossOriginIsolation() or compatible) return true;
+    queueWorkerInheritanceViolation(start, owner_policy.reporting_endpoint, false);
+    return false;
+}
+
+/// HTML "queue a cross-origin embedder policy inheritance violation" with
+/// type "worker initialization" for the worker `start` starts, on its
+/// owner's settings object: Reporting's "generate and queue a report" of
+/// the "coep" type for `endpoint`. A report that cannot be made is dropped.
+fn queueWorkerInheritanceViolation(start: *const WorkerStart, endpoint: []const u8, report_only: bool) void {
+    const global = @import("dom").global_settings.liveGlobalOf(start.owner_realm) orelse return;
+    const allocator = global.ctx.allocator;
+    const blocked_url = @import("csp").violation_events.stripUrlForReports(allocator, start.script_url) catch return;
+    defer allocator.free(blocked_url);
+    const body = std.json.Stringify.valueAlloc(allocator, .{
+        .type = "worker initialization",
+        .blockedURL = blocked_url,
+        .disposition = if (report_only) "reporting" else "enforce",
+    }, .{}) catch return;
+    defer allocator.free(body);
+    @import("dom").reporting.generate(global, "coep", endpoint, global.ctx.documentUrl() orelse "", body) catch {};
 }
 
 /// A worker creator's mixed-content answer, read only on its own thread.
@@ -3310,6 +3389,10 @@ pub const WorkerStart = struct {
 /// and `start.inside_end` are taken (null); on failure the caller still
 /// holds them, and nothing runs.
 pub fn startDedicatedWorker(allocator: Allocator, start: *WorkerStart) !*WorkerLink {
+    // "Run a worker" onComplete step 6: a worker its owner's embedder policy
+    // refuses is a network error - it never runs, and `error` is fired at
+    // the Worker (the caller's start failure).
+    if (!dedicatedWorkerEmbedderPolicyAllows(start)) return error.EmbedderPolicy;
     // The owner's loop's inbox: where the worker's messages, errors and end
     // go. A realm with none (no event loop made it) runs no worker.
     const owner_sink = start.owner_realm.task_sink orelse return error.NoEventLoop;
@@ -3397,6 +3480,9 @@ const ThreadHost = struct {
         time_origin_ns: ?i64,
         /// Whether the owner is a secure context, read on its thread.
         owner_is_secure_context: bool,
+        /// The worker's cross-origin isolated capability, decided on the
+        /// owner's thread (`workerCrossOriginIsolated`).
+        cross_origin_isolated: bool = false,
         /// The owner's mixed-content answer, read on that same thread.
         owner_prohibits_mixed_security_contexts: bool,
         /// Whether a dedicated worker's global scope will be a supported
@@ -3467,6 +3553,9 @@ const ThreadHost = struct {
                 // 1.2.1 asks owner set[0]'s relevant settings object.
                 .owner_is_secure_context = ownerIsSecureContext(start.owner_realm),
                 .owner_prohibits_mixed_security_contexts = owner_prohibits_mixed_security_contexts,
+                // On the owner's thread: its capability and the worker's
+                // embedder policy decide the worker's.
+                .cross_origin_isolated = workerCrossOriginIsolated(start),
                 // On the owner's thread: HTML 8.12's "supported" asks the
                 // owner set.
                 .owner_supports_animation_frames = start.shared == null and ownerSupportsAnimationFrames(start.owner_realm),

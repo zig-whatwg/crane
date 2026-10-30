@@ -203,7 +203,7 @@ fn templateContents() !void {
     // Parsed templates (their contents never read), a script-made one and
     // one whose content script reads: each template's contents and its
     // owner document's go with the page.
-    try churn("<!doctype html><body>" ++ ("<template><div><span>a</span></div></template>" ** 30) ++ "</body>",
+    try churn("<!doctype html><body>" ++ repeat("<template><div><span>a</span></div></template>", 30) ++ "</body>",
         \\const t = document.createElement('template');
         \\t.innerHTML = '<p>x</p><p>y</p>';
         \\document.body.appendChild(t);
@@ -329,7 +329,7 @@ test "XHR events nothing listens to give back their slots" {
 
 fn templateOnly() !void {
     // Parsed templates whose contents nothing reads.
-    try churn("<!doctype html><body>" ++ ("<template><div><span>a</span></div></template>" ** 30) ++ "</body>", "", 4, &.{"HTMLTemplateElement"});
+    try churn("<!doctype html><body>" ++ repeat("<template><div><span>a</span></div></template>", 30) ++ "</body>", "", 4, &.{"HTMLTemplateElement"});
 }
 
 test "parsed templates nothing reads give back their contents' slots" {
@@ -360,6 +360,17 @@ test "templates of frames removed in their page give back their contents' slots"
 
 const interfaces = @import("interfaces");
 const dom = @import("dom");
+
+/// `s` repeated `n` times: what `s ** n` was (Zig 0.17 removes `**`; roadmap zig-017).
+fn repeat(comptime s: []const u8, comptime n: usize) *const [s.len * n:0]u8 {
+    return comptime blk: {
+        @setEvalBranchQuota(10 * n + 1000);
+        var out: [s.len * n:0]u8 = undefined;
+        for (0..n) |i| @memcpy(out[i * s.len ..][0..s.len], s);
+        const final = out;
+        break :blk &final;
+    };
+}
 
 fn liveSlots(names: []const []const u8) usize {
     const scope = runtime.BrowserScope.standalone() orelse return 0;

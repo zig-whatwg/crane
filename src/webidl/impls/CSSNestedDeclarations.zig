@@ -1,46 +1,15 @@
-//! Implementation for CSSNestedDeclarations interface
-
-const std = @import("std");
+//! CSS Nesting 1 section 5.1: the declaration block of this nested rule.
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const CSSNestedDeclarations = interfaces.CSSNestedDeclarations;
+const dom = @import("dom");
 
-pub const State = CSSNestedDeclarations.State;
-
-pub const ImplError = error{
-    NotImplemented,
-};
-
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
+pub const State = interfaces.CSSNestedDeclarations.State;
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
-}
-
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-/// Getter for style
+/// The generated SameObject machinery keeps this declaration object on
+/// its rule, exactly as for CSSStyleRule.style.
 pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const rule = dom.style.hooks.cssRuleOf(instance) orelse return error.InvalidStateError;
+    if (rule.kind() != .nested_declarations) return error.InvalidStateError;
+    return interfaces.CSSStyleProperties.initWith(instance.ctx.allocator, instance.ctx, .{ .rule_block_of = rule });
 }

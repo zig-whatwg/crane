@@ -530,7 +530,7 @@ test "Headers append under request-no-cors: the combined value must stay safelis
     try append(allocator, &list, .request_no_cors, "X-Test", "hi");
     try std.testing.expect(!list.contains("X-Test"));
     // Accept's combined value would pass 128 bytes: left out.
-    try append(allocator, &list, .request_no_cors, "Accept", "s" ** 128);
+    try append(allocator, &list, .request_no_cors, "Accept", &@as([128:0]u8, @splat('s')));
     const accept = (try list.get(allocator, "Accept")).?;
     defer allocator.free(accept);
     try std.testing.expectEqualStrings("text/html", accept);

@@ -81,7 +81,13 @@ pub fn destroySheets(s: Sheets) void {
 /// Every text value is uncounted from now on; `destroyContents` frees them.
 fn makeImmortal(c: *Contents) void {
     for (c.style_rules.items) |rule| {
-        var it = rule.data.style.block.typed();
+        // Contents.style_rules contains declaration-bearing rules. Skip a
+        // future unknown kind instead of dereferencing its absent block.
+        const block = rule.block() orelse {
+            std.debug.assert(false);
+            continue;
+        };
+        var it = block.typed();
         while (it.next()) |d| switch (d.value) {
             .value => |v| if (v.sharedText()) |t| t.makeImmortal(),
             .css_wide => {},
@@ -96,7 +102,13 @@ fn destroyContents(c: *Contents) void {
     var seen: std.AutoHashMapUnmanaged(*css.style_values.SharedText, void) = .empty;
     defer seen.deinit(std.heap.c_allocator);
     for (c.style_rules.items) |rule| {
-        for (rule.data.style.block.entries.items) |*e| switch (e.*) {
+        // Contents.style_rules contains declaration-bearing rules. Skip a
+        // future unknown kind instead of dereferencing its absent block.
+        const block = rule.block() orelse {
+            std.debug.assert(false);
+            continue;
+        };
+        for (block.entries.items) |*e| switch (e.*) {
             .typed => |*d| switch (d.value) {
                 .value => |v| if (v.sharedText()) |t| {
                     d.value = .{ .value = css.style_values.Value.kw(.none) };
@@ -111,12 +123,49 @@ fn destroyContents(c: *Contents) void {
     c.destroy();
 }
 
-test "the UA sheets parse, and every rule is HTML-only" {
+test "the UA sheets parse with HTML namespace constraints on every selector" {
     const s = try buildWith(std.testing.allocator);
     defer destroySheets(s);
-    try std.testing.expect(s.rules.html_only);
+    // Namespaces are resolved per selector, not through a whole-sheet flag.
+    for ([_]*Contents{ s.rules, s.hints, s.quirks }) |contents| {
+        try std.testing.expect(!contents.html_only);
+        for (contents.rules.items) |rule| {
+            var constrained = false;
+            for (rule.complex.compound.simple_selectors) |simple| {
+                if (simple == .NamespaceURI) {
+                    try std.testing.expectEqualStrings("http://www.w3.org/1999/xhtml", simple.NamespaceURI.uri);
+                    constrained = true;
+                }
+            }
+            try std.testing.expect(constrained);
+        }
+    }
     try std.testing.expect(s.rules.rules.items.len > 100);
     try std.testing.expect(s.rules.buckets.tag.get("div") != null);
     try std.testing.expect(s.rules.buckets.attribute.get("hidden") != null);
     try std.testing.expect(s.quirks.rules.items.len > 0);
+}
+
+// RED first: before nesting, the declaration run after the child is lost.
+test "nested UA declaration blocks immortalize and free their shared text once" {
+    const a = std.testing.allocator;
+    const contents = try Contents.parse(a, "article { color-scheme: light; & .child { color-scheme: dark; } color-scheme: light dark; }", .{});
+    defer destroyContents(contents);
+    // destroyContents expects the same immortal ownership policy even if
+    // one of the following assertions fails.
+    makeImmortal(contents);
+    try std.testing.expectEqual(@as(usize, 3), contents.style_rules.items.len);
+    const nested = contents.style_rules.items[2];
+    try std.testing.expectEqualStrings("nested_declarations", @tagName(nested.kind()));
+    var iterator = nested.block().?.typed();
+    var checked = false;
+    while (iterator.next()) |declaration| switch (declaration.value) {
+        .value => |value| if (value.sharedText()) |text| {
+            try std.testing.expectEqual(std.math.maxInt(u32), text.refs);
+            try std.testing.expectEqualStrings("light dark", text.bytes);
+            checked = true;
+        },
+        .css_wide => {},
+    };
+    try std.testing.expect(checked);
 }

@@ -58,7 +58,7 @@ pub fn cleanupAll(isolate: *v8.Isolate, allocator: std.mem.Allocator) void {
     inline for (handlers) |handler| handler.cleanup(isolate, allocator);
 
     // In debug mode, validate all cleanup was successful
-    if (builtin.mode == .Debug) {
+    if (builtin.mode == std.builtin.OptimizeMode.Debug) {
         inline for (handlers) |handler| {
             if (handler.validator) |validate| {
                 if (!validate()) std.log.warn("Cleanup validation failed for: {s}", .{handler.name});

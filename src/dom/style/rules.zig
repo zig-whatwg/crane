@@ -28,10 +28,9 @@
 //! parse, an @import after any rule but @charset, @layer statements and
 //! other @imports, an @namespace after any other rule, an unknown at-rule.
 //! Stated deviations: @charset is dropped (CSSOM has no object for it);
-//! @counter-style, @container, @scope,
-//! @starting-style and the other at-rules Crane does not model are left out
-//! of the rule lists, as the cascade left them out before; nested style
-//! rules (CSS Nesting) are dropped, as css.rules drops them.
+//! @counter-style, @starting-style and other unmodeled at-rules remain
+//! absent. Container and scope rules retain their CSSOM but their children
+//! are inert until the corresponding query/scoping evaluator is available.
 //!
 //! Spec: https://drafts.csswg.org/cssom-1/#css-rules
 //! Spec: https://drafts.csswg.org/css-syntax-3/#parse-stylesheet-contents
@@ -74,6 +73,9 @@ pub const ObjectLink = struct {
 
 pub const Kind = enum {
     style,
+    nested_declarations,
+    container,
+    scope,
     import,
     media,
     supports,
@@ -101,14 +103,14 @@ pub const Kind = enum {
             .namespace => 10,
             .supports => 12,
             .layer_block, .layer_statement => 0,
-            .position_try, .property => 0,
+            .position_try, .property, .nested_declarations, .container, .scope => 0,
         };
     }
 
     /// Whether the kind's rules have child CSS rules.
     pub fn isGroup(self: Kind) bool {
         return switch (self) {
-            .media, .supports, .layer_block => true,
+            .style, .media, .supports, .layer_block, .container, .scope => true,
             else => false,
         };
     }
@@ -135,7 +137,15 @@ pub const Data = union(Kind) {
     style: struct {
         selectors: selector.SelectorList,
         block: DeclarationBlock,
+        /// One count on an immutable resolved node, viewed through its
+        /// actual list. Needed for & or when this rule is a nesting parent;
+        /// ordinary flat leaves keep only their authored AST.
+        resolved: ?*selector.SelectorList = null,
+        children: std.ArrayList(*Rule) = .empty,
     },
+    nested_declarations: struct { selectors: selector.SelectorList, block: DeclarationBlock },
+    container: struct { conditions: css.container_queries.List, children: std.ArrayList(*Rule) = .empty },
+    scope: struct { start: ?[]u8, end: ?[]u8, children: std.ArrayList(*Rule) = .empty },
     import: Import,
     media: struct {
         list: MediaQueryList,
@@ -197,6 +207,21 @@ pub const Rule = struct {
             .style => |*s| {
                 s.selectors.deinit();
                 s.block.deinit();
+                freeResolved(a, s.resolved);
+                releaseChildren(a, &s.children);
+            },
+            .nested_declarations => |*n| {
+                n.selectors.deinit();
+                n.block.deinit();
+            },
+            .container => |*c| {
+                c.conditions.deinit();
+                releaseChildren(a, &c.children);
+            },
+            .scope => |*scope| {
+                if (scope.start) |text| a.free(text);
+                if (scope.end) |text| a.free(text);
+                releaseChildren(a, &scope.children);
             },
             .import => |*i| {
                 a.free(i.href);
@@ -242,6 +267,9 @@ pub const Rule = struct {
     /// A group rule's child CSS rules; null for every other kind.
     pub fn children(self: *Rule) ?*std.ArrayList(*Rule) {
         return switch (self.data) {
+            .style => |*s| &s.children,
+            .container => |*c| &c.children,
+            .scope => |*scope| &scope.children,
             .media => |*m| &m.children,
             .supports => |*s| &s.children,
             .layer_block => |*l| &l.children,
@@ -254,10 +282,20 @@ pub const Rule = struct {
     pub fn block(self: *Rule) ?*DeclarationBlock {
         return switch (self.data) {
             .style => |*s| &s.block,
+            .nested_declarations => |*n| &n.block,
             .font_face => |*font| &font.block,
             .page => |*b| b,
             .position_try => |*b| b,
             .keyframe => |*k| &k.block,
+            else => null,
+        };
+    }
+
+    /// The compiled selector list, owned by this rule even after detachment.
+    pub fn matchingSelectors(self: *const Rule) ?*const selector.SelectorList {
+        return switch (self.data) {
+            .style => |*s| s.resolved orelse &s.selectors,
+            .nested_declarations => |*n| &n.selectors,
             else => null,
         };
     }
@@ -282,19 +320,46 @@ pub const Rule = struct {
     fn serializeInto(self: *Rule, allocator: Allocator, out: *std.ArrayList(u8)) Allocator.Error!void {
         switch (self.data) {
             .property => |registration| try registration.serializeRule(out, allocator),
-            // "The result of performing serialize a group of selectors on
-            // the rule's associated selectors, followed by the string " {"
-            // ... decls ... " }"" (no nested rules here: stated).
-            .style => |*s| {
+            // CSSOM section 6.4, serialize a CSSStyleRule, steps 1–6.
+            .style => |*style| {
                 try out.appendSlice(allocator, self.prelude);
                 try out.appendSlice(allocator, " {");
-                const start = out.items.len;
-                try out.append(allocator, ' ');
-                try s.block.serialize(out);
-                if (out.items.len == start + 1) {
-                    out.items.len = start;
+                if (style.children.items.len == 0) {
+                    if (style.block.length() != 0) {
+                        try out.append(allocator, ' ');
+                        try style.block.serialize(out);
+                    }
                     try out.appendSlice(allocator, " }");
-                } else try out.appendSlice(allocator, " }");
+                } else {
+                    if (style.block.length() != 0) {
+                        try out.appendSlice(allocator, "\n  ");
+                        try style.block.serialize(out);
+                    }
+                    for (style.children.items) |child| {
+                        const text = try child.serialize(allocator);
+                        defer allocator.free(text);
+                        if (text.len == 0) continue;
+                        try out.appendSlice(allocator, "\n  ");
+                        try out.appendSlice(allocator, text);
+                    }
+                    try out.appendSlice(allocator, "\n}");
+                }
+            },
+            .nested_declarations => |*n| try n.block.serialize(out),
+            .container => |*c| {
+                try out.appendSlice(allocator, "@container ");
+                try out.appendSlice(allocator, self.prelude);
+                try out.appendSlice(allocator, " {");
+                try serializeChildren(allocator, out, c.children.items);
+            },
+            .scope => |*scope| {
+                try out.appendSlice(allocator, "@scope");
+                if (self.prelude.len != 0) {
+                    try out.append(allocator, ' ');
+                    try out.appendSlice(allocator, self.prelude);
+                }
+                try out.appendSlice(allocator, " {");
+                try serializeChildren(allocator, out, scope.children.items);
             },
             // "@import" SP, serialize a URL of the rule's location, the
             // layer and supports() when given, SP and the media list when
@@ -418,6 +483,248 @@ pub const Rule = struct {
     }
 };
 
+/// CSS Nesting 1 section 4: parsing needs only the nearest context's kind.
+/// Reading it must not allocate a resolved slot before a selector is valid.
+pub fn nestingKindInside(rule: *const Rule) ?selector.parser.NestingContext {
+    var current: ?*const Rule = rule;
+    while (current) |parent| : (current = parent.parent_rule) {
+        switch (parent.kind()) {
+            .style => return .style,
+            .scope => return .scope,
+            else => {},
+        }
+    }
+    return null;
+}
+
+/// The nearest style/scope context for an existing rule's children.
+pub fn nestingInside(rule: *Rule, plan: *ResolutionPlan) Allocator.Error!?NestingContext {
+    var current: ?*Rule = rule;
+    while (current) |parent| : (current = parent.parent_rule) {
+        switch (parent.data) {
+            .style => |*style| {
+                if (style.resolved) |resolved| return .{ .kind = .style, .selectors = resolved };
+                // A first CSSOM insertion into a flat rule prepares its
+                // slot without mutating that live rule. Abort frees the
+                // prospective count; successful insertion applies it.
+                for (plan.entries.items) |entry| {
+                    if (entry.rule == parent) return .{ .kind = .style, .selectors = entry.replacement.? };
+                }
+                std.debug.assert(!selector.nesting.contains(&style.selectors));
+                const resolved = (try resolveIfNeeded(plan.allocator, &style.selectors, null, true)).?;
+                errdefer freeResolved(plan.allocator, resolved);
+                try plan.entries.append(plan.allocator, .{ .rule = parent, .replacement = resolved });
+                return .{ .kind = .style, .selectors = resolved };
+            },
+            .scope => return .{ .kind = .scope },
+            else => {},
+        }
+    }
+    return null;
+}
+
+fn contextInside(rule: *const Rule, inherited: ?NestingContext) ?NestingContext {
+    return switch (rule.data) {
+        .style => .{ .kind = .style, .selectors = rule.matchingSelectors().? },
+        .scope => .{ .kind = .scope },
+        else => inherited,
+    };
+}
+
+fn freeResolved(_: Allocator, maybe: ?*selector.SelectorList) void {
+    const list = maybe orelse return;
+    list.releaseBoxed();
+}
+
+fn resolveIfNeeded(a: Allocator, source: *const selector.SelectorList, context: ?NestingContext, parent_slot: bool) Allocator.Error!?*selector.SelectorList {
+    if (!parent_slot and !selector.nesting.contains(source)) return null;
+    const parent_list = if (context) |c| c.selectors else null;
+    const parent = if (parent_list) |list| list.shared_owner else null;
+    std.debug.assert(parent_list == null or parent != null);
+    const node = try selector.nesting.SharedList.create(a, source, parent);
+    return node.actualList();
+}
+
+fn declarationSelectors(a: Allocator, context: ?NestingContext) Allocator.Error!selector.SelectorList {
+    const nesting = context orelse return .{ .allocator = a, .selectors = &.{} };
+    if (nesting.selectors) |parent| return selector.nesting.clone(a, parent);
+    // Scoped declarations address the root; scope evaluation itself is
+    // routed (CSS @SCOPE EVALUATION), and the compiler keeps these inert.
+    return selector.parse(a, "&") catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => unreachable,
+    };
+}
+
+/// CSSOM section 6.4, insert a CSS rule step 4, and Nesting 1 section 5.
+pub fn buildNestedDeclarations(options: BuildOptions, declarations: []const css.rules.Declaration) Allocator.Error!?*Rule {
+    if (options.nesting == null) return null;
+    const a = options.parse.allocator;
+    var block = try DeclarationBlock.fromDeclarations(options.parse, declarations);
+    var owns_block = true;
+    defer if (owns_block) block.deinit();
+    if (block.length() == 0) return null;
+    var selectors = try declarationSelectors(a, options.nesting);
+    errdefer selectors.deinit();
+    const rule = try make(a, &.{}, .{ .nested_declarations = .{ .selectors = selectors, .block = block } });
+    owns_block = false;
+    return rule;
+}
+
+/// A selector mutation is prepared without touching the live AST. Every
+/// prospective slot owns one node count; referenced ancestors stay alive
+/// if a descendant allocation fails. No live AST changes before apply().
+pub const ResolutionPlan = struct {
+    allocator: Allocator,
+    entries: std.ArrayList(Entry) = .empty,
+    const Entry = struct { rule: *Rule, replacement: ?*selector.SelectorList };
+
+    pub fn deinit(self: *ResolutionPlan) void {
+        for (self.entries.items) |entry| freeResolved(self.allocator, entry.replacement);
+        self.entries.deinit(self.allocator);
+    }
+
+    pub fn prepare(self: *ResolutionPlan, rule: *Rule, context: ?NestingContext, replacement: ?*const selector.SelectorList) Allocator.Error!void {
+        switch (rule.data) {
+            .style => |*style| {
+                const original = replacement orelse &style.selectors;
+                const resolved = try resolveIfNeeded(self.allocator, original, context, style.children.items.len != 0);
+                var owns = true;
+                errdefer if (owns) freeResolved(self.allocator, resolved);
+                const next = NestingContext{ .kind = .style, .selectors = resolved orelse original };
+                for (style.children.items) |child| try self.prepare(child, next, null);
+                if (resolved != null or style.resolved != null) {
+                    try self.entries.append(self.allocator, .{ .rule = rule, .replacement = resolved });
+                    owns = false;
+                }
+            },
+            .nested_declarations => {
+                const resolved = try self.allocator.create(selector.SelectorList);
+                errdefer self.allocator.destroy(resolved);
+                resolved.* = try declarationSelectors(self.allocator, context);
+                errdefer resolved.deinit();
+                try self.entries.append(self.allocator, .{ .rule = rule, .replacement = resolved });
+            },
+            else => if (rule.children()) |children| {
+                const next = contextInside(rule, context);
+                for (children.items) |child| try self.prepare(child, next, null);
+            },
+        }
+    }
+
+    /// Commit only after every allocation and structural validation passed.
+    pub fn apply(self: *ResolutionPlan) void {
+        for (self.entries.items) |*entry| {
+            switch (entry.rule.data) {
+                .style => |*style| {
+                    freeResolved(self.allocator, style.resolved);
+                    style.resolved = entry.replacement;
+                },
+                .nested_declarations => |*nested| {
+                    nested.selectors.deinit();
+                    std.debug.assert(entry.replacement.?.shared_owner == null);
+                    nested.selectors = entry.replacement.?.*;
+                    self.allocator.destroy(entry.replacement.?);
+                },
+                else => unreachable,
+            }
+            entry.replacement = null;
+        }
+    }
+};
+
+/// Takes parsed text and selectors on SUCCESS only. The CSSStyleRule
+/// setter retains ownership on OOM, with the entire old rule tree intact.
+pub fn replaceStyleSelector(rule: *Rule, parsed: selector.CssomSelector) Allocator.Error!void {
+    const a = rule.allocator;
+    var plan = ResolutionPlan{ .allocator = a };
+    defer plan.deinit();
+    const context = if (rule.parent_rule) |parent| try nestingInside(parent, &plan) else null;
+    try plan.prepare(rule, context, &parsed.selectors);
+    plan.apply();
+    rule.data.style.selectors.deinit();
+    a.free(rule.prelude);
+    rule.prelude = parsed.text;
+    rule.data.style.selectors = parsed.selectors;
+    if (rule.sheet()) |record| record.changed();
+}
+
+/// Cascade 6 sections 3.5.2 and 4.1. Only the CSSOM boundaries are stored;
+/// the scoped matching/proximity capability is CSS @SCOPE EVALUATION.
+fn buildScope(options: BuildOptions, parsed: *const css.rules.Rule) Allocator.Error!?*Rule {
+    if (!parsed.has_block) return null;
+    const a = options.parse.allocator;
+    var start: ?[]u8 = null;
+    var end: ?[]u8 = null;
+    var owns = true;
+    defer if (owns) {
+        if (start) |text| a.free(text);
+        if (end) |text| a.free(text);
+    };
+    var stream = css.properties.Stream.init(parsed.prelude);
+    if (stream.peek().token_type == .left_paren) {
+        // Nesting 1 section 3.3.1: under a style-rule context the START
+        // stores an implicit &, as a nested style selector does. All three
+        // browsers agree (Q43, 2026-10-27); end and scope-in-scope keep the
+        // authored boundary. This happens at parse time, not serialization.
+        start = try scopeBoundary(a, &stream, options.parse.namespaces, if (options.nesting) |n| n.kind else null) orelse return null;
+    }
+    if (!stream.atEnd()) {
+        const to = stream.next();
+        if (to.token_type != .ident or !css.tokenizer.nameEql(to.value, "to")) return null;
+        end = try scopeBoundary(a, &stream, options.parse.namespaces, .scope) orelse return null;
+    }
+    if (!stream.atEnd()) return null;
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(a);
+    if (start) |text| try out.print(a, "({s})", .{text});
+    if (end) |text| {
+        if (start != null) try out.append(a, ' ');
+        try out.print(a, "to ({s})", .{text});
+    }
+    const prelude = try out.toOwnedSlice(a);
+    const rule = try make(a, prelude, .{ .scope = .{ .start = start, .end = end } });
+    owns = false;
+    errdefer rule.unref();
+    try buildChildren(options, rule, parsed.children);
+    return rule;
+}
+
+fn scopeBoundary(a: Allocator, stream: *css.properties.Stream, map: ?*const css.namespace_map.NamespaceMap, nesting: ?selector.parser.NestingContext) Allocator.Error!?[]u8 {
+    if (stream.next().token_type != .left_paren) return null;
+    const start = stream.tok.pos;
+    var closers: std.ArrayList(css.tokenizer.TokenType) = .empty;
+    defer closers.deinit(a);
+    try closers.append(a, .right_paren);
+    while (closers.items.len != 0) {
+        const token = stream.next();
+        switch (token.token_type) {
+            .eof, .bad_string, .bad_url => return null,
+            .left_paren, .left_bracket, .left_brace => try closers.append(a, css.rules.closerOf(token.token_type)),
+            .right_paren, .right_bracket, .right_brace => {
+                if (token.token_type != closers.items[closers.items.len - 1]) return null;
+                _ = closers.pop();
+            },
+            else => {},
+        }
+    }
+    const text = try a.dupe(u8, std.mem.trim(u8, stream.text[start .. stream.tok.pos - 1], " \t\n\r\x0c"));
+    var parsed = parseCssomSelectorIn(a, text, map, nesting) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return null,
+    };
+    defer parsed.selectors.deinit();
+    for (parsed.selectors.selectors) |*complex| {
+        var pseudo = complex.compound.hasPseudoElement();
+        for (complex.combinators) |*pair| pseudo = pseudo or pair.compound.hasPseudoElement();
+        if (pseudo) {
+            a.free(parsed.text);
+            return null;
+        }
+    }
+    return parsed.text;
+}
+
 fn releaseChildren(allocator: Allocator, list: *std.ArrayList(*Rule)) void {
     for (list.items) |child| {
         child.parent_rule = null;
@@ -439,7 +746,11 @@ fn serializeChildren(allocator: Allocator, out: *std.ArrayList(u8), items: []con
         try out.appendSlice(allocator, "  ");
         try out.appendSlice(allocator, text);
     }
-    try out.appendSlice(allocator, "\n}");
+    // CSSOM media serialization steps 3/5 literally add two newlines;
+    // Chrome 156, Firefox 158 and Safari 27 all use one when empty
+    // (serialize-media-rule.html 12/12, WPT ffc4686d11, Q46 2026-10-27).
+    if (wrote) try out.append(allocator, '\n');
+    try out.append(allocator, '}');
 }
 
 /// CSSOM "serialize a URL": `url(` the URL serialized as a string `)`.
@@ -489,8 +800,18 @@ pub const Position = enum {
     nested,
 };
 
+pub const NestingContext = struct {
+    kind: selector.parser.NestingContext,
+    selectors: ?*const selector.SelectorList = null,
+};
+
 pub const BuildOptions = struct {
     parse: css.properties.ParseOptions,
+    /// Borrowed synchronously while descendants are built.
+    nesting: ?NestingContext = null,
+    /// Nesting 1 section 3.3: global rules are invalid under ANY style
+    /// ancestor, including through @scope (Chrome/Firefox, probe Q36).
+    in_style: bool = false,
 };
 
 /// The rule `parsed` (css.rules) as a `Rule`, or null when CSS drops it
@@ -500,24 +821,31 @@ pub fn build(options: BuildOptions, parsed: *const css.rules.Rule, position: Pos
     switch (parsed.kind) {
         .qualified => {
             if (parsed.prelude.len == 0) return null;
-            const prelude = try a.dupe(u8, parsed.prelude);
-            var owns_prelude = true;
-            errdefer if (owns_prelude) a.free(prelude);
-            var selectors = selector.parse(a, prelude) catch |err| switch (err) {
+            var parsed_selector = parseCssomSelectorIn(a, try a.dupe(u8, parsed.prelude), options.parse.namespaces, if (options.nesting) |n| n.kind else null) catch |err| switch (err) {
                 error.OutOfMemory => return error.OutOfMemory,
                 // "A style rule whose selector is invalid is dropped."
-                else => {
-                    a.free(prelude);
-                    return null;
-                },
+                else => return null,
             };
-            errdefer selectors.deinit();
+            const prelude = parsed_selector.text;
+            var owns_prelude = true;
+            errdefer if (owns_prelude) a.free(prelude);
+            var owns_selectors = true;
+            errdefer if (owns_selectors) parsed_selector.selectors.deinit();
             var declarations = try DeclarationBlock.fromDeclarations(options.parse, parsed.declarations);
-            errdefer declarations.deinit();
+            var owns_payload = true;
+            errdefer if (owns_payload) declarations.deinit();
+            const resolved = try resolveIfNeeded(a, &parsed_selector.selectors, options.nesting, parsed.children.len != 0);
+            errdefer if (owns_payload) freeResolved(a, resolved);
             // make consumes the prelude even when its Rule allocation fails.
             owns_prelude = false;
-            return make(a, prelude, .{ .style = .{ .selectors = selectors, .block = declarations } });
+            const rule = try make(a, prelude, .{ .style = .{ .selectors = parsed_selector.selectors, .block = declarations, .resolved = resolved } });
+            owns_payload = false;
+            owns_selectors = false;
+            errdefer rule.unref();
+            try buildChildren(options, rule, parsed.children);
+            return rule;
         },
+        .declarations => return buildNestedDeclarations(options, parsed.declarations),
         .at_rule => {},
     }
     const name = parsed.name;
@@ -547,10 +875,16 @@ pub fn build(options: BuildOptions, parsed: *const css.rules.Rule, position: Pos
                     names.deinit(a);
                     return null;
                 }
-                try names.append(a, try a.dupe(u8, n));
+                const owned_name = try a.dupe(u8, n);
+                errdefer a.free(owned_name);
+                try names.append(a, owned_name);
             }
             if (names.items.len == 0) return null;
             const owned = try names.toOwnedSlice(a);
+            errdefer {
+                for (owned) |n| a.free(n);
+                a.free(owned);
+            }
             return make(a, try a.dupe(u8, prelude), .{ .layer_statement = .{ .names = owned } });
         }
         if (prelude.len != 0 and !isLayerName(prelude)) return null;
@@ -575,12 +909,25 @@ pub fn build(options: BuildOptions, parsed: *const css.rules.Rule, position: Pos
     }
     if (std.mem.eql(u8, name, "supports")) {
         if (!parsed.has_block) return null;
-        const holds = css.supports.supportsCondition(a, parsed.prelude, &selectorSupported);
+        const holds = css.supports.supportsCondition(a, parsed.prelude, &selectorSupported, options.parse.namespaces);
         const rule = try make(a, try a.dupe(u8, std.mem.trim(u8, parsed.prelude, " \t\n\r\x0c")), .{ .supports = .{ .holds = holds } });
         errdefer rule.unref();
         try buildChildren(options, rule, parsed.children);
         return rule;
     }
+    if (std.mem.eql(u8, name, "container")) {
+        if (!parsed.has_block) return null;
+        var conditions = try css.container_queries.parse(a, parsed.prelude) orelse return null;
+        var owns_conditions = true;
+        errdefer if (owns_conditions) conditions.deinit();
+        const prelude = try conditions.serialize(a);
+        const rule = try make(a, prelude, .{ .container = .{ .conditions = conditions } });
+        owns_conditions = false;
+        errdefer rule.unref();
+        try buildChildren(options, rule, parsed.children);
+        return rule;
+    }
+    if (std.mem.eql(u8, name, "scope")) return buildScope(options, parsed);
     if (std.mem.eql(u8, name, "keyframes") or std.mem.eql(u8, name, "-webkit-keyframes")) {
         if (!parsed.has_block) return null;
         var stream = css.properties.Stream.init(parsed.prelude);
@@ -656,7 +1003,19 @@ pub fn buildKeyframe(options: BuildOptions, parsed: *const css.rules.Rule) Alloc
     const a = options.parse.allocator;
     var selectors = try css.keyframe_values.Selectors.parse(a, parsed.prelude) orelse return null;
     errdefer selectors.deinit();
-    var block = try DeclarationBlock.fromDeclarationsInContext(options.parse, parsed.declarations, .keyframe);
+    // Syntax 3 §5.5.5 preserves declaration runs after intervening rules.
+    // Animations 1 §3 ignores those rules but keeps every declaration run
+    // in the keyframe context (including its importance restrictions).
+    var declarations: std.ArrayList(css.rules.Declaration) = .empty;
+    defer declarations.deinit(a);
+    const items = if (parsed.children.len == 0) parsed.declarations else blk: {
+        try declarations.appendSlice(a, parsed.declarations);
+        for (parsed.children) |child| if (child.kind == .declarations) {
+            try declarations.appendSlice(a, child.declarations);
+        };
+        break :blk declarations.items;
+    };
+    var block = try DeclarationBlock.fromDeclarationsInContext(options.parse, items, .keyframe);
     errdefer block.deinit();
     const prelude = try selectors.serialize(a);
     return make(a, prelude, .{ .keyframe = .{ .selectors = selectors, .block = block } });
@@ -671,14 +1030,59 @@ fn make(a: Allocator, prelude: []u8, data: Data) Allocator.Error!*Rule {
 
 fn buildChildren(options: BuildOptions, parent: *Rule, items: []const css.rules.Rule) Allocator.Error!void {
     const list = parent.children().?;
+    var child_options = options;
+    // Cascade 6 section 3.5.6: scope declarations persist through groups.
+    // Firefox/Safari parse; all three allow CSSOM insertion (Q38 probe,
+    // 2026-10-27). Chrome's text parser currently drops these declarations.
+    child_options.nesting = contextInside(parent, options.nesting);
+    child_options.in_style = options.in_style or parent.kind() == .style;
     for (items) |*item| {
-        const child = (try build(options, item, .nested)) orelse continue;
+        // Syntax 3 section 5.5.5's at-keyword/invalid-rule branches flush
+        // raw runs before CSSOM validation. Dropped rules do not split the
+        // resulting blocks: Chrome/Firefox/Safari pass 6/6 at-rule-in-
+        // declaration-list and 14/14 var-with-blocks (wpt.fyi, ffc4686d11).
+        // Blink ConsumeBlockContents (97f9cf6fa75f, :3174-3307) likewise
+        // advances wrappers only for retained children. Nesting 1 section
+        // 6.1 also coalesces adjacent declaration rules on reparsing.
+        if (item.kind == .declarations) {
+            const previous = if (list.items.len == 0) parent else list.items[list.items.len - 1];
+            if (previous.kind() == .nested_declarations or
+                (list.items.len == 0 and parent.kind() == .style))
+            {
+                try previous.block().?.appendDeclarations(child_options.parse, item.declarations);
+                continue;
+            }
+        }
+        const child = (try build(child_options, item, .nested)) orelse continue;
+        if (child_options.in_style and !allowedNestedKind(child.kind())) {
+            child.unref();
+            continue;
+        }
         child.parent_rule = parent;
         list.append(options.parse.allocator, child) catch |err| {
             child.unref();
             return err;
         };
     }
+}
+
+/// Nesting 1 section 3.3 allows style rules and at-rules whose bodies
+/// contain style rules; a layer STATEMENT has no such body.
+pub fn allowedNestedKind(kind: Kind) bool {
+    return switch (kind) {
+        .style, .nested_declarations, .media, .supports, .container, .layer_block, .scope => true,
+        else => false,
+    };
+}
+
+/// Unlike selector context, this fact is not reset by an intervening
+/// @scope (Chrome/Firefox parse; all three CSSOM insertion, probe Q36).
+pub fn hasStyleAncestor(rule: *const Rule) bool {
+    var current: ?*const Rule = rule;
+    while (current) |parent| : (current = parent.parent_rule) {
+        if (parent.kind() == .style) return true;
+    }
+    return false;
 }
 
 /// `<layer-name>`: one or more identifiers joined by ".".
@@ -829,11 +1233,38 @@ fn buildNamespace(a: Allocator, prelude_text: []const u8) Allocator.Error!?*Rule
     return try make(a, try a.dupe(u8, prelude), .{ .namespace = .{ .prefix = owned_prefix, .uri = owned_uri } });
 }
 
-/// supports()'s selector() function: whether `text` parses as a selector.
-pub fn selectorSupported(allocator: Allocator, text: []const u8) bool {
-    var list = selector.parse(allocator, text) catch return false;
-    list.deinit();
-    return true;
+/// CSS Namespaces 3 section 2: this immutable map is borrowed only while
+/// parsing. SelectorList owns every resolved URI its AST needs afterward.
+fn selectorOptions(map: ?*const css.namespace_map.NamespaceMap) selector.parser.ParseOptions {
+    const bindings = map orelse return .{};
+    return .{ .namespaces = .{ .context = bindings, .resolve = resolveSelectorPrefix, .default = bindings.default } };
+}
+
+fn resolveSelectorPrefix(context: ?*const anyopaque, prefix: []const u8) ?[]const u8 {
+    const map: *const css.namespace_map.NamespaceMap = @ptrCast(@alignCast(context.?));
+    return map.lookup(prefix);
+}
+
+pub fn parseSelector(allocator: Allocator, text: []const u8, map: ?*const css.namespace_map.NamespaceMap) selector.ParserError!selector.SelectorList {
+    if (map == null) return selector.parse(allocator, text);
+    return selector.parseWithOptions(allocator, text, selectorOptions(map));
+}
+
+/// Consumes the owned component-value text, also on parse failure.
+pub fn parseCssomSelector(allocator: Allocator, text: []u8, map: ?*const css.namespace_map.NamespaceMap) selector.ParserError!selector.CssomSelector {
+    return parseCssomSelectorIn(allocator, text, map, null);
+}
+
+pub fn parseCssomSelectorIn(allocator: Allocator, text: []u8, map: ?*const css.namespace_map.NamespaceMap, nesting: ?selector.parser.NestingContext) selector.ParserError!selector.CssomSelector {
+    var parse_options = selectorOptions(map);
+    parse_options.nesting = nesting;
+    return selector.parseCssomOwned(allocator, text, parse_options);
+}
+
+/// CSS Conditional 4 section 2.1: declared prefixes apply, and no part of
+/// selector() is parsed forgivingly. Normal stylesheet parsing stays forgiving.
+pub fn selectorSupported(allocator: Allocator, text: []const u8, map: ?*const css.namespace_map.NamespaceMap) bool {
+    return selector.isSupported(allocator, text, selectorOptions(map)) catch false;
 }
 
 /// A sheet's top-level rules from `text` ("parse a stylesheet's contents"),

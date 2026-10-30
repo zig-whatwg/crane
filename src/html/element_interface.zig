@@ -307,8 +307,8 @@ test "element interface: a valid custom element name is HTMLElement (step 6)" {
 test "element interface: every name longer than any table entry still resolves" {
     // The old factories lowercased into a 64-byte buffer and matched the
     // truncation; the table matches the whole name.
-    const long = "a-" ++ "x" ** 100;
+    const long = "a-" ++ &@as([100:0]u8, @splat('x'));
     try testing.expectEqual(ElementInterface.HTMLElement, forLocalName(long));
-    const long_unknown = "div" ++ "x" ** 100;
+    const long_unknown = "div" ++ &@as([100:0]u8, @splat('x'));
     try testing.expectEqual(ElementInterface.HTMLUnknownElement, forLocalName(long_unknown));
 }

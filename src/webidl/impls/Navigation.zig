@@ -2495,12 +2495,26 @@ fn sameDocumentNavigation(window: *runtime.Instance, kind: Kind) void {
         var listed: std.ArrayListUnmanaged(*joint_history.Entry) = .empty;
         defer listed.deinit(internal.allocator);
         const have_list = if (s.history.apiView(s.navigable.id, internal.allocator, &listed)) |_| listed.items.len > 0 else |_| false;
-        var it = internal.handed.iterator();
-        while (it.next()) |kv| {
-            const id = kv.key_ptr.*;
-            if (id == destination.id) continue;
-            const gone = if (have_list) !listsEntry(listed.items, id) else s.history.entryById(id) == null;
-            if (gone) disposed.append(internal.allocator, kv.value_ptr.*) catch {};
+        // Most updates dispose of nothing: when every entry handed out but
+        // the destination is in the list, none is gone - counted in one walk
+        // of the list (lane nav2 H; the per-entry search of the list below
+        // made each fragment navigation quadratic in the entries handed out,
+        // which grow by one per navigation).
+        const others = internal.handed.count() - @intFromBool(internal.handed.contains(destination.id));
+        var listed_handed: usize = 0;
+        if (have_list) {
+            for (listed.items) |entry| {
+                if (entry.id != destination.id and internal.handed.contains(entry.id)) listed_handed += 1;
+            }
+        }
+        if (!have_list or listed_handed != others) {
+            var it = internal.handed.iterator();
+            while (it.next()) |kv| {
+                const id = kv.key_ptr.*;
+                if (id == destination.id) continue;
+                const gone = if (have_list) !listsEntry(listed.items, id) else s.history.entryById(id) == null;
+                if (gone) disposed.append(internal.allocator, kv.value_ptr.*) catch {};
+            }
         }
         for (disposed.items) |handed| {
             _ = internal.handed.remove(dom.navigation_history_entries.entryId(handed.instance));

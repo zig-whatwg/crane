@@ -159,9 +159,6 @@ pub const WorkerNavigator = core.WorkerNavigator;
 // when they are moved back to src/html/ from src/webidl/impls/
 pub const interfaces = @import("interfaces");
 
-// Access to impls module - for script execution coordination
-pub const impls = @import("impls");
-
 // Access to runtime module - for JS execution context
 pub const runtime = @import("runtime");
 
@@ -333,3 +330,4 @@ test {
 
 pub const popover = @import("popover.zig");
 pub const dialog = @import("dialog.zig");
+pub const details = @import("details.zig");

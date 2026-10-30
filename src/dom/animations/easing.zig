@@ -200,23 +200,23 @@ fn cubicBezier(p: [4]f64, input: f64) f64 {
     const y1 = p[1];
     const x2 = p[2];
     const y2 = p[3];
+    // Outside [0, 1] the curve is extended by its tangent at the end point
+    // (2.2.2 step 3). Where the spec text gives no tangent - a control
+    // point coincident with the end point, or both - the browsers differ
+    // from it: cubic-bezier(0, 0, 0, 0) below 0 and cubic-bezier(1, 1, 1, 1)
+    // above 1 are linear, and a vertical tangent is slope 0. These are
+    // Blink's end gradients (gfx::CubicBezier::InitGradients,
+    // ui/gfx/geometry/cubic_bezier.cc), and Chrome 156, Firefox 159 and
+    // Safari 27 all pass the WPT that pins the linear equivalence (wpt.fyi
+    // stable 07ce6e987a: web-animations/animation-model/keyframe-effects/
+    // effect-value-transformed-distance.html 28/28 each). Golden rule 2.
     if (input < 0) {
-        // "If the x value of P1 is greater than zero, use a straight line
-        // that passes through P1 and P0 as the tangent. Else if the x value
-        // of P2 is greater than zero, use a straight line through P2 and P0.
-        // Else the output progress value is 0."
-        if (x1 > 0) return y1 / x1 * input;
-        if (x2 > 0) return y2 / x2 * input;
-        return 0;
+        const start_gradient: f64 = if (x1 > 0) y1 / x1 else if (y1 == 0 and x2 > 0) y2 / x2 else if (y1 == 0 and y2 == 0) 1 else 0;
+        return start_gradient * input;
     }
     if (input > 1) {
-        // "If the x value of P2 is less than one, use a straight line that
-        // passes through P2 and P3 as the tangent. Else if the x value of P1
-        // is less than one, use a straight line through P1 and P3. Else the
-        // output progress value is 1."
-        if (x2 < 1) return 1 + (y2 - 1) / (x2 - 1) * (input - 1);
-        if (x1 < 1) return 1 + (y1 - 1) / (x1 - 1) * (input - 1);
-        return 1;
+        const end_gradient: f64 = if (x2 < 1) (y2 - 1) / (x2 - 1) else if (y2 == 1 and x1 < 1) (y1 - 1) / (x1 - 1) else if (y2 == 1 and y1 == 1) 1 else 0;
+        return 1 + end_gradient * (input - 1);
     }
     if (input == 0 or input == 1) return input;
     const t = solveCurveX(x1, x2, input);

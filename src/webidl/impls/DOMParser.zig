@@ -24,8 +24,8 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const DOMParser = interfaces.DOMParser;
 
-// Import HTML parser
-const HTMLParser = @import("HTMLParser.zig");
+// HTML's parser for a document from a string (src/html/dom_parser.zig)
+const dom_parser = @import("html").dom_parser;
 
 // Import DOM internals for document state access (Golden Rule #12 compliant)
 const dom = @import("dom");
@@ -172,7 +172,7 @@ pub fn call_parseFromString(instance: *runtime.Instance, string: typedefs.Truste
     return switch (@"type") {
         ._text_html_ => {
             // Parse as HTML
-            const document = HTMLParser.parseHTML(
+            const document = dom_parser.parseHTML(
                 internal.allocator,
                 instance.ctx,
                 html_string,

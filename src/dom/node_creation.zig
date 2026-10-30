@@ -63,6 +63,9 @@ pub const NodeSteps = struct {
     destroy_uninserted: *const fn (node: *runtime.Instance) void,
     /// DOM clone-a-node, with an explicit document, parent and fallback registry.
     clone: ?*const fn (*runtime.Instance, ?*runtime.Instance, bool, ?*runtime.Instance, ?*runtime.Instance) anyerror!*runtime.Instance = null,
+    /// Set `node`'s local name in Node's own state, and its node name - what
+    /// the insertion and children-changed steps dispatch on (`setNodeLocalName`).
+    set_local_name: ?*const fn (node: *runtime.Instance, name: runtime.DOMString) Error!void = null,
 };
 
 const Hooks = struct {
@@ -152,6 +155,18 @@ pub fn releaseIfUnwrapped(node: *runtime.Instance, generation: u64) void {
 pub fn destroyRoot(node: *runtime.Instance) void {
     const steps = node_steps.node orelse return;
     steps.destroy_uninserted(node);
+}
+
+/// A node type that knows its local name when it is made - a script element
+/// (HTML or SVG), an iframe - sets it in Node's own state from its construction
+/// steps, so the tree's insertion and children-changed steps, which dispatch on
+/// the node name, see it before "create an element" names the element. Node's
+/// step: a descendant reaches it here, not through Node's impl (AGENTS.md, the
+/// impls boundary).
+pub fn setNodeLocalName(node: *runtime.Instance, name: runtime.DOMString) Error!void {
+    const steps = node_steps.node orelse return error.InvalidStateError;
+    const set = steps.set_local_name orelse return error.InvalidStateError;
+    return set(node, name);
 }
 
 /// DOM "clone a node": callers supply its document and parent.

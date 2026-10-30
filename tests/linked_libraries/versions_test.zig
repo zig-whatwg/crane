@@ -14,9 +14,8 @@
 
 const std = @import("std");
 const curl = @import("fetch").network.curl_ffi.c;
-const mbedtls = @cImport({
-    @cInclude("mbedtls/version.h");
-});
+// mbedtls/version.h with the library's threading macros (build.zig addCImport).
+const mbedtls = @import("mbedtls_version_c");
 
 /// The versions root build.zig.zon pins (`.mbedtls`, `.zlib`). Bump with them.
 const expected_mbedtls = "3.6.6";

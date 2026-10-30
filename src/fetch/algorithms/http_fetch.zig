@@ -34,6 +34,7 @@ const clock = @import("clock");
 const BodyPipe = @import("../internal/body_pipe.zig").BodyPipe;
 const service_worker_fetch = @import("../internal/service_worker_fetch.zig");
 const cookies = @import("cookies.zig");
+const cross_origin_policies = @import("../internal/cross_origin_policies.zig");
 const clear_site_data = @import("clear_site_data.zig");
 const fetch_metadata = @import("fetch_metadata.zig");
 const http_cache = @import("../cache/transaction.zig");
@@ -131,7 +132,65 @@ pub fn httpFetchFinish(
         request.timing_allow_failed = true;
     }
 
+    // Step 5: the cross-origin resource policy check, for an opaque
+    // response.
+    if (try corpBlocks(allocator, request, final_response)) {
+        final_response.deinit();
+        return .{ .response = try internal_response.networkError(allocator) };
+    }
+
     return redirectSteps(allocator, params, final_response);
+}
+
+/// HTTP fetch step 5: "If either request's response tainting or response's
+/// type is "opaque", and the cross-origin resource policy check with
+/// request's origin, request's client, request's destination, and
+/// internalResponse returns blocked, then return a network error." It runs
+/// for the network's responses and a service worker's alike: the request's
+/// client and the worker can have different embedder policies. The client's
+/// embedder policy is its policy container's, which the request carries a
+/// clone of (populate request from client step 3); a request no client
+/// populated has none to apply (a new embedder policy), and one whose origin
+/// is still "client" was made by the user agent for itself and is not
+/// checked. Steps 4 and 6's reports go to the request's client through its
+/// coep_violation_reporter (dom.coep_reporting), when it has one.
+fn corpBlocks(allocator: Allocator, request: *const InternalRequest, response: *InternalResponse) HttpFetchError!bool {
+    if (isNetworkError(response)) return false;
+    if (request.response_tainting != .@"opaque" and response.response_type != .@"opaque") return false;
+    const origin: []const u8 = switch (request.origin) {
+        .client => return false,
+        .origin => |o| o,
+    };
+    const no_policy: cross_origin_policies.EmbedderPolicy = .{};
+    const embedder_policy: *const cross_origin_policies.EmbedderPolicy = switch (request.policy_container) {
+        .client => &no_policy,
+        .container => |*container| container.embedderPolicy(),
+    };
+    const corp = response.header_list.get(allocator, "Cross-Origin-Resource-Policy") catch return HttpFetchError.OutOfMemory;
+    defer if (corp) |value| allocator.free(value);
+    const check = cross_origin_policies.corpCheck(allocator, origin, embedder_policy, .{
+        .url = response.url() orelse request.currentUrl(),
+        .corp = corp,
+        .request_includes_credentials = response.request_includes_credentials,
+    }, false) catch return HttpFetchError.OutOfMemory;
+    if (request.coep_violation_reporter) |reporter| {
+        const blocked_url = response.url() orelse request.currentUrl();
+        // 4. The report-only value's check blocked: a "reporting" report.
+        if (check.report_only_blocks) reporter.report(reporter.context, &.{
+            .blocked_url = blocked_url,
+            .destination = request.destination,
+            .report_only = true,
+            .endpoint = embedder_policy.report_only_reporting_endpoint,
+        });
+        // 6. The embedder policy's value blocked: an "enforce" report.
+        if (check.enforced_by_embedder_policy) reporter.report(reporter.context, &.{
+            .blocked_url = blocked_url,
+            .destination = request.destination,
+            .report_only = false,
+            .endpoint = embedder_policy.reporting_endpoint,
+        });
+    }
+    return check.result == .blocked;
 }
 
 /// HTTP fetch step 6, for `response` (taken) - the network's, or a service
@@ -263,6 +322,11 @@ pub fn serviceWorkerResponse(allocator: Allocator, params: *FetchParams, respons
     // and sets the next manual redirect steps (a worker's
     // respondWith(fetch(event.request)) of a navigation's redirect hop).
     if (kind == .opaqueredirect and request.mode != .navigate) return .{ .response = response };
+    // Step 5, for the service worker's response (corpBlocks).
+    if (try corpBlocks(allocator, request, response)) {
+        response.deinit();
+        return .{ .response = try internal_response.networkError(allocator) };
+    }
     return redirectSteps(allocator, params, response);
 }
 
@@ -1128,11 +1192,39 @@ fn requestOriginHeader(allocator: Allocator, request: *InternalRequest) !?[]u8 {
 /// when it asks to). When it is true, step 8.21 sends the request's cookies
 /// and HTTP-network fetch step 16 stores the response's (cookies.zig).
 pub fn httpNetworkFetchUsesCookies(request: *const InternalRequest) bool {
-    return switch (request.credentials_mode) {
+    // 8.3. Let includeCredentials be true if credentials mode is "include",
+    // or "same-origin" while the response tainting is "basic".
+    const include = switch (request.credentials_mode) {
         .include => true,
         .same_origin => request.response_tainting == .basic,
         .omit => false,
     };
+    // 8.4. "If Cross-Origin-Embedder-Policy allows credentials with request
+    // returns false, then set includeCredentials to false."
+    return include and coepAllowsCredentials(request);
+}
+
+/// Fetch "Cross-Origin-Embedder-Policy allows credentials" for `request`.
+/// Its client's embedder policy is the request's policy container clone's;
+/// a request no client populated has no client (step 3: true). Only a
+/// "no-cors" request of a "credentialless" client is asked anything that
+/// allocates; out of memory there omits the credentials - never more than
+/// the policy allows.
+fn coepAllowsCredentials(request: *const InternalRequest) bool {
+    if (request.mode != .no_cors) return true;
+    const container = switch (request.policy_container) {
+        .client => return true,
+        .container => |*c| c,
+    };
+    if (container.embedderPolicy().value != .credentialless) return true;
+    // 1. Assert: request's origin is not "client" (a request still on it
+    // was made by the user agent, with no client to restrict).
+    const origin: []const u8 = switch (request.origin) {
+        .client => return true,
+        .origin => |o| o,
+    };
+    const same_origin_taint = request.redirectTaintIsSameOrigin() catch return false;
+    return cross_origin_policies.coepAllowsCredentials(request.allocator, true, container.embedderPolicy().value, origin, request.currentUrl(), same_origin_taint) catch false;
 }
 
 /// HTTP-network fetch, once the network has answered with `network_response`
@@ -1193,6 +1285,12 @@ pub fn httpNetworkFetchFinish(
             return HttpFetchError.OutOfMemory;
         };
     }
+
+    // HTTP-network-or-cache fetch step 13: "Set response's
+    // request-includes-credentials to includeCredentials" (the cross-origin
+    // resource policy check reads it under a "credentialless" embedder
+    // policy).
+    response.request_includes_credentials = httpNetworkFetchUsesCookies(request);
 
     // Step 16: If includeCredentials is true, then the user agent should
     // parse and store response `Set-Cookie` headers given request and

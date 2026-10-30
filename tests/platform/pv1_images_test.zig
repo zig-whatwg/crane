@@ -1,5 +1,16 @@
 const std = @import("std");
 const platform = @import("platform");
+
+/// `s` repeated `n` times: what `s ** n` was (Zig 0.17 removes `**`; roadmap zig-017).
+fn repeat(comptime s: []const u8, comptime n: usize) *const [s.len * n:0]u8 {
+    return comptime blk: {
+        @setEvalBranchQuota(10 * n + 1000);
+        var out: [s.len * n:0]u8 = undefined;
+        for (0..n) |i| @memcpy(out[i * s.len ..][0..s.len], s);
+        const final = out;
+        break :blk &final;
+    };
+}
 const testing = std.testing;
 const limits: platform.ImageLimits = .{ .max_dimension = 4096, .max_pixels = 4096 * 4096 };
 const jpeg_path = "tests/wpt/html/semantics/embedded-content/the-img-element/3.jpg";
@@ -49,7 +60,7 @@ test "SVG rasterizes straight RGBA pixels from XML" {
     try testing.expectEqual(@as(u32, 2), image.width);
     try testing.expectEqual(@as(u32, 2), image.height);
     try testing.expectEqual(platform.ImageDecodeStatus.complete, image.status);
-    try testing.expectEqualSlices(u8, &([_]u8{ 255, 0, 0, 255 } ** 4), image.pixels.slice());
+    try testing.expectEqualSlices(u8, repeat(&.{ 255, 0, 0, 255 }, 4), image.pixels.slice());
 }
 
 test "JPEG natural dimensions honor EXIF orientation" {
@@ -73,7 +84,7 @@ test "SVG uses XML namespaces and rejects malformed documents" {
     }) |invalid| try testing.expectError(error.Corrupt, decode(testing.allocator, "image/svg+xml", invalid));
     const image = try decode(testing.allocator, "image/svg+xml", "<s:svg xmlns:s='http://www.w3.org/2000/svg' width='2' height='2'><s:rect width='2' height='2' fill='&#35;ff0000'/></s:svg>");
     defer testing.allocator.free(image.pixels.slice());
-    try testing.expectEqualSlices(u8, &([_]u8{ 255, 0, 0, 255 } ** 4), image.pixels.slice());
+    try testing.expectEqualSlices(u8, repeat(&.{ 255, 0, 0, 255 }, 4), image.pixels.slice());
 }
 
 test "SVG default sizing, viewBox ratio, zero size, and limits" {
@@ -101,7 +112,7 @@ test "SVG resolves namespaced gradient references through XML" {
         "<defs><linearGradient id='a'><stop offset='0' stop-color='red'/><stop offset='1' stop-color='red'/></linearGradient>" ++
         "<linearGradient id='b' x:href='#a'/></defs><rect width='2' height='2' fill='url(#b)'/></svg>");
     defer testing.allocator.free(image.pixels.slice());
-    try testing.expectEqualSlices(u8, &([_]u8{ 255, 0, 0, 255 } ** 4), image.pixels.slice());
+    try testing.expectEqualSlices(u8, repeat(&.{ 255, 0, 0, 255 }, 4), image.pixels.slice());
 }
 
 test "SVG unrepresentable raster coordinates preserve dimensions without crashing" {
@@ -112,5 +123,5 @@ test "SVG unrepresentable raster coordinates preserve dimensions without crashin
     try testing.expectEqual(@as(u32, 2), image.height);
     try testing.expectEqual(platform.ImageDecodeStatus.corrupt, image.status);
     try testing.expect(image.empty);
-    try testing.expectEqualSlices(u8, &([_]u8{0} ** 16), image.pixels.slice());
+    try testing.expectEqualSlices(u8, &(@as([16]u8, @splat(0))), image.pixels.slice());
 }

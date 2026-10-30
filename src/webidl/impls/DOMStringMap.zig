@@ -36,33 +36,24 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+/// The element whose data-* attributes this map is, given at construction
+/// (HTMLElement's dataset getter): HTML's DOMStringMap "has an associated
+/// element".
+pub const construction_args = .{"element"};
 
-    return instance;
-}
-
-/// Factory for DOMStringMap
-pub fn create(allocator: std.mem.Allocator, ctx: runtime.Context, element: *runtime.Instance) !*runtime.Instance {
-    const instance = try init(allocator, State, &DOMStringMap.vtable, ctx);
-    errdefer deinit(instance);
-
+/// DOMStringMap's own construction steps: its state, when its element is
+/// given (a map with none has no state, as before).
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
+    if (!@hasField(@TypeOf(args), "element")) return;
     const internal = try allocator.create(InternalState);
-    internal.* = InternalState.init(allocator, element);
+    errdefer allocator.destroy(internal);
+    internal.* = InternalState.init(allocator, args.element);
     try Registry.set(instance, internal);
-
-    return instance;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// DOMStringMap's own teardown.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     if (Registry.get(instance)) |internal| {
         internal.allocator.destroy(internal);
     }

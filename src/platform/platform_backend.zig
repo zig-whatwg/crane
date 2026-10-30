@@ -262,7 +262,7 @@ pub const PlatformBackend = extern struct {
 
     /// Reserved space for future capabilities without breaking ABI.
     /// Embedders should NOT access these fields.
-    _reserved: [32]?*const anyopaque = [_]?*const anyopaque{null} ** 32,
+    _reserved: [32]?*const anyopaque = @as([32]?*const anyopaque, @splat(null)),
 
     // =========================================================================
     // Convenience Methods
