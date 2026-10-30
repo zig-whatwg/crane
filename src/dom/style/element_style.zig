@@ -45,6 +45,16 @@ pub const Cached = struct {
     /// The style read per-element dynamic state (or inherited from one
     /// that did): resolved again on every read (design 5.3).
     @"volatile": bool,
+    /// H-R3-ENGINE-KEY. The element's own animation component when resolved
+    /// (dom.animations.effect_stack.component): 0 with no effect, so a
+    /// running animation moves only its targets' keys.
+    animations: u64 = 0,
+    /// This style's serial (StyleEngine.nextSerial), and its flat-tree
+    /// parent's when it was resolved: a parent resolved again since - an
+    /// animated one, whose key moved alone - makes its children resolve
+    /// again too, so inheritance follows the animated value.
+    serial: u64 = 0,
+    parent_serial: u64 = 0,
 };
 
 pub const PseudoCached = struct {

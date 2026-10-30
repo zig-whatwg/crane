@@ -83,6 +83,9 @@ pub const Computed = struct {
     directed_progress: ?f64,
     /// 4.7.7-4.7.8: the iteration progress.
     progress: ?f64,
+    /// 4.7.7 step 2: the before flag the easing was evaluated with (a
+    /// keyframe's easing takes it too, 5.3.4 step 15).
+    before_flag: bool = false,
 };
 
 /// 4.6.6 an animation effect's phase, given its local time and whether its
@@ -123,11 +126,12 @@ pub fn compute(timing: *const Timing, local_time: ?f64, backwards: bool, inclusi
     const forwards = currentDirectionIsForwards(timing, iteration);
     const directed: ?f64 = if (simple) |s| (if (forwards) s else 1.0 - s) else null;
     var progress: ?f64 = null;
+    var before_flag = false;
     if (directed) |d| {
         // 4.7.7 step 2: "the before flag is set if the animation effect is in
         // the before phase and going forwards is true; or if the animation
         // effect is in the after phase and going forwards is false."
-        const before_flag = (the_phase == .before and forwards) or (the_phase == .after and !forwards);
+        before_flag = (the_phase == .before and forwards) or (the_phase == .after and !forwards);
         progress = timing.easing.evaluate(d, before_flag);
     }
     return .{
@@ -138,6 +142,7 @@ pub fn compute(timing: *const Timing, local_time: ?f64, backwards: bool, inclusi
         .current_iteration = iteration,
         .directed_progress = directed,
         .progress = progress,
+        .before_flag = before_flag,
     };
 }
 

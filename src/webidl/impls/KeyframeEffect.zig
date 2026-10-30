@@ -91,18 +91,21 @@ pub fn set_pseudoElement(instance: *runtime.Instance, value: ?typedefs.CSSOMStri
     const parsed = try animations.options.parsePseudoElement(effect.allocator, if (value) |v| v.asSlice() else null);
     if (effect.pseudo) |old| effect.allocator.free(old);
     effect.pseudo = parsed;
+    animations.registry.valuesChanged(instance.ctx);
 }
 
 /// Setter for composite.
 pub fn set_composite(instance: *runtime.Instance, value: enums.CompositeOperation) anyerror!void {
     const effect = try modelOf(instance);
     effect.composite = @enumFromInt(@intFromEnum(value));
+    animations.registry.valuesChanged(instance.ctx);
 }
 
 /// Setter for iterationComposite (Web Animations 2).
 pub fn set_iterationComposite(instance: *runtime.Instance, value: enums.IterationCompositeOperation) anyerror!void {
     const effect = try modelOf(instance);
     effect.iteration_accumulate = value == ._accumulate_;
+    animations.registry.valuesChanged(instance.ctx);
 }
 
 /// Operation: setKeyframes (6.6): "process a keyframes argument"; an
@@ -110,6 +113,7 @@ pub fn set_iterationComposite(instance: *runtime.Instance, value: enums.Iteratio
 pub fn call_setKeyframes(instance: *runtime.Instance, keyframes: ?runtime.JSValue) anyerror!void {
     const effect = try modelOf(instance);
     try animations.setKeyframes(effect, keyframes);
+    animations.registry.valuesChanged(instance.ctx);
 }
 
 /// Operation: getKeyframes (6.6): the keyframes with their computed

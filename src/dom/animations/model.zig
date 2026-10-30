@@ -806,6 +806,9 @@ pub const Animation = struct {
     /// engine cannot see, and ask for a frame while its timing needs one
     /// (lesson: frames on demand need every owner to ask).
     pub fn settle(self: *Animation) void {
+        // Every change to an animation ends here: the effect values may
+        // have moved (effect_stack.component).
+        registry.valuesChanged(self.instance.ctx);
         const needs_frame = self.hasPendingTask() or self.queued_events > 0 or self.playState() == .running;
         const document = self.documentForTiming();
         if (needs_frame) if (document) |d| registry.requestFrameFor(d);
