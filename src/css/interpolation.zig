@@ -42,6 +42,9 @@ const properties = @import("properties.zig");
 const values = @import("style_values.zig");
 const math = @import("math_values.zig");
 const transform_values = @import("transform_values.zig");
+const box_transform_values = @import("box_transform_values.zig");
+const position_values = @import("position_values.zig");
+const box_shadow_values = @import("box_shadow_values.zig");
 const Number = @import("numeric_values.zig").Number;
 
 const Longhand = properties.Longhand;
@@ -90,9 +93,8 @@ pub fn animationType(l: Longhand) AnimationType {
 /// The value kinds that combine discretely today although their types have
 /// smooth rules (named so a reader sees the gap, not an approximation).
 pub const pendingKinds = [_][]const u8{
-    "transform",      "transform_list",  "box_shadow",    "text_shadow",   "filter", "layers",
-    "image_position", "image_size",      "corner_radius", "font_settings", "paint",  "color.expression",
-    "color.current",  "sizing_function", "grid_tracks",
+    "transform_list", "text_shadow", "filter",           "layers",        "image_size",      "corner_radius",
+    "font_settings",  "paint",       "color.expression", "color.current", "sizing_function", "grid_tracks",
 };
 
 // ============================================================================
@@ -165,6 +167,9 @@ fn smooth(allocator: Allocator, from: Value, to: Value, p: f64) Allocator.Error!
         else => {},
     }
     if (individualTransform(from) != null or individualTransform(to) != null) return try mixTransforms(allocator, from, to, p, .interpolate);
+    if (shadowList(from) != null and shadowList(to) != null) return try mixBoxShadows(allocator, shadowList(from).?, shadowList(to).?, p, .interpolate);
+    if (from == .transform_origin and to == .transform_origin) return try mixOrigins(allocator, from.transform_origin, 1 - p, to.transform_origin, p);
+    if (from == .image_position and to == .image_position) return try mixPositions(allocator, from.image_position, 1 - p, to.image_position, p);
     if (lengthPercentage(from) and lengthPercentage(to)) return try mixLengths(allocator, from, 1 - p, to, p);
     return null;
 }
@@ -197,12 +202,28 @@ pub fn add(allocator: Allocator, l: Longhand, underlying: Value, value: Value) A
     if (individualTransform(underlying) != null or individualTransform(value) != null) {
         if (try mixTransforms(allocator, underlying, value, 1, .add)) |sum| return sum;
     }
+    if (l == .box_shadow) if (shadowList(underlying)) |a| if (shadowList(value)) |b| {
+        // Backgrounds 3 6.1: addition appends the lists; accumulation is
+        // the accumulate procedure below.
+        if (try concatBoxShadows(allocator, a, b)) |sum| return sum;
+    };
+    if (underlying == .transform_origin and value == .transform_origin) {
+        if (try mixOrigins(allocator, underlying.transform_origin, 1, value.transform_origin, 1)) |sum| return sum;
+    }
+    if (underlying == .image_position and value == .image_position) {
+        if (try mixPositions(allocator, underlying.image_position, 1, value.image_position, 1)) |sum| return sum;
+    }
     return retained(value);
 }
 
 /// Values 4 3 "accumulation": identical to addition for every type built
 /// here (numbers, lengths, colors).
 pub fn accumulate(allocator: Allocator, l: Longhand, underlying: Value, value: Value) Allocator.Error!Value {
+    // Shadow lists accumulate item by item (Backgrounds 3 6.1), unlike
+    // their addition, which appends.
+    if (l == .box_shadow) if (shadowList(underlying)) |a| if (shadowList(value)) |b| {
+        if (try mixBoxShadows(allocator, a, b, 1, .accumulate)) |sum| return sum;
+    };
     return add(allocator, l, underlying, value);
 }
 
@@ -394,6 +415,142 @@ fn degrees(n: Number) ?f64 {
         .grad => l.value * 0.9,
         .turn => l.value * 360,
         .number => if (l.value == 0) 0 else null,
+        else => null,
+    };
+}
+
+// ============================================================================
+// Coordinate pairs: transform-origin, the <position> properties
+// ============================================================================
+
+/// `a` * `ka` + `b` * `kb` of two computed numbers of one unit (a zero of
+/// either length unit takes the other's); null for a calc() or mixed pair.
+fn mixNumeric(a: Number, ka: f64, b: Number, kb: f64) ?math.Numeric {
+    const x = literal(a) orelse return null;
+    const y = literal(b) orelse return null;
+    if (x.unit != y.unit and !(isZero(x) or isZero(y))) return null;
+    const unit = if (isZero(x) and x.unit != y.unit) y.unit else x.unit;
+    return .{ .value = x.value * ka + y.value * kb, .unit = unit };
+}
+
+/// transform-origin (Transforms 1: "repeatable list of simple list of
+/// length, percentage, or calc"): each coordinate combines as a
+/// <length-percentage>; mixed units are pending (discrete).
+fn mixOrigins(allocator: Allocator, a: *const box_transform_values.Origin, ka: f64, b: *const box_transform_values.Origin, kb: f64) Allocator.Error!?Value {
+    var xy: [2]math.Numeric = undefined;
+    for (a.xy, b.xy, &xy) |pa, pb, *out| {
+        if (pa != .number or pb != .number) return null;
+        out.* = mixNumeric(pa.number, ka, pb.number, kb) orelse return null;
+    }
+    var z: ?math.Numeric = null;
+    if (a.z != null or b.z != null) {
+        const zero: Number = .{ .literal = .{ .value = 0, .unit = .px } };
+        z = mixNumeric(a.z orelse zero, ka, b.z orelse zero, kb) orelse return null;
+    }
+    const result = try allocator.create(box_transform_values.Origin);
+    result.* = .{ .allocator = allocator };
+    result.xy[0] = .{ .number = .{ .literal = xy[0] } };
+    result.xy[1] = .{ .number = .{ .literal = xy[1] } };
+    if (z) |v| result.z = .{ .literal = v };
+    return .{ .transform_origin = result };
+}
+
+/// A computed <position> (Values 4 9.1: "each coordinate combines as a
+/// <length-percentage>"), axis by axis; a complemented (right/bottom)
+/// offset that has not resolved to a plain value is pending (discrete).
+fn mixPositions(allocator: Allocator, a: *const position_values.Position, ka: f64, b: *const position_values.Position, kb: f64) Allocator.Error!?Value {
+    if (a.data != .computed or b.data != .computed or a.logical != b.logical) return null;
+    var offsets: [2]position_values.Offset = undefined;
+    var made: usize = 0;
+    errdefer for (offsets[0..made]) |o| o.value.release();
+    for (a.data.computed, b.data.computed) |oa, ob| {
+        if (oa.complement or ob.complement) return null;
+        if (!lengthPercentage(oa.value) or !lengthPercentage(ob.value)) return null;
+    }
+    for (a.data.computed, b.data.computed) |oa, ob| {
+        const v = (try mixLengths(allocator, oa.value, ka, ob.value, kb)) orelse {
+            for (offsets[0..made]) |o| o.value.release();
+            return null;
+        };
+        offsets[made] = .{ .value = v };
+        made += 1;
+    }
+    const result = try allocator.create(position_values.Position);
+    result.* = .{ .allocator = allocator, .data = .{ .computed = offsets }, .logical = a.logical };
+    return .{ .image_position = result };
+}
+
+// ============================================================================
+// box-shadow (Backgrounds 3 6.1: "as a shadow list")
+// ============================================================================
+
+const BoxShadowItem = box_shadow_values.Shadow;
+
+/// The items of a box-shadow value; `none` is the empty list.
+fn shadowList(v: Value) ?[]const BoxShadowItem {
+    return switch (v) {
+        .box_shadow => |b| b.items,
+        .keyword => |k| if (k == .none) &.{} else null,
+        else => null,
+    };
+}
+
+const ShadowOp = enum { interpolate, accumulate };
+
+/// Pairwise: each shadow's color and lengths combine, the shorter list
+/// padded with transparent zero-length shadows whose inset matches its
+/// partner's; a pair whose inset differs, or a color that is not a legacy
+/// sRGB color (currentcolor), is pending (discrete). The result is a
+/// specified value the cascade computes again (its lengths are px and its
+/// colors absolute, so it computes to itself).
+fn mixBoxShadows(allocator: Allocator, a: []const BoxShadowItem, b: []const BoxShadowItem, p: f64, op: ShadowOp) Allocator.Error!?Value {
+    const n = @max(a.len, b.len);
+    if (n == 0) return Value.kw(.none);
+    const items = try allocator.alloc(BoxShadowItem, n);
+    defer allocator.free(items);
+    for (0..n) |i| {
+        const x: ?BoxShadowItem = if (i < a.len) a[i] else null;
+        const y: ?BoxShadowItem = if (i < b.len) b[i] else null;
+        const inset = if (x) |v| v.inset else y.?.inset;
+        if (x != null and y != null and x.?.inset != y.?.inset) return null;
+        const transparent: RgbaColor = .{ .r = 0, .g = 0, .b = 0, .a = 0 };
+        const cx = if (x) |v| (if (v.color) |c| legacyRgba(c) else null) orelse return null else transparent;
+        const cy = if (y) |v| (if (v.color) |c| legacyRgba(c) else null) orelse return null else transparent;
+        var item: BoxShadowItem = .{ .inset = inset, .count = 4 };
+        item.color = .{ .rgba = switch (op) {
+            .interpolate => mixPremultiplied(cx, cy, p),
+            .accumulate => addPremultiplied(cx, cy),
+        } };
+        for (0..4) |k| {
+            const lx = shadowLength(x, k) orelse return null;
+            const ly = shadowLength(y, k) orelse return null;
+            item.lengths[k] = Value.px(switch (op) {
+                .interpolate => lerp(lx, ly, p),
+                .accumulate => lx + ly,
+            });
+        }
+        items[i] = item;
+    }
+    return .{ .box_shadow = try box_shadow_values.BoxShadow.create(allocator, items) };
+}
+
+/// Addition: the underlying list, then the effect's.
+fn concatBoxShadows(allocator: Allocator, a: []const BoxShadowItem, b: []const BoxShadowItem) Allocator.Error!?Value {
+    if (a.len + b.len == 0) return Value.kw(.none);
+    const items = try allocator.alloc(BoxShadowItem, a.len + b.len);
+    defer allocator.free(items);
+    @memcpy(items[0..a.len], a);
+    @memcpy(items[a.len..], b);
+    return .{ .box_shadow = try box_shadow_values.BoxShadow.create(allocator, items) };
+}
+
+/// A shadow's k-th length in px (0 for a missing one or a padding shadow);
+/// null for one that is not a px length.
+fn shadowLength(item: ?BoxShadowItem, k: usize) ?f64 {
+    const v = item orelse return 0;
+    if (k >= v.count) return 0;
+    return switch (v.lengths[k]) {
+        .length => |len| if (len.unit == .px) len.value else null,
         else => null,
     };
 }
