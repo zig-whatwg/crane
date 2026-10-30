@@ -80,3 +80,11 @@ test "5.3.4 step 15: the first endpoint's easing transforms the interval distanc
     try testing.expectEqual(@as(?f64, 0), try value(&kf, .{ .progress = 0.9 }, .{}, 0));
     try testing.expectEqual(@as(?f64, 10), try value(&kf, .{ .progress = 1 }, .{}, 0));
 }
+
+test "CSS Easing 2.2.2: degenerate cubic-bezier tangents follow the browsers (linear)" {
+    const f = easing_mod.evaluateFunction;
+    try testing.expectEqual(@as(f64, 1.5), f(.{ .cubic = .{ 1, 1, 1, 1 } }, 1.5, false));
+    try testing.expectEqual(@as(f64, -0.5), f(.{ .cubic = .{ 0, 0, 0, 0 } }, -0.5, false));
+    // A vertical tangent at an end point is slope 0.
+    try testing.expectEqual(@as(f64, 0), f(.{ .cubic = .{ 0, 1, 0, 1 } }, -0.5, false));
+}

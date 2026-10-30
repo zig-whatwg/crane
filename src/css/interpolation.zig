@@ -130,6 +130,10 @@ fn visibility(from: Value, to: Value, p: f64) Value {
     return if (p <= 0) retained(from) else retained(to);
 }
 
+fn isNone(v: Value) bool {
+    return v == .keyword and v.keyword == .none;
+}
+
 fn retained(v: Value) Value {
     v.retain();
     return v;
@@ -173,6 +177,12 @@ fn smooth(allocator: Allocator, from: Value, to: Value, p: f64) Allocator.Error!
 /// `value`.
 pub fn add(allocator: Allocator, l: Longhand, underlying: Value, value: Value) Allocator.Error!Value {
     if (animationType(l) != .by_computed_value) return retained(value);
+    // A transform or filter list's `none` is the identity list (Transforms
+    // 2 9, Filter Effects 1 11): adding it, or adding to it, changes nothing.
+    if (l == .transform or l == .filter) {
+        if (isNone(value)) return retained(underlying);
+        if (isNone(underlying)) return retained(value);
+    }
     switch (underlying) {
         .number => |a| if (value == .number) return .{ .number = a + value.number },
         .integer => |a| if (value == .integer) return .{ .integer = a +| value.integer },

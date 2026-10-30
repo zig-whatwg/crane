@@ -69,6 +69,8 @@ const cases = .{
     .{ Op.interpolate, "rotate", "none", "1turn", 0.25, "90deg" },
     .{ Op.add, "scale", "2", "3", 0, "6" },
     .{ Op.add, "translate", "10px", "5px 1px", 0, "15px 1px" },
+    .{ Op.add, "transform", "translateX(10px)", "none", 0, "matrix(1, 0, 0, 1, 10, 0)" },
+    .{ Op.add, "transform", "none", "translateX(10px)", 0, "matrix(1, 0, 0, 1, 10, 0)" },
     .{ Op.add, "margin-left", "10px", "5px", 0, "15px" },
     .{ Op.add, "opacity", "0.5", "0.75", 0, "1" },
     .{ Op.add, "color", "rgb(128, 128, 128)", "rgb(128, 0, 0)", 0, "rgb(255, 128, 128)" },
