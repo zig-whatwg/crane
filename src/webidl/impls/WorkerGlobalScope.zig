@@ -256,6 +256,9 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
             // URL's (html.secure_context.ofWorker).
             internal.is_secure_context = try @import("html").secure_context.ofWorker(allocator, internal.url, settings.owner_is_secure_context);
             internal.owner_prohibits_mixed_security_contexts = settings.owner_prohibits_mixed_security_contexts;
+            // "Run a worker" onComplete steps 5-9: the capability the worker
+            // host decided on the owner's thread.
+            internal.cross_origin_isolated = settings.cross_origin_isolated;
             // HTML "set up a worker environment settings object": a dedicated
             // worker's top-level origin is its owner's.
             if (settings.top_level_site) |site| internal.top_level_site = try allocator.dupe(u8, site);

@@ -48,6 +48,7 @@ pub fn init(
     const state = instance.getState(StateType);
     state.own.propertyName = runtime.DOMString.initEmpty();
     state.own.elapsedTime = 0;
+    state.own.animation = null;
     state.own.pseudoElement = runtime.DOMString.initEmpty();
     return instance;
 }
@@ -55,6 +56,10 @@ pub fn init(
 /// Deinitialize instance: its own strings, then the Event part.
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
+    // The animation member's edge (safe in teardown: a collected event's
+    // went with its wrapper).
+    if (state.own.animation != null) @import("engine").forgetTracedChild(instance, animation_slot);
+    state.own.animation = null;
     state.own.propertyName.deinit(instance.ctx.allocator);
     state.own.pseudoElement.deinit(instance.ctx.allocator);
     state.own.propertyName = runtime.DOMString.initEmpty();
@@ -76,6 +81,12 @@ pub fn call_constructor(ctx: runtime.Context, @"type": typedefs.CSSOMString, tra
     if (dict.propertyName) |value| state.own.propertyName = try value.clone(ctx.allocator);
     state.own.elapsedTime = dict.elapsedTime orelse 0;
     if (dict.pseudoElement) |value| state.own.pseudoElement = try value.clone(ctx.allocator);
+    // css-animations-2 / css-transitions-2: the animation member, kept by a
+    // traced edge for as long as the event (only a CSSTransition converts here).
+    if (dict.animation) |animation| {
+        @import("engine").traceChild(instance, animation, animation_slot);
+        state.own.animation = animation;
+    }
     return instance;
 }
 
@@ -94,11 +105,11 @@ pub fn get_pseudoElement(instance: *runtime.Instance) anyerror!typedefs.CSSOMStr
     return runtime.DOMString.initInterned(instance.getState(State).own.pseudoElement.asSlice());
 }
 
-/// Getter for animation (css-transitions-2): the CSSTransition the event was fired for, or the
-/// init dictionary's animation member. Always null here: Crane runs no CSS
-/// animations or transitions, so no CSSTransition exists to fire for, and CSSTransition has
-/// no constructor, so script cannot pass one in the init dictionary either.
+/// Getter for animation (css-animations-2 / css-transitions-2): the
+/// CSSTransition the event was fired for, or the init dictionary's animation
+/// member; null for neither.
 pub fn get_animation(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
+    return instance.getState(State).own.animation;
 }
+
+const animation_slot: @import("engine").TracedSlot = .{ .name = "TransitionEvent:animation" };

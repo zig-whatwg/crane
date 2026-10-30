@@ -144,7 +144,7 @@ test "PSL - non-domain hosts return null" {
     try std.testing.expect(ps1 == null);
 
     // IPv6
-    const host2 = Host{ .ipv6 = [_]u16{0} ** 8 };
+    const host2 = Host{ .ipv6 = @as([8]u16, @splat(0)) };
     const ps2 = try public_suffix.getPublicSuffix(allocator, host2);
     try std.testing.expect(ps2 == null);
 

@@ -94,10 +94,13 @@ pub const attribute_change_steps = @import("attribute_change_steps.zig");
 pub const adopting_steps = @import("adopting_steps.zig");
 pub const document_rendering = @import("document_rendering.zig");
 pub const update_the_rendering = @import("update_the_rendering.zig");
+/// Web Animations: the timing model, its objects' models, and update animations and send events (lane rendering2).
+pub const animations = @import("animations/root.zig");
 pub const finish_parsing_children = @import("finish_parsing_children.zig");
 pub const script_elements = @import("script_elements.zig");
 pub const activation = @import("activation.zig");
 pub const form_controls = @import("form_controls.zig");
+pub const selected_content = @import("selected_content.zig");
 pub const top_layer = @import("top_layer.zig");
 pub const dialog = @import("dialog.zig");
 pub const form_submission = @import("form_submission.zig");
@@ -152,6 +155,7 @@ pub const policy_containers = @import("policy_containers.zig");
 /// global's side.
 pub const csp_violations = @import("csp_violations.zig");
 pub const sri_reporting = @import("sri_reporting.zig");
+pub const coep_reporting = @import("coep_reporting.zig");
 pub const reporting = @import("reporting.zig");
 /// Trusted Types enforcement: get trusted type compliant string, the
 /// default policy, compliant attribute values.
@@ -293,6 +297,7 @@ pub const xpath = struct {
 pub const boundary_points = @import("boundary_points.zig");
 pub const target_element = @import("target_element.zig");
 pub const fragment_scroll = @import("fragment_scroll.zig");
+pub const ancestor_revealing = @import("ancestor_revealing.zig");
 pub const shadow_hosts = @import("shadow_hosts.zig");
 pub const declarative_shadow = @import("declarative_shadow.zig");
 

@@ -313,6 +313,7 @@ pub fn requestClient(global: *runtime.Instance) error{OutOfMemory}!Client {
     // client's requests to its active service worker.
     client.request.service_worker = @import("service_worker_clients.zig").routeForGlobal(global);
     client.request.integrity_violation_reporter = @import("sri_reporting.zig").reporterFor(global);
+    client.request.coep_violation_reporter = @import("coep_reporting.zig").reporterFor(global);
     return client;
 }
 

@@ -10,6 +10,17 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dom = @import("dom");
 
+/// `s` repeated `n` times: what `s ** n` was (Zig 0.17 removes `**`; roadmap zig-017).
+fn repeat(comptime s: []const u8, comptime n: usize) *const [s.len * n:0]u8 {
+    return comptime blk: {
+        @setEvalBranchQuota(10 * n + 1000);
+        var out: [s.len * n:0]u8 = undefined;
+        for (0..n) |i| @memcpy(out[i * s.len ..][0..s.len], s);
+        const final = out;
+        break :blk &final;
+    };
+}
+
 const allocator = testing.allocator;
 
 // Code units in WTF-8 (python: chr(u).encode('utf-8', 'surrogatepass')).
@@ -125,7 +136,7 @@ test "length is the number of UTF-16 code units of the data" {
             try interfaces.CharacterData.set_data(node, str(grinning ++ grinning));
             try testing.expectEqual(@as(u32, 4), try length(node));
             // Past the inline (31-byte) storage: 10 pairs, 40 bytes.
-            try interfaces.CharacterData.set_data(node, str(grinning ** 10));
+            try interfaces.CharacterData.set_data(node, str(repeat(grinning, 10)));
             try testing.expectEqual(@as(u32, 20), try length(node));
         }
     }.body);
@@ -202,7 +213,7 @@ test "appendData joins a lone high surrogate with the low one appended to it" {
             // Canonical bytes: equal to a node made from the pair itself.
             try testing.expect(try interfaces.Node.call_isEqualNode(node, try f.text(grinning)));
             // appendData past the inline storage keeps counting code units.
-            try interfaces.CharacterData.call_appendData(node, str(nihon ** 6));
+            try interfaces.CharacterData.call_appendData(node, str(repeat(nihon, 6)));
             try testing.expectEqual(@as(u32, 14), try length(node));
             try expectSubstring(node, 1, 2, lo_de00 ++ "\xE6\x97\xA5");
         }

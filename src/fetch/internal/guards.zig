@@ -252,7 +252,7 @@ test "HeaderGuard: request_no_cors with cumulative value" {
     // Appending would exceed 128 bytes total (existing + ", " + new)
     // existing "text/html" = 9 bytes
     // Adding a value that brings total > 128 should fail
-    const long_value = "a" ** 120; // Will exceed 128 when combined with existing
+    const long_value = &@as([120:0]u8, @splat('a')); // Will exceed 128 when combined with existing
     try std.testing.expect(!try canAppend(.request_no_cors, &headers, allocator, "Accept", long_value));
 }
 

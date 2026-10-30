@@ -79,7 +79,7 @@ pub const ExternalRef = struct {
 
 /// Dynamic collection for runtime registration
 /// Used as a fallback when comptime collection isn't possible
-var runtime_refs: [MAX_EXTERNAL_REFS]isize = [_]isize{0} ** MAX_EXTERNAL_REFS;
+var runtime_refs: [MAX_EXTERNAL_REFS]isize = @as([MAX_EXTERNAL_REFS]isize, @splat(0));
 var runtime_ref_count: usize = 0;
 
 /// Register a callback at runtime

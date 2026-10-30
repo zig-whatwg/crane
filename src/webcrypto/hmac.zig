@@ -44,7 +44,7 @@ test "HMAC matches RFC 2202 and RFC 4231 case 1 for every registered hash" {
         .{ Hash.sha384, "afd03944d84895626b0825f4ab46907f15f9dadbe4101ec682aa034c7cebc59cfaea9ea9076ede7f4af152e8b2fa9cb6" },
         .{ Hash.sha512, "87aa7cdea5ef619d4ff0b4241a1d6cb02379f4e2ce4ec2787ad0b30545e17cdedaa833b7d6b8a702038b274eaea3f4e4be9d914eeb61f1702e696c203a126854" },
     };
-    const key = [_]u8{0x0b} ** 20;
+    const key = @as([20]u8, @splat(0x0b));
     inline for (vectors) |vector| {
         var expected_storage: [64]u8 = undefined;
         const expected = try std.fmt.hexToBytes(&expected_storage, vector[1]);
@@ -64,7 +64,7 @@ test "HMAC matches RFC 2202 and RFC 4231 case 1 for every registered hash" {
 
 test "HMAC hashes a key longer than the hash block" {
     // RFC 4231 case 6.
-    const key = [_]u8{0xaa} ** 131;
+    const key = @as([131]u8, @splat(0xaa));
     const actual = try sign(std.testing.allocator, .sha256, &key, "Test Using Larger Than Block-Size Key - Hash Key First");
     defer std.testing.allocator.free(actual);
     var expected: [32]u8 = undefined;

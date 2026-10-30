@@ -78,6 +78,12 @@ pub const TimingReport = request.TimingReport;
 pub const policy_container = @import("policy_container.zig");
 pub const PolicyContainer = policy_container.PolicyContainer;
 
+/// HTML's embedder and opener policies as data, how a response's headers
+/// give them, and Fetch's cross-origin resource policy check.
+pub const cross_origin_policies = @import("cross_origin_policies.zig");
+pub const EmbedderPolicy = cross_origin_policies.EmbedderPolicy;
+pub const OpenerPolicy = cross_origin_policies.OpenerPolicy;
+
 /// RFC 9651 structured field parsing (Fetch "get a structured field value").
 pub const structured_fields = @import("structured_fields.zig");
 
@@ -165,6 +171,7 @@ test {
     _ = request_client;
     _ = service_worker_fetch;
     _ = policy_container;
+    _ = cross_origin_policies;
     _ = response;
     _ = fetch_controller;
     _ = fetch_params;

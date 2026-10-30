@@ -75,6 +75,9 @@ pub const RequestClient = struct {
     service_worker: ?request_mod.ServiceWorkerRoute = null,
     /// SRI §3.8.3. BORROWED with the CSP reporter's client lifetime.
     integrity_violation_reporter: ?request_mod.IntegrityViolationReporter = null,
+    /// Fetch 3.7's CORP violation reports. BORROWED with the CSP reporter's
+    /// client lifetime.
+    coep_violation_reporter: ?request_mod.CoepViolationReporter = null,
 };
 
 /// Fetch "populate request from client", for a request whose client is the
@@ -178,6 +181,7 @@ pub fn populateRequestFromClient(request: *InternalRequest, client: RequestClien
     // populated.
     if (request.service_worker == null) request.service_worker = client.service_worker;
     if (request.integrity_violation_reporter == null) request.integrity_violation_reporter = client.integrity_violation_reporter;
+    if (request.coep_violation_reporter == null) request.coep_violation_reporter = client.coep_violation_reporter;
 }
 
 test "populate request from client: traversable, origin, referrer and jar" {

@@ -597,3 +597,193 @@ test "an apply whose per-navigable task cannot be queued still finishes and sets
     try testing.expectEqual(@as(u32, 0), history.current_step);
     try testing.expect(!history.isApplying(1));
 }
+
+// Lane nav2 E: "apply the history step" step 14.1 - while a traversal waits
+// for its change jobs, synchronous navigation steps whose target navigable it
+// lets through run nested ("running nested apply history step"), from the
+// queue's service task: right after the traversal's run returns, and from a
+// service task of their own when appended later - never inside the append.
+// A nested item never waits: it is finished when it returns.
+
+/// A traversal that waits on navigable 50 and lets synchronous navigation
+/// steps jump it, except those targeting `excluded`.
+const Jumped = struct {
+    item: Item,
+    harness: *Harness,
+    top: *BrowsingContext,
+    excluded: ?u64 = null,
+    lets_jump: bool = true,
+
+    fn make(harness: *Harness, top: *BrowsingContext, excluded: ?u64, lets_jump: bool) !*Jumped {
+        const self = try testing.allocator.create(Jumped);
+        self.* = .{
+            .item = .{ .run = run, .destroy = destroy, .accepts_sync = if (lets_jump) accepts else null },
+            .harness = harness,
+            .top = top,
+            .excluded = excluded,
+            .lets_jump = lets_jump,
+        };
+        return self;
+    }
+
+    fn run(item: *Item) Outcome {
+        const self: *Jumped = @fieldParentPtr("item", item);
+        self.harness.log.append(testing.allocator, 'T') catch {};
+        if (!TraversalQueue.waitFor(&self.harness.navigables, self.top.id, item.token, 50)) return .done;
+        return .pending;
+    }
+
+    fn accepts(item: *Item, target: u64) bool {
+        const self: *Jumped = @fieldParentPtr("item", item);
+        return self.excluded == null or self.excluded.? != target;
+    }
+
+    fn destroy(item: *Item) void {
+        const self: *Jumped = @fieldParentPtr("item", item);
+        self.harness.destroyed += 1;
+        testing.allocator.destroy(self);
+    }
+};
+
+/// Synchronous navigation steps that record whether they ran nested.
+const SyncStep = struct {
+    item: Item,
+    harness: *Harness,
+    top: *BrowsingContext,
+    name: u8,
+
+    fn make(harness: *Harness, top: *BrowsingContext, name: u8, target: u64) !*SyncStep {
+        const self = try testing.allocator.create(SyncStep);
+        self.* = .{ .item = .{ .target = target, .run = run, .destroy = destroy }, .harness = harness, .top = top, .name = name };
+        return self;
+    }
+
+    fn run(item: *Item) Outcome {
+        const self: *SyncStep = @fieldParentPtr("item", item);
+        const queue = self.top.traversal_queue.?;
+        // Upper case: nested.
+        self.harness.log.append(testing.allocator, if (queue.running_nested_apply) std.ascii.toUpper(self.name) else self.name) catch {};
+        return .done;
+    }
+
+    fn destroy(item: *Item) void {
+        const self: *SyncStep = @fieldParentPtr("item", item);
+        self.harness.destroyed += 1;
+        testing.allocator.destroy(self);
+    }
+};
+
+test "while a traversal waits, the synchronous navigation steps it lets through run nested in its service task, in order; the rest wait behind it" {
+    var harness = Harness.init();
+    defer harness.deinit();
+    const top = try BrowsingContext.initTopLevel(testing.allocator, &harness.navigables);
+    defer top.deinit();
+    const queue = try top.traversalQueue(Harness.schedule);
+
+    const traversal = try Jumped.make(&harness, top, 5, true);
+    try testing.expect(queue.append(&traversal.item));
+    const token = traversal.item.token;
+    try testing.expect(queue.append(&(try SyncStep.make(&harness, top, 'x', 7)).item));
+    try testing.expect(queue.append(&(try SyncStep.make(&harness, top, 'y', 5)).item));
+    try testing.expect(queue.append(&(try Step.make(&harness, 'P', .done, null)).item));
+    try testing.expect(queue.append(&(try SyncStep.make(&harness, top, 'z', 9)).item));
+
+    // One service task: the traversal's run, then x and z nested.
+    try testing.expectEqual(@as(usize, 1), harness.runTasks());
+    try testing.expectEqualStrings("TXZ", harness.log.items);
+    try testing.expect(!queue.running_nested_apply);
+    try testing.expectEqual(@as(usize, 2), harness.destroyed);
+    try testing.expect(TraversalQueue.isRunning(&harness.navigables, top.id, token));
+    try testing.expectEqual(@as(usize, 2), queue.items.items.len);
+
+    // The traversal ends: y and P run after it, in order, not nested.
+    TraversalQueue.populationEnded(&harness.navigables, top.id, token, 50);
+    _ = harness.runTasks();
+    try testing.expectEqualStrings("TXZyP", harness.log.items);
+    try testing.expectEqual(@as(usize, 5), harness.destroyed);
+}
+
+test "synchronous navigation steps appended while a traversal waits run nested from a service task of their own, never inside the append" {
+    var harness = Harness.init();
+    defer harness.deinit();
+    const top = try BrowsingContext.initTopLevel(testing.allocator, &harness.navigables);
+    defer top.deinit();
+    const queue = try top.traversalQueue(Harness.schedule);
+
+    const traversal = try Jumped.make(&harness, top, null, true);
+    try testing.expect(queue.append(&traversal.item));
+    const token = traversal.item.token;
+    _ = harness.runTasks();
+    try testing.expectEqualStrings("T", harness.log.items);
+
+    try testing.expect(queue.append(&(try SyncStep.make(&harness, top, 'x', 7)).item));
+    try testing.expectEqualStrings("T", harness.log.items);
+    try testing.expectEqual(@as(usize, 1), harness.scheduled.items.len);
+    _ = harness.runTasks();
+    try testing.expectEqualStrings("TX", harness.log.items);
+    try testing.expect(TraversalQueue.isRunning(&harness.navigables, top.id, token));
+    TraversalQueue.populationEnded(&harness.navigables, top.id, token, 50);
+    _ = harness.runTasks();
+    try testing.expectEqual(@as(usize, 2), harness.destroyed);
+}
+
+test "an item that lets no synchronous navigation jump keeps them queued behind it" {
+    var harness = Harness.init();
+    defer harness.deinit();
+    const top = try BrowsingContext.initTopLevel(testing.allocator, &harness.navigables);
+    defer top.deinit();
+    const queue = try top.traversalQueue(Harness.schedule);
+
+    const traversal = try Jumped.make(&harness, top, null, false);
+    try testing.expect(queue.append(&traversal.item));
+    const token = traversal.item.token;
+    try testing.expect(queue.append(&(try SyncStep.make(&harness, top, 'x', 7)).item));
+    _ = harness.runTasks();
+    try testing.expect(queue.append(&(try SyncStep.make(&harness, top, 'y', 8)).item));
+    try testing.expectEqual(@as(usize, 0), harness.runTasks());
+    try testing.expectEqualStrings("T", harness.log.items);
+    TraversalQueue.populationEnded(&harness.navigables, top.id, token, 50);
+    _ = harness.runTasks();
+    try testing.expectEqualStrings("Txy", harness.log.items);
+    try testing.expectEqual(@as(usize, 3), harness.destroyed);
+}
+
+test "a traversable that ends with synchronous navigation steps queued behind a waiting traversal destroys them once" {
+    var harness = Harness.init();
+    defer harness.deinit();
+    const top = try BrowsingContext.initTopLevel(testing.allocator, &harness.navigables);
+    const queue = try top.traversalQueue(Harness.schedule);
+    try testing.expect(queue.append(&(try Jumped.make(&harness, top, 7, true)).item));
+    try testing.expect(queue.append(&(try SyncStep.make(&harness, top, 'x', 7)).item));
+    _ = harness.runTasks();
+    top.deinit();
+    try testing.expectEqual(@as(usize, 2), harness.destroyed);
+    _ = harness.runTasks();
+    try testing.expectEqualStrings("T", harness.log.items);
+}
+
+// Only a traversal lets synchronous navigation steps jump it: the step 20 of
+// a reload, an update for navigable creation/destruction or a finalize's own
+// push/replace step would set the current step back under a jumped push
+// (whatwg/html#10232, #12961).
+test "only a traversal's apply lets synchronous navigations jump: a reload, an update and a finalize do not" {
+    var harness = Harness.init();
+    defer harness.deinit();
+    const top = try BrowsingContext.initTopLevel(testing.allocator, &harness.navigables);
+    defer top.deinit();
+    const history = try top.jointHistory();
+    try history.addInitialEntry(top.id, "http://x.test/t", null, "http://x.test");
+    const queue = try top.traversalQueue(Harness.schedule);
+
+    apply_history_step.traverse(top, testing.allocator, .{ .delta = -1 }, .{});
+    apply_history_step.reload(top, testing.allocator, history.currentEntry(top.id).?.id, null, false);
+    apply_history_step.updateForNavigableCreationDestruction(top);
+    const nav = try history.navigateSameDocument(top.id, "http://x.test/t#1", .null, .push, null);
+    apply_history_step.finalizeSameDocument(top, testing.allocator, nav);
+    try testing.expectEqual(@as(usize, 4), queue.items.items.len);
+    try testing.expect(queue.items.items[0].accepts_sync != null);
+    try testing.expect(queue.items.items[1].accepts_sync == null);
+    try testing.expect(queue.items.items[2].accepts_sync == null);
+    try testing.expect(queue.items.items[3].accepts_sync == null);
+    try testing.expectEqual(@as(?u64, top.id), queue.items.items[3].target);
+}

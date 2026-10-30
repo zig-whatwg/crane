@@ -68,7 +68,7 @@ const Probe = struct {
         return std.mem.eql(u8, value, "true");
     }
 
-    fn supports(context: *anyopaque, value: []const u8, quirks: bool) sub.Error!bool {
+    fn supports(context: *anyopaque, value: []const u8, quirks: bool, _: ?*const sub.NamespaceMap) sub.Error!bool {
         const self: *Probe = @ptrCast(@alignCast(context));
         self.quirks = quirks;
         return media(context, value);

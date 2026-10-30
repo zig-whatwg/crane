@@ -8,7 +8,13 @@
 //! and a WorkerGlobalScope each own theirs (src/dom/policy_containers.zig
 //! reaches them); a request owns its clone.
 //!
-//! Not modelled, stated: the embedder policy.
+//! The embedder policy is HTML's (7.1.4; cross_origin_policies.zig). The
+//! opener policy rides here too, though HTML keeps it on the Document and
+//! never inherits it through a container - `clone` leaves it at its initial
+//! value - as Chromium's PolicyContainerPolicies carries
+//! cross_origin_opener_policy beside cross_origin_embedder_policy
+//! (content/browser/renderer_host/policy_container_host.h): it is the
+//! document's, set by the navigation that makes the document (stated).
 //!
 //! The CSP list is a list of parsed policies; "a copy of policy" (clone step
 //! 2) is csp.parsing.copyPolicy, the policy's serialization parsed again.
@@ -23,6 +29,9 @@ const request_mod = @import("request.zig");
 const origins = @import("origins.zig");
 const structured_fields = @import("structured_fields.zig");
 const mixed_content = @import("../mixed_content.zig");
+const cross_origin_policies = @import("cross_origin_policies.zig");
+pub const EmbedderPolicy = cross_origin_policies.EmbedderPolicy;
+pub const OpenerPolicy = cross_origin_policies.OpenerPolicy;
 const basic_parser = @import("basic_parser");
 const url_serializer = @import("url_serializer");
 
@@ -59,7 +68,11 @@ pub const PolicyContainer = struct {
     /// UIR 3.3: inherited upgrade-insecure-navigations (host, port) tuples.
     /// Each host is OWNED. Own opt-ins are derived from enforced policies'
     /// delivery URLs, so an uninherited set adds no allocation.
-    inherited_upgrade_insecure_navigations: std.ArrayListUnmanaged(NavigationUpgrade) = .empty,
+    /// A slice, not a list: a Document keeps its container in its state, which
+    /// has no room to spare (tests/html/af2_autofocus_test.zig pins it to its
+    /// 2,048-B allocation class), and the set only grows while it is
+    /// inherited.
+    inherited_upgrade_insecure_navigations: []NavigationUpgrade = &.{},
 
     /// "A referrer policy, which is a referrer policy. It is initially the
     /// default referrer policy." The empty string is one too: "create a policy
@@ -67,7 +80,104 @@ pub const PolicyContainer = struct {
     /// names none, and main fetch then falls back to the default.
     referrer_policy: ReferrerPolicy = .strict_origin_when_cross_origin,
 
+    /// The embedder policy ("an embedder policy, which is an embedder
+    /// policy. It is initially a new embedder policy") and the document's
+    /// opener policy, out of line: null while both are new policies - every
+    /// value "unsafe-none", no endpoint - so a container whose response sent
+    /// neither header allocates nothing, and a Document's state (which keeps
+    /// its container inline, in a 2,048-B allocation class) grows by one
+    /// pointer. Read with `embedderPolicy` / `openerPolicy`, set with
+    /// `setEmbedderPolicy` / `setOpenerPolicy`. OWNED.
+    cross_origin: ?*CrossOriginPolicies = null,
+
     const NavigationUpgrade = struct { host: []const u8, port: ?u16 };
+
+    /// The container's embedder policy and its document's opener policy. The
+    /// opener policy (HTML 7.1.3) is the Document's, carried with its
+    /// container as Chromium's PolicyContainerPolicies does (module doc):
+    /// NOT part of HTML's policy container - `clone` gives a new opener
+    /// policy, and a request never reads it. Meaningful for a top-level
+    /// document only. Endpoints owned by the container's allocator.
+    pub const CrossOriginPolicies = struct {
+        embedder_policy: EmbedderPolicy = .{},
+        opener_policy: OpenerPolicy = .{},
+
+        fn isNew(self: *const CrossOriginPolicies) bool {
+            return isNewEmbedderPolicy(&self.embedder_policy) and isNewOpenerPolicy(&self.opener_policy);
+        }
+    };
+
+    /// What `embedderPolicy` and `openerPolicy` answer for a container with
+    /// none set: new policies. Static and read-only.
+    const new_cross_origin: CrossOriginPolicies = .{};
+
+    fn isNewEmbedderPolicy(policy: *const EmbedderPolicy) bool {
+        return policy.value == .unsafe_none and policy.report_only_value == .unsafe_none and
+            policy.reporting_endpoint.len == 0 and policy.report_only_reporting_endpoint.len == 0;
+    }
+
+    fn isNewOpenerPolicy(policy: *const OpenerPolicy) bool {
+        return policy.value == .unsafe_none and policy.report_only_value == .unsafe_none and
+            policy.reporting_endpoint == null and policy.report_only_reporting_endpoint == null;
+    }
+
+    /// The container's embedder policy. BORROWED while the container lives
+    /// and its embedder policy is not set again.
+    pub fn embedderPolicy(self: *const PolicyContainer) *const EmbedderPolicy {
+        return if (self.cross_origin) |policies| &policies.embedder_policy else &new_cross_origin.embedder_policy;
+    }
+
+    /// The container's document's opener policy. BORROWED as
+    /// `embedderPolicy`'s answer is.
+    pub fn openerPolicy(self: *const PolicyContainer) *const OpenerPolicy {
+        return if (self.cross_origin) |policies| &policies.opener_policy else &new_cross_origin.opener_policy;
+    }
+
+    /// Set the embedder policy to `policy`, which the container takes (its
+    /// endpoints are the container allocator's). Released on failure.
+    pub fn setEmbedderPolicy(self: *PolicyContainer, policy: EmbedderPolicy) error{OutOfMemory}!void {
+        var taken = policy;
+        const policies = self.crossOriginFor(isNewEmbedderPolicy(&taken)) catch |err| {
+            taken.deinit(self.allocator);
+            return err;
+        } orelse return;
+        policies.embedder_policy.deinit(self.allocator);
+        policies.embedder_policy = taken;
+        self.dropNewCrossOrigin();
+    }
+
+    /// Set the opener policy to `policy`, which the container takes, as
+    /// `setEmbedderPolicy` does.
+    pub fn setOpenerPolicy(self: *PolicyContainer, policy: OpenerPolicy) error{OutOfMemory}!void {
+        var taken = policy;
+        const policies = self.crossOriginFor(isNewOpenerPolicy(&taken)) catch |err| {
+            taken.deinit(self.allocator);
+            return err;
+        } orelse return;
+        policies.opener_policy.deinit(self.allocator);
+        policies.opener_policy = taken;
+        self.dropNewCrossOrigin();
+    }
+
+    /// The out-of-line policies to write into: made when a policy that is not
+    /// new is set; null when a new policy is set where there are none - there
+    /// is nothing to do.
+    fn crossOriginFor(self: *PolicyContainer, setting_new: bool) error{OutOfMemory}!?*CrossOriginPolicies {
+        if (self.cross_origin) |policies| return policies;
+        if (setting_new) return null;
+        const policies = try self.allocator.create(CrossOriginPolicies);
+        policies.* = .{};
+        self.cross_origin = policies;
+        return policies;
+    }
+
+    /// Free the out-of-line policies once both are new again.
+    fn dropNewCrossOrigin(self: *PolicyContainer) void {
+        const policies = self.cross_origin orelse return;
+        if (!policies.isNew()) return;
+        self.allocator.destroy(policies);
+        self.cross_origin = null;
+    }
 
     /// The container a global's settings object answers with when the one
     /// it keeps cannot be found - a Window whose document, or whose
@@ -99,18 +209,13 @@ pub const PolicyContainer = struct {
             .csp_list = csp.parsing.copyList(allocator, &self.csp_list) catch return error.OutOfMemory,
         };
         errdefer copy.deinit();
+        // 3. Set clone's embedder policy to a copy of policyContainer's
+        // embedder policy. (Not the opener policy: CrossOriginPolicies.)
+        try copy.setEmbedderPolicy(try self.embedderPolicy().clone(allocator));
         // 4. Set clone's referrer policy to policyContainer's referrer policy.
         copy.referrer_policy = self.referrer_policy;
         copy.inherited_upgrade_insecure_requests = self.inherited_upgrade_insecure_requests;
-        if (self.inherited_upgrade_insecure_navigations.items.len != 0) {
-            try copy.inherited_upgrade_insecure_navigations.ensureTotalCapacity(allocator, self.inherited_upgrade_insecure_navigations.items.len);
-            for (self.inherited_upgrade_insecure_navigations.items) |tuple| {
-                copy.inherited_upgrade_insecure_navigations.appendAssumeCapacity(.{
-                    .host = try allocator.dupe(u8, tuple.host),
-                    .port = tuple.port,
-                });
-            }
-        }
+        for (self.inherited_upgrade_insecure_navigations) |tuple| try copy.appendNavigationUpgrade(tuple);
         // 5. Copy the integrity policy. DEVIATION from HTML's clone step 5,
         // which copies only the enforced policy: the report-only policy is
         // copied too, because SRI §3.8.2 step 6 reads it from the request's
@@ -126,12 +231,17 @@ pub const PolicyContainer = struct {
     /// Release the container's owned policies and header values.
     pub fn deinit(self: *PolicyContainer) void {
         self.csp_list.deinit();
+        if (self.cross_origin) |policies| {
+            policies.embedder_policy.deinit(self.allocator);
+            policies.opener_policy.deinit(self.allocator);
+            self.allocator.destroy(policies);
+        }
         if (self.endpoints) |endpoints| endpoints.deinit();
         if (self.integrity_policy) |policy| policy.deinit();
         if (self.integrity_policy_report_only) |policy| policy.deinit();
         if (self.required_csp) |required| self.allocator.free(required);
-        for (self.inherited_upgrade_insecure_navigations.items) |tuple| self.allocator.free(tuple.host);
-        self.inherited_upgrade_insecure_navigations.deinit(self.allocator);
+        for (self.inherited_upgrade_insecure_navigations) |tuple| self.allocator.free(tuple.host);
+        if (self.inherited_upgrade_insecure_navigations.len != 0) self.allocator.free(self.inherited_upgrade_insecure_navigations);
         self.* = undefined;
     }
 
@@ -155,6 +265,13 @@ pub const PolicyContainer = struct {
         // 3. "Set result's CSP list to the result of parsing a response's
         // Content Security Policies given response."
         try parseResponseCsp(allocator, &result.csp_list, response);
+        // 4. "If environment is non-null, then set result's embedder policy
+        // to the result of obtaining an embedder policy given response and
+        // environment. Otherwise, set it to "unsafe-none"."
+        if (response.environment_secure) |secure| try result.setEmbedderPolicy(try cross_origin_policies.obtainEmbedderPolicy(allocator, .{
+            .coep = response.coep,
+            .coep_report_only = response.coep_report_only,
+        }, secure));
         if (response.reporting_endpoints) |header| result.endpoints = try Endpoints.fromHeader(allocator, response.url, header);
         // 5. Set result's referrer policy to the result of parsing the
         // `Referrer-Policy` header given response: the last token that is a
@@ -205,7 +322,7 @@ pub const PolicyContainer = struct {
     /// An empty or already-inherited set allocates nothing. On failure, the
     /// caller must discard this partial container rather than commit it.
     pub fn inheritUpgradeInsecureNavigations(self: *PolicyContainer, parent: *const PolicyContainer) error{OutOfMemory}!void {
-        for (parent.inherited_upgrade_insecure_navigations.items) |tuple| try self.appendNavigationUpgrade(tuple);
+        for (parent.inherited_upgrade_insecure_navigations) |tuple| try self.appendNavigationUpgrade(tuple);
         for (parent.csp_list.policies.items) |*policy| {
             if (ownNavigationUpgrade(policy)) |tuple| try self.appendNavigationUpgrade(tuple);
         }
@@ -218,7 +335,7 @@ pub const PolicyContainer = struct {
     /// spec's pair, rather than Blink's host-only set (no newer spec).
     pub fn upgradesNavigationTo(self: *const PolicyContainer, url: []const u8) bool {
         const tuple = navigationUpgradeOf(url) orelse return false;
-        for (self.inherited_upgrade_insecure_navigations.items) |inherited| {
+        for (self.inherited_upgrade_insecure_navigations) |inherited| {
             if (sameNavigationUpgrade(inherited, tuple)) return true;
         }
         for (self.csp_list.policies.items) |*policy| {
@@ -230,12 +347,15 @@ pub const PolicyContainer = struct {
     }
 
     fn appendNavigationUpgrade(self: *PolicyContainer, tuple: NavigationUpgrade) error{OutOfMemory}!void {
-        for (self.inherited_upgrade_insecure_navigations.items) |existing| {
+        for (self.inherited_upgrade_insecure_navigations) |existing| {
             if (sameNavigationUpgrade(existing, tuple)) return;
         }
         const host = try self.allocator.dupe(u8, tuple.host);
         errdefer self.allocator.free(host);
-        try self.inherited_upgrade_insecure_navigations.append(self.allocator, .{ .host = host, .port = tuple.port });
+        const old = self.inherited_upgrade_insecure_navigations;
+        const grown = if (old.len == 0) try self.allocator.alloc(NavigationUpgrade, 1) else try self.allocator.realloc(old, old.len + 1);
+        grown[grown.len - 1] = .{ .host = host, .port = tuple.port };
+        self.inherited_upgrade_insecure_navigations = grown;
     }
 
     /// UIR 3.1 steps 3-4: only enforcement opts the protected resource in.
@@ -269,6 +389,13 @@ pub const ResponseHeaders = struct {
     integrity_policy_report_only: ?[]const u8 = null,
     required_csp: ?[]const u8 = null,
     blanket_csp_acceptance: bool = false,
+    /// `Cross-Origin-Embedder-Policy` and its -Report-Only twin.
+    coep: ?[]const u8 = null,
+    coep_report_only: ?[]const u8 = null,
+    /// Step 4's environment: null when there is none (the embedder policy
+    /// stays "unsafe-none"), else whether it is a secure context - "obtain
+    /// an embedder policy" step 2 returns a new policy for a non-secure one.
+    environment_secure: ?bool = null,
 };
 
 /// SRI §3.8's policy, projected onto the source and destination browsers

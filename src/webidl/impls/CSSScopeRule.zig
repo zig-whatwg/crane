@@ -1,52 +1,23 @@
-//! Implementation for CSSScopeRule interface
-
-const std = @import("std");
+//! CSS Cascade 6 section 4.1: the serialized scoping boundaries.
+//! Evaluation and scope proximity are tracked by CSS @SCOPE EVALUATION.
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const CSSScopeRule = interfaces.CSSScopeRule;
+const dom = @import("dom");
 
-pub const State = CSSScopeRule.State;
-
-pub const ImplError = error{
-    NotImplemented,
-};
-
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
+pub const State = interfaces.CSSScopeRule.State;
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
-}
-
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-/// Getter for start
 pub fn get_start(instance: *runtime.Instance) anyerror!?typedefs.CSSOMString {
-    _ = instance;
-    return null;
+    const rule = dom.style.hooks.cssRuleOf(instance) orelse return null;
+    if (rule.data != .scope) return null;
+    const text = rule.data.scope.start orelse return null;
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, text);
 }
 
-/// Getter for end
 pub fn get_end(instance: *runtime.Instance) anyerror!?typedefs.CSSOMString {
-    _ = instance;
-    return null;
+    const rule = dom.style.hooks.cssRuleOf(instance) orelse return null;
+    if (rule.data != .scope) return null;
+    const text = rule.data.scope.end orelse return null;
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, text);
 }

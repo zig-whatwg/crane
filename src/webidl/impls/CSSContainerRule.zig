@@ -1,58 +1,56 @@
-//! Implementation for CSSContainerRule interface
-
-const std = @import("std");
+//! CSS Conditional 5 section 9.1: CSSOM over the parsed condition list.
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const CSSContainerRule = interfaces.CSSContainerRule;
+const dom = @import("dom");
+const css = @import("css");
 
-pub const State = CSSContainerRule.State;
-
-pub const ImplError = error{
-    NotImplemented,
-};
-
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
+pub const State = interfaces.CSSContainerRule.State;
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+fn conditionsOf(instance: *runtime.Instance) []const css.container_queries.Condition {
+    const rule = dom.style.hooks.cssRuleOf(instance) orelse return &.{};
+    return switch (rule.data) {
+        .container => |*container| container.conditions.conditions,
+        else => &.{},
+    };
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-/// Getter for containerName
+/// Section 9.1, containerName steps 1–3: only a single condition has a name.
 pub fn get_containerName(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const conditions = conditionsOf(instance);
+    if (conditions.len != 1) return runtime.DOMString.initEmpty();
+    return runtime.DOMString.initDupe(instance.ctx.allocator, conditions[0].name);
 }
 
-/// Getter for containerQuery
+/// Section 9.1, containerQuery steps 1–3: multiple conditions return "".
 pub fn get_containerQuery(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const conditions = conditionsOf(instance);
+    if (conditions.len != 1) return runtime.DOMString.initEmpty();
+    return runtime.DOMString.initDupe(instance.ctx.allocator, conditions[0].query);
 }
 
-/// Getter for conditions
+/// Section 9.1, conditions steps 1–3. These are freshly converted IDL
+/// dictionaries in the current realm, inside a frozen array. No cached
+/// script value or model-to-wrapper hold is introduced.
 pub fn get_conditions(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
+    const conditions = conditionsOf(instance);
+    const allocator = instance.ctx.allocator;
+    const realm = engine.currentRealm() orelse instance.ctx;
+    const owned = try allocator.alloc(engine.Owned, conditions.len);
+    defer allocator.free(owned);
+    var initialized: usize = 0;
+    defer for (owned[0..initialized]) |value| value.release();
+    const values = try allocator.alloc(runtime.JSValue, conditions.len);
+    defer allocator.free(values);
+    for (conditions, 0..) |condition, i| {
+        owned[i] = try engine.createDictionaryObject(realm, &.{
+            .{ .name = "name", .value = runtime.JSValue.fromStringRef(condition.name) },
+            .{ .name = "query", .value = runtime.JSValue.fromStringRef(condition.query) },
+        });
+        initialized += 1;
+        values[i] = owned[i].borrow();
+    }
+    return (try engine.createFrozenArray(realm, values)).take();
 }

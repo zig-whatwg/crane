@@ -1496,6 +1496,20 @@ pub inline fn hasOwnProperty(realm: Context, object: JSValue, property: []const 
     return impl.hasOwnProperty(realm, object, property);
 }
 
+/// ECMAScript EnumerableOwnProperties(O, key) (7.3.24): O's own enumerable
+/// String-keyed property names, in [[OwnPropertyKeys]] order (integer
+/// indices first, as Strings). A Symbol key is skipped before its
+/// [[GetOwnProperty]]; every String key is asked [[GetOwnProperty]] once, and
+/// no property is Got. What script throws (a Proxy's ownKeys or
+/// getOwnPropertyDescriptor trap) is left pending: ExceptionPending.
+/// TypeError when `object` is not an Object. OWNED by `allocator`: the
+/// slice and each name (UTF-8; a lone surrogate as WTF-8).
+/// Web Animations "process a keyframe-like object" step 4 reads its input's
+/// names this way: a custom property (`--x`) is found only by enumerating.
+pub inline fn enumerableOwnPropertyKeys(realm: Context, object: JSValue, allocator: std.mem.Allocator) Error![][]u8 {
+    return impl.enumerableOwnPropertyKeys(realm, object, allocator);
+}
+
 /// Type(V).
 pub inline fn typeOf(realm: Context, value: JSValue) ValueType {
     return impl.typeOf(realm, value);

@@ -218,7 +218,7 @@ pub const IMAGE_PATTERNS = [_]Pattern{
 
 /// Dispatch entry: stores indices of patterns with same first byte
 pub const DispatchEntry = struct {
-    indices: [8]usize = [_]usize{0xFF} ** 8, // Max 8 patterns per byte, 0xFF = unused
+    indices: [8]usize = @as([8]usize, @splat(0xFF)), // Max 8 patterns per byte, 0xFF = unused
     count: usize = 0,
 };
 
@@ -231,7 +231,7 @@ pub const IMAGE_FIRST_BYTE_DISPATCH = buildImageDispatchTable();
 fn buildImageDispatchTable() [256]DispatchEntry {
     @setEvalBranchQuota(10000);
 
-    var table = [_]DispatchEntry{.{}} ** 256;
+    var table = @as([256]DispatchEntry, @splat(.{}));
 
     // Build dispatch table
     for (IMAGE_PATTERNS, 0..) |pattern, idx| {

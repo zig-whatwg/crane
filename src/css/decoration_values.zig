@@ -15,7 +15,7 @@ const Stream = properties.Stream;
 /// allocating once per untouched style. No references or external storage.
 pub const Keywords = struct {
     property: Longhand,
-    items: [4]Keyword = .{.none} ** 4,
+    items: [4]Keyword = @splat(.none),
     count: u3 = 0,
 
     pub fn init(property: Longhand, items: []const Keyword) Keywords {
@@ -72,7 +72,7 @@ fn keyword(stream: *Stream, allowed: []const Keyword) ?Keyword {
 }
 
 fn group(property: Longhand, stream: *Stream, order: []const Keyword) ?Keywords {
-    var present: [8]bool = .{false} ** 8;
+    var present: [8]bool = @splat(false);
     std.debug.assert(order.len <= present.len);
     var count: usize = 0;
     while (keyword(stream, order)) |item| {
@@ -190,7 +190,7 @@ pub fn parseShorthand(options: properties.ParseOptions, shorthand: properties.Sh
     // Each <longhand> grammar is one contiguous group; the four decoration
     // or two emphasis groups may occur in any order, each at most once.
     const longhands = shorthand.longhands();
-    var parsed: [4]?Value = .{null} ** 4;
+    var parsed: [4]?Value = @splat(null);
     defer for (parsed) |item| if (item) |value| value.release();
     var any = false;
     while (!stream.atEnd()) {

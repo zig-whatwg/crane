@@ -50,7 +50,7 @@ test "long document-relative URLs use and release the fallback allocator" {
     try page.open();
     defer page.close();
     try dom.document_internals.setURL(page.document, "https://example.test/dir/page");
-    const padding = [_]u8{'x'} ** 8192;
+    const padding = @as([8192]u8, @splat('x'));
     const input = try std.fmt.allocPrint(std.testing.allocator, "image.png?pad={s}", .{&padding});
     defer std.testing.allocator.free(input);
     const expected = try std.fmt.allocPrint(std.testing.allocator, "https://example.test/dir/{s}", .{input});
@@ -108,7 +108,7 @@ test "fallback URL parsing and durable copying clean up every allocation failure
     try page.open();
     defer page.close();
     try dom.document_internals.setURL(page.document, "https://example.test/dir/page");
-    const padding = [_]u8{'x'} ** 8192;
+    const padding = @as([8192]u8, @splat('x'));
     const input = try std.fmt.allocPrint(std.testing.allocator, "image.png?pad={s}", .{&padding});
     defer std.testing.allocator.free(input);
     const expected = try std.fmt.allocPrint(std.testing.allocator, "https://example.test/dir/{s}", .{input});

@@ -193,6 +193,8 @@ pub const in_scope_categories: []const TestCategory = &.{
     .{ .name = "web-locks", .description = "Web Locks" },
     .{ .name = "compression", .description = "Compression Streams" },
     .{ .name = "permissions", .description = "Permissions API" },
+    // The user, 2026-10-29: Web Animations joins the 0.1 worklist.
+    .{ .name = "web-animations", .description = "Web Animations" },
     // Approved worklist expansion (the user, 2026-10-22). These categories
     // must also be discoverable without --from-file; the worklist carries
     // their per-file scope, including the approved mixed geometry cases.
@@ -593,7 +595,7 @@ test "the directory allowlist matches every directory in the generated worklist"
     // --from-file bypasses isInScope. A newly approved suite must also be
     // reachable by directory, so compare the real generated worklist with
     // the allowlist in both directions. Per-file exclusions remain separate.
-    var seen = [_]bool{false} ** in_scope_categories.len;
+    var seen = @as([in_scope_categories.len]bool, @splat(false));
     var paths: usize = 0;
     var lines = std.mem.splitScalar(u8, worklist, '\n');
     while (lines.next()) |line| {

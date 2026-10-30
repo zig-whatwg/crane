@@ -138,6 +138,24 @@ pub const WptServer = struct {
     pid: ?posix.pid_t = null,
     /// Whether we spawned the server (vs found existing)
     we_spawned: bool = false,
+    /// How long a port that does not answer is retried before nothing is
+    /// said to serve it.
+    probe_window_ms: u32 = 5000,
+    /// How a server is started and watched (tests substitute one).
+    launcher: Launcher = Launcher.wpt_serve,
+
+    /// How `start` launches a server and learns that it died. The real one
+    /// runs `python3 wpt.py serve`; the tests substitute launchers they
+    /// control, so that no test starts a real `wpt serve` or depends on one.
+    pub const Launcher = struct {
+        context: ?*anyopaque = null,
+        /// Start a server for `server.port` in `server.wpt_root`: its pid.
+        spawn: *const fn (context: ?*anyopaque, server: *WptServer) anyerror!posix.pid_t,
+        /// Whether the process `spawn` returned has exited; it is reaped if so.
+        exited: *const fn (context: ?*anyopaque, pid: posix.pid_t) bool,
+
+        pub const wpt_serve: Launcher = .{ .spawn = spawnWptServe, .exited = reapIfExited };
+    };
 
     /// Initialize the WPT server manager
     pub fn init(allocator: Allocator, wpt_root: []const u8) !*WptServer {
@@ -163,44 +181,54 @@ pub const WptServer = struct {
         return std.fs.path.join(self.allocator, &.{ self.wpt_root, LOCKFILE_NAME });
     }
 
-    /// Start the WPT server
+    /// Start the WPT server, or adopt the one that is running.
     ///
-    /// First checks if a server is already running (via lockfile).
-    /// If not, spawns a new server and writes the lockfile.
+    /// A runner shares one `wpt serve` per WPT root with every other runner on
+    /// the machine (a sweep starts 8 at once; several lanes share a host), so
+    /// the rules below decide who owns it. On 2026-10-28 one failed connect
+    /// under load made a runner delete the shared server's lockfile and spawn
+    /// a second server, whose child died at bind having already written its
+    /// pid; at exit the runner removed the lockfile as its own, and from then
+    /// on every runner that started found no lockfile, spawned, and removed it
+    /// again - one rewrite per chunk start, even at low load.
+    ///
+    /// 1. A port that does not answer is retried for `probe_window_ms` before
+    ///    nothing is said to serve it.
+    /// 2. A spawned child that exits before the port answers started no
+    ///    server: if the port answers, the server is someone else's, and it
+    ///    is adopted (`we_spawned` stays false, the lockfile is not written).
+    /// 3. The lockfile is removed only while it names our own server's pid.
+    /// 4. A server is never spawned while a listener answers the port,
+    ///    whether or not a lockfile names it - and only one runner per WPT
+    ///    root decides to spawn at a time (`SpawnLock`).
     pub fn start(self: *WptServer) !void {
-        // Check for existing server
-        if (try self.checkExistingServer()) {
-            return; // Server already running
-        }
+        // Rules 1 and 4: whatever answers the port is adopted, lockfile or not.
+        if (try self.checkExistingServer()) return;
 
-        // Spawn new server
+        // Nothing answered for the whole window. Two runners that both got
+        // here would both spawn: one at a time decides.
+        const spawn_lock = try SpawnLock.acquire(self.wpt_root);
+        defer spawn_lock.release();
+        // A runner that held the lock while we waited for it has started a
+        // server, so look again for as long as for any other; with no one
+        // ahead of us, one look covers the moment since our own window ended.
+        if (try self.adoptExisting(if (spawn_lock.waited) self.probe_window_ms else 0)) return;
+
         try self.spawnServer();
     }
 
-    /// Check if an existing server is running via lockfile
+    /// Adopt the server that answers the port, if one does (rules 1 and 4).
     fn checkExistingServer(self: *WptServer) !bool {
-        const lockfile_path = try self.getLockfilePath();
-        defer self.allocator.free(lockfile_path);
+        return self.adoptExisting(self.probe_window_ms);
+    }
 
-        const io = host.io();
-        const file = host.cwd().openFile(io, lockfile_path, .{}) catch |err| {
-            if (err == error.FileNotFound) return false;
-            return err;
-        };
-        defer file.close(io);
-
-        // Read lockfile: "pid:port"
-        var buf: [64]u8 = undefined;
-        const bytes_read = try file.readPositionalAll(io, &buf, 0);
-        const content = buf[0..bytes_read];
-
-        // Parse PID and port
-        var iter = std.mem.splitScalar(u8, content, ':');
-        const pid_str = iter.next() orelse return false;
-        const port_str = iter.next() orelse return false;
-
-        const pid = std.fmt.parseInt(posix.pid_t, std.mem.trim(u8, pid_str, &std.ascii.whitespace), 10) catch return false;
-        const port = std.fmt.parseInt(u16, std.mem.trim(u8, port_str, &std.ascii.whitespace), 10) catch return false;
+    /// Adopt whatever answers the port within `window_ms`: the lockfile's
+    /// port when there is a readable lockfile, `self.port` otherwise. A
+    /// lockfile whose port does not answer is stale and is deleted, unless
+    /// another runner has rewritten it meanwhile.
+    fn adoptExisting(self: *WptServer, window_ms: u32) !bool {
+        const lock = self.readLockfile();
+        if (lock) |l| self.port = l.port;
 
         // Adopt by probing the PORT, not the pid.
         //
@@ -213,23 +241,66 @@ pub const WptServer = struct {
         // "Page load error: error.NetworkError" at 0ms, with no curl diagnostic,
         // because there was never anything to connect to. A TCP connect answers
         // the question this code actually asks.
-        self.port = port;
-        if (self.isServerReady()) {
+        if (self.portAnswers(window_ms)) {
             // Something serves the port. Remember the lockfile's pid only if it
-            // is a live, non-zombie process; otherwise adopt with no pid, which
-            // `stop()` already treats as "not ours to signal".
-            const alive = std.c.kill(pid, @enumFromInt(0)) == 0;
-            self.pid = if (alive) pid else null;
+            // is a live process; otherwise adopt with no pid, which `stop()`
+            // already treats as "not ours to signal".
+            self.pid = if (lock) |l| (if (std.c.kill(l.pid, @enumFromInt(0)) == 0) l.pid else null) else null;
             self.we_spawned = false;
             return true;
         }
         // Nothing serves the port: the lockfile is stale whatever its pid says.
-        host.cwd().deleteFile(io, lockfile_path) catch {};
+        if (lock) |l| self.deleteLockfileNaming(l);
         return false;
     }
 
-    /// Spawn the wpt serve process
+    /// Whether the port answers a connect within `window_ms` - at least one
+    /// attempt, then one every `probe_interval_ms`. A single failed connect is
+    /// not an answer: a busy server's full accept queue fails one too.
+    fn portAnswers(self: *WptServer, window_ms: u32) bool {
+        const timer = clock.Timer.start();
+        while (true) {
+            if (self.isServerReady()) return true;
+            if (timer.read() >= @as(u64, window_ms) * std.time.ns_per_ms) return false;
+            clock.sleep(probe_interval_ms * std.time.ns_per_ms);
+        }
+    }
+
+    const probe_interval_ms = 100;
+    /// How long a spawned server has to answer its port.
+    const ready_timeout_ms = 10_000;
+
+    /// Spawn a server and wait until it answers the port. The lockfile is
+    /// written only then, and only while our own child is alive: a child
+    /// that has exited started no server, and a port that answers anyway is
+    /// someone else's (rule 2). A child still starting when another server
+    /// begins to answer would be taken for ours; rule 4 and `SpawnLock` leave
+    /// that only to a server started outside the runners, and rule 3 keeps a
+    /// lockfile written that way from outliving us.
     fn spawnServer(self: *WptServer) !void {
+        const pid = try self.launcher.spawn(self.launcher.context, self);
+        const timer = clock.Timer.start();
+        while (timer.read() < ready_timeout_ms * std.time.ns_per_ms) {
+            if (self.launcher.exited(self.launcher.context, pid)) {
+                if (try self.adoptExisting(self.probe_window_ms)) return;
+                return error.ServerExited;
+            }
+            if (self.isServerReady()) {
+                self.pid = pid;
+                self.we_spawned = true;
+                try self.writeLockfile();
+                return;
+            }
+            clock.sleep(probe_interval_ms * std.time.ns_per_ms);
+        }
+        // It never answered: it is not a server, and it is not left running.
+        signalAndWait(pid);
+        return error.ServerStartTimeout;
+    }
+
+    /// `Launcher.wpt_serve`'s spawn: `python3 wpt.py serve` in the WPT root.
+    fn spawnWptServe(context: ?*anyopaque, self: *WptServer) anyerror!posix.pid_t {
+        _ = context;
         const argv = [_][]const u8{
             "python3",
             "wpt.py",
@@ -248,15 +319,18 @@ pub const WptServer = struct {
             .stdout = .ignore,
             .stderr = .ignore,
         });
+        return child.id orelse error.ServerSpawnFailed;
+    }
 
-        self.pid = child.id;
-        self.we_spawned = true;
-
-        // Write lockfile
-        try self.writeLockfile();
-
-        // Wait for server to be ready (simple TCP check)
-        try self.waitForReady();
+    /// `Launcher.wpt_serve`'s exited: a non-blocking `waitpid`, which also
+    /// reaps the child, so a server that died at bind is not left <defunct>.
+    /// A pid that is not (or no longer) our child has exited as far as we
+    /// can tell.
+    fn reapIfExited(context: ?*anyopaque, pid: posix.pid_t) bool {
+        _ = context;
+        var status: c_int = 0;
+        const rc = std.c.waitpid(pid, &status, std.c.W.NOHANG);
+        return rc != 0;
     }
 
     /// Write the lockfile with PID and port
@@ -273,27 +347,52 @@ pub const WptServer = struct {
         try file.writeStreamingAll(io, content);
     }
 
-    /// Remove the lockfile
-    fn removeLockfile(self: *WptServer) void {
+    /// What a lockfile says: "pid:port".
+    const Lock = struct {
+        pid: posix.pid_t,
+        port: u16,
+
+        fn parse(content: []const u8) ?Lock {
+            var iter = std.mem.splitScalar(u8, content, ':');
+            const pid_str = iter.next() orelse return null;
+            const port_str = iter.next() orelse return null;
+            return .{
+                .pid = std.fmt.parseInt(posix.pid_t, std.mem.trim(u8, pid_str, &std.ascii.whitespace), 10) catch return null,
+                .port = std.fmt.parseInt(u16, std.mem.trim(u8, port_str, &std.ascii.whitespace), 10) catch return null,
+            };
+        }
+    };
+
+    /// The lockfile's content, or null when there is none or it does not
+    /// parse (a lockfile being written reads empty for a moment). Neither is
+    /// a reason to spawn: the port decides.
+    fn readLockfile(self: *WptServer) ?Lock {
+        const lockfile_path = self.getLockfilePath() catch return null;
+        defer self.allocator.free(lockfile_path);
+        var buf: [64]u8 = undefined;
+        const content = host.cwd().readFile(host.io(), lockfile_path, &buf) catch return null;
+        return Lock.parse(content);
+    }
+
+    /// Delete the lockfile only while it still says `lock` - never one another
+    /// runner has written since we read it (rule 3).
+    fn deleteLockfileNaming(self: *WptServer, lock: Lock) void {
+        const now = self.readLockfile() orelse return;
+        if (now.pid != lock.pid or now.port != lock.port) return;
         const lockfile_path = self.getLockfilePath() catch return;
         defer self.allocator.free(lockfile_path);
         host.cwd().deleteFile(host.io(), lockfile_path) catch {};
     }
 
-    /// Wait for server to become ready
-    fn waitForReady(self: *WptServer) !void {
-        const max_attempts = 100; // 10 seconds total
-        const delay_ns: u64 = 100 * std.time.ns_per_ms;
-
-        var attempt: usize = 0;
-        while (attempt < max_attempts) : (attempt += 1) {
-            if (self.isServerReady()) {
-                return;
-            }
-            clock.sleep(delay_ns);
+    /// SIGTERM, a moment to shut down, then SIGKILL if it is still there.
+    fn signalAndWait(pid: posix.pid_t) void {
+        posix.kill(pid, posix.SIG.TERM) catch {};
+        clock.sleep(100 * std.time.ns_per_ms);
+        // Signal 0 is the existence probe; a zombie answers it, and SIGKILL
+        // to one is harmless.
+        if (std.c.kill(pid, @enumFromInt(0)) == 0) {
+            posix.kill(pid, posix.SIG.KILL) catch {};
         }
-
-        return error.ServerStartTimeout;
     }
 
     /// Check if server is ready by attempting TCP connect
@@ -319,8 +418,8 @@ pub const WptServer = struct {
     /// files laundered into noise by exactly this, which reads as an engine
     /// defect rather than a harness one.
     ///
-    /// `deinit` (line 90) already guards on `we_spawned`; `stop` did not, so
-    /// calling it directly killed a server this process had merely borrowed.
+    /// `deinit` already guards on `we_spawned`; `stop` did not, so calling it
+    /// directly killed a server this process had merely borrowed.
     pub fn stop(self: *WptServer) void {
         if (!self.we_spawned) {
             // Not ours. Leave it running and just drop our reference.
@@ -328,20 +427,12 @@ pub const WptServer = struct {
             return;
         }
         if (self.pid) |pid| {
-            // Send SIGTERM
-            posix.kill(pid, posix.SIG.TERM) catch {};
-
-            // Give it a moment to shutdown gracefully
-            clock.sleep(100 * std.time.ns_per_ms);
-
-            // Force kill if still alive. Signal 0 is the existence probe; see above.
-            if (std.c.kill(pid, @enumFromInt(0)) == 0) {
-                posix.kill(pid, posix.SIG.KILL) catch {};
-            }
-        }
-
-        if (self.we_spawned) {
-            self.removeLockfile();
+            signalAndWait(pid);
+            // The lockfile goes with our server - but only while it still
+            // names it (rule 3). A runner whose child died at bind once took
+            // the shared server's lockfile with it at exit, and with no
+            // lockfile every later runner spawned and did the same.
+            self.deleteLockfileNaming(.{ .pid = pid, .port = self.port });
         }
 
         self.pid = null;
@@ -435,6 +526,34 @@ pub const WptServer = struct {
     }
 };
 
+/// Held while one runner decides whether to spawn a server for a WPT root
+/// (rule 4): an exclusive `flock` on the root directory itself, so no file is
+/// added to the tree, and the kernel releases it when its holder exits,
+/// however it exits. Two runners that both found nothing on the port would
+/// otherwise both spawn, and the loser's child would die at bind.
+const SpawnLock = struct {
+    dir: std.Io.Dir,
+    /// Whether another runner held it first - and so may have started a
+    /// server meanwhile.
+    waited: bool,
+
+    fn acquire(wpt_root: []const u8) !SpawnLock {
+        const io = host.io();
+        const dir = try host.cwd().openDir(io, wpt_root, .{});
+        errdefer dir.close(io);
+        // flock takes any descriptor; File.lock is how std spells it.
+        const file: std.Io.File = .{ .handle = dir.handle, .flags = .{ .nonblocking = false } };
+        if (try file.tryLock(io, .exclusive)) return .{ .dir = dir, .waited = false };
+        try file.lock(io, .exclusive);
+        return .{ .dir = dir, .waited = true };
+    }
+
+    /// Closing the descriptor releases the lock.
+    fn release(self: SpawnLock) void {
+        self.dir.close(host.io());
+    }
+};
+
 /// Write a lockfile naming `pid` into a scratch WPT root.
 fn writeTestLockfile(io: std.Io, dir: std.Io.Dir, pid: posix.pid_t, port: u16) !void {
     var file = try dir.createFile(io, LOCKFILE_NAME, .{});
@@ -447,9 +566,20 @@ fn writeTestLockfile(io: std.Io, dir: std.Io.Dir, pid: posix.pid_t, port: u16) !
 /// has to own its port: listen on one nothing else uses for the adopt case,
 /// and name one nothing listens on for the stale case. Writing :8000 as these
 /// tests once did made their outcome depend on whether a real `wpt serve`
-/// happened to be running on the machine.
-const test_live_port: u16 = 38123;
-const test_dead_port: u16 = 38124;
+/// happened to be running on the machine - and a fixed port of their own on
+/// whether another checkout's tests were running on it at the same time (the
+/// pool runs several gates per host): the kernel picks each port.
+fn listenAnywhere() !std.Io.net.Server {
+    const address = try std.Io.net.IpAddress.parseIp4("127.0.0.1", 0);
+    return address.listen(std.testing.io, .{ .mode = .stream });
+}
+
+/// A port nothing listens on: one the kernel picked and has been given back.
+fn freePort() !u16 {
+    var listener = try listenAnywhere();
+    defer listener.deinit(std.testing.io);
+    return listener.socket.address.getPort();
+}
 
 test "a live lockfile is adopted, not owned" {
     // Under --supervise the parent starts the server and every child finds it
@@ -464,18 +594,18 @@ test "a live lockfile is adopted, not owned" {
     defer allocator.free(root);
 
     // A real listener on the port, so the probe has something to answer it.
-    const live_addr = try std.Io.net.IpAddress.parseIp4("127.0.0.1", test_live_port);
-    var listener = try live_addr.listen(std.testing.io, .{ .mode = .stream });
+    var listener = try listenAnywhere();
     defer listener.deinit(std.testing.io);
+    const port = listener.socket.address.getPort();
 
-    try writeTestLockfile(std.testing.io, tmp.dir, std.c.getpid(), test_live_port);
+    try writeTestLockfile(std.testing.io, tmp.dir, std.c.getpid(), port);
 
     const server = try WptServer.init(allocator, root);
     defer server.deinit();
 
     try std.testing.expect(try server.checkExistingServer());
     try std.testing.expectEqual(std.c.getpid(), server.pid.?);
-    try std.testing.expectEqual(test_live_port, server.port);
+    try std.testing.expectEqual(port, server.port);
     try std.testing.expect(!server.we_spawned);
 
     // Still there: adopting must not consume the lockfile the owner wrote.
@@ -495,17 +625,18 @@ test "a lockfile naming a dead process is cleared" {
     defer allocator.free(root);
 
     // Above any pid_max, so kill() cannot find it and cannot ever be reused.
-    try writeTestLockfile(std.testing.io, tmp.dir, 2147483646, test_dead_port);
+    try writeTestLockfile(std.testing.io, tmp.dir, 2147483646, try freePort());
 
     const server = try WptServer.init(allocator, root);
     defer server.deinit();
+    server.probe_window_ms = 300;
 
     try std.testing.expect(!try server.checkExistingServer());
     try std.testing.expect(server.pid == null);
     try std.testing.expectError(error.FileNotFound, tmp.dir.access(std.testing.io, LOCKFILE_NAME, .{}));
 }
 
-test "no lockfile means no server to adopt" {
+test "no lockfile and nothing on the port means no server to adopt" {
     const allocator = std.testing.allocator;
 
     var tmp = std.testing.tmpDir(.{});
@@ -516,9 +647,317 @@ test "no lockfile means no server to adopt" {
 
     const server = try WptServer.init(allocator, root);
     defer server.deinit();
+    // The port is probed with or without a lockfile, so it must be one
+    // nothing listens on - not :8000, where a real `wpt serve` may run.
+    server.port = try freePort();
+    server.probe_window_ms = 300;
 
     try std.testing.expect(!try server.checkExistingServer());
     try std.testing.expect(server.pid == null);
+}
+
+/// Pids that cannot exist (above any pid_max): the test launchers below start
+/// no process, and a `stop()` that signals one of these signals nothing.
+const no_such_pid: posix.pid_t = 2147483640;
+
+/// A launcher for the tests that starts no process: `spawn` binds the
+/// server's port in this process, as `wpt serve` binds its ports. When the
+/// port is free the "server" is up until `deinit`; when something already
+/// holds it, the "server" has died at bind - what a real `wpt serve` does
+/// beside the shared one.
+const BindingLauncher = struct {
+    pid: posix.pid_t,
+    spawns: u32 = 0,
+    listener: ?std.Io.net.Server = null,
+
+    fn launcher(self: *BindingLauncher) WptServer.Launcher {
+        return .{ .context = self, .spawn = spawn, .exited = exited };
+    }
+
+    fn spawn(context: ?*anyopaque, server: *WptServer) anyerror!posix.pid_t {
+        const self: *BindingLauncher = @ptrCast(@alignCast(context.?));
+        self.spawns += 1;
+        const address = try std.Io.net.IpAddress.parseIp4("127.0.0.1", server.port);
+        self.listener = address.listen(std.testing.io, .{ .mode = .stream }) catch null;
+        return self.pid;
+    }
+
+    fn exited(context: ?*anyopaque, pid: posix.pid_t) bool {
+        const self: *BindingLauncher = @ptrCast(@alignCast(context.?));
+        std.debug.assert(pid == self.pid);
+        return self.listener == null;
+    }
+
+    fn deinit(self: *BindingLauncher) void {
+        if (self.listener) |*l| l.deinit(std.testing.io);
+    }
+};
+
+/// A listener that starts listening only after a delay, on its own thread:
+/// a served port whose first connects fail, as a busy shared server's do.
+const LateListener = struct {
+    port: u16,
+    delay_ms: u64,
+    listener: ?std.Io.net.Server = null,
+
+    fn run(self: *LateListener) void {
+        clock.sleep(self.delay_ms * std.time.ns_per_ms);
+        const address = std.Io.net.IpAddress.parseIp4("127.0.0.1", self.port) catch return;
+        self.listener = address.listen(std.testing.io, .{ .mode = .stream }) catch null;
+    }
+
+    fn deinit(self: *LateListener) void {
+        if (self.listener) |*l| l.deinit(std.testing.io);
+    }
+};
+
+fn expectLockfile(dir: std.Io.Dir, expected: []const u8) !void {
+    var buf: [64]u8 = undefined;
+    try std.testing.expectEqualStrings(expected, try dir.readFile(std.testing.io, LOCKFILE_NAME, &buf));
+}
+
+test "a lockfile naming a dead pid is adopted, and left as it is, while its port is served" {
+    // The shared server's lock can name a pid that is gone (a runner that
+    // spawned, died at bind and wrote its pid anyway). The port is what
+    // answers the question, and adopting rewrites nothing.
+    const allocator = std.testing.allocator;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
+    defer allocator.free(root);
+
+    var listener = try listenAnywhere();
+    defer listener.deinit(std.testing.io);
+    const port = listener.socket.address.getPort();
+    try writeTestLockfile(std.testing.io, tmp.dir, no_such_pid, port);
+
+    var launcher: BindingLauncher = .{ .pid = no_such_pid - 1 };
+    defer launcher.deinit();
+    const server = try WptServer.init(allocator, root);
+    defer server.deinit();
+    server.launcher = launcher.launcher();
+    server.probe_window_ms = 300;
+
+    try server.start();
+    try std.testing.expectEqual(@as(u32, 0), launcher.spawns);
+    try std.testing.expect(!server.we_spawned);
+    try std.testing.expect(server.pid == null);
+    try std.testing.expectEqual(port, server.port);
+    var expected: [64]u8 = undefined;
+    try expectLockfile(tmp.dir, try std.fmt.bufPrint(&expected, "{d}:{d}\n", .{ no_such_pid, port }));
+}
+
+test "a missing lockfile is no reason to spawn while the port is served" {
+    // 2026-10-28 on chat.local: once the shared server's lock was gone,
+    // every runner that started spawned its own `wpt serve`, which died at
+    // bind, and then deleted the lock again at exit.
+    const allocator = std.testing.allocator;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
+    defer allocator.free(root);
+
+    var listener = try listenAnywhere();
+    defer listener.deinit(std.testing.io);
+    const port = listener.socket.address.getPort();
+
+    var launcher: BindingLauncher = .{ .pid = no_such_pid };
+    defer launcher.deinit();
+    const server = try WptServer.init(allocator, root);
+    defer server.deinit();
+    server.launcher = launcher.launcher();
+    server.probe_window_ms = 300;
+    server.port = port;
+
+    try server.start();
+    try std.testing.expectEqual(@as(u32, 0), launcher.spawns);
+    try std.testing.expect(!server.we_spawned);
+    try std.testing.expect(server.pid == null);
+    try std.testing.expectError(error.FileNotFound, tmp.dir.access(std.testing.io, LOCKFILE_NAME, .{}));
+}
+
+test "an unreadable lockfile is no reason to spawn while the port is served" {
+    const allocator = std.testing.allocator;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
+    defer allocator.free(root);
+
+    var listener = try listenAnywhere();
+    defer listener.deinit(std.testing.io);
+    const port = listener.socket.address.getPort();
+    {
+        var file = try tmp.dir.createFile(std.testing.io, LOCKFILE_NAME, .{});
+        defer file.close(std.testing.io);
+        try file.writeStreamingAll(std.testing.io, "not a lock");
+    }
+
+    var launcher: BindingLauncher = .{ .pid = no_such_pid };
+    defer launcher.deinit();
+    const server = try WptServer.init(allocator, root);
+    defer server.deinit();
+    server.launcher = launcher.launcher();
+    server.probe_window_ms = 300;
+    server.port = port;
+
+    try server.start();
+    try std.testing.expectEqual(@as(u32, 0), launcher.spawns);
+    try std.testing.expect(!server.we_spawned);
+    try expectLockfile(tmp.dir, "not a lock");
+}
+
+test "a port whose first connects fail is retried before its lockfile is called stale" {
+    // One failed connect - a busy shared server's accept queue - used to be
+    // enough to delete its lock and spawn a second server.
+    const allocator = std.testing.allocator;
+    const port = try freePort();
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
+    defer allocator.free(root);
+
+    try writeTestLockfile(std.testing.io, tmp.dir, std.c.getpid(), port);
+    var late: LateListener = .{ .port = port, .delay_ms = 300 };
+    defer late.deinit();
+    const thread = try std.Thread.spawn(.{}, LateListener.run, .{&late});
+
+    var launcher: BindingLauncher = .{ .pid = no_such_pid };
+    defer launcher.deinit();
+    const server = try WptServer.init(allocator, root);
+    defer server.deinit();
+    server.launcher = launcher.launcher();
+    server.probe_window_ms = 3000;
+
+    const started = server.start();
+    thread.join();
+    try started;
+    try std.testing.expectEqual(@as(u32, 0), launcher.spawns);
+    try std.testing.expect(!server.we_spawned);
+    try std.testing.expectEqual(std.c.getpid(), server.pid.?);
+    var expected: [64]u8 = undefined;
+    try expectLockfile(tmp.dir, try std.fmt.bufPrint(&expected, "{d}:{d}\n", .{ std.c.getpid(), port }));
+}
+
+test "a spawned server that dies at bind while the port answers is adopted, and nothing is rewritten" {
+    // What `start` does once it has decided to spawn. The port turns out to
+    // be served by someone else: our child dies at bind, and the lock must
+    // still name the server that answers, not the corpse.
+    const allocator = std.testing.allocator;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
+    defer allocator.free(root);
+
+    var listener = try listenAnywhere();
+    defer listener.deinit(std.testing.io);
+    const port = listener.socket.address.getPort();
+    try writeTestLockfile(std.testing.io, tmp.dir, std.c.getpid(), port);
+
+    var launcher: BindingLauncher = .{ .pid = no_such_pid };
+    defer launcher.deinit();
+    const server = try WptServer.init(allocator, root);
+    defer server.deinit();
+    server.launcher = launcher.launcher();
+    server.probe_window_ms = 300;
+    server.port = port;
+
+    try server.spawnServer();
+    try std.testing.expectEqual(@as(u32, 1), launcher.spawns);
+    try std.testing.expect(launcher.listener == null);
+    try std.testing.expect(!server.we_spawned);
+    try std.testing.expectEqual(std.c.getpid(), server.pid.?);
+    var expected: [64]u8 = undefined;
+    try expectLockfile(tmp.dir, try std.fmt.bufPrint(&expected, "{d}:{d}\n", .{ std.c.getpid(), port }));
+}
+
+test "stop removes the lockfile only while it names our own pid" {
+    const allocator = std.testing.allocator;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
+    defer allocator.free(root);
+
+    const server = try WptServer.init(allocator, root);
+    defer server.deinit();
+    const port = try freePort();
+    server.port = port;
+
+    // Another runner's server has the lock now: ours is not to remove.
+    try writeTestLockfile(std.testing.io, tmp.dir, std.c.getpid(), port);
+    server.pid = no_such_pid;
+    server.we_spawned = true;
+    server.stop();
+    var expected: [64]u8 = undefined;
+    try expectLockfile(tmp.dir, try std.fmt.bufPrint(&expected, "{d}:{d}\n", .{ std.c.getpid(), port }));
+
+    // Our own lock goes with our server.
+    try writeTestLockfile(std.testing.io, tmp.dir, no_such_pid, port);
+    server.pid = no_such_pid;
+    server.we_spawned = true;
+    server.stop();
+    try std.testing.expectError(error.FileNotFound, tmp.dir.access(std.testing.io, LOCKFILE_NAME, .{}));
+}
+
+/// One runner of the race below: starts when `go` is set.
+const RacingRunner = struct {
+    server: *WptServer,
+    launcher: BindingLauncher,
+    go: *std.atomic.Value(bool),
+    result: anyerror!void = {},
+
+    fn run(self: *RacingRunner) void {
+        while (!self.go.load(.acquire)) std.atomic.spinLoopHint();
+        self.result = self.server.start();
+    }
+};
+
+test "two runners starting together spawn one server between them" {
+    // A sweep starts its runners at once. With no server up, each probes,
+    // finds nothing and would spawn; one at a time decides, and the second
+    // adopts what the first started.
+    const allocator = std.testing.allocator;
+    const port = try freePort();
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
+    defer allocator.free(root);
+
+    var go = std.atomic.Value(bool).init(false);
+    var runners: [2]RacingRunner = undefined;
+    for (&runners, 0..) |*r, i| {
+        r.* = .{
+            .server = try WptServer.init(allocator, root),
+            .launcher = .{ .pid = no_such_pid - @as(posix.pid_t, @intCast(i)) },
+            .go = &go,
+        };
+        r.server.launcher = r.launcher.launcher();
+        r.server.probe_window_ms = 300;
+        r.server.port = port;
+    }
+    defer for (&runners) |*r| {
+        r.server.deinit();
+        r.launcher.deinit();
+    };
+
+    var threads: [2]std.Thread = undefined;
+    for (&threads, &runners) |*t, *r| t.* = try std.Thread.spawn(.{}, RacingRunner.run, .{r});
+    go.store(true, .release);
+    for (threads) |t| t.join();
+    for (runners) |r| try r.result;
+
+    try std.testing.expectEqual(@as(u32, 1), runners[0].launcher.spawns + runners[1].launcher.spawns);
+    const spawner: usize = if (runners[0].server.we_spawned) 0 else 1;
+    try std.testing.expect(runners[spawner].server.we_spawned);
+    try std.testing.expect(!runners[1 - spawner].server.we_spawned);
+    var expected: [64]u8 = undefined;
+    try expectLockfile(tmp.dir, try std.fmt.bufPrint(&expected, "{d}:{d}\n", .{ runners[spawner].launcher.pid, port }));
 }
 
 test "WptServer.buildTestUrl" {

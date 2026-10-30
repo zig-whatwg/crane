@@ -435,6 +435,12 @@ pub const ComputedStyle = struct {
         return color.resolveComputed(allocator, .{ .scheme = self.used_color_scheme, .current = self.get(.color).color });
     }
 
+    /// Owned gap decoration list for CSSOM §9 (Gaps 1 §4): currentcolor
+    /// resolved for this receiver, the computed list unchanged.
+    pub fn resolvedGapList(self: *const ComputedStyle, l: Longhand, allocator: Allocator) Allocator.Error!Value {
+        return @import("gap_decorations.zig").resolveValue(allocator, self.get(l), .{ .scheme = self.used_color_scheme, .current = self.get(.color).color });
+    }
+
     /// Owned image aggregate for CSSOM §6.7.2: resolve currentcolor for this
     /// receiver while preserving the inherited computed image (Color4 §15.5).
     pub fn resolvedImageValue(self: *const ComputedStyle, l: Longhand, allocator: Allocator) Allocator.Error!Value {
@@ -532,6 +538,7 @@ pub const ComputedStyle = struct {
         // Backgrounds 3 §3.3: a side whose style is none or hidden keeps its
         // computed width (inherit passes it on) but resolves to zero.
         if (self.undrawnBorderWidth(l)) return out.appendSlice(allocator, "0px");
+        if (v == .gap_list) return @import("gap_decorations.zig").serializeResolved(l, v.gap_list, .{ .scheme = self.used_color_scheme, .current = self.get(.color).color }, out, allocator);
         if (self.relativeAutoInset(l)) |inset| {
             try values.appendNumber(inset, out, allocator);
             return out.appendSlice(allocator, "px");
@@ -589,7 +596,7 @@ pub fn initialComputed(l: Longhand) Value {
         // length whatever the style (the browsers' medium is 3px); only the
         // resolved value of an undrawn side is zero (serializeResolved).
         .border_top_width, .border_right_width, .border_bottom_width, .border_left_width, .border_block_start_width, .border_block_end_width, .border_inline_start_width, .border_inline_end_width => Value.px(3),
-        .outline_width, .column_rule_width => Value.px(3),
+        .outline_width, .column_rule_width, .row_rule_width => Value.px(3),
         .font_size => Value.px(16),
         .font_weight => .{ .number = 400 },
         // CSS Fonts 4 §2.3: font-width's initial normal computes to 100%.

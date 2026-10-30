@@ -100,6 +100,13 @@ pub const Resource = struct {
     status: enum { pending, complete, failed } = .pending,
     parsed: ?*runtime.Instance = null,
     parsed_generation: u64 = 0,
+    /// The resource's counted reference on its parsed document (refcount
+    /// step 5i, H-RC8-SVG-DOC; WebKit's CachedSVGDocument keeps
+    /// `RefPtr<SVGDocument> m_document`): it takes the document's born
+    /// reference over at the parse, and lets go when the resource goes.
+    /// Counted only: the owner's traced edge keeps the document from the
+    /// collector until step 7.
+    parsed_ref: @import("../node_holds.zig").CountedRef = .{},
     clients: std.ArrayList(*UseLoad) = .empty,
     abort_marked: bool = false,
 
@@ -207,6 +214,9 @@ pub const Resource = struct {
         @import("objects.zig").keepFrom(self.owner, document, self.slot(&buffer));
         self.parsed = document;
         self.parsed_generation = runtime.SlabAllocator.generationOf(document);
+        const base = @import("../instance_bridge.zig").getNodeBase(@ptrCast(document));
+        self.parsed_ref.take(document, base);
+        if (base) |node| @import("../refcount.zig").takeOverCreatorReference(node);
         adopted = true;
         return true;
     }
@@ -257,6 +267,7 @@ pub const Resource = struct {
             var buffer: [64]u8 = undefined;
             engine.forgetTracedChild(self.owner, self.slot(&buffer));
         }
+        if (self.parsed) |document| self.parsed_ref.release(document);
         self.key.deinit(self.allocator);
         self.allocator.destroy(self);
     }

@@ -156,7 +156,7 @@ threadlocal var child_window_cleanup_callback: ?ChildWindowCleanupCallback = nul
 const ACCESSOR_STACK_MAX_DEPTH = 32;
 
 /// Thread-local accessor stack
-threadlocal var accessor_stack: [ACCESSOR_STACK_MAX_DEPTH]?*runtime.Instance = [_]?*runtime.Instance{null} ** ACCESSOR_STACK_MAX_DEPTH;
+threadlocal var accessor_stack: [ACCESSOR_STACK_MAX_DEPTH]?*runtime.Instance = @as([ACCESSOR_STACK_MAX_DEPTH]?*runtime.Instance, @splat(null));
 threadlocal var accessor_stack_depth: usize = 0;
 
 /// Push a Window onto the accessor stack before script execution.

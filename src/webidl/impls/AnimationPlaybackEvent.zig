@@ -1,4 +1,7 @@
-//! Implementation for AnimationPlaybackEvent interface
+//! Implementation for AnimationPlaybackEvent interface (Web Animations 1
+//! 6.12): the finish, cancel and remove events, and script's own.
+//!
+//! Spec: https://drafts.csswg.org/web-animations-1/#the-animationplaybackevent-interface
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -8,6 +11,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const event_construction = @import("dom").event_construction;
 const AnimationPlaybackEvent = interfaces.AnimationPlaybackEvent;
 
 pub const State = AnimationPlaybackEvent.State;
@@ -16,52 +20,40 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
+/// Nothing beyond the attributes, which the generated State holds.
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
-}
-
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-/// Constructor implementation
-/// This is called when the interface is constructed from JavaScript
+/// Constructor: DOM "inner event creation steps" with the EventInit part,
+/// then currentTime and timelineTime from the dictionary (null by default).
 pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.AnimationPlaybackEventInit)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &AnimationPlaybackEvent.vtable, ctx);
-    errdefer deinit(instance);
-
-    _ = @"type";
-    _ = eventInitDict;
-    // TODO: Implement constructor logic with parameters
-
+    const instance = try AnimationPlaybackEvent.init(ctx.allocator, ctx);
+    errdefer AnimationPlaybackEvent.deinit(instance);
+    const dict: dictionaries.AnimationPlaybackEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{} };
+    try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(dict.base));
+    const state = instance.getState(State);
+    state.own.currentTime = timeOf(dict.currentTime);
+    state.own.timelineTime = timeOf(dict.timelineTime);
     return instance;
 }
 
-/// Getter for currentTime
-pub fn get_currentTime(instance: *runtime.Instance) anyerror!?typedefs.CSSNumberish {
-    _ = instance;
-    return null;
+/// A time as the event keeps it: a number, or null. (A CSSNumericValue is
+/// not kept: it would need a hold of its own.)
+fn timeOf(value: ?typedefs.CSSNumberish) ?typedefs.CSSNumberish {
+    const given = value orelse return null;
+    return switch (given) {
+        .double => given,
+        .cssnumeric_value => null,
+    };
 }
 
-/// Getter for timelineTime
+/// Getter for currentTime: the animation's current time when the event was
+/// queued, or null.
+pub fn get_currentTime(instance: *runtime.Instance) anyerror!?typedefs.CSSNumberish {
+    return instance.getState(State).own.currentTime;
+}
+
+/// Getter for timelineTime: its timeline's time when the event was queued,
+/// or null.
 pub fn get_timelineTime(instance: *runtime.Instance) anyerror!?typedefs.CSSNumberish {
-    _ = instance;
-    return null;
+    return instance.getState(State).own.timelineTime;
 }

@@ -59,6 +59,19 @@ pub const Entry = struct {
     }
 };
 
+/// Open-dialog registration is separate from modal top-layer membership.
+/// This record's address stays fixed while its MemberHold is linked.
+pub const OpenDialog = struct {
+    id: usize,
+    element: MemberHold = .{},
+    slot_name: [64]u8 = undefined,
+    slot_len: usize = 0,
+
+    fn slot(self: *const OpenDialog) engine.TracedSlot {
+        return .{ .name = self.slot_name[0..self.slot_len] };
+    }
+};
+
 pub const State = struct {
     allocator: std.mem.Allocator,
     owner: *runtime.Instance,
@@ -68,6 +81,9 @@ pub const State = struct {
     /// Stable allocated entries: linked MemberHolds must never be moved by
     /// ArrayList growth. Non-showing entries pin synchronous event snapshots.
     entries: std.ArrayListUnmanaged(*Entry) = .empty,
+    /// Pulled by the style engine. Scoped pins share this entry list;
+    /// every insertion, promotion and removal advances its revision.
+    revision: u64 = 0,
     /// Non-owning index into the stable entries above. Removal updates this
     /// before freeing an entry; no modal means a single null check.
     last_modal: ?*Entry = null,
@@ -75,6 +91,11 @@ pub const State = struct {
     hiding_nesting: usize = 0,
     pointerdown_target: MemberHold = .{},
     hint_parent: MemberHold = .{},
+    open_dialogs: std.ArrayListUnmanaged(*OpenDialog) = .empty,
+    dialog_pointerdown_target: MemberHold = .{},
+    /// A logically non-null removed target, unequal to every node, without
+    /// retaining the detached subtree (Q47 addendum, 2026-10-29).
+    dialog_pointerdown_target_removed: bool = false,
 
     pub fn init(allocator: std.mem.Allocator, owner: *runtime.Instance) State {
         return .{ .allocator = allocator, .owner = owner, .owner_at_creation = KeptInstance.of(owner) };
@@ -112,6 +133,7 @@ pub const State = struct {
         const entry = try self.pin(node);
         entry.modal = true;
         self.last_modal = entry;
+        self.revision +%= 1;
         return entry;
     }
 
@@ -129,6 +151,7 @@ pub const State = struct {
         entry.source_slot_len = (try std.fmt.bufPrint(&entry.source_slot, "top_layer:{d}:source", .{id})).len;
         entry.focus_slot_len = (try std.fmt.bufPrint(&entry.focus_slot, "top_layer:{d}:focus", .{id})).len;
         try self.entries.append(self.allocator, entry);
+        self.revision +%= 1;
         entry.element.take(self.owner, node, entry.nodeSlot());
         return entry;
     }
@@ -137,6 +160,7 @@ pub const State = struct {
         for (self.entries.items, 0..) |entry, index| {
             if (entry.id != id) continue;
             _ = self.entries.orderedRemove(index);
+            self.revision +%= 1;
             if (self.last_modal == entry) {
                 self.last_modal = null;
                 var remaining = self.entries.items.len;
@@ -169,7 +193,75 @@ pub const State = struct {
         if (node) |value| self.hint_parent.take(self.owner, value, slot);
     }
 
+    pub fn hasOpenDialog(self: *const State, dialog: *runtime.Instance) bool {
+        for (self.open_dialogs.items) |entry| if (entry.element.get() == dialog) return true;
+        return false;
+    }
+
+    pub fn addOpenDialog(self: *State, dialog: *runtime.Instance) !void {
+        if (self.hasOpenDialog(dialog)) return;
+        var id: usize = 0;
+        while (true) : (id += 1) {
+            var used = false;
+            for (self.open_dialogs.items) |entry| if (entry.id == id) {
+                used = true;
+                break;
+            };
+            if (!used) break;
+        }
+        const entry = try self.allocator.create(OpenDialog);
+        errdefer self.allocator.destroy(entry);
+        entry.* = .{ .id = id };
+        entry.slot_len = (try std.fmt.bufPrint(&entry.slot_name, "open_dialog:{d}", .{id})).len;
+        try self.open_dialogs.append(self.allocator, entry);
+        entry.element.take(self.owner, dialog, entry.slot());
+    }
+
+    pub fn removeOpenDialog(self: *State, dialog: *runtime.Instance) void {
+        // Closing ends open-list membership, not the remembered gesture.
+        // Light dismiss step 3 preserves the target while the list is empty;
+        // step 6.2 clears it only after that guard. Removal releases its node
+        // through a distinct marker; teardown releases any remaining hold.
+        for (self.open_dialogs.items, 0..) |entry, index| {
+            if (entry.element.get() != dialog) continue;
+            _ = self.open_dialogs.orderedRemove(index);
+            entry.element.release(self.owner, entry.slot());
+            self.allocator.destroy(entry);
+            return;
+        }
+    }
+
+    pub fn lastOpenDialog(self: *const State) ?*runtime.Instance {
+        if (self.open_dialogs.items.len == 0) return null;
+        return self.open_dialogs.items[self.open_dialogs.items.len - 1].element.get();
+    }
+
+    pub fn setDialogPointerdownTarget(self: *State, dialog: ?*runtime.Instance) void {
+        const slot: engine.TracedSlot = .{ .name = "open_dialog:pointerdown" };
+        self.dialog_pointerdown_target_removed = false;
+        self.dialog_pointerdown_target.release(self.owner, slot);
+        if (dialog) |node| self.dialog_pointerdown_target.take(self.owner, node, slot);
+    }
+
+    pub fn removeDialogPointerdownTarget(self: *State, dialog: *runtime.Instance) void {
+        if (self.dialog_pointerdown_target.get() != dialog) return;
+        self.setDialogPointerdownTarget(null);
+        // Lifetime form of the spec's retained target: an outside release
+        // must not match null and dismiss another dialog. Chrome 156 and
+        // Firefox 158 agree (tmp/probes/q47-remove/RESULT.md, 2026-10-29).
+        // Identity is lost across removal: if A is reinserted, another dialog
+        // opens after it, and pointerup lands inside A, this marker cannot
+        // match A as the spec's retained node would (Q47 addendum).
+        self.dialog_pointerdown_target_removed = true;
+    }
+
     pub fn deinit(self: *State) void {
+        self.setDialogPointerdownTarget(null);
+        for (self.open_dialogs.items) |entry| {
+            entry.element.release(self.owner, entry.slot());
+            self.allocator.destroy(entry);
+        }
+        self.open_dialogs.deinit(self.allocator);
         self.setPointerdownTarget(null);
         self.setHintParent(null);
         while (self.entries.items.len != 0) self.remove(self.entries.items[self.entries.items.len - 1].id);
@@ -187,10 +279,18 @@ pub const State = struct {
     /// without deinitOwn; the saved-state native test pins the ended realm.
     pub fn releaseAfterRealmEnded(self: *State) void {
         const owner_live = self.owner_at_creation.get() != null;
+        self.dialog_pointerdown_target_removed = false;
+        self.releaseOrphanHold(&self.dialog_pointerdown_target, .{ .name = "open_dialog:pointerdown" }, owner_live);
+        for (self.open_dialogs.items) |entry| {
+            self.releaseOrphanHold(&entry.element, entry.slot(), owner_live);
+            self.allocator.destroy(entry);
+        }
+        self.open_dialogs.deinit(self.allocator);
         self.last_modal = null;
         self.releaseOrphanHold(&self.pointerdown_target, .{ .name = "top_layer:pointerdown" }, owner_live);
         self.releaseOrphanHold(&self.hint_parent, .{ .name = "top_layer:hint_parent" }, owner_live);
         for (self.entries.items) |entry| {
+            self.revision +%= 1;
             self.releaseOrphanHold(&entry.previous_focus, entry.focusSlot(), owner_live);
             self.releaseOrphanHold(&entry.source, entry.sourceSlot(), owner_live);
             self.releaseOrphanHold(&entry.element, entry.nodeSlot(), owner_live);
@@ -220,6 +320,12 @@ pub fn install(implementation: Access) void {
 
 pub fn ofDocument(document: *runtime.Instance, create: bool) !?*State {
     return (access orelse return error.NotSupported).get(document, create);
+}
+
+/// Read without allocating the Document's optional top-layer state.
+pub fn revisionOf(document: *runtime.Instance) u64 {
+    const state = (ofDocument(document, false) catch null) orelse return 0;
+    return state.revision;
 }
 
 pub fn ofElement(element: *runtime.Instance, create: bool) !?*State {

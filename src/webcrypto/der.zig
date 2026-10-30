@@ -147,7 +147,7 @@ fn roundTrip(allocator: std.mem.Allocator) anyerror!void {
     var reader = try sequence(encoded);
     try std.testing.expectEqualSlices(u8, &.{ 0x80, 0xff }, try reader.integer());
     try reader.finish();
-    const body = [_]u8{0} ** 256;
+    const body = @as([256]u8, @splat(0));
     const long = try encode(allocator, 4, &.{&body});
     defer allocator.free(long);
     try std.testing.expectEqualSlices(u8, &.{ 4, 0x82, 1, 0 }, long[0..4]);

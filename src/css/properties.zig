@@ -352,6 +352,24 @@ pub const Longhand = enum(u16) {
     column_rule_style,
     column_rule_width,
 
+    // CSS Gap Decorations 1 §§3.2-3.5, §4 (gap_decorations.zig).
+    row_rule_color,
+    row_rule_style,
+    row_rule_width,
+    column_rule_break,
+    row_rule_break,
+    column_rule_inset_cap_start,
+    column_rule_inset_cap_end,
+    column_rule_inset_junction_start,
+    column_rule_inset_junction_end,
+    row_rule_inset_cap_start,
+    row_rule_inset_cap_end,
+    row_rule_inset_junction_start,
+    row_rule_inset_junction_end,
+    column_rule_visibility_items,
+    row_rule_visibility_items,
+    rule_overlap,
+
     // CSS Scroll Snap 1 §§4–5, Appendix A; Scroll Snap 2 §3.1.
     scroll_snap_type,
     scroll_snap_align,
@@ -396,6 +414,11 @@ pub const Longhand = enum(u16) {
     perspective,
     perspective_origin,
     backface_visibility,
+
+    // CSS Will Change 1 section 2: parsing and computed value only.
+    will_change,
+    container_name,
+    container_type,
 
     // Paged Media3 §8.1. Append so existing rare-group members stay put.
     page,
@@ -566,6 +589,8 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
 
 /// A longhand's grammar.
 pub const Grammar = enum {
+    container,
+    will_change,
     text_value,
     decoration_value,
     inline_value,
@@ -647,6 +672,10 @@ pub const Grammar = enum {
     stroke_width,
     background,
     border_radius_corner,
+    /// Gaps 1 §§4.1-4.3: a list of colors, line styles or line widths.
+    gap_rule,
+    /// Gaps 1 §3.3: <length-percentage> | overlap-join.
+    gap_inset,
     page_name,
 };
 
@@ -760,9 +789,31 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .column_height, .inherited = false, .initial = Value.kw(.auto), .grammar = .column_size },
         .{ .longhand = .column_fill, .inherited = false, .initial = Value.kw(.balance), .grammar = .keywords, .keywords = &.{ .auto, .balance, .balance_all } },
         .{ .longhand = .column_span, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .all } },
-        .{ .longhand = .column_rule_color, .inherited = false, .initial = .{ .color = .current }, .grammar = .color },
-        .{ .longhand = .column_rule_style, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .hidden, .dotted, .dashed, .solid, .double, .groove, .ridge, .inset, .outset } },
-        .{ .longhand = .column_rule_width, .inherited = false, .initial = medium_width, .grammar = .line_width },
+        // Gaps 1 §4 supersedes Multicol 1's column-rule-*: each is a list of
+        // values and repeat()s; a one-value list stays the plain value.
+        // Evidence for implementing the spec (golden rule 2): wpt.fyi stable
+        // runs at WPT 07ce6e987a, css/css-gaps/parsing - Chrome 156
+        // 1750/1750, Firefox 159 357, Safari 27 360; Firefox and Safari have
+        // not shipped it and have no negative position or WontFix on it.
+        .{ .longhand = .column_rule_color, .inherited = false, .initial = .{ .color = .current }, .grammar = .gap_rule },
+        .{ .longhand = .column_rule_style, .inherited = false, .initial = Value.kw(.none), .grammar = .gap_rule },
+        .{ .longhand = .column_rule_width, .inherited = false, .initial = medium_width, .grammar = .gap_rule },
+        .{ .longhand = .row_rule_color, .inherited = false, .initial = .{ .color = .current }, .grammar = .gap_rule },
+        .{ .longhand = .row_rule_style, .inherited = false, .initial = Value.kw(.none), .grammar = .gap_rule },
+        .{ .longhand = .row_rule_width, .inherited = false, .initial = medium_width, .grammar = .gap_rule },
+        .{ .longhand = .column_rule_break, .inherited = false, .initial = Value.kw(.normal), .grammar = .keywords, .keywords = &.{ .none, .normal, .intersection } },
+        .{ .longhand = .row_rule_break, .inherited = false, .initial = Value.kw(.normal), .grammar = .keywords, .keywords = &.{ .none, .normal, .intersection } },
+        .{ .longhand = .column_rule_inset_cap_start, .inherited = false, .initial = zero, .grammar = .gap_inset },
+        .{ .longhand = .column_rule_inset_cap_end, .inherited = false, .initial = zero, .grammar = .gap_inset },
+        .{ .longhand = .column_rule_inset_junction_start, .inherited = false, .initial = zero, .grammar = .gap_inset },
+        .{ .longhand = .column_rule_inset_junction_end, .inherited = false, .initial = zero, .grammar = .gap_inset },
+        .{ .longhand = .row_rule_inset_cap_start, .inherited = false, .initial = zero, .grammar = .gap_inset },
+        .{ .longhand = .row_rule_inset_cap_end, .inherited = false, .initial = zero, .grammar = .gap_inset },
+        .{ .longhand = .row_rule_inset_junction_start, .inherited = false, .initial = zero, .grammar = .gap_inset },
+        .{ .longhand = .row_rule_inset_junction_end, .inherited = false, .initial = zero, .grammar = .gap_inset },
+        .{ .longhand = .column_rule_visibility_items, .inherited = false, .initial = Value.kw(.normal), .grammar = .keywords, .keywords = &.{ .all, .around, .between, .normal } },
+        .{ .longhand = .row_rule_visibility_items, .inherited = false, .initial = Value.kw(.normal), .grammar = .keywords, .keywords = &.{ .all, .around, .between, .normal } },
+        .{ .longhand = .rule_overlap, .inherited = false, .initial = Value.kw(.row_over_column), .grammar = .keywords, .keywords = &.{ .row_over_column, .column_over_row } },
         .{ .longhand = .scroll_snap_type, .inherited = false, .initial = Value.kw(.none), .grammar = .scroll_snap },
         .{ .longhand = .scroll_snap_align, .inherited = false, .initial = Value.kw(.none), .grammar = .scroll_snap },
         .{ .longhand = .scroll_snap_stop, .inherited = false, .initial = Value.kw(.normal), .grammar = .keywords, .keywords = &.{ .normal, .always } },
@@ -835,6 +886,9 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .justify_self, .inherited = false, .initial = .{ .alignment = .{ .position = .auto } }, .grammar = .alignment },
         .{ .longhand = .anchor_name, .inherited = false, .initial = Value.kw(.none), .grammar = .anchor_names },
         .{ .longhand = .anchor_scope, .inherited = false, .initial = Value.kw(.none), .grammar = .anchor_scope },
+        .{ .longhand = .container_name, .inherited = false, .initial = Value.kw(.none), .grammar = .container },
+        .{ .longhand = .container_type, .inherited = false, .initial = Value.kw(.normal), .grammar = .container },
+        .{ .longhand = .will_change, .inherited = false, .initial = Value.kw(.auto), .grammar = .will_change },
         .{ .longhand = .appearance, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .auto, .base, .base_select, .searchfield, .textarea, .checkbox, .radio, .menulist, .listbox, .meter, .progress_bar, .button, .textfield, .menulist_button } },
         .{ .longhand = .background_color, .inherited = false, .initial = .{ .color = Color.transparent }, .grammar = .color, .quirky_color = true },
         .{ .longhand = .background_image, .inherited = false, .initial = Value.kw(.none), .grammar = .image },
@@ -1037,6 +1091,7 @@ pub const Shorthand = enum(u8) {
     _webkit_perspective,
     line_clamp,
     _webkit_line_clamp,
+    container,
     _webkit_text_orientation,
     all,
     background,
@@ -1103,6 +1158,29 @@ pub const Shorthand = enum(u8) {
     flex_flow,
     columns,
     column_rule,
+    // CSS Gap Decorations 1 §§3.2-3.4, §4.1-4.4 (gap_decorations.zig).
+    row_rule,
+    rule,
+    rule_color,
+    rule_style,
+    rule_width,
+    rule_break,
+    rule_visibility_items,
+    column_rule_inset,
+    row_rule_inset,
+    rule_inset,
+    column_rule_inset_cap,
+    column_rule_inset_junction,
+    row_rule_inset_cap,
+    row_rule_inset_junction,
+    rule_inset_cap,
+    rule_inset_junction,
+    column_rule_inset_start,
+    column_rule_inset_end,
+    row_rule_inset_start,
+    row_rule_inset_end,
+    rule_inset_start,
+    rule_inset_end,
     scroll_margin,
     scroll_margin_block,
     scroll_margin_inline,
@@ -1121,6 +1199,7 @@ pub const Shorthand = enum(u8) {
         return switch (self) {
             ._webkit_transform => &.{.transform},
             ._webkit_perspective => &.{.perspective},
+            .container => &.{ .container_name, .container_type },
             ._webkit_text_orientation => &.{.text_orientation},
             .all => &all_longhands,
             .background => &@import("background_values.zig").longhands,
@@ -1182,7 +1261,7 @@ pub const Shorthand = enum(u8) {
             .line_clamp, ._webkit_line_clamp => &.{ .max_lines, .block_ellipsis, .@"continue" },
             .flex_flow => &.{ .flex_direction, .flex_wrap },
             .columns => &.{ .column_width, .column_count, .column_height },
-            .column_rule => &.{ .column_rule_width, .column_rule_style, .column_rule_color },
+            .column_rule, .row_rule, .rule, .rule_color, .rule_style, .rule_width, .rule_break, .rule_visibility_items, .column_rule_inset, .row_rule_inset, .rule_inset, .column_rule_inset_cap, .column_rule_inset_junction, .row_rule_inset_cap, .row_rule_inset_junction, .rule_inset_cap, .rule_inset_junction, .column_rule_inset_start, .column_rule_inset_end, .row_rule_inset_start, .row_rule_inset_end, .rule_inset_start, .rule_inset_end => @import("gap_decorations.zig").longhands(self),
             .scroll_margin => &.{ .scroll_margin_top, .scroll_margin_right, .scroll_margin_bottom, .scroll_margin_left },
             .scroll_margin_block => &.{ .scroll_margin_block_start, .scroll_margin_block_end },
             .scroll_margin_inline => &.{ .scroll_margin_inline_start, .scroll_margin_inline_end },
@@ -1624,6 +1703,8 @@ pub const Stream = struct {
 pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Allocator.Error!?Value {
     const def = l.info();
     switch (def.grammar) {
+        .container => return @import("container_values.zig").consume(options, l, stream),
+        .will_change => return willChange(options, stream),
         .text_value => return @import("text_values.zig").parse(options, l, stream),
         .decoration_value => return @import("decoration_values.zig").parse(options, l, stream),
         .inline_value => return @import("inline_values.zig").parse(options, l, stream),
@@ -1847,8 +1928,41 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .border_image => return @import("border_image_values.zig").parse(options, l, stream),
         .stroke_width => return @import("svg_paint.zig").parseStrokeWidth(options, stream),
         .background => return @import("background_values.zig").parse(options, l, stream),
+        .gap_rule => return @import("gap_decorations.zig").consume(options, l, stream),
+        .gap_inset => return @import("gap_decorations.zig").consumeInset(options, stream),
         .page_name => return pageName(options, stream),
     }
+}
+
+/// CSS Will Change 1 section 2: auto | <animateable-feature>#. Unknown
+/// property names, spelling case, order and duplicates are significant.
+fn willChange(options: ParseOptions, stream: *Stream) Allocator.Error!?Value {
+    if (takeKeyword(stream, &.{.auto})) |keyword| return Value.kw(keyword);
+    const a = options.allocator;
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(a);
+    while (true) {
+        const token = stream.next();
+        if (token.token_type != .ident) return null;
+        const name = try tokenizer_mod.decode(a, token.value);
+        defer a.free(name);
+        for ([_][]const u8{ "initial", "inherit", "unset", "revert", "revert-layer", "revert-rule", "default", "will-change", "none", "all", "auto" }) |reserved| {
+            if (std.ascii.eqlIgnoreCase(name, reserved)) return null;
+        }
+        if (std.ascii.eqlIgnoreCase(name, "scroll-position")) {
+            try out.appendSlice(a, "scroll-position");
+        } else if (std.ascii.eqlIgnoreCase(name, "contents")) {
+            try out.appendSlice(a, "contents");
+        } else {
+            const escaped = try serialize_mod.serializeIdentifier(a, name);
+            defer a.free(escaped);
+            try out.appendSlice(a, escaped);
+        }
+        if (stream.peek().token_type != .comma) break;
+        _ = stream.next();
+        try out.appendSlice(a, ", ");
+    }
+    return .{ .text = try SharedText.create(a, out.items) };
 }
 
 /// Paged Media3 §8.1: auto | <custom-ident>. Q86 keeps the native canonical
@@ -1917,7 +2031,7 @@ fn takeKeyword(stream: *Stream, allowed: []const Keyword) ?Keyword {
     return null;
 }
 
-const LengthFlags = struct {
+pub const LengthFlags = struct {
     negative: bool,
     percent: bool = true,
     quirky: bool,
@@ -1925,7 +2039,7 @@ const LengthFlags = struct {
     anchor_size: bool = false,
 };
 
-fn lengthPercentage(options: ParseOptions, stream: *Stream, flags: LengthFlags) Allocator.Error!?Value {
+pub fn lengthPercentage(options: ParseOptions, stream: *Stream, flags: LengthFlags) Allocator.Error!?Value {
     const t = stream.peek();
     const grammar = math_values.Grammar{
         .kind = if (flags.percent) .length_percentage else .length,
@@ -1983,7 +2097,7 @@ pub fn mathValue(options: ParseOptions, stream: *Stream, grammar: math_values.Gr
     return .{ .calculation = parsed.expression };
 }
 
-fn colorValue(options: ParseOptions, stream: *Stream, def: *const Info) Allocator.Error!?Value {
+pub fn colorValue(options: ParseOptions, stream: *Stream, def: *const Info) Allocator.Error!?Value {
     const t = stream.peek();
     if (@import("color_values.zig").isFunction(t)) {
         const color = try @import("color_values.zig").parse(options, stream) orelse return null;
@@ -2372,6 +2486,7 @@ fn append(options: ParseOptions, out: *std.ArrayList(Assignment), l: Longhand, v
 
 fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
     switch (s) {
+        .container => return @import("container_values.zig").consumeShorthand(options, stream, out),
         .text_wrap => return @import("text_values.zig").parseWrap(options, stream, out),
         .text_spacing => return @import("text_values.zig").parseSpacing(options, stream, out),
         .text_decoration, .text_emphasis => return @import("decoration_values.zig").parseShorthand(options, s, stream, out),
@@ -2380,7 +2495,7 @@ fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *st
         .line_clamp, ._webkit_line_clamp => return @import("box_overflow_values.zig").parseClamp(options, s == ._webkit_line_clamp, stream, out),
         .flex_flow => return @import("box_values.zig").parseFlexFlow(options, stream, out),
         .columns => return @import("box_multicol_values.zig").parseColumns(options, stream, out),
-        .column_rule => return borderSide(options, .column_rule_width, .column_rule_style, .column_rule_color, &.{.column_rule_width}, &.{.column_rule_style}, &.{.column_rule_color}, stream, out),
+        .column_rule, .row_rule, .rule, .rule_color, .rule_style, .rule_width, .rule_break, .rule_visibility_items, .column_rule_inset, .row_rule_inset, .rule_inset, .column_rule_inset_cap, .column_rule_inset_junction, .row_rule_inset_cap, .row_rule_inset_junction, .rule_inset_cap, .rule_inset_junction, .column_rule_inset_start, .column_rule_inset_end, .row_rule_inset_start, .row_rule_inset_end, .rule_inset_start, .rule_inset_end => return @import("gap_decorations.zig").parseShorthand(options, s, stream, out),
         .font_variant => return @import("font_variants.zig").parseShorthand(options, stream, out),
         .font => return @import("font_shorthand.zig").parse(options, stream, out),
         .flex => return @import("flex_values.zig").consumeShorthand(options, stream, out),
@@ -2844,6 +2959,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .font_family => |v| try out.appendSlice(allocator, v.text.bytes),
         .font_size_adjust => |v| try v.serialize(out, allocator),
         .font_system => {}, // Pending specified system longhand (Q28).
+        .gap_list => |list| try list.serialize(l, out, allocator),
     }
 }
 
@@ -2904,7 +3020,8 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
         .line_clamp, ._webkit_line_clamp => return @import("box_overflow_values.zig").serializeClamp(s == ._webkit_line_clamp, vs, out, allocator),
         .flex_flow => return @import("box_values.zig").serializeFlexFlow(vs, out, allocator),
         .columns => return @import("box_multicol_values.zig").serializeColumns(vs, out, allocator),
-        .column_rule => return @import("box_multicol_values.zig").serializeRule(vs, mode, out, allocator),
+        .column_rule, .row_rule, .rule, .rule_color, .rule_style, .rule_width, .rule_break, .rule_visibility_items, .column_rule_inset, .row_rule_inset, .rule_inset, .column_rule_inset_cap, .column_rule_inset_junction, .row_rule_inset_cap, .row_rule_inset_junction, .rule_inset_cap, .rule_inset_junction, .column_rule_inset_start, .column_rule_inset_end, .row_rule_inset_start, .row_rule_inset_end, .rule_inset_start, .rule_inset_end => return @import("gap_decorations.zig").serializeShorthand(s, vs, mode, out, allocator),
+        .container => return @import("container_values.zig").serializeShorthand(vs, out, allocator),
         .font_variant => return @import("font_variants.zig").serialize(vs, out, allocator),
         .font => return @import("font_shorthand.zig").serialize(vs, mode, out, allocator),
         .text_wrap => return @import("text_values.zig").serializeWrap(vs, out, allocator),

@@ -307,20 +307,40 @@ pub fn arrayFrom(realm: Realm, values: []const Value) Error!Value {
     return adopt(realm.ctx, array);
 }
 
-/// HTML "queue a microtask" running `callback(ctx)`.
-pub fn queueMicrotask(realm: Realm, comptime Ctx: type, ctx: *Ctx, comptime callback: fn (*Ctx) void) void {
+/// HTML "queue a microtask" running `callback(ctx)` - or, when it never runs,
+/// `dropped(ctx)`, so that whatever `ctx` holds is let go either way. A realm
+/// microtask (engine.queueRealmMicrotask): `dropped` runs when the realm ends
+/// with it queued, or when the agent's queue is discarded under it (a
+/// terminated checkpoint: a worker's termination, a script deadline).
+///
+/// `dropped` is required. This used engine.queueMicrotask, which has no
+/// dropped end, and the data of every microtask that never ran leaked - lane
+/// leaks1: fetch_body's read loop (the WPT runner's three empty-stack
+/// reports, FileAPI/BlobURL/cross-partition.https.html) and the tees' chunk
+/// steps (tests/v8/microtask_dropped_end_test.zig).
+pub fn queueMicrotask(realm: Realm, comptime Ctx: type, ctx: *Ctx, comptime callback: fn (*Ctx) void, comptime dropped: fn (*Ctx) void) void {
     const Steps = struct {
-        fn run(data: ?*anyopaque) void {
+        fn run(data: ?*anyopaque, _: runtime.JSValue) void {
             callback(@ptrCast(@alignCast(data.?)));
         }
+
+        fn drop(data: ?*anyopaque) void {
+            dropped(@ptrCast(@alignCast(data.?)));
+        }
+
+        const steps: engine.PromiseReactionSteps = .{ .fulfilled = run, .dropped = drop };
     };
-    const queued: engine.Error!void = if (realm.ctx.agent) |agent| engine.queueMicrotask(agent, Steps.run, ctx) else error.NotSupported;
-    queued catch {
-        // No agent to queue on (a realm with no engine behind it): run the
-        // steps now. Later than a microtask would be never happens, so the
-        // read loop they continue does not stall; the cost is that they run
-        // inside the caller's steps instead of after them.
-        callback(ctx);
+    const queued: engine.Error!void = if (realm.ctx.agent != null) engine.queueRealmMicrotask(realm.ctx, &Steps.steps, ctx) else error.NotSupported;
+    queued catch |err| switch (err) {
+        // The realm's end is under way, or its agent is being stopped: the
+        // steps would run in nothing.
+        error.OperationFailed => dropped(ctx),
+        // No microtask queue behind the realm (an engine without one; a
+        // realm with no engine, a unit test's) or no memory: run the steps
+        // now. Later than a microtask would be never happens, so the read
+        // loop they continue does not stall; the cost is that they run inside
+        // the caller's steps instead of after them.
+        else => callback(ctx),
     };
 }
 

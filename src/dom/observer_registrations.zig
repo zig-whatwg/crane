@@ -145,7 +145,7 @@ pub const ReachableNodeSet = struct {
     const index_from = 16;
     const Block = struct {
         next: ?*Block = null,
-        entries: [block_len]Entry = [_]Entry{.{}} ** block_len,
+        entries: [block_len]Entry = @as([block_len]Entry, @splat(.{})),
     };
 
     /// Hold `member` (`base` its tree node) unless the set holds it already.

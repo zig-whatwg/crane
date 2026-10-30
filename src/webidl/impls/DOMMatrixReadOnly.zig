@@ -305,7 +305,7 @@ fn floatArrayElements(ctx: runtime.Context, value: runtime.JSValue, comptime Flo
     // Neither 6 nor 16 elements: fromSequence's TypeError.
     if (count != 6 and count != 16) return error.TypeError;
     for (0..count) |i| {
-        const bits = std.mem.readInt(std.meta.Int(.unsigned, @bitSizeOf(Float)), bytes[i * @sizeOf(Float) ..][0..@sizeOf(Float)], .little);
+        const bits = std.mem.readInt(@Int(.unsigned, @bitSizeOf(Float)), bytes[i * @sizeOf(Float) ..][0..@sizeOf(Float)], .little);
         values[i] = @floatCast(@as(Float, @bitCast(bits)));
     }
     return count;
@@ -363,7 +363,7 @@ fn toFloatArray(instance: *runtime.Instance, comptime Float: type) !runtime.JSVa
     var bytes: [16 * @sizeOf(Float)]u8 = undefined;
     for (matrix.m, 0..) |element, i| {
         const narrowed: Float = @floatCast(element);
-        std.mem.writeInt(std.meta.Int(.unsigned, @bitSizeOf(Float)), bytes[i * @sizeOf(Float) ..][0..@sizeOf(Float)], @bitCast(narrowed), .little);
+        std.mem.writeInt(@Int(.unsigned, @bitSizeOf(Float)), bytes[i * @sizeOf(Float) ..][0..@sizeOf(Float)], @bitCast(narrowed), .little);
     }
     const buffer = try engine.createArrayBuffer(instance.ctx, &bytes);
     defer buffer.release();

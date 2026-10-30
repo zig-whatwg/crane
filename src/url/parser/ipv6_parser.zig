@@ -77,7 +77,7 @@ pub fn parseIPv6(
     errors: ?*infra.List(validation.ValidationError),
 ) ![8]u16 {
     // Step 1: Let address be a new IPv6 address whose pieces are all 0
-    var address = [_]u16{0} ** 8;
+    var address = @as([8]u16, @splat(0));
 
     // Step 2: Let pieceIndex be 0
     var piece_index: usize = 0;

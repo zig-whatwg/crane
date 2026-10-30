@@ -49,8 +49,6 @@ const MediaValues = css.media_queries.MediaValues;
 pub const Rule = rules_mod.Rule;
 pub const ObjectLink = rules_mod.ObjectLink;
 
-const html_namespace = "http://www.w3.org/1999/xhtml";
-
 /// What a sheet is parsed with, captured when it is created.
 pub const ParseMode = struct {
     quirks: bool = false,
@@ -111,6 +109,10 @@ pub const SheetRecord = struct {
     /// client's policy; embedded sheets have no response policy of their
     /// own. Kept with the sheet after its owner is detached.
     referrer_policy: @import("fetch").internal.ReferrerPolicy = .empty,
+    /// CSS Syntax's resulting encoding, the environment of later imports.
+    /// Immutable static metadata, retained after parsing or detachment.
+    /// Null for sheets created from Unicode text rather than fetched bytes.
+    encoding: ?*const css.rules.stylesheet_encoding.Encoding = null,
     /// CSSOM "origin-clean flag".
     origin_clean: bool = true,
     /// CSSOM "constructed flag", "disallow modification flag", and
@@ -149,6 +151,7 @@ pub const SheetRecord = struct {
         location: ?[]const u8 = null,
         base_url: []const u8 = "",
         referrer_policy: @import("fetch").internal.ReferrerPolicy = .empty,
+        encoding: ?*const css.rules.stylesheet_encoding.Encoding = null,
         origin_clean: bool = true,
         mode: ParseMode = .{},
     };
@@ -158,7 +161,7 @@ pub const SheetRecord = struct {
     pub fn create(allocator: Allocator, text: []const u8, options: Options) Allocator.Error!*SheetRecord {
         const self = try allocator.create(SheetRecord);
         errdefer allocator.destroy(self);
-        self.* = .{ .allocator = allocator, .owner_node = options.owner_node, .alternate = options.alternate, .origin_clean = options.origin_clean, .mode = options.mode, .referrer_policy = options.referrer_policy };
+        self.* = .{ .allocator = allocator, .owner_node = options.owner_node, .alternate = options.alternate, .origin_clean = options.origin_clean, .mode = options.mode, .referrer_policy = options.referrer_policy, .encoding = options.encoding };
         errdefer self.freeStrings();
         self.title = try allocator.dupe(u8, options.title);
         self.media_text = try allocator.dupe(u8, options.media);
@@ -613,14 +616,23 @@ const Compiler = struct {
     /// stands where one may).
     fn ruleList(self: *Compiler, items: []const *Rule, condition: ?u32, layer: ?u16) Allocator.Error!void {
         for (items) |rule| switch (rule.data) {
-            .style => try self.styleRule(rule, condition, layer),
+            .style => |*style| {
+                try self.styleRule(rule, condition, layer);
+                try self.ruleList(style.children.items, condition, layer);
+            },
+            .nested_declarations => try self.styleRule(rule, condition, layer),
+            // Container query evaluation needs the host's real container
+            // facts; CSS @SCOPE EVALUATION supplies scoping/proximity.
+            // Until those capabilities arrive, neither conditional body
+            // is compiled as an unconditional style rule.
+            .container, .scope => {},
             .import => |*import| {
                 // Cascade 5 2: `layer` puts the imported sheet in a new
                 // anonymous layer, `layer(name)` in that layer.
                 const import_layer: ?u16 = if (import.layer) |name| try self.declareLayer(null, name) else null;
                 try self.contents.imports.append(self.contents.allocator, .{ .media = &import.media, .layer = import_layer, .child = import.child });
             },
-            .namespace => |n| self.namespaceRule(n.prefix, n.uri),
+            .namespace => {}, // URI constraints are already in each parsed selector.
             // A statement declares its layers' order.
             .layer_statement => |l| for (l.names) |name| {
                 _ = try self.declareLayer(layer, name);
@@ -687,25 +699,20 @@ const Compiler = struct {
         return @intCast(self.contents.layers.items.len - 1);
     }
 
-    /// CSS Namespaces 3: the default namespace (no prefix) declared as
-    /// HTML's.
-    fn namespaceRule(self: *Compiler, prefix: []const u8, uri: []const u8) void {
-        if (prefix.len == 0 and std.mem.eql(u8, uri, html_namespace)) self.contents.html_only = true;
-    }
-
     fn styleRule(self: *Compiler, rule: *Rule, condition: ?u32, layer: ?u16) Allocator.Error!void {
         const a = self.contents.allocator;
-        const style = &rule.data.style;
+        const selectors = rule.matchingSelectors().?;
+        const block = rule.block().?;
         try self.contents.style_rules.append(a, rule);
         const position = self.position;
         self.position += 1;
-        for (style.selectors.selectors) |*complex| {
+        for (selectors.selectors) |*complex| {
             const spec = complex.calculateSpecificity();
             const index: u32 = @intCast(self.contents.rules.items.len);
             try self.contents.rules.append(a, .{
                 .complex = complex,
                 .specificity = .{ .a = spec.id, .b = spec.class, .c = spec.element },
-                .block = &style.block,
+                .block = block,
                 .position = position,
                 .layer = layer,
                 .condition = condition,
@@ -855,10 +862,12 @@ test "an @import whose URL holds a parenthesis keeps its media" {
     try testing.expectEqual(@as(usize, 1), contents.imports.items[1].media.queries.len);
 }
 
-test "the HTML default namespace marks the sheet HTML-only" {
+test "a default namespace constrains selectors rather than the whole sheet" {
     const contents = try Contents.parse(testing.allocator, "@namespace \"http://www.w3.org/1999/xhtml\"; div { display: block }", .{});
     defer contents.destroy();
-    try testing.expect(contents.html_only);
+    try testing.expect(!contents.html_only);
+    const simples = contents.rules.items[0].complex.compound.simple_selectors;
+    try testing.expectEqualStrings("http://www.w3.org/1999/xhtml", simples[1].NamespaceURI.uri);
 }
 
 test "a record parses lazily, keeps its media, and owns its imports" {

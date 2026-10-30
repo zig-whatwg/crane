@@ -265,6 +265,22 @@ column-span: none
 column-rule-color: rgb(0, 0, 0)
 column-rule-style: none
 column-rule-width: 3px
+row-rule-color: rgb(0, 0, 0)
+row-rule-style: none
+row-rule-width: 3px
+column-rule-break: normal
+row-rule-break: normal
+column-rule-inset-cap-start: 0px
+column-rule-inset-cap-end: 0px
+column-rule-inset-junction-start: 0px
+column-rule-inset-junction-end: 0px
+row-rule-inset-cap-start: 0px
+row-rule-inset-cap-end: 0px
+row-rule-inset-junction-start: 0px
+row-rule-inset-junction-end: 0px
+column-rule-visibility-items: normal
+row-rule-visibility-items: normal
+rule-overlap: row-over-column
 scroll-snap-type: none
 scroll-snap-align: none
 scroll-snap-stop: normal
@@ -304,6 +320,9 @@ transform-style: flat
 perspective: none
 perspective-origin: 50% 50%
 backface-visibility: visible
+will-change: auto
+container-name: none
+container-type: normal
 page: auto
 == initial root and child / 0
 display: block
@@ -353,6 +372,7 @@ text-emphasis-style: "x"
 text-emphasis-color: rgb(255, 0, 0)
 text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
 column-rule-color: rgb(255, 0, 0)
+row-rule-color: rgb(255, 0, 0)
 transform: matrix(0.984808, 0.173648, -0.173648, 0.984808, -8.44928, 59.4358)
 == inherited and counted values / 1
 border-block-end-color: rgb(255, 0, 0)
@@ -381,6 +401,7 @@ text-emphasis-style: "x"
 text-emphasis-color: rgb(255, 0, 0)
 text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
 column-rule-color: rgb(255, 0, 0)
+row-rule-color: rgb(255, 0, 0)
 == inherited and counted values / 2
 border-block-end-color: rgb(255, 0, 0)
 border-block-start-color: rgb(255, 0, 0)
@@ -408,6 +429,7 @@ text-emphasis-style: "x"
 text-emphasis-color: rgb(255, 0, 0)
 text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
 column-rule-color: rgb(255, 0, 0)
+row-rule-color: rgb(255, 0, 0)
 == explicit inherit initial unset / 0
 background-color: rgb(0, 128, 0)
 background-image: url("b.png"), radial-gradient(rgb(255, 0, 0), rgb(0, 0, 255))
@@ -454,6 +476,7 @@ text-emphasis-style: "x"
 text-emphasis-color: rgb(0, 0, 255)
 text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
 column-rule-color: rgb(0, 0, 255)
+row-rule-color: rgb(0, 0, 255)
 transform: matrix(0.984808, 0.173648, -0.173648, 0.984808, -6.3655, 47.6181)
 == explicit inherit initial unset / 1
 background-color: rgb(0, 128, 0)
@@ -495,6 +518,7 @@ outline-color: rgb(0, 128, 0)
 text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
 column-rule-color: rgb(0, 128, 0)
+row-rule-color: rgb(0, 128, 0)
 == root display contents and none / 1
 border-block-end-color: rgb(0, 128, 0)
 border-block-start-color: rgb(0, 128, 0)
@@ -513,6 +537,7 @@ min-width: 0px
 text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
 column-rule-color: rgb(0, 128, 0)
+row-rule-color: rgb(0, 128, 0)
 == root display contents and none / 2
 border-block-end-color: rgb(0, 128, 0)
 border-block-start-color: rgb(0, 128, 0)
@@ -532,6 +557,7 @@ min-width: 0px
 text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
 column-rule-color: rgb(0, 128, 0)
+row-rule-color: rgb(0, 128, 0)
 == display contents parent in a grid / 0
 display: grid
 justify-items: legacy center
@@ -557,6 +583,7 @@ padding-left: 3px
 text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
 column-rule-color: rgb(0, 128, 0)
+row-rule-color: rgb(0, 128, 0)
 == display contents parent in a grid / 2
 border-block-end-color: rgb(0, 128, 0)
 border-block-start-color: rgb(0, 128, 0)
@@ -579,6 +606,7 @@ padding-left: 3px
 text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
 column-rule-color: rgb(0, 128, 0)
+row-rule-color: rgb(0, 128, 0)
 == display contents parent in a grid / 3
 border-block-end-color: rgb(0, 128, 0)
 border-block-start-color: rgb(0, 128, 0)
@@ -597,6 +625,7 @@ justify-items: legacy center
 text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
 column-rule-color: rgb(0, 128, 0)
+row-rule-color: rgb(0, 128, 0)
 == pseudo-elements / 0
 border-block-end-color: rgb(128, 0, 128)
 border-block-start-color: rgb(128, 0, 128)
@@ -615,6 +644,7 @@ outline-color: rgb(128, 0, 128)
 text-decoration-color: rgb(128, 0, 128)
 text-emphasis-color: rgb(128, 0, 128)
 column-rule-color: rgb(128, 0, 128)
+row-rule-color: rgb(128, 0, 128)
 == pseudo-elements / 1 ::before
 border-block-end-color: rgb(128, 0, 128)
 border-block-start-color: rgb(128, 0, 128)
@@ -634,6 +664,7 @@ margin-left: 12px
 text-decoration-color: rgb(128, 0, 128)
 text-emphasis-color: rgb(128, 0, 128)
 column-rule-color: rgb(128, 0, 128)
+row-rule-color: rgb(128, 0, 128)
 == pseudo-elements / 2 ::after
 border-block-end-color: rgb(128, 0, 128)
 border-block-start-color: rgb(128, 0, 128)
@@ -651,6 +682,7 @@ outline-color: rgb(128, 0, 128)
 text-decoration-color: rgb(128, 0, 128)
 text-emphasis-color: rgb(128, 0, 128)
 column-rule-color: rgb(128, 0, 128)
+row-rule-color: rgb(128, 0, 128)
 == registered custom properties / 0
 --any: foo
 --col: rgb(0, 0, 255)
@@ -687,6 +719,7 @@ padding-left: 4px
 text-decoration-color: rgb(0, 0, 255)
 text-emphasis-color: rgb(0, 0, 255)
 column-rule-color: rgb(0, 0, 255)
+row-rule-color: rgb(0, 0, 255)
 == registered custom properties / 2
 --any: foo
 --col: rgb(0, 0, 255)
@@ -711,6 +744,7 @@ outline-color: rgb(0, 0, 255)
 text-decoration-color: rgb(0, 0, 255)
 text-emphasis-color: rgb(0, 0, 255)
 column-rule-color: rgb(0, 0, 255)
+row-rule-color: rgb(0, 0, 255)
 == all / 0
 background-image: url("b.png"), radial-gradient(rgb(255, 0, 0), rgb(255, 0, 0))
 border-block-end-color: rgb(255, 0, 0)
@@ -751,6 +785,7 @@ text-emphasis-style: "x"
 text-emphasis-color: rgb(255, 0, 0)
 text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
 column-rule-color: rgb(255, 0, 0)
+row-rule-color: rgb(255, 0, 0)
 transform: matrix(0.984808, 0.173648, -0.173648, 0.984808, -6.3655, 47.6181)
 == all / 1
 background-image: url("b.png"), radial-gradient(rgb(255, 0, 0), rgb(255, 0, 0))
@@ -792,6 +827,7 @@ text-emphasis-style: "x"
 text-emphasis-color: rgb(255, 0, 0)
 text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
 column-rule-color: rgb(255, 0, 0)
+row-rule-color: rgb(255, 0, 0)
 transform: matrix(0.984808, 0.173648, -0.173648, 0.984808, -6.3655, 47.6181)
 == all / 2
 border-block-end-color: rgb(0, 128, 0)
@@ -809,6 +845,7 @@ outline-color: rgb(0, 128, 0)
 text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
 column-rule-color: rgb(0, 128, 0)
+row-rule-color: rgb(0, 128, 0)
 == all / 3
 border-block-end-color: rgb(0, 128, 0)
 border-block-start-color: rgb(0, 128, 0)
@@ -827,6 +864,7 @@ margin-left: 9px
 text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
 column-rule-color: rgb(0, 128, 0)
+row-rule-color: rgb(0, 128, 0)
 == all / 4
 border-block-end-color: rgb(0, 128, 0)
 border-block-start-color: rgb(0, 128, 0)
@@ -843,6 +881,7 @@ outline-color: rgb(0, 128, 0)
 text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
 column-rule-color: rgb(0, 128, 0)
+row-rule-color: rgb(0, 128, 0)
 == revert and revert-layer / 0
 border-block-end-color: rgb(128, 128, 0)
 border-block-start-color: rgb(128, 128, 0)
@@ -864,6 +903,7 @@ margin-top: 8px
 text-decoration-color: rgb(128, 128, 0)
 text-emphasis-color: rgb(128, 128, 0)
 column-rule-color: rgb(128, 128, 0)
+row-rule-color: rgb(128, 128, 0)
 == revert and revert-layer / 1
 border-block-end-color: rgb(255, 0, 0)
 border-block-start-color: rgb(255, 0, 0)
@@ -884,6 +924,7 @@ padding-top: 6px
 text-decoration-color: rgb(255, 0, 0)
 text-emphasis-color: rgb(255, 0, 0)
 column-rule-color: rgb(255, 0, 0)
+row-rule-color: rgb(255, 0, 0)
 == logical longhands / 0
 direction: rtl
 display: block
@@ -1111,6 +1152,7 @@ letter-spacing: 1px
 text-decoration-color: rgb(0, 128, 128)
 text-emphasis-color: rgb(0, 128, 128)
 column-rule-color: rgb(0, 128, 128)
+row-rule-color: rgb(0, 128, 128)
 == pseudo-elements of one originating element / 1
 border-block-end-color: rgb(0, 0, 128)
 border-block-start-color: rgb(0, 0, 128)
@@ -1134,6 +1176,7 @@ writing-mode: vertical-rl
 text-decoration-color: rgb(0, 0, 128)
 text-emphasis-color: rgb(0, 0, 128)
 column-rule-color: rgb(0, 0, 128)
+row-rule-color: rgb(0, 0, 128)
 == pseudo-elements of one originating element / 2 ::before
 (parent 1)
 border-block-end-color: rgb(255, 0, 0)
@@ -1160,6 +1203,7 @@ writing-mode: vertical-rl
 text-decoration-color: rgb(255, 0, 0)
 text-emphasis-color: rgb(255, 0, 0)
 column-rule-color: rgb(255, 0, 0)
+row-rule-color: rgb(255, 0, 0)
 == pseudo-elements of one originating element / 3 ::after
 (parent 1)
 border-block-end-color: rgb(0, 0, 128)
@@ -1184,6 +1228,7 @@ writing-mode: vertical-rl
 text-decoration-color: rgb(0, 0, 128)
 text-emphasis-color: rgb(0, 0, 128)
 column-rule-color: rgb(0, 0, 128)
+row-rule-color: rgb(0, 0, 128)
 == pseudo-elements of one originating element / 4 ::first-line
 (parent 1)
 background-color: rgb(255, 255, 0)
@@ -1209,6 +1254,7 @@ text-decoration-line: underline
 text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
 column-rule-color: rgb(0, 128, 0)
+row-rule-color: rgb(0, 128, 0)
 == pseudo-elements of one originating element / 5 ::first-letter
 (parent 1)
 border-block-end-color: rgb(0, 128, 0)
@@ -1241,6 +1287,7 @@ text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
 initial-letter: 2
 column-rule-color: rgb(0, 128, 0)
+row-rule-color: rgb(0, 128, 0)
 == pseudo-elements of one originating element / 6 ::marker
 (parent 1)
 border-block-end-color: rgb(255, 0, 0)
@@ -1265,6 +1312,7 @@ writing-mode: vertical-rl
 text-decoration-color: rgb(255, 0, 0)
 text-emphasis-color: rgb(255, 0, 0)
 column-rule-color: rgb(255, 0, 0)
+row-rule-color: rgb(255, 0, 0)
 == adjustments / 0
 display: flex
 == adjustments / 1

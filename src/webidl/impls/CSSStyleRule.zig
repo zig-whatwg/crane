@@ -47,19 +47,16 @@ pub fn get_selectorText(instance: *runtime.Instance) anyerror!typedefs.CSSOMStri
 pub fn set_selectorText(instance: *runtime.Instance, value: typedefs.CSSOMString) anyerror!void {
     const rule = styleRuleOf(instance) orelse return;
     const a = rule.allocator;
-    const text = try a.dupe(u8, std.mem.trim(u8, value.asSlice(), " \t\n\r\x0c"));
-    var parsed = selector.parse(a, text) catch |err| {
-        a.free(text);
+    const namespaces = if (rule.sheet()) |record| try record.namespaceMap(instance) else null;
+    const text = try dom.style.css.rules.serializeComponentValues(a, value.asSlice());
+    const context = if (rule.parent_rule) |parent| dom.style.rules.nestingKindInside(parent) else null;
+    var parsed = dom.style.rules.parseCssomSelectorIn(a, text, namespaces, context) catch |err| {
         if (err == error.OutOfMemory) return err;
         return;
     };
-    errdefer parsed.deinit();
-    // The old selectors borrow the old text: both go together.
-    rule.data.style.selectors.deinit();
-    a.free(rule.prelude);
-    rule.prelude = text;
-    rule.data.style.selectors = parsed;
-    if (rule.sheet()) |record| record.changed();
+    errdefer parsed.selectors.deinit();
+    errdefer a.free(parsed.text);
+    try dom.style.rules.replaceStyleSelector(rule, parsed);
 }
 
 /// Getter for style ([SameObject]): "a CSSStyleProperties object for the

@@ -40,7 +40,9 @@ pub const Step = enum(u5) {
     scroll = 9,
     /// 10. CSSOM View "evaluate media queries and report changes".
     media_queries = 10,
-    /// 11. Web Animations "update animations and send events".
+    /// 11. Web Animations "update animations and send events": the
+    /// animations module's (dom.animations, an owner outside the impls),
+    /// which the list calls directly.
     animations = 11,
     /// 12. Fullscreen "run the fullscreen steps".
     fullscreen = 12,
@@ -119,14 +121,39 @@ pub const Loop = struct {
     /// event loop. Borrowed: the loop keeps its identity checked by slab
     /// generation, never a reference.
     request_frame: *const fn (document: *runtime.Instance) void,
+    /// The animations of `realm`'s event loop (dom.animations: the global
+    /// animation list, the documents' timelines and event queues), owned by
+    /// that loop; null for a realm no Browser loop runs.
+    animation_registry: ?*const fn (realm: runtime.Context) ?*animations.Registry = null,
+    /// The latest refresh moment at or before now (monotonic ns) on the
+    /// refresh grid of `realm`'s event loop: a document timeline's time
+    /// before its document's first rendering opportunity.
+    latest_refresh: ?*const fn (realm: runtime.Context) ?i64 = null,
 };
+
+const animations = @import("animations/registry.zig");
+
+/// The animations of `realm`'s event loop (Loop.animation_registry).
+pub fn animationRegistry(realm: runtime.Context) ?*animations.Registry {
+    const impl = loop orelse return null;
+    const get = impl.animation_registry orelse return null;
+    return get(realm);
+}
+
+/// The latest refresh moment at or before now of `realm`'s event loop
+/// (Loop.latest_refresh).
+pub fn latestRefresh(realm: runtime.Context) ?i64 {
+    const impl = loop orelse return null;
+    const get = impl.latest_refresh orelse return null;
+    return get(realm);
+}
 
 const step_count = @typeInfo(Step).@"enum".fields.len;
 
 // process-wide: function pointers the browser layer installs once at process start (crane.Process), the same for every Browser and thread
 var loop: ?Loop = null;
 // process-wide: function pointers each step's owner installs once at process start (crane.Process); a frame's state is its event loop's and its documents', never this table's
-var steps: [24]?DocumentStep = [_]?DocumentStep{null} ** 24;
+var steps: [24]?DocumentStep = @as([24]?DocumentStep, @splat(null));
 
 /// Called by the browser layer, once, at process start (process_start.zig).
 pub fn installLoop(impl: Loop) void {
@@ -226,7 +253,7 @@ test "without an installed loop a frame request does nothing, and an uninstalled
         steps = saved_steps;
     }
     loop = null;
-    steps = [_]?DocumentStep{null} ** 24;
+    steps = @as([24]?DocumentStep, @splat(null));
     // Never dereferenced: with nothing installed nothing reads the document.
     var document: runtime.Instance = undefined;
     requestFrame(&document);

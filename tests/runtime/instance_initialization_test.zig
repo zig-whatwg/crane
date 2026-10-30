@@ -30,7 +30,7 @@ const TestState = struct {
     ratio: f64 = 0.0,
 
     // Array - MUST be all zeros when initialized
-    buffer: [16]u8 = [_]u8{0} ** 16,
+    buffer: [16]u8 = @as([16]u8, @splat(0)),
 };
 
 /// Empty delegates struct for testing
@@ -214,9 +214,9 @@ test "Instance.init - large state is fully zeroed" {
 
     // Test with a larger state (similar to Document which has ~2KB state)
     const LargeState = struct {
-        cached_fields: [64]?*runtime.Instance = [_]?*runtime.Instance{null} ** 64,
-        counters: [128]u32 = [_]u32{0} ** 128,
-        flags: [256]bool = [_]bool{false} ** 256,
+        cached_fields: [64]?*runtime.Instance = @as([64]?*runtime.Instance, @splat(null)),
+        counters: [128]u32 = @as([128]u32, @splat(0)),
+        flags: [256]bool = @as([256]bool, @splat(false)),
     };
 
     var ctx_data = try runtime.ContextData.init(allocator, .{});

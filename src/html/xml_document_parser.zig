@@ -434,6 +434,12 @@ pub fn insertErrorMessageBlock(document: *runtime.Instance, failure: Failure) !v
         try appendText(style, "html, body { height: 100% } parsererror + svg { width: 100%; height: 100% }");
         const body = try makeHtml(document, "body");
         try append(root, body);
+        // The svg moves in two calls: held across them, it never counts zero
+        // between its removal and its insertion (refcount step 7's
+        // prerequisite (b), H-RC8-XML-MOVEHOLD).
+        var moved: dom.node_holds.CountedRef = .{};
+        moved.take(svg, dom.instance_bridge.getNodeBase(@ptrCast(svg)));
+        defer moved.release(svg);
         _ = try interfaces.Node.call_removeChild(document, svg);
         try append(body, svg);
         try append(document, root);

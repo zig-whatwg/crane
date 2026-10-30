@@ -293,6 +293,20 @@ pub const TreeCounts = struct { index: usize, count: usize };
 
 const random = @import("random_values.zig");
 
+/// Evidence gathered while computing one candidate; never stored in a value.
+pub const UnavailableNote = struct {
+    retained_length: bool = false,
+    scalar: bool = false,
+};
+
+/// Lazy physical-axis eligibility and a borrowed note for this computation.
+/// Neither the provider nor the note escapes into an Expression or a value.
+pub const ContainerInput = struct {
+    context: *anyopaque,
+    get: *const fn (*anyopaque, Context.ContainerAxis) Context.ContainerEligibility,
+    note: *UnavailableNote,
+};
+
 pub const Context = struct {
     font_size: f64 = 16,
     root_font_size: f64 = 16,
@@ -316,34 +330,51 @@ pub const Context = struct {
     /// Q83/Q84: callers preflight needsRandomBase(). Missing input skips a
     /// cascade candidate; it never manufactures a draw or a computed key.
     random_base: ?random.Provider = null,
+    /// Conditional 5 §7: borrowed only during synchronous computation.
+    /// Null preserves the no-eligible-container viewport fallback.
+    container: ?ContainerInput = null,
 
     pub const ContainerAxis = enum { width, height, inline_axis, block_axis };
-    pub const ContainerEligibility = enum { no_eligible_container };
+    pub const ContainerEligibility = enum { no_eligible_container, eligible_geometry_unavailable };
 
-    /// Conditional5 §7, per-axis query-container selection. container-type
-    /// is unsupported, so no element currently establishes a query container;
-    /// elementless contexts have the same default. The container-queries row
-    /// must add eligible-but-geometry-unavailable IN THE SAME COMMIT as
-    /// container-type support: retain the unresolved length, or skip a scalar
-    /// through the cascade's single unavailable-input predicate (Q25/Q96).
+    /// Conditional 5 §7: logical units use the consumer's writing mode,
+    /// then select a container independently for each physical axis.
+    /// Elementless callers have no eligible container by default.
     pub fn containerEligibility(self: Context, axis: ContainerAxis) ContainerEligibility {
-        _ = self;
-        _ = axis;
-        return .no_eligible_container;
+        const input = self.container orelse return .no_eligible_container;
+        const physical: ContainerAxis = switch (axis) {
+            .width, .height => axis,
+            .inline_axis => if (self.viewport_vertical) .height else .width,
+            .block_axis => if (self.viewport_vertical) .width else .height,
+        };
+        return input.get(input.context, physical);
     }
 
-    fn containerScale(self: Context, axis: ContainerAxis) f64 {
-        return switch (self.containerEligibility(axis)) {
-            .no_eligible_container => switch (axis) {
-                .width => self.viewport_width,
-                .height => self.viewport_height,
-                .inline_axis => if (self.viewport_vertical) self.viewport_height else self.viewport_width,
-                .block_axis => if (self.viewport_vertical) self.viewport_width else self.viewport_height,
-            } / 100,
-        };
+    fn containerScale(self: Context, axis: ContainerAxis, length_result: bool) ?f64 {
+        if (self.containerEligibility(axis) == .eligible_geometry_unavailable) {
+            const note = self.container.?.note;
+            if (length_result) {
+                note.retained_length = true;
+                return null;
+            }
+            // Q95: scalar consumers require a number. This placeholder is
+            // discarded by the cascade's shared unavailable-input decision
+            // before it can enter computed or custom-property storage.
+            note.scalar = true;
+        }
+        return switch (axis) {
+            .width => self.viewport_width,
+            .height => self.viewport_height,
+            .inline_axis => if (self.viewport_vertical) self.viewport_height else self.viewport_width,
+            .block_axis => if (self.viewport_vertical) self.viewport_width else self.viewport_height,
+        } / 100;
     }
 
     pub fn resolve(self: Context, number: Numeric) Numeric {
+        return self.resolveTyped(number, true);
+    }
+
+    fn resolveTyped(self: Context, number: Numeric, length_result: bool) Numeric {
         const scale: f64 = switch (number.unit) {
             .em => self.font_size,
             .rem => self.root_font_size,
@@ -362,12 +393,12 @@ pub const Context = struct {
             .vb, .svb, .lvb, .dvb => (if (self.viewport_vertical) self.viewport_width else self.viewport_height) / 100,
             .vmin, .svmin, .lvmin, .dvmin => @min(self.viewport_width, self.viewport_height) / 100,
             .vmax, .svmax, .lvmax, .dvmax => @max(self.viewport_width, self.viewport_height) / 100,
-            .cqw => self.containerScale(.width),
-            .cqh => self.containerScale(.height),
-            .cqi => self.containerScale(.inline_axis),
-            .cqb => self.containerScale(.block_axis),
-            .cqmin => @min(self.containerScale(.inline_axis), self.containerScale(.block_axis)),
-            .cqmax => @max(self.containerScale(.inline_axis), self.containerScale(.block_axis)),
+            .cqw => (self.containerScale(.width, length_result) orelse return number),
+            .cqh => (self.containerScale(.height, length_result) orelse return number),
+            .cqi => (self.containerScale(.inline_axis, length_result) orelse return number),
+            .cqb => (self.containerScale(.block_axis, length_result) orelse return number),
+            .cqmin => @min((self.containerScale(.inline_axis, length_result) orelse return number), (self.containerScale(.block_axis, length_result) orelse return number)),
+            .cqmax => @max((self.containerScale(.inline_axis, length_result) orelse return number), (self.containerScale(.block_axis, length_result) orelse return number)),
             .percent => if (self.percentage_basis) |basis| basis / 100 else return number,
             else => return .{ .value = number.value * (number.unit.absoluteScale() orelse 1), .unit = number.unit.canonical() },
         };
@@ -621,7 +652,13 @@ pub const Expression = struct {
         result.typ = self.typ;
         result.computed = true;
         result.wrapper = self.wrapper;
-        var builder = Builder{ .allocator = result.arena.allocator(), .hint = self.grammar.percentHint(), .context = context, .divided_by_zero = divided_by_zero };
+        var builder = Builder{
+            .allocator = result.arena.allocator(),
+            .hint = self.grammar.percentHint(),
+            .context = context,
+            .length_result = self.typ.is(.length),
+            .divided_by_zero = divided_by_zero,
+        };
         result.root = try builder.copy(self.root);
         // Q100 / CSSWG #3482: all three browsers canonicalize this computed
         // length-percentage value, after §10.10.1's ordinary simplification.
@@ -1287,6 +1324,7 @@ const Builder = struct {
     context: ?Context = null,
     // Borrowed only while parsing or computing; no expression stores it.
     divided_by_zero: ?*bool = null,
+    length_result: bool = true,
     context_free: bool = false,
     preserve_units: bool = false,
 
@@ -1306,7 +1344,7 @@ const Builder = struct {
                 number.unit = number.unit.canonical();
             }
         }
-        if (self.context) |context| number = context.resolve(number);
+        if (self.context) |context| number = context.resolveTyped(number, self.length_result);
         var typ = Type.one(number.unit.base());
         if (number.unit == .percent and !self.context_free) typ = typ.withHint(self.hint);
         const node = try self.allocator.create(Node);

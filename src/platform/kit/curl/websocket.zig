@@ -5,11 +5,8 @@
 const std = @import("std");
 const platform = @import("platform");
 const options = @import("kit_curl_share").options;
-const c = @cImport({
-    @cInclude("curl/curl.h");
-    @cInclude("curl/websockets.h");
-    @cInclude("curl/header.h");
-});
+// curl/curl.h, websockets.h and header.h, translated by build.zig (addCImport).
+const c = @import("curl_c");
 
 const Socket = struct {
     allocator: std.mem.Allocator,
@@ -33,7 +30,7 @@ pub fn open(allocator: std.mem.Allocator, request: *const platform.WebSocketRequ
     errdefer c.curl_easy_cleanup(easy);
     const multi = c.curl_multi_init() orelse return error.NetworkError;
     errdefer _ = c.curl_multi_cleanup(multi);
-    const url = try allocator.dupeZ(u8, request.url.slice());
+    const url = try allocator.dupeSentinel(u8, request.url.slice(), 0);
     defer allocator.free(url);
     if (c.curl_easy_setopt(easy, c.CURLOPT_URL, url.ptr) != c.CURLE_OK or
         c.curl_easy_setopt(easy, c.CURLOPT_CONNECT_ONLY, @as(c_long, 2)) != c.CURLE_OK)

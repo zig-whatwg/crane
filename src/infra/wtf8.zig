@@ -37,7 +37,7 @@ inline fn blockUnits(block: Block) usize {
     if (@reduce(.Max, block) < 0x80) return lanes;
     const lead = (block & @as(Block, @splat(0xC0))) != @as(Block, @splat(0x80));
     const four = block >= @as(Block, @splat(0xF0));
-    const Mask = std.meta.Int(.unsigned, lanes);
+    const Mask = @Int(.unsigned, lanes);
     return @popCount(@as(Mask, @bitCast(lead))) + @popCount(@as(Mask, @bitCast(four)));
 }
 

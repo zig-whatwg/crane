@@ -191,6 +191,7 @@ pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNod
     // Step 1: "Let node be the result of converting nodes into a node given
     // nodes and this's node document."
     const node = try dom.mutation.convertNodesIntoNode(nodes, nodeDocument(instance));
+    defer dom.mutation.dropConvertedNode(node, nodes.len);
 
     // Step 2: "Pre-insert node into this before this's first child."
     try dom.mutation.preInsertNode(node, instance, firstChild(instance));
@@ -202,6 +203,7 @@ pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode
     // Step 1: "Let node be the result of converting nodes into a node given
     // nodes and this's node document."
     const node = try dom.mutation.convertNodesIntoNode(nodes, nodeDocument(instance));
+    defer dom.mutation.dropConvertedNode(node, nodes.len);
 
     // Step 2: "Append node to this."
     try dom.mutation.appendNode(node, instance);
@@ -213,6 +215,7 @@ pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.P
     // Step 1: "Let node be the result of converting nodes into a node given
     // nodes and this's node document."
     const node = try dom.mutation.convertNodesIntoNode(nodes, nodeDocument(instance));
+    defer dom.mutation.dropConvertedNode(node, nodes.len);
 
     // Step 2: ensure pre-insert validity, excluding this's current children.
     const parent_base = dom.instance_bridge.getNodeBase(instance) orelse return error.InvalidStateError;

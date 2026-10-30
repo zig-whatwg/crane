@@ -451,7 +451,19 @@ fn policyContainerOf(allocator: Allocator, response: *const @import("fetch").int
     defer if (integrity_policy) |value| allocator.free(value);
     const integrity_policy_report_only = try response.header_list.get(allocator, "Integrity-Policy-Report-Only");
     defer if (integrity_policy_report_only) |value| allocator.free(value);
-    return fetch_internal.PolicyContainer.fromResponseHeaders(allocator, .{
+    const coep = try response.header_list.get(allocator, "Cross-Origin-Embedder-Policy");
+    defer if (coep) |value| allocator.free(value);
+    const coep_report_only = try response.header_list.get(allocator, "Cross-Origin-Embedder-Policy-Report-Only");
+    defer if (coep_report_only) |value| allocator.free(value);
+    const coop = try response.header_list.get(allocator, "Cross-Origin-Opener-Policy");
+    defer if (coop) |value| allocator.free(value);
+    const coop_report_only = try response.header_list.get(allocator, "Cross-Origin-Opener-Policy-Report-Only");
+    defer if (coop_report_only) |value| allocator.free(value);
+    // The page's reserved environment: a top-level one, whose top-level
+    // creation URL is the response's (HTML 8.1.3.5 step 2: "Is url
+    // potentially trustworthy?").
+    const secure = @import("fetch").mixed_content.isAPrioriAuthenticated(allocator, url) catch false;
+    var container = try fetch_internal.PolicyContainer.fromResponseHeaders(allocator, .{
         .url = url,
         .csp = csp_value,
         .csp_report_only = csp_report_only,
@@ -459,7 +471,24 @@ fn policyContainerOf(allocator: Allocator, response: *const @import("fetch").int
         .reporting_endpoints = reporting_endpoints,
         .integrity_policy = integrity_policy,
         .integrity_policy_report_only = integrity_policy_report_only,
+        // Step 4: the page's reserved environment is its embedder policy's
+        // environment.
+        .coep = coep,
+        .coep_report_only = coep_report_only,
+        .environment_secure = secure,
     });
+    errdefer container.deinit();
+    // "Create navigation params by fetching" step 21.12.1, for the page's
+    // top-level traversable: the response's opener policy, which becomes
+    // the new document's ("create and initialize a Document object" step
+    // 9; it rides on the container, policy_container.zig).
+    try container.setOpenerPolicy(try fetch_internal.cross_origin_policies.obtainOpenerPolicy(allocator, .{
+        .coop = coop,
+        .coop_report_only = coop_report_only,
+        .coep = coep,
+        .coep_report_only = coep_report_only,
+    }, secure));
+    return container;
 }
 
 /// Is this fetch response a network error rather than a document?

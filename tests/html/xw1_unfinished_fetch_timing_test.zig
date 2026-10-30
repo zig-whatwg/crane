@@ -43,7 +43,7 @@ const Server = struct {
         var output: [0]u8 = .{};
         var writer = stream.writer(testing.io, &output);
         try writer.interface.writeAll("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 1048576\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n");
-        const chunk = [_]u8{'x'} ** 32768;
+        const chunk = @as([32768]u8, @splat('x'));
         try writer.interface.writeAll(&chunk);
         try writer.interface.flush();
         // The advertised body never completes. Teardown must cancel it;

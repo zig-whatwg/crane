@@ -22,7 +22,9 @@ const Checks = if (@hasDecl(css, "image_values")) struct {
         try testing.expectEqual(case.metric, value.needsUnavailableMetrics(true));
     }
 
-    fn run(allocator: Allocator, case: Case) !void {
+    // pub: the tests below ask @hasDecl(Checks, ...), which Zig 0.17 answers for pub
+    // declarations only (0.16 also for this file's own; tools/hasdecl_audit.zig).
+    pub fn run(allocator: Allocator, case: Case) !void {
         const color = blk: {
             var block = try css.declarations.DeclarationBlock.parse(.{ .allocator = allocator }, case.declaration);
             defer block.deinit();
@@ -58,7 +60,7 @@ const Checks = if (@hasDecl(css, "image_values")) struct {
         }
     }
 
-    fn negative(allocator: Allocator) !void {
+    pub fn negative(allocator: Allocator) !void {
         var block = try css.declarations.DeclarationBlock.parse(.{ .allocator = allocator }, "background-image:image-set(url(a) 1x,url(b) 2x);" ++
             "content:light-dark(url(a),url(b));cursor:light-dark(url(a),url(b)),pointer");
         defer block.deinit();

@@ -776,6 +776,11 @@ fn isLetter(c: u8) bool {
 
 /// "Ident-start code point": a letter, a non-ASCII code point, or '_'. NUL
 /// is U+FFFD after preprocessing, a non-ASCII code point.
+/// CSSWG #7129 reopened the restricted ranges on 2026-10-12 (Agenda+):
+/// https://github.com/w3c/csswg-drafts/issues/7129
+/// Keep the all-browser behavior while that question is unsettled. The
+/// corrected cp1-non-ascii-codepoints.html probe (2026-10-27) gives Crane,
+/// Chrome 156, Firefox 158 and Safari 27 the same 35/58 passing names.
 fn isIdentStart(c: u8) bool {
     return isLetter(c) or c == '_' or c >= 0x80 or c == 0;
 }

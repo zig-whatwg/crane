@@ -15,9 +15,9 @@ const platform = @import("platform");
 const clock = @import("clock");
 const host = @import("host");
 const memory = @import("memory");
-const c_time = @cImport({
-    @cInclude("time.h");
-});
+// <time.h>, translated by build.zig (addCImport) with the target's libc headers,
+// the iPhoneOS SDK's for aarch64-ios.
+const c_time = @import("c_time");
 
 const Str = platform.Str;
 const Bytes = platform.Bytes;
@@ -185,7 +185,7 @@ fn threadMain(start: *Start) void {
 pub fn spawnThread(options: platform.ThreadOptions, entry: *const fn (?*anyopaque) callconv(.c) void, context: ?*anyopaque) Error!platform.Thread {
     const start = std.heap.c_allocator.create(Start) catch return error.OutOfMemory;
     errdefer std.heap.c_allocator.destroy(start);
-    start.* = .{ .entry = entry, .context = context, .name = [_:0]u8{0} ** 16 };
+    start.* = .{ .entry = entry, .context = context, .name = @as([16:0]u8, @splat(0)) };
     const name = options.name.slice();
     @memcpy(start.name[0..@min(name.len, 15)], name[0..@min(name.len, 15)]);
     const thread = std.heap.c_allocator.create(std.Thread) catch return error.OutOfMemory;

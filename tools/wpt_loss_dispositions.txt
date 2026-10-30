@@ -443,3 +443,75 @@ why = The same timing-bound file as the generation 179, 184, 186, 188 and 191 di
 pair.1 = base 3/6; tip 3/6
 pair.2 = base 4/6; tip 3/6
 pair.3 = base 3/6; tip 4/6
+
+[html/cross-origin-opener-policy/coop-coep-sandbox.https.html]
+generation = 194
+kind = flake
+why = The same sweep-only stall as the generation 177, 181 and 190 dispositions: the generation 194 sweep recorded TIMEOUT ("supervisor killed a child that made no progress for 150000ms", 0 subtests; generation 193 had OK 3/4), losing its three passing names. It ran in chunk abc shard 2, the process that logged the pre-existing streams double free (createReadableByteStream / PipeStream, tmp/analysis/gen194-dfree.md) 8 files earlier, but the stall is not that: the generation 191 and 192 sweeps hit the same stall-kill with no double-free report. Isolated, one process each, --parallel=1, alternating, frozen main-d1a188b596 (base, generation 193) vs main-338f50ea20 (tip, generation 194), agent gen194 2026-10-29 on chat.local: OK 3/4 on every run of both sides, the same sandboxed allow-same-origin subtest failing. Shard 2's own 25-file list in-process: OK 3/4 in 5 of 5 runs. Evidence tmp/analysis/gen194-evidence/gen194-bins/pairs-sandbox/.
+pair.1 = base 3/4; tip 3/4
+pair.2 = base 3/4; tip 3/4
+pair.3 = base 3/4; tip 3/4
+
+[xhr/send-redirect.htm]
+generation = 194
+kind = flake
+why = The same intermittent redirect subtests as the generation 173, 185, 189 and 192 dispositions (a redirected request reads a null method): "XMLHttpRequest: send() - Redirects (basics) (303, HEAD, content.py)" 34 -> 33 in the generation 194 sweep (assert_equals: expected (string) "HEAD" but got (object) null). Isolated, one process each, --parallel=1, alternating, frozen main-d1a188b596 (base, generation 193) vs main-338f50ea20 (tip, generation 194; row 126, nav2 C2, row 125 - none touches XHR redirects), agent gen194 2026-10-29 on chat.local: 34/34 on both sides in every pair. Evidence tmp/analysis/gen194-evidence/gen194-bins/pairs-quick/.
+pair.1 = base 34/34; tip 34/34
+pair.2 = base 34/34; tip 34/34
+pair.3 = base 34/34; tip 34/34
+
+[html/semantics/scripting-1/the-script-element/module/dynamic-import/microtasks/basic.any.js]
+generation = 194
+kind = flake
+why = The same sweep-only name as the generation 179 and 185 dispositions: basic.any.sharedworker.html "import() should drain the microtask queue when fetching a new module" 9 -> 8 in the generation 194 sweep (assert_equals: expected 1000000 but got 3). Isolated, one process each, --parallel=1, alternating, frozen main-d1a188b596 (base, generation 193) vs main-338f50ea20 (tip, generation 194), agent gen194 2026-10-29 on chat.local: 9/9 on both sides in every pair. Evidence tmp/analysis/gen194-evidence/gen194-bins/pairs-quick/.
+pair.1 = base 9/9; tip 9/9
+pair.2 = base 9/9; tip 9/9
+pair.3 = base 9/9; tip 9/9
+
+[hr-time/timeOrigin.html]
+generation = 194
+kind = flake
+why = The same sweep-only name as the generation 178 disposition and nav2 C2's isolated pairs (3=3): "Window and worker timeOrigins are close when created one after another." 3 -> 2 in the generation 194 sweep (assert_greater_than_equal: worker timeOrigin 1793275724898.4 against window 1793275724898.4001, a 0.0001 ms difference). Isolated, one process each, --parallel=1, alternating, frozen main-d1a188b596 (base, generation 193) vs main-338f50ea20 (tip, generation 194), agent gen194 2026-10-29 on chat.local: 3/3 on both sides in every pair. Evidence tmp/analysis/gen194-evidence/gen194-bins/pairs-quick/.
+pair.1 = base 3/3; tip 3/3
+pair.2 = base 3/3; tip 3/3
+pair.3 = base 3/3; tip 3/3
+
+[permissions/permissions-query-permissions-policy-attribute.https.sub.html]
+generation = 195
+kind = flake
+why = Sweep-only: 3 -> 0 passing in the generation 195 sweep (OK, none passed), so newly blocking for that one sweep. Isolated, one process each, --parallel=1, alternating, frozen main-338f50ea20 (base, generation 194) vs main-63a713a7f2 (tip, generation 195: rendering2, refcount8, nav2 E, leaks1), integrator 2026-10-29 on chat.local: OK 3/3 on both sides in every pair. Evidence ~/crane-work/verify-bins/gen195-losses-1414/ on chat.local.
+pair.1 = base 3/3; tip 3/3
+pair.2 = base 3/3; tip 3/3
+pair.3 = base 3/3; tip 3/3
+
+[html/cross-origin-opener-policy/coep-with-same-origin.https.html]
+generation = 195
+kind = flake
+why = The cross-origin-opener-policy sweep-only stall (as at generations 177, 181, 190 and 194): OK 1/1 -> TIMEOUT in the generation 195 sweep. Isolated, the same method, frozen main-338f50ea20 vs main-63a713a7f2, integrator 2026-10-29: OK 1/1 on both sides in every pair. Evidence ~/crane-work/verify-bins/gen195-losses-1414/.
+pair.1 = base 1/1; tip 1/1
+pair.2 = base 1/1; tip 1/1
+pair.3 = base 1/1; tip 1/1
+
+[service-workers/service-worker/static-router-no-fetch-handler.https.html]
+generation = 195
+kind = flake
+why = The same intermittent name nav2 E's and refcount8's isolated pairs showed equal on both sides (3=3): -1 in the generation 195 sweep. Isolated, the same method, integrator 2026-10-29: 3/3 on both sides in every pair. Evidence ~/crane-work/verify-bins/gen195-losses-1414/.
+pair.1 = base 3/3; tip 3/3
+pair.2 = base 3/3; tip 3/3
+pair.3 = base 3/3; tip 3/3
+
+[navigation-timing/test-performance-attributes.sub.html]
+generation = 195
+kind = flake
+why = The known flake disposed at generations 175, 177, 179, 184 and 188 (secureConnectionStart >= connectStart, which passes about 1 run in 3): 1 -> 0 in the generation 195 sweep. Isolated, the same method, integrator 2026-10-29: base 0, 0, 0 and tip 0, 1, 0. The same assertion fails on both sides.
+pair.1 = base 0/1; tip 0/1
+pair.2 = base 0/1; tip 1/1
+pair.3 = base 0/1; tip 0/1
+
+[html/semantics/scripting-1/the-script-element/module/dynamic-import/microtasks/basic.any.js]
+generation = 195
+kind = flake
+why = The same sweep-only sharedworker name as the generation 179, 185 and 194 dispositions: 9 -> 8 in the generation 195 sweep. Isolated, the same method, integrator 2026-10-29: 9/9 on both sides in every pair.
+pair.1 = base 9/9; tip 9/9
+pair.2 = base 9/9; tip 9/9
+pair.3 = base 9/9; tip 9/9

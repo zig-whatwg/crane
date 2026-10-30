@@ -5,15 +5,35 @@
 //! IntersectionObserverEntry objects provide information about a single
 //! intersection change, including the time of the change, the intersection
 //! rectangle, the bounding client rect, and whether the target is intersecting.
+//!
+//! What its getters hand out it KEEPS (lane refcount8, item 0). rootBounds,
+//! boundingClientRect and intersectionRect are DOMRectReadOnly objects made
+//! for the entry - by its constructor, or by its observer - and target is the
+//! observed Element. They were raw pointers with no edge and no hold: script
+//! read a rect, dropped it, a collection freed it with its wrapper, and the
+//! next read wrapped a freed slot (the intermittent SIGSEGV under
+//! PropertyGetterCallback -> instanceToV8 -> getTemplateForIsolate in
+//! single-process runs of intersection-observer/). Blink's
+//! IntersectionObserverEntry::Trace visits all four.
+//!
+//! - A rect is kept from the entry's wrapper by an edge (same_object.Traced),
+//!   drawn at its first read: until then nothing but the entry can reach it,
+//!   and an object nothing wrapped is never collected. A rect never handed
+//!   out is the entry's to free in its teardown.
+//! - The target is held (node_holds.MemberHold: a counted hold plus the keep
+//!   of its opaque root) from the entry's creation: an observer's queued
+//!   entry names a target script may drop and the collector free before the
+//!   entry is ever delivered.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
-const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const engine = @import("engine");
+const node_holds = @import("dom").node_holds;
+const same_object = @import("same_object.zig");
 const IntersectionObserverEntry = interfaces.IntersectionObserverEntry;
 
 pub const State = IntersectionObserverEntry.State;
@@ -23,65 +43,123 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
-/// Internal state for IntersectionObserverEntry
-/// Stores the entry data that doesn't fit in the flattened state
-pub const InternalState = struct {
-    allocator: std.mem.Allocator,
+/// What an entry is made with (`interfaces.IntersectionObserverEntry.initWith`):
+/// its observer's computed values, or its constructor's init dictionary.
+/// The rects are the entry's from here; `target` is held.
+pub const construction_args = .{ "time", "root_bounds", "bounding_client_rect", "intersection_rect", "is_intersecting", "is_visible", "intersection_ratio", "target" };
 
-    pub fn init(allocator: std.mem.Allocator) InternalState {
-        return .{
-            .allocator = allocator,
-        };
-    }
+/// The three rects, in the order `InternalState.rects` keeps them.
+const Rect = enum(u2) { root_bounds, bounding_client_rect, intersection_rect };
 
-    pub fn deinit(self: *InternalState) void {
-        _ = self;
-        // Entry data is stored in flattened state, no cleanup needed
-    }
+const target_slot: engine.TracedSlot = .{ .name = "target" };
+
+/// One rect the entry hands out: the edge that keeps it from the entry's
+/// wrapper once script has seen it, and its slab generation, for the free of
+/// one script never saw.
+const KeptRect = struct {
+    edge: same_object.Traced,
+    generation: u64 = 0,
 };
 
-/// Helper to access internal state from instance
-const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
-const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
+/// Internal state for IntersectionObserverEntry
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+    rects: [3]KeptRect = .{
+        .{ .edge = .{ .slot = .{ .name = "rootBounds" } } },
+        .{ .edge = .{ .slot = .{ .name = "boundingClientRect" } } },
+        .{ .edge = .{ .slot = .{ .name = "intersectionRect" } } },
+    },
+    target: node_holds.MemberHold = .{},
+};
 
-fn getInternal(instance: *runtime.Instance) *InternalState {
-    return Accessor.getCast(instance);
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    return instance.getState(State).own._internal;
 }
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+/// The rect `which` names in `state`, if any.
+fn rectField(state: *State, which: Rect) ?*runtime.Instance {
+    return switch (which) {
+        .root_bounds => state.own.rootBounds,
+        .bounding_client_rect => state.own.boundingClientRect,
+        .intersection_rect => state.own.intersectionRect,
+    };
+}
 
-    // Initialize internal state using ArenaAllocator
+/// The entry's own construction: its values, its rects and its target's
+/// hold (`construction_args`). An entry made without them (`init`) has
+/// nothing to keep until it is given some.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
     const internal = try runtime.arenaOf(instance).create(InternalState);
-    internal.* = InternalState.init(allocator);
-
-    // Store internal state in instance
+    internal.* = .{ .allocator = allocator };
     const state = instance.getState(State);
     state.own._internal = internal;
-
-    return instance;
+    const Args = @TypeOf(args);
+    if (@hasField(Args, "time")) state.own.time = args.time;
+    if (@hasField(Args, "is_intersecting")) state.own.isIntersecting = args.is_intersecting;
+    if (@hasField(Args, "is_visible")) state.own.isVisible = args.is_visible;
+    if (@hasField(Args, "intersection_ratio")) state.own.intersectionRatio = args.intersection_ratio;
+    if (@hasField(Args, "root_bounds")) state.own.rootBounds = args.root_bounds;
+    if (@hasField(Args, "bounding_client_rect")) state.own.boundingClientRect = args.bounding_client_rect;
+    if (@hasField(Args, "intersection_rect")) state.own.intersectionRect = args.intersection_rect;
+    inline for (std.meta.fields(Rect)) |field| {
+        const which: Rect = @enumFromInt(field.value);
+        const present = switch (which) {
+            .root_bounds => @hasField(Args, "root_bounds"),
+            .bounding_client_rect => @hasField(Args, "bounding_client_rect"),
+            .intersection_rect => @hasField(Args, "intersection_rect"),
+        };
+        if (present) if (rectField(state, which)) |rect| {
+            internal.rects[field.value].generation = runtime.SlabAllocator.generationOf(rect);
+        };
+    }
+    if (@hasField(Args, "target")) {
+        state.own.target = args.target;
+        internal.target.take(instance, args.target, target_slot);
+    }
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// The entry's own teardown. A rect script has seen is its wrapper's: the
+/// edge goes (only the hold an unwrapped entry had is let go - the collector
+/// may have freed the rect first, so it is not touched). A rect script never
+/// saw had nothing but this entry, and goes with it. The target's hold goes.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
-    if (state.own._internal) |internal_ptr| {
-        const internal: *InternalState = @ptrCast(@alignCast(internal_ptr));
-        internal.deinit();
-        // Return the block itself, not just what it points to. The comment this
-        // replaces said the arena manages it; the arena had no way to, so the
-        // struct stayed allocated for the life of the process.
-        runtime.arenaOf(instance).destroy(InternalState, internal);
-        state.own._internal = null;
+    const internal = state.own._internal orelse return;
+    internal.target.release(instance, target_slot);
+    inline for (std.meta.fields(Rect)) |field| {
+        const kept = &internal.rects[field.value];
+        if (kept.edge.drawn) {
+            kept.edge.release(instance);
+        } else if (kept.generation != 0) {
+            if (rectField(state, @enumFromInt(field.value))) |rect| rect.releaseIfUnwrapped(kept.generation);
+        }
     }
-    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
+    runtime.arenaOf(instance).destroy(InternalState, internal);
+    state.own._internal = null;
+}
+
+/// A rect, as its getter hands it out: kept from the entry's wrapper from its
+/// first read.
+fn handOut(instance: *runtime.Instance, which: Rect) ?*runtime.Instance {
+    const state = instance.getState(State);
+    const rect = rectField(state, which) orelse return null;
+    if (getInternal(instance)) |internal| {
+        const kept = &internal.rects[@intFromEnum(which)];
+        if (!kept.edge.drawn) kept.edge.hold(instance, rect);
+    }
+    return rect;
+}
+
+/// A DOMRectReadOnly made from `init` in `ctx`, the constructor's way.
+fn rectFrom(ctx: runtime.Context, init: dictionaries.DOMRectInit) !*runtime.Instance {
+    return interfaces.DOMRectReadOnly.call_constructor(
+        ctx,
+        webidl.Opt(f64).passed(init.x orelse 0),
+        webidl.Opt(f64).passed(init.y orelse 0),
+        webidl.Opt(f64).passed(init.width orelse 0),
+        webidl.Opt(f64).passed(init.height orelse 0),
+    );
 }
 
 /// Constructor implementation
@@ -89,79 +167,29 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// Spec: https://w3c.github.io/IntersectionObserver/#dom-intersectionobserverentry-intersectionobserverentry
 pub fn call_constructor(ctx: runtime.Context, intersectionObserverEntryInit: dictionaries.IntersectionObserverEntryInit) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &IntersectionObserverEntry.vtable, ctx);
-    errdefer deinit(instance);
-
-    const state = instance.getState(State);
-
-    // Copy values from init dictionary to state
-    state.own.time = intersectionObserverEntryInit.time;
-    state.own.isIntersecting = intersectionObserverEntryInit.isIntersecting;
-    state.own.isVisible = intersectionObserverEntryInit.isVisible;
-    state.own.intersectionRatio = intersectionObserverEntryInit.intersectionRatio;
-    state.own.target = intersectionObserverEntryInit.target;
-
-    // Create DOMRectReadOnly instances for the rect properties
+    const init = intersectionObserverEntryInit;
     // Note: Per IDL, rootBounds is "required DOMRectInit?" - required but nullable type
     // However our codegen doesn't handle nullable types in dictionaries correctly,
-    // so we always create the rect. For actual null handling, use createEntry() directly.
-    const root_bounds_init = intersectionObserverEntryInit.rootBounds;
-    state.own.rootBounds = try interfaces.DOMRectReadOnly.call_constructor(
-        ctx,
-        webidl.Opt(f64).passed(root_bounds_init.x orelse 0),
-        webidl.Opt(f64).passed(root_bounds_init.y orelse 0),
-        webidl.Opt(f64).passed(root_bounds_init.width orelse 0),
-        webidl.Opt(f64).passed(root_bounds_init.height orelse 0),
-    );
-
-    // boundingClientRect is required
-    state.own.boundingClientRect = try interfaces.DOMRectReadOnly.call_constructor(
-        ctx,
-        webidl.Opt(f64).passed(intersectionObserverEntryInit.boundingClientRect.x orelse 0),
-        webidl.Opt(f64).passed(intersectionObserverEntryInit.boundingClientRect.y orelse 0),
-        webidl.Opt(f64).passed(intersectionObserverEntryInit.boundingClientRect.width orelse 0),
-        webidl.Opt(f64).passed(intersectionObserverEntryInit.boundingClientRect.height orelse 0),
-    );
-
-    // intersectionRect is required
-    state.own.intersectionRect = try interfaces.DOMRectReadOnly.call_constructor(
-        ctx,
-        webidl.Opt(f64).passed(intersectionObserverEntryInit.intersectionRect.x orelse 0),
-        webidl.Opt(f64).passed(intersectionObserverEntryInit.intersectionRect.y orelse 0),
-        webidl.Opt(f64).passed(intersectionObserverEntryInit.intersectionRect.width orelse 0),
-        webidl.Opt(f64).passed(intersectionObserverEntryInit.intersectionRect.height orelse 0),
-    );
-
-    return instance;
-}
-
-/// Internal factory function for creating entries from Zig code
-/// This avoids the dictionary overhead when creating entries programmatically
-pub fn createEntry(
-    ctx: runtime.Context,
-    time: typedefs.DOMHighResTimeStamp,
-    root_bounds: ?*runtime.Instance,
-    bounding_client_rect: *runtime.Instance,
-    intersection_rect: *runtime.Instance,
-    is_intersecting: bool,
-    is_visible: bool,
-    intersection_ratio: f64,
-    target: *runtime.Instance,
-) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &IntersectionObserverEntry.vtable, ctx);
-    errdefer deinit(instance);
-
-    const state = instance.getState(State);
-    state.own.time = time;
-    state.own.rootBounds = root_bounds;
-    state.own.boundingClientRect = bounding_client_rect;
-    state.own.intersectionRect = intersection_rect;
-    state.own.isIntersecting = is_intersecting;
-    state.own.isVisible = is_visible;
-    state.own.intersectionRatio = intersection_ratio;
-    state.own.target = target;
-
-    return instance;
+    // so we always create the rect.
+    const root_bounds = try rectFrom(ctx, init.rootBounds);
+    const root_generation = runtime.SlabAllocator.generationOf(root_bounds);
+    errdefer root_bounds.releaseIfUnwrapped(root_generation);
+    const bounding_client_rect = try rectFrom(ctx, init.boundingClientRect);
+    const bounding_generation = runtime.SlabAllocator.generationOf(bounding_client_rect);
+    errdefer bounding_client_rect.releaseIfUnwrapped(bounding_generation);
+    const intersection_rect = try rectFrom(ctx, init.intersectionRect);
+    const intersection_generation = runtime.SlabAllocator.generationOf(intersection_rect);
+    errdefer intersection_rect.releaseIfUnwrapped(intersection_generation);
+    return IntersectionObserverEntry.initWith(ctx.allocator, ctx, .{
+        .time = init.time,
+        .root_bounds = @as(?*runtime.Instance, root_bounds),
+        .bounding_client_rect = bounding_client_rect,
+        .intersection_rect = intersection_rect,
+        .is_intersecting = init.isIntersecting,
+        .is_visible = init.isVisible,
+        .intersection_ratio = init.intersectionRatio,
+        .target = init.target,
+    });
 }
 
 /// Getter for time
@@ -174,29 +202,25 @@ pub fn get_time(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeSta
 /// Getter for rootBounds
 /// Returns the root intersection rectangle, or null if the root is implicit and cross-origin
 pub fn get_rootBounds(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const state = instance.getState(State);
-    return state.own.rootBounds;
+    return handOut(instance, .root_bounds);
 }
 
 /// Getter for boundingClientRect
 /// Returns the target's bounding client rectangle
 pub fn get_boundingClientRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    return state.own.boundingClientRect;
+    return handOut(instance, .bounding_client_rect) orelse error.InvalidStateError;
 }
 
 /// Getter for intersectionRect
 /// Returns the intersection rectangle between target and root
 pub fn get_intersectionRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    return state.own.intersectionRect;
+    return handOut(instance, .intersection_rect) orelse error.InvalidStateError;
 }
 
 /// Getter for isIntersecting
 /// Returns true if the target is intersecting with the root
 pub fn get_isIntersecting(instance: *runtime.Instance) anyerror!bool {
     const state = instance.getState(State);
-    std.log.debug("[IntersectionObserverEntry] get_isIntersecting called, value={}", .{state.own.isIntersecting});
     return state.own.isIntersecting;
 }
 
@@ -215,8 +239,10 @@ pub fn get_intersectionRatio(instance: *runtime.Instance) anyerror!f64 {
 }
 
 /// Getter for target
-/// Returns the observed Element
+/// Returns the observed Element, which the entry holds. Read through the
+/// hold: a target freed under it (its realm's teardown) reads as an error,
+/// never as the freed slot.
 pub fn get_target(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    return state.own.target;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.target.get() orelse error.InvalidStateError;
 }

@@ -266,6 +266,15 @@ pub const IFrameIntegration = struct {
     /// document is created; empty when none was set.
     next_sandboxing_flags: SandboxingFlagSet = .empty,
 
+    /// The next document this navigable makes follows a browsing context
+    /// group switch (HTML "obtain a browsing context to use for a navigation
+    /// response" step 10): it gets a new WindowProxy - HTML's new browsing
+    /// context's - rather than the navigable's present one, and the Window
+    /// it leaves stays behind a proxy of its own, whose browsing context is
+    /// gone (`closed` reads true from its opener). Set by the commit that
+    /// decides the switch, read once by the realm decision for the document.
+    next_new_window_proxy: bool = false,
+
     /// navigationParams's `iframe` element referrer policy for the next
     /// document this navigable makes, taken when the document is created;
     /// null when no navigation set one (the initial about:blank document
@@ -908,6 +917,18 @@ pub const IFrameIntegration = struct {
     pub fn beginTraversal(self: *IFrameIntegration) void {
         if (self.end_ongoing_navigation_callback) |end| end(self);
         self.ongoing_navigation = .traversal;
+        self.traversal_navigation = 0;
+    }
+
+    /// HTML "apply the history step" 14.10.1, for a same-document traversal
+    /// of the navigable: "Set navigable's ongoing navigation to null" -
+    /// directly, not through "set the ongoing navigation", so the navigation
+    /// in flight ends without informing the navigation API (the owner's
+    /// `end_ongoing_navigation_callback`), as `beginTraversal`'s does.
+    pub fn clearOngoingNavigation(self: *IFrameIntegration) void {
+        if (self.ongoing_navigation == .none) return;
+        if (self.end_ongoing_navigation_callback) |end| end(self);
+        self.ongoing_navigation = .none;
         self.traversal_navigation = 0;
     }
 

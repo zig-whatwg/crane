@@ -350,10 +350,8 @@ fn linkStaticLibcurl(
     target: std.Build.ResolvedTarget,
     libcurl: *std.Build.Step.Compile,
 ) void {
-    // The module doing the `@cImport` needs the SDK's headers too. translate-c
-    // resolves `#include <sys/types.h>` against the IMPORTING module's include
-    // paths, not the library's, so curl_ffi.zig fails on its own even after every
-    // C artifact is pointed at the SDK.
+    // The importing module links against the SDK too (its curl_c translation
+    // gets the SDK headers from addCImport).
     if (target.result.os.tag == .ios) addIosSdkPaths(module, iosSdkPath(b));
 
     // Link the static library to the module
@@ -1096,11 +1094,22 @@ fn engineProtocolBinding(
     return facade;
 }
 
-/// The iPhoneOS SDK root, or null if `xcrun` cannot name one.
+/// The iPhoneOS SDK root: `-Dios-sdk=<path>` when given, else what `xcrun`
+/// names, else null.
 ///
 /// Queried rather than hardcoded: the SDK version moves with Xcode, and a stale
-/// path fails as missing libc headers rather than as a missing SDK.
+/// path fails as missing libc headers rather than as a missing SDK. The option
+/// is for a machine whose xcode-select names the Command Line Tools, which
+/// have no iPhoneOS SDK: the pool hosts keep it that way for the macOS SDK
+/// choice (useBuildableMacosSdk) and link their Xcode's SDK at
+/// ~/sdks/iPhoneOS.sdk (`zig build check-ios -Dios-sdk=$HOME/sdks/iPhoneOS.sdk`).
+/// build() declares the option; this reads it, since one option cannot be
+/// declared twice and every caller here holds only `b`.
 fn iosSdkPath(b: *std.Build) ?[]const u8 {
+    if (b.user_input_options.get("ios-sdk")) |option| switch (option.value) {
+        .scalar => |path| return path,
+        else => {},
+    };
     var code: u8 = 0;
     const out = b.runAllowFail(
         &.{ "xcrun", "--sdk", "iphoneos", "--show-sdk-path" },
@@ -1165,6 +1174,70 @@ fn addIosSdkPaths(module: *std.Build.Module, sdk: ?[]const u8) void {
         "{s}/System/Library/Frameworks",
         .{root},
     ) catch @panic("OOM") });
+}
+
+/// A C header set translated to Zig by the build: what a file's `@cImport`
+/// was, before Zig 0.17 removed `@cImport` (roadmap zig-017; works on 0.16
+/// and 0.17, where Step.TranslateC is deprecated but present). The file
+/// imports the result by name (`const c = @import("curl_c");`).
+///
+/// `@cImport` translated against its module's include paths and C macros; a
+/// translate-c step sees only its own, so each set names them: `libs`'
+/// installed headers (what linkLibrary gave the module), `macros` (what
+/// addCMacro gave it), `system_libs` (linkSystemLibrary's pkg-config flags)
+/// and, for aarch64-ios, the SDK's usr/include - which kit/posix's time.h
+/// never had (the iOS lib-full break since de4a36b9529a).
+///
+/// ONE module per header set per graph: two translate-c modules with the same
+/// inputs have the same output file, and a file in two modules of one compile
+/// is an error. So a set two importers in one graph share is made once and
+/// handed to both (PlatformBinding.c_time, for tests/platform).
+///
+/// Translated as Debug: none of these headers tests __OPTIMIZE__ or NDEBUG
+/// (curl 8.18, mbedTLS 3.6.6, Brotli, image_codecs.h and <time.h>; checked
+/// 2026-10-29), so the result is the same in every mode the importers build.
+/// The threading configuration buildStaticLibcurl compiles mbedTLS with, which
+/// every translation of its headers must see too.
+const mbedtls_threading_macros = [_][2][]const u8{ .{ "MBEDTLS_THREADING_C", "" }, .{ "MBEDTLS_THREADING_PTHREAD", "" } };
+
+const CImport = struct {
+    includes: []const []const u8,
+    libs: []const *std.Build.Step.Compile = &.{},
+    macros: []const [2][]const u8 = &.{},
+    system_libs: []const []const u8 = &.{},
+};
+
+fn addCImport(b: *std.Build, name: []const u8, target: std.Build.ResolvedTarget, spec: CImport) *std.Build.Module {
+    var text: std.ArrayList(u8) = .empty;
+    for (spec.includes) |include| text.print(b.allocator, "#include <{s}>\n", .{include}) catch @panic("OOM");
+    const header = b.addWriteFiles().add(b.fmt("{s}.h", .{name}), text.items);
+    const translate = b.addTranslateC(.{ .root_source_file = header, .target = target, .optimize = .Debug, .link_libc = true });
+    for (spec.libs) |lib| translate.addIncludePath(lib.getEmittedIncludeTree());
+    for (spec.macros) |macro| translate.defineCMacro(macro[0], macro[1]);
+    for (spec.system_libs) |lib| translate.linkSystemLibrary(lib, .{});
+    if (target.result.os.tag == .ios) if (iosSdkPath(b)) |sdk| {
+        translate.addSystemIncludePath(.{ .cwd_relative = b.fmt("{s}/usr/include", .{sdk}) });
+    };
+    // On a machine whose default macOS SDK is 27+, the C libraries compile
+    // against the 26.x SDK through useBuildableMacosSdk's libc file, which a
+    // translate-c step does not take: give it that SDK's headers first, so the
+    // translation sees the declarations the libraries were built with.
+    if (target.result.os.tag == .macos) if (libcFileIncludeDir(b)) |dir| {
+        translate.addSystemIncludePath(.{ .cwd_relative = dir });
+    };
+    return translate.createModule();
+}
+
+/// The `include_dir` of the build's libc file (useBuildableMacosSdk), or null.
+fn libcFileIncludeDir(b: *std.Build) ?[]const u8 {
+    const path = b.libc_file orelse return null;
+    const text = std.Io.Dir.cwd().readFileAlloc(b.graph.io, path, b.allocator, .limited(64 * 1024)) catch return null;
+    var lines = std.mem.splitScalar(u8, text, '\n');
+    while (lines.next()) |line| {
+        const key = "include_dir=";
+        if (std.mem.startsWith(u8, line, key) and line.len > key.len) return std.mem.trim(u8, line[key.len..], " \r\t");
+    }
+    return null;
 }
 
 /// Zig 0.16's bundled libcxx does not compile against the macOS 27 SDK:
@@ -1354,6 +1427,8 @@ const ModuleConfig = struct {
     optimize: std.builtin.OptimizeMode,
     build_options: *std.Build.Step.Options,
     debug_options: *std.Build.Step.Options,
+    /// The dom module's own options (refcount_audit).
+    dom_options: *std.Build.Step.Options,
     engine_choice: []const u8,
     use_system_curl: bool,
     enable_http2: bool,
@@ -1388,6 +1463,9 @@ const PlatformBinding = struct {
     /// run (decision 20).
     kit_sfnt: *std.Build.Module,
     kit_inflate: *std.Build.Module,
+    /// <time.h> translated (addCImport), which kit/posix imports as `c_time`;
+    /// tests/platform takes the same module (one per header set per graph).
+    c_time: *std.Build.Module,
 };
 
 const PlatformBindingOptions = struct {
@@ -1462,12 +1540,16 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     if (brotli_enabled or font_decoding_enabled) if (options.brotli) |codec| {
         kit[7].linkLibrary(codec.decoder);
         kit[7].linkLibrary(codec.encoder);
+        kit[7].addImport("brotli_c", addCImport(b, "brotli_c", target, .{ .includes = &.{ "brotli/decode.h", "brotli/encode.h" }, .libs = &.{ codec.decoder, codec.encoder } }));
     };
     // kit/sfnt (decision 20): WOFF through kit/inflate, WOFF2 through
     // kit/brotli - headless's NotSupported when no Brotli library is built.
     kit[10].addImport("kit_inflate", kit[9]);
     kit[10].addImport("kit_brotli", if (options.brotli != null) kit[7] else kit[1]);
-    if (options.image_codecs) |codecs| kit[8].linkLibrary(codecs);
+    if (options.image_codecs) |codecs| {
+        kit[8].linkLibrary(codecs);
+        kit[8].addImport("image_codecs_c", addCImport(b, "image_codecs_c", target, .{ .includes = &.{"image_codecs.h"}, .libs = &.{codecs} }));
+    }
     if (target.result.os.tag == .ios) {
         addIosSdkPaths(kit[7], iosSdkPath(b));
         addIosSdkPaths(kit[8], iosSdkPath(b));
@@ -1483,6 +1565,9 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     kit[0].addImport("clock", options.clock);
     kit[0].addImport("host", options.host);
     kit[0].addImport("memory", options.memory);
+    // and reads the local time zone through <time.h> (localtime_r, tzset).
+    const c_time = addCImport(b, "c_time", target, .{ .includes = &.{"time.h"} });
+    kit[0].addImport("c_time", c_time);
     // kit/browser_state keeps a Browser's stores in kit/memory_store.
     kit[6].addImport("kit_memory_store", kit[2]);
     // kit/curl's connection share, its own module (see PlatformBinding).
@@ -1492,12 +1577,18 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
         .link_libc = true,
     });
     kit[3].addImport("kit_curl_share", kit_curl_share);
+    // kit/curl/websocket.zig's header set (curl.h, websockets.h, header.h) is
+    // its own module: fetch's curl_ffi translates curl.h alone, as the two
+    // @cImports did.
+    const kit_curl_includes: []const []const u8 = &.{ "curl/curl.h", "curl/websockets.h", "curl/header.h" };
     if (options.libcurl) |libcurl| {
         linkStaticLibcurl(b, kit[3], target, libcurl);
+        kit[3].addImport("curl_c", addCImport(b, "curl_c", target, .{ .includes = kit_curl_includes, .libs = &.{libcurl}, .macros = &.{.{ "CURL_STATICLIB", "1" }} }));
     } else {
         kit[3].linkSystemLibrary("curl", .{});
+        kit[3].addImport("curl_c", addCImport(b, "curl_c", target, .{ .includes = kit_curl_includes, .system_libs = &.{"curl"} }));
     }
-    return .{ .facade = facade, .options = options_mod, .kit_curl_share = kit_curl_share, .kit_sfnt = kit[10], .kit_inflate = kit[9] };
+    return .{ .facade = facade, .options = options_mod, .kit_curl_share = kit_curl_share, .kit_sfnt = kit[10], .kit_inflate = kit[9], .c_time = c_time };
 }
 
 /// A module of a graph: registered by name when the graph is public, private
@@ -1532,6 +1623,9 @@ pub fn build(b: *std.Build) void {
     // Point the compiler and linker at the iPhoneOS SDK explicitly. Queried through
     // `xcrun --sdk iphoneos` rather than hardcoded, because the SDK version moves
     // with Xcode.
+    // -Dios-sdk: the SDK root iosSdkPath uses before xcrun (declared here once;
+    // check-ios passes it to its sub-build).
+    const ios_sdk_option = b.option([]const u8, "ios-sdk", "The iPhoneOS SDK root for an aarch64-ios build (default: xcrun --sdk iphoneos)");
     const ios_sdk: ?[]const u8 = if (target.result.os.tag == .ios) iosSdkPath(b) else null;
 
     const v8_monolith_path = b.fmt("{s}/obj/libv8_monolith.a", .{v8_out_dir});
@@ -1652,6 +1746,16 @@ pub fn build(b: *std.Build) void {
 
     const build_options = b.addOptions();
     build_options.addOption(bool, "enable_test_utils", enable_test_utils);
+    // The refcount zombie audit's hooks (dom.refcount_audit: the checks on
+    // the hottest node paths, instance_bridge.getNodeBase and Node's state)
+    // compile in only when asked, so a normal build pays nothing for them;
+    // unit tests always have them (builtin.is_test). The audit sweep's runner
+    // is built with -Drefcount-audit=true (refcount8, H-RC8-BUILD-AUDIT).
+    // Its own options module, as fetch's curl_options: build_options is
+    // imported by several modules already.
+    const refcount_audit = b.option(bool, "refcount-audit", "Compile in the refcount zombie audit (run it with CRANE_REFCOUNT_AUDIT=1); unit tests always have it") orelse false;
+    const dom_options = b.addOptions();
+    dom_options.addOption(bool, "refcount_audit", refcount_audit);
 
     // Debug options module (separate from build_options for cleaner imports)
     const debug_options = b.addOptions();
@@ -1796,6 +1900,7 @@ pub fn build(b: *std.Build) void {
     const module_config: ModuleConfig = .{
         .optimize = optimize,
         .build_options = build_options,
+        .dom_options = dom_options,
         .debug_options = debug_options,
         .engine_choice = engine_choice,
         .use_system_curl = use_system_curl,
@@ -1931,8 +2036,7 @@ pub fn build(b: *std.Build) void {
             .imports = &.{.{ .name = "fetch", .module = testing_graph.fetch }},
         });
         deps_test_mod.linkLibrary(mbedtls_library);
-        deps_test_mod.addCMacro("MBEDTLS_THREADING_C", "");
-        deps_test_mod.addCMacro("MBEDTLS_THREADING_PTHREAD", "");
+        deps_test_mod.addImport("mbedtls_version_c", addCImport(b, "mbedtls_version_c", target, .{ .includes = &.{"mbedtls/version.h"}, .libs = &.{mbedtls_library}, .macros = &mbedtls_threading_macros }));
         const run_deps_tests = b.addRunArtifact(b.addTest(.{ .root_module = deps_test_mod }));
         b.step("test-deps", "Check the mbedTLS and zlib versions libcurl and WebCrypto link").dependOn(&run_deps_tests.step);
         if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) {
@@ -2681,6 +2785,9 @@ pub fn build(b: *std.Build) void {
             .{ .name = "clock", .module = testing_graph.clock },
             .{ .name = "platform", .module = testing_graph.platform },
             .{ .name = "platform_options", .module = testing_graph.platform_options },
+            // dp1_local_datetime_test.zig checks against localtime_r through the
+            // <time.h> module kit/posix imports (addCImport: one per graph).
+            .{ .name = "c_time", .module = testing_graph.c_time },
         };
         addTestFilesFromDir(b, test_step, "tests/platform", target, &platform_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add platform test files: {}\n", .{err});
@@ -3349,6 +3456,21 @@ pub fn build(b: *std.Build) void {
         previous_linux_check = &sub_build.step;
         check_linux_step.dependOn(&sub_build.step);
     }
+
+    // lib-full for aarch64-ios, its own `zig build` like check-linux: a static
+    // library, so it builds every C library and all of Crane for iOS and links
+    // nothing (an iOS link also needs a V8 ios-arm64 prebuilt that matches the
+    // wrapper - 24 V8 API symbols are missing from today's, lane zig017trial -
+    // and iOS ships on JavaScriptCore). -Dios-sdk passes through: the merge
+    // check runs `zig build check-ios -Dios-sdk=$HOME/sdks/iPhoneOS.sdk -j2`.
+    const check_ios_step = b.step("check-ios", "lib-full for aarch64-ios (a static library: built, not linked); -Dios-sdk passes through");
+    const ios_build = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "lib-full", "-Dtarget=aarch64-ios", "-j2" });
+    if (ios_sdk_option) |sdk| ios_build.addArg(b.fmt("-Dios-sdk={s}", .{sdk}));
+    ios_build.addArgs(&.{ "--cache-dir", b.cache_root.path orelse "." });
+    ios_build.addArgs(&.{ "--global-cache-dir", b.graph.global_cache_root.path orelse "." });
+    ios_build.setCwd(b.path("."));
+    ios_build.has_side_effects = true;
+    check_ios_step.dependOn(&ios_build.step);
 
     // ========================================================================
     // WEBIDL TOOLS
@@ -4429,6 +4551,60 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&b.addRunArtifact(lint_refcount_tests).step);
 
     // ========================================================================
+    // AUDIT: @hasDecl answers that Zig 0.17 changes (roadmap zig-017)
+    // ========================================================================
+    // Zig 0.17 answers @hasDecl true only for pub declarations; 0.16 also for a
+    // non-pub one declared in the same file as the @hasDecl, and nothing fails
+    // to compile when the answer flips. tools/hasdecl_audit.zig reads every
+    // @hasDecl through std.zig.Ast and lists those whose answer can change
+    // (`-- --all` lists every site; `-- --instrument=<dir>` writes probe copies
+    // that a 0.16 build turns into exact HASDECL-FLIP compile logs). A report,
+    // not a ratchet; its tests run in `zig build test`. Flips left for the port
+    // window because another lane holds their file are reported `known`.
+    const hasdecl_audit_module = b.createModule(.{
+        .root_source_file = b.path("tools/hasdecl_audit.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const hasdecl_audit_exe = b.addExecutable(.{
+        .name = "hasdecl_audit",
+        .root_module = hasdecl_audit_module,
+    });
+    const hasdecl_audit = b.addRunArtifact(hasdecl_audit_exe);
+    // It reads the tree, which the build graph does not track.
+    hasdecl_audit.has_side_effects = true;
+    hasdecl_audit.setCwd(b.path("."));
+    if (b.args) |args| hasdecl_audit.addArgs(args);
+    b.step("hasdecl-audit", "List the @hasDecl answers Zig 0.17 changes (-- --all, -- --instrument=<dir>)").dependOn(&hasdecl_audit.step);
+    test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = hasdecl_audit_module })).step);
+
+    // ========================================================================
+    // CODEMOD: `a ** n` -> @splat (roadmap zig-017)
+    // ========================================================================
+    // Zig 0.17 removes array multiplication. tools/zig017/starstar_codemod.zig
+    // rewrites the forms @splat covers (the same meaning on 0.16 and 0.17) and
+    // lists the rest for a hand rewrite. A migration tool: the port window runs
+    // it over the files lanes held, then deletes it with hasdecl-audit once
+    // 0.17 is in and no site is left. Its tests run in `zig build test`.
+    const starstar_codemod_module = b.createModule(.{
+        .root_source_file = b.path("tools/zig017/starstar_codemod.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const starstar_codemod = b.addRunArtifact(b.addExecutable(.{
+        .name = "starstar_codemod",
+        .root_module = starstar_codemod_module,
+    }));
+    // It reads and rewrites the files it is given, which the graph does not track.
+    starstar_codemod.has_side_effects = true;
+    starstar_codemod.setCwd(b.path("."));
+    if (b.args) |args| starstar_codemod.addArgs(args);
+    b.step("starstar-codemod", "Rewrite `a ** n` as @splat where it covers the form (-- [--dry-run] <file.zig>...)").dependOn(&starstar_codemod.step);
+    test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = starstar_codemod_module })).step);
+
+    // ========================================================================
     // LINT: long-lived hash maps that never clear their tombstones
     // ========================================================================
     // std.HashMap deletes by tombstone and never grows while puts and removes
@@ -5079,6 +5255,8 @@ pub fn build(b: *std.Build) void {
 const CraneModules = struct {
     /// The platform binding's options module (tests/platform reads it).
     platform_options: *std.Build.Module,
+    /// The platform binding's <time.h> module (tests/platform reads it).
+    c_time: *std.Build.Module,
     whatwg: *std.Build.Module,
     clock: *std.Build.Module,
     host: *std.Build.Module,
@@ -5467,6 +5645,8 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .root_source_file = b.path("src/dom/root.zig"),
         .target = target,
     });
+    // The refcount audit's comptime switch (dom_options.refcount_audit).
+    dom_mod.addOptions("dom_options", config.dom_options);
     dom_mod.addImport("clock", clock_mod);
     dom_mod.addImport("host", host_mod);
     dom_mod.addImport("infra", infra_mod);
@@ -5557,6 +5737,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     });
     encoding_mod.addImport("infra", infra_mod);
     encoding_mod.addImport("webidl", webidl_mod);
+    css_mod.addImport("encoding", encoding_mod);
 
     // URL internal modules that generated interfaces need
     // URL internal modules need to be created first for cross-dependencies
@@ -6172,21 +6353,28 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     if (use_system_curl) {
         // Development: Use system libcurl for faster builds
         fetch_mod.linkSystemLibrary("curl", .{});
+        fetch_mod.addImport("curl_c", addCImport(b, "curl_c", target, .{ .includes = &.{"curl/curl.h"}, .system_libs = &.{"curl"} }));
     } else if (config.static_libcurl) |static| {
         // Production: the statically compiled libcurl with mbedTLS
         linkStaticLibcurl(b, fetch_mod, target, static.libcurl);
+        fetch_mod.addImport("curl_c", addCImport(b, "curl_c", target, .{ .includes = &.{"curl/curl.h"}, .libs = &.{static.libcurl}, .macros = &.{.{ "CURL_STATICLIB", "1" }} }));
     }
     const linked_mbedtls: ?*std.Build.Step.Compile = if (config.static_libcurl) |static| static.mbedtls else null;
 
     // WebCrypto shares curl's exact mbedTLS artifact - build.zig.zon's
     // `.mbedtls`, which buildStaticLibcurl links into libcurl - including its
-    // installed headers.
-    if (linked_mbedtls) |library| webcrypto_mod.linkLibrary(library);
+    // installed headers, translated with the library's threading macros.
+    if (linked_mbedtls) |library| {
+        webcrypto_mod.linkLibrary(library);
+        webcrypto_mod.addImport("mbedtls_c", addCImport(b, "mbedtls_c", target, .{
+            .includes = &.{ "psa/crypto.h", "mbedtls/nist_kw.h", "mbedtls/rsa.h", "mbedtls/pk.h" },
+            .libs = &.{library},
+            .macros = &mbedtls_threading_macros,
+        }));
+    }
     const webcrypto_options = b.addOptions();
     webcrypto_options.addOption(bool, "mbedtls", tls_backend == .mbedtls and !use_system_curl);
     webcrypto_mod.addOptions("options", webcrypto_options);
-    webcrypto_mod.addCMacro("MBEDTLS_THREADING_C", "");
-    webcrypto_mod.addCMacro("MBEDTLS_THREADING_PTHREAD", "");
     if (target.result.os.tag == .ios) addIosSdkPaths(webcrypto_mod, iosSdkPath(b));
 
     // fetch_mod dependencies will be added as implementation progresses:
@@ -6607,6 +6795,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .websocket = websocket_mod,
         .platform = platform_mod,
         .platform_options = platform_options_mod,
+        .c_time = platform_binding.c_time,
         .html_core = html_core_mod,
         .html = html_mod,
         .service_worker = service_worker_mod,

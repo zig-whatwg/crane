@@ -641,6 +641,9 @@ const Matcher = struct {
     fn matchesFeaturelessCompound(self: *const Matcher, subject: Subject, compound: *const CompoundSelector) bool {
         for (compound.simple_selectors) |*simple| {
             const kind = switch (simple.*) {
+                // Selectors 4 3.2.1: a default namespace never prevents
+                // an otherwise matching featureless host.
+                .NamespaceURI => continue,
                 .PseudoClass => |pseudo| pseudo.kind,
                 else => return false,
             };
@@ -656,11 +659,16 @@ const Matcher = struct {
 
     fn matchesSimple(self: *const Matcher, node: *NodeBase, data: *const ElementData, simple: *const SimpleSelector) bool {
         return switch (simple.*) {
+            // CSSOM's unresolved AST never reaches matching: stylesheet
+            // build resolves it; DOM parsing lowers & to :where(:scope).
+            .Nesting => false,
             .Universal => |universal| universal.namespace == .any or data.namespace_uri == null,
             .Type => |type_selector| self.matchesType(data, type_selector.tag_name, type_selector.lower_name, type_selector.namespace),
             .Class => |class| self.hasClass(data, class.class_name),
             .Id => |id| self.idIs(data, id.id),
             .Attribute => |*attribute| self.matchesAttribute(data, attribute),
+            .NamespaceURI => |constraint| std.mem.eql(u8, data.namespaceSlice() orelse "", constraint.uri),
+            .NamespacedAttribute => |attribute| self.matchesNamespacedAttribute(data, &attribute.attribute, attribute.uri),
             .PseudoClass => |*pseudo| self.matchesPseudoClassRead(node, data, pseudo.kind),
             // A pseudo-element is no element of the tree - except to the
             // style engine resolving that pseudo-element's style, for which
@@ -731,6 +739,18 @@ const Matcher = struct {
         return false;
     }
 
+    /// CSS Namespaces 3 section 6: a named prefix constrains the attribute's
+    /// expanded name. This path is entered only by the new resolved-URI arm.
+    fn matchesNamespacedAttribute(self: *const Matcher, data: *const ElementData, attribute: *const AttributeSelector, uri: []const u8) bool {
+        const name_cased = attribute.lower_name.ptr != attribute.name.ptr;
+        const name_html = name_cased and self.html_document and namespaceIs(data, html_namespace);
+        const wanted = if (name_html) attribute.lower_name else attribute.name;
+        const entry = data.findAttribute(if (uri.len == 0) null else uri, wanted) orelse return false;
+        const value_html = name_html or (attribute.html_case_insensitive_value and attribute.case == .default and
+            self.html_document and namespaceIs(data, html_namespace));
+        return matchesValue(attribute, entry, value_html);
+    }
+
     // ========================================================================
     // Pseudo-classes
     // ========================================================================
@@ -739,6 +759,15 @@ const Matcher = struct {
     /// answer read state that can change without a tree mutation.
     fn matchesPseudoClassRead(self: *const Matcher, node: *NodeBase, data: *const ElementData, kind: PseudoClassKind) bool {
         if (self.state_reads) |reads| {
+            if (kind == .FocusVisible) {
+                // Selectors 4 9.4: modality can change without focus or a
+                // tree mutation. Only focused elements read that state:
+                // the universal UA rule must not make every style volatile.
+                const element = instanceOf(node) orelse return false;
+                if (!focus_matching.matchesFocus(element)) return false;
+                reads.@"volatile" = true;
+                return focus_matching.matchesFocusVisible(element);
+            }
             if (!reads.@"volatile" and readsVolatileState(kind, data)) reads.@"volatile" = true;
         }
         return self.matchesPseudoClass(node, data, kind);

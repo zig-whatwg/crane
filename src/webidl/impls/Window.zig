@@ -123,6 +123,14 @@ pub const InternalState = struct {
 
     /// The associated document (lazily set)
     document: ?*runtime.Instance = null,
+    /// The Window's counted reference on its associated Document (refcount
+    /// step 5i, lane refcount8; H-RC8-WIN-DOCREF): WebKit's LocalDOMWindow
+    /// keeps `RefPtr<Document> m_document`, Blink's LocalDOMWindow traces
+    /// document_. Taken by `setDocument` - it takes the document's born
+    /// reference over - and released when a document replaces it and at the
+    /// Window's end (deinitOwn), the realm's. SHADOW MODE: counted only; the
+    /// Window frees its document itself (deinitOwn) until step 7.
+    document_ref: @import("dom").node_holds.RefHold = .{},
 
     /// The opener Window (if opened via window.open()), as it was when set:
     /// the IDL getter's fallback when the browsing context's opener has no
@@ -921,9 +929,21 @@ fn parentWindowOf(internal: *InternalState) ?*runtime.Instance {
     return @ptrCast(@alignCast(active));
 }
 
+/// HTML "set up a window environment settings object", the settings
+/// object's cross-origin isolated capability: "true if both of the
+/// following hold: realm's agent cluster's cross-origin-isolation mode is
+/// "concrete", and window's associated Document is allowed to use the
+/// "cross-origin-isolated" feature." The agent cluster's mode is its
+/// browsing context group's (BrowsingContext.cross_origin_isolation_mode).
+/// The feature check makes no violation report: reading the capability is
+/// not an attempted use of a feature (Chromium's
+/// LocalDOMWindow::CrossOriginIsolatedCapability checks the policy without
+/// reporting).
 fn settingsCrossOriginIsolated(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return false;
-    return internal.browsing_context.isCrossOriginIsolated();
+    if (internal.browsing_context.cross_origin_isolation_mode != .concrete) return false;
+    const document = internal.document orelse return false;
+    return @import("dom").policy_containers.allowedToUseWith(document, .cross_origin_isolated, .{ .report = false }) catch false;
 }
 
 /// This window's IDBFactory, made on first use. Its databases are the
@@ -1030,6 +1050,8 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
         // whose document's wrapper was collected first - a removed frame's
         // realm, which the collector takes whole - kept the document's slot
         // until its Browser ended (lane pageretention1).
+        // Its reference on the document ends first (refcount step 5i).
+        internal.document_ref.release();
         if (internal.document) |doc| {
             log.debug("[Window.deinit] Cleaning up Document {*}", .{doc});
             @import("dom").node_creation.destroyRoot(doc);
@@ -1256,6 +1278,11 @@ pub fn setDocument(instance: *runtime.Instance, document: *runtime.Instance) voi
         internal.idle.ended = false;
     };
     internal.document = document;
+    // The Window holds its document counted from here (refcount step 5i),
+    // letting go of the one it replaces; the document's born reference is
+    // the Window's now, if its creator still offered it.
+    internal.document_ref.set(document);
+    if (@import("dom").instance_bridge.getNodeBase(@ptrCast(document))) |base| @import("dom").refcount.takeOverCreatorReference(base);
     // A new document is a new environment: its storage key is computed anew.
     if (internal.storage_key) |key| internal.allocator.free(key);
     internal.storage_key = null;
@@ -1753,7 +1780,9 @@ pub fn get_originAgentCluster(instance: *runtime.Instance) anyerror!bool {
         runtime.BrowserScope.ofInstance(instance),
         internal.browsing_context.virtual_group_id,
         effectiveOrigin(instance, internal),
-        settingsCrossOriginIsolated(instance),
+        // Step 3 keys by origin in a cross-origin isolated GROUP ("logical"
+        // or "concrete"), whatever the capability says.
+        internal.browsing_context.groupIsCrossOriginIsolated(),
     );
 }
 

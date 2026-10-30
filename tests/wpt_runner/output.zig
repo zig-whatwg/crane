@@ -188,7 +188,7 @@ test "a single write larger than the buffer is not truncated" {
     var sink = Sink{ .w = &counting.interface };
 
     // Stack traces and failure messages routinely exceed any fixed buffer.
-    const long = "x" ** 4096;
+    const long = &@as([4096:0]u8, @splat('x'));
     sink.print("  |      {s}\n", .{long});
     sink.flush();
 

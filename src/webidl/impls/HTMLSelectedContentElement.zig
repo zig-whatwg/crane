@@ -18,10 +18,39 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Disabledness is derived from ancestors; no node pointer is cached.
-pub const InternalState = struct {};
+/// HTML's flag survives removal until insertion/moving recalculates it.
+pub const InternalState = struct { disabled: bool = false };
+
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = allocator;
+    _ = StateType;
+    _ = args;
+    const internal = try runtime.arenaOf(instance).create(InternalState);
+    internal.* = .{};
+    instance.getState(State).own._internal = internal;
+}
+
+pub fn deinitOwn(instance: *runtime.Instance) void {
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        runtime.arenaOf(instance).destroy(InternalState, internal);
+        state.own._internal = null;
+    }
+}
+
+fn isDisabled(content: *runtime.Instance) bool {
+    const state = content.stateAs(State) orelse return true;
+    return if (state.own._internal) |internal| internal.disabled else false;
+}
+
+fn recalculate(content: *runtime.Instance) ?*runtime.Instance {
+    const result = selected_content.disabledness(content);
+    if (content.getState(State).own._internal) |internal| internal.disabled = result.disabled;
+    return if (result.disabled) null else result.select;
+}
 
 pub fn installHooks() void {
+    dom.selected_content.install(&isDisabled);
     dom.mutation.registerInsertionStepsCallback(&insertionSteps) catch {};
     dom.mutation.registerRemovingStepsCallback(&removingSteps) catch {};
     dom.mutation.registerMovingStepsCallback(&movingSteps) catch {};
@@ -35,7 +64,9 @@ fn instanceOf(node: *dom.NodeBase) ?*runtime.Instance {
 }
 
 fn insertionSteps(node: *dom.NodeBase) void {
-    selected_content.inserted(instanceOf(node) orelse return);
+    const content = instanceOf(node) orelse return;
+    _ = recalculate(content);
+    selected_content.inserted(content);
 }
 
 fn oldSelect(old_parent: ?*dom.NodeBase) ?*runtime.Instance {
@@ -53,14 +84,16 @@ fn movingSteps(node: *dom.NodeBase, old_parent: ?*dom.NodeBase) void {
     const content = instanceOf(node) orelse return;
     selected_content.inserted(content);
     if (oldSelect(old_parent)) |select| selected_content.refreshInterest(select);
-    // HTML moving steps 3 queue a microtask. Its unwrapped-node hold is
-    // the shared lifetime dependency (row 52 Q9 / row 61 Q3(c)); cloning
-    // synchronously here would expose the wrong mutation order.
+    const select = recalculate(content) orelse return;
+    if (associated.hasAttribute(select, "multiple")) return;
+    // HTML moving steps 3: keep the captured select and content separately,
+    // even if another move changes their relationship before this runs.
+    selected_content.queueUpdate(content.ctx.allocator, select, content) catch {};
 }
 
 fn postConnectionSteps(node: *dom.NodeBase) void {
     const content = instanceOf(node) orelse return;
-    const select = selected_content.enabledSelect(content) orelse return;
+    const select = recalculate(content) orelse return;
     if (associated.hasAttribute(select, "multiple")) return;
     selected_content.updateOne(select, content) catch {};
 }

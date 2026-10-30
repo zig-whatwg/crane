@@ -346,10 +346,14 @@ pub const EventState = struct {
     /// by item, while the path held them, and a listener may have wrapped
     /// the event meanwhile - so the values the event ends with are kept
     /// now, after step 11, never an edge to a value step 11 then drops.
+    ///
+    /// The values are kept BEFORE the path lets go of its own references
+    /// (refcount step 7's prerequisite (b2), lane refcount8): a target only
+    /// the path held - a node removed during dispatch - is taken on while its
+    /// tree still counts it, never after its total passed through zero.
     pub fn finishDispatch(self: *EventState, event: *runtime.Instance, clear_targets: bool) void {
         self.phase = Phase.none;
         self.current_target = null;
-        self.clearPath();
         self.dispatch_flag = false;
         self.stop_propagation_flag = false;
         self.stop_immediate_propagation_flag = false;
@@ -360,6 +364,7 @@ pub const EventState = struct {
         }
         self.keepTarget(event);
         self.keepRelatedTarget(event);
+        self.clearPath();
     }
 
     /// Dispatch steps 7-10, for a dispatch whose clearTargets is false.

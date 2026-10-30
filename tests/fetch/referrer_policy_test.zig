@@ -66,7 +66,7 @@ test "determine request's referrer: step 8, policy by policy" {
 
 test "determine request's referrer: step 6, a referrerURL over 4096 bytes is its origin" {
     const allocator = std.testing.allocator;
-    const long = try std.mem.concat(allocator, u8, &.{ "http://a.test/", "x" ** 4100 });
+    const long = try std.mem.concat(allocator, u8, &.{ "http://a.test/", &@as([4100:0]u8, @splat('x')) });
     defer allocator.free(long);
     const source: ReferrerSource = .{ .scheme = "http", .host = "a.test", .port = null, .full_url = long };
     const target: TargetInfo = .{ .scheme = "http", .host = "a.test", .port = null };

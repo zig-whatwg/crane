@@ -52,20 +52,24 @@ pub fn sheetsChanged(document: *@import("runtime").Instance) void {
     if (hooks.engineOf(document)) |e| e.sheetsChanged();
 }
 
-/// A style sheet a load fetched (src/html/style_sheet_loading.zig): `bytes`
+/// A style sheet a load fetched (src/html/style_sheet_loading.zig): `text`
 /// at `url`, for `owner` - a link element's own sheet when `path` is empty,
 /// else the sheet of the @import rule `path` names (each index an @import
-/// rule's among its sheet's, outermost first). The bytes are decoded as
-/// UTF-8 with its BOM removed (stated: @charset and the environment
-/// encoding of CSS Syntax "decode" are not read).
-pub fn deliverSheet(owner: *@import("runtime").Instance, path: []const u16, bytes: []const u8, url: []const u8, origin_clean: bool) void {
+/// rule's among its sheet's, outermost first). The loader has already
+/// decoded the response using CSS Syntax 3 section 3.2, before scanning
+/// its @imports; these Unicode characters must not be decoded again.
+pub fn deliverSheet(owner: *@import("runtime").Instance, path: []const u16, text: []const u8, url: []const u8, origin_clean: bool, encoding: ?*const css.rules.stylesheet_encoding.Encoding) void {
     const allocator = owner.ctx.allocator;
-    const text = css.rules.decodeUtf8(allocator, bytes) catch return;
-    defer allocator.free(text);
-    if (path.len == 0) return hooks.linkSheetArrived(owner, text, url, origin_clean);
+    if (path.len == 0) {
+        hooks.linkSheetArrived(owner, text, url, origin_clean);
+        // CSS Cascade 5 section 2.2: even an import inserted after loading
+        // inherits the parent's resulting encoding, not the document's.
+        if (hooks.sheetOf(owner)) |record| record.encoding = encoding;
+        return;
+    }
     const root = hooks.sheetOf(owner) orelse return;
     const parent = root.importAt(path[0 .. path.len - 1]) orelse return;
-    const child = SheetRecord.create(allocator, text, .{ .location = url, .base_url = url, .origin_clean = origin_clean, .mode = root.mode }) catch return;
+    const child = SheetRecord.create(allocator, text, .{ .location = url, .base_url = url, .origin_clean = origin_clean, .mode = root.mode, .encoding = encoding }) catch return;
     var url_context = parent.urlContext(owner);
     parent.attachImport(parent.parseOptions(&url_context), path[path.len - 1], child) catch return;
     const document = (@import("interfaces").Node.get_ownerDocument(owner) catch null) orelse return;
@@ -85,8 +89,10 @@ pub fn setDeliveredSheetPolicy(owner: *@import("runtime").Instance, path: []cons
 // the resolver's functions reach the engine. Each file's tests run as it
 // is imported; tests/v8/style_engine_test.zig drives the resolver.
 
-// Q73/Q95: discover the private helper's pure inline test without forcing
-// resolver functions that reach the engine. Deliberately not refAllDecls.
+// Q73/Q95 and CP-UA-TEST-DISCOVERY: discover the engine and ua_sheet
+// pure inline tests without forcing resolver functions that reach the engine.
+// Deliberately not refAllDecls.
 test {
     _ = engine;
+    _ = ua_sheet;
 }

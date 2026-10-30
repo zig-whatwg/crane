@@ -89,8 +89,10 @@ pub fn getEffectiveDirective(
     policy: *const types.Policy,
     effective_directive: []const u8,
 ) ?*const types.Directive {
-    // Find the fallback chain for this directive
-    const chain = getFallbackChain(effective_directive);
+    // Find the fallback chain for this directive. A directive with none
+    // (base-uri, form-action, frame-ancestors, an unknown name) either exists
+    // or doesn't.
+    const chain = getFallbackChain(effective_directive) orelse return policy.getDirective(effective_directive);
 
     // Try each directive in the chain
     for (chain) |directive_name| {
@@ -102,18 +104,24 @@ pub fn getEffectiveDirective(
     return null;
 }
 
-/// Get the fallback chain for a directive.
-/// Returns the full chain including the directive itself.
-pub fn getFallbackChain(effective_directive: []const u8) []const []const u8 {
+/// Get the fallback chain for a directive: the full chain, the directive
+/// itself first, or null for a directive with no chain (base-uri,
+/// form-action, frame-ancestors, an unknown name), which stands alone.
+///
+/// Every chain returned is static. The answer for a chainless directive used
+/// to be `&.{effective_directive}`: a one-element array in THIS function's
+/// stack frame, so the slice pointed into a dead frame the moment it was
+/// returned. In the optimized WPT runner the caller read a stack address and
+/// a garbage length from it and hashed off the end of the stack (SIGBUS in
+/// four content-security-policy/embedded-enforcement files under
+/// CRANE_LEAK_FILES=1, lane leakattr1, 2026-10-29).
+pub fn getFallbackChain(effective_directive: []const u8) ?[]const []const u8 {
     for (fallback_chains) |fc| {
         if (std.mem.eql(u8, fc.effective, effective_directive)) {
             return fc.chain;
         }
     }
-
-    // For unknown directives, return just the directive itself
-    // (no fallback - it either exists or doesn't)
-    return &.{effective_directive};
+    return null;
 }
 
 /// Get the name of the directive that actually matched in the fallback chain.
@@ -122,7 +130,8 @@ pub fn getMatchingDirectiveName(
     policy: *const types.Policy,
     effective_directive: []const u8,
 ) ?[]const u8 {
-    const chain = getFallbackChain(effective_directive);
+    const chain = getFallbackChain(effective_directive) orelse
+        return if (policy.containsDirective(effective_directive)) effective_directive else null;
 
     for (chain) |directive_name| {
         if (policy.containsDirective(directive_name)) {
@@ -193,7 +202,7 @@ pub fn getEffectiveWorkerSrc(policy: *const types.Policy) ?*const types.Directiv
 // ============================================================================
 
 test "getFallbackChain - script-src-elem" {
-    const chain = getFallbackChain("script-src-elem");
+    const chain = getFallbackChain("script-src-elem").?;
 
     try std.testing.expectEqual(@as(usize, 3), chain.len);
     try std.testing.expectEqualStrings("script-src-elem", chain[0]);
@@ -202,7 +211,7 @@ test "getFallbackChain - script-src-elem" {
 }
 
 test "getFallbackChain - worker-src" {
-    const chain = getFallbackChain("worker-src");
+    const chain = getFallbackChain("worker-src").?;
 
     try std.testing.expectEqual(@as(usize, 4), chain.len);
     try std.testing.expectEqualStrings("worker-src", chain[0]);
@@ -212,10 +221,8 @@ test "getFallbackChain - worker-src" {
 }
 
 test "getFallbackChain - unknown directive" {
-    const chain = getFallbackChain("unknown-directive");
-
-    try std.testing.expectEqual(@as(usize, 1), chain.len);
-    try std.testing.expectEqualStrings("unknown-directive", chain[0]);
+    // No chain: it stands alone (getEffectiveDirective looks it up by name).
+    try std.testing.expect(getFallbackChain("unknown-directive") == null);
 }
 
 test "getEffectiveDirective - uses fallback" {

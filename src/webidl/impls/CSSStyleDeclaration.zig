@@ -318,6 +318,10 @@ fn computedValue(internal: *InternalState, name: []const u8, out: *std.ArrayList
                 // currentcolor from this shorthand, unlike an explicit color.
                 if (value == .color and !(s == .text_decoration and l == .text_decoration_color and value.color == .current)) {
                     resolved[i] = .{ .color = try style.resolvedColor(l, internal.allocator) };
+                } else if (value == .gap_list) {
+                    // Gaps 1 §4: a gap decoration list's colors, as the
+                    // single-value arm above resolves one.
+                    resolved[i] = try style.resolvedGapList(l, internal.allocator);
                 } else if (value == .image or value == .layers or value == .content) {
                     resolved[i] = try style.resolvedImageValue(l, internal.allocator);
                 } else if (style.undrawnBorderWidth(l)) {

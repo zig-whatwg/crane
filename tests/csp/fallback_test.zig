@@ -13,7 +13,7 @@ const fallback = csp.fallback;
 // ============================================================================
 
 test "script-src-elem fallback chain" {
-    const chain = fallback.getFallbackChain("script-src-elem");
+    const chain = fallback.getFallbackChain("script-src-elem").?;
 
     try testing.expectEqual(@as(usize, 3), chain.len);
     try testing.expectEqualStrings("script-src-elem", chain[0]);
@@ -80,7 +80,7 @@ test "script-src-elem uses most specific directive" {
 // ============================================================================
 
 test "script-src-attr fallback chain" {
-    const chain = fallback.getFallbackChain("script-src-attr");
+    const chain = fallback.getFallbackChain("script-src-attr").?;
 
     try testing.expectEqual(@as(usize, 3), chain.len);
     try testing.expectEqualStrings("script-src-attr", chain[0]);
@@ -93,7 +93,7 @@ test "script-src-attr fallback chain" {
 // ============================================================================
 
 test "worker-src fallback chain" {
-    const chain = fallback.getFallbackChain("worker-src");
+    const chain = fallback.getFallbackChain("worker-src").?;
 
     try testing.expectEqual(@as(usize, 4), chain.len);
     try testing.expectEqualStrings("worker-src", chain[0]);
@@ -137,7 +137,7 @@ test "worker-src falls back to script-src" {
 // ============================================================================
 
 test "frame-src fallback chain" {
-    const chain = fallback.getFallbackChain("frame-src");
+    const chain = fallback.getFallbackChain("frame-src").?;
 
     try testing.expectEqual(@as(usize, 3), chain.len);
     try testing.expectEqualStrings("frame-src", chain[0]);
@@ -150,7 +150,7 @@ test "frame-src fallback chain" {
 // ============================================================================
 
 test "style-src-elem fallback chain" {
-    const chain = fallback.getFallbackChain("style-src-elem");
+    const chain = fallback.getFallbackChain("style-src-elem").?;
 
     try testing.expectEqual(@as(usize, 3), chain.len);
     try testing.expectEqualStrings("style-src-elem", chain[0]);
@@ -159,7 +159,7 @@ test "style-src-elem fallback chain" {
 }
 
 test "style-src-attr fallback chain" {
-    const chain = fallback.getFallbackChain("style-src-attr");
+    const chain = fallback.getFallbackChain("style-src-attr").?;
 
     try testing.expectEqual(@as(usize, 3), chain.len);
     try testing.expectEqualStrings("style-src-attr", chain[0]);
@@ -172,7 +172,7 @@ test "style-src-attr fallback chain" {
 // ============================================================================
 
 test "connect-src fallback chain" {
-    const chain = fallback.getFallbackChain("connect-src");
+    const chain = fallback.getFallbackChain("connect-src").?;
 
     try testing.expectEqual(@as(usize, 2), chain.len);
     try testing.expectEqualStrings("connect-src", chain[0]);
@@ -180,7 +180,7 @@ test "connect-src fallback chain" {
 }
 
 test "img-src fallback chain" {
-    const chain = fallback.getFallbackChain("img-src");
+    const chain = fallback.getFallbackChain("img-src").?;
 
     try testing.expectEqual(@as(usize, 2), chain.len);
     try testing.expectEqualStrings("img-src", chain[0]);
@@ -188,7 +188,7 @@ test "img-src fallback chain" {
 }
 
 test "font-src fallback chain" {
-    const chain = fallback.getFallbackChain("font-src");
+    const chain = fallback.getFallbackChain("font-src").?;
 
     try testing.expectEqual(@as(usize, 2), chain.len);
     try testing.expectEqualStrings("font-src", chain[0]);
@@ -196,7 +196,7 @@ test "font-src fallback chain" {
 }
 
 test "media-src fallback chain" {
-    const chain = fallback.getFallbackChain("media-src");
+    const chain = fallback.getFallbackChain("media-src").?;
 
     try testing.expectEqual(@as(usize, 2), chain.len);
     try testing.expectEqualStrings("media-src", chain[0]);
@@ -204,7 +204,7 @@ test "media-src fallback chain" {
 }
 
 test "object-src fallback chain" {
-    const chain = fallback.getFallbackChain("object-src");
+    const chain = fallback.getFallbackChain("object-src").?;
 
     try testing.expectEqual(@as(usize, 2), chain.len);
     try testing.expectEqualStrings("object-src", chain[0]);
@@ -212,7 +212,7 @@ test "object-src fallback chain" {
 }
 
 test "manifest-src fallback chain" {
-    const chain = fallback.getFallbackChain("manifest-src");
+    const chain = fallback.getFallbackChain("manifest-src").?;
 
     try testing.expectEqual(@as(usize, 2), chain.len);
     try testing.expectEqualStrings("manifest-src", chain[0]);
@@ -224,10 +224,71 @@ test "manifest-src fallback chain" {
 // ============================================================================
 
 test "unknown directive returns empty fallback" {
-    const chain = fallback.getFallbackChain("unknown-directive");
+    try testing.expect(fallback.getFallbackChain("unknown-directive") == null);
+}
 
-    try testing.expectEqual(@as(usize, 1), chain.len);
-    try testing.expectEqualStrings("unknown-directive", chain[0]);
+/// Writes over the stack below the caller's frame: where a function that has
+/// returned kept its locals.
+noinline fn scribbleStack() void {
+    var junk: [4096]u8 = undefined;
+    @memset(&junk, 0xAA);
+    std.mem.doNotOptimizeAway(&junk);
+}
+
+test "a directive with no fallback chain: no chain, and every chain outlives the call that made it" {
+    // base-uri, form-action and frame-ancestors have no chain. The answer for
+    // them was `&.{effective_directive}`, a one-element array in
+    // getFallbackChain's own stack frame, so the slice it returned pointed into
+    // a dead frame, and the next call made over that frame rewrote the
+    // element. In the optimized WPT runner getEffectiveDirective then hashed a
+    // directive name with a stack address for its pointer and garbage for its
+    // length, and the read ran off the end of the stack (SIGBUS in four
+    // content-security-policy/embedded-enforcement files; lane leakattr1). The
+    // red version of this test read the element's pointer back after
+    // scribbleStack as 0xff0a000000000000, not the name's address (Debug
+    // test build). Now a chainless directive has no chain (null), and every
+    // chain returned is static: it reads the same after the stack is reused.
+    for ([_][]const u8{ "base-uri", "form-action", "frame-ancestors", "unknown-directive" }) |name| {
+        const chain = fallback.getFallbackChain(name);
+        scribbleStack();
+        try testing.expect(chain == null);
+    }
+    const frame_src = fallback.getFallbackChain("frame-src").?;
+    scribbleStack();
+    try testing.expectEqual(@as(usize, 3), frame_src.len);
+    try testing.expectEqualStrings("frame-src", frame_src[0]);
+    try testing.expectEqualStrings("child-src", frame_src[1]);
+    try testing.expectEqualStrings("default-src", frame_src[2]);
+}
+
+test "a directive with no fallback chain is found by name: base-uri, form-action, frame-ancestors" {
+    const allocator = testing.allocator;
+
+    var policy = types.Policy.init(allocator, .enforce, .header);
+    defer policy.deinit();
+    const names = [_][]const u8{ "base-uri", "form-action", "frame-ancestors" };
+    for (names) |name| {
+        var directive = try types.Directive.create(allocator, name);
+        try directive.value.append(types.SourceExpression.createBorrowed(.keyword_self, "'self'"));
+        try policy.directive_set.append(directive);
+    }
+
+    for (names) |name| {
+        const effective = fallback.getEffectiveDirective(&policy, name) orelse return error.TestExpectedDirective;
+        scribbleStack();
+        try testing.expectEqualStrings(name, effective.name);
+        const matched = fallback.getMatchingDirectiveName(&policy, name) orelse return error.TestExpectedDirective;
+        scribbleStack();
+        try testing.expectEqualStrings(name, matched);
+    }
+    // default-src is no fallback for them.
+    var bare = types.Policy.init(allocator, .enforce, .header);
+    defer bare.deinit();
+    try bare.directive_set.append(try types.Directive.create(allocator, "default-src"));
+    for (names) |name| {
+        try testing.expect(fallback.getEffectiveDirective(&bare, name) == null);
+        try testing.expect(fallback.getMatchingDirectiveName(&bare, name) == null);
+    }
 }
 
 // ============================================================================

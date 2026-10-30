@@ -38,14 +38,18 @@ const Origin = @import("window_proxy.zig").Origin;
 /// Consumers that need to use the instance should cast it appropriately.
 pub const InstancePtr = *anyopaque;
 
-// Import security policy types for COOP/COEP
-const security_policies = @import("../navigation/security_policies.zig");
 const joint_history = @import("../navigation/joint_history.zig");
 const JointHistory = joint_history.JointHistory;
 const traversal_queue = @import("../navigation/traversal_queue.zig");
 const TraversalQueue = traversal_queue.TraversalQueue;
-const CoopValue = security_policies.CoopValue;
-const CoepValue = security_policies.CoepValue;
+
+/// HTML "cross-origin isolation mode". Crane always chooses "concrete"
+/// where HTML lets the user agent pick "logical" or "concrete" (an
+/// implementation-defined choice): it grants the cross-origin isolated
+/// capability wherever the group is isolated, as Chrome, Firefox and
+/// Safari do on desktop (stated).
+/// Spec: https://html.spec.whatwg.org/multipage/document-sequences.html#cross-origin-isolation-mode
+pub const CrossOriginIsolationMode = enum { none, logical, concrete };
 
 /// Unique ID generator for browsing contexts
 var next_context_id: u64 = 1;
@@ -281,15 +285,16 @@ pub const BrowsingContext = struct {
     /// Spec: https://html.spec.whatwg.org/multipage/document-sequences.html#internal-ancestor-origin-objects-list-creation-steps
     ancestor_origins_policy: @import("fetch").internal.ReferrerPolicy = .empty,
 
-    // === Cross-Origin Isolation (HTML Standard §7.2.5) ===
-
-    /// Cross-Origin-Opener-Policy value
-    /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#cross-origin-opener-policy-value
-    coop_value: CoopValue = .unsafe_none,
-
-    /// Cross-Origin-Embedder-Policy value
-    /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#coep
-    coep_value: CoepValue = .unsafe_none,
+    /// HTML "cross-origin isolation mode" of this context's browsing
+    /// context group. A group's mode is set once, as the group is made
+    /// ("obtain a browsing context to use for a navigation response" step
+    /// 12), and every context that joins the group later - a child, an
+    /// auxiliary - copies it (initChild, initAuxiliary), so each context's
+    /// copy is its group's. The agent clusters of the group's windows take
+    /// it too ("obtain a similar-origin window agent" step 6.2): a Window's
+    /// cross-origin isolated capability reads it here.
+    /// Spec: https://html.spec.whatwg.org/multipage/document-sequences.html#bcg-cross-origin-isolation
+    cross_origin_isolation_mode: CrossOriginIsolationMode = .none,
 
     /// Origin of this browsing context's active document
     /// Used for same-origin checks per HTML Standard §7.5
@@ -358,8 +363,6 @@ pub const BrowsingContext = struct {
             .parent = null,
             .children = .empty,
             .initial_url = null,
-            .coop_value = .unsafe_none,
-            .coep_value = .unsafe_none,
         };
         return ctx;
     }
@@ -378,6 +381,7 @@ pub const BrowsingContext = struct {
         errdefer ctx.deinit();
         ctx.parent = parent_ctx;
         ctx.virtual_group_id = parent_ctx.virtual_group_id;
+        ctx.cross_origin_isolation_mode = parent_ctx.cross_origin_isolation_mode;
         try parent_ctx.children.append(parent_ctx.allocator, ctx);
         return ctx;
     }
@@ -401,6 +405,7 @@ pub const BrowsingContext = struct {
         // be openerBrowsingContext's top-level browsing context's group",
         // which the new context joins.
         ctx.virtual_group_id = opener_ctx.getTop().virtual_group_id;
+        ctx.cross_origin_isolation_mode = opener_ctx.getTop().cross_origin_isolation_mode;
         ctx.opener = opener_ctx;
         ctx.is_popup = is_popup_flag;
         // "The rules for choosing a navigable" step 8.10: "Set chosen's is
@@ -695,6 +700,50 @@ pub const BrowsingContext = struct {
     /// top-level browsing context and document" step 1).
     pub fn startOwnGroup(self: *BrowsingContext) void {
         self.virtual_group_id = @atomicRmw(u64, &next_group_id, .Add, 1, .monotonic);
+        // "Create a new browsing context group": its cross-origin isolation
+        // mode is initially "none".
+        self.cross_origin_isolation_mode = .none;
+    }
+
+    /// HTML "obtain a browsing context to use for a navigation response"
+    /// steps 10-14, for this top-level context whose navigation needs a
+    /// browsing context group switch. HTML makes a NEW top-level browsing
+    /// context, in a new group, for the navigable; Crane's context is also
+    /// the navigable (its session history, its traversal queue), so the
+    /// navigable keeps this object and it becomes the new context: a new
+    /// group (step 10), whose cross-origin isolation mode is `mode` (step
+    /// 12: "logical" or "concrete" for a "same-origin-plus-COEP"
+    /// navigation, else "none"), no opener, and the popup sandboxing flag
+    /// set `sandbox_flags` (step 14). What reached the replaced context
+    /// reaches it no longer: its WindowProxy is the caller's (the new
+    /// document gets a new one), and every context it had opened loses
+    /// its opener - the replaced context is not theirs to reach (Chromium
+    /// drops the openee's proxy of a frame that swapped BrowsingInstance).
+    /// The navigable's target name is cleared too: Chromium clears the
+    /// frame name on a COOP BrowsingInstance swap
+    /// (RenderFrameHostManager, ShouldClearWindowName), which COOP's tests
+    /// expect (popup tests read "" in the new page); HTML clears it only
+    /// for a cross-origin navigation ("apply the history step" 12.3).
+    pub fn switchGroup(self: *BrowsingContext, mode: CrossOriginIsolationMode, sandbox_flags: SandboxingFlagSet) void {
+        self.startOwnGroup();
+        self.cross_origin_isolation_mode = mode;
+        self.opener = null;
+        self.popup_sandboxing_flags = sandbox_flags;
+        if (self.target_name.len > 0) self.allocator.free(self.target_name);
+        self.target_name = "";
+        if (self.navigables) |navigables| {
+            for (navigables.contexts()) |other| {
+                if (other != self and other.opener == self) other.opener = null;
+            }
+        }
+    }
+
+    /// Whether this context's group is cross-origin isolated ("logical" or
+    /// "concrete"): its agent clusters are origin-keyed ("obtain a
+    /// similar-origin window agent" step 3). Not the cross-origin isolated
+    /// capability, which only "concrete" grants and the Window decides.
+    pub fn groupIsCrossOriginIsolated(self: *const BrowsingContext) bool {
+        return self.cross_origin_isolation_mode != .none;
     }
 
     /// Check if two browsing contexts are in the same browsing context group
@@ -755,43 +804,6 @@ pub const BrowsingContext = struct {
             self.allocator.free(self.target_name);
         }
         self.target_name = try self.allocator.dupe(u8, name);
-    }
-
-    // === Cross-Origin Isolation (HTML Standard §7.2.5) ===
-
-    /// Check if this browsing context is cross-origin isolated
-    /// Spec: https://html.spec.whatwg.org/multipage/browsers.html#cross-origin-isolated
-    ///
-    /// A browsing context is cross-origin isolated if:
-    /// 1. COOP is same-origin
-    /// 2. COEP is require-corp or credentialless
-    ///
-    /// This enables access to APIs like SharedArrayBuffer that are only
-    /// available in cross-origin isolated contexts.
-    pub fn isCrossOriginIsolated(self: *const BrowsingContext) bool {
-        return security_policies.isCrossOriginIsolated(self.coop_value, self.coep_value);
-    }
-
-    /// Set COOP value for this browsing context
-    /// Called after navigation when processing response headers.
-    pub fn setCoop(self: *BrowsingContext, value: CoopValue) void {
-        self.coop_value = value;
-    }
-
-    /// Set COEP value for this browsing context
-    /// Called after navigation when processing response headers.
-    pub fn setCoep(self: *BrowsingContext, value: CoepValue) void {
-        self.coep_value = value;
-    }
-
-    /// Get COOP value
-    pub fn getCoop(self: *const BrowsingContext) CoopValue {
-        return self.coop_value;
-    }
-
-    /// Get COEP value
-    pub fn getCoep(self: *const BrowsingContext) CoepValue {
-        return self.coep_value;
     }
 
     /// Get the number of child browsing contexts

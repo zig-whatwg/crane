@@ -5,9 +5,9 @@
 //! version, so the cascade compiles the sheet again on its next read.
 //!
 //! Stated: an @import rule insertRule() adds to a sheet that is not
-//! constructed is not fetched (its styleSheet stays null); nested
-//! declarations (CSS Nesting's "nested" flag) are not inserted, since style
-//! rules hold no child rules here.
+//! constructed is not fetched (its styleSheet stays null). Nested rules
+//! use the nearest style/scope selector context; every selector replacement
+//! needed by a deletion is prepared before the live list changes.
 //!
 //! Spec: https://drafts.csswg.org/cssom-1/#insert-a-css-rule
 //! Spec: https://drafts.csswg.org/cssom-1/#remove-a-css-rule
@@ -62,22 +62,48 @@ pub fn insertRule(object: *runtime.Instance, of: RulesOf, text: []const u8, inde
     // where it would stand, so that its own validity is all that decides
     // (its position is step 6's).
     const in_page = of == .rule and of.rule.kind() == .page;
-    // Q53: parse the margin grammar here, but let valid non-margin rules
-    // reach the placement check (HierarchyRequestError), not SyntaxError.
-    var parsed = (if (in_page)
-        (try css.rules.parsePageMarginRule(allocator, text)) orelse (try css.rules.parseRule(allocator, text))
-    else
-        try css.rules.parseRule(allocator, text)) orelse return error.SyntaxError;
-    defer parsed.deinitOwned(allocator);
     var context = if (record) |r|
         try @import("resource_loading.zig").ParseContext.forSheet(r, object, text)
     else
         @import("resource_loading.zig").ParseContext{ .parse = .{ .allocator = allocator }, .url_context = .{ .instance = object, .base = "" } };
     defer context.deinit();
-    const new_rule = (if (in_page and css.rules.isPageMarginRule(parsed.name))
-        try rules_mod.buildPageMargin(.{ .parse = context.options() }, &parsed)
-    else
-        try rules_mod.build(.{ .parse = context.options() }, &parsed, .imports_allowed)) orelse return error.SyntaxError;
+    const parent: ?*Rule = if (of == .rule) of.rule else null;
+    const in_style = if (parent) |p| rules_mod.hasStyleAncestor(p) else false;
+    var promotion = rules_mod.ResolutionPlan{ .allocator = allocator };
+    defer promotion.deinit();
+    const build_options = rules_mod.BuildOptions{
+        .parse = context.options(),
+        .nesting = if (parent) |p| try rules_mod.nestingInside(p, &promotion) else null,
+        .in_style = in_style,
+    };
+    const new_rule = rule: {
+        if (in_page) {
+            // Q53: valid non-margin rules reach the placement check below.
+            var parsed = (try css.rules.parsePageMarginRule(allocator, text)) orelse
+                (try css.rules.parseRule(allocator, text)) orelse return error.SyntaxError;
+            defer parsed.deinitOwned(allocator);
+            break :rule (if (css.rules.isPageMarginRule(parsed.name))
+                try rules_mod.buildPageMargin(build_options, &parsed)
+            else
+                try rules_mod.build(build_options, &parsed, .imports_allowed)) orelse return error.SyntaxError;
+        }
+        if (try css.rules.parseRule(allocator, text)) |value| {
+            var parsed = value;
+            defer parsed.deinitOwned(allocator);
+            if (try rules_mod.build(build_options, &parsed, .imports_allowed)) |built| break :rule built;
+        }
+        // CSSOM section 6.4, step 4. Browser-backed deviation: the nested
+        // flag does NOT enable declaration fallback in a top-level media,
+        // supports or layer group. A style OR scope context passes through
+        // every conditional group (all three insert; Firefox/Safari parse,
+        // Chrome drops parsed declarations under scope: 2026-10-27 probes
+        // Q36/Q38, Chrome 156, Firefox 158, Safari 27).
+        const declarations_allowed = build_options.nesting != null;
+        if (!declarations_allowed) return error.SyntaxError;
+        const declarations = try css.rules.parseDeclarationList(allocator, text);
+        defer css.rules.freeDeclarationList(allocator, declarations);
+        break :rule (try rules_mod.buildNestedDeclarations(build_options, declarations)) orelse return error.SyntaxError;
+    };
     var inserted = false;
     defer if (!inserted) new_rule.unref();
     const kind = new_rule.kind();
@@ -92,6 +118,9 @@ pub fn insertRule(object: *runtime.Instance, of: RulesOf, text: []const u8, inde
     // @namespace after them and before every other rule.
     if (in_page and kind != .margin) return error.HierarchyRequestError;
     try checkPosition(list.items, index, kind, nested);
+    // Nesting 1 section 3.3. This restriction persists through @scope;
+    // its nearest-selector context does not erase a style ancestor.
+    if (in_style and !rules_mod.allowedNestedKind(kind)) return error.HierarchyRequestError;
     // 7. "If new rule is an @namespace at-rule, and list contains anything
     // other than @import at-rules, and @namespace at-rules, throw an
     // InvalidStateError exception."
@@ -102,12 +131,13 @@ pub fn insertRule(object: *runtime.Instance, of: RulesOf, text: []const u8, inde
         };
     }
     // 8. "Insert new rule into list at the zero-indexed position index."
+    try list.insert(allocator, index, new_rule);
     switch (of) {
         .sheet => |r| new_rule.parent_sheet = r,
-        .rule => |parent| new_rule.parent_rule = parent,
+        .rule => |owner| new_rule.parent_rule = owner,
     }
-    try list.insert(allocator, index, new_rule);
     inserted = true;
+    promotion.apply();
     if (record) |r| r.changed();
     // 9. "Return index."
     return index;
@@ -167,8 +197,15 @@ pub fn removeRule(object: *runtime.Instance, of: RulesOf, index: u32) !void {
     // 5. "Remove rule old rule from list at the zero-indexed position
     // index." 6. "Set old rule's parent CSS rule and parent CSS style sheet
     // to null."
+    // CSS Nesting 1 section 4: without this parent, & refers to scope.
+    // Resolve the entire prospective detached subtree before changing
+    // anything. OOM preserves the old list, selectors and compiled index.
+    var plan = rules_mod.ResolutionPlan{ .allocator = old.allocator };
+    defer plan.deinit();
+    try plan.prepare(old, null, null);
     _ = list.orderedRemove(index);
     objects.ruleRemoved(old);
+    plan.apply();
     if (sheetOf(of)) |r| r.changed();
     old.unref();
 }

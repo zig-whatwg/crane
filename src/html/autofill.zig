@@ -256,8 +256,8 @@ test "on and off use ASCII whitespace and require the expectation mantle" {
 }
 
 test "section tokens are serialized without a fixed byte limit" {
-    const value = "SECTION-" ++ "A" ** 600 ++ "\tSHIPPING\nNAME";
-    const expected = "section-" ++ "a" ** 600 ++ " shipping name";
+    const value = "SECTION-" ++ &@as([600:0]u8, @splat('A')) ++ "\tSHIPPING\nNAME";
+    const expected = "section-" ++ &@as([600:0]u8, @splat('a')) ++ " shipping name";
     const serialized = try serializeAlloc(std.testing.allocator, parse(value, .expectation).?);
     defer std.testing.allocator.free(serialized);
     try std.testing.expectEqualStrings(expected, serialized);

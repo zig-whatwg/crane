@@ -23,6 +23,17 @@ const std = @import("std");
 const testing = std.testing;
 
 const html = @import("html");
+
+/// `s` repeated `n` times: what `s ** n` was (Zig 0.17 removes `**`; roadmap zig-017).
+fn repeat(comptime s: []const u8, comptime n: usize) *const [s.len * n:0]u8 {
+    return comptime blk: {
+        @setEvalBranchQuota(10 * n + 1000);
+        var out: [s.len * n:0]u8 = undefined;
+        for (0..n) |i| @memcpy(out[i * s.len ..][0..s.len], s);
+        const final = out;
+        break :blk &final;
+    };
+}
 const parser = html.parser;
 const Tokenizer = parser.Tokenizer;
 const TreeBuilder = parser.TreeBuilder;
@@ -87,7 +98,7 @@ const e_acute = "\u{e9}"; // two bytes of UTF-8
 test "a run of text reaches the adapter once, whole" {
     const allocator = testing.allocator;
     const run_chars = 5000;
-    const source = try std.mem.concat(allocator, u8, &.{ "<!DOCTYPE html><body>", e_acute ** run_chars, "</body>" });
+    const source = try std.mem.concat(allocator, u8, &.{ "<!DOCTYPE html><body>", repeat(e_acute, run_chars), "</body>" });
     defer allocator.free(source);
 
     var mirror: Mirror = .{};
@@ -100,7 +111,7 @@ test "a run of text reaches the adapter once, whole" {
 test "a script sees every character parsed before it" {
     const allocator = testing.allocator;
     var mirror: Mirror = .{};
-    try parse(allocator, "<!DOCTYPE html><body>" ++ e_acute ** 6 ++ "<script>x</script>", &mirror);
+    try parse(allocator, "<!DOCTYPE html><body>" ++ repeat(e_acute, 6) ++ "<script>x</script>", &mirror);
 
     try testing.expectEqual(@as(?usize, 6 * e_acute.len), mirror.len_at_script);
 }
@@ -108,7 +119,7 @@ test "a script sees every character parsed before it" {
 test "a node created after a run sees the run complete" {
     const allocator = testing.allocator;
     var mirror: Mirror = .{};
-    try parse(allocator, "<!DOCTYPE html><body>" ++ e_acute ** 6 ++ "<p>xy</p>", &mirror);
+    try parse(allocator, "<!DOCTYPE html><body>" ++ repeat(e_acute, 6) ++ "<p>xy</p>", &mirror);
 
     try testing.expectEqual(@as(?usize, 6 * e_acute.len), mirror.len_at_p);
 }
