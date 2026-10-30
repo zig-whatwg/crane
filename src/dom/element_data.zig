@@ -111,7 +111,7 @@ pub const ElementData = struct {
     class_name: runtime.DOMString,
 
     /// The first INLINE_ATTR_CAPACITY attributes, in list order.
-    inline_attrs: [INLINE_ATTR_CAPACITY]?AttributeEntry = .{null} ** INLINE_ATTR_CAPACITY,
+    inline_attrs: [INLINE_ATTR_CAPACITY]?AttributeEntry = @splat(null),
     /// How many of `inline_attrs` are in use (0-4).
     inline_attr_count: u8 = 0,
     /// The attributes after the inline ones, in list order; null until needed.

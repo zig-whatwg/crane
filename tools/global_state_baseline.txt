@@ -20,6 +20,7 @@ src/dom/activation.zig count 1 G H decl:3796f88280404836
 src/dom/activation.zig test_runs 1 G X decl:3796f88280404836
 src/dom/adopting_steps.zig count 1 G P-res decl:3796f88280404836
 src/dom/adopting_steps.zig entries 1 G P-res decl:ac43cb60187b8e4d
+src/dom/ancestor_revealing.zig reveal_steps 1 G P-res decl:8b5ce377e3b48140
 src/dom/animations/hooks.zig hooks 1 G P-res decl:4dad5b7413d7153c
 src/dom/attr_nodes.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/attribute_change_steps.zig count 1 G H decl:4cc2603a80e86aa9
@@ -129,6 +130,7 @@ src/dom/refcount.zig tree_checks_requested 1 G P-res decl:4b877655cb3bb361
 src/dom/refcount_audit.zig audit_requested 1 G P-res decl:4b877655cb3bb361
 src/dom/script_elements.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/script_elements.zig svg_implementation 1 G H decl:2b000c56b2bcfae5
+src/dom/selected_content.zig read_disabled 1 G P-res decl:845927b41501f890
 src/dom/selection.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/service_worker_clients.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/shadow_hosts.zig implementation 1 G H decl:9c737e7125e9c3d4

@@ -146,7 +146,7 @@ pub const NodeOps = HandleOps(NodeHandle);
 /// Validate that a handle pointer is valid (non-null and aligned).
 /// Only performs checks in debug/release-safe builds.
 fn validateHandlePtr(ptr: ?*const anyopaque, comptime type_name: []const u8) void {
-    if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
+    if (builtin.mode == std.builtin.OptimizeMode.Debug or builtin.mode == std.builtin.OptimizeMode.ReleaseSafe) {
         if (ptr) |p| {
             const addr = @intFromPtr(p);
             // Check alignment (minimum 4-byte for pointers)
@@ -160,7 +160,7 @@ fn validateHandlePtr(ptr: ?*const anyopaque, comptime type_name: []const u8) voi
 /// Assert that a handle is not null.
 /// Panics in debug/release-safe builds if null.
 fn assertNotNull(ptr: ?*const anyopaque, comptime type_name: []const u8) void {
-    if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
+    if (builtin.mode == std.builtin.OptimizeMode.Debug or builtin.mode == std.builtin.OptimizeMode.ReleaseSafe) {
         if (ptr == null) {
             std.debug.panic("{s} handle is null when non-null was expected", .{type_name});
         }

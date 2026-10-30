@@ -28,7 +28,7 @@ pub const Usages = std.EnumSet(Usage);
 /// Convert recognized WebIDL enum strings and normalize duplicate usages.
 pub fn usagesFromStrings(values: []const []const u8) error{TypeError}!Usages {
     // §9 usages normalization: the intersection in recognized-usage order.
-    var result = Usages.initEmpty();
+    var result = Usages.empty;
     for (values) |value| result.insert(std.meta.stringToEnum(Usage, value) orelse return error.TypeError);
     return result;
 }

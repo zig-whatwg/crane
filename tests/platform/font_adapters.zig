@@ -69,7 +69,7 @@ test "what kit/sfnt rejects, every platform rejects" {
     const bytes = try readWpt("fonts/Ahem.ttf");
     defer testing.allocator.free(bytes);
     try testing.expectError(error.Corrupt, platform.decodeFont(testing.allocator, .from(bytes[0 .. bytes.len / 2]), .{}, limits));
-    try testing.expectError(error.UnsupportedFormat, platform.decodeFont(testing.allocator, .from(&[_]u8{0} ** 8), .{}, limits));
+    try testing.expectError(error.UnsupportedFormat, platform.decodeFont(testing.allocator, .from(&@as([8]u8, @splat(0))), .{}, limits));
 }
 
 test "darwin: the generic families are WebKit's defaults; system-ui is the UI font" {

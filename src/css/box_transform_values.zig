@@ -339,7 +339,7 @@ fn identity() Matrix {
     return .{ 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
 }
 fn multiply(left: Matrix, right: Matrix) Matrix {
-    var result: Matrix = .{0} ** 16;
+    var result: Matrix = @splat(0);
     for (0..4) |column| for (0..4) |row| {
         for (0..4) |k| result[column * 4 + row] += left[k * 4 + row] * right[column * 4 + k];
     };

@@ -2875,11 +2875,11 @@ pub const DeviceResponse = extern struct {
 pub const GamepadState = extern struct {
     index: u32,
     connected: bool,
-    id: [64]u8 = [_]u8{0} ** 64,
+    id: [64]u8 = @as([64]u8, @splat(0)),
     timestamp: Instant = .{ .ns = 0 },
-    axes: [8]f64 = [_]f64{0} ** 8,
+    axes: [8]f64 = @as([8]f64, @splat(0)),
     axis_count: u32 = 0,
-    buttons: [32]f64 = [_]f64{0} ** 32,
+    buttons: [32]f64 = @as([32]f64, @splat(0)),
     button_count: u32 = 0,
 };
 

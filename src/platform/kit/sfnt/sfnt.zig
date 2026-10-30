@@ -204,7 +204,7 @@ pub fn checksum(data: []const u8) u32 {
     var i: usize = 0;
     while (i + 4 <= data.len) : (i += 4) sum +%= std.mem.readInt(u32, data[i..][0..4], .big);
     if (i < data.len) {
-        var last = [_]u8{0} ** 4;
+        var last = @as([4]u8, @splat(0));
         @memcpy(last[0 .. data.len - i], data[i..]);
         sum +%= std.mem.readInt(u32, &last, .big);
     }
@@ -214,7 +214,7 @@ pub fn checksum(data: []const u8) u32 {
 const testing = std.testing;
 
 fn directory(comptime n: usize, entries: [n]Record, comptime total: usize) [total]u8 {
-    var out = [_]u8{0} ** total;
+    var out = @as([total]u8, @splat(0));
     std.mem.writeInt(u32, out[0..4], 0x00010000, .big);
     std.mem.writeInt(u16, out[4..6], n, .big);
     for (entries, 0..) |e, i| {
@@ -250,7 +250,7 @@ test "a directory's tables: aligned, inside the file, past the directory, not em
 }
 
 test "a collection header: version, font count, offsets" {
-    var ttc = [_]u8{0} ** 20;
+    var ttc = @as([20]u8, @splat(0));
     @memcpy(ttc[0..4], "ttcf");
     std.mem.writeInt(u32, ttc[4..8], 0x00010000, .big);
     std.mem.writeInt(u32, ttc[8..12], 2, .big);

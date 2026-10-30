@@ -310,7 +310,7 @@ pub fn references(gpa: std.mem.Allocator, path: []const u8, text: []const u8) !s
     const scope = scopeOf(path);
     if (scope == .none) return out;
 
-    const source = try gpa.dupeZ(u8, text);
+    const source = try gpa.dupeSentinel(u8, text, 0);
     defer gpa.free(source);
     var tests = try testLines(gpa, source);
     defer tests.deinit(gpa);

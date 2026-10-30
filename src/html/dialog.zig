@@ -1,10 +1,34 @@
-//! Trusted pointer light-dismiss algorithms for HTML dialogs.
+//! HTML dialog algorithms shared by form submission and trusted input.
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dom = @import("dom");
+const webidl = @import("webidl");
 const form_associated = @import("form_associated.zig");
 const close_watchers = @import("close_watchers.zig");
+
+/// Form submission step 11.3–5. The caller owns a passed value: closing the
+/// dialog dispatches beforetoggle, which can replace the submitter's attribute.
+pub fn submissionResult(allocator: std.mem.Allocator, submitter: *runtime.Instance) !webidl.Opt(runtime.DOMString) {
+    // Stated deviation from step 11.3: form-as-submitter submissions clear
+    // returnValue. Chrome 156, Firefox 158 and Safari 27 agree for submit(),
+    // requestSubmit() and requestSubmit(null), with every initial value.
+    // No newer spec is involved; PR #11280 changes only submit buttons.
+    // Probe: tmp/probes/q62/RESULT.md (2026-10-29); all three also pass
+    // dialog-form-submission.html's final no-submitter case on wpt.fyi.
+    if (submitter.stateAs(interfaces.HTMLFormElement.State) != null) return .passed(runtime.DOMString.initEmpty());
+    if (form_associated.isInput(submitter)) {
+        var buffer: [16]u8 = undefined;
+        if (std.mem.eql(u8, form_associated.inputType(submitter, &buffer), "image")) {
+            const coordinate = @import("forms/image_coordinate.zig").selected(submitter);
+            return .passed(runtime.DOMString.initOwned(try std.fmt.allocPrint(allocator, "{d},{d}", .{ coordinate.x, coordinate.y })));
+        }
+    }
+    if (!form_associated.isSubmitButton(submitter)) return .notPassed();
+    var value = (try interfaces.Element.call_getAttribute(submitter, runtime.DOMString.initInterned("value"))) orelse return .notPassed();
+    defer value.deinit(submitter.ctx.allocator);
+    return .passed(try value.clone(allocator));
+}
 
 fn flatParent(node: *runtime.Instance) ?*runtime.Instance {
     if (dom.shadow_dom_algorithms.assignedSlotOf(node)) |slot| return slot;

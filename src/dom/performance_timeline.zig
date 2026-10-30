@@ -603,7 +603,7 @@ pub const Observer = struct {
 /// frozen array of supported entry types of a global of `kind`; the rest
 /// are removed.
 pub fn supportedAmong(identifiers: []const []const u8, kind: GlobalKind) std.EnumSet(EntryType) {
-    var types = std.EnumSet(EntryType).initEmpty();
+    var types = std.EnumSet(EntryType).empty;
     for (identifiers) |identifier| {
         const t = EntryType.fromName(identifier) orelse continue;
         if (t.isSupported(kind)) types.insert(t);
@@ -641,7 +641,7 @@ pub fn observe(timeline: *Timeline, observer: *Observer, request: ObserveRequest
     // 7.2. An unsupported type: abort.
     const t = EntryType.fromName(identifier) orelse return;
     if (!t.isSupported(GlobalKind.of(timeline.owner.ctx))) return;
-    var single_types = std.EnumSet(EntryType).initEmpty();
+    var single_types = std.EnumSet(EntryType).empty;
     single_types.insert(t);
     const options: Options = .{ .types = single_types, .single = t, .buffered = request.buffered };
     if (timeline.isRegistered(observer)) {

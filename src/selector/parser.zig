@@ -9,8 +9,8 @@
 //! parse error, not a failure), and the grammar is matched against the
 //! tokens.
 //!
-//! DOM declares no namespace prefixes ("Support for namespaces within
-//! selectors is not planned"), so `*|E` and `|E` are the namespace forms
+//! DOM declares no namespace prefixes; stylesheet callers supply a borrowed
+//! namespace resolver. DOM's `*|E` and `|E` remain the namespace forms
 //! that can be valid, and any named prefix is an undeclared one: the
 //! selector is invalid (Selectors 4 3.9).
 //!
@@ -41,7 +41,34 @@ pub const SelectorList = struct {
     /// outermost list of a parse owns any; nested lists' are empty.
     strings: [][]u8 = &.{},
 
+    /// Null for parsed/unique roots. Both immutable parent views point
+    /// to their sole shared owner; the view is never separately destroyed.
+    shared_owner: ?*@import("nesting.zig").SharedList = null,
+
     pub fn deinit(self: *SelectorList) void {
+        std.debug.assert(self.shared_owner == null);
+        self.deinitContents();
+    }
+
+    /// The single release dispatch for every initialized boxed list.
+    /// Shared and unique ownership are disjoint by construction.
+    pub fn releaseBoxed(self: *SelectorList) void {
+        if (self.shared_owner) |owner| {
+            owner.unref();
+        } else {
+            const allocator = self.allocator;
+            self.deinit();
+            allocator.destroy(self);
+        }
+    }
+
+    /// Only the owner's zero-count path may destroy shared contents.
+    pub fn deinitSharedContents(self: *SelectorList, owner: *@import("nesting.zig").SharedList) void {
+        std.debug.assert(self.shared_owner == owner and owner.refs == 0);
+        self.deinitContents();
+    }
+
+    fn deinitContents(self: *SelectorList) void {
         for (self.selectors) |*selector| {
             selector.deinit();
         }
@@ -345,11 +372,21 @@ pub const SimpleSelector = union(enum) {
     Class: struct { class_name: []const u8 },
     Id: struct { id: []const u8 },
     Attribute: AttributeSelector,
+    /// CSS Namespaces 3: only namespaced selectors use these extra arms.
+    /// The URI belongs to the outer SelectorList's strings; the old
+    /// any/none representations and their matcher paths stay unchanged.
+    NamespaceURI: struct { uri: []const u8 },
+    /// Box this rare arm so SimpleSelector's size does not increase for
+    /// every ordinary selector merely to hold the additional URI.
+    NamespacedAttribute: *const struct { uri: []const u8, attribute: AttributeSelector },
+    /// CSSOM keeps this unresolved; nesting.zig resolves it before matching.
+    Nesting,
     PseudoClass: PseudoClassSelector,
     PseudoElement: PseudoElementSelector,
 
     pub fn deinit(self: *SimpleSelector, allocator: Allocator) void {
         switch (self.*) {
+            .NamespacedAttribute => |attribute| allocator.destroy(attribute),
             .PseudoClass => |*pseudo| pseudo.deinit(allocator),
             .PseudoElement => |*pseudo| pseudo.deinit(allocator),
             else => {},
@@ -359,11 +396,11 @@ pub const SimpleSelector = union(enum) {
     /// Calculate specificity contribution of this simple selector
     pub fn calculateSpecificity(self: *const SimpleSelector) Specificity {
         return switch (self.*) {
-            .Universal => Specificity{}, // 0,0,0
+            .Universal, .NamespaceURI, .Nesting => Specificity{}, // 0,0,0
             .Type => Specificity{ .element = 1 }, // 0,0,1
             .Class => Specificity{ .class = 1 }, // 0,1,0
             .Id => Specificity{ .id = 1 }, // 1,0,0
-            .Attribute => Specificity{ .class = 1 }, // 0,1,0
+            .Attribute, .NamespacedAttribute => Specificity{ .class = 1 }, // 0,1,0
             .PseudoClass => |*pseudo| pseudo.calculateSpecificity(), // varies
             // 0,0,1; ::slotted() adds its argument's (CSS Scoping 3.2.2).
             .PseudoElement => |*pseudo| pseudo.calculateSpecificity(),
@@ -417,16 +454,13 @@ pub const PseudoClassSelector = struct {
     pub fn deinit(self: *PseudoClassSelector, allocator: Allocator) void {
         switch (self.kind) {
             .Not, .Is, .Where, .Has => |selector_list_ptr| {
-                selector_list_ptr.deinit();
-                allocator.destroy(selector_list_ptr);
+                selector_list_ptr.releaseBoxed();
             },
             .Host => |maybe| if (maybe) |selector_list_ptr| {
-                selector_list_ptr.deinit();
-                allocator.destroy(selector_list_ptr);
+                selector_list_ptr.releaseBoxed();
             },
             .NthChild, .NthLastChild => |pattern| if (pattern.of) |selector_list_ptr| {
-                selector_list_ptr.deinit();
-                allocator.destroy(selector_list_ptr);
+                selector_list_ptr.releaseBoxed();
             },
             .Lang => |ranges| allocator.free(ranges),
             else => {},
@@ -596,8 +630,7 @@ pub const PseudoElementSelector = struct {
 
     pub fn deinit(self: *PseudoElementSelector, allocator: Allocator) void {
         if (self.argument) |list| {
-            list.deinit();
-            allocator.destroy(list);
+            list.releaseBoxed();
             self.argument = null;
         }
         if (self.part_names.len != 0) allocator.free(self.part_names);
@@ -626,6 +659,41 @@ pub const ParserError = error{
 /// Selectors 4 17.1 "parse a selector": `source` as a <selector-list>, or an
 /// error when it is an invalid selector. The list owns what it decoded.
 pub fn parseSelectorList(allocator: Allocator, source: []const u8) ParserError!SelectorList {
+    return parseWithOptions(allocator, source, .{});
+}
+
+/// A stylesheet's namespace bindings, borrowed ONLY for the parse. Each
+/// URI used by the AST is copied into the outer list's owned strings.
+pub const NamespaceResolver = struct {
+    context: ?*const anyopaque = null,
+    resolve: *const fn (?*const anyopaque, []const u8) ?[]const u8,
+    default: ?[]const u8 = null,
+};
+
+pub const NestingContext = enum { style, scope };
+
+pub const ParseOptions = struct {
+    namespaces: ?NamespaceResolver = null,
+    /// Nearest style/scope ancestor, ignoring intervening group rules.
+    nesting: ?NestingContext = null,
+};
+
+pub fn parseWithOptions(allocator: Allocator, source: []const u8, options: ParseOptions) ParserError!SelectorList {
+    return parseWithMode(allocator, source, options, false);
+}
+
+/// CSS Conditional 4 section 2.1: selector() accepts ONE complex selector,
+/// with no forgiving parsing, even inside :is() and :where().
+pub fn isSupported(allocator: Allocator, source: []const u8, options: ParseOptions) error{OutOfMemory}!bool {
+    var list = parseWithMode(allocator, source, options, true) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return false,
+    };
+    defer list.deinit();
+    return list.selectors.len == 1;
+}
+
+fn parseWithMode(allocator: Allocator, source: []const u8, options: ParseOptions, comptime support_check: bool) ParserError!SelectorList {
     // The tokens and the parse's working lists live on the stack while they
     // fit: querySelector parses on every call, and allocations are most of a
     // short selector's cost. The list and its strings use `allocator`.
@@ -634,8 +702,91 @@ pub fn parseSelectorList(allocator: Allocator, source: []const u8) ParserError!S
     var tokenizer = Tokenizer.init(scratch, source);
     var parser = try Parser.initWithScratch(allocator, scratch, &tokenizer);
     defer parser.deinit();
+    parser.namespaces = options.namespaces;
+    parser.nesting = options.nesting;
+    parser.support_check = support_check;
     return parser.parse();
 }
+
+/// A CSSOM selector and its owned serialized text. The caller frees text
+/// and deinits selectors; their lifetimes remain paired.
+pub const CssomSelector = struct { text: []u8, selectors: SelectorList };
+
+/// Consumes `source` on success AND failure. Component-value preprocessing
+/// has already run. Only parsed An+B spans change here; a forgiven invalid
+/// selector remains unparsed text, never accidentally repaired.
+pub fn parseCssomOwned(allocator: Allocator, source: []u8, options: ParseOptions) ParserError!CssomSelector {
+    errdefer allocator.free(source);
+    var stack = std.heap.stackFallback(4096, allocator);
+    const scratch = stack.get();
+    var tokenizer = Tokenizer.init(scratch, source);
+    var parser = try Parser.initWithScratch(allocator, scratch, &tokenizer);
+    defer parser.deinit();
+    var rewrites: std.ArrayList(AnBRewrite) = .empty;
+    defer rewrites.deinit(scratch);
+    parser.namespaces = options.namespaces;
+    parser.nesting = options.nesting;
+    parser.anb_rewrites = &rewrites;
+    parser.preserve_nesting = true;
+    var list = try parser.parse();
+    errdefer list.deinit();
+    if (rewrites.items.len == 0) return .{ .text = source, .selectors = list };
+    // Recursive pseudo-classes can add inner spans before their outer An+B.
+    std.mem.sort(AnBRewrite, rewrites.items, {}, struct {
+        fn less(_: void, a: AnBRewrite, b: AnBRewrite) bool {
+            return a.start < b.start;
+        }
+    }.less);
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(allocator);
+    var cursor: usize = 0;
+    for (rewrites.items) |rewrite| {
+        // compoundArgument validates once, then parses its one-selector
+        // list. Its duplicate successful spans are identical.
+        if (rewrite.start < cursor) continue;
+        try out.appendSlice(allocator, source[cursor..rewrite.start]);
+        var buffer: [64]u8 = undefined;
+        try out.appendSlice(allocator, rewrite.text(&buffer));
+        cursor = rewrite.end;
+    }
+    try out.appendSlice(allocator, source[cursor..]);
+    const text = try out.toOwnedSlice(allocator);
+    errdefer allocator.free(text);
+    // Names without escapes still point into source, not the shorter text.
+    // Use the existing owned-string list, never dangling borrowed slices.
+    const count = list.strings.len;
+    list.strings = try allocator.realloc(list.strings, count + 1);
+    list.strings[count] = source;
+    return .{ .text = text, .selectors = list };
+}
+
+const AnBRewrite = struct {
+    start: usize,
+    end: usize,
+    a: i32 = 0,
+    b: i32 = 0,
+    has_of: bool = false,
+    prefix: bool = false,
+
+    /// CSS Syntax 3 section 9.1, steps 1–5.
+    fn text(self: AnBRewrite, buffer: *[64]u8) []const u8 {
+        if (self.prefix) return "& ";
+        var written: usize = 0;
+        if (self.a == 0) {
+            written = (std.fmt.bufPrint(buffer, "{d}", .{self.b}) catch unreachable).len;
+        } else {
+            const first = if (self.a == 1) "n" else if (self.a == -1) "-n" else std.fmt.bufPrint(buffer, "{d}n", .{self.a}) catch unreachable;
+            if (self.a == 1 or self.a == -1) @memcpy(buffer[0..first.len], first);
+            written = first.len;
+            if (self.b != 0) written += (std.fmt.bufPrint(buffer[written..], "{s}{d}", .{ if (self.b > 0) "+" else "", self.b }) catch unreachable).len;
+        }
+        if (self.has_of) {
+            buffer[written] = ' ';
+            written += 1;
+        }
+        return buffer[0..written];
+    }
+};
 
 // ============================================================================
 // Parser
@@ -648,6 +799,10 @@ const Context = struct {
     real: bool = false,
     /// Inside :has(), where :has() is not valid (Selectors 4 4.5).
     in_has: bool = false,
+    /// Selectors 4 sections 4.2–4.4: no implicit default namespace on
+    /// the SUBJECT of a logical combination's argument. Explicit type
+    /// and universal selectors, and ancestor compounds, still receive it.
+    resist_default_namespace: bool = false,
 };
 
 /// An end-of-input token, what reading past a range returns.
@@ -698,6 +853,12 @@ pub const Parser = struct {
     /// After `parse`: the token the parse stopped at - always the EOF token,
     /// since the whole input is the selector list.
     current_token: ?Token = null,
+    namespaces: ?NamespaceResolver = null,
+    support_check: bool = false,
+    nesting: ?NestingContext = null,
+    preserve_nesting: bool = false,
+    /// Present only for CSSOM: successful An+B spans, never a failed branch.
+    anb_rewrites: ?*std.ArrayList(AnBRewrite) = null,
 
     pub fn init(allocator: Allocator, tokenizer: *Tokenizer) ParserError!Parser {
         return initWithScratch(allocator, tokenizer.allocator, tokenizer);
@@ -734,7 +895,7 @@ pub const Parser = struct {
     /// <selector-list>. The list owns the strings the parse decoded.
     pub fn parse(self: *Parser) ParserError!SelectorList {
         const all = self.tokens[0 .. self.tokens.len - 1];
-        var list = try self.parseList(all, .{}, .{ .forgiving = false, .relative = false });
+        var list = try self.parseList(all, .{}, .{ .forgiving = false, .relative = self.nesting != null, .nesting = self.nesting });
         errdefer list.deinit();
         self.current_token = self.tokens[self.tokens.len - 1];
         list.strings = try self.strings.toOwnedSlice(self.allocator);
@@ -750,6 +911,7 @@ pub const Parser = struct {
         forgiving: bool,
         /// <relative-selector-list>.
         relative: bool,
+        nesting: ?NestingContext = null,
     };
 
     /// A comma-separated list of complex (or relative) selectors over
@@ -766,7 +928,8 @@ pub const Parser = struct {
             const at_comma = i < tokens.len and tokens[i].tag == .comma;
             if (i >= tokens.len or at_comma) {
                 const piece = tokens[piece_start..i];
-                if (self.parseComplex(piece, ctx, kind.relative)) |selector| {
+                const rewrite_count = if (self.anb_rewrites) |rewrites| rewrites.items.len else 0;
+                if (self.parseComplex(piece, ctx, kind.relative, kind.nesting)) |selector| {
                     selectors.append(self.scratch, selector) catch |err| {
                         var dropped = selector;
                         dropped.deinit();
@@ -776,7 +939,10 @@ pub const Parser = struct {
                     error.OutOfMemory => return err,
                     // 16.1 "Remove all failure items ... and all items that
                     // are invalid selectors."
-                    else => if (!kind.forgiving) return err,
+                    else => {
+                        if (self.anb_rewrites) |rewrites| rewrites.shrinkRetainingCapacity(rewrite_count);
+                        if (!kind.forgiving or self.support_check) return err;
+                    },
                 }
                 if (i >= tokens.len) break;
                 i += 1;
@@ -836,9 +1002,21 @@ pub const Parser = struct {
 
     /// <complex-selector> (or <relative-selector>) over all of `tokens`,
     /// whitespace around it allowed. Stored right to left.
-    fn parseComplex(self: *Parser, tokens: []const Token, ctx: Context, relative: bool) ParserError!ComplexSelector {
+    fn parseComplex(self: *Parser, tokens: []const Token, ctx: Context, relative: bool, nesting: ?NestingContext) ParserError!ComplexSelector {
         var stream = Stream{ .tokens = tokens };
         _ = stream.skipWhitespace();
+
+        const first_token = stream.peek();
+        const explicit_combinator = combinatorOf(first_token) != null;
+        var contains_nesting = false;
+        if (nesting != null) for (tokens) |token| {
+            // Nesting 1 section 3.1 counts a delim '&' even inside a
+            // forgiven unknown pseudo-class, but never inside a string.
+            if (token.isDelim('&')) {
+                contains_nesting = true;
+                break;
+            }
+        };
 
         var ltr_compounds: std.ArrayList(CompoundSelector) = .empty;
         defer ltr_compounds.deinit(self.scratch);
@@ -904,6 +1082,29 @@ pub const Parser = struct {
             .is_relative = relative,
             .initial_combinator = initial_combinator,
         };
+        errdefer result.deinit();
+        if (nesting) |context_kind| {
+            const has_scope = context_kind == .scope and @import("nesting.zig").containsScope(&result);
+            if (explicit_combinator or (!contains_nesting and !has_scope)) {
+                const simples = try self.allocator.alloc(SimpleSelector, 1);
+                var owns_simples = true;
+                errdefer if (owns_simples) self.allocator.free(simples);
+                simples[0] = if (context_kind == .style) .Nesting else .{ .PseudoClass = .{ .kind = .Scope } };
+                const old_len = result.combinators.len;
+                result.combinators = try self.allocator.realloc(result.combinators, old_len + 1);
+                result.combinators[old_len] = .{
+                    .combinator = initial_combinator orelse .Descendant,
+                    .compound = .{ .allocator = self.allocator, .simple_selectors = simples },
+                };
+                owns_simples = false;
+                // Scope's implicit anchor is omitted by CSSOM. A style
+                // rule's implicit & is serialized (Nesting 1 section 3.1).
+                if (context_kind == .style) if (self.anb_rewrites) |rewrites|
+                    try rewrites.append(self.scratch, .{ .start = first_token.start, .end = first_token.start, .prefix = true });
+            }
+            result.is_relative = false;
+            result.initial_combinator = null;
+        }
         result.computeAncestorHashes();
         result.computeBacktrackingInfo();
         return result;
@@ -932,7 +1133,11 @@ pub const Parser = struct {
         defer simples.deinit(self.scratch);
         errdefer for (simples.items) |*simple| simple.deinit(self.allocator);
 
-        if (try self.parseTypeSelector(stream)) |type_selector| try simples.append(self.scratch, type_selector);
+        const type_selector = try self.parseTypeSelector(stream);
+        if (type_selector) |resolved| {
+            try simples.append(self.scratch, resolved.simple);
+            if (resolved.uri) |uri| try simples.append(self.scratch, .{ .NamespaceURI = .{ .uri = uri } });
+        }
 
         // The pseudo-element the compound has reached, if any.
         var pseudo_element: ?[]const u8 = null;
@@ -947,6 +1152,11 @@ pub const Parser = struct {
                     break :blk .{ .Id = .{ .id = token.value } };
                 },
                 .delim => blk: {
+                    if (token.delim == '&') {
+                        if (pseudo_element != null) return error.InvalidSelector;
+                        stream.advance();
+                        break :blk if (self.preserve_nesting) .Nesting else try @import("nesting.zig").scopeReference(self.allocator);
+                    }
                     // <class-selector> = '.' <ident-token>
                     if (token.delim != '.') break;
                     if (pseudo_element != null) return error.InvalidSelector;
@@ -960,7 +1170,7 @@ pub const Parser = struct {
                     const close = try self.matchingClose(stream.tokens, stream.pos);
                     const contents = stream.tokens[stream.pos + 1 .. close];
                     stream.pos = if (close < stream.tokens.len) close + 1 else close;
-                    break :blk .{ .Attribute = try self.parseAttribute(contents) };
+                    break :blk try self.parseAttribute(contents);
                 },
                 .colon => blk: {
                     if (stream.peekAt(1).tag == .colon) {
@@ -993,6 +1203,16 @@ pub const Parser = struct {
         }
 
         if (simples.items.len == 0) return error.InvalidSelector;
+        if (type_selector == null) if (self.namespaces) |ns| if (ns.default) |uri| {
+            var after = stream.*;
+            _ = after.skipWhitespace();
+            if (!ctx.resist_default_namespace or !after.atEnd()) {
+                // CSS Namespaces 3 section 3: the omitted universal type
+                // still imposes the default namespace on this compound.
+                const owned = try self.ownUri(uri);
+                try simples.insert(self.scratch, 0, .{ .NamespaceURI = .{ .uri = owned } });
+            }
+        };
         return CompoundSelector{
             .active_hover_quirk = !ctx.real and usesOnlyActiveOrHover(simples.items),
             .simple_selectors = try self.allocator.dupe(SimpleSelector, simples.items),
@@ -1006,6 +1226,7 @@ pub const Parser = struct {
     fn usesOnlyActiveOrHover(simples: []const SimpleSelector) bool {
         var uses = false;
         for (simples) |simple| switch (simple) {
+            .NamespaceURI => {}, // An implicit namespace is not an explicit universal.
             .PseudoClass => |pseudo| switch (pseudo.kind) {
                 .Active, .Hover => uses = true,
                 else => return false,
@@ -1019,7 +1240,22 @@ pub const Parser = struct {
     /// <wq-name> = <ns-prefix>? <ident-token> and
     /// <ns-prefix> = [ <ident-token> | '*' ]? '|' - no whitespace inside.
     /// Null when the compound starts with no type selector.
-    fn parseTypeSelector(self: *Parser, stream: *Stream) ParserError!?SimpleSelector {
+    const ResolvedType = struct { simple: SimpleSelector, uri: ?[]const u8 = null };
+
+    fn ownUri(self: *Parser, uri: []const u8) ParserError![]const u8 {
+        const owned = try self.allocator.dupe(u8, uri);
+        errdefer self.allocator.free(owned);
+        try self.strings.append(self.allocator, owned);
+        return owned;
+    }
+
+    fn namespaceUri(self: *Parser, prefix: []const u8) ParserError![]const u8 {
+        const resolver = self.namespaces orelse return error.InvalidSelector;
+        const uri = resolver.resolve(resolver.context, prefix) orelse return error.InvalidSelector;
+        return self.ownUri(uri);
+    }
+
+    fn parseTypeSelector(self: *Parser, stream: *Stream) ParserError!?ResolvedType {
         const t0 = stream.peek();
         const t1 = stream.peekAt(1);
         const t2 = stream.peekAt(2);
@@ -1027,21 +1263,20 @@ pub const Parser = struct {
         // ns-prefix '|' followed by a name or '*'.
         if (t1.isDelim('|') and (t0.tag == .ident or t0.isDelim('*'))) {
             if (t2.tag != .ident and !t2.isDelim('*')) return error.InvalidSelector;
-            // A named prefix is never declared: "A type selector or universal
-            // selector containing a namespace prefix that has not been
-            // previously declared is an invalid selector."
-            if (t0.tag == .ident) return error.InvalidSelector;
+            // Selectors 4 section 5.3: an undeclared prefix is invalid.
+            const uri = if (t0.tag == .ident) try self.namespaceUri(t0.value) else null;
             stream.pos += 3;
-            return try self.typeOrUniversal(t2, .any);
+            return .{ .simple = try self.typeOrUniversal(t2, .any), .uri = uri };
         }
         if (t0.isDelim('|')) {
             if (t1.tag != .ident and !t1.isDelim('*')) return error.InvalidSelector;
             stream.pos += 2;
-            return try self.typeOrUniversal(t1, .none);
+            return .{ .simple = try self.typeOrUniversal(t1, .none) };
         }
         if (t0.tag == .ident or t0.isDelim('*')) {
             stream.advance();
-            return try self.typeOrUniversal(t0, .any);
+            const uri = if (self.namespaces) |ns| if (ns.default) |value| try self.ownUri(value) else null else null;
+            return .{ .simple = try self.typeOrUniversal(t0, .any), .uri = uri };
         }
         return null;
     }
@@ -1060,12 +1295,21 @@ pub const Parser = struct {
     ///   <attr-modifier>? ']'
     /// over the block's contents (whitespace allowed between the parts, not
     /// inside the name or the matcher).
-    fn parseAttribute(self: *Parser, contents: []const Token) ParserError!AttributeSelector {
+    fn attributeSimple(self: *Parser, attribute: AttributeSelector, uri: ?[]const u8) ParserError!SimpleSelector {
+        const resolved = uri orelse return .{ .Attribute = attribute };
+        const Box = @typeInfo(@FieldType(SimpleSelector, "NamespacedAttribute")).pointer.child;
+        const boxed = try self.allocator.create(Box);
+        boxed.* = .{ .uri = resolved, .attribute = attribute };
+        return .{ .NamespacedAttribute = boxed };
+    }
+
+    fn parseAttribute(self: *Parser, contents: []const Token) ParserError!SimpleSelector {
         var stream = Stream{ .tokens = contents };
         _ = stream.skipWhitespace();
 
         // <wq-name>
         var namespace: NamespaceConstraint = .none;
+        var uri: ?[]const u8 = null;
         const t0 = stream.peek();
         const t1 = stream.peekAt(1);
         const t2 = stream.peekAt(2);
@@ -1078,9 +1322,13 @@ pub const Parser = struct {
             stream.pos += 2;
             break :blk t1;
         } else if (t0.tag == .ident) blk: {
-            // ident '|' ident is a named prefix - never declared, so invalid.
-            // ident '|' '=' is the name and the dash-match matcher.
-            if (t1.isDelim('|') and t2.tag == .ident) return error.InvalidSelector;
+            // ident '|' ident is a named prefix; ident '|' '=' is the
+            // attribute's unprefixed name and its dash-match operator.
+            if (t1.isDelim('|') and t2.tag == .ident) {
+                uri = try self.namespaceUri(t0.value);
+                stream.pos += 3;
+                break :blk t2;
+            }
             stream.advance();
             break :blk t0;
         } else return error.InvalidSelector;
@@ -1095,7 +1343,7 @@ pub const Parser = struct {
         };
 
         _ = stream.skipWhitespace();
-        if (stream.atEnd()) return selector;
+        if (stream.atEnd()) return self.attributeSimple(selector, uri);
 
         // <attr-matcher> = [ '~' | '|' | '^' | '$' | '*' ]? '='
         const m0 = stream.peek();
@@ -1138,7 +1386,7 @@ pub const Parser = struct {
             _ = stream.skipWhitespace();
         }
         if (!stream.atEnd()) return error.InvalidSelector;
-        return selector;
+        return self.attributeSimple(selector, uri);
     }
 
     // ========================================================================
@@ -1235,15 +1483,16 @@ pub const Parser = struct {
     /// A functional pseudo-class `name(` over its arguments `args`.
     fn functionalPseudoClass(self: *Parser, name: []const u8, args: []const Token, ctx: Context) ParserError!PseudoClassKind {
         const real = Context{ .real = true, .in_has = ctx.in_has };
+        const logical = Context{ .real = true, .in_has = ctx.in_has, .resist_default_namespace = true };
         if (std.ascii.eqlIgnoreCase(name, "not")) {
             // 4.3: :not(<complex-real-selector-list>).
-            return .{ .Not = try self.boxedList(args, real, .{ .forgiving = false, .relative = false }) };
+            return .{ .Not = try self.boxedList(args, logical, .{ .forgiving = false, .relative = false }) };
         }
         if (std.ascii.eqlIgnoreCase(name, "is")) {
-            return .{ .Is = try self.boxedList(args, real, .{ .forgiving = true, .relative = false }) };
+            return .{ .Is = try self.boxedList(args, logical, .{ .forgiving = true, .relative = false }) };
         }
         if (std.ascii.eqlIgnoreCase(name, "where")) {
-            return .{ .Where = try self.boxedList(args, real, .{ .forgiving = true, .relative = false }) };
+            return .{ .Where = try self.boxedList(args, logical, .{ .forgiving = true, .relative = false }) };
         }
         if (std.ascii.eqlIgnoreCase(name, "has")) {
             // 4.5: "The :has() pseudo-class cannot be nested; :has() is not
@@ -1256,7 +1505,11 @@ pub const Parser = struct {
         if (std.ascii.eqlIgnoreCase(name, "nth-child") or std.ascii.eqlIgnoreCase(name, "nth-last-child")) {
             var stream = Stream{ .tokens = args };
             var pattern = try parseAnPlusB(&stream);
+            errdefer if (pattern.of) |list| {
+                list.releaseBoxed();
+            };
             _ = stream.skipWhitespace();
+            const anb_end = stream.pos;
             if (!stream.atEnd()) {
                 // 13.3.1: :nth-child(<an+b> [of <complex-real-selector-list>]?)
                 const of = stream.peek();
@@ -1264,6 +1517,7 @@ pub const Parser = struct {
                 stream.advance();
                 pattern.of = try self.boxedList(args[stream.pos..], real, .{ .forgiving = false, .relative = false });
             }
+            try self.recordAnB(args, anb_end, pattern, pattern.of != null);
             return if (std.ascii.eqlIgnoreCase(name, "nth-child")) .{ .NthChild = pattern } else .{ .NthLastChild = pattern };
         }
         if (std.ascii.eqlIgnoreCase(name, "nth-of-type") or std.ascii.eqlIgnoreCase(name, "nth-last-of-type")) {
@@ -1271,6 +1525,7 @@ pub const Parser = struct {
             const pattern = try parseAnPlusB(&stream);
             _ = stream.skipWhitespace();
             if (!stream.atEnd()) return error.InvalidSelector;
+            try self.recordAnB(args, stream.pos, pattern, false);
             return if (std.ascii.eqlIgnoreCase(name, "nth-of-type")) .{ .NthOfType = pattern } else .{ .NthLastOfType = pattern };
         }
         if (std.ascii.eqlIgnoreCase(name, "lang")) return .{ .Lang = try self.parseLanguageRanges(args) };
@@ -1389,7 +1644,7 @@ pub const Parser = struct {
                 // Appendix B: "All other pseudo-elements whose names begin
                 // with "-webkit-" ... and that are not functional notations
                 // must be treated as valid at parse time."
-                if (token.value.len > 8 and std.ascii.startsWithIgnoreCase(token.value, "-webkit-")) break :blk try self.lowercase(token.value);
+                if (!self.support_check and token.value.len > 8 and std.ascii.startsWithIgnoreCase(token.value, "-webkit-")) break :blk try self.lowercase(token.value);
                 return error.InvalidSelector;
             },
             .function => blk: {
@@ -1533,6 +1788,8 @@ pub const Parser = struct {
                 const int = stream.peek();
                 if (int.tag != .number or !int.is_integer or int.sign != .none) return error.InvalidSelector;
                 stream.advance();
+                // Browser probe Q26 (2026-10-27): all three clamp this
+                // separate unsigned B token before applying its sign.
                 const b = clampInt(int.number);
                 return .{ .a = a, .b = if (next.delim == '-') -b else b };
             }
@@ -1551,8 +1808,20 @@ pub const Parser = struct {
         }
         // n-<digits>: B is the digits, negated.
         for (digits) |d| if (!std.ascii.isDigit(d)) return error.InvalidSelector;
-        const value = std.fmt.parseFloat(f64, digits) catch return error.InvalidSelector;
-        return .{ .a = a, .b = -clampInt(value) };
+        // Chrome 156 + Safari 27 reject overflow in a joined n-<digits>;
+        // Firefox 158 clamps it (integrator Q26 probe, 2026-10-27).
+        // WebKit consumeANPlusB parses the signed suffix as an int.
+        const value = std.fmt.parseInt(i32, rest, 10) catch return error.InvalidSelector;
+        return .{ .a = a, .b = value };
+    }
+
+    fn recordAnB(self: *Parser, args: []const Token, end: usize, pattern: NthPattern, has_of: bool) ParserError!void {
+        const rewrites = self.anb_rewrites orelse return;
+        std.debug.assert(end != 0);
+        const rewrite = AnBRewrite{ .start = args[0].start, .end = args[end - 1].end, .a = pattern.a, .b = pattern.b, .has_of = has_of };
+        var buffer: [64]u8 = undefined;
+        if (std.mem.eql(u8, rewrite.text(&buffer), self.tokenizer.input[rewrite.start..rewrite.end])) return;
+        try rewrites.append(self.scratch, rewrite);
     }
 
     fn clampInt(value: f64) i32 {

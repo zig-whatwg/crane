@@ -723,7 +723,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 pub fn installHooks() void {
     dom.attribute_change_steps.install("audio", attributeChanged);
     dom.attribute_change_steps.install("video", attributeChanged);
-    dom.media_elements.installMediaElement(delaysLoad, trackParentChanged, trackModeChanged, naturalSize);
+    dom.media_elements.installMediaElement(delaysLoad, trackParentChanged, trackModeChanged, naturalSize, selectorState);
     dom.mutation.registerInsertionStepsCallback(inserted) catch @panic("media insertion hook allocation");
     dom.mutation.registerRemovingStepsCallback(removed) catch @panic("media removing hook allocation");
     dom.document_fetches.install(.{ .discard = cancelRealm, .prepare_abort = prepareDocumentAbort, .abort = abortDocument });
@@ -732,6 +732,23 @@ pub fn installHooks() void {
     // Browser's end.
     dom.teardown_sweeps.install(.element_types, &sweepRemaining);
 }
+/// HTML 4.16.3: selectors read the actual owner's state, without events.
+fn selectorState(instance: *runtime.Instance) ?dom.media_elements.SelectorState {
+    if (instance.stateAs(State) == null) return null;
+    const self = data(instance);
+    return .{
+        .paused = self.load.paused,
+        .seeking = self.load.seeking,
+        .network_state = @intFromEnum(self.load.network),
+        .ready_state = @intFromEnum(self.load.ready),
+        .stalled = self.load.stalled,
+        .muted = get_muted(instance) catch false,
+        .volume = self.volume,
+        // HTML 4.8.11.13: this UA does not lock playback volume.
+        .volume_locked = false,
+    };
+}
+
 fn cancelRealm(ctx: runtime.Context) void {
     const registry = common.liveRegistry(ctx) orelse return;
     var index = registry.entries.len;

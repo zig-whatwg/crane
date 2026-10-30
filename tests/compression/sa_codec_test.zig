@@ -1,5 +1,16 @@
 const std = @import("std");
 const codec = @import("compression");
+
+/// `s` repeated `n` times: what `s ** n` was (Zig 0.17 removes `**`; roadmap zig-017).
+fn repeat(comptime s: []const u8, comptime n: usize) *const [s.len * n:0]u8 {
+    return comptime blk: {
+        @setEvalBranchQuota(10 * n + 1000);
+        var out: [s.len * n:0]u8 = undefined;
+        for (0..n) |i| @memcpy(out[i * s.len ..][0..s.len], s);
+        const final = out;
+        break :blk &final;
+    };
+}
 const testing = std.testing;
 
 const Vector = struct { format: codec.Format, bytes: []const u8 };
@@ -104,7 +115,7 @@ test "compression: gzip optional header CRC is checked" {
 }
 
 test "compression: stateful compressed output round trips and reduces repetition" {
-    const input = "abcdefg" ** 10000;
+    const input = repeat("abcdefg", 10000);
     for ([_]codec.Format{ .deflate, .deflate_raw, .gzip }) |format| {
         const encoder = try codec.Encoder.create(testing.allocator, format);
         defer encoder.destroy();
@@ -144,7 +155,7 @@ test "compression: empty streams have valid framing" {
 }
 
 test "compression: a truncated dynamic Huffman block never consumes lookahead" {
-    const input = "abcdefg" ** 10000;
+    const input = repeat("abcdefg", 10000);
     const encoder = try codec.Encoder.create(testing.allocator, .deflate_raw);
     defer encoder.destroy();
     const encoded = try encoder.push(input, true);

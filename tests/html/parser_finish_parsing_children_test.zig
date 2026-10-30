@@ -19,6 +19,17 @@ const std = @import("std");
 const testing = std.testing;
 
 const html = @import("html");
+
+/// `s` repeated `n` times: what `s ** n` was (Zig 0.17 removes `**`; roadmap zig-017).
+fn repeat(comptime s: []const u8, comptime n: usize) *const [s.len * n:0]u8 {
+    return comptime blk: {
+        @setEvalBranchQuota(10 * n + 1000);
+        var out: [s.len * n:0]u8 = undefined;
+        for (0..n) |i| @memcpy(out[i * s.len ..][0..s.len], s);
+        const final = out;
+        break :blk &final;
+    };
+}
 const parser = html.parser;
 const Tokenizer = parser.Tokenizer;
 const TreeBuilder = parser.TreeBuilder;
@@ -171,7 +182,7 @@ test "the popped element's text reaches the adapter first, once" {
     defer recorder.deinit();
     // A text node is made with its first character; the rest of its run is
     // one change notification.
-    try parse(testing.allocator, "<!DOCTYPE html><body><object>" ++ e_acute ** 4 ++ "</object><p>" ++ e_acute ** 2 ++ "</p>", &recorder);
+    try parse(testing.allocator, "<!DOCTYPE html><body><object>" ++ repeat(e_acute, 4) ++ "</object><p>" ++ repeat(e_acute, 2) ++ "</p>", &recorder);
 
     const text = try recorder.indexOf("text:8");
     try testing.expect(text < try recorder.indexOf("finished:object"));

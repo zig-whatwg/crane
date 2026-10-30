@@ -29,6 +29,9 @@ pub const Control = struct {
     reset: ?*const fn (element: *runtime.Instance) void = null,
     /// Current constraint flags, including for a barred control.
     validity_flags: ?*const fn (element: *runtime.Instance) ValidityFlags = null,
+    /// HTML user validity belongs only to input, textarea and select.
+    user_validity: ?*const fn (element: *runtime.Instance) bool = null,
+    set_user_validity: ?*const fn (element: *runtime.Instance, value: bool) anyerror!void = null,
     user_edit: ?*const fn (element: *runtime.Instance, edit: UserEdit) anyerror!void = null,
     /// Owned with element.ctx.allocator; the caller must deinit the result.
     editor_text: ?*const fn (element: *runtime.Instance) anyerror!runtime.DOMString = null,
@@ -93,6 +96,20 @@ pub fn validityFlags(element: *runtime.Instance) ValidityFlags {
         if (control.validity_flags) |flags| if (control.is(element)) return flags(element);
     }
     return .{};
+}
+
+/// HTML 4.10.18.1: initially false; unsupported element types have no flag.
+pub fn userValidity(element: *runtime.Instance) bool {
+    for (controls[0..count]) |control| {
+        if (control.user_validity) |read| if (control.is(element)) return read(element);
+    }
+    return false;
+}
+
+pub fn setUserValidity(element: *runtime.Instance, value: bool) !void {
+    for (controls[0..count]) |control| {
+        if (control.set_user_validity) |set| if (control.is(element)) return set(element, value);
+    }
 }
 
 /// A non-IDL step: script's value/setRangeText writes have different

@@ -27,6 +27,17 @@ const ffi = v8.ffi;
 const protocol = @import("engine");
 const interfaces = @import("interfaces");
 
+/// `s` repeated `n` times: what `s ** n` was (Zig 0.17 removes `**`; roadmap zig-017).
+fn repeat(comptime s: []const u8, comptime n: usize) *const [s.len * n:0]u8 {
+    return comptime blk: {
+        @setEvalBranchQuota(10 * n + 1000);
+        var out: [s.len * n:0]u8 = undefined;
+        for (0..n) |i| @memcpy(out[i * s.len ..][0..s.len], s);
+        const final = out;
+        break :blk &final;
+    };
+}
+
 const page_url = "https://example.test/page.html";
 
 /// What a run reported: the last report's position and file name.
@@ -185,7 +196,7 @@ test "runningScriptLocation inside an embedded script is in its document's lines
     var reports: Reports = .{};
     // The text's line 1 is the rest of the document's line 5 (empty), and
     // its line 11 the document's line 15.
-    const source = "\n" ++ "//\n" ** 9 ++ "            eval('1');\n";
+    const source = "\n" ++ repeat("//\n", 9) ++ "            eval('1');\n";
     try protocol.runClassicScript(page.realm, embedded(source, 5, 9), page_url, null, reports.reporter());
     try std.testing.expectEqual(@as(usize, 0), reports.count);
     try std.testing.expect(host.found);

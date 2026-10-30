@@ -305,7 +305,7 @@ pub fn convertToInt(comptime T: type, x: f64) T {
     if (@abs(truncated) >= 0x1p116) return 0;
     const whole: i128 = @intFromFloat(truncated);
     const wrapped: i128 = @mod(whole, @as(i128, 1) << info.bits);
-    const Unsigned = std.meta.Int(.unsigned, info.bits);
+    const Unsigned = @Int(.unsigned, info.bits);
     const bits: Unsigned = @intCast(wrapped);
     // Step 10: a value at or past 2^(bitLength-1) is negative - which is
     // exactly the two's-complement reading of the same bits.

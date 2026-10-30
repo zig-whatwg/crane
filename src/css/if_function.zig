@@ -773,7 +773,7 @@ const Evaluation = struct {
                 };
                 const result = (switch (query.kind) {
                     .media => (host.media orelse break :blk .unknown)(host.context, value),
-                    .supports => (host.supports orelse break :blk .unknown)(host.context, value, self.resolver.quirks),
+                    .supports => (host.supports orelse break :blk .unknown)(host.context, value, self.resolver.quirks, self.resolver.namespaces),
                     .style => unreachable,
                 }) catch |err| switch (err) {
                     error.Invalid => break :blk .unknown,

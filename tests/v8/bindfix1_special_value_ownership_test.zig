@@ -60,7 +60,7 @@ const SegmentList = struct {
 
     const Items = struct {
         count: u32 = 0,
-        lengths: [capacity]u8 = .{0} ** capacity,
+        lengths: [capacity]u8 = @splat(0),
         texts: [capacity][text_capacity]u8 = undefined,
     };
 

@@ -19,7 +19,7 @@ pub fn parse(comptime longhands: [5]properties.Longhand, options: properties.Par
         v.retain();
     }
     defer for (components) |v| v.release();
-    var seen = [_]bool{false} ** longhands.len;
+    var seen = @as([longhands.len]bool, @splat(false));
     var groups: usize = 0;
     while (!stream.atEnd()) {
         var matched = false;

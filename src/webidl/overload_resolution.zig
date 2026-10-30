@@ -174,7 +174,7 @@ pub fn select(overloads: []const Overload, arg_count: usize, args: anytype) !usi
 
     // Step 4: Remove from S all entries whose type list is not of length
     // argcount. What is left is at most one entry per overload.
-    var in_s = std.StaticBitSet(max_overloads).initEmpty();
+    var in_s = std.StaticBitSet(max_overloads).empty;
     for (overloads, 0..) |overload, k| {
         if (hasEntryOfLength(overload, argcount)) in_s.set(k);
     }
@@ -313,7 +313,7 @@ pub fn distinguishingPrefix(overloads: []const Overload, arg_count: usize) ?Pref
     var maxarg: usize = 0;
     for (overloads) |overload| maxarg = @max(maxarg, overload.args.len);
     const argcount = @min(maxarg, arg_count);
-    var in_s = std.StaticBitSet(max_overloads).initEmpty();
+    var in_s = std.StaticBitSet(max_overloads).empty;
     for (overloads, 0..) |overload, k| {
         if (hasEntryOfLength(overload, argcount)) in_s.set(k);
     }

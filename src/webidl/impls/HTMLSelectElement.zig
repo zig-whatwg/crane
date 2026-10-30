@@ -47,6 +47,7 @@ pub const InternalState = struct {
     /// The allocator the custom validity message came from: the context's.
     allocator: std.mem.Allocator,
     validation: forms.Validation = .{},
+    user_validity: bool = false,
     labels: form_associated.LabelsCache = .{},
     options: ?*runtime.Instance = null,
     options_generation: u64 = 0,
@@ -94,6 +95,15 @@ fn isValidationControl(instance: *runtime.Instance) bool {
     return instance.stateAs(State) != null;
 }
 
+fn userValidity(instance: *runtime.Instance) bool {
+    return if (instance.getState(State).own._internal) |internal| internal.user_validity else false;
+}
+
+fn setUserValidity(instance: *runtime.Instance, value: bool) !void {
+    const internal = if (value) try internalState(instance) else instance.getState(State).own._internal orelse return;
+    internal.user_validity = value;
+}
+
 fn constraintFlags(instance: *runtime.Instance) forms.ValidityFlags {
     const internal = instance.getState(State).own._internal;
     var flags = forms.ValidityFlags{ .customError = if (internal) |state| !state.validation.custom_error.isEmpty() else false };
@@ -133,6 +143,8 @@ pub fn installHooks() void {
     @import("dom").form_controls.install(.{
         .is = &isValidationControl,
         .validity_flags = &constraintFlags,
+        .user_validity = &userValidity,
+        .set_user_validity = &setUserValidity,
         .has_selected_option = &hasSelectedOption,
         .set_has_selected_option = &setHasSelectedOption,
         .option_owner_unchanged = &optionOwnerUnchanged,

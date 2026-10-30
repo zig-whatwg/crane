@@ -4572,6 +4572,16 @@ test "resolveUrl - relative URLs" {
     try std.testing.expectEqualStrings("https://example.com/scripts/lib.js", result);
 }
 
+/// `s` repeated `n` times: what `s ** n` was (Zig 0.17 removes `**`; roadmap zig-017).
+fn repeatForTest(comptime s: []const u8, comptime n: usize) *const [s.len * n:0]u8 {
+    return comptime blk: {
+        var out: [s.len * n:0]u8 = undefined;
+        for (0..n) |k| @memcpy(out[k * s.len ..][0..s.len], s);
+        const final = out;
+        break :blk &final;
+    };
+}
+
 test "isJavaScriptMimeType" {
     try std.testing.expect(isJavaScriptMimeType("text/javascript"));
     try std.testing.expect(isJavaScriptMimeType("TEXT/JAVASCRIPT"));
@@ -4613,7 +4623,7 @@ pub const script_type_test_cases = if (@import("builtin").is_test) struct {
             .{ .type_value = " \tTEXT/JAVASCRIPT\r\n\x0c", .language = "unknown", .expected = .classic },
             .{ .type_value = " ", .language = "javascript", .expected = .null },
             .{ .type_value = "text/javascript\xc2\xa0", .language = null, .expected = .null },
-            .{ .type_value = null, .language = "javascript" ** 20, .expected = .null },
+            .{ .type_value = null, .language = repeatForTest("javascript", 20), .expected = .null },
         };
         for (cases) |case| {
             const element = try HTMLScriptElement.init(allocator, &context);

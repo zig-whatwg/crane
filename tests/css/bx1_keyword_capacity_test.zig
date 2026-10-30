@@ -39,7 +39,7 @@ fn keywords(allocator: std.mem.Allocator) !void {
     };
     // This floor records the baseline without fixing the growing table's size.
     try testing.expect(fields.len >= 160);
-    var seen = std.EnumSet(Keyword).initEmpty();
+    var seen = std.EnumSet(Keyword).empty;
     var out: std.ArrayList(u8) = .empty;
     defer out.deinit(allocator);
     for (all_keywords) |keyword| {

@@ -433,7 +433,7 @@ test "an observer sees every byte while a slow reader still pauses the producer,
     const pipe = try source.branch();
     // The reader takes nothing: the producer is paused at the high-water
     // mark exactly as without an observer.
-    const chunk = [_]u8{'z'} ** (64 * 1024);
+    const chunk = @as([(64 * 1024)]u8, @splat('z'));
     var pushed: usize = 0;
     while (!producer.paused) : (pushed += chunk.len) source.push(&chunk);
     try testing.expectEqual(high_water_mark, pushed);

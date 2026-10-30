@@ -706,7 +706,7 @@ test "Parse a Cookie: CTLs, the name-value pair, and nameless cookies" {
     try std.testing.expectEqualStrings("value", explicit.cookie.value);
 
     // 1 + 4095 bytes fit; 1 + 4096 do not.
-    const long = "a=" ++ "x" ** 4095;
+    const long = "a=" ++ &@as([4095:0]u8, @splat('x'));
     try std.testing.expect(try parseCookie(allocator, long ++ "x", "/") == null);
     var fits = (try parseCookie(allocator, long, "/")).?;
     fits.deinit();

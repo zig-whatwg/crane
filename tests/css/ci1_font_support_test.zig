@@ -5,7 +5,7 @@ const css = @import("css");
 const testing = std.testing;
 
 fn condition(text: []const u8) bool {
-    return css.supports.supportsCondition(testing.allocator, text, null);
+    return css.supports.supportsCondition(testing.allocator, text, null, null);
 }
 
 test "font support conditions accept known identifiers with CSS escaping and case folding" {

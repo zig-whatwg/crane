@@ -30,7 +30,7 @@ pub const Request = struct {
     dictionary: ?jwk.Owned = null,
     format: Format = .unsupported,
     extractable: bool = false,
-    usages: keys.Usages = keys.Usages.initEmpty(),
+    usages: keys.Usages = keys.Usages.empty,
     length: ?u32 = null,
 
     pub fn take(self: *Request) Request {
@@ -266,7 +266,7 @@ fn checkRequestFailures(allocator: std.mem.Allocator) anyerror!void {
     var exported = try exportKey(allocator, &result.key, .raw);
     defer exported.deinit(allocator);
     try std.testing.expectEqualStrings("native key bytes", exported.bytes);
-    request.usages = keys.Usages.initEmpty();
+    request.usages = keys.Usages.empty;
     var unexpected = request.run(allocator) catch |err| {
         if (err == error.SyntaxError) return;
         return err;

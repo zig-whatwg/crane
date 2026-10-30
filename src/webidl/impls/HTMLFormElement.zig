@@ -1136,8 +1136,9 @@ fn appendFieldEntries(allocator: std.mem.Allocator, entries: *EntryList, field: 
         defer allocator.free(name_x);
         const name_y = try std.fmt.allocPrint(allocator, "{s}y", .{prefix});
         defer allocator.free(name_y);
-        try appendEntry(allocator, entries, name_x, try allocator.dupe(u8, "0"));
-        try appendEntry(allocator, entries, name_y, try allocator.dupe(u8, "0"));
+        const coordinate = @import("html").forms.image_coordinate.selected(field);
+        try appendEntry(allocator, entries, name_x, try std.fmt.allocPrint(allocator, "{d}", .{coordinate.x}));
+        try appendEntry(allocator, entries, name_y, try std.fmt.allocPrint(allocator, "{d}", .{coordinate.y}));
         return;
     }
 
@@ -1398,6 +1399,15 @@ fn submit(form: *runtime.Instance, submitter: *runtime.Instance, options: Submit
         defer if (Registry.get(form)) |after| {
             after.firing_submission_events = false;
         };
+        // HTML form submission step 5.3, before constraint validation:
+        // every owned input/select/textarea, including barred controls.
+        // No script runs during this owner-state-only traversal.
+        const root = form_associated.rootOf(form);
+        var node: ?*runtime.Instance = root;
+        while (node) |element| : (node = nextInTree(element, root, false)) {
+            if (form_associated.formOwner(element) == form)
+                try @import("dom").form_controls.setUserValidity(element, true);
+        }
         const no_validate = hasAttribute(form, "novalidate") or
             (submitter != form and hasAttribute(submitter, "formnovalidate"));
         if (!no_validate and !(try validateControls(form))) return;
@@ -1465,8 +1475,17 @@ fn submit(form: *runtime.Instance, submitter: *runtime.Instance, options: Submit
         break :blk methodState(value);
     };
     // 11. dialog closes the nearest dialog ancestor; nothing navigates.
-    // TODO(forms): close the dialog.
-    if (eql(method, "dialog")) return;
+    if (eql(method, "dialog")) {
+        var ancestor = parentOf(form);
+        while (ancestor) |subject| : (ancestor = parentOf(subject)) {
+            if (subject.stateAs(interfaces.HTMLDialogElement.State) == null) continue;
+            var result = try @import("html").dialog.submissionResult(allocator, submitter);
+            defer if (result.wasPassed()) result.value.deinit(allocator);
+            try dom.dialog.close(subject, result, null);
+            return;
+        }
+        return;
+    }
 
     // 12-13: action - the submitter's formaction or the form's action - or
     // the form document's URL when it is empty.

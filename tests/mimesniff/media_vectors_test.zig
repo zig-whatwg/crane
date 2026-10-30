@@ -50,7 +50,7 @@ test "MP3 signature uses MPEG1, MPEG2 and MPEG2.5 frame lengths" {
 }
 
 test "MP3 signature rejects reserved fields and non-LayerIII headers" {
-    var bytes = [_]u8{0} ** 1445;
+    var bytes = @as([1445]u8, @splat(0));
     for ([_][4]u8{
         .{ 0xff, 0xfd, 0x50, 0 }, // LayerII
         .{ 0xff, 0xff, 0x50, 0 }, // LayerI
