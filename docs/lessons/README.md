@@ -1041,3 +1041,4 @@ A lane brief now carries the lessons chosen for its batch.
 - [Pool Moves Use Both Hosts](workflow-pool-moves-use-both-hosts.md) - A timed-window check must cover both ends of a mirror transfer.
 - [Detached Inputs Need a Verified Transfer](workflow-detached-inputs-need-a-verified-transfer.md) - Source sync, verified scratch transfer, and detached execution are separate steps; each must succeed before the next starts.
 - [A Crane test written in a worktree unshares its mirror's WPT tree](workflow-a-crane-test-in-a-worktree-unshares-its-mirrors-wpt-tree.md) - A test that decides whether to share a tree must define 'empty' by what makes the tree real (here: anything but crane/), not by any file at all.
+- [Bash pattern substitution is quadratic in a UTF-8 locale](workflow-bash-pattern-substitution-is-quadratic-in-a-utf8-locale.md) - Never run `${var//...}` over input you do not control the size of; sed under `LC_ALL=C` is linear and locale-proof.
