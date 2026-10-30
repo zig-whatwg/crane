@@ -180,6 +180,11 @@ pub const reflection = @import("reflection.zig");
 /// The generated [SameObject] caches' edges: an owner keeps the child it
 /// cached, whoever read it first (binding3 item 9h).
 pub const same_object_cache = @import("same_object_cache.zig");
+/// Keeping an object an owner hands out alive for as long as the owner, and
+/// links that know when their target was freed (Pin, Traced, Link,
+/// KeptChild). A shared helper, so not in src/webidl/impls/ (AGENTS.md, the
+/// impls boundary rule 3).
+pub const same_object = @import("same_object.zig");
 pub const observer_registrations = @import("observer_registrations.zig");
 pub const attr_nodes = @import("attr_nodes.zig");
 pub const traversal = @import("traversal.zig");
@@ -209,6 +214,8 @@ pub const DOMTokenListImpl = dom_token_list.DOMTokenList;
 pub const range_mutations = @import("range_mutations.zig");
 pub const slot_helpers = @import("slot_helpers.zig");
 pub const cookie_change_event = @import("cookie_change_event.zig");
+/// Document's state type: the impl owns the state, src/dom reads it here.
+pub const document_state = @import("document_state.zig");
 pub const document_internals = @import("document_internals.zig");
 pub const document_last_modified = @import("document_last_modified.zig");
 /// The CSSOM's model: what CSSStyleSheet, CSSRuleList and the CSSRule

@@ -2,10 +2,6 @@
 # A ratchet - `zig build lint-impls`, part of `zig build test`, fails if any
 # count rises or a new pair appears. After paying debt down, lower it with
 # `zig build lint-impls -- --update`. Never raise it by hand.
-src/dom/document_internals.zig Document.DocType 1
-src/dom/document_internals.zig Document.InternalState 1
-src/dom/document_internals.zig Document.SpeculationEagerness 1
-src/dom/document_internals.zig Document.getInternal 1
 src/html/dom_tree_adapter.zig DocumentType.getInternal 1
 src/html/event_utils.zig ErrorEvent.createErrorEvent 1
 src/html/full.zig impls.@import 1
