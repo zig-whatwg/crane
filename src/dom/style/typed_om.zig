@@ -1135,7 +1135,10 @@ fn assignmentsFromInput(instance: *runtime.Instance, map: *const PropertyMap, pr
         if (property == .shorthand and is_unit) for (result.items.items) |assignment| {
             if (assignment.value != .value or assignment.value.value != .calculation) continue;
             const expression = assignment.value.value.calculation;
-            std.debug.assert(expression.root.tag == .numeric);
+            // A unit input reifies to a numeric root today (math_values
+            // fromTypedNumeric); skip anything else rather than assert, since
+            // Crane modules stay Debug in the ReleaseSafe runner (review N1).
+            if (expression.root.tag != .numeric) continue;
             const number = expression.root.numeric;
             const n = number.value * (number.unit.absoluteScale() orelse 1);
             const grammar = expression.grammar;
@@ -1244,6 +1247,17 @@ fn pendingOrWide(assigned: properties.Assigned) bool {
     return assigned == .css_wide or (assigned == .value and assigned.value == .pending);
 }
 
+// css-typed-om-1 set() steps 7-10 remove props[property] and re-add it at the
+// END of the map, after a step (9) that can throw. Crane follows the browsers
+// instead (golden rule 2, no newer spec): it validates every value first and
+// replaces the declaration in place, keeping its position. Blink's
+// StylePropertyMap::set coerces all values (CoerceStyleValuesOrStrings /
+// CoerceStyleValueOrString), throws before any write and calls SetProperty
+// with no prior RemoveProperty (chromium third_party/blink/renderer/core/css/
+// cssom/style_property_map.cc); WebKit's StylePropertyMap::set likewise
+// checks and converts before one setProperty/setShorthandProperty/
+// setCustomProperty call and never removes first (Source/WebCore/css/typedom/
+// StylePropertyMap.cpp). Firefox ships no Typed OM. Row 128 review S2.
 pub fn mapSet(instance: *runtime.Instance, name: []const u8, raw: []const runtime.JSValue, append: bool) !void {
     // WebIDL conversion precedes the algorithm and can run script. Keep
     // earlier object arguments alive across later ToString callbacks.
