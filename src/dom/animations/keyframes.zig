@@ -582,7 +582,7 @@ fn nullableDouble(realm: runtime.Context, value: JSValue) anyerror!?f64 {
 
 /// `value` parsed with `property`'s grammar (6.6.3 step 8.1) and serialized;
 /// null when the grammar rejects it. OWNED.
-fn parsedValue(allocator: Allocator, property: []const u8, value: []const u8) Allocator.Error!?[]u8 {
+pub fn parsedValue(allocator: Allocator, property: []const u8, value: []const u8) Allocator.Error!?[]u8 {
     var block = css.declarations.DeclarationBlock.init(allocator);
     defer block.deinit();
     if (!try block.setProperty(.{ .allocator = allocator }, property, value, "")) return null;
@@ -590,6 +590,70 @@ fn parsedValue(allocator: Allocator, property: []const u8, value: []const u8) Al
     errdefer out.deinit(allocator);
     try block.getPropertyValue(property, &out);
     return try out.toOwnedSlice(allocator);
+}
+
+// ============================================================================
+// 5.3.3 Calculating computed keyframes: a keyframe as a declaration block
+// ============================================================================
+
+/// The property-value pairs of `frame` as one declaration block, the input
+/// of "compute a property value" (5.3.2) for each of them: the style engine
+/// cascades it above every origin on the effect target and reads each
+/// longhand's computed value back, so shorthands expand, logical longhands
+/// map, var() substitutes and em resolves exactly as a declaration's would.
+///
+/// 5.3.3 step 2.2's conflict rules decide which pair sets a longhand two of
+/// them reach. The block is built in an order where a LATER declaration wins
+/// whenever the rules say it should: shorthands by descending longhand
+/// count (rule 2), equal counts by IDL name descending (rule 4: the earlier
+/// IDL name wins), then logical longhands, then physical ones (rules 1 and
+/// 3) - a later declaration of a longhand replaces an earlier one in the
+/// block, and between a logical and a physical declaration of one side the
+/// cascade's last tie-break is declaration order.
+///
+/// Every declaration is normal: a keyframe value never carries !important
+/// (6.6.3 step 8.1 parsed it with the property's grammar, which rejects the
+/// annotation; CSS Animations 1 4: important declarations in a keyframe are
+/// ignored). OWNED by the caller.
+pub fn declarationBlock(allocator: Allocator, frame: *const Keyframe) Allocator.Error!css.declarations.DeclarationBlock {
+    var block = css.declarations.DeclarationBlock.init(allocator);
+    errdefer block.deinit();
+    const order = try allocator.alloc(usize, frame.properties.items.len);
+    defer allocator.free(order);
+    for (order, 0..) |*slot, i| slot.* = i;
+    std.sort.block(usize, order, frame, conflictOrderLessThan);
+    for (order) |index| {
+        const property = frame.properties.items[index];
+        _ = try block.setProperty(.{ .allocator = allocator }, property.name, property.value, "");
+    }
+    return block;
+}
+
+/// Lower ranks are declared first, so higher ranks win (see declarationBlock).
+fn conflictRank(name: []const u8) struct { group: u2, longhands: usize } {
+    if (isCustomPropertyName(name)) return .{ .group = 0, .longhands = 0 };
+    const property = css.properties.lookup(name) orelse return .{ .group = 0, .longhands = 0 };
+    return switch (property) {
+        .shorthand => |s| .{ .group = 1, .longhands = s.longhands().len },
+        .longhand => |l| .{ .group = if (l.logical() != null) 2 else 3, .longhands = 1 },
+    };
+}
+
+fn conflictOrderLessThan(frame: *const Keyframe, a: usize, b: usize) bool {
+    const name_a = frame.properties.items[a].name;
+    const name_b = frame.properties.items[b].name;
+    const rank_a = conflictRank(name_a);
+    const rank_b = conflictRank(name_b);
+    if (rank_a.group != rank_b.group) return rank_a.group < rank_b.group;
+    if (rank_a.group != 1) return false;
+    // Rule 2: more longhands first, so the shorthand with fewer wins.
+    if (rank_a.longhands != rank_b.longhands) return rank_a.longhands > rank_b.longhands;
+    // Rule 4: the IDL name sorting earlier wins, so it goes later.
+    var buffer_a: [64]u8 = undefined;
+    var buffer_b: [64]u8 = undefined;
+    const idl_a = idlAttributeName(name_a, &buffer_a) orelse name_a;
+    const idl_b = idlAttributeName(name_b, &buffer_b) orelse name_b;
+    return std.mem.order(u8, idl_a, idl_b) == .gt;
 }
 
 // ============================================================================
