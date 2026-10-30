@@ -923,7 +923,8 @@ pub const JointHistory = struct {
     /// the current step; nothing is settled, the caller is the queue's
     /// running item - and lists the entry at the current step + 1;
     /// "replace" puts it in place of the navigable's current entry, at its
-    /// step, keeping its navigation API key when the two are same origin.
+    /// step, keeping its navigation API key when the two are same origin,
+    /// and applies the current step (step 9's targetStep).
     /// The current step does not move: "apply the push/replace history step"
     /// sets it to the returned step at its step 20 (`endApply`). Unlike
     /// `commitPreparedDocument`, no pending entry is listed: the synchronous
@@ -946,9 +947,12 @@ pub const JointHistory = struct {
                 return .{ .step = step, .entry = reserved.id, .removed = removed };
             },
             .replace => {
-                const step = if (self.listedCurrentEntry(navigable)) |current| current.step else self.current_step;
+                // Step 9 (replace) 4: "Set targetStep to traversable's
+                // current session history step" - not the replaced entry's
+                // step (a frame's first entry sits at the step its parent's
+                // document began at).
                 try self.commit(navigable, url, doc_state, document, .null, .undefined, origin, .replace, true, reserved);
-                return .{ .step = step, .entry = reserved.id, .removed = false };
+                return .{ .step = self.current_step, .entry = reserved.id, .removed = false };
             },
         }
     }

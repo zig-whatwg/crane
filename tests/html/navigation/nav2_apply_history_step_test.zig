@@ -221,16 +221,22 @@ test "a cross-document finalize lists its entry after the running apply ends, an
     try testing.expectEqual(@as(u32, 1), h.historyView(top).index);
 }
 
-test "a cross-document finalize's replace takes the navigable's current entry's place and keeps a same-origin key" {
+test "a cross-document finalize's replace takes the navigable's current entry's place, keeps a same-origin key, and applies the current step" {
     var h = joint.JointHistory.init(testing.allocator);
     defer h.deinit();
     try twoFrames(&h);
     const before = h.currentEntry(other).?;
     const key = before.api_key;
-    const step = before.step;
+    // The frame's entry sits at step 0, where its parent's document began;
+    // the traversable is at step 1.
+    try testing.expectEqual(@as(u32, 0), before.step);
     const listed = try h.listCrossDocument(other, "http://x.test/o2", null, "http://x.test", .replace, null);
     try testing.expect(!listed.removed);
-    try testing.expectEqual(step, listed.step);
+    // Step 9's targetStep is the traversable's current step: the apply's
+    // step 20 leaves it there (whatwg html "finalize a cross-document
+    // navigation" step 9.4) - an apply to the entry's own step would take
+    // the whole page back to step 0.
+    try testing.expectEqual(@as(u32, 1), listed.step);
     try testing.expectEqual(@as(u32, 1), h.current_step);
     const entry = h.entryById(listed.entry).?;
     try testing.expectEqualStrings("http://x.test/o2", entry.url);
