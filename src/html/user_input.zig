@@ -495,9 +495,20 @@ pub fn pointerMove(pointer: *Pointer, target: *Instance, modifiers: Modifiers) v
 /// The first click-focusable inclusive ancestor of `target`, or null.
 fn clickFocusableAncestor(target: *Instance) ?*Instance {
     var current: ?*Instance = target;
-    while (current) |n| : (current = parentOf(n)) {
-        if (!isElement(n)) return null;
-        if (focus.isClickFocusable(n)) return n;
+    while (current) |n| {
+        if (isElement(n)) {
+            if (focus.isClickFocusable(n)) return n;
+            // HTML 6.6.4, get the focusable area: a delegating host can
+            // supply a click target even though it is not focusable itself.
+            if (focus.getFocusableArea(n, .click)) |area| return area;
+        }
+        // Hit-test ancestry follows the flat tree, including assigned slots
+        // and closed shadow roots (Blink MouseEventManager focus handling).
+        current = dom.shadow_dom_algorithms.assignedSlotOf(n) orelse parentOf(n);
+        if (current) |p| {
+            if (p.stateAs(interfaces.ShadowRoot.State) != null)
+                current = interfaces.ShadowRoot.get_host(p) catch null;
+        }
     }
     return null;
 }
@@ -810,6 +821,24 @@ fn defaultKeyDownAction(keyboard: *Keyboard, target: *Instance, key: Key, modifi
     }
     const kind = textControlKind(target);
     if (kind != .none) {
+        // SD1-TEXTCONTROL-WORD-KEYS: navigation also applies to readonly
+        // controls. The modifier follows navigator.platform, as WPT's
+        // EditorTestUtils does; ordinary keys take no new string lookups.
+        if ((modifiers.alt or modifiers.ctrl) and !modifiers.meta and kind == .selection and
+            (isKey(key, "ArrowLeft") or isKey(key, "ArrowRight")))
+        {
+            if (form_associated.isDisabled(target)) return;
+            const window = viewOf(target) orelse return;
+            const navigator = interfaces.Window.get_navigator(window) catch return;
+            var platform = interfaces.Navigator.get_platform(navigator) catch return;
+            defer platform.deinit(target.ctx.allocator);
+            if (isWordModifier(platform.asSlice(), modifiers)) {
+                // Like Selection.modify, direction is logical; visual bidi/RTL
+                // word movement still requires the layout direction machinery.
+                moveTextControlByWord(target, isKey(key, "ArrowRight"), modifiers.shift);
+            }
+            return;
+        }
         if (!isMutable(target)) return;
         if (key.text) |text| {
             if (!modifiers.ctrl and !modifiers.meta) insertText(target, kind, text, "insertText");
@@ -989,6 +1018,51 @@ fn selectionOf(element: *Instance) ?[2]u32 {
     const start = (interfaces.HTMLInputElement.get_selectionStart(element) catch return null) orelse return null;
     const end = (interfaces.HTMLInputElement.get_selectionEnd(element) catch return null) orelse return null;
     return .{ start, end };
+}
+
+fn isWordModifier(platform: []const u8, modifiers: Modifiers) bool {
+    if (modifiers.meta or (modifiers.alt and modifiers.ctrl)) return false;
+    return if (std.mem.indexOf(u8, platform, "Mac") != null) modifiers.alt else modifiers.ctrl;
+}
+
+test "word modifier follows navigator platform and rejects combined shortcuts" {
+    for ([_][]const u8{ "MacIntel", "Linux x86_64", "Win32", "Unknown" }) |platform| {
+        const is_mac = std.mem.indexOf(u8, platform, "Mac") != null;
+        try std.testing.expectEqual(is_mac, isWordModifier(platform, .{ .alt = true }));
+        try std.testing.expectEqual(!is_mac, isWordModifier(platform, .{ .ctrl = true }));
+        try std.testing.expectEqual(is_mac, isWordModifier(platform, .{ .alt = true, .shift = true }));
+        try std.testing.expectEqual(!is_mac, isWordModifier(platform, .{ .ctrl = true, .shift = true }));
+        try std.testing.expect(!isWordModifier(platform, .{}));
+        try std.testing.expect(!isWordModifier(platform, .{ .alt = true, .ctrl = true }));
+        try std.testing.expect(!isWordModifier(platform, .{ .alt = true, .meta = true }));
+        try std.testing.expect(!isWordModifier(platform, .{ .ctrl = true, .meta = true }));
+    }
+}
+
+/// Blink MoveCommands / SelectionModifier at 8d5ba1795f0c: word commands
+/// move the focus endpoint, and extending preserves the selection's anchor.
+/// Generated setters supply the existing select/selectionchange scheduling.
+fn moveTextControlByWord(target: *Instance, forward: bool, extend: bool) void {
+    const range = selectionOf(target) orelse return;
+    var direction = if (form_associated.isTextArea(target))
+        interfaces.HTMLTextAreaElement.get_selectionDirection(target) catch return
+    else
+        (interfaces.HTMLInputElement.get_selectionDirection(target) catch return) orelse return;
+    defer direction.deinit(target.ctx.allocator);
+    const backward = std.mem.eql(u8, direction.asSlice(), "backward");
+    const anchor = if (backward) range[1] else range[0];
+    const caret = if (backward) range[0] else range[1];
+    var value = getValue(target) orelse return;
+    defer value.deinit(target.ctx.allocator);
+    const next = @import("word_navigation.zig").move(value.asSlice(), caret, forward);
+    const start = if (extend) @min(anchor, next) else next;
+    const end = if (extend) @max(anchor, next) else next;
+    const next_direction = runtime.DOMString.initInterned(if (!extend or anchor == next) "none" else if (next < anchor) "backward" else "forward");
+    if (form_associated.isTextArea(target)) {
+        interfaces.HTMLTextAreaElement.call_setSelectionRange(target, start, end, .passed(next_direction)) catch {};
+    } else {
+        interfaces.HTMLInputElement.call_setSelectionRange(target, start, end, .passed(next_direction)) catch {};
+    }
 }
 
 /// setRangeText's optional selectMode argument type, as the interface's own

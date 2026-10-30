@@ -3,8 +3,12 @@
 //! index, navigation API entry list, current entry and entry indexes read -
 //! is rewritten by every change of the history, so it always equals a live
 //! read of the entries (lengthAndIndex, apiEntries, activeEntry). The spec's
-//! moments replace that writer later; until then a view that differs from
-//! the live read is a regression of what script sees.
+//! moments replace that writer one by one; until then a view that differs
+//! from the live read is a regression of what script sees. Since C2 a
+//! navigable's destruction leaves the current step to the "update for
+//! navigable creation/destruction" it queues (`updateAfterRemoval` here runs
+//! it), and an apply holds every view until the spec writes it
+//! (tests/html/navigation/nav2_apply_history_step_test.zig).
 
 const std = @import("std");
 const testing = std.testing;
@@ -47,8 +51,20 @@ fn liveLengthAndIndex(h: *joint.JointHistory) !joint.LengthAndIndex {
     defer steps.deinit(testing.allocator);
     try h.usedSteps(testing.allocator, &steps);
     if (steps.items.len == 0) return .{ .length = 1, .index = 0 };
-    const index = std.mem.indexOfScalar(u32, steps.items, h.current_step) orelse steps.items.len - 1;
+    // The used step for the current one: the greatest at or before it.
+    var index: usize = 0;
+    for (steps.items, 0..) |step, i| {
+        if (step > h.viewStep()) break;
+        index = i;
+    }
     return .{ .length = @intCast(steps.items.len), .index = @intCast(index) };
+}
+
+/// What the "update for navigable creation/destruction" a destroyed
+/// navigable queues does to the history when nothing else changes: the
+/// used step is applied ("getting the used step"), and every view written.
+fn updateAfterRemoval(h: *joint.JointHistory) void {
+    h.setCurrentStep(h.usedStepAtOrBefore(h.current_step) orelse h.current_step);
 }
 
 /// The used steps of `h`, for picking a traversal target.
@@ -93,7 +109,10 @@ fn randomChange(h: *joint.JointHistory, random: std.Random, documents: []u8) !vo
             const entry = h.entries.items[random.uintLessThan(usize, h.entries.items.len)];
             h.setDocumentOfState(entry.document_state, &documents[random.uintLessThan(usize, documents.len)]);
         },
-        else => if (navigable != top) h.removeNavigable(navigable),
+        else => if (navigable != top) {
+            h.removeNavigable(navigable);
+            updateAfterRemoval(h);
+        },
     }
 }
 
@@ -154,6 +173,7 @@ test "a removed navigable's view goes with it" {
     h.removeNavigable(frame_a);
     try testing.expect(!h.views.contains(frame_a));
     try testing.expect(h.apiCurrentView(frame_a) == null);
+    updateAfterRemoval(&h);
     try expectViewsLive(&h);
 }
 
@@ -185,4 +205,44 @@ test "views that could not be written are read from the entries until a write su
         try expectViewsLive(&h);
     }
     try testing.expect(fail_index > 10);
+}
+
+test "a held view keeps what its document read until it is released (a traversal's changing navigable)" {
+    var h = joint.JointHistory.init(testing.allocator);
+    defer h.deinit();
+    try h.addInitialEntry(top, "http://x.test/t", null, "http://x.test");
+    try h.addChildInitialEntry(frame_a, top, "http://x.test/f0", null, "http://x.test");
+    try h.commitDocument(frame_a, "http://x.test/f1", null, "http://x.test", .push);
+    const f1 = h.apiCurrentView(frame_a).?.id;
+    const f0 = h.entryAt(frame_a, 0).?.id;
+
+    // A traversal back holds the frame's view, then moves the step: the
+    // frame's document still reads f1 as current; the top's view moves.
+    h.holdView(frame_a);
+    h.setCurrentStep(h.stepByDelta(-1).?);
+    try testing.expectEqual(f1, h.apiCurrentView(frame_a).?.id);
+    try testing.expectEqual(@as(?usize, 1), h.apiIndexOf(frame_a, f1, testing.allocator));
+    try testing.expectEqual(@as(u32, 1), h.historyView(frame_a).index);
+    try testing.expectEqual(@as(u32, 0), h.historyView(top).index);
+    // Other changes meanwhile leave it held.
+    try h.commitSameDocument(top, "http://x.test/t#a", .null, .replace, null);
+    try testing.expectEqual(f1, h.apiCurrentView(frame_a).?.id);
+
+    // The target document is active: the view is the live one again.
+    h.releaseView(frame_a);
+    try testing.expectEqual(f0, h.apiCurrentView(frame_a).?.id);
+    try expectViewsLive(&h);
+
+    // releaseAllViews, and a removed navigable's hold, end holds too.
+    h.holdView(frame_a);
+    h.holdView(top);
+    h.setCurrentStep(h.stepByDelta(1).?);
+    try testing.expectEqual(f0, h.apiCurrentView(frame_a).?.id);
+    h.releaseAllViews();
+    try expectViewsLive(&h);
+    h.holdView(frame_a);
+    h.removeNavigable(frame_a);
+    try testing.expect(!h.isViewHeld(frame_a));
+    updateAfterRemoval(&h);
+    try expectViewsLive(&h);
 }

@@ -92,19 +92,24 @@ pub const Mode = enum {
 /// Spec: https://html.spec.whatwg.org/multipage/speculative-loading.html#speculation-rule-eagerness
 pub const SpeculationEagerness = @import("dom").document_scripts.SpeculationEagerness;
 
-/// Independently lazy interaction state behind one Document-owned pointer.
-/// A second inline pointer would cross Document's 2048-byte allocation class.
+/// Independently owned state behind one Document-owned pointer. The policy
+/// pointer is always set at construction; interaction members stay lazy.
+/// New Document extension pointers join this block so the inline state stays
+/// within its pinned 2048-byte allocation class.
 const InteractionState = struct {
     top_layer: ?*@import("dom").top_layer.State = null,
     autofocus: ?*@import("dom").document_autofocus.State = null,
+    /// Permissions Policy §§9.5–9.6: an owned construction fact, separate
+    /// from Fetch's policy container.
+    permissions_policy: ?*html_core.permissions_policy.Policies = null,
 };
 
 /// Internal state for Document implementation
 /// Spec: https://dom.spec.whatwg.org/#concept-document
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
-    /// Allocated only by top-layer use, autofocus insertion or dialog
-    /// completion. The document owns both states and all their holds.
+    /// Prepared at construction for the policy. The Document owns all
+    /// members; top-layer and autofocus state remain independently lazy.
     interaction_state: ?*InteractionState = null,
 
     /// Cached DOMImplementation instance ([SameObject])
@@ -173,6 +178,10 @@ pub const InternalState = struct {
     last_modified_known: bool = false,
     /// HTML "page showing": set when pageshow fires at the end of loading.
     page_showing: bool = false,
+    /// HTML 7.4.6.3 "has been revealed": pagereveal fires once per
+    /// activation - at the first rendering opportunity after the document is
+    /// shown, and again after each reactivation (`revealStep`).
+    has_been_revealed: bool = false,
     /// HTML "completely loaded": "completely finish loading" has run.
     completely_loaded: bool = false,
     /// HTML "ready for post-load tasks", reached by "the end" step 11.
@@ -415,7 +424,6 @@ pub const InternalState = struct {
     /// every request the document's settings object makes takes a clone.
     /// Reached from outside through `dom.policy_containers`.
     policy_container: fetch.internal.PolicyContainer,
-
     // === Content Security Policy (CSP Level 3) ===
     // The CSP list is the policy container's (`policy_container.csp_list`).
 
@@ -579,6 +587,7 @@ pub const InternalState = struct {
 
     pub fn deinit(self: *InternalState) void {
         const interaction = self.interaction_state;
+        const permissions = if (interaction) |shared| shared.permissions_policy else null;
         self.interaction_state = null;
         if (interaction) |shared| if (shared.autofocus) |state| state.destroy(self.allocator);
         // domindex1: the maps go first, and keep nothing after: a node the
@@ -716,6 +725,10 @@ pub const InternalState = struct {
         }
 
         self.policy_container.deinit();
+        if (permissions) |policy| {
+            policy.deinit();
+            self.allocator.destroy(policy);
+        }
 
         // CSP origin (the list is the policy container's)
         if (self.csp_self_origin) |*origin| {
@@ -751,9 +764,10 @@ pub const InternalState = struct {
     }
 
     /// Roll back a newly allocated container when its first child allocation
-    /// fails. An existing sibling's state is never discarded by this path.
+    /// fails. An existing sibling or policy is never discarded by this path.
     fn discardEmptyInteractionState(self: *InternalState, shared: *InteractionState) void {
         std.debug.assert(self.interaction_state == shared);
+        if (shared.permissions_policy != null) return;
         std.debug.assert(shared.top_layer == null and shared.autofocus == null);
         self.interaction_state = null;
         self.allocator.destroy(shared);
@@ -870,6 +884,13 @@ fn policyContainerOf(document: *runtime.Instance) ?*fetch.internal.PolicyContain
     return &internal.policy_container;
 }
 
+/// dom.policy_containers: both policies, owned by this Document.
+fn permissionsPolicyOf(document: *runtime.Instance) ?*html_core.permissions_policy.Policies {
+    const internal = getInternal(document) orelse return null;
+    const shared = internal.interaction_state orelse return null;
+    return shared.permissions_policy;
+}
+
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
@@ -939,7 +960,7 @@ pub fn installHooks() void {
     });
     // Its policy container, for whatever sets or reads one without naming
     // this impl (navigation, meta referrer, a Window's settings object).
-    @import("dom").policy_containers.install(.{ .of = &policyContainerOf });
+    @import("dom").policy_containers.install(.{ .of = &policyContainerOf, .permissions = &permissionsPolicyOf });
     // A clone of a Document keeps its mode. Installed here, before any
     // Document exists to be cloned.
     @import("dom").cloning_steps.install(&cloningSteps);
@@ -954,6 +975,8 @@ pub fn installHooks() void {
     // visibility state updates its documents' visibility state, through these
     // hooks.
     @import("dom").focused_area.install(.{ .get = &focusedArea, .set = &setFocusedArea });
+    // HTML "update the rendering" step 6: reveal (dom.update_the_rendering).
+    @import("dom").update_the_rendering.installStep(.reveal, &revealStep);
     @import("dom").visibility_state.install(.{ .update = &updateVisibilityStateFromHook });
     // The selector matchers ask whether an element matches :focus,
     // :focus-within and :focus-visible through this one (html.focus, which
@@ -1135,6 +1158,16 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     const origin = if (given) |record| record.retain() else try OriginRecord.createOwn(allocator);
     errdefer origin.release();
 
+    // Keep the policy pair outside Document's pinned 2048-byte state class.
+    // Until registry construction succeeds, this block is uninitialized and
+    // the caller still owns any supplied pair (liaison Q30).
+    const permissions = try allocator.create(html_core.permissions_policy.Policies);
+    errdefer allocator.destroy(permissions);
+    // Prepare the existing extension block before the registry too, so
+    // either allocation failure leaves the caller's policy pair untouched.
+    const shared = try allocator.create(InteractionState);
+    errdefer allocator.destroy(shared);
+
     // Initialize Document's own internal state in registry
     // The registry owns this block, so `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
@@ -1142,6 +1175,14 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
     internal.origin = origin;
+    // HTML create-and-initialize step 9. The generated chain transfers
+    // the pair ONLY once construction succeeds; no fallible work follows.
+    permissions.* = if (@hasField(@TypeOf(args), "permissions_policy"))
+        args.permissions_policy
+    else
+        html_core.permissions_policy.Policies.init(allocator, origin);
+    shared.* = .{ .permissions_policy = permissions };
+    internal.interaction_state = shared;
     // HTML "create and initialize a Document object" step 9, and "create a
     // new browsing context and document" step 15: the active sandboxing flag
     // set the navigation (or the creation flags) gave it - empty otherwise.
@@ -1163,8 +1204,9 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
 /// retains it), or null for an origin of its own; `sandboxing_flags`, its
 /// active sandboxing flag set (a `dom.sandboxing.SandboxingFlagSet`), empty
 /// when not given; `ready_state`, its initial HTML readiness; and
-/// `last_modified`, the source's optional platform.WallTime (null: unknown).
-pub const construction_args = .{ "origin", "sandboxing_flags", "ready_state", "last_modified" };
+/// `last_modified`, the source's optional platform.WallTime (null: unknown);
+/// and `permissions_policy`, the owned pair TAKEN only on success.
+pub const construction_args = .{ "origin", "sandboxing_flags", "ready_state", "last_modified", "permissions_policy" };
 
 /// dom.target_element: `document`'s target element, or null once the
 /// element it names has been freed.
@@ -1305,11 +1347,19 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
         // Shadow mode (refcount step 3): what the counts would have said.
         // Nodes outside this document's own tree that still name it are
         // the ones step 7 makes its storage wait for.
-        if (@import("dom").refcount.diagnosticsOn()) refcount_log.warn("document freed: {d} referencing nodes, {d} holds in its tree, {d} foreign holds", .{
-            internal.refcounts.referencing_nodes,
-            if (@import("dom").instance_bridge.getNodeBase(instance)) |document_base| document_base.subtree_holds -| 1 else 0,
-            internal.refcounts.foreign_holds,
-        });
+        if (@import("dom").refcount.diagnosticsOn()) {
+            const document_base = @import("dom").instance_bridge.getNodeBase(instance);
+            // refcount7: of the nodes in its tree, those whose born reference
+            // is still their creator's, and those it alone holds.
+            const census = if (document_base) |base| @import("dom").refcount.creatorCensus(base) else @import("dom").refcount.CreatorCensus{};
+            refcount_log.warn("document freed: {d} referencing nodes, {d} holds in its tree, {d} foreign holds, {d} creator references in its tree ({d} alone)", .{
+                internal.refcounts.referencing_nodes,
+                if (document_base) |base| base.subtree_holds -| 1 else 0,
+                internal.refcounts.foreign_holds,
+                census.holding,
+                census.alone,
+            });
+        }
         engine.forgetTracedChild(instance, .{ .name = "template owner document" });
         // The template contents owner document goes with this document: now
         // when nothing else can reach it - no engine realm, no wrapper (the
@@ -1362,6 +1412,8 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     internal.url = try ctx.allocator.dupe(u8, "about:blank");
     internal.encoding = try runtime.DOMString.initDupe(ctx.allocator, "UTF-8");
 
+    // The binding wraps it: its wrapper takes its born reference (refcount7).
+    @import("dom").refcount.offerDocument(instance);
     return instance;
 }
 
@@ -2808,6 +2860,8 @@ pub fn call_static_parseHTML(instance: *runtime.Instance, html: runtime.DOMStrin
     errdefer @import("dom").node_creation.destroyUninserted(document);
     try @import("dom").document_internals.setContentType(document, "text/html");
     try @import("html").sanitizer.filterDocument(document, &converted, true);
+    // To script: its first wrapper takes its born reference (refcount7).
+    @import("dom").refcount.offerDocument(document);
     return document;
 }
 
@@ -2840,6 +2894,8 @@ pub fn call_static_parseHTMLUnsafe(instance: *runtime.Instance, html: typedefs.T
     // only when a sanitizer was given (row 41 review M2/S2: an absent one
     // filters nothing, so skip the tree walk).
     if (options.getOrDefault(.{}).sanitizer != null) try @import("html").sanitizer.filterDocument(document, &converted, false);
+    // To script: its first wrapper takes its born reference (refcount7).
+    @import("dom").refcount.offerDocument(document);
     return document;
 }
 
@@ -4429,9 +4485,12 @@ fn reactivateSteps(data: ?*anyopaque) void {
     // Step 4: "If document's current document readiness is "complete", and
     // document's page showing is false":
     if (internal.ready_state != ._complete_ or internal.page_showing) return;
-    // 4.1. "Set document's page showing to true." 4.2, has been revealed,
-    // is pagereveal's (phase C).
+    // 4.1. "Set document's page showing to true."
     internal.page_showing = true;
+    // 4.2. "Set document's has been revealed to false." Its next rendering
+    // opportunity reveals it (pagereveal), so it asks for one.
+    internal.has_been_revealed = false;
+    @import("dom").update_the_rendering.requestFrame(document);
     // 4.3. "Update the visibility state of document to "visible"."
     updateVisibilityState(document, ._visible_);
     // 4.4. "Fire a page transition event named pageshow at document's
@@ -5107,6 +5166,10 @@ fn updateVisibilityState(document: *runtime.Instance, state: enums.DocumentVisib
     // Step 6: "Fire an event named visibilitychange at document, with its
     // bubbles attribute initialized to true."
     fireEvent(document, document, "visibilitychange", true);
+    // A hidden document has no rendering opportunity (update the rendering
+    // step 3) and its loop arms none for it: shown again, it asks for one,
+    // for the animation frame callbacks and the work that waited.
+    if (state == ._visible_) @import("dom").update_the_rendering.requestFrame(document);
 }
 
 const LifecycleStep = enum { dom_content_loaded, load, declarative_refresh, resume_script_delivery };
@@ -5333,6 +5396,10 @@ fn completeLoading(document: *runtime.Instance) void {
     // active, and gets its pageshow.
     if (!isShownByItsWindow(document)) return;
     if (!was_showing) firePageShow(document, window);
+    // The document is shown: its first rendering opportunity reveals it
+    // (HTML "update the rendering" step 6), whether or not script asked for
+    // an animation frame.
+    if (!internal.has_been_revealed) @import("dom").update_the_rendering.requestFrame(document);
     // Step 9.12's "completely finish loading" step 2: the completely loaded
     // time - after pageshow, so a navigation its listeners start is a
     // replace (replace-before-load/*-during-pageshow.html).
@@ -5398,6 +5465,33 @@ fn firePageTransition(document: *runtime.Instance, window: *runtime.Instance, ev
         document.ctx,
         runtime.DOMString.initInterned(event_type),
         webidl.Opt(dictionaries.PageTransitionEventInit).passed(.{ .base = .{}, .persisted = persisted }),
+    ) catch return;
+    const generation = runtime.SlabAllocator.generationOf(event);
+    _ = @import("dom").fire_event.dispatchTrusted(window, event) catch {};
+    event.releaseIfUnwrapped(generation);
+}
+
+/// HTML 7.4.6.3 "reveal" `document`, update the rendering step 6.
+fn revealStep(document: *runtime.Instance, frame: @import("dom").update_the_rendering.Frame) void {
+    _ = frame;
+    const internal = getInternal(document) orelse return;
+    // 1. "If document's has been revealed is true, then return."
+    if (internal.has_been_revealed) return;
+    // 2. "Set document's has been revealed to true."
+    internal.has_been_revealed = true;
+    // 3. "Let transition be the result of resolving inbound cross-document
+    // view-transition for document": null - Crane has no cross-document
+    // view transitions (css-view-transitions-2 is not implemented), so
+    // step 5 never runs.
+    // 4. "Fire an event named pagereveal at document's relevant global
+    // object, using PageRevealEvent with its viewTransition set to
+    // transition." Chrome and Safari fire it (pagereveal/order-in-*: 1/1
+    // each); Firefox does not ship it yet (0/1, wpt.fyi ffc4686d11).
+    const window = (get_defaultView(document) catch null) orelse return;
+    const event = interfaces.PageRevealEvent.call_constructor(
+        document.ctx,
+        runtime.DOMString.initInterned("pagereveal"),
+        webidl.Opt(dictionaries.PageRevealEventInit).passed(.{ .base = .{}, .viewTransition = null }),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
     _ = @import("dom").fire_event.dispatchTrusted(window, event) catch {};

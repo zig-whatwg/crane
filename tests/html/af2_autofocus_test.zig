@@ -26,16 +26,16 @@ fn lazyInteractionAllocationFailures() !void {
     defer runtime.deinitializeRuntime();
     var context = try runtime.createNullContext(std.testing.allocator);
     defer context.deinit();
-    // Fail the private container and each feature's state independently,
-    // including whichever feature is the first to need the container.
-    for (0..4) |failure_case| {
-        const offset = failure_case % 2;
+    // The policy prepares the shared container at Document construction;
+    // fx1_policy_document_test covers its constructor OOM paths. Fail each
+    // independently lazy feature's first allocation here.
+    for (0..2) |failure_case| {
         var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
         const document = try interfaces.Document.init(failing.allocator(), &context);
         defer dom.node_creation.destroyUninserted(document);
         const before = failing.allocated_bytes - failing.freed_bytes;
-        failing.fail_index = failing.alloc_index + offset;
-        if (failure_case < 2) {
+        failing.fail_index = failing.alloc_index;
+        if (failure_case == 0) {
             try std.testing.expect(dom.document_autofocus.ensureForDocument(document) == null);
         } else {
             try std.testing.expectError(error.OutOfMemory, dom.top_layer.ofDocument(document, true));

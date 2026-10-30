@@ -1692,6 +1692,15 @@ pub inline fn systemVisibility(browser: *BrowserPlatform, tab: TabId) Visibility
     return impl.systemVisibility(browser, tab);
 }
 
+/// The refresh interval, in nanoseconds, of the display `tab` is on: HTML's
+/// rendering opportunities account for "hardware refresh rate constraints".
+/// Crane's frame clock (src/browser/rendering.zig) puts a navigable's
+/// rendering opportunities, and a dedicated worker's animation frames, on a
+/// grid of this interval. Any thread. Default 60 Hz (16_666_667).
+pub inline fn displayRefreshInterval(browser: *BrowserPlatform, tab: TabId) u64 {
+    return impl.displayRefreshInterval(browser, tab);
+}
+
 pub inline fn screenDetails(browser: *BrowserPlatform, requester: *const Requester, reply: Reply(ScreenList)) void {
     comptime gate(.screen_details, "screenDetails");
     return impl.screenDetails(browser, requester, reply);
@@ -1813,6 +1822,14 @@ pub const ImageError = error{
     /// The image's declared size exceeds the limits.
     TooLarge,
 };
+
+/// Whether this platform can decode a parsed, lowercase image MIME essence.
+/// No allocation, I/O, state or cache; synchronous and callable on any thread.
+/// HTML uses this before fetching a picture source. Guard image_decoding first.
+pub inline fn imageMimeTypeSupported(essence: Str) bool {
+    comptime gate(.image_decoding, "imageMimeTypeSupported");
+    return impl.imageMimeTypeSupported(essence);
+}
 
 /// Decode one complete image resource. `mime` is the image's type as Crane
 /// determined it (MIME Sniffing's rules for images, above the protocol): the

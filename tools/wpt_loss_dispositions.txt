@@ -419,3 +419,27 @@ why = The same timing-bound file as the generation 179, 184, 186 and 188 disposi
 pair.1 = base 4/6; tip 4/6
 pair.2 = base 4/6; tip 3/6
 pair.3 = base 4/6; tip 4/6
+
+[xhr/send-redirect.htm]
+generation = 192
+kind = flake
+why = The same intermittent redirect subtests as the generation 173, 185 and 189 dispositions (a redirected request reads a null method): "(301, HEAD, content.py)" 34 -> 33 in the generation 192 sweep (main 68168574bfa: refcount6's parser and element-task holds, no networking code). Isolated, one process each, alternating, frozen main-cc0fcdcbf9 (base, generation 191) vs main-68168574bf (tip, generation 192), integrator 2026-10-28 on chat through crane-measure.sh (~/crane-work/integrator-pairs-192/pairs.sh): the tip passed 34/34 three times; the base dropped "(303, CHICKEN, redirect.py?location=content.py)" once.
+pair.1 = base 34/34; tip 34/34
+pair.2 = base 34/34; tip 34/34
+pair.3 = base 33/34; tip 34/34
+
+[html/cross-origin-opener-policy/coep-redirect.https.html]
+generation = 193
+kind = flake
+why = The same intermittent name as nav2 C1's and Codex row 127's isolated pairs (identical on both sides there, 3/3 each): 1 -> 0 in the generation 193 sweep. Isolated, one process each, alternating, frozen main-68168574bf (base, generation 192) vs main-d1a188b596 (tip, generation 193; refcount7, rendering1, row 129, nav2 C1 - none touches COEP redirects), integrator 2026-10-29 07:4x UTC on chat.local: 1/6 passing on both sides in every pair (OK). Evidence ~/crane-work/verify-bins/gen193-losses-*/ on chat.local.
+pair.1 = base 1/6; tip 1/6
+pair.2 = base 1/6; tip 1/6
+pair.3 = base 1/6; tip 1/6
+
+[html/webappapis/dynamic-markup-insertion/opening-the-input-stream/abort-refresh-immediate.window.js]
+generation = 193
+kind = flake
+why = The same timing-bound file as the generation 179, 184, 186, 188 and 191 dispositions (TIMEOUT on both sides; its fetch() Refresh/meta variants pass from run to run): 3 -> 2 in the generation 193 sweep (the lost name is "Refresh header with timeout 0 (fetch())", whose meta-refresh twin fails with the same "Fetch should have been aborted" message in both generations). Isolated, one process each, alternating, frozen main-68168574bf (base, generation 192) vs main-d1a188b596 (tip, generation 193), integrator 2026-10-29 on chat.local: the pass count moves between 3 and 4 on BOTH sides. Evidence ~/crane-work/verify-bins/gen193-losses-*/ on chat.local.
+pair.1 = base 3/6; tip 3/6
+pair.2 = base 4/6; tip 3/6
+pair.3 = base 3/6; tip 4/6

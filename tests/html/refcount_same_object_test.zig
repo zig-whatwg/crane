@@ -39,7 +39,7 @@ fn sameObjectSubObjectForwardsStructurally() !void {
     // count of the sub-object's own forwarded to the element is step 7's).
     try testing.expect(engine.hasWrapper(element));
     const base = dom.instance_bridge.getNodeBase(@ptrCast(element)) orelse return error.NotANode;
-    try expectCount(2, base, "an element script reaches only through its attributes");
+    try expectCount(1, base, "an element script reaches only through its attributes");
 }
 
 test "a [SameObject] sub-object script keeps alone keeps its element's counted wrapper" {

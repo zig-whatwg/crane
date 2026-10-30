@@ -523,6 +523,13 @@ pub const Node = struct {
         return false;
     }
 
+    /// Whether evaluation needs a real computed line height (CSS Values §6.1.1).
+    fn needsLineHeight(self: *const Node) bool {
+        if (self.tag == .numeric) return self.numeric.unit == .lh or self.numeric.unit == .rlh;
+        for (self.children) |child| if (child.needsLineHeight()) return true;
+        return false;
+    }
+
     fn needsRandomBase(self: *const Node) bool {
         if (self.tag == .random and self.random_data.?.key != null) return true;
         for (self.children) |child| if (child.needsRandomBase()) return true;
@@ -574,6 +581,11 @@ pub const Expression = struct {
         return self.root.needsFontMetrics();
     }
 
+    /// Lets non-style consumers reject lengths requiring unavailable line metrics.
+    pub fn needsLineHeight(self: *const Expression) bool {
+        return self.root.needsLineHeight();
+    }
+
     pub fn needsRandomBase(self: *const Expression) bool {
         return self.root.needsRandomBase();
     }
@@ -592,12 +604,24 @@ pub const Expression = struct {
     /// §10.11: clone and simplify with computed-value inputs. The original
     /// specified expression stays immutable and can be shared by declarations.
     pub fn compute(self: *const Expression, allocator: Allocator, context: Context) Allocator.Error!*Expression {
+        return self.computeInternal(allocator, context, null);
+    }
+
+    /// Also records zero divisors resolved by computed-value inputs. The
+    /// caller initializes the flag before parsing and keeps it for this
+    /// call: a parse-time division may already have been simplified away.
+    /// The flag is only ever set to true and is borrowed for this call.
+    pub fn computeWithDivisionCheck(self: *const Expression, allocator: Allocator, context: Context, divided_by_zero: *bool) Allocator.Error!*Expression {
+        return self.computeInternal(allocator, context, divided_by_zero);
+    }
+
+    fn computeInternal(self: *const Expression, allocator: Allocator, context: Context, divided_by_zero: ?*bool) Allocator.Error!*Expression {
         const result = try create(allocator, self.grammar);
         errdefer result.unref();
         result.typ = self.typ;
         result.computed = true;
         result.wrapper = self.wrapper;
-        var builder = Builder{ .allocator = result.arena.allocator(), .hint = self.grammar.percentHint(), .context = context };
+        var builder = Builder{ .allocator = result.arena.allocator(), .hint = self.grammar.percentHint(), .context = context, .divided_by_zero = divided_by_zero };
         result.root = try builder.copy(self.root);
         // Q100 / CSSWG #3482: all three browsers canonicalize this computed
         // length-percentage value, after §10.10.1's ordinary simplification.
@@ -701,14 +725,26 @@ pub fn parse(allocator: Allocator, text: []const u8, grammar: Grammar) Allocator
     return parseWithScope(allocator, text, grammar, null);
 }
 
+/// Parse with an optional diagnostic for consumers whose grammar rejects
+/// division by zero. Initialize the flag to false before parsing, then pass
+/// it to computeWithDivisionCheck too. It is only ever set to true, borrowed
+/// for this call, and never retained by the returned expression.
+pub fn parseWithDivisionCheck(allocator: Allocator, text: []const u8, grammar: Grammar, divided_by_zero: *bool) Allocator.Error!?Parsed {
+    return parseInternal(allocator, text, grammar, null, divided_by_zero);
+}
+
 /// The scope is borrowed only during parsing. Context-free callers may use
 /// explicit named, element-scoped or fixed keys; property-dependent keys
 /// require an actual declaration scope (Q90), never a synthetic property.
 pub fn parseWithScope(allocator: Allocator, text: []const u8, grammar: Grammar, scope: ?*const random.ParseScope) Allocator.Error!?Parsed {
+    return parseInternal(allocator, text, grammar, scope, null);
+}
+
+fn parseInternal(allocator: Allocator, text: []const u8, grammar: Grammar, scope: ?*const random.ParseScope, divided_by_zero: ?*bool) Allocator.Error!?Parsed {
     const expression = try Expression.create(allocator, grammar);
     errdefer expression.unref();
     var parser = Parser{
-        .builder = .{ .allocator = expression.arena.allocator(), .hint = grammar.percentHint() },
+        .builder = .{ .allocator = expression.arena.allocator(), .hint = grammar.percentHint(), .divided_by_zero = divided_by_zero },
         .tokenizer = tokens.Tokenizer.init(text),
         .anchor_position = grammar.anchor_position,
         .anchor_size = grammar.anchor_size,
@@ -1249,6 +1285,8 @@ const Builder = struct {
     allocator: Allocator,
     hint: Base,
     context: ?Context = null,
+    // Borrowed only while parsing or computing; no expression stores it.
+    divided_by_zero: ?*bool = null,
     context_free: bool = false,
     preserve_units: bool = false,
 
@@ -1358,6 +1396,12 @@ const Builder = struct {
             },
             .invert => {
                 const child = root.children[0];
+                // §10.10.1 step 7: observe before reciprocal folding (and
+                // before step 9 cancels dimensional units). CSS arithmetic
+                // stays unchanged; HTML sizes uses this diagnostic (Q41).
+                if (self.divided_by_zero) |flag| {
+                    if (child.tag == .numeric and child.numeric.value == 0) flag.* = true;
+                }
                 if (child.tag == .numeric and child.numeric.unit == .number)
                     return self.numeric(.{ .value = 1.0 / child.numeric.value, .unit = .number });
                 if (child.tag == .invert) return child.children[0];

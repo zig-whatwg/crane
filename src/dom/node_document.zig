@@ -16,6 +16,8 @@ const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 const engine = @import("engine");
+const instance_bridge = @import("instance_bridge.zig");
+const refcount_audit = @import("refcount_audit.zig");
 
 /// Assigning the document establishes template contents, which can allocate.
 pub const Error = error{ InvalidStateError, OutOfMemory };
@@ -58,6 +60,8 @@ pub fn install(impl: Implementation) void {
 
 /// Set `node`'s node document to `document`.
 pub fn set(node: *runtime.Instance, document: ?*runtime.Instance) Error!void {
+    // Refcount step 6: a node step 7 would have freed is given a document.
+    if (refcount_audit.on()) if (instance_bridge.getNodeBaseUnaudited(node)) |base| refcount_audit.checkRead(base, .node_document, @returnAddress());
     const impl = implementation orelse return error.InvalidStateError;
     return impl.set(node, document);
 }

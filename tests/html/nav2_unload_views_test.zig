@@ -96,3 +96,23 @@ fn crossDocumentNavigation() !void {
 test "a frame's document left by a cross-document navigation reads its old history length and current entry in pageswap, pagehide and unload" {
     try onFreshThread(crossDocumentNavigation);
 }
+
+fn crossDocumentTraversal() !void {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    const page = browser.current_context orelse return error.NoPage;
+    try page.loadHTML("<!doctype html><body><iframe srcdoc='<p>one</p>'></iframe></body>", .{ .base_url = "http://example.test/top" });
+    try runUntil(browser, page, "String(document.readyState === 'complete' && frames[0].document.body?.textContent === 'one')");
+    try page.runScript("frames[0].location.href = 'about:blank?two';");
+    try runUntil(browser, page, "String(frames[0].location.href === 'about:blank?two' && frames[0].document.readyState === 'complete')");
+    try page.runScript(watch_frame);
+    // Back to the first document: a traversal that repopulates its entry.
+    try page.runScript("frames[0].history.back();");
+    try runUntil(browser, page, "String(frames[0].document.body?.textContent === 'one')");
+    try expectEval(page, all_old, "old");
+}
+
+test "a frame's document left by a cross-document traversal reads its old history length and current entry in pageswap, pagehide and unload" {
+    try onFreshThread(crossDocumentTraversal);
+}

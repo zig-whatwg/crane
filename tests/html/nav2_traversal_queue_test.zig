@@ -66,8 +66,12 @@ const Step = struct {
     name: u8,
     outcome: Outcome = .done,
     /// Run-time behaviour beyond logging.
-    action: enum { none, complete_self, end_traversable } = .none,
+    action: enum { none, complete_self, end_traversable, wait_for, wait_and_end_one } = .none,
     traversable: ?*BrowsingContext = null,
+    /// `.wait_for`: the navigables whose populations the run waits for.
+    /// `.wait_and_end_one`: the same, and the first one's population ends
+    /// inside the run.
+    waits: []const u64 = &.{},
 
     fn make(harness: *Harness, name: u8, outcome: Outcome, target: ?u64) !*Step {
         const step = try testing.allocator.create(Step);
@@ -90,6 +94,15 @@ const Step = struct {
                 TraversalQueue.completeById(&self.harness.navigables, top.id, item.token);
             },
             .end_traversable => self.traversable.?.deinit(),
+            .wait_for, .wait_and_end_one => {
+                const top = self.traversable.?;
+                for (self.waits) |navigable| {
+                    if (!TraversalQueue.waitFor(&self.harness.navigables, top.id, item.token, navigable)) return .done;
+                }
+                if (self.action == .wait_and_end_one) {
+                    TraversalQueue.populationEnded(&self.harness.navigables, top.id, item.token, self.waits[0]);
+                }
+            },
         }
         return self.outcome;
     }
@@ -259,4 +272,328 @@ test "only the traversable keeps a queue: a child context reaches its top's" {
     try testing.expect(from_child == from_top);
     try testing.expect(child.traversal_queue == null);
     try testing.expectEqual(top.id, from_top.traversable_id);
+}
+
+test "a traversal waiting on populations completes when the last one ends, by its own token only" {
+    var harness = Harness.init();
+    defer harness.deinit();
+    const top = try BrowsingContext.initTopLevel(testing.allocator, &harness.navigables);
+    defer top.deinit();
+    const queue = try top.traversalQueue(Harness.schedule);
+
+    const waiting = try Step.make(&harness, 'A', .pending, null);
+    waiting.action = .wait_for;
+    waiting.traversable = top;
+    waiting.waits = &.{ 7, 8 };
+    try testing.expect(queue.append(&waiting.item));
+    const token = waiting.item.token;
+    try testing.expect(queue.append(&(try Step.make(&harness, 'B', .done, null)).item));
+    _ = harness.runTasks();
+    try testing.expectEqualStrings("A", harness.log.items);
+
+    // Another token's end, or another traversable's, changes nothing.
+    TraversalQueue.populationEnded(&harness.navigables, top.id, token + 1, 7);
+    TraversalQueue.populationEnded(&harness.navigables, top.id + 1000, token, 7);
+    // A navigable it does not wait for, nothing either.
+    TraversalQueue.populationEnded(&harness.navigables, top.id, token, 9);
+    try testing.expectEqual(@as(usize, 0), harness.runTasks());
+    try testing.expect(TraversalQueue.isRunning(&harness.navigables, top.id, token));
+
+    // One of two: still waiting.
+    TraversalQueue.populationEnded(&harness.navigables, top.id, token, 7);
+    try testing.expect(TraversalQueue.isRunning(&harness.navigables, top.id, token));
+    // The last: the queue moves on.
+    TraversalQueue.populationEnded(&harness.navigables, top.id, token, 8);
+    try testing.expect(!TraversalQueue.isRunning(&harness.navigables, top.id, token));
+    _ = harness.runTasks();
+    try testing.expectEqualStrings("AB", harness.log.items);
+    try testing.expectEqual(@as(usize, 2), harness.destroyed);
+}
+
+test "a destroyed navigable ends the running traversal's wait for it, and the queue continues" {
+    var harness = Harness.init();
+    defer harness.deinit();
+    const top = try BrowsingContext.initTopLevel(testing.allocator, &harness.navigables);
+    defer top.deinit();
+    const queue = try top.traversalQueue(Harness.schedule);
+
+    const waiting = try Step.make(&harness, 'A', .pending, null);
+    waiting.action = .wait_for;
+    waiting.traversable = top;
+    waiting.waits = &.{7};
+    try testing.expect(queue.append(&waiting.item));
+    try testing.expect(queue.append(&(try Step.make(&harness, 'B', .done, null)).item));
+    _ = harness.runTasks();
+    try testing.expectEqualStrings("A", harness.log.items);
+    TraversalQueue.navigableGone(&harness.navigables, top.id, 7);
+    _ = harness.runTasks();
+    try testing.expectEqualStrings("AB", harness.log.items);
+    try testing.expectEqual(@as(usize, 2), harness.destroyed);
+}
+
+test "a population that ends inside its traversal's run leaves the traversal waiting for the others" {
+    var harness = Harness.init();
+    defer harness.deinit();
+    const top = try BrowsingContext.initTopLevel(testing.allocator, &harness.navigables);
+    defer top.deinit();
+    const queue = try top.traversalQueue(Harness.schedule);
+
+    // Its only population ends in the run: finished when the run returns.
+    const quick = try Step.make(&harness, 'A', .pending, null);
+    quick.action = .wait_and_end_one;
+    quick.traversable = top;
+    quick.waits = &.{7};
+    try testing.expect(queue.append(&quick.item));
+    // One of two ends in the run: still waiting on the other.
+    const slow = try Step.make(&harness, 'B', .pending, null);
+    slow.action = .wait_and_end_one;
+    slow.traversable = top;
+    slow.waits = &.{ 7, 8 };
+    try testing.expect(queue.append(&slow.item));
+    try testing.expect(queue.append(&(try Step.make(&harness, 'C', .done, null)).item));
+    _ = harness.runTasks();
+    try testing.expectEqualStrings("AB", harness.log.items);
+    try testing.expectEqual(@as(usize, 1), harness.destroyed);
+    TraversalQueue.populationEnded(&harness.navigables, top.id, slow.item.token, 8);
+    _ = harness.runTasks();
+    try testing.expectEqualStrings("ABC", harness.log.items);
+    try testing.expectEqual(@as(usize, 3), harness.destroyed);
+}
+
+test "a traversable that ends while its traversal waits frees the wait, and a later end finds nothing" {
+    var harness = Harness.init();
+    defer harness.deinit();
+    const top = try BrowsingContext.initTopLevel(testing.allocator, &harness.navigables);
+    const top_id = top.id;
+    const queue = try top.traversalQueue(Harness.schedule);
+    const waiting = try Step.make(&harness, 'A', .pending, null);
+    waiting.action = .wait_for;
+    waiting.traversable = top;
+    waiting.waits = &.{ 7, 8 };
+    try testing.expect(queue.append(&waiting.item));
+    const token = waiting.item.token;
+    _ = harness.runTasks();
+    top.deinit();
+    try testing.expectEqual(@as(usize, 1), harness.destroyed);
+    TraversalQueue.populationEnded(&harness.navigables, top_id, token, 7);
+    TraversalQueue.navigableGone(&harness.navigables, top_id, 8);
+    try testing.expectEqual(@as(usize, 1), harness.destroyed);
+}
+
+/// The contexts `serviceContext` may pick (a test's stand-in for "has an
+/// active window with an event loop").
+const WithLoop = struct {
+    contexts: []const *BrowsingContext,
+
+    fn has(self: WithLoop, bc: *BrowsingContext) bool {
+        return std.mem.indexOfScalar(*BrowsingContext, self.contexts, bc) != null;
+    }
+};
+
+test "the service task goes to the traversable's loop, else one in its own tree, else another traversable's on the Browser, else none" {
+    var harness = Harness.init();
+    defer harness.deinit();
+    const top = try BrowsingContext.initTopLevel(testing.allocator, &harness.navigables);
+    defer top.deinit();
+    const child = try BrowsingContext.initChild(testing.allocator, top);
+    defer child.deinit();
+    const grandchild = try BrowsingContext.initChild(testing.allocator, child);
+    defer grandchild.deinit();
+    const other_tab = try BrowsingContext.initTopLevel(testing.allocator, &harness.navigables);
+    defer other_tab.deinit();
+    const pick = struct {
+        fn of(navigables: *Navigables, traversable: *BrowsingContext, contexts: []const *BrowsingContext) ?*BrowsingContext {
+            return TraversalQueue.serviceContext(navigables, traversable, WithLoop{ .contexts = contexts }, WithLoop.has);
+        }
+    }.of;
+
+    // The traversable's own window first.
+    try testing.expectEqual(top, pick(&harness.navigables, top, &.{ child, other_tab, top }).?);
+    // With none of its own (a realm mid-swap), a window in its tree, parents
+    // first - before another Tab's, which also has one.
+    try testing.expectEqual(child, pick(&harness.navigables, top, &.{ grandchild, other_tab, child }).?);
+    try testing.expectEqual(grandchild, pick(&harness.navigables, top, &.{ other_tab, grandchild }).?);
+    // Only when its whole tree has none, another traversable's on the list.
+    try testing.expectEqual(other_tab, pick(&harness.navigables, top, &.{other_tab}).?);
+    // None at all: no task, and nothing runs inline.
+    try testing.expect(pick(&harness.navigables, top, &.{}) == null);
+}
+
+// Lane nav2 C2: an item whose steps go on after their waits end - "apply
+// the history step" waits for every change job (step 14), then queues the
+// non-changing navigables' tasks and waits for them (steps 18-19), then sets
+// the step (20). Its `proceed` steps run from a service task of their own
+// once the last wait ends - never inside the call that ended it.
+
+/// An item with three phases: wait for `first`, then for `second`, then
+/// done. Logs 'r' for its run and 'p' for each proceed.
+const Phased = struct {
+    item: Item,
+    harness: *Harness,
+    top: *BrowsingContext,
+    first: []const u64,
+    second: []const u64,
+    phase: u8 = 0,
+    /// End this navigable's wait inside the run that records it.
+    end_inside: ?u64 = null,
+
+    fn make(harness: *Harness, top: *BrowsingContext, first: []const u64, second: []const u64) !*Phased {
+        const self = try testing.allocator.create(Phased);
+        self.* = .{
+            .item = .{ .run = run, .destroy = destroy, .proceed = proceed },
+            .harness = harness,
+            .top = top,
+            .first = first,
+            .second = second,
+        };
+        return self;
+    }
+
+    fn waitAll(self: *Phased, ids: []const u64) Outcome {
+        for (ids) |id| _ = TraversalQueue.waitFor(&self.harness.navigables, self.top.id, self.item.token, id);
+        if (self.end_inside) |id| TraversalQueue.populationEnded(&self.harness.navigables, self.top.id, self.item.token, id);
+        return if (ids.len == 0) .done else .pending;
+    }
+
+    fn run(item: *Item) Outcome {
+        const self: *Phased = @fieldParentPtr("item", item);
+        self.harness.log.append(testing.allocator, 'r') catch {};
+        self.phase = 1;
+        return self.waitAll(self.first);
+    }
+
+    fn proceed(item: *Item) Outcome {
+        const self: *Phased = @fieldParentPtr("item", item);
+        self.harness.log.append(testing.allocator, 'p') catch {};
+        self.phase += 1;
+        if (self.phase == 2) return self.waitAll(self.second);
+        return .done;
+    }
+
+    fn destroy(item: *Item) void {
+        const self: *Phased = @fieldParentPtr("item", item);
+        self.harness.destroyed += 1;
+        testing.allocator.destroy(self);
+    }
+};
+
+test "an item's proceed steps run from a task of their own when its waits end, until they are done" {
+    var harness = Harness.init();
+    defer harness.deinit();
+    const top = try BrowsingContext.initTopLevel(testing.allocator, &harness.navigables);
+    defer top.deinit();
+    const queue = try top.traversalQueue(Harness.schedule);
+
+    const phased = try Phased.make(&harness, top, &.{ 7, 8 }, &.{9});
+    try testing.expect(queue.append(&phased.item));
+    const token = phased.item.token;
+    try testing.expect(queue.append(&(try Step.make(&harness, 'B', .done, null)).item));
+    _ = harness.runTasks();
+    try testing.expectEqualStrings("r", harness.log.items);
+
+    TraversalQueue.populationEnded(&harness.navigables, top.id, token, 7);
+    try testing.expectEqual(@as(usize, 0), harness.scheduled.items.len);
+    // The last wait of the first phase: nothing runs in this call; a service
+    // task is asked for, and the item's proceed steps run there.
+    TraversalQueue.populationEnded(&harness.navigables, top.id, token, 8);
+    try testing.expectEqualStrings("r", harness.log.items);
+    try testing.expectEqual(@as(usize, 1), harness.scheduled.items.len);
+    _ = harness.runTasks();
+    try testing.expectEqualStrings("rp", harness.log.items);
+    try testing.expect(TraversalQueue.isRunning(&harness.navigables, top.id, token));
+
+    // The second phase's wait, a navigable gone: proceed again, then done,
+    // and the queue moves on.
+    TraversalQueue.navigableGone(&harness.navigables, top.id, 9);
+    _ = harness.runTasks();
+    try testing.expectEqualStrings("rppB", harness.log.items);
+    try testing.expectEqual(@as(usize, 2), harness.destroyed);
+}
+
+test "waits that end inside the run that records them lead to the proceed steps from the next task" {
+    var harness = Harness.init();
+    defer harness.deinit();
+    const top = try BrowsingContext.initTopLevel(testing.allocator, &harness.navigables);
+    defer top.deinit();
+    const queue = try top.traversalQueue(Harness.schedule);
+
+    const phased = try Phased.make(&harness, top, &.{7}, &.{});
+    phased.end_inside = 7;
+    try testing.expect(queue.append(&phased.item));
+    try testing.expect(queue.append(&(try Step.make(&harness, 'B', .done, null)).item));
+    // run (its only wait ends inside it), proceed (done), B: three tasks.
+    try testing.expectEqual(@as(usize, 3), harness.runTasks());
+    try testing.expectEqualStrings("rpB", harness.log.items);
+    try testing.expectEqual(@as(usize, 2), harness.destroyed);
+}
+
+test "an item waiting between its phases is destroyed once when its traversable ends" {
+    var harness = Harness.init();
+    defer harness.deinit();
+    const top = try BrowsingContext.initTopLevel(testing.allocator, &harness.navigables);
+    const top_id = top.id;
+    const queue = try top.traversalQueue(Harness.schedule);
+    const phased = try Phased.make(&harness, top, &.{7}, &.{8});
+    try testing.expect(queue.append(&phased.item));
+    const token = phased.item.token;
+    _ = harness.runTasks();
+    TraversalQueue.populationEnded(&harness.navigables, top_id, token, 7);
+    // Its proceed task is queued; the traversable ends before it runs.
+    try testing.expectEqual(@as(usize, 1), harness.scheduled.items.len);
+    top.deinit();
+    try testing.expectEqual(@as(usize, 1), harness.destroyed);
+    _ = harness.runTasks();
+    try testing.expectEqualStrings("r", harness.log.items);
+    try testing.expectEqual(@as(usize, 1), harness.destroyed);
+}
+
+const apply_history_step = html_core.navigation.apply_history_step;
+
+// Lane nav2 C2: "update for navigable creation/destruction" items coalesce,
+// stated as unobservable in apply_history_step.zig - each applies the
+// current step, so a second one right behind the first changes nothing. A
+// document's n frames, created or destroyed back to back, queue ONE item,
+// not n (integrator, 2026-10-28: O(n) teardown).
+test "a document's n frames created or destroyed back to back queue one update for navigable creation/destruction" {
+    var harness = Harness.init();
+    defer harness.deinit();
+    const top = try BrowsingContext.initTopLevel(testing.allocator, &harness.navigables);
+    defer top.deinit();
+    for (0..64) |_| apply_history_step.updateForNavigableCreationDestruction(top);
+    const queue = top.traversal_queue orelse return error.NoQueue;
+    try testing.expectEqual(@as(usize, 1), queue.items.items.len);
+    // Something else queued between them: the next update is an item of its
+    // own, and the ones right behind it coalesce into it.
+    try testing.expect(queue.append(&(try Step.make(&harness, 'T', .done, null)).item));
+    for (0..64) |_| apply_history_step.updateForNavigableCreationDestruction(top);
+    try testing.expectEqual(@as(usize, 3), queue.items.items.len);
+}
+
+// Lane nav2 C2, liveness (integrator's condition 2): an apply whose
+// per-navigable task cannot be queued - no loop takes it - ends that change
+// job at once; the apply proceeds, sets the step (20) and the queue moves
+// on. Driven by hand: with no window, no loop takes the service task either.
+test "an apply whose per-navigable task cannot be queued still finishes and sets the step" {
+    var harness = Harness.init();
+    defer harness.deinit();
+    const top = try BrowsingContext.initTopLevel(testing.allocator, &harness.navigables);
+    defer top.deinit();
+    const history = try top.jointHistory();
+    try history.addInitialEntry(top.id, "http://x.test/t", null, "http://x.test");
+    try history.commitDocument(top.id, "http://x.test/t2", null, "http://x.test", .push);
+    try testing.expectEqual(@as(u32, 1), history.current_step);
+
+    apply_history_step.traverse(top, testing.allocator, .{ .delta = -1 }, .{});
+    const queue = top.traversal_queue orelse return error.NoQueue;
+    try testing.expectEqual(@as(usize, 1), queue.items.items.len);
+    // The service task: the run, whose one change job ended unqueued...
+    TraversalQueue.service(&harness.navigables, top.id);
+    try testing.expect(queue.running != null);
+    try testing.expectEqual(@as(u32, 1), history.current_step);
+    // ...then its proceed steps (no navigable left to update): step 20.
+    TraversalQueue.service(&harness.navigables, top.id);
+    try testing.expect(queue.running == null);
+    try testing.expectEqual(@as(usize, 0), queue.items.items.len);
+    try testing.expectEqual(@as(u32, 0), history.current_step);
+    try testing.expect(!history.isApplying(1));
 }

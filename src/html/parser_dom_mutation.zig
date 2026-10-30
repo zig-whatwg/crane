@@ -115,6 +115,22 @@ pub fn insert(adapter: anytype, location: TreeBuilder.InsertionLocation, child: 
     defer if (parent_hold) |*held| held.release();
     var node_hold: ?engine.Owned = if (moving and node.ctx.hasEngine()) try engine.retainValue(node.ctx, .{ .instance = node }) else null;
     defer if (node_hold) |*held| held.release();
+    // The move's counted references (refcount step 5a; WebKit's reparent
+    // task holds `RefPtr<ContainerNode> parent`, `RefPtr<Node> nextChild`
+    // and `RefPtr<Node> child`): the moved node, its new parent and the
+    // reference child, across the removal's reactions and the insertion.
+    // The roots above stay as the shadow-mode net (step 9c deletes them).
+    var node_ref: dom.node_holds.CountedRef = .{};
+    defer node_ref.release(node);
+    var parent_ref: dom.node_holds.CountedRef = .{};
+    defer parent_ref.release(target.parent);
+    var before_ref: dom.node_holds.CountedRef = .{};
+    defer if (target.before) |before| before_ref.release(before);
+    if (moving) {
+        node_ref.take(node, dom.instance_bridge.getNodeBase(node));
+        parent_ref.take(target.parent, dom.instance_bridge.getNodeBase(target.parent));
+        if (target.before) |before| before_ref.take(before, dom.instance_bridge.getNodeBase(before));
+    }
     if (moving) try remove(node);
     if (!saved_node.alive() or !saved_parent.alive()) return false;
     if (saved_before) |before| if (!before.alive()) return false;
@@ -144,6 +160,10 @@ pub fn moveChildren(adapter: anytype, source: *TreeNode, destination: *TreeNode)
         // Keep the borrowed child across removal and its possible reactions.
         var held: ?engine.Owned = if (child.ctx.hasEngine()) try engine.retainValue(child.ctx, .{ .instance = child }) else null;
         defer if (held) |*owned| owned.release();
+        // And counted, across the same span (refcount step 5a).
+        var child_ref: dom.node_holds.CountedRef = .{};
+        child_ref.take(child, dom.instance_bridge.getNodeBase(child));
+        defer child_ref.release(child);
         try remove(child);
         if (!saved_child.alive() or !saved_to.alive()) return;
         _ = interfaces.Node.call_appendChild(to, child) catch |err| switch (err) {

@@ -4097,12 +4097,84 @@ pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyer
     }
 }
 
-/// Operation: fetchLater
+/// Fetch §5.6, fetchLater() method steps.
 pub fn call_fetchLater(instance: *runtime.Instance, input: typedefs.RequestInfo, init_data: webidl.Opt(dictionaries.DeferredRequestInit)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = input;
-    _ = init_data;
-    return error.NotImplemented;
+    const dom = @import("dom");
+    const fetch = @import("fetch");
+    const deferred = dom.deferred_fetches;
+    const allocator = instance.ctx.allocator;
+    // 1. The initial Request constructor, including all RequestInit checks.
+    const request_object = try interfaces.Request.call_constructor(instance.ctx, input, if (init_data.wasPassed())
+        webidl.Opt(dictionaries.RequestInit).passed(init_data.getValue().base)
+    else
+        webidl.Opt(dictionaries.RequestInit).notPassed());
+    const request_generation = runtime.SlabAllocator.generationOf(request_object);
+    defer request_object.releaseIfUnwrapped(request_generation);
+    // 2. Throw the signal's actual reason, including a non-DOMException value.
+    const signal = try interfaces.Request.get_signal(request_object);
+    try interfaces.AbortSignal.call_throwIfAborted(signal);
+    // 3. Borrow the request while request_object is alive.
+    const request: *fetch.internal.InternalRequest = @ptrCast(@alignCast(dom.fetch_objects.requestOf(request_object) orelse return error.InvalidStateError));
+    // 4-6. Conversion already rejected nonfinite DOMHighResTimeStamp values.
+    const activate_after = if (init_data.wasPassed()) init_data.getValue().activateAfter else null;
+    if (activate_after) |delay| if (delay < 0) return error.RangeError;
+    // 7. Only a fully active associated document may queue a deferred fetch.
+    const document = try interfaces.Window.get_document(instance);
+    if (!dom.document_activity.fullyActive(document, runtime.SlabAllocator.generationOf(document))) return error.TypeError;
+    // 8-9. A potentially trustworthy HTTP(S) URL, including loopback HTTP.
+    const url = request.getUrl();
+    if (!std.mem.startsWith(u8, url, "http:") and !std.mem.startsWith(u8, url, "https:")) return error.TypeError;
+    if (!try fetch.mixed_content.isAPrioriAuthenticated(allocator, url)) return error.TypeError;
+    // 10. A non-null body whose length is null cannot be deferred.
+    if (request.body) |body| switch (body) {
+        .body => |value| if (value.length == null) return error.TypeError,
+        .bytes => {},
+    };
+    // 11. The owner traverses the control document's quota group. Policy
+    // answers come from its actual document policy, never an all-allowed default.
+    // Stated deviation (golden rule 2, no newer spec; integrator ruling
+    // 2026-10-29): HTML "allowed to use" calls Permissions Policy §9.10 with
+    // report = true, but Chrome - the only browser shipping fetchLater;
+    // Firefox and Safari ship neither it nor policy reporting - queues no
+    // violation report here. Chromium 33aa7cdb fetch_later_util.cc:35-43 and
+    // :108-115 call ec->IsFeatureEnabled(feature), whose ReportOptions
+    // defaults to kDoNotReport (execution_context.h:357-361), and
+    // fetch_manager.cc reports nothing. So neither check reports.
+    const control = deferred.controlDocumentOf(document);
+    const origin = try fetch.internal.origins.serializedOriginOf(allocator, url);
+    defer allocator.free(origin);
+    const quota = deferred.availableQuota(document, origin, .{
+        .deferred_fetch = try dom.policy_containers.allowedToUseWith(control, .deferred_fetch, .{ .report = false }),
+        .deferred_fetch_minimal = try dom.policy_containers.allowedToUseWith(control, .deferred_fetch_minimal, .{ .report = false }),
+    });
+    // 12. Request's serialization before population: about:client is 12
+    // bytes. Chromium FetchLaterUtil::CalculateRequestSize at 33aa7cdb;
+    // liaison Q15, 2026-10-27. Queueing populates the request later.
+    const referrer = try interfaces.Request.get_referrer(request_object);
+    defer if (referrer.len != 0) allocator.free(referrer);
+    const requested = try fetch.deferred_fetch.totalRequestLength(request, referrer);
+    // 13. Preserve the requested and quota fields on the thrown exception.
+    if (quota < requested) {
+        const exception = try interfaces.QuotaExceededError.call_constructor(instance.ctx, .notPassed(), .passed(.{
+            .quota = @floatFromInt(quota),
+            .requested = @floatFromInt(requested),
+        }));
+        const generation = runtime.SlabAllocator.generationOf(exception);
+        defer exception.releaseIfUnwrapped(generation);
+        try engine.throwValue(instance.ctx, .{ .instance = exception });
+        return error.ExceptionPending;
+    }
+    // 14-16. queue TAKES this clone on every path. It populates it, owns
+    // the deferred record and timer, and pins the signal while pending.
+    const cloned = try request.clone();
+    const activated = try deferred.queue(instance, cloned, .{
+        .total_request_length = requested,
+        .activate_after_ms = activate_after,
+        .signal = signal,
+    });
+    // 17. The result takes its cell hold only on successful construction.
+    errdefer activated.release();
+    return interfaces.FetchLaterResult.initWith(allocator, instance.ctx, .{ .deferred_activation = activated });
 }
 
 /// Operation: requestAnimationFrame

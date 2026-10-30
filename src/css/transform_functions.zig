@@ -119,6 +119,34 @@ pub const Function = struct {
 /// Consume one complete function. Failure leaves the stream unchanged;
 /// success leaves following transform functions for the containing grammar.
 pub fn consume(options: properties.ParseOptions, stream: *properties.Stream) Allocator.Error!?Function {
+    return consumeFunction(options, stream, false);
+}
+
+/// Compat's legacy transform alias differs only in perspective's length.
+/// Registered syntax and the canonical property keep the strict entry above.
+pub fn consumeWithLegacyPerspective(options: properties.ParseOptions, stream: *properties.Stream) Allocator.Error!?Function {
+    return consumeFunction(options, stream, true);
+}
+
+/// Compat §3.4 / row125 Q19: convert only numbers known before style
+/// computation. Both legacy perspective callers use this single conversion.
+pub fn consumeLegacyPerspectiveLength(options: properties.ParseOptions, stream: *properties.Stream) Allocator.Error!?Number {
+    var trial = stream.*;
+    if (try Number.consume(options, &trial, .{ .kind = .length, .minimum = 0 }, true)) |length| {
+        stream.* = trial;
+        return length;
+    }
+    trial = stream.*;
+    const number = try Number.consume(options, &trial, .{ .kind = .number, .minimum = 0 }, false) orelse return null;
+    defer number.unref();
+    const known = number.known() orelse return null;
+    if (known.unit != .number) return null;
+    const value = if (std.math.isNan(known.value) or known.value < 0) 0 else known.value;
+    stream.* = trial;
+    return .{ .literal = .{ .value = value, .unit = .px } };
+}
+
+fn consumeFunction(options: properties.ParseOptions, stream: *properties.Stream, legacy_perspective: bool) Allocator.Error!?Function {
     var trial = stream.*;
     const token = trial.next();
     if (token.token_type != .function) return null;
@@ -139,7 +167,9 @@ pub fn consume(options: properties.ParseOptions, stream: *properties.Stream) All
         const grammar = kind.grammar(count);
         // Transforms 1 §7: unitless zero is also admitted for <angle>.
         const next = trial.peek();
-        var number = if (grammar.kind == .angle and next.token_type == .number and next.numeric_value.? == 0) blk: {
+        var number = if (legacy_perspective and kind == .perspective)
+            try consumeLegacyPerspectiveLength(options, &trial) orelse return null
+        else if (grammar.kind == .angle and next.token_type == .number and next.numeric_value.? == 0) blk: {
             _ = trial.next();
             break :blk Number{ .literal = .{ .value = 0, .unit = .deg } };
         } else try Number.consume(options, &trial, grammar, true) orelse return null;

@@ -65,6 +65,10 @@ pub fn get(document: *runtime.Instance) ?Designation {
 pub fn set(document: *runtime.Instance, element: ?*runtime.Instance) void {
     const impl = implementation orelse return;
     impl.set(document, if (element) |e| .{ .element = e, .generation = runtime.SlabAllocator.generationOf(e) } else null);
+    // The focus fixup runs at the next rendering opportunity: a focused
+    // element asks for one, and its document is watched
+    // (dom.update_the_rendering).
+    @import("update_the_rendering.zig").focusedAreaChanged(document, element);
 }
 
 test "without an installed implementation a document's focused area is its viewport" {

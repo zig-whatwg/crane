@@ -57,6 +57,7 @@ const rejected_promises = @import("rejected_promises.zig");
 // Firing an event at a target from outside EventTarget's hierarchy, and the
 // MessagePort transfer steps.
 const fire_event = @import("dom").fire_event;
+const update_the_rendering = @import("dom").update_the_rendering;
 const message_ports = @import("dom").message_ports;
 
 // A string timer handler's checks at the call: Trusted Types' "get trusted
@@ -237,16 +238,17 @@ fn cancelWorkerTimers(owner: *WorkerHost) void {
 // loop's processing model, step 6.1: when the user agent believes the worker
 // would benefit from having its rendering updated, it runs the animation
 // frame callbacks for the global scope, passing in now. Crane renders
-// nothing; a frame is due every `animation_frame_interval_ms` while callbacks
-// wait, from one timer armed only then - an idle worker pays nothing - as
-// Window's frames are (src/browser/Context.zig). Each callback is the map's
+// nothing; while callbacks wait, one timer - armed only then: an idle worker
+// pays nothing - is due at the next refresh moment of the display grid a
+// Window's rendering opportunities use (dom.update_the_rendering: the
+// interval its owner Browser's platform names, from the worker's time
+// origin), so consecutive frames are whole refresh intervals apart, as a
+// vsync-driven worker's are (Blink's WorkerAnimationFrameProvider takes viz
+// BeginFrames; Gecko's VsyncWorkerChild the vsync). Each callback is the map's
 // until it runs, is cancelled, or the worker's tasks are discarded (close(),
 // the realm's end: `discardAnimationFrames`), which releases it: a callback
 // still queued when the worker ends left its Global for the agent's life
 // (lane leaks2: 2 roots under leaks --atExit over workers/).
-
-/// ~60Hz, as a Window's: the spec leaves the rate to the user agent.
-const animation_frame_interval_ms: u64 = 16;
 
 /// An entry of a global scope's map of animation frame callbacks.
 const AnimationFrameCallback = struct {
@@ -292,9 +294,17 @@ fn animationFrameTrampoline(data: ?*anyopaque) void {
     // A closing worker runs no further task; its end releases the callbacks.
     if (!self.runsTasks() or self.realm == null) return;
     if (self.animation_frame_callbacks.items.len == 0) return;
+    const now = monotonicNs();
+    self.animation_frame_last_ns = update_the_rendering.latestRefreshAtOrBefore(self.refreshOrigin(), self.refreshInterval(), now);
     self.runTask(AnimationFrames.steps, self);
     // What the callbacks requested waits for the next frame.
     if (self.animation_frame_callbacks.items.len > 0) self.armAnimationFrame();
+}
+
+/// The monotonic clock (ns), the platform's: the time base of worker time
+/// origins and of the refresh grid.
+fn monotonicNs() i64 {
+    return @intCast(@import("platform").monotonicNow().ns);
 }
 
 const AnimationFrames = struct {
@@ -889,6 +899,9 @@ pub const WorkerHost = struct {
     animation_frame_callbacks: std.ArrayListUnmanaged(AnimationFrameCallback) = .empty,
     /// Its animation frame callback identifier: the last handle handed out.
     animation_frame_identifier: u32 = 0,
+    /// The refresh moment (monotonic ns) of the last frame that ran, 0
+    /// before the first: one frame per refresh at most.
+    animation_frame_last_ns: i64 = 0,
     /// The timer manager's id of the next frame's task, armed only while
     /// callbacks wait.
     animation_frame_timer: ?runtime.TimerId = null,
@@ -1183,12 +1196,33 @@ pub const WorkerHost = struct {
         return null;
     }
 
-    /// The next frame's timer, unless one is armed.
+    /// The next frame's timer, unless one is armed: due at the first refresh
+    /// moment after the last frame's, and not before now.
     fn armAnimationFrame(self: *Self) void {
         if (self.animation_frame_timer != null) return;
         const timer = self.timer orelse return;
-        const id = timer.setTimeout(animation_frame_interval_ms, animationFrameTrampoline, self);
+        const now = monotonicNs();
+        const due = update_the_rendering.nextRefreshAtOrAfter(self.refreshOrigin(), self.refreshInterval(), @max(now, self.animation_frame_last_ns + 1));
+        const wait_ns = due - now;
+        const wait_ms: u64 = if (wait_ns <= 0) 0 else @intCast(std.math.divCeil(i64, wait_ns, std.time.ns_per_ms) catch unreachable);
+        const id = timer.setTimeout(wait_ms, animationFrameTrampoline, self);
         if (id != 0) self.animation_frame_timer = id;
+    }
+
+    /// The refresh grid's origin: the worker's time origin, or the
+    /// monotonic clock's own (0) when it records none - any fixed origin.
+    fn refreshOrigin(self: *const Self) i64 {
+        return self.time_origin_ns orelse 0;
+    }
+
+    /// The display's refresh interval (ns), from the owner Browser's
+    /// platform when the worker's realm reaches one (any thread).
+    fn refreshInterval(self: *const Self) i64 {
+        const realm = self.realm orelse return update_the_rendering.default_refresh_interval_ns;
+        const browser = @import("platform_state.zig").of(realm) orelse return update_the_rendering.default_refresh_interval_ns;
+        const interval = @import("platform").displayRefreshInterval(browser, 0);
+        if (interval == 0 or interval > std.math.maxInt(i32)) return update_the_rendering.default_refresh_interval_ns;
+        return @intCast(interval);
     }
 
     /// The worker's tasks are discarded (close() step 1, "terminate a

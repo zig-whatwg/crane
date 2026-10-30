@@ -4,8 +4,8 @@
 //! a counted keep of its wrapper, which JSNodeOwner::isReachableFromOpaqueRoots
 //! reads for a disconnected node. Each case observes the node's lifetime
 //! directly (a WeakRef made in an earlier job, collections from native code
-//! between jobs) and the count through dom.refcount.count: born (1) + the
-//! wrapper's (1) + the holds'.
+//! between jobs) and the count through dom.refcount.count: the wrapper's (1;
+//! it adopted the node's born reference, lane refcount7) + the holds'.
 const std = @import("std");
 const testing = std.testing;
 const browser_mod = @import("browser");
@@ -57,7 +57,7 @@ fn holdKeepsTheWrapperUntilReleased() !void {
     var hold: dom.node_holds.ReachableHold = .{};
     defer hold.release();
     hold.take(instanceOf(base), base);
-    try expectCount(3, base, "born, the wrapper's and the hold's");
+    try expectCount(2, base, "the wrapper's (the born reference, adopted) and the hold's");
     // Script lets go of the detached node; only the hold keeps it.
     try page.run("target = null; 0;");
     try collect(page);
@@ -82,7 +82,7 @@ fn keepWaitsForTheWrapper() !void {
     defer hold.release();
     // Taken while the node has no wrapper: the keep waits for one.
     hold.take(instanceOf(b), b);
-    try expectCount(2, b, "born and the hold's");
+    try expectCount(1, b, "the hold's alone: its insertion ended its born reference");
     try page.run("globalThis.weak = new WeakRef(host.firstChild); host.firstChild.expando = 'kept'; host.innerHTML = ''; host = null; 0;");
     try collect(page);
     try expectTrue(page, "weak.deref() !== undefined && weak.deref().expando === 'kept'");
@@ -103,7 +103,7 @@ fn nodeFreedUnderTheHold() !void {
         try page.run("globalThis.target = document.body.appendChild(document.createElement('p')); 0;");
         const base = try page.node("target");
         hold.take(instanceOf(base), base);
-        try expectCount(3, base, "born, the wrapper's and the hold's");
+        try expectCount(2, base, "the wrapper's (the born reference, adopted) and the hold's");
     }
     // The realm's end freed the node and emptied the hold: nothing is held,
     // and the release makes no engine call and writes nothing.

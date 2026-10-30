@@ -16,8 +16,8 @@
 //!   m_constructionStack`); the walks of define() and upgrade() hold their
 //!   root counted. Their counts must come back.
 //!
-//! Counts through dom.refcount.count: born (1) + the wrapper's (1, a global
-//! keeps the node) + the holders'. A reaction is enqueued from native code,
+//! Counts through dom.refcount.count: the wrapper's (1, a global keeps the
+//! node; it adopted the node's born reference, lane refcount7) + the holders'. A reaction is enqueued from native code,
 //! outside any [CEReactions] scope, so it waits in the backup element queue
 //! for the next microtask checkpoint, which a script's end is.
 const std = @import("std");
@@ -44,15 +44,15 @@ fn queuedReactionCountsItsElement() !void {
     defer page.close();
     try page.run(define_held);
     const e = try page.node("e");
-    try expectCount(2, e, "a custom element, before any reaction");
+    try expectCount(1, e, "a custom element, before any reaction");
     dom.custom_elements.enqueueCallback(instanceOf(e), .connected, .none);
-    try expectCount(3, e, "queued: its reaction record's counted reference");
+    try expectCount(2, e, "queued: its reaction record's counted reference");
     // A second reaction for the same element joins the same record.
     dom.custom_elements.enqueueCallback(instanceOf(e), .connected, .none);
-    try expectCount(3, e, "two reactions, one record");
+    try expectCount(2, e, "two reactions, one record");
     try page.run("0;");
     try page.run("if (calls !== 2) throw new Error('calls ' + calls); 0;");
-    try expectCount(2, e, "the reactions ran and the agent is quiescent: the record let go");
+    try expectCount(1, e, "the reactions ran and the agent is quiescent: the record let go");
 }
 
 test "a queued custom element reaction's record holds its element with one counted reference until it goes" {
@@ -65,7 +65,7 @@ fn queuedReactionAtTheRealmsEnd() !void {
     try page.run(define_held);
     const e = try page.node("e");
     dom.custom_elements.enqueueCallback(instanceOf(e), .connected, .none);
-    try expectCount(3, e, "queued");
+    try expectCount(2, e, "queued");
     // The page ends with the reaction still queued: the realm's end
     // releases the record once (an underflow or a double release is an
     // error log, which fails the test).
@@ -88,8 +88,8 @@ fn upgradeLeavesTheCount() !void {
     );
     const up = try page.node("up");
     const bad = try page.node("bad");
-    try expectCount(2, up, "an undefined element");
-    try expectCount(2, bad, "an undefined element");
+    try expectCount(1, up, "an undefined element");
+    try expectCount(1, bad, "an undefined element");
     try page.run(
         \\customElements.define('rc-up', class extends HTMLElement { constructor() { super(); this.done = true; } });
         \\customElements.define('rc-bad', class extends HTMLElement { constructor() { super(); throw new Error('no'); } });
@@ -97,8 +97,8 @@ fn upgradeLeavesTheCount() !void {
         \\if (reported !== 1) throw new Error('reported ' + reported);
         \\0;
     );
-    try expectCount(2, up, "upgraded");
-    try expectCount(2, bad, "a failed upgrade");
+    try expectCount(1, up, "upgraded");
+    try expectCount(1, bad, "a failed upgrade");
 }
 
 test "an upgrade - successful or failed - leaves its element's count as it found it" {
@@ -118,7 +118,7 @@ fn walksLeaveTheirRootsCount() !void {
     );
     const doc = try page.node("doc");
     const tree = try page.node("tree");
-    try expectCount(2, doc, "a scoped registry's document");
+    try expectCount(1, doc, "a scoped registry's document");
     try page.run(
         \\registry.define('rc-scoped', class extends HTMLElement {});
         \\if (!(x.constructor !== HTMLElement)) throw new Error('not upgraded');
@@ -127,8 +127,8 @@ fn walksLeaveTheirRootsCount() !void {
         \\if (tree.firstChild.constructor === HTMLElement) throw new Error('not upgraded by upgrade()');
         \\0;
     );
-    try expectCount(2, doc, "after define() walked it");
-    try expectCount(2, tree, "after upgrade() walked it");
+    try expectCount(1, doc, "after define() walked it");
+    try expectCount(1, tree, "after upgrade() walked it");
 }
 
 test "define() and upgrade() leave the counts of the trees they walk as they found them" {

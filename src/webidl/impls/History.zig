@@ -11,13 +11,14 @@
 //! URL and history update steps", and back/forward/go as "traverse the
 //! history by a delta".
 //!
-//! Traversal runs here: every navigable of the traversable whose entry at the
-//! target step differs from its current one changes. One that stays on its
-//! document - a pushState or fragment entry - has its URL and state restored
-//! and hears popstate (and hashchange); one that changes documents is
-//! navigated to its entry's URL by the navigation engine
-//! (dom.navigables.traverseNavigable), since Crane keeps no document for
-//! traversal (no bfcache).
+//! Traversals, reloads and the updates for navigable creation/destruction run
+//! as "apply the history step" on the traversable's session history traversal
+//! queue (html_core navigation.apply_history_step, engine-free). History
+//! appends them and supplies the steps of it that need a window, a realm or a
+//! document (dom.history_traversal, installed below): queueing a global task
+//! on a navigable's active window, beforeunload, and "update document for
+//! history step application" for a same-document entry - its URL and state
+//! restored, popstate (and hashchange).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -35,6 +36,8 @@ const BrowsingContext = html_core.window.BrowsingContext;
 const Navigables = html_core.window.Navigables;
 const joint_history = html_core.navigation.joint_history;
 const navigate_steps = html_core.navigation.navigate_steps;
+const traversal_queue = html_core.navigation.traversal_queue;
+const apply_history_step = html_core.navigation.apply_history_step;
 const basic_parser = @import("basic_parser");
 const url_serializer = @import("url_serializer");
 const engine = @import("engine");
@@ -99,6 +102,12 @@ pub fn installHooks() void {
         .reload_with_navigation_api_state = &reloadWindowWithNavigationApiState,
         .url_and_history_update = &urlAndHistoryUpdateOfWindow,
         .resume_traversal = &resumeTraversalOfWindow,
+        // "Apply the history step"'s window, realm and document steps (lane
+        // nav2 C2, H-NAV2-HT-APPLY).
+        .queue_task = &queueApplyTask,
+        .before_unload_canceled = &beforeUnloadCanceled,
+        .update_same_document = &sameDocumentTraversal,
+        .document_info = &history_documents.infoOf,
     });
 }
 
@@ -251,14 +260,29 @@ pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!voi
     // blocked, then return."
     if (!bc.allowedToNavigateOrUpdateHistory()) return;
     const delta_val: i32 = if (delta.wasPassed()) delta.getValue() else 0;
+    const top = bc.getTop();
+    // Stated exceptions to the spec's queue for reloads (golden rule 2: the
+    // integrator's ruling of 2026-10-27 from lane nav2's three-browser probe,
+    // tmp/probes/nav2-tth-probe.html, from the sixth of six top-level
+    // entries - Chrome 156 | Firefox 158 | Safari 27: go0_middle [-2,0,-1]
+    // 4 | 4 | 5, go0_last [-2,0] 4 | 4 | 6, go0_first [0,-2] 4 | 4 | 4).
+    // HTML "reload" step 4 appends "apply the reload history step" behind
+    // whatever is queued, and "traverse the history by a delta" step 4
+    // appends behind the reload, so the queue would load the page again
+    // after a pending traversal, and load it before a later one. Chrome and
+    // Firefox, for a TOP-LEVEL traversable's own History:
+    // - (a) history.go(0) while an earlier delta traversal that takes it to
+    //   another document is pending is ignored (go0_middle, go0_last);
+    // - (b) a delta traversal appended while a history.go(0) reload of it is
+    //   queued or running cancels the reload (go0_first).
+    // location.reload(), navigation.reload() and child navigables keep the
+    // spec's queue (integrator, 2026-10-28, lane nav2 C2).
     if (delta_val == 0) {
-        // Step 3: "reload document's node navigable" - its current entry,
-        // repopulated from the entry's URL: a traversal of the navigable to
-        // the entry it is on. Reload step 1: not while unloading. A
-        // navigable the engine has no navigation for - the top-level page -
-        // is not reloaded, stated.
+        if (bc == top and apply_history_step.pendingCrossDocumentDelta(top, null) != null) return;
+        // Step 3: "reload document's node navigable". Reload step 1: not
+        // while unloading.
         const window = internal.window orelse return;
-        reloadNavigable(window, bc);
+        reloadNavigable(window, bc, true);
         return;
     }
     // Delta traverse step 4 hands "apply the history step" this's associated
@@ -271,17 +295,58 @@ pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!voi
     // three refuse the navigation API's traversals (sandboxing-back-parent,
     // sandboxing-back-sibling: 1/1 each), which Navigation's traverseToKey
     // checks.
-    queueTraversal(internal, bc.getTop(), .{ .delta = delta_val }, false, null);
+    // Stated exceptions to the spec's queue (golden rule 2: Chrome 156 and
+    // Firefox 158 agree in every variant; Safari 27 coalesces everywhere,
+    // WebKit bug 313808, and is outvoted). "Traverse the history by a delta"
+    // step 4 appends every call, and the queue would apply each delta in turn
+    // once the one before had finished. The browsers, while an earlier delta
+    // traversal that takes a document elsewhere is pending (queued, or its
+    // population in flight):
+    // - of a TOP-LEVEL traversable: ignore further delta traversals - the
+    //   first call's target wins (lane nav2's probes
+    //   tmp/probes/nav2-tth-probe.html, tth2 -3,-2,+1 -> page 3 ... tth5, and
+    //   nav2-axes-probe.html a/b: back(),back() -> p2, p1#2, one load; WPT
+    //   html/browsers/history/the-history-interface/traverse_the_history_2..5);
+    // - of a CHILD navigable, made through its own History: coalesce - the
+    //   target is the pending target plus the new delta, range-checked from
+    //   the pending target (out of range: ignored), replacing the pending
+    //   traversal, so only the final target loads (nav2-axes-probe.html c-e:
+    //   p1 with one load, whether the parent or the frame calls and whether
+    //   the second step is cross- or same-document; WPT
+    //   overlapping-navigations-and-traversals/cross-document-traversal-
+    //   cross-document-traversal.html "-2 with only one load event" and
+    //   cross-document-traversal-same-document-traversal.html "coalesced",
+    //   both from WPT #36364). Chrome computes a renderer's offset from the
+    //   pending entry (NavigationControllerImpl::GetIndexForOffset), and the
+    //   new navigation replaces the pending one.
+    // The navigation API's traversals, same-document delta traversals and
+    // traversals of other navigables keep the queue. Integrator's rulings of
+    // 2026-10-27 and 2026-10-28.
+    if (apply_history_step.pendingCrossDocumentDelta(top, if (bc == top) null else bc.id)) |pending| {
+        if (bc == top) return;
+        apply_history_step.coalesceDelta(top, pending, delta_val);
+        return;
+    }
+    // The reload rule (b) above.
+    if (bc == top) _ = apply_history_step.cancelGoZeroReload(top);
+    // Whether this one takes a document elsewhere, asked now. One out of
+    // range is appended all the same - the queued steps ask again when they
+    // run (step 4.4), and an earlier traversal may have made it valid - but
+    // it is no pending traversal for the rules above (tth4's -10, tth5's +10).
+    const history = ensureEntries(bc) catch return;
+    const cross_document = if (history.stepByDelta(delta_val)) |target| apply_history_step.changesDocument(top, history, target) else false;
+    apply_history_step.traverse(top, internal.allocator, .{ .delta = delta_val }, .{ .cross_document_delta = cross_document, .delta_navigable = bc.id });
 }
 
-/// HTML "reload" `bc`'s navigable: its current entry, repopulated - a
-/// traversal of the navigable to the entry it is on. Not while its document
-/// is unloading (reload step 1).
-fn reloadNavigable(window: *runtime.Instance, bc: *BrowsingContext) void {
-    reloadNavigableWithNavigationApiState(window, bc, null);
+/// HTML "reload" `bc`'s navigable: its current entry, repopulated by "apply
+/// the reload history step" on the traversable's queue. Not while its
+/// document is unloading (reload step 1). `go_zero`: history.go(0) asked
+/// (the reload rules in call_go).
+fn reloadNavigable(window: *runtime.Instance, bc: *BrowsingContext, go_zero: bool) void {
+    reloadNavigableWithNavigationApiState(window, bc, null, go_zero);
 }
 
-fn reloadNavigableWithNavigationApiState(window: *runtime.Instance, bc: *BrowsingContext, navigation_api_state: ?joint_history.SerializedState) void {
+fn reloadNavigableWithNavigationApiState(window: *runtime.Instance, bc: *BrowsingContext, navigation_api_state: ?joint_history.SerializedState, go_zero: bool) void {
     const document = interfaces.Window.get_document(window) catch return;
     if (@import("dom").document_lifecycle.isUnloading(document)) return;
     const history = ensureEntries(bc) catch return;
@@ -302,60 +367,55 @@ fn reloadNavigableWithNavigationApiState(window: *runtime.Instance, bc: *Browsin
     // current entry retains its old state until cancellation checks pass.
     var api_state = (navigation_api_state orelse entry.api_state).clone(allocator) catch return;
     defer api_state.deinit(allocator);
+    // The Browser's list, asked again after script ran: `bc` may be freed.
+    const id = bc.id;
+    const navigables = bc.navigables orelse return;
     if (!@import("dom").navigation_api.firePushReplaceReload(window, .{
         .navigation_type = .reload,
         .destination_url = url,
         .is_same_document = false,
         .navigation_api_state = api_state,
     })) return;
-    // "Apply the reload history step" (apply the history step, with
-    // checkForCancelation): beforeunload at the navigable's document and its
-    // descendants', before anything unloads; the navigation below does not
-    // fire it again.
-    const id = bc.id;
-    const top_id = bc.getTop().id;
-    // The Browser's list, asked again after script ran: `bc` may be freed.
-    const navigables = bc.navigables orelse return;
-    {
-        var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
-        defer tree.deinit(bc.allocator);
-        bc.collectDescendants(bc.allocator, &tree) catch return;
-        if (beforeUnloadCanceled(tree.items, bc.allocator)) return;
-    }
-    // The handlers ran script: the navigable - or its traversable, which
-    // owns `history` - may be gone.
+    // The handlers ran script: the navigable may be gone.
     if (navigables.byId(id) != bc or bc.orphaned or bc.is_closed) return;
-    if (navigables.byId(top_id) == null) return;
-    const current = history.entryById(entry_id) orelse return;
-    if (navigation_api_state != null) {
-        // Apply the reload history step only after navigate/beforeunload
-        // permit it, to the entry captured before either handler ran.
-        history.setEntryApiState(entry_id, api_state);
-        api_state = .undefined;
-    }
-    // A reload's previousEntry is the entry it reloads.
-    @import("dom").navigables.traverseNavigable(@ptrCast(bc), current.id, current.url, current.resource, current.id);
+    // Steps 2-4: the entry's reload is pending, and "apply the reload
+    // history step" is appended to the traversable's queue - beforeunload at
+    // the navigable's document and its descendants' there, then the
+    // population, which the item waits for. The navigation API state given
+    // becomes the entry's once navigate and beforeunload permit it, the
+    // entry captured before either handler ran.
+    apply_history_step.reload(bc, allocator, entry_id, if (navigation_api_state != null) api_state else null, go_zero);
 }
 
 /// dom.history_traversal: reload `window`'s navigable.
 fn reloadWindow(window: *runtime.Instance) void {
     const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
-    reloadNavigable(window, bc);
+    reloadNavigable(window, bc, false);
 }
 
 /// dom.history_traversal: navigation.reload()'s borrowed serialized state.
 fn reloadWindowWithNavigationApiState(window: *runtime.Instance, state: joint_history.SerializedState) void {
     const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
-    reloadNavigableWithNavigationApiState(window, bc, state);
+    reloadNavigableWithNavigationApiState(window, bc, state, false);
 }
 
 /// dom.history_traversal: queue a traversal of `window`'s traversable to
-/// `step` (the navigation API's "perform a navigation API traversal").
-fn traverseWindowToStep(window: *runtime.Instance, step: u32) void {
-    const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
-    const history_instance = interfaces.Window.get_history(window) catch return;
-    const internal = getInternal(history_instance) orelse return;
-    queueTraversal(internal, bc.getTop(), .{ .step = step }, false, initiatorOf(window, bc));
+/// `step` (the navigation API's "perform a navigation API traversal"), with
+/// its key's checks (`api`, taken).
+fn traverseWindowToStep(window: *runtime.Instance, step: u32, api: ?@import("dom").history_traversal.ApiTraversal) void {
+    const drop = struct {
+        fn of(a: ?@import("dom").history_traversal.ApiTraversal) void {
+            if (a) |given| given.drop(given.context);
+        }
+    }.of;
+    const bc = @import("dom").browser_state.browsingContextOf(window) orelse return drop(api);
+    const history_instance = interfaces.Window.get_history(window) catch return drop(api);
+    const internal = getInternal(history_instance) orelse return drop(api);
+    apply_history_step.traverse(bc.getTop(), internal.allocator, .{ .step = step }, .{
+        .initiator = initiatorOf(window, bc),
+        .api = api,
+        .api_navigable = bc.id,
+    });
 }
 
 /// dom.history_traversal: "resume applying the traverse history step" to
@@ -365,7 +425,7 @@ fn resumeTraversalOfWindow(window: *runtime.Instance, step: u32) void {
     const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
     const history_instance = interfaces.Window.get_history(window) catch return;
     const internal = getInternal(history_instance) orelse return;
-    queueTraversal(internal, bc.getTop(), .{ .step = step }, true, null);
+    apply_history_step.traverse(bc.getTop(), internal.allocator, .{ .step = step }, .{ .resumed = true });
 }
 
 /// dom.history_traversal: the URL and history update steps for `window`'s
@@ -566,43 +626,13 @@ fn setDocumentUrl(window: *runtime.Instance, url: []const u8) void {
 // Traversal
 // =============================================================================
 
-/// Where a traversal goes: `delta` used steps away from the current one
-/// ("traverse the history by a delta"), or to a given step (the navigation
-/// API's traversals).
-const Target = union(enum) {
-    delta: i32,
-    step: u32,
-};
-
-/// A traversal waiting on the traversable's session history traversal queue.
-const Traversal = struct {
-    /// The traversable's Browser's list, which outlives every task of its
-    /// loop: the traversable is looked up by id on it.
-    navigables: *Navigables,
-    top_id: u64,
-    target: Target,
-    allocator: Allocator,
-    /// "Resume applying the traverse history step": the traversable's
-    /// navigate event was fired and intercepted; it is not fired again.
-    resumed: bool,
-    /// "Apply the history step"'s initiatorToCheck with its source snapshot
-    /// params; null for a traversal no sandboxed document asked for.
-    initiator: ?Initiator = null,
-};
-
-/// The navigable whose document asked for a traversal - by id: it can go
-/// before the traversal runs - and that document's source snapshot params:
-/// its active sandboxing flag set and whether its window had transient
-/// activation, as it asked.
-const Initiator = struct {
-    navigable: u64,
-    snapshot: html_core.navigation.sandbox_navigation.SourceSnapshot,
-};
-
 /// The initiator a traversal `window`'s document asks for carries, for the
-/// navigable `bc`: null when the document is not sandboxed - an empty
-/// sandboxing flag set allows every navigation, so there is nothing to check.
-fn initiatorOf(window: ?*runtime.Instance, bc: *BrowsingContext) ?Initiator {
+/// navigable `bc` ("apply the history step"'s initiatorToCheck and its
+/// source snapshot params: the document's active sandboxing flag set and
+/// whether its window had transient activation, as it asked): null when the
+/// document is not sandboxed - an empty sandboxing flag set allows every
+/// navigation, so there is nothing to check.
+fn initiatorOf(window: ?*runtime.Instance, bc: *BrowsingContext) ?apply_history_step.Initiator {
     const w = window orelse return null;
     const document = interfaces.Window.get_document(w) catch return null;
     const flags = @import("dom").document_scripts.activeSandboxingFlags(document);
@@ -613,173 +643,34 @@ fn initiatorOf(window: ?*runtime.Instance, bc: *BrowsingContext) ?Initiator {
     } };
 }
 
-/// Append session history traversal steps - a task, here - that apply the
-/// step `target` names.
-fn queueTraversal(internal: *InternalState, top: *BrowsingContext, target: Target, resumed: bool, initiator: ?Initiator) void {
-    const window = internal.window orelse return;
-    const navigables = top.navigables orelse return;
-    const task = internal.allocator.create(Traversal) catch return;
-    task.* = .{ .navigables = navigables, .top_id = top.id, .target = target, .allocator = internal.allocator, .resumed = resumed, .initiator = initiator };
-    const loop = window.ctx.getOptionalEventLoop() orelse return runTraversal(task);
-    loop.queueTask(.{ .callback = &runTraversal, .context = task, .drop = &dropTraversal });
+/// dom.history_traversal queue_task: "queue a global task on the navigation
+/// and traversal task source" of `navigable`'s active window - or, with
+/// none (its realm is being replaced, or it shows no document), on the loop
+/// its traversable's queue is serviced on: the traversable's active
+/// window's, a window's in its own tree, and only then any window's of the
+/// same Browser, whose window realms share one agent loop (integrator,
+/// conditions 3 and its 2026-10-28 refinement). Never inline.
+fn queueApplyTask(navigables: *Navigables, navigable: *BrowsingContext, task: @import("dom").history_traversal.Task) bool {
+    const loop = loopOfContext(navigable) orelse serviceLoopOf(navigables, navigable.getTop()) orelse return false;
+    loop.queueTask(.{ .callback = task.callback, .context = task.context, .drop = task.drop });
+    return true;
 }
 
-fn dropTraversal(context: ?*anyopaque) void {
-    const task: *Traversal = @ptrCast(@alignCast(context orelse return));
-    task.allocator.destroy(task);
+/// The loop `queueApplyTask` falls back to (TraversalQueue.serviceContext's
+/// order).
+fn serviceLoopOf(navigables: *Navigables, top: *BrowsingContext) ?runtime.EventLoop {
+    const bc = traversal_queue.TraversalQueue.serviceContext(navigables, top, {}, hasLoop) orelse return null;
+    return loopOfContext(bc);
 }
 
-/// A navigable that changes entry in a traversal - by id: the changes run
-/// script (traverse navigate events, popstate), which can remove a frame
-/// and free its browsing context before the next change is applied.
-const Change = struct {
-    navigable: u64,
-    old_url: []u8,
-    /// The entry the navigable is on before the traversal (12.1's
-    /// previousEntry).
-    from_entry: u64,
-    target_entry: u64,
-    same_document: bool,
-    /// The target entry's origin is the current entry's.
-    same_origin: bool,
-};
+fn hasLoop(_: void, bc: *BrowsingContext) bool {
+    return loopOfContext(bc) != null;
+}
 
-/// "Apply the traverse history step" (HTML 7.4.6), without bfcache: every
-/// navigable whose target entry differs from its current one changes -
-/// within its document when the entry shares the document state, else by a
-/// navigation to the entry's URL. A navigable under one that changes
-/// documents is not looked at: it goes with its parent's document.
-/// Not modelled, stated: history-action activation for the traversable's
-/// navigate event.
-fn runTraversal(context: ?*anyopaque) void {
-    const task: *Traversal = @ptrCast(@alignCast(context orelse return));
-    const allocator = task.allocator;
-    defer allocator.destroy(task);
-
-    const navigables = task.navigables;
-    const top = navigables.byId(task.top_id) orelse return;
-    var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
-    defer tree.deinit(allocator);
-    top.collectDescendants(allocator, &tree) catch return;
-
-    const history = top.jointHistory() catch return;
-    for (tree.items) |bc| _ = ensureEntries(bc) catch {};
-
-    // Steps 2-4: the target step.
-    const target = switch (task.target) {
-        .delta => |delta| history.stepByDelta(delta) orelse return,
-        .step => |step| step,
-    };
-
-    // "Apply the history step" step 3: "If initiatorToCheck is not null ...
-    // for each navigable of get all navigables whose current session history
-    // entry will change or reload: if initiatorToCheck is not allowed by
-    // sandboxing to navigate navigable given sourceSnapshotParams, then
-    // return "initiator-disallowed"." An initiator gone since it asked is
-    // allowed nothing.
-    if (task.initiator) |initiator| {
-        const source = navigables.byId(initiator.navigable) orelse return;
-        for (tree.items) |bc| {
-            const current = history.currentEntry(bc.id) orelse continue;
-            const target_entry = history.entryAt(bc.id, target) orelse continue;
-            if (current == target_entry) continue;
-            if (!html_core.navigation.sandbox_navigation.allowedBySandboxingToNavigate(source, bc, initiator.snapshot)) return;
-        }
-    }
-
-    // Step 5, "checking if unloading is canceled" step 4: the traversable's
-    // navigate event, when its entry changes within its origin. Canceled -
-    // or intercepted, whose commit resumes the traversal - and the
-    // traversal ends here.
-    if (!task.resumed) {
-        const current = history.currentEntry(top.id);
-        const target_entry = history.entryAt(top.id, target);
-        if (current != null and target_entry != null and current.? != target_entry.? and
-            std.mem.eql(u8, current.?.origin, target_entry.?.origin))
-        {
-            if (top.getActiveWindow()) |w| {
-                const window: *runtime.Instance = @ptrCast(@alignCast(w));
-                if (!@import("dom").navigation_api.fireTraverse(window, target_entry.?.id, .none)) return;
-            }
-        }
-    }
-
-    // Step 6: the navigables that change, parents first.
-    var changes: std.ArrayListUnmanaged(Change) = .empty;
-    defer {
-        for (changes.items) |c| allocator.free(c.old_url);
-        changes.deinit(allocator);
-    }
-    var skipped: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
-    defer skipped.deinit(allocator);
-    for (tree.items) |bc| {
-        if (bc.parent) |parent| {
-            if (std.mem.indexOfScalar(*BrowsingContext, skipped.items, parent) != null) {
-                skipped.append(allocator, bc) catch return;
-                continue;
-            }
-        }
-        const current = history.currentEntry(bc.id) orelse continue;
-        const target_entry = history.entryAt(bc.id, target) orelse continue;
-        if (current == target_entry) continue;
-        const same_document = current.document_state == target_entry.document_state and
-            target_entry.document != null and target_entry.document == bc.getActiveDocument();
-        const old_url = allocator.dupe(u8, current.url) catch return;
-        changes.append(allocator, .{
-            .navigable = bc.id,
-            .old_url = old_url,
-            .from_entry = current.id,
-            .target_entry = target_entry.id,
-            .same_document = same_document,
-            .same_origin = std.mem.eql(u8, current.origin, target_entry.origin),
-        }) catch {
-            allocator.free(old_url);
-            return;
-        };
-        if (!same_document) skipped.append(allocator, bc) catch return;
-    }
-
-    // "Apply the history step" step 7, with checkForCancelation: "checking
-    // if unloading is canceled" for the navigables the traversal takes to
-    // another document - beforeunload at each one's active document and its
-    // descendants' (`skipped`, parents first) - after the traversable's
-    // navigate event and before the other navigables' (step 12.7). Canceled:
-    // the traversal ends with nothing changed. The navigations below do not
-    // fire it again.
-    if (beforeUnloadCanceled(skipped.items, allocator)) return;
-    // The handlers ran script: the traversable - and its history - may be
-    // gone.
-    if (navigables.byId(task.top_id) != top) return;
-
-    // Step 20: the traversable's current session history step.
-    history.setCurrentStep(target);
-
-    for (changes.items) |change| {
-        // Looked up again for each change: an earlier change's script may
-        // have removed the navigable (a discarded one is closed) - or its
-        // traversable.
-        const navigable = navigables.byId(change.navigable) orelse continue;
-        if (navigable.orphaned or navigable.is_closed) continue;
-        if (navigables.byId(task.top_id) != top) return;
-        // Step 12.7: a navigable other than the traversable whose entry
-        // changes within its origin fires a traverse navigate event (not
-        // cancelable).
-        if (navigable != top and change.same_origin) {
-            if (navigable.getActiveWindow()) |w| {
-                _ = @import("dom").navigation_api.fireTraverse(@ptrCast(@alignCast(w)), change.target_entry, .none);
-            }
-            // The event's listeners ran script: the traversable - and the
-            // history it owns - may be gone, the navigable too.
-            if (navigables.byId(task.top_id) != top) return;
-            if (navigables.byId(change.navigable) != navigable or navigable.orphaned or navigable.is_closed) continue;
-        }
-        const entry = history.entryById(change.target_entry) orelse continue;
-        if (change.same_document) {
-            sameDocumentTraversal(navigable, change.old_url, entry);
-        } else {
-            @import("dom").navigables.traverseNavigable(@ptrCast(navigable), entry.id, entry.url, entry.resource, change.from_entry);
-        }
-    }
+fn loopOfContext(bc: *BrowsingContext) ?runtime.EventLoop {
+    const w = bc.getActiveWindow() orelse return null;
+    const window: *runtime.Instance = @ptrCast(@alignCast(w));
+    return window.ctx.getOptionalEventLoop();
 }
 
 /// Beforeunload at the active document of each of `contexts`, in order:
@@ -809,6 +700,10 @@ fn beforeUnloadCanceled(contexts: []const *BrowsingContext, allocator: Allocator
 /// the fragment changed.
 fn sameDocumentTraversal(bc: *BrowsingContext, old_url: []const u8, entry: *joint_history.Entry) void {
     const window: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveWindow() orelse return));
+    // Steps 3-4 and 6.4.2: the document's History length and index and its
+    // navigation API entries are the traversable's now - its view, held
+    // since the traversal began (JointHistory.holdView), is written.
+    if (bc.getTop().joint_history) |history| history.releaseView(bc.id);
     // The traversal task switches into each changed navigable's realm.
     var traversal: SameDocumentTraversal = .{ .window = window, .old_url = old_url, .entry = entry };
     engine.runInRealm(window.ctx, SameDocumentTraversal.steps, &traversal) catch |err| {
