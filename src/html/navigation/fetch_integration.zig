@@ -724,8 +724,14 @@ pub fn resultFromResponse(
     // Copy relevant headers for COOP/COEP
     result.headers = NavigationFetchResult.HeaderMap.init(allocator);
     const security_headers = [_][]const u8{
+        // HTML "obtain an opener policy" / "obtain an embedder policy":
+        // each header and its -Report-Only twin.
         "cross-origin-opener-policy",
+        "cross-origin-opener-policy-report-only",
         "cross-origin-embedder-policy",
+        "cross-origin-embedder-policy-report-only",
+        // Fetch 3.7 for a child navigable (HTML "create navigation params by
+        // fetching" step 21.13).
         "cross-origin-resource-policy",
         "content-security-policy",
         "content-security-policy-report-only",

@@ -1,6 +1,7 @@
 //! RFC 9651 §4.2 parsing, projected onto what its callers consume: a
 //! Dictionary's String values (Reporting §3.3), token inner lists (SRI
-//! §3.8), and an Item's Boolean (HTML's `Origin-Agent-Cluster`). Other items and
+//! §3.8), an Item's Boolean (HTML's `Origin-Agent-Cluster`), and an Item's
+//! Token with its `report-to` String (HTML's opener and embedder policies). Other items and
 //! parameters are fully validated before being discarded; one malformed
 //! value rejects the entire field. Keys borrow the input; String values are
 //! owned.
@@ -222,6 +223,51 @@ pub fn parseItemBoolean(allocator: Allocator, input: []const u8) Error!?bool {
     parser.spaces();
     if (parser.peek() != null) return error.InvalidField;
     return boolean;
+}
+
+/// An Item projected onto a Token and its `report-to` String parameter:
+/// what HTML's `Cross-Origin-Opener-Policy` and
+/// `Cross-Origin-Embedder-Policy` (and their -Report-Only twins) read.
+/// `token` borrows the input; `report_to` is OWNED.
+pub const TokenItem = struct {
+    /// The bare item when it is a Token; null for an item of another type.
+    token: ?[]const u8,
+    /// The last `report-to` parameter, when it is a String (an earlier one
+    /// is overwritten by a later one of any type, §4.2.3.2).
+    report_to: ?[]u8,
+};
+
+/// RFC 9651 §4.2 with field type "item" - Fetch's "get a structured field
+/// value" given "item" - projected onto `TokenItem`. Other parameters are
+/// validated and discarded. A field that is not exactly one valid item
+/// (a list from two combined headers included) is error.InvalidField.
+pub fn parseItemToken(allocator: Allocator, input: []const u8) Error!TokenItem {
+    // 1. "Convert input_bytes into an ASCII string input_string; if
+    // conversion fails, fail parsing."
+    for (input) |c| if (c > 127) return error.InvalidField;
+    var parser: Parser = .{ .allocator = allocator, .input = input };
+    // 2. "Discard any leading SP characters from input_string."
+    parser.spaces();
+    // 5. §4.2.3 Parsing an Item: a bare item, then its parameters.
+    const bare = try parser.bareItem();
+    if (bare.string) |string| allocator.free(string);
+    var report_to: ?[]u8 = null;
+    errdefer if (report_to) |endpoint| allocator.free(endpoint);
+    // §4.2.3.2 Parsing Parameters.
+    while (parser.consume(';')) {
+        parser.spaces();
+        const name = try parser.key();
+        const value: Parser.BareItem = if (parser.consume('=')) try parser.bareItem() else .{};
+        if (std.mem.eql(u8, name, "report-to")) {
+            if (report_to) |previous| allocator.free(previous);
+            report_to = value.string;
+        } else if (value.string) |string| allocator.free(string);
+    }
+    // 6-7. "Discard any leading SP characters from input_string. If
+    // input_string is not empty, fail parsing."
+    parser.spaces();
+    if (parser.peek() != null) return error.InvalidField;
+    return .{ .token = bare.token, .report_to = report_to };
 }
 
 const Parser = struct {

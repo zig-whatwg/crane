@@ -387,6 +387,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A queued session history update has two kinds of reader](architecture-a-queued-history-update-has-two-readers.md) - Before moving a spec step behind a queue, list who reads its effect. Script's views follow the browsers, which show the update at once; only the readers the spec's ordering exists for - here the traversal endpoints - wait for the queue.
 
 ### Spec Compliance
+- [Spec Compliance: Browsers inherit COOP into top-level local documents](spec-compliance-browsers-inherit-coop-into-top-level-local-documents.md) - Before enforcing a navigation policy that reads only response headers, check what local-scheme documents get - the browsers inherit where the spec is silent, and the tests encode it - and compare with navigationParams's origin, never the URL's.
 - [Serialization arithmetic can overflow finite inputs](spec-compliance-serialization-arithmetic-can-overflow-finite-inputs.md) - Check coordinate sums where they happen and retain the whole original value when the ruled fallback requires it.
 - [Sizes validates math before CSS clamping](spec-compliance-sizes-validates-math-before-css-clamping.md) - **Preserve only the diagnostic a consumer needs before shared simplification erases it; keep the common arithmetic unchanged.**
 - [Picture moves update both parents](spec-compliance-picture-moves-update-both-parents.md) - **A state-preserving move still changes the structural inputs to source selection. Preserve the object; recompute the affected image selection.**

@@ -77,6 +77,25 @@ pub const IntegrityViolationReporter = struct {
     context: *anyopaque,
     report: *const fn (context: *anyopaque, violation: *const IntegrityViolation) void,
 };
+
+/// Fetch "queue a cross-origin embedder policy CORP violation report": the
+/// blocked response's URL, the request's destination, whether the report is
+/// the report-only value's ("reporting") or the enforced one's ("enforce"),
+/// and the embedder policy's endpoint for it. BORROWED for the call.
+pub const CoepViolation = struct {
+    blocked_url: []const u8,
+    destination: Destination,
+    report_only: bool,
+    endpoint: []const u8,
+};
+
+/// The client's reporting queue for its embedder policy's CORP violations,
+/// reached synchronously by HTTP fetch step 5, as IntegrityViolationReporter
+/// is. The callback only queues reports.
+pub const CoepViolationReporter = struct {
+    context: *anyopaque,
+    report: *const fn (context: *anyopaque, violation: *const CoepViolation) void,
+};
 const Body = body_mod.Body;
 
 // =============================================================================
@@ -462,6 +481,13 @@ pub const InternalRequest = struct {
     /// kept with this dropped, before it reports. Null for a request whose
     /// reports nobody hears.
     integrity_violation_reporter: ?IntegrityViolationReporter = null,
+
+    /// The client's embedder policy CORP violation reports (HTTP fetch step
+    /// 5) go to its global. BORROWED with the CSP reporter's lifetime, as
+    /// integrity_violation_reporter is: cloned with the request, dropped
+    /// when the fetch is kept past its client. Null for a request whose
+    /// reports nobody hears.
+    coep_violation_reporter: ?CoepViolationReporter = null,
 
     /// Top-level navigation initiator origin
     top_level_navigation_initiator_origin: ?[]const u8 = null,
@@ -913,6 +939,7 @@ pub const InternalRequest = struct {
             .timing_reporter = self.timing_reporter,
             .service_worker = self.service_worker,
             .integrity_violation_reporter = self.integrity_violation_reporter,
+            .coep_violation_reporter = self.coep_violation_reporter,
             // Cloned below: each request owns its own.
             .policy_container = .client,
             // Copied below when it is an owned URL.
