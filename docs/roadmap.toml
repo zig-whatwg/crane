@@ -631,6 +631,7 @@ progress = [
   "8a0e526ca3 - B3: node-tree reads through interfaces.Node and the other generated interfaces; CharacterData's data as a construction argument, read in place through dom.character_data",
   "922b3fb427 - B4: Element's attribute list, ID, classes and qualified name are dom.element_data.ElementData, read in place; writes through dom.element_attributes.set/remove; an HTML element's inline style is dom.cssom.InlineStyle",
   "0d2de53a60 - B5: event handler IDL attributes are the generated interface's (dom.event_handlers.value/setValue); Event's dispatch state is dom.event_dispatch.EventState, which the dispatcher works on through of(); every fire site through dom.fire_event",
+  "9abe95ae30a - impls7: every reference outside the files other lanes held: Document's state types in dom.document_state, sub-objects and node creation facts as construction arguments, the Streams helpers and same_object in src/dom; left are HTMLIFrameElement, Window and the V8 adapter",
 ]
 
   [[infra.items]]
