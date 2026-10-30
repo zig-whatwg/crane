@@ -1242,7 +1242,14 @@ fn cssWideKeyword(text: []const u8) ?values.CssWide {
     const token = stream.next();
     if (token.token_type != .ident) return null;
     if (!stream.atEnd()) return null;
-    return values.CssWide.parse(token.value);
+    if (values.CssWide.parse(token.value)) |keyword| return keyword;
+    if (std.mem.indexOfScalar(u8, token.value, '\\') == null) return null;
+    // Syntax 3 §4.3.12 consumes escaped code points into the ident value;
+    // Values 4 §4.1.1 and Cascade 5 §7.3 apply its CSS-wide meaning.
+    inline for (std.meta.tags(values.CssWide)) |keyword| {
+        if (tokenizer_mod.nameEql(token.value, keyword.name())) return keyword;
+    }
+    return null;
 }
 
 /// Unsupported functions cannot pass through opaque grammars; an arbitrary
