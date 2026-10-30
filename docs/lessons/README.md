@@ -702,6 +702,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Refresh aliases with their realm's interface objects](codegen-refresh-aliases-with-their-realms-interface-objects.md) - An alias names the realm's interface object, not the current contents of another global property.
 
 ### Testing
+- [A shared limit below one file's parallel demand flakes by interleaving](testing-a-shared-limit-below-one-files-parallel-demand-flakes-by-interleaving.md) - A flake that hits only the subtests sharing a capped resource, always with the same message, is the cap: count the file's peak demand before looking for a race.
 - [QuotaExceededError needs its dedicated WPT assertion](testing-quotaexceedederror-needs-its-dedicated-wpt-assertion.md) - **Check what the harness actually asserts, and replace invalid failing evidence with a fresh BASE/TIP comparison.**
 - [Inferred error sets need member comparisons](testing-inferred-error-sets-need-member-comparisons.md) - **Compare the contract's members, and correct an invalid RED openly rather than changing product code to satisfy a mistaken test.**
 - [A test page that was never navigated has the wrong time origin](testing-a-page-never-navigated-has-the-wrong-time-origin.md) - Convert a moment for script through the global's Performance (performance_timeline.relativeCoarseTime), and test any time conversion on a navigated page - helpers.Page never sets the navigation start.
