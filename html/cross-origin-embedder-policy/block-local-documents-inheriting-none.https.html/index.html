@@ -25,15 +25,18 @@
 <dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>1</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-63a713a7f2</code>, <span class="nowrap">29 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/63a713a7f2"><code>63a713a7f2</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-error g-block">ERROR</span> <span class="quiet">runner status <code>ERROR</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c7ab229911</code>, <span class="nowrap">30 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c7ab229911"><code>c7ab229911</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/cross-origin-embedder-policy/block-local-documents-inheriting-none.https.html"><code>html/<wbr>cross-<wbr>origin-<wbr>embedder-<wbr>policy/<wbr>block-<wbr>local-<wbr>documents-<wbr>inheriting-<wbr>none.<wbr>https.<wbr>html</code></a></dd></div>
 </dl>
+<div class="harness"><p class="harness-label">Harness message</p><pre class="msg">TypeError: r.toJSON is not a function</pre></div>
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
+<h3 class="run-head"><code>/html/cross-origin-embedder-policy/block-local-documents-inheriting-none.https.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<pre class="msg harness-msg">TypeError: r.toJSON is not a function</pre>
 <ol class="subtests">
 <li class="sub s-fail" id="s-0185a0f1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Prevent local scheme documents from loading within a COEP: require-corp iframe if they inherit COEP: none</span></summary><pre class="msg">assert_equals: expected 3 but got 0</pre></details><a class="self" href="#s-0185a0f1" aria-label="Link to this subtest">&para;</a></li>
 </ol>

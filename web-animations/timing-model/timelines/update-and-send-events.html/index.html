@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../web-animations/"><code>web-<wbr>animations/</code></a></li><li><a href="../../../../web-animations/timing-model/"><code>timing-<wbr>model/</code></a></li><li><a href="../../../../web-animations/timing-model/timelines/"><code>timelines/</code></a></li><li aria-current="page"><code>update-<wbr>and-<wbr>send-<wbr>events.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>update-<wbr>and-<wbr>send-<wbr>events.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="web-animations/timing-model/timelines/update-and-send-events.html">
-<p class="figures-main"><span class="fg-pass">4</span><span class="fg-of"> / 9</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>5</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">5</span><span class="fg-of"> / 9</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>4</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-63a713a7f2</code>, <span class="nowrap">29 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/63a713a7f2"><code>63a713a7f2</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c7ab229911</code>, <span class="nowrap">30 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c7ab229911"><code>c7ab229911</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-animations/timing-model/timelines/update-and-send-events.html"><code>web-<wbr>animations/<wbr>timing-<wbr>model/<wbr>timelines/<wbr>update-<wbr>and-<wbr>send-<wbr>events.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -42,7 +42,7 @@
 <li class="sub s-fail" id="s-d1450e08"><details><summary><span class="mark">FAIL</span><span class="sub-name">Sorts cancel events by composite order</span></summary><pre class="msg">assert_array_equals: cancel events should be sorted by composite order lengths differ, expected array [&quot;CSSTransition:cancel&quot;, &quot;CSSAnimation:cancel&quot;, &quot;ScriptAnimation:cancel&quot;, &quot;transitioncancel&quot;, &quot;animationcancel&quot;] length 5, got [&quot;ScriptAnimation:cancel&quot;] length 1</pre></details><a class="self" href="#s-d1450e08" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-9dc9e270"><details><summary><span class="mark">FAIL</span><span class="sub-name">Queues a cancel event in transitionstart event callback</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot set properties of undefined (setting &#39;oncancel&#39;)&quot;</pre></details><a class="self" href="#s-9dc9e270" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-e002c984"><details><summary><span class="mark">FAIL</span><span class="sub-name">Sorts events for the same transition</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot set properties of undefined (setting &#39;oncancel&#39;)&quot;</pre></details><a class="self" href="#s-e002c984" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-06792cb4"><details><summary><span class="mark">FAIL</span><span class="sub-name">Playback events with the same timeline retain the order in which they arequeued</span></summary><pre class="msg">assert_array_equals: Calling finish() synchronously queues a finish event when updating the finish state so it should appear before the cancel event expected property 0 to be &quot;finish&quot; but got &quot;cancel&quot; (expected array [&quot;finish&quot;, &quot;cancel&quot;] got [&quot;cancel&quot;, &quot;finish&quot;])</pre></details><a class="self" href="#s-06792cb4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-06792cb4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Playback events with the same timeline retain the order in which they arequeued</span></div><a class="self" href="#s-06792cb4" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-9b410025"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">All timelines are updated before running microtasks</span></div><a class="self" href="#s-9b410025" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>

@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../css/"><code>css/</code></a></li><li><a href="../../../../css/css-color/"><code>css-<wbr>color/</code></a></li><li><a href="../../../../css/css-color/parsing/"><code>parsing/</code></a></li><li aria-current="page"><code>color-<wbr>computed-<wbr>hsl.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>color-<wbr>computed-<wbr>hsl.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="css/css-color/parsing/color-computed-hsl.html">
-<p class="figures-main"><span class="fg-pass">3,752</span><span class="fg-of"> / 3,753</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>1</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">3,751</span><span class="fg-of"> / 3,753</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>2</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-63a713a7f2</code>, <span class="nowrap">29 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/63a713a7f2"><code>63a713a7f2</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c7ab229911</code>, <span class="nowrap">30 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c7ab229911"><code>c7ab229911</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-color/parsing/color-computed-hsl.html"><code>css/<wbr>css-<wbr>color/<wbr>parsing/<wbr>color-<wbr>computed-<wbr>hsl.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,12 +35,16 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
+<li class="sub s-fail" id="s-570a0654"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsla(calc(50deg + (sign(2cqw - 10px) * 10deg)), 100%, 37.5%, 51%)&#39;</span></summary><pre class="msg">Colors do not match.
+Actual:   rgb(255, 0, 0)
+Expected: rgba(191, 191, 0, 0.51).
+Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 4 got 3</pre></details><a class="self" href="#s-570a0654" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-f0484266"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property color value &#39;hsla(calc(50deg + (sign(2cqw - 10px) * 10deg)), 100%, 37.5%, 52%)&#39;</span></summary><pre class="msg">Colors do not match.
-Actual:   rgba(191, 191, 0, 0.52)
+Actual:   rgb(255, 0, 0)
 Expected: rgba(191, 128, 0, 0.52).
-Error: assert_array_approx_equals: Numeric parameters are approximately equal. property 1, expected 128 +/- 0.01, expected 128 but got 191</pre></details><a class="self" href="#s-f0484266" aria-label="Link to this subtest">&para;</a></li>
+Error: assert_array_approx_equals: Numeric parameters are approximately equal. lengths differ, expected 4 got 3</pre></details><a class="self" href="#s-f0484266" aria-label="Link to this subtest">&para;</a></li>
 </ol>
-<p class="omitted">3,752 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+<p class="omitted">3,751 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
 </div>
 </section>
 <footer class="foot">

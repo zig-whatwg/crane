@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../css/"><code>css/</code></a></li><li><a href="../../../css/css-syntax/"><code>css-<wbr>syntax/</code></a></li><li aria-current="page"><code>input-<wbr>preprocessing.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>input-<wbr>preprocessing.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="css/css-syntax/input-preprocessing.html">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 10</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>10</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">10</span><span class="fg-of"> / 10</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-63a713a7f2</code>, <span class="nowrap">29 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/63a713a7f2"><code>63a713a7f2</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c7ab229911</code>, <span class="nowrap">30 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c7ab229911"><code>c7ab229911</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-syntax/input-preprocessing.html"><code>css/<wbr>css-<wbr>syntax/<wbr>input-<wbr>preprocessing.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,16 +35,16 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-23c11242"><details><summary><span class="mark">FAIL</span><span class="sub-name">&quot;foo␀&quot; becomes &quot;foo�&quot;</span></summary><pre class="msg">assert_equals: expected &quot;foo\ufffd&quot; but got &quot;foo\0&quot;</pre></details><a class="self" href="#s-23c11242" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-4b78c893"><details><summary><span class="mark">FAIL</span><span class="sub-name">&quot;f␀oo&quot; becomes &quot;f�oo&quot;</span></summary><pre class="msg">assert_equals: expected &quot;f\ufffdoo&quot; but got &quot;f\0oo&quot;</pre></details><a class="self" href="#s-4b78c893" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-772c22e2"><details><summary><span class="mark">FAIL</span><span class="sub-name">&quot;␀foo&quot; becomes &quot;�foo&quot;</span></summary><pre class="msg">assert_equals: expected &quot;\ufffdfoo&quot; but got &quot;\0foo&quot;</pre></details><a class="self" href="#s-772c22e2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-4747dec9"><details><summary><span class="mark">FAIL</span><span class="sub-name">&quot;␀&quot; becomes &quot;�&quot;</span></summary><pre class="msg">assert_equals: expected &quot;\ufffd&quot; but got &quot;\0&quot;</pre></details><a class="self" href="#s-4747dec9" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c640fb0c"><details><summary><span class="mark">FAIL</span><span class="sub-name">&quot;␀␀␀&quot; becomes &quot;���&quot;</span></summary><pre class="msg">assert_equals: expected &quot;\ufffd\ufffd\ufffd&quot; but got &quot;\0\0\0&quot;</pre></details><a class="self" href="#s-c640fb0c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-87ae798f"><details><summary><span class="mark">FAIL</span><span class="sub-name">&quot;fooU+d800&quot; becomes &quot;foo�&quot;</span></summary><pre class="msg">assert_equals: expected &quot;foo\ufffd&quot; but got &quot;fooU+d800&quot;</pre></details><a class="self" href="#s-87ae798f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5c820e40"><details><summary><span class="mark">FAIL</span><span class="sub-name">&quot;fU+d800oo&quot; becomes &quot;f�oo&quot;</span></summary><pre class="msg">assert_equals: expected &quot;f\ufffdoo&quot; but got &quot;fU+d800oo&quot;</pre></details><a class="self" href="#s-5c820e40" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-cec95373"><details><summary><span class="mark">FAIL</span><span class="sub-name">&quot;U+d800foo&quot; becomes &quot;�foo&quot;</span></summary><pre class="msg">assert_equals: expected &quot;\ufffdfoo&quot; but got &quot;U+d800foo&quot;</pre></details><a class="self" href="#s-cec95373" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-8316cf3e"><details><summary><span class="mark">FAIL</span><span class="sub-name">&quot;U+d800&quot; becomes &quot;�&quot;</span></summary><pre class="msg">assert_equals: expected &quot;\ufffd&quot; but got &quot;U+d800&quot;</pre></details><a class="self" href="#s-8316cf3e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-48811a0c"><details><summary><span class="mark">FAIL</span><span class="sub-name">&quot;U+d800U+d800U+d800&quot; becomes &quot;���&quot;</span></summary><pre class="msg">assert_equals: expected &quot;\ufffd\ufffd\ufffd&quot; but got &quot;U+d800U+d800U+d800&quot;</pre></details><a class="self" href="#s-48811a0c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-23c11242"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&quot;foo␀&quot; becomes &quot;foo�&quot;</span></div><a class="self" href="#s-23c11242" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4b78c893"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&quot;f␀oo&quot; becomes &quot;f�oo&quot;</span></div><a class="self" href="#s-4b78c893" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-772c22e2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&quot;␀foo&quot; becomes &quot;�foo&quot;</span></div><a class="self" href="#s-772c22e2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-4747dec9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&quot;␀&quot; becomes &quot;�&quot;</span></div><a class="self" href="#s-4747dec9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c640fb0c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&quot;␀␀␀&quot; becomes &quot;���&quot;</span></div><a class="self" href="#s-c640fb0c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-87ae798f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&quot;fooU+d800&quot; becomes &quot;foo�&quot;</span></div><a class="self" href="#s-87ae798f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-5c820e40"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&quot;fU+d800oo&quot; becomes &quot;f�oo&quot;</span></div><a class="self" href="#s-5c820e40" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cec95373"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&quot;U+d800foo&quot; becomes &quot;�foo&quot;</span></div><a class="self" href="#s-cec95373" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8316cf3e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&quot;U+d800&quot; becomes &quot;�&quot;</span></div><a class="self" href="#s-8316cf3e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-48811a0c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&quot;U+d800U+d800U+d800&quot; becomes &quot;���&quot;</span></div><a class="self" href="#s-48811a0c" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

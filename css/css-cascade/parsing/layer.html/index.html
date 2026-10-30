@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../css/"><code>css/</code></a></li><li><a href="../../../../css/css-cascade/"><code>css-<wbr>cascade/</code></a></li><li><a href="../../../../css/css-cascade/parsing/"><code>parsing/</code></a></li><li aria-current="page"><code>layer.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>layer.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="css/css-cascade/parsing/layer.html">
-<p class="figures-main"><span class="fg-pass">8</span><span class="fg-of"> / 11</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>3</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">11</span><span class="fg-of"> / 11</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-63a713a7f2</code>, <span class="nowrap">29 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/63a713a7f2"><code>63a713a7f2</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-c7ab229911</code>, <span class="nowrap">30 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c7ab229911"><code>c7ab229911</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-cascade/parsing/layer.html"><code>css/<wbr>css-<wbr>cascade/<wbr>parsing/<wbr>layer.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -41,12 +41,12 @@
 <li class="sub s-pass" id="s-b2bd7f48"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">@layer A, B.C.D, C; should be a valid rule</span></div><a class="self" href="#s-b2bd7f48" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-f82a1eae"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">@layer; should be an invalid rule</span></div><a class="self" href="#s-f82a1eae" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-581d3d40"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">@layer A . A; should be an invalid rule</span></div><a class="self" href="#s-581d3d40" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ddeae224"><details><summary><span class="mark">FAIL</span><span class="sub-name">@layer {
-} should be a valid rule</span></summary><pre class="msg">assert_equals: serialization should be canonical expected &quot;@layer {\n}&quot; but got &quot;@layer {\n\n}&quot;</pre></details><a class="self" href="#s-ddeae224" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-3d1476fb"><details><summary><span class="mark">FAIL</span><span class="sub-name">@layer A {
-} should be a valid rule</span></summary><pre class="msg">assert_equals: serialization should be canonical expected &quot;@layer A {\n}&quot; but got &quot;@layer A {\n\n}&quot;</pre></details><a class="self" href="#s-3d1476fb" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-07d6f792"><details><summary><span class="mark">FAIL</span><span class="sub-name">@layer A.B {
-} should be a valid rule</span></summary><pre class="msg">assert_equals: serialization should be canonical expected &quot;@layer A.B {\n}&quot; but got &quot;@layer A.B {\n\n}&quot;</pre></details><a class="self" href="#s-07d6f792" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-ddeae224"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">@layer {
+} should be a valid rule</span></div><a class="self" href="#s-ddeae224" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-3d1476fb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">@layer A {
+} should be a valid rule</span></div><a class="self" href="#s-3d1476fb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-07d6f792"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">@layer A.B {
+} should be a valid rule</span></div><a class="self" href="#s-07d6f792" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-8d87f0bc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">@layer A . B {
 } should be an invalid rule</span></div><a class="self" href="#s-8d87f0bc" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-fb72efe6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">@layer A, B, C {
