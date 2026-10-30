@@ -20,6 +20,7 @@ const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
+const file = @import("file");
 
 pub const Steps = struct {
     /// `blob`'s bytes, borrowed (see above), or null when `blob` has no
@@ -35,6 +36,10 @@ pub const Steps = struct {
     /// Restore a specification-computed type before exposing a fresh File.
     /// Refuses shared data and preserves the old type on allocation failure.
     set_exact_type: *const fn (blob: *runtime.Instance, serialized_type: []const u8) anyerror!void,
+    /// `blob`'s data itself, SHARED - its bytes and type, as a blob URL entry
+    /// keeps them (File API 8.3.1: the entry's object is the Blob) - or null
+    /// when `blob` has no Blob state.
+    data_of: *const fn (blob: *runtime.Instance) ?*file.BlobData,
 };
 
 var steps: ?Steps = null;
@@ -50,6 +55,21 @@ pub fn install(s: Steps) void {
 pub fn bytesOf(blob: *runtime.Instance) ?[]const u8 {
     const s = steps orelse return null;
     return s.bytes_of(blob);
+}
+
+/// `blob`'s data, shared with it (see `Steps.data_of`): a blob URL entry
+/// keeps it. Null when Blob has installed nothing, or `blob` is no Blob.
+pub fn dataOf(blob: *runtime.Instance) ?*file.BlobData {
+    const s = steps orelse return null;
+    return s.data_of(blob);
+}
+
+/// Give `blob` - new, made through its interface (a File's constructor makes
+/// its Blob part this way), with no bytes yet - a copy of `bytes` and
+/// `mime_type` as its type, as the File API's constructors take one.
+pub fn setBytes(blob: *runtime.Instance, bytes: []const u8, mime_type: []const u8) !void {
+    const s = steps orelse return error.NotSupported;
+    try s.set_bytes(blob, bytes, mime_type);
 }
 
 /// A new Blob of `ctx` "representing" `bytes` (copied), with type
