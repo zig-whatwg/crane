@@ -87,6 +87,7 @@ pub fn call_updateTiming(instance: *runtime.Instance, timing: webidl.Opt(diction
     defer easing_text.deinit(allocator);
     const input = try animations.options.fromOptionalEffectTiming(instance.ctx, timing.getOrDefault(.{}), &easing_text, allocator);
     try animations.options.updateTiming(effect, input);
+    animations.registry.valuesChanged(instance.ctx);
 }
 
 /// Operation: replace (Web Animations 2): "If there is no parent group,

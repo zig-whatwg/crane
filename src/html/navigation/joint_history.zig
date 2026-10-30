@@ -268,6 +268,15 @@ pub const Prepared = struct {
 
 pub const HistoryHandling = enum { push, replace };
 
+/// What `listCrossDocument` did: the step "apply the push/replace history
+/// step" applies (targetStep), the new entry's id, and whether a push
+/// cleared forward entries.
+pub const ListedCrossDocument = struct {
+    step: u32,
+    entry: u64,
+    removed: bool,
+};
+
 /// What `navigateSameDocument` made: its new entry's id - HTML's newEntry or
 /// historyEntry - and, for a replace, the id of the entry it replaces
 /// (entryToReplace).
@@ -323,6 +332,19 @@ pub const View = struct {
 pub const JointHistory = struct {
     allocator: Allocator,
     entries: std.ArrayListUnmanaged(Entry) = .empty,
+    /// Each entry's index in `entries`, by id, and each navigable's entries'
+    /// indexes in list order, with how many entries are pending (lane nav2
+    /// H): every lookup by id or navigable reads these, not a scan of the
+    /// whole list - a fragment navigation makes several, and the list holds
+    /// every navigable's entries. An append adds to them; a change that
+    /// removes or moves entries rebuilds them (`reindex`) in one pass. False
+    /// after a rebuild ran out of memory: the lookups scan the list again
+    /// until a later rebuild succeeds.
+    positions: std.AutoHashMapUnmanaged(u64, u32) = .empty,
+    lists: std.AutoArrayHashMapUnmanaged(u64, std.ArrayListUnmanaged(u32)) = .empty,
+    pending_count: u32 = 0,
+    pending_push_count: u32 = 0,
+    indexes_valid: bool = true,
     /// "Current session history step".
     current_step: u32 = 0,
     next_id: u64 = 1,
@@ -352,6 +374,22 @@ pub const JointHistory = struct {
     /// The "apply the history step" that is running, from its step 8 to its
     /// step 20 (`beginApply`, `endApply`): null when none is.
     apply: ?Apply = null,
+    /// `writeViews`' buffers, kept between calls (lane nav2 H).
+    view_scratch: ViewScratch = .{},
+
+    const ViewScratch = struct {
+        projected: std.ArrayListUnmanaged(?u32) = .empty,
+        pending: std.ArrayListUnmanaged(u32) = .empty,
+        steps: std.ArrayListUnmanaged(u32) = .empty,
+        order: std.ArrayListUnmanaged(u32) = .empty,
+
+        fn deinit(self: *ViewScratch, allocator: Allocator) void {
+            self.projected.deinit(allocator);
+            self.pending.deinit(allocator);
+            self.steps.deinit(allocator);
+            self.order.deinit(allocator);
+        }
+    };
 
     /// HTML "apply the history step" as the session history sees it while
     /// one runs (lane nav2 C2). The traversable's current session history
@@ -408,11 +446,15 @@ pub const JointHistory = struct {
     pub fn deinit(self: *JointHistory) void {
         for (self.entries.items) |*entry| entry.deinit(self.allocator);
         self.entries.deinit(self.allocator);
+        self.positions.deinit(self.allocator);
+        for (self.lists.values()) |*list| list.deinit(self.allocator);
+        self.lists.deinit(self.allocator);
         self.update_only.deinit(self.allocator);
         for (self.views.values()) |*view| view.deinit(self.allocator);
         self.views.deinit(self.allocator);
         self.held.deinit(self.allocator);
         if (self.apply) |*apply| apply.deinit(self.allocator);
+        self.view_scratch.deinit(self.allocator);
     }
 
     /// A change of the entries, the current step or a kept active entry
@@ -427,6 +469,111 @@ pub const JointHistory = struct {
     fn endChange(self: *JointHistory) void {
         self.change_depth -= 1;
         if (self.change_depth == 0) self.updateViews();
+    }
+
+    // =========================================================================
+    // The indexes (lane nav2 H)
+    // =========================================================================
+
+    /// Room in the indexes for one more entry of `navigable`, made before the
+    /// entry is appended, so that `indexAppended` cannot fail.
+    fn reserveIndex(self: *JointHistory, navigable: u64) !void {
+        try self.positions.ensureUnusedCapacity(self.allocator, 1);
+        const slot = try self.lists.getOrPut(self.allocator, navigable);
+        if (!slot.found_existing) slot.value_ptr.* = .empty;
+        try slot.value_ptr.ensureUnusedCapacity(self.allocator, 1);
+    }
+
+    /// The entry at `index` - the last - was appended, with room reserved.
+    fn indexAppended(self: *JointHistory, index: usize) void {
+        if (!self.indexes_valid) return self.reindex();
+        const entry = &self.entries.items[index];
+        if (entry.pending) {
+            self.pending_count += 1;
+            if (entry.pending_push) self.pending_push_count += 1;
+        }
+        self.positions.putAssumeCapacityNoClobber(entry.id, @intCast(index));
+        self.lists.getPtr(entry.navigable).?.appendAssumeCapacity(@intCast(index));
+    }
+
+    /// Rebuild the indexes from the list, in one pass: after a change that
+    /// removed or moved entries, or gave one a new id. The capacity a rebuild
+    /// needs is the capacity the indexes have unless the list grew, so it
+    /// allocates only to make an invalid index valid again.
+    fn reindex(self: *JointHistory) void {
+        self.pending_count = 0;
+        self.pending_push_count = 0;
+        for (self.entries.items) |entry| {
+            if (!entry.pending) continue;
+            self.pending_count += 1;
+            if (entry.pending_push) self.pending_push_count += 1;
+        }
+        self.positions.clearRetainingCapacity();
+        for (self.lists.values()) |*list| list.clearRetainingCapacity();
+        self.indexes_valid = false;
+        for (self.entries.items, 0..) |entry, index| {
+            self.positions.put(self.allocator, entry.id, @intCast(index)) catch return;
+            const slot = self.lists.getOrPut(self.allocator, entry.navigable) catch return;
+            if (!slot.found_existing) slot.value_ptr.* = .empty;
+            slot.value_ptr.append(self.allocator, @intCast(index)) catch return;
+        }
+        // The lists of navigables with no entry left go.
+        var i: usize = 0;
+        while (i < self.lists.count()) {
+            if (self.lists.values()[i].items.len > 0) {
+                i += 1;
+                continue;
+            }
+            self.lists.values()[i].deinit(self.allocator);
+            self.lists.swapRemoveAt(i);
+        }
+        self.indexes_valid = true;
+    }
+
+    /// The entries of one navigable, as indexes into `entries` in list order:
+    /// its index list, or - when the indexes are invalid - a scan.
+    const NavigableEntries = struct {
+        entries: []const Entry,
+        navigable: u64,
+        list: ?[]const u32,
+        at: usize = 0,
+
+        fn next(self: *NavigableEntries) ?usize {
+            if (self.list) |list| {
+                if (self.at >= list.len) return null;
+                self.at += 1;
+                return list[self.at - 1];
+            }
+            while (self.at < self.entries.len) {
+                self.at += 1;
+                if (self.entries[self.at - 1].navigable == self.navigable) return self.at - 1;
+            }
+            return null;
+        }
+    };
+
+    fn entriesOf(self: *const JointHistory, navigable: u64) NavigableEntries {
+        const list: ?[]const u32 = if (!self.indexes_valid) null else if (self.lists.getPtr(navigable)) |l| l.items else &.{};
+        return .{ .entries = self.entries.items, .navigable = navigable, .list = list };
+    }
+
+    /// Remove every entry `drop` selects, keeping the others in order, in one
+    /// pass, and rebuild the indexes: whether any went.
+    fn removeWhere(self: *JointHistory, context: anytype, comptime drop: fn (@TypeOf(context), *const Entry) bool) bool {
+        var kept: usize = 0;
+        const items = self.entries.items;
+        for (items, 0..) |*entry, i| {
+            if (drop(context, entry)) {
+                entry.deinit(self.allocator);
+                continue;
+            }
+            if (kept != i) items[kept] = items[i];
+            kept += 1;
+        }
+        if (kept == items.len) return false;
+        self.entries.shrinkRetainingCapacity(kept);
+        self.reindex();
+        return true;
     }
 
     /// HTML "apply the history step" step 20: the traversable's current
@@ -483,11 +630,13 @@ pub const JointHistory = struct {
         apply.deinit(self.allocator);
     }
 
-    /// Stated deviation, until E and F1 (integrator, 2026-10-28): HTML
-    /// queues "finalize a cross-document navigation" and a same-document
-    /// navigation's finalize steps on the traversal queue, so neither runs
-    /// inside an apply; Crane commits both inline. A commit made while an
-    /// apply runs settles it first - the step moves to its target (step 20
+    /// Stated deviation (integrator, 2026-10-28; since lane nav2 E and F1
+    /// only for the commits that are still made inline - an embedder's own
+    /// load, top_level_traversables.recordLoad; a javascript: URL's result;
+    /// a commit that found no queue to append its finalize to): HTML queues
+    /// "finalize a cross-document navigation" on the traversal queue, so it
+    /// never runs inside an apply (`listCrossDocument` is the queued one). A
+    /// commit made inline while an apply runs settles it first - the step moves to its target (step 20
     /// early, and the apply's own does nothing) and the views of the
     /// navigables it does not change are released (their step 18 early) -
     /// so the commit lands after the apply, as it would from the queue, and
@@ -523,8 +672,10 @@ pub const JointHistory = struct {
     /// it has none there yet.
     pub fn entryAt(self: *JointHistory, navigable: u64, step: u32) ?*Entry {
         var best: ?*Entry = null;
-        for (self.entries.items) |*entry| {
-            if (entry.navigable != navigable or entry.pending or entry.step > step) continue;
+        var it = self.entriesOf(navigable);
+        while (it.next()) |index| {
+            const entry = &self.entries.items[index];
+            if (entry.pending or entry.step > step) continue;
             if (best == null or entry.step >= best.?.step) best = entry;
         }
         return best;
@@ -617,15 +768,16 @@ pub const JointHistory = struct {
     /// same task (the window's "script-closable").
     pub fn entryCount(self: *const JointHistory, navigable: u64) usize {
         var count: usize = 0;
-        for (self.entries.items) |entry| {
-            if (entry.navigable == navigable) count += 1;
-        }
+        var it = self.entriesOf(navigable);
+        if (it.list) |list| return list.len;
+        while (it.next()) |_| count += 1;
         return count;
     }
 
     pub fn hasNavigable(self: *const JointHistory, navigable: u64) bool {
-        for (self.entries.items) |entry| {
-            if (entry.navigable == navigable and !entry.pending) return true;
+        var it = self.entriesOf(navigable);
+        while (it.next()) |index| {
+            if (!self.entries.items[index].pending) return true;
         }
         return false;
     }
@@ -655,9 +807,11 @@ pub const JointHistory = struct {
         var step = self.viewStep();
         if (self.listedCurrentEntry(parent)) |parent_entry| {
             step = parent_entry.step;
-            for (self.entries.items) |entry| {
+            var it = self.entriesOf(parent);
+            while (it.next()) |index| {
+                const entry = &self.entries.items[index];
                 if (entry.pending) continue;
-                if (entry.navigable == parent and entry.document_state == parent_entry.document_state and entry.step < step) step = entry.step;
+                if (entry.document_state == parent_entry.document_state and entry.step < step) step = entry.step;
             }
         }
         const doc_state = self.next_document_state;
@@ -683,6 +837,7 @@ pub const JointHistory = struct {
         const owned_origin = try self.allocator.dupe(u8, origin);
         errdefer self.allocator.free(owned_origin);
         const id = if (prepared) |p| p.id else self.next_id;
+        try self.reserveIndex(navigable);
         try self.entries.append(self.allocator, .{
             .id = id,
             .navigable = navigable,
@@ -696,6 +851,7 @@ pub const JointHistory = struct {
             .api_id = if (prepared) |p| p.api_id else self.randomUuid(),
             .origin = owned_origin,
         });
+        self.indexAppended(self.entries.items.len - 1);
         if (prepared == null) self.next_id += 1;
     }
 
@@ -712,17 +868,12 @@ pub const JointHistory = struct {
     /// ones have no step - as it runs on the traversal queue, with no apply
     /// settled: whether any entry went.
     fn clearForwardListed(self: *JointHistory) bool {
-        var removed_any = false;
-        var i: usize = 0;
-        while (i < self.entries.items.len) {
-            const entry = &self.entries.items[i];
-            if (!entry.pending and entry.step > self.current_step) {
-                var removed = self.entries.orderedRemove(i);
-                removed.deinit(self.allocator);
-                removed_any = true;
-            } else i += 1;
-        }
-        return removed_any;
+        // One compaction of the list (lane nav2 H), not a removal per entry.
+        return self.removeWhere(self.current_step, struct {
+            fn forward(current: u32, entry: *const Entry) bool {
+                return !entry.pending and entry.step > current;
+            }
+        }.forward);
     }
 
     /// "Finalize a cross-document navigation" steps 5-10 for a new document
@@ -755,14 +906,55 @@ pub const JointHistory = struct {
         self.beginChange();
         defer self.endChange();
         self.settleApply();
-        // Stated, with settleApply, until F1: the synchronous navigations'
-        // finalize steps queued before this commit would run before it on the
-        // queue - their pending entries are listed first, in order (their
+        // Stated, with settleApply, for the inline commits (see there): the
+        // synchronous navigations' finalize steps queued before this commit
+        // would run before it on the queue - their pending entries are listed first, in order (their
         // queued finalize steps then find nothing to do).
         self.flushPending();
         const doc_state = self.next_document_state;
         self.next_document_state += 1;
         try self.commit(navigable, url, doc_state, document, .null, .undefined, origin, handling, true, prepared);
+    }
+
+    /// HTML "finalize a cross-document navigation" steps 5-9 as they run on
+    /// the traversal queue (lane nav2 F1, apply_history_step's .push_replace
+    /// apply): `navigable`'s new entry for a document of `origin` at `url`.
+    /// "push" clears the forward session history - its listed entries past
+    /// the current step; nothing is settled, the caller is the queue's
+    /// running item - and lists the entry at the current step + 1;
+    /// "replace" puts it in place of the navigable's current entry, at its
+    /// step, keeping its navigation API key when the two are same origin,
+    /// and applies the current step (step 9's targetStep).
+    /// The current step does not move: "apply the push/replace history step"
+    /// sets it to the returned step at its step 20 (`endApply`). Unlike
+    /// `commitPreparedDocument`, no pending entry is listed: the synchronous
+    /// navigations' finalize steps queued before this one have run, and
+    /// those queued after it run after it.
+    pub fn listCrossDocument(self: *JointHistory, navigable: u64, url: []const u8, document: ?*anyopaque, origin: []const u8, handling: HistoryHandling, prepared: ?Prepared) !ListedCrossDocument {
+        self.beginChange();
+        defer self.endChange();
+        // The entry's id and keys: those pageswap named, or - with none
+        // reserved - made now (a replace keeps a same-origin key).
+        const reserved = prepared orelse self.prepareDocument(navigable, origin, handling);
+        _ = self.update_only.remove(navigable);
+        const doc_state = self.next_document_state;
+        self.next_document_state += 1;
+        switch (handling) {
+            .push => {
+                const removed = self.clearForwardListed();
+                const step = self.current_step + 1;
+                try self.append(navigable, step, url, doc_state, document, .null, .undefined, origin, null, reserved);
+                return .{ .step = step, .entry = reserved.id, .removed = removed };
+            },
+            .replace => {
+                // Step 9 (replace) 4: "Set targetStep to traversable's
+                // current session history step" - not the replaced entry's
+                // step (a frame's first entry sits at the step its parent's
+                // document began at).
+                try self.commit(navigable, url, doc_state, document, .null, .undefined, origin, .replace, true, reserved);
+                return .{ .step = self.current_step, .entry = reserved.id, .removed = false };
+            },
+        }
     }
 
     /// A copy of `entry` as it is now, owned by this history's allocator.
@@ -867,6 +1059,7 @@ pub const JointHistory = struct {
         // the view's new navigation API entry: nothing changes unless all of
         // it can.
         try self.entries.ensureUnusedCapacity(allocator, 1);
+        try self.reserveIndex(navigable);
         if (self.validView(navigable)) |view| try view.api_ids.ensureUnusedCapacity(allocator, 1);
         // The active entry as the document shows it: while a traversal that
         // changes the navigable waits, its step 8.2 has made the target
@@ -912,6 +1105,7 @@ pub const JointHistory = struct {
             .pending_push = handling == .push,
             .pending_replaces = replaces orelse 0,
         });
+        self.indexAppended(self.entries.items.len - 1);
         // The navigable displays it: a traversal's kept entry no longer is.
         _ = self.update_only.remove(navigable);
         // The views read it (`writeViews`); a view a waiting traversal holds
@@ -964,7 +1158,9 @@ pub const JointHistory = struct {
     /// this one. The case step 2 exists for - a traversal that activated
     /// another entry for the navigable since - drops the chain
     /// (`dropPending`), and an inline cross-document commit lists it
-    /// (`flushPending`, until F1).
+    /// (`flushPending`; a queued one, `listCrossDocument`, runs after the
+    /// finalize steps queued before it, and drops the navigable's chain
+    /// made after it when its document is made active).
     ///
     /// Step 5: a push clears the forward session history and is listed at
     /// the current step + 1; a replace takes its replaced entry's place, at
@@ -1018,6 +1214,8 @@ pub const JointHistory = struct {
             listed.step = step;
             listed.pending = false;
             listed.pending_push = false;
+            self.pending_count -= 1;
+            self.pending_push_count -= 1;
             // "Apply the push/replace history step" step 20, inline.
             self.current_step = step;
             return .{ .step = step, .removed = removed };
@@ -1030,6 +1228,7 @@ pub const JointHistory = struct {
             // "Replace entryToReplace with targetEntry in targetEntries": it
             // is no longer there - nothing to put the entry in place of.
             moved.deinit(self.allocator);
+            self.reindex();
             return null;
         };
         const slot = &self.entries.items[slot_index];
@@ -1042,6 +1241,8 @@ pub const JointHistory = struct {
         slot.activation = null;
         slot.deinit(self.allocator);
         slot.* = moved;
+        // The entry moved into its replaced one's place: one rebuild.
+        self.reindex();
         return .{ .step = self.current_step, .removed = false };
     }
 
@@ -1054,14 +1255,11 @@ pub const JointHistory = struct {
         if (self.lastPending(navigable) == null) return;
         self.beginChange();
         defer self.endChange();
-        var i: usize = 0;
-        while (i < self.entries.items.len) {
-            const entry = &self.entries.items[i];
-            if (entry.pending and entry.navigable == navigable) {
-                var removed = self.entries.orderedRemove(i);
-                removed.deinit(self.allocator);
-            } else i += 1;
-        }
+        _ = self.removeWhere(navigable, struct {
+            fn pendingOf(n: u64, entry: *const Entry) bool {
+                return entry.pending and entry.navigable == n;
+            }
+        }.pendingOf);
     }
 
     /// Every pending entry is listed, in order, now - an inline
@@ -1083,54 +1281,52 @@ pub const JointHistory = struct {
 
     /// Whether the entry `entry_id` is pending (see the file comment).
     pub fn isPending(self: *const JointHistory, entry_id: u64) bool {
-        for (self.entries.items) |entry| {
-            if (entry.id == entry_id) return entry.pending;
-        }
-        return false;
+        const index = self.indexOfId(entry_id) orelse return false;
+        return self.entries.items[index].pending;
     }
 
     fn isPendingOf(self: *const JointHistory, navigable: u64, entry_id: u64) bool {
-        for (self.entries.items) |entry| {
-            if (entry.id == entry_id) return entry.pending and entry.navigable == navigable;
-        }
-        return false;
+        const index = self.indexOfId(entry_id) orelse return false;
+        const entry = &self.entries.items[index];
+        return entry.pending and entry.navigable == navigable;
     }
 
     /// Whether `navigable` has pending entries.
     pub fn hasPending(self: *const JointHistory, navigable: u64) bool {
-        for (self.entries.items) |entry| {
-            if (entry.pending and entry.navigable == navigable) return true;
-        }
-        return false;
+        return self.firstPendingIndex(navigable) != null;
     }
 
     /// Whether a pending push - which clears the forward history when it is
     /// listed - waits to be finalized.
     pub fn hasPendingPush(self: *const JointHistory) bool {
-        for (self.entries.items) |entry| {
-            if (entry.pending and entry.pending_push) return true;
-        }
-        return false;
+        return self.pending_push_count > 0;
     }
 
     fn lastPending(self: *JointHistory, navigable: u64) ?*Entry {
-        var i = self.entries.items.len;
-        while (i > 0) {
-            i -= 1;
-            const entry = &self.entries.items[i];
-            if (entry.pending and entry.navigable == navigable) return entry;
+        if (self.pending_count == 0) return null;
+        var last: ?*Entry = null;
+        var it = self.entriesOf(navigable);
+        while (it.next()) |index| {
+            const entry = &self.entries.items[index];
+            if (entry.pending) last = entry;
         }
-        return null;
+        return last;
     }
 
     fn firstPendingIndex(self: *const JointHistory, navigable: u64) ?usize {
-        for (self.entries.items, 0..) |entry, i| {
-            if (entry.pending and entry.navigable == navigable) return i;
+        if (self.pending_count == 0) return null;
+        var it = self.entriesOf(navigable);
+        while (it.next()) |index| {
+            if (self.entries.items[index].pending) return index;
         }
         return null;
     }
 
     fn indexOfId(self: *const JointHistory, id: u64) ?usize {
+        if (self.indexes_valid) {
+            const index = self.positions.get(id) orelse return null;
+            return index;
+        }
         for (self.entries.items, 0..) |entry, i| {
             if (entry.id == id) return i;
         }
@@ -1262,8 +1458,10 @@ pub const JointHistory = struct {
         out.clearRetainingCapacity();
         var raw: std.ArrayListUnmanaged(*Entry) = .empty;
         defer raw.deinit(allocator);
-        for (self.entries.items) |*entry| {
-            if (entry.navigable == navigable and !entry.pending) try raw.append(allocator, entry);
+        var it = self.entriesOf(navigable);
+        while (it.next()) |index| {
+            const entry = &self.entries.items[index];
+            if (!entry.pending) try raw.append(allocator, entry);
         }
         std.mem.sort(*Entry, raw.items, {}, struct {
             fn lessThan(_: void, a: *Entry, b: *Entry) bool {
@@ -1278,6 +1476,16 @@ pub const JointHistory = struct {
         while (last + 1 < raw.items.len and std.mem.eql(u8, raw.items[last + 1].origin, current.origin)) last += 1;
         try out.appendSlice(allocator, raw.items[first .. last + 1]);
         return start - first;
+    }
+
+    /// Record `resource` - a srcdoc document's markup - as the document
+    /// state's resource of the entry `entry_id` (a cross-document finalize's
+    /// new entry, before its navigable's current entry is it).
+    pub fn setEntryResource(self: *JointHistory, entry_id: u64, resource: ?[]const u8) !void {
+        const entry = self.entryById(entry_id) orelse return error.NoCurrentEntry;
+        const copy: ?[]u8 = if (resource) |r| try self.allocator.dupe(u8, r) else null;
+        if (entry.resource) |old| self.allocator.free(old);
+        entry.resource = copy;
     }
 
     /// Record `resource` - a srcdoc document's markup - as the document
@@ -1349,6 +1557,8 @@ pub const JointHistory = struct {
                 }
                 current.document_state = doc_state;
                 current.document = document;
+                // It has a new id.
+                self.reindex();
             },
         }
     }
@@ -1577,22 +1787,23 @@ pub const JointHistory = struct {
         // listed history ("same-document traversals ... calculate their
         // endpoint based on the original placement"). Each entry's projected
         // step, or null when it is not in that history.
+        //
+        // Its buffers are the history's own, kept between calls (lane nav2
+        // H): every change writes the views - a fragment navigation twice.
         const base = self.viewStep();
-        const projected = try allocator.alloc(?u32, entries.len);
-        defer allocator.free(projected);
-        var pushes: u32 = 0;
-        for (entries) |entry| {
-            if (entry.pending and entry.pending_push) pushes += 1;
-        }
+        const scratch = &self.view_scratch;
+        try scratch.projected.resize(allocator, entries.len);
+        const projected = scratch.projected.items;
+        const pushes = self.pending_push_count;
         for (entries, 0..) |entry, i| {
             projected[i] = if (entry.pending or (pushes > 0 and entry.step > base)) null else entry.step;
         }
         var next = base;
         // The pending entries, in list order: few, and each navigable's last
         // is its current one below.
-        var pending: std.ArrayListUnmanaged(u32) = .empty;
-        defer pending.deinit(allocator);
-        for (entries, 0..) |entry, i| {
+        const pending = &scratch.pending;
+        pending.clearRetainingCapacity();
+        if (self.pending_count > 0) for (entries, 0..) |entry, i| {
             if (!entry.pending) continue;
             try pending.append(allocator, @intCast(i));
             if (entry.pending_push) {
@@ -1602,23 +1813,23 @@ pub const JointHistory = struct {
             }
             // A replace takes its replaced entry's place - listed, or a
             // pending one earlier in the list.
-            for (entries, 0..) |replaced, r| {
-                if (replaced.id != entry.pending_replaces) continue;
+            if (self.indexOfId(entry.pending_replaces)) |r| {
                 projected[i] = projected[r];
                 projected[r] = null;
-                break;
             }
-        }
+        };
         const step = next;
 
         // The History length and index: one pair for the traversable.
-        var steps: std.ArrayListUnmanaged(u32) = .empty;
-        defer steps.deinit(allocator);
+        const steps = &scratch.steps;
+        steps.clearRetainingCapacity();
         try steps.ensureTotalCapacity(allocator, entries.len);
         for (projected) |at| {
             if (at) |s| steps.appendAssumeCapacity(s);
         }
-        std.mem.sort(u32, steps.items, {}, std.sort.asc(u32));
+        // Mostly in order already: each push is listed after the entries
+        // before it.
+        if (!std.sort.isSorted(u32, steps.items, {}, std.sort.asc(u32))) std.mem.sort(u32, steps.items, {}, std.sort.asc(u32));
         {
             var kept: usize = 0;
             for (steps.items) |s| {
@@ -1632,21 +1843,12 @@ pub const JointHistory = struct {
 
         // Each navigable's entries in that history, by step - in list order
         // among equal steps, as `apiEntries` and `entryAt` have them (a
-        // stable sort).
-        var count: usize = 0;
-        for (projected) |at| {
-            if (at != null) count += 1;
-        }
-        const order = try allocator.alloc(u32, count);
-        defer allocator.free(order);
-        {
-            var o: usize = 0;
-            for (projected, 0..) |at, i| {
-                if (at == null) continue;
-                order[o] = @intCast(i);
-                o += 1;
-            }
-        }
+        // stable sort): grouped by navigable from the index lists, each group
+        // sorted only when it is not in order already; with no valid
+        // indexes, one sort of them all.
+        const order_list = &scratch.order;
+        order_list.clearRetainingCapacity();
+        try order_list.ensureTotalCapacity(allocator, entries.len);
         const Sort = struct {
             list: []const Entry,
             at: []const ?u32,
@@ -1655,7 +1857,23 @@ pub const JointHistory = struct {
                 return context.at[a].? < context.at[b].?;
             }
         };
-        std.mem.sort(u32, order, Sort{ .list = entries, .at = projected }, Sort.lessThan);
+        const sort_context = Sort{ .list = entries, .at = projected };
+        if (self.indexes_valid) {
+            for (self.lists.values()) |list| {
+                const start = order_list.items.len;
+                for (list.items) |i| {
+                    if (projected[i] != null) order_list.appendAssumeCapacity(i);
+                }
+                const group = order_list.items[start..];
+                if (!std.sort.isSorted(u32, group, sort_context, Sort.lessThan)) std.mem.sort(u32, group, sort_context, Sort.lessThan);
+            }
+        } else {
+            for (projected, 0..) |at, i| {
+                if (at != null) order_list.appendAssumeCapacity(@intCast(i));
+            }
+            std.mem.sort(u32, order_list.items, sort_context, Sort.lessThan);
+        }
+        const order = order_list.items;
 
         var group_start: usize = 0;
         while (group_start < order.len) {
@@ -1822,13 +2040,11 @@ pub const JointHistory = struct {
         _ = self.update_only.remove(navigable);
         if (std.mem.indexOfScalar(u64, self.held.items, navigable)) |index| _ = self.held.swapRemove(index);
         if (self.apply) |*apply| _ = apply.current.swapRemove(navigable);
-        var i: usize = 0;
-        while (i < self.entries.items.len) {
-            if (self.entries.items[i].navigable == navigable) {
-                var removed = self.entries.orderedRemove(i);
-                removed.deinit(self.allocator);
-            } else i += 1;
-        }
+        _ = self.removeWhere(navigable, struct {
+            fn of(n: u64, entry: *const Entry) bool {
+                return entry.navigable == n;
+            }
+        }.of);
         if (self.views.fetchSwapRemove(navigable)) |kv| {
             var view = kv.value;
             view.deinit(self.allocator);
@@ -1877,17 +2093,17 @@ pub const JointHistory = struct {
 
     /// The entry whose id is `id`, if it is still in the history.
     pub fn entryById(self: *JointHistory, id: u64) ?*Entry {
-        for (self.entries.items) |*entry| {
-            if (entry.id == id) return entry;
-        }
-        return null;
+        const index = self.indexOfId(id) orelse return null;
+        return &self.entries.items[index];
     }
 
     /// An entry of `navigable` whose navigation API key is `key`, if the
     /// history still has one.
     pub fn entryByKey(self: *JointHistory, navigable: u64, key: *const [36]u8) ?*Entry {
-        for (self.entries.items) |*entry| {
-            if (entry.navigable == navigable and std.mem.eql(u8, &entry.api_key, key)) return entry;
+        var it = self.entriesOf(navigable);
+        while (it.next()) |index| {
+            const entry = &self.entries.items[index];
+            if (std.mem.eql(u8, &entry.api_key, key)) return entry;
         }
         return null;
     }

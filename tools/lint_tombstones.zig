@@ -46,6 +46,14 @@
 //!     zig build lint-tombstones -- --update
 //! which refuses to record an increase. `-- --list` prints every unguarded
 //! map with its line.
+//!
+//! A map whose declaring type moved to another file, unchanged - a state type
+//! moved out of an impl into src/dom, with the steps that remove from it - is
+//! the same debt under a new path, not a new map:
+//!     zig build lint-tombstones -- --move '<old key>' '<new key>'
+//! records it (and updates the baseline as --update does) only when the old
+//! key has left the scan, the new key is not in the baseline, both keys name
+//! the same qualified map, and the counts are equal (`checkMove`).
 
 const std = @import("std");
 const Ast = std.zig.Ast;
@@ -578,6 +586,43 @@ pub fn parseBaseline(gpa: std.mem.Allocator, text: []const u8) !Counts {
     return counts;
 }
 
+pub const MoveError = error{
+    OldKeyNotInBaseline,
+    OldKeyStillPresent,
+    NewKeyAbsent,
+    NewKeyInBaseline,
+    DifferentName,
+    DifferentCount,
+};
+
+/// A key's qualified name, after its path.
+fn nameOf(key: []const u8) []const u8 {
+    const space = std.mem.indexOfScalar(u8, key, ' ') orelse return key;
+    return key[space + 1 ..];
+}
+
+/// Whether `old_key` -> `new_key` is the same map moved to another file with
+/// its type (lint-global-state's `--rename` is the model): the old key is in
+/// the baseline and gone from the scan, the new key is in the scan and not in
+/// the baseline, both name the same qualified map, with the same count. A
+/// map renamed, or one more map, is not a move.
+pub fn checkMove(old_key: []const u8, new_key: []const u8, current: *const Counts, baseline: *const Counts) MoveError!void {
+    const old = baseline.get(old_key) orelse return error.OldKeyNotInBaseline;
+    if (current.contains(old_key)) return error.OldKeyStillPresent;
+    const new = current.get(new_key) orelse return error.NewKeyAbsent;
+    if (baseline.contains(new_key)) return error.NewKeyInBaseline;
+    if (!std.mem.eql(u8, nameOf(old_key), nameOf(new_key))) return error.DifferentName;
+    if (old != new) return error.DifferentCount;
+}
+
+/// Move the baseline's entry from `old_key` to `new_key`. Call only after
+/// `checkMove`. The new key is allocated with `gpa`; the old one is freed.
+pub fn applyMove(gpa: std.mem.Allocator, baseline: *Counts, old_key: []const u8, new_key: []const u8) !void {
+    const removed = baseline.fetchRemove(old_key) orelse return error.OldKeyNotInBaseline;
+    gpa.free(removed.key);
+    try baseline.put(gpa, try gpa.dupe(u8, new_key), removed.value);
+}
+
 const header =
     \\# Long-lived std hash maps in src/ that are removed from and have no TombstoneGuard:
     \\# path Qualified.name count (tools/lint_tombstones.zig). std.HashMap deletes by
@@ -652,6 +697,11 @@ fn siteLessThan(_: void, a: Site, b: Site) bool {
     return a.line < b.line;
 }
 
+fn usage() noreturn {
+    std.debug.print("usage: lint_tombstones [--update | --list] [--move '<old key>' '<new key>']...\n", .{});
+    std.process.exit(2);
+}
+
 pub fn main(init: std.process.Init) !void {
     var arena_state = std.heap.ArenaAllocator.init(init.gpa);
     defer arena_state.deinit();
@@ -660,6 +710,7 @@ pub fn main(init: std.process.Init) !void {
 
     var update = false;
     var list = false;
+    var moves: std.ArrayList([2][]const u8) = .empty;
     var args = try init.minimal.args.iterateAllocator(arena);
     defer args.deinit();
     _ = args.next();
@@ -668,10 +719,13 @@ pub fn main(init: std.process.Init) !void {
             update = true;
         } else if (std.mem.eql(u8, arg, "--list")) {
             list = true;
-        } else {
-            std.debug.print("usage: lint_tombstones [--update | --list]\n", .{});
-            std.process.exit(2);
-        }
+        } else if (std.mem.eql(u8, arg, "--move")) {
+            const old_key = args.next() orelse usage();
+            const new_key = args.next() orelse usage();
+            try moves.append(arena, .{ try arena.dupe(u8, old_key), try arena.dupe(u8, new_key) });
+            // A move is recorded, so it updates the baseline.
+            update = true;
+        } else usage();
     }
 
     var current: Counts = .empty;
@@ -711,7 +765,16 @@ pub fn main(init: std.process.Init) !void {
         try out.print("tombstones: first baseline recorded - {d} unguarded map(s).\n", .{total});
         return;
     }
-    const baseline = try parseBaseline(arena, text.?);
+    var baseline = try parseBaseline(arena, text.?);
+    for (moves.items) |move| {
+        checkMove(move[0], move[1], &current, &baseline) catch |err| {
+            try out.print("tombstones: --move '{s}' '{s}' refused: {s}.\n", .{ move[0], move[1], @errorName(err) });
+            try out.flush();
+            std.process.exit(1);
+        };
+        try applyMove(arena, &baseline, move[0], move[1]);
+        try out.print("tombstones: moved '{s}' -> '{s}'.\n", .{ move[0], move[1] });
+    }
 
     const found = try violations(arena, &current, &baseline);
     if (found.items.len > 0) {
@@ -991,6 +1054,48 @@ test "a violation is any key above its baseline, including a key the baseline la
     try testing.expectEqual(@as(usize, 1), found.items.len);
     try testing.expectEqualStrings("src/c.zig C.timers", found.items[0].key);
     try testing.expectEqual(@as(u32, 0), found.items[0].allowed);
+}
+
+test "a move is recorded only for the same map in another file, with the same count" {
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    var baseline: Counts = .empty;
+    try baseline.put(arena, try arena.dupe(u8, "src/a.zig State.map"), 1);
+    try baseline.put(arena, try arena.dupe(u8, "src/a.zig State.kept"), 1);
+    try baseline.put(arena, try arena.dupe(u8, "src/a.zig State.two"), 2);
+
+    var current: Counts = .empty;
+    try current.put(arena, "src/b.zig State.map", 1);
+    try current.put(arena, "src/a.zig State.kept", 1);
+    try current.put(arena, "src/b.zig State.renamed", 1);
+    try current.put(arena, "src/b.zig State.two", 1);
+
+    // Accepted: the same map, gone from one file and found in another.
+    try checkMove("src/a.zig State.map", "src/b.zig State.map", &current, &baseline);
+
+    // The old key must be in the baseline, and gone from the scan.
+    try testing.expectError(error.OldKeyNotInBaseline, checkMove("src/a.zig State.nowhere", "src/b.zig State.map", &current, &baseline));
+    try testing.expectError(error.OldKeyStillPresent, checkMove("src/a.zig State.kept", "src/b.zig State.map", &current, &baseline));
+    // The new key must be in the scan, and not in the baseline.
+    try testing.expectError(error.NewKeyAbsent, checkMove("src/a.zig State.map", "src/b.zig State.missing", &current, &baseline));
+    try baseline.put(arena, try arena.dupe(u8, "src/b.zig State.recorded"), 1);
+    try current.put(arena, "src/b.zig State.recorded", 1);
+    try testing.expectError(error.NewKeyInBaseline, checkMove("src/a.zig State.map", "src/b.zig State.recorded", &current, &baseline));
+    // Another qualified name is another map, not a move.
+    try testing.expectError(error.DifferentName, checkMove("src/a.zig State.map", "src/b.zig State.renamed", &current, &baseline));
+    // A different count is a map more or fewer.
+    try testing.expectError(error.DifferentCount, checkMove("src/a.zig State.two", "src/b.zig State.two", &current, &baseline));
+
+    // Applied: the old key is gone, the new one carries the count.
+    try applyMove(arena, &baseline, "src/a.zig State.map", "src/b.zig State.map");
+    try testing.expect(!baseline.contains("src/a.zig State.map"));
+    try testing.expectEqual(@as(?u32, 1), baseline.get("src/b.zig State.map"));
+    // The moved map is no violation now; the unrecorded ones still are.
+    const found = try violations(arena, &current, &baseline);
+    for (found.items) |v| try testing.expect(!std.mem.eql(u8, v.key, "src/b.zig State.map"));
+    try testing.expectEqual(@as(usize, 2), found.items.len);
 }
 
 test "the baseline round-trips, sorted, and ignores comments" {

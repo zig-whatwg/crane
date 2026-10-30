@@ -357,7 +357,7 @@ pub const EventLoop = struct {
     ///
     /// A linear scan: there is a group per document the Browser's
     /// back/forward cache holds - BrowserConfig.back_forward_cache_size of
-    /// them, 2 by default and rarely more - and it runs only for a task the
+    /// them, 8 by default and rarely more - and it runs only for a task the
     /// drain found inactive, never for a runnable one. A Browser configured
     /// with a large cache pays a scan of that many per waiting task, which is
     /// still far less than classifying each waiting task again every drain.

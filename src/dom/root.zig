@@ -162,6 +162,8 @@ pub const reporting = @import("reporting.zig");
 pub const trusted_types = @import("trusted_types.zig");
 pub const fetch_objects = @import("fetch_objects.zig");
 pub const blob_bytes = @import("blob_bytes.zig");
+/// FileAPI "process blob parts" for the Blob and File constructors.
+pub const blob_parts = @import("blob_parts.zig");
 pub const text_stream = @import("text_stream.zig");
 /// A CharacterData node's data, read in place by the tree's own algorithms.
 pub const character_data = @import("character_data.zig");
@@ -180,6 +182,11 @@ pub const reflection = @import("reflection.zig");
 /// The generated [SameObject] caches' edges: an owner keeps the child it
 /// cached, whoever read it first (binding3 item 9h).
 pub const same_object_cache = @import("same_object_cache.zig");
+/// Keeping an object an owner hands out alive for as long as the owner, and
+/// links that know when their target was freed (Pin, Traced, Link,
+/// KeptChild). A shared helper, so not in src/webidl/impls/ (AGENTS.md, the
+/// impls boundary rule 3).
+pub const same_object = @import("same_object.zig");
 pub const observer_registrations = @import("observer_registrations.zig");
 pub const attr_nodes = @import("attr_nodes.zig");
 pub const traversal = @import("traversal.zig");
@@ -209,6 +216,8 @@ pub const DOMTokenListImpl = dom_token_list.DOMTokenList;
 pub const range_mutations = @import("range_mutations.zig");
 pub const slot_helpers = @import("slot_helpers.zig");
 pub const cookie_change_event = @import("cookie_change_event.zig");
+/// Document's state type: the impl owns the state, src/dom reads it here.
+pub const document_state = @import("document_state.zig");
 pub const document_internals = @import("document_internals.zig");
 pub const document_last_modified = @import("document_last_modified.zig");
 /// The CSSOM's model: what CSSStyleSheet, CSSRuleList and the CSSRule

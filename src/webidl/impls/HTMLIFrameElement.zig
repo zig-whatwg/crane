@@ -187,6 +187,7 @@ pub fn installHooks() void {
         .follow_hyperlink = &followHyperlink,
         .download_hyperlink = &downloadHyperlink,
         .traverse_navigable = &traverseNavigable,
+        .commit_navigation = &commitQueuedNavigation,
         .find_by_name = &frameWindowByName,
         .integration_of = &struct {
             fn of(browsing_context: *anyopaque) ?*IFrameIntegration {
@@ -886,6 +887,26 @@ const Navigation = struct {
     /// owned).
     prepared: ?html_core.navigation.joint_history.Prepared = null,
     target_origin: ?[]u8 = null,
+    /// Lane nav2 F1: runCommit handed the commit to the traversable's queue
+    /// ("finalize a cross-document navigation"): the record waits, in
+    /// `navigations`, for its .push_replace apply's step-12 job
+    /// (`commitQueuedNavigation`). A later navigation does not end it - the
+    /// navigation is mature, and commits (see `setOngoingNavigation`) - and
+    /// its navigable's end does (`abandonNavigationsOf`).
+    committing: bool = false,
+    /// What runCommit decided before handing over, for the commit: the
+    /// navigation params' policy container (owned until the document takes
+    /// it) and the browsing context group switch (21.12.2).
+    params_container: ?fetch_mod.internal.PolicyContainer = null,
+    group_switch: ?html_core.window.browsing_context.CrossOriginIsolationMode = null,
+    /// The commit listed the entry before the active document unloaded
+    /// ("finalize a cross-document navigation" steps 5-9, from the queue):
+    /// `recordInHistory` makes that entry's document active, with the
+    /// activation's old entry as it was before the listing (owned).
+    listed: ?html_core.navigation.joint_history.ListedCrossDocument = null,
+    listed_previous: ?html_core.navigation.joint_history.EntrySnapshot = null,
+    /// The history's allocator, which owns `listed_previous`.
+    listed_previous_allocator: ?std.mem.Allocator = null,
     /// The request's referrer, resolved (Fetch "determine request's
     /// referrer" for the source document): its URL, or null for no
     /// referrer. Owned.
@@ -1028,6 +1049,8 @@ const Navigation = struct {
         if (self.javascript_policy_container) |*container| container.deinit();
         if (self.traversal_policy_container) |*container| container.deinit();
         if (self.history_policy_container) |*container| container.deinit();
+        if (self.params_container) |*container| container.deinit();
+        if (self.listed_previous) |*previous| previous.deinit(self.listed_previous_allocator.?);
         if (self.required_csp) |required| self.allocator.free(required);
         self.allocator.free(self.url);
         self.allocator.destroy(self);
@@ -1180,7 +1203,19 @@ fn setOngoingNavigation(integration: *IFrameIntegration, value: navigate_steps.O
             // says why): its record stays for its task.
             const queued_javascript = integration.host_realms != null and
                 (if (navigationById(old)) |record| navigate_steps.isJavascript(record.url) else false);
-            if (!queued_javascript) endNavigation(old);
+            // A navigation whose finalize is queued (lane nav2 F1) is mature:
+            // it commits all the same, as the spec's queued "finalize a
+            // cross-document navigation" never asks whether its navigation is
+            // still the ongoing one, and as browsers do - Chromium's
+            // FrameTreeNode::TakeNavigationRequest resets only the
+            // FrameTreeNode's own request, one not yet ready to commit; a
+            // request ready to commit belongs to its RenderFrameHost
+            // (TransferNavigationRequestOwnership) and commits, and Gecko
+            // swaps the document in at the response, leaving no such gap.
+            // Its commit's "deactivate a document" step 5.2 then ends the
+            // navigation that replaced it (commitAfterFinalize).
+            const committing = if (navigationById(old)) |record| record.committing else false;
+            if (!queued_javascript and !committing) endNavigation(old);
         },
         // A traversal's population (its navigable going, or "stop" - which
         // only a navigation ID's reaches).
@@ -1196,6 +1231,26 @@ fn setOngoingNavigation(integration: *IFrameIntegration, value: navigate_steps.O
 /// navigation in flight.
 fn abandonNavigationsOf(integration: *IFrameIntegration) void {
     setOngoingNavigation(integration, .none);
+    endCommittingNavigationsOf(integration);
+}
+
+/// The navigations of `integration` whose finalize is queued (lane nav2 F1)
+/// end with their navigable: their apply's job then finds nothing, and ends
+/// its wait. (A record never outlives its integration.)
+fn endCommittingNavigationsOf(integration: *IFrameIntegration) void {
+    var ids: [8]u64 = undefined;
+    while (true) {
+        var count: usize = 0;
+        var it = navigations.iterator();
+        while (it.next()) |kv| {
+            if (!kv.value_ptr.*.committing or kv.value_ptr.*.integration != integration) continue;
+            ids[count] = kv.key_ptr.*;
+            count += 1;
+            if (count == ids.len) break;
+        }
+        if (count == 0) return;
+        for (ids[0..count]) |id| endNavigation(id);
+    }
 }
 
 /// IFrameIntegration's end_ongoing_navigation_callback: the navigation in
@@ -1205,7 +1260,8 @@ fn abandonNavigationsOf(integration: *IFrameIntegration) void {
 /// traversal does, the same).
 fn endOngoingNavigationOf(integration: *IFrameIntegration) void {
     switch (integration.ongoing_navigation) {
-        .id => |old| endNavigation(old),
+        // A queued commit is mature (see setOngoingNavigation).
+        .id => |old| if (if (navigationById(old)) |record| !record.committing else true) endNavigation(old),
         .traversal => if (integration.traversal_navigation != 0) endNavigation(integration.traversal_navigation),
         .none => {},
     }
@@ -2423,7 +2479,9 @@ fn runCommit(context: ?*anyopaque) void {
     const id = idOf(context);
     const kv = navigations.fetchRemove(id) orelse return;
     const record = kv.value;
-    defer record.destroy();
+    // Handed to the traversal queue below, it is the queue's job's to end.
+    var handed_over = false;
+    defer if (!handed_over) record.destroy();
     const integration = record.integration;
     if (!isOngoing(integration, id)) return;
     const response = if (record.response) |*r| r else return;
@@ -2522,6 +2580,70 @@ fn runCommit(context: ?*anyopaque) void {
     // opener policy needs a browsing context group switch, read from the
     // active document before it unloads.
     const group_switch = if (params_container) |*container| openerPolicySwitch(integration, record, response, container) else null;
+    record.params_container = params_container;
+    params_container_taken = true;
+    record.group_switch = group_switch;
+
+    // Navigate step 23.9's completionSteps (lane nav2 F1): "Append session
+    // history traversal steps to navigable's traversable navigable to
+    // finalize a cross-document navigation". The rest of the commit is that
+    // apply's step-12 job (`commitQueuedNavigation`); until it runs the
+    // record stays the navigable's ongoing navigation, in `navigations`.
+    // Not a traversal's or a reload's population: that is the change job of
+    // the apply running now ("apply the history step" 12.8), which waits for
+    // it - it commits here, as it always did.
+    if (record.traversal_entry == 0) if (integration.browsing_context) |bc| {
+        if (navigations.put(std.heap.page_allocator, record.id, record)) |_| {
+            record.committing = true;
+            if (html_core.navigation.apply_history_step.finalizeCrossDocument(bc, integration.allocator, record.id)) {
+                handed_over = true;
+                return;
+            }
+            record.committing = false;
+            _ = navigations.remove(record.id);
+        } else |_| {}
+    };
+    // A population, or no queue to append to (no memory): the commit goes on
+    // now - a navigation's lists its entry after the unload
+    // (recordInHistory), as before F1.
+    commitAfterFinalize(integration, record, null);
+}
+
+/// The .push_replace apply's step-12 job for `browsing_context_ptr`'s
+/// navigation `navigation_id` (dom.navigables.commitNavigation, lane nav2
+/// F1): the commit runCommit handed to the queue. False when the navigation
+/// is gone - its navigable went (`endCommittingNavigationsOf`): the job ends
+/// its wait. Otherwise the record reports the wait's end - at its new
+/// document's activation (recordInHistory), or when it is destroyed.
+fn commitQueuedNavigation(browsing_context_ptr: *anyopaque, navigation_id: u64, waiter: ?dom_module.navigables.TraversalWaiter) bool {
+    const record = navigationById(navigation_id) orelse return false;
+    if (!record.committing) return false;
+    const integration = record.integration;
+    const bc = integration.browsing_context orelse return false;
+    if (@as(*anyopaque, @ptrCast(bc)) != browsing_context_ptr) return false;
+    _ = navigations.remove(navigation_id);
+    record.committing = false;
+    // Its apply ended before its job ran (the job could not be queued, or
+    // was dropped): the navigation ends here, uncommitted, and stops
+    // delaying its container's load event.
+    const w = waiter orelse {
+        if (integration.ongoing_navigation.eql(.{ .id = navigation_id })) integration.ongoing_navigation = .none;
+        record.destroy();
+        endLoadDelay(integration);
+        return false;
+    };
+    record.traversal_wait = TraversalWait.of(integration, w);
+    defer record.destroy();
+    commitAfterFinalize(integration, record, w);
+    return true;
+}
+
+/// The commit after "finalize a cross-document navigation" was appended
+/// (`waiter`: the .push_replace apply running it) or, with no queue, at once
+/// (`waiter` null): the entry listed, the displayed document unloaded, the
+/// new one made and active.
+fn commitAfterFinalize(integration: *IFrameIntegration, record: *Navigation, waiter: ?dom_module.navigables.TraversalWaiter) void {
+    const response = if (record.response) |*r| r else return endLoadDelay(integration);
 
     // Script runs below and may take the iframe away; the integration stays
     // until this is done with it - and is freed, if it has to be, only after
@@ -2529,16 +2651,38 @@ fn runCommit(context: ?*anyopaque) void {
     integration.busy += 1;
     defer finishBusy(integration);
 
-    // "Deactivate a document for a cross-document navigation" step 5.2: the
-    // ongoing navigation is null - new navigations may start.
-    integration.ongoing_navigation = .none;
-
     // Step 5.1: the pageswap event the unload fires at the displayed
-    // document, naming targetEntry - which "finalize a cross-document
-    // navigation" has put in the session history by now, and Crane commits
-    // once the document is made: its id and keys are reserved here.
+    // document, naming targetEntry - its id and keys reserved here, the
+    // entry listed below with them.
     var swap = pageSwapOf(integration, record, response);
     defer if (swap) |*step| step.deinit();
+
+    // "Finalize a cross-document navigation" steps 5-9 and its "apply the
+    // push/replace history step" step 8, from the traversal queue (lane nav2
+    // F1): the entry is in the session history BEFORE the displayed document
+    // unloads, as the spec has it. Every document keeps the view it had
+    // (JointHistory.holdAllViews) until the new document is made active
+    // (recordInHistory: the navigable's view then, and - stated there - the
+    // others' too, step 18 early), so the leaving document's pageswap,
+    // pagehide and unload handlers, and its parent's and siblings' scripts
+    // meanwhile, read the history as it was.
+    if (waiter) |w| listBeforeUnload(integration, record, response, w);
+
+    // "Deactivate a document for a cross-document navigation" step 5.2: the
+    // ongoing navigation is null - new navigations may start. One that
+    // started while this commit waited on the queue replaced it as the
+    // ongoing navigation: set directly to null, it ends here (the spec's own
+    // next check of it would abort it; its record must not outlive being the
+    // ongoing one) - unless it is mature too, its own finalize queued behind
+    // this one: that commits next, as the spec's would.
+    switch (integration.ongoing_navigation) {
+        .id => |other| if (other != record.id) {
+            const mature = if (navigationById(other)) |later| later.committing else false;
+            if (!mature) endNavigation(other);
+        },
+        else => {},
+    }
+    integration.ongoing_navigation = .none;
 
     // Step 5.3: "Unload a document and its descendants", in its realm. HTML
     // "unload a document" steps 11 and 13 time its unload event for the new
@@ -2546,20 +2690,10 @@ fn runCommit(context: ?*anyopaque) void {
     // around it, made relative to the new document's time origin when its
     // navigation timing entry is created.
     //
-    // Stated deviation in order: HTML's "finalize a cross-document
-    // navigation" puts the new entry in the session history BEFORE this
-    // unload; Crane records it after (commitInRealm), once the document is
-    // made. The order is observable only through each document's own view,
-    // and HTML keeps those views back: the leaving document's History length
-    // and index and its Navigation entry list and currentEntry are never
-    // updated, and the traversable's other documents get theirs from "apply
-    // the history step" step 18, after this unload. Crane reads all of them
-    // live from the joint history, so recording first would show the new
-    // entry to the leaving document's pageswap and unload handlers and to
-    // its parent and siblings. The per-document views land with the session
-    // history traversal queue (lane newwin1's batch 2); until then the
-    // entry's identity is reserved where pageswap names it
-    // (docs/lessons/architecture-reserve-what-a-step-names-before-the-engine-makes-it.md).
+    // The new entry was listed above, before this unload, as HTML's
+    // "finalize a cross-document navigation" has it (lane nav2 F1) - with the
+    // queue to run it on. Without one (no memory) the commit lists it after
+    // the unload (recordInHistory), as Crane did before F1.
     const unload_start = fetch_mod.algorithms.http_fetch.getCurrentTimeMs();
     // A navigable an earlier commit left with no realm - its replacement
     // realm could not be made after the old document unloaded (replaceRealm;
@@ -2605,7 +2739,7 @@ fn runCommit(context: ?*anyopaque) void {
     // before the new document's agent is obtained in the new group. A popup's
     // next realm gets a new WindowProxy (replaceRealm); the host page's
     // keeps its own (Context.enforceOpenerPolicy says why).
-    if (group_switch) |mode| {
+    if (record.group_switch) |mode| {
         if (integration.browsing_context) |bc| bc.switchGroup(mode, record.final_sandboxing_flags);
         integration.next_new_window_proxy = integration.host_realms == null;
     }
@@ -2645,10 +2779,10 @@ fn runCommit(context: ?*anyopaque) void {
     integration.setNextAboutBaseUrl(record.initiator_base_url);
     defer integration.setNextAboutBaseUrl(null);
     // "Create and initialize a Document object" step 9: the document's policy
-    // container, waiting for whatever makes the document (decided above,
-    // with the clone its history entry keeps).
-    integration.setNextPolicyContainer(params_container);
-    params_container_taken = true;
+    // container, waiting for whatever makes the document (decided by
+    // runCommit, with the clone its history entry keeps).
+    integration.setNextPolicyContainer(record.params_container);
+    record.params_container = null;
     defer integration.setNextPolicyContainer(null);
     // The response declarations are snapshotted before the Document exists;
     // parsing waits for its own origin and construction-time container.
@@ -3620,6 +3754,40 @@ fn recordInHistory(integration: *IFrameIntegration, record: *Navigation, url: []
         null;
     // recordActivation takes it; anything left here goes.
     defer if (previous) |*p| p.deinit(history.allocator);
+    // Lane nav2 F1: the commit listed the entry before the unload
+    // (listBeforeUnload) - its "apply the push/replace history step" makes
+    // its document active now: "update document for history step
+    // application" writes the navigable's view, the leaving document's
+    // later same-document entries are no longer active (dropped: their
+    // finalize steps find nothing), and the apply's step 14 stops waiting
+    // for this navigable - its step 20 goes on from the queue.
+    //
+    // Stated deviation: the other documents' views are written here too -
+    // step 18 early, at the activation, not in tasks after it. Crane parses
+    // the new document synchronously inside this commit and queues its load
+    // event from that parse, so step 18's tasks would run after the frame's
+    // load event: its container's onload, and its own inline scripts, would
+    // read the parent's history.length from before the push, which neither
+    // the browsers (Chromium's Navigator::DidNavigate broadcasts the new
+    // index and length to every renderer of the page with the commit,
+    // PageBroadcast::SetHistoryIndexAndLength) nor the spec's own ordering -
+    // where the parser runs long after step 18 - shows (docs/lessons/architecture-a-commit-that-parses-
+    // synchronously-must-record-history-first.md). Only the unload sees the
+    // views held.
+    if (record.listed) |listed| {
+        const entry = history.entryById(listed.entry) orelse return null;
+        const state = entry.document_state;
+        const taken = record.listed_previous;
+        record.listed_previous = null;
+        history.recordActivation(listed.entry, if (record.history_handling == .push) .push else .replace, taken) catch {};
+        history.dropPending(bc.id);
+        history.releaseAllViews();
+        if (record.traversal_wait) |wait| {
+            record.traversal_wait = null;
+            html_core.navigation.traversal_queue.TraversalQueue.populationEnded(wait.navigables, wait.traversable_id, wait.token, wait.navigable);
+        }
+        return state;
+    }
     if (record.traversal_entry != 0) {
         const entry = history.entryById(record.traversal_entry) orelse return null;
         const kind: joint_history.NavigationType = if (record.traversal_entry == record.traversal_from) .reload else .traverse;
@@ -3668,6 +3836,49 @@ fn recordInHistory(integration: *IFrameIntegration, record: *Navigation, url: []
     previous = null;
     history.recordActivation(current.id, if (handling == .push) .push else .replace, taken) catch {};
     return current.document_state;
+}
+
+/// "Finalize a cross-document navigation" steps 5-9 and "apply the
+/// push/replace history step" step 8 for `record`, on the traversal queue
+/// (lane nav2 F1), right before the displayed document unloads: the entry
+/// pageswap names is listed - with the response's URL and the navigation
+/// params' origin pageSwapOf decided - and the apply `waiter` names begins
+/// (apply_history_step.beginPushReplace). The activation's old entry is
+/// taken first, as the listing finds it. Nothing for a traversal's
+/// population (its own apply listed nothing new), or with no history or no
+/// memory: then the commit lists the entry after the unload
+/// (recordInHistory), as before F1.
+fn listBeforeUnload(integration: *IFrameIntegration, record: *Navigation, response: *const navigation_fetch.NavigationFetchResult, waiter: dom_module.navigables.TraversalWaiter) void {
+    if (record.traversal_entry != 0) return;
+    const bc = integration.browsing_context orelse return;
+    const history = bc.jointHistory() catch return;
+    const origin = record.target_origin orelse return;
+    const final_url = if (response.final_url.len > 0) response.final_url else record.url;
+    // "Apply the history step" 12.1's previousEntry, as recordInHistory
+    // takes it: none for the initial about:blank document.
+    const previous_is_initial = if (activeDocumentOf(integration)) |doc| document_lifecycle.isInitialAboutBlank(doc) else false;
+    var previous: ?html_core.navigation.joint_history.EntrySnapshot = if (previous_is_initial)
+        null
+    else if (history.currentEntry(bc.id)) |entry|
+        history.snapshot(entry) catch null
+    else
+        null;
+    // Every view held first: the listing rewrites the views, and the
+    // documents must go on reading what they read until the spec writes it
+    // (the apply's holds, from beginPushReplace, are these).
+    history.holdAllViews();
+    const listed = history.listCrossDocument(bc.id, final_url, null, origin, jointHandling(record.history_handling), record.prepared) catch {
+        history.releaseAllViews();
+        if (previous) |*p| p.deinit(history.allocator);
+        return;
+    };
+    record.listed = listed;
+    record.listed_previous = previous;
+    record.listed_previous_allocator = history.allocator;
+    // Navigate step 24.4: the document state's resource is documentResource.
+    if (record.srcdoc) |markup| history.setEntryResource(listed.entry, markup) catch {};
+    if (record.markup) |markup| history.setEntryResource(listed.entry, markup) catch {};
+    html_core.navigation.apply_history_step.beginPushReplace(bc, waiter, listed);
 }
 
 /// The recorded entry's document state takes the document the commit made:

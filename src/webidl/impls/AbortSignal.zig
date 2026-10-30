@@ -147,7 +147,7 @@ fn removeAlgorithm(instance: *runtime.Instance, ctx: *anyopaque) void {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     // Nobody can hold a signal to add an algorithm to before one exists.
-    abort_algorithms.install(.{ .add = addAlgorithm, .remove = removeAlgorithm, .create_dependent = createDependentAbortSignal });
+    abort_algorithms.install(.{ .add = addAlgorithm, .remove = removeAlgorithm, .create_dependent = createDependentAbortSignal, .signal_abort = signalAbortHook });
 }
 
 /// AbortSignal's own construction steps: the generated chain runs
@@ -330,9 +330,15 @@ fn reasonOrDefault(signal: *runtime.Instance, reason: runtime.JSValue, name: []c
     return engine.createDOMException(signal.ctx, name, message);
 }
 
+/// `dom.abort_algorithms.signalAbort`: `signalAbort`, with the error set a
+/// function pointer needs.
+fn signalAbortHook(signal: *runtime.Instance, reason: runtime.JSValue) anyerror!void {
+    return signalAbort(signal, reason);
+}
+
 /// DOM § 3.3 "signal abort", given an optional reason (undefined: not
-/// given). AbortController.abort() and the Streams AbortSteps reach it. The
-/// reason is borrowed.
+/// given). AbortController.abort() (through dom.abort_algorithms) and the
+/// Streams AbortSteps reach it. The reason is borrowed.
 pub fn signalAbort(instance: *runtime.Instance, reason: runtime.JSValue) ImplError!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
     // Step 1: If signal is aborted, then return.

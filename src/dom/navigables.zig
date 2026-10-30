@@ -100,6 +100,14 @@ pub const Implementation = struct {
     follow_hyperlink: *const fn (subject: *runtime.Instance, user_involvement: navigation_api.UserInvolvement) void,
     download_hyperlink: *const fn (subject: *runtime.Instance, user_involvement: navigation_api.UserInvolvement) void,
     traverse_navigable: *const fn (browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64, waiter: ?TraversalWaiter) bool,
+    /// The .push_replace apply's step-12 job for `browsing_context` (lane
+    /// nav2 F1): the rest of the cross-document navigation `navigation_id`
+    /// whose finalize the traversable's queue runs - the entry listed, the
+    /// active document unloaded, the new one made active - reporting its end
+    /// to `waiter`. False when nothing was started (the navigation is gone):
+    /// the caller ends the wait. A null `waiter`: the apply ends without its
+    /// job having run - the navigation ends, uncommitted.
+    commit_navigation: *const fn (browsing_context: *anyopaque, navigation_id: u64, waiter: ?TraversalWaiter) bool,
     find_by_name: *const fn (source_document: *runtime.Instance, name: []const u8) ?*runtime.Instance,
     /// The owner's integration for this browsing context, borrowed for the
     /// synchronous navigation step. Null when no integration owns it.
@@ -178,6 +186,16 @@ pub fn downloadHyperlink(subject: *runtime.Instance, user_involvement: navigatio
 pub fn traverseNavigable(browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64, waiter: ?TraversalWaiter) bool {
     const impl = implementation orelse return false;
     return impl.traverse_navigable(browsing_context, entry_id, url, resource, from_entry_id, waiter);
+}
+
+/// The .push_replace apply's step-12 job: the commit of the cross-document
+/// navigation `navigation_id` of `browsing_context` (an
+/// `html_core.BrowsingContext`), its end reported to `waiter`. False when
+/// nothing started: the caller ends the wait. With `waiter` null the
+/// navigation ends uncommitted (its apply ended before its job ran).
+pub fn commitNavigation(browsing_context: *anyopaque, navigation_id: u64, waiter: ?TraversalWaiter) bool {
+    const impl = implementation orelse return false;
+    return impl.commit_navigation(browsing_context, navigation_id, waiter);
 }
 
 /// The traversal item a traversal's population reports its end to: its
@@ -764,6 +782,8 @@ test "without an installed implementation nothing navigates" {
     downloadHyperlink(&element, .activation);
     // No population starts.
     try std.testing.expect(!traverseNavigable(@ptrCast(&element), 1, "about:blank", null, 1, .{ .traversable_id = 1, .token = 1 }));
+    // No commit continues.
+    try std.testing.expect(!commitNavigation(@ptrCast(&element), 1, .{ .traversable_id = 1, .token = 1 }));
     try std.testing.expect(findByName(&element, "name") == null);
 }
 

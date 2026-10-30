@@ -23,7 +23,6 @@ const dom = @import("dom");
 const document_internals = dom.document_internals;
 
 // Import related impls for factory methods (Golden Rule #13 - to be migrated)
-const DocumentTypeImpl = @import("DocumentType.zig");
 const node_document = @import("dom").node_document;
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
@@ -78,29 +77,22 @@ fn associatedOrigin(internal: *InternalState) error{OutOfMemory}!?*dom.origin_re
     return dom.document_origin.shareable(document);
 }
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
+/// The document this object is the DOMImplementation of - its "associated
+/// document" - given at construction (document.implementation's getter).
+pub const construction_args = .{"document"};
 
-    // Initialize internal state
+/// DOMImplementation's own construction steps: its state, with its associated
+/// document when one is given.
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
     const internal = try runtime.arenaOf(instance).create(InternalState);
     internal.* = InternalState.init(allocator);
-
-    // Store internal state in instance
-    const state = instance.getState(State);
-    state.own._internal = internal;
-
-    return instance;
+    if (@hasField(@TypeOf(args), "document")) internal.document = args.document;
+    instance.getState(State).own._internal = internal;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// DOMImplementation's own teardown.
+pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal_ptr| {
         const internal: *InternalState = @ptrCast(@alignCast(internal_ptr));
@@ -113,12 +105,6 @@ pub fn deinit(instance: *runtime.Instance) void {
         state.own._internal = null;
     }
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
-}
-
-/// Set the associated document for this DOMImplementation
-pub fn setDocument(instance: *runtime.Instance, document: *runtime.Instance) void {
-    const internal = getInternal(instance);
-    internal.document = document;
 }
 
 // ============================================================================
@@ -147,14 +133,13 @@ pub fn call_createDocumentType(instance: *runtime.Instance, name: runtime.DOMStr
     const public_id_slice = publicId.asSlice();
     const system_id_slice = systemId.asSlice();
 
-    // Step 2: Create and return new doctype using helper
-    const doctype = try DocumentTypeImpl.createDocumentType(
-        allocator,
-        ctx,
-        name_slice,
-        public_id_slice,
-        system_id_slice,
-    );
+    // Step 2: a new doctype with these as its name, public ID and system ID
+    // (DocumentType's construction arguments).
+    const doctype = try interfaces.DocumentType.initWith(allocator, ctx, .{
+        .name = name_slice,
+        .public_id = public_id_slice,
+        .system_id = system_id_slice,
+    });
     errdefer interfaces.DocumentType.deinit(doctype);
 
     // Set node document to the associated document
@@ -301,7 +286,7 @@ pub fn call_createHTMLDocument(instance: *runtime.Instance, title: webidl.Opt(ru
     try document_internals.setContentType(doc, "text/html");
 
     // Step 3: Create and append doctype with name "html"
-    const doctype = try DocumentTypeImpl.createDocumentType(allocator, ctx, "html", "", "");
+    const doctype = try interfaces.DocumentType.initWith(allocator, ctx, .{ .name = "html", .public_id = "", .system_id = "" });
     errdefer interfaces.DocumentType.deinit(doctype);
     try node_document.set(doctype, doc);
     // Use interface instead of impl (per Golden Rule #13)

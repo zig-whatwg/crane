@@ -9,6 +9,8 @@
 src/browser/storage/Storage.zig LocalStorage.data 1
 src/browser/storage/Storage.zig SessionStorage.data 1
 src/dom/agent_cluster_keys.zig HistoricalKeys.groups 1
+src/dom/document_state.zig InternalState.import_map_imports 1
+src/dom/document_state.zig InternalState.module_map 1
 src/dom/mutation_observer_algorithms.zig MutationObserverAgent.signal_slot_set 1
 src/dom/refcount.zig Ledger.gc_reachable 1
 src/fetch/network/auth_entries.zig AuthEntries.entries 1
@@ -70,8 +72,6 @@ src/webidl/codegen/ir.zig IR.namespaces 1
 src/webidl/codegen/ir.zig IR.typedefs 1
 src/webidl/codegen/ir.zig IR.unresolved 1
 src/webidl/impls/CustomElementRegistry.zig InternalState.when_defined 1
-src/webidl/impls/Document.zig InternalState.import_map_imports 1
-src/webidl/impls/Document.zig InternalState.module_map 1
 src/webidl/impls/HTMLIFrameElement.zig navigations 1
 src/webidl/impls/Navigation.zig InternalState.handed 1
 src/webidl/impls/XSLTProcessor.zig InternalState.parameters 1

@@ -27,6 +27,9 @@ pub const Implementation = struct {
     elements_by_name: *const fn (list: *runtime.Instance, document: *runtime.Instance, name: []const u8) anyerror!void,
     named_controls: *const fn (*runtime.Instance, *runtime.Instance, []const u8) anyerror!void,
     named_form_images: *const fn (*runtime.Instance, *runtime.Instance, []const u8) anyerror!void,
+    /// Make `list` - just created, empty - `root`'s children: the live
+    /// collection Node's childNodes getter returns.
+    child_nodes: *const fn (list: *runtime.Instance, root: *runtime.Instance) anyerror!void,
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
@@ -68,6 +71,11 @@ pub fn namedControls(list: *runtime.Instance, collection: *runtime.Instance, nam
 /// HTML form named access: live image candidates, with the form held as root.
 pub fn namedFormImages(list: *runtime.Instance, form: *runtime.Instance, name: []const u8) !void {
     try (implementation orelse return error.NotSupported).named_form_images(list, form, name);
+}
+
+/// DOM childNodes: "a NodeList rooted at this matching only children" - live.
+pub fn childNodes(list: *runtime.Instance, root: *runtime.Instance) !void {
+    try (implementation orelse return error.NotSupported).child_nodes(list, root);
 }
 
 /// HTML getElementsByName: a live NodeList over the document's descendants.

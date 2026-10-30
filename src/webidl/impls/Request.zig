@@ -744,15 +744,13 @@ pub fn get_headers(instance: *runtime.Instance) anyerror!*runtime.Instance {
     //
     // Its guard is "request", or "request-no-cors" for a no-cors request
     // (constructor step 32.2; the mode cannot change after).
-    const Headers = @import("Headers.zig");
-    return Headers.initWithHeaderList(
-        internal.allocator,
-        instance.ctx,
-        &internal.request.header_list,
-        internal.headers_guard orelse if (internal.request.mode == .no_cors) .request_no_cors else .request,
-        instance,
-        &state.own.cached_headers,
-    );
+    const guard: fetch.internal.HeaderGuard = internal.headers_guard orelse if (internal.request.mode == .no_cors) .request_no_cors else .request;
+    return interfaces.Headers.initWith(internal.allocator, instance.ctx, .{
+        .header_list = &internal.request.header_list,
+        .guard = guard,
+        .owner = instance,
+        .cache_slot = &state.own.cached_headers,
+    });
 }
 
 /// Get destination
@@ -1022,10 +1020,9 @@ fn packageSteps(instance: *runtime.Instance, method: fetch_body.Method, bytes: [
         .form_data => {
             var mime_type = try fetch.internal.mime.extractMimeType(allocator, &internal.request.header_list);
             defer if (mime_type) |*mime| mime.deinit();
-            const FormDataImpl = @import("FormData.zig");
             const form_data = try fetch_body.parseFormData(allocator, if (mime_type) |*mime| mime else null, bytes);
             errdefer form_data.deinit();
-            return FormDataImpl.createFromInternal(allocator, instance.ctx, form_data);
+            return interfaces.FormData.initWith(allocator, instance.ctx, .{ .entry_list = form_data });
         },
         .array_buffer, .bytes, .json, .text => unreachable,
     }

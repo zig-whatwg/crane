@@ -18,8 +18,6 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const SVGScriptElement = interfaces.SVGScriptElement;
 
-const NodeImpl = @import("Node.zig");
-
 const dom_module = @import("dom");
 const instance_bridge = dom_module.instance_bridge;
 const NodeBase = dom_module.NodeBase;
@@ -92,7 +90,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     _ = args;
     // The node's name, which the DOM's insertion and children-changed steps
     // dispatch on.
-    try NodeImpl.setLocalName(instance, runtime.DOMString.initInterned("script"));
+    try dom_module.node_creation.setNodeLocalName(instance, runtime.DOMString.initInterned("script"));
 
     _ = allocator;
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));

@@ -6608,6 +6608,10 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // hands fetch what "populate request from client" reads.
     dom_mod.addImport("fetch", fetch_mod);
     dom_mod.addImport("mimesniff", mimesniff_mod); // The shared image decoder sniffs per MIME Sniffing.
+    // Document's state type (dom.document_state) holds its active parser,
+    // html's DocumentParser. The edge adds no cycle: dom already reached
+    // html through impls.
+    dom_mod.addImport("html", html_mod);
 
     // Add html to impls for script execution algorithms
     // Note: This creates html ↔ impls mutual dependency. Zig handles this because

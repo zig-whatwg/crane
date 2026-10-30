@@ -25,8 +25,13 @@
 //!
 //! `revert-rule` (Cascade 5 7.3.6) rolls back to the cascade as if the
 //! current style rule were not present (Chrome and Safari ship it). Stated:
-//! there is no user origin (Crane has no user style sheets) and no animation
-//! or transition origin.
+//! there is no user origin (Crane has no user style sheets).
+//!
+//! The animation and transition origins (Cascade 5 6.2) carry the values
+//! Web Animations composites (src/dom/animations/effect_stack.zig): the
+//! animation origin sits above every normal declaration and below every
+//! important one (6.3), the transition origin above everything. Their
+//! declarations are never important.
 //!
 //! Spec: https://drafts.csswg.org/css-cascade-5/#cascading
 //! Spec: https://drafts.csswg.org/css-cascade-5/#defaulting
@@ -58,13 +63,22 @@ pub const Origin = enum(u4) {
     user = 2,
     presentational_hint = 3,
     author = 4,
+    /// H-R3-CASCADE-ORIGIN. Cascade 5 6.2 "Animation Origin": the composited values of animations
+    /// (Web Animations 1 5.4.5).
+    animation = 5,
+    /// Cascade 5 6.2 "Transition Origin": above every other declaration,
+    /// important ones included (CSS Transitions 1). Web Animations also
+    /// computes keyframe values here, so no !important hides them (5.3.2).
+    transition = 6,
 
     /// "For the purpose of the revert keyword (but not for the revert-layer
     /// keyword) [presentational hints are] considered part of the author
-    /// origin."
+    /// origin." The animation origin is too (7.3.3: revert "in the
+    /// animation origin" rolls back as the author origin's would), and so is
+    /// the transition origin, whose only revert is a keyframe's.
     fn revertClass(self: Origin) u4 {
         return switch (self) {
-            .presentational_hint, .author => 4,
+            .presentational_hint, .author, .animation, .transition => 4,
             else => @intFromEnum(self),
         };
     }
@@ -217,11 +231,17 @@ fn tokensEqual(a: []const u8, b: []const u8) bool {
     }
 }
 
-/// Cascade 5 6.1's priority of a declaration from `source`./// Cascade 5 6.1's priority of a declaration from `source`.
+/// Cascade 5 6.1's priority of a declaration from `source`.
 fn priority(source: Source, important: bool) u128 {
-    // Origin and importance: normal UA < user < hints < author < important
-    // author < important user < important UA.
-    const origin: u128 = if (important) 16 - @as(u128, @intFromEnum(source.origin)) else @intFromEnum(source.origin);
+    // H-R3-CASCADE-ORIGIN. Origin and importance: normal UA < user < hints < author < animation
+    // < important author < important hints < important user < important UA
+    // < transition (Cascade 5 6.1, 6.3: "Important declarations from all
+    // origins take precedence over animations").
+    const origin: u128 = switch (source.origin) {
+        .animation => 5,
+        .transition => 16,
+        else => if (important) 16 - @as(u128, @intFromEnum(source.origin)) else @intFromEnum(source.origin),
+    };
     // "When comparing two declarations that are sourced from different
     // encapsulation contexts, then for normal rules the declaration from the
     // outer context wins, and for important rules the declaration from the

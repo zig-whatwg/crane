@@ -24,8 +24,6 @@ const same_object = @import("same_object.zig");
 const Element = interfaces.Element;
 
 // Import related impls
-const DOMTokenListImpl = @import("DOMTokenList.zig");
-const NamedNodeMapImpl = @import("NamedNodeMap.zig");
 
 // Import mixins for shared interface methods
 const mixins = @import("mixins");
@@ -572,8 +570,9 @@ pub fn get_classList(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // Initialize with current class attribute value
     interfaces.DOMTokenList.set_value(token_list, internal.data.class_name) catch return error.OutOfMemory;
 
-    // Associate with this element and the "class" attribute
-    DOMTokenListImpl.setElement(token_list, instance, runtime.DOMString.initInterned("class"));
+    // Associate with this element and the "class" attribute (DOMTokenList's
+    // step, through dom.token_lists)
+    try dom.token_lists.associate(token_list, instance, "class");
 
     return token_list;
 }
@@ -603,13 +602,10 @@ pub fn get_attributes(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return cached;
     }
 
-    // Create a NamedNodeMap containing all attributes
-    // Use interface instead of impl (per Golden Rule #13)
-    const named_node_map = interfaces.NamedNodeMap.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+    // Create a NamedNodeMap whose element is this one (its construction
+    // argument)
+    const named_node_map = interfaces.NamedNodeMap.initWith(internal.allocator, instance.ctx, .{ .element = instance }) catch return error.OutOfMemory;
     errdefer interfaces.NamedNodeMap.deinit(named_node_map);
-
-    // Set the owner element
-    NamedNodeMapImpl.setOwnerElement(named_node_map, instance);
 
     // The map reads this element's list whenever it is asked - it is live -
     // so there is nothing to copy into it.
@@ -675,8 +671,9 @@ pub fn get_part(instance: *runtime.Instance) anyerror!*runtime.Instance {
         interfaces.DOMTokenList.set_value(token_list, runtime.DOMString.initInterned(entry.value)) catch return error.OutOfMemory;
     }
 
-    // Associate with this element and the "part" attribute (internal method)
-    DOMTokenListImpl.setElement(token_list, instance, runtime.DOMString.initInterned("part"));
+    // Associate with this element and the "part" attribute (DOMTokenList's
+    // step, through dom.token_lists)
+    try dom.token_lists.associate(token_list, instance, "part");
 
     return token_list;
 }

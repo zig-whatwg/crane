@@ -515,3 +515,84 @@ why = The same sweep-only sharedworker name as the generation 179, 185 and 194 d
 pair.1 = base 9/9; tip 9/9
 pair.2 = base 9/9; tip 9/9
 pair.3 = base 9/9; tip 9/9
+
+[css/css-color/parsing/color-computed-color-function.html]
+generation = 196
+kind = user-ruling
+why = 1 name (color(srgb ... sign(2cqw - 10px) ...)): the value depends on the size of a container-type: inline-size element the test resizes (1000px, then 100px). That is layout geometry, which is out of 0.1 scope. Before Codex row 127 (merged in main c7ab2299112), cq units fell back to the viewport, so the 1000px case passed by accident and the 100px case failed. Row 127's container-unit rule (Q25/Q95) treats an unavailable container size as unavailable outside geometry lengths, so both cases now fail. Disclosed in row 127's report. Isolated, integrator 2026-10-30, 3 pairs gen 195 vs gen 196 runner: base 467 and tip 466 every time (deterministic).
+date = 2026-10-29
+decision = the user accepted row 127's 13 container-geometry names in 7 color/contrast/filter files (Q126, 2026-10-29: BASE passed by accident through a viewport fallback; layout is out of 0.1 scope)
+
+[css/css-color/parsing/color-computed-hsl.html]
+generation = 196
+kind = user-ruling
+why = 1 name (hsla(... sign(2cqw - 10px) ...), the 1000px-container case): the value depends on the size of a container-type: inline-size element the test resizes (1000px, then 100px). That is layout geometry, which is out of 0.1 scope. Before Codex row 127 (merged in main c7ab2299112), cq units fell back to the viewport, so the 1000px case passed by accident and the 100px case failed. Row 127's container-unit rule (Q25/Q95) treats an unavailable container size as unavailable outside geometry lengths, so both cases now fail. Disclosed in row 127's report. Isolated, integrator 2026-10-30, 3 pairs gen 195 vs gen 196 runner: base 3752 and tip 3751 every time (deterministic).
+date = 2026-10-29
+decision = the user accepted row 127's 13 container-geometry names in 7 color/contrast/filter files (Q126, 2026-10-29: BASE passed by accident through a viewport fallback; layout is out of 0.1 scope)
+
+[css/css-color/parsing/color-computed-hwb.html]
+generation = 196
+kind = user-ruling
+why = 1 name (hwb(... sign(2cqw - 10px) ...)): the value depends on the size of a container-type: inline-size element the test resizes (1000px, then 100px). That is layout geometry, which is out of 0.1 scope. Before Codex row 127 (merged in main c7ab2299112), cq units fell back to the viewport, so the 1000px case passed by accident and the 100px case failed. Row 127's container-unit rule (Q25/Q95) treats an unavailable container size as unavailable outside geometry lengths, so both cases now fail. Disclosed in row 127's report. Isolated, integrator 2026-10-30, 3 pairs gen 195 vs gen 196 runner: base 69 and tip 68 every time (deterministic).
+date = 2026-10-29
+decision = the user accepted row 127's 13 container-geometry names in 7 color/contrast/filter files (Q126, 2026-10-29: BASE passed by accident through a viewport fallback; layout is out of 0.1 scope)
+
+[css/css-color/parsing/color-computed-lab.html]
+generation = 196
+kind = user-ruling
+why = 4 names (lab, oklab, lch, oklch with sign(2cqw - 10px)): the value depends on the size of a container-type: inline-size element the test resizes (1000px, then 100px). That is layout geometry, which is out of 0.1 scope. Before Codex row 127 (merged in main c7ab2299112), cq units fell back to the viewport, so the 1000px case passed by accident and the 100px case failed. Row 127's container-unit rule (Q25/Q95) treats an unavailable container size as unavailable outside geometry lengths, so both cases now fail. Disclosed in row 127's report. Isolated, integrator 2026-10-30, 3 pairs gen 195 vs gen 196 runner: base 132 and tip 128 every time (deterministic).
+date = 2026-10-29
+decision = the user accepted row 127's 13 container-geometry names in 7 color/contrast/filter files (Q126, 2026-10-29: BASE passed by accident through a viewport fallback; layout is out of 0.1 scope)
+
+[css/css-color/parsing/color-computed-rgb.html]
+generation = 196
+kind = user-ruling
+why = 1 name (rgba(... sign(2cqw - 10px) ...)): the value depends on the size of a container-type: inline-size element the test resizes (1000px, then 100px). That is layout geometry, which is out of 0.1 scope. Before Codex row 127 (merged in main c7ab2299112), cq units fell back to the viewport, so the 1000px case passed by accident and the 100px case failed. Row 127's container-unit rule (Q25/Q95) treats an unavailable container size as unavailable outside geometry lengths, so both cases now fail. Disclosed in row 127's report. Isolated, integrator 2026-10-30, 3 pairs gen 195 vs gen 196 runner: base 98 and tip 97 every time (deterministic).
+date = 2026-10-29
+decision = the user accepted row 127's 13 container-geometry names in 7 color/contrast/filter files (Q126, 2026-10-29: BASE passed by accident through a viewport fallback; layout is out of 0.1 scope)
+
+[css/css-color/parsing/contrast-color-function-calc-container.html]
+generation = 196
+kind = user-ruling
+why = 1 name (contrast-color(color(srgb ... sign(20cqw - 10px) ...))): the value depends on the size of a container-type: inline-size element the test resizes (1000px, then 100px). That is layout geometry, which is out of 0.1 scope. Before Codex row 127 (merged in main c7ab2299112), cq units fell back to the viewport, so the 1000px case passed by accident and the 100px case failed. Row 127's container-unit rule (Q25/Q95) treats an unavailable container size as unavailable outside geometry lengths, so both cases now fail. Disclosed in row 127's report. Isolated, integrator 2026-10-30, 3 pairs gen 195 vs gen 196 runner: base 2 and tip 1 every time (deterministic).
+date = 2026-10-29
+decision = the user accepted row 127's 13 container-geometry names in 7 color/contrast/filter files (Q126, 2026-10-29: BASE passed by accident through a viewport fallback; layout is out of 0.1 scope)
+
+[css/filter-effects/parsing/filter-computed.html]
+generation = 196
+kind = user-ruling
+why = 4 names (grayscale, invert, opacity, sepia with sign(2cqw - 10px)): the value depends on the size of a container-type: inline-size element the test resizes (1000px, then 100px). That is layout geometry, which is out of 0.1 scope. Before Codex row 127 (merged in main c7ab2299112), cq units fell back to the viewport, so the 1000px case passed by accident and the 100px case failed. Row 127's container-unit rule (Q25/Q95) treats an unavailable container size as unavailable outside geometry lengths, so both cases now fail. Disclosed in row 127's report. Isolated, integrator 2026-10-30, 3 pairs gen 195 vs gen 196 runner: base 70 and tip 66 every time (deterministic).
+date = 2026-10-29
+decision = the user accepted row 127's 13 container-geometry names in 7 color/contrast/filter files (Q126, 2026-10-29: BASE passed by accident through a viewport fallback; layout is out of 0.1 scope)
+
+[html/cross-origin-opener-policy/coop-coep-sandbox.https.html]
+generation = 196
+kind = flake
+why = OK 3 -> TIMEOUT 0 in the generation 196 sweep, a sweep-only timeout. Isolated, integrator 2026-10-30, base gen 195 (main-63a713a7f2) vs tip gen 196 (main-c7ab229911), chat.local: the tip passes 4 in every pair and the base 3, so the tip is better, not worse.
+pair.1 = base 3/4; tip 4/4
+pair.2 = base 3/4; tip 4/4
+pair.3 = base 3/4; tip 4/4
+
+[html/webappapis/dynamic-markup-insertion/opening-the-input-stream/abort-refresh-immediate.window.js]
+generation = 196
+kind = flake
+why = TIMEOUT 3 -> TIMEOUT 2 in the generation 196 sweep: the '(fetch())' Refresh-header case. Isolated, same method: base 3, 4, 4 and tip 4, 4, 4. The file times out on both sides, and the name passes or fails on both.
+pair.1 = base 3/4; tip 4/4
+pair.2 = base 4/4; tip 4/4
+pair.3 = base 4/4; tip 4/4
+
+[service-workers/service-worker/navigation-timing-extended.https.html]
+generation = 196
+kind = flake
+why = The known flake (coi1's and nav2's pairs, 2026-10-29/30): 1 -> 0 in the generation 196 sweep. Isolated, same method: base 1, 1, 1 and tip 0, 1, 1. coi1's merged-tree pairs had base 5/6 and tip 4/6.
+pair.1 = base 1/1; tip 0/1
+pair.2 = base 1/1; tip 1/1
+pair.3 = base 1/1; tip 1/1
+
+[service-workers/service-worker/static-router-main-resource.https.html]
+generation = 196
+kind = flake
+why = 9 -> 8 in the generation 196 sweep ('Main resource load matched with the cache source'), a sweep-only failure. Isolated, same method: 9/9 on both sides in every pair.
+pair.1 = base 9/9; tip 9/9
+pair.2 = base 9/9; tip 9/9
+pair.3 = base 9/9; tip 9/9
