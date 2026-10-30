@@ -30,9 +30,7 @@ fn leading(allocator: std.mem.Allocator) !void {
 }
 
 test "discarded at-rules keep leading declarations in the parent style" {
-    errdefer std.debug.print("CP1_RECOVERY_CASE FAIL: leading declarations\n", .{});
     try leading(a);
-    std.debug.print("CP1_RECOVERY_CASE PASS: leading declarations\n", .{});
 }
 
 fn invalidQualified(allocator: std.mem.Allocator) !void {
@@ -65,9 +63,7 @@ fn invalidQualified(allocator: std.mem.Allocator) !void {
 }
 
 test "discarded invalid qualified rules preserve surrounding declarations" {
-    errdefer std.debug.print("CP1_RECOVERY_CASE FAIL: invalid qualified rules\n", .{});
     try invalidQualified(a);
-    std.debug.print("CP1_RECOVERY_CASE PASS: invalid qualified rules\n", .{});
 }
 
 fn trailing(allocator: std.mem.Allocator) !void {
@@ -95,9 +91,7 @@ fn trailing(allocator: std.mem.Allocator) !void {
 }
 
 test "discarded at-rules merge only adjacent trailing declaration runs" {
-    errdefer std.debug.print("CP1_RECOVERY_CASE FAIL: trailing boundaries\n", .{});
     try trailing(a);
-    std.debug.print("CP1_RECOVERY_CASE PASS: trailing boundaries\n", .{});
 }
 
 fn importance(allocator: std.mem.Allocator) !void {
@@ -123,9 +117,7 @@ fn importance(allocator: std.mem.Allocator) !void {
 }
 
 test "recovered declaration runs preserve importance and custom property order" {
-    errdefer std.debug.print("CP1_RECOVERY_CASE FAIL: importance and custom order\n", .{});
     try importance(a);
-    std.debug.print("CP1_RECOVERY_CASE PASS: importance and custom order\n", .{});
 }
 
 fn groups(allocator: std.mem.Allocator) !void {
@@ -156,17 +148,13 @@ fn groups(allocator: std.mem.Allocator) !void {
 }
 
 test "conditional groups keep their leading declaration wrapper after recovery" {
-    errdefer std.debug.print("CP1_RECOVERY_CASE FAIL: group wrappers\n", .{});
     try groups(a);
-    std.debug.print("CP1_RECOVERY_CASE PASS: group wrappers\n", .{});
 }
 
 test "declaration run recovery unwinds every allocation failure" {
-    errdefer std.debug.print("CP1_RECOVERY_CASE FAIL: allocation failures\n", .{});
     try std.testing.checkAllAllocationFailures(a, leading, .{});
     try std.testing.checkAllAllocationFailures(a, invalidQualified, .{});
     try std.testing.checkAllAllocationFailures(a, trailing, .{});
     try std.testing.checkAllAllocationFailures(a, importance, .{});
     try std.testing.checkAllAllocationFailures(a, groups, .{});
-    std.debug.print("CP1_RECOVERY_CASE PASS: allocation failures\n", .{});
 }

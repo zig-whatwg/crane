@@ -545,8 +545,26 @@ const Parser = struct {
     /// (consumed), the block's `}` or EOF (left). Null - nothing - when they
     /// are no declaration.
     fn consumeDeclaration(self: *Parser) Allocator.Error!?Declaration {
+        // Syntax 3 §5.5.6 steps 1–3. Both callers restore their mark on
+        // failure, so a missing colon needs no scan of the remaining block.
+        const name_token = self.next();
+        while (self.peek().token_type == .whitespace) _ = self.next();
+        if (self.peek().token_type != .colon) return null;
         var list: std.ArrayList(Token) = .empty;
         defer list.deinit(self.allocator);
+        try list.appendSlice(self.allocator, &.{ name_token, self.next() });
+
+        const decoded_name: ?[]u8 = if (std.mem.indexOfScalar(u8, name_token.value, '\\') != null)
+            try tokenizer.decode(self.allocator, name_token.value)
+        else
+            null;
+        defer if (decoded_name) |decoded| self.allocator.free(decoded);
+        const name = if (decoded_name) |value| @as([]const u8, value) else name_token.value;
+        const unrestricted = std.mem.startsWith(u8, name, "--") or
+            (self.property_descriptors and std.ascii.eqlIgnoreCase(name, "initial-value"));
+        var block = false;
+        var other = false;
+        var suffix: enum { none, bang, important } = .none;
         const source_end = while (true) {
             const t = self.peek();
             switch (t.token_type) {
@@ -556,7 +574,38 @@ const Parser = struct {
                     _ = self.next();
                     break self.tokens.pos - t.value.len;
                 },
-                else => try self.collectComponentValue(&list),
+                else => {
+                    // §5.5.6 step 8, with §5.5.5's early-exit advice:
+                    // a non-custom value cannot put other values beside
+                    // a {}-block. Only a trailing !important can follow it.
+                    // collectComponentValue consumes each whole block.
+                    if (!unrestricted) switch (t.token_type) {
+                        .whitespace => {},
+                        .left_brace => {
+                            if (other or suffix != .none) return null;
+                            block = true;
+                        },
+                        .right_bracket, .right_paren => {
+                            // Preserve declarationFrom's treatment of
+                            // unmatched closers; they do end !important.
+                            if (suffix != .none) return null;
+                        },
+                        else => if (!block) {
+                            other = true;
+                        } else switch (suffix) {
+                            .none => {
+                                if (t.token_type != .delim or !std.mem.eql(u8, t.value, "!")) return null;
+                                suffix = .bang;
+                            },
+                            .bang => {
+                                if (t.token_type != .ident or !tokenizer.nameEql(t.value, "important")) return null;
+                                suffix = .important;
+                            },
+                            .important => return null,
+                        },
+                    };
+                    try self.collectComponentValue(&list);
+                },
             }
         };
         return self.declarationFrom(list.items, source_end);

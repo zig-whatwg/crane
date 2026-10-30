@@ -1003,7 +1003,19 @@ pub fn buildKeyframe(options: BuildOptions, parsed: *const css.rules.Rule) Alloc
     const a = options.parse.allocator;
     var selectors = try css.keyframe_values.Selectors.parse(a, parsed.prelude) orelse return null;
     errdefer selectors.deinit();
-    var block = try DeclarationBlock.fromDeclarationsInContext(options.parse, parsed.declarations, .keyframe);
+    // Syntax 3 §5.5.5 preserves declaration runs after intervening rules.
+    // Animations 1 §3 ignores those rules but keeps every declaration run
+    // in the keyframe context (including its importance restrictions).
+    var declarations: std.ArrayList(css.rules.Declaration) = .empty;
+    defer declarations.deinit(a);
+    const items = if (parsed.children.len == 0) parsed.declarations else blk: {
+        try declarations.appendSlice(a, parsed.declarations);
+        for (parsed.children) |child| if (child.kind == .declarations) {
+            try declarations.appendSlice(a, child.declarations);
+        };
+        break :blk declarations.items;
+    };
+    var block = try DeclarationBlock.fromDeclarationsInContext(options.parse, items, .keyframe);
     errdefer block.deinit();
     const prelude = try selectors.serialize(a);
     return make(a, prelude, .{ .keyframe = .{ .selectors = selectors, .block = block } });

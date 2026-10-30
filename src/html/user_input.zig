@@ -1251,7 +1251,7 @@ fn moveSelection(select: *Instance, direction: focus.Direction) void {
     }
     interfaces.HTMLSelectElement.set_selectedIndex(select, @intCast(index)) catch return;
     // HTML select update notifications: mark the committed user change.
-    dom.form_controls.setUserValidity(select, true) catch return;
+    dom.form_controls.setUserValidity(select, true) catch {};
     form_associated.fireSimpleEvent(select, "input", .{ .bubbles = true, .composed = true }) catch {};
     form_associated.fireSimpleEvent(select, "change", .{ .bubbles = true }) catch {};
 }

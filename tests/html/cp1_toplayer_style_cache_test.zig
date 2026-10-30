@@ -8,14 +8,6 @@ const helpers = @import("edges_node_holders_helpers.zig");
 fn exercise() !void {
     const page = try helpers.Page.open();
     defer page.close();
-    var completed: usize = 0;
-    errdefer {
-        // Keep all four phases visible even when the first regression
-        // stops the exercise; later phases are explicitly NOT_RUN.
-        const names = [_][]const u8{ "before", "show", "animation_frame", "hide" };
-        for (names, 0..) |name, i|
-            std.debug.print("CP1_TOPLAYER_CACHE {s}={s}\n", .{ name, if (i < completed) "PASS" else if (i == completed) "FAIL" else "NOT_RUN" });
-    }
     try page.run(
         \\document.head.innerHTML = `<style>
         \\  #container { color: rgb(255, 0, 0); }
@@ -31,8 +23,6 @@ fn exercise() !void {
         \\if (getComputedStyle(cp1Container).color !== 'rgb(0, 128, 0)')
         \\  throw new Error('before entering the top layer');
     );
-    completed = 1;
-    std.debug.print("CP1_TOPLAYER_CACHE before=PASS\n", .{});
     try page.run(
         \\cp1Popover.showPopover();
         \\if (!cp1Target.matches(':focus')) throw new Error('focus designation changed on show');
@@ -40,8 +30,6 @@ fn exercise() !void {
         \\if (getComputedStyle(cp1Container).color !== 'rgb(255, 0, 0)')
         \\  throw new Error('cached ancestor style changes on show: ' + getComputedStyle(cp1Container).color);
     );
-    completed = 2;
-    std.debug.print("CP1_TOPLAYER_CACHE show=PASS\n", .{});
     try page.run(
         \\cp1Popover.hidePopover();
         \\globalThis.cp1FrameDone = false;
@@ -56,22 +44,16 @@ fn exercise() !void {
         if (std.mem.eql(u8, done, "true")) break;
     }
     try page.run("if (!cp1FrameDone) throw new Error('animation frame did not run');");
-    completed = 3;
-    std.debug.print("CP1_TOPLAYER_CACHE animation_frame=PASS\n", .{});
     try page.run(
         \\if (!cp1Target.matches(':focus')) throw new Error('focus designation changed on hide');
         \\if (!cp1Container.matches(':focus-within')) throw new Error('ancestor matches again on hide');
         \\if (getComputedStyle(cp1Container).color !== 'rgb(0, 128, 0)')
         \\  throw new Error('cached ancestor style changes on hide: ' + getComputedStyle(cp1Container).color);
     );
-    completed = 4;
-    std.debug.print("CP1_TOPLAYER_CACHE hide=PASS\n", .{});
 }
 
 test "unchanged focus does not keep an ancestor style cached across top-layer transitions" {
-    errdefer std.debug.print("CP1_NATIVE_CASE FAIL: unchanged focus does not keep an ancestor style cached across top-layer transitions\n", .{});
     try helpers.onFreshThread(exercise);
-    std.debug.print("CP1_NATIVE_CASE PASS: unchanged focus does not keep an ancestor style cached across top-layer transitions\n", .{});
 }
 // Q66 additions. Concatenated after the unchanged, already-measured case.
 const dom = @import("dom");
@@ -145,20 +127,10 @@ fn transitionExercise(comptime kind: LayerKind, comptime state: ActionState, com
     defer releasePointer(&pointer, state);
     // The independent hide cases prime their cache while already open, so
     // a show regression cannot prevent measuring the hide transition.
-    const names: []const []const u8 = if (direction == .round_trip)
-        &.{ "before", "show", "animation_frame", "hide" }
-    else
-        &.{ "opened_cache", "animation_frame", "hide" };
-    var completed: usize = 0;
-    errdefer for (names, 0..) |name, i| {
-        std.debug.print("CP1_CACHE_TRANSITION {s}/{s}/{s} {s}={s}\n", .{ @tagName(kind), @tagName(state), @tagName(direction), name, if (i < completed) "PASS" else if (i == completed) "FAIL" else "NOT_RUN" });
-    };
     if (direction == .round_trip) {
         try checkAncestor(page, state, true);
-        completed = 1;
         try page.run(open);
         try checkAncestor(page, state, false);
-        completed = 2;
     } else {
         try page.run(open);
         if (kind == .popover and state == .active) {
@@ -170,14 +142,10 @@ fn transitionExercise(comptime kind: LayerKind, comptime state: ActionState, com
             try page.run("cp1Container.setAttribute('data-cp1-cache-prime', '');");
         }
         try checkAncestor(page, state, false);
-        completed = 1;
     }
     try page.run(close);
     try finishFrame(page);
-    completed += 1;
     try checkAncestor(page, state, true);
-    completed += 1;
-    for (names) |name| std.debug.print("CP1_CACHE_TRANSITION {s}/{s}/{s} {s}=PASS\n", .{ @tagName(kind), @tagName(state), @tagName(direction), name });
 }
 
 fn transitionCase(comptime kind: LayerKind, comptime state: ActionState, comptime direction: Transition) !void {
@@ -186,9 +154,7 @@ fn transitionCase(comptime kind: LayerKind, comptime state: ActionState, comptim
             try transitionExercise(kind, state, direction);
         }
     };
-    errdefer std.debug.print("CP1_CACHE_CASE {s}/{s}/{s} FAIL\n", .{ @tagName(kind), @tagName(state), @tagName(direction) });
     try helpers.onFreshThread(Case.run);
-    std.debug.print("CP1_CACHE_CASE {s}/{s}/{s} PASS\n", .{ @tagName(kind), @tagName(state), @tagName(direction) });
 }
 
 test "modal focus-within cached ancestor follows show and close" {
@@ -253,14 +219,11 @@ fn stableCache() !void {
             try std.testing.expect(before.eql(after.key));
             try std.testing.expect(!after.@"volatile");
         }
-        std.debug.print("CP1_CACHE_STABLE {s}=PASS\n", .{if (phase == 0) "absent_state" else "unchanged_open_layer"});
     }
 }
 
 test "unchanged top layer preserves nonvolatile cached styles" {
-    errdefer std.debug.print("CP1_CACHE_CASE unchanged top layer FAIL\n", .{});
     try helpers.onFreshThread(stableCache);
-    std.debug.print("CP1_CACHE_CASE unchanged top layer PASS\n", .{});
 }
 
 fn revisionChanges() !void {
@@ -309,10 +272,8 @@ fn revisionChanges() !void {
 }
 
 test "top-layer revision covers insert promotion removal no-op wrap and cleanup" {
-    errdefer std.debug.print("CP1_CACHE_CASE top-layer revision paths FAIL\n", .{});
     if (comptime @hasDecl(dom.top_layer, "revisionOf") and @hasField(dom.top_layer.State, "revision")) {
         try helpers.onFreshThread(revisionChanges);
-        std.debug.print("CP1_CACHE_CASE top-layer revision paths PASS\n", .{});
     } else return error.MissingTopLayerRevision;
 }
 
@@ -337,9 +298,7 @@ fn observerAllocation() !void {
 }
 
 test "top-layer observation is lazy atomic on OOM and stable on repeated revisions" {
-    errdefer std.debug.print("CP1_CACHE_CASE top-layer observer allocation FAIL\n", .{});
     if (comptime @hasDecl(dom.style.StyleEngine, "observeTopLayer")) {
         try observerAllocation();
-        std.debug.print("CP1_CACHE_CASE top-layer observer allocation PASS\n", .{});
     } else return error.MissingTopLayerObserver;
 }

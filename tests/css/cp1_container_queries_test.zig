@@ -33,7 +33,6 @@ fn sizeCases(allocator: std.mem.Allocator) !void {
 }
 
 test "container queries serialize names sizes ranges and boolean grouping" {
-    errdefer std.debug.print("CP1_CONTAINER_CASE FAIL: container queries serialize names sizes ranges and boolean grouping\n", .{});
     if (comptime @hasDecl(css, "container_queries")) {
         try sizeCases(a);
         var parsed = (try css.container_queries.parse(a, "Name (width > 10px), style(--flag)")) orelse return error.ExpectedContainerQuery;
@@ -42,7 +41,6 @@ test "container queries serialize names sizes ranges and boolean grouping" {
         try std.testing.expectEqualStrings("Name", parsed.conditions[0].name);
         try std.testing.expectEqualStrings("(width > 10px)", parsed.conditions[0].query);
         try std.testing.expectEqualStrings("", parsed.conditions[1].name);
-        std.debug.print("CP1_CONTAINER_CASE PASS: container queries serialize names sizes ranges and boolean grouping\n", .{});
     } else return error.MissingContainerQueries;
 }
 
@@ -69,30 +67,24 @@ fn featureCases(allocator: std.mem.Allocator) !void {
 }
 
 test "container style and scroll-state features preserve unknown source text" {
-    errdefer std.debug.print("CP1_CONTAINER_CASE FAIL: container style and scroll-state features preserve unknown source text\n", .{});
     if (comptime @hasDecl(css, "container_queries")) {
         try featureCases(a);
-        std.debug.print("CP1_CONTAINER_CASE PASS: container style and scroll-state features preserve unknown source text\n", .{});
     } else return error.MissingContainerQueries;
 }
 
 test "container condition lists reject malformed grammar without forgiving entries" {
-    errdefer std.debug.print("CP1_CONTAINER_CASE FAIL: container condition lists reject malformed grammar without forgiving entries\n", .{});
     if (comptime @hasDecl(css, "container_queries")) {
         for ([_][]const u8{ "", " ", ")", "(width),", ",(width)", "(width),,(height)", "none", "initial", "and", "not", "foo foo", "foo not screen", "(width) and (height) or (orientation)", "(width) trailing", "(width", "style(\"bad\n)", "future([)]", "(width > url(a b))" }) |text| {
             var result = try css.container_queries.parse(a, text);
             if (result) |*owned| owned.deinit();
             try std.testing.expect(result == null);
         }
-        std.debug.print("CP1_CONTAINER_CASE PASS: container condition lists reject malformed grammar without forgiving entries\n", .{});
     } else return error.MissingContainerQueries;
 }
 
 test "container condition parsing unwinds every allocation failure" {
-    errdefer std.debug.print("CP1_CONTAINER_CASE FAIL: container condition parsing unwinds every allocation failure\n", .{});
     if (comptime @hasDecl(css, "container_queries")) {
         try std.testing.checkAllAllocationFailures(a, sizeCases, .{});
         try std.testing.checkAllAllocationFailures(a, featureCases, .{});
-        std.debug.print("CP1_CONTAINER_CASE PASS: container condition parsing unwinds every allocation failure\n", .{});
     } else return error.MissingContainerQueries;
 }

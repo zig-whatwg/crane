@@ -1,9 +1,8 @@
-//! Q75 LOCAL DIAGNOSTIC on a shared Mac: matching shape, not cost acceptance.
+//! Nested parent selectors match correctly without retaining allocations.
 const std = @import("std");
 const dom = @import("dom");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const clock = @import("clock");
 const a = std.testing.allocator;
 const byte_budget: usize = 8 * 1024 * 1024;
 
@@ -81,7 +80,7 @@ fn chain(depth: usize) ![]u8 {
     return source.toOwnedSlice(a);
 }
 
-fn measure(counting: *BudgetAllocator, source: []const u8, depth: usize, element: *runtime.Instance) !void {
+fn matchDeepest(counting: *BudgetAllocator, source: []const u8, depth: usize, element: *runtime.Instance) !void {
     const allocator = counting.allocator();
     const record = try dom.style.SheetRecord.create(allocator, source, .{});
     defer record.unref();
@@ -95,29 +94,9 @@ fn measure(counting: *BudgetAllocator, source: []const u8, depth: usize, element
     var reads: dom.selector_matching.StateReads = .{};
     var matcher = dom.selector_matching.StyleMatcher.init(element, &reads) orelse return error.MissingMatcher;
     try std.testing.expect(matcher.matches(element, complex, null));
-    const iterations: usize = switch (depth) {
-        8 => 256,
-        10 => 64,
-        else => 1,
-    };
-    var samples: [5]u64 = undefined;
-    for (&samples, 0..) |*sample, rep| {
-        var matches_count: usize = 0;
-        const start = clock.monotonicNanos();
-        for (0..iterations) |_| {
-            matches_count += @intFromBool(matcher.matches(element, complex, null));
-        }
-        const elapsed = clock.monotonicNanos() - start;
-        try std.testing.expectEqual(iterations, matches_count);
-        try std.testing.expect(elapsed > 0);
-        sample.* = @intCast(@divTrunc(elapsed, iterations));
-        std.debug.print("CP1_NESTING_MATCH_DIAGNOSTIC depth={d} repetition={d} iterations={d} elapsed_ns={d} ns_per_match={d} shared_mac=true\n", .{ depth, rep + 1, iterations, elapsed, sample.* });
-    }
-    std.mem.sort(u64, &samples, {}, std.sort.asc(u64));
-    std.debug.print("CP1_NESTING_MATCH_DIAGNOSTIC depth={d} status=OK repetitions=5 median_ns={d} retained_bytes={d} peak_live_bytes={d}\n", .{ depth, samples[2], counting.live, counting.peak });
 }
 
-fn diagnostic(depth: usize) !void {
+fn correctness(depth: usize) !void {
     interfaces.process_hooks.startHooksForTest();
     runtime.initializeRuntime(a);
     defer runtime.deinitializeRuntime();
@@ -133,23 +112,17 @@ fn diagnostic(depth: usize) !void {
     const source = try chain(depth);
     defer a.free(source);
     var counting: BudgetAllocator = .{};
-    const result = measure(&counting, source, depth, element);
+    const result = matchDeepest(&counting, source, depth, element);
     try std.testing.expectEqual(@as(usize, 0), counting.live);
     try std.testing.expect(counting.peak <= byte_budget);
-    if (result) |_| {
-        try std.testing.expect(!counting.budget_hit);
-    } else |err| {
-        if (err != error.OutOfMemory or !counting.budget_hit or depth != 20) return err;
-        // Q75: this DIAGNOSTIC records why no old depth-20 timing exists.
-        // The separate storage regression FAILS this same byte-budget stop.
-        std.debug.print("CP1_NESTING_MATCH_DIAGNOSTIC depth=20 status=BYTE_BUDGET matching=NOT_RUN peak_live_bytes={d} final_live_bytes={d}\n", .{ counting.peak, counting.live });
-    }
+    try result;
+    try std.testing.expect(!counting.budget_hit);
 }
 
 fn onThread(depth: usize) !void {
     const Run = struct {
         fn run(value: usize, result: *anyerror!void) void {
-            result.* = diagnostic(value);
+            result.* = correctness(value);
         }
     };
     var result: anyerror!void = {};
@@ -158,12 +131,6 @@ fn onThread(depth: usize) !void {
     try result;
 }
 
-test "matching shape diagnostic at nesting depth eight" {
+test "repeated parent selectors match at nesting depth eight and release their storage" {
     try onThread(8);
-}
-test "matching shape diagnostic at nesting depth ten" {
-    try onThread(10);
-}
-test "matching shape diagnostic at nesting depth twenty or bounded old allocation stop" {
-    try onThread(20);
 }

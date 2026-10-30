@@ -6,8 +6,22 @@ const interfaces = @import("interfaces");
 const selector = @import("selector");
 const a = std.testing.allocator;
 
+fn keyframeRuns(allocator: std.mem.Allocator) !void {
+    const record = try dom.style.SheetRecord.create(allocator, "@keyframes k { from { color: red; @x; width: 1px; :invalid { height: 9px } height: 2px; @y {} color: blue !important; animation-name: ignored; opacity: 0.5 } }", .{});
+    defer record.unref();
+    const list = try record.rulesWith(.{ .allocator = allocator });
+    const frame = list.items[0].children().?.items[0];
+    const text = try frame.serialize(allocator);
+    defer allocator.free(text);
+    try std.testing.expectEqualStrings("0% { color: red; width: 1px; height: 2px; opacity: 0.5; }", text);
+}
+
+test "keyframes keep declarations after discarded rules in keyframe context" {
+    try keyframeRuns(a);
+    try std.testing.checkAllAllocationFailures(a, keyframeRuns, .{});
+}
+
 test "nested rule payloads fit the existing font-rule payload budget" {
-    errdefer std.debug.print("CP1_NESTING_MODEL_CASE FAIL: nested rule payloads fit the existing font-rule payload budget\n", .{});
     if (comptime @hasDecl(selector, "nesting")) {
         // A rule without nesting must not grow merely to represent another
         // rule kind. FontRule is the pre-existing largest union arm.
@@ -15,7 +29,6 @@ test "nested rule payloads fit the existing font-rule payload budget" {
         const budget = @sizeOf(@FieldType(Data, "font_face"));
         inline for (.{ "style", "nested_declarations", "container", "scope" }) |kind|
             try std.testing.expect(@sizeOf(@FieldType(Data, kind)) <= budget);
-        std.debug.print("CP1_NESTING_MODEL_CASE PASS: nested rule payloads fit the existing font-rule payload budget\n", .{});
     } else return error.MissingNesting;
 }
 
@@ -48,10 +61,8 @@ fn ordered(allocator: std.mem.Allocator) !void {
 }
 
 test "nested rule models preserve declaration identity and cascade order" {
-    errdefer std.debug.print("CP1_NESTING_MODEL_CASE FAIL: nested rule models preserve declaration identity and cascade order\n", .{});
     if (comptime @hasDecl(selector, "nesting")) {
         try ordered(a);
-        std.debug.print("CP1_NESTING_MODEL_CASE PASS: nested rule models preserve declaration identity and cascade order\n", .{});
     } else return error.MissingNesting;
 }
 
@@ -79,10 +90,8 @@ fn retained(allocator: std.mem.Allocator) !void {
 }
 
 test "a retained nested rule owns the selector names copied from its destroyed parent" {
-    errdefer std.debug.print("CP1_NESTING_MODEL_CASE FAIL: a retained nested rule owns the selector names copied from its destroyed parent\n", .{});
     if (comptime @hasDecl(selector, "nesting")) {
         try retained(a);
-        std.debug.print("CP1_NESTING_MODEL_CASE PASS: a retained nested rule owns the selector names copied from its destroyed parent\n", .{});
     } else return error.MissingNesting;
 }
 
@@ -102,9 +111,7 @@ fn containers(allocator: std.mem.Allocator) !void {
 }
 
 test "container rules preserve conditions and keep unevaluated children inert" {
-    errdefer std.debug.print("CP1_NESTING_MODEL_CASE FAIL: container rules preserve conditions and keep unevaluated children inert\n", .{});
     try containers(a);
-    std.debug.print("CP1_NESTING_MODEL_CASE PASS: container rules preserve conditions and keep unevaluated children inert\n", .{});
 }
 
 fn scopes(allocator: std.mem.Allocator) !void {
@@ -126,21 +133,17 @@ fn scopes(allocator: std.mem.Allocator) !void {
 }
 
 test "scope rules retain their CSSOM while their children remain inert" {
-    errdefer std.debug.print("CP1_NESTING_MODEL_CASE FAIL: scope rules retain their CSSOM while their children remain inert\n", .{});
     if (comptime @hasDecl(selector, "nesting")) {
         try scopes(a);
-        std.debug.print("CP1_NESTING_MODEL_CASE PASS: scope rules retain their CSSOM while their children remain inert\n", .{});
     } else return error.MissingNesting;
 }
 
 test "rule tree parsing compilation and detached ownership unwind every allocation failure" {
-    errdefer std.debug.print("CP1_NESTING_MODEL_CASE FAIL: rule tree parsing compilation and detached ownership unwind every allocation failure\n", .{});
     if (comptime @hasDecl(selector, "nesting")) {
         try std.testing.checkAllAllocationFailures(a, ordered, .{});
         try std.testing.checkAllAllocationFailures(a, retained, .{});
         try std.testing.checkAllAllocationFailures(a, containers, .{});
         try std.testing.checkAllAllocationFailures(a, scopes, .{});
-        std.debug.print("CP1_NESTING_MODEL_CASE PASS: rule tree parsing compilation and detached ownership unwind every allocation failure\n", .{});
     } else return error.MissingNesting;
 }
 
@@ -175,7 +178,6 @@ fn edits() !void {
 }
 
 test "selectorText and CSSOM edits rebuild nested descendants" {
-    errdefer std.debug.print("CP1_NESTING_MODEL_CASE FAIL: selectorText and CSSOM edits rebuild nested descendants\n", .{});
     if (comptime @hasDecl(selector, "nesting")) {
         const Run = struct {
             fn run(result: *?anyerror) void {
@@ -188,7 +190,6 @@ test "selectorText and CSSOM edits rebuild nested descendants" {
         const thread = try std.Thread.spawn(.{}, Run.run, .{&result});
         thread.join();
         if (result) |err| return err;
-        std.debug.print("CP1_NESTING_MODEL_CASE PASS: selectorText and CSSOM edits rebuild nested descendants\n", .{});
     } else return error.MissingNesting;
 }
 
@@ -228,11 +229,9 @@ fn mutationFailure(allocator: std.mem.Allocator) !void {
 }
 
 test "parent selector rebuilding is atomic across every allocation failure" {
-    errdefer std.debug.print("CP1_NESTING_MODEL_CASE FAIL: parent selector rebuilding is atomic across every allocation failure\n", .{});
     if (comptime @hasDecl(selector, "nesting")) {
         try mutationFailure(a);
         try std.testing.checkAllAllocationFailures(a, mutationFailure, .{});
-        std.debug.print("CP1_NESTING_MODEL_CASE PASS: parent selector rebuilding is atomic across every allocation failure\n", .{});
     } else return error.MissingNesting;
 }
 
@@ -257,11 +256,9 @@ fn hierarchy(allocator: std.mem.Allocator) !void {
 }
 
 test "global rules are rejected through nested scope but retained in top-level scope" {
-    errdefer std.debug.print("CP1_NESTING_MODEL_CASE FAIL: global rules are rejected through nested scope but retained in top-level scope\n", .{});
     if (comptime @hasDecl(selector, "nesting")) {
         try hierarchy(a);
         try std.testing.checkAllAllocationFailures(a, hierarchy, .{});
-        std.debug.print("CP1_NESTING_MODEL_CASE PASS: global rules are rejected through nested scope but retained in top-level scope\n", .{});
     } else return error.MissingNesting;
 }
 
@@ -329,7 +326,6 @@ fn hierarchyEdits() !void {
 }
 
 test "CSSOM hierarchy and declaration fallback follow the three-browser boundary probe" {
-    errdefer std.debug.print("CP1_NESTING_MODEL_CASE FAIL: CSSOM hierarchy and declaration fallback follow the three-browser boundary probe\n", .{});
     if (comptime @hasDecl(selector, "nesting")) {
         const Run = struct {
             fn run(result: *?anyerror) void {
@@ -342,7 +338,6 @@ test "CSSOM hierarchy and declaration fallback follow the three-browser boundary
         const thread = try std.Thread.spawn(.{}, Run.run, .{&result});
         thread.join();
         if (result) |err| return err;
-        std.debug.print("CP1_NESTING_MODEL_CASE PASS: CSSOM hierarchy and declaration fallback follow the three-browser boundary probe\n", .{});
     } else return error.MissingNesting;
 }
 
@@ -384,10 +379,8 @@ fn onlyChild(rule: *dom.style.Rule) !*dom.style.Rule {
 }
 
 test "scope declaration context crosses every conditional group and style boundary" {
-    errdefer std.debug.print("CP1_NESTING_MODEL_CASE FAIL: scope declaration context crosses every conditional group and style boundary\n", .{});
     if (comptime @hasDecl(selector, "nesting")) {
         try scopedGroupCases(a);
-        std.debug.print("CP1_NESTING_MODEL_CASE PASS: scope declaration context crosses every conditional group and style boundary\n", .{});
     } else return error.MissingNesting;
 }
 
@@ -426,7 +419,6 @@ fn scopedGroupEdits() !void {
 }
 
 test "CSSOM declaration fallback inherits scope context at any conditional depth" {
-    errdefer std.debug.print("CP1_NESTING_MODEL_CASE FAIL: CSSOM declaration fallback inherits scope context at any conditional depth\n", .{});
     if (comptime @hasDecl(selector, "nesting")) {
         const Run = struct {
             fn run(result: *?anyerror) void {
@@ -439,7 +431,6 @@ test "CSSOM declaration fallback inherits scope context at any conditional depth
         const thread = try std.Thread.spawn(.{}, Run.run, .{&result});
         thread.join();
         if (result) |err| return err;
-        std.debug.print("CP1_NESTING_MODEL_CASE PASS: CSSOM declaration fallback inherits scope context at any conditional depth\n", .{});
     } else return error.MissingNesting;
 }
 
@@ -495,11 +486,9 @@ fn scopeSerialization(allocator: std.mem.Allocator) !void {
 }
 
 test "scope boundary serialization follows the three-browser implicit anchor probe" {
-    errdefer std.debug.print("CP1_NESTING_MODEL_CASE FAIL: scope boundary serialization follows the three-browser implicit anchor probe\n", .{});
     if (comptime @hasDecl(selector, "nesting")) {
         try scopeSerialization(a);
         try std.testing.checkAllAllocationFailures(a, scopeSerialization, .{});
-        std.debug.print("CP1_NESTING_MODEL_CASE PASS: scope boundary serialization follows the three-browser implicit anchor probe\n", .{});
     } else return error.MissingNesting;
 }
 
@@ -528,7 +517,6 @@ fn scopeAccessors() !void {
 }
 
 test "CSSScopeRule accessors return stored boundaries including implicit start anchors" {
-    errdefer std.debug.print("CP1_NESTING_MODEL_CASE FAIL: CSSScopeRule accessors return stored boundaries including implicit start anchors\n", .{});
     if (comptime @hasDecl(selector, "nesting")) {
         const Run = struct {
             fn run(result: *?anyerror) void {
@@ -541,7 +529,6 @@ test "CSSScopeRule accessors return stored boundaries including implicit start a
         const thread = try std.Thread.spawn(.{}, Run.run, .{&result});
         thread.join();
         if (result) |err| return err;
-        std.debug.print("CP1_NESTING_MODEL_CASE PASS: CSSScopeRule accessors return stored boundaries including implicit start anchors\n", .{});
     } else return error.MissingNesting;
 }
 
@@ -566,13 +553,9 @@ fn groups(allocator: std.mem.Allocator) !void {
 }
 
 test "empty group serialization follows browsers and nonempty indentation stays intact" {
-    errdefer std.debug.print("CP1_NESTING_MODEL_CASE FAIL: empty group serialization follows browsers and nonempty indentation stays intact\n", .{});
     try groups(a);
-    std.debug.print("CP1_NESTING_MODEL_CASE PASS: empty group serialization follows browsers and nonempty indentation stays intact\n", .{});
 }
 
 test "empty group serialization unwinds every OOM" {
-    errdefer std.debug.print("CP1_NESTING_MODEL_CASE FAIL: empty group serialization unwinds every OOM\n", .{});
     try std.testing.checkAllAllocationFailures(a, groups, .{});
-    std.debug.print("CP1_NESTING_MODEL_CASE PASS: empty group serialization unwinds every OOM\n", .{});
 }

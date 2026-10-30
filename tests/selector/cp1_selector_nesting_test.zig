@@ -23,11 +23,9 @@ fn syntax(allocator: std.mem.Allocator) !void {
 }
 
 test "nested selector syntax supplies only the required implicit nesting selector" {
-    errdefer std.debug.print("CP1_NESTING_SELECTOR_CASE FAIL: nested selector syntax supplies only the required implicit nesting selector\n", .{});
     if (comptime @hasDecl(selector, "nesting")) {
         try syntax(a);
         try std.testing.expectError(error.InvalidSelector, selector.parser.parseCssomOwned(a, try a.dupe(u8, "&div"), .{ .nesting = .style }));
-        std.debug.print("CP1_NESTING_SELECTOR_CASE PASS: nested selector syntax supplies only the required implicit nesting selector\n", .{});
     } else return error.MissingNesting;
 }
 
@@ -64,10 +62,8 @@ fn ownedResolution(allocator: std.mem.Allocator) !void {
 }
 
 test "resolved nested selectors own names after the parent and original rule are gone" {
-    errdefer std.debug.print("CP1_NESTING_SELECTOR_CASE FAIL: resolved nested selectors own names after the parent and original rule are gone\n", .{});
     if (comptime @hasDecl(selector, "nesting")) {
         try ownedResolution(a);
-        std.debug.print("CP1_NESTING_SELECTOR_CASE PASS: resolved nested selectors own names after the parent and original rule are gone\n", .{});
     } else return error.MissingNesting;
 }
 
@@ -85,10 +81,8 @@ fn recursiveResolution(allocator: std.mem.Allocator) !void {
 }
 
 test "nesting resolution recurses through logical nth and relative selector lists" {
-    errdefer std.debug.print("CP1_NESTING_SELECTOR_CASE FAIL: nesting resolution recurses through logical nth and relative selector lists\n", .{});
     if (comptime @hasDecl(selector, "nesting")) {
         try recursiveResolution(a);
-        std.debug.print("CP1_NESTING_SELECTOR_CASE PASS: nesting resolution recurses through logical nth and relative selector lists\n", .{});
     } else return error.MissingNesting;
 }
 
@@ -118,15 +112,12 @@ fn pseudoParents(allocator: std.mem.Allocator) !void {
 }
 
 test "nesting pseudo-element parents cannot match but retain their specificity" {
-    errdefer std.debug.print("CP1_NESTING_SELECTOR_CASE FAIL: nesting pseudo-element parents cannot match but retain their specificity\n", .{});
     if (comptime @hasDecl(selector, "nesting")) {
         try pseudoParents(a);
-        std.debug.print("CP1_NESTING_SELECTOR_CASE PASS: nesting pseudo-element parents cannot match but retain their specificity\n", .{});
     } else return error.MissingNesting;
 }
 
 test "top-level ampersand is scope with zero specificity and CSSOM keeps ampersand" {
-    errdefer std.debug.print("CP1_NESTING_SELECTOR_CASE FAIL: top-level ampersand is scope with zero specificity and CSSOM keeps ampersand\n", .{});
     if (comptime @hasDecl(selector, "nesting")) {
         var ordinary = try selector.parse(a, "&");
         defer ordinary.deinit();
@@ -148,17 +139,14 @@ test "top-level ampersand is scope with zero specificity and CSSOM keeps ampersa
         var scope_resolved = try selector.nesting.resolve(a, &scoped_list, null);
         defer scope_resolved.deinit();
         try std.testing.expectEqual(selector.Specificity{}, scope_resolved.selectors[0].calculateSpecificity());
-        std.debug.print("CP1_NESTING_SELECTOR_CASE PASS: top-level ampersand is scope with zero specificity and CSSOM keeps ampersand\n", .{});
     } else return error.MissingNesting;
 }
 
 test "nesting selectors unwind every allocation failure" {
-    errdefer std.debug.print("CP1_NESTING_SELECTOR_CASE FAIL: nesting selectors unwind every allocation failure\n", .{});
     if (comptime @hasDecl(selector, "nesting")) {
         try std.testing.checkAllAllocationFailures(a, syntax, .{});
         try std.testing.checkAllAllocationFailures(a, ownedResolution, .{});
         try std.testing.checkAllAllocationFailures(a, recursiveResolution, .{});
         try std.testing.checkAllAllocationFailures(a, pseudoParents, .{});
-        std.debug.print("CP1_NESTING_SELECTOR_CASE PASS: nesting selectors unwind every allocation failure\n", .{});
     } else return error.MissingNesting;
 }

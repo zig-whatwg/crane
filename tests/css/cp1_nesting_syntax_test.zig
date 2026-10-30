@@ -36,9 +36,7 @@ fn runs(allocator: std.mem.Allocator) !void {
 }
 
 test "nesting syntax retains interleaved declarations and conditional rule contents" {
-    errdefer std.debug.print("CP1_NESTING_SYNTAX_CASE FAIL: nesting syntax retains interleaved declarations and conditional rule contents\n", .{});
     try runs(a);
-    std.debug.print("CP1_NESTING_SYNTAX_CASE PASS: nesting syntax retains interleaved declarations and conditional rule contents\n", .{});
 }
 
 fn recovery(allocator: std.mem.Allocator) !void {
@@ -61,9 +59,7 @@ fn recovery(allocator: std.mem.Allocator) !void {
 }
 
 test "nesting syntax distinguishes failed declarations from invalid rule boundaries" {
-    errdefer std.debug.print("CP1_NESTING_SYNTAX_CASE FAIL: nesting syntax distinguishes failed declarations from invalid rule boundaries\n", .{});
     try recovery(a);
-    std.debug.print("CP1_NESTING_SYNTAX_CASE PASS: nesting syntax distinguishes failed declarations from invalid rule boundaries\n", .{});
 }
 
 fn ambiguity(allocator: std.mem.Allocator) !void {
@@ -81,13 +77,10 @@ fn ambiguity(allocator: std.mem.Allocator) !void {
 }
 
 test "nesting syntax custom-property ambiguity does not reveal rules inside values" {
-    errdefer std.debug.print("CP1_NESTING_SYNTAX_CASE FAIL: nesting syntax custom-property ambiguity does not reveal rules inside values\n", .{});
     try ambiguity(a);
-    std.debug.print("CP1_NESTING_SYNTAX_CASE PASS: nesting syntax custom-property ambiguity does not reveal rules inside values\n", .{});
 }
 
 test "nesting syntax style attributes still return declarations only" {
-    errdefer std.debug.print("CP1_NESTING_SYNTAX_CASE FAIL: nesting syntax style attributes still return declarations only\n", .{});
     // Preservation pin: this API deliberately drops nested rules and
     // keeps all declarations, unlike a style rule's ordered child list.
     const declarations = try css.rules.parseDeclarationList(a, "color: red; & { width: 2px; } color: green;");
@@ -95,13 +88,10 @@ test "nesting syntax style attributes still return declarations only" {
     try std.testing.expectEqual(@as(usize, 2), declarations.len);
     try std.testing.expectEqualStrings("red", declarations[0].value);
     try std.testing.expectEqualStrings("green", declarations[1].value);
-    std.debug.print("CP1_NESTING_SYNTAX_CASE PASS: nesting syntax style attributes still return declarations only\n", .{});
 }
 
 test "nesting syntax unwinds every allocation failure" {
-    errdefer std.debug.print("CP1_NESTING_SYNTAX_CASE FAIL: nesting syntax unwinds every allocation failure\n", .{});
     try std.testing.checkAllAllocationFailures(a, runs, .{});
     try std.testing.checkAllAllocationFailures(a, recovery, .{});
     try std.testing.checkAllAllocationFailures(a, ambiguity, .{});
-    std.debug.print("CP1_NESTING_SYNTAX_CASE PASS: nesting syntax unwinds every allocation failure\n", .{});
 }

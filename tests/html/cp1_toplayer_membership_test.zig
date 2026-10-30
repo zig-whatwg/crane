@@ -1,5 +1,4 @@
 //! Q65: actual top-layer membership includes modal dialogs, not just popovers.
-const std = @import("std");
 const helpers = @import("edges_node_holders_helpers.zig");
 const interfaces = @import("interfaces");
 const runtime = @import("runtime");
@@ -61,9 +60,7 @@ fn check(comptime mode: Mode, comptime state: State) !void {
             try exercise(mode, state);
         }
     };
-    errdefer std.debug.print("CP1_MEMBERSHIP mode={s} state={s} FAIL\n", .{ @tagName(mode), @tagName(state) });
     try helpers.onFreshThread(Case.run);
-    std.debug.print("CP1_MEMBERSHIP mode={s} state={s} PASS\n", .{ @tagName(mode), @tagName(state) });
 }
 
 test "modal dialog bounds focus-within" {

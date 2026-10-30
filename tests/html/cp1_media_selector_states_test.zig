@@ -1,6 +1,5 @@
 //! Media setters queue rooted events and require a real engine realm.
 //! Q39 browser controls: default/explicit mute match :muted; volume zero does not.
-const std = @import("std");
 const helpers = @import("edges_node_holders_helpers.zig");
 
 fn defaultMute() !void {
@@ -42,19 +41,13 @@ fn zeroVolume() !void {
 }
 
 test "default mute selector reads preserve the media flag" {
-    errdefer std.debug.print("CP1_NATIVE_CASE FAIL: default mute selector reads preserve the media flag\n", .{});
     try helpers.onFreshThread(defaultMute);
-    std.debug.print("CP1_NATIVE_CASE PASS: default mute selector reads preserve the media flag\n", .{});
 }
 
 test "explicit mute selector reads preserve the media flag" {
-    errdefer std.debug.print("CP1_NATIVE_CASE FAIL: explicit mute selector reads preserve the media flag\n", .{});
     try helpers.onFreshThread(explicitMute);
-    std.debug.print("CP1_NATIVE_CASE PASS: explicit mute selector reads preserve the media flag\n", .{});
 }
 
 test "zero media volume does not match muted" {
-    errdefer std.debug.print("CP1_NATIVE_CASE FAIL: zero media volume does not match muted\n", .{});
     try helpers.onFreshThread(zeroVolume);
-    std.debug.print("CP1_NATIVE_CASE PASS: zero media volume does not match muted\n", .{});
 }

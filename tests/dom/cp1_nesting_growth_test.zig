@@ -170,11 +170,8 @@ fn measure(counting: *BudgetAllocator, source: []const u8) std.mem.Allocator.Err
     return result;
 }
 
-fn runCase(name: []const u8, depth: usize, expected_rules: usize, source: []const u8) anyerror!void {
+fn runCase(_: []const u8, _: usize, expected_rules: usize, source: []const u8) anyerror!void {
     var counting: BudgetAllocator = .{};
-    // A failed cleanup assertion or unexpected error still leaves a
-    // bounded measurement receipt; it must not hide the case's counters.
-    errdefer |err| std.debug.print("CP1_NESTING_GROWTH case={s} depth={d} status=ERROR error={s} budget={d} input_bytes={d} allocations={d} alloc_calls={d} resize_calls={d} remap_calls={d} peak_live_bytes={d} final_live_bytes={d}\n", .{ name, depth, @errorName(err), byte_budget, source.len, counting.allocations, counting.alloc_calls, counting.resize_calls, counting.remap_calls, counting.peak, counting.live });
     const result: ?Counts = measure(&counting, source) catch blk: {
         // measure returns only OutOfMemory; keep a real allocator failure
         // distinct from the deliberately bounded measurement outcome.
@@ -184,13 +181,11 @@ fn runCase(name: []const u8, depth: usize, expected_rules: usize, source: []cons
     try std.testing.expectEqual(@as(usize, 0), counting.live);
     try std.testing.expect(counting.peak <= byte_budget);
     if (counting.budget_hit) {
-        std.debug.print("CP1_NESTING_GROWTH case={s} depth={d} status=BYTE_BUDGET input_bytes={d} budget={d} allocations={d} alloc_calls={d} resize_calls={d} remap_calls={d} peak_live_bytes={d} final_live_bytes={d}\n", .{ name, depth, source.len, byte_budget, counting.allocations, counting.alloc_calls, counting.resize_calls, counting.remap_calls, counting.peak, counting.live });
         return;
     }
     const counts = result orelse return error.MissingMeasurement;
     try std.testing.expectEqual(expected_rules, counts.rules);
     try std.testing.expect(counts.compiled_selectors >= expected_rules);
-    std.debug.print("CP1_NESTING_GROWTH case={s} depth={d} status=OK budget={d} input_bytes={d} rules={d} source_nodes={d} resolved_nodes={d} matching_nodes={d} largest_matching_list={d} compiled_selectors={d} allocations={d} alloc_calls={d} resize_calls={d} remap_calls={d} peak_live_bytes={d} retained_bytes={d} final_live_bytes={d}\n", .{ name, depth, byte_budget, source.len, counts.rules, counts.source_nodes, counts.resolved_nodes, counts.matching_nodes, counts.largest_matching_list, counts.compiled_selectors, counting.allocations, counting.alloc_calls, counting.resize_calls, counting.remap_calls, counting.peak, counts.retained_bytes, counting.live });
 }
 
 fn chain(nested: []const u8, depth: usize) ![]u8 {

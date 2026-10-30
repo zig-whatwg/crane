@@ -1,12 +1,9 @@
 //! Conditional 5 §§5, 5.1, 6.1, 7; Q94: eligible containers have no
 //! geometry provider yet. Keep lengths unresolved and skip scalar consumers.
-const std = @import("std");
 const helpers = @import("edges_node_holders_helpers.zig");
 
-fn check(comptime name: []const u8, comptime exercise: fn () anyerror!void) !void {
-    errdefer std.debug.print("CP1_CQ_CASE FAIL: {s}\n", .{name});
+fn check(comptime _: []const u8, comptime exercise: fn () anyerror!void) !void {
     try helpers.onFreshThread(exercise);
-    std.debug.print("CP1_CQ_CASE PASS: {s}\n", .{name});
 }
 
 fn run(script: []const u8) !void {

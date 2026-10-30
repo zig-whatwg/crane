@@ -2,7 +2,6 @@
 //! This fixture is prepared before the shared-owner implementation.
 const std = @import("std");
 const dom = @import("dom");
-const selector = @import("selector");
 const a = std.testing.allocator;
 const byte_budget: usize = 8 * 1024 * 1024;
 
@@ -103,7 +102,7 @@ fn measure(counting: *BudgetAllocator, source: []const u8) std.mem.Allocator.Err
     return counting.live;
 }
 
-fn storage(nested: []const u8, name: []const u8, depth: usize) !Storage {
+fn storage(nested: []const u8, _: []const u8, depth: usize) !Storage {
     const source = try chain(nested, depth);
     defer a.free(source);
     var counting: BudgetAllocator = .{};
@@ -113,10 +112,8 @@ fn storage(nested: []const u8, name: []const u8, depth: usize) !Storage {
     try std.testing.expect(counting.peak <= byte_budget);
     if (result) |retained| {
         try std.testing.expect(!counting.budget_hit);
-        std.debug.print("CP1_NESTING_STORAGE case={s} depth={d} status=OK input_bytes={d} budget={d} retained_bytes={d} peak_live_bytes={d} allocations={d} final_live_bytes={d}\n", .{ name, depth, source.len, byte_budget, retained, counting.peak, counting.allocations, counting.live });
         return .{ .retained = retained, .peak = counting.peak, .allocations = counting.allocations };
     } else |_| {
-        std.debug.print("CP1_NESTING_STORAGE case={s} depth={d} status={s} input_bytes={d} budget={d} peak_live_bytes={d} allocations={d} final_live_bytes={d}\n", .{ name, depth, if (counting.budget_hit) "BYTE_BUDGET_FAIL" else "ALLOCATOR_FAIL", source.len, byte_budget, counting.peak, counting.allocations, counting.live });
         // Unlike Q59's diagnostic, exhaustion FAILS this regression.
         return error.OutOfMemory;
     }
@@ -128,7 +125,6 @@ fn linear(nested: []const u8, name: []const u8) !void {
     // Doubling depth may grow container capacities in steps; this permits
     // modest capacity slack while rejecting quadratic/exponential storage.
     try std.testing.expect(deep.retained * 2 <= shallow.retained * 5);
-    std.debug.print("CP1_NESTING_STORAGE case={s} status=LINEAR retained_10={d} retained_20={d}\n", .{ name, shallow.retained, deep.retained });
 }
 
 fn chain(nested: []const u8, depth: usize) ![]u8 {
@@ -163,9 +159,8 @@ test "mixed parent selector lists grow linearly from depth ten to twelve" {
     try std.testing.expect(deep.retained * 2 <= shallow.retained * 3);
 }
 
-test "record selector and rule payload sizes alongside storage measurements" {
+test "nested rule payloads stay within the existing font-face payload size" {
     const Data = dom.style.rules.Data;
-    std.debug.print("CP1_NESTING_SIZES SelectorList={d} Rule={d} Data={d} style={d} nested_declarations={d} container={d} scope={d} font_face={d}\n", .{ @sizeOf(selector.SelectorList), @sizeOf(dom.style.Rule), @sizeOf(Data), @sizeOf(@FieldType(Data, "style")), @sizeOf(@FieldType(Data, "nested_declarations")), @sizeOf(@FieldType(Data, "container")), @sizeOf(@FieldType(Data, "scope")), @sizeOf(@FieldType(Data, "font_face")) });
     const budget = @sizeOf(@FieldType(Data, "font_face"));
     inline for (.{ "style", "nested_declarations", "container", "scope" }) |kind|
         try std.testing.expect(@sizeOf(@FieldType(Data, kind)) <= budget);

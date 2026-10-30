@@ -42,13 +42,11 @@ fn exercise(key: []const u8, modifiers: input.Modifiers, visible: bool) !void {
 }
 
 fn check(comptime key: []const u8, comptime modifiers: input.Modifiers, comptime visible: bool) !void {
-    errdefer std.debug.print("CP1_FOCUS_MODIFIER FAIL: {s} ctrl={} alt={} meta={} shift={}\n", .{ key, modifiers.ctrl, modifiers.alt, modifiers.meta, modifiers.shift });
     try helpers.onFreshThread(struct {
         fn run() !void {
             try exercise(key, modifiers, visible);
         }
     }.run);
-    std.debug.print("CP1_FOCUS_MODIFIER PASS: {s} ctrl={} alt={} meta={} shift={}\n", .{ key, modifiers.ctrl, modifiers.alt, modifiers.meta, modifiers.shift });
 }
 
 test "Control alone preserves pointer focus modality" {

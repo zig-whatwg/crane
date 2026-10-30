@@ -1060,7 +1060,7 @@ fn commitUserEdit(entry: *Instance) void {
     if (!form_associated.isInput(entry) and !form_associated.isTextArea(entry)) return;
     if (!takePendingEdit(entry)) return;
     // HTML focus update step 2.1: commit user validity before change.
-    dom.form_controls.setUserValidity(entry, true) catch return;
+    dom.form_controls.setUserValidity(entry, true) catch {};
     form_associated.fireSimpleEvent(entry, "change", .{ .bubbles = true }) catch {};
 }
 
