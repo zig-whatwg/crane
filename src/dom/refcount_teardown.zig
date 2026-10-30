@@ -246,7 +246,11 @@ pub fn documentDereffed(document: *NodeBase) void {
         .generation = runtime.SlabAllocator.generationOf(instance),
         .owner = queueOwner(instance.ctx),
         .steps = &document_unreferenced_steps,
-        .weight = 0,
+        // The tree its parser and tasks would let go: the memory bound counts
+        // it, so a script that makes and drops documents gets its relief at
+        // a binding exit once they pass high_water - not at its task's end
+        // (the parser-write cost row: base freed them as their wrappers died).
+        .weight = tree_teardown.countUpTo(document, DeferredTeardown.high_water),
     });
 }
 
