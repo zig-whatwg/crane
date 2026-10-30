@@ -2589,7 +2589,10 @@ fn runCommit(context: ?*anyopaque) void {
     // finalize a cross-document navigation". The rest of the commit is that
     // apply's step-12 job (`commitQueuedNavigation`); until it runs the
     // record stays the navigable's ongoing navigation, in `navigations`.
-    if (integration.browsing_context) |bc| {
+    // Not a traversal's or a reload's population: that is the change job of
+    // the apply running now ("apply the history step" 12.8), which waits for
+    // it - it commits here, as it always did.
+    if (record.traversal_entry == 0) if (integration.browsing_context) |bc| {
         if (navigations.put(std.heap.page_allocator, record.id, record)) |_| {
             record.committing = true;
             if (html_core.navigation.apply_history_step.finalizeCrossDocument(bc, integration.allocator, record.id)) {
@@ -2599,9 +2602,10 @@ fn runCommit(context: ?*anyopaque) void {
             record.committing = false;
             _ = navigations.remove(record.id);
         } else |_| {}
-    }
-    // No queue to append to (no memory): the commit goes on now, as it did
-    // before F1, and lists its entry after the unload (recordInHistory).
+    };
+    // A population, or no queue to append to (no memory): the commit goes on
+    // now - a navigation's lists its entry after the unload
+    // (recordInHistory), as before F1.
     commitAfterFinalize(integration, record, null);
 }
 
@@ -3859,7 +3863,12 @@ fn listBeforeUnload(integration: *IFrameIntegration, record: *Navigation, respon
         history.snapshot(entry) catch null
     else
         null;
+    // Every view held first: the listing rewrites the views, and the
+    // documents must go on reading what they read until the spec writes it
+    // (the apply's holds, from beginPushReplace, are these).
+    history.holdAllViews();
     const listed = history.listCrossDocument(bc.id, final_url, null, origin, jointHandling(record.history_handling), record.prepared) catch {
+        history.releaseAllViews();
         if (previous) |*p| p.deinit(history.allocator);
         return;
     };
