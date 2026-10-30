@@ -45,6 +45,7 @@ const transform_values = @import("transform_values.zig");
 const box_transform_values = @import("box_transform_values.zig");
 const position_values = @import("position_values.zig");
 const box_shadow_values = @import("box_shadow_values.zig");
+const filter_values = @import("filter_values.zig");
 const Number = @import("numeric_values.zig").Number;
 
 const Longhand = properties.Longhand;
@@ -93,8 +94,8 @@ pub fn animationType(l: Longhand) AnimationType {
 /// The value kinds that combine discretely today although their types have
 /// smooth rules (named so a reader sees the gap, not an approximation).
 pub const pendingKinds = [_][]const u8{
-    "transform_list", "text_shadow", "filter",           "layers",        "image_size",      "corner_radius",
-    "font_settings",  "paint",       "color.expression", "color.current", "sizing_function", "grid_tracks",
+    "transform_list", "text_shadow",      "layers",        "image_size",      "corner_radius", "font_settings",
+    "paint",          "color.expression", "color.current", "sizing_function", "grid_tracks",
 };
 
 // ============================================================================
@@ -167,6 +168,7 @@ fn smooth(allocator: Allocator, from: Value, to: Value, p: f64) Allocator.Error!
         else => {},
     }
     if (individualTransform(from) != null or individualTransform(to) != null) return try mixTransforms(allocator, from, to, p, .interpolate);
+    if (filterList(from) != null and filterList(to) != null) return try mixFilters(allocator, filterList(from).?, filterList(to).?, p, .interpolate);
     if (shadowList(from) != null and shadowList(to) != null) return try mixBoxShadows(allocator, shadowList(from).?, shadowList(to).?, p, .interpolate);
     if (from == .transform_origin and to == .transform_origin) return try mixOrigins(allocator, from.transform_origin, 1 - p, to.transform_origin, p);
     if (from == .image_position and to == .image_position) return try mixPositions(allocator, from.image_position, 1 - p, to.image_position, p);
@@ -223,6 +225,10 @@ pub fn accumulate(allocator: Allocator, l: Longhand, underlying: Value, value: V
     // their addition, which appends.
     if (l == .box_shadow) if (shadowList(underlying)) |a| if (shadowList(value)) |b| {
         if (try mixBoxShadows(allocator, a, b, 1, .accumulate)) |sum| return sum;
+    };
+    // Filter Effects 1 11: filter lists accumulate function by function.
+    if (l == .filter) if (filterList(underlying)) |a| if (filterList(value)) |b| {
+        if (try mixFilters(allocator, a, b, 1, .accumulate)) |sum| return sum;
     };
     return add(allocator, l, underlying, value);
 }
@@ -550,6 +556,118 @@ fn shadowLength(item: ?BoxShadowItem, k: usize) ?f64 {
     const v = item orelse return 0;
     if (k >= v.count) return 0;
     return switch (v.lengths[k]) {
+        .length => |len| if (len.unit == .px) len.value else null,
+        else => null,
+    };
+}
+
+// ============================================================================
+// filter (Filter Effects 1 11 "Interpolation of filter")
+// ============================================================================
+
+const FilterItem = filter_values.Item;
+const FilterFunction = filter_values.Function;
+
+/// The items of a computed filter value; `none` is the empty list.
+fn filterList(v: Value) ?[]const FilterItem {
+    return switch (v) {
+        .filter => |f| f.items,
+        .keyword => |k| if (k == .none) &.{} else null,
+        else => null,
+    };
+}
+
+const FilterOp = enum { interpolate, accumulate };
+
+/// Filter Effects 1 11: two lists whose functions match pairwise (the
+/// shorter padded with the longer's initial functions) combine function by
+/// function; a url() reference or a kind mismatch is discrete. Accumulation
+/// of the amount functions whose initial value is 1 subtracts that 1 once
+/// (brightness(a) + brightness(b) = brightness(a + b - 1)). The result is a
+/// specified value of absolute components, which the cascade computes to
+/// itself.
+fn mixFilters(allocator: Allocator, a: []const FilterItem, b: []const FilterItem, p: f64, op: FilterOp) Allocator.Error!?Value {
+    const n = @max(a.len, b.len);
+    if (n == 0) return Value.kw(.none);
+    const items = try allocator.alloc(FilterItem, n);
+    defer allocator.free(items);
+    for (0..n) |i| {
+        const x: ?FilterFunction = if (i < a.len) (if (a[i] == .function) a[i].function else return null) else null;
+        const y: ?FilterFunction = if (i < b.len) (if (b[i] == .function) b[i].function else return null) else null;
+        const kind = if (x) |f| f.kind else y.?.kind;
+        if (x != null and y != null and x.?.kind != y.?.kind) return null;
+        const fx = x orelse initialFilter(kind);
+        const fy = y orelse initialFilter(kind);
+        items[i] = .{ .function = (try mixFilterFunction(fx, fy, p, op)) orelse return null };
+    }
+    return .{ .filter = try filter_values.Filter.create(allocator, items) };
+}
+
+/// The initial value of a filter function (Filter Effects 1 11: "the
+/// initial value for interpolation").
+fn initialFilter(kind: filter_values.Kind) FilterFunction {
+    return .{ .kind = kind, .argument = switch (kind) {
+        .blur => .{ .scalar = Value.px(0) },
+        .hue_rotate => .{ .angle = .{ .literal = .{ .number = 0, .unit = .deg } } },
+        .drop_shadow => .{ .shadow = .{ .color = .{ .rgba = .{ .r = 0, .g = 0, .b = 0, .a = 0 } }, .lengths = .{ Value.px(0), Value.px(0), Value.px(0) }, .count = 3 } },
+        .brightness, .contrast, .opacity, .saturate => .{ .scalar = .{ .number = 1 } },
+        .grayscale, .invert, .sepia => .{ .scalar = .{ .number = 0 } },
+    } };
+}
+
+/// One pair of computed functions of one kind; null for a component this
+/// cannot combine (a calc() or a non-legacy color).
+fn mixFilterFunction(x: FilterFunction, y: FilterFunction, p: f64, op: FilterOp) Allocator.Error!?FilterFunction {
+    const one: f64 = switch (x.kind) {
+        .brightness, .contrast, .opacity, .saturate => 1,
+        else => 0,
+    };
+    const combine = struct {
+        fn f(u: f64, v: f64, t: f64, o: FilterOp, base: f64) f64 {
+            return switch (o) {
+                .interpolate => lerp(u, v, t),
+                .accumulate => u + v - base,
+            };
+        }
+    }.f;
+    switch (x.argument) {
+        .scalar => |sx| {
+            if (y.argument != .scalar) return null;
+            const sy = y.argument.scalar;
+            if (sx == .number and sy == .number) return .{ .kind = x.kind, .argument = .{ .scalar = .{ .number = combine(sx.number, sy.number, p, op, one) } } };
+            const lx = pxOf(sx) orelse return null;
+            const ly = pxOf(sy) orelse return null;
+            return .{ .kind = x.kind, .argument = .{ .scalar = Value.px(combine(lx, ly, p, op, 0)) } };
+        },
+        .angle => |ax| {
+            if (y.argument != .angle or ax != .literal or y.argument.angle != .literal) return null;
+            const dx = ax.literal.degrees();
+            const dy = y.argument.angle.literal.degrees();
+            return .{ .kind = x.kind, .argument = .{ .angle = .{ .literal = .{ .number = combine(dx, dy, p, op, 0), .unit = .deg } } } };
+        },
+        .shadow => |shx| {
+            if (y.argument != .shadow) return null;
+            const shy = y.argument.shadow;
+            const cx = legacyRgba(shx.color orelse return null) orelse return null;
+            const cy = legacyRgba(shy.color orelse return null) orelse return null;
+            var lengths: [3]Value = undefined;
+            for (0..3) |k| {
+                const lx = if (k < shx.count) pxOf(shx.lengths[k]) orelse return null else 0;
+                const ly = if (k < shy.count) pxOf(shy.lengths[k]) orelse return null else 0;
+                lengths[k] = Value.px(combine(lx, ly, p, op, 0));
+            }
+            const color: RgbaColor = switch (op) {
+                .interpolate => mixPremultiplied(cx, cy, p),
+                .accumulate => addPremultiplied(cx, cy),
+            };
+            return .{ .kind = x.kind, .argument = .{ .shadow = .{ .color = .{ .rgba = color }, .lengths = lengths, .count = 3 } } };
+        },
+        .omitted => return null,
+    }
+}
+
+fn pxOf(v: Value) ?f64 {
+    return switch (v) {
         .length => |len| if (len.unit == .px) len.value else null,
         else => null,
     };
