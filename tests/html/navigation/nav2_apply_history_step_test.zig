@@ -165,16 +165,86 @@ test "holdAllViews holds every navigable the history has" {
     for ([_]u64{ top, frame, other }) |navigable| try testing.expect(!h.isViewHeld(navigable));
 }
 
-// Stated deviation (lane nav2 C2, integrator 2026-10-28): HTML queues
-// "finalize a cross-document navigation" and a same-document navigation's
-// finalize steps on the session history traversal queue, so a commit never
-// runs inside an apply. Crane still commits both inline (E and F1 make them
-// items), so a commit made while an apply runs settles it first - the step
-// moves to the apply's target and the non-changing documents' views are
-// released, as C1 had them - and the push lands after the target. When E or
-// F1 lands, this test FLIPS: the commit is queued behind the apply and this
-// settle path goes.
-test "STATED DEVIATION until F1: a cross-document commit made while an apply runs settles it first" {
+// Lane nav2 F1: "finalize a cross-document navigation" is an item of the
+// traversal queue (apply_history_step's .push_replace apply), so a
+// cross-document commit never runs inside another apply: it waits behind a
+// running traversal and lists its entry after that apply's step 20, and its
+// own "apply the push/replace history step" sets the current step at ITS
+// step 20 - this test FLIPPED the C2 deviation ("a cross-document commit made
+// while an apply runs settles it first"), which now holds only for an
+// embedder's own synchronous load (top_level_traversables.recordLoad, the
+// next test).
+test "a cross-document finalize lists its entry after the running apply ends, and sets the step at its own step 20" {
+    var h = joint.JointHistory.init(testing.allocator);
+    defer h.deinit();
+    try twoFrames(&h);
+    const f0 = h.entryAt(frame, 0).?.id;
+
+    // A traversal of the frame back to f0 runs (target step 0).
+    h.beginApply(5, 0);
+    h.setCurrentEntry(frame, f0);
+    h.holdAllViews();
+    // The other frame's response arrives meanwhile: its finalize is queued
+    // behind the traversal - nothing is listed, nothing settled.
+    try testing.expect(h.isApplying(5));
+    try testing.expectEqual(@as(u32, 1), h.current_step);
+    // The traversal's step 20.
+    h.releaseAllViews();
+    h.endApply(5);
+    try testing.expectEqual(@as(u32, 0), h.current_step);
+
+    // Then the finalize runs: a push clears the forward history (the frame's
+    // f1) and lists the entry at the current step + 1 - without moving the
+    // current step, which its push/replace step sets at its step 20.
+    const listed = try h.listCrossDocument(other, "http://x.test/o1", null, "http://x.test", .push, null);
+    try testing.expectEqual(@as(u32, 1), listed.step);
+    try testing.expect(listed.removed);
+    try testing.expectEqual(@as(usize, 1), h.entryCount(frame));
+    try testing.expectEqual(@as(u32, 0), h.current_step);
+    h.beginApply(6, listed.step);
+    h.setCurrentEntry(other, listed.entry);
+    h.holdAllViews();
+    // The navigating frame's current entry is its new one from step 8.2;
+    // every document keeps the view it had until the spec writes it.
+    try testing.expectEqualStrings("http://x.test/o1", h.currentEntry(other).?.url);
+    try testing.expectEqual(@as(u32, 0), h.historyView(top).index);
+    // Its new document is active ("update document for history step
+    // application"): its view reads the push; the others' wait for step 18.
+    h.releaseView(other);
+    try testing.expectEqual(@as(u32, 2), h.historyView(other).length);
+    try testing.expectEqual(@as(u32, 1), h.historyView(other).index);
+    try testing.expectEqual(@as(u32, 0), h.historyView(top).index);
+    h.releaseAllViews();
+    h.endApply(6);
+    try testing.expectEqual(@as(u32, 1), h.current_step);
+    try testing.expectEqual(@as(u32, 2), h.historyView(top).length);
+    try testing.expectEqual(@as(u32, 1), h.historyView(top).index);
+}
+
+test "a cross-document finalize's replace takes the navigable's current entry's place and keeps a same-origin key" {
+    var h = joint.JointHistory.init(testing.allocator);
+    defer h.deinit();
+    try twoFrames(&h);
+    const before = h.currentEntry(other).?;
+    const key = before.api_key;
+    const step = before.step;
+    const listed = try h.listCrossDocument(other, "http://x.test/o2", null, "http://x.test", .replace, null);
+    try testing.expect(!listed.removed);
+    try testing.expectEqual(step, listed.step);
+    try testing.expectEqual(@as(u32, 1), h.current_step);
+    const entry = h.entryById(listed.entry).?;
+    try testing.expectEqualStrings("http://x.test/o2", entry.url);
+    try testing.expectEqualSlices(u8, &key, &entry.api_key);
+    try testing.expectEqual(@as(usize, 1), h.entryCount(other));
+}
+
+// Stated deviation (lane nav2 C2; since F1 only an embedder's own load): an
+// embedder's synchronous load of the host page (top_level_traversables
+// .recordLoad) is no navigation and is not queued, so one made while an
+// apply runs settles it first - the step moves to the apply's target and
+// the non-changing documents' views are released - and the push lands after
+// the target.
+test "STATED DEVIATION (embedder loads): a commit made inline while an apply runs settles it first" {
     var h = joint.JointHistory.init(testing.allocator);
     defer h.deinit();
     try twoFrames(&h);
