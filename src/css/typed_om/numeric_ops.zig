@@ -250,6 +250,18 @@ pub fn serialize(allocator: Allocator, root: usize, reader: anytype) ![]u8 {
 /// Chrome/Safari Q21 put a product's scalar coefficient after unresolved
 /// factors when reifying it. Constructor graphs keep their input order.
 pub const ParsedReader = struct {
+    /// Typed OM §5.2 step 1: a valid property tree with an operation outside
+    /// §5.6's hierarchy keeps its associated native CSSStyleValue (Q95,
+    /// Chrome156 probe and Blink StyleValueFactory's unsupported fallback).
+    /// Check descendants before allocating wrappers, using view's allowlist.
+    /// These are already bounded native property trees, never JS graphs.
+    pub fn supports(node: *const math.Node) bool {
+        const reader: @This() = .{};
+        _ = reader.view(@intFromPtr(node)) catch return false;
+        for (node.children) |child_node| if (!supports(child_node)) return false;
+        return true;
+    }
+
     pub fn view(_: @This(), id: usize) error{Invalid}!View {
         const node: *const math.Node = @ptrFromInt(id);
         return .{ .kind = switch (node.tag) {

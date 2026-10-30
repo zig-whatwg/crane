@@ -588,6 +588,15 @@ pub fn reifyCustom(ctx: runtime.Context, value: css.custom_properties.Specified)
     };
 }
 
+/// §5.2 step 1 also applies to a numeric component inside a retained list.
+/// The owning caller preserves the whole property's native value on fallback.
+fn canReifyNumber(number: css.numeric_values.Number) bool {
+    return switch (number) {
+        .literal => true,
+        .calculation => |expression| ops.ParsedReader.supports(expression.root),
+    };
+}
+
 fn reifyNumber(ctx: runtime.Context, number: css.numeric_values.Number) !*runtime.Instance {
     return switch (number) {
         .literal => |literal| unitObject(ctx, literal),
@@ -681,10 +690,27 @@ fn reifyAssignments(out: *Reified, property: properties.Property, assignments: [
         for (assigned.value.layers.items) |value| try reifyComponent(out, longhand, value, computed);
     } else if (assigned.value == .animation_list) {
         const list = assigned.value.animation_list;
+        // §5.2 step 1, Q124/Q126: unsupported math in any specified
+        // component retains the whole property, before creating any items.
+        // Ordinary computed values keep their existing reification rules.
+        if (!computed) for (list.items.items) |item| {
+            const supported = switch (item) {
+                .number => |number| canReifyNumber(number),
+                .range => |range| canReifyNumber(range.offset),
+                else => true,
+            };
+            if (!supported) {
+                try out.appendNew(try ordinaryOpaque(out.ctx, property, assignments, computed, null, false));
+                return;
+            }
+        };
         for (list.items.items, 0..) |item, index| {
             const object = switch (item) {
                 .keyword => |keyword| try keywordObject(out.ctx, keyword.name()),
-                .number => |number| try reifyNumber(out.ctx, number),
+                .number => |number| if (canReifyNumber(number))
+                    try reifyNumber(out.ctx, number)
+                else
+                    try ordinaryOpaque(out.ctx, property, assignments, computed, index, false),
                 .name => |name| if (css.keyframe_values.reservedName(name))
                     try ordinaryOpaque(out.ctx, property, assignments, computed, index, false)
                 else
@@ -700,7 +726,10 @@ fn reifyAssignments(out: *Reified, property: properties.Property, assignments: [
                         offset.literal.value == (if (longhand == .animation_range_end) @as(f64, 100) else 0))
                         break :blk try keywordObject(out.ctx, name.name());
                     break :blk try ordinaryOpaque(out.ctx, property, assignments, computed, index, false);
-                } else try reifyNumber(out.ctx, range.offset),
+                } else if (canReifyNumber(range.offset))
+                    try reifyNumber(out.ctx, range.offset)
+                else
+                    try ordinaryOpaque(out.ctx, property, assignments, computed, index, false),
                 .timeline => try ordinaryOpaque(out.ctx, property, assignments, computed, index, false),
             };
             try out.appendNew(object);
@@ -751,6 +780,15 @@ fn reifyRegistered(out: *Reified, property: []const u8, definition: *const css.s
     {
         try out.appendNew(try opaqueObject(out.ctx, .{ .registered = .{ .owner = owner, .property = property, .index = null } }, false));
         return;
+    }
+    // §5.2 step 1, Q126: a computed registered list containing
+    // unsupported math is one value associated with its whole property.
+    for (0..owner.count()) |index| {
+        const item = owner.item(index).?;
+        if (item == .numeric and !canReifyNumber(item.numeric.number)) {
+            try out.appendNew(try opaqueObject(out.ctx, .{ .registered = .{ .owner = owner, .property = property, .index = null } }, false));
+            return;
+        }
     }
     for (0..owner.count()) |index| {
         const item = owner.item(index).?;

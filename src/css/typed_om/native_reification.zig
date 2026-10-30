@@ -6,6 +6,7 @@ const values = @import("../style_values.zig");
 const math = @import("../math_values.zig");
 const native = @import("native_values.zig");
 const numeric = @import("numeric.zig");
+const ParsedReader = @import("numeric_ops.zig").ParsedReader;
 const Value = values.Value;
 const Longhand = properties.Longhand;
 
@@ -69,7 +70,7 @@ pub fn shape(longhand: Longhand, value: Value) Shape {
     if (native.numericLeaf(longhand, value)) |number| return .{ .numeric = number };
     return switch (value) {
         .keyword => |keyword| .{ .keyword = keyword.name() },
-        .calculation => |expression| .{ .calculation = expression },
+        .calculation => |expression| if (ParsedReader.supports(expression.root)) .{ .calculation = expression } else .unsupported,
         .pending => |pending| .{ .pending = pending },
         .color => |color| if (color == .current) .{ .keyword = "currentcolor" } else .unsupported,
         .alignment => |alignment| if (alignment.modifier == null) .{ .keyword = alignment.position.name() } else .unsupported,
@@ -135,7 +136,7 @@ pub fn shape(longhand: Longhand, value: Value) Shape {
                 } },
                 .numeric => |number| switch (number.scalar) {
                     .numeric => |n| .{ .numeric = n },
-                    .calculation => |expression| .{ .calculation = expression },
+                    .calculation => |expression| if (ParsedReader.supports(expression.root)) .{ .calculation = expression } else .unsupported,
                 },
             };
         },
