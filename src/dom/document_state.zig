@@ -720,6 +720,20 @@ pub const InternalState = struct {
         if (self.style_sheets) |ss| self.style_sheets_kept.releaseOwned(ss);
     }
 
+    /// Remove `url`'s entry from the module map. The key and the module are
+    /// the caller's to release. The map's removals are its type's steps, so
+    /// the map and every removal from it stay in one file
+    /// (tools/lint_tombstones.zig sees an unguarded map only there).
+    pub fn removeModuleMapEntry(self: *InternalState, url: []const u8) bool {
+        return self.module_map.remove(url);
+    }
+
+    /// Remove `specifier`'s entry from the import map's imports. The key and
+    /// the value are the caller's to release.
+    pub fn removeImport(self: *InternalState, specifier: []const u8) bool {
+        return self.import_map_imports.remove(specifier);
+    }
+
     pub fn ensureInteractionState(self: *InternalState) !*InteractionState {
         if (self.interaction_state) |shared| return shared;
         const shared = try self.allocator.create(InteractionState);

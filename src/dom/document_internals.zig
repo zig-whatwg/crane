@@ -453,7 +453,7 @@ pub fn addImportMapping(instance: *runtime.Instance, specifier: []const u8, reso
         if (internal.import_map_imports.get(old_key)) |old_value| {
             internal.allocator.free(old_value);
         }
-        _ = internal.import_map_imports.remove(old_key);
+        _ = internal.removeImport(old_key);
         internal.allocator.free(old_key);
     }
 
