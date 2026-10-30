@@ -1447,7 +1447,12 @@ const Builder = struct {
             },
             .sum, .product => {
                 // Steps 8.1/9.1: flatten while preserving the original order.
-                var list: std.ArrayList(*Node) = .empty;
+                var flattened_count: usize = 0;
+                for (root.children) |child| {
+                    const count = if (child.tag == root.tag) child.children.len else 1;
+                    flattened_count = std.math.add(usize, flattened_count, count) catch return error.OutOfMemory;
+                }
+                var list = try std.ArrayList(*Node).initCapacity(self.allocator, flattened_count);
                 for (root.children) |child| {
                     if (child.tag == root.tag) try list.appendSlice(self.allocator, child.children) else try list.append(self.allocator, child);
                 }
