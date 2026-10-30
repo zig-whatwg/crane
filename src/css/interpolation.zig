@@ -41,6 +41,8 @@ const Allocator = std.mem.Allocator;
 const properties = @import("properties.zig");
 const values = @import("style_values.zig");
 const math = @import("math_values.zig");
+const transform_values = @import("transform_values.zig");
+const Number = @import("numeric_values.zig").Number;
 
 const Longhand = properties.Longhand;
 const Value = values.Value;
@@ -158,6 +160,7 @@ fn smooth(allocator: Allocator, from: Value, to: Value, p: f64) Allocator.Error!
         },
         else => {},
     }
+    if (individualTransform(from) != null or individualTransform(to) != null) return try mixTransforms(allocator, from, to, p, .interpolate);
     if (lengthPercentage(from) and lengthPercentage(to)) return try mixLengths(allocator, from, 1 - p, to, p);
     return null;
 }
@@ -180,6 +183,9 @@ pub fn add(allocator: Allocator, l: Longhand, underlying: Value, value: Value) A
     }
     if (lengthPercentage(underlying) and lengthPercentage(value)) {
         if (try mixLengths(allocator, underlying, 1, value, 1)) |sum| return sum;
+    }
+    if (individualTransform(underlying) != null or individualTransform(value) != null) {
+        if (try mixTransforms(allocator, underlying, value, 1, .add)) |sum| return sum;
     }
     return retained(value);
 }
@@ -281,6 +287,105 @@ fn appendTerm(allocator: Allocator, out: *std.ArrayList(u8), v: Value) Allocator
         .calculation => |c| try c.serialize(out, allocator),
         else => unreachable,
     }
+}
+
+// ============================================================================
+// Individual transforms (CSS Transforms 2 section 8)
+// ============================================================================
+
+/// The kind of an individual transform value; `none` counts as the kind of
+/// the other side (its identity), so it reports null here.
+fn individualTransform(v: Value) ?transform_values.Kind {
+    return if (v == .transform) v.transform.kind else null;
+}
+
+const TransformOp = enum { interpolate, add };
+
+/// translate and scale: component by component (Transforms 2 8:
+/// "interpolate each component"; none is the identity - 0px translations,
+/// scale 1); addition sums translations and multiplies scales. rotate:
+/// angles of one axis interpolate and add; other axes need the quaternion
+/// slerp (pending: discrete). Components of one unit only; a px/% or calc()
+/// pair is pending (discrete).
+fn mixTransforms(allocator: Allocator, a: Value, b: Value, p: f64, op: TransformOp) Allocator.Error!?Value {
+    const kind = individualTransform(a) orelse individualTransform(b).?;
+    if (individualTransform(a)) |k| if (k != kind) return null;
+    if (individualTransform(b)) |k| if (k != kind) return null;
+    const identity = identityComponents(kind);
+    const ca: [4]Number = if (a == .transform) a.transform.components else identity;
+    const cb: [4]Number = if (b == .transform) b.transform.components else identity;
+    var out: [4]math.Numeric = undefined;
+    if (kind == .rotate) {
+        // One axis (the identity takes the other side's).
+        const axis_a = if (a == .transform) ca else cb;
+        const axis_b = if (b == .transform) cb else ca;
+        for (0..3) |i| {
+            const x = literal(axis_a[i]) orelse return null;
+            const y = literal(axis_b[i]) orelse return null;
+            if (x.value != y.value) return null;
+            out[i] = x;
+        }
+        const angle_a = degrees(if (a == .transform) ca[3] else zeroDegrees()) orelse return null;
+        const angle_b = degrees(if (b == .transform) cb[3] else zeroDegrees()) orelse return null;
+        out[3] = .{ .value = switch (op) {
+            .interpolate => lerp(angle_a, angle_b, p),
+            .add => angle_a + angle_b,
+        }, .unit = .deg };
+    } else {
+        for (0..3) |i| {
+            const x = literal(ca[i]) orelse return null;
+            const y = literal(cb[i]) orelse return null;
+            if (x.unit != y.unit and !(isZero(x) or isZero(y))) return null;
+            const unit = if (isZero(x) and x.unit != y.unit) y.unit else x.unit;
+            out[i] = .{ .unit = unit, .value = switch (op) {
+                .interpolate => lerp(x.value, y.value, p),
+                .add => if (kind == .scale) x.value * y.value else x.value + y.value,
+            } };
+        }
+        out[3] = .{ .value = 0, .unit = .number };
+    }
+    const result = try allocator.create(transform_values.Transform);
+    result.* = .{ .allocator = allocator, .kind = kind, .components = .{
+        .{ .literal = out[0] }, .{ .literal = out[1] }, .{ .literal = out[2] }, .{ .literal = out[3] },
+    } };
+    return .{ .transform = result };
+}
+
+fn identityComponents(kind: transform_values.Kind) [4]Number {
+    const px: Number = .{ .literal = .{ .value = 0, .unit = .px } };
+    return switch (kind) {
+        .translate => .{ px, px, px, Number.scalar(0) },
+        .rotate => .{ Number.scalar(0), Number.scalar(0), Number.scalar(1), zeroDegrees() },
+        .scale => .{ Number.scalar(1), Number.scalar(1), Number.scalar(1), Number.scalar(0) },
+    };
+}
+
+fn zeroDegrees() Number {
+    return .{ .literal = .{ .value = 0, .unit = .deg } };
+}
+
+fn literal(n: Number) ?math.Numeric {
+    return switch (n) {
+        .literal => |l| l,
+        .calculation => |c| c.computedNumber(),
+    };
+}
+
+fn isZero(n: math.Numeric) bool {
+    return n.value == 0 and (n.unit == .px or n.unit == .percent or n.unit == .number);
+}
+
+/// An angle in degrees (a computed angle is in its canonical unit, deg).
+fn degrees(n: Number) ?f64 {
+    const l = literal(n) orelse return null;
+    return switch (l.unit) {
+        .deg => l.value,
+        .rad => l.value * 180 / std.math.pi,
+        .grad => l.value * 0.9,
+        .turn => l.value * 360,
+        .number => if (l.value == 0) 0 else null,
+        else => null,
+    };
 }
 
 // ============================================================================
