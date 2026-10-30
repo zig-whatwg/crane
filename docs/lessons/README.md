@@ -874,6 +874,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [JSON Lines uses LF, not Unicode line boundaries](testing-json-lines-uses-lf-not-unicode-line-boundaries.md) - Preserve Unicode separators in names and reconcile full records.
 
 ### Debugging
+- [Profile a hot path before optimizing the structure the design names](debugging-profile-a-hot-path-before-optimizing-the-structure-the-design-names.md) - Profile the workload the bar measures before rebuilding the structure the design suspects; look for terms that grow with the session, wherever they live.
 - [Registry-wide scratch bounds grow per-call work](debugging-registry-wide-scratch-bounds-grow-per-call-work.md) - Size scratch storage for the values the call can reach, and inspect the compiled initialization cost.
 - [A kernel that frees its only object each op measures the allocator's page churn](debugging-a-one-object-kernel-measures-the-allocators-page-churn.md) - Before reading a size effect off an instruction count, check page reclaims per op and the spread across runs: one object at a time under DebugAllocator measures mmap, not the object.
 - [Allocate before transferring an arena](debugging-allocate-before-transferring-an-arena.md) - Transfer an arena only after its last allocation; struct field evaluation can otherwise copy stale ownership state.
