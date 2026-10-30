@@ -233,6 +233,7 @@ pub fn installHooks() void {
         },
         .associate_parser = &lifecycleAssociateParser,
         .discard_parser = &lifecycleDiscardParser,
+        .drop_unobserved_lifecycle_tasks = &lifecycleDropUnobservedTasks,
         .parser_finished = &lifecycleParserFinished,
         .finish_without_parser = &lifecycleFinishWithoutParser,
         .parsing_stopped = &lifecycleParsingStopped,
@@ -4012,6 +4013,7 @@ fn queueScriptDeliveryContinuation(document: *runtime.Instance, removed_parser_b
     const queued = task.allocator.create(LifecycleTask) catch return;
     queued.* = task;
     queued.ref.take(document, @import("dom").instance_bridge.getNodeBase(@ptrCast(document)));
+    linkLifecycleTask(queued);
     loop.queueTask(.{
         .callback = &runLifecycleTask,
         .context = queued,
@@ -4499,7 +4501,58 @@ const LifecycleTask = struct {
     /// its tree counted zero). WebKit's document event tasks keep their
     /// document alive the same way.
     ref: @import("dom").node_holds.CountedRef = .{},
+    /// Its place in its Browser's pending lifecycle tasks
+    /// (dom.document_state.PendingLifecycleTasks), from its queueing to its
+    /// run or drop.
+    link: @import("dom").document_state.LifecycleLink = .{},
+    /// Dropped unobserved (lifecycleDropUnobservedTasks, refcount step 7a):
+    /// its hold is released already and its steps do nothing.
+    cancelled: bool = false,
 };
+
+const PendingLifecycleTasks = @import("dom").document_state.PendingLifecycleTasks;
+
+/// `task` joins its Browser's pending lifecycle tasks (refcount step 7a). On
+/// out of memory it stays out: then nothing can drop it unobserved, and its
+/// document waits for it, as before.
+fn linkLifecycleTask(task: *LifecycleTask) void {
+    const pending = runtime.BrowserScope.ofInstance(task.target).of(PendingLifecycleTasks) catch return;
+    pending.add(&task.link, task.target);
+}
+
+/// `task` leaves its Browser's pending lifecycle tasks, if it is in them.
+fn unlinkLifecycleTask(task: *LifecycleTask) void {
+    if (!task.link.linked) return;
+    const pending = PendingLifecycleTasks.of(task.target) orelse return;
+    pending.remove(&task.link);
+}
+
+/// document_lifecycle.dropUnobservedLifecycleTasks (refcount step 7a; the
+/// integrator's ruling (c)): `document`'s own last reference went - its
+/// wrapper is gone, no holder names it, and a held node would keep its
+/// wrapper, so its count - and it has no window. If no listener or activated
+/// handler is on it (of any type: stricter than "of an event these tasks
+/// fire", so it only ever keeps more), the readystatechange,
+/// DOMContentLoaded and the rest its pending lifecycle tasks would dispatch
+/// at it can be observed by nothing: each task is cancelled and its counted
+/// hold released, and the tree goes by the ordinary rules. WebKit's
+/// Document::removedLastRef stops a document's pending work the same way
+/// when its last reference goes (commonTeardown).
+fn lifecycleDropUnobservedTasks(document: *runtime.Instance) void {
+    const pending = PendingLifecycleTasks.of(document) orelse return;
+    if ((get_defaultView(document) catch null) != null) return;
+    if (@import("dom").event_handlers.hasListeners(document)) return;
+    const generation = runtime.SlabAllocator.generationOf(document);
+    var at = pending.head;
+    while (at) |link| {
+        at = link.next;
+        if (link.document != document or link.generation != generation) continue;
+        const task: *LifecycleTask = @fieldParentPtr("link", link);
+        pending.remove(link);
+        task.cancelled = true;
+        task.ref.release(task.target);
+    }
+}
 
 fn queueLifecycleTask(target: *runtime.Instance, step: LifecycleStep) void {
     queueLifecycleTaskWith(target, step, 0);
@@ -4516,6 +4569,7 @@ fn queueLifecycleTaskWith(target: *runtime.Instance, step: LifecycleStep, load_t
         .load_token = load_token,
     };
     task.ref.take(target, @import("dom").instance_bridge.getNodeBase(@ptrCast(target)));
+    linkLifecycleTask(task);
     const loop = target.ctx.getOptionalEventLoop() orelse {
         // No loop to queue on (a context built for tests): the events are
         // still owed, so fire them now rather than lose them.
@@ -4527,6 +4581,7 @@ fn queueLifecycleTaskWith(target: *runtime.Instance, step: LifecycleStep, load_t
 
 fn dropLifecycleTask(context: ?*anyopaque) void {
     const task: *LifecycleTask = @ptrCast(@alignCast(context orelse return));
+    unlinkLifecycleTask(task);
     task.ref.release(task.target);
     task.allocator.destroy(task);
 }
@@ -4535,6 +4590,9 @@ fn runLifecycleTask(context: ?*anyopaque) void {
     const task: *LifecycleTask = @ptrCast(@alignCast(context orelse return));
     defer task.allocator.destroy(task);
     defer task.ref.release(task.target);
+    unlinkLifecycleTask(task);
+    // Dropped unobserved with its document's last reference: nothing to do.
+    if (task.cancelled) return;
     // Collected and its slot reissued: nothing is left to finish loading.
     if (runtime.SlabAllocator.generationOf(task.target) != task.generation) return;
     if (task.step == .resume_script_delivery) {

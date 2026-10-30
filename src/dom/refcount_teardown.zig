@@ -199,26 +199,47 @@ fn runGarbageTree(item: *DeferredTeardown.Item, budget: usize) DeferredTeardown.
     return .{ .freed = freed + 1, .done = true };
 }
 
-/// `document`'s own count reached zero: nothing outside its tree holds the
-/// Document itself - its wrapper is gone, no holder names it, a Window would
-/// (refcount step 5i). WebKit's Document::removedLastRef
-/// (Source/WebCore/dom/Document.cpp) detaches its parser then
-/// ("detachParser()", before removeDetachedChildren), and so does this, one
-/// slice later (never inline: the deref can be a wrapper's second pass or a
-/// step of a DOM algorithm). Without it a suspended parser's counted
-/// structures (refcount step 5a) and the document that owns the parser are a
-/// cycle no count ever ends. A node of the document held elsewhere still
-/// keeps its tree (decision D6: those holds are foreign; the document's own
-/// parser is not); with none, the tree is garbage once the parser lets go,
-/// by the ordinary rules. The detach is the Document's own
-/// (dom.document_lifecycle.discardParser): its scheduled scripts discarded
-/// without running, its input aborted, its reference to the parser released.
-pub fn documentUnreferenced(document: *NodeBase) void {
+/// The references on `document` that are its own pending work: one per
+/// lifecycle task still queued for it (Document.zig's LifecycleTask holds
+/// its document counted from its queueing to its run or drop, and stands in
+/// its Browser's dom.document_state.PendingLifecycleTasks meanwhile).
+fn ownWorkReferences(instance: *runtime.Instance) u32 {
+    const pending = @import("document_state.zig").PendingLifecycleTasks.of(instance) orelse return 0;
+    return pending.countFor(instance);
+}
+
+/// A reference on `document` ended. When what is left is only its own
+/// pending work - nothing outside holds the Document: its wrapper is gone,
+/// no holder names it, a Window would (refcount step 5i), and a held node of
+/// it would keep its wrapper - it is unreachable. The trigger is "own count ==
+/// its own pending lifecycle tasks": the same rule as "its last reference
+/// went", measured honestly (each task's counted hold is a reference on the
+/// Document node), and a held node or a listener closure still keeps the
+/// count above it. WebKit's
+/// Document::removedLastRef (Source/WebCore/dom/Document.cpp) then detaches
+/// its parser ("detachParser()", before removeDetachedChildren) and stops its
+/// pending work (commonTeardown); so does this, one slice later (never
+/// inline: the deref can be a wrapper's second pass or a step of a DOM
+/// algorithm). Without it a suspended parser's counted structures (refcount
+/// step 5a), and a document's own lifecycle tasks (refcount8,
+/// H-RC8-DOC-LIFECYCLE), keep a document nothing else reaches until they
+/// end - a cycle, or, for a script that makes and drops documents, every
+/// one of them until the script's task ends (the parser-write cost row).
+/// A node of the document held elsewhere still keeps its tree (decision
+/// D6: those holds are foreign). The detach is the Document's own
+/// (dom.document_lifecycle.discardParser: its scheduled scripts discarded
+/// without running, its input aborted, its parser reference released); its
+/// lifecycle tasks go only when nothing listens to it
+/// (dom.document_lifecycle.dropUnobservedLifecycleTasks).
+pub fn documentDereffed(document: *NodeBase) void {
     const instance = instanceOf(document) orelse return;
     if (runtime.instance_lifecycle.isCleanupStarted(instance)) return;
-    // Only a document with a parser has one to detach.
     const internal = @import("document_internals.zig").getInternal(instance) orelse return;
-    if (internal.active_parser == null) return;
+    // Only a document with a parser to detach or lifecycle tasks to drop -
+    // and nothing outside its own pending work holding it.
+    const own_work = ownWorkReferences(instance);
+    if (internal.active_parser == null and own_work == 0) return;
+    if (@import("refcount.zig").count(document) > own_work) return;
     const queue = queueOf(instance) orelse return;
     _ = queue.push(.{
         .instance = instance,
@@ -238,11 +259,16 @@ fn runDocumentUnreferenced(item: *DeferredTeardown.Item, budget: usize) Deferred
     if (runtime.SlabAllocator.generationOf(instance) != item.generation) return done;
     if (runtime.instance_lifecycle.isCleanupStarted(instance)) return done;
     const document = instance_bridge.getNodeBaseUnaudited(instance) orelse return done;
-    // Referenced again since (wrapped again, held, given a Window).
-    if (@import("refcount.zig").isHeld(document)) return done;
+    // Referenced again since from outside its own work (wrapped again,
+    // held, given a Window).
+    if (@import("refcount.zig").count(document) > ownWorkReferences(instance)) return done;
     const interfaces = @import("interfaces");
     if ((interfaces.Document.get_defaultView(instance) catch null) != null) return done;
-    @import("document_lifecycle.zig").discardParser(instance, null);
+    const document_lifecycle = @import("document_lifecycle.zig");
+    document_lifecycle.discardParser(instance, null);
+    // Its pending lifecycle tasks go too when nothing listens to it (the
+    // integrator's ruling (c)): their holds were the last on it.
+    document_lifecycle.dropUnobservedLifecycleTasks(instance);
     return done;
 }
 
@@ -257,7 +283,7 @@ fn runDocumentUnreferenced(item: *DeferredTeardown.Item, budget: usize) Deferred
 /// (CRANE_REFCOUNT_CHECK), where a sweep's report counts it. Returns the
 /// count.
 pub fn agentEnded(scope: *runtime.BrowserScope, queue: *const DeferredTeardown) usize {
-    if (@import("builtin").mode != .Debug) return 0;
+    if (@import("builtin").mode != std.builtin.OptimizeMode.Debug) return 0;
     const live = instance_bridge.entryCount(scope);
     if (live == 0) return 0;
     if (@import("builtin").is_test) {

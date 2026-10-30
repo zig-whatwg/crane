@@ -659,11 +659,12 @@ fn unledgeredDeref(node: *NodeBase, comptime who: []const u8) void {
         return;
     }
     node.rc -= NodeBase.rc_one;
+    // A Document whose last reference from outside its own pending work went
+    // (its wrapper's, a holder's, its creator's; a Window holds its document
+    // counted): its parser detaches and, unobserved, its lifecycle tasks drop
+    // (refcount_teardown.documentDereffed, WebKit's removedLastRef).
+    if (node.node_type == NodeBase.DOCUMENT_NODE) refcount_teardown.documentDereffed(node);
     if (isHeld(node)) return;
-    // A Document's own last reference (its wrapper's, a holder's, its
-    // creator's; a Window holds its document counted): its parser detaches
-    // (refcount_teardown.documentUnreferenced, WebKit's removedLastRef).
-    if (node.node_type == NodeBase.DOCUMENT_NODE) refcount_teardown.documentUnreferenced(node);
     const tree_root = walkAdd(null, node, -1);
     adjustForeign(tree_root, -1);
     lowered(tree_root);

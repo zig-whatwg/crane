@@ -24,6 +24,10 @@ pub const Implementation = struct {
     /// Only Document casts these parser pointers to the HTML owner type.
     associate_parser: *const fn (document: *runtime.Instance, parser: *anyopaque) bool,
     discard_parser: *const fn (document: *runtime.Instance, expected: ?*anyopaque) void,
+    /// Refcount step 7a: drop `document`'s pending lifecycle tasks when
+    /// nothing listens to it (their holds released; see
+    /// `dropUnobservedLifecycleTasks`).
+    drop_unobserved_lifecycle_tasks: *const fn (document: *runtime.Instance) void,
     parser_finished: *const fn (document: *runtime.Instance, parser: *anyopaque) void,
     finish_without_parser: *const fn (document: *runtime.Instance) void,
     parsing_stopped: *const fn (document: *runtime.Instance) void,
@@ -98,6 +102,15 @@ pub fn associateParser(document: *runtime.Instance, parser: *anyopaque) bool {
 pub fn discardParser(document: *runtime.Instance, expected: ?*anyopaque) void {
     const impl = implementation orelse return;
     impl.discard_parser(document, expected);
+}
+
+/// `document`'s own last reference went (refcount_teardown.documentDereffed):
+/// nothing can reach it, so if nothing listens to it either, the events its
+/// pending lifecycle tasks would fire are unobservable - the tasks are dropped
+/// and their counted holds released. A listener keeps them.
+pub fn dropUnobservedLifecycleTasks(document: *runtime.Instance) void {
+    const impl = implementation orelse return;
+    impl.drop_unobserved_lifecycle_tasks(document);
 }
 
 /// Actual EOF, once, with a pump reference held. Document detaches before
