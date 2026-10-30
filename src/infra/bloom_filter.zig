@@ -17,7 +17,7 @@ const std = @import("std");
 /// - False positive rate (~2.5% with typical class lists)
 /// - Hash computation overhead
 pub const BloomFilter = struct {
-    bits: [32]u8 = [_]u8{0} ** 32,
+    bits: [32]u8 = @as([32]u8, @splat(0)),
 
     const Self = @This();
     const NUM_BITS = 256;

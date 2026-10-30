@@ -129,7 +129,7 @@ pub fn consumeGroup(options: properties.ParseOptions, stream: *Stream, comptime 
     }
     var transferred = false;
     defer if (!transferred) for (result) |v| v.release();
-    var seen = [_]bool{false} ** 3;
+    var seen = @as([3]bool, @splat(false));
     var any = false;
     while (!stream.atEnd()) {
         var matched = false;

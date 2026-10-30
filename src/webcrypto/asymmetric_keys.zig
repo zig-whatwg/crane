@@ -453,7 +453,7 @@ test "asymmetric imports validate usages and reject inconsistent JWK private/pub
     try std.testing.expectError(error.DataError, importKey(a, .jwk, .{ .id = .ed25519 }, "", data, true, keys.Usages.initOne(.sign)));
     // Raw OKP public keys are length-checked here; point validation is deferred
     // until verification/agreement by §§25.3.4/26.3.3's raw import steps.
-    var public = try importKey(a, .raw, .{ .id = .ed25519 }, &([_]u8{0} ** 32), null, true, keys.Usages.initOne(.verify));
+    var public = try importKey(a, .raw, .{ .id = .ed25519 }, &(@as([32]u8, @splat(0))), null, true, keys.Usages.initOne(.verify));
     defer public.deinit();
     try std.testing.expectEqual(keys.Kind.public, public.kind);
 }

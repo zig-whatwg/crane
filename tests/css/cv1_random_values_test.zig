@@ -55,7 +55,7 @@ test "random numbers share only their full nullable tuple and never draw for fix
         fn get(raw: *anyopaque, key: random.CacheKey) std.mem.Allocator.Error!f64 {
             const self: *@This() = @ptrCast(@alignCast(raw));
             self.calls += 1;
-            return random.baseValue(.{17} ** 32, key, .{ .address = 91, .generation = 3, .pseudo = null });
+            return random.baseValue(@splat(17), key, .{ .address = 91, .generation = 3, .pseudo = null });
         }
     };
     var probe = Probe{};
@@ -74,18 +74,18 @@ test "random hashing separates nullable fields document seeds and reused element
     const random = css.random_values;
     const key = random.CacheKey{ .name = "--a", .property = "ua-left-1", .element_scoped = true };
     const element = random.Identity{ .address = 91, .generation = 3, .pseudo = null };
-    const value = random.baseValue(.{17} ** 32, key, element);
-    try testing.expectEqual(value, random.baseValue(.{17} ** 32, key, element));
-    try testing.expect(value != random.baseValue(.{18} ** 32, key, element));
+    const value = random.baseValue(@splat(17), key, element);
+    try testing.expectEqual(value, random.baseValue(@splat(17), key, element));
+    try testing.expect(value != random.baseValue(@splat(18), key, element));
     var reused = element;
     reused.generation += 1;
-    try testing.expect(value != random.baseValue(.{17} ** 32, key, reused));
+    try testing.expect(value != random.baseValue(@splat(17), key, reused));
     reused = element;
     reused.pseudo = "before";
-    try testing.expect(value != random.baseValue(.{17} ** 32, key, reused));
+    try testing.expect(value != random.baseValue(@splat(17), key, reused));
     const unscoped = random.CacheKey{ .name = "--a", .property = null, .element_scoped = false };
-    try testing.expectEqual(random.baseValue(.{17} ** 32, unscoped, element), random.baseValue(.{17} ** 32, unscoped, reused));
-    try testing.expect(random.baseValue(.{17} ** 32, .{ .name = "--a", .property = null }, element) != random.baseValue(.{17} ** 32, .{ .name = "--a", .property = "" }, element));
+    try testing.expectEqual(random.baseValue(@splat(17), unscoped, element), random.baseValue(@splat(17), unscoped, reused));
+    try testing.expect(random.baseValue(@splat(17), .{ .name = "--a", .property = null }, element) != random.baseValue(@splat(17), .{ .name = "--a", .property = "" }, element));
 }
 
 test "random item substitutes only its selected branch and invalidates the winning declaration" {
@@ -126,7 +126,7 @@ test "every random function advances its kind's ordinal before shorthand expansi
     const random = css.random_values;
     const Probe = struct {
         fn get(_: *anyopaque, key: random.CacheKey) std.mem.Allocator.Error!f64 {
-            return random.baseValue(.{17} ** 32, key, .{ .address = 91, .generation = 3, .pseudo = null });
+            return random.baseValue(@splat(17), key, .{ .address = 91, .generation = 3, .pseudo = null });
         }
     };
     var unused: u8 = 0;

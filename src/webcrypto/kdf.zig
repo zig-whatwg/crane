@@ -43,7 +43,7 @@ pub fn pbkdf2(allocator: std.mem.Allocator, hash: Hash, password: []const u8, sa
 }
 
 test "HKDF matches RFC 5869 SHA-256 case 1" {
-    const key = [_]u8{0x0b} ** 22;
+    const key = @as([22]u8, @splat(0x0b));
     const salt = [_]u8{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
     const info = [_]u8{ 0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9 };
     const actual = try hkdf(std.testing.allocator, .sha256, &key, &salt, &info, 42 * 8);
@@ -54,7 +54,7 @@ test "HKDF matches RFC 5869 SHA-256 case 1" {
 }
 
 test "HKDF matches RFC 5869 SHA-1 case 4" {
-    const key = [_]u8{0x0b} ** 11;
+    const key = @as([11]u8, @splat(0x0b));
     const salt = [_]u8{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
     const info = [_]u8{ 0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9 };
     const actual = try hkdf(std.testing.allocator, .sha1, &key, &salt, &info, 42 * 8);

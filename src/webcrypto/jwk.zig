@@ -201,7 +201,7 @@ test "JWK validates duplicate and missing operations, algorithm, use and ext" {
 
 test "JWK export has canonical algorithm and normalized native usages" {
     const a = std.testing.allocator;
-    var key = try keys.Slots.init(a, .secret, true, .{ .id = .aes_gcm, .length = 128 }, try keys.usagesFromStrings(&.{ "decrypt", "encrypt", "encrypt" }), &([_]u8{0} ** 16));
+    var key = try keys.Slots.init(a, .secret, true, .{ .id = .aes_gcm, .length = 128 }, try keys.usagesFromStrings(&.{ "decrypt", "encrypt", "encrypt" }), &(@as([16]u8, @splat(0))));
     defer key.deinit();
     const json = try exportOctet(a, &key);
     defer a.free(json);

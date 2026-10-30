@@ -1058,7 +1058,7 @@ test "maxp: numGlyphs at least 1, version 0.5 or 1.0" {
 }
 
 test "head: the magic number and unitsPerEm's range" {
-    var head = [_]u8{0} ** 54;
+    var head = @as([54]u8, @splat(0));
     head[1] = 1;
     std.mem.writeInt(u32, head[12..16], 0x5F0F3CF5, .big);
     std.mem.writeInt(u16, head[18..20], 1000, .big);

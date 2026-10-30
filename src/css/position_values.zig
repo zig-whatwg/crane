@@ -199,7 +199,7 @@ pub const Position = struct {
             return result;
         }
         var axes: [2]Offset = undefined;
-        var initialized = [_]bool{false} ** 2;
+        var initialized = @as([2]bool, @splat(false));
         errdefer for (initialized, 0..) |done, i| {
             if (done) axes[i].value.release();
         };

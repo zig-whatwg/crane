@@ -66,7 +66,7 @@ const Server = struct {
         var output: [0]u8 = .{};
         var writer = stream.writer(testing.io, &output);
         try writer.interface.writeAll("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 1048576\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n");
-        const part = [_]u8{'a'} ** 16384;
+        const part = @as([16384]u8, @splat('a'));
         try writer.interface.writeAll(&part);
         try writer.interface.flush();
         while (!self.stopping.load(.acquire)) clock.sleep(std.time.ns_per_ms);

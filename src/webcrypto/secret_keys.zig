@@ -151,19 +151,19 @@ test "AES raw import validates usages before key size and owns the bytes" {
         const use = keys.Usages.initOne(if (id == .aes_kw) .wrapKey else .encrypt);
         for ([_]usize{ 16, 24, 32 }) |size| {
             if (size == 24 and !mbed.available) continue;
-            var bytes = [_]u8{0x71} ** 32;
+            var bytes = @as([32]u8, @splat(0x71));
             var key = try importRaw(a, .{ .id = id }, bytes[0..size], true, use);
             defer key.deinit();
             @memset(&bytes, 0);
             try std.testing.expectEqual(@as(?u32, @intCast(size * 8)), key.algorithm.length);
             const exported = try exportRaw(a, &key);
             defer a.free(exported);
-            const expected = [_]u8{0x71} ** 32;
+            const expected = @as([32]u8, @splat(0x71));
             try std.testing.expectEqualSlices(u8, expected[0..size], exported);
         }
         try std.testing.expectError(error.SyntaxError, importRaw(a, .{ .id = id }, "", false, keys.Usages.initOne(.sign)));
         try std.testing.expectError(error.DataError, importRaw(a, .{ .id = id }, "", false, use));
-        try std.testing.expectError(error.DataError, importRaw(a, .{ .id = id }, &([_]u8{0} ** 17), false, use));
+        try std.testing.expectError(error.DataError, importRaw(a, .{ .id = id }, &(@as([17]u8, @splat(0))), false, use));
     }
 }
 
@@ -229,7 +229,7 @@ test "secret JWK import validates its key type, material and optional metadata" 
     const data: jwk.Data = .{ .kty = "oct", .k = "AAAAAAAAAAAAAAAAAAAAAA", .alg = "A128GCM", .key_ops = &.{"encrypt"}, .ext = true };
     var key = try importJwk(a, .{ .id = .aes_gcm }, data, true, usage);
     defer key.deinit();
-    try std.testing.expectEqualSlices(u8, &([_]u8{0} ** 16), key.material);
+    try std.testing.expectEqualSlices(u8, &(@as([16]u8, @splat(0))), key.material);
     inline for (.{ "kty", "k" }) |member| {
         var missing = data;
         @field(missing, member) = null;

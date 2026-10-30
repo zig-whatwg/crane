@@ -902,7 +902,7 @@ test "XML metadata preserves multibyte text across decoder output buffers" {
 
 fn checkMalformedEncodedMetadataAllocations(allocator: std.mem.Allocator) !void {
     const source = "<?xml version='1.0' encoding='Shift_JIS'?><r xmlns='http://www.w3.org/1999/xhtml'>" ++
-        "<meta name='variant' content='?bad'/><x>" ++ "a" ** 12000 ++ "\x82</x></r>";
+        "<meta name='variant' content='?bad'/><x>" ++ &@as([12000:0]u8, @splat('a')) ++ "\x82</x></r>";
     var metadata = try parseXmlMetadata(allocator, source);
     defer metadata.deinit();
     try std.testing.expectEqual(@as(usize, 0), metadata.variants.items.len);

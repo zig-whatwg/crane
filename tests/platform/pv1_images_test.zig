@@ -112,5 +112,5 @@ test "SVG unrepresentable raster coordinates preserve dimensions without crashin
     try testing.expectEqual(@as(u32, 2), image.height);
     try testing.expectEqual(platform.ImageDecodeStatus.corrupt, image.status);
     try testing.expect(image.empty);
-    try testing.expectEqualSlices(u8, &([_]u8{0} ** 16), image.pixels.slice());
+    try testing.expectEqualSlices(u8, &(@as([16]u8, @splat(0))), image.pixels.slice());
 }

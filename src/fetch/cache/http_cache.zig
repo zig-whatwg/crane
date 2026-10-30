@@ -372,7 +372,7 @@ test "HttpCache: a long-lived cache at its byte cap keeps half its map's unused 
             .url = url,
             .status = 200,
             .headers = &.{.{ .name = "Cache-Control", .value = "max-age=60" }},
-            .body = "x" ** 512,
+            .body = &@as([512:0]u8, @splat('x')),
             .request_time = 1000,
             .response_time = 1001,
         }));

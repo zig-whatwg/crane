@@ -67,7 +67,7 @@ pub const Bridge = struct {
     /// collision, a freed slot (dead generation), a slot reused without an
     /// unregister (its entry's generation is the old occupant's) - asks the
     /// map and caches its answer under the current generation.
-    cache: [cache_slots]CacheEntry = [_]CacheEntry{.{}} ** cache_slots,
+    cache: [cache_slots]CacheEntry = @as([cache_slots]CacheEntry, @splat(.{})),
     /// Every node a page makes enters this map and leaves it when the page
     /// ends; the guard rehashes before an insert once the tombstones those
     /// removals leave could take half the free slots

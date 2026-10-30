@@ -48,7 +48,7 @@ test "WebSocket close validation precedes state changes and counts UTF-8 bytes" 
 
     const socket = try interfaces.WebSocket.call_constructor(&ctx, "ws://example.test/", .notPassed());
     defer interfaces.WebSocket.deinit(socket);
-    try std.testing.expectError(error.InvalidAccessError, interfaces.WebSocket.call_close(socket, .passed(1001), .passed("x" ** 124)));
+    try std.testing.expectError(error.InvalidAccessError, interfaces.WebSocket.call_close(socket, .passed(1001), .passed(&@as([124:0]u8, @splat('x')))));
     try std.testing.expectError(error.SyntaxError, interfaces.WebSocket.call_close(socket, .passed(1000), .passed("\xc3\xa9" ** 62)));
     try std.testing.expectEqual(@as(u16, 0), try interfaces.WebSocket.get_readyState(socket));
 

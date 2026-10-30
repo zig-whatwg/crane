@@ -4580,6 +4580,31 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = hasdecl_audit_module })).step);
 
     // ========================================================================
+    // CODEMOD: `a ** n` -> @splat (roadmap zig-017)
+    // ========================================================================
+    // Zig 0.17 removes array multiplication. tools/zig017/starstar_codemod.zig
+    // rewrites the forms @splat covers (the same meaning on 0.16 and 0.17) and
+    // lists the rest for a hand rewrite. A migration tool: the port window runs
+    // it over the files lanes held, then deletes it with hasdecl-audit once
+    // 0.17 is in and no site is left. Its tests run in `zig build test`.
+    const starstar_codemod_module = b.createModule(.{
+        .root_source_file = b.path("tools/zig017/starstar_codemod.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const starstar_codemod = b.addRunArtifact(b.addExecutable(.{
+        .name = "starstar_codemod",
+        .root_module = starstar_codemod_module,
+    }));
+    // It reads and rewrites the files it is given, which the graph does not track.
+    starstar_codemod.has_side_effects = true;
+    starstar_codemod.setCwd(b.path("."));
+    if (b.args) |args| starstar_codemod.addArgs(args);
+    b.step("starstar-codemod", "Rewrite `a ** n` as @splat where it covers the form (-- [--dry-run] <file.zig>...)").dependOn(&starstar_codemod.step);
+    test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = starstar_codemod_module })).step);
+
+    // ========================================================================
     // LINT: long-lived hash maps that never clear their tombstones
     // ========================================================================
     // std.HashMap deletes by tombstone and never grows while puts and removes

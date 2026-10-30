@@ -20,7 +20,7 @@ test "image aggregates forward metric requirements from all component positions"
     const Layers = std.meta.Child(@FieldType(Value, "layers"));
     const Indent = std.meta.Child(@FieldType(Value, "indent"));
     for (0..4) |index| {
-        var sides = [_]Value{Value.px(0)} ** 4;
+        var sides = @as([4]Value, @splat(Value.px(0)));
         sides[index] = scalar;
         const quad: Value = .{ .image_quad = try Quad.create(testing.allocator, sides, false) };
         defer quad.release();
@@ -28,7 +28,7 @@ test "image aggregates forward metric requirements from all component positions"
         try testing.expect(!quad.needsUnavailableMetrics(true));
     }
     for (0..2) |index| {
-        var axes = [_]Value{Value.px(0)} ** 2;
+        var axes = @as([2]Value, @splat(Value.px(0)));
         axes[index] = scalar;
         const size: Value = .{ .image_size = try Size.create(testing.allocator, axes) };
         defer size.release();
@@ -53,7 +53,7 @@ test "filter shadow lengths keep metric dependencies beside their Color" {
     defer scalar.release();
     const Filter = std.meta.Child(@FieldType(Value, "filter"));
     for (0..3) |index| {
-        var lengths = [_]Value{Value.px(0)} ** 3;
+        var lengths = @as([3]Value, @splat(Value.px(0)));
         lengths[index] = scalar;
         const filter: Value = .{ .filter = try Filter.create(testing.allocator, &.{.{ .function = .{
             .kind = .drop_shadow,

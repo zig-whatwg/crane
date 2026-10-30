@@ -64,10 +64,10 @@ test "IDNA DNS length and hyphen checks are only strict" {
     try invalid("ab--c", true);
     try invalid("éa--b", true); // Third and fourth characters, not UTF-8 bytes.
     try ascii("é--a", "xn----a-9la", true);
-    try invalid("a" ** 64, true);
-    try invalid(("a" ** 63 ++ ".") ** 3 ++ "a" ** 62, true);
-    try ascii("a" ** 64, "a" ** 64, false);
-    const maximum = ("a" ** 63 ++ ".") ** 3 ++ "a" ** 61;
+    try invalid(&@as([64:0]u8, @splat('a')), true);
+    try invalid(("a" ** 63 ++ ".") ** 3 ++ &@as([62:0]u8, @splat('a')), true);
+    try ascii(&@as([64:0]u8, @splat('a')), &@as([64:0]u8, @splat('a')), false);
+    const maximum = ("a" ** 63 ++ ".") ** 3 ++ &@as([61:0]u8, @splat('a'));
     try ascii(maximum, maximum, true);
     try ascii(maximum ++ ".", maximum ++ ".", true);
 }

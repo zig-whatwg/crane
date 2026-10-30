@@ -402,7 +402,7 @@ test "bmp: a bitmap array's first bitmap is the image" {
     // count from the array's start.
     var bytes: std.ArrayList(u8) = .empty;
     defer bytes.deinit(testing.allocator);
-    try bytes.appendSlice(testing.allocator, "BA" ++ [_]u8{0} ** 12);
+    try bytes.appendSlice(testing.allocator, "BA" ++ @as([12]u8, @splat(0)));
     try bytes.appendSlice(testing.allocator, inner);
     std.mem.writeInt(u32, bytes.items[14 + 10 ..][0..4], 14 + 14 + 40, .little);
     try expectPixels(bytes.items, 1, 1, &.{red});

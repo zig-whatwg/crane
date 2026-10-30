@@ -136,7 +136,7 @@ fn parseLayer(options: properties.ParseOptions, stream: *properties.Stream) Allo
     }
     var moved = false;
     defer if (!moved) for (result) |v| v.release();
-    var seen = [_]bool{false} ** 8;
+    var seen = @as([8]bool, @splat(false));
     var components: usize = 0;
     var box_count: u2 = 0;
     var no_clip = false;
@@ -201,7 +201,7 @@ pub fn serialize(vs: []const properties.Assigned, mode: properties.ShorthandMode
     std.debug.assert(vs.len == longhands.len);
     for (longhands[8..], vs[8..]) |l, v| if (!try isInitial(l, v.value, allocator)) return false;
     var length: ?usize = null;
-    var initial = [_]bool{false} ** 8;
+    var initial = @as([8]bool, @splat(false));
     for (longhands[0..8], vs[0..8], 0..) |l, assigned, i| {
         const v = assigned.value;
         initial[i] = layers.count(v) == 1 and try isInitial(l, v, allocator);

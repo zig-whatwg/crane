@@ -696,7 +696,7 @@ pub const TestServer = struct {
         var head_buf: [256]u8 = undefined;
         const head = std.fmt.bufPrint(&head_buf, "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {d}\r\nConnection: close\r\n\r\n", .{kib * 1024}) catch return error.ResponseTooLarge;
         try writeAllToStream(io, stream, head);
-        const block = [_]u8{'x'} ** (64 * 1024);
+        const block = @as([(64 * 1024)]u8, @splat('x'));
         var left = kib * 1024;
         while (left > 0) {
             const n = @min(left, block.len);

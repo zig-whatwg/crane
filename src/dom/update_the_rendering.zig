@@ -153,7 +153,7 @@ const step_count = @typeInfo(Step).@"enum".fields.len;
 // process-wide: function pointers the browser layer installs once at process start (crane.Process), the same for every Browser and thread
 var loop: ?Loop = null;
 // process-wide: function pointers each step's owner installs once at process start (crane.Process); a frame's state is its event loop's and its documents', never this table's
-var steps: [24]?DocumentStep = [_]?DocumentStep{null} ** 24;
+var steps: [24]?DocumentStep = @as([24]?DocumentStep, @splat(null));
 
 /// Called by the browser layer, once, at process start (process_start.zig).
 pub fn installLoop(impl: Loop) void {
@@ -253,7 +253,7 @@ test "without an installed loop a frame request does nothing, and an uninstalled
         steps = saved_steps;
     }
     loop = null;
-    steps = [_]?DocumentStep{null} ** 24;
+    steps = @as([24]?DocumentStep, @splat(null));
     // Never dereferenced: with nothing installed nothing reads the document.
     var document: runtime.Instance = undefined;
     requestFrame(&document);

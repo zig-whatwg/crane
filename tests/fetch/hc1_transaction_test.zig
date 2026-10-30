@@ -428,7 +428,7 @@ test "hc1 transaction: a slow reader and a body bigger than the entry cap leave 
     defer handed.deinit();
     // The reader takes nothing: the producer still pauses at the high-water
     // mark (1 MiB), past the entry cap - the writer let the copy go.
-    const chunk = [_]u8{'q'} ** (64 * 1024);
+    const chunk = @as([(64 * 1024)]u8, @splat('q'));
     while (!streamed.producer.paused) streamed.source.push(&chunk);
     streamed.source.finish();
     try std.testing.expectEqual(@as(usize, 0), fx.store().entryCount());

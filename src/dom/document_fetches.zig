@@ -98,7 +98,7 @@ pub const Owner = struct {
 const slot_count = 20;
 pub const OwnerSlots = [slot_count]?Owner;
 // process-wide: owners install the same immutable hooks before Browsers or worker threads start
-var cancelers: OwnerSlots = .{null} ** slot_count;
+var cancelers: OwnerSlots = @splat(null);
 
 /// Read-only startup capacity check for the native integration tests.
 pub fn ownerCount() usize {
@@ -183,7 +183,7 @@ fn abortDocument(document: *runtime.Instance, for_navigation: bool) bool {
 test "document abort prepares every owner before callbacks and destruction stays silent" {
     const saved = cancelers;
     defer cancelers = saved;
-    cancelers = .{null} ** slot_count;
+    cancelers = @splat(null);
 
     const TestState = struct {
         first_marked: bool = false,
@@ -259,7 +259,7 @@ test "owners that share a discard step are both installed: a release build can m
     // as they do in Debug.
     const saved = cancelers;
     defer cancelers = saved;
-    cancelers = .{null} ** slot_count;
+    cancelers = @splat(null);
     const Owners = struct {
         fn aborted(document: *runtime.Instance) *usize {
             return @ptrCast(@alignCast(document.state));
@@ -298,7 +298,7 @@ test "full owner table rejects a new owner and accepts an already installed owne
             }
         };
         const owner: Owner = .{ .discard = Callbacks.first };
-        cancelers = .{owner} ** slot_count;
+        cancelers = @splat(owner);
         try tryInstall(&cancelers, owner);
         try std.testing.expectError(error.OwnerSlotsFull, tryInstall(&cancelers, .{ .discard = Callbacks.second }));
     }
