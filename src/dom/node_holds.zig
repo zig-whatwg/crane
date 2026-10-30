@@ -391,8 +391,18 @@ pub const TaskHold = struct {
             engine.retainValue(member.ctx, .{ .instance = member }) catch null
         else
             null;
+        defer if (made) |wrapper| wrapper.release();
+        // A node whose wrapper could not be made (out of memory) takes no
+        // keep: `keepPlatformObjectAlive` cannot say it failed, and on an
+        // unwrapped member it records the keep in its realm's side table,
+        // which out of memory records nothing - a release would then end a
+        // keep nobody took, or another owner's (row 130 review F2;
+        // docs/lessons/architecture-a-counted-keep-the-engine-may-not-record-must-not-be-released.md).
+        // Its counted hold still keeps it. A member that is not a node keeps
+        // the side-table keep a wrapper made later takes (a CloseWatcher is
+        // held from its constructor, before the binding wraps it).
+        if (self.other == null and !engine.hasWrapper(member)) return;
         engine.keepPlatformObjectAlive(member);
-        if (made) |wrapper| wrapper.release();
         self.kept = true;
     }
 

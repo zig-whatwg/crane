@@ -239,6 +239,27 @@ pub const DeferredTeardown = struct {
     slicing: bool = false,
     /// The agent ended: `push` refuses, and its caller tears down inline.
     closed: bool = false,
+    /// DOM algorithms on the agent's stack (refcount design 9, risk 4): the
+    /// adapter counts every binding entry - script calling into the DOM - and
+    /// every native-to-script callback invocation - a native dispatch, a
+    /// custom element reaction, an observer callback calling script
+    /// (docs/engine-protocol.md, "Deferred teardown"). Nothing of the queue
+    /// is freed while it is not zero; what a push or a full collection asks
+    /// for meanwhile is OWED and runs when the outermost binding exit brings
+    /// it back to zero - back in script, no DOM frame below - or at the event
+    /// loop's next slice. A callback's return into its native caller never
+    /// runs it.
+    algorithm_depth: u32 = 0,
+    /// What the queue owes the next safe point (see `algorithm_depth`).
+    owed: Owed = .none,
+    /// The DOM's books of the trees its counts queued here (refcount step 7,
+    /// dom.refcount_teardown): diagnostics and tests.
+    books: Books = .{},
+    /// Why the agent's end may find nodes alive - a test that exercises the
+    /// final sweep or an out-of-memory path says so here
+    /// (dom.refcount_teardown.allowLiveNodesAtAgentEnd); null, the default,
+    /// makes any node alive there an error in a unit test.
+    live_nodes_at_end_allowed: ?[]const u8 = null,
     /// Totals for tests and diagnostics.
     queued_total: usize = 0,
     freed_total: usize = 0,
@@ -253,6 +274,25 @@ pub const DeferredTeardown = struct {
     /// grows the queue into `high_water`, where it would be freed inside
     /// script again.
     pub const loop_low_water: usize = high_water / 4;
+
+    pub const Books = struct {
+        /// Garbage trees queued.
+        queued: u64 = 0,
+        /// Trees freed, and their nodes.
+        freed_trees: u64 = 0,
+        freed_nodes: u64 = 0,
+        /// Garbage trees held again before their slice (a raw holder the
+        /// counts did not see).
+        resurrections: u64 = 0,
+    };
+
+    pub const Owed = enum(u8) {
+        none,
+        /// Past `high_water`: free down to it.
+        relief,
+        /// A full collection asked for everything (requestGarbageCollection).
+        drain,
+    };
 
     /// What `push` takes.
     pub const Request = struct {
@@ -344,7 +384,55 @@ pub const DeferredTeardown = struct {
         self.pushBack(item);
         self.pending += request.weight;
         self.queued_total += 1;
+        // The memory bound: past it, the next safe point frees down to it.
+        if (self.pending > high_water and self.owed == .none) self.owed = .relief;
         return true;
+    }
+
+    /// A DOM algorithm begins on the agent's stack (the adapter's binding
+    /// entries and callback invocations; `algorithm_depth`).
+    pub fn enterAlgorithm(self: *DeferredTeardown) void {
+        self.algorithm_depth += 1;
+    }
+
+    /// A binding returns to script: the outermost one runs what is owed.
+    pub fn leaveAlgorithmToScript(self: *DeferredTeardown) void {
+        self.algorithm_depth -|= 1;
+        if (self.algorithm_depth == 0 and self.owed != .none) self.runOwed();
+    }
+
+    /// A callback returns to the native algorithm that invoked it: nothing
+    /// runs here, whatever is owed.
+    pub fn leaveAlgorithmToNative(self: *DeferredTeardown) void {
+        self.algorithm_depth -|= 1;
+    }
+
+    /// Whether a DOM algorithm is on the agent's stack.
+    pub fn inAlgorithm(self: *const DeferredTeardown) bool {
+        return self.algorithm_depth != 0;
+    }
+
+    /// A full collection asked for every item (requestGarbageCollection):
+    /// true when a DOM algorithm is on the stack, and the drain is owed to
+    /// the outermost binding exit instead - the caller then drains nothing.
+    pub fn oweDrainIfInAlgorithm(self: *DeferredTeardown) bool {
+        if (self.algorithm_depth == 0) return false;
+        self.owed = .drain;
+        return true;
+    }
+
+    /// What is owed, at a safe point (depth zero, back in script).
+    fn runOwed(self: *DeferredTeardown) void {
+        if (self.slicing) return;
+        const owed = self.owed;
+        self.owed = .none;
+        switch (owed) {
+            .none => {},
+            .drain => self.drainAll(),
+            .relief => if (self.pending > high_water) {
+                _ = self.runSlice(self.pending - high_water + slice_budget);
+            },
+        }
     }
 
     /// One slice: items in the order they were queued, until `budget` nodes
@@ -364,6 +452,7 @@ pub const DeferredTeardown = struct {
             freed += @max(progress.freed, 1);
             if (progress.done) self.finish(item) else self.pushFront(item);
         }
+        if (self.owed == .relief and self.pending <= high_water) self.owed = .none;
         return freed;
     }
 
@@ -377,6 +466,7 @@ pub const DeferredTeardown = struct {
     /// item, in full, now.
     pub fn drainAll(self: *DeferredTeardown) void {
         self.drainMatching(null, true);
+        self.owed = .none;
     }
 
     /// `owner` ends without teardowns (its objects go with the pools): forget
@@ -402,6 +492,11 @@ pub const DeferredTeardown = struct {
     /// growing. A no-op inside a slice, which returns soon.
     pub fn relieve(self: *DeferredTeardown, added: usize) void {
         if (self.slicing or self.pending <= high_water) return;
+        // A DOM algorithm on the stack: owed to its outermost exit.
+        if (self.algorithm_depth != 0) {
+            if (self.owed == .none) self.owed = .relief;
+            return;
+        }
         _ = self.runSlice(added +| slice_budget);
     }
 

@@ -375,11 +375,18 @@ pub const Browser = struct {
         if (self.agent) |agent| {
             // Release queued handles while the agent exists; AgentHost outlives it.
             self.agent_host.custom_elements.releasePending();
-            // No node waits for its deferred teardown: each was queued by a
-            // realm, and every realm's end (current_context's, above) drained
-            // its own. The sweep below frees what is left of the DOM without
+            // No node waits for its deferred teardown: each realm's end
+            // (current_context's, above) drained its own, and what the counts
+            // queued after - a holder its realm's teardown released - goes
+            // now (refcount step 7; a retired realm's trees are left to the
+            // sweep below). The sweep frees what is left of the DOM without
             // teardowns, so a node still queued would be torn down after it.
+            self.agent_host.deferred_teardown.drainAll();
             std.debug.assert(self.agent_host.deferred_teardown.isEmpty());
+            // Every node the counts could free is freed: what is left is a
+            // tree something still holds at the agent's end - a leak the
+            // sweep below hides (refcount design step 7, decision D9).
+            _ = @import("dom").refcount_teardown.agentEnded(self.scope, &self.agent_host.deferred_teardown);
             // IMPORTANT: Clean up orphaned DOM nodes BEFORE the agent ends!
             // DOM node internal states may use the agent's allocator, which
             // its end frees. Every type's side table of THIS Browser is swept

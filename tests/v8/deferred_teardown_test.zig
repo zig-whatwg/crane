@@ -1,8 +1,10 @@
 //! A collected node's teardown is deferred to its agent's queue
 //! (engine.AgentOptions.deferred_teardown; runtime.gc.DeferredTeardown):
-//! the collection that takes a detached tree's root wrapper only queues the
-//! root, and the tree is freed a slice at a time - never in the second pass
-//! that happened to run inside script - and fully at the realm's end, after a
+//! since refcount step 7 the wrapper's reference is one of the node's counts,
+//! and the collection that takes a detached tree's root wrapper - its last
+//! hold - only queues the root (dom.refcount_teardown), and the tree is
+//! freed a slice at a time - never in the second pass that happened to run
+//! inside script - and fully at the realm's end, after a
 //! requested collection, and at the agent's end, which closes the queue.
 //!
 //! The collections here are V8's own (LowMemoryNotification through the FFI),
@@ -58,6 +60,7 @@ const Page = struct {
     agent: *protocol.Agent,
     realm: runtime.Context,
     realm_open: bool = true,
+    queue: *DeferredTeardown,
 
     fn open(queue: *DeferredTeardown) !Page {
         try setup();
@@ -78,7 +81,7 @@ const Page = struct {
             .origin = "https://example.test",
             .create_global_object = WindowHost.createGlobalObject,
         });
-        return .{ .agent = agent, .realm = realm };
+        return .{ .agent = agent, .realm = realm, .queue = queue };
     }
 
     fn endRealm(self: *Page) void {
@@ -147,6 +150,11 @@ const Tree = struct {
         const node = dom.instance_bridge.getNodeBase(@ptrCast(root)).?;
         const first = node.first_child.?;
         const last = node.last_child.?;
+        // Since refcount step 7 the counts queue every tree they find
+        // garbage - making this one leaves innerHTML's parse fragment - so
+        // that goes first: the tree's root is then the one item a collection
+        // queues.
+        page.queue.drainAll();
         return .{
             .root = Watched.of(root),
             .first_span = Watched.of(@ptrCast(@alignCast(first.owner_instance.?))),
@@ -175,7 +183,10 @@ test "the collection that takes a detached root's wrapper queues the root and fr
     page.collect();
 
     try testing.expectEqual(@as(usize, 1), queue.len());
-    try testing.expectEqual(@as(usize, 4001), queue.pendingNodes());
+    // Since refcount step 7 the counts queue it (the wrapper's deref left
+    // its tree with no hold), weighed by a walk capped at the bound's own
+    // estimate (dom.refcount_teardown.weight_cap), not the whole tree.
+    try testing.expectEqual(dom.refcount_teardown.weight_cap, queue.pendingNodes());
     try testing.expect(tree.root.alive());
     try testing.expect(tree.first_text.alive());
     try testing.expectEqual(@as(usize, 2000), tree.childCount());
@@ -281,9 +292,13 @@ test "the realm's end tears down what its collected roots queued" {
     try testing.expectEqual(@as(usize, 1), queue.len());
 
     page.endRealm();
-    try testing.expect(queue.isEmpty());
     try testing.expect(!tree.root.alive());
     try testing.expect(!tree.first_text.alive());
+    // What the realm's own teardown released after its drain (its wrappers'
+    // references: refcount step 7a keeps the coordinated teardown as the
+    // net) waits for the next slice, which finds it freed or frees it.
+    queue.drainAll();
+    try testing.expect(queue.isEmpty());
 }
 
 test "a requested collection frees what it queued before it returns" {
@@ -314,6 +329,8 @@ test "a Document root goes in one slice, whatever the budget" {
     );
     const watched = Watched.of(document);
     const html = Watched.of(@ptrCast(@alignCast(dom.instance_bridge.getNodeBase(@ptrCast(document)).?.first_child.?.owner_instance.?)));
+    // What making it left (innerHTML's parse fragment) goes first.
+    queue.drainAll();
     try page.run("globalThis.d = null;");
     page.collect();
     try testing.expectEqual(@as(usize, 1), queue.len());

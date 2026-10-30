@@ -69,6 +69,10 @@ pub fn destroyAgent(_: *Agent) void {}
 pub fn agentHost(_: *Agent) ?*anyopaque {
     return null;
 }
+/// No agent is made here: none has a queue.
+pub fn deferredTeardownOf(_: *Agent) ?*engine.DeferredTeardown {
+    return null;
+}
 pub fn hasRunningScript(_: *Agent) bool {
     return false;
 }

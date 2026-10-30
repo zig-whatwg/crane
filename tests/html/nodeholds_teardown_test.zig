@@ -87,6 +87,8 @@ fn holderOutlivesTheFinalSweep() !void {
     const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
     var browser_alive = true;
     defer if (browser_alive) browser.deinit();
+    // The holder keeps its node past every realm end on purpose: the final sweep is what this tests.
+    @import("dom").refcount_teardown.allowLiveNodesAtAgentEnd(&browser.agent_host.deferred_teardown, "a holder outlives the final registry sweep, which is what this tests");
     try browser.navigate("about:blank", .window);
     const context = browser.current_context orelse return error.NoPage;
     try context.loadHTML("<!doctype html><body></body>", .{ .base_url = "about:blank" });

@@ -63,6 +63,74 @@ pub const InteractionState = struct {
 
 /// Document's state (the impl keeps one per Document, in `Registry`).
 /// Spec: https://dom.spec.whatwg.org/#concept-document
+/// A pending lifecycle task's place in its Browser's list
+/// (`PendingLifecycleTasks`; Document.zig's LifecycleTask embeds one), from
+/// its queueing to its run, its drop or an unobserved drop (refcount step
+/// 7a). It names its document by address and generation, and nothing reads
+/// the document through it once the document's slot is another's.
+pub const LifecycleLink = struct {
+    prev: ?*LifecycleLink = null,
+    next: ?*LifecycleLink = null,
+    document: ?*runtime.Instance = null,
+    generation: u64 = 0,
+    linked: bool = false,
+};
+
+/// A Browser's pending document lifecycle tasks (a runtime.BrowserScope
+/// supplement), each holding its document counted until it runs or drops
+/// (refcount8, H-RC8-DOC-LIFECYCLE): the list refcount step 7a reads when a
+/// document's last reference from outside its own pending work goes
+/// (refcount_teardown.documentDereffed) - kept per Browser, not in the
+/// Document's state, which stays in its 2,048-byte allocation class. Only
+/// the Browser's window agent's thread queues and runs them.
+pub const PendingLifecycleTasks = struct {
+    head: ?*LifecycleLink = null,
+
+    pub fn init(_: std.mem.Allocator) PendingLifecycleTasks {
+        return .{};
+    }
+
+    /// The Browser's end: the loop dropped its tasks before (each unlinked
+    /// itself); any left forget the list.
+    pub fn deinit(self: *PendingLifecycleTasks) void {
+        var at = self.head;
+        self.head = null;
+        while (at) |link| {
+            at = link.next;
+            link.* = .{};
+        }
+    }
+
+    pub fn add(self: *PendingLifecycleTasks, link: *LifecycleLink, document: *runtime.Instance) void {
+        link.* = .{ .next = self.head, .document = document, .generation = runtime.SlabAllocator.generationOf(document), .linked = true };
+        if (self.head) |head| head.prev = link;
+        self.head = link;
+    }
+
+    pub fn remove(self: *PendingLifecycleTasks, link: *LifecycleLink) void {
+        if (!link.linked) return;
+        if (link.prev) |prev| prev.next = link.next else self.head = link.next;
+        if (link.next) |next| next.prev = link.prev;
+        link.* = .{};
+    }
+
+    /// The pending tasks of `document` (the same object: its generation).
+    pub fn countFor(self: *const PendingLifecycleTasks, document: *runtime.Instance) u32 {
+        const generation = runtime.SlabAllocator.generationOf(document);
+        var held: u32 = 0;
+        var at = self.head;
+        while (at) |link| : (at = link.next) {
+            if (link.document == document and link.generation == generation) held += 1;
+        }
+        return held;
+    }
+
+    /// `document`'s pending tasks, or none.
+    pub fn of(document: *runtime.Instance) ?*PendingLifecycleTasks {
+        return runtime.BrowserScope.ofInstance(document).existing(PendingLifecycleTasks);
+    }
+};
+
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
     /// Prepared at construction for the policy. The Document owns all

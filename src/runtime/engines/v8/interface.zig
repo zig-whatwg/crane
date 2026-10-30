@@ -31,6 +31,7 @@ const std = @import("std");
 const log = std.log.scoped(.v8_interface);
 const debug = @import("debug.zig");
 const v8 = @import("ffi.zig");
+const dom_algorithm = @import("dom_algorithm.zig");
 const cross_origin = @import("cross_origin.zig");
 const engine_capabilities = @import("protocol.zig").capabilities;
 const conv = @import("conversions.zig");
@@ -3942,6 +3943,10 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Use compile-time debug logging to avoid runtime overhead
                     // This is called on every property access, so must be zero-cost when disabled
                     debug.print("[PropertyGetterCallback] Called for {s}.{s}\n", .{ iface_name, getter_name });
+                    // A DOM algorithm on the agent's stack until it returns
+                    // into script (dom_algorithm.zig; refcount design 9, risk 4).
+                    const algorithm = dom_algorithm.enter(info.getIsolate());
+                    defer dom_algorithm.leaveToScript(algorithm);
 
                     const zig_getter = @field(Interface, getter_name);
                     const isolate_inner = info.getIsolate();
@@ -4796,6 +4801,10 @@ pub fn V8Interface(comptime Interface: type) type {
         fn MethodCallback(comptime zig_name: []const u8) type {
             return struct {
                 fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+                    // A DOM algorithm on the agent's stack until it returns
+                    // into script (dom_algorithm.zig; refcount design 9, risk 4).
+                    const algorithm = dom_algorithm.enter(info.getIsolate());
+                    defer dom_algorithm.leaveToScript(algorithm);
                     if (comptime returnsPromise(Interface, zig_name)) return rejectOnThrow(info, scoped);
                     scoped(info);
                 }
@@ -5842,6 +5851,10 @@ pub fn V8Interface(comptime Interface: type) type {
         /// the appropriate Interface.call_constructor() with converted arguments.
         fn constructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
             debug.print("[V8_CONSTRUCTOR] constructorCallback called for: {s}\n", .{interface_name});
+            // A DOM algorithm on the agent's stack until it returns into
+            // script (dom_algorithm.zig; refcount design 9, risk 4).
+            const algorithm = dom_algorithm.enter(info.getIsolate());
+            defer dom_algorithm.leaveToScript(algorithm);
 
             // Always-on stderr debug for Worker and MutationObserver constructor to trace issues
             if (comptime std.mem.eql(u8, interface_name, "Worker") or std.mem.eql(u8, interface_name, "MutationObserver")) {
@@ -9313,6 +9326,10 @@ pub fn V8Interface(comptime Interface: type) type {
                 /// A [CEReactions] attribute's setter is dispatched in a
                 /// binding catch scope (engine.withPendingExceptionSetAside).
                 fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+                    // A DOM algorithm on the agent's stack until it returns
+                    // into script (dom_algorithm.zig; refcount design 9, risk 4).
+                    const algorithm = dom_algorithm.enter(info.getIsolate());
+                    defer dom_algorithm.leaveToScript(algorithm);
                     if (comptime runsCEReactions(Interface, setter_name_param)) return inBindingCatchScope(info, body);
                     body(info);
                 }
@@ -9916,6 +9933,10 @@ pub fn V8Interface(comptime Interface: type) type {
         fn StaticMethodCallback(comptime zig_name: []const u8) type {
             return struct {
                 fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+                    // A DOM algorithm on the agent's stack until it returns
+                    // into script (dom_algorithm.zig; refcount design 9, risk 4).
+                    const algorithm = dom_algorithm.enter(info.getIsolate());
+                    defer dom_algorithm.leaveToScript(algorithm);
                     if (comptime returnsPromise(Interface, zig_name)) return rejectOnThrow(info, scoped);
                     scoped(info);
                 }

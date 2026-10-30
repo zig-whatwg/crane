@@ -31,6 +31,7 @@ const v8 = @import("ffi.zig");
 /// Embedder data slot for template storage
 /// V8 allows storing arbitrary data per-isolate using slot indices
 /// Slot 0 is used by isolate_allocator.zig for allocator storage
+// All four of V8's isolate data slots are taken: 0 isolate_allocator.zig, 1 this storage (which also carries the agent's deferred teardown queue for dom_algorithm.zig), 2 v8_wrapper.cpp kIsolateDataSlot, 3 v8_wrapper.cpp kBindingCatchScopeSlot - add a field here, never a slot.
 pub const TEMPLATE_SLOT: c_int = 1;
 
 /// Per-isolate template storage
@@ -48,6 +49,12 @@ pub const IsolateTemplates = struct {
     /// The names are BORROWED (the generated interfaces' comptime names); the
     /// templates are disposed with the storage.
     registered: std.StringHashMapUnmanaged(*v8.FunctionTemplate) = .empty,
+    /// The agent's deferred teardown queue (engine.AgentOptions.
+    /// deferred_teardown), BORROWED from createAgent to the agent's end, for
+    /// the "DOM algorithm active" depth every binding entry and callback
+    /// invocation counts (dom_algorithm.zig): one load from the isolate, on
+    /// the hottest path. Null for an isolate createAgent did not make.
+    deferred_teardown: ?*@import("runtime").gc.DeferredTeardown = null,
 
     /// Initialize isolate-local template storage
     pub fn init(allocator: std.mem.Allocator) IsolateTemplates {

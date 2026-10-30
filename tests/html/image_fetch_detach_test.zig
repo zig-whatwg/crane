@@ -55,6 +55,8 @@ fn expectTrue(browser: *browser_mod.Browser, source: []const u8) !void {
 fn droppedSlotThenGone() !void {
     const browser = try open();
     defer browser.deinit();
+    // The test frees the element's slot by hand, without its teardown: its node is the final sweep's.
+    @import("dom").refcount_teardown.allowLiveNodesAtAgentEnd(&browser.agent_host.deferred_teardown, "the element's slot is freed by hand, without its teardown, which is what this tests");
     const element = blk: {
         const held = try browser.evaluateScript(
             \\globalThis.image = new Image();

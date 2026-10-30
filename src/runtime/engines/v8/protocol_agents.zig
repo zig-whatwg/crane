@@ -152,9 +152,9 @@ const AgentRecord = struct {
     /// regExpBuiltinExecCaptures; v8_wrapper.cpp, PatternMatcher): made on
     /// first use, on the agent's thread; deleted by its end.
     pattern_matcher: ?*ffi.PatternMatcher = null,
-    /// AgentOptions.deferred_teardown: the host's queue a collected node's
-    /// teardown goes to (wrapper_cache.queueCollectedNode), BORROWED; the
-    /// agent's end drains and closes it.
+    /// AgentOptions.deferred_teardown: the host's queue a garbage tree's
+    /// teardown goes to (dom.refcount_teardown, refcount step 7), BORROWED;
+    /// the agent's end drains and closes it.
     deferred_teardown: ?*runtime.gc.DeferredTeardown = null,
     /// The WindowProperties named properties object's template
     /// (window_properties.zig): this isolate's, made by its first window
@@ -364,6 +364,9 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
         defer std.Io.Threaded.mutexUnlock(&agents_lock);
         agents.put(std.heap.c_allocator, isolate, record) catch return error.OutOfMemory;
     }
+    // The queue the "DOM algorithm active" depth is counted on, one load
+    // from the isolate (dom_algorithm.zig; refcount design 9, risk 4).
+    @import("dom_algorithm.zig").install(isolate, options.deferred_teardown);
 
     // The hooks the host supplied, and only those: a hook left null is the
     // host's choice to have no such behaviour.
@@ -464,14 +467,17 @@ pub fn endAgent(agent: *Agent) void {
     ffi.v8_PatternMatcher_Delete(pattern_matcher);
     // Its WindowProperties template: a handle of this isolate too.
     if (window_properties) |template| ffi.v8_FunctionTemplate_Dispose(template);
-    // The deferred teardown queue is empty: every node in it was queued by a
-    // realm, and each realm's end drained its own (they end before their
-    // agent). Closed from here on - what the collections below find is torn
-    // down in the second pass, as before.
+    // The deferred teardown queue: each realm's end drained its own (they end
+    // before their agent), and what the counts queued after - a holder a
+    // realm's coordinated teardown released (refcount step 7) - goes now, so
+    // it is empty. Closed from here on - what the collections below find is
+    // torn down in the second pass, as before.
     if (deferred_teardown) |queue| {
-        std.debug.assert(queue.isEmpty());
         queue.drainAll();
+        std.debug.assert(queue.isEmpty());
         queue.close();
+        // No binding entry counts on it from here on.
+        @import("dom_algorithm.zig").install(entered.isolate, null);
     }
     // This agent's ShadowRealms, whichever kind of agent it is: they were
     // every agent's once, cleared by whichever host agent ended first.
