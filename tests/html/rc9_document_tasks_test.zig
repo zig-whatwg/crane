@@ -180,3 +180,44 @@ fn aListenedLoadCompletes() !void {
 test "a dropped document whose readystatechange is observed still completes its load" {
     try onFreshThread(aListenedLoadCompletes);
 }
+
+/// One script making and dropping documents whose lifecycle tasks are still
+/// queued: the item that detaches each one weighs its tree, so the deferred
+/// teardown queue's memory bound sees them, and past high_water (100,000
+/// queued nodes) the next binding exit back into script relieves - detach,
+/// drop, free - inside the script (refcount design 9 risk 4's depth; the
+/// parser-write cost row). Measured: 109,140 slots grown; with the item
+/// weighing nothing, 425,850 - every document of the script. The script also makes JS garbage, as any page's
+/// does, so the engine's own collections run inside it: a dropped
+/// document's wrapper dies in one, and its second pass - the deref - runs at
+/// the start of the next (V8 13.1 heap.cc: the GC prologue "ensure[s] that
+/// all pending phantom callbacks are invoked"). Without that garbage the
+/// script triggers no collection, every wrapper lives to its end, and no
+/// teardown could run inside it. The slab never returns a slab, so its
+/// capacity growth is the run's peak of live instances: bounded near
+/// high_water, not by the 600 documents x ~700 nodes the script makes.
+fn droppedDocumentsInOneScriptStayBounded() !void {
+    const page = try Page.open();
+    defer page.close();
+    const before = page.browser.scope.slab.stats().total_capacity;
+    try page.run(
+        \\{
+        \\  const markup = '<div><p>a</p><p>b</p><p>c</p></div>'.repeat(100);
+        \\  let junk = null;
+        \\  for (let i = 0; i < 600; i++) {
+        \\    const d = document.implementation.createHTMLDocument('');
+        \\    d.open(); d.write(markup); d.close();
+        \\    for (let k = 0; k < 64; k++) junk = new Array(1024).fill(k);
+        \\  }
+        \\}
+    );
+    const grown = page.browser.scope.slab.stats().total_capacity -| before;
+    if (grown >= 300_000) std.debug.print("600 dropped documents in one script: the slab grew by {d} slots\n", .{grown});
+    try testing.expect(grown < 300_000);
+    try collect(page.browser);
+    _ = try page.browser.runEventLoopBlocking(20);
+}
+
+test "documents dropped inside one script stay bounded by the queue's high water, not by their number" {
+    try onFreshThread(droppedDocumentsInOneScriptStayBounded);
+}
