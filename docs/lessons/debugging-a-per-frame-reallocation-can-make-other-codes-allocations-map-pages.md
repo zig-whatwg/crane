@@ -15,4 +15,6 @@
 1. Retained storage: `TargetIndex.begin` empties each target's list with `clearRetainingCapacity`, and `finish` removes only the targets no effect applies to any more, under a TombstoneGuard. A steady-state frame then allocates nothing. tests/dom/r3_target_index_test.zig pins this with a FailingAllocator that fails every later allocation.
 2. Diagnosis: run the probe split into parts (the call alone, the read on a reused object, the read on a fresh one), each part under `/usr/bin/time -l`, base against tip. Then a tip with the new path cut off (`component()` returning 0) to rule the change in or out as a whole.
 
+**Allocator-dependent**: the cost exists only under an allocator that never reuses a freed slot and returns an emptied page at once. A reusing allocator (smp_allocator, a host's malloc) would not show it. Zig 0.17's SafeAllocator, which the port moves the runner to, never reuses slots either (the integrator, 2026-10-30): re-run crane/r3-cost-one-spinner.html and the page-reclaim split after the port.
+
 **Takeaway**: **When a per-call cost moves but nothing per call changed, count page reclaims per call before theorising: under DebugAllocator your per-frame churn can make someone else's call-lifetime allocations map pages. Keep per-frame storage, do not free and re-allocate it.**
