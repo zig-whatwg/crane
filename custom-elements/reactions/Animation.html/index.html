@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../custom-elements/"><code>custom-<wbr>elements/</code></a></li><li><a href="../../../custom-elements/reactions/"><code>reactions/</code></a></li><li aria-current="page"><code>Animation.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>Animation.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="custom-elements/reactions/Animation.html">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 3</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>3</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">1</span><span class="fg-of"> / 3</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>2</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-c7ab229911</code>, <span class="nowrap">30 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c7ab229911"><code>c7ab229911</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-9d21eafa7f</code>, <span class="nowrap">31 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9d21eafa7f"><code>9d21eafa7f</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/custom-elements/reactions/Animation.html"><code>custom-<wbr>elements/<wbr>reactions/<wbr>Animation.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,9 +35,9 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-45416c9b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Animation.animate must enqueue an attributeChanged reaction when it adds the observed style attribute</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-45416c9b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-a4dd43e8"><details><summary><span class="mark">FAIL</span><span class="sub-name">Animation.animate must enqueue an attributeChanged reaction when it mutates the observed style attribute</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-a4dd43e8" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-47d9443f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Animation.animate must not enqueue an attributeChanged reaction when it mutates the style attribute but the style attribute is not observed</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-47d9443f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-45416c9b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Animation.animate must enqueue an attributeChanged reaction when it adds the observed style attribute</span></summary><pre class="msg">assert_array_equals: lengths differ, expected array [&quot;attributeChanged&quot;] length 1, got [&quot;attributeChanged&quot;, &quot;attributeChanged&quot;, &quot;attributeChanged&quot;, &quot;attributeChanged&quot;] length 4</pre></details><a class="self" href="#s-45416c9b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a4dd43e8"><details><summary><span class="mark">FAIL</span><span class="sub-name">Animation.animate must enqueue an attributeChanged reaction when it mutates the observed style attribute</span></summary><pre class="msg">assert_array_equals: lengths differ, expected array [&quot;constructed&quot;, &quot;connected&quot;, &quot;attributeChanged&quot;] length 3, got [&quot;constructed&quot;, &quot;connected&quot;, &quot;attributeChanged&quot;, &quot;attributeChanged&quot;, &quot;attributeChanged&quot;, &quot;attributeChanged&quot;] length 6</pre></details><a class="self" href="#s-a4dd43e8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-47d9443f"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Animation.animate must not enqueue an attributeChanged reaction when it mutates the style attribute but the style attribute is not observed</span></div><a class="self" href="#s-47d9443f" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>

@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../css/"><code>css/</code></a></li><li><a href="../../../css/cssom/"><code>cssom/</code></a></li><li aria-current="page"><code>CSSFontFeatureValuesRule.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>CSSFontFeatureValuesRule.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="css/cssom/CSSFontFeatureValuesRule.html">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 8</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>8</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">1</span><span class="fg-of"> / 8</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>7</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-c7ab229911</code>, <span class="nowrap">30 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/c7ab229911"><code>c7ab229911</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-9d21eafa7f</code>, <span class="nowrap">31 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9d21eafa7f"><code>9d21eafa7f</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/cssom/CSSFontFeatureValuesRule.html"><code>css/<wbr>cssom/<wbr>CSSFontFeatureValuesRule.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,14 +35,14 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-23126f14"><details><summary><span class="mark">FAIL</span><span class="sub-name">CSSFontFeatureValuesRule is correctly parsed and accessible via CSSOM.</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-23126f14" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-01555270"><details><summary><span class="mark">FAIL</span><span class="sub-name">CSSFontFeatureValuesRule family is settable and readable.</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-01555270" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-8dd2cd94"><details><summary><span class="mark">FAIL</span><span class="sub-name">CSSFontFeatureValuesMap entries are settable to single values.</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-8dd2cd94" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-49924369"><details><summary><span class="mark">FAIL</span><span class="sub-name">CSSFontFeatureValuesMap entries are settable to sequences of numbers.</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-49924369" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5626a87a"><details><summary><span class="mark">FAIL</span><span class="sub-name">New rules can be added.</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-5626a87a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-f57cf445"><details><summary><span class="mark">FAIL</span><span class="sub-name">Deleting single entries is possible.</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-f57cf445" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e0b186fa"><details><summary><span class="mark">FAIL</span><span class="sub-name">Clearing all entries is possible.</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-e0b186fa" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ec08d134"><details><summary><span class="mark">FAIL</span><span class="sub-name">Multiple rules for the same family are kept separate in CSSOM.</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-ec08d134" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-23126f14"><details><summary><span class="mark">FAIL</span><span class="sub-name">CSSFontFeatureValuesRule is correctly parsed and accessible via CSSOM.</span></summary><pre class="msg">assert_equals: expected (number) 1 but got (undefined) undefined</pre></details><a class="self" href="#s-23126f14" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-01555270"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">CSSFontFeatureValuesRule family is settable and readable.</span></div><a class="self" href="#s-01555270" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8dd2cd94"><details><summary><span class="mark">FAIL</span><span class="sub-name">CSSFontFeatureValuesMap entries are settable to single values.</span></summary><pre class="msg">rule.styleset.get is not a function</pre></details><a class="self" href="#s-8dd2cd94" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-49924369"><details><summary><span class="mark">FAIL</span><span class="sub-name">CSSFontFeatureValuesMap entries are settable to sequences of numbers.</span></summary><pre class="msg">document.styleSheets[0].cssRules[0].styleset.get is not a function</pre></details><a class="self" href="#s-49924369" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5626a87a"><details><summary><span class="mark">FAIL</span><span class="sub-name">New rules can be added.</span></summary><pre class="msg">assert_equals: expected (number) 3 but got (undefined) undefined</pre></details><a class="self" href="#s-5626a87a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f57cf445"><details><summary><span class="mark">FAIL</span><span class="sub-name">Deleting single entries is possible.</span></summary><pre class="msg">assert_equals: expected (number) 3 but got (undefined) undefined</pre></details><a class="self" href="#s-f57cf445" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e0b186fa"><details><summary><span class="mark">FAIL</span><span class="sub-name">Clearing all entries is possible.</span></summary><pre class="msg">assert_equals: expected (number) 3 but got (undefined) undefined</pre></details><a class="self" href="#s-e0b186fa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ec08d134"><details><summary><span class="mark">FAIL</span><span class="sub-name">Multiple rules for the same family are kept separate in CSSOM.</span></summary><pre class="msg">assert_equals: 1 annotation. expected (number) 1 but got (undefined) undefined</pre></details><a class="self" href="#s-ec08d134" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>
