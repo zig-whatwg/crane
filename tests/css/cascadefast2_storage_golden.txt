@@ -339,6 +339,11 @@ block-step-size: none
 block-step-insert: margin-box
 block-step-align: auto
 block-step-round: up
+counter-reset: none
+counter-set: none
+counter-increment: none
+list-style-type: disc
+list-style-position: outside
 == initial root and child / 0
 display: block
 == initial root and child / 1

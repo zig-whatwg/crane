@@ -395,6 +395,11 @@ pub const Keyword = enum(u16) {
     up,
     down,
 
+    // CSS Lists 3 §§3.4–3.5.
+    disc,
+    inside,
+    outside,
+
     /// The keyword's CSS spelling.
     pub fn name(self: Keyword) []const u8 {
         return switch (self) {
@@ -962,6 +967,7 @@ pub const Value = union(enum) {
     calculation: *@import("math_values.zig").Expression,
     sizing_function: *SizingFunction,
     grid_line: *@import("grid_values.zig").Line,
+    counters: *@import("list_values.zig").Counters,
     grid_tracks: *@import("grid_tracks.zig").Tracks,
     grid_areas: *@import("grid_tracks.zig").Areas,
     grid_flow: @import("grid_tracks.zig").Flow,
@@ -1040,6 +1046,7 @@ pub const Value = union(enum) {
         if (self == .calculation) return self.calculation.ref();
         if (self == .sizing_function) return self.sizing_function.ref();
         if (self == .grid_line) return self.grid_line.ref();
+        if (self == .counters) return self.counters.ref();
         if (self == .grid_tracks) return self.grid_tracks.ref();
         if (self == .grid_areas) return self.grid_areas.ref();
         if (self == .caret_pair) return self.caret_pair.ref();
@@ -1081,6 +1088,7 @@ pub const Value = union(enum) {
         if (self == .calculation) return self.calculation.unref();
         if (self == .sizing_function) return self.sizing_function.unref();
         if (self == .grid_line) return self.grid_line.unref();
+        if (self == .counters) return self.counters.unref();
         if (self == .grid_tracks) return self.grid_tracks.unref();
         if (self == .grid_areas) return self.grid_areas.unref();
         if (self == .caret_pair) return self.caret_pair.unref();
@@ -1136,6 +1144,7 @@ pub const Value = union(enum) {
             .calculation => |c| c.eql(b.calculation),
             .sizing_function => |s| s.argument.eql(b.sizing_function.argument),
             .grid_line => |line| line.eql(b.grid_line),
+            .counters => |list| list.eql(b.counters),
             .grid_tracks => |tracks| tracks.eql(b.grid_tracks),
             .grid_areas => |areas| areas.eql(b.grid_areas),
             .grid_flow => |flow| std.meta.eql(flow, b.grid_flow),
@@ -1193,6 +1202,7 @@ pub const Value = union(enum) {
             .calculation => |c| c.needsUnavailableMetrics(geometry_length),
             .sizing_function => |s| s.argument.needsUnavailableMetrics(geometry_length),
             .grid_line => |line| line.needsUnavailableMetrics(),
+            .counters => |list| list.needsUnavailableMetrics(),
             .grid_tracks => |tracks| tracks.needsUnavailableMetrics(),
             .caret_pair => |pair| pair.needsUnavailableMetrics(),
             .animation_list => |list| list.needsUnavailableMetrics(),
@@ -1253,6 +1263,7 @@ pub const Value = union(enum) {
             .calculation => |c| c.needsTreeCounts(),
             .sizing_function => |s| s.argument.needsTreeCounts(),
             .grid_line => |line| line.needsTreeCounts(),
+            .counters => |list| list.needsTreeCounts(),
             .grid_tracks => |tracks| tracks.needsTreeCounts(),
             .animation_list => |list| list.needsTreeCounts(),
             .transform => |transform| transform.needsTreeCounts(),
@@ -1310,6 +1321,7 @@ pub const Value = union(enum) {
             .calculation => |c| c.needsRandomBase(),
             .sizing_function => |s| s.argument.needsRandomBase(),
             .grid_line => |line| line.needsRandomBase(),
+            .counters => |list| list.needsRandomBase(),
             .grid_tracks => |tracks| tracks.needsRandomBase(),
             .animation_list => |list| list.needsRandomBase(),
             .transform => |transform| transform.needsRandomBase(),

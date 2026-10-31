@@ -562,39 +562,45 @@ const Parser = struct {
     }
 
     fn symbols(self: *Parser) Allocator.Error!?Item {
-        if (!self.take(.left_paren)) return null;
-        var system: []const u8 = "symbolic";
-        if (self.peek().token_type == .ident) {
-            const token = self.next();
-            const decoded = try self.ident(token);
-            var valid = false;
-            inline for (.{ "cyclic", "numeric", "alphabetic", "symbolic", "fixed" }) |s| if (std.ascii.eqlIgnoreCase(decoded, s)) {
-                system = s;
-                valid = true;
-            };
-            if (!valid) return null;
-        }
-        var out: std.ArrayList(u8) = .empty;
-        var urls = resources.Builder{ .allocator = self.allocator };
-        defer urls.deinit();
-        try out.appendSlice(self.allocator, "symbols(");
-        if (!std.mem.eql(u8, system, "symbolic")) {
-            try out.appendSlice(self.allocator, system);
-            try out.append(self.allocator, ' ');
-        }
-        var count: usize = 0;
-        while (!self.closeFunction()) {
-            const symbol = (try self.item()) orelse return null;
-            defer resources.releaseAll(self.allocator, symbol.resource_urls);
-            defer if (symbol.image) |image| image.release();
-            if (symbol.kind != .text and symbol.kind != .image) return null;
-            if (count > 0) try out.append(self.allocator, ' ');
-            try urls.append(symbol.resource_urls, out.items.len);
-            if (symbol.kind == .text) try values.appendString(symbol.text, &out, self.allocator) else try out.appendSlice(self.allocator, symbol.text);
-            count += 1;
-        }
-        if (count == 0 or (count < 2 and (std.mem.eql(u8, system, "numeric") or std.mem.eql(u8, system, "alphabetic")))) return null;
-        try out.append(self.allocator, ')');
-        return .{ .kind = .counter, .text = out.items, .resource_urls = try urls.take() };
+        const owner = @import("counter_style_values.zig");
+        const Reader = struct {
+            parser: *Parser,
+
+            pub fn peek(reader: *@This()) Token {
+                return reader.parser.peek();
+            }
+            pub fn next(reader: *@This()) Token {
+                return reader.parser.next();
+            }
+            pub fn take(reader: *@This(), kind: tokenizer.TokenType) bool {
+                return reader.parser.take(kind);
+            }
+            pub fn closeFunction(reader: *@This()) bool {
+                return reader.parser.closeFunction();
+            }
+            pub fn symbol(reader: *@This()) Allocator.Error!?owner.Symbol {
+                // Q6: preserve content's existing image/resource parser.
+                const item_value = try reader.parser.item() orelse return null;
+                const allocator = reader.parser.allocator;
+                var transferred = false;
+                defer if (!transferred) {
+                    resources.releaseAll(allocator, item_value.resource_urls);
+                    if (item_value.image) |image| image.release();
+                };
+                if (item_value.kind != .text and item_value.kind != .image) return null;
+                var out: std.ArrayList(u8) = .empty;
+                defer out.deinit(allocator);
+                if (item_value.kind == .text)
+                    try values.appendString(item_value.text, &out, allocator)
+                else
+                    try out.appendSlice(allocator, item_value.text);
+                const text = try out.toOwnedSlice(allocator);
+                transferred = true;
+                return .{ .text = text, .image_symbol = item_value.kind == .image, .resource_urls = item_value.resource_urls, .image = item_value.image };
+            }
+        };
+        var reader = Reader{ .parser = self };
+        const parsed = try owner.consumeSymbols(self.allocator, true, &reader) orelse return null;
+        return .{ .kind = .counter, .text = parsed.text, .resource_urls = parsed.resource_urls };
     }
 };
