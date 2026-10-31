@@ -23,7 +23,7 @@ const Checks = if (@hasDecl(css, "image_values")) struct {
     }
 
     // pub: the tests below ask @hasDecl(Checks, ...), which Zig 0.17 answers for pub
-    // declarations only (0.16 also for this file's own; tools/hasdecl_audit.zig).
+    // declarations only (0.16 also for this file's own).
     pub fn run(allocator: Allocator, case: Case) !void {
         const color = blk: {
             var block = try css.declarations.DeclarationBlock.parse(.{ .allocator = allocator }, case.declaration);
