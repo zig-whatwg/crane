@@ -220,20 +220,20 @@ const Walk = struct {
 fn walkOperations() Walk {
     @setEvalBranchQuota(50_000_000);
     comptime var walk: Walk = .{ .checked = 0, .enums = 0, .unhandled = &.{} };
-    inline for (comptime std.meta.declarations(interfaces)) |interface_decl| {
-        const Interface = @field(interfaces, interface_decl.name);
+    inline for (comptime std.meta.declarations(interfaces)) |interface_name| {
+        const Interface = @field(interfaces, interface_name);
         if (@TypeOf(Interface) != type) continue;
         if (@typeInfo(Interface) != .@"struct") continue;
-        inline for (comptime std.meta.declarations(Interface)) |decl| {
-            if (comptime !std.mem.startsWith(u8, decl.name, "call_")) continue;
-            const function = @field(Interface, decl.name);
+        inline for (comptime std.meta.declarations(Interface)) |decl_name| {
+            if (comptime !std.mem.startsWith(u8, decl_name, "call_")) continue;
+            const function = @field(Interface, decl_name);
             const info = @typeInfo(@TypeOf(function));
             if (info != .@"fn") continue;
             const Return = info.@"fn".return_type orelse continue;
             walk.checked += 1;
             if (comptime isEnumResult(Return)) walk.enums += 1;
             if (comptime !hasReturnCase(Return)) {
-                walk.unhandled = walk.unhandled ++ .{interface_decl.name ++ "." ++ decl.name ++ " -> " ++ @typeName(Return)};
+                walk.unhandled = walk.unhandled ++ .{interface_name ++ "." ++ decl_name ++ " -> " ++ @typeName(Return)};
             }
         }
     }

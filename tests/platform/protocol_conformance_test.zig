@@ -210,8 +210,12 @@ test "the storage engine: ordered keys, snapshot reads, commit and abort" {
     platform.abortTransaction(before);
     try platform.commitTransaction(write);
 
+    // Ended before deleteStore below, which frees the store this transaction
+    // points into (a deferred abort ran after it: a use-after-free that
+    // Zig 0.17's std.testing.allocator, a SafeAllocator, turns into a fault).
     const read = try platform.beginTransaction(store, .read);
-    defer platform.abortTransaction(read);
+    var read_open = true;
+    defer if (read_open) platform.abortTransaction(read);
     const value = (try platform.storeGet(read, allocator, platform.Bytes.from("a"))).?;
     defer allocator.free(value);
     try testing.expectEqualStrings("1", value);
@@ -232,6 +236,9 @@ test "the storage engine: ordered keys, snapshot reads, commit and abort" {
         try testing.expectEqualStrings(expected[0], keys[0]);
         try testing.expectEqualStrings(expected[1], keys[1]);
     }
+
+    platform.abortTransaction(read);
+    read_open = false;
 
     const aborted = try platform.beginTransaction(store, .write);
     try platform.storeDeleteRange(aborted, .all);

@@ -55,13 +55,13 @@ test "every interface arm of every generated union typedef maps to an interface"
     @setEvalBranchQuota(10_000_000);
     const typedefs = conv.generated_typedefs;
     var checked: usize = 0;
-    inline for (comptime std.meta.declarations(typedefs)) |decl| {
-        const T = @field(typedefs, decl.name);
+    inline for (comptime std.meta.declarations(typedefs)) |decl_name| {
+        const T = @field(typedefs, decl_name);
         if (@TypeOf(T) == type and @typeInfo(T) == .@"union") {
             inline for (@typeInfo(T).@"union".field_names, @typeInfo(T).@"union".field_types) |field_name, field_type| {
                 if (field_type == *runtime.Instance) {
                     if (comptime nameOf(field_name) == null) {
-                        std.debug.print("{s}.{s} names no interface\n", .{ decl.name, field_name });
+                        std.debug.print("{s}.{s} names no interface\n", .{ decl_name, field_name });
                         return error.UnmappedUnionArm;
                     }
                     checked += 1;
@@ -92,14 +92,14 @@ test "every interface arm of every nested interface union maps to an interface" 
     @setEvalBranchQuota(10_000_000);
     const typedefs = conv.generated_typedefs;
     var nested: usize = 0;
-    inline for (comptime std.meta.declarations(typedefs)) |decl| {
-        const T = @field(typedefs, decl.name);
+    inline for (comptime std.meta.declarations(typedefs)) |decl_name| {
+        const T = @field(typedefs, decl_name);
         if (@TypeOf(T) == type and @typeInfo(T) == .@"union") {
             inline for (@typeInfo(T).@"union".field_names, @typeInfo(T).@"union".field_types) |field_name, field_type| {
                 if (comptime conv.isInterfaceUnion(field_type)) {
                     inline for (@typeInfo(field_type).@"union".field_names, @typeInfo(field_type).@"union".field_types) |inner_name, inner_type| {
                         if (inner_type == *runtime.Instance and comptime nameOf(inner_name) == null) {
-                            std.debug.print("{s}.{s}.{s} names no interface\n", .{ decl.name, field_name, inner_name });
+                            std.debug.print("{s}.{s}.{s} names no interface\n", .{ decl_name, field_name, inner_name });
                             return error.UnmappedUnionArm;
                         }
                     }

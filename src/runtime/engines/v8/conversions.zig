@@ -5397,7 +5397,7 @@ fn zig017DeclsOf(comptime names: []const [:0]const u8) [names.len]Zig017Decl {
 
 // Zig 0.17 compat: 0.16's StructField/UnionField/EnumField list, rebuilt at comptime from
 // Zig 0.17's struct-of-arrays @typeInfo (a comptime-only element type: calls run at comptime).
-const Zig017Field = struct {
+pub const Zig017Field = struct {
     name: [:0]const u8,
     type: type = void,
     default_value_ptr: ?*const anyopaque = null,

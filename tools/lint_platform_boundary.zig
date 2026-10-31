@@ -256,7 +256,7 @@ fn keyOfPath(path: []const u8, file: []const u8, scope: Scope, preceded_by_colon
         for ([_][]const u8{ "Dir", "File", "net", "Clock", "Timestamp" }) |m| if (std.mem.eql(u8, member, m)) return path[0..member_end];
         if (std.mem.eql(u8, member, "Threaded")) {
             if (n >= 4) {
-                for ([_][]const u8{ "mutexLock", "mutexUnlock", "global_single_threaded" }) |m| if (std.mem.eql(u8, segments[3], m)) return null;
+                for ([_][]const u8{ "mutexLock", "mutexLockUncancelable", "mutexUnlock", "global_single_threaded" }) |m| if (std.mem.eql(u8, segments[3], m)) return null;
             }
             return path[0..member_end];
         }

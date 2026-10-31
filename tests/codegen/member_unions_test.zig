@@ -23,12 +23,18 @@ const fixture =
 ;
 
 const Model = struct {
-    arena: std.heap.ArenaAllocator,
+    // On the heap: the IR keeps `arena.allocator()`, which points at the
+    // arena, and allocates through it after init returns (nameMemberUnions).
+    // An arena returned by value would leave that pointer at init's dead
+    // stack frame (Zig 0.17's arena faults on it).
+    arena: *std.heap.ArenaAllocator,
     ir: codegen.ir.IR,
     file: codegen.types.IDLFile,
 
     fn init() !Model {
-        var arena = std.heap.ArenaAllocator.init(testing.allocator);
+        const arena = try testing.allocator.create(std.heap.ArenaAllocator);
+        errdefer testing.allocator.destroy(arena);
+        arena.* = .init(testing.allocator);
         errdefer arena.deinit();
         const file = try codegen.idl_parser.Parser.parse(arena.allocator(), fixture);
         var model = try codegen.ir.IR.init(arena.allocator());
@@ -40,6 +46,7 @@ const Model = struct {
 
     fn deinit(self: *Model) void {
         self.arena.deinit();
+        testing.allocator.destroy(self.arena);
     }
 
     fn dictionaryFile(self: *Model, name: []const u8) ![]u8 {

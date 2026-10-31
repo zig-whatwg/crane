@@ -94,7 +94,7 @@ const Edit = struct { start: usize, end: usize, text: []const u8 };
 
 /// Every `**` of `source`, rewritten where a form above covers it.
 pub fn rewriteSource(arena: Allocator, source: [:0]const u8) !Result {
-    var tree = try Ast.parse(arena, source, .zig);
+    var tree = try Ast.parse(arena, source, .{ .mode = .zig });
     if (tree.errors.len != 0) return error.ParseError;
     var mults: std.ArrayList(Ast.Node.Index) = .empty;
     for (0..tree.nodes.len) |i| {

@@ -101,15 +101,15 @@ test "every interface-typed position of every generated interface and dictionary
     @setEvalBranchQuota(100_000_000);
     var missing: usize = 0;
     var checked: usize = 0;
-    inline for (comptime std.meta.declarations(interfaces)) |decl| {
-        const I = @field(interfaces, decl.name);
+    inline for (comptime std.meta.declarations(interfaces)) |decl_name| {
+        const I = @field(interfaces, decl_name);
         if (comptime @TypeOf(I) == type and @typeInfo(I) == .@"struct" and @hasDecl(I, "Meta") and @hasDecl(I, "State")) {
-            inline for (comptime std.meta.declarations(I)) |member| {
+            inline for (comptime std.meta.declarations(I)) |member_name| {
                 // Only the delegates are read: touching any other declaration
                 // (`vtable`) would analyse interfaces nothing else compiles.
-                const is_delegate = comptime std.mem.startsWith(u8, member.name, "call_") or std.mem.startsWith(u8, member.name, "set_");
-                const is_fn = comptime is_delegate and @typeInfo(@TypeOf(@field(I, member.name))) == .@"fn";
-                if (comptime is_fn and std.mem.eql(u8, member.name, "call_constructor")) {
+                const is_delegate = comptime std.mem.startsWith(u8, member_name, "call_") or std.mem.startsWith(u8, member_name, "set_");
+                const is_fn = comptime is_delegate and @typeInfo(@TypeOf(@field(I, member_name))) == .@"fn";
+                if (comptime is_fn and std.mem.eql(u8, member_name, "call_constructor")) {
                     const params = zig017ParamsOf(@typeInfo(@TypeOf(I.call_constructor)).@"fn");
                     inline for (params[1..], 0..) |param, index| {
                         const P = param.type.?;
@@ -143,24 +143,24 @@ test "every interface-typed position of every generated interface and dictionary
                     }
                 } else if (comptime is_fn) {
                     // (instance, arguments...): argument i is parameter i + 1.
-                    checkParams(I, member.name, 1, &missing, &checked);
+                    checkParams(I, member_name, 1, &missing, &checked);
                 }
             }
         }
     }
     const dictionaries = conv.generated_dictionaries;
-    inline for (comptime std.meta.declarations(dictionaries)) |decl| {
+    inline for (comptime std.meta.declarations(dictionaries)) |decl_name| {
         // RouterCondition has a member of its own type (`not:
         // RouterCondition?`), which Zig cannot lay out, and RouterRule holds
         // one: nothing converts either, and asking for their fields is a
         // compile error of its own.
-        const unlaid = comptime std.mem.eql(u8, decl.name, "RouterCondition") or std.mem.eql(u8, decl.name, "RouterRule");
-        const D = @field(dictionaries, decl.name);
+        const unlaid = comptime std.mem.eql(u8, decl_name, "RouterCondition") or std.mem.eql(u8, decl_name, "RouterRule");
+        const D = @field(dictionaries, decl_name);
         if (comptime !unlaid and @TypeOf(D) == type and @typeInfo(D) == .@"struct") {
             inline for (@typeInfo(D).@"struct".field_names, @typeInfo(D).@"struct".field_types) |field_name, field_type| {
                 if (comptime conv.needsInterface(field_type)) {
                     if (comptime conv.memberInterface(D, field_name) == null) {
-                        std.debug.print("dictionary {s}.{s} names no interface\n", .{ decl.name, field_name });
+                        std.debug.print("dictionary {s}.{s} names no interface\n", .{ decl_name, field_name });
                         missing += 1;
                     }
                     checked += 1;

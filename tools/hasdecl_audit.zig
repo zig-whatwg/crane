@@ -321,7 +321,7 @@ const Audit = struct {
 
 /// Audits one file's source. Allocations are the caller's (an arena).
 pub fn auditSource(arena: Allocator, source: [:0]const u8) !FileAudit {
-    var tree = try Ast.parse(arena, source, .zig);
+    var tree = try Ast.parse(arena, source, .{ .mode = .zig });
     if (tree.errors.len > 0) return error.ParseError;
     var a: Audit = .{ .arena = arena, .tree = &tree };
     try a.collect();

@@ -164,19 +164,8 @@ test "an inline union member typed JSValue keeps a present null apart from absen
 
 // Zig 0.17 compat: 0.16's StructField/UnionField/EnumField list, rebuilt at comptime from
 // Zig 0.17's struct-of-arrays @typeInfo (a comptime-only element type: calls run at comptime).
-const Zig017Field = struct {
-    name: [:0]const u8,
-    type: type = void,
-    default_value_ptr: ?*const anyopaque = null,
-    is_comptime: bool = false,
-    alignment: ?usize = null,
-    value: comptime_int = 0,
-
-    pub fn defaultValue(comptime f: Zig017Field) ?f.type {
-        const dp: *const f.type = @ptrCast(@alignCast(f.default_value_ptr orelse return null));
-        return dp.*;
-    }
-};
+// The binding's own type: presentNullConvertsByType takes a conversions.Zig017Field.
+const Zig017Field = conversions.Zig017Field;
 fn zig017FieldsOf(comptime info: anytype) [info.field_names.len]Zig017Field {
     var out: [info.field_names.len]Zig017Field = undefined;
     if (@hasField(@TypeOf(info), "field_values")) {
