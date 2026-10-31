@@ -21,7 +21,7 @@ This project follows the Zig Community Code of Conduct. Please be respectful and
 
 ### Prerequisites
 
-- Zig 0.16.0 or later
+- Zig 0.17.1-dev+77c319a0f0 (the 0.17.x branch at 77c319a0f00a; 0.17.1 once it ships)
 - Git
 - Basic understanding of URLs and web standards
 

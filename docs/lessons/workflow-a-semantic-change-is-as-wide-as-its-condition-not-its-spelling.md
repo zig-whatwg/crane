@@ -2,6 +2,7 @@
 
 **Date**: 2026-10-28
 **Status**: 2026-10-29 (lane zigprep1) - tools/hasdecl_audit.zig is committed with its `hasdecl-audit` step; the two flips in tests/css/ci1_image_dependencies_test.zig are fixed (`pub`), and the three in held files (src/css/cascade.zig collectCandidates and CandidateIndex, src/dom/style/engine.zig treeCounts) are reported `known` until the port window.
+**Status**: 2026-10-31 (lane zig017port) - the three held flips are `pub` and Zig 0.17 is in; at 0.17 the audit reported 17,739 @hasDecl, 0 changes, 0 known, 14 possible (the trial's exactly-measured set, no flip), and tools/hasdecl_audit.zig was deleted with its step as a migration tool (the integrator, 2026-10-30). Read it from git history (lane/zig017trial, lane/zigprep1) if a later Zig changes another answer.
 **Lesson**: Zig 0.17's silent `@hasDecl` change reaches only a same-file non-pub declaration: of 17,624 uses on main the text clears 17,605, and a 0.16 build of probe copies finds exactly 5 flips among the other 19 - all in test guards, none in the binding.
 
 **Why**: Zig 0.16 answers `@hasDecl(T, "x")` true for a pub `x`, and for a non-pub `x` only

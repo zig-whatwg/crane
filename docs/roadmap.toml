@@ -602,19 +602,23 @@ costs: @hasDecl is pub-only (silent), @bitCast semantics, @cImport removed (curl
 API renames, DebugAllocator -> SafeAllocator, the V8 prebuilt's libc++ ABI."""
 done_when = """zig build test, wpt-runner and the iOS build pass on 0.17; a full worklist sweep \
 shows no regression against the last 0.16 sweep; chat and AGENTS.md updated; 0.16 retired."""
-progress = []
+progress = [
+  "lane zig017trial (2026-10-28, lane/zig017trial 56ccf4fec18) - the trial: 0.17.0 cannot build aarch64-ios (ziglang/zig#37061); the user chose a pinned 0.17.x-branch build (77c319a0f00a); V8 13.1 links under LLVM 22 libc++, snapshot identical",
+  "a17c622af26 (lane zigprep1) - the 0.16-compatible prep: @cImport -> translate-c modules, renames, `**` -> @splat, the iOS lib-full build fixed",
+  "2c684d65b7c (lanes zig017port + zig017mem, merged on lane/integrate) - the port: build.zig under 0.17 (refuses 0.17.0), useBuildableMacosSdk retired, @typeInfo codemod, regenerated WebIDL layers, one 0.17 zig fmt; the runner's debug-info allocator; gates green, snapshot byte-identical",
+]
 
   [[infra.items]]
   name = "Trial: scratch worktree on 0.17, SDK 27, error count, V8 link, a few WPT files"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Port the tree (build.zig, @hasDecl audit, @bitCast, @cImport replacements, allocator rename)"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Verify: zig build test, iOS link, full sweep A/B, timers x3; retire 0.16 and the SDK workaround"
-  status = "todo"
+  status = "doing"
 
 [[infra]]
 id = "impls-boundary"

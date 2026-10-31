@@ -338,9 +338,10 @@ libraries ReleaseSafe)`. gc_bench is built the same way. The snapshot generator
 and every unit test stay Debug: `zig build test` builds neither the runner nor
 gc_bench.
 
-- **The price is the compile.** Any edit recompiles the whole runner: about
-  7 min and 14 GB, against 2 min and 10 GB in Debug. Locally, on a 32 GB Mac,
-  run only one ReleaseSafe runner compile at a time.
+- **The price is the compile.** Any edit recompiles the whole runner: on Zig
+  0.17 about 12 min and 20.5 GB cold (7 min and 14 GB on 0.16), against
+  2 min and 10 GB in Debug. Locally, on a 32 GB Mac, run only one ReleaseSafe
+  runner compile at a time.
 - **`-Dwpt-runner-optimize=Debug`** (or an explicit `-Doptimize=Debug`) builds
   the Debug runner and gc_bench. Use it for red/green iteration and for a
   diagnosis. The leak and double-free reports are the same in both modes, but
@@ -357,27 +358,25 @@ gc_bench.
   equal constants: an identity built on either is Debug-only
   ([lesson](docs/lessons/debugging-equal-constants-share-one-address-in-a-release-build.md)).
 
-**The macOS SDK is chosen by `build.zig`, not by you.** Zig 0.16's bundled
-libcxx does not compile against the macOS 27 SDK:
+**The toolchain is Zig 0.17, pinned** (the user, 2026-10-28): a build of the
+0.17.x branch at 77c319a0f00a (`zig version`: `0.17.1-dev+77c319a0f0`), because
+0.17.0 cannot build aarch64-ios (ziglang/zig#37061, fixed for 0.17.1). It lives
+at `~/crane-toolchains/zig-0.17.1-dev+77c319a0f0/` on the Mac and every pool
+host; `build.zig.zon`'s `minimum_zig_version` says 0.17, and the pool's zig shim
+picks the toolchain from it. Switch to 0.17.1 when it ships.
 
-    use of undeclared identifier 'INFINITY'
-      zig/0.16.0/lib/libcxx/include/__random/clamp_to_integral.h:47
-    error: sub-compilation of libcxx failed
-
-The 27 SDK's `math.h` leaves `INFINITY` to `<float.h>` when clang modules are
-on, and the clang `float.h` Zig ships defines it only for C23 or a non-strict
-`-std`. `useBuildableMacosSdk` in `build.zig` detects a 27+ default SDK and
-builds against the newest `MacOSX26.x.sdk` the Command Line Tools still ship,
-through a libc file it writes into the cache root. So a plain
-`zig build wpt-runner -j2` works; `--libc <file>` overrides it.
-
-- **Do not put an `xcrun` shim on PATH.** Zig asks
-  `xcrun --sdk macosx --show-sdk-path`, and `/tmp/sdkshim` broke the build
-  twice by answering that with the wrong SDK. `SDKROOT` does not help either -
-  `xcrun` ignores it when `--sdk` is given. The old iOS-aware shim is parked at
-  `/tmp/sdkshim.disabled-2026-09-21`.
-- **If `INFINITY` comes back**, the Command Line Tools dropped the 26.x SDK.
-  The durable fix is a Zig whose libcxx is SDK-27 clean.
+- **`zig build` takes no `--global-cache-dir`.** The global cache is set only
+  through `ZIG_GLOBAL_CACHE_DIR` (the pool's shim exports `~/.cache/zig-017`, a
+  cache 0.16 never shared); `--cache-dir` works as before.
+- **The configuration is cached.** `build.zig` runs in a configure process
+  whose result Zig 0.17 caches: anything it reads from the machine at configure
+  time (a file probe, `xcrun`, `curl-config`) must call
+  `b.graph.poisonCache()`, or a changed machine reuses a stale configuration.
+- **The macOS SDK is the default one.** Zig 0.17's libc++ builds against the
+  macOS 27 SDK, so the 0.16 workaround that built against a 26.x SDK through a
+  libc file (`useBuildableMacosSdk`, the `INFINITY` break) is gone. Do not put
+  an `xcrun` shim on PATH: Zig asks `xcrun --sdk macosx --show-sdk-path`, and
+  `/tmp/sdkshim` broke the build twice by answering it with the wrong SDK.
 
 All three must pass. For changes to V8 handle ownership, they are not
 sufficient — see the regression protocol above.

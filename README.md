@@ -70,7 +70,7 @@ The build is set up for macOS on Apple Silicon. You need:
 
 | Requirement | Notes |
 | :--- | :--- |
-| Zig 0.16.0 | Exactly this version. |
+| Zig 0.17.1-dev+77c319a0f0 | Exactly this build: the 0.17.x branch at 77c319a0f00a, until 0.17.1 ships (0.17.0 cannot build aarch64-ios). |
 | V8 13.1, static monolith | In `jsengines/v8/`, which git does not track. [`scripts/build-v8-static.sh`](scripts/build-v8-static.sh) builds it: about 15 GB of disk and 30-60 minutes. |
 | Homebrew `sqlite` and `leveldb` | `build.zig` links them from `/opt/homebrew`. |
 | Python 3 | For the WPT server. |
@@ -83,9 +83,6 @@ zig build test -j2          # ~4,900 unit tests and the boundary lints
 > [!WARNING]
 > Never run a bare `zig build`. It installs about 19 artifacts, each analysing the whole tree with
 > roughly 6 GB of RAM. Name a step and pass `-j2`.
-
-On a machine whose default SDK is macOS 27, `build.zig` builds against the newest 26.x SDK on its
-own, because Zig 0.16's bundled libc++ does not compile against 27.
 
 ## Running the Web Platform Tests
 
@@ -134,7 +131,7 @@ tree links for `aarch64-ios` as well as macOS.
 | Script | `webidl` (bindings and code generation), `runtime` (the engine protocol and adapters), workers, `service_worker`, `streams`, `console`, `hr_time` |
 | Storage and files | `storage`, `fs`, `file` |
 | Text | `encoding`, `infra`, `intl` (CLDR) |
-| Embedding | `platform` (capabilities, layout backend), `browser`, `webdriver` (does not build on Zig 0.16 yet) |
+| Embedding | `platform` (capabilities, layout backend), `browser`, `webdriver` |
 
 </details>
 
