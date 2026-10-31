@@ -47,7 +47,7 @@ pub fn made(owner: *runtime.Instance, child: *runtime.Instance, comptime attribu
 /// collector's included (engine.forgetTracedChild).
 pub fn end(comptime State: type, owner: *runtime.Instance) void {
     const own = &owner.getState(State).own;
-    inline for (std.meta.fieldNames(@TypeOf(own.*)), std.meta.fieldTypes(@TypeOf(own.*))) |field_name, field_type| {
+    inline for (comptime std.meta.fieldNames(@TypeOf(own.*)), comptime std.meta.fieldTypes(@TypeOf(own.*))) |field_name, field_type| {
         if (comptime std.mem.startsWith(u8, field_name, "cached_") and field_type == ?*runtime.Instance) {
             if (@field(own, field_name) != null) engine.forgetTracedChild(owner, slotOf(field_name["cached_".len..]));
         }

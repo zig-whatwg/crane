@@ -119,11 +119,11 @@ pub fn idlEnumValue(comptime T: type, value: T) []const u8 {
 pub fn enumFromIdlValue(comptime T: type, string: []const u8) ?T {
     if (comptime @hasDecl(T, "idl_values")) {
         inline for (T.idl_values, 0..) |idl_value, i| {
-            if (std.mem.eql(u8, idl_value, string)) return @enumFromInt(std.meta.fields(T)[i].value);
+            if (std.mem.eql(u8, idl_value, string)) return @enumFromInt(zig017FieldsOfType(T)[i].value);
         }
         return null;
     }
-    inline for (std.meta.fieldNames(T), @typeInfo(T).@"enum".field_values) |field_name, field_value| {
+    inline for (comptime std.meta.fieldNames(T), @typeInfo(T).@"enum".field_values) |field_name, field_value| {
         if (enumNameMatches(field_name, string)) return @enumFromInt(field_value);
     }
     return null;
@@ -641,7 +641,7 @@ fn isAnyMember(comptime T: type, comptime name: []const u8) bool {
 /// is its own), and a type this converter leaves to the impl - a union, a
 /// sequence, a dictionary, a callback - which keeps reading a present null
 /// as not present.
-pub fn presentNullConvertsByType(comptime T: type, comptime field: std.builtin.Type.StructField) bool {
+pub fn presentNullConvertsByType(comptime T: type, comptime field: Zig017Field) bool {
     comptime {
         const info = @typeInfo(field.type);
         if (info != .optional) return false;
@@ -1667,12 +1667,12 @@ fn isSequenceMember(comptime M: type) bool {
 /// (`base`, converted by recursion) followed by its own members in IDL
 /// declaration order, so the order is imposed here: `base`, then the rest by
 /// code unit. Reading `view` before `detail` is observable to a getter.
-fn dictionaryMemberOrder(comptime T: type) [std.meta.fieldNames(T).len]std.builtin.Type.StructField {
+fn dictionaryMemberOrder(comptime T: type) [std.meta.fieldNames(T).len]Zig017Field {
     comptime {
         @setEvalBranchQuota(20_000);
-        var fields = std.meta.fields(T)[0..std.meta.fieldNames(T).len].*;
-        std.sort.insertion(std.builtin.Type.StructField, &fields, {}, struct {
-            fn lessThan(_: void, a: std.builtin.Type.StructField, b: std.builtin.Type.StructField) bool {
+        var fields = zig017FieldsOfType(T)[0..std.meta.fieldNames(T).len].*;
+        std.sort.insertion(Zig017Field, &fields, {}, struct {
+            fn lessThan(_: void, a: Zig017Field, b: Zig017Field) bool {
                 if (isInheritedDictionaryField(b)) return false;
                 if (isInheritedDictionaryField(a)) return true;
                 return std.mem.lessThan(u8, a.name, b.name);
@@ -1696,7 +1696,7 @@ fn hasTypedArrayArm(comptime T: type) bool {
 /// default value (generator.generateDictionary writes every other member as
 /// `?T = null`). `base` - the inherited dictionary - is converted from the
 /// same object and is no member.
-fn isRequiredMember(comptime field: std.builtin.Type.StructField) bool {
+fn isRequiredMember(comptime field: Zig017Field) bool {
     return field.default_value_ptr == null and !std.mem.eql(u8, field.name, "base");
 }
 
@@ -1996,7 +1996,7 @@ fn convertValueAs(
         // then dispatch at runtime based on the actual value type.
 
         const union_info = type_info.@"union";
-        const fields = union_info.fields;
+        const fields = zig017FieldsOf(union_info);
 
         // Find indices for different type categories at comptime
         // Note: []const u8 (ByteString, USVString) could match both string and sequence
@@ -2521,7 +2521,7 @@ fn convertValueAs(
         // This is a webidl.Opt(InnerType) - convert the inner value and wrap it
         // Get the inner type from the 'value' field using comptime struct field access
         const InnerType = comptime blk: {
-            const fields = std.meta.fields(T);
+            const fields = zig017FieldsOfType(T);
             for (fields) |field| {
                 if (std.mem.eql(u8, field.name, "value")) {
                     break :blk field.type;
@@ -3321,7 +3321,7 @@ pub fn dictionaryValueIsOwned(comptime T: type) bool {
 pub fn releaseReturnedDictionaryHandles(comptime T: type, value: T) void {
     @setEvalBranchQuota(100_000);
     if (comptime !isDictionaryValue(T)) return;
-    inline for (std.meta.fields(T)) |field| {
+    inline for (zig017FieldsOfType(T)) |field| {
         const field_value = @field(value, field.name);
         if (comptime isInheritedDictionaryField(field)) {
             releaseReturnedDictionaryHandles(field.type, field_value);
@@ -3374,7 +3374,7 @@ pub fn unionValueIsOwned(comptime T: type, value: T) bool {
 /// Whether `field` is a dictionary's inherited dictionary: codegen keeps it
 /// in a field named `base` whose type is the inherited dictionary's struct.
 /// Only that: JsonLdOptions has a MEMBER named `base` (`USVString? base`).
-fn isInheritedDictionaryField(comptime field: std.builtin.Type.StructField) bool {
+fn isInheritedDictionaryField(comptime field: Zig017Field) bool {
     return comptime std.mem.eql(u8, field.name, "base") and isDictionaryValue(field.type);
 }
 
@@ -3412,7 +3412,7 @@ fn MemberPayload(comptime M: type) type {
 /// dictionary member default to `{}`).
 fn defaultsToEmpty(comptime T: type) bool {
     comptime {
-        for (std.meta.fields(T)) |f| {
+        for (zig017FieldsOfType(T)) |f| {
             if (f.default_value_ptr == null and !isInheritedDictionaryField(f)) return false;
             if (isInheritedDictionaryField(f) and !defaultsToEmpty(f.type)) return false;
         }
@@ -3424,7 +3424,7 @@ fn defaultsToEmpty(comptime T: type) bool {
 /// inherited dictionary's too.
 fn emptyDictionary(comptime T: type) T {
     var result: T = undefined;
-    inline for (std.meta.fields(T)) |f| {
+    inline for (zig017FieldsOfType(T)) |f| {
         if (comptime isInheritedDictionaryField(f)) {
             @field(result, f.name) = emptyDictionary(f.type);
         } else {
@@ -3522,7 +3522,7 @@ fn writeDictionaryMembers(comptime T: type, isolate: *v8.Isolate, context: *v8.C
 /// property for each - so a nullable attribute that is null is a property
 /// whose value is null (toV8Value's null for an optional that is null).
 fn writeDefaultToJsonMembers(comptime T: type, isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object, value: T) ConversionError!void {
-    inline for (std.meta.fieldNames(T), std.meta.fieldTypes(T)) |field_name, field_type| {
+    inline for (comptime std.meta.fieldNames(T), comptime std.meta.fieldTypes(T)) |field_name, field_type| {
         const field_value = @field(value, field_name);
         const field_v8 = try toV8Value(field_type, isolate, context, field_value);
         // A null is the Null toV8Null made (`memberValueIsOwned`).
@@ -3757,7 +3757,7 @@ pub fn toV8Value(
     // Handle unions (convert active field to V8)
     if (type_info == .@"union") {
         const union_info = type_info.@"union";
-        const fields = union_info.fields;
+        const fields = zig017FieldsOf(union_info);
 
         // Use inline switch to dispatch on active field at runtime
         inline for (fields) |field| {
@@ -4390,7 +4390,7 @@ fn newQuotaExceededError(isolate: *v8.Isolate, context: *v8.Context, message: []
     const interfaces = @import("interfaces");
     const QuotaExceededError = interfaces.QuotaExceededError;
     const realm = @import("context_manager.zig").get(context) orelse return null;
-    const params = @typeInfo(@TypeOf(QuotaExceededError.call_constructor)).@"fn".params;
+    const params = zig017ParamsOf(@typeInfo(@TypeOf(QuotaExceededError.call_constructor)).@"fn");
     const Message = params[1].type.?;
     const Options = params[2].type.?;
     const instance = QuotaExceededError.call_constructor(realm, Message.passed(runtime.DOMString.initInterned(message)), Options.notPassed()) catch return null;
@@ -5378,4 +5378,58 @@ pub fn iterateAsRecordPairs(
 test "conversion module compiles" {
     const testing = std.testing;
     testing.refAllDecls(@This());
+}
+
+// Zig 0.17 compat: Zig 0.17's @typeInfo is struct-of-arrays. These rebuild 0.16's lists
+// (comptime-only element types, so every call is evaluated at comptime).
+const Zig017Param = struct { type: ?type, is_generic: bool, is_noalias: bool };
+fn zig017ParamsOf(comptime info: @import("std").builtin.Type.Fn) [info.param_types.len]Zig017Param {
+    var out: [info.param_types.len]Zig017Param = undefined;
+    for (info.param_types, info.param_attrs, 0..) |t, a, i| out[i] = .{ .type = t, .is_generic = t == null, .is_noalias = a.@"noalias" };
+    return out;
+}
+const Zig017Decl = struct { name: [:0]const u8, comptime_only: type = void };
+fn zig017DeclsOf(comptime names: []const [:0]const u8) [names.len]Zig017Decl {
+    var out: [names.len]Zig017Decl = undefined;
+    for (names, 0..) |n, i| out[i] = .{ .name = n };
+    return out;
+}
+
+// Zig 0.17 compat: 0.16's StructField/UnionField/EnumField list, rebuilt at comptime from
+// Zig 0.17's struct-of-arrays @typeInfo (a comptime-only element type: calls run at comptime).
+const Zig017Field = struct {
+    name: [:0]const u8,
+    type: type = void,
+    default_value_ptr: ?*const anyopaque = null,
+    is_comptime: bool = false,
+    alignment: ?usize = null,
+    value: comptime_int = 0,
+
+    pub fn defaultValue(comptime f: Zig017Field) ?f.type {
+        const dp: *const f.type = @ptrCast(@alignCast(f.default_value_ptr orelse return null));
+        return dp.*;
+    }
+};
+fn zig017FieldsOf(comptime info: anytype) [info.field_names.len]Zig017Field {
+    var out: [info.field_names.len]Zig017Field = undefined;
+    if (@hasField(@TypeOf(info), "field_values")) {
+        for (info.field_names, info.field_values, 0..) |n, v, i| out[i] = .{ .name = n, .value = v };
+        return out;
+    }
+    for (info.field_names, info.field_types, info.field_attrs, 0..) |n, t, a, i| out[i] = .{
+        .name = n,
+        .type = t,
+        .default_value_ptr = if (@hasField(@TypeOf(a), "default_value_ptr")) a.default_value_ptr else null,
+        .is_comptime = if (@hasField(@TypeOf(a), "comptime")) a.@"comptime" else false,
+        .alignment = a.@"align",
+    };
+    return out;
+}
+fn zig017FieldsOfType(comptime T: type) [@import("std").meta.fieldNames(T).len]Zig017Field {
+    return switch (@typeInfo(T)) {
+        .@"struct" => |s| zig017FieldsOf(s),
+        .@"union" => |u| zig017FieldsOf(u),
+        .@"enum" => |e| zig017FieldsOf(e),
+        else => @compileError("zig017FieldsOfType: not a struct, union or enum"),
+    };
 }

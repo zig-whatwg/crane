@@ -67,7 +67,7 @@ test "conformance: the bound platform matches every operation" {
         const T = @TypeOf(@field(platform, decl_name));
         if (@typeInfo(T) != .@"fn") continue;
         const f = @typeInfo(T).@"fn";
-        if (f.calling_convention != .@"inline") continue;
+        if (f.attrs.@"callconv" != .@"inline") continue;
         try testing.expectEqual(platform.Conformance.matches, comptime platform.conformance(platform.adapter, decl_name, f));
         count += 1;
     }

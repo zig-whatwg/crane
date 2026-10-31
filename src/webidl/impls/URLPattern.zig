@@ -338,7 +338,7 @@ pub fn call_exec(instance: *runtime.Instance, input: webidl.Opt(typedefs.URLPatt
 /// A URLPatternInit whose strings are copies in `scratch`.
 fn copyInit(scratch: std.mem.Allocator, given: dictionaries.URLPatternInit) !dictionaries.URLPatternInit {
     var copy = given;
-    inline for (std.meta.fieldNames(dictionaries.URLPatternInit)) |field_name| {
+    inline for (comptime std.meta.fieldNames(dictionaries.URLPatternInit)) |field_name| {
         if (@field(given, field_name)) |value| {
             @field(copy, field_name) = try scratch.dupe(u8, value);
         }

@@ -158,7 +158,7 @@ pub fn findings(gpa: std.mem.Allocator, path: []const u8, source: [:0]const u8) 
     }
     if (!isScanned(path)) return out;
 
-    var tree = try std.zig.Ast.parse(gpa, source, .zig);
+    var tree = try std.zig.Ast.parse(gpa, source, .{ .mode = .zig });
     defer tree.deinit(gpa);
     if (tree.errors.len > 0) return error.ParseError;
 

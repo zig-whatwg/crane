@@ -119,11 +119,11 @@ fn analyse(comptime T: type) bool {
         .optional => |o| analyse(o.child),
         .@"struct" => |s| blk: {
             if (s.layout == .@"packed") break :blk analyse(s.backing_integer.?);
-            for (s.fields) |f| if (analyse(f.type)) break :blk true;
+            for (s.field_types) |f_type| if (analyse(f_type)) break :blk true;
             break :blk false;
         },
         .@"union" => |u| blk: {
-            for (u.fields) |f| if (analyse(f.type)) break :blk true;
+            for (u.field_types) |f_type| if (analyse(f_type)) break :blk true;
             break :blk false;
         },
         else => true,
@@ -174,8 +174,8 @@ fn same(comptime T: type, a: T, b: T) bool {
         .array => |arr| for (a, b) |x, y| {
             if (!same(arr.child, x, y)) break false;
         } else true,
-        .@"struct" => |s| if (s.layout == .@"packed") @as(s.backing_integer.?, @bitCast(a)) == @as(s.backing_integer.?, @bitCast(b)) else inline for (s.fields) |f| {
-            if (!same(f.type, @field(a, f.name), @field(b, f.name))) break false;
+        .@"struct" => |s| if (s.layout == .@"packed") @as(s.backing_integer.?, @bitCast(a)) == @as(s.backing_integer.?, @bitCast(b)) else inline for (s.field_names, s.field_types) |f_name, f_type| {
+            if (!same(f_type, @field(a, f_name), @field(b, f_name))) break false;
         } else true,
         .@"union" => |u| blk: {
             if (u.tag_type == null) @compileError("untagged union in a computed value: " ++ @typeName(T));

@@ -1592,7 +1592,7 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
             const next = 1 - current;
             const forwarded = try parts.forward(allocators[next], names.items, exported.value);
             names.deinit(allocators[current]);
-            buffers[current].fixed_buffer_allocator.reset();
+            buffers[current].first.fixed_buffer_allocator.reset();
             names = forwarded;
             current = next;
             part_root = host_root;

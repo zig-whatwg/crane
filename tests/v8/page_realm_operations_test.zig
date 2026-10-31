@@ -445,7 +445,7 @@ test "every conversions throw helper leaves no handle behind" {
     // line.
     const rounds = 32;
     var leaked = false;
-    inline for (std.meta.fieldNames(Thrower.Kind), @typeInfo(Thrower.Kind).@"enum".field_values) |field_name, field_value| {
+    inline for (comptime std.meta.fieldNames(Thrower.Kind), @typeInfo(Thrower.Kind).@"enum".field_values) |field_name, field_value| {
         var thrower: Thrower = .{ .context = context_once.?, .kind = @enumFromInt(field_value) };
         // The first call may make what every later one reuses.
         try thrower.throwAndCatch();

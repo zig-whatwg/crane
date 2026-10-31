@@ -283,7 +283,7 @@ fn keyOfPath(path: []const u8, file: []const u8, scope: Scope, preceded_by_colon
 fn testLines(gpa: std.mem.Allocator, source: [:0]const u8) !std.ArrayList([2]u32) {
     var out: std.ArrayList([2]u32) = .empty;
     errdefer out.deinit(gpa);
-    var tree = try std.zig.Ast.parse(gpa, source, .zig);
+    var tree = try std.zig.Ast.parse(gpa, source, .{ .mode = .zig });
     defer tree.deinit(gpa);
     if (tree.errors.len > 0) return out;
     var i: u32 = 0;

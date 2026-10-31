@@ -48,7 +48,7 @@ test "ReadableStream: constructor accepts underlyingSource parameter" {
     const type_info = @typeInfo(ConstructorFn);
 
     // In Zig 0.15+, function types are in .@"fn" field
-    const params = type_info.@"fn".params;
+    const params = zig017ParamsOf(type_info.@"fn");
 
     // Parameter 1 (index 1) should be underlyingSource: webidl.Opt(JSValue)
     // Note: Previously allocator was param 0, now removed - constructors use ctx.allocator
@@ -69,7 +69,7 @@ test "WritableStream: constructor accepts underlyingSink parameter" {
     // impl takes them).
     const ConstructorFn = @TypeOf(interfaces.WritableStream.call_constructor);
     const type_info = @typeInfo(ConstructorFn);
-    const params = type_info.@"fn".params;
+    const params = zig017ParamsOf(type_info.@"fn");
 
     // Parameter 1 (index 1) should be underlyingSink: webidl.Opt(JSValue)
     // Note: Previously allocator was param 0, now removed - constructors use ctx.allocator
@@ -90,7 +90,7 @@ test "TransformStream: constructor accepts transformer parameter" {
     // impl takes them).
     const ConstructorFn = @TypeOf(interfaces.TransformStream.call_constructor);
     const type_info = @typeInfo(ConstructorFn);
-    const params = type_info.@"fn".params;
+    const params = zig017ParamsOf(type_info.@"fn");
 
     // Parameter 1 (index 1) should be transformer: webidl.Opt(JSValue)
     // Note: Previously allocator was param 0, now removed - constructors use ctx.allocator
@@ -247,4 +247,19 @@ test "Documentation: WPT tests cover runtime callback behavior" {
     // The fix is to use pointer_tag.untagPointer() before @alignCast.
 
     try testing.expect(true);
+}
+
+// Zig 0.17 compat: Zig 0.17's @typeInfo is struct-of-arrays. These rebuild 0.16's lists
+// (comptime-only element types, so every call is evaluated at comptime).
+const Zig017Param = struct { type: ?type, is_generic: bool, is_noalias: bool };
+fn zig017ParamsOf(comptime info: @import("std").builtin.Type.Fn) [info.param_types.len]Zig017Param {
+    var out: [info.param_types.len]Zig017Param = undefined;
+    for (info.param_types, info.param_attrs, 0..) |t, a, i| out[i] = .{ .type = t, .is_generic = t == null, .is_noalias = a.@"noalias" };
+    return out;
+}
+const Zig017Decl = struct { name: [:0]const u8, comptime_only: type = void };
+fn zig017DeclsOf(comptime names: []const [:0]const u8) [names.len]Zig017Decl {
+    var out: [names.len]Zig017Decl = undefined;
+    for (names, 0..) |n, i| out[i] = .{ .name = n };
+    return out;
 }

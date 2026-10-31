@@ -2581,7 +2581,7 @@ comptime {
             else => continue,
         };
         // Every public inline function is an operation.
-        if (expected.calling_convention != .@"inline") continue;
+        if (expected.attrs.@"callconv" != .@"inline") continue;
         conforms(decl_name, expected);
         // In a test build, compile the adapter's function whole: a stub
         // nothing calls still has to type-check. Not an adapter with an
@@ -2604,10 +2604,10 @@ fn conforms(comptime operation: []const u8, comptime expected: std.builtin.Type.
         .@"fn" => |f| f,
         else => @compileError(adapter ++ ": `" ++ operation ++ "` is not a function"),
     };
-    var same = actual.return_type == expected.return_type and actual.params.len == expected.params.len and !actual.is_generic;
+    var same = actual.return_type == expected.return_type and actual.param_types.len == expected.param_types.len and !actual.is_generic;
     if (same) {
-        for (actual.params, expected.params) |a, e| {
-            if (a.type != e.type) same = false;
+        for (actual.param_types, expected.param_types) |a, e| {
+            if (a != e) same = false;
         }
     }
     if (!same) @compileError(adapter ++ ": `" ++ operation ++ "` is " ++ @typeName(Actual) ++
@@ -2616,6 +2616,6 @@ fn conforms(comptime operation: []const u8, comptime expected: std.builtin.Type.
 
 fn signature(comptime f: std.builtin.Type.Fn) []const u8 {
     var text: []const u8 = "fn (";
-    for (f.params, 0..) |p, i| text = text ++ (if (i == 0) "" else ", ") ++ @typeName(p.type.?);
+    for (f.param_types, 0..) |p, i| text = text ++ (if (i == 0) "" else ", ") ++ @typeName(p.?);
     return text ++ ") " ++ @typeName(f.return_type.?);
 }

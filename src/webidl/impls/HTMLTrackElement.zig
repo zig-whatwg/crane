@@ -208,7 +208,7 @@ pub fn set_kind(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
 fn kindOf(instance: *runtime.Instance) !hooks.Kind {
     var value = (try interfaces.Element.call_getAttribute(instance, .initInterned("kind"))) orelse return .subtitles;
     defer value.deinit(instance.ctx.allocator);
-    inline for (std.meta.fieldNames(hooks.Kind), @typeInfo(hooks.Kind).@"enum".field_values) |field_name, field_value| if (std.ascii.eqlIgnoreCase(value.asSlice(), field_name)) return @enumFromInt(field_value);
+    inline for (comptime std.meta.fieldNames(hooks.Kind), @typeInfo(hooks.Kind).@"enum".field_values) |field_name, field_value| if (std.ascii.eqlIgnoreCase(value.asSlice(), field_name)) return @enumFromInt(field_value);
     return .metadata;
 }
 pub fn installHooks() void {

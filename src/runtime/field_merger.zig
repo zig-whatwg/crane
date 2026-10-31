@@ -117,20 +117,16 @@ fn MixinFieldsStruct(comptime MixinTypes: []const type) type {
     // separately, so the single field array has to be split.
     var names: [total_fields][:0]const u8 = undefined;
     var types: [total_fields]type = undefined;
-    var attrs: [total_fields]std.builtin.Type.StructField.Attributes = undefined;
+    var attrs: [total_fields]std.builtin.Type.Struct.FieldAttributes = undefined;
     comptime var field_index: usize = 0;
 
     // Collect fields from all mixins
     inline for (MixinTypes) |MixinType| {
         const mixin_info = @typeInfo(MixinType).@"struct";
-        inline for (mixin_info.fields) |field| {
-            names[field_index] = field.name;
-            types[field_index] = field.type;
-            attrs[field_index] = .{
-                .@"comptime" = field.is_comptime,
-                .@"align" = field.alignment,
-                .default_value_ptr = field.default_value_ptr,
-            };
+        inline for (mixin_info.field_names, mixin_info.field_types, mixin_info.field_attrs) |field_name, field_type, field_attrs| {
+            names[field_index] = field_name;
+            types[field_index] = field_type;
+            attrs[field_index] = field_attrs;
             field_index += 1;
         }
     }

@@ -381,7 +381,7 @@ const Scope = struct {
 /// Names are allocated with `gpa`. A file that does not parse is an error: a
 /// file the ratchet cannot read must not pass silently.
 pub fn findings(gpa: std.mem.Allocator, source: [:0]const u8) !std.ArrayList(Finding) {
-    var tree = try Ast.parse(gpa, source, .zig);
+    var tree = try Ast.parse(gpa, source, .{ .mode = .zig });
     defer tree.deinit(gpa);
     if (tree.errors.len > 0) return error.ParseError;
 

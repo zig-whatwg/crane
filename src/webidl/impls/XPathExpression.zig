@@ -496,7 +496,7 @@ fn isStep(token: Token) bool {
     };
 }
 fn axisName(name: []const u8) ?Axis {
-    inline for (std.meta.fieldNames(Axis), @typeInfo(Axis).@"enum".field_values) |field_name, field_value| {
+    inline for (comptime std.meta.fieldNames(Axis), @typeInfo(Axis).@"enum".field_values) |field_name, field_value| {
         const converted = comptime blk: {
             var chars: [field_name.len]u8 = undefined;
             for (field_name, 0..) |c, i| chars[i] = if (c == '_') '-' else c;

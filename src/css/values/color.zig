@@ -269,7 +269,7 @@ pub const ColorParser = struct {
         const function: Function = blk: {
             if (std.ascii.eqlIgnoreCase(name, "rgba")) break :blk .rgb;
             if (std.ascii.eqlIgnoreCase(name, "hsla")) break :blk .hsl;
-            inline for (std.meta.fieldNames(Function), @typeInfo(Function).@"enum".field_values) |field_name, field_value| {
+            inline for (comptime std.meta.fieldNames(Function), @typeInfo(Function).@"enum".field_values) |field_name, field_value| {
                 if (std.ascii.eqlIgnoreCase(name, field_name)) break :blk @enumFromInt(field_value);
             }
             return error.InvalidColor;
@@ -856,7 +856,13 @@ pub const SystemColor = enum(u8) {
 
     const by_name = blk: {
         @setEvalBranchQuota(10_000);
-        const fields = @typeInfo(SystemColor).@"enum".fields;
+        // Zig 0.17: @typeInfo is struct-of-arrays; rebuild the old field list.
+        const fields = zig017_fields: {
+            const zig017_info = @typeInfo(SystemColor).@"enum";
+            var zig017_out: [zig017_info.field_names.len]struct { name: [:0]const u8, value: comptime_int } = undefined;
+            for (zig017_info.field_names, zig017_info.field_values, 0..) |zig017_n, zig017_v, zig017_i| zig017_out[zig017_i] = .{ .name = zig017_n, .value = zig017_v };
+            break :zig017_fields zig017_out;
+        };
         var entries: [fields.len]struct { []const u8, SystemColor } = undefined;
         for (fields, 0..) |field, i| entries[i] = .{ field.name, @enumFromInt(field.value) };
         break :blk std.StaticStringMap(SystemColor).initComptime(entries);

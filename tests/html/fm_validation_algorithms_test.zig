@@ -23,7 +23,7 @@ test "custom validity normalizes newlines without changing other bytes" {
 
 test "all constraint flags participate in validity, with missing flags false" {
     try testing.expect(forms.isValid(.{}));
-    inline for (std.meta.fieldNames(forms.ValidityFlags)) |field_name| {
+    inline for (comptime std.meta.fieldNames(forms.ValidityFlags)) |field_name| {
         var flags = forms.ValidityFlags{};
         @field(flags, field_name) = true;
         try testing.expect(!forms.isValid(flags));

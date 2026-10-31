@@ -278,7 +278,7 @@ pub fn main(init: std.process.Init) !void {
     // Emit exactly the formatter's canonical representation.
     const source = try a.dupeSentinel(u8, output.written(), 0);
     defer a.free(source);
-    var tree = try std.zig.Ast.parse(a, source, .zig);
+    var tree = try std.zig.Ast.parse(a, source, .{ .mode = .zig });
     defer tree.deinit(a);
     if (tree.errors.len != 0) return error.InvalidGeneratedZig;
     const formatted = try tree.renderAlloc(a);

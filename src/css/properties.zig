@@ -1359,8 +1359,20 @@ pub const legacy_alias_names = blk: {
 
 const by_name = blk: {
     @setEvalBranchQuota(100_000);
-    const l_fields = @typeInfo(Longhand).@"enum".fields;
-    const s_fields = @typeInfo(Shorthand).@"enum".fields;
+    // Zig 0.17: @typeInfo is struct-of-arrays; rebuild the old field list.
+    const l_fields = zig017_fields: {
+        const zig017_info = @typeInfo(Longhand).@"enum";
+        var zig017_out: [zig017_info.field_names.len]struct { name: [:0]const u8, value: comptime_int } = undefined;
+        for (zig017_info.field_names, zig017_info.field_values, 0..) |zig017_n, zig017_v, zig017_i| zig017_out[zig017_i] = .{ .name = zig017_n, .value = zig017_v };
+        break :zig017_fields zig017_out;
+    };
+    // Zig 0.17: @typeInfo is struct-of-arrays; rebuild the old field list.
+    const s_fields = zig017_fields: {
+        const zig017_info = @typeInfo(Shorthand).@"enum";
+        var zig017_out: [zig017_info.field_names.len]struct { name: [:0]const u8, value: comptime_int } = undefined;
+        for (zig017_info.field_names, zig017_info.field_values, 0..) |zig017_n, zig017_v, zig017_i| zig017_out[zig017_i] = .{ .name = zig017_n, .value = zig017_v };
+        break :zig017_fields zig017_out;
+    };
     var entries: [l_fields.len + s_fields.len + legacy_aliases.len]struct { []const u8, Property } = undefined;
     for (l_fields, 0..) |f, i| entries[i] = .{ dashedName(f.name), .{ .longhand = @enumFromInt(f.value) } };
     for (s_fields, 0..) |f, i| entries[l_fields.len + i] = .{ dashedName(f.name), .{ .shorthand = @enumFromInt(f.value) } };

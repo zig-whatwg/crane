@@ -47,7 +47,7 @@ pub fn Definition(comptime runtime: type, comptime engine: type) type {
 
             pub fn deinit(self: *LifecycleCallbacks, allocator: Allocator) void {
                 _ = allocator;
-                inline for (std.meta.fieldNames(LifecycleCallbacks)) |field_name| {
+                inline for (comptime std.meta.fieldNames(LifecycleCallbacks)) |field_name| {
                     if (@field(self, field_name)) |callback| callback.release();
                     @field(self, field_name) = null;
                 }

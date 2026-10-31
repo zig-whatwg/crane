@@ -252,7 +252,7 @@ fn evalValue(source: []const u8) !protocol.Owned {
 }
 
 /// The Blob constructor's arguments, as its generated interface takes them.
-const blob_constructor = @typeInfo(@TypeOf(interfaces.Blob.call_constructor)).@"fn".params;
+const blob_constructor = zig017ParamsOf(@typeInfo(@TypeOf(interfaces.Blob.call_constructor)).@"fn");
 const BlobPartsArgument = blob_constructor[1].type.?;
 const BlobOptionsArgument = blob_constructor[2].type.?;
 const Endings = enum { transparent, native };
@@ -401,7 +401,7 @@ test "Response.arrayBuffer(), bytes() and text() leave no engine handle behind" 
     var data: runtime.ContextData = undefined;
     try initTestingRealm(&data);
     defer data.deinit();
-    const params = @typeInfo(@TypeOf(Response.call_constructor)).@"fn".params;
+    const params = zig017ParamsOf(@typeInfo(@TypeOf(Response.call_constructor)).@"fn");
     ensurePools();
     const response = try Response.call_constructor(&data, params[1].type.?.notPassed(), params[2].type.?.notPassed());
     defer Response.deinit(response);
@@ -422,11 +422,26 @@ test "Response.arrayBuffer() of a null body is fulfilled with an empty ArrayBuff
     var data: runtime.ContextData = undefined;
     try initTestingRealm(&data);
     defer data.deinit();
-    const params = @typeInfo(@TypeOf(Response.call_constructor)).@"fn".params;
+    const params = zig017ParamsOf(@typeInfo(@TypeOf(Response.call_constructor)).@"fn");
     ensurePools();
     const response = try Response.call_constructor(&data, params[1].type.?.notPassed(), params[2].type.?.notPassed());
     defer Response.deinit(response);
     const buffer = try fulfillmentOf(try Response.call_arrayBuffer(response));
     defer ffi.v8_Value_Dispose(buffer);
     try std.testing.expect(ffi.v8_Value_IsArrayBuffer(buffer));
+}
+
+// Zig 0.17 compat: Zig 0.17's @typeInfo is struct-of-arrays. These rebuild 0.16's lists
+// (comptime-only element types, so every call is evaluated at comptime).
+const Zig017Param = struct { type: ?type, is_generic: bool, is_noalias: bool };
+fn zig017ParamsOf(comptime info: @import("std").builtin.Type.Fn) [info.param_types.len]Zig017Param {
+    var out: [info.param_types.len]Zig017Param = undefined;
+    for (info.param_types, info.param_attrs, 0..) |t, a, i| out[i] = .{ .type = t, .is_generic = t == null, .is_noalias = a.@"noalias" };
+    return out;
+}
+const Zig017Decl = struct { name: [:0]const u8, comptime_only: type = void };
+fn zig017DeclsOf(comptime names: []const [:0]const u8) [names.len]Zig017Decl {
+    var out: [names.len]Zig017Decl = undefined;
+    for (names, 0..) |n, i| out[i] = .{ .name = n };
+    return out;
 }

@@ -47,7 +47,7 @@ fn extractFunctions(allocator: Allocator, source: [:0]const u8) !std.StringHashM
     var functions = std.StringHashMap(FunctionInfo).init(allocator);
 
     // Parse the source
-    var ast = try Ast.parse(allocator, source, .zig);
+    var ast = try Ast.parse(allocator, source, .{ .mode = .zig });
     defer ast.deinit(allocator);
 
     // Check for parse errors

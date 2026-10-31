@@ -128,7 +128,7 @@ pub fn normalizeMessage(allocator: std.mem.Allocator, message: []const u8) !runt
 }
 
 pub fn isValid(flags: ValidityFlags) bool {
-    inline for (std.meta.fieldNames(ValidityFlags)) |field_name| {
+    inline for (comptime std.meta.fieldNames(ValidityFlags)) |field_name| {
         if (@field(flags, field_name) orelse false) return false;
     }
     return true;

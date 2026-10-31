@@ -443,8 +443,8 @@ const Converter = struct {
 /// An error of a conversion inside an iteration, as the iteration's steps
 /// may return it: an engine error as it is, anything else a TypeError.
 fn engineError(err: anyerror) engine.Error {
-    inline for (@typeInfo(engine.Error).error_set.?) |e| {
-        if (err == @field(anyerror, e.name)) return @field(engine.Error, e.name);
+    inline for (@typeInfo(engine.Error).error_set.error_names.?) |e_name| {
+        if (err == @field(anyerror, e_name)) return @field(engine.Error, e_name);
     }
     return error.TypeError;
 }

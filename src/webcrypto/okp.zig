@@ -8,7 +8,7 @@ const X25519 = std.crypto.dh.X25519;
 pub fn publicKey(id: Id, secret: []const u8) ![32]u8 {
     if (secret.len != 32) return error.DataError;
     // §§25.3.3/26.3.2: derive the public half using RFC 8032 / RFC 7748.
-    if (id == .x25519) return X25519.recoverPublicKey(secret[0..32].*) catch error.OperationError;
+    if (id == .x25519) return X25519.recoverPublicKey(secret[0..32].*);
     if (id != .ed25519) return error.NotSupportedError;
     var pair = Ed25519.KeyPair.generateDeterministic(secret[0..32].*) catch return error.OperationError;
     defer std.crypto.secureZero(u8, std.mem.asBytes(&pair));

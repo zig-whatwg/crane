@@ -195,7 +195,7 @@ pub fn call_importKey(instance: *runtime.Instance, format: enums.KeyFormat, keyD
         fn copy(allocator: std.mem.Allocator, dictionary: dictionaries.JsonWebKey) !webcrypto.jwk.Owned {
             var owned: webcrypto.jwk.Owned = .{};
             errdefer owned.deinit(allocator);
-            inline for (std.meta.fieldNames(Data), std.meta.fieldTypes(Data)) |field_name, field_type| {
+            inline for (comptime std.meta.fieldNames(Data), comptime std.meta.fieldTypes(Data)) |field_name, field_type| {
                 const member = @field(dictionary, field_name);
                 if (field_type == ?[]const u8) {
                     @field(owned.data, field_name) = try text(allocator, member);
@@ -234,7 +234,7 @@ pub fn call_importKey(instance: *runtime.Instance, format: enums.KeyFormat, keyD
         /// Key material does not outlive the call in the binding's freed
         /// strings either: zero them before the binding frees them.
         fn erase(dictionary: dictionaries.JsonWebKey) void {
-            inline for (std.meta.fieldNames(dictionaries.JsonWebKey), std.meta.fieldTypes(dictionaries.JsonWebKey)) |field_name, field_type| {
+            inline for (comptime std.meta.fieldNames(dictionaries.JsonWebKey), comptime std.meta.fieldTypes(dictionaries.JsonWebKey)) |field_name, field_type| {
                 const member = @field(dictionary, field_name);
                 if (field_type == ?runtime.DOMString) {
                     if (member) |string| zero(string);

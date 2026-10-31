@@ -97,8 +97,8 @@ pub fn Union(comptime Types: type) type {
             // Step 4: If V is null or undefined, check for dictionary type
             // NOTE: Dictionary type detection requires JS runtime integration
             if (V == .null or V == .undefined) {
-                inline for (type_info.@"union".fields) |field| {
-                    _ = field;
+                inline for (type_info.@"union".field_names) |field_name| {
+                    _ = field_name;
                 }
             }
 

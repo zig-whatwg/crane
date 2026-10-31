@@ -1628,7 +1628,7 @@ const Builder = struct {
                 return self.numeric(.{ .value = maximum(a.numeric.value, minimum(b.numeric.value, c.numeric.value)), .unit = a.numeric.unit });
             return root;
         }
-        var list = std.ArrayList(*Node){ .items = root.children, .capacity = root.children.len };
+        var list = std.ArrayList(*Node){ .items = root.children, .capacity = root.children.len, .pointer_stability = .{} };
         var i: usize = 0;
         while (i < list.items.len) : (i += 1) {
             const child = list.items[i];

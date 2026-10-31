@@ -31,7 +31,13 @@ test "keyword serialization releases every allocation failure" {
 }
 
 fn keywords(allocator: std.mem.Allocator) !void {
-    const fields = @typeInfo(Keyword).@"enum".fields;
+    // Zig 0.17: @typeInfo is struct-of-arrays; rebuild the old field list.
+    const fields = comptime zig017_fields: {
+        const zig017_info = @typeInfo(Keyword).@"enum";
+        var zig017_out: [zig017_info.field_names.len]struct { name: [:0]const u8, value: comptime_int } = undefined;
+        for (zig017_info.field_names, zig017_info.field_values, 0..) |zig017_n, zig017_v, zig017_i| zig017_out[zig017_i] = .{ .name = zig017_n, .value = zig017_v };
+        break :zig017_fields zig017_out;
+    };
     const all_keywords = comptime blk: {
         var all: [fields.len]Keyword = undefined;
         for (fields, 0..) |field, i| all[i] = @enumFromInt(field.value);

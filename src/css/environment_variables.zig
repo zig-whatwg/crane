@@ -64,7 +64,13 @@ pub const Query = struct {
 };
 
 const names = std.StaticStringMap(Variable).initComptime(blk: {
-    const fields = @typeInfo(Variable).@"enum".fields;
+    // Zig 0.17: @typeInfo is struct-of-arrays; rebuild the old field list.
+    const fields = zig017_fields: {
+        const zig017_info = @typeInfo(Variable).@"enum";
+        var zig017_out: [zig017_info.field_names.len]struct { name: [:0]const u8, value: comptime_int } = undefined;
+        for (zig017_info.field_names, zig017_info.field_values, 0..) |zig017_n, zig017_v, zig017_i| zig017_out[zig017_i] = .{ .name = zig017_n, .value = zig017_v };
+        break :zig017_fields zig017_out;
+    };
     var entries: [fields.len]struct { []const u8, Variable } = undefined;
     for (fields, 0..) |field, i| {
         var spelling: [field.name.len]u8 = undefined;

@@ -154,7 +154,7 @@ const Named = struct { first: u32, last: u32, name: []const u8 };
 /// source order. Names are allocated with `gpa`. A file that does not parse is
 /// an error: a file the ratchet cannot read must not pass silently.
 pub fn zigVariables(gpa: std.mem.Allocator, source: [:0]const u8) !std.ArrayList(Variable) {
-    var tree = try std.zig.Ast.parse(gpa, source, .zig);
+    var tree = try std.zig.Ast.parse(gpa, source, .{ .mode = .zig });
     defer tree.deinit(gpa);
     if (tree.errors.len > 0) return error.ParseError;
 

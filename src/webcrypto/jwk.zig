@@ -34,7 +34,7 @@ pub const Owned = struct {
     data: Data = .{},
 
     pub fn deinit(self: *Owned, allocator: std.mem.Allocator) void {
-        inline for (std.meta.fieldNames(Data), std.meta.fieldTypes(Data)) |field_name, field_type| {
+        inline for (comptime std.meta.fieldNames(Data), comptime std.meta.fieldTypes(Data)) |field_name, field_type| {
             if (field_type == ?[]const u8) {
                 if (@field(self.data, field_name)) |text| erase(allocator, text);
             }
@@ -45,7 +45,7 @@ pub const Owned = struct {
         }
         if (self.data.oth) |primes| {
             for (primes) |prime| {
-                inline for (std.meta.fieldNames(OtherPrime)) |field_name| {
+                inline for (comptime std.meta.fieldNames(OtherPrime)) |field_name| {
                     if (@field(prime, field_name)) |text| erase(allocator, text);
                 }
             }

@@ -82,7 +82,7 @@ test "needsInterface: the positions an interface type converts at, by default" {
 /// The parameters of `function` (a generated delegate) from `first` on, as
 /// IDL argument indexes from 0.
 fn checkParams(comptime I: type, comptime name: []const u8, comptime first: usize, missing: *usize, checked: *usize) void {
-    const params = @typeInfo(@TypeOf(@field(I, name))).@"fn".params;
+    const params = zig017ParamsOf(@typeInfo(@TypeOf(@field(I, name))).@"fn");
     inline for (params[first..], 0..) |param, index| {
         if (comptime conv.needsInterface(param.type.?)) {
             if (comptime binding.argumentInterface(I, name, index) == null) {
@@ -110,7 +110,7 @@ test "every interface-typed position of every generated interface and dictionary
                 const is_delegate = comptime std.mem.startsWith(u8, member.name, "call_") or std.mem.startsWith(u8, member.name, "set_");
                 const is_fn = comptime is_delegate and @typeInfo(@TypeOf(@field(I, member.name))) == .@"fn";
                 if (comptime is_fn and std.mem.eql(u8, member.name, "call_constructor")) {
-                    const params = @typeInfo(@TypeOf(I.call_constructor)).@"fn".params;
+                    const params = zig017ParamsOf(@typeInfo(@TypeOf(I.call_constructor)).@"fn");
                     inline for (params[1..], 0..) |param, index| {
                         const P = param.type.?;
                         if (comptime @hasDecl(I, "ConstructorArgs") and P == I.ConstructorArgs) {
@@ -172,4 +172,19 @@ test "every interface-typed position of every generated interface and dictionary
     // ~950 delegate arguments and setter values and ~220 dictionary members
     // when this was written.
     try std.testing.expect(checked > 1000);
+}
+
+// Zig 0.17 compat: Zig 0.17's @typeInfo is struct-of-arrays. These rebuild 0.16's lists
+// (comptime-only element types, so every call is evaluated at comptime).
+const Zig017Param = struct { type: ?type, is_generic: bool, is_noalias: bool };
+fn zig017ParamsOf(comptime info: @import("std").builtin.Type.Fn) [info.param_types.len]Zig017Param {
+    var out: [info.param_types.len]Zig017Param = undefined;
+    for (info.param_types, info.param_attrs, 0..) |t, a, i| out[i] = .{ .type = t, .is_generic = t == null, .is_noalias = a.@"noalias" };
+    return out;
+}
+const Zig017Decl = struct { name: [:0]const u8, comptime_only: type = void };
+fn zig017DeclsOf(comptime names: []const [:0]const u8) [names.len]Zig017Decl {
+    var out: [names.len]Zig017Decl = undefined;
+    for (names, 0..) |n, i| out[i] = .{ .name = n };
+    return out;
 }

@@ -391,7 +391,13 @@ pub const Keyword = enum(u16) {
 
     const by_name = blk: {
         @setEvalBranchQuota(100_000);
-        const fields = @typeInfo(Keyword).@"enum".fields;
+        // Zig 0.17: @typeInfo is struct-of-arrays; rebuild the old field list.
+        const fields = zig017_fields: {
+            const zig017_info = @typeInfo(Keyword).@"enum";
+            var zig017_out: [zig017_info.field_names.len]struct { name: [:0]const u8, value: comptime_int } = undefined;
+            for (zig017_info.field_names, zig017_info.field_values, 0..) |zig017_n, zig017_v, zig017_i| zig017_out[zig017_i] = .{ .name = zig017_n, .value = zig017_v };
+            break :zig017_fields zig017_out;
+        };
         var entries: [fields.len]struct { []const u8, Keyword } = undefined;
         for (fields, 0..) |field, i| entries[i] = .{ dashed(field.name), @enumFromInt(field.value) };
         break :blk std.StaticStringMap(Keyword).initComptime(entries);
