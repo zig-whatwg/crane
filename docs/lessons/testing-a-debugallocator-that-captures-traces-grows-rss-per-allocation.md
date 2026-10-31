@@ -3,6 +3,8 @@
 **Date**: 2026-10-11
 **Lesson**: On aarch64-macos with Zig 0.16, a stack capture leaks up to about 830 B, so a DebugAllocator that captures traces makes each Zig allocation look like retained memory. gc_bench reported a "660 B per DOM call" leak that did not exist.
 
+**Status** (2026-10-30, Zig 0.17, lane zig017mem): 0.17 deinitialises the unwinder before it falls back to frame pointers, but frees its scratch into `std.debug.getDebugInfoAllocator()`, by default still an ArenaAllocator over `page_allocator`, where a free does nothing - so a traced runner still grew ~85 MB per page of a 4,000-element churn (300 pages: 0.16 26.0 GB, 0.17 26.3 GB). The WPT runner's root now declares `debug.getDebugInfoAllocator` returning `std.heap.c_allocator` (tests/wpt_runner/main.zig): the same 300 traced pages take 138 MB, as many as without traces. A test binary's root is std's test runner, so `zig build test` binaries still grow by their captures (0.17's `std.testing.allocator` captures 7 frames per allocation and per free in Debug).
+
 **Why**: `std.debug.captureCurrentStackTrace` unwinds with DWARF CFI (`StackIterator` `.di`). When a frame cannot be unwound that way, `StackIterator.next` switches to frame-pointer unwinding by overwriting itself (`it.* = .{ .fp = fp }`, lib/std/debug.zig:1056) without calling `deinit` on the `SelfUnwinder` it replaces. That unwinder's CFI virtual machine owns two ArrayLists, its columns (640 B) and its stack (190 B), so both leak on every capture. Where they go depends on `std.debug.getDebugInfoAllocator()`. By default it is an ArenaAllocator over `page_allocator`, so the leaked bytes become anonymous VM:
 - vmmap shows it as "Untagged", with arena chunks growing 1.5x each;
 - `mstats()` does not count it;
