@@ -61,7 +61,7 @@ pub const BrowserStore = struct {
         errdefer if (!same_allocator) self.allocator.free(owned_key);
         const sink = if (listener.ctx.task_sink) |s| s.retain() else null;
         errdefer if (sink) |s| s.release();
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const state = query.resultState(descriptor.name, self.overrides.get(key, descriptor) orelse fallback);
         try self.entries.append(self.allocator, .{
@@ -78,7 +78,7 @@ pub const BrowserStore = struct {
     }
 
     pub fn unlisten(self: *BrowserStore, listener: *runtime.Instance) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         var i: usize = 0;
         while (i < self.entries.items.len) {
@@ -96,7 +96,7 @@ pub const BrowserStore = struct {
     }
 
     fn isListening(self: *BrowserStore, listener: *runtime.Instance, generation: u64) bool {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         for (self.entries.items) |entry| {
             if (entry.listener == listener and entry.generation == generation) return true;
@@ -113,7 +113,7 @@ pub const BrowserStore = struct {
         var local: std.ArrayListUnmanaged(*Delivery) = .empty;
         defer local.deinit(self.allocator);
         {
-            std.Io.Threaded.mutexLock(&self.mutex);
+            std.Io.Threaded.mutexLockUncancelable(&self.mutex);
             defer std.Io.Threaded.mutexUnlock(&self.mutex);
             _ = try self.overrides.set(key, descriptor, state);
             for (self.entries.items) |*entry| {

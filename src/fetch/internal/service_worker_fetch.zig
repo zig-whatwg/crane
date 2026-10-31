@@ -423,7 +423,7 @@ pub const BodyRelay = struct {
 };
 
 fn lock(mutex: *std.Io.Mutex) void {
-    std.Io.Threaded.mutexLock(mutex);
+    std.Io.Threaded.mutexLockUncancelable(mutex);
 }
 
 fn unlock(mutex: *std.Io.Mutex) void {

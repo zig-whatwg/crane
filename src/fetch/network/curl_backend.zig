@@ -49,7 +49,7 @@ var global_init_mutex: std.Io.Mutex = .init;
 /// Thread-safe and reference counted - can be called multiple times.
 /// Must call globalCleanup() the same number of times.
 pub fn globalInit() !void {
-    std.Io.Threaded.mutexLock(&global_init_mutex);
+    std.Io.Threaded.mutexLockUncancelable(&global_init_mutex);
     defer std.Io.Threaded.mutexUnlock(&global_init_mutex);
     try initLocked();
 }
@@ -69,7 +69,7 @@ fn initLocked() !void {
 /// transfer made with no process started (a unit test). The reference this
 /// takes is held until the process exits.
 pub fn ensureGlobalInit() !void {
-    std.Io.Threaded.mutexLock(&global_init_mutex);
+    std.Io.Threaded.mutexLockUncancelable(&global_init_mutex);
     defer std.Io.Threaded.mutexUnlock(&global_init_mutex);
     if (global_init_count == 0) try initLocked();
 }
@@ -77,7 +77,7 @@ pub fn ensureGlobalInit() !void {
 /// Decrement global init reference count.
 /// When count reaches zero, libcurl global cleanup is performed.
 pub fn globalCleanup() void {
-    std.Io.Threaded.mutexLock(&global_init_mutex);
+    std.Io.Threaded.mutexLockUncancelable(&global_init_mutex);
     defer std.Io.Threaded.mutexUnlock(&global_init_mutex);
 
     if (global_init_count > 0) {
@@ -91,7 +91,7 @@ pub fn globalCleanup() void {
 /// How many holders the global state has - `globalInit` calls not yet
 /// matched by `globalCleanup`.
 pub fn globalReferences() usize {
-    std.Io.Threaded.mutexLock(&global_init_mutex);
+    std.Io.Threaded.mutexLockUncancelable(&global_init_mutex);
     defer std.Io.Threaded.mutexUnlock(&global_init_mutex);
     return global_init_count;
 }

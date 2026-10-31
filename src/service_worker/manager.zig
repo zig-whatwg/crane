@@ -882,7 +882,7 @@ pub const Manager = struct {
         const scope = realm.browserScope() orelse return null;
         const manager = scope.of(Manager) catch return null;
         const listeners = scope.existing(CookieChangeListeners);
-        std.Io.Threaded.mutexLock(&manager.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&manager.mutex);
         defer std.Io.Threaded.mutexUnlock(&manager.mutex);
         if (manager.scope == null) {
             manager.scope = scope;
@@ -908,7 +908,7 @@ pub const Manager = struct {
     }
 
     fn lock(self: *Manager) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         self.bindEffects();
     }
 
@@ -2931,7 +2931,7 @@ pub const Manager = struct {
         // The link is set once, under its own lock below, and lives until
         // the manager's end: read it with an acquire load.
         if (@atomicLoad(?*WorkerLink, &self.job_link, .acquire)) |link| return link;
-        std.Io.Threaded.mutexLock(&self.job_lock);
+        std.Io.Threaded.mutexLockUncancelable(&self.job_lock);
         defer std.Io.Threaded.mutexUnlock(&self.job_lock);
         if (self.job_link) |link| return link;
         if (self.closed) return null;

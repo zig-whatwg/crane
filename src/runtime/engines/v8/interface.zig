@@ -7442,8 +7442,9 @@ pub fn V8Interface(comptime Interface: type) type {
             if (comptime special.supported_property_name) |query| {
                 return @field(Interface, query)(instance, runtime.DOMString.initInterned(key)) catch false;
             }
-            var fallback = std.heap.stackFallback(8192, std.heap.c_allocator);
-            var arena = std.heap.ArenaAllocator.init(fallback.get());
+            var fallback_buffer: [8192]u8 = undefined;
+            var fallback: std.heap.BufferFirstAllocator = .init(&fallback_buffer, std.heap.c_allocator);
+            var arena = std.heap.ArenaAllocator.init(fallback.allocator());
             defer arena.deinit();
             const names = Interface.getSupportedPropertyNames(instance, arena.allocator()) catch return false;
             for (names) |supported| {
@@ -7497,8 +7498,9 @@ pub fn V8Interface(comptime Interface: type) type {
 
             fn of(info: *const anyopaque, key: []const u8) NameState {
                 // The name's code units: a lone surrogate stays itself.
-                var fallback = std.heap.stackFallback(1024, std.heap.c_allocator);
-                const allocator = fallback.get();
+                var fallback_buffer: [1024]u8 = undefined;
+                var fallback: std.heap.BufferFirstAllocator = .init(&fallback_buffer, std.heap.c_allocator);
+                const allocator = fallback.allocator();
                 const units = allocator.alloc(u16, key.len) catch return .{ .own = false, .in_prototype_chain = false };
                 defer allocator.free(units);
                 const count = value_operations.wtf8ToUtf16(key, units);

@@ -60,7 +60,7 @@ pub const FileSystemQueue = struct {
     /// Enqueue a task to the file system queue.
     /// https://fs.spec.whatwg.org/#file-system-queue
     pub fn enqueue(self: *Self, task: FileSystemTask) !void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         try self.tasks.append(self.allocator, task);
     }
@@ -90,7 +90,7 @@ pub const FileSystemQueue = struct {
     /// Process all pending tasks synchronously.
     /// In a real implementation, this would be handled by the event loop.
     pub fn processAll(self: *Self) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         const tasks = self.tasks.toOwnedSlice(self.allocator) catch return;
         std.Io.Threaded.mutexUnlock(&self.mutex);
         defer self.allocator.free(tasks);
@@ -103,7 +103,7 @@ pub const FileSystemQueue = struct {
     /// Process one task if available.
     /// Returns true if a task was processed.
     pub fn processOne(self: *Self) bool {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         if (self.tasks.items.len == 0) {
             std.Io.Threaded.mutexUnlock(&self.mutex);
             return false;
@@ -117,7 +117,7 @@ pub const FileSystemQueue = struct {
 
     /// Get the number of pending tasks
     pub fn pendingCount(self: *Self) usize {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return self.tasks.items.len;
     }

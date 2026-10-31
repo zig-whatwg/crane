@@ -748,7 +748,7 @@ test "std's OS namespaces, also through an alias; synchronisation and pure membe
         \\    _ = posix.getrandom(buf);
         \\    _ = std.process.argsAlloc(a);
         \\    var d = std.Io.Dir.cwd();
-        \\    std.Io.Threaded.mutexLock(&m);
+        \\    std.Io.Threaded.mutexLockUncancelable(&m);
         \\    _ = std.Io.Threaded.global_single_threaded.io();
         \\    var mutex: std.Io.Mutex = .init;
         \\    _ = std.fs.path.join(a, parts);

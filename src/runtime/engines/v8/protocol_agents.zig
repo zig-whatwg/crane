@@ -231,7 +231,7 @@ var agents: std.AutoHashMapUnmanaged(*ffi.Isolate, *AgentRecord) = .empty;
 /// are not yet ended - each reads the snapshot's bytes in place, so the host
 /// may free them only when this is 0 (deinitializeEngine checks it).
 pub fn liveSnapshotAgents() usize {
-    std.Io.Threaded.mutexLock(&agents_lock);
+    std.Io.Threaded.mutexLockUncancelable(&agents_lock);
     defer std.Io.Threaded.mutexUnlock(&agents_lock);
     var count: usize = 0;
     var records = agents.valueIterator();
@@ -244,7 +244,7 @@ pub fn liveSnapshotAgents() usize {
 /// The hooks of the agent whose isolate this is; null for an isolate
 /// createAgent did not make (a test's own).
 pub fn recordOf(isolate: *ffi.Isolate) ?*AgentRecord {
-    std.Io.Threaded.mutexLock(&agents_lock);
+    std.Io.Threaded.mutexLockUncancelable(&agents_lock);
     defer std.Io.Threaded.mutexUnlock(&agents_lock);
     return agents.get(isolate);
 }
@@ -360,7 +360,7 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     errdefer std.heap.c_allocator.destroy(record);
     record.* = .{ .isolate = isolate, .hooks = options.hooks, .host = options.host, .allocator = options.allocator, .host_agent = host_agent, .from_snapshot = ffi.v8_Isolate_IsFromSnapshot(isolate), .deferred_teardown = options.deferred_teardown, .webassembly_compilations = .{ .allocator = options.allocator } };
     {
-        std.Io.Threaded.mutexLock(&agents_lock);
+        std.Io.Threaded.mutexLockUncancelable(&agents_lock);
         defer std.Io.Threaded.mutexUnlock(&agents_lock);
         agents.put(std.heap.c_allocator, isolate, record) catch return error.OutOfMemory;
     }
@@ -593,7 +593,7 @@ fn teardownsHeld(isolate: *ffi.Isolate) bool {
 pub fn forgetAgent(agent: *Agent) void {
     const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
     const record = blk: {
-        std.Io.Threaded.mutexLock(&agents_lock);
+        std.Io.Threaded.mutexLockUncancelable(&agents_lock);
         defer std.Io.Threaded.mutexUnlock(&agents_lock);
         const kv = agents.fetchRemove(isolate) orelse return;
         break :blk kv.value;

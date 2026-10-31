@@ -150,7 +150,7 @@ pub const ArenaAllocator = struct {
     /// recycled block also carries the previous occupant's bytes, and an optional
     /// pointer field coming back non-null would be dereferenced.
     pub fn createRaw(self: *ArenaAllocator, size: usize, alignment: usize) ![*]u8 {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         self.total_allocations += 1;
         self.total_bytes_allocated += size;
@@ -220,7 +220,7 @@ pub const ArenaAllocator = struct {
     /// something. `bytes_in_use` is still decremented, so the figure stays honest
     /// about what callers hold rather than what the arena has reserved.
     pub fn destroyRaw(self: *ArenaAllocator, ptr: [*]u8, size: usize, alignment: usize) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         self.bytes_in_use -|= size;
         if (sizeClassOf(size, alignment)) |class| {
@@ -230,7 +230,7 @@ pub const ArenaAllocator = struct {
 
     /// Allocate a slice of items
     pub fn alloc(self: *ArenaAllocator, comptime T: type, n: usize) ![]T {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const slice = try self.arena.allocator().alloc(T, n);
         self.total_allocations += 1;
@@ -241,7 +241,7 @@ pub const ArenaAllocator = struct {
 
     /// Duplicate a slice
     pub fn dupe(self: *ArenaAllocator, comptime T: type, m: []const T) ![]T {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const slice = try self.arena.allocator().dupe(T, m);
         self.total_allocations += 1;
@@ -258,7 +258,7 @@ pub const ArenaAllocator = struct {
     /// Important: Caller must ensure all FullState deinit() functions
     /// have been called before reset to clean up owned resources.
     pub fn reset(self: *ArenaAllocator) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         _ = self.arena.reset(.retain_capacity);
         self.total_resets += 1;
@@ -272,7 +272,7 @@ pub const ArenaAllocator = struct {
 
     /// Get allocation statistics
     pub fn stats(self: *ArenaAllocator) Stats {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return Stats{
             .total_allocations = self.total_allocations,

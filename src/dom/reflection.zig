@@ -597,8 +597,9 @@ pub fn parseFloatingPoint(input: []const u8) ?f64 {
     // Steps 15-18. The exponent is clamped where it no longer changes the
     // result for any digit string shorter than the clamp.
     const clamped = std.math.clamp(exponent, -1_000_000, 1_000_000);
-    var fallback = std.heap.stackFallback(256, std.heap.page_allocator);
-    const allocator = fallback.get();
+    var fallback_buffer: [256]u8 = undefined;
+    var fallback: std.heap.BufferFirstAllocator = .init(&fallback_buffer, std.heap.page_allocator);
+    const allocator = fallback.allocator();
     const text = std.fmt.allocPrint(allocator, "{s}{s}.{s}e{d}", .{
         if (negative) "-" else "",
         if (integer.len > 0) integer else "0",

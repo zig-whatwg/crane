@@ -417,8 +417,9 @@ pub fn matchesPatternAttribute(realm: Context, pattern: []const u8, value: []con
     };
     defer entered.leave();
     // WTF-8 to UTF-16: never more code units than bytes.
-    var fallback = std.heap.stackFallback(1024, std.heap.c_allocator);
-    const allocator = fallback.get();
+    var fallback_buffer: [1024]u8 = undefined;
+    var fallback: std.heap.BufferFirstAllocator = .init(&fallback_buffer, std.heap.c_allocator);
+    const allocator = fallback.allocator();
     const units = try allocator.alloc(u16, pattern.len + value.len);
     defer allocator.free(units);
     const pattern_units = units[0..value_operations.wtf8ToUtf16(pattern, units[0..pattern.len])];
@@ -466,8 +467,9 @@ pub fn regExpCreateCheck(realm: Context, pattern: []const u8, ignore_case: bool)
     const agent = try RegExpAgent.enter(realm);
     defer agent.leave();
     // WTF-8 to UTF-16: never more code units than bytes.
-    var fallback = std.heap.stackFallback(1024, std.heap.c_allocator);
-    const allocator = fallback.get();
+    var fallback_buffer: [1024]u8 = undefined;
+    var fallback: std.heap.BufferFirstAllocator = .init(&fallback_buffer, std.heap.c_allocator);
+    const allocator = fallback.allocator();
     const units = try allocator.alloc(u16, pattern.len);
     defer allocator.free(units);
     const pattern_units = units[0..value_operations.wtf8ToUtf16(pattern, units)];
@@ -493,8 +495,9 @@ pub fn regExpBuiltinExecCaptures(realm: Context, pattern: []const u8, ignore_cas
     {
         const agent = try RegExpAgent.enter(realm);
         defer agent.leave();
-        var fallback = std.heap.stackFallback(2048, std.heap.c_allocator);
-        const scratch = fallback.get();
+        var fallback_buffer: [2048]u8 = undefined;
+        var fallback: std.heap.BufferFirstAllocator = .init(&fallback_buffer, std.heap.c_allocator);
+        const scratch = fallback.allocator();
         // WTF-8 to UTF-16: never more code units than bytes.
         const units = try scratch.alloc(u16, pattern.len + input.len);
         defer scratch.free(units);

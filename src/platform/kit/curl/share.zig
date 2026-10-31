@@ -91,7 +91,7 @@ pub const Share = struct {
     /// Take one kind's lock as curl would - for a test that holds a share's
     /// connection cache while another share's transfer runs.
     pub fn hold(self: *Share, data: LockData) void {
-        std.Io.Threaded.mutexLock(&self.locks[@intCast(@intFromEnum(data))]);
+        std.Io.Threaded.mutexLockUncancelable(&self.locks[@intCast(@intFromEnum(data))]);
     }
 
     pub fn release(self: *Share, data: LockData) void {
@@ -100,7 +100,7 @@ pub const Share = struct {
 
     fn lock(_: ?*anyopaque, data: c_int, _: c_int, user: ?*anyopaque) callconv(.c) void {
         const self: *Share = @ptrCast(@alignCast(user orelse return));
-        if (data >= 0 and data < lock_kinds) std.Io.Threaded.mutexLock(&self.locks[@intCast(data)]);
+        if (data >= 0 and data < lock_kinds) std.Io.Threaded.mutexLockUncancelable(&self.locks[@intCast(data)]);
     }
 
     fn unlock(_: ?*anyopaque, data: c_int, user: ?*anyopaque) callconv(.c) void {

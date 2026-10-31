@@ -175,7 +175,7 @@ pub const Attributing = struct {
     };
 
     fn lock(self: *Attributing) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
     }
 
     fn unlock(self: *Attributing) void {

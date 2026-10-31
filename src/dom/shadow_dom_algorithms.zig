@@ -264,8 +264,9 @@ pub fn assignSlottables(allocator: Allocator, slot: *NodeBase) Error!void {
     const state = slot_helpers.slotState(slot) orelse return;
     // Step 1: "Let slottables be the result of finding slottables for slot."
     // A scratch list: most slots hold a handful of nodes.
-    var scratch = std.heap.stackFallback(16 * @sizeOf(NodeRef), allocator);
-    const scratch_allocator = scratch.get();
+    var scratch_buffer: [16 * @sizeOf(NodeRef)]u8 = undefined;
+    var scratch: std.heap.BufferFirstAllocator = .init(&scratch_buffer, allocator);
+    const scratch_allocator = scratch.allocator();
     var slottables: std.ArrayListUnmanaged(NodeRef) = .empty;
     defer slottables.deinit(scratch_allocator);
     try findSlottables(scratch_allocator, slot, &slottables);

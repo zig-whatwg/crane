@@ -66,7 +66,7 @@ pub const HistoricalKeys = struct {
     /// else requestsOAC, recorded. Out of memory, the request alone answers
     /// and nothing is recorded.
     pub fn obtain(self: *HistoricalKeys, group: u64, origin: []const u8, requests_oac: bool) bool {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const entry = self.groups.getOrPut(self.allocator, group) catch return requests_oac;
         if (!entry.found_existing) entry.value_ptr.* = .empty;
@@ -84,7 +84,7 @@ pub const HistoricalKeys = struct {
     /// Group `group`'s map[origin], if a document of `origin` was created
     /// there.
     pub fn get(self: *HistoricalKeys, group: u64, origin: []const u8) ?bool {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const origins = self.groups.getPtr(group) orelse return null;
         return origins.get(origin);
@@ -95,7 +95,7 @@ pub const HistoricalKeys = struct {
     /// historical agent cluster key map only ever gains entries over the
     /// lifetime of the browsing context group" - and goes with it.
     pub fn forgetEndedGroups(self: *HistoricalKeys, keep: u64, navigables: *const Navigables) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         // Collected, then removed: the map is not changed under its iterator.
         while (true) {

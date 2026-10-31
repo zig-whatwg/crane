@@ -66,8 +66,9 @@ pub fn querySelector(scope: *runtime.Instance, selectors: []const u8) Error!?*ru
     const scope_node = instance_bridge.getNodeBase(scope) orelse return null;
     // DOM "scope-match a selectors string" steps 1-2. The parsed selector
     // lives for this call only: parse it on the stack while it fits.
-    var parse_memory = std.heap.stackFallback(parse_stack_bytes, scope.ctx.getAllocator());
-    var list = try parse(parse_memory.get(), selectors);
+    var parse_memory_buffer: [parse_stack_bytes]u8 = undefined;
+    var parse_memory: std.heap.BufferFirstAllocator = .init(&parse_memory_buffer, scope.ctx.getAllocator());
+    var list = try parse(parse_memory.allocator(), selectors);
     defer list.deinit();
     var nth_cache = NthIndexCache{ .allocator = scope.ctx.getAllocator() };
     defer nth_cache.deinit();
@@ -86,8 +87,9 @@ pub fn querySelector(scope: *runtime.Instance, selectors: []const u8) Error!?*ru
 /// `out` as tree nodes.
 pub fn querySelectorAll(allocator: std.mem.Allocator, scope: *runtime.Instance, selectors: []const u8, out: *std.ArrayList(*NodeBase)) Error!void {
     const scope_node = instance_bridge.getNodeBase(scope) orelse return;
-    var parse_memory = std.heap.stackFallback(parse_stack_bytes, scope.ctx.getAllocator());
-    var list = try parse(parse_memory.get(), selectors);
+    var parse_memory_buffer: [parse_stack_bytes]u8 = undefined;
+    var parse_memory: std.heap.BufferFirstAllocator = .init(&parse_memory_buffer, scope.ctx.getAllocator());
+    var list = try parse(parse_memory.allocator(), selectors);
     defer list.deinit();
     var nth_cache = NthIndexCache{ .allocator = allocator };
     defer nth_cache.deinit();
@@ -104,8 +106,9 @@ pub fn querySelectorAll(allocator: std.mem.Allocator, scope: *runtime.Instance, 
 /// `element` matches, with `element` the scoping root.
 pub fn matches(element: *runtime.Instance, selectors: []const u8) Error!bool {
     // Steps 1-2: parse, or throw a SyntaxError.
-    var parse_memory = std.heap.stackFallback(parse_stack_bytes, element.ctx.getAllocator());
-    var list = try parse(parse_memory.get(), selectors);
+    var parse_memory_buffer: [parse_stack_bytes]u8 = undefined;
+    var parse_memory: std.heap.BufferFirstAllocator = .init(&parse_memory_buffer, element.ctx.getAllocator());
+    var list = try parse(parse_memory.allocator(), selectors);
     defer list.deinit();
     const node = instance_bridge.getNodeBase(element) orelse return false;
     if (node.node_type != ELEMENT_NODE) return false;
@@ -117,8 +120,9 @@ pub fn matches(element: *runtime.Instance, selectors: []const u8) Error!bool {
 /// DOM closest(selectors): the first of `element`'s inclusive ancestor
 /// elements, nearest first, that matches, with `element` the scoping root.
 pub fn closest(element: *runtime.Instance, selectors: []const u8) Error!?*runtime.Instance {
-    var parse_memory = std.heap.stackFallback(parse_stack_bytes, element.ctx.getAllocator());
-    var list = try parse(parse_memory.get(), selectors);
+    var parse_memory_buffer: [parse_stack_bytes]u8 = undefined;
+    var parse_memory: std.heap.BufferFirstAllocator = .init(&parse_memory_buffer, element.ctx.getAllocator());
+    var list = try parse(parse_memory.allocator(), selectors);
     defer list.deinit();
     const node = instance_bridge.getNodeBase(element) orelse return null;
     const matcher = Matcher.init(node, element);

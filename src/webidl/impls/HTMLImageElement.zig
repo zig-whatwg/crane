@@ -872,8 +872,9 @@ fn reuseAvailableImage(instance: *runtime.Instance) bool {
     // Step 7.1: this lookup borrows the resolved URL only for this call.
     // Keep ordinary parsing temporary storage on the stack; long URLs use
     // the context allocator and are freed through the same temporary allocator.
-    var parse_memory = std.heap.stackFallback(4096, allocator);
-    const temporary = parse_memory.get();
+    var parse_memory_buffer: [4096]u8 = undefined;
+    var parse_memory: std.heap.BufferFirstAllocator = .init(&parse_memory_buffer, allocator);
+    const temporary = parse_memory.allocator();
     const url = (dom.encoding_parse.encodingParseAndSerializeWithAllocator(temporary, instance, src) catch return false) orelse return false;
     defer temporary.free(url);
     const cors = available_images.CorsSetting.fromAttribute(attributeValue(instance, "crossorigin"));
@@ -1123,8 +1124,9 @@ fn sourceTypeSupported(allocator: std.mem.Allocator, text: []const u8) bool {
     // update-the-source-set.html). Parameters do not affect decoder support.
     if (std.mem.trim(u8, text, " \t\n\r\x0c").len == 0) return true;
     if (platform.capabilities.image_decoding == .unsupported) return false;
-    var scratch = std.heap.stackFallback(2048, allocator);
-    const temporary = scratch.get();
+    var scratch_buffer: [2048]u8 = undefined;
+    var scratch: std.heap.BufferFirstAllocator = .init(&scratch_buffer, allocator);
+    const temporary = scratch.allocator();
     var mime = (@import("mimesniff").mime_type.parseMimeType(temporary, text) catch return false) orelse return false;
     defer mime.deinit();
     const essence = temporary.alloc(u8, mime.type.len + 1 + mime.subtype.len) catch return false;

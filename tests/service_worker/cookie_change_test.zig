@@ -61,7 +61,7 @@ const Harness = struct {
     }
 
     fn firedCount(self: *Harness) usize {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return self.fired.items.len;
     }
@@ -87,13 +87,13 @@ const Harness = struct {
             line.print(self.allocator, "{s},", .{item.name}) catch return;
         }
         const owned = line.toOwnedSlice(self.allocator) catch return;
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         self.fired.append(self.allocator, owned) catch self.allocator.free(owned);
     }
 
     fn firedLine(self: *Harness, i: usize) []const u8 {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return self.fired.items[i];
     }

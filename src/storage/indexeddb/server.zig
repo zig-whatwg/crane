@@ -329,7 +329,7 @@ pub const IDBServer = struct {
     }
 
     pub fn lock(self: *IDBServer) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
     }
     pub fn unlock(self: *IDBServer) void {
         std.Io.Threaded.mutexUnlock(&self.mutex);

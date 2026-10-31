@@ -697,8 +697,9 @@ fn parseWithMode(allocator: Allocator, source: []const u8, options: ParseOptions
     // The tokens and the parse's working lists live on the stack while they
     // fit: querySelector parses on every call, and allocations are most of a
     // short selector's cost. The list and its strings use `allocator`.
-    var stack = std.heap.stackFallback(4096, allocator);
-    const scratch = stack.get();
+    var stack_buffer: [4096]u8 = undefined;
+    var stack: std.heap.BufferFirstAllocator = .init(&stack_buffer, allocator);
+    const scratch = stack.allocator();
     var tokenizer = Tokenizer.init(scratch, source);
     var parser = try Parser.initWithScratch(allocator, scratch, &tokenizer);
     defer parser.deinit();
@@ -717,8 +718,9 @@ pub const CssomSelector = struct { text: []u8, selectors: SelectorList };
 /// selector remains unparsed text, never accidentally repaired.
 pub fn parseCssomOwned(allocator: Allocator, source: []u8, options: ParseOptions) ParserError!CssomSelector {
     errdefer allocator.free(source);
-    var stack = std.heap.stackFallback(4096, allocator);
-    const scratch = stack.get();
+    var stack_buffer: [4096]u8 = undefined;
+    var stack: std.heap.BufferFirstAllocator = .init(&stack_buffer, allocator);
+    const scratch = stack.allocator();
     var tokenizer = Tokenizer.init(scratch, source);
     var parser = try Parser.initWithScratch(allocator, scratch, &tokenizer);
     defer parser.deinit();

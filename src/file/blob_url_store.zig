@@ -182,7 +182,7 @@ pub const BlobURLStore = struct {
     /// The settings object's opaque origin crosses threads only as a value.
     /// The existing native API keeps its unknown-identity default.
     pub fn createObjectURLWithOrigin(self: *BlobURLStore, blob: *BlobData, storage_key: []const u8, origin_nonce: ?u128, environment: ?*const anyopaque) ![]u8 {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const origin = originOfKey(storage_key);
 
@@ -222,7 +222,7 @@ pub const BlobURLStore = struct {
     /// File API "resolve a blob URL": capture the complete URL, excluding
     /// its fragment. Access is checked later by the retained entry's read.
     pub fn capture(self: *BlobURLStore, url: []const u8) ?*CapturedEntry {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const key = url[0 .. std.mem.indexOfScalar(u8, url, '#') orelse url.len];
         const uuid = self.extractUUID(key) orelse return null;
@@ -263,7 +263,7 @@ pub const BlobURLStore = struct {
     /// File API §8.2, remove an entry: serialize the URL WITH its fragment,
     /// then remove that exact key. A URL with a fragment revokes no entry.
     pub fn revokeObjectURL(self: *BlobURLStore, url: []const u8, storage_key: []const u8) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         // Extract UUID from URL (after last '/')
         const uuid = self.extractUUID(url) orelse return;
@@ -279,7 +279,7 @@ pub const BlobURLStore = struct {
     /// ask before comparing the entry's environment's origin - the URL's
     /// own - with the source's top-level origin.
     pub fn hasEntry(self: *BlobURLStore, url: []const u8) bool {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const key = url[0 .. std.mem.indexOfScalar(u8, url, '#') orelse url.len];
         const uuid = self.extractUUID(key) orelse return false;
@@ -301,7 +301,7 @@ pub const BlobURLStore = struct {
     /// store lives - the process, in a browser or a test runner that loads
     /// many pages.
     pub fn removeEntriesFor(self: *BlobURLStore, environment: *const anyopaque) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         var doomed: [16][]const u8 = undefined;
         while (true) {
@@ -343,7 +343,7 @@ pub const BlobURLStore = struct {
     /// (`deinit`) when done with the bytes. A borrowed pointer could be freed
     /// by a revoke on another thread before the caller had copied them.
     pub fn resolve(self: *BlobURLStore, url: []const u8, access: Access) ?*BlobData {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         // Step 3. Input is a serialized URL; the first '#' begins its
         // fragment, including any slashes or query characters after it.

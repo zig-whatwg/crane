@@ -34,7 +34,7 @@ pub const Values = struct {
     }
 
     pub fn get(self: *Values, browser: *platform.BrowserPlatform, tab: platform.TabId, variable: platform.CssEnvironmentVariable, x: u32, y: u32) ?f64 {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return self.getLocked(browser, tab, Key.init(variable, x, y));
     }
@@ -45,7 +45,7 @@ pub const Values = struct {
     }
 
     pub fn set(self: *Values, browser: *platform.BrowserPlatform, tab: platform.TabId, variable: platform.CssEnvironmentVariable, x: u32, y: u32, value: ?f64) error{OutOfMemory}!void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const key = Key.init(variable, x, y);
         if (self.getLocked(browser, tab, key) == value) return;
