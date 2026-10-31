@@ -40,6 +40,10 @@ pub const InternalState = struct {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    // HR-Time 4: the process's one estimated monotonic time of the Unix
+    // epoch, which every timeOrigin is measured from, made while the process
+    // starts.
+    hr_time.time_origin.estimateAtProcessStart();
     performance_timeline.installPerformances(.{
         .of_realm = &timelineOfRealm,
         .of_performance = &timelineOfPerformance,
@@ -82,12 +86,11 @@ fn timeOriginOf(ctx: runtime.Context) hr_time.TimeOrigin {
     const cross_origin_isolated = settings.cross_origin_isolated(global);
     const recorded = if (settings.time_origin) |time_origin| time_origin(global) else null;
     const moment = recorded orelse return hr_time.TimeOrigin.init(cross_origin_isolated);
-    // The estimated monotonic time of the Unix epoch, as TimeOrigin.init
-    // computes it; the origin is the recorded moment, coarsened.
-    const now_origin = hr_time.TimeOrigin.init(cross_origin_isolated);
+    // The origin is the recorded moment, coarsened, measured from the
+    // process's estimated monotonic time of the Unix epoch.
     return hr_time.TimeOrigin.initWithOrigin(
         hr_time.coarsenTime(@as(hr_time.Nanoseconds, moment), cross_origin_isolated),
-        now_origin.estimated_epoch,
+        hr_time.time_origin.estimatedMonotonicTimeOfUnixEpoch(),
         cross_origin_isolated,
     );
 }

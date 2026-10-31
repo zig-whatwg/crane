@@ -45,7 +45,7 @@ src/dom/declarative_shadow.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/dialog.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/document_activity.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/document_browsing_context.zig implementation 1 G H decl:9c737e7125e9c3d4
-src/dom/document_fetches.zig cancelers 1 G H decl:30e1703fbc925361
+src/dom/document_fetches.zig cancelers 1 G H decl:44c0e8684071a236
 src/dom/document_language.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/document_lifecycle.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/document_modules.zig implementation 1 G H decl:9c737e7125e9c3d4
@@ -64,7 +64,7 @@ src/dom/event_dispatch.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/event_handlers.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/event_handlers.zig raw_compiler 1 G P-res decl:34154a44d1298a5b
 src/dom/event_listener_types.zig implementation 1 G P-res decl:735106f3ed3eb620
-src/dom/extract_origin.zig implementations 1 G P-res decl:5e1afa18440dd7e0
+src/dom/extract_origin.zig implementations 1 G P-res decl:e6c3c3b6b3353ee7
 src/dom/fetch_objects.zig request_steps 1 G H decl:30978182fd939a7b
 src/dom/fetch_objects.zig response_steps 1 G H decl:fb5cd971a78a8840
 src/dom/file_lists.zig implementation 1 G P-res decl:9c737e7125e9c3d4
@@ -158,7 +158,7 @@ src/dom/unloading_cleanup.zig steps 1 G H decl:9a723bce6bdf47dc
 src/dom/unloading_cleanup.zig test_last 1 G X decl:c66b73dbbb5ec79b
 src/dom/unloading_cleanup.zig test_runs 1 G X decl:3796f88280404836
 src/dom/update_the_rendering.zig loop 1 G P-res decl:1bb591d6c33253d3
-src/dom/update_the_rendering.zig steps 1 G P-res decl:254e7e6741edb5bc
+src/dom/update_the_rendering.zig steps 1 G P-res decl:2acfe0846b2ae49e
 src/dom/url_patterns.zig implementation 1 G P-res decl:de7f799c1a2ca740
 src/dom/user_activation_state.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/visibility_state.zig implementation 1 G H decl:9c737e7125e9c3d4
@@ -181,6 +181,7 @@ src/fetch/internal/fetch_params.zig chunk_length_received 1 G X decl:1dfcee87d8d
 src/fetch/internal/fetch_params.zig queue_task_executed 1 G X decl:de58a3b1f5ff5e75
 src/fetch/network/curl_backend.zig global_init_count 1 G P-res decl:3796f88280404836
 src/fetch/network/curl_backend.zig global_init_mutex 1 G P-res decl:ee0617868871b920
+src/hr_time/time_origin.zig process_estimated_epoch 1 G P-res decl:21d759f6a3bfbdcc
 src/html/embedder_scripts.zig registered 1 TL I/engine decl:985bda748b35fe88
 src/html/focus.zig last_modality 1 TL T decl:c2a587c8ee049550
 src/html/focus.zig pending_edit_count 1 TL T decl:3796f88280404836
@@ -220,14 +221,14 @@ src/runtime/browser_scope.zig standalone_scope 1 G P-res decl:900c140c0fed34c8
 src/runtime/ce_reactions.zig hooks 1 G P-res decl:af7149130290d354
 src/runtime/cleanup_coordinator.zig active_coordinator 1 TL C decl:30416084c34bdb90
 src/runtime/engines/v8/callback_registry.zig live 1 TL I/engine decl:cb121b88af7eecfc
-src/runtime/engines/v8/context_manager.zig accessor_stack 1 TL A decl:d586ff12546cc78f
+src/runtime/engines/v8/context_manager.zig accessor_stack 1 TL A decl:0fb068263d50ee81
 src/runtime/engines/v8/context_manager.zig accessor_stack_depth 1 TL A decl:3796f88280404836
 src/runtime/engines/v8/context_manager.zig child_context_globals_callback 1 TL H decl:8dc371340b266bfc
 src/runtime/engines/v8/context_manager.zig child_window_cleanup_callback 1 TL H decl:e117c619ecb2c79d
 src/runtime/engines/v8/context_manager.zig manager_state 1 TL I/engine decl:998e9887e732e6e8
 src/runtime/engines/v8/conversions.zig callback_allocator 1 G P-res decl:da54bbf97cc3b9a6
 src/runtime/engines/v8/external_references.zig runtime_ref_count 1 G P-const decl:3796f88280404836
-src/runtime/engines/v8/external_references.zig runtime_refs 1 G P-const decl:ab5ccc7f349e68e5
+src/runtime/engines/v8/external_references.zig runtime_refs 1 G P-const decl:015c834d8ed6a3bf
 src/runtime/engines/v8/isolate_ownership.zig check_count 1 G D decl:3796f88280404836
 src/runtime/engines/v8/isolate_ownership.zig violation_count 1 G D decl:3796f88280404836
 src/runtime/engines/v8/page_realm.zig operations_realm 1 TL R decl:c66b73dbbb5ec79b
