@@ -900,6 +900,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Fair Runner Shares Change Journal Layout](testing-fair-runner-shares-change-journal-layout.md) - Requested parallelism is not evidence of journal layout. Discover the actual streams and verify their contents.
 - [OOM Matrices Replay Unrelated Rows](testing-oom-matrices-replay-unrelated-rows.md) - Keep allocation-failure coverage complete without replaying unrelated cases for every injected failure.
 - [Render the Actual Plan Before Writing Launch Files](testing-render-the-actual-plan-before-writing-launch-files.md) - Test the real dependency chain before creating artifacts; recover a partial preparation by verifying preserved bytes and writing only explicitly missing files.
+- [An all-OOM count that lets resizes through depends on the backing allocator](testing-an-all-oom-count-that-lets-resizes-through-depends-on-the-backing-allocator.md) - Count allocations with resizes refused: under a non-reusing allocator, in-place growth is a property of the run, not of the code.
 
 ### Debugging
 - [Profile a hot path before optimizing the structure the design names](debugging-profile-a-hot-path-before-optimizing-the-structure-the-design-names.md) - Profile the workload the bar measures before rebuilding the structure the design suspects; look for terms that grow with the session, wherever they live.
@@ -1075,3 +1076,4 @@ A lane brief now carries the lessons chosen for its batch.
 - [Final replay does not prove intermediate builds](workflow-final-replay-does-not-prove-intermediate-builds.md) - Verify dependencies at each independently committed feature boundary; final-tree identity does not prove that boundary builds.
 - [Re-read liaison rulings before launching](workflow-reread-liaison-rulings-before-launch.md) - Scheduling clearance and current task authorization are separate checks.
 - [Verify Replayed Patch Bytes](workflow-verify-replayed-patch-bytes.md) - Exit zero is not proof that a patch changed its intended files. Verify the bytes before withdrawing work.
+- [Compare skip counts before comparing a test binary's cost](workflow-compare-skip-counts-before-comparing-a-test-binarys-cost.md) - A skipped test costs nothing: compare the skip counts before you compare the cost.
