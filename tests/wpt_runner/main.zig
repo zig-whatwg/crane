@@ -39,6 +39,33 @@
 //!   kills the process, until the worklist is exhausted. Writes
 //!   `<output>/worklist.txt` and `<output>/journal.jsonl`.
 //!
+//! Flakiness (repeat.zig):
+//! - `--repeat=N` - Run the worklist (normally one file: name it as an
+//!   argument) N times, each time in a fresh child process, and print each
+//!   subtest's failure rate over the N runs; written to
+//!   `<output>/repeat-tally.txt`. The children journal under
+//!   `<output>/repeat/<k>/`, never at `--journal=`: a repeat series is never a
+//!   sweep record.
+//! - `--repeat-with=path` - Also run N repetitions of that runner binary (a
+//!   frozen main's), alternating with this one, the other first; the tally's
+//!   second column is its rate.
+//! - `--load=K` - Keep K supervisor threads busy for the whole series
+//!   (background CPU load, stated in the tally). Ask the pool for K+1 tokens.
+//!
+//! A lane measures in the compute pool under its own pair id, on the
+//! measurement host the integrator names for it, with both runners on that
+//! host (the integrator: `--pair <lane>-m` -> chat2.local, which keeps the
+//! frozen bases in ~/crane-frozen/):
+//!
+//! ```bash
+//! tmp/remote/crane-pool.sh wpt <mirror> --pair <lane>-m \
+//!   '~/crane-measure.sh run <lane>-rep 1 ./zig-out/bin/wpt_runner --repeat=50 \
+//!      --repeat-with=$HOME/crane-frozen/main-0aa6c6c8cf/zig-out/bin/wpt_runner \
+//!      <path/to/test.html> --wpt-root=tests/wpt --output=tmp/<lane>-rep/<name>'
+//! # under load: --load=4, and ask for 5 runners: crane-measure.sh run <lane>-rep 5 ...
+//! # the result: crane-pool.sh on <mirror> --pair <lane>-m 'cat tmp/<lane>-rep/<name>/repeat-tally.txt'
+//! ```
+//!
 //! Regression gating:
 //! - `--baseline=path` - Compare the finished run against recorded
 //!   expectations. Exits nonzero if anything regressed.
