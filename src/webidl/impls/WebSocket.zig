@@ -177,6 +177,12 @@ pub const InternalState = struct {
     /// with readyState CONNECTING the way every caller expects.
     connect_attempted: bool = false,
 
+    /// What the constructor's run of the handshake request's checks decided
+    /// (`prepareHandshakeRequest`, constructor step 12): whether the request
+    /// may go to the network. The pump's first turn fails the connection or
+    /// starts it accordingly.
+    handshake_allowed: bool = false,
+
     /// Set once the close event has fired. Guards against firing it twice and
     /// tells the pump to stop re-arming.
     pump_done: bool = false,
@@ -557,11 +563,11 @@ fn pump(token: *PollToken, instance: *runtime.Instance) bool {
     //    step per turn so that script keeps running while it is in flight.
     if (!internal.connect_attempted and !connection.closed) {
         internal.connect_attempted = true;
-        // "Establish a WebSocket connection" step 11 fetches its request:
-        // main fetch steps 5/6 upgrade, then step 7 checks CSP and Mixed
-        // Content. Connect to the final URL. A policy or allocation failure
+        // "Establish a WebSocket connection" step 11's request was checked by
+        // the constructor (main fetch steps 4-7: CSP, the upgrades, Mixed
+        // Content); connect to its final URL. A policy or allocation failure
         // fails the connection; the close task fires `error` and `close`.
-        if (!(prepareHandshakeRequest(instance, connection, internal.url_string) catch false)) {
+        if (!internal.handshake_allowed) {
             connection.fail();
         } else {
             const origin = clientOrigin(instance);
@@ -1048,7 +1054,24 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
 
     // Step 12. "Run this step in parallel: establish a WebSocket connection."
     //
-    // Deferred to the pump's first turn rather than done here. Connecting
+    // Its request's checks run now: "establish a WebSocket connection" steps
+    // 1-2 make the request and step 11 fetches it, whose main fetch steps 4-7
+    // report and enforce CSP (connect-src), upgrade it and check Mixed
+    // Content. A violation is reported here, its event queued as any
+    // violation's. The step is in parallel, so the spec allows this order,
+    // and it is what all three browsers do: Blink's WebSocket::Connect asks
+    // AllowConnectToSource before it returns (the error event follows
+    // asynchronously), WebKit's WebSocket::connect asks allowConnectToSource
+    // (and also throws a SecurityError, webkit.org/b/286744), and Gecko's
+    // WebSocket::Init runs the content policy check (NS_ERROR_CONTENT_BLOCKED).
+    // No exception is thrown, as in Chrome and the spec. Checked on the pump's
+    // first turn instead, a socket whose document went before that turn - the
+    // window navigated away - never reported its violation:
+    // trusted-types/trusted-types-navigation.html's report-only cases force a
+    // connect-src violation just before their page navigates and wait for it.
+    internal.handshake_allowed = prepareHandshakeRequest(instance, connection, internal.url_string) catch false;
+
+    // The connection itself is deferred to the pump's first turn. Connecting
     // inline would block the constructor on a network handshake and, worse,
     // leave readyState at OPEN before the caller had a chance to see
     // CONNECTING - which several tests in `websockets/` assert directly.
