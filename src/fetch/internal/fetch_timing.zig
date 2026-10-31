@@ -237,13 +237,11 @@ pub fn createOpaqueTimingInfo(allocator: std.mem.Allocator, timing_info: *const 
 ///
 /// Returns: Coarsened timestamp
 pub fn coarsenTime(time: DOMHighResTimeStamp, cross_origin_isolated: bool) DOMHighResTimeStamp {
-    // Per spec, cross-origin-isolated contexts can have higher precision
-    // Non-isolated contexts are coarsened to 100 microseconds (0.1 ms)
-    // Isolated contexts are coarsened to 5 microseconds (0.005 ms)
-    const resolution: DOMHighResTimeStamp = if (cross_origin_isolated) 0.005 else 0.1;
-
-    // Round down to resolution
-    return @floor(time / resolution) * resolution;
+    // HR-Time "coarsen time", on the grid every other Crane time is on
+    // (hr_time/coarsen.zig: 125 us, 15.625 us cross-origin isolated). A grid
+    // of its own here (it was 0.1 / 0.005 ms) would let a connection time
+    // floor past a request time coarsened on the other grid.
+    return @import("hr_time").coarsen.coarsenMilliseconds(time, cross_origin_isolated);
 }
 
 /// Clamp and coarsen connection timing info for security.
@@ -412,21 +410,19 @@ test "createOpaqueTimingInfo preserves start and end without network details" {
 }
 
 test "coarsenTime non-isolated context" {
-    // Non-isolated: 0.1ms (100 microsecond) resolution
+    // Non-isolated: 0.125 ms (125 microsecond) resolution, hr_time's grid
     const coarsened = coarsenTime(123.456789, false);
 
-    // Should be rounded down to 0.1ms precision
-    // 123.456789 -> 123.4
-    try std.testing.expectApproxEqAbs(@as(DOMHighResTimeStamp, 123.4), coarsened, 0.0001);
+    // Rounded down to the 0.125 ms grid: 123.456789 -> 123.375, exactly
+    try std.testing.expectEqual(@as(DOMHighResTimeStamp, 123.375), coarsened);
 }
 
 test "coarsenTime isolated context" {
-    // Isolated: 0.005ms (5 microsecond) resolution
+    // Isolated: 0.015625 ms (15.625 microsecond) resolution, hr_time's grid
     const coarsened = coarsenTime(123.456789, true);
 
-    // Should be rounded down to 0.005ms precision
-    // 123.456789 -> 123.455
-    try std.testing.expectApproxEqAbs(@as(DOMHighResTimeStamp, 123.455), coarsened, 0.0001);
+    // Rounded down to the 0.015625 ms grid: 123.456789 -> 123.453125, exactly
+    try std.testing.expectEqual(@as(DOMHighResTimeStamp, 123.453125), coarsened);
 }
 
 test "clampAndCoarsenConnectionTimingInfo with new connection" {
@@ -444,9 +440,9 @@ test "clampAndCoarsenConnectionTimingInfo with new connection" {
     // New connection (start time > default start) - should coarsen
     const result = clampAndCoarsenConnectionTimingInfo(&conn_info, default_start, false);
 
-    // Values should be coarsened (non-isolated = 0.1ms resolution)
-    try std.testing.expectApproxEqAbs(@as(DOMHighResTimeStamp, 100.1), result.domain_lookup_start_time, 0.0001);
-    try std.testing.expectApproxEqAbs(@as(DOMHighResTimeStamp, 110.4), result.domain_lookup_end_time, 0.0001);
+    // Values should be coarsened (non-isolated = 0.125 ms resolution)
+    try std.testing.expectEqual(@as(DOMHighResTimeStamp, 100.0), result.domain_lookup_start_time);
+    try std.testing.expectEqual(@as(DOMHighResTimeStamp, 110.375), result.domain_lookup_end_time);
     try std.testing.expectEqualStrings("h2", result.alpn_negotiated_protocol);
 }
 

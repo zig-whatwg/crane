@@ -47,37 +47,19 @@ pub const TimeOrigin = struct {
 
     const Self = @This();
 
-    /// Initialize a new time origin for a context
+    /// Initialize a new time origin for a context, now
     ///
     /// This should be called when creating a new environment settings object:
     /// - For Window: at navigation start
     /// - For Worker: when the worker is run
     ///
-    /// Per spec section 3.4 "estimated monotonic time of the Unix epoch":
-    /// 1. Let wall time be the wall clock's unsafe current time
-    /// 2. Let monotonic time be the monotonic clock's unsafe current time
-    /// 3. Let epoch time be monotonic time - (wall time - Unix epoch)
-    /// 4. Initialize the estimated monotonic time of the Unix epoch to
-    ///    the result of calling coarsen time with epoch time.
+    /// The estimated monotonic time of the Unix epoch is the group's, one
+    /// moment shared by every time origin (estimatedMonotonicTimeOfUnixEpoch).
     pub fn init(cross_origin_isolated: bool) Self {
-        const wall_time = clock.WallClock.unsafeCurrentTime();
         const monotonic_time = clock.MonotonicClock.unsafeCurrentTime();
-
-        // Calculate estimated monotonic time of Unix epoch
-        // epoch_time = monotonic_time - wall_time
-        // (since wall_time is ns since Unix epoch, this gives us
-        // what the monotonic clock would have been at Unix epoch)
-        const epoch_time = monotonic_time - wall_time;
-
-        // Coarsen both timestamps before storing
-        // Note: estimated_epoch uses default resolution per spec
-        // (it's shared across contexts, not context-specific)
-        const coarsened_epoch = coarsen.coarsenTime(epoch_time, false);
-        const coarsened_origin = coarsen.coarsenTime(monotonic_time, cross_origin_isolated);
-
         return Self{
-            .origin_moment = coarsened_origin,
-            .estimated_epoch = coarsened_epoch,
+            .origin_moment = coarsen.coarsenTime(monotonic_time, cross_origin_isolated),
+            .estimated_epoch = estimatedMonotonicTimeOfUnixEpoch(),
             .cross_origin_isolated = cross_origin_isolated,
         };
     }
@@ -151,6 +133,58 @@ pub const TimeOrigin = struct {
         return coarsen.coarsenTime(current_time, self.cross_origin_isolated);
     }
 };
+
+/// HR-Time 4: "Each group of environment settings objects that could
+/// possibly communicate in any way has an estimated monotonic time of the
+/// Unix epoch" - ONE moment for the group, initialized once, which every
+/// member's timeOrigin (get time origin timestamp) is measured from. Crane's
+/// group is the process: every Browser and worker in it reads the same two
+/// clocks, and a process is a superset of each group that can communicate.
+/// It is estimated once, at process start (`estimateAtProcessStart`, from
+/// Performance's installHooks), and every reader on every thread after gets
+/// that value. A process that never started (a unit test without
+/// crane.Process) gets a fresh estimate per call, stored nowhere.
+///
+/// Before (lane flaky2), each Performance object made its own estimate from a
+/// fresh wall and monotonic reading. A thread preempted between the two reads
+/// moved its estimate by the preemption, so under load a worker's timeOrigin
+/// could come out earlier than its creator's time when it was created
+/// (hr-time/timeOrigin.html "Window and worker timeOrigins are close when
+/// created one after another"). Gecko keeps one PerformanceService per
+/// process (PerformanceService::GetOrCreate: one mCreationTimeStamp and
+/// mCreationEpochTime pair that every window and worker timeOrigin is
+/// computed from).
+pub fn estimatedMonotonicTimeOfUnixEpoch() clock.Nanoseconds {
+    return process_estimated_epoch orelse estimateEpoch();
+}
+
+/// Estimate the process's estimated monotonic time of the Unix epoch. Once
+/// per process, while it starts, before any Browser or worker thread exists
+/// (Performance.installHooks, through crane.Process); a second call keeps
+/// the first estimate.
+pub fn estimateAtProcessStart() void {
+    if (process_estimated_epoch == null) process_estimated_epoch = estimateEpoch();
+}
+
+/// The steps that initialize the estimated monotonic time of the Unix epoch
+/// (HR-Time 4):
+/// 1. Let wall time be the wall clock's unsafe current time
+/// 2. Let monotonic time be the monotonic clock's unsafe current time
+/// 3. Let epoch time be monotonic time - (wall time - Unix epoch)
+/// 4. Initialize the estimated monotonic time of the Unix epoch to
+///    the result of calling coarsen time with epoch time.
+/// (wall time is ns since the Unix epoch, so step 3 is monotonic - wall.) The
+/// estimate is shared across contexts, so it takes the default resolution.
+fn estimateEpoch() clock.Nanoseconds {
+    const wall_time = clock.WallClock.unsafeCurrentTime();
+    const monotonic_time = clock.MonotonicClock.unsafeCurrentTime();
+    return coarsen.coarsenTime(monotonic_time - wall_time, false);
+}
+
+// Null until the process starts; a process that never started it (a bare unit test with no
+// crane.Process) reads a fresh estimate per call (estimatedMonotonicTimeOfUnixEpoch), stored nowhere.
+// process-wide: HR-Time's one estimated monotonic time of the Unix epoch per group of settings objects that can communicate (the process is a superset of every group, and its Browsers on many threads share one monotonic and one wall clock; Gecko keeps one PerformanceService per process); written once while the process starts (Performance.installHooks), before any Browser or worker thread, and only read after.
+var process_estimated_epoch: ?clock.Nanoseconds = null;
 
 /// Get the current coarsened wall time (global, no context)
 ///

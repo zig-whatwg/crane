@@ -758,6 +758,18 @@ pub const EventLoop = struct {
     /// between the tasks of a busy chain of timers).
     pub const long_work_ns: i64 = 16 * std.time.ns_per_ms;
 
+    /// The shortest idle period that starts: 1 ms. "Start an idle period"
+    /// step 1 lets the user agent delay one; Blink never starts one shorter
+    /// than this (IdleHelper::ComputeNewLongIdlePeriodState,
+    /// kMinimumIdlePeriodDuration = 1 ms) and tries again after its next
+    /// wake-up. Without it, a timer due in under a millisecond - whole
+    /// milliseconds, rounded down, read as due now - made a period that was
+    /// over as it began: its "invoke idle callbacks" task found now past the
+    /// deadline, ran nothing and asked again, and the next turn started
+    /// another, about 100 a millisecond until the timer fired (lane flaky3
+    /// found it with a fetch in flight; tests/html/fk2_idle_period_spin_test.zig).
+    pub const min_idle_period_ns: i64 = 1 * std.time.ns_per_ms;
+
     /// `realm`'s window asks for an idle period: `start` runs when the next
     /// one starts. Asking again before then is asking once.
     pub fn requestIdlePeriod(self: *Self, realm: runtime.Context, start: idle_periods.StartIdlePeriod) void {
@@ -789,12 +801,16 @@ pub const EventLoop = struct {
         // not runnable ("has no runnable task").
         if (self.runnableQueued()) return false;
         if (!self.idlePeriodMayStart(now)) return false;
+        // Step 5.2's computeDeadline, before anything starts: a period that
+        // could not last min_idle_period_ns is delayed ("start an idle
+        // period" step 1) until the work that bounds it - the next timer or
+        // rendering opportunity - has run.
+        var end = now + max_idle_period_ns;
+        if (self.nextTimerDueNs(now)) |due| end = @min(end, due);
+        if (end - now < min_idle_period_ns) return false;
 
         // Step 5.1.
         self.last_idle_period_start_ns = now;
-        // Step 5.2: computeDeadline.
-        var end = now + max_idle_period_ns;
-        if (self.nextTimerDueNs(now)) |due| end = @min(end, due);
         self.idle_period_id += 1;
         self.idle_period_end_ns = end;
         const period: idle_periods.Period = .{ .id = self.idle_period_id, .end_ns = end };
@@ -859,10 +875,16 @@ pub const EventLoop = struct {
 
     /// How long until a waiting window's idle period can start (ms), when
     /// one is waiting.
+    /// A period that would be too short to start waits for the work that
+    /// bounds it: the timer or the rendering opportunity due next, which the
+    /// turn's wait already ends at - no wake-up of its own.
     fn idleWaitMs(self: *Self, now: i64) ?u64 {
         if (!self.idleRequestsRunnable()) return null;
         const at = @max(self.idle_blocked_until_ns, self.idle_period_end_ns);
-        if (at <= now) return 0;
+        if (at <= now) {
+            if (self.nextTimerDueNs(now)) |due| if (due - now < min_idle_period_ns) return null;
+            return 0;
+        }
         return @intCast(@divTrunc(at - now + std.time.ns_per_ms - 1, std.time.ns_per_ms));
     }
 

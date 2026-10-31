@@ -9,9 +9,10 @@
 //!
 //! ## Resolution
 //!
-//! Per spec section 3.6:
-//! - Default resolution: 100 microseconds (100,000 nanoseconds)
-//! - Cross-origin isolated: 5 microseconds (5,000 nanoseconds)
+//! The spec's floors are 100 microseconds, and 5 microseconds for a context
+//! with cross-origin isolated capability. Crane coarsens to 125 and 15.625
+//! microseconds, a binary fraction of a millisecond (see
+//! DEFAULT_RESOLUTION_NS).
 //!
 //! ## Coarsening Algorithm
 //!
@@ -31,13 +32,45 @@
 const std = @import("std");
 const clock = @import("clock.zig");
 
-/// Default time resolution in nanoseconds (100 microseconds)
-/// Per HR-Time spec section 3.6
-pub const DEFAULT_RESOLUTION_NS: i128 = 100 * std.time.ns_per_us;
+/// The default time resolution: 125 microseconds, 2^-3 ms.
+///
+/// HR-Time "coarsen time" steps 1-2: "Let time resolution be 100
+/// microseconds, or a higher implementation-defined value. If
+/// crossOriginIsolatedCapability is true, set time resolution to be 5
+/// microseconds, or a higher implementation-defined value." The browsers'
+/// values: Chrome 100 us and 5 us cross-origin isolated (with jitter);
+/// Firefox 1 ms (privacy.resistFingerprinting.reduceTimerPrecision.microseconds
+/// = 1000) and 20 us cross-origin isolated (RFP_TIMER_UNCONDITIONAL_VALUE);
+/// WebKit 1 ms (Performance.cpp `timePrecision { 1_ms }`).
+///
+/// Why a power-of-two fraction of a millisecond (lane flaky2, approved by
+/// the integrator 2026-10-31): every DOMHighResTimeStamp is a double of
+/// milliseconds, and a multiple of 2^-3 ms is a double EXACTLY (up to 2^50
+/// ms, past the year 37,000 since the Unix epoch). So timeOrigin + now(),
+/// a worker's timeOrigin - its creator's, and Web Animations' (t - end) + end
+/// are exact sums, as they are in Firefox and Safari's whole milliseconds. On
+/// the 0.1 ms grid they were not: 0.1 ms is no double, timeOrigin is about
+/// 1.79e12 ms with a 2.4e-4 ms rounding step, and fl(fl(a) + fl(b)) landed one
+/// step above fl(a + b) for about 1 in 5 pairs - a worker created within the
+/// 100 us of its creator's performance.now() read as created BEFORE it
+/// (hr-time/timeOrigin.html, 7 of 60 isolated runs). 125 us keeps Chrome's
+/// sub-millisecond resolution, which in-page measurement needs.
+pub const DEFAULT_RESOLUTION_NS: i128 = 125 * std.time.ns_per_us;
 
-/// Cross-origin isolated time resolution in nanoseconds (5 microseconds)
-/// Per HR-Time spec section 3.6
-pub const CROSS_ORIGIN_ISOLATED_RESOLUTION_NS: i128 = 5 * std.time.ns_per_us;
+/// The cross-origin isolated time resolution: 15.625 microseconds, 2^-6 ms
+/// - the finest power-of-two fraction of a millisecond that is a whole
+/// number of nanoseconds and not finer than 5 microseconds (see
+/// DEFAULT_RESOLUTION_NS).
+pub const CROSS_ORIGIN_ISOLATED_RESOLUTION_NS: i128 = 15_625;
+
+/// The resolutions in milliseconds, exact doubles: 2^-3 and 2^-6.
+pub const DEFAULT_RESOLUTION_MS: f64 = 0.125;
+pub const CROSS_ORIGIN_ISOLATED_RESOLUTION_MS: f64 = 0.015625;
+
+comptime {
+    std.debug.assert(@as(f64, @floatFromInt(DEFAULT_RESOLUTION_NS)) / std.time.ns_per_ms == DEFAULT_RESOLUTION_MS);
+    std.debug.assert(@as(f64, @floatFromInt(CROSS_ORIGIN_ISOLATED_RESOLUTION_NS)) / std.time.ns_per_ms == CROSS_ORIGIN_ISOLATED_RESOLUTION_MS);
+}
 
 /// Coarsen time algorithm
 ///
@@ -60,6 +93,15 @@ pub const CROSS_ORIGIN_ISOLATED_RESOLUTION_NS: i128 = 5 * std.time.ns_per_us;
 pub fn coarsenTime(timestamp_ns: clock.Nanoseconds, cross_origin_isolated: bool) clock.Nanoseconds {
     const resolution = getResolution(cross_origin_isolated);
     return coarsenToResolution(timestamp_ns, resolution);
+}
+
+/// "Coarsen time" for a time already in milliseconds - a DOMHighResTimeStamp
+/// measured on the monotonic clock from a time origin, which is itself on
+/// the grid (fetch's connection timing info): floored onto the same grid as
+/// `coarsenTime`. Exact: the resolution is a power of two.
+pub fn coarsenMilliseconds(time_ms: f64, cross_origin_isolated: bool) f64 {
+    const resolution: f64 = if (cross_origin_isolated) CROSS_ORIGIN_ISOLATED_RESOLUTION_MS else DEFAULT_RESOLUTION_MS;
+    return @floor(time_ms / resolution) * resolution;
 }
 
 /// Get the time resolution for a given isolation state
@@ -125,26 +167,26 @@ const testing = std.testing;
 
 test "coarsenTime - default resolution" {
     // Input: 123,456,789 ns
-    // Resolution: 100,000 ns (100 us)
-    // Expected: 123,400,000 ns (rounded down to nearest 100us)
+    // Resolution: 125,000 ns (125 us)
+    // Expected: 123,375,000 ns (rounded down to the nearest 125 us)
     const input: clock.Nanoseconds = 123_456_789;
     const result = coarsenTime(input, false);
 
-    try testing.expectEqual(@as(clock.Nanoseconds, 123_400_000), result);
+    try testing.expectEqual(@as(clock.Nanoseconds, 123_375_000), result);
 }
 
 test "coarsenTime - cross-origin isolated resolution" {
     // Input: 123,456,789 ns
-    // Resolution: 5,000 ns (5 us)
-    // Expected: 123,455,000 ns (rounded down to nearest 5us)
+    // Resolution: 15,625 ns (15.625 us)
+    // Expected: 123,453,125 ns (rounded down to the nearest 15.625 us)
     const input: clock.Nanoseconds = 123_456_789;
     const result = coarsenTime(input, true);
 
-    try testing.expectEqual(@as(clock.Nanoseconds, 123_455_000), result);
+    try testing.expectEqual(@as(clock.Nanoseconds, 123_453_125), result);
 }
 
 test "coarsenTime - already at boundary" {
-    const input: clock.Nanoseconds = 100_000_000; // Exactly on 100us boundary
+    const input: clock.Nanoseconds = 100_000_000; // Exactly on a 125 us boundary
     const result = coarsenTime(input, false);
 
     try testing.expectEqual(input, result);
@@ -162,10 +204,11 @@ test "coarsenTime - negative value" {
 
     // Floor division rounds toward negative infinity
     try testing.expectEqual(@as(clock.Nanoseconds, -123_500_000), result);
+    try testing.expect(isCoarsened(result, false));
 }
 
 test "isCoarsened - correctly identifies coarsened timestamps" {
-    const coarsened: clock.Nanoseconds = 123_400_000;
+    const coarsened: clock.Nanoseconds = 123_375_000;
     const uncoarsened: clock.Nanoseconds = 123_456_789;
 
     try testing.expect(isCoarsened(coarsened, false));

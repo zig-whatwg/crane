@@ -2033,6 +2033,8 @@ pub fn build(b: *std.Build) void {
             .{ .name = "interfaces", .module = testing_graph.interfaces },
             .{ .name = "impls", .module = testing_graph.impls },
             .{ .name = "enums", .module = testing_graph.enums },
+            // tests/dom/hr_time_coarsen_exactness_test.zig: the coarsening grid's exact arithmetic.
+            .{ .name = "hr_time", .module = testing_graph.hr_time },
         };
         // link_v8 = true: tests/dom/mutation_test.zig calls dom.mutation.insert
         // and .adopt, and src/dom/mutation.zig reaches impls.NodeList/Range/
@@ -6324,6 +6326,9 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
 
     // Add hr_time to impls for Performance implementation
     impls_mod.addImport("hr_time", hr_time_mod);
+    // fetch's connection timing info is coarsened on hr_time's grid
+    // (fetch_timing.coarsenTime -> hr_time.coarsen.coarsenMilliseconds).
+    fetch_mod.addImport("hr_time", hr_time_mod);
 
     // WebSocket module (WHATWG WebSockets API)
     const websocket_mod = graphModule(b, public, "websocket", .{
