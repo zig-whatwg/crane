@@ -100,12 +100,14 @@ pub fn installHooks() void {
         .traverse_to_step = &traverseWindowToStep,
         .reload = &reloadWindow,
         .reload_with_navigation_api_state = &reloadWindowWithNavigationApiState,
+        .reload_for_declarative_refresh = &reloadWindowForDeclarativeRefresh,
         .url_and_history_update = &urlAndHistoryUpdateOfWindow,
         .resume_traversal = &resumeTraversalOfWindow,
         // "Apply the history step"'s window, realm and document steps (lane
         // nav2 C2, H-NAV2-HT-APPLY).
         .queue_task = &queueApplyTask,
         .before_unload_canceled = &beforeUnloadCanceled,
+        .abort_for_navigation = &abortForNavigation,
         .update_same_document = &sameDocumentTraversal,
         .document_info = &history_documents.infoOf,
     });
@@ -282,7 +284,7 @@ pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!voi
         // Step 3: "reload document's node navigable". Reload step 1: not
         // while unloading.
         const window = internal.window orelse return;
-        reloadNavigable(window, bc, true);
+        reloadNavigable(window, bc, .go_zero);
         return;
     }
     // Delta traverse step 4 hands "apply the history step" this's associated
@@ -346,13 +348,13 @@ pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!voi
 
 /// HTML "reload" `bc`'s navigable: its current entry, repopulated by "apply
 /// the reload history step" on the traversable's queue. Not while its
-/// document is unloading (reload step 1). `go_zero`: history.go(0) asked
-/// (the reload rules in call_go).
-fn reloadNavigable(window: *runtime.Instance, bc: *BrowsingContext, go_zero: bool) void {
-    reloadNavigableWithNavigationApiState(window, bc, null, go_zero);
+/// document is unloading (reload step 1). `cause`: script, history.go(0)
+/// (the reload rules in call_go) or a declarative refresh.
+fn reloadNavigable(window: *runtime.Instance, bc: *BrowsingContext, cause: apply_history_step.ReloadCause) void {
+    reloadNavigableWithNavigationApiState(window, bc, null, cause);
 }
 
-fn reloadNavigableWithNavigationApiState(window: *runtime.Instance, bc: *BrowsingContext, navigation_api_state: ?joint_history.SerializedState, go_zero: bool) void {
+fn reloadNavigableWithNavigationApiState(window: *runtime.Instance, bc: *BrowsingContext, navigation_api_state: ?joint_history.SerializedState, cause: apply_history_step.ReloadCause) void {
     const document = interfaces.Window.get_document(window) catch return;
     if (@import("dom").document_lifecycle.isUnloading(document)) return;
     const history = ensureEntries(bc) catch return;
@@ -390,19 +392,28 @@ fn reloadNavigableWithNavigationApiState(window: *runtime.Instance, bc: *Browsin
     // population, which the item waits for. The navigation API state given
     // becomes the entry's once navigate and beforeunload permit it, the
     // entry captured before either handler ran.
-    apply_history_step.reload(bc, allocator, entry_id, if (navigation_api_state != null) api_state else null, go_zero);
+    apply_history_step.reload(bc, allocator, entry_id, if (navigation_api_state != null) api_state else null, cause);
 }
 
 /// dom.history_traversal: reload `window`'s navigable.
 fn reloadWindow(window: *runtime.Instance) void {
     const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
-    reloadNavigable(window, bc, false);
+    reloadNavigable(window, bc, .reload);
+}
+
+/// dom.history_traversal: the reload of `window`'s navigable that its
+/// document's declarative refresh comes due as (Document.refreshComesDue):
+/// "apply the reload history step" aborts the document once beforeunload
+/// lets it go on, as the navigate the refresh stands for does.
+fn reloadWindowForDeclarativeRefresh(window: *runtime.Instance) void {
+    const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
+    reloadNavigable(window, bc, .declarative_refresh);
 }
 
 /// dom.history_traversal: navigation.reload()'s borrowed serialized state.
 fn reloadWindowWithNavigationApiState(window: *runtime.Instance, state: joint_history.SerializedState) void {
     const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
-    reloadNavigableWithNavigationApiState(window, bc, state, false);
+    reloadNavigableWithNavigationApiState(window, bc, state, .reload);
 }
 
 /// dom.history_traversal: queue a traversal of `window`'s traversable to
@@ -715,6 +726,23 @@ fn beforeUnloadCanceled(contexts: []const *BrowsingContext, allocator: Allocator
         if (@import("dom").document_lifecycle.fireBeforeUnload(held.document).canceled) canceled = true;
     }
     return canceled;
+}
+
+/// "Apply the history step"'s abort for a declarative refresh's reload (HTML
+/// navigate step 24.3): "abort a document and its descendants" given
+/// `bc`'s active document - each document held with its generation and
+/// skipped if it went, as the navigable's own navigate does it
+/// (HTMLIFrameElement runBeforeUnload): the documents' fetches end, their
+/// live XHRs are left to the unload.
+fn abortForNavigation(bc: *BrowsingContext, allocator: Allocator) void {
+    const dom = @import("dom");
+    const document: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveDocument() orelse return));
+    var documents = dom.navigables.inclusiveDescendantDocuments(document, allocator);
+    defer documents.deinit(allocator);
+    for (documents.items) |entry| {
+        if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+        dom.document_lifecycle.abortForNavigation(entry.document);
+    }
 }
 
 /// "Update document for history step application" for a same-document
