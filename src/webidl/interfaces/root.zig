@@ -1255,8 +1255,8 @@ pub const XSLTProcessor = @import("XSLTProcessor.zig").XSLTProcessor;
 pub const process_hooks = struct {
     pub fn install() void {
         @setEvalBranchQuota(100_000);
-        inline for (@typeInfo(members).@"struct".decls) |decl| {
-            const member = @field(members, decl.name);
+        inline for (@typeInfo(members).@"struct".decl_names) |decl_name| {
+            const member = @field(members, decl_name);
             if (@TypeOf(member) == type and @hasDecl(member, "installHooks")) member.installHooks();
         }
     }

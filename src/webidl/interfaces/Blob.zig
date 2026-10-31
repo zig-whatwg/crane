@@ -111,8 +111,8 @@ pub const Blob = struct {
     /// construction, as a C++ constructor's parameters. Each field of `args`
     /// must be taken by an impl on the chain (its `construction_args`).
     pub fn initWith(allocator: std.mem.Allocator, ctx: runtime.Context, args: anytype) !*runtime.Instance {
-        inline for (@typeInfo(@TypeOf(args)).@"struct".fields) |field| {
-            if (comptime !takesConstructionArg(field.name)) @compileError("Blob has no construction argument '" ++ field.name ++ "'");
+        inline for (@typeInfo(@TypeOf(args)).@"struct".field_names) |field_name| {
+            if (comptime !takesConstructionArg(field_name)) @compileError("Blob has no construction argument '" ++ field_name ++ "'");
         }
         return initChain(allocator, State, &vtable, ctx, args);
     }
