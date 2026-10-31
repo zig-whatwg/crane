@@ -33,6 +33,9 @@ pub const Generation = struct {
     run: u64 = 0,
     unrun: u64 = 0,
     blocking: u64 = 0,
+    /// Files whose sweep retry disagreed with their first run (the runner's
+    /// `--retry-failures`); null for a generation from before it measured them.
+    flaky: ?u64 = null,
     crash: u64 = 0,
     timeout: u64 = 0,
     @"error": u64 = 0,

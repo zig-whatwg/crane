@@ -95,7 +95,7 @@
       return {
         n: num(d, "n"), at: d.at, head: d.head || null, pass: num(d, "pass"), total: num(d, "total"),
         fail: num(d, "fail"), timeout: num(d, "timeout"), notrun: num(d, "notrun"), est: d.est === "1",
-        blocking: num(d, "blocking"), files: num(d, "files"), recon: d.recon === "1", event: d.event || null,
+        blocking: num(d, "blocking"), files: num(d, "files"), flaky: num(d, "flaky"), recon: d.recon === "1", event: d.event || null,
         since: d.since || null, commits: num(d, "commits"), landed: d.landed ? d.landed.split(" ") : [],
       };
     }).filter((g) => Number.isFinite(g.pass) && Number.isFinite(g.total));
@@ -185,6 +185,7 @@
         out.push(el("span", { class: "fail", text: `${fmt(g.total - g.pass)} not passing` }));
       }
       if (g.blocking != null) { sep(); out.push(el("span", { class: "blk", text: `${fmt(g.blocking)} blocking files` }), ` of ${fmt(g.files)}`); }
+      if (g.flaky != null) { sep(); out.push(`${fmt(g.flaky)} flaky files`); }
       if (g.event) { sep(); out.push(el("span", { class: "ro-event", text: `measurement changed: ${g.event}` })); }
       if (g.est) { sep(); out.push(el("span", { class: "quiet", text: "total estimated by the progress report" })); }
       return out;
