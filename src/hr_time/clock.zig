@@ -144,8 +144,15 @@ fn getRealtimeWindows() Nanoseconds {
 ///
 /// Per HR-Time spec: DOMHighResTimeStamp is a double representing
 /// time in milliseconds with sub-millisecond precision.
+///
+/// Exact for a moment on the coarsening grid (a multiple of 2^-k ms, coarsen.zig): whole milliseconds
+/// and the remainder are converted apart. Converting the nanoseconds whole rounded them first -
+/// a time origin is about 1.79e18 ns from the Unix epoch, beyond 2^53, so a double holds it only to
+/// 256 ns - and the milliseconds came out off the grid.
 pub fn toMilliseconds(ns: Nanoseconds) f64 {
-    return @as(f64, @floatFromInt(ns)) / @as(f64, std.time.ns_per_ms);
+    const whole: f64 = @floatFromInt(@divFloor(ns, std.time.ns_per_ms));
+    const rest: f64 = @floatFromInt(@mod(ns, std.time.ns_per_ms));
+    return whole + rest / @as(f64, std.time.ns_per_ms);
 }
 
 /// Convert milliseconds to nanoseconds
