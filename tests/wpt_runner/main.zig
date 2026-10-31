@@ -1775,6 +1775,12 @@ const Shard = struct {
     /// Prefix for this shard's progress lines. Null when there is only one
     /// shard and the output needs no disambiguating.
     label: ?[]const u8,
+    /// The child's working directory, or null for this process's own. A
+    /// runner finds its snapshot from its working directory
+    /// (browser.Process, zig-out/bin/whatwg_snapshot.bin first), so a repeat
+    /// series' other runner runs from its own root (repeat.runnerRoot), with
+    /// every path it is given absolute.
+    cwd: ?[]const u8 = null,
 };
 
 /// Run one shard's worklist to exhaustion, respawning past each crash.
@@ -1833,7 +1839,10 @@ fn runShard(allocator: std.mem.Allocator, shard: Shard) !void {
         // 0.16: Child.init + spawnAndWait become std.process.spawn(io, options)
         // followed by wait(io). Behaviour is unchanged - still a blocking wait for
         // this one shard - and Term's union tags are lowercase now.
-        var child = try std.process.spawn(shard.io, .{ .argv = argv });
+        var child = try std.process.spawn(shard.io, .{
+            .argv = argv,
+            .cwd = if (shard.cwd) |dir| .{ .path = dir } else .inherit,
+        });
 
         // The per-file ceiling only bounds the wait for `__wpt_complete`. The
         // navigation, the parse and every script the parser runs are unbounded,
@@ -2180,7 +2189,20 @@ fn superviseRepeat(
     options: Options,
     discovery: DiscoveryResult,
 ) !u8 {
-    const layout: repeat.Layout = .{ .output_dir = options.output_dir };
+    // Absolute paths throughout: `--repeat-with`'s runner runs from its own
+    // root (repeat.runnerRoot), not from here.
+    host.cwd().createDirPath(host.io(), options.output_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+    const output_abs = try host.cwd().realPathFileAlloc(host.io(), options.output_dir, allocator);
+    defer allocator.free(output_abs);
+    const wpt_root_abs = try host.cwd().realPathFileAlloc(host.io(), options.wpt_root, allocator);
+    defer allocator.free(wpt_root_abs);
+    var abs_options = options;
+    abs_options.output_dir = output_abs;
+    abs_options.wpt_root = wpt_root_abs;
+    const layout: repeat.Layout = .{ .output_dir = output_abs };
     const repeat_dir = try layout.dir(allocator);
     defer allocator.free(repeat_dir);
     host.cwd().createDirPath(host.io(), repeat_dir) catch |err| switch (err) {
@@ -2235,7 +2257,7 @@ fn superviseRepeat(
             var fresh = try journal.Journal.create(allocator, run_journal);
             fresh.deinit();
         }
-        var run_options = options;
+        var run_options = abs_options;
         run_options.output_dir = run_dir;
 
         const label = try std.fmt.allocPrint(allocator, "[repeat {d}/{d} {s}] ", .{ k + 1, runs, @tagName(side) });
@@ -2249,6 +2271,7 @@ fn superviseRepeat(
             .journal_path = run_journal,
             .paths = paths,
             .label = label,
+            .cwd = if (side == .with) repeat.runnerRoot(exe) else null,
         });
 
         const stream_path = try layout.runStream(allocator, k);

@@ -49,6 +49,23 @@ pub fn totalRuns(n: usize, alternating: bool) usize {
     return if (alternating) 2 * n else n;
 }
 
+/// The directory runner binary `exe` runs from: `<root>` for
+/// `<root>/zig-out/bin/<exe>`, the layout of a build and of a
+/// ~/crane-frozen/main-<sha>/ copy. A runner finds its V8 snapshot from its
+/// working directory (browser.Process: zig-out/bin/whatwg_snapshot.bin
+/// first), so `--repeat-with`'s runner, started from the supervisor's
+/// directory, restored the SUPERVISOR's snapshot - accepted whenever the two
+/// builds' external-reference counts matched, the only thing the stamp
+/// checks - or none. From its own root it restores its own, as it does in a
+/// sweep. Null for any other layout: the runner inherits the directory.
+pub fn runnerRoot(exe: []const u8) ?[]const u8 {
+    const bin = std.fs.path.dirname(exe) orelse return null;
+    if (!std.mem.eql(u8, std.fs.path.basename(bin), "bin")) return null;
+    const zig_out = std.fs.path.dirname(bin) orelse return null;
+    if (!std.mem.eql(u8, std.fs.path.basename(zig_out), "zig-out")) return null;
+    return std.fs.path.dirname(zig_out) orelse ".";
+}
+
 /// Where a repeat series keeps its files, under the `--output` directory.
 pub const Layout = struct {
     output_dir: []const u8,
@@ -404,6 +421,16 @@ test "with a second runner, repetitions alternate, the other runner first" {
     try testing.expectEqual(Side.this, sideOf(1, false));
     try testing.expectEqual(@as(usize, 10), totalRuns(5, true));
     try testing.expectEqual(@as(usize, 5), totalRuns(5, false));
+}
+
+test "the other runner runs from its own root, where its own snapshot is" {
+    try testing.expectEqualStrings("/u/crane-frozen/main-0aa6c6c8cf", runnerRoot("/u/crane-frozen/main-0aa6c6c8cf/zig-out/bin/wpt_runner").?);
+    try testing.expectEqualStrings("/u/crane-work/lane", runnerRoot("/u/crane-work/lane/zig-out/bin/wpt_runner").?);
+    try testing.expectEqualStrings(".", runnerRoot("zig-out/bin/wpt_runner").?);
+    // Any other layout keeps the supervisor's directory.
+    try testing.expect(runnerRoot("/u/bins/wpt_runner") == null);
+    try testing.expect(runnerRoot("/u/zig-out/wpt_runner") == null);
+    try testing.expect(runnerRoot("wpt_runner") == null);
 }
 
 const ok_record = "{\"index\":0,\"path\":\"a.html\",\"context\":\"\",\"status\":\"OK\",\"passed\":2,\"failed\":0}\n";
