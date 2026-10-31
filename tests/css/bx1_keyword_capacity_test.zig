@@ -40,7 +40,7 @@ fn keywords(allocator: std.mem.Allocator) !void {
     };
     const all_keywords = comptime blk: {
         var all: [fields.len]Keyword = undefined;
-        for (fields, 0..) |field, i| all[i] = @enumFromInt(field.value);
+        for (fields, 0..) |field, i| all[i] = @fromBackingInt(@intCast(field.value));
         break :blk all;
     };
     // This floor records the baseline without fixing the growing table's size.

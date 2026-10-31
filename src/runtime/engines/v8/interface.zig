@@ -8374,7 +8374,7 @@ pub fn V8Interface(comptime Interface: type) type {
             setIteratorSlot(isolate, context, iterator_obj, "_index", @ptrCast(zero));
 
             // Store iterator kind
-            const kind_val = v8.v8_Number_New(isolate, @floatFromInt(@intFromEnum(kind)));
+            const kind_val = v8.v8_Number_New(isolate, @floatFromInt(@backingInt(kind)));
             defer v8.v8_Value_Dispose(@ptrCast(kind_val));
             setIteratorSlot(isolate, context, iterator_obj, "_kind", @ptrCast(kind_val));
 
@@ -8562,7 +8562,7 @@ pub fn V8Interface(comptime Interface: type) type {
             defer v8.v8_Value_Dispose(target_val);
 
             const index: u32 = @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(index_val), v8_context));
-            const kind: IteratorKind = @enumFromInt(@as(u2, @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(kind_val), v8_context))));
+            const kind: IteratorKind = @fromBackingInt(@intCast(@as(u2, @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(kind_val), v8_context)))));
 
             // Get live entries from the target object
             // This ensures concurrent modifications (like delete during iteration) are reflected
@@ -8685,7 +8685,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             const target_obj: *v8.Object = @ptrCast(target.?);
             const index: u32 = @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(index_val.?), v8_context));
-            const kind: IteratorKind = @enumFromInt(@as(u2, @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(kind_val.?), v8_context))));
+            const kind: IteratorKind = @fromBackingInt(@intCast(@as(u2, @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(kind_val.?), v8_context)))));
 
             // Get length from target
             const length: u32 = if (iteratorSlot(isolate, v8_context, target_obj, "length")) |length_val| blk: {
@@ -9027,7 +9027,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // The edges: the iterator keeps the set's wrapper alive (and so
             // its instance) until it is done.
             v8.v8_Object_SetPrivateRef(iterator, setlike_target_key.ptr, setlike_target_key.len, @ptrCast(this_obj));
-            const kind_v8 = v8.v8_Number_New(isolate, @floatFromInt(@intFromEnum(kind)));
+            const kind_v8 = v8.v8_Number_New(isolate, @floatFromInt(@backingInt(kind)));
             defer v8.v8_Value_Dispose(@ptrCast(kind_v8));
             v8.v8_Object_SetPrivateRef(iterator, setlike_kind_key.ptr, setlike_kind_key.len, @ptrCast(kind_v8));
             setlikeSetCursor(isolate, iterator, 0);
@@ -9059,7 +9059,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const this_obj = info.getThis();
             defer v8.v8_Object_Dispose(this_obj);
             const kind_number = if (v8.v8_Value_IsObject(@ptrCast(this_obj))) setlikeNumberSlot(context, this_obj, setlike_kind_key) else null;
-            const kind: SetIteratorKind = if (kind_number) |n| @enumFromInt(@as(u8, @intFromFloat(n))) else {
+            const kind: SetIteratorKind = if (kind_number) |n| @fromBackingInt(@intCast(@as(u8, @intFromFloat(n)))) else {
                 conv.throwTypeErrorFromContext(isolate, context, "Illegal invocation");
                 return;
             };

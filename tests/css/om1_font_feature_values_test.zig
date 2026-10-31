@@ -60,7 +60,7 @@ fn parseAndSerialize(allocator: std.mem.Allocator) anyerror!void {
     // Parsed source arity is separate from CSSOM set(): Q33's sole shipper
     // accepts all of these sequence lengths for every exposed map.
     inline for (@typeInfo(css.font_feature_values.Block).@"enum".field_values) |field_value| {
-        const block: css.font_feature_values.Block = @enumFromInt(field_value);
+        const block: css.font_feature_values.Block = @fromBackingInt(@intCast(field_value));
         for ([_][]const u32{ &.{}, &.{1}, &.{ 1, 2 }, &.{ 1, 2, 3 } }) |sequence| {
             try data.map(block).set(allocator, "probe", sequence);
             try std.testing.expectEqualSlices(u32, sequence, data.map(block).get("probe").?);

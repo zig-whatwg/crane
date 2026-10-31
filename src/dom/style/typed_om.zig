@@ -60,7 +60,7 @@ pub fn numericType(value: *runtime.Instance) !math.Type {
         const power = @field(dictionary, field_name) orelse 0;
         result.powers[field_value] = power; // Q84: the shared exponent is WebIDL long.
     }
-    if (dictionary.percentHint) |hint| result.hint = std.meta.stringToEnum(math.Base, @import("enums").CSSNumericBaseType.idl_values[@intFromEnum(hint)]) orelse return error.TypeError;
+    if (dictionary.percentHint) |hint| result.hint = std.meta.stringToEnum(math.Base, @import("enums").CSSNumericBaseType.idl_values[@backingInt(hint)]) orelse return error.TypeError;
     return result;
 }
 
@@ -70,7 +70,7 @@ pub fn numericDictionary(value: math.Type) dictionaries.CSSNumericType {
         const power = value.powers[field_value];
         if (power != 0) @field(result, field_name) = power;
     }
-    if (value.hint) |hint| result.percentHint = @enumFromInt(@intFromEnum(hint));
+    if (value.hint) |hint| result.percentHint = @fromBackingInt(@intCast(@backingInt(hint)));
     return result;
 }
 
@@ -1385,7 +1385,7 @@ pub fn mapEntries(instance: *runtime.Instance) !IterableSnapshot {
     var names: std.ArrayList([]const u8) = .empty;
     defer names.deinit(allocator);
     inline for (@typeInfo(properties.Longhand).@"enum".field_values) |field_value| {
-        const longhand: properties.Longhand = @enumFromInt(field_value);
+        const longhand: properties.Longhand = @fromBackingInt(@intCast(field_value));
         try names.append(allocator, longhand.name());
     }
     const customs = try computed.customNames(allocator);

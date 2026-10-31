@@ -277,7 +277,7 @@ export fn intl_datetime_format_format(
 
     if (dtf == null) {
         setError("DateTimeFormat handle is null");
-        return @intFromEnum(IntlError.null_pointer);
+        return @backingInt(IntlError.null_pointer);
     }
 
     const internal: *DateTimeFormatInternal = @ptrCast(@alignCast(dtf));
@@ -300,7 +300,7 @@ export fn intl_datetime_format_format(
         dt.second,
     }) catch {
         setError("out of memory during formatting");
-        return @intFromEnum(IntlError.out_of_memory);
+        return @backingInt(IntlError.out_of_memory);
     };
     defer internal.allocator.free(formatted);
 
@@ -314,12 +314,12 @@ export fn intl_datetime_format_format(
     // Check if buffer is large enough
     if (out_buffer == null) {
         setError("output buffer is null");
-        return @intFromEnum(IntlError.null_pointer);
+        return @backingInt(IntlError.null_pointer);
     }
 
     if (buffer_len < required_len + 1) {
         setError("buffer too small");
-        return @intFromEnum(IntlError.buffer_too_small);
+        return @backingInt(IntlError.buffer_too_small);
     }
 
     // Copy to output buffer
@@ -367,7 +367,7 @@ export fn intl_datetime_format_format_to_parts(
 
     if (dtf == null) {
         setError("DateTimeFormat handle is null");
-        return @intFromEnum(IntlError.null_pointer);
+        return @backingInt(IntlError.null_pointer);
     }
 
     const internal: *DateTimeFormatInternal = @ptrCast(@alignCast(dtf));
@@ -388,7 +388,7 @@ export fn intl_datetime_format_format_to_parts(
         dt.second,
     }) catch {
         setError("out of memory during formatting");
-        return @intFromEnum(IntlError.out_of_memory);
+        return @backingInt(IntlError.out_of_memory);
     };
     defer internal.allocator.free(parts_json);
 
@@ -400,12 +400,12 @@ export fn intl_datetime_format_format_to_parts(
 
     if (out_buffer == null) {
         setError("output buffer is null");
-        return @intFromEnum(IntlError.null_pointer);
+        return @backingInt(IntlError.null_pointer);
     }
 
     if (buffer_len < required_len + 1) {
         setError("buffer too small");
-        return @intFromEnum(IntlError.buffer_too_small);
+        return @backingInt(IntlError.buffer_too_small);
     }
 
     const buf = out_buffer.?[0..buffer_len];
@@ -434,7 +434,7 @@ export fn intl_datetime_format_resolved_options(
 
     if (dtf == null) {
         setError("DateTimeFormat handle is null");
-        return @intFromEnum(IntlError.null_pointer);
+        return @backingInt(IntlError.null_pointer);
     }
 
     const internal: *DateTimeFormatInternal = @ptrCast(@alignCast(dtf));
@@ -444,7 +444,7 @@ export fn intl_datetime_format_resolved_options(
         \\{{"locale":"{s}","calendar":"gregory","numberingSystem":"latn","timeZone":"UTC"}}
     , .{internal.locale_tag}) catch {
         setError("out of memory");
-        return @intFromEnum(IntlError.out_of_memory);
+        return @backingInt(IntlError.out_of_memory);
     };
     defer internal.allocator.free(options_json);
 
@@ -456,12 +456,12 @@ export fn intl_datetime_format_resolved_options(
 
     if (out_buffer == null) {
         setError("output buffer is null");
-        return @intFromEnum(IntlError.null_pointer);
+        return @backingInt(IntlError.null_pointer);
     }
 
     if (buffer_len < required_len + 1) {
         setError("buffer too small");
-        return @intFromEnum(IntlError.buffer_too_small);
+        return @backingInt(IntlError.buffer_too_small);
     }
 
     const buf = out_buffer.?[0..buffer_len];
@@ -517,7 +517,7 @@ export fn intl_number_format_format(
     _ = out_buffer;
     _ = buffer_len;
     setError("NumberFormat not yet implemented");
-    return @intFromEnum(IntlError.internal_error);
+    return @backingInt(IntlError.internal_error);
 }
 
 /// Destroy a NumberFormat instance.
@@ -554,7 +554,7 @@ export fn intl_collator_compare(
     _ = str_a;
     _ = str_b;
     setError("Collator not yet implemented");
-    return @intFromEnum(IntlError.internal_error);
+    return @backingInt(IntlError.internal_error);
 }
 
 /// Destroy a Collator instance.
@@ -593,7 +593,7 @@ export fn intl_plural_rules_select(
     _ = out_buffer;
     _ = buffer_len;
     setError("PluralRules not yet implemented");
-    return @intFromEnum(IntlError.internal_error);
+    return @backingInt(IntlError.internal_error);
 }
 
 /// Destroy a PluralRules instance.
@@ -629,7 +629,7 @@ export fn intl_locale_base_name(
     _ = out_buffer;
     _ = buffer_len;
     setError("Locale not yet implemented");
-    return @intFromEnum(IntlError.internal_error);
+    return @backingInt(IntlError.internal_error);
 }
 
 /// Maximize locale subtags (add likely subtags).
@@ -642,7 +642,7 @@ export fn intl_locale_maximize(
     _ = out_buffer;
     _ = buffer_len;
     setError("Locale maximize not yet implemented");
-    return @intFromEnum(IntlError.internal_error);
+    return @backingInt(IntlError.internal_error);
 }
 
 /// Minimize locale subtags (remove likely subtags).
@@ -655,7 +655,7 @@ export fn intl_locale_minimize(
     _ = out_buffer;
     _ = buffer_len;
     setError("Locale minimize not yet implemented");
-    return @intFromEnum(IntlError.internal_error);
+    return @backingInt(IntlError.internal_error);
 }
 
 /// Destroy a Locale instance.
@@ -694,12 +694,12 @@ export fn intl_get_supported_locales(
 
     if (out_buffer == null) {
         setError("output buffer is null");
-        return @intFromEnum(IntlError.null_pointer);
+        return @backingInt(IntlError.null_pointer);
     }
 
     if (buffer_len < locales_json.len + 1) {
         setError("buffer too small");
-        return @intFromEnum(IntlError.buffer_too_small);
+        return @backingInt(IntlError.buffer_too_small);
     }
 
     const buf = out_buffer.?[0..buffer_len];
@@ -719,7 +719,7 @@ export fn intl_get_canonical_locales(
 
     if (locale == null) {
         setError("locale cannot be null");
-        return @intFromEnum(IntlError.null_pointer);
+        return @backingInt(IntlError.null_pointer);
     }
 
     const locale_str = std.mem.span(locale.?);
@@ -728,7 +728,7 @@ export fn intl_get_canonical_locales(
     // TODO: Full canonicalization per BCP 47
     var canonical = global_allocator.alloc(u8, locale_str.len) catch {
         setError("out of memory");
-        return @intFromEnum(IntlError.out_of_memory);
+        return @backingInt(IntlError.out_of_memory);
     };
     defer global_allocator.free(canonical);
 
@@ -752,12 +752,12 @@ export fn intl_get_canonical_locales(
 
     if (out_buffer == null) {
         setError("output buffer is null");
-        return @intFromEnum(IntlError.null_pointer);
+        return @backingInt(IntlError.null_pointer);
     }
 
     if (buffer_len < canonical.len + 1) {
         setError("buffer too small");
-        return @intFromEnum(IntlError.buffer_too_small);
+        return @backingInt(IntlError.buffer_too_small);
     }
 
     const buf = out_buffer.?[0..buffer_len];
@@ -835,7 +835,7 @@ test "DateTimeFormat null handling" {
     // Null handle should return error
     var buffer: [256]u8 = undefined;
     const result = intl_datetime_format_format(null, 0, &buffer, buffer.len);
-    try std.testing.expectEqual(@intFromEnum(IntlError.null_pointer), result);
+    try std.testing.expectEqual(@backingInt(IntlError.null_pointer), result);
 }
 
 test "DateTimeFormat empty locale" {

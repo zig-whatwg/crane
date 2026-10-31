@@ -71,8 +71,8 @@ pub const Share = struct {
         _ = curl_share_setopt(handle, CURLSHOPT_USERDATA, @as(?*anyopaque, self));
         _ = curl_share_setopt(handle, CURLSHOPT_LOCKFUNC, @as(*const anyopaque, @ptrCast(&lock)));
         _ = curl_share_setopt(handle, CURLSHOPT_UNLOCKFUNC, @as(*const anyopaque, @ptrCast(&unlock)));
-        _ = curl_share_setopt(handle, CURLSHOPT_SHARE, @as(c_int, @intFromEnum(LockData.connect)));
-        _ = curl_share_setopt(handle, CURLSHOPT_SHARE, @as(c_int, @intFromEnum(LockData.dns)));
+        _ = curl_share_setopt(handle, CURLSHOPT_SHARE, @as(c_int, @backingInt(LockData.connect)));
+        _ = curl_share_setopt(handle, CURLSHOPT_SHARE, @as(c_int, @backingInt(LockData.dns)));
         return self;
     }
 
@@ -91,11 +91,11 @@ pub const Share = struct {
     /// Take one kind's lock as curl would - for a test that holds a share's
     /// connection cache while another share's transfer runs.
     pub fn hold(self: *Share, data: LockData) void {
-        std.Io.Threaded.mutexLockUncancelable(&self.locks[@intCast(@intFromEnum(data))]);
+        std.Io.Threaded.mutexLockUncancelable(&self.locks[@intCast(@backingInt(data))]);
     }
 
     pub fn release(self: *Share, data: LockData) void {
-        std.Io.Threaded.mutexUnlock(&self.locks[@intCast(@intFromEnum(data))]);
+        std.Io.Threaded.mutexUnlock(&self.locks[@intCast(@backingInt(data))]);
     }
 
     fn lock(_: ?*anyopaque, data: c_int, _: c_int, user: ?*anyopaque) callconv(.c) void {

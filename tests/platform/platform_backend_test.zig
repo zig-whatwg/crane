@@ -383,7 +383,7 @@ test "createEmptyBackend - no capabilities available" {
 
     // hasCapability should return false for all
     inline for (@typeInfo(Capability).@"enum".field_values) |field_value| {
-        const cap: Capability = @enumFromInt(field_value);
+        const cap: Capability = @fromBackingInt(@intCast(field_value));
         try testing.expect(!backend.hasCapability(cap));
     }
 }
@@ -401,7 +401,7 @@ test "Clipboard VTable - permission denied handling" {
 
     var buffer: [100]u8 = undefined;
     const result = stub.stub_clipboard_vtable.call_readText(&ctx, &buffer, buffer.len);
-    try testing.expectEqual(@intFromEnum(ClipboardResult.permission_denied), result);
+    try testing.expectEqual(@backingInt(ClipboardResult.permission_denied), result);
 }
 
 test "Clipboard VTable - empty clipboard handling" {
@@ -411,7 +411,7 @@ test "Clipboard VTable - empty clipboard handling" {
     // Don't set any clipboard content
     var buffer: [100]u8 = undefined;
     const result = stub.stub_clipboard_vtable.call_readText(&ctx, &buffer, buffer.len);
-    try testing.expectEqual(@intFromEnum(ClipboardResult.empty), result);
+    try testing.expectEqual(@backingInt(ClipboardResult.empty), result);
 }
 
 test "Clipboard VTable - buffer size query" {
@@ -431,7 +431,7 @@ test "Storage VTable - non-existent key" {
 
     var buffer: [100]u8 = undefined;
     const result = stub.stub_storage_vtable.call_getItem(&ctx, "nonexistent", 11, &buffer, buffer.len);
-    try testing.expectEqual(@intFromEnum(StorageResult.not_found), result);
+    try testing.expectEqual(@backingInt(StorageResult.not_found), result);
 }
 
 test "Storage VTable - clear operation" {

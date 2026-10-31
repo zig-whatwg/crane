@@ -801,7 +801,7 @@ const preferred_shorthands = blk: {
     var out: [fields.len - 4]Shorthand = undefined;
     var n: usize = 0;
     for (fields) |f| {
-        const s: Shorthand = @enumFromInt(f.value);
+        const s: Shorthand = @fromBackingInt(@intCast(f.value));
         // Legacy one-member aliases are emitted with their canonical longhand.
         if (s == .all or s == ._webkit_text_orientation or s == ._webkit_transform or s == ._webkit_perspective) continue;
         out[n] = s;

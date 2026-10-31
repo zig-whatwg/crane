@@ -127,7 +127,7 @@ fn Probe(comptime U: type, comptime overloads: []const Overload) type {
                 return;
             };
             defer resolver.freeConstructorOverload(U, overloads, testing.allocator, args);
-            chosen = @intFromEnum(std.meta.activeTag(args));
+            chosen = @backingInt(std.meta.activeTag(args));
             if (U == ContextLike) switch (args) {
                 .options => |o| chosen_label_len = if (o.label) |l| l.asSlice().len else 0,
                 else => {},

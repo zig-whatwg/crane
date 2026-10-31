@@ -147,7 +147,7 @@ pub const Server = struct {
         defer self.allocator.free(result.body);
 
         // Send response
-        try self.sendRawResponse(io, stream, @intFromEnum(result.status), result.body);
+        try self.sendRawResponse(io, stream, @backingInt(result.status), result.body);
     }
 
     /// Parse HTTP request (simple implementation)

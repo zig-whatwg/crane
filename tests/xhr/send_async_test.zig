@@ -81,11 +81,11 @@ fn expectNames(expected: []const []const u8, actual: []const []const u8) !void {
 }
 
 test "readyState - the spec's five values" {
-    try std.testing.expectEqual(@as(u16, 0), @intFromEnum(ReadyState.UNSENT));
-    try std.testing.expectEqual(@as(u16, 1), @intFromEnum(ReadyState.OPENED));
-    try std.testing.expectEqual(@as(u16, 2), @intFromEnum(ReadyState.HEADERS_RECEIVED));
-    try std.testing.expectEqual(@as(u16, 3), @intFromEnum(ReadyState.LOADING));
-    try std.testing.expectEqual(@as(u16, 4), @intFromEnum(ReadyState.DONE));
+    try std.testing.expectEqual(@as(u16, 0), @backingInt(ReadyState.UNSENT));
+    try std.testing.expectEqual(@as(u16, 1), @backingInt(ReadyState.OPENED));
+    try std.testing.expectEqual(@as(u16, 2), @backingInt(ReadyState.HEADERS_RECEIVED));
+    try std.testing.expectEqual(@as(u16, 3), @backingInt(ReadyState.LOADING));
+    try std.testing.expectEqual(@as(u16, 4), @backingInt(ReadyState.DONE));
 }
 
 test "send() - step 1: not opened is an InvalidStateError" {

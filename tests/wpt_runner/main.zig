@@ -869,7 +869,7 @@ pub fn executeTests(
                         const valid = @min(t.index, t.instruction_addresses.len);
                         const dbg_trace: std.debug.StackTrace = .{
                             .return_addresses = t.instruction_addresses[0..valid],
-                            .skipped = @enumFromInt(t.index - valid),
+                            .skipped = @fromBackingInt(@intCast(t.index - valid)),
                         };
                         std.debug.dumpStackTrace(&dbg_trace);
                         std.debug.print("=== END ERROR ===\n\n", .{});

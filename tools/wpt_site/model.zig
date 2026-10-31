@@ -599,8 +599,8 @@ test "exemptions: a complete entry parses, with every browser's evidence" {
     try testing.expectEqualStrings("css/x/declined.html", e.path);
     try testing.expectEqualStrings("all three keep the old behaviour on purpose", e.why);
     try testing.expectEqualStrings("https://example.org/spec#step", e.spec);
-    try testing.expectEqualStrings("wpt.fyi run 4877098740350976: 0/4", e.result[@intFromEnum(Browser.firefox)]);
-    try testing.expectEqualStrings("https://github.com/WebKit/standards-positions/issues/3", e.intent[@intFromEnum(Browser.safari)]);
+    try testing.expectEqualStrings("wpt.fyi run 4877098740350976: 0/4", e.result[@backingInt(Browser.firefox)]);
+    try testing.expectEqualStrings("https://github.com/WebKit/standards-positions/issues/3", e.intent[@backingInt(Browser.safari)]);
 }
 
 test "exemptions: the empty file, and comments alone, exempt nothing" {

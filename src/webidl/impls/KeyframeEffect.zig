@@ -68,7 +68,7 @@ pub fn get_pseudoElement(instance: *runtime.Instance) anyerror!?typedefs.CSSOMSt
 /// Getter for composite.
 pub fn get_composite(instance: *runtime.Instance) anyerror!enums.CompositeOperation {
     const effect = try modelOf(instance);
-    return @enumFromInt(@intFromEnum(effect.composite));
+    return @fromBackingInt(@intCast(@backingInt(effect.composite)));
 }
 
 /// Getter for iterationComposite (Web Animations 2).
@@ -97,7 +97,7 @@ pub fn set_pseudoElement(instance: *runtime.Instance, value: ?typedefs.CSSOMStri
 /// Setter for composite.
 pub fn set_composite(instance: *runtime.Instance, value: enums.CompositeOperation) anyerror!void {
     const effect = try modelOf(instance);
-    effect.composite = @enumFromInt(@intFromEnum(value));
+    effect.composite = @fromBackingInt(@intCast(@backingInt(value)));
     animations.registry.valuesChanged(instance.ctx);
 }
 

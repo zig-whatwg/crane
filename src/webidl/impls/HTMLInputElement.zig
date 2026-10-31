@@ -91,7 +91,7 @@ pub const InputType = enum {
     pub fn fromAttribute(value: ?[]const u8) InputType {
         const v = value orelse return .text;
         inline for (comptime std.meta.fieldNames(InputType), @typeInfo(InputType).@"enum".field_values) |field_name, field_value| {
-            if (std.ascii.eqlIgnoreCase(v, field_name)) return @enumFromInt(field_value);
+            if (std.ascii.eqlIgnoreCase(v, field_name)) return @fromBackingInt(@intCast(field_value));
         }
         return .text;
     }

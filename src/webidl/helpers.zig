@@ -40,7 +40,7 @@ pub const GlobalScope = enum {
     pub fn fromString(identifier: []const u8) ?GlobalScope {
         inline for (comptime std.meta.fieldNames(GlobalScope), @typeInfo(GlobalScope).@"enum".field_values) |field_name, field_value| {
             if (std.mem.eql(u8, identifier, field_name)) {
-                return @enumFromInt(field_value);
+                return @fromBackingInt(@intCast(field_value));
             }
         }
         return null;

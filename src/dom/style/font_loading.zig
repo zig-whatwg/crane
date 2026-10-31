@@ -868,7 +868,7 @@ fn tagDescriptor(allocator: Allocator, kind: Descriptor, stream: *Stream) Alloca
 }
 
 pub fn parseDescriptor(allocator: Allocator, kind: Descriptor, text: []const u8) Allocator.Error!?[]u8 {
-    if (@intFromEnum(kind) >= @intFromEnum(Descriptor.ascent_override)) return extendedDescriptor(allocator, kind, text);
+    if (@backingInt(kind) >= @backingInt(Descriptor.ascent_override)) return extendedDescriptor(allocator, kind, text);
     if (kind == .family) return familyDescriptor(allocator, text);
     if (kind == .unicode_range) {
         const ranges = (try parseUnicodeRanges(allocator, text)) orelse return null;

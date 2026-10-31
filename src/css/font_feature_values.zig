@@ -23,7 +23,7 @@ pub const Block = enum {
 
     pub fn parse(name_text: []const u8) ?Block {
         inline for (@typeInfo(Block).@"enum".field_values) |field_value| {
-            const block: Block = @enumFromInt(field_value);
+            const block: Block = @fromBackingInt(@intCast(field_value));
             if (std.mem.eql(u8, name_text, block.name())) return block;
         }
         // Q33 probe (Chrome 156, Firefox 158, Safari 27, 2026-10-27):
@@ -113,7 +113,7 @@ pub const Data = struct {
     }
 
     pub fn map(self: *Data, block: Block) *Map {
-        return &self.maps[@intFromEnum(block)];
+        return &self.maps[@backingInt(block)];
     }
 
     pub fn setFamily(self: *Data, text: []const u8) Allocator.Error!bool {
@@ -135,7 +135,7 @@ pub const Data = struct {
             try out.appendSlice(allocator, "; ");
         }
         inline for (@typeInfo(Block).@"enum".field_values) |field_value| {
-            const block: Block = @enumFromInt(field_value);
+            const block: Block = @fromBackingInt(@intCast(field_value));
             const entries = &self.maps[field_value];
             if (entries.entries.count() != 0) {
                 try out.append(allocator, '@');
@@ -175,7 +175,7 @@ pub fn fromParsed(allocator: Allocator, parsed: *const rules.Rule) Allocator.Err
         const token = stream.next();
         if (token.token_type != .ident or !stream.atEnd()) continue;
         inline for (@typeInfo(FontDisplay).@"enum".field_names, @typeInfo(FontDisplay).@"enum".field_values) |field_name, field_value| {
-            if (tokens.nameEql(token.value, field_name)) data.font_display = @enumFromInt(field_value);
+            if (tokens.nameEql(token.value, field_name)) data.font_display = @fromBackingInt(@intCast(field_value));
         }
     }
     for (parsed.children) |child| {

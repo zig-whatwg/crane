@@ -17,7 +17,7 @@ pub const Term = struct {
             result.value *= scale;
             unit = unit.canonical();
         }
-        if (unit != .number) result.units[@intFromEnum(unit)] = 1;
+        if (unit != .number) result.units[@backingInt(unit)] = 1;
         return result;
     }
 
@@ -27,7 +27,7 @@ pub const Term = struct {
         for (self.units, 0..) |power, index| {
             if (power == 0) continue;
             if (power != 1 or unit != .number) return error.Invalid;
-            unit = @enumFromInt(index);
+            unit = @fromBackingInt(@intCast(index));
         }
         return .{ .value = self.value, .unit = unit };
     }
@@ -60,9 +60,9 @@ fn typeOf(item: Term) error{Invalid}!math.Type {
     var result: math.Type = .{};
     for (item.units, 0..) |power, index| {
         if (power == 0) continue;
-        const unit: math.Unit = @enumFromInt(index);
+        const unit: math.Unit = @fromBackingInt(@intCast(index));
         const base = unit.base() orelse continue;
-        const b = @intFromEnum(base);
+        const b = @backingInt(base);
         result.powers[b] +%= power;
     }
     return result;

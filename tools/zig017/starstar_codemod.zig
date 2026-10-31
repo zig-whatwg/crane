@@ -98,7 +98,7 @@ pub fn rewriteSource(arena: Allocator, source: [:0]const u8) !Result {
     if (tree.errors.len != 0) return error.ParseError;
     var mults: std.ArrayList(Ast.Node.Index) = .empty;
     for (0..tree.nodes.len) |i| {
-        const node: Ast.Node.Index = @enumFromInt(i);
+        const node: Ast.Node.Index = @fromBackingInt(@intCast(i));
         if (tree.nodeTag(node) == .array_mult) try mults.append(arena, node);
     }
     var sites: std.ArrayList(Site) = .empty;

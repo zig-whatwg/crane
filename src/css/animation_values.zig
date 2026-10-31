@@ -382,7 +382,7 @@ fn parseTimeline(options: properties.ParseOptions, stream: *Stream) Error!Item {
         if (!axis and t.token_type == .ident) {
             inline for (@typeInfo(@TypeOf(result.axis)).@"enum".field_names, @typeInfo(@TypeOf(result.axis)).@"enum".field_values) |field_name, field_value| {
                 if (tokens.nameEql(t.value, field_name)) {
-                    result.axis = @enumFromInt(field_value);
+                    result.axis = @fromBackingInt(@intCast(field_value));
                     axis = true;
                     matched = true;
                 }
@@ -395,7 +395,7 @@ fn parseTimeline(options: properties.ParseOptions, stream: *Stream) Error!Item {
         if (result.kind == .scroll and !scroller and t.token_type == .ident) {
             inline for (@typeInfo(@TypeOf(result.scroller)).@"enum".field_names, @typeInfo(@TypeOf(result.scroller)).@"enum".field_values) |field_name, field_value| {
                 if (tokens.nameEql(t.value, field_name)) {
-                    result.scroller = @enumFromInt(field_value);
+                    result.scroller = @fromBackingInt(@intCast(field_value));
                     scroller = true;
                     matched = true;
                 }

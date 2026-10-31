@@ -175,7 +175,7 @@ pub const Feature = enum {
     pub fn fromString(name: []const u8) ?Feature {
         // Normalize by lowercasing
         inline for (@typeInfo(Feature).@"enum".field_values) |field_value| {
-            const feature: Feature = @enumFromInt(field_value);
+            const feature: Feature = @fromBackingInt(@intCast(field_value));
             if (std.ascii.eqlIgnoreCase(name, feature.toString())) {
                 return feature;
             }
@@ -466,7 +466,7 @@ pub const PermissionsPolicy = struct {
         var policy = initWithOrigin(allocator, document_origin);
         errdefer policy.deinit();
         inline for (@typeInfo(Feature).@"enum".field_values) |field_value| {
-            const feature: Feature = @enumFromInt(field_value);
+            const feature: Feature = @fromBackingInt(@intCast(field_value));
             if (!inheritedValue(feature, parent, container, policy.origin())) policy.disabled_inherited.insert(feature);
         }
         if (header) |value| try policy.parseHeader(value);
@@ -614,7 +614,7 @@ pub const PermissionsPolicy = struct {
     pub fn setInheritedPolicy(self: *Self, parent: *const Self) void {
         self.disabled_inherited = .empty;
         inline for (@typeInfo(Feature).@"enum".field_values) |field_value| {
-            const feature: Feature = @enumFromInt(field_value);
+            const feature: Feature = @fromBackingInt(@intCast(field_value));
             if (!inheritedValue(feature, parent, null, self.origin())) self.disabled_inherited.insert(feature);
         }
     }
@@ -768,7 +768,7 @@ pub const Policies = struct {
         const target = if (std.mem.eql(u8, origin.serialized, "null")) origin else originView(snapshot.child_origin);
         var disabled: std.enums.EnumSet(Feature) = .empty;
         inline for (@typeInfo(Feature).@"enum".field_values) |field_value| {
-            const feature: Feature = @enumFromInt(field_value);
+            const feature: Feature = @fromBackingInt(@intCast(field_value));
             if (!PermissionsPolicy.inheritedValue(feature, &snapshot.parent, if (snapshot.container) |*container| container else null, target)) disabled.insert(feature);
         }
         self.enforce.disabled_inherited = disabled;

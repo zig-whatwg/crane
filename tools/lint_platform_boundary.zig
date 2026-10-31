@@ -288,7 +288,7 @@ fn testLines(gpa: std.mem.Allocator, source: [:0]const u8) !std.ArrayList([2]u32
     if (tree.errors.len > 0) return out;
     var i: u32 = 0;
     while (i < tree.nodes.len) : (i += 1) {
-        const node: std.zig.Ast.Node.Index = @enumFromInt(i);
+        const node: std.zig.Ast.Node.Index = @fromBackingInt(@intCast(i));
         if (tree.nodeTag(node) != .test_decl) continue;
         const first: u32 = @intCast(tree.tokenLocation(0, tree.firstToken(node)).line + 1);
         const last: u32 = @intCast(tree.tokenLocation(0, tree.lastToken(node)).line + 1);

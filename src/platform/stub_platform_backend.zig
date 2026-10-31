@@ -197,10 +197,10 @@ fn stubClipboardReadText(user_context: OpaquePtr, buffer: ?[*]u8, buffer_size: u
     const ctx: *StubContext = @ptrCast(@alignCast(user_context));
 
     if (!ctx.clipboard_read_allowed) {
-        return @intFromEnum(ClipboardResult.permission_denied);
+        return @backingInt(ClipboardResult.permission_denied);
     }
 
-    const text = ctx.clipboard_text orelse return @intFromEnum(ClipboardResult.empty);
+    const text = ctx.clipboard_text orelse return @backingInt(ClipboardResult.empty);
 
     if (buffer) |buf| {
         const copy_len = @min(text.len, buffer_size);
@@ -229,10 +229,10 @@ fn stubClipboardReadHtml(user_context: OpaquePtr, buffer: ?[*]u8, buffer_size: u
     const ctx: *StubContext = @ptrCast(@alignCast(user_context));
 
     if (!ctx.clipboard_read_allowed) {
-        return @intFromEnum(ClipboardResult.permission_denied);
+        return @backingInt(ClipboardResult.permission_denied);
     }
 
-    const html = ctx.clipboard_html orelse return @intFromEnum(ClipboardResult.empty);
+    const html = ctx.clipboard_html orelse return @backingInt(ClipboardResult.empty);
 
     if (buffer) |buf| {
         const copy_len = @min(html.len, buffer_size);
@@ -568,7 +568,7 @@ fn stubStorageGetItem(
     const ctx: *StubContext = @ptrCast(@alignCast(user_context));
     const key_slice = key[0..key_len];
 
-    const value = ctx.storage.get(key_slice) orelse return @intFromEnum(StorageResult.not_found);
+    const value = ctx.storage.get(key_slice) orelse return @backingInt(StorageResult.not_found);
 
     if (buffer) |buf| {
         const copy_len = @min(value.len, buffer_size);
@@ -656,7 +656,7 @@ fn stubStorageKey(
         i += 1;
     }
 
-    return @intFromEnum(StorageResult.not_found);
+    return @backingInt(StorageResult.not_found);
 }
 
 fn stubStorageGetQuota(
@@ -696,15 +696,15 @@ fn stubFSGetDirectoryHandle(_: OpaquePtr, _: u64, _: [*]const u8, _: usize, _: b
 }
 
 fn stubFSRead(_: OpaquePtr, _: u64, _: u64, _: [*]u8, _: usize) callconv(.c) i64 {
-    return @intFromEnum(FileSystemResult.not_found);
+    return @backingInt(FileSystemResult.not_found);
 }
 
 fn stubFSWrite(_: OpaquePtr, _: u64, _: u64, _: [*]const u8, _: usize) callconv(.c) i64 {
-    return @intFromEnum(FileSystemResult.not_found);
+    return @backingInt(FileSystemResult.not_found);
 }
 
 fn stubFSGetSize(_: OpaquePtr, _: u64) callconv(.c) i64 {
-    return @intFromEnum(FileSystemResult.not_found);
+    return @backingInt(FileSystemResult.not_found);
 }
 
 fn stubFSCloseFile(_: OpaquePtr, _: u64) callconv(.c) void {}

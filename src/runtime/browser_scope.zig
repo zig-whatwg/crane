@@ -211,18 +211,18 @@ pub const BrowserScope = struct {
     /// This scope's side table `tag`, of type `T`, made on first use. One
     /// atomic load once it exists. Every caller of a tag names the same `T`.
     pub inline fn table(self: *BrowserScope, comptime tag: Table, comptime T: type) Allocator.Error!*T {
-        if (self.tables[@intFromEnum(tag)].load(.acquire)) |ptr| return @ptrCast(@alignCast(ptr));
+        if (self.tables[@backingInt(tag)].load(.acquire)) |ptr| return @ptrCast(@alignCast(ptr));
         return self.makeTable(tag, T);
     }
 
     /// This scope's side table `tag` if it was made; never makes one.
     pub inline fn existingTable(self: *BrowserScope, comptime tag: Table, comptime T: type) ?*T {
-        const ptr = self.tables[@intFromEnum(tag)].load(.acquire) orelse return null;
+        const ptr = self.tables[@backingInt(tag)].load(.acquire) orelse return null;
         return @ptrCast(@alignCast(ptr));
     }
 
     fn makeTable(self: *BrowserScope, comptime tag: Table, comptime T: type) Allocator.Error!*T {
-        const index = @intFromEnum(tag);
+        const index = @backingInt(tag);
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         if (self.tables[index].load(.acquire)) |ptr| return @ptrCast(@alignCast(ptr));

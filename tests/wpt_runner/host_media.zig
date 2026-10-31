@@ -28,7 +28,7 @@ const hosts = [_]media.MediaBackend{ wav_backend.backend, webm_backend.backend }
 
 fn canPlayType(_: ?*anyopaque, mime: []const u8) media.Support {
     var best: media.Support = .unsupported;
-    for (hosts) |host| best = @enumFromInt(@max(@intFromEnum(best), @intFromEnum(host.canPlayType(mime))));
+    for (hosts) |host| best = @fromBackingInt(@intCast(@max(@backingInt(best), @backingInt(host.canPlayType(mime)))));
     return best;
 }
 

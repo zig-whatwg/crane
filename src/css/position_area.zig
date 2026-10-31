@@ -134,7 +134,7 @@ const by_name = blk: {
     };
     var entries: [fields.len]struct { []const u8, Keyword } = undefined;
     for (fields, 0..) |f, i| {
-        const k: Keyword = @enumFromInt(f.value);
+        const k: Keyword = @fromBackingInt(@intCast(f.value));
         entries[i] = .{ k.name(), k };
     }
     break :blk std.StaticStringMap(Keyword).initComptime(entries);
@@ -143,7 +143,7 @@ fn keyword(token: tokenizer.Token) ?Keyword {
     if (token.token_type != .ident) return null;
     if (std.mem.indexOfScalar(u8, token.value, '\\') != null) {
         inline for (@typeInfo(Keyword).@"enum".field_values) |f_value| {
-            const k: Keyword = @enumFromInt(f_value);
+            const k: Keyword = @fromBackingInt(@intCast(f_value));
             if (tokenizer.nameEql(token.value, k.name())) return k;
         }
         return null;

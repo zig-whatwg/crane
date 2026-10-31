@@ -76,7 +76,7 @@ const names = std.StaticStringMap(Variable).initComptime(blk: {
         var spelling: [field.name.len]u8 = undefined;
         for (field.name, 0..) |c, j| spelling[j] = if (c == '_') '-' else c;
         const name = spelling;
-        entries[i] = .{ &name, @enumFromInt(field.value) };
+        entries[i] = .{ &name, @fromBackingInt(@intCast(field.value)) };
     }
     break :blk entries;
 });

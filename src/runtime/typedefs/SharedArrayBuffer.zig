@@ -22,7 +22,7 @@ pub const SharedArrayBuffer = struct {
     /// The memory is aligned to 16 bytes to support atomic operations on all types.
     pub fn init(allocator: std.mem.Allocator, size: usize) !SharedArrayBuffer {
         // Allocate with 16-byte alignment for atomic operations
-        const data = try allocator.alignedAlloc(u8, @enumFromInt(4), size); // 2^4 = 16 bytes
+        const data = try allocator.alignedAlloc(u8, @fromBackingInt(@intCast(4)), size); // 2^4 = 16 bytes
         @memset(data, 0);
 
         return SharedArrayBuffer{
@@ -33,7 +33,7 @@ pub const SharedArrayBuffer = struct {
 
     pub fn deinit(self: *SharedArrayBuffer) void {
         // Must free with the same alignment we allocated with (16 bytes = 2^4)
-        self.allocator.rawFree(self.data, @enumFromInt(4), @returnAddress());
+        self.allocator.rawFree(self.data, @fromBackingInt(@intCast(4)), @returnAddress());
     }
 
     /// Get the byte length of this SharedArrayBuffer

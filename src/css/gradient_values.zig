@@ -393,7 +393,7 @@ fn interpolation(stream: *properties.Stream) ?Method {
         inline for (@typeInfo(spaces.HueMethod).@"enum".field_names, @typeInfo(spaces.HueMethod).@"enum".field_values) |field_name, field_value| {
             if (keyword(stream, field_name)) {
                 if (!keyword(stream, "hue")) return null;
-                method.hue = @enumFromInt(field_value);
+                method.hue = @fromBackingInt(@intCast(field_value));
                 return method;
             }
         }
@@ -448,7 +448,7 @@ fn geometry(result: *Gradient, options: properties.ParseOptions, stream: *proper
                 }
                 var extent: ?Extent = null;
                 inline for (@typeInfo(Extent).@"enum".field_values) |field_value| {
-                    const candidate: Extent = @enumFromInt(field_value);
+                    const candidate: Extent = @fromBackingInt(@intCast(field_value));
                     if (extent == null and keyword(stream, extentName(candidate))) extent = candidate;
                 }
                 if (extent) |found| {

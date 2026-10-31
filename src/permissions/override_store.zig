@@ -21,7 +21,7 @@ pub const OverrideStore = struct {
         pub fn hash(_: @This(), key: Key) u64 {
             var h = std.hash.Wyhash.init(0);
             h.update(key.permission_key);
-            h.update(&.{@intFromEnum(key.name)});
+            h.update(&.{@backingInt(key.name)});
             return h.final();
         }
 

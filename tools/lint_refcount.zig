@@ -178,7 +178,7 @@ pub fn findings(gpa: std.mem.Allocator, path: []const u8, source: [:0]const u8) 
 
     var i: u32 = 0;
     while (i < tree.nodes.len) : (i += 1) {
-        const node: std.zig.Ast.Node.Index = @enumFromInt(i);
+        const node: std.zig.Ast.Node.Index = @fromBackingInt(@intCast(i));
         if (tree.nodeTag(node) == .test_decl) try tests.append(gpa, .{ tree.firstToken(node), tree.lastToken(node) });
         if (tree.fullVarDecl(node)) |decl| {
             if (decl.ast.init_node.unwrap()) |init_node| {
@@ -194,7 +194,7 @@ pub fn findings(gpa: std.mem.Allocator, path: []const u8, source: [:0]const u8) 
 
     i = 0;
     while (i < tree.nodes.len) : (i += 1) {
-        const node: std.zig.Ast.Node.Index = @enumFromInt(i);
+        const node: std.zig.Ast.Node.Index = @fromBackingInt(@intCast(i));
         const first = tree.firstToken(node);
         var in_test = false;
         for (tests.items) |range| {

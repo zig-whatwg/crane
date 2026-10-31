@@ -167,7 +167,7 @@ pub fn zigVariables(gpa: std.mem.Allocator, source: [:0]const u8) !std.ArrayList
     const node_count = tree.nodes.len;
     var i: u32 = 0;
     while (i < node_count) : (i += 1) {
-        const node: std.zig.Ast.Node.Index = @enumFromInt(i);
+        const node: std.zig.Ast.Node.Index = @fromBackingInt(@intCast(i));
         switch (tree.nodeTag(node)) {
             .test_decl => try tests.append(gpa, .{ tree.firstToken(node), tree.lastToken(node) }),
             .fn_decl => {
@@ -199,7 +199,7 @@ pub fn zigVariables(gpa: std.mem.Allocator, source: [:0]const u8) !std.ArrayList
     }
     i = 0;
     while (i < node_count) : (i += 1) {
-        const node: std.zig.Ast.Node.Index = @enumFromInt(i);
+        const node: std.zig.Ast.Node.Index = @fromBackingInt(@intCast(i));
         var buf: [2]std.zig.Ast.Node.Index = undefined;
         const container = tree.fullContainerDecl(&buf, node) orelse continue;
         members: for (container.ast.members) |member| {
@@ -966,7 +966,7 @@ fn printTotals(out: *std.Io.Writer, arena: std.mem.Allocator, current: *const Co
     var per_class: std.StringArrayHashMapUnmanaged(u32) = .empty;
     var it = current.iterator();
     while (it.next()) |entry| {
-        per_kind[@intFromEnum(entry.value_ptr.kind)] += entry.value_ptr.count;
+        per_kind[@backingInt(entry.value_ptr.kind)] += entry.value_ptr.count;
         const class = if (baseline) |b| (if (b.get(entry.key_ptr.*)) |e| e.class else "?") else "?";
         const gop = try per_class.getOrPut(arena, class);
         if (!gop.found_existing) gop.value_ptr.* = 0;
@@ -974,7 +974,7 @@ fn printTotals(out: *std.Io.Writer, arena: std.mem.Allocator, current: *const Co
     }
     try out.print("  by kind:", .{});
     inline for (@typeInfo(Kind).@"enum".field_values) |field_value| {
-        const kind: Kind = @enumFromInt(field_value);
+        const kind: Kind = @fromBackingInt(@intCast(field_value));
         try out.print(" {s} {d}", .{ kind.label(), per_kind[field_value] });
     }
     try out.print("\n  by class:", .{});

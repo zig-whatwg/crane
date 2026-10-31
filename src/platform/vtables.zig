@@ -1479,8 +1479,8 @@ test "VTable structs are extern" {
 
 test "Enum types are C compatible" {
     // Verify enums have explicit integer backing
-    try std.testing.expectEqual(@as(i32, 0), @intFromEnum(ClipboardResult.success));
-    try std.testing.expectEqual(@as(i32, -1), @intFromEnum(ClipboardResult.permission_denied));
-    try std.testing.expectEqual(@as(i32, 0), @intFromEnum(NotificationPermission.default));
-    try std.testing.expectEqual(@as(i32, 1), @intFromEnum(NotificationPermission.granted));
+    try std.testing.expectEqual(@as(i32, 0), @backingInt(ClipboardResult.success));
+    try std.testing.expectEqual(@as(i32, -1), @backingInt(ClipboardResult.permission_denied));
+    try std.testing.expectEqual(@as(i32, 0), @backingInt(NotificationPermission.default));
+    try std.testing.expectEqual(@as(i32, 1), @backingInt(NotificationPermission.granted));
 }

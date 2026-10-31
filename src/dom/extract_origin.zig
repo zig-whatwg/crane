@@ -21,7 +21,7 @@ var implementations: [@typeInfo(Owner).@"enum".field_names.len]?Implementation =
 
 pub fn install(owner: Owner, steps: Implementation) void {
     process_start.assertInstalling();
-    implementations[@intFromEnum(owner)] = steps;
+    implementations[@backingInt(owner)] = steps;
 }
 
 /// A platform object without extraction steps returns null (HTML's default).

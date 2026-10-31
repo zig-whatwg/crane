@@ -42,7 +42,7 @@ pub const IDBKeyType = enum(u8) {
     /// Get the type ordering value for comparison
     /// Higher value = greater type
     pub fn order(self: IDBKeyType) u8 {
-        return @intFromEnum(self);
+        return @backingInt(self);
     }
 };
 

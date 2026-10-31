@@ -6,7 +6,7 @@ const a = std.testing.allocator;
 
 test "cp1 legacy length literal conversions accept every reachable math unit" {
     inline for (@typeInfo(math.Unit).@"enum".field_values) |field_value| {
-        const unit: math.Unit = @enumFromInt(field_value);
+        const unit: math.Unit = @fromBackingInt(@intCast(field_value));
         if (unit.base() == .length) {
             var stream = css.properties.Stream.init(comptime "1" ++ unit.name());
             const number = (try css.numeric_values.Number.consume(.{ .allocator = a }, &stream, .{ .kind = .length }, false)) orelse return error.MissingUnit;

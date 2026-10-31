@@ -5536,7 +5536,7 @@ pub fn addPrefetchHint(
     // Check if URL already exists - keep the more eager one
     if (internal.prefetch_hints.get(url)) |existing_eagerness| {
         // More eager = earlier in enum order (immediate=0, conservative=3)
-        if (@intFromEnum(eagerness) < @intFromEnum(existing_eagerness)) {
+        if (@backingInt(eagerness) < @backingInt(existing_eagerness)) {
             // New eagerness is more eager, update
             internal.prefetch_hints.put(url, eagerness) catch return error.OutOfMemory;
         }

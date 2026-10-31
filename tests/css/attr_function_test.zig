@@ -39,7 +39,7 @@ test "attr simple types accept future units but exclude CSS-wide and default key
         try testing.expect(attr.parseSimpleType(text) == null);
     }
     inline for (@typeInfo(css.math_values.Unit).@"enum".field_values) |field_value| {
-        const unit: css.math_values.Unit = @enumFromInt(field_value);
+        const unit: css.math_values.Unit = @fromBackingInt(@intCast(field_value));
         if (unit != .number and unit.base() != .resolution) try testing.expectEqual(unit, attr.parseSimpleType(unit.name()).?.unit);
     }
     for ([_][]const u8{ "dpi", "dpcm", "dppx", "x", "DPI" }) |text| {

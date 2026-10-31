@@ -144,8 +144,8 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 /// The readyState getter steps: 0 for "empty", 1 for "loading", 2 for
 /// "done".
 pub fn get_readyState(instance: *runtime.Instance) anyerror!u16 {
-    const internal = getInternal(instance) orelse return @intFromEnum(ReadyState.empty);
-    return @intFromEnum(internal.state);
+    const internal = getInternal(instance) orelse return @backingInt(ReadyState.empty);
+    return @backingInt(internal.state);
 }
 
 /// The result getter steps are to return this's result. The reader keeps

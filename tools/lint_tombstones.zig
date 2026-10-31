@@ -400,7 +400,7 @@ pub fn findings(gpa: std.mem.Allocator, source: [:0]const u8) !std.ArrayList(Fin
     const node_count = tree.nodes.len;
     var i: u32 = 0;
     while (i < node_count) : (i += 1) {
-        const node: Ast.Node.Index = @enumFromInt(i);
+        const node: Ast.Node.Index = @fromBackingInt(@intCast(i));
         switch (tree.nodeTag(node)) {
             .test_decl => try tests.append(arena, .{ tree.firstToken(node), tree.lastToken(node) }),
             .fn_decl => {
@@ -427,7 +427,7 @@ pub fn findings(gpa: std.mem.Allocator, source: [:0]const u8) !std.ArrayList(Fin
     var map_names: NameSet = .empty;
     i = 0;
     while (i < node_count) : (i += 1) {
-        const node: Ast.Node.Index = @enumFromInt(i);
+        const node: Ast.Node.Index = @fromBackingInt(@intCast(i));
         var buf: [2]Ast.Node.Index = undefined;
         const container = tree.fullContainerDecl(&buf, node) orelse if (i == 0) Ast.full.ContainerDecl{
             .layout_token = null,

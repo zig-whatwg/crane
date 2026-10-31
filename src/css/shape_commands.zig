@@ -376,7 +376,7 @@ fn control(options: properties.ParseOptions, stream: *properties.Stream, relativ
 
 fn command(options: properties.ParseOptions, stream: *properties.Stream) Allocator.Error!?Command {
     const kind: Kind = blk: {
-        inline for (@typeInfo(Kind).@"enum".field_names, @typeInfo(Kind).@"enum".field_values) |f_name, f_value| if (parts.keyword(stream, f_name)) break :blk @enumFromInt(f_value);
+        inline for (@typeInfo(Kind).@"enum".field_names, @typeInfo(Kind).@"enum".field_values) |f_name, f_value| if (parts.keyword(stream, f_name)) break :blk @fromBackingInt(@intCast(f_value));
         return null;
     };
     var result = Command{ .kind = kind };

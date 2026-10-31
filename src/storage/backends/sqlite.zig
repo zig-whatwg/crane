@@ -205,7 +205,7 @@ pub const IDBKeyEncoder = struct {
     /// Encode a number key
     pub fn encodeNumber(allocator: std.mem.Allocator, value: f64) ![]u8 {
         var result = try allocator.alloc(u8, 9);
-        result[0] = @intFromEnum(IDBKeyType.number);
+        result[0] = @backingInt(IDBKeyType.number);
 
         // Convert to big-endian bytes with sign flip for proper ordering
         var bits: u64 = @bitCast(value);
@@ -229,7 +229,7 @@ pub const IDBKeyEncoder = struct {
     /// Encode a string key
     pub fn encodeString(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
         var result = try allocator.alloc(u8, 1 + value.len);
-        result[0] = @intFromEnum(IDBKeyType.string);
+        result[0] = @backingInt(IDBKeyType.string);
         @memcpy(result[1..], value);
         return result;
     }
@@ -237,7 +237,7 @@ pub const IDBKeyEncoder = struct {
     /// Encode a binary key
     pub fn encodeBinary(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
         var result = try allocator.alloc(u8, 1 + value.len);
-        result[0] = @intFromEnum(IDBKeyType.binary);
+        result[0] = @backingInt(IDBKeyType.binary);
         @memcpy(result[1..], value);
         return result;
     }
@@ -245,7 +245,7 @@ pub const IDBKeyEncoder = struct {
     /// Encode a date key (milliseconds since epoch)
     pub fn encodeDate(allocator: std.mem.Allocator, millis: i64) ![]u8 {
         var result = try allocator.alloc(u8, 9);
-        result[0] = @intFromEnum(IDBKeyType.date);
+        result[0] = @backingInt(IDBKeyType.date);
 
         // Write as big-endian for proper ordering
         const u: u64 = @bitCast(millis);
@@ -1298,12 +1298,12 @@ test "IDBKeyEncoder - number encoding" {
     // Encode positive number
     const encoded1 = try IDBKeyEncoder.encodeNumber(allocator, 42.0);
     defer allocator.free(encoded1);
-    try std.testing.expectEqual(@as(u8, @intFromEnum(IDBKeyType.number)), encoded1[0]);
+    try std.testing.expectEqual(@as(u8, @backingInt(IDBKeyType.number)), encoded1[0]);
 
     // Encode negative number
     const encoded2 = try IDBKeyEncoder.encodeNumber(allocator, -1.0);
     defer allocator.free(encoded2);
-    try std.testing.expectEqual(@as(u8, @intFromEnum(IDBKeyType.number)), encoded2[0]);
+    try std.testing.expectEqual(@as(u8, @backingInt(IDBKeyType.number)), encoded2[0]);
 
     // Verify ordering: -1 < 42
     const cmp = idbkeyCollation(null, @intCast(encoded2.len), encoded2.ptr, @intCast(encoded1.len), encoded1.ptr);
@@ -1316,7 +1316,7 @@ test "IDBKeyEncoder - string encoding" {
     const encoded = try IDBKeyEncoder.encodeString(allocator, "hello");
     defer allocator.free(encoded);
 
-    try std.testing.expectEqual(@as(u8, @intFromEnum(IDBKeyType.string)), encoded[0]);
+    try std.testing.expectEqual(@as(u8, @backingInt(IDBKeyType.string)), encoded[0]);
     try std.testing.expectEqualStrings("hello", encoded[1..]);
 }
 

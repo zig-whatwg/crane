@@ -139,13 +139,13 @@ pub fn get_playbackRate(instance: *runtime.Instance) anyerror!f64 {
 /// Getter for playState (4.5.17).
 pub fn get_playState(instance: *runtime.Instance) anyerror!enums.AnimationPlayState {
     const animation = try modelOf(instance);
-    return @enumFromInt(@intFromEnum(animation.playState()));
+    return @fromBackingInt(@intCast(@backingInt(animation.playState())));
 }
 
 /// Getter for replaceState (5.5.1).
 pub fn get_replaceState(instance: *runtime.Instance) anyerror!enums.AnimationReplaceState {
     const animation = try modelOf(instance);
-    return @enumFromInt(@intFromEnum(animation.replace_state));
+    return @fromBackingInt(@intCast(@backingInt(animation.replace_state)));
 }
 
 /// Getter for pending: a pending play or pause task.

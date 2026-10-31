@@ -95,7 +95,7 @@ pub const ConversionError = error{
 pub fn idlEnumValue(comptime T: type, value: T) []const u8 {
     if (comptime @hasDecl(T, "idl_values")) {
         comptime std.debug.assert(T.idl_values.len == std.meta.fieldNames(T).len);
-        return T.idl_values[@intFromEnum(value)];
+        return T.idl_values[@backingInt(value)];
     }
     return switch (value) {
         inline else => |tag| comptime blk: {
@@ -119,12 +119,12 @@ pub fn idlEnumValue(comptime T: type, value: T) []const u8 {
 pub fn enumFromIdlValue(comptime T: type, string: []const u8) ?T {
     if (comptime @hasDecl(T, "idl_values")) {
         inline for (T.idl_values, 0..) |idl_value, i| {
-            if (std.mem.eql(u8, idl_value, string)) return @enumFromInt(zig017FieldsOfType(T)[i].value);
+            if (std.mem.eql(u8, idl_value, string)) return @fromBackingInt(@intCast(zig017FieldsOfType(T)[i].value));
         }
         return null;
     }
     inline for (comptime std.meta.fieldNames(T), @typeInfo(T).@"enum".field_values) |field_name, field_value| {
-        if (enumNameMatches(field_name, string)) return @enumFromInt(field_value);
+        if (enumNameMatches(field_name, string)) return @fromBackingInt(@intCast(field_value));
     }
     return null;
 }
@@ -1226,7 +1226,7 @@ fn convertAllowSharedBufferSource(
     // case (TextDecoder.decode's input), one FFI call.
     var info: v8.ViewInfo = undefined;
     if (v8.v8_ArrayBufferView_Describe(value, &info)) {
-        const view = typedefs.ArrayBufferView.fromEngine(@intCast(@intFromEnum(info.kind)), info.byte_offset, info.length, @ptrCast(value)) orelse
+        const view = typedefs.ArrayBufferView.fromEngine(@intCast(@backingInt(info.kind)), info.byte_offset, info.length, @ptrCast(value)) orelse
             return ConversionError.TypeError;
         return .{ .array_buffer_view = view };
     }
@@ -1273,7 +1273,7 @@ fn convertArrayBufferView(value: *v8.Value) ConversionError!typedefs.ArrayBuffer
     // Step 3: not [AllowShared].
     if (info.buffer_shared) return ConversionError.TypeError;
     // Step 5.
-    return typedefs.ArrayBufferView.fromEngine(@intCast(@intFromEnum(info.kind)), info.byte_offset, info.length, @ptrCast(value)) orelse
+    return typedefs.ArrayBufferView.fromEngine(@intCast(@backingInt(info.kind)), info.byte_offset, info.length, @ptrCast(value)) orelse
         ConversionError.TypeError;
 }
 

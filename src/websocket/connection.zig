@@ -53,7 +53,7 @@ pub const ConnectionState = enum(u16) {
 
     /// Convert to the numeric ready state value for the WebSocket API.
     pub fn toReadyState(self: ConnectionState) u16 {
-        return @intFromEnum(self);
+        return @backingInt(self);
     }
 
     /// Check if the connection can send messages.

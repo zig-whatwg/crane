@@ -45,7 +45,7 @@ pub const Easing = struct {
         fn parse(token: tokens.Token) ?Jump {
             if (token.token_type != .ident) return null;
             inline for (@typeInfo(Jump).@"enum".field_values) |field_value| {
-                const value: Jump = @enumFromInt(field_value);
+                const value: Jump = @fromBackingInt(@intCast(field_value));
                 if (tokens.nameEql(token.value, value.name())) return value;
             }
             return null;

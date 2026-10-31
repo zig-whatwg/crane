@@ -114,7 +114,7 @@ fn secFetchSite(allocator: Allocator, input: Input) Allocator.Error!Site {
     defer sites.deinit();
     // 5. For each url in r's url list:
     for (input.url_list) |url| {
-        relation = @enumFromInt(@max(@intFromEnum(relation), @intFromEnum(try relationOf(allocator, &sites, origin, url))));
+        relation = @fromBackingInt(@intCast(@max(@backingInt(relation), @backingInt(try relationOf(allocator, &sites, origin, url)))));
         if (relation == .cross_site) break;
     }
     return relation;
@@ -143,7 +143,7 @@ pub fn droppedUrlsSite(allocator: Allocator, origin: internal_request.RequestOri
     defer sites.deinit();
     for (urls) |url| {
         if (relation == .cross_site) break;
-        relation = @enumFromInt(@max(@intFromEnum(relation), @intFromEnum(try relationOf(allocator, &sites, serialized, url))));
+        relation = @fromBackingInt(@intCast(@max(@backingInt(relation), @backingInt(try relationOf(allocator, &sites, serialized, url)))));
     }
     return relation;
 }

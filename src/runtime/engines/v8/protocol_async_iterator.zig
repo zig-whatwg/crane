@@ -52,11 +52,11 @@ const Slot = enum(u32) {
 const slot_count = @typeInfo(Slot).@"enum".field_names.len;
 
 fn slotGet(at: anytype, state: *ffi.Value, slot: Slot) Error!*ffi.Value {
-    return ffi.v8_Array_Get(at.context(), @ptrCast(state), @intFromEnum(slot)) orelse error.OperationFailed;
+    return ffi.v8_Array_Get(at.context(), @ptrCast(state), @backingInt(slot)) orelse error.OperationFailed;
 }
 
 fn slotSet(at: anytype, state: *ffi.Value, slot: Slot, value: *ffi.Value) Error!void {
-    if (!ffi.v8_Array_Set(@ptrCast(state), at.context(), @intFromEnum(slot), value)) return error.OperationFailed;
+    if (!ffi.v8_Array_Set(@ptrCast(state), at.context(), @backingInt(slot), value)) return error.OperationFailed;
 }
 
 fn slotSetBoolean(at: anytype, state: *ffi.Value, slot: Slot, value: bool) Error!void {
@@ -135,8 +135,8 @@ const Record = struct {
     /// them, and finalize.
     fn droppedByRealm(node: *realm_finalizers.Node) void {
         const self: *Record = @fieldParentPtr("node", node);
-        ffi.v8_Array_ClearElement(self.state, @intFromEnum(Slot.steps));
-        ffi.v8_Array_ClearElement(self.state, @intFromEnum(Slot.data));
+        ffi.v8_Array_ClearElement(self.state, @backingInt(Slot.steps));
+        ffi.v8_Array_ClearElement(self.state, @backingInt(Slot.data));
         const host = self.end();
         if (host.steps.finalize) |finalize| finalize(host.data);
     }

@@ -318,13 +318,13 @@ pub fn main(init: std.process.Init) !void {
         var pass: Pass = .{ .arena = arena, .tree = &tree, .source = source, .path = path };
         // Innermost loops first: nodes are numbered children before parents.
         for (0..tree.nodes.len) |i| {
-            const node: Ast.Node.Index = @enumFromInt(i);
+            const node: Ast.Node.Index = @fromBackingInt(@intCast(i));
             switch (tree.nodeTag(node)) {
                 .for_simple, .@"for" => try rewriteFor(&pass, node),
                 else => {},
             }
         }
-        for (0..tree.nodes.len) |i| try rewriteAccess(&pass, @enumFromInt(i));
+        for (0..tree.nodes.len) |i| try rewriteAccess(&pass, @fromBackingInt(@intCast(i)));
         for (pass.manual.items) |m| try out.print("{s}\n", .{m});
         total_manual += pass.manual.items.len;
         if (pass.edits.items.len == 0) continue;

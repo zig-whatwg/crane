@@ -34,7 +34,7 @@ pub const GeometryBox = enum {
     }
     pub fn parse(stream: *properties.Stream) ?GeometryBox {
         inline for (@typeInfo(GeometryBox).@"enum".field_values) |f_value| {
-            const box: GeometryBox = @enumFromInt(f_value);
+            const box: GeometryBox = @fromBackingInt(@intCast(f_value));
             if (components.keyword(stream, box.name())) return box;
         }
         return null;
@@ -519,7 +519,7 @@ fn parseShape(options: properties.ParseOptions, stream: *properties.Stream) Allo
     _ = stream.next();
     if (stream.next().token_type != .left_paren) return null;
     const data: @FieldType(Shape, "data") = switch (kind) {
-        0, 1, 2 => .{ .rect = (try parseRect(options, stream, @enumFromInt(kind))) orelse return null },
+        0, 1, 2 => .{ .rect = (try parseRect(options, stream, @fromBackingInt(@intCast(kind)))) orelse return null },
         3, 4 => .{ .round = (try parseRound(options, stream, kind == 4)) orelse return null },
         5 => .{ .polygon = (try parsePolygon(options, stream)) orelse return null },
         6 => .{ .path = (try parsePath(options, stream)) orelse return null },
@@ -556,7 +556,7 @@ fn parseRect(options: properties.ParseOptions, stream: *properties.Stream, kind:
 
 fn parseRadius(options: properties.ParseOptions, stream: *properties.Stream) Allocator.Error!?ShapeRadius {
     inline for (@typeInfo(Extent).@"enum".field_values) |f_value| {
-        const e: Extent = @enumFromInt(f_value);
+        const e: Extent = @fromBackingInt(@intCast(f_value));
         if (components.keyword(stream, e.name())) return .{ .extent = e };
     }
     return if (try components.length(options, stream, false, true)) |v| .{ .value = v } else null;

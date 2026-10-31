@@ -103,7 +103,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     if (@hasField(Args, "bounding_client_rect")) state.own.boundingClientRect = args.bounding_client_rect;
     if (@hasField(Args, "intersection_rect")) state.own.intersectionRect = args.intersection_rect;
     inline for (@typeInfo(Rect).@"enum".field_values) |field_value| {
-        const which: Rect = @enumFromInt(field_value);
+        const which: Rect = @fromBackingInt(@intCast(field_value));
         const present = switch (which) {
             .root_bounds => @hasField(Args, "root_bounds"),
             .bounding_client_rect => @hasField(Args, "bounding_client_rect"),
@@ -132,7 +132,7 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
         if (kept.edge.drawn) {
             kept.edge.release(instance);
         } else if (kept.generation != 0) {
-            if (rectField(state, @enumFromInt(field_value))) |rect| rect.releaseIfUnwrapped(kept.generation);
+            if (rectField(state, @fromBackingInt(@intCast(field_value)))) |rect| rect.releaseIfUnwrapped(kept.generation);
         }
     }
     runtime.arenaOf(instance).destroy(InternalState, internal);
@@ -145,7 +145,7 @@ fn handOut(instance: *runtime.Instance, which: Rect) ?*runtime.Instance {
     const state = instance.getState(State);
     const rect = rectField(state, which) orelse return null;
     if (getInternal(instance)) |internal| {
-        const kept = &internal.rects[@intFromEnum(which)];
+        const kept = &internal.rects[@backingInt(which)];
         if (!kept.edge.drawn) kept.edge.hold(instance, rect);
     }
     return rect;

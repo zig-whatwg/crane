@@ -156,12 +156,12 @@ fn headersOf(allocator: Allocator, list: *const fetch.internal.HeaderList) Alloc
 }
 
 fn intOf(value: anytype) u8 {
-    return @intCast(@intFromEnum(value));
+    return @intCast(@backingInt(value));
 }
 
 comptime {
-    std.debug.assert(records.StoredResponse.opaque_types[0] == @intFromEnum(fetch.internal.ResponseType.@"opaque"));
-    std.debug.assert(records.StoredResponse.opaque_types[1] == @intFromEnum(fetch.internal.ResponseType.opaqueredirect));
+    std.debug.assert(records.StoredResponse.opaque_types[0] == @backingInt(fetch.internal.ResponseType.@"opaque"));
+    std.debug.assert(records.StoredResponse.opaque_types[1] == @backingInt(fetch.internal.ResponseType.opaqueredirect));
 }
 
 fn enumOf(comptime T: type, value: u8, default: T) T {

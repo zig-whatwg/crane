@@ -220,7 +220,7 @@ pub const CleanupCoordinator = struct {
     /// Tracks the current phase for debugging and validation.
     pub fn cleanupPhase(self: *Self, phase: CleanupPhase) void {
         // Validate phase ordering
-        if (@intFromEnum(phase) <= @intFromEnum(self.current_phase)) {
+        if (@backingInt(phase) <= @backingInt(self.current_phase)) {
             // Phase already executed or going backwards - skip
             return;
         }
@@ -265,7 +265,7 @@ pub const CleanupCoordinator = struct {
     ///
     /// Used for debugging to track how many instances are cleaned per phase.
     pub fn recordCleanup(self: *Self) void {
-        const phase_idx = @intFromEnum(self.current_phase);
+        const phase_idx = @backingInt(self.current_phase);
         if (phase_idx < self.phase_cleanup_counts.len) {
             self.phase_cleanup_counts[phase_idx] += 1;
         }
@@ -444,7 +444,7 @@ test "CleanupCoordinator - stats tracking" {
 
     const stats = coordinator.getStats();
     try testing.expectEqual(@as(usize, 3), stats.total_cleaned);
-    try testing.expectEqual(@as(usize, 3), stats.per_phase[@intFromEnum(CleanupPhase.dom_tree)]);
+    try testing.expectEqual(@as(usize, 3), stats.per_phase[@backingInt(CleanupPhase.dom_tree)]);
 
     coordinator.endContextCleanup();
 }

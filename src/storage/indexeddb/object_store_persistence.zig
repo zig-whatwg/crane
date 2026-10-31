@@ -73,7 +73,7 @@ pub fn encodeKey(allocator: std.mem.Allocator, key: IDBKey) KeyEncodingError![]u
 /// Encode a number key (IEEE 754 double with sign flip for ordering)
 fn encodeNumber(allocator: std.mem.Allocator, value: f64) ![]u8 {
     var result = try allocator.alloc(u8, 9);
-    result[0] = @intFromEnum(KeyTypeTag.number);
+    result[0] = @backingInt(KeyTypeTag.number);
 
     // Convert to big-endian bytes with sign flip for proper ordering
     var bits: u64 = @bitCast(value);
@@ -97,7 +97,7 @@ fn encodeNumber(allocator: std.mem.Allocator, value: f64) ![]u8 {
 /// Encode a string key
 fn encodeString(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
     var result = try allocator.alloc(u8, 1 + value.len);
-    result[0] = @intFromEnum(KeyTypeTag.string);
+    result[0] = @backingInt(KeyTypeTag.string);
     @memcpy(result[1..], value);
     return result;
 }
@@ -105,7 +105,7 @@ fn encodeString(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
 /// Encode a date key (milliseconds since epoch)
 fn encodeDate(allocator: std.mem.Allocator, millis: i64) ![]u8 {
     var result = try allocator.alloc(u8, 9);
-    result[0] = @intFromEnum(KeyTypeTag.date);
+    result[0] = @backingInt(KeyTypeTag.date);
 
     // Write as big-endian with offset for proper ordering
     const u: u64 = @bitCast(millis +% std.math.minInt(i64));
@@ -119,7 +119,7 @@ fn encodeDate(allocator: std.mem.Allocator, millis: i64) ![]u8 {
 /// Encode a binary key
 fn encodeBinary(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
     var result = try allocator.alloc(u8, 1 + value.len);
-    result[0] = @intFromEnum(KeyTypeTag.binary);
+    result[0] = @backingInt(KeyTypeTag.binary);
     @memcpy(result[1..], value);
     return result;
 }
@@ -146,7 +146,7 @@ fn encodeArray(allocator: std.mem.Allocator, arr: []const IDBKey) ![]u8 {
     var pos: usize = 0;
 
     // Type tag
-    result[pos] = @intFromEnum(KeyTypeTag.array);
+    result[pos] = @backingInt(KeyTypeTag.array);
     pos += 1;
 
     // Array length (big-endian u32)
@@ -180,7 +180,7 @@ pub const KeyDecodingError = error{ OutOfMemory, InvalidKey };
 pub fn decodeKey(allocator: std.mem.Allocator, data: []const u8) KeyDecodingError!IDBKey {
     if (data.len == 0) return error.InvalidKey;
 
-    const tag: KeyTypeTag = @enumFromInt(data[0]);
+    const tag: KeyTypeTag = @fromBackingInt(@intCast(data[0]));
 
     return switch (tag) {
         .number => decodeNumber(data[1..]),
@@ -482,7 +482,7 @@ test "encodeKey and decodeKey - number" {
     const encoded = try encodeKey(allocator, key);
     defer allocator.free(encoded);
 
-    try std.testing.expectEqual(@as(u8, @intFromEnum(KeyTypeTag.number)), encoded[0]);
+    try std.testing.expectEqual(@as(u8, @backingInt(KeyTypeTag.number)), encoded[0]);
     try std.testing.expectEqual(@as(usize, 9), encoded.len);
 
     const decoded = try decodeKey(allocator, encoded);
@@ -496,7 +496,7 @@ test "encodeKey and decodeKey - string" {
     const encoded = try encodeKey(allocator, key);
     defer allocator.free(encoded);
 
-    try std.testing.expectEqual(@as(u8, @intFromEnum(KeyTypeTag.string)), encoded[0]);
+    try std.testing.expectEqual(@as(u8, @backingInt(KeyTypeTag.string)), encoded[0]);
 
     var decoded = try decodeKey(allocator, encoded);
     defer decoded.deinit();

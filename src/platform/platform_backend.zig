@@ -311,7 +311,7 @@ pub const PlatformBackend = extern struct {
         errdefer list.deinit(allocator);
 
         inline for (@typeInfo(Capability).@"enum".field_values) |field_value| {
-            const cap: Capability = @enumFromInt(field_value);
+            const cap: Capability = @fromBackingInt(@intCast(field_value));
             if (self.hasCapability(cap)) {
                 try list.append(allocator, cap);
             }

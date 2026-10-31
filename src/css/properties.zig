@@ -433,7 +433,7 @@ pub const Longhand = enum(u16) {
     }
 
     pub fn info(self: Longhand) *const Info {
-        return &infos[@intFromEnum(self)];
+        return &infos[@backingInt(self)];
     }
 
     pub fn inherited(self: Longhand) bool {
@@ -452,7 +452,7 @@ pub const Longhand = enum(u16) {
 pub const lexicographic: [Longhand.count]Longhand = blk: {
     @setEvalBranchQuota(1_000_000);
     var out: [Longhand.count]Longhand = undefined;
-    for (0..Longhand.count) |i| out[i] = @enumFromInt(i);
+    for (0..Longhand.count) |i| out[i] = @fromBackingInt(@intCast(i));
     std.mem.sort(Longhand, &out, {}, struct {
         fn lessThan(_: void, a: Longhand, b: Longhand) bool {
             // CSSOM §7.2 / Q36: all three browsers enumerate standard
@@ -1073,12 +1073,12 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .font_variation_settings, .inherited = true, .initial = Value.kw(.normal), .grammar = .font_settings },
     };
     for (defs) |def| {
-        const i = @intFromEnum(def.longhand);
+        const i = @backingInt(def.longhand);
         if (set[i]) @compileError("duplicate longhand " ++ def.longhand.name());
         set[i] = true;
         out[i] = def;
     }
-    for (set, 0..) |done, i| if (!done) @compileError("no Info for " ++ @as(Longhand, @enumFromInt(i)).name());
+    for (set, 0..) |done, i| if (!done) @compileError("no Info for " ++ @as(Longhand, @fromBackingInt(@intCast(i))).name());
     break :blk out;
 };
 
@@ -1283,7 +1283,7 @@ const all_longhands = blk: {
     var out: [Longhand.count - 2]Longhand = undefined;
     var n: usize = 0;
     for (0..Longhand.count) |i| {
-        const l: Longhand = @enumFromInt(i);
+        const l: Longhand = @fromBackingInt(@intCast(i));
         if (l == .direction or l == .unicode_bidi) continue;
         out[n] = l;
         n += 1;
@@ -1374,8 +1374,8 @@ const by_name = blk: {
         break :zig017_fields zig017_out;
     };
     var entries: [l_fields.len + s_fields.len + legacy_aliases.len]struct { []const u8, Property } = undefined;
-    for (l_fields, 0..) |f, i| entries[i] = .{ dashedName(f.name), .{ .longhand = @enumFromInt(f.value) } };
-    for (s_fields, 0..) |f, i| entries[l_fields.len + i] = .{ dashedName(f.name), .{ .shorthand = @enumFromInt(f.value) } };
+    for (l_fields, 0..) |f, i| entries[i] = .{ dashedName(f.name), .{ .longhand = @fromBackingInt(@intCast(f.value)) } };
+    for (s_fields, 0..) |f, i| entries[l_fields.len + i] = .{ dashedName(f.name), .{ .shorthand = @fromBackingInt(@intCast(f.value)) } };
     for (legacy_aliases, 0..) |alias, i| entries[l_fields.len + s_fields.len + i] = .{ alias[0], alias[1] };
     break :blk std.StaticStringMap(Property).initComptime(entries);
 };
@@ -3504,8 +3504,8 @@ test "CSSOM enumeration sorts names independently of property blocks" {
     var last_standard: ?Longhand = null;
     var saw_prefixed = false;
     for (lexicographic, 0..) |l, i| {
-        try testing.expect(!seen[@intFromEnum(l)]);
-        seen[@intFromEnum(l)] = true;
+        try testing.expect(!seen[@backingInt(l)]);
+        seen[@backingInt(l)] = true;
         const prefixed = std.mem.startsWith(u8, l.name(), "-");
         if (prefixed) {
             saw_prefixed = true;

@@ -468,7 +468,7 @@ test "every timeout either is the harness default or takes an explicit timeout" 
     // the harness and the runner end the file at different times again.
     const harness_default = Timeout.normal.toMillis();
     inline for (@typeInfo(Timeout).@"enum".field_values) |field_value| {
-        const t: Timeout = @enumFromInt(field_value);
+        const t: Timeout = @fromBackingInt(@intCast(field_value));
         if (!t.explicitTimeout()) try testing.expectEqual(harness_default, t.toMillis());
     }
 }

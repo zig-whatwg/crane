@@ -101,9 +101,9 @@ const layout: Layout = blk: {
         for (h.members) |l| {
             if (l.logical() != null) @compileError(l.name() ++ " is logical: it has no storage");
             if (l.inherited() != h.inherited) @compileError(l.name() ++ " does not share group " ++ h.name ++ "'s inheritance");
-            if (placed[@intFromEnum(l)]) @compileError(l.name() ++ " is in two groups");
-            placed[@intFromEnum(l)] = true;
-            out.location[@intFromEnum(l)] = .{ .group = g, .index = out.lengths[g], .stored = true };
+            if (placed[@backingInt(l)]) @compileError(l.name() ++ " is in two groups");
+            placed[@backingInt(l)] = true;
+            out.location[@backingInt(l)] = .{ .group = g, .index = out.lengths[g], .stored = true };
             out.lengths[g] += 1;
         }
     }
@@ -111,7 +111,7 @@ const layout: Layout = blk: {
     for ([_]bool{ true, false }) |inheriting| {
         var g: ?usize = null;
         for (0..Longhand.count) |i| {
-            const l: Longhand = @enumFromInt(i);
+            const l: Longhand = @fromBackingInt(@intCast(i));
             if (placed[i] or l.logical() != null or l.inherited() != inheriting) continue;
             if (g == null or out.lengths[g.?] == chunk) {
                 g = out.count;
@@ -150,7 +150,7 @@ pub fn members(comptime g: usize) [lengths[g]]Longhand {
         var out: [lengths[g]]Longhand = undefined;
         for (0..Longhand.count) |i| {
             const loc = location[i];
-            if (loc.stored and loc.group == g) out[loc.index] = @enumFromInt(i);
+            if (loc.stored and loc.group == g) out[loc.index] = @fromBackingInt(@intCast(i));
         }
         return out;
     }
@@ -174,7 +174,7 @@ pub const stored = offsets[count - 1] + lengths[count - 1];
 test "every non-logical longhand is stored once, in a group of its own inheritance" {
     var seen: [count][chunk]bool = @splat(@splat(false));
     for (0..Longhand.count) |i| {
-        const l: Longhand = @enumFromInt(i);
+        const l: Longhand = @fromBackingInt(@intCast(i));
         const loc = location[i];
         try std.testing.expectEqual(l.logical() == null, loc.stored);
         if (!loc.stored) continue;

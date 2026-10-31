@@ -12,7 +12,7 @@ pub fn installHooks() void {
 fn create(ctx: runtime.Context, code: hooks.ErrorCode) !*runtime.Instance {
     // "Create a MediaError": create in the relevant realm, set code/message.
     const instance = try interfaces.MediaError.init(ctx.allocator, ctx);
-    instance.getState(State).own.code = @intFromEnum(code);
+    instance.getState(State).own.code = @backingInt(code);
     return instance;
 }
 pub fn init(allocator: std.mem.Allocator, comptime StateType: type, vtable: *const runtime.VTable, ctx: runtime.Context) !*runtime.Instance {

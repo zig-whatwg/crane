@@ -489,7 +489,7 @@ pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem
     errdefer names.deinit(allocator);
     for (properties.lexicographic) |l| try names.append(allocator, runtime.DOMString.initInterned(l.name()));
     inline for (@typeInfo(properties.Shorthand).@"enum".field_values) |field_value| {
-        try appendPropertyNames(&names, allocator, comptime @as(properties.Shorthand, @enumFromInt(field_value)).name());
+        try appendPropertyNames(&names, allocator, comptime @as(properties.Shorthand, @fromBackingInt(@intCast(field_value))).name());
     }
     inline for (properties.legacy_alias_names) |name| try appendPropertyNames(&names, allocator, name);
     try names.append(allocator, runtime.DOMString.initInterned("cssFloat"));

@@ -399,7 +399,7 @@ pub const Keyword = enum(u16) {
             break :zig017_fields zig017_out;
         };
         var entries: [fields.len]struct { []const u8, Keyword } = undefined;
-        for (fields, 0..) |field, i| entries[i] = .{ dashed(field.name), @enumFromInt(field.value) };
+        for (fields, 0..) |field, i| entries[i] = .{ dashed(field.name), @fromBackingInt(@intCast(field.value)) };
         break :blk std.StaticStringMap(Keyword).initComptime(entries);
     };
 };

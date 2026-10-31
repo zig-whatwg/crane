@@ -282,7 +282,7 @@ pub fn main(init: std.process.Init) !void {
     // by ensuring the snapshot contains only the essential heap state
     const success = v8.ffi.v8_SnapshotCreator_CreateBlob(
         creator,
-        @intFromEnum(v8.ffi.FunctionCodeHandling.Clear),
+        @backingInt(v8.ffi.FunctionCodeHandling.Clear),
         &out_data,
         &out_size,
     );

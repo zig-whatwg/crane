@@ -446,7 +446,7 @@ test "every conversions throw helper leaves no handle behind" {
     const rounds = 32;
     var leaked = false;
     inline for (comptime std.meta.fieldNames(Thrower.Kind), @typeInfo(Thrower.Kind).@"enum".field_values) |field_name, field_value| {
-        var thrower: Thrower = .{ .context = context_once.?, .kind = @enumFromInt(field_value) };
+        var thrower: Thrower = .{ .context = context_once.?, .kind = @fromBackingInt(@intCast(field_value)) };
         // The first call may make what every later one reuses.
         try thrower.throwAndCatch();
         const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
@@ -473,7 +473,7 @@ test "an exception thrown in a realm does not keep that realm alive" {
     // for this realm has no DOMException - and everything thrown is released.
     const other = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
     inline for (@typeInfo(Thrower.Kind).@"enum".field_values) |field_value| {
-        var thrower: Thrower = .{ .context = other, .kind = @enumFromInt(field_value) };
+        var thrower: Thrower = .{ .context = other, .kind = @fromBackingInt(@intCast(field_value)) };
         for (0..4) |_| try thrower.throwAndCatch();
     }
     ffi.v8_Context_Dispose(other);

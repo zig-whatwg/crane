@@ -35,7 +35,7 @@ pub const Generic = enum {
 
     pub fn parse(text: []const u8) ?Generic {
         inline for (@typeInfo(Generic).@"enum".field_values) |field_value| {
-            const g: Generic = @enumFromInt(field_value);
+            const g: Generic = @fromBackingInt(@intCast(field_value));
             if (std.ascii.eqlIgnoreCase(text, g.name())) return g;
         }
         return null;

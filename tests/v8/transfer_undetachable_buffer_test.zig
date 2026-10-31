@@ -25,7 +25,7 @@ fn setup() !void {
     if (realm_once != null) return;
     const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
     ffi.v8_Isolate_Enter(i);
-    ffi.v8_Isolate_SetMicrotasksPolicy(i, @intFromEnum(ffi.MicrotasksPolicy.Explicit));
+    ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
     _ = ffi.v8_HandleScope_New(i);
     const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
     const r = try runtime.Realm.init(std.heap.page_allocator, .{ .engine_realm = context, .agent = @ptrCast(i) });

@@ -37,7 +37,7 @@ fn resolvedEquals(style: *const ComputedStyle, l: Longhand, expected: []const u8
 }
 
 fn groupOf(comptime l: Longhand) usize {
-    return computed.groups.location[@intFromEnum(l)].group;
+    return computed.groups.location[@backingInt(l)].group;
 }
 
 fn familiesRefs(style: *const ComputedStyle) u32 {
@@ -292,7 +292,7 @@ test "the held bit, never a static array's address, decides what a style writes 
         defer written.destroy();
         const target = for (0..Longhand.count) |i| {
             const loc = computed.groups.location[i];
-            if (loc.stored and loc.group == a and loc.index == 0) break @as(Longhand, @enumFromInt(i));
+            if (loc.stored and loc.group == a and loc.index == 0) break @as(Longhand, @fromBackingInt(@intCast(i)));
         } else unreachable;
         try written.set(target, Value.px(12345));
         try testing.expect(written.held.isSet(a));

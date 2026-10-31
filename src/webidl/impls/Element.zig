@@ -2628,7 +2628,7 @@ pub fn call_insertAdjacentHTML(instance: *runtime.Instance, position: runtime.DO
     const Position = enum { beforebegin, afterbegin, beforeend, afterend };
     const where: Position = blk: {
         inline for (comptime std.meta.fieldNames(Position), @typeInfo(Position).@"enum".field_values) |field_name, field_value| {
-            if (std.ascii.eqlIgnoreCase(position.asSlice(), field_name)) break :blk @enumFromInt(field_value);
+            if (std.ascii.eqlIgnoreCase(position.asSlice(), field_name)) break :blk @fromBackingInt(@intCast(field_value));
         }
         return error.SyntaxError;
     };

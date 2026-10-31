@@ -55,7 +55,7 @@ pub const Word = enum {
         };
         var items: [fields.len]struct { []const u8, Word } = undefined;
         for (fields, 0..) |field, i| {
-            const value: Word = @enumFromInt(field.value);
+            const value: Word = @fromBackingInt(@intCast(field.value));
             items[i] = .{ value.name(), value };
         }
         break :blk std.StaticStringMap(Word).initComptime(items);
@@ -64,7 +64,7 @@ pub const Word = enum {
         if (token.token_type != .ident) return null;
         if (names.get(token.value)) |word| return word;
         inline for (@typeInfo(Word).@"enum".field_values) |field_value| {
-            const word: Word = @enumFromInt(field_value);
+            const word: Word = @fromBackingInt(@intCast(field_value));
             if (tokenizer.nameEql(token.value, word.name())) return word;
         }
         return null;

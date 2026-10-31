@@ -94,7 +94,7 @@ pub fn sleep(nanoseconds: u64) void {
     };
     var rem: std.c.timespec = undefined;
     while (std.c.nanosleep(&req, &rem) == -1) {
-        if (std.c._errno().* != @intFromEnum(std.c.E.INTR)) return;
+        if (std.c._errno().* != @backingInt(std.c.E.INTR)) return;
         req = rem;
     }
 }

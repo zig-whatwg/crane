@@ -153,7 +153,7 @@ pub fn freeConstructorOverload(comptime UnionType: type, comptime overloads: []c
             // The shapes buildVariant makes: one argument is the variant
             // itself (a dictionary too, though it is a struct); more are a
             // struct with a field per argument.
-            const arity = comptime overloads[@intFromEnum(tag)].args.len;
+            const arity = comptime overloads[@backingInt(tag)].args.len;
             if (comptime arity > 1) {
                 inline for (@typeInfo(VariantType).@"struct".field_names, @typeInfo(VariantType).@"struct".field_types) |field_name, field_type| {
                     interface_mod.freeArgument(field_type, allocator, @field(payload, field_name));

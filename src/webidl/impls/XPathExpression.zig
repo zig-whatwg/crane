@@ -502,7 +502,7 @@ fn axisName(name: []const u8) ?Axis {
             for (field_name, 0..) |c, i| chars[i] = if (c == '_') '-' else c;
             break :blk chars;
         };
-        if (std.mem.eql(u8, name, &converted)) return @enumFromInt(field_value);
+        if (std.mem.eql(u8, name, &converted)) return @fromBackingInt(@intCast(field_value));
     }
     return null;
 }

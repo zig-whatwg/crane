@@ -108,7 +108,7 @@ fn provider(document: *runtime.Instance, browser: *platform.BrowserPlatform) !vo
     var failing = testing.FailingAllocator.init(testing.allocator, .{ .fail_index = 0 });
     try testing.expectError(error.OutOfMemory, env.lookup(document, failing.allocator(), "safe-area-inset-top", &.{}));
     inline for (@typeInfo(platform.CssEnvironmentVariable).@"enum".field_names, @typeInfo(platform.CssEnvironmentVariable).@"enum".field_values, 0..) |field_name, field_value, i| {
-        const variable: platform.CssEnvironmentVariable = @enumFromInt(field_value);
+        const variable: platform.CssEnvironmentVariable = @fromBackingInt(@intCast(field_value));
         const number: f64 = @as(f64, @floatFromInt(i)) + 0.25;
         try platform.adapter.setCssEnvironmentVariable(browser, 0, variable, 0, 0, number);
         var name: [field_name.len]u8 = undefined;

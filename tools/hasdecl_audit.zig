@@ -149,7 +149,7 @@ const Audit = struct {
         try a.containers.append(a.arena, .{ .start = 0, .end = @intCast(tree.source.len), .label = "(file)" });
         try a.addMembers(0, tree.rootDecls());
         for (0..tree.nodes.len) |i| {
-            const node: Ast.Node.Index = @enumFromInt(i);
+            const node: Ast.Node.Index = @fromBackingInt(@intCast(i));
             switch (tree.nodeTag(node)) {
                 .root => {},
                 .block, .block_semicolon, .block_two, .block_two_semicolon => try a.scopes.append(a.arena, a.span(node)),
@@ -170,7 +170,7 @@ const Audit = struct {
         }
         // Every variable declaration, member or local, by name; and container labels.
         for (0..tree.nodes.len) |i| {
-            const node: Ast.Node.Index = @enumFromInt(i);
+            const node: Ast.Node.Index = @fromBackingInt(@intCast(i));
             const var_decl = tree.fullVarDecl(node) orelse continue;
             const init = var_decl.ast.init_node.unwrap() orelse continue;
             const name = tree.tokenSlice(var_decl.ast.mut_token + 1);
@@ -327,7 +327,7 @@ pub fn auditSource(arena: Allocator, source: [:0]const u8) !FileAudit {
     try a.collect();
     var sites: std.ArrayList(Site) = .empty;
     for (0..tree.nodes.len) |i| {
-        const node: Ast.Node.Index = @enumFromInt(i);
+        const node: Ast.Node.Index = @fromBackingInt(@intCast(i));
         switch (tree.nodeTag(node)) {
             .builtin_call_two, .builtin_call_two_comma, .builtin_call, .builtin_call_comma => {},
             else => continue,

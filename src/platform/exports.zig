@@ -66,37 +66,37 @@ const Capability = platform_backend.Capability;
 // =============================================================================
 
 /// Capability constants for use in C code
-pub export const WHATWG_CAP_CLIPBOARD: u8 = @intFromEnum(Capability.clipboard);
-pub export const WHATWG_CAP_TIMER: u8 = @intFromEnum(Capability.timer);
-pub export const WHATWG_CAP_NETWORK: u8 = @intFromEnum(Capability.network);
-pub export const WHATWG_CAP_STORAGE: u8 = @intFromEnum(Capability.storage);
-pub export const WHATWG_CAP_LAYOUT: u8 = @intFromEnum(Capability.layout);
-pub export const WHATWG_CAP_UI: u8 = @intFromEnum(Capability.ui);
-pub export const WHATWG_CAP_SCREEN: u8 = @intFromEnum(Capability.screen);
-pub export const WHATWG_CAP_NOTIFICATION: u8 = @intFromEnum(Capability.notification);
-pub export const WHATWG_CAP_PUSH: u8 = @intFromEnum(Capability.push);
-pub export const WHATWG_CAP_SHARE: u8 = @intFromEnum(Capability.share);
-pub export const WHATWG_CAP_FILESYSTEM: u8 = @intFromEnum(Capability.filesystem);
-pub export const WHATWG_CAP_GEOLOCATION: u8 = @intFromEnum(Capability.geolocation);
-pub export const WHATWG_CAP_BLUETOOTH: u8 = @intFromEnum(Capability.bluetooth);
-pub export const WHATWG_CAP_USB: u8 = @intFromEnum(Capability.usb);
-pub export const WHATWG_CAP_SERIAL: u8 = @intFromEnum(Capability.serial);
-pub export const WHATWG_CAP_HID: u8 = @intFromEnum(Capability.hid);
-pub export const WHATWG_CAP_NFC: u8 = @intFromEnum(Capability.nfc);
-pub export const WHATWG_CAP_DEVICE_ORIENTATION: u8 = @intFromEnum(Capability.device_orientation);
-pub export const WHATWG_CAP_VIBRATION: u8 = @intFromEnum(Capability.vibration);
-pub export const WHATWG_CAP_BATTERY: u8 = @intFromEnum(Capability.battery);
-pub export const WHATWG_CAP_WAKE_LOCK: u8 = @intFromEnum(Capability.wake_lock);
-pub export const WHATWG_CAP_WEBRTC: u8 = @intFromEnum(Capability.webrtc);
-pub export const WHATWG_CAP_MEDIA: u8 = @intFromEnum(Capability.media);
-pub export const WHATWG_CAP_AUDIO: u8 = @intFromEnum(Capability.audio);
-pub export const WHATWG_CAP_SPEECH: u8 = @intFromEnum(Capability.speech);
-pub export const WHATWG_CAP_GAMEPAD: u8 = @intFromEnum(Capability.gamepad);
-pub export const WHATWG_CAP_SENSOR: u8 = @intFromEnum(Capability.sensor);
-pub export const WHATWG_CAP_CREDENTIALS: u8 = @intFromEnum(Capability.credentials);
-pub export const WHATWG_CAP_WEBAUTHN: u8 = @intFromEnum(Capability.webauthn);
-pub export const WHATWG_CAP_PERMISSIONS: u8 = @intFromEnum(Capability.permissions);
-pub export const WHATWG_CAP_PAYMENT: u8 = @intFromEnum(Capability.payment);
+pub export const WHATWG_CAP_CLIPBOARD: u8 = @backingInt(Capability.clipboard);
+pub export const WHATWG_CAP_TIMER: u8 = @backingInt(Capability.timer);
+pub export const WHATWG_CAP_NETWORK: u8 = @backingInt(Capability.network);
+pub export const WHATWG_CAP_STORAGE: u8 = @backingInt(Capability.storage);
+pub export const WHATWG_CAP_LAYOUT: u8 = @backingInt(Capability.layout);
+pub export const WHATWG_CAP_UI: u8 = @backingInt(Capability.ui);
+pub export const WHATWG_CAP_SCREEN: u8 = @backingInt(Capability.screen);
+pub export const WHATWG_CAP_NOTIFICATION: u8 = @backingInt(Capability.notification);
+pub export const WHATWG_CAP_PUSH: u8 = @backingInt(Capability.push);
+pub export const WHATWG_CAP_SHARE: u8 = @backingInt(Capability.share);
+pub export const WHATWG_CAP_FILESYSTEM: u8 = @backingInt(Capability.filesystem);
+pub export const WHATWG_CAP_GEOLOCATION: u8 = @backingInt(Capability.geolocation);
+pub export const WHATWG_CAP_BLUETOOTH: u8 = @backingInt(Capability.bluetooth);
+pub export const WHATWG_CAP_USB: u8 = @backingInt(Capability.usb);
+pub export const WHATWG_CAP_SERIAL: u8 = @backingInt(Capability.serial);
+pub export const WHATWG_CAP_HID: u8 = @backingInt(Capability.hid);
+pub export const WHATWG_CAP_NFC: u8 = @backingInt(Capability.nfc);
+pub export const WHATWG_CAP_DEVICE_ORIENTATION: u8 = @backingInt(Capability.device_orientation);
+pub export const WHATWG_CAP_VIBRATION: u8 = @backingInt(Capability.vibration);
+pub export const WHATWG_CAP_BATTERY: u8 = @backingInt(Capability.battery);
+pub export const WHATWG_CAP_WAKE_LOCK: u8 = @backingInt(Capability.wake_lock);
+pub export const WHATWG_CAP_WEBRTC: u8 = @backingInt(Capability.webrtc);
+pub export const WHATWG_CAP_MEDIA: u8 = @backingInt(Capability.media);
+pub export const WHATWG_CAP_AUDIO: u8 = @backingInt(Capability.audio);
+pub export const WHATWG_CAP_SPEECH: u8 = @backingInt(Capability.speech);
+pub export const WHATWG_CAP_GAMEPAD: u8 = @backingInt(Capability.gamepad);
+pub export const WHATWG_CAP_SENSOR: u8 = @backingInt(Capability.sensor);
+pub export const WHATWG_CAP_CREDENTIALS: u8 = @backingInt(Capability.credentials);
+pub export const WHATWG_CAP_WEBAUTHN: u8 = @backingInt(Capability.webauthn);
+pub export const WHATWG_CAP_PERMISSIONS: u8 = @backingInt(Capability.permissions);
+pub export const WHATWG_CAP_PAYMENT: u8 = @backingInt(Capability.payment);
 
 // =============================================================================
 // Lifecycle Functions
@@ -213,8 +213,8 @@ pub export fn whatwg_platform_set_user_context(backend: ?*PlatformBackend, user_
 /// @return true if capability is available, false otherwise
 pub export fn whatwg_platform_has_capability(backend: ?*const PlatformBackend, capability: u8) callconv(.c) bool {
     if (backend) |b| {
-        if (capability <= @intFromEnum(Capability.payment)) {
-            const cap: Capability = @enumFromInt(capability);
+        if (capability <= @backingInt(Capability.payment)) {
+            const cap: Capability = @fromBackingInt(@intCast(capability));
             return b.hasCapability(cap);
         }
     }
@@ -229,7 +229,7 @@ pub export fn whatwg_platform_capability_count(backend: ?*const PlatformBackend)
     if (backend) |b| {
         var count: u32 = 0;
         inline for (@typeInfo(Capability).@"enum".field_values) |field_value| {
-            const cap: Capability = @enumFromInt(field_value);
+            const cap: Capability = @fromBackingInt(@intCast(field_value));
             if (b.hasCapability(cap)) {
                 count += 1;
             }

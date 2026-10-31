@@ -341,7 +341,7 @@ pub const ComputedStyle = struct {
     }
 
     pub fn get(self: *const ComputedStyle, l: Longhand) Value {
-        const loc = groups.location[@intFromEnum(self.physical(l))];
+        const loc = groups.location[@backingInt(self.physical(l))];
         return self.slots[loc.group][loc.index];
     }
 
@@ -357,7 +357,7 @@ pub const ComputedStyle = struct {
     /// the stored value, which then stays shared). Copies `l`'s group first
     /// when this style does not hold it alone.
     pub fn set(self: *ComputedStyle, l: Longhand, v: Value) Allocator.Error!void {
-        const loc = groups.location[@intFromEnum(l)];
+        const loc = groups.location[@backingInt(l)];
         std.debug.assert(loc.stored);
         if (identical(self.slots[loc.group][loc.index], v)) return releaseValue(v);
         const slots = self.mutable(loc.group) catch |err| {
@@ -581,7 +581,7 @@ pub const initial_values: [Longhand.count]Value = blk: {
     @setEvalBranchQuota(100_000);
     var out: [Longhand.count]Value = undefined;
     for (0..Longhand.count) |i| {
-        const l: Longhand = @enumFromInt(i);
+        const l: Longhand = @fromBackingInt(@intCast(i));
         out[i] = initialComputed(l);
     }
     break :blk out;

@@ -66,7 +66,7 @@ pub const Descriptor = enum {
     }
     pub fn parse(name_text: []const u8) ?Descriptor {
         inline for (@typeInfo(Descriptor).@"enum".field_values) |field_value| {
-            const kind: Descriptor = @enumFromInt(field_value);
+            const kind: Descriptor = @fromBackingInt(@intCast(field_value));
             if (std.ascii.eqlIgnoreCase(name_text, kind.name())) return kind;
         }
         return null;

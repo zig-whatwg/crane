@@ -270,7 +270,7 @@ pub const ColorParser = struct {
             if (std.ascii.eqlIgnoreCase(name, "rgba")) break :blk .rgb;
             if (std.ascii.eqlIgnoreCase(name, "hsla")) break :blk .hsl;
             inline for (comptime std.meta.fieldNames(Function), @typeInfo(Function).@"enum".field_values) |field_name, field_value| {
-                if (std.ascii.eqlIgnoreCase(name, field_name)) break :blk @enumFromInt(field_value);
+                if (std.ascii.eqlIgnoreCase(name, field_name)) break :blk @fromBackingInt(@intCast(field_value));
             }
             return error.InvalidColor;
         };
@@ -864,7 +864,7 @@ pub const SystemColor = enum(u8) {
             break :zig017_fields zig017_out;
         };
         var entries: [fields.len]struct { []const u8, SystemColor } = undefined;
-        for (fields, 0..) |field, i| entries[i] = .{ field.name, @enumFromInt(field.value) };
+        for (fields, 0..) |field, i| entries[i] = .{ field.name, @fromBackingInt(@intCast(field.value)) };
         break :blk std.StaticStringMap(SystemColor).initComptime(entries);
     };
 

@@ -83,7 +83,7 @@ pub fn parseSimpleType(text: []const u8) ?SimpleType {
     // Values 4 <custom-ident> excludes the CSS-wide and default keywords.
     if (tokenizer.nameEql(token.value, "default")) return null;
     inline for (@typeInfo(values.CssWide).@"enum".field_values) |field_value| {
-        const wide: values.CssWide = @enumFromInt(field_value);
+        const wide: values.CssWide = @fromBackingInt(@intCast(field_value));
         if (tokenizer.nameEql(token.value, wide.name())) return null;
     }
     if (math.Unit.parse(token.value)) |unit| {

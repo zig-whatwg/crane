@@ -161,11 +161,11 @@ pub fn renderCases(allocator: Allocator, out: *std.ArrayList(u8), first: usize, 
     var made: usize = 0;
     defer for (baseline[0..made]) |b| allocator.free(b);
     for (0..Longhand.count) |i| {
-        baseline[i] = try resolved(allocator, initial, @enumFromInt(i));
+        baseline[i] = try resolved(allocator, initial, @fromBackingInt(@intCast(i)));
         made += 1;
     }
     try out.appendSlice(allocator, "== initial\n");
-    for (baseline, 0..) |b, i| try line(allocator, out, @as(Longhand, @enumFromInt(i)).name(), b);
+    for (baseline, 0..) |b, i| try line(allocator, out, @as(Longhand, @fromBackingInt(@intCast(i))).name(), b);
 
     for (cases[first..end]) |case| {
         const snapshot: ?*css.registered_properties.Snapshot = if (case.registered) try support.snapshotOf(allocator, .{}, &.{
@@ -209,9 +209,9 @@ pub fn renderCases(allocator: Allocator, out: *std.ArrayList(u8), first: usize, 
             defer allocator.free(names);
             for (names) |name| try line(allocator, out, name, if (style.customValue(name)) |t| t.bytes else "<invalid>");
             for (0..Longhand.count) |i| {
-                const text = try resolved(allocator, style, @enumFromInt(i));
+                const text = try resolved(allocator, style, @fromBackingInt(@intCast(i)));
                 defer allocator.free(text);
-                if (!std.mem.eql(u8, text, baseline[i])) try line(allocator, out, @as(Longhand, @enumFromInt(i)).name(), text);
+                if (!std.mem.eql(u8, text, baseline[i])) try line(allocator, out, @as(Longhand, @fromBackingInt(@intCast(i))).name(), text);
             }
         }
     }

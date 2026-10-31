@@ -33,7 +33,7 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
     const internal = state.own._internal orelse return;
     state.own._internal = null;
     engine.forgetTracedChild(instance, dom.style.objects.slots.font_feature_map_owner);
-    internal.rule.data.font_feature_values.objects[@intFromEnum(internal.block)].clearIf(instance);
+    internal.rule.data.font_feature_values.objects[@backingInt(internal.block)].clearIf(instance);
     internal.rule.unref();
     runtime.arenaOf(instance).destroy(InternalState, internal);
 }
