@@ -77,7 +77,7 @@ const ChunkServer = struct {
             return self.write(stream, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
         }
         try self.write(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n");
-        try self.chunk(stream, "<!doctype html><p id=a>one</p><!--" ++ "x" ** 2048 ++ "-->");
+        try self.chunk(stream, "<!doctype html><p id=a>one</p><!--" ++ &@as([2048:0]u8, @splat('x')) ++ "-->");
         var waited: usize = 0;
         while (!self.released.load(.acquire) and waited < 2000) : (waited += 1) {
             self.io.sleep(.fromMilliseconds(5), .awake) catch {};

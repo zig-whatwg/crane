@@ -40,14 +40,14 @@ const Reporting = struct {
 var reporting: Reporting = .{};
 
 fn inErrorReportingMode(global: *runtime.Instance) bool {
-    std.Io.Threaded.mutexLock(&reporting.mutex);
+    std.Io.Threaded.mutexLockUncancelable(&reporting.mutex);
     defer std.Io.Threaded.mutexUnlock(&reporting.mutex);
     for (reporting.slots) |g| if (g == global) return true;
     return false;
 }
 
 fn enterErrorReportingMode(global: *runtime.Instance) ?usize {
-    std.Io.Threaded.mutexLock(&reporting.mutex);
+    std.Io.Threaded.mutexLockUncancelable(&reporting.mutex);
     defer std.Io.Threaded.mutexUnlock(&reporting.mutex);
     for (&reporting.slots, 0..) |*slot, i| {
         if (slot.* == null) {
@@ -59,7 +59,7 @@ fn enterErrorReportingMode(global: *runtime.Instance) ?usize {
 }
 
 fn leaveErrorReportingMode(slot: usize) void {
-    std.Io.Threaded.mutexLock(&reporting.mutex);
+    std.Io.Threaded.mutexLockUncancelable(&reporting.mutex);
     defer std.Io.Threaded.mutexUnlock(&reporting.mutex);
     reporting.slots[slot] = null;
 }

@@ -167,7 +167,7 @@ const OpaqueNonces = struct {
     pub fn deinit(_: *OpaqueNonces) void {}
 
     fn next(self: *OpaqueNonces) u128 {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         while (true) {
             const value = self.random.random().int(u128);

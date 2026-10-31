@@ -46,10 +46,16 @@ pub const Word = enum {
         };
     }
     const names = blk: {
-        const fields = @typeInfo(Word).@"enum".fields;
+        // Zig 0.17: @typeInfo is struct-of-arrays; rebuild the old field list.
+        const fields = zig017_fields: {
+            const zig017_info = @typeInfo(Word).@"enum";
+            var zig017_out: [zig017_info.field_names.len]struct { name: [:0]const u8, value: comptime_int } = undefined;
+            for (zig017_info.field_names, zig017_info.field_values, 0..) |zig017_n, zig017_v, zig017_i| zig017_out[zig017_i] = .{ .name = zig017_n, .value = zig017_v };
+            break :zig017_fields zig017_out;
+        };
         var items: [fields.len]struct { []const u8, Word } = undefined;
         for (fields, 0..) |field, i| {
-            const value: Word = @enumFromInt(field.value);
+            const value: Word = @fromBackingInt(@intCast(field.value));
             items[i] = .{ value.name(), value };
         }
         break :blk std.StaticStringMap(Word).initComptime(items);
@@ -57,8 +63,8 @@ pub const Word = enum {
     fn parse(token: tokenizer.Token) ?Word {
         if (token.token_type != .ident) return null;
         if (names.get(token.value)) |word| return word;
-        inline for (@typeInfo(Word).@"enum".fields) |field| {
-            const word: Word = @enumFromInt(field.value);
+        inline for (@typeInfo(Word).@"enum".field_values) |field_value| {
+            const word: Word = @fromBackingInt(@intCast(field_value));
             if (tokenizer.nameEql(token.value, word.name())) return word;
         }
         return null;

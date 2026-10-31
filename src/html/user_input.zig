@@ -1075,7 +1075,7 @@ fn moveTextControlByWord(target: *Instance, forward: bool, extend: bool) void {
 
 /// setRangeText's optional selectMode argument type, as the interface's own
 /// signature names it (html imports no enums module).
-const SelectionModeArgument = @typeInfo(@TypeOf(interfaces.HTMLInputElement.call_setRangeText__1)).@"fn".params[4].type.?;
+const SelectionModeArgument = @typeInfo(@TypeOf(interfaces.HTMLInputElement.call_setRangeText__1)).@"fn".param_types[4].?;
 
 fn setRangeText(element: *Instance, replacement: []const u8, start: u32, end: u32) void {
     const text = runtime.DOMString.initInterned(replacement);

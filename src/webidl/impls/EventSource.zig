@@ -532,7 +532,7 @@ pub fn get_withCredentials(instance: *runtime.Instance) anyerror!bool {
     return getInternal(instance).with_credentials;
 }
 pub fn get_readyState(instance: *runtime.Instance) anyerror!u16 {
-    return @intFromEnum(getInternal(instance).connection.state);
+    return @backingInt(getInternal(instance).connection.state);
 }
 pub fn call_close(instance: *runtime.Instance) anyerror!void {
     getInternal(instance).close();

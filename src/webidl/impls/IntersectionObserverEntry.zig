@@ -102,15 +102,15 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     if (@hasField(Args, "root_bounds")) state.own.rootBounds = args.root_bounds;
     if (@hasField(Args, "bounding_client_rect")) state.own.boundingClientRect = args.bounding_client_rect;
     if (@hasField(Args, "intersection_rect")) state.own.intersectionRect = args.intersection_rect;
-    inline for (std.meta.fields(Rect)) |field| {
-        const which: Rect = @enumFromInt(field.value);
+    inline for (@typeInfo(Rect).@"enum".field_values) |field_value| {
+        const which: Rect = @fromBackingInt(@intCast(field_value));
         const present = switch (which) {
             .root_bounds => @hasField(Args, "root_bounds"),
             .bounding_client_rect => @hasField(Args, "bounding_client_rect"),
             .intersection_rect => @hasField(Args, "intersection_rect"),
         };
         if (present) if (rectField(state, which)) |rect| {
-            internal.rects[field.value].generation = runtime.SlabAllocator.generationOf(rect);
+            internal.rects[field_value].generation = runtime.SlabAllocator.generationOf(rect);
         };
     }
     if (@hasField(Args, "target")) {
@@ -127,12 +127,12 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return;
     internal.target.release(instance, target_slot);
-    inline for (std.meta.fields(Rect)) |field| {
-        const kept = &internal.rects[field.value];
+    inline for (@typeInfo(Rect).@"enum".field_values) |field_value| {
+        const kept = &internal.rects[field_value];
         if (kept.edge.drawn) {
             kept.edge.release(instance);
         } else if (kept.generation != 0) {
-            if (rectField(state, @enumFromInt(field.value))) |rect| rect.releaseIfUnwrapped(kept.generation);
+            if (rectField(state, @fromBackingInt(@intCast(field_value)))) |rect| rect.releaseIfUnwrapped(kept.generation);
         }
     }
     runtime.arenaOf(instance).destroy(InternalState, internal);
@@ -145,7 +145,7 @@ fn handOut(instance: *runtime.Instance, which: Rect) ?*runtime.Instance {
     const state = instance.getState(State);
     const rect = rectField(state, which) orelse return null;
     if (getInternal(instance)) |internal| {
-        const kept = &internal.rects[@intFromEnum(which)];
+        const kept = &internal.rects[@backingInt(which)];
         if (!kept.edge.drawn) kept.edge.hold(instance, rect);
     }
     return rect;

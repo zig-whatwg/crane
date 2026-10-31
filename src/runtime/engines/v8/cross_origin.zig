@@ -177,7 +177,7 @@ pub fn installOnIsolate(isolate: *v8.Isolate) void {
 /// template (its WindowProxy) or Location's instance template - before the
 /// template makes an instance, and in the snapshot generator as well.
 pub fn installOnTemplate(template: *v8.ObjectTemplate, kind: Kind) void {
-    v8.v8_ObjectTemplate_SetCrossOriginAccessCheck(template, @intFromEnum(kind));
+    v8.v8_ObjectTemplate_SetCrossOriginAccessCheck(template, @backingInt(kind));
 }
 
 /// The template callbacks, as the snapshot's external references.

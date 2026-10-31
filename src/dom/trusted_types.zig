@@ -190,13 +190,13 @@ pub const Input = union(enum) {
 pub fn inputFrom(value: anytype) Input {
     const T = @TypeOf(value);
     const info = @typeInfo(T).@"union";
-    inline for (info.fields) |field| {
-        if (value == @field(std.meta.Tag(T), field.name)) {
-            const arm = @field(value, field.name);
-            if (field.type == *runtime.Instance) return .{ .object = arm };
-            if (field.type == runtime.DOMString) return .{ .string = arm.asSlice() };
-            if (comptime field.type == []const u8 or field.type == []u8) return .{ .string = arm };
-            @compileError("a Trusted Types sink union arm is an interface or a string: " ++ @typeName(field.type));
+    inline for (info.field_names, info.field_types) |field_name, field_type| {
+        if (value == @field(std.meta.Tag(T), field_name)) {
+            const arm = @field(value, field_name);
+            if (field_type == *runtime.Instance) return .{ .object = arm };
+            if (field_type == runtime.DOMString) return .{ .string = arm.asSlice() };
+            if (comptime field_type == []const u8 or field_type == []u8) return .{ .string = arm };
+            @compileError("a Trusted Types sink union arm is an interface or a string: " ++ @typeName(field_type));
         }
     }
     unreachable;

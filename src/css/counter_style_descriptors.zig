@@ -29,8 +29,8 @@ pub const Descriptor = enum {
         };
     }
     pub fn parse(text: []const u8) ?Descriptor {
-        inline for (@typeInfo(Descriptor).@"enum".fields) |field| {
-            const d: Descriptor = @enumFromInt(field.value);
+        inline for (@typeInfo(Descriptor).@"enum".field_values) |field_value| {
+            const d: Descriptor = @fromBackingInt(@intCast(field_value));
             if (std.mem.eql(u8, text, d.name())) return d;
         }
         return null;
@@ -56,21 +56,21 @@ pub const Data = struct {
     allocator: Allocator,
     /// Serialized identifier, owned; getters need no further CSS parsing.
     name: []u8,
-    descriptors: [10]?Parsed = .{null} ** 10,
+    descriptors: [10]?Parsed = @splat(null),
 
     pub fn deinit(self: *Data) void {
         self.allocator.free(self.name);
         for (self.descriptors) |descriptor| if (descriptor) |d| d.deinit(self.allocator);
     }
     pub fn get(self: *const Data, descriptor: Descriptor) []const u8 {
-        return if (self.descriptors[@intFromEnum(descriptor)]) |parsed| parsed.text else "";
+        return if (self.descriptors[@backingInt(descriptor)]) |parsed| parsed.text else "";
     }
     fn algorithm(self: *const Data) Algorithm {
-        return if (self.descriptors[@intFromEnum(Descriptor.system)]) |parsed| parsed.algorithm else .symbolic;
+        return if (self.descriptors[@backingInt(Descriptor.system)]) |parsed| parsed.algorithm else .symbolic;
     }
     fn definesStyle(self: *const Data) bool {
-        const symbols = self.descriptors[@intFromEnum(Descriptor.symbols)];
-        const additive = self.descriptors[@intFromEnum(Descriptor.additive_symbols)];
+        const symbols = self.descriptors[@backingInt(Descriptor.symbols)];
+        const additive = self.descriptors[@backingInt(Descriptor.additive_symbols)];
         return switch (self.algorithm()) {
             .numeric, .alphabetic => symbols != null and symbols.?.count >= 2,
             .cyclic, .fixed, .symbolic => symbols != null and symbols.?.count >= 1,
@@ -90,11 +90,11 @@ pub const Data = struct {
         // §9.2 steps 1–4: parse, preserve a defined counter style, and
         // never change the algorithm. A failed setter leaves every field.
         const replacement = try parseDescriptor(self.allocator, descriptor, input) orelse return false;
-        const old = self.descriptors[@intFromEnum(descriptor)];
+        const old = self.descriptors[@backingInt(descriptor)];
         const old_algorithm = self.algorithm();
-        self.descriptors[@intFromEnum(descriptor)] = replacement;
+        self.descriptors[@backingInt(descriptor)] = replacement;
         if (!self.definesStyle() or (descriptor == .system and replacement.algorithm != old_algorithm)) {
-            self.descriptors[@intFromEnum(descriptor)] = old;
+            self.descriptors[@backingInt(descriptor)] = old;
             replacement.deinit(self.allocator);
             return false;
         }
@@ -111,9 +111,9 @@ pub const Data = struct {
         try out.appendSlice(allocator, "@counter-style ");
         try out.appendSlice(allocator, self.name);
         try out.appendSlice(allocator, " { ");
-        inline for (@typeInfo(Descriptor).@"enum".fields) |field| {
-            const descriptor: Descriptor = @enumFromInt(field.value);
-            if (self.descriptors[field.value]) |parsed| {
+        inline for (@typeInfo(Descriptor).@"enum".field_values) |field_value| {
+            const descriptor: Descriptor = @fromBackingInt(@intCast(field_value));
+            if (self.descriptors[field_value]) |parsed| {
                 try out.appendSlice(allocator, descriptor.name());
                 try out.appendSlice(allocator, ": ");
                 try out.appendSlice(allocator, parsed.text);
@@ -133,8 +133,8 @@ pub fn fromParsed(allocator: Allocator, rule: *const rules.Rule) Allocator.Error
         if (declaration.important) continue;
         const descriptor = Descriptor.parse(declaration.name) orelse continue;
         const parsed = try parseDescriptor(allocator, descriptor, declaration.value) orelse continue;
-        if (result.descriptors[@intFromEnum(descriptor)]) |old| old.deinit(allocator);
-        result.descriptors[@intFromEnum(descriptor)] = parsed;
+        if (result.descriptors[@backingInt(descriptor)]) |old| old.deinit(allocator);
+        result.descriptors[@backingInt(descriptor)] = parsed;
     }
     // §3.1: an insufficient symbol list does not invalidate the rule.
     return result;
@@ -264,8 +264,8 @@ pub fn parseDescriptor(allocator: Allocator, descriptor: Descriptor, input: []co
             const token = stream.next();
             if (token.token_type != .ident) return null;
             var algorithm: ?Algorithm = null;
-            inline for (@typeInfo(Algorithm).@"enum".fields) |field| if (tokens.nameEql(token.value, field.name)) {
-                algorithm = @enumFromInt(field.value);
+            inline for (@typeInfo(Algorithm).@"enum".field_names, @typeInfo(Algorithm).@"enum".field_values) |field_name, field_value| if (tokens.nameEql(token.value, field_name)) {
+                algorithm = @fromBackingInt(@intCast(field_value));
             };
             result.algorithm = algorithm orelse return null;
             try out.appendSlice(allocator, @tagName(result.algorithm));

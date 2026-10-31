@@ -96,7 +96,7 @@ fn existingRegistryOf(instance: *const Instance) ?*Registry {
 /// - `internal`: Pointer to the internal state struct
 pub fn setInternal(instance: *Instance, internal: anytype) !void {
     const registry = try registryOf(instance);
-    std.Io.Threaded.mutexLock(&registry.mutex);
+    std.Io.Threaded.mutexLockUncancelable(&registry.mutex);
     defer std.Io.Threaded.mutexUnlock(&registry.mutex);
     try registry.map.put(registry.allocator, @intFromPtr(instance), @ptrCast(internal));
 }
@@ -111,7 +111,7 @@ pub fn setInternal(instance: *Instance, internal: anytype) !void {
 /// Using the wrong type will result in undefined behavior.
 pub fn getInternal(comptime InternalStateType: type, instance: *Instance) ?*InternalStateType {
     const registry = existingRegistryOf(instance) orelse return null;
-    std.Io.Threaded.mutexLock(&registry.mutex);
+    std.Io.Threaded.mutexLockUncancelable(&registry.mutex);
     defer std.Io.Threaded.mutexUnlock(&registry.mutex);
     const ptr = registry.map.get(@intFromPtr(instance)) orelse return null;
     return @ptrCast(@alignCast(ptr));
@@ -123,7 +123,7 @@ pub fn getInternal(comptime InternalStateType: type, instance: *Instance) ?*Inte
 /// Note: This does NOT free the internal state memory - that is the impl's.
 pub fn removeInternal(instance: *Instance) void {
     const registry = existingRegistryOf(instance) orelse return;
-    std.Io.Threaded.mutexLock(&registry.mutex);
+    std.Io.Threaded.mutexLockUncancelable(&registry.mutex);
     defer std.Io.Threaded.mutexUnlock(&registry.mutex);
     _ = registry.map.remove(@intFromPtr(instance));
 }
@@ -131,7 +131,7 @@ pub fn removeInternal(instance: *Instance) void {
 /// Check if an instance has internal state registered
 pub fn hasInternal(instance: *Instance) bool {
     const registry = existingRegistryOf(instance) orelse return false;
-    std.Io.Threaded.mutexLock(&registry.mutex);
+    std.Io.Threaded.mutexLockUncancelable(&registry.mutex);
     defer std.Io.Threaded.mutexUnlock(&registry.mutex);
     return registry.map.contains(@intFromPtr(instance));
 }

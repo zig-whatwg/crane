@@ -119,11 +119,11 @@ fn analyse(comptime T: type) bool {
         .optional => |o| analyse(o.child),
         .@"struct" => |s| blk: {
             if (s.layout == .@"packed") break :blk analyse(s.backing_integer.?);
-            for (s.fields) |f| if (analyse(f.type)) break :blk true;
+            for (s.field_types) |f_type| if (analyse(f_type)) break :blk true;
             break :blk false;
         },
         .@"union" => |u| blk: {
-            for (u.fields) |f| if (analyse(f.type)) break :blk true;
+            for (u.field_types) |f_type| if (analyse(f_type)) break :blk true;
             break :blk false;
         },
         else => true,
@@ -133,9 +133,9 @@ fn analyse(comptime T: type) bool {
 /// Value tags whose payload may hold a reference.
 const counted_tags: std.EnumSet(std.meta.Tag(Value)) = blk: {
     @setEvalBranchQuota(100_000);
-    var set: std.EnumSet(std.meta.Tag(Value)) = .initEmpty();
-    for (@typeInfo(Value).@"union".fields) |f| {
-        if (mayHoldReference(f.type)) set.insert(@field(std.meta.Tag(Value), f.name));
+    var set: std.EnumSet(std.meta.Tag(Value)) = .empty;
+    for (@typeInfo(Value).@"union".field_names, @typeInfo(Value).@"union".field_types) |f_name, f_type| {
+        if (mayHoldReference(f_type)) set.insert(@field(std.meta.Tag(Value), f_name));
     }
     break :blk set;
 };
@@ -167,15 +167,15 @@ pub fn identical(a: Value, b: Value) bool {
 
 fn same(comptime T: type, a: T, b: T) bool {
     return switch (@typeInfo(T)) {
-        .float => @as(std.meta.Int(.unsigned, @bitSizeOf(T)), @bitCast(a)) == @as(std.meta.Int(.unsigned, @bitSizeOf(T)), @bitCast(b)),
+        .float => @as(@Int(.unsigned, @bitSizeOf(T)), @bitCast(a)) == @as(@Int(.unsigned, @bitSizeOf(T)), @bitCast(b)),
         .bool, .int, .@"enum", .void => a == b,
         .pointer => |p| if (p.size == .slice) a.ptr == b.ptr and a.len == b.len else a == b,
         .optional => |o| if (a) |x| (if (b) |y| same(o.child, x, y) else false) else b == null,
         .array => |arr| for (a, b) |x, y| {
             if (!same(arr.child, x, y)) break false;
         } else true,
-        .@"struct" => |s| if (s.layout == .@"packed") @as(s.backing_integer.?, @bitCast(a)) == @as(s.backing_integer.?, @bitCast(b)) else inline for (s.fields) |f| {
-            if (!same(f.type, @field(a, f.name), @field(b, f.name))) break false;
+        .@"struct" => |s| if (s.layout == .@"packed") @as(s.backing_integer.?, @bitCast(a)) == @as(s.backing_integer.?, @bitCast(b)) else inline for (s.field_names, s.field_types) |f_name, f_type| {
+            if (!same(f_type, @field(a, f_name), @field(b, f_name))) break false;
         } else true,
         .@"union" => |u| blk: {
             if (u.tag_type == null) @compileError("untagged union in a computed value: " ++ @typeName(T));
@@ -216,7 +216,7 @@ pub const ComputedStyle = struct {
     /// group's initial values.
     slots: [groups.count][*]const Value = all_initial,
     /// The groups this style holds one reference on.
-    held: Held = .initEmpty(),
+    held: Held = .empty,
     /// CSS Color Adjustment 1 2.2, the element color scheme: what its system
     /// colors were resolved against.
     used_color_scheme: color_scheme.Scheme = .light,
@@ -341,7 +341,7 @@ pub const ComputedStyle = struct {
     }
 
     pub fn get(self: *const ComputedStyle, l: Longhand) Value {
-        const loc = groups.location[@intFromEnum(self.physical(l))];
+        const loc = groups.location[@backingInt(self.physical(l))];
         return self.slots[loc.group][loc.index];
     }
 
@@ -357,7 +357,7 @@ pub const ComputedStyle = struct {
     /// the stored value, which then stays shared). Copies `l`'s group first
     /// when this style does not hold it alone.
     pub fn set(self: *ComputedStyle, l: Longhand, v: Value) Allocator.Error!void {
-        const loc = groups.location[@intFromEnum(l)];
+        const loc = groups.location[@backingInt(l)];
         std.debug.assert(loc.stored);
         if (identical(self.slots[loc.group][loc.index], v)) return releaseValue(v);
         const slots = self.mutable(loc.group) catch |err| {
@@ -581,7 +581,7 @@ pub const initial_values: [Longhand.count]Value = blk: {
     @setEvalBranchQuota(100_000);
     var out: [Longhand.count]Value = undefined;
     for (0..Longhand.count) |i| {
-        const l: Longhand = @enumFromInt(i);
+        const l: Longhand = @fromBackingInt(@intCast(i));
         out[i] = initialComputed(l);
     }
     break :blk out;

@@ -66,8 +66,8 @@ const Entry = struct { []const u8, runtime.SerializableSteps };
 const entries: []const Entry = blk: {
     @setEvalBranchQuota(1_000_000);
     var list: []const Entry = &.{};
-    for (@typeInfo(interfaces).@"struct".decls) |decl| {
-        const member = @field(interfaces, decl.name);
+    for (@typeInfo(interfaces).@"struct".decl_names) |decl_name| {
+        const member = @field(interfaces, decl_name);
         if (@TypeOf(member) != type) continue;
         if (@typeInfo(member) != .@"struct") continue;
         if (!@hasDecl(member, "Meta") or !@hasDecl(member, "serializable_steps")) continue;

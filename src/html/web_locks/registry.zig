@@ -213,7 +213,7 @@ pub const Registry = struct {
     }
 
     fn lock(self: *Registry) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
     }
 
     fn unlock(self: *Registry) void {

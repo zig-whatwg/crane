@@ -791,11 +791,17 @@ fn containsLonghand(ls: []const Longhand, l: Longhand) bool {
 /// `all` is never chosen to serialize a block (browsers write the longhands).
 const preferred_shorthands = blk: {
     @setEvalBranchQuota(100_000);
-    const fields = @typeInfo(Shorthand).@"enum".fields;
+    // Zig 0.17: @typeInfo is struct-of-arrays; rebuild the old field list.
+    const fields = zig017_fields: {
+        const zig017_info = @typeInfo(Shorthand).@"enum";
+        var zig017_out: [zig017_info.field_names.len]struct { name: [:0]const u8, value: comptime_int } = undefined;
+        for (zig017_info.field_names, zig017_info.field_values, 0..) |zig017_n, zig017_v, zig017_i| zig017_out[zig017_i] = .{ .name = zig017_n, .value = zig017_v };
+        break :zig017_fields zig017_out;
+    };
     var out: [fields.len - 4]Shorthand = undefined;
     var n: usize = 0;
     for (fields) |f| {
-        const s: Shorthand = @enumFromInt(f.value);
+        const s: Shorthand = @fromBackingInt(@intCast(f.value));
         // Legacy one-member aliases are emitted with their canonical longhand.
         if (s == .all or s == ._webkit_text_orientation or s == ._webkit_transform or s == ._webkit_perspective) continue;
         out[n] = s;

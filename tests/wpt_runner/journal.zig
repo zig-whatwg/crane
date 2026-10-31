@@ -78,8 +78,8 @@ pub const Status = enum {
     }
 
     pub fn fromString(s: []const u8) ?Status {
-        inline for (@typeInfo(Status).@"enum".fields) |field| {
-            const value: Status = @enumFromInt(field.value);
+        inline for (@typeInfo(Status).@"enum".field_values) |field_value| {
+            const value: Status = @fromBackingInt(@intCast(field_value));
             if (std.mem.eql(u8, s, value.toString())) return value;
         }
         return null;

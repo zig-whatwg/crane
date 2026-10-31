@@ -162,7 +162,7 @@ pub const SharedWorkerManager = struct {
     /// credentials and extended lifetime matched; null when no worker
     /// matches.
     pub fn connect(self: *SharedWorkerManager, key: Key, options: Options, owner: *const anyopaque) Allocator.Error!?Found {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const entry = self.findRunning(key) orelse return null;
         const matched = entry.worker_type == options.worker_type and
@@ -211,7 +211,7 @@ pub const SharedWorkerManager = struct {
         errdefer entry.owners.deinit(self.allocator);
         try entry.owners.append(self.allocator, owner);
 
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         try self.entries.append(self.allocator, entry);
         _ = link.retain();
@@ -221,7 +221,7 @@ pub const SharedWorkerManager = struct {
     /// forget it.
     pub fn remove(self: *SharedWorkerManager, link: *WorkerLink) void {
         const entry = blk: {
-            std.Io.Threaded.mutexLock(&self.mutex);
+            std.Io.Threaded.mutexLockUncancelable(&self.mutex);
             defer std.Io.Threaded.mutexUnlock(&self.mutex);
             for (self.entries.items, 0..) |entry, i| {
                 if (entry.link == link) break :blk self.entries.swapRemove(i);
@@ -243,7 +243,7 @@ pub const SharedWorkerManager = struct {
         var orphans: std.ArrayListUnmanaged(*WorkerLink) = .empty;
         defer orphans.deinit(self.allocator);
         {
-            std.Io.Threaded.mutexLock(&self.mutex);
+            std.Io.Threaded.mutexLockUncancelable(&self.mutex);
             defer std.Io.Threaded.mutexUnlock(&self.mutex);
             for (self.entries.items) |entry| {
                 const index = std.mem.indexOfScalar(*const anyopaque, entry.owners.items, owner) orelse continue;
@@ -281,7 +281,7 @@ pub const SharedWorkerManager = struct {
     /// Whether it was.
     pub fn closeIfStillOrphaned(self: *SharedWorkerManager, link: *WorkerLink, epoch: u64) bool {
         const orphaned = blk: {
-            std.Io.Threaded.mutexLock(&self.mutex);
+            std.Io.Threaded.mutexLockUncancelable(&self.mutex);
             defer std.Io.Threaded.mutexUnlock(&self.mutex);
             for (self.entries.items) |entry| {
                 if (entry.link != link) continue;
@@ -299,7 +299,7 @@ pub const SharedWorkerManager = struct {
     /// soon as the lock drops; the cache decides at unload, on the owner's
     /// own thread, which is the only thread that adds that owner.
     pub fn hasOwner(self: *SharedWorkerManager, owner: *const anyopaque) bool {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         for (self.entries.items) |entry| {
             if (entry.hasOwner(owner)) return true;
@@ -309,14 +309,14 @@ pub const SharedWorkerManager = struct {
 
     /// How many workers the manager knows (closing ones included).
     pub fn count(self: *SharedWorkerManager) usize {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return self.entries.items.len;
     }
 
     /// How many owners the worker whose link is `link` has.
     pub fn ownerCount(self: *SharedWorkerManager, link: *WorkerLink) usize {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         for (self.entries.items) |entry| {
             if (entry.link == link) return entry.owners.items.len;

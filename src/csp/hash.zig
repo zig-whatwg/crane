@@ -146,7 +146,7 @@ pub fn reportingAlgorithm(source_list: *const types.SourceList) ?HashAlgorithm {
             .sha256
         else
             continue;
-        if (strongest == null or @intFromEnum(algorithm) > @intFromEnum(strongest.?)) strongest = algorithm;
+        if (strongest == null or @backingInt(algorithm) > @backingInt(strongest.?)) strongest = algorithm;
     }
     return strongest;
 }

@@ -11,8 +11,8 @@ test "unhinted percentage addition searches every dimension and preserves hint c
     for ([_]Base{ .length, .angle, .time, .frequency, .resolution, .flex }) |base| {
         const result = try numeric.addTypes(Type.one(base), Type.one(.percent));
         try std.testing.expectEqual(base, result.hint.?);
-        try std.testing.expectEqual(@as(i32, 1), result.powers[@intFromEnum(base)]);
-        try std.testing.expectEqual(@as(i32, 0), result.powers[@intFromEnum(Base.percent)]);
+        try std.testing.expectEqual(@as(i32, 1), result.powers[@backingInt(base)]);
+        try std.testing.expectEqual(@as(i32, 0), result.powers[@backingInt(Base.percent)]);
     }
     try std.testing.expectError(error.Invalid, numeric.addTypes(Type.one(null), Type.one(.percent)));
     try std.testing.expectError(error.Invalid, numeric.addTypes(Type.one(.length), Type.one(.angle)));
@@ -23,7 +23,7 @@ test "unhinted percentage addition searches every dimension and preserves hint c
     var squared = Type.one(.length);
     squared.powers[0] = 2;
     var mixed = Type.one(.length);
-    mixed.powers[@intFromEnum(Base.percent)] = 1;
+    mixed.powers[@backingInt(Base.percent)] = 1;
     const square_sum = try numeric.addTypes(squared, mixed);
     try std.testing.expectEqual(@as(i32, 2), square_sum.powers[0]);
     try std.testing.expectEqual(Base.length, square_sum.hint.?);

@@ -303,7 +303,7 @@ pub const LoadState = struct {
     /// ready state to what that data supports; null for a stale load.
     pub fn decoderData(self: *LoadState, generation: u64, data: Data, end_of_stream: bool, loop: bool) ?ReadyChange {
         if (generation != self.generation) return null;
-        if (self.data == null or @intFromEnum(data) > @intFromEnum(self.data.?)) self.data = data;
+        if (self.data == null or @backingInt(data) > @backingInt(self.data.?)) self.data = data;
         if (data == .current_data and end_of_stream) self.all_data = true;
         return self.changeReady(self.readyNow(loop), loop);
     }
@@ -338,28 +338,28 @@ pub const LoadState = struct {
         if (old == new) return change;
         const was_potentially_playing = self.potentiallyPlaying(loop);
         self.ready = new;
-        const old_level = @intFromEnum(old);
-        const new_level = @intFromEnum(new);
+        const old_level = @backingInt(old);
+        const new_level = @backingInt(new);
         // From HAVE_NOTHING: loadedmetadata (the processing steps reach
         // HAVE_METADATA before any later state).
-        if (old == .nothing and new_level >= @intFromEnum(Ready.metadata)) change.loadedmetadata = true;
+        if (old == .nothing and new_level >= @backingInt(Ready.metadata)) change.loadedmetadata = true;
         // From HAVE_METADATA (or less) to HAVE_CURRENT_DATA or greater: the
         // first time since load, loadeddata. Data is not merely metadata, so
         // the element stops delaying the load event (resource fetch,
         // "once the readyState attribute reaches HAVE_CURRENT_DATA").
-        if (old_level <= @intFromEnum(Ready.metadata) and new_level >= @intFromEnum(Ready.current_data)) {
+        if (old_level <= @backingInt(Ready.metadata) and new_level >= @backingInt(Ready.current_data)) {
             if (!self.loadeddata_fired) change.loadeddata = true;
             self.loadeddata_fired = true;
             self.delaying_load_event = false;
         }
         // From HAVE_FUTURE_DATA or more to HAVE_CURRENT_DATA or less, while it
         // was potentially playing and has not ended playback.
-        if (old_level >= @intFromEnum(Ready.future_data) and new_level <= @intFromEnum(Ready.current_data)) {
+        if (old_level >= @backingInt(Ready.future_data) and new_level <= @backingInt(Ready.current_data)) {
             if (was_potentially_playing and !self.endedPlayback(loop)) change.timeupdate_waiting = true;
         }
         // From HAVE_CURRENT_DATA or less to HAVE_FUTURE_DATA or more: canplay,
         // and notify about playing when not paused.
-        if (old_level <= @intFromEnum(Ready.current_data) and new_level >= @intFromEnum(Ready.future_data)) {
+        if (old_level <= @backingInt(Ready.current_data) and new_level >= @backingInt(Ready.future_data)) {
             change.canplay = true;
             if (!self.paused) change.notify_playing = true;
         }
@@ -370,7 +370,7 @@ pub const LoadState = struct {
     /// 4.8.11.8 "ended playback": the end in the direction of playback, with
     /// no loop attribute (or the start, playing backwards).
     pub fn endedPlayback(self: *const LoadState, loop: bool) bool {
-        if (@intFromEnum(self.ready) < @intFromEnum(Ready.metadata)) return false;
+        if (@backingInt(self.ready) < @backingInt(Ready.metadata)) return false;
         if (self.playback_rate >= 0) return !loop and self.position >= self.duration;
         return self.position <= 0;
     }
@@ -379,7 +379,7 @@ pub const LoadState = struct {
     /// (HAVE_FUTURE_DATA or more). Crane pauses for no user interaction or
     /// in-band content.
     pub fn potentiallyPlaying(self: *const LoadState, loop: bool) bool {
-        return !self.paused and !self.endedPlayback(loop) and @intFromEnum(self.ready) >= @intFromEnum(Ready.future_data);
+        return !self.paused and !self.endedPlayback(loop) and @backingInt(self.ready) >= @backingInt(Ready.future_data);
     }
 
     pub const Boundary = enum { none, end, start };
@@ -426,8 +426,8 @@ pub const LoadState = struct {
             self.paused = false;
             self.show_poster = false;
             steps.play_event = true;
-            if (@intFromEnum(self.ready) <= @intFromEnum(Ready.current_data)) steps.waiting = true else steps.notify_playing = true;
-        } else if (@intFromEnum(self.ready) >= @intFromEnum(Ready.future_data)) {
+            if (@backingInt(self.ready) <= @backingInt(Ready.current_data)) steps.waiting = true else steps.notify_playing = true;
+        } else if (@backingInt(self.ready) >= @backingInt(Ready.future_data)) {
             steps.resolve_pending = true;
         }
         self.can_autoplay = false;

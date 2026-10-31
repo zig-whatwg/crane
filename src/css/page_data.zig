@@ -16,7 +16,7 @@ pub const Data = struct {
     // DeclarationBlock entries or the style cascade, and resolve() is never
     // called on them. A future page consumer must substituteCustom(name),
     // then use the same page descriptor grammar; no element is invented.
-    pending: [@typeInfo(page.Descriptor).@"enum".fields.len]?*Pending = @splat(null),
+    pending: [@typeInfo(page.Descriptor).@"enum".field_names.len]?*Pending = @splat(null),
 
     pub fn init(allocator: Allocator) Data {
         return .{ .block = Block.init(allocator) };
@@ -73,7 +73,7 @@ pub const Data = struct {
     fn removeDescriptor(self: *Data, kind: page.Descriptor) bool {
         const index = self.descriptorIndex(kind) orelse return false;
         self.releaseEntry(self.block.entries.orderedRemove(index));
-        const slot = &self.pending[@intFromEnum(kind)];
+        const slot = &self.pending[@backingInt(kind)];
         if (slot.*) |held| held.unref();
         slot.* = null;
         return true;
@@ -125,7 +125,7 @@ pub const Data = struct {
             }
         } else self.block.entries.appendAssumeCapacity(.{ .unparsed = .{ .name = owned_name.?, .value = canonical, .important = important } });
         owned = false;
-        const slot = &self.pending[@intFromEnum(kind)];
+        const slot = &self.pending[@backingInt(kind)];
         if (slot.*) |old| old.unref();
         slot.* = held;
         held = null;

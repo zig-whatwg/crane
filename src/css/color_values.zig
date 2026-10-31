@@ -27,8 +27,8 @@ const Function = enum {
     fn parse(name: []const u8) ?Function {
         if (tokens.nameEql(name, "rgba")) return .rgb;
         if (tokens.nameEql(name, "hsla")) return .hsl;
-        inline for (@typeInfo(Function).@"enum".fields) |field|
-            if (tokens.nameEql(name, field.name)) return @enumFromInt(field.value);
+        inline for (@typeInfo(Function).@"enum".field_names, @typeInfo(Function).@"enum".field_values) |field_name, field_value|
+            if (tokens.nameEql(name, field_name)) return @fromBackingInt(@intCast(field_value));
         return null;
     }
     fn space(self: Function) Space {
@@ -657,8 +657,8 @@ const Parser = struct {
             if (self.stream.peek().token_type == .ident) {
                 if (result.space.hue() == null) return error.Invalid;
                 const method = self.stream.next();
-                result.hue = inline for (@typeInfo(spaces.HueMethod).@"enum".fields) |field| {
-                    if (tokens.nameEql(method.value, field.name)) break @enumFromInt(field.value);
+                result.hue = inline for (@typeInfo(spaces.HueMethod).@"enum".field_names, @typeInfo(spaces.HueMethod).@"enum".field_values) |field_name, field_value| {
+                    if (tokens.nameEql(method.value, field_name)) break @fromBackingInt(@intCast(field_value));
                 } else return error.Invalid;
                 if (!self.ident("hue")) return error.Invalid;
             }
@@ -793,8 +793,8 @@ fn symbolIndex(space: Space, symbol: math.Symbol) usize {
 fn fillSymbols(origin: Components, function: Function) math.SymbolValues {
     var result = math.SymbolValues{};
     for (channelSymbols(origin.space), 0..) |symbol, index|
-        result.values[@intFromEnum(symbol)] = origin.channel(index) * (if (function == .rgb) @as(f64, 255) else 1);
-    result.values[@intFromEnum(math.Symbol.alpha)] = origin.channel(3);
+        result.values[@backingInt(symbol)] = origin.channel(index) * (if (function == .rgb) @as(f64, 255) else 1);
+    result.values[@backingInt(math.Symbol.alpha)] = origin.channel(3);
     return result;
 }
 
@@ -810,7 +810,7 @@ fn computeChannels(input: Channels, allocator: Allocator, context: Color.Context
     for (input.components, &output.components) |component, *destination| {
         if (component == .channel and origin_components != null) {
             const index = symbolIndex(input.space, component.channel);
-            destination.* = if (origin_components.?.absent(index)) .none else .{ .number = Number.scalar(symbols.values[@intFromEnum(component.channel)]) };
+            destination.* = if (origin_components.?.absent(index)) .none else .{ .number = Number.scalar(symbols.values[@backingInt(component.channel)]) };
         } else destination.* = try component.compute(allocator, numeric_context);
     }
     if (channelsValue(output)) |components| {
@@ -828,7 +828,7 @@ fn computeAlpha(input: Alpha, allocator: Allocator, context: Color.Context) Allo
     }
     const origin = resolvedComponents(output.origin);
     var symbols = math.SymbolValues{};
-    if (origin) |components| symbols.values[@intFromEnum(math.Symbol.alpha)] = components.channel(3);
+    if (origin) |components| symbols.values[@backingInt(math.Symbol.alpha)] = components.channel(3);
     var numeric_context = context.math;
     numeric_context.percentage_basis = null;
     numeric_context.symbols = if (origin != null) &symbols else null;

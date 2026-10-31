@@ -257,7 +257,7 @@ pub const PersistenceManager = struct {
         std.mem.sort(EvictionCandidate, items, {}, struct {
             fn lessThan(_: void, a: EvictionCandidate, b: EvictionCandidate) bool {
                 // Higher priority value = evict first
-                return @intFromEnum(a.priority) > @intFromEnum(b.priority);
+                return @backingInt(a.priority) > @backingInt(b.priority);
             }
         }.lessThan);
 
@@ -432,8 +432,8 @@ test "PersistenceManager - getPressureLevel" {
 
 test "EvictionPriority ordering" {
     // Verify enum values are ordered correctly
-    try std.testing.expect(@intFromEnum(EvictionPriority.never) < @intFromEnum(EvictionPriority.low));
-    try std.testing.expect(@intFromEnum(EvictionPriority.low) < @intFromEnum(EvictionPriority.medium));
-    try std.testing.expect(@intFromEnum(EvictionPriority.medium) < @intFromEnum(EvictionPriority.high));
-    try std.testing.expect(@intFromEnum(EvictionPriority.high) < @intFromEnum(EvictionPriority.critical));
+    try std.testing.expect(@backingInt(EvictionPriority.never) < @backingInt(EvictionPriority.low));
+    try std.testing.expect(@backingInt(EvictionPriority.low) < @backingInt(EvictionPriority.medium));
+    try std.testing.expect(@backingInt(EvictionPriority.medium) < @backingInt(EvictionPriority.high));
+    try std.testing.expect(@backingInt(EvictionPriority.high) < @backingInt(EvictionPriority.critical));
 }

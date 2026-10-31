@@ -21,7 +21,7 @@ pub const OverrideStore = struct {
         pub fn hash(_: @This(), key: Key) u64 {
             var h = std.hash.Wyhash.init(0);
             h.update(key.permission_key);
-            h.update(&.{@intFromEnum(key.name)});
+            h.update(&.{@backingInt(key.name)});
             return h.final();
         }
 
@@ -43,7 +43,7 @@ pub const OverrideStore = struct {
     /// Permissions 3.2 "get a permission store entry", steps 1-2. Absence
     /// is distinct from an explicit prompt, which overrides a platform grant.
     pub fn get(self: *OverrideStore, permission_key: []const u8, descriptor: Descriptor) ?State {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const states = self.entries.get(.{ .permission_key = permission_key, .name = descriptor.name }) orelse return null;
         return states[strength(descriptor)];
@@ -53,7 +53,7 @@ pub const OverrideStore = struct {
     /// whether any descriptor's value changed. A replacement allocates
     /// nothing; a failed insertion leaves all entries unchanged.
     pub fn set(self: *OverrideStore, permission_key: []const u8, descriptor: Descriptor, state: State) std.mem.Allocator.Error!bool {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const key: Key = .{ .permission_key = permission_key, .name = descriptor.name };
         if (self.entries.getPtr(key)) |states| return update(states, descriptor, state);

@@ -47,14 +47,18 @@ fn script(source: []const u8) !void {
 fn measureRuleSize() !void {
     // Q55, BASE helper 64584: Rule=216, Data=144, FontRule=136.
     // New rare rule payloads must not enlarge ordinary style rules.
-    try std.testing.expectEqual(@as(usize, 216), @sizeOf(dom.style.Rule));
-    try std.testing.expectEqual(@as(usize, 144), @sizeOf(dom.style.rules.Data));
-    try std.testing.expectEqual(@as(usize, 136), @sizeOf(@FieldType(dom.style.rules.Data, "font_face")));
+    // Zig 0.17's std.ArrayList carries a `pointer_stability` SafetyLock, a
+    // word under runtime safety (Debug, ReleaseSafe) and nothing otherwise:
+    // the largest payload, FontRule, reaches two, and Data and Rule grow with it.
     std.debug.print("OM1 RULE SIZE: Rule={d}, Data={d}, FontRule={d}\n", .{
         @sizeOf(dom.style.Rule),
         @sizeOf(dom.style.rules.Data),
         @sizeOf(@FieldType(dom.style.rules.Data, "font_face")),
     });
+    const locks = 2 * @sizeOf(std.debug.SafetyLock);
+    try std.testing.expectEqual(@as(usize, 216) + locks, @sizeOf(dom.style.Rule));
+    try std.testing.expectEqual(@as(usize, 144) + locks, @sizeOf(dom.style.rules.Data));
+    try std.testing.expectEqual(@as(usize, 136) + locks, @sizeOf(@FieldType(dom.style.rules.Data, "font_face")));
 }
 
 test "ordinary Rule allocation size BASE receipt" {

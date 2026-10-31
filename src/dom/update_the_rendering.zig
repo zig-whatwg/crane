@@ -148,7 +148,7 @@ pub fn latestRefresh(realm: runtime.Context) ?i64 {
     return get(realm);
 }
 
-const step_count = @typeInfo(Step).@"enum".fields.len;
+const step_count = @typeInfo(Step).@"enum".field_names.len;
 
 // process-wide: function pointers the browser layer installs once at process start (crane.Process), the same for every Browser and thread
 var loop: ?Loop = null;
@@ -164,7 +164,7 @@ pub fn installLoop(impl: Loop) void {
 /// Called by `step`'s owner, once, at process start (process_start.zig).
 pub fn installStep(step: Step, document_step: DocumentStep) void {
     process_start.assertInstalling();
-    steps[@intFromEnum(step)] = document_step;
+    steps[@backingInt(step)] = document_step;
 }
 
 /// Ask `document`'s event loop for a rendering opportunity. Without an
@@ -211,28 +211,28 @@ pub fn watchFocusedArea(document: *runtime.Instance) void {
 
 /// Run `step` for `document`, if its owner installed it. The loop's.
 pub fn run(step: Step, document: *runtime.Instance, frame: Frame) void {
-    const installed = steps[@intFromEnum(step)] orelse return;
+    const installed = steps[@backingInt(step)] orelse return;
     installed(document, frame);
 }
 
 /// Whether `step`'s owner installed it.
 pub fn isInstalled(step: Step) bool {
-    return steps[@intFromEnum(step)] != null;
+    return steps[@backingInt(step)] != null;
 }
 
 test "the steps keep the spec's numbers and order" {
     comptime {
         std.debug.assert(step_count == 17);
         var previous: u5 = 0;
-        for (@typeInfo(Step).@"enum".fields) |field| {
-            std.debug.assert(field.value > previous);
-            previous = field.value;
+        for (@typeInfo(Step).@"enum".field_values) |field_value| {
+            std.debug.assert(field_value > previous);
+            previous = field_value;
         }
     }
-    try std.testing.expectEqual(@as(u5, 6), @intFromEnum(Step.reveal));
-    try std.testing.expectEqual(@as(u5, 14), @intFromEnum(Step.animation_frame_callbacks));
-    try std.testing.expectEqual(@as(u5, 17), @intFromEnum(Step.focus_fixup));
-    try std.testing.expectEqual(@as(u5, 23), @intFromEnum(Step.top_layer_removals));
+    try std.testing.expectEqual(@as(u5, 6), @backingInt(Step.reveal));
+    try std.testing.expectEqual(@as(u5, 14), @backingInt(Step.animation_frame_callbacks));
+    try std.testing.expectEqual(@as(u5, 17), @backingInt(Step.focus_fixup));
+    try std.testing.expectEqual(@as(u5, 23), @backingInt(Step.top_layer_removals));
 }
 
 test "refresh moments are a grid from its origin" {
@@ -272,7 +272,7 @@ test "an installed step runs for its document with the frame" {
             timestamp = frame.timestamp_ns;
         }
     };
-    steps[@intFromEnum(Step.reveal)] = &Probe.step;
+    steps[@backingInt(Step.reveal)] = &Probe.step;
     var document: runtime.Instance = undefined;
     run(.reveal, &document, .{ .timestamp_ns = 42 });
     try std.testing.expect(Probe.seen == &document);

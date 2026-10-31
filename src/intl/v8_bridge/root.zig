@@ -85,7 +85,7 @@ pub fn formatDateTime(
     // First, get required size
     const size = c_api.intl_datetime_format_format(dtf, timestamp_ms, null, 0);
     if (size < 0) {
-        return switch (@as(IntlError, @enumFromInt(size))) {
+        return switch (@as(IntlError, @fromBackingInt(@intCast(size)))) {
             .out_of_memory => error.OutOfMemory,
             .null_pointer => error.NullPointer,
             .invalid_timestamp => error.InvalidTimestamp,

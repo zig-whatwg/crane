@@ -47,7 +47,7 @@ fn extractFunctions(allocator: Allocator, source: [:0]const u8) !std.StringHashM
     var functions = std.StringHashMap(FunctionInfo).init(allocator);
 
     // Parse the source
-    var ast = try Ast.parse(allocator, source, .zig);
+    var ast = try Ast.parse(allocator, source, .{ .mode = .zig });
     defer ast.deinit(allocator);
 
     // Check for parse errors
@@ -58,7 +58,7 @@ fn extractFunctions(allocator: Allocator, source: [:0]const u8) !std.StringHashM
 
     // Iterate through all nodes looking for function declarations
     for (0..ast.nodes.len) |i| {
-        const node_idx: Ast.Node.Index = @enumFromInt(i);
+        const node_idx: Ast.Node.Index = @fromBackingInt(@intCast(i));
         const tag = ast.nodeTag(node_idx);
 
         // Look for fn_decl nodes

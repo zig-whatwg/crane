@@ -149,8 +149,8 @@ pub fn get_customError(instance: *runtime.Instance) anyerror!bool {
 /// Getter for valid
 pub fn get_valid(instance: *runtime.Instance) anyerror!bool {
     const flags = try flagsOf(instance);
-    inline for (std.meta.fields(ce.ValidityFlags)) |field| {
-        if (@field(flags, field.name) orelse false) return false;
+    inline for (comptime std.meta.fieldNames(ce.ValidityFlags)) |field_name| {
+        if (@field(flags, field_name) orelse false) return false;
     }
     return true;
 }

@@ -313,7 +313,7 @@ pub const HttpCache = struct {
     }
 
     fn lock(self: *HttpCache) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
     }
 
     fn unlock(self: *HttpCache) void {

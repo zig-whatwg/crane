@@ -767,7 +767,7 @@ pub const UserAgentStorage = struct {
     }
 
     pub fn lock(self: *UserAgentStorage) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
     }
 
     pub fn unlock(self: *UserAgentStorage) void {

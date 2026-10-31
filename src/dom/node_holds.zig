@@ -430,7 +430,7 @@ pub const TaskHold = struct {
         switch (self.state) {
             .empty => return,
             .released => {
-                if (builtin.mode == .Debug) std.debug.panic("node_holds.TaskHold {*} released twice", .{self});
+                if (builtin.mode == .debug) std.debug.panic("node_holds.TaskHold {*} released twice", .{self});
                 log.err("node_holds.TaskHold {*} released twice", .{self});
                 return;
             },
@@ -608,7 +608,7 @@ pub fn ElementTask(comptime Payload: type) type {
         /// Whether `entry` is in `tasks`' list: until the task runs, is
         /// cancelled or ends.
         linked: bool = false,
-        holds: [held_count]TaskHold = [_]TaskHold{.{}} ** held_count,
+        holds: [held_count]TaskHold = @as([held_count]TaskHold, @splat(.{})),
         payload: Payload,
         allocator: Allocator,
         cancelled: bool = false,
@@ -1204,13 +1204,13 @@ pub const Registry = struct {
     }
 
     pub fn register(self: *Registry, scanner: Scanner) Allocator.Error!void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         try self.scanners.append(self.allocator, scanner);
     }
 
     pub fn unregister(self: *Registry, context: *anyopaque) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         for (self.scanners.items, 0..) |registered, i| {
             if (registered.context != context) continue;
@@ -1226,7 +1226,7 @@ pub const Registry = struct {
     /// any engine allocation: a rescue that reenters cannot take the same
     /// index.
     pub fn reserveIndex(self: *Registry, context: *anyopaque) ?usize {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const mine = for (self.scanners.items) |scanner| {
             if (scanner.context == context) break scanner;
@@ -1241,7 +1241,7 @@ pub const Registry = struct {
     }
 
     fn hasScanners(self: *Registry) bool {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return self.scanners.items.len != 0;
     }
@@ -1257,7 +1257,7 @@ pub const Registry = struct {
             var count: usize = 0;
             var done = true;
             {
-                std.Io.Threaded.mutexLock(&self.mutex);
+                std.Io.Threaded.mutexLockUncancelable(&self.mutex);
                 defer std.Io.Threaded.mutexUnlock(&self.mutex);
                 var i = start;
                 while (i < self.scanners.items.len) : (i += 1) {

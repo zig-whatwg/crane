@@ -21,8 +21,8 @@ pub const Keyword = enum {
     pub fn parse(stream: *properties.Stream) ?Keyword {
         const token = stream.peek();
         if (token.token_type != .ident) return null;
-        inline for (@typeInfo(Keyword).@"enum".fields) |field| {
-            const k: Keyword = @enumFromInt(field.value);
+        inline for (@typeInfo(Keyword).@"enum".field_values) |field_value| {
+            const k: Keyword = @fromBackingInt(@intCast(field_value));
             if (tokens.nameEql(token.value, k.name())) {
                 _ = stream.next();
                 return k;

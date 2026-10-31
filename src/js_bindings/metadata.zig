@@ -30,7 +30,7 @@ pub fn extractNamespaceMetadata(comptime NamespaceType: type) NamespaceBinding {
     const type_info = @typeInfo(NamespaceType);
 
     const decls = switch (type_info) {
-        .@"struct" => |s| s.decls,
+        .@"struct" => |s| zig017DeclsOf(s.decl_names),
         else => @compileError("NamespaceType must be a struct"),
     };
 
@@ -77,7 +77,7 @@ pub fn extractInterfaceMetadata(comptime InterfaceType: type) InterfaceBinding {
     const type_info = @typeInfo(InterfaceType);
 
     const decls = switch (type_info) {
-        .@"struct" => |s| s.decls,
+        .@"struct" => |s| zig017DeclsOf(s.decl_names),
         else => @compileError("Interface must be a struct type"),
     };
 
@@ -192,9 +192,9 @@ fn extractMethodMetadata(comptime name: []const u8, comptime func: anytype) Meth
 
     // Extract parameters (skip 'self' parameter for instance methods)
     var parameters: []const ParameterDescriptor = &.{};
-    const param_start = if (func_info.params.len > 0 and isSelfParam(func_info.params[0])) 1 else 0;
+    const param_start = if (zig017ParamsOf(func_info).len > 0 and isSelfParam(zig017ParamsOf(func_info)[0])) 1 else 0;
 
-    inline for (func_info.params[param_start..], 0..) |param, i| {
+    inline for (zig017ParamsOf(func_info)[param_start..], 0..) |param, i| {
         const param_desc = ParameterDescriptor{
             .name = std.fmt.comptimePrint("arg{d}", .{i}),
             .type = extractTypeDescriptor(param.type.?),
@@ -318,7 +318,7 @@ fn extractTypeDescriptor(comptime T: type) TypeDescriptor {
 }
 
 /// Check if a parameter is a 'self' parameter
-fn isSelfParam(comptime param: std.builtin.Type.Fn.Param) bool {
+fn isSelfParam(comptime param: Zig017Param) bool {
     if (param.type) |param_type| {
         const type_info = @typeInfo(param_type);
         switch (type_info) {
@@ -367,8 +367,8 @@ fn isStaticMember(comptime name: []const u8, comptime T: type) bool {
     switch (type_info) {
         .@"fn" => |func_info| {
             // Static methods don't have a 'self' parameter
-            if (func_info.params.len == 0) return true;
-            return !isSelfParam(func_info.params[0]);
+            if (zig017ParamsOf(func_info).len == 0) return true;
+            return !isSelfParam(zig017ParamsOf(func_info)[0]);
         },
         else => return false,
     }
@@ -422,7 +422,7 @@ fn findConstructor(comptime InterfaceType: type) ?types.ConstructorDescriptor {
 
         // Extract constructor parameters
         var parameters: []const ParameterDescriptor = &.{};
-        inline for (func_info.params, 0..) |param, i| {
+        inline for (zig017ParamsOf(func_info), 0..) |param, i| {
             // Skip allocator parameter (first param)
             if (i == 0) continue;
 
@@ -440,4 +440,19 @@ fn findConstructor(comptime InterfaceType: type) ?types.ConstructorDescriptor {
         };
     }
     return null;
+}
+
+// Zig 0.17 compat: Zig 0.17's @typeInfo is struct-of-arrays. These rebuild 0.16's lists
+// (comptime-only element types, so every call is evaluated at comptime).
+const Zig017Param = struct { type: ?type, is_generic: bool, is_noalias: bool };
+fn zig017ParamsOf(comptime info: @import("std").builtin.Type.Fn) [info.param_types.len]Zig017Param {
+    var out: [info.param_types.len]Zig017Param = undefined;
+    for (info.param_types, info.param_attrs, 0..) |t, a, i| out[i] = .{ .type = t, .is_generic = t == null, .is_noalias = a.@"noalias" };
+    return out;
+}
+const Zig017Decl = struct { name: [:0]const u8, comptime_only: type = void };
+fn zig017DeclsOf(comptime names: []const [:0]const u8) [names.len]Zig017Decl {
+    var out: [names.len]Zig017Decl = undefined;
+    for (names, 0..) |n, i| out[i] = .{ .name = n };
+    return out;
 }

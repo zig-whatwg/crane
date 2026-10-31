@@ -76,7 +76,7 @@ pub const InternalState = struct {
     video_size: backend.VideoSize = .{ .width = 0, .height = 0 },
 
     fn queue(self: *InternalState, kind: Kind, target: ?*runtime.Instance, name: ?[]const u8) !void {
-        return self.activity.queue(@intFromEnum(kind), self.load.generation, target, name);
+        return self.activity.queue(@backingInt(kind), self.load.generation, target, name);
     }
     fn event(self: *InternalState, name: []const u8) !void {
         _ = try self.queue(.event, null, name);
@@ -202,7 +202,7 @@ pub const InternalState = struct {
         // One pending selection task per load generation.
         var task = self.activity.head;
         while (task) |pending| : (task = pending.next) {
-            if (pending.kind == @intFromEnum(Kind.select) and pending.generation == generation and !pending.cancelled) return;
+            if (pending.kind == @backingInt(Kind.select) and pending.generation == generation and !pending.cancelled) return;
         }
         try self.queue(.select, null, null);
     }
@@ -234,7 +234,7 @@ pub const InternalState = struct {
                 };
             },
             .dedicated_failure => {
-                self.activity.queuePlay(@intFromEnum(Kind.failure), self.load.generation, "error", &self.pending_play, "NotSupportedError") catch {
+                self.activity.queuePlay(@backingInt(Kind.failure), self.load.generation, "error", &self.pending_play, "NotSupportedError") catch {
                     self.cancel();
                     return;
                 };
@@ -493,7 +493,7 @@ pub const InternalState = struct {
     /// Notify about playing: take the pending play promises; a task fires
     /// playing, then resolves them.
     fn notifyPlaying(self: *InternalState) !void {
-        try self.activity.queueResolve(@intFromEnum(Kind.playing), self.load.generation, "playing", &self.pending_play);
+        try self.activity.queueResolve(@backingInt(Kind.playing), self.load.generation, "playing", &self.pending_play);
     }
 
     fn looping(self: *InternalState) bool {
@@ -739,8 +739,8 @@ fn selectorState(instance: *runtime.Instance) ?dom.media_elements.SelectorState 
     return .{
         .paused = self.load.paused,
         .seeking = self.load.seeking,
-        .network_state = @intFromEnum(self.load.network),
-        .ready_state = @intFromEnum(self.load.ready),
+        .network_state = @backingInt(self.load.network),
+        .ready_state = @backingInt(self.load.ready),
         .stalled = self.load.stalled,
         .muted = get_muted(instance) catch false,
         .volume = self.volume,
@@ -993,7 +993,7 @@ fn selection(self: *InternalState) !void {
 }
 fn runTask(context: *anyopaque, task: *common.Task) void {
     const self: *InternalState = @ptrCast(@alignCast(context));
-    const kind: Kind = @enumFromInt(task.kind);
+    const kind: Kind = @fromBackingInt(@intCast(task.kind));
     // Track list membership is independent of the current media resource.
     if (kind == .track_event) {
         if (task.event) |event| event.dispatch();
@@ -1177,7 +1177,7 @@ pub fn call_play(instance: *runtime.Instance) anyerror!runtime.JSValue {
     if (steps.play_event) self.event("play") catch self.cancel();
     if (steps.waiting) self.event("waiting") catch self.cancel();
     if (steps.notify_playing) self.notifyPlaying() catch self.cancel();
-    if (steps.resolve_pending) self.activity.queueResolve(@intFromEnum(Kind.resolve_play), self.load.generation, null, &self.pending_play) catch self.cancel();
+    if (steps.resolve_pending) self.activity.queueResolve(@backingInt(Kind.resolve_play), self.load.generation, null, &self.pending_play) catch self.cancel();
     if (steps.seek_to_start) self.seekInParallel() catch self.cancel();
     self.syncClock();
     return result.take();
@@ -1191,7 +1191,7 @@ pub fn call_pause(instance: *runtime.Instance) anyerror!void {
     self.syncClock();
     // Internal pause steps 2.2-2.3: take the pending play promises; one task
     // fires timeupdate and pause, then rejects them.
-    try self.activity.queuePlay(@intFromEnum(Kind.pause), self.load.generation, "pause", &self.pending_play, "AbortError");
+    try self.activity.queuePlay(@backingInt(Kind.pause), self.load.generation, "pause", &self.pending_play, "AbortError");
 }
 pub fn call_canPlayType(instance: *runtime.Instance, mime: runtime.DOMString) anyerror!enums.CanPlayTypeResult {
     return switch (common.forRealm(instance.ctx).canPlayType(mime.asSlice())) {
@@ -1207,10 +1207,10 @@ pub fn get_currentSrc(instance: *runtime.Instance) anyerror!runtime.USVString {
     return instance.ctx.allocator.dupe(u8, data(instance).load.currentSrc());
 }
 pub fn get_networkState(instance: *runtime.Instance) anyerror!u16 {
-    return @intFromEnum(data(instance).load.network);
+    return @backingInt(data(instance).load.network);
 }
 pub fn get_readyState(instance: *runtime.Instance) anyerror!u16 {
-    return @intFromEnum(data(instance).load.ready);
+    return @backingInt(data(instance).load.ready);
 }
 pub fn get_paused(instance: *runtime.Instance) anyerror!bool {
     return data(instance).load.paused;
@@ -1422,7 +1422,7 @@ pub fn call_getStartDate(instance: *runtime.Instance) anyerror!runtime.JSValue {
 /// HTML 4.8.11.11.5, addTextTrack steps 1–4.
 pub fn call_addTextTrack(instance: *runtime.Instance, kind: enums.TextTrackKind, label: webidl.Opt(runtime.DOMString), language: webidl.Opt(runtime.DOMString)) anyerror!*runtime.Instance {
     // Step 1: create the loaded, hidden track with an initially empty cue list.
-    const track = try hooks.createTrackElementTrack(instance.ctx, @enumFromInt(@intFromEnum(kind)), label.getOrDefault(.initEmpty()), language.getOrDefault(.initEmpty()), .initEmpty());
+    const track = try hooks.createTrackElementTrack(instance.ctx, @fromBackingInt(@intCast(@backingInt(kind))), label.getOrDefault(.initEmpty()), language.getOrDefault(.initEmpty()), .initEmpty());
     const generation = runtime.SlabAllocator.generationOf(track);
     errdefer if (instance.ctx.hasEngine()) track.releaseIfUnwrapped(generation) else interfaces.TextTrack.deinit(track);
     hooks.setTrackReadiness(track, .loaded);
@@ -1436,7 +1436,7 @@ pub fn call_addTextTrack(instance: *runtime.Instance, kind: enums.TextTrackKind,
 
     // Step 3: queue the TrackEvent through the existing media task holder.
     // Script-created tracks survive load(), so the event is resource-independent.
-    if (instance.ctx.hasEngine()) try data(instance).activity.queueTrack(@intFromEnum(Kind.track_event), 0, list, "addtrack", track);
+    if (instance.ctx.hasEngine()) try data(instance).activity.queueTrack(@backingInt(Kind.track_event), 0, list, "addtrack", track);
 
     // Step 4.
     return track;
@@ -1451,15 +1451,15 @@ fn trackParentChanged(element: *runtime.Instance, old_parent: ?*runtime.Instance
     if (old_parent) |old| if (common.isMedia(old)) {
         const list = get_textTracks(old) catch return;
         hooks.removeTextTrack(list, track);
-        if (old.ctx.hasEngine()) data(old).activity.queueTrack(@intFromEnum(Kind.track_event), 0, list, "removetrack", track) catch {};
+        if (old.ctx.hasEngine()) data(old).activity.queueTrack(@backingInt(Kind.track_event), 0, list, "removetrack", track) catch {};
     };
     if (new_parent) |media| if (common.isMedia(media)) {
         const list = get_textTracks(media) catch return;
         appendInTreeOrder(media, list, track) catch return;
         // Sourcing out-of-band tracks: selection task precedes addtrack.
         if (media.ctx.hasEngine()) {
-            data(media).activity.queueIndependent(@intFromEnum(Kind.select_tracks), null, null) catch {};
-            data(media).activity.queueTrack(@intFromEnum(Kind.track_event), 0, list, "addtrack", track) catch {};
+            data(media).activity.queueIndependent(@backingInt(Kind.select_tracks), null, null) catch {};
+            data(media).activity.queueTrack(@backingInt(Kind.track_event), 0, list, "addtrack", track) catch {};
         }
     };
 }
@@ -1493,7 +1493,7 @@ fn trackModeChanged(media: *runtime.Instance) void {
     const list = get_textTracks(media) catch return;
     // Mode-change steps 1–3: one notification until its task clears the flag.
     if (!self.tracks.requestChange()) return;
-    self.activity.queueIndependent(@intFromEnum(Kind.track_change), list, "change") catch {
+    self.activity.queueIndependent(@backingInt(Kind.track_change), list, "change") catch {
         self.tracks.takeChange();
     };
 }

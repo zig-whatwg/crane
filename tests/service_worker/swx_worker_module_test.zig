@@ -88,7 +88,7 @@ fn checkWorkerModules(kind: registry.EnvironmentKind, destination: fetch.interna
     }
     try testing.expect(controller != 0);
     {
-        std.Io.Threaded.mutexLock(&manager.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&manager.mutex);
         defer std.Io.Threaded.mutexUnlock(&manager.mutex);
         const environment = manager.registry.findEnvironment(client).?;
         manager.registry.setActiveWorker(environment, manager.registry.findWorker(controller).?);
@@ -113,7 +113,7 @@ fn checkWorkerModules(kind: registry.EnvironmentKind, destination: fetch.interna
         .endpoint = null,
     });
     {
-        std.Io.Threaded.mutexLock(&manager.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&manager.mutex);
         defer std.Io.Threaded.mutexUnlock(&manager.mutex);
         manager.registry.setActiveWorker(manager.registry.findEnvironment(page).?, manager.registry.findWorker(controller).?);
     }

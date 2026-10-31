@@ -2669,7 +2669,7 @@ pub fn call_execCommand(instance: *runtime.Instance, commandId: runtime.DOMStrin
         false,
         value_slice,
     ) catch |err| {
-        if (@import("builtin").mode == .Debug) {
+        if (@import("builtin").mode == .debug) {
             log.err("execCommand error: {any}", .{err});
         }
         return false;
@@ -2996,7 +2996,7 @@ fn createLegacyEvent(realm: runtime.Context, interface: LegacyEventInterface) an
             if (comptime @hasDecl(Interface, "call_constructor")) {
                 // Step 2: the dictionary the JavaScript value undefined
                 // converts to - the constructor's, not passed.
-                const Dictionary = @typeInfo(@TypeOf(Interface.call_constructor)).@"fn".params[2].type.?;
+                const Dictionary = @typeInfo(@TypeOf(Interface.call_constructor)).@"fn".param_types[2].?;
                 return Interface.call_constructor(realm, runtime.DOMString.initEmpty(), Dictionary.notPassed());
             } else {
                 // No constructor (BeforeUnloadEvent, TextEvent): a new object
@@ -3471,7 +3471,7 @@ pub fn call_getSelection(instance: *runtime.Instance) anyerror!?*runtime.Instanc
     // The document's one selection, made on first use.
     const selection = internal.selection orelse blk: {
         const made = interfaces.Selection.init(internal.allocator, instance.ctx) catch |err| {
-            if (@import("builtin").mode == .Debug) {
+            if (@import("builtin").mode == .debug) {
                 log.err("Failed to create Selection: {any}", .{err});
             }
             return null;
@@ -5536,7 +5536,7 @@ pub fn addPrefetchHint(
     // Check if URL already exists - keep the more eager one
     if (internal.prefetch_hints.get(url)) |existing_eagerness| {
         // More eager = earlier in enum order (immediate=0, conservative=3)
-        if (@intFromEnum(eagerness) < @intFromEnum(existing_eagerness)) {
+        if (@backingInt(eagerness) < @backingInt(existing_eagerness)) {
             // New eagerness is more eager, update
             internal.prefetch_hints.put(url, eagerness) catch return error.OutOfMemory;
         }

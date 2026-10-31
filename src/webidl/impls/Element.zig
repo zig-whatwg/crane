@@ -2466,7 +2466,7 @@ fn eventHandlerAttributeChangeSteps(instance: *runtime.Instance, local_name: []c
 /// consulting a script property.
 const global_event_handler_names = blk: {
     @setEvalBranchQuota(20_000);
-    const decls = @typeInfo(mixins.GlobalEventHandlers).@"struct".decls;
+    const decls = zig017DeclsOf(@typeInfo(mixins.GlobalEventHandlers).@"struct".decl_names);
     var names: [decls.len]struct { []const u8 } = undefined;
     var count: usize = 0;
     for (decls) |decl| {
@@ -2627,8 +2627,8 @@ pub fn call_insertAdjacentHTML(instance: *runtime.Instance, position: runtime.DO
     // HTML 8.5.6 steps 2–3: choose a context or throw before parsing.
     const Position = enum { beforebegin, afterbegin, beforeend, afterend };
     const where: Position = blk: {
-        inline for (std.meta.fields(Position)) |field| {
-            if (std.ascii.eqlIgnoreCase(position.asSlice(), field.name)) break :blk @enumFromInt(field.value);
+        inline for (comptime std.meta.fieldNames(Position), @typeInfo(Position).@"enum".field_values) |field_name, field_value| {
+            if (std.ascii.eqlIgnoreCase(position.asSlice(), field_name)) break :blk @fromBackingInt(@intCast(field_value));
         }
         return error.SyntaxError;
     };
@@ -2986,4 +2986,19 @@ pub fn call_ariaNotify(instance: *runtime.Instance, announcement: runtime.DOMStr
     _ = announcement;
     _ = options;
     return error.NotImplemented;
+}
+
+// Zig 0.17 compat: Zig 0.17's @typeInfo is struct-of-arrays. These rebuild 0.16's lists
+// (comptime-only element types, so every call is evaluated at comptime).
+const Zig017Param = struct { type: ?type, is_generic: bool, is_noalias: bool };
+fn zig017ParamsOf(comptime info: @import("std").builtin.Type.Fn) [info.param_types.len]Zig017Param {
+    var out: [info.param_types.len]Zig017Param = undefined;
+    for (info.param_types, info.param_attrs, 0..) |t, a, i| out[i] = .{ .type = t, .is_generic = t == null, .is_noalias = a.@"noalias" };
+    return out;
+}
+const Zig017Decl = struct { name: [:0]const u8, comptime_only: type = void };
+fn zig017DeclsOf(comptime names: []const [:0]const u8) [names.len]Zig017Decl {
+    var out: [names.len]Zig017Decl = undefined;
+    for (names, 0..) |n, i| out[i] = .{ .name = n };
+    return out;
 }

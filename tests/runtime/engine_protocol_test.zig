@@ -144,8 +144,8 @@ test "a capability-gated operation compiles out where the engine lacks the capab
 }
 
 test "an adapter with no engine has none of the engine capabilities" {
-    inline for (@typeInfo(engine.Capabilities).@"struct".fields) |field| {
-        try std.testing.expectEqual(engine.Support.unsupported, @field(engine.capabilities, field.name));
+    inline for (@typeInfo(engine.Capabilities).@"struct".field_names) |field_name| {
+        try std.testing.expectEqual(engine.Support.unsupported, @field(engine.capabilities, field_name));
     }
 }
 

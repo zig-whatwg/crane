@@ -473,7 +473,7 @@ fn eventLessThan(_: void, a: QueuedEvent, b: QueuedEvent) bool {
     if (a.scheduled == null and b.scheduled != null) return true;
     if (a.scheduled != null and b.scheduled == null) return false;
     if (a.scheduled != null and b.scheduled != null and a.scheduled.? != b.scheduled.?) return a.scheduled.? < b.scheduled.?;
-    if (a.class != b.class) return @intFromEnum(a.class) < @intFromEnum(b.class);
+    if (a.class != b.class) return @backingInt(a.class) < @backingInt(b.class);
     if (a.sequence != b.sequence) return a.sequence < b.sequence;
     return a.order < b.order;
 }
@@ -542,7 +542,7 @@ fn isReplaceable(animation: *model.Animation) bool {
 }
 
 pub fn compositeOrderLessThan(_: void, a: *model.Animation, b: *model.Animation) bool {
-    if (a.class != b.class) return @intFromEnum(a.class) < @intFromEnum(b.class);
+    if (a.class != b.class) return @backingInt(a.class) < @backingInt(b.class);
     return a.sequence < b.sequence;
 }
 
@@ -603,12 +603,12 @@ const Covered = struct {
         var count: usize = 0;
         switch (property) {
             .longhand => |l| {
-                out[0] = .{ .longhand = @intFromEnum(if (style) |s| s.physical(l) else l) };
+                out[0] = .{ .longhand = @backingInt(if (style) |s| s.physical(l) else l) };
                 count = 1;
             },
             .shorthand => |s| for (s.longhands()) |l| {
                 if (count == out.len) break;
-                out[count] = .{ .longhand = @intFromEnum(if (style) |cs| cs.physical(l) else l) };
+                out[count] = .{ .longhand = @backingInt(if (style) |cs| cs.physical(l) else l) };
                 count += 1;
             },
         }

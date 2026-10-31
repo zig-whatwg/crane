@@ -223,8 +223,8 @@ test "var() and env() are valid at parse time in every recognized longhand and s
     // The unrolled loops grow with the property table; Codex rows 124/125's
     // properties pass Zig's default 1,000-branch comptime quota.
     @setEvalBranchQuota(100_000);
-    inline for (@typeInfo(Longhand).@"enum".fields) |field| {
-        const l: Longhand = @enumFromInt(field.value);
+    inline for (@typeInfo(Longhand).@"enum".field_values) |field_value| {
+        const l: Longhand = @fromBackingInt(@intCast(field_value));
         var list: std.ArrayList(css.properties.Assignment) = .empty;
         defer list.deinit(testing.allocator);
         try testing.expect(try css.properties.parseDeclaration(.{ .allocator = testing.allocator }, .{ .longhand = l }, "var(--x)", &list));
@@ -235,8 +235,8 @@ test "var() and env() are valid at parse time in every recognized longhand and s
         list.clearRetainingCapacity();
         try testing.expect(!try css.properties.parseDeclaration(.{ .allocator = testing.allocator }, .{ .longhand = l }, "var()", &list));
     }
-    inline for (@typeInfo(css.properties.Shorthand).@"enum".fields) |field| {
-        const s: css.properties.Shorthand = @enumFromInt(field.value);
+    inline for (@typeInfo(css.properties.Shorthand).@"enum".field_values) |field_value| {
+        const s: css.properties.Shorthand = @fromBackingInt(@intCast(field_value));
         var list: std.ArrayList(css.properties.Assignment) = .empty;
         defer list.deinit(testing.allocator);
         try testing.expect(try css.properties.parseDeclaration(.{ .allocator = testing.allocator }, .{ .shorthand = s }, "var(--x) var(--y)", &list));

@@ -62,7 +62,7 @@ pub const InternalState = struct {
         self.activity.sync();
     }
     fn queue(self: *InternalState, kind: Kind) !void {
-        _ = try self.activity.queue(@intFromEnum(kind), self.generation, null, "error");
+        _ = try self.activity.queue(@backingInt(kind), self.generation, null, "error");
     }
     fn start(self: *InternalState) !void {
         const instance = self.activity.instance orelse return;
@@ -197,7 +197,7 @@ fn ensureTrack(instance: *runtime.Instance) !*runtime.Instance {
 }
 pub fn get_readyState(instance: *runtime.Instance) anyerror!u16 {
     const track = data(instance).track orelse return 0;
-    return @intFromEnum(hooks.trackReadiness(track));
+    return @backingInt(hooks.trackReadiness(track));
 }
 pub fn get_kind(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return .initInterned(@tagName(try kindOf(instance)));
@@ -208,7 +208,7 @@ pub fn set_kind(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
 fn kindOf(instance: *runtime.Instance) !hooks.Kind {
     var value = (try interfaces.Element.call_getAttribute(instance, .initInterned("kind"))) orelse return .subtitles;
     defer value.deinit(instance.ctx.allocator);
-    inline for (std.meta.fields(hooks.Kind)) |field| if (std.ascii.eqlIgnoreCase(value.asSlice(), field.name)) return @enumFromInt(field.value);
+    inline for (comptime std.meta.fieldNames(hooks.Kind), @typeInfo(hooks.Kind).@"enum".field_values) |field_name, field_value| if (std.ascii.eqlIgnoreCase(value.asSlice(), field_name)) return @fromBackingInt(@intCast(field_value));
     return .metadata;
 }
 pub fn installHooks() void {
@@ -363,7 +363,7 @@ fn startFetch(instance: *runtime.Instance) !void {
 fn runTask(context: *anyopaque, task: *common.Task) void {
     const self: *InternalState = @ptrCast(@alignCast(context));
     if (task.generation != self.generation) return;
-    switch (@as(Kind, @enumFromInt(task.kind))) {
+    switch (@as(Kind, @fromBackingInt(@intCast(task.kind)))) {
         .failure => self.failed(task),
         .read => {
             self.read_queued = false;

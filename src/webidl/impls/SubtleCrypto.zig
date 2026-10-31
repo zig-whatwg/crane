@@ -195,13 +195,13 @@ pub fn call_importKey(instance: *runtime.Instance, format: enums.KeyFormat, keyD
         fn copy(allocator: std.mem.Allocator, dictionary: dictionaries.JsonWebKey) !webcrypto.jwk.Owned {
             var owned: webcrypto.jwk.Owned = .{};
             errdefer owned.deinit(allocator);
-            inline for (std.meta.fields(Data)) |field| {
-                const member = @field(dictionary, field.name);
-                if (field.type == ?[]const u8) {
-                    @field(owned.data, field.name) = try text(allocator, member);
-                } else if (comptime std.mem.eql(u8, field.name, "ext")) {
+            inline for (comptime std.meta.fieldNames(Data), comptime std.meta.fieldTypes(Data)) |field_name, field_type| {
+                const member = @field(dictionary, field_name);
+                if (field_type == ?[]const u8) {
+                    @field(owned.data, field_name) = try text(allocator, member);
+                } else if (comptime std.mem.eql(u8, field_name, "ext")) {
                     owned.data.ext = member;
-                } else if (comptime std.mem.eql(u8, field.name, "key_ops")) {
+                } else if (comptime std.mem.eql(u8, field_name, "key_ops")) {
                     if (member) |operations| {
                         const list = try allocator.alloc([]const u8, operations.len);
                         var filled: usize = 0;
@@ -215,7 +215,7 @@ pub fn call_importKey(instance: *runtime.Instance, format: enums.KeyFormat, keyD
                         }
                         owned.data.key_ops = list;
                     }
-                } else if (comptime std.mem.eql(u8, field.name, "oth")) {
+                } else if (comptime std.mem.eql(u8, field_name, "oth")) {
                     if (member) |primes| {
                         const list = try allocator.alloc(webcrypto.jwk.OtherPrime, primes.len);
                         for (list) |*slot| slot.* = .{};
@@ -234,13 +234,13 @@ pub fn call_importKey(instance: *runtime.Instance, format: enums.KeyFormat, keyD
         /// Key material does not outlive the call in the binding's freed
         /// strings either: zero them before the binding frees them.
         fn erase(dictionary: dictionaries.JsonWebKey) void {
-            inline for (std.meta.fields(dictionaries.JsonWebKey)) |field| {
-                const member = @field(dictionary, field.name);
-                if (field.type == ?runtime.DOMString) {
+            inline for (comptime std.meta.fieldNames(dictionaries.JsonWebKey), comptime std.meta.fieldTypes(dictionaries.JsonWebKey)) |field_name, field_type| {
+                const member = @field(dictionary, field_name);
+                if (field_type == ?runtime.DOMString) {
                     if (member) |string| zero(string);
-                } else if (comptime std.mem.eql(u8, field.name, "key_ops")) {
+                } else if (comptime std.mem.eql(u8, field_name, "key_ops")) {
                     if (member) |operations| for (operations) |operation| zero(operation);
-                } else if (comptime std.mem.eql(u8, field.name, "oth")) {
+                } else if (comptime std.mem.eql(u8, field_name, "oth")) {
                     if (member) |primes| for (primes) |prime| {
                         if (prime.r) |string| zero(string);
                         if (prime.d) |string| zero(string);

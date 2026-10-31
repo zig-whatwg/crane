@@ -152,7 +152,7 @@ pub const ConnectionPool = struct {
     /// Clean up pool and all connections.
     pub fn deinit(self: *Self) void {
         // Lock for cleanup operations (but don't defer unlock since we free self)
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
 
         // Remove and cleanup all active handles
         var it = self.active_handles.iterator();
@@ -199,7 +199,7 @@ pub const ConnectionPool = struct {
 
         // Add to multi handle
         {
-            std.Io.Threaded.mutexLock(&self.mutex);
+            std.Io.Threaded.mutexLockUncancelable(&self.mutex);
             defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
             const add_result = curl.multi_add_handle(self.multi_handle, easy_handle);
@@ -222,7 +222,7 @@ pub const ConnectionPool = struct {
 
         // Remove from multi (connection stays in pool for reuse)
         {
-            std.Io.Threaded.mutexLock(&self.mutex);
+            std.Io.Threaded.mutexLockUncancelable(&self.mutex);
             defer std.Io.Threaded.mutexUnlock(&self.mutex);
             _ = curl.multi_remove_handle(self.multi_handle, easy_handle);
             _ = self.active_handles.remove(easy_handle);
@@ -276,7 +276,7 @@ pub const ConnectionPool = struct {
     /// Poll for activity on all handles.
     /// Blocks up to timeout_ms milliseconds.
     pub fn pollOnce(self: *Self, timeout_ms: i32) !void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         var numfds: c_int = 0;
@@ -313,7 +313,7 @@ pub const ConnectionPool = struct {
 
     /// Cancel an in-progress request.
     fn cancelRequest(self: *Self, easy_handle: *curl.CURL, ctx: *RequestContext, allocator: Allocator) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         _ = curl.multi_remove_handle(self.multi_handle, easy_handle);
@@ -325,7 +325,7 @@ pub const ConnectionPool = struct {
 
     /// Get statistics about the pool.
     pub fn getStats(self: *Self) PoolStats {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         return .{

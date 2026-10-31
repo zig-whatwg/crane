@@ -35,7 +35,7 @@ pub fn formatDir(allocator: std.mem.Allocator, io: std.Io, dir_path: []const u8)
 
 /// What `zig fmt` makes of `source`.
 pub fn formatSource(allocator: std.mem.Allocator, source: [:0]const u8) ![]u8 {
-    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    var tree = try std.zig.Ast.parse(allocator, source, .{ .mode = .zig });
     defer tree.deinit(allocator);
     if (tree.errors.len != 0) return error.InvalidGeneratedZig;
     return tree.renderAlloc(allocator);

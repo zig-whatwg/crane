@@ -18,7 +18,7 @@ const Trial = struct {
         defer runtime.deinitializeRuntime();
         var context = try runtime.ContextData.init(testing.allocator, .{});
         defer context.deinit();
-        const Init = @typeInfo(@TypeOf(interfaces.Request.call_constructor)).@"fn".params[2].type.?;
+        const Init = @typeInfo(@TypeOf(interfaces.Request.call_constructor)).@"fn".param_types[2].?;
         const input = try interfaces.Request.call_constructor(&context, .{ .usvstring = "https://example.test/" }, Init.passed(.{
             .headers = .{ .byte_string_byte_string_record = &.{
                 .{ .key = "x-old", .value = "1" },

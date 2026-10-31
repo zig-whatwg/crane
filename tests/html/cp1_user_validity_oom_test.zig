@@ -53,7 +53,7 @@ fn validityEvents(comptime select: bool) !void {
         try std.testing.expectEqual(@as(i32, 1), try interfaces.HTMLSelectElement.get_selectedIndex(element));
         try std.testing.expect(controls.userValidity(element));
     } else {
-        const slot = &browser.scope.tables[@intFromEnum(runtime.BrowserScope.Table.textarea_states)];
+        const slot = &browser.scope.tables[@backingInt(runtime.BrowserScope.Table.textarea_states)];
         try std.testing.expect(slot.load(.acquire) == null);
         // Fail only the new Browser side table. The realm allocator and
         // existing event/listener tables remain available for dispatch.

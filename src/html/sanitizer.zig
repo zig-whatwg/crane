@@ -184,7 +184,7 @@ pub const Config = struct {
     fn fromDictionary(allocator: Allocator, input: anytype) !Config {
         comptime {
             const fields = .{ "elements", "removeElements", "replaceWithChildrenElements", "attributes", "removeAttributes", "comments", "dataAttributes", "processingInstructions", "removeProcessingInstructions", "javascriptURLs" };
-            if (std.meta.fields(@TypeOf(input)).len != fields.len) @compileError("Update the SanitizerConfig native copy for its changed members");
+            if (std.meta.fieldNames(@TypeOf(input)).len != fields.len) @compileError("Update the SanitizerConfig native copy for its changed members");
             for (fields) |field| if (!@hasField(@TypeOf(input), field)) @compileError("SanitizerConfig is missing " ++ field);
         }
         var result = Config{ .arena = .init(allocator), .data = .{} };

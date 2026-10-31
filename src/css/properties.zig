@@ -423,7 +423,7 @@ pub const Longhand = enum(u16) {
     // Paged Media3 §8.1. Append so existing rare-group members stay put.
     page,
 
-    pub const count = @typeInfo(Longhand).@"enum".fields.len;
+    pub const count = @typeInfo(Longhand).@"enum".field_names.len;
 
     /// The property name.
     pub fn name(self: Longhand) []const u8 {
@@ -433,7 +433,7 @@ pub const Longhand = enum(u16) {
     }
 
     pub fn info(self: Longhand) *const Info {
-        return &infos[@intFromEnum(self)];
+        return &infos[@backingInt(self)];
     }
 
     pub fn inherited(self: Longhand) bool {
@@ -452,7 +452,7 @@ pub const Longhand = enum(u16) {
 pub const lexicographic: [Longhand.count]Longhand = blk: {
     @setEvalBranchQuota(1_000_000);
     var out: [Longhand.count]Longhand = undefined;
-    for (0..Longhand.count) |i| out[i] = @enumFromInt(i);
+    for (0..Longhand.count) |i| out[i] = @fromBackingInt(@intCast(i));
     std.mem.sort(Longhand, &out, {}, struct {
         fn lessThan(_: void, a: Longhand, b: Longhand) bool {
             // CSSOM §7.2 / Q36: all three browsers enumerate standard
@@ -697,7 +697,7 @@ const border_styles = [_]Keyword{ .none, .hidden, .dotted, .dashed, .solid, .dou
 const infos: [Longhand.count]Info = blk: {
     @setEvalBranchQuota(100_000);
     var out: [Longhand.count]Info = undefined;
-    var set: [Longhand.count]bool = .{false} ** Longhand.count;
+    var set: [Longhand.count]bool = @splat(false);
     const zero = Value.px(0);
     const medium_width = Value.kw(.medium);
     const defs = [_]Info{
@@ -1073,12 +1073,12 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .font_variation_settings, .inherited = true, .initial = Value.kw(.normal), .grammar = .font_settings },
     };
     for (defs) |def| {
-        const i = @intFromEnum(def.longhand);
+        const i = @backingInt(def.longhand);
         if (set[i]) @compileError("duplicate longhand " ++ def.longhand.name());
         set[i] = true;
         out[i] = def;
     }
-    for (set, 0..) |done, i| if (!done) @compileError("no Info for " ++ @as(Longhand, @enumFromInt(i)).name());
+    for (set, 0..) |done, i| if (!done) @compileError("no Info for " ++ @as(Longhand, @fromBackingInt(@intCast(i))).name());
     break :blk out;
 };
 
@@ -1283,7 +1283,7 @@ const all_longhands = blk: {
     var out: [Longhand.count - 2]Longhand = undefined;
     var n: usize = 0;
     for (0..Longhand.count) |i| {
-        const l: Longhand = @enumFromInt(i);
+        const l: Longhand = @fromBackingInt(@intCast(i));
         if (l == .direction or l == .unicode_bidi) continue;
         out[n] = l;
         n += 1;
@@ -1359,11 +1359,23 @@ pub const legacy_alias_names = blk: {
 
 const by_name = blk: {
     @setEvalBranchQuota(100_000);
-    const l_fields = @typeInfo(Longhand).@"enum".fields;
-    const s_fields = @typeInfo(Shorthand).@"enum".fields;
+    // Zig 0.17: @typeInfo is struct-of-arrays; rebuild the old field list.
+    const l_fields = zig017_fields: {
+        const zig017_info = @typeInfo(Longhand).@"enum";
+        var zig017_out: [zig017_info.field_names.len]struct { name: [:0]const u8, value: comptime_int } = undefined;
+        for (zig017_info.field_names, zig017_info.field_values, 0..) |zig017_n, zig017_v, zig017_i| zig017_out[zig017_i] = .{ .name = zig017_n, .value = zig017_v };
+        break :zig017_fields zig017_out;
+    };
+    // Zig 0.17: @typeInfo is struct-of-arrays; rebuild the old field list.
+    const s_fields = zig017_fields: {
+        const zig017_info = @typeInfo(Shorthand).@"enum";
+        var zig017_out: [zig017_info.field_names.len]struct { name: [:0]const u8, value: comptime_int } = undefined;
+        for (zig017_info.field_names, zig017_info.field_values, 0..) |zig017_n, zig017_v, zig017_i| zig017_out[zig017_i] = .{ .name = zig017_n, .value = zig017_v };
+        break :zig017_fields zig017_out;
+    };
     var entries: [l_fields.len + s_fields.len + legacy_aliases.len]struct { []const u8, Property } = undefined;
-    for (l_fields, 0..) |f, i| entries[i] = .{ dashedName(f.name), .{ .longhand = @enumFromInt(f.value) } };
-    for (s_fields, 0..) |f, i| entries[l_fields.len + i] = .{ dashedName(f.name), .{ .shorthand = @enumFromInt(f.value) } };
+    for (l_fields, 0..) |f, i| entries[i] = .{ dashedName(f.name), .{ .longhand = @fromBackingInt(@intCast(f.value)) } };
+    for (s_fields, 0..) |f, i| entries[l_fields.len + i] = .{ dashedName(f.name), .{ .shorthand = @fromBackingInt(@intCast(f.value)) } };
     for (legacy_aliases, 0..) |alias, i| entries[l_fields.len + s_fields.len + i] = .{ alias[0], alias[1] };
     break :blk std.StaticStringMap(Property).initComptime(entries);
 };
@@ -2684,7 +2696,7 @@ fn fourSides(options: ParseOptions, ls: []const Longhand, stream: *Stream, out: 
         3 => .{ 0, 1, 2, 1 },
         else => .{ 0, 1, 2, 3 },
     };
-    var used: [4]bool = .{false} ** 4;
+    var used: [4]bool = @splat(false);
     for (ls, 0..) |l, i| {
         const v = vs[order[i]];
         if (used[order[i]]) v.retain();
@@ -3488,12 +3500,12 @@ test "logical sides map by writing mode and direction" {
 }
 
 test "CSSOM enumeration sorts names independently of property blocks" {
-    var seen = [_]bool{false} ** Longhand.count;
+    var seen = @as([Longhand.count]bool, @splat(false));
     var last_standard: ?Longhand = null;
     var saw_prefixed = false;
     for (lexicographic, 0..) |l, i| {
-        try testing.expect(!seen[@intFromEnum(l)]);
-        seen[@intFromEnum(l)] = true;
+        try testing.expect(!seen[@backingInt(l)]);
+        seen[@backingInt(l)] = true;
         const prefixed = std.mem.startsWith(u8, l.name(), "-");
         if (prefixed) {
             saw_prefixed = true;

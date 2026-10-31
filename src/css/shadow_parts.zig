@@ -60,12 +60,22 @@ fn parseMapping(text: []const u8) ?Mapping {
 /// The list owns its allocations; strings borrow the input attributes.
 /// A NameBuffer's allocator can supply the common small set on the stack.
 pub const Names = std.ArrayList([]const u8);
-pub const NameBuffer = std.heap.StackFallbackAllocator(4 * @sizeOf([]const u8));
+/// Zig 0.17 replaced StackFallbackAllocator with BufferFirstAllocator, which
+/// takes its buffer from the caller; this keeps the buffer beside it.
+pub const NameBuffer = struct {
+    buffer: [4 * @sizeOf([]const u8)]u8 = undefined,
+    first: std.heap.BufferFirstAllocator,
+
+    pub fn get(self: *NameBuffer) Allocator {
+        self.first = .init(&self.buffer, self.first.fallback_allocator);
+        return self.first.allocator();
+    }
+};
 
 /// Keep this buffer in the caller's scope. Call get() exactly once and do
 /// not move the buffer while its allocator or any returned list is in use.
 pub fn nameBuffer(allocator: Allocator) NameBuffer {
-    return std.heap.stackFallback(4 * @sizeOf([]const u8), allocator);
+    return .{ .first = .init(&.{}, allocator) };
 }
 
 /// §5.2: an ordered set of case-sensitive tokens separated by HTML spaces.

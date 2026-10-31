@@ -765,7 +765,7 @@ pub const FetchJob = struct {
         // getDecodeSplit allocates nothing when the header is absent.
         if (response.response_type != .@"error") {
             if (response.header_list.getDecodeSplit(self.allocator, "Server-Timing") catch null) |headers| {
-                self.timing_info.server_timing_headers = .{ .items = @constCast(headers), .capacity = headers.len };
+                self.timing_info.server_timing_headers = .{ .items = @constCast(headers), .capacity = headers.len, .pointer_stability = .{} };
             }
         }
 

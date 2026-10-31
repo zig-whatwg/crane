@@ -146,7 +146,7 @@ fn data(allocator: std.mem.Allocator) anyerror!void {
 
     var value = try Data.parse(options, "size: var(--x); --x: 2cm; margin: 1px; page-orientation: upright; marks: crop; bleed: auto");
     defer value.deinit();
-    const pending_slot = @intFromEnum(css.page_values.Descriptor.size);
+    const pending_slot = @backingInt(css.page_values.Descriptor.size);
     try std.testing.expect(value.pending[pending_slot] != null);
     try std.testing.expect(value.pending[pending_slot].?.property == null);
     // This is page-owned metadata, never a typed style pending value.

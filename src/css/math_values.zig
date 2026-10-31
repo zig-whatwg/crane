@@ -9,26 +9,26 @@ const Allocator = std.mem.Allocator;
 const Error = Allocator.Error || error{Invalid};
 
 pub const Base = enum(u3) { length, angle, time, frequency, resolution, flex, percent };
-const base_count = @typeInfo(Base).@"enum".fields.len;
+const base_count = @typeInfo(Base).@"enum".field_names.len;
 
 /// CSS Typed OM §4.3.2: exponents, with the context's percentage hint.
 pub const Type = struct {
     // Q84 Chrome156/Safari27 probe,2026-10-27: full WebIDL long powers.
     // Overflow wraps like Chrome; zero powers remain absent from dictionaries.
-    powers: [base_count]i32 = .{0} ** base_count,
+    powers: [base_count]i32 = @splat(0),
     hint: ?Base = null,
 
     pub fn one(base: ?Base) Type {
         var result = Type{};
-        if (base) |b| result.powers[@intFromEnum(b)] = 1;
+        if (base) |b| result.powers[@backingInt(b)] = 1;
         return result;
     }
 
     pub fn withHint(self: Type, hint: Base) Type {
         var result = self;
         if (hint != .percent) {
-            result.powers[@intFromEnum(hint)] +%= result.powers[@intFromEnum(Base.percent)];
-            result.powers[@intFromEnum(Base.percent)] = 0;
+            result.powers[@backingInt(hint)] +%= result.powers[@backingInt(Base.percent)];
+            result.powers[@backingInt(Base.percent)] = 0;
         }
         result.hint = hint;
         return result;
@@ -70,7 +70,7 @@ pub const Type = struct {
 
     fn is(self: Type, base: ?Base) bool {
         for (self.powers, 0..) |power, i| {
-            const expected: i32 = if (base != null and i == @intFromEnum(base.?)) 1 else 0;
+            const expected: i32 = if (base != null and i == @backingInt(base.?)) 1 else 0;
             if (power != expected) return false;
         }
         return true;
@@ -156,8 +156,8 @@ pub const Unit = enum(u8) {
     }
 
     pub fn parse(raw: []const u8) ?Unit {
-        inline for (@typeInfo(Unit).@"enum".fields) |field| {
-            const unit: Unit = @enumFromInt(field.value);
+        inline for (@typeInfo(Unit).@"enum".field_values) |field_value| {
+            const unit: Unit = @fromBackingInt(@intCast(field_value));
             if (unit != .number and unit != .percent and tokens.nameEql(raw, unit.name())) return unit;
         }
         return null;
@@ -230,11 +230,11 @@ pub const Symbol = enum(u4) {
     alpha,
 
     pub fn bit(self: Symbol) u16 {
-        return @as(u16, 1) << @intFromEnum(self);
+        return @as(u16, 1) << @backingInt(self);
     }
     pub fn parse(name: []const u8) ?Symbol {
-        inline for (@typeInfo(Symbol).@"enum".fields) |field|
-            if (tokens.nameEql(name, field.name)) return @enumFromInt(field.value);
+        inline for (@typeInfo(Symbol).@"enum".field_names, @typeInfo(Symbol).@"enum".field_values) |field_name, field_value|
+            if (tokens.nameEql(name, field_name)) return @fromBackingInt(@intCast(field_value));
         return null;
     }
 };
@@ -242,7 +242,7 @@ pub const Symbol = enum(u4) {
 /// Missing origin channels are zero INSIDE a calculation (Color 5 §4.10).
 /// Direct channel references retain missingness in the color value itself.
 pub const SymbolValues = struct {
-    values: [@typeInfo(Symbol).@"enum".fields.len]f64 = .{0} ** @typeInfo(Symbol).@"enum".fields.len,
+    values: [@typeInfo(Symbol).@"enum".field_names.len]f64 = @splat(0),
 };
 
 pub const Grammar = struct {
@@ -448,9 +448,9 @@ const Anchor = struct {
         }
         fn parse(token: tokens.Token, size: bool) ?Side {
             if (token.token_type != .ident) return null;
-            inline for (@typeInfo(Side).@"enum".fields) |field| {
-                const side: Side = @enumFromInt(field.value);
-                const size_side = @intFromEnum(side) >= @intFromEnum(Side.width);
+            inline for (@typeInfo(Side).@"enum".field_values) |field_value| {
+                const side: Side = @fromBackingInt(@intCast(field_value));
+                const size_side = @backingInt(side) >= @backingInt(Side.width);
                 if (size == size_side and tokens.nameEql(token.value, side.name())) return side;
             }
             return null;
@@ -486,8 +486,8 @@ const Function = enum {
     progress,
 
     fn parse(name: []const u8) ?Function {
-        inline for (@typeInfo(Function).@"enum".fields) |field|
-            if (tokens.nameEql(name, field.name)) return @enumFromInt(field.value);
+        inline for (@typeInfo(Function).@"enum".field_names, @typeInfo(Function).@"enum".field_values) |field_name, field_value|
+            if (tokens.nameEql(name, field_name)) return @fromBackingInt(@intCast(field_value));
         return null;
     }
 };
@@ -502,8 +502,8 @@ const Rounding = enum {
     }
     fn parse(token: tokens.Token) ?Rounding {
         if (token.token_type != .ident) return null;
-        inline for (@typeInfo(Rounding).@"enum".fields) |field| {
-            const value: Rounding = @enumFromInt(field.value);
+        inline for (@typeInfo(Rounding).@"enum".field_values) |field_value| {
+            const value: Rounding = @fromBackingInt(@intCast(field_value));
             if (tokens.nameEql(token.value, value.name())) return value;
         }
         return null;
@@ -1024,7 +1024,7 @@ const Parser = struct {
         if (Function.parse(token.value)) |kind| return self.numericFunction(kind);
         const clamp = tokens.nameEql(token.value, "clamp");
         var list: std.ArrayList(*Node) = .empty;
-        var missing: [3]bool = .{false} ** 3;
+        var missing: [3]bool = @splat(false);
         while (true) {
             const next_token = self.peek();
             if (clamp and next_token.token_type == .ident and tokens.nameEql(next_token.value, "none")) {
@@ -1238,8 +1238,8 @@ const Parser = struct {
         // §10.9: each math function must resolve to a CSS numeric type.
         // Parenthesized arithmetic may have compound intermediate units.
         if (self.builder.context_free or node.typ.is(null)) return node;
-        inline for (@typeInfo(Base).@"enum".fields) |field| {
-            if (node.typ.is(@enumFromInt(field.value))) return node;
+        inline for (@typeInfo(Base).@"enum".field_values) |field_value| {
+            if (node.typ.is(@fromBackingInt(@intCast(field_value)))) return node;
         }
         return error.Invalid;
     }
@@ -1375,7 +1375,7 @@ const Builder = struct {
     fn copy(self: *Builder, old: *const Node) Allocator.Error!*Node {
         if (old.tag == .numeric) return self.numeric(old.numeric);
         if (old.tag == .symbol) if (self.context) |context| if (context.symbols) |symbols| {
-            return self.numeric(.{ .value = symbols.values[@intFromEnum(old.symbol)], .unit = .number });
+            return self.numeric(.{ .value = symbols.values[@backingInt(old.symbol)], .unit = .number });
         };
         if (old.tag == .sibling_index or old.tag == .sibling_count) if (self.context) |context| {
             const counts: TreeCounts = context.tree_counts orelse (if (context.tree_count_provider) |provider| provider.get(provider.context) else .{ .index = 1, .count = 1 });
@@ -1495,7 +1495,7 @@ const Builder = struct {
                 // majority beyond its literal "all children numeric": fold
                 // the numeric subset around unresolved factors too. Different
                 // unresolved units still wait for computed/used information.
-                var powers: [@typeInfo(Unit).@"enum".fields.len]i32 = .{0} ** @typeInfo(Unit).@"enum".fields.len;
+                var powers: [@typeInfo(Unit).@"enum".field_names.len]i32 = @splat(0);
                 var product: f64 = 1;
                 var numeric_count: usize = 0;
                 var numeric_type = Type.one(null);
@@ -1507,14 +1507,14 @@ const Builder = struct {
                     const term_type = if (invert and self.context_free) (@import("typed_om/numeric.zig").invertType(term.typ) catch return root) else if (invert) term.typ.invert() else term.typ;
                     numeric_type = self.multiplyTypes(numeric_type, term_type) catch return root;
                     product *= if (invert) 1.0 / term.numeric.value else term.numeric.value;
-                    if (term.numeric.unit != .number) powers[@intFromEnum(term.numeric.unit)] +%= if (invert) @as(i32, -1) else 1;
+                    if (term.numeric.unit != .number) powers[@backingInt(term.numeric.unit)] +%= if (invert) @as(i32, -1) else 1;
                 }
                 if (numeric_count == 0) return root;
                 var unit: Unit = .number;
                 for (powers, 0..) |power, index| {
                     if (power == 0) continue;
                     if (power != 1 or unit != .number) return root;
-                    unit = @enumFromInt(index);
+                    unit = @fromBackingInt(@intCast(index));
                 }
                 if (numeric_count == root.children.len) return self.numeric(.{ .value = product, .unit = unit });
                 if (numeric_count == 1) return root;
@@ -1628,7 +1628,7 @@ const Builder = struct {
                 return self.numeric(.{ .value = maximum(a.numeric.value, minimum(b.numeric.value, c.numeric.value)), .unit = a.numeric.unit });
             return root;
         }
-        var list = std.ArrayList(*Node){ .items = root.children, .capacity = root.children.len };
+        var list = std.ArrayList(*Node){ .items = root.children, .capacity = root.children.len, .pointer_stability = .{} };
         var i: usize = 0;
         while (i < list.items.len) : (i += 1) {
             const child = list.items[i];

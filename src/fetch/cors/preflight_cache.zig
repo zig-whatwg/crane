@@ -114,7 +114,7 @@ pub const PreflightCache = struct {
     /// `method=null` means the caller's method needs no cache permission.
     pub fn allows(self: *PreflightCache, key: CacheKey, now: i64, credentials: bool, method: ?[]const u8, headers: []const []const u8) bool {
         if (self.count() == 0) return false;
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const entry = self.entries.getPtr(key) orelse return false;
         if (method) |m| if (!entry.permits(now, credentials, m, false)) return false;
@@ -129,7 +129,7 @@ pub const PreflightCache = struct {
         if (key.url.len > 1024) return;
         const age: u64 = @min(max_age orelse 5, @min(self.max_max_age, 7200));
         const expires = now +| @as(i64, @intCast(age * 1000));
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const entry = self.entries.getPtr(key) orelse {
             // Prepare the whole insertion before eviction. Allocation
@@ -190,13 +190,13 @@ pub const PreflightCache = struct {
     }
     pub fn clear(self: *PreflightCache, key: CacheKey) void {
         if (self.count() == 0) return;
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         self.remove(key);
     }
     pub fn clearAll(self: *PreflightCache) void {
         if (self.count() == 0) return;
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         var it = self.entries.iterator();
         while (it.next()) |entry| {

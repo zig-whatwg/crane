@@ -256,7 +256,7 @@ fn keyOfPath(path: []const u8, file: []const u8, scope: Scope, preceded_by_colon
         for ([_][]const u8{ "Dir", "File", "net", "Clock", "Timestamp" }) |m| if (std.mem.eql(u8, member, m)) return path[0..member_end];
         if (std.mem.eql(u8, member, "Threaded")) {
             if (n >= 4) {
-                for ([_][]const u8{ "mutexLock", "mutexUnlock", "global_single_threaded" }) |m| if (std.mem.eql(u8, segments[3], m)) return null;
+                for ([_][]const u8{ "mutexLock", "mutexLockUncancelable", "mutexUnlock", "global_single_threaded" }) |m| if (std.mem.eql(u8, segments[3], m)) return null;
             }
             return path[0..member_end];
         }
@@ -283,12 +283,12 @@ fn keyOfPath(path: []const u8, file: []const u8, scope: Scope, preceded_by_colon
 fn testLines(gpa: std.mem.Allocator, source: [:0]const u8) !std.ArrayList([2]u32) {
     var out: std.ArrayList([2]u32) = .empty;
     errdefer out.deinit(gpa);
-    var tree = try std.zig.Ast.parse(gpa, source, .zig);
+    var tree = try std.zig.Ast.parse(gpa, source, .{ .mode = .zig });
     defer tree.deinit(gpa);
     if (tree.errors.len > 0) return out;
     var i: u32 = 0;
     while (i < tree.nodes.len) : (i += 1) {
-        const node: std.zig.Ast.Node.Index = @enumFromInt(i);
+        const node: std.zig.Ast.Node.Index = @fromBackingInt(@intCast(i));
         if (tree.nodeTag(node) != .test_decl) continue;
         const first: u32 = @intCast(tree.tokenLocation(0, tree.firstToken(node)).line + 1);
         const last: u32 = @intCast(tree.tokenLocation(0, tree.lastToken(node)).line + 1);
@@ -748,7 +748,7 @@ test "std's OS namespaces, also through an alias; synchronisation and pure membe
         \\    _ = posix.getrandom(buf);
         \\    _ = std.process.argsAlloc(a);
         \\    var d = std.Io.Dir.cwd();
-        \\    std.Io.Threaded.mutexLock(&m);
+        \\    std.Io.Threaded.mutexLockUncancelable(&m);
         \\    _ = std.Io.Threaded.global_single_threaded.io();
         \\    var mutex: std.Io.Mutex = .init;
         \\    _ = std.fs.path.join(a, parts);

@@ -88,7 +88,7 @@ pub const Phase = enum {
     /// Document.
     documents,
 };
-const phase_count = @typeInfo(Phase).@"enum".fields.len;
+const phase_count = @typeInfo(Phase).@"enum".field_names.len;
 
 /// Room per phase: `.element_types` holds a sweep per node type whose state
 /// has one (dom.orphan_states), eighteen since lane orphanleak.
@@ -99,7 +99,7 @@ var count: [phase_count]usize = @splat(0);
 /// Install `sweep` in `phase`. Idempotent: the same function installs once.
 pub fn install(phase: Phase, sweep: Sweep) void {
     process_start.assertInstalling();
-    const p = @intFromEnum(phase);
+    const p = @backingInt(phase);
     for (sweeps[p][0..count[p]]) |existing| {
         if (existing == sweep) return;
     }

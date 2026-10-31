@@ -194,7 +194,7 @@ fn getInternal(instance: *runtime.Instance) *InternalState {
 /// Spec: "The readyState getter steps are to return the value from the table..."
 pub fn get_readyState(instance: *runtime.Instance) anyerror!u16 {
     const xhr_state = getXHRState(instance);
-    return @intFromEnum(xhr_state.ready_state);
+    return @backingInt(xhr_state.ready_state);
 }
 
 /// Getter for timeout

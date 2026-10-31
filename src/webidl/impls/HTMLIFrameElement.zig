@@ -123,12 +123,12 @@ pub const InternalState = struct {
         self.sandbox_token_list = null;
 
         // Free cached strings
-        inline for (@typeInfo(InternalState).@"struct".fields) |field| {
-            if (field.type == ?[]const u8) {
-                if (@field(self, field.name)) |str| {
+        inline for (@typeInfo(InternalState).@"struct".field_names, @typeInfo(InternalState).@"struct".field_types) |field_name, field_type| {
+            if (field_type == ?[]const u8) {
+                if (@field(self, field_name)) |str| {
                     self.allocator.free(str);
                 }
-                @field(self, field.name) = null;
+                @field(self, field_name) = null;
             }
         }
     }

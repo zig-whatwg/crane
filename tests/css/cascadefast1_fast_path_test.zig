@@ -110,7 +110,7 @@ fn serialize(allocator: Allocator, style: *const ComputedStyle, l: Longhand) ![]
 fn expectSameDefaults(fast: *const ComputedStyle, slow: *const ComputedStyle, path: anytype, case_index: usize) !void {
     for (0..Longhand.count) |i| {
         if (cascade_mod.default_path[i] != path) continue;
-        const l: Longhand = @enumFromInt(i);
+        const l: Longhand = @fromBackingInt(@intCast(i));
         if (!std.meta.eql(fast.get(l), slow.get(l))) {
             std.debug.print("case {d}: {s} differs between the fast and slow default\n", .{ case_index, l.name() });
             return error.FastPathDiffers;
@@ -183,7 +183,7 @@ test "authored values read fast-path defaults as the slow path does" {
                 if (slow.parent) |p| p.destroy();
             }
             for (0..Longhand.count) |i| {
-                const l: Longhand = @enumFromInt(i);
+                const l: Longhand = @fromBackingInt(@intCast(i));
                 const a = try serialize(allocator, fast.style, l);
                 defer allocator.free(a);
                 const b = try serialize(allocator, slow.style, l);
@@ -206,11 +206,11 @@ test "the allowlist's default is to compute" {
     const forFn = cascade_mod.defaultPathFor;
     // Element context the initial value needs: ::before/::after content,
     // and justify-items' legacy, which reads the parent.
-    try testing.expectEqual(DefaultPath.compute, cascade_mod.default_path[@intFromEnum(Longhand.content)]);
-    try testing.expectEqual(DefaultPath.compute, cascade_mod.default_path[@intFromEnum(Longhand.justify_items)]);
+    try testing.expectEqual(DefaultPath.compute, cascade_mod.default_path[@backingInt(Longhand.content)]);
+    try testing.expectEqual(DefaultPath.compute, cascade_mod.default_path[@backingInt(Longhand.justify_items)]);
     // The high-priority longhands and the logical ones are not in the loop.
     for ([_]Longhand{ .writing_mode, .direction, .text_orientation, .color_scheme, .font_size, .line_height, .color, .margin_inline_start, .block_size }) |l|
-        try testing.expectEqual(DefaultPath.compute, cascade_mod.default_path[@intFromEnum(l)]);
+        try testing.expectEqual(DefaultPath.compute, cascade_mod.default_path[@backingInt(l)]);
     // Any value outside the proven tag list computes: font-relative and
     // viewport lengths, math, images, transforms, lists.
     try testing.expectEqual(DefaultPath.compute, forFn(.margin_left, .{ .length = .{ .value = 1, .unit = .em } }));
@@ -238,11 +238,11 @@ test "the allowlist's default is to compute" {
     try testing.expectEqual(DefaultPath.initial, forFn(.border_top_color, .{ .color = .current }));
     try testing.expectEqual(DefaultPath.compute, forFn(.color, .{ .color = .current }));
     // Inherited longhands default to their parent's value.
-    try testing.expectEqual(DefaultPath.inherit, cascade_mod.default_path[@intFromEnum(Longhand.visibility)]);
+    try testing.expectEqual(DefaultPath.inherit, cascade_mod.default_path[@backingInt(Longhand.visibility)]);
     // Plain absolute values are proven.
     try testing.expectEqual(DefaultPath.initial, forFn(.margin_left, Value.px(0)));
-    try testing.expectEqual(DefaultPath.initial, cascade_mod.default_path[@intFromEnum(Longhand.margin_left)]);
-    try testing.expectEqual(DefaultPath.initial, cascade_mod.default_path[@intFromEnum(Longhand.background_color)]);
+    try testing.expectEqual(DefaultPath.initial, cascade_mod.default_path[@backingInt(Longhand.margin_left)]);
+    try testing.expectEqual(DefaultPath.initial, cascade_mod.default_path[@backingInt(Longhand.background_color)]);
 }
 
 fn cascadeTree(allocator: Allocator) !void {

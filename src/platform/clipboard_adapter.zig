@@ -252,7 +252,7 @@ pub const ClipboardVTableAdapter = struct {
         const self: *Self = @ptrCast(@alignCast(user_context));
 
         // Read text from backend
-        const text = self.backend.readText(self.allocator) orelse return @intFromEnum(ClipboardResult.empty);
+        const text = self.backend.readText(self.allocator) orelse return @backingInt(ClipboardResult.empty);
         defer self.allocator.free(text);
 
         // If buffer is null, return required size
@@ -275,7 +275,7 @@ pub const ClipboardVTableAdapter = struct {
     fn readHtmlImpl(user_context: OpaquePtr, buffer: ?[*]u8, buffer_size: usize) callconv(.c) i32 {
         const self: *Self = @ptrCast(@alignCast(user_context));
 
-        const html = self.backend.readHtml(self.allocator) orelse return @intFromEnum(ClipboardResult.empty);
+        const html = self.backend.readHtml(self.allocator) orelse return @backingInt(ClipboardResult.empty);
         defer self.allocator.free(html);
 
         if (buffer == null) {

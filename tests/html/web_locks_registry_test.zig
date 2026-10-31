@@ -34,7 +34,7 @@ const Mailbox = struct {
 
     fn post(ctx: *anyopaque, event: Event) void {
         const self: *Mailbox = @ptrCast(@alignCast(ctx));
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         self.events.append(self.allocator, event) catch @panic("out of memory in a test mailbox");
     }
@@ -46,7 +46,7 @@ const Mailbox = struct {
 
     /// Everything posted so far, in order; the mailbox is emptied.
     fn take(self: *Mailbox) ![]Event {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return self.events.toOwnedSlice(self.allocator);
     }

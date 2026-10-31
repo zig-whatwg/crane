@@ -109,7 +109,7 @@ const Registry = struct {
     }
 
     fn add(self: *Registry, entry: Entry) !void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         try self.entries.append(self.allocator, entry);
     }
@@ -129,7 +129,7 @@ const Registry = struct {
             for (list.items) |destination| destination.sink.release();
             list.deinit(allocator);
         }
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         for (self.entries.items) |entry| {
             if (entry.instance == source) continue;
@@ -143,7 +143,7 @@ const Registry = struct {
 
     fn remove(self: *Registry, instance: *runtime.Instance) void {
         const removed: ?Entry = blk: {
-            std.Io.Threaded.mutexLock(&self.mutex);
+            std.Io.Threaded.mutexLockUncancelable(&self.mutex);
             defer std.Io.Threaded.mutexUnlock(&self.mutex);
             for (self.entries.items, 0..) |entry, i| {
                 if (entry.instance == instance) break :blk self.entries.orderedRemove(i);

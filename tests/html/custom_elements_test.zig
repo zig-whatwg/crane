@@ -368,7 +368,7 @@ test "CallbackType - all types defined" {
     for (types, 0..) |cb_type, i| {
         _ = i;
         // Just verify they compile and are accessible
-        try std.testing.expect(@intFromEnum(cb_type) >= 0);
+        try std.testing.expect(@backingInt(cb_type) >= 0);
     }
 }
 

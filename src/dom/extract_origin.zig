@@ -17,11 +17,11 @@ pub const Implementation = struct {
 };
 
 // process-wide: immutable extraction function pointers installed at process start, identical for every Browser and thread
-var implementations: [@typeInfo(Owner).@"enum".fields.len]?Implementation = @splat(null);
+var implementations: [@typeInfo(Owner).@"enum".field_names.len]?Implementation = @splat(null);
 
 pub fn install(owner: Owner, steps: Implementation) void {
     process_start.assertInstalling();
-    implementations[@intFromEnum(owner)] = steps;
+    implementations[@backingInt(owner)] = steps;
 }
 
 /// A platform object without extraction steps returns null (HTML's default).

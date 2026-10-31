@@ -77,7 +77,7 @@ fn strongest(metadata: []const u8) ?Algorithm {
     var tokens = std.mem.tokenizeAny(u8, metadata, " \t\n\r\x0c");
     while (tokens.next()) |token| {
         const item = parse(token) orelse continue;
-        if (result == null or @intFromEnum(item.algorithm) > @intFromEnum(result.?)) result = item.algorithm;
+        if (result == null or @backingInt(item.algorithm) > @backingInt(result.?)) result = item.algorithm;
     }
     return result;
 }

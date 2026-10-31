@@ -94,8 +94,8 @@ pub const ConversionError = error{
 /// without its wrapping underscores, the rest turned into hyphens.
 pub fn idlEnumValue(comptime T: type, value: T) []const u8 {
     if (comptime @hasDecl(T, "idl_values")) {
-        comptime std.debug.assert(T.idl_values.len == std.meta.fields(T).len);
-        return T.idl_values[@intFromEnum(value)];
+        comptime std.debug.assert(T.idl_values.len == std.meta.fieldNames(T).len);
+        return T.idl_values[@backingInt(value)];
     }
     return switch (value) {
         inline else => |tag| comptime blk: {
@@ -119,12 +119,12 @@ pub fn idlEnumValue(comptime T: type, value: T) []const u8 {
 pub fn enumFromIdlValue(comptime T: type, string: []const u8) ?T {
     if (comptime @hasDecl(T, "idl_values")) {
         inline for (T.idl_values, 0..) |idl_value, i| {
-            if (std.mem.eql(u8, idl_value, string)) return @enumFromInt(std.meta.fields(T)[i].value);
+            if (std.mem.eql(u8, idl_value, string)) return @fromBackingInt(@intCast(zig017FieldsOfType(T)[i].value));
         }
         return null;
     }
-    inline for (std.meta.fields(T)) |field| {
-        if (enumNameMatches(field.name, string)) return @enumFromInt(field.value);
+    inline for (comptime std.meta.fieldNames(T), @typeInfo(T).@"enum".field_values) |field_name, field_value| {
+        if (enumNameMatches(field_name, string)) return @fromBackingInt(@intCast(field_value));
     }
     return null;
 }
@@ -641,7 +641,7 @@ fn isAnyMember(comptime T: type, comptime name: []const u8) bool {
 /// is its own), and a type this converter leaves to the impl - a union, a
 /// sequence, a dictionary, a callback - which keeps reading a present null
 /// as not present.
-pub fn presentNullConvertsByType(comptime T: type, comptime field: std.builtin.Type.StructField) bool {
+pub fn presentNullConvertsByType(comptime T: type, comptime field: Zig017Field) bool {
     comptime {
         const info = @typeInfo(field.type);
         if (info != .optional) return false;
@@ -1226,7 +1226,7 @@ fn convertAllowSharedBufferSource(
     // case (TextDecoder.decode's input), one FFI call.
     var info: v8.ViewInfo = undefined;
     if (v8.v8_ArrayBufferView_Describe(value, &info)) {
-        const view = typedefs.ArrayBufferView.fromEngine(@intCast(@intFromEnum(info.kind)), info.byte_offset, info.length, @ptrCast(value)) orelse
+        const view = typedefs.ArrayBufferView.fromEngine(@intCast(@backingInt(info.kind)), info.byte_offset, info.length, @ptrCast(value)) orelse
             return ConversionError.TypeError;
         return .{ .array_buffer_view = view };
     }
@@ -1273,7 +1273,7 @@ fn convertArrayBufferView(value: *v8.Value) ConversionError!typedefs.ArrayBuffer
     // Step 3: not [AllowShared].
     if (info.buffer_shared) return ConversionError.TypeError;
     // Step 5.
-    return typedefs.ArrayBufferView.fromEngine(@intCast(@intFromEnum(info.kind)), info.byte_offset, info.length, @ptrCast(value)) orelse
+    return typedefs.ArrayBufferView.fromEngine(@intCast(@backingInt(info.kind)), info.byte_offset, info.length, @ptrCast(value)) orelse
         ConversionError.TypeError;
 }
 
@@ -1505,9 +1505,9 @@ pub fn unionArmInterface(comptime arm: []const u8) ?type {
         for (aliases) |alias| {
             if (std.mem.eql(u8, alias[0], arm)) return @field(interfaces, alias[1]);
         }
-        for (@typeInfo(interfaces).@"struct".decls) |decl| {
-            if (!isArmNameOf(decl.name, arm)) continue;
-            const I = @field(interfaces, decl.name);
+        for (@typeInfo(interfaces).@"struct".decl_names) |decl_name| {
+            if (!isArmNameOf(decl_name, arm)) continue;
+            const I = @field(interfaces, decl_name);
             if (@TypeOf(I) != type or !@hasDecl(I, "State")) continue;
             return I;
         }
@@ -1620,8 +1620,8 @@ fn platformObjectArm(comptime T: type, value: *v8.Value) ?T {
 /// SVGImageElement. Codegen keeps such a member as a nested union.
 pub fn isInterfaceUnion(comptime T: type) bool {
     if (@typeInfo(T) != .@"union") return false;
-    inline for (@typeInfo(T).@"union".fields) |field| {
-        if (field.type != *runtime.Instance and !isInterfaceUnion(field.type)) return false;
+    inline for (@typeInfo(T).@"union".field_types) |field_type| {
+        if (field_type != *runtime.Instance and !isInterfaceUnion(field_type)) return false;
     }
     return true;
 }
@@ -1629,11 +1629,11 @@ pub fn isInterfaceUnion(comptime T: type) bool {
 /// The arm of `T` - a nested interface union's included - whose named
 /// interface `instance` implements, in member order.
 fn checkedArm(comptime T: type, instance: *runtime.Instance) ?T {
-    inline for (@typeInfo(T).@"union".fields) |field| {
-        if (comptime field.type == *runtime.Instance and unionArmInterface(field.name) != null) {
-            if (implementsArm(field.name, instance)) return @unionInit(T, field.name, instance);
-        } else if (comptime isInterfaceUnion(field.type)) {
-            if (checkedArm(field.type, instance)) |nested| return @unionInit(T, field.name, nested);
+    inline for (@typeInfo(T).@"union".field_names, @typeInfo(T).@"union".field_types) |field_name, field_type| {
+        if (comptime field_type == *runtime.Instance and unionArmInterface(field_name) != null) {
+            if (implementsArm(field_name, instance)) return @unionInit(T, field_name, instance);
+        } else if (comptime isInterfaceUnion(field_type)) {
+            if (checkedArm(field_type, instance)) |nested| return @unionInit(T, field_name, nested);
         }
     }
     return null;
@@ -1642,11 +1642,11 @@ fn checkedArm(comptime T: type, instance: *runtime.Instance) ?T {
 /// The first arm of `T` (a nested interface union's included) that names no
 /// interface, and so accepts any platform object.
 fn uncheckedArm(comptime T: type, instance: *runtime.Instance) ?T {
-    inline for (@typeInfo(T).@"union".fields) |field| {
-        if (comptime field.type == *runtime.Instance and unionArmInterface(field.name) == null) {
-            return @unionInit(T, field.name, instance);
-        } else if (comptime isInterfaceUnion(field.type)) {
-            if (uncheckedArm(field.type, instance)) |nested| return @unionInit(T, field.name, nested);
+    inline for (@typeInfo(T).@"union".field_names, @typeInfo(T).@"union".field_types) |field_name, field_type| {
+        if (comptime field_type == *runtime.Instance and unionArmInterface(field_name) == null) {
+            return @unionInit(T, field_name, instance);
+        } else if (comptime isInterfaceUnion(field_type)) {
+            if (uncheckedArm(field_type, instance)) |nested| return @unionInit(T, field_name, nested);
         }
     }
     return null;
@@ -1667,12 +1667,12 @@ fn isSequenceMember(comptime M: type) bool {
 /// (`base`, converted by recursion) followed by its own members in IDL
 /// declaration order, so the order is imposed here: `base`, then the rest by
 /// code unit. Reading `view` before `detail` is observable to a getter.
-fn dictionaryMemberOrder(comptime T: type) [std.meta.fields(T).len]std.builtin.Type.StructField {
+fn dictionaryMemberOrder(comptime T: type) [std.meta.fieldNames(T).len]Zig017Field {
     comptime {
         @setEvalBranchQuota(20_000);
-        var fields = std.meta.fields(T)[0..std.meta.fields(T).len].*;
-        std.sort.insertion(std.builtin.Type.StructField, &fields, {}, struct {
-            fn lessThan(_: void, a: std.builtin.Type.StructField, b: std.builtin.Type.StructField) bool {
+        var fields = zig017FieldsOfType(T)[0..std.meta.fieldNames(T).len].*;
+        std.sort.insertion(Zig017Field, &fields, {}, struct {
+            fn lessThan(_: void, a: Zig017Field, b: Zig017Field) bool {
                 if (isInheritedDictionaryField(b)) return false;
                 if (isInheritedDictionaryField(a)) return true;
                 return std.mem.lessThan(u8, a.name, b.name);
@@ -1685,8 +1685,8 @@ fn dictionaryMemberOrder(comptime T: type) [std.meta.fields(T).len]std.builtin.T
 /// Whether union `T` has an arm for a typed array type (`typedArrayArmName`).
 fn hasTypedArrayArm(comptime T: type) bool {
     comptime {
-        for (@typeInfo(T).@"union".fields) |field| {
-            if (field.type == runtime.JSValue and typedArrayArmName(field.name) != null) return true;
+        for (@typeInfo(T).@"union".field_names, @typeInfo(T).@"union".field_types) |field_name, field_type| {
+            if (field_type == runtime.JSValue and typedArrayArmName(field_name) != null) return true;
         }
         return false;
     }
@@ -1696,7 +1696,7 @@ fn hasTypedArrayArm(comptime T: type) bool {
 /// default value (generator.generateDictionary writes every other member as
 /// `?T = null`). `base` - the inherited dictionary - is converted from the
 /// same object and is no member.
-fn isRequiredMember(comptime field: std.builtin.Type.StructField) bool {
+fn isRequiredMember(comptime field: Zig017Field) bool {
     return field.default_value_ptr == null and !std.mem.eql(u8, field.name, "base");
 }
 
@@ -1996,7 +1996,7 @@ fn convertValueAs(
         // then dispatch at runtime based on the actual value type.
 
         const union_info = type_info.@"union";
-        const fields = union_info.fields;
+        const fields = zig017FieldsOf(union_info);
 
         // Find indices for different type categories at comptime
         // Note: []const u8 (ByteString, USVString) could match both string and sequence
@@ -2521,7 +2521,7 @@ fn convertValueAs(
         // This is a webidl.Opt(InnerType) - convert the inner value and wrap it
         // Get the inner type from the 'value' field using comptime struct field access
         const InnerType = comptime blk: {
-            const fields = std.meta.fields(T);
+            const fields = zig017FieldsOfType(T);
             for (fields) |field| {
                 if (std.mem.eql(u8, field.name, "value")) {
                     break :blk field.type;
@@ -3321,7 +3321,7 @@ pub fn dictionaryValueIsOwned(comptime T: type) bool {
 pub fn releaseReturnedDictionaryHandles(comptime T: type, value: T) void {
     @setEvalBranchQuota(100_000);
     if (comptime !isDictionaryValue(T)) return;
-    inline for (std.meta.fields(T)) |field| {
+    inline for (zig017FieldsOfType(T)) |field| {
         const field_value = @field(value, field.name);
         if (comptime isInheritedDictionaryField(field)) {
             releaseReturnedDictionaryHandles(field.type, field_value);
@@ -3374,7 +3374,7 @@ pub fn unionValueIsOwned(comptime T: type, value: T) bool {
 /// Whether `field` is a dictionary's inherited dictionary: codegen keeps it
 /// in a field named `base` whose type is the inherited dictionary's struct.
 /// Only that: JsonLdOptions has a MEMBER named `base` (`USVString? base`).
-fn isInheritedDictionaryField(comptime field: std.builtin.Type.StructField) bool {
+fn isInheritedDictionaryField(comptime field: Zig017Field) bool {
     return comptime std.mem.eql(u8, field.name, "base") and isDictionaryValue(field.type);
 }
 
@@ -3412,7 +3412,7 @@ fn MemberPayload(comptime M: type) type {
 /// dictionary member default to `{}`).
 fn defaultsToEmpty(comptime T: type) bool {
     comptime {
-        for (std.meta.fields(T)) |f| {
+        for (zig017FieldsOfType(T)) |f| {
             if (f.default_value_ptr == null and !isInheritedDictionaryField(f)) return false;
             if (isInheritedDictionaryField(f) and !defaultsToEmpty(f.type)) return false;
         }
@@ -3424,7 +3424,7 @@ fn defaultsToEmpty(comptime T: type) bool {
 /// inherited dictionary's too.
 fn emptyDictionary(comptime T: type) T {
     var result: T = undefined;
-    inline for (std.meta.fields(T)) |f| {
+    inline for (zig017FieldsOfType(T)) |f| {
         if (comptime isInheritedDictionaryField(f)) {
             @field(result, f.name) = emptyDictionary(f.type);
         } else {
@@ -3522,12 +3522,12 @@ fn writeDictionaryMembers(comptime T: type, isolate: *v8.Isolate, context: *v8.C
 /// property for each - so a nullable attribute that is null is a property
 /// whose value is null (toV8Value's null for an optional that is null).
 fn writeDefaultToJsonMembers(comptime T: type, isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object, value: T) ConversionError!void {
-    inline for (std.meta.fields(T)) |field| {
-        const field_value = @field(value, field.name);
-        const field_v8 = try toV8Value(field.type, isolate, context, field_value);
+    inline for (comptime std.meta.fieldNames(T), comptime std.meta.fieldTypes(T)) |field_name, field_type| {
+        const field_value = @field(value, field_name);
+        const field_v8 = try toV8Value(field_type, isolate, context, field_value);
         // A null is the Null toV8Null made (`memberValueIsOwned`).
-        defer if (memberValueIsOwned(field.type, field_value)) v8.v8_Value_Dispose(field_v8);
-        try defineMember(isolate, context, obj, field.name, field_v8);
+        defer if (memberValueIsOwned(field_type, field_value)) v8.v8_Value_Dispose(field_v8);
+        try defineMember(isolate, context, obj, field_name, field_v8);
     }
 }
 
@@ -3671,7 +3671,7 @@ pub fn toV8Value(
         if (elem_type_info == .@"struct") {
             const has_key = @hasField(ElemType, "key");
             const has_value = @hasField(ElemType, "value");
-            const field_count = std.meta.fields(ElemType).len;
+            const field_count = std.meta.fieldNames(ElemType).len;
             if (has_key and has_value and field_count == 2) {
                 // This is a record-like type - convert to object. WebIDL
                 // 3.2.20: "Let result be OrdinaryObjectCreate(%Object.prototype%)"
@@ -3757,7 +3757,7 @@ pub fn toV8Value(
     // Handle unions (convert active field to V8)
     if (type_info == .@"union") {
         const union_info = type_info.@"union";
-        const fields = union_info.fields;
+        const fields = zig017FieldsOf(union_info);
 
         // Use inline switch to dispatch on active field at runtime
         inline for (fields) |field| {
@@ -4390,7 +4390,7 @@ fn newQuotaExceededError(isolate: *v8.Isolate, context: *v8.Context, message: []
     const interfaces = @import("interfaces");
     const QuotaExceededError = interfaces.QuotaExceededError;
     const realm = @import("context_manager.zig").get(context) orelse return null;
-    const params = @typeInfo(@TypeOf(QuotaExceededError.call_constructor)).@"fn".params;
+    const params = zig017ParamsOf(@typeInfo(@TypeOf(QuotaExceededError.call_constructor)).@"fn");
     const Message = params[1].type.?;
     const Options = params[2].type.?;
     const instance = QuotaExceededError.call_constructor(realm, Message.passed(runtime.DOMString.initInterned(message)), Options.notPassed()) catch return null;
@@ -5378,4 +5378,58 @@ pub fn iterateAsRecordPairs(
 test "conversion module compiles" {
     const testing = std.testing;
     testing.refAllDecls(@This());
+}
+
+// Zig 0.17 compat: Zig 0.17's @typeInfo is struct-of-arrays. These rebuild 0.16's lists
+// (comptime-only element types, so every call is evaluated at comptime).
+const Zig017Param = struct { type: ?type, is_generic: bool, is_noalias: bool };
+fn zig017ParamsOf(comptime info: @import("std").builtin.Type.Fn) [info.param_types.len]Zig017Param {
+    var out: [info.param_types.len]Zig017Param = undefined;
+    for (info.param_types, info.param_attrs, 0..) |t, a, i| out[i] = .{ .type = t, .is_generic = t == null, .is_noalias = a.@"noalias" };
+    return out;
+}
+const Zig017Decl = struct { name: [:0]const u8, comptime_only: type = void };
+fn zig017DeclsOf(comptime names: []const [:0]const u8) [names.len]Zig017Decl {
+    var out: [names.len]Zig017Decl = undefined;
+    for (names, 0..) |n, i| out[i] = .{ .name = n };
+    return out;
+}
+
+// Zig 0.17 compat: 0.16's StructField/UnionField/EnumField list, rebuilt at comptime from
+// Zig 0.17's struct-of-arrays @typeInfo (a comptime-only element type: calls run at comptime).
+pub const Zig017Field = struct {
+    name: [:0]const u8,
+    type: type = void,
+    default_value_ptr: ?*const anyopaque = null,
+    is_comptime: bool = false,
+    alignment: ?usize = null,
+    value: comptime_int = 0,
+
+    pub fn defaultValue(comptime f: Zig017Field) ?f.type {
+        const dp: *const f.type = @ptrCast(@alignCast(f.default_value_ptr orelse return null));
+        return dp.*;
+    }
+};
+fn zig017FieldsOf(comptime info: anytype) [info.field_names.len]Zig017Field {
+    var out: [info.field_names.len]Zig017Field = undefined;
+    if (@hasField(@TypeOf(info), "field_values")) {
+        for (info.field_names, info.field_values, 0..) |n, v, i| out[i] = .{ .name = n, .value = v };
+        return out;
+    }
+    for (info.field_names, info.field_types, info.field_attrs, 0..) |n, t, a, i| out[i] = .{
+        .name = n,
+        .type = t,
+        .default_value_ptr = if (@hasField(@TypeOf(a), "default_value_ptr")) a.default_value_ptr else null,
+        .is_comptime = if (@hasField(@TypeOf(a), "comptime")) a.@"comptime" else false,
+        .alignment = a.@"align",
+    };
+    return out;
+}
+fn zig017FieldsOfType(comptime T: type) [@import("std").meta.fieldNames(T).len]Zig017Field {
+    return switch (@typeInfo(T)) {
+        .@"struct" => |s| zig017FieldsOf(s),
+        .@"union" => |u| zig017FieldsOf(u),
+        .@"enum" => |e| zig017FieldsOf(e),
+        else => @compileError("zig017FieldsOfType: not a struct, union or enum"),
+    };
 }

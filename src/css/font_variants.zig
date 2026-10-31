@@ -83,7 +83,7 @@ const Slot = enum {
         };
     }
 };
-const slot_count = @typeInfo(Slot).@"enum".fields.len;
+const slot_count = @typeInfo(Slot).@"enum".field_names.len;
 const Piece = struct { text: []const u8, owned: ?[]u8 = null };
 const Components = struct {
     pieces: [slot_count]?Piece = @splat(null),
@@ -98,7 +98,7 @@ const Components = struct {
         var out: std.ArrayList(u8) = .empty;
         defer out.deinit(allocator);
         for (self.pieces, 0..) |piece, i| {
-            const slot: Slot = @enumFromInt(i);
+            const slot: Slot = @fromBackingInt(@intCast(i));
             if (slot.group() != group) continue;
             if (piece) |p| {
                 if (out.items.len != 0) try out.append(allocator, ' ');
@@ -110,7 +110,7 @@ const Components = struct {
 };
 
 pub fn groupOf(longhand: Longhand) ?Group {
-    for (longhands, 0..) |l, i| if (l == longhand) return @enumFromInt(i);
+    for (longhands, 0..) |l, i| if (l == longhand) return @fromBackingInt(@intCast(i));
     return null;
 }
 
@@ -138,7 +138,7 @@ fn parseComponents(allocator: Allocator, stream: *properties.Stream, only: ?Grou
         const token = stream.peek();
         var found: ?struct { slot: Slot, name: []const u8, function: bool } = null;
         for (0..slot_count) |i| {
-            const slot: Slot = @enumFromInt(i);
+            const slot: Slot = @fromBackingInt(@intCast(i));
             if (only) |group| if (slot.group() != group) continue;
             if (token.token_type == .ident) {
                 for (slot.names()) |name| if (tokens.nameEql(token.value, name)) {
@@ -151,7 +151,7 @@ fn parseComponents(allocator: Allocator, stream: *properties.Stream, only: ?Grou
             if (found != null) break;
         }
         const item = found orelse break;
-        const index = @intFromEnum(item.slot);
+        const index = @backingInt(item.slot);
         if (result.pieces[index] != null) return null;
         _ = stream.next();
         if (item.function) {
@@ -200,7 +200,7 @@ pub fn parseShorthand(options: properties.ParseOptions, stream: *properties.Stre
     if (!stream.atEnd()) return false;
     try out.ensureUnusedCapacity(options.allocator, longhands.len);
     for (longhands, 0..) |l, i| {
-        const v = try components.value(options.allocator, @enumFromInt(i));
+        const v = try components.value(options.allocator, @fromBackingInt(@intCast(i)));
         out.appendAssumeCapacity(.{ .longhand = l, .value = .{ .value = v } });
     }
     return true;

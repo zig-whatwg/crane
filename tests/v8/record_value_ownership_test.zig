@@ -41,11 +41,11 @@ test "the default is kept: every arm not named answers false" {
     // Each arm of runtime.JSValue, by name: a new arm fails here until it is
     // classified, instead of falling on the releasing side.
     const named = [_][]const u8{ "undefined", "null", "boolean", "number", "string", "handle", "instance" };
-    inline for (std.meta.fields(runtime.JSValue)) |field| {
+    inline for (comptime std.meta.fieldNames(runtime.JSValue)) |field_name| {
         var found = false;
-        for (named) |name| found = found or std.mem.eql(u8, name, field.name);
+        for (named) |name| found = found or std.mem.eql(u8, name, field_name);
         if (!found) {
-            std.debug.print("runtime.JSValue arm '{s}' is not classified\n", .{field.name});
+            std.debug.print("runtime.JSValue arm '{s}' is not classified\n", .{field_name});
             return error.UnclassifiedArm;
         }
     }

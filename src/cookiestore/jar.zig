@@ -123,7 +123,7 @@ pub const CookieJar = struct {
     /// Take the jar for a check-and-store or a retrieve that other threads
     /// must not interleave with. Not re-entrant.
     pub fn lock(self: *Self) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         self.held = true;
     }
 

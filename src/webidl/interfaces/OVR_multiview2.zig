@@ -121,8 +121,8 @@ pub const OVR_multiview2 = struct {
     /// construction, as a C++ constructor's parameters. Each field of `args`
     /// must be taken by an impl on the chain (its `construction_args`).
     pub fn initWith(allocator: std.mem.Allocator, ctx: runtime.Context, args: anytype) !*runtime.Instance {
-        inline for (@typeInfo(@TypeOf(args)).@"struct".fields) |field| {
-            if (comptime !takesConstructionArg(field.name)) @compileError("OVR_multiview2 has no construction argument '" ++ field.name ++ "'");
+        inline for (@typeInfo(@TypeOf(args)).@"struct".field_names) |field_name| {
+            if (comptime !takesConstructionArg(field_name)) @compileError("OVR_multiview2 has no construction argument '" ++ field_name ++ "'");
         }
         return initChain(allocator, State, &vtable, ctx, args);
     }

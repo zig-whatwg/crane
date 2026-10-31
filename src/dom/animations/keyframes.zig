@@ -567,7 +567,7 @@ fn compositeOf(realm: runtime.Context, value: JSValue) anyerror!CompositeOrAuto 
         else => return err,
     };
     inline for (.{ "replace", "add", "accumulate", "auto" }, 0..) |name, i| {
-        if (std.mem.eql(u8, text, name)) return @enumFromInt(i);
+        if (std.mem.eql(u8, text, name)) return @fromBackingInt(@intCast(i));
     }
     return error.TypeError;
 }

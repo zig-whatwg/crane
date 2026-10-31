@@ -173,7 +173,7 @@ pub const TaggedPointer = struct {
             std.debug.assert(addr & 0x3 == 0);
         }
 
-        return .{ .raw = addr | @intFromEnum(tag) };
+        return .{ .raw = addr | @backingInt(tag) };
     }
 
     /// Create a tagged pointer from a const pointer and tag.
@@ -184,7 +184,7 @@ pub const TaggedPointer = struct {
             std.debug.assert(addr & 0x3 == 0);
         }
 
-        return .{ .raw = addr | @intFromEnum(tag) };
+        return .{ .raw = addr | @backingInt(tag) };
     }
 
     /// Create from a raw usize value (for interop with existing code)
@@ -194,7 +194,7 @@ pub const TaggedPointer = struct {
 
     /// Get the tag without untagging
     pub fn getTag(self: TaggedPointer) Tag {
-        return @enumFromInt(self.raw & 0x3);
+        return @fromBackingInt(@intCast(self.raw & 0x3));
     }
 
     /// Untag and return the pointer as *anyopaque
@@ -318,7 +318,7 @@ pub fn tagPointer(ptr: *anyopaque, tag: AnyopaqueTag) *const anyopaque {
         std.debug.assert(addr & 0x3 == 0);
     }
 
-    const tagged_addr = addr | @intFromEnum(tag);
+    const tagged_addr = addr | @backingInt(tag);
     return @ptrFromInt(tagged_addr);
 }
 
@@ -332,7 +332,7 @@ pub fn tagConstPointer(ptr: *const anyopaque, tag: AnyopaqueTag) *const anyopaqu
         std.debug.assert(addr & 0x3 == 0);
     }
 
-    const tagged_addr = addr | @intFromEnum(tag);
+    const tagged_addr = addr | @backingInt(tag);
     return @ptrFromInt(tagged_addr);
 }
 
@@ -350,7 +350,7 @@ pub fn untagPointer(tagged: *const anyopaque) UntaggedPointer {
     const addr = @intFromPtr(tagged);
 
     // Extract tag from low 2 bits
-    const tag: AnyopaqueTag = @enumFromInt(addr & 0x3);
+    const tag: AnyopaqueTag = @fromBackingInt(@intCast(addr & 0x3));
 
     // Clear low 2 bits to get original pointer
     const untagged_addr = addr & ~@as(usize, 0x3);
@@ -371,7 +371,7 @@ pub fn isTagged(ptr: *const anyopaque) bool {
 /// Get the tag from a pointer without clearing the bits
 pub fn getTag(ptr: *const anyopaque) AnyopaqueTag {
     const addr = @intFromPtr(ptr);
-    return @enumFromInt(addr & 0x3);
+    return @fromBackingInt(@intCast(addr & 0x3));
 }
 
 /// Error type for pointer tag validation
@@ -507,7 +507,7 @@ pub const DebugAssertions = struct {
             if (addr & 0x3 != 0) {
                 std.debug.panic(
                     "Expected untagged pointer, got tagged: 0x{x} (tag bits: 0b{b:0>2}, tag: {})",
-                    .{ addr, addr & 0x3, @as(AnyopaqueTag, @enumFromInt(addr & 0x3)) },
+                    .{ addr, addr & 0x3, @as(AnyopaqueTag, @fromBackingInt(@intCast(addr & 0x3))) },
                 );
             }
         }
@@ -750,7 +750,7 @@ test "edge case - maximum address values" {
 
     // Verify tagging math: tagged = base | tag, untagged = tagged & ~0x3
     for ([_]AnyopaqueTag{ .untagged, .global_handle, .runtime_instance, .local_value }) |tag| {
-        const tag_val = @intFromEnum(tag);
+        const tag_val = @backingInt(tag);
         const expected_tagged = base_addr | tag_val;
         const expected_untagged = expected_tagged & ~@as(usize, 0x3);
 

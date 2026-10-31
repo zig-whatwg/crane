@@ -7,9 +7,9 @@ const v8 = @import("v8");
 const st = @import("impls").TransformStream.streams_transform;
 const ffi = v8.ffi;
 const testing = std.testing;
-const Realm = @typeInfo(@TypeOf(st.setUp)).@"fn".params[0].type.?;
+const Realm = @typeInfo(@TypeOf(st.setUp)).@"fn".param_types[0].?;
 const TransformFn = @typeInfo(@FieldType(st.Transformer.VTable, "transform")).pointer.child;
-const Value = @typeInfo(TransformFn).@"fn".params[3].type.?;
+const Value = @typeInfo(TransformFn).@"fn".param_types[3].?;
 const Result = @typeInfo(TransformFn).@"fn".return_type.?;
 
 const Counter = struct {

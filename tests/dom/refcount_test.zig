@@ -89,7 +89,11 @@ test "NodeBase is 456 bytes: 448 before the counts, plus 8 until nodeholds' `hol
     // bools was 3 bytes), and 456 with `rc` and `subtree_holds` (8 bytes that
     // cannot fit that padding), the integrator's decision of 2026-10-09 (A).
     // Step 9b of tmp/plans/refcount-design.md deletes `holds` and pins 448.
-    try testing.expectEqual(@as(usize, 456), @sizeOf(NodeBase));
+    // Zig 0.17's std.ArrayList carries a `pointer_stability` SafetyLock, a
+    // word under runtime safety (Debug, ReleaseSafe) and nothing otherwise;
+    // NodeBase reaches two (child_nodes' and registered_observers' heap
+    // lists), so a safe build adds two words to Crane's own 456.
+    try testing.expectEqual(@as(usize, 456) + 2 * @sizeOf(std.debug.SafetyLock), @sizeOf(NodeBase));
 }
 
 test "a node is born with one reference and one hold" {

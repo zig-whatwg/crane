@@ -17,5 +17,11 @@ const std = @import("std");
 const dom = @import("dom");
 
 test "StyleEngine's size is pinned: it is embedded in Document's state" {
-    try std.testing.expectEqual(@as(usize, 248), @sizeOf(dom.style.StyleEngine));
+    // Zig 0.17's std.ArrayList carries a `pointer_stability` SafetyLock, a
+    // word under runtime safety (Debug, ReleaseSafe) and nothing otherwise.
+    // StyleEngine holds four lists (owners; Active's sheets, scopes and
+    // watched), so a safe build is four words over Crane's own 248 - and
+    // Document's state with it (lane zig017port's handoff: the post-port
+    // performance analysis measures what that does to the size class).
+    try std.testing.expectEqual(@as(usize, 248) + 4 * @sizeOf(std.debug.SafetyLock), @sizeOf(dom.style.StyleEngine));
 }

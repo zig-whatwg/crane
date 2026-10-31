@@ -61,7 +61,7 @@ pub fn resolveConstructorOverloadWith(
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) !UnionType {
-    const fields = @typeInfo(UnionType).@"union".fields;
+    const fields = zig017FieldsOf(@typeInfo(UnionType).@"union");
     comptime std.debug.assert(fields.len == overloads.len);
 
     // Steps 1-12: the entry of S the arguments select.
@@ -123,14 +123,14 @@ fn convertPrefix(
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) !void {
-    inline for (@typeInfo(UnionType).@"union".fields, 0..) |field, k| {
+    inline for (@typeInfo(UnionType).@"union".field_names, @typeInfo(UnionType).@"union".field_types, 0..) |field_name, field_type, k| {
         // A variant of one argument has no argument before index 0.
         if (comptime overloads[k].args.len > 1) {
             if (k == prefix.entry) {
-                inline for (@typeInfo(field.type).@"struct".fields, 0..) |arg_field, i| {
+                inline for (@typeInfo(field_type).@"struct".field_types, 0..) |arg_field_type, i| {
                     if (i < prefix.d) {
-                        const value = try interface_mod.convertArgChecked(arg_field.type, comptime variantArgMode(interface_arguments, restricted_floats, field.name, i), allocator, isolate, context, info.get(@intCast(i)));
-                        interface_mod.freeArgument(arg_field.type, allocator, value);
+                        const value = try interface_mod.convertArgChecked(arg_field_type, comptime variantArgMode(interface_arguments, restricted_floats, field_name, i), allocator, isolate, context, info.get(@intCast(i)));
+                        interface_mod.freeArgument(arg_field_type, allocator, value);
                     }
                 }
             }
@@ -153,10 +153,10 @@ pub fn freeConstructorOverload(comptime UnionType: type, comptime overloads: []c
             // The shapes buildVariant makes: one argument is the variant
             // itself (a dictionary too, though it is a struct); more are a
             // struct with a field per argument.
-            const arity = comptime overloads[@intFromEnum(tag)].args.len;
+            const arity = comptime overloads[@backingInt(tag)].args.len;
             if (comptime arity > 1) {
-                inline for (@typeInfo(VariantType).@"struct".fields) |field| {
-                    interface_mod.freeArgument(field.type, allocator, @field(payload, field.name));
+                inline for (@typeInfo(VariantType).@"struct".field_names, @typeInfo(VariantType).@"struct".field_types) |field_name, field_type| {
+                    interface_mod.freeArgument(field_type, allocator, @field(payload, field_name));
                 }
             } else {
                 interface_mod.freeArgument(VariantType, allocator, payload);
@@ -173,7 +173,7 @@ pub fn freeConstructorOverload(comptime UnionType: type, comptime overloads: []c
 /// it is optional.
 fn buildVariant(
     comptime UnionType: type,
-    comptime field: std.builtin.Type.UnionField,
+    comptime field: Zig017Field,
     comptime arity: usize,
     comptime interface_arguments: anytype,
     comptime restricted_floats: anytype,
@@ -218,22 +218,22 @@ fn buildVariant(
     // they are freed here: kept, every `new URLPattern(input, baseURL)`
     // whose base URL failed leaked its input.
     var converted: usize = 0;
-    errdefer inline for (type_info.@"struct".fields, 0..) |struct_field, i| {
-        if (i < converted) interface_mod.freeArgument(struct_field.type, allocator, @field(variant_struct, struct_field.name));
+    errdefer inline for (type_info.@"struct".field_names, type_info.@"struct".field_types, 0..) |struct_field_name, struct_field_type, i| {
+        if (i < converted) interface_mod.freeArgument(struct_field_type, allocator, @field(variant_struct, struct_field_name));
     };
 
     // Convert each JavaScript argument to corresponding struct field
-    inline for (type_info.@"struct".fields, 0..) |struct_field, i| {
+    inline for (type_info.@"struct".field_names, type_info.@"struct".field_types, 0..) |struct_field_name, struct_field_type, i| {
         const v8_arg = info.get(@intCast(i));
         const field_value = try interface_mod.convertArgChecked(
-            struct_field.type,
+            struct_field_type,
             comptime variantArgMode(interface_arguments, restricted_floats, field.name, i),
             allocator,
             isolate,
             context,
             v8_arg,
         );
-        @field(variant_struct, struct_field.name) = field_value;
+        @field(variant_struct, struct_field_name) = field_value;
         converted += 1;
     }
 
@@ -271,4 +271,43 @@ fn variantArgumentInterface(comptime interface_arguments: anytype, comptime vari
 test "overload resolver compiles" {
     const testing = std.testing;
     testing.refAllDecls(@This());
+}
+
+// Zig 0.17 compat: 0.16's StructField/UnionField/EnumField list, rebuilt at comptime from
+// Zig 0.17's struct-of-arrays @typeInfo (a comptime-only element type: calls run at comptime).
+const Zig017Field = struct {
+    name: [:0]const u8,
+    type: type = void,
+    default_value_ptr: ?*const anyopaque = null,
+    is_comptime: bool = false,
+    alignment: ?usize = null,
+    value: comptime_int = 0,
+
+    pub fn defaultValue(comptime f: Zig017Field) ?f.type {
+        const dp: *const f.type = @ptrCast(@alignCast(f.default_value_ptr orelse return null));
+        return dp.*;
+    }
+};
+fn zig017FieldsOf(comptime info: anytype) [info.field_names.len]Zig017Field {
+    var out: [info.field_names.len]Zig017Field = undefined;
+    if (@hasField(@TypeOf(info), "field_values")) {
+        for (info.field_names, info.field_values, 0..) |n, v, i| out[i] = .{ .name = n, .value = v };
+        return out;
+    }
+    for (info.field_names, info.field_types, info.field_attrs, 0..) |n, t, a, i| out[i] = .{
+        .name = n,
+        .type = t,
+        .default_value_ptr = if (@hasField(@TypeOf(a), "default_value_ptr")) a.default_value_ptr else null,
+        .is_comptime = if (@hasField(@TypeOf(a), "comptime")) a.@"comptime" else false,
+        .alignment = a.@"align",
+    };
+    return out;
+}
+fn zig017FieldsOfType(comptime T: type) [@import("std").meta.fieldNames(T).len]Zig017Field {
+    return switch (@typeInfo(T)) {
+        .@"struct" => |s| zig017FieldsOf(s),
+        .@"union" => |u| zig017FieldsOf(u),
+        .@"enum" => |e| zig017FieldsOf(e),
+        else => @compileError("zig017FieldsOfType: not a struct, union or enum"),
+    };
 }

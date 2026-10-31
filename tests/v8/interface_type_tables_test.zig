@@ -82,7 +82,7 @@ test "needsInterface: the positions an interface type converts at, by default" {
 /// The parameters of `function` (a generated delegate) from `first` on, as
 /// IDL argument indexes from 0.
 fn checkParams(comptime I: type, comptime name: []const u8, comptime first: usize, missing: *usize, checked: *usize) void {
-    const params = @typeInfo(@TypeOf(@field(I, name))).@"fn".params;
+    const params = zig017ParamsOf(@typeInfo(@TypeOf(@field(I, name))).@"fn");
     inline for (params[first..], 0..) |param, index| {
         if (comptime conv.needsInterface(param.type.?)) {
             if (comptime binding.argumentInterface(I, name, index) == null) {
@@ -101,33 +101,33 @@ test "every interface-typed position of every generated interface and dictionary
     @setEvalBranchQuota(100_000_000);
     var missing: usize = 0;
     var checked: usize = 0;
-    inline for (comptime std.meta.declarations(interfaces)) |decl| {
-        const I = @field(interfaces, decl.name);
+    inline for (comptime std.meta.declarations(interfaces)) |decl_name| {
+        const I = @field(interfaces, decl_name);
         if (comptime @TypeOf(I) == type and @typeInfo(I) == .@"struct" and @hasDecl(I, "Meta") and @hasDecl(I, "State")) {
-            inline for (comptime std.meta.declarations(I)) |member| {
+            inline for (comptime std.meta.declarations(I)) |member_name| {
                 // Only the delegates are read: touching any other declaration
                 // (`vtable`) would analyse interfaces nothing else compiles.
-                const is_delegate = comptime std.mem.startsWith(u8, member.name, "call_") or std.mem.startsWith(u8, member.name, "set_");
-                const is_fn = comptime is_delegate and @typeInfo(@TypeOf(@field(I, member.name))) == .@"fn";
-                if (comptime is_fn and std.mem.eql(u8, member.name, "call_constructor")) {
-                    const params = @typeInfo(@TypeOf(I.call_constructor)).@"fn".params;
+                const is_delegate = comptime std.mem.startsWith(u8, member_name, "call_") or std.mem.startsWith(u8, member_name, "set_");
+                const is_fn = comptime is_delegate and @typeInfo(@TypeOf(@field(I, member_name))) == .@"fn";
+                if (comptime is_fn and std.mem.eql(u8, member_name, "call_constructor")) {
+                    const params = zig017ParamsOf(@typeInfo(@TypeOf(I.call_constructor)).@"fn");
                     inline for (params[1..], 0..) |param, index| {
                         const P = param.type.?;
                         if (comptime @hasDecl(I, "ConstructorArgs") and P == I.ConstructorArgs) {
-                            inline for (@typeInfo(P).@"union".fields) |variant| {
-                                if (comptime @typeInfo(variant.type) == .@"struct" and !@hasDecl(variant.type, "notPassed") and variant.type != void) {
-                                    inline for (@typeInfo(variant.type).@"struct".fields, 0..) |field, i| {
-                                        if (comptime conv.needsInterface(field.type)) {
-                                            if (comptime binding.constructorArgumentInterface(I, variant.name, i) == null) {
-                                                std.debug.print("{s} constructor {s} argument {d} names no interface\n", .{ I.Meta.name, variant.name, i });
+                            inline for (@typeInfo(P).@"union".field_names, @typeInfo(P).@"union".field_types) |variant_name, variant_type| {
+                                if (comptime @typeInfo(variant_type) == .@"struct" and !@hasDecl(variant_type, "notPassed") and variant_type != void) {
+                                    inline for (@typeInfo(variant_type).@"struct".field_types, 0..) |field_type, i| {
+                                        if (comptime conv.needsInterface(field_type)) {
+                                            if (comptime binding.constructorArgumentInterface(I, variant_name, i) == null) {
+                                                std.debug.print("{s} constructor {s} argument {d} names no interface\n", .{ I.Meta.name, variant_name, i });
                                                 missing += 1;
                                             }
                                             checked += 1;
                                         }
                                     }
-                                } else if (comptime conv.needsInterface(variant.type)) {
-                                    if (comptime binding.constructorArgumentInterface(I, variant.name, 0) == null) {
-                                        std.debug.print("{s} constructor {s} names no interface\n", .{ I.Meta.name, variant.name });
+                                } else if (comptime conv.needsInterface(variant_type)) {
+                                    if (comptime binding.constructorArgumentInterface(I, variant_name, 0) == null) {
+                                        std.debug.print("{s} constructor {s} names no interface\n", .{ I.Meta.name, variant_name });
                                         missing += 1;
                                     }
                                     checked += 1;
@@ -143,24 +143,24 @@ test "every interface-typed position of every generated interface and dictionary
                     }
                 } else if (comptime is_fn) {
                     // (instance, arguments...): argument i is parameter i + 1.
-                    checkParams(I, member.name, 1, &missing, &checked);
+                    checkParams(I, member_name, 1, &missing, &checked);
                 }
             }
         }
     }
     const dictionaries = conv.generated_dictionaries;
-    inline for (comptime std.meta.declarations(dictionaries)) |decl| {
+    inline for (comptime std.meta.declarations(dictionaries)) |decl_name| {
         // RouterCondition has a member of its own type (`not:
         // RouterCondition?`), which Zig cannot lay out, and RouterRule holds
         // one: nothing converts either, and asking for their fields is a
         // compile error of its own.
-        const unlaid = comptime std.mem.eql(u8, decl.name, "RouterCondition") or std.mem.eql(u8, decl.name, "RouterRule");
-        const D = @field(dictionaries, decl.name);
+        const unlaid = comptime std.mem.eql(u8, decl_name, "RouterCondition") or std.mem.eql(u8, decl_name, "RouterRule");
+        const D = @field(dictionaries, decl_name);
         if (comptime !unlaid and @TypeOf(D) == type and @typeInfo(D) == .@"struct") {
-            inline for (@typeInfo(D).@"struct".fields) |field| {
-                if (comptime conv.needsInterface(field.type)) {
-                    if (comptime conv.memberInterface(D, field.name) == null) {
-                        std.debug.print("dictionary {s}.{s} names no interface\n", .{ decl.name, field.name });
+            inline for (@typeInfo(D).@"struct".field_names, @typeInfo(D).@"struct".field_types) |field_name, field_type| {
+                if (comptime conv.needsInterface(field_type)) {
+                    if (comptime conv.memberInterface(D, field_name) == null) {
+                        std.debug.print("dictionary {s}.{s} names no interface\n", .{ decl_name, field_name });
                         missing += 1;
                     }
                     checked += 1;
@@ -172,4 +172,19 @@ test "every interface-typed position of every generated interface and dictionary
     // ~950 delegate arguments and setter values and ~220 dictionary members
     // when this was written.
     try std.testing.expect(checked > 1000);
+}
+
+// Zig 0.17 compat: Zig 0.17's @typeInfo is struct-of-arrays. These rebuild 0.16's lists
+// (comptime-only element types, so every call is evaluated at comptime).
+const Zig017Param = struct { type: ?type, is_generic: bool, is_noalias: bool };
+fn zig017ParamsOf(comptime info: @import("std").builtin.Type.Fn) [info.param_types.len]Zig017Param {
+    var out: [info.param_types.len]Zig017Param = undefined;
+    for (info.param_types, info.param_attrs, 0..) |t, a, i| out[i] = .{ .type = t, .is_generic = t == null, .is_noalias = a.@"noalias" };
+    return out;
+}
+const Zig017Decl = struct { name: [:0]const u8, comptime_only: type = void };
+fn zig017DeclsOf(comptime names: []const [:0]const u8) [names.len]Zig017Decl {
+    var out: [names.len]Zig017Decl = undefined;
+    for (names, 0..) |n, i| out[i] = .{ .name = n };
+    return out;
 }

@@ -15,7 +15,7 @@ fn realm() !runtime.Context {
     if (data_once) |d| return d;
     const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
     ffi.v8_Isolate_Enter(i);
-    ffi.v8_Isolate_SetMicrotasksPolicy(i, @intFromEnum(ffi.MicrotasksPolicy.Explicit));
+    ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
     _ = ffi.v8_HandleScope_New(i);
     const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
     ffi.v8_Context_Enter(context);

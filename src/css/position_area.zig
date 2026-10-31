@@ -125,10 +125,16 @@ pub const Keyword = enum {
 };
 const by_name = blk: {
     @setEvalBranchQuota(100_000);
-    const fields = @typeInfo(Keyword).@"enum".fields;
+    // Zig 0.17: @typeInfo is struct-of-arrays; rebuild the old field list.
+    const fields = zig017_fields: {
+        const zig017_info = @typeInfo(Keyword).@"enum";
+        var zig017_out: [zig017_info.field_names.len]struct { name: [:0]const u8, value: comptime_int } = undefined;
+        for (zig017_info.field_names, zig017_info.field_values, 0..) |zig017_n, zig017_v, zig017_i| zig017_out[zig017_i] = .{ .name = zig017_n, .value = zig017_v };
+        break :zig017_fields zig017_out;
+    };
     var entries: [fields.len]struct { []const u8, Keyword } = undefined;
     for (fields, 0..) |f, i| {
-        const k: Keyword = @enumFromInt(f.value);
+        const k: Keyword = @fromBackingInt(@intCast(f.value));
         entries[i] = .{ k.name(), k };
     }
     break :blk std.StaticStringMap(Keyword).initComptime(entries);
@@ -136,8 +142,8 @@ const by_name = blk: {
 fn keyword(token: tokenizer.Token) ?Keyword {
     if (token.token_type != .ident) return null;
     if (std.mem.indexOfScalar(u8, token.value, '\\') != null) {
-        inline for (@typeInfo(Keyword).@"enum".fields) |f| {
-            const k: Keyword = @enumFromInt(f.value);
+        inline for (@typeInfo(Keyword).@"enum".field_values) |f_value| {
+            const k: Keyword = @fromBackingInt(@intCast(f_value));
             if (tokenizer.nameEql(token.value, k.name())) return k;
         }
         return null;

@@ -26,8 +26,8 @@ pub const Range = enum {
     }
     pub fn parse(token: tokens.Token) ?Range {
         if (token.token_type != .ident) return null;
-        inline for (@typeInfo(Range).@"enum".fields) |field| {
-            const r: Range = @enumFromInt(field.value);
+        inline for (@typeInfo(Range).@"enum".field_values) |field_value| {
+            const r: Range = @fromBackingInt(@intCast(field_value));
             if (tokens.nameEql(token.value, r.name())) return r;
         }
         return null;

@@ -77,8 +77,8 @@ var hooks: Hooks = .{};
 /// installs only its own members.
 pub fn install(owned: Hooks) void {
     process_start.assertInstalling();
-    inline for (@typeInfo(Hooks).@"struct".fields) |field| {
-        if (@field(owned, field.name)) |f| @field(hooks, field.name) = f;
+    inline for (@typeInfo(Hooks).@"struct".field_names) |field_name| {
+        if (@field(owned, field_name)) |f| @field(hooks, field_name) = f;
     }
 }
 

@@ -131,7 +131,7 @@ fn canDefaultInit(comptime T: type) bool {
     }
 
     // Check all fields
-    inline for (info.@"struct".fields) |field| {
+    inline for (zig017FieldsOf(info.@"struct")) |field| {
         if (field.default_value_ptr != null) {
             // Has explicit default - OK
             continue;
@@ -169,7 +169,7 @@ fn defaultInit(comptime T: type) T {
 
     // Build struct with default values for all fields
     var result: T = undefined;
-    inline for (info.@"struct".fields) |field| {
+    inline for (zig017FieldsOf(info.@"struct")) |field| {
         if (field.default_value_ptr) |default_ptr| {
             // Field has explicit default value (Zig 0.15: default_value_ptr)
             const typed_ptr: *const field.type = @ptrCast(@alignCast(default_ptr));
@@ -291,14 +291,14 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
             break :blk typeRetainsContextDepth(info.pointer.child, depth + 1);
         }
         if (info == .@"struct") {
-            for (info.@"struct".fields) |field| {
-                if (typeRetainsContextDepth(field.type, depth + 1)) break :blk true;
+            for (info.@"struct".field_types) |field_type| {
+                if (typeRetainsContextDepth(field_type, depth + 1)) break :blk true;
             }
             break :blk false;
         }
         if (info == .@"union") {
-            for (info.@"union".fields) |field| {
-                if (typeRetainsContextDepth(field.type, depth + 1)) break :blk true;
+            for (info.@"union".field_types) |field_type| {
+                if (typeRetainsContextDepth(field_type, depth + 1)) break :blk true;
             }
             break :blk false;
         }
@@ -397,21 +397,21 @@ pub fn argHandleIsCopied(comptime T: type) bool {
         // rule - a JSValue member aliasing ITS OWN handle is fine - so that an
         // unknown pointer keeps the conservative answer.
         if (info == .@"struct" and !@hasDecl(T, "Meta")) {
-            for (info.@"struct".fields) |field| {
+            for (info.@"struct".field_types) |field_type| {
                 // A member that is a sequence of the dictionary itself
                 // (AuctionAdConfig.componentAuctions,
                 // HIDCollectionInfo.children) is as safe as the rest of
                 // the dictionary; walking it would recurse forever.
-                if (isSelfMember(field.type, T)) continue;
-                if (!memberHandleIsSafe(field.type)) break :blk false;
+                if (isSelfMember(field_type, T)) continue;
+                if (!memberHandleIsSafe(field_type)) break :blk false;
             }
             break :blk true;
         }
 
         // A union converts the same handle through whichever arm matches.
         if (info == .@"union") {
-            for (info.@"union".fields) |field| {
-                if (!argHandleIsCopied(field.type)) break :blk false;
+            for (info.@"union".field_types) |field_type| {
+                if (!argHandleIsCopied(field_type)) break :blk false;
             }
             break :blk true;
         }
@@ -493,10 +493,10 @@ fn callbackArmsOnlyKeepHandle(comptime T: type) bool {
         if (info != .@"union" or info.@"union".tag_type == null) break :blk false;
         if (T == runtime.JSValue or T == runtime.DOMString) break :blk false;
         var callbacks = 0;
-        for (info.@"union".fields) |field| {
-            if (isCallbackFunctionShape(field.type)) {
+        for (info.@"union".field_types) |field_type| {
+            if (isCallbackFunctionShape(field_type)) {
                 callbacks += 1;
-            } else if (!argHandleIsCopied(field.type)) {
+            } else if (!argHandleIsCopied(field_type)) {
                 break :blk false;
             }
         }
@@ -764,8 +764,8 @@ pub fn specialOperationValueIsUnderstood(comptime T: type) bool {
             .optional => |o| return specialOperationValueIsUnderstood(o.child),
             .@"union" => |u| {
                 if (u.tag_type == null) return false;
-                for (u.fields) |field| {
-                    if (!specialOperationValueIsUnderstood(field.type)) return false;
+                for (u.field_types) |field_type| {
+                    if (!specialOperationValueIsUnderstood(field_type)) return false;
                 }
                 return true;
             },
@@ -811,9 +811,9 @@ fn specialResultType(comptime function: anytype) type {
 /// A special setter's value type: its third parameter's (instance, key,
 /// value), or void for one the interceptors do not bind.
 fn specialValueType(comptime function: anytype) type {
-    const params = @typeInfo(@TypeOf(function)).@"fn".params;
-    if (params.len < 3) return void;
-    return params[2].type.?;
+    const param_types = @typeInfo(@TypeOf(function)).@"fn".param_types;
+    if (param_types.len < 3) return void;
+    return param_types[2].?;
 }
 
 /// Refuse, at compile time, a special operation whose value type has no
@@ -1130,10 +1130,10 @@ pub fn anyHandleIsKeptOnlyAsHandle(comptime T: type) bool {
         if (isOptWrapper(T)) break :blk anyHandleIsKeptOnlyAsHandle(@FieldType(T, "value"));
         if (info == .@"union" and info.@"union".tag_type != null) {
             var objects = 0;
-            for (info.@"union".fields) |field| {
-                if (isObjectArm(T, field.name)) {
+            for (info.@"union".field_names, info.@"union".field_types) |field_name, field_type| {
+                if (isObjectArm(T, field_name)) {
                     objects += 1;
-                } else if (!argHandleIsCopied(field.type)) {
+                } else if (!argHandleIsCopied(field_type)) {
                     break :blk false;
                 }
             }
@@ -1229,10 +1229,10 @@ pub fn bufferHandleIsKeptInValue(comptime T: type) bool {
         if (isOptWrapper(T)) break :blk bufferHandleIsKeptInValue(@FieldType(T, "value"));
         if (info == .@"union" and info.@"union".tag_type != null) {
             var buffers = 0;
-            for (info.@"union".fields) |field| {
-                if (bufferHandleIsKeptInValue(field.type)) {
+            for (info.@"union".field_types) |field_type| {
+                if (bufferHandleIsKeptInValue(field_type)) {
                     buffers += 1;
-                } else if (!argHandleIsCopied(field.type)) {
+                } else if (!argHandleIsCopied(field_type)) {
                     break :blk false;
                 }
             }
@@ -1674,7 +1674,7 @@ pub fn isOptionalWrapper(comptime T: type) bool {
 pub fn getOptionalValueType(comptime T: type) ?type {
     if (@typeInfo(T) != .@"struct") return null;
     if (!@hasField(T, "value")) return null;
-    const fields = std.meta.fields(T);
+    const fields = zig017FieldsOfType(T);
     inline for (fields) |field| {
         if (comptime std.mem.eql(u8, field.name, "value")) {
             return field.type;
@@ -1750,14 +1750,14 @@ pub fn needsArgCleanup(comptime T: type) bool {
     }
     // Struct types (dictionaries) - check if any field needs cleanup
     if (@typeInfo(T) == .@"struct") {
-        inline for (std.meta.fields(T)) |field| {
-            if (needsArgCleanup(field.type)) return true;
+        inline for (comptime std.meta.fieldTypes(T)) |field_type| {
+            if (needsArgCleanup(field_type)) return true;
         }
     }
     // Union types (WebIDL union types) - check if any variant needs cleanup
     if (@typeInfo(T) == .@"union") {
-        inline for (std.meta.fields(T)) |field| {
-            if (needsArgCleanup(field.type)) return true;
+        inline for (comptime std.meta.fieldTypes(T)) |field_type| {
+            if (needsArgCleanup(field_type)) return true;
         }
     }
     return false;
@@ -1848,11 +1848,11 @@ pub fn freeConvertedArg(comptime T: type, allocator: std.mem.Allocator, arg: T) 
         // (realms3: a removed frame kept alive by a dropped
         // CustomEvent). A sequence<any> member's elements go with
         // the sequence (`freeSequenceElement`).
-        inline for (std.meta.fields(T)) |field| {
-            if (comptime needsArgCleanup(field.type)) {
-                freeConvertedArg(field.type, allocator, @field(arg, field.name));
+        inline for (comptime std.meta.fieldNames(T), comptime std.meta.fieldTypes(T)) |field_name, field_type| {
+            if (comptime needsArgCleanup(field_type)) {
+                freeConvertedArg(field_type, allocator, @field(arg, field_name));
             }
-            releaseAnyArgument(field.type, @field(arg, field.name));
+            releaseAnyArgument(field_type, @field(arg, field_name));
         }
     } else if (@typeInfo(T) == .@"union") {
         // Union types (WebIDL union types) - free the active variant if it needs cleanup
@@ -2025,7 +2025,7 @@ fn takesIndex(comptime Interface: type, comptime name: []const u8) bool {
     if (!@hasDecl(Interface, name)) return false;
     const info = @typeInfo(@TypeOf(@field(Interface, name)));
     if (info != .@"fn") return false;
-    const params = info.@"fn".params;
+    const params = zig017ParamsOf(info.@"fn");
     if (params.len != 2) return false;
     return (params[1].type orelse return false) == u32;
 }
@@ -2073,7 +2073,7 @@ fn boundSpecialOperation(comptime Interface: type, comptime op: anytype, comptim
     if (!o.implemented) return null;
     if (!@hasDecl(Interface, o.function))
         @compileError(@typeName(Interface) ++ ": Meta.special_operations names " ++ o.function ++ ", which the generated interface does not declare");
-    const params = @typeInfo(@TypeOf(@field(Interface, o.function))).@"fn".params;
+    const params = zig017ParamsOf(@typeInfo(@TypeOf(@field(Interface, o.function))).@"fn");
     const key: type = switch (shape) {
         .index, .index_value => u32,
         .name, .name_value => runtime.DOMString,
@@ -2386,7 +2386,7 @@ pub fn V8Interface(comptime Interface: type) type {
         /// Call this for ALL interfaces before snapshot creation:
         /// ```zig
         /// // Register all interface callbacks
-        /// inline for (@typeInfo(interfaces).@"struct".decls) |decl| {
+        /// inline for (zig017DeclsOf(@typeInfo(interfaces).@"struct".decl_names)) |decl| {
         ///     const InterfaceType = @field(interfaces, decl.name);
         ///     if (@hasDecl(InterfaceType, "Meta")) {
         ///         V8Interface(InterfaceType).registerExternalReferences();
@@ -4012,7 +4012,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     }
 
                     // Check if getter takes an instance argument
-                    const params = fn_info.params;
+                    const params = zig017ParamsOf(fn_info);
                     if (params.len == 0) {
                         // Static getter (constants)
                         const result = zig_getter();
@@ -4748,7 +4748,7 @@ pub fn V8Interface(comptime Interface: type) type {
             inline for (set, 0..) |overload, k| {
                 if (k == prefix.entry) {
                     // The generated delegate: (instance, arguments...).
-                    const params = @typeInfo(@TypeOf(@field(Interface, overload.function))).@"fn".params;
+                    const params = zig017ParamsOf(@typeInfo(@TypeOf(@field(Interface, overload.function))).@"fn");
                     inline for (params[1..], 0..) |param, i| {
                         if (i < prefix.d) {
                             const P = param.type.?;
@@ -4869,7 +4869,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Six handles per DOM object created were leaking here.
                     const params_retain = comptime blk: {
                         const fi = @typeInfo(@TypeOf(@field(Interface, zig_name))).@"fn";
-                        for (fi.params) |prm| {
+                        for (zig017ParamsOf(fi)) |prm| {
                             const P = prm.type orelse break :blk true;
                             if (P == *runtime.Instance) continue; // the receiver
                             if (typeRetainsContext(P)) break :blk true;
@@ -5056,7 +5056,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Get the method function at comptime
                     const method_fn = @field(Interface, zig_name);
                     const fn_info = @typeInfo(@TypeOf(method_fn)).@"fn";
-                    const params = fn_info.params;
+                    const params = zig017ParamsOf(fn_info);
                     const ReturnType = fn_info.return_type.?;
 
                     // First parameter should be *runtime.Instance (self)
@@ -5893,7 +5893,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // runtime context, not an argument.
             const ctor_params_retain = comptime blk: {
                 const fi = @typeInfo(@TypeOf(Interface.call_constructor)).@"fn";
-                for (fi.params[1..]) |prm| {
+                for (zig017ParamsOf(fi)[1..]) |prm| {
                     const P = prm.type orelse break :blk true;
                     if (typeRetainsContext(P)) break :blk true;
                 }
@@ -6284,7 +6284,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // Get constructor function type info at comptime
             const constructor_fn = Interface.call_constructor;
             const fn_info = @typeInfo(@TypeOf(constructor_fn)).@"fn";
-            const params = fn_info.params;
+            const params = zig017ParamsOf(fn_info);
 
             // Verify first two parameters are allocator and context (our convention)
             if (params.len < 1) {
@@ -6630,7 +6630,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // item()'s one argument, as an operation's: missing (no argument,
             // or undefined) is "not provided".
-            const NameOrIndex = @typeInfo(@TypeOf(Interface.call_item)).@"fn".params[1].type.?;
+            const NameOrIndex = @typeInfo(@TypeOf(Interface.call_item)).@"fn".param_types[1].?;
             const name_or_index: NameOrIndex = if (info.length() == 0)
                 NameOrIndex.notPassed()
             else
@@ -7195,7 +7195,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // Get the value type from the setter function signature
             const SetterFnType = @TypeOf(setter_fn);
             const fn_info = @typeInfo(SetterFnType).@"fn";
-            const params = fn_info.params;
+            const params = zig017ParamsOf(fn_info);
 
             // Expected signature: fn(instance: *runtime.Instance, index: u32, value: ValueType) !void
             if (params.len < 3) {
@@ -7309,7 +7309,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     if (comptime has_indexed_setter) {
                         const setter_name = comptime special.indexed_setter.?;
                         const setter_fn = @field(Interface, setter_name);
-                        const value_type = comptime @typeInfo(@TypeOf(setter_fn)).@"fn".params[2].type.?;
+                        const value_type = comptime @typeInfo(@TypeOf(setter_fn)).@"fn".param_types[2].?;
                         // Released unless converting the value can keep it
                         // (typeRetainsContext).
                         const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kYes;
@@ -7442,8 +7442,9 @@ pub fn V8Interface(comptime Interface: type) type {
             if (comptime special.supported_property_name) |query| {
                 return @field(Interface, query)(instance, runtime.DOMString.initInterned(key)) catch false;
             }
-            var fallback = std.heap.stackFallback(8192, std.heap.c_allocator);
-            var arena = std.heap.ArenaAllocator.init(fallback.get());
+            var fallback_buffer: [8192]u8 = undefined;
+            var fallback: std.heap.BufferFirstAllocator = .init(&fallback_buffer, std.heap.c_allocator);
+            var arena = std.heap.ArenaAllocator.init(fallback.allocator());
             defer arena.deinit();
             const names = Interface.getSupportedPropertyNames(instance, arena.allocator()) catch return false;
             for (names) |supported| {
@@ -7497,8 +7498,9 @@ pub fn V8Interface(comptime Interface: type) type {
 
             fn of(info: *const anyopaque, key: []const u8) NameState {
                 // The name's code units: a lone surrogate stays itself.
-                var fallback = std.heap.stackFallback(1024, std.heap.c_allocator);
-                const allocator = fallback.get();
+                var fallback_buffer: [1024]u8 = undefined;
+                var fallback: std.heap.BufferFirstAllocator = .init(&fallback_buffer, std.heap.c_allocator);
+                const allocator = fallback.allocator();
                 const units = allocator.alloc(u16, key.len) catch return .{ .own = false, .in_prototype_chain = false };
                 defer allocator.free(units);
                 const count = value_operations.wtf8ToUtf16(key, units);
@@ -7660,7 +7662,7 @@ pub fn V8Interface(comptime Interface: type) type {
         fn invokeNamedSetter(isolate: *v8.Isolate, instance: *runtime.Instance, key: []const u8, value: *v8.Value) bool {
             const setter_name = comptime special.named_setter.?;
             const setter_fn = @field(Interface, setter_name);
-            const ValueType = comptime @typeInfo(@TypeOf(setter_fn)).@"fn".params[2].type.?;
+            const ValueType = comptime @typeInfo(@TypeOf(setter_fn)).@"fn".param_types[2].?;
             // Released unless converting a `ValueType` can keep it
             // (typeRetainsContext). A fresh Global of the callee's realm per
             // call; acquired at entry and never released, every
@@ -8372,7 +8374,7 @@ pub fn V8Interface(comptime Interface: type) type {
             setIteratorSlot(isolate, context, iterator_obj, "_index", @ptrCast(zero));
 
             // Store iterator kind
-            const kind_val = v8.v8_Number_New(isolate, @floatFromInt(@intFromEnum(kind)));
+            const kind_val = v8.v8_Number_New(isolate, @floatFromInt(@backingInt(kind)));
             defer v8.v8_Value_Dispose(@ptrCast(kind_val));
             setIteratorSlot(isolate, context, iterator_obj, "_kind", @ptrCast(kind_val));
 
@@ -8560,7 +8562,7 @@ pub fn V8Interface(comptime Interface: type) type {
             defer v8.v8_Value_Dispose(target_val);
 
             const index: u32 = @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(index_val), v8_context));
-            const kind: IteratorKind = @enumFromInt(@as(u2, @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(kind_val), v8_context))));
+            const kind: IteratorKind = @fromBackingInt(@intCast(@as(u2, @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(kind_val), v8_context)))));
 
             // Get live entries from the target object
             // This ensures concurrent modifications (like delete during iteration) are reflected
@@ -8683,7 +8685,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             const target_obj: *v8.Object = @ptrCast(target.?);
             const index: u32 = @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(index_val.?), v8_context));
-            const kind: IteratorKind = @enumFromInt(@as(u2, @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(kind_val.?), v8_context))));
+            const kind: IteratorKind = @fromBackingInt(@intCast(@as(u2, @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(kind_val.?), v8_context)))));
 
             // Get length from target
             const length: u32 = if (iteratorSlot(isolate, v8_context, target_obj, "length")) |length_val| blk: {
@@ -9025,7 +9027,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // The edges: the iterator keeps the set's wrapper alive (and so
             // its instance) until it is done.
             v8.v8_Object_SetPrivateRef(iterator, setlike_target_key.ptr, setlike_target_key.len, @ptrCast(this_obj));
-            const kind_v8 = v8.v8_Number_New(isolate, @floatFromInt(@intFromEnum(kind)));
+            const kind_v8 = v8.v8_Number_New(isolate, @floatFromInt(@backingInt(kind)));
             defer v8.v8_Value_Dispose(@ptrCast(kind_v8));
             v8.v8_Object_SetPrivateRef(iterator, setlike_kind_key.ptr, setlike_kind_key.len, @ptrCast(kind_v8));
             setlikeSetCursor(isolate, iterator, 0);
@@ -9057,7 +9059,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const this_obj = info.getThis();
             defer v8.v8_Object_Dispose(this_obj);
             const kind_number = if (v8.v8_Value_IsObject(@ptrCast(this_obj))) setlikeNumberSlot(context, this_obj, setlike_kind_key) else null;
-            const kind: SetIteratorKind = if (kind_number) |n| @enumFromInt(@as(u8, @intFromFloat(n))) else {
+            const kind: SetIteratorKind = if (kind_number) |n| @fromBackingInt(@intCast(@as(u8, @intFromFloat(n)))) else {
                 conv.throwTypeErrorFromContext(isolate, context, "Illegal invocation");
                 return;
             };
@@ -9196,7 +9198,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 const ReturnPayload = return_type_info.error_union.payload;
 
                 // Call call_values() based on argument count and handle return type appropriately
-                if (fn_info.params.len == 1) {
+                if (zig017ParamsOf(fn_info).len == 1) {
                     // call_values(instance) - no options
                     const result = Interface.call_values(instance) catch |err| {
                         // Throw appropriate error type based on Zig error
@@ -9230,7 +9232,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     if (ReturnPayload == runtime.JSValue) {
                         if (result == .handle) v8.v8_Global_Dispose(@ptrCast(v8_object));
                     }
-                } else if (fn_info.params.len == 2) {
+                } else if (zig017ParamsOf(fn_info).len == 2) {
                     // call_values(instance, options) - has options
                     // Parse options from JavaScript argument
                     const OptionsType = @import("dictionaries").ReadableStreamIteratorOptions;
@@ -9347,8 +9349,8 @@ pub fn V8Interface(comptime Interface: type) type {
                     // its page.
                     const value_retains = comptime blk: {
                         const fi = @typeInfo(@TypeOf(zig_setter)).@"fn";
-                        if (fi.params.len < 2) break :blk false;
-                        break :blk typeRetainsContext(fi.params[1].type orelse break :blk true);
+                        if (zig017ParamsOf(fi).len < 2) break :blk false;
+                        break :blk typeRetainsContext(zig017ParamsOf(fi)[1].type orelse break :blk true);
                     };
                     defer if (comptime !value_retains) v8.v8_Context_Dispose(context);
 
@@ -9389,8 +9391,8 @@ pub fn V8Interface(comptime Interface: type) type {
                     // of another realm kept that realm alive.
                     const value_is_copied = comptime blk: {
                         const fi = @typeInfo(@TypeOf(zig_setter)).@"fn";
-                        if (fi.params.len < 2) break :blk true;
-                        break :blk argHandleIsCopied(fi.params[1].type orelse break :blk false);
+                        if (zig017ParamsOf(fi).len < 2) break :blk true;
+                        break :blk argHandleIsCopied(zig017ParamsOf(fi)[1].type orelse break :blk false);
                     };
                     // An `any` value is BORROWED by the setter
                     // (`setterValueIsBorrowed`): never handed over, so the defer
@@ -9400,8 +9402,8 @@ pub fn V8Interface(comptime Interface: type) type {
                     // conversion below.
                     const value_is_borrowed = comptime blk: {
                         const fi = @typeInfo(@TypeOf(zig_setter)).@"fn";
-                        if (fi.params.len < 2) break :blk false;
-                        break :blk setterValueIsBorrowed(fi.params[1].type orelse break :blk false);
+                        if (zig017ParamsOf(fi).len < 2) break :blk false;
+                        break :blk setterValueIsBorrowed(zig017ParamsOf(fi)[1].type orelse break :blk false);
                     };
                     // A callback value's Global is the value itself, borrowed
                     // for the setter: a take moved its function out, and the
@@ -9409,8 +9411,8 @@ pub fn V8Interface(comptime Interface: type) type {
                     // (v8_Global_DisposeCallbackValue), as an argument's does.
                     const value_is_callback = comptime blk: {
                         const fi = @typeInfo(@TypeOf(zig_setter)).@"fn";
-                        if (fi.params.len < 2) break :blk false;
-                        break :blk isCallbackFunctionShape(fi.params[1].type orelse break :blk false);
+                        if (zig017ParamsOf(fi).len < 2) break :blk false;
+                        break :blk isCallbackFunctionShape(zig017ParamsOf(fi)[1].type orelse break :blk false);
                     };
                     var value_handed_over = false;
                     defer if (value_is_copied or !value_handed_over) {
@@ -9593,7 +9595,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Analyze setter signature
                     const fn_info = @typeInfo(@TypeOf(zig_setter)).@"fn";
-                    const params = fn_info.params;
+                    const params = zig017ParamsOf(fn_info);
 
                     // Setter signature: fn(instance: *Instance, value: T) !void
                     if (params.len != 2) {
@@ -9966,7 +9968,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // `AbortSignal.timeout()`, `Response.json()`.
                     const params_retain = comptime blk: {
                         const fi = @typeInfo(@TypeOf(@field(Interface, zig_name))).@"fn";
-                        for (fi.params) |prm| {
+                        for (zig017ParamsOf(fi)) |prm| {
                             const P = prm.type orelse break :blk true;
                             if (P == *runtime.Instance) continue; // the call vehicle
                             if (typeRetainsContext(P)) break :blk true;
@@ -10013,7 +10015,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Get the static method function at comptime
                     const method_fn = @field(Interface, zig_name);
                     const fn_info = @typeInfo(@TypeOf(method_fn)).@"fn";
-                    const params = fn_info.params;
+                    const params = zig017ParamsOf(fn_info);
                     const ReturnType = fn_info.return_type.?;
 
                     // First parameter should be *runtime.Instance (template for context)
@@ -10648,4 +10650,58 @@ test "V8Interface uses Meta hints" {
 
     // Verify methods from hints
     try testing.expectEqual(@as(usize, 2), Binding.all_methods.len);
+}
+
+// Zig 0.17 compat: Zig 0.17's @typeInfo is struct-of-arrays. These rebuild 0.16's lists
+// (comptime-only element types, so every call is evaluated at comptime).
+const Zig017Param = struct { type: ?type, is_generic: bool, is_noalias: bool };
+fn zig017ParamsOf(comptime info: @import("std").builtin.Type.Fn) [info.param_types.len]Zig017Param {
+    var out: [info.param_types.len]Zig017Param = undefined;
+    for (info.param_types, info.param_attrs, 0..) |t, a, i| out[i] = .{ .type = t, .is_generic = t == null, .is_noalias = a.@"noalias" };
+    return out;
+}
+const Zig017Decl = struct { name: [:0]const u8, comptime_only: type = void };
+fn zig017DeclsOf(comptime names: []const [:0]const u8) [names.len]Zig017Decl {
+    var out: [names.len]Zig017Decl = undefined;
+    for (names, 0..) |n, i| out[i] = .{ .name = n };
+    return out;
+}
+
+// Zig 0.17 compat: 0.16's StructField/UnionField/EnumField list, rebuilt at comptime from
+// Zig 0.17's struct-of-arrays @typeInfo (a comptime-only element type: calls run at comptime).
+const Zig017Field = struct {
+    name: [:0]const u8,
+    type: type = void,
+    default_value_ptr: ?*const anyopaque = null,
+    is_comptime: bool = false,
+    alignment: ?usize = null,
+    value: comptime_int = 0,
+
+    pub fn defaultValue(comptime f: Zig017Field) ?f.type {
+        const dp: *const f.type = @ptrCast(@alignCast(f.default_value_ptr orelse return null));
+        return dp.*;
+    }
+};
+fn zig017FieldsOf(comptime info: anytype) [info.field_names.len]Zig017Field {
+    var out: [info.field_names.len]Zig017Field = undefined;
+    if (@hasField(@TypeOf(info), "field_values")) {
+        for (info.field_names, info.field_values, 0..) |n, v, i| out[i] = .{ .name = n, .value = v };
+        return out;
+    }
+    for (info.field_names, info.field_types, info.field_attrs, 0..) |n, t, a, i| out[i] = .{
+        .name = n,
+        .type = t,
+        .default_value_ptr = if (@hasField(@TypeOf(a), "default_value_ptr")) a.default_value_ptr else null,
+        .is_comptime = if (@hasField(@TypeOf(a), "comptime")) a.@"comptime" else false,
+        .alignment = a.@"align",
+    };
+    return out;
+}
+fn zig017FieldsOfType(comptime T: type) [@import("std").meta.fieldNames(T).len]Zig017Field {
+    return switch (@typeInfo(T)) {
+        .@"struct" => |s| zig017FieldsOf(s),
+        .@"union" => |u| zig017FieldsOf(u),
+        .@"enum" => |e| zig017FieldsOf(e),
+        else => @compileError("zig017FieldsOfType: not a struct, union or enum"),
+    };
 }

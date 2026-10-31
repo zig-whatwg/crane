@@ -614,7 +614,7 @@ pub const NativeTimerManager = struct {
             if (self.allocator.alloc(*Entry, @max(len * 2, shrink_floor))) |smaller| {
                 @memcpy(smaller[0..len], self.heap.items);
                 self.heap.deinit(self.allocator);
-                self.heap = .{ .items = smaller[0..len], .capacity = smaller.len };
+                self.heap = .{ .items = smaller[0..len], .capacity = smaller.len, .pointer_stability = .{} };
             } else |_| {}
         }
         try self.heap.ensureUnusedCapacity(self.allocator, 1);

@@ -154,7 +154,7 @@ const Named = struct { first: u32, last: u32, name: []const u8 };
 /// source order. Names are allocated with `gpa`. A file that does not parse is
 /// an error: a file the ratchet cannot read must not pass silently.
 pub fn zigVariables(gpa: std.mem.Allocator, source: [:0]const u8) !std.ArrayList(Variable) {
-    var tree = try std.zig.Ast.parse(gpa, source, .zig);
+    var tree = try std.zig.Ast.parse(gpa, source, .{ .mode = .zig });
     defer tree.deinit(gpa);
     if (tree.errors.len > 0) return error.ParseError;
 
@@ -167,7 +167,7 @@ pub fn zigVariables(gpa: std.mem.Allocator, source: [:0]const u8) !std.ArrayList
     const node_count = tree.nodes.len;
     var i: u32 = 0;
     while (i < node_count) : (i += 1) {
-        const node: std.zig.Ast.Node.Index = @enumFromInt(i);
+        const node: std.zig.Ast.Node.Index = @fromBackingInt(@intCast(i));
         switch (tree.nodeTag(node)) {
             .test_decl => try tests.append(gpa, .{ tree.firstToken(node), tree.lastToken(node) }),
             .fn_decl => {
@@ -199,7 +199,7 @@ pub fn zigVariables(gpa: std.mem.Allocator, source: [:0]const u8) !std.ArrayList
     }
     i = 0;
     while (i < node_count) : (i += 1) {
-        const node: std.zig.Ast.Node.Index = @enumFromInt(i);
+        const node: std.zig.Ast.Node.Index = @fromBackingInt(@intCast(i));
         var buf: [2]std.zig.Ast.Node.Index = undefined;
         const container = tree.fullContainerDecl(&buf, node) orelse continue;
         members: for (container.ast.members) |member| {
@@ -962,20 +962,20 @@ fn scan(
 
 /// Totals per kind and per class.
 fn printTotals(out: *std.Io.Writer, arena: std.mem.Allocator, current: *const Counts, baseline: ?*const Baseline) !void {
-    var per_kind = @as([std.meta.fields(Kind).len]u32, @splat(0));
+    var per_kind = @as([std.meta.fieldNames(Kind).len]u32, @splat(0));
     var per_class: std.StringArrayHashMapUnmanaged(u32) = .empty;
     var it = current.iterator();
     while (it.next()) |entry| {
-        per_kind[@intFromEnum(entry.value_ptr.kind)] += entry.value_ptr.count;
+        per_kind[@backingInt(entry.value_ptr.kind)] += entry.value_ptr.count;
         const class = if (baseline) |b| (if (b.get(entry.key_ptr.*)) |e| e.class else "?") else "?";
         const gop = try per_class.getOrPut(arena, class);
         if (!gop.found_existing) gop.value_ptr.* = 0;
         gop.value_ptr.* += entry.value_ptr.count;
     }
     try out.print("  by kind:", .{});
-    inline for (std.meta.fields(Kind)) |field| {
-        const kind: Kind = @enumFromInt(field.value);
-        try out.print(" {s} {d}", .{ kind.label(), per_kind[field.value] });
+    inline for (@typeInfo(Kind).@"enum".field_values) |field_value| {
+        const kind: Kind = @fromBackingInt(@intCast(field_value));
+        try out.print(" {s} {d}", .{ kind.label(), per_kind[field_value] });
     }
     try out.print("\n  by class:", .{});
     const classes = try arena.dupe([]const u8, per_class.keys());

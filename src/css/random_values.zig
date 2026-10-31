@@ -66,7 +66,7 @@ pub fn baseValue(seed: [32]u8, key: CacheKey, identity: Identity) f64 {
     hash.update("Crane CSS random v1");
     hashNullable(&hash, key.name);
     hashNullable(&hash, key.property);
-    hash.update(&.{if (key.indexed_function) |f| @intFromEnum(f) + 1 else 0});
+    hash.update(&.{if (key.indexed_function) |f| @backingInt(f) + 1 else 0});
     hash.update(&.{@intFromBool(key.element_scoped)});
     if (key.element_scoped) {
         hashInteger(&hash, @intCast(identity.address));
@@ -234,7 +234,7 @@ pub const ParseScope = struct {
             if (token.token_type == .eof) break;
             if (token.token_type != .function) continue;
             const kind: Function = if (tokens.nameEql(token.value, "random")) .numeric else if (tokens.nameEql(token.value, "random-item")) .item else continue;
-            const counter = &counters[@intFromEnum(kind)];
+            const counter = &counters[@backingInt(kind)];
             counter.* += 1;
             try entries.append(allocator, .{
                 .offset = @intFromPtr(token.value.ptr) - @intFromPtr(text.ptr),

@@ -59,7 +59,7 @@ pub const WorkerRegistry = struct {
     /// Record a worker about to start: the registry takes a reference.
     /// error.Closed once the Browser is ending - the worker must not start.
     pub fn register(self: *WorkerRegistry, link: *WorkerLink) error{ Closed, OutOfMemory }!void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         if (self.closed) return error.Closed;
         try self.links.append(self.allocator, link.retain());
@@ -68,7 +68,7 @@ pub const WorkerRegistry = struct {
     /// The worker has ended and its owner has joined its thread: forget it.
     pub fn unregister(self: *WorkerRegistry, link: *WorkerLink) void {
         const found = blk: {
-            std.Io.Threaded.mutexLock(&self.mutex);
+            std.Io.Threaded.mutexLockUncancelable(&self.mutex);
             defer std.Io.Threaded.mutexUnlock(&self.mutex);
             for (self.links.items, 0..) |registered, i| {
                 if (registered == link) {
@@ -88,7 +88,7 @@ pub const WorkerRegistry = struct {
     /// at unload, on the realm's own thread, which is the only thread that
     /// starts that realm's workers.
     pub fn ownsAny(self: *WorkerRegistry, realm: *const anyopaque) bool {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         for (self.links.items) |link| {
             if (link.owner_realm != realm) continue;
@@ -99,7 +99,7 @@ pub const WorkerRegistry = struct {
 
     /// How many workers are registered.
     pub fn count(self: *WorkerRegistry) usize {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return self.links.items.len;
     }
@@ -155,7 +155,7 @@ pub const WorkerRegistry = struct {
     /// The registered links (each retained) whose owner sink is `owner`, or
     /// all of them; `close` closes the registry in the same critical section.
     fn snapshot(self: *WorkerRegistry, owner: ?*runtime.TaskSink, close: bool) Allocator.Error!std.ArrayListUnmanaged(*WorkerLink) {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         if (close) self.closed = true;
         var list: std.ArrayListUnmanaged(*WorkerLink) = .empty;
@@ -170,7 +170,7 @@ pub const WorkerRegistry = struct {
 
     /// The registered links (each retained) whose owner realm is `realm`.
     fn snapshotByRealm(self: *WorkerRegistry, realm: *const anyopaque) Allocator.Error!std.ArrayListUnmanaged(*WorkerLink) {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         var list: std.ArrayListUnmanaged(*WorkerLink) = .empty;
         errdefer list.deinit(self.allocator);
@@ -182,7 +182,7 @@ pub const WorkerRegistry = struct {
     }
 
     fn terminateRealmEachLocked(self: *WorkerRegistry, realm: *const anyopaque) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         for (self.links.items) |link| {
             if (link.owner_realm == realm) _ = link.terminate();
@@ -198,7 +198,7 @@ pub const WorkerRegistry = struct {
     /// link's terminate takes only the link's own lock, which no path holds
     /// while taking this one.
     fn terminateEachLocked(self: *WorkerRegistry, owner: ?*runtime.TaskSink) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         if (owner == null) self.closed = true;
         for (self.links.items) |link| {
@@ -209,7 +209,7 @@ pub const WorkerRegistry = struct {
 
     /// A registered link (retained) with a thread nobody has joined.
     fn nextWithThread(self: *WorkerRegistry, owner: ?*runtime.TaskSink) ?*WorkerLink {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         for (self.links.items) |link| {
             if (owner) |sink| if (link.owner_sink != sink) continue;

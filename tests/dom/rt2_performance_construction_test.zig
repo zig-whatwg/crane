@@ -3,7 +3,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dom = @import("dom");
-const EventHandler = @typeInfo(@TypeOf(interfaces.Performance.set_onresourcetimingbufferfull)).@"fn".params[1].type.?;
+const EventHandler = @typeInfo(@TypeOf(interfaces.Performance.set_onresourcetimingbufferfull)).@"fn".param_types[1].?;
 
 test "Performance initializes the EventTarget state used by event handlers" {
     const Run = struct {

@@ -53,6 +53,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const build_mode = @import("build_mode.zig");
 const config = @import("config.zig");
 const test_parser = @import("test_parser.zig");
 const test_harness = @import("test_harness.zig");
@@ -78,6 +79,23 @@ const engine = @import("engine");
 
 /// Thread-local verbose flag for log filtering
 var verbose_mode: bool = false;
+
+/// std.debug's allocator (std.debug.getDebugInfoAllocator) for debug info and for the unwinder's
+/// per-capture scratch. On aarch64-macos a stack capture unwinds with the module's unwind info and
+/// frees that scratch when it ends (Zig 0.17 lib/std/debug/Dwarf/SelfUnwinder.zig, `deinit`);
+/// std's default is an ArenaAllocator over page_allocator (lib/std/debug.zig,
+/// `getDebugInfoAllocator`), where a free does nothing, so every capture's scratch stayed mapped.
+/// Under CRANE_LEAK_TRACES=1, which captures on every allocation and every free, that grew the
+/// runner by ~85 MB per page of a 4,000-element churn: 26.3 GB over 300 pages, against 138 MB
+/// with a real allocator, the same as without traces (lane zig017mem; docs/lessons/
+/// testing-a-debugallocator-that-captures-traces-grows-rss-per-allocation.md). Not the tracked
+/// allocator: a capture made inside the DebugAllocator would re-enter it, and the scratch would
+/// count in its leak report. c_allocator is thread-safe, as this must be.
+pub const debug = struct {
+    pub fn getDebugInfoAllocator() std.mem.Allocator {
+        return std.heap.c_allocator;
+    }
+};
 
 /// Custom log function that suppresses error logs in non-verbose mode.
 /// This prevents the engine adapter's errors from cluttering the test output.
@@ -868,7 +886,7 @@ pub fn executeTests(
                         const valid = @min(t.index, t.instruction_addresses.len);
                         const dbg_trace: std.debug.StackTrace = .{
                             .return_addresses = t.instruction_addresses[0..valid],
-                            .skipped = @enumFromInt(t.index - valid),
+                            .skipped = @fromBackingInt(@intCast(t.index - valid)),
                         };
                         std.debug.dumpStackTrace(&dbg_trace);
                         std.debug.print("=== END ERROR ===\n\n", .{});
@@ -1392,9 +1410,9 @@ fn run(init: std.process.Init) !u8 {
     // pipeline; Crane's modules keep their own `builtin.mode`
     // (tests/wpt_runner/build_mode.zig).
     if (!options.isChild() or options.wantsSupervisor()) print("wpt_runner: {s} build (Crane modules {s}, C libraries {s})\n", .{
-        @tagName(builtin.mode),
-        @tagName(wpt_options.crane_modules_mode),
-        @tagName(wpt_options.c_libraries_mode),
+        build_mode.displayName(builtin.mode),
+        build_mode.displayName(wpt_options.crane_modules_mode),
+        build_mode.displayName(wpt_options.c_libraries_mode),
     });
     if (!options.isChild() or options.wantsSupervisor()) {
         if (runner_allocator.tracesNote(builtin.mode, want_traces)) |note| print("wpt_runner: {s}\n", .{note});
@@ -1403,7 +1421,7 @@ fn run(init: std.process.Init) !u8 {
     if (options.allocator_self_check) {
         const check = runner_allocator.selfCheck();
         print("allocator self-check ({s}): double free {s}, leak {s}, leak {s}\n", .{
-            @tagName(builtin.mode),
+            build_mode.displayName(builtin.mode),
             if (check.double_free_reported) "reported" else "NOT REPORTED",
             if (check.leak_reported) "reported" else "NOT REPORTED",
             if (check.leak_attributed) "attributed to its file" else "NOT ATTRIBUTED",

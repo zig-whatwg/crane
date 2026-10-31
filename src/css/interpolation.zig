@@ -77,10 +77,10 @@ const not_animatable = [_]Longhand{
     .text_orientation,      .contain,                   .interpolate_size,
 };
 
-const type_table: [std.meta.fields(Longhand).len]AnimationType = blk: {
-    var table = [_]AnimationType{.by_computed_value} ** std.meta.fields(Longhand).len;
-    for (not_animatable) |l| table[@intFromEnum(l)] = .not_animatable;
-    table[@intFromEnum(Longhand.visibility)] = .visibility;
+const type_table: [std.meta.fieldNames(Longhand).len]AnimationType = blk: {
+    var table = @as([std.meta.fieldNames(Longhand).len]AnimationType, @splat(.by_computed_value));
+    for (not_animatable) |l| table[@backingInt(l)] = .not_animatable;
+    table[@backingInt(Longhand.visibility)] = .visibility;
     break :blk table;
 };
 
@@ -88,7 +88,7 @@ const type_table: [std.meta.fields(Longhand).len]AnimationType = blk: {
 /// whose combination falls back to discrete for any value kind without a
 /// smooth rule - never the other way round.
 pub fn animationType(l: Longhand) AnimationType {
-    return type_table[@intFromEnum(l)];
+    return type_table[@backingInt(l)];
 }
 
 /// The value kinds that combine discretely today although their types have

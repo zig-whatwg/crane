@@ -12,7 +12,7 @@ const interfaces = @import("interfaces");
 const engine = @import("engine");
 
 /// ShadowRootInit, as Element.attachShadow takes it.
-const ShadowRootInit = @typeInfo(@TypeOf(interfaces.Element.call_attachShadow)).@"fn".params[1].type.?;
+const ShadowRootInit = @typeInfo(@TypeOf(interfaces.Element.call_attachShadow)).@"fn".param_types[1].?;
 
 fn onFreshThread(comptime exercise: fn () anyerror!void) !void {
     const Run = struct {

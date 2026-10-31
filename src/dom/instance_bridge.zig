@@ -83,7 +83,7 @@ pub const Bridge = struct {
     }
 
     fn lock(self: *Bridge) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
     }
 
     fn unlock(self: *Bridge) void {

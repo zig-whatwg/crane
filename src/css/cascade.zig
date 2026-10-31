@@ -79,7 +79,7 @@ pub const Origin = enum(u4) {
     fn revertClass(self: Origin) u4 {
         return switch (self) {
             .presentational_hint, .author, .animation, .transition => 4,
-            else => @intFromEnum(self),
+            else => @backingInt(self),
         };
     }
 };
@@ -240,7 +240,7 @@ fn priority(source: Source, important: bool) u128 {
     const origin: u128 = switch (source.origin) {
         .animation => 5,
         .transition => 16,
-        else => if (important) 16 - @as(u128, @intFromEnum(source.origin)) else @intFromEnum(source.origin),
+        else => if (important) 16 - @as(u128, @backingInt(source.origin)) else @backingInt(source.origin),
     };
     // "When comparing two declarations that are sourced from different
     // encapsulation contexts, then for normal rules the declaration from the
@@ -356,7 +356,7 @@ fn appliesTo(pseudo: ?[]const u8) ?*const LonghandSet {
 /// Like Blink's MatchResult/CascadeMap, candidates refer back to their
 /// matched declarations rather than duplicating all source data per property.
 /// A declaration of a longhand outside `applies` is not a candidate.
-fn collectCandidates(allocator: Allocator, matched: []const Matched, applies: ?*const LonghandSet) Allocator.Error!std.ArrayList(Candidate) {
+pub fn collectCandidates(allocator: Allocator, matched: []const Matched, applies: ?*const LonghandSet) Allocator.Error!std.ArrayList(Candidate) {
     var candidates: std.ArrayList(Candidate) = .empty;
     errdefer candidates.deinit(allocator);
     for (matched) |*m| {
@@ -428,12 +428,12 @@ fn collectCustomCandidates(allocator: Allocator, matched: []const Matched) Alloc
 /// Like Blink's CascadeMap and WebKit's PropertyCascade, lookup starts at
 /// that property's head. Candidate order and borrowed Source identity stay
 /// unchanged; the separate links keep Candidate at 32 bytes.
-const CandidateIndex = struct {
+pub const CandidateIndex = struct {
     const none = std.math.maxInt(usize);
     heads: [Longhand.count]usize = @splat(none),
     links: []usize,
     /// The longhands with a chain (a logical one until merge moves it).
-    declared: LonghandSet = .initEmpty(),
+    declared: LonghandSet = .empty,
 
     fn init(candidates: []const Candidate, links: []usize) CandidateIndex {
         std.debug.assert(candidates.len == links.len);
@@ -443,7 +443,7 @@ const CandidateIndex = struct {
         var i = candidates.len;
         while (i > 0) {
             i -= 1;
-            const property = @intFromEnum(candidates[i].decl.longhand);
+            const property = @backingInt(candidates[i].decl.longhand);
             links[i] = index.heads[property];
             index.heads[property] = i;
             index.declared.insert(candidates[i].decl.longhand);
@@ -455,13 +455,13 @@ const CandidateIndex = struct {
     /// only after writing-mode and direction have computed. Global sorted
     /// positions are sufficient to merge without recalculating priorities.
     fn merge(self: *CandidateIndex, logical: Longhand, physical: Longhand) void {
-        var a = self.heads[@intFromEnum(logical)];
+        var a = self.heads[@backingInt(logical)];
         if (a == none) return;
-        self.heads[@intFromEnum(logical)] = none;
+        self.heads[@backingInt(logical)] = none;
         self.declared.remove(logical);
         self.declared.insert(physical);
-        var b = self.heads[@intFromEnum(physical)];
-        var destination = &self.heads[@intFromEnum(physical)];
+        var b = self.heads[@backingInt(physical)];
+        var destination = &self.heads[@backingInt(physical)];
         while (a != none and b != none) {
             const use_a = a < b;
             const chosen = if (use_a) a else b;
@@ -572,9 +572,9 @@ pub fn defaultPathFor(l: Longhand, initial: Value) DefaultPath {
 /// physical one that is not high-priority.
 const low_priority: LonghandSet = blk: {
     @setEvalBranchQuota(100_000);
-    var set: LonghandSet = .initEmpty();
+    var set: LonghandSet = .empty;
     for (0..Longhand.count) |i| {
-        const l: Longhand = @enumFromInt(i);
+        const l: Longhand = @fromBackingInt(@intCast(i));
         if (l.logical() == null and !isHighPriority(l)) set.insert(l);
     }
     break :blk set;
@@ -583,8 +583,8 @@ const low_priority: LonghandSet = blk: {
 /// The logical longhands, whose chains merge into physical ones.
 const logical_longhands: LonghandSet = blk: {
     @setEvalBranchQuota(100_000);
-    var set: LonghandSet = .initEmpty();
-    for (0..Longhand.count) |i| if (@as(Longhand, @enumFromInt(i)).logical() != null) set.insert(@enumFromInt(i));
+    var set: LonghandSet = .empty;
+    for (0..Longhand.count) |i| if (@as(Longhand, @fromBackingInt(@intCast(i))).logical() != null) set.insert(@fromBackingInt(@intCast(i)));
     break :blk set;
 };
 
@@ -592,8 +592,8 @@ const logical_longhands: LonghandSet = blk: {
 /// (default_path .compute, high-priority ones aside).
 const computed_when_untouched: LonghandSet = blk: {
     @setEvalBranchQuota(100_000);
-    var set: LonghandSet = .initEmpty();
-    for (0..Longhand.count) |i| if (default_path[i] == .compute) set.insert(@enumFromInt(i));
+    var set: LonghandSet = .empty;
+    for (0..Longhand.count) |i| if (default_path[i] == .compute) set.insert(@fromBackingInt(@intCast(i)));
     break :blk set;
 };
 
@@ -601,7 +601,7 @@ const computed_when_untouched: LonghandSet = blk: {
 pub const default_path: [Longhand.count]DefaultPath = blk: {
     @setEvalBranchQuota(100_000);
     var out: [Longhand.count]DefaultPath = undefined;
-    for (0..Longhand.count) |i| out[i] = defaultPathFor(@enumFromInt(i), computed_mod.initial_values[i]);
+    for (0..Longhand.count) |i| out[i] = defaultPathFor(@fromBackingInt(@intCast(i)), computed_mod.initial_values[i]);
     break :blk out;
 };
 
@@ -1459,7 +1459,7 @@ const Builder = struct {
     }
 
     fn pick(self: *Builder, l: Longhand, excluded: *const Exclusions) Allocator.Error!?struct { candidate: Candidate, assigned: properties.Assigned, position: usize } {
-        var position = self.index.heads[@intFromEnum(l)];
+        var position = self.index.heads[@backingInt(l)];
         while (position != CandidateIndex.none) : (position = self.index.links[position]) {
             const c = self.candidates[position];
             if (excluded.excludes(c) or std.mem.indexOfScalar(usize, excluded.positions.items, position) != null) continue;

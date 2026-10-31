@@ -29,7 +29,7 @@ pub const PermissionKey = struct {
     pub fn hash(key: PermissionKey) u64 {
         var hasher = std.hash.Wyhash.init(0);
         hasher.update(key.origin);
-        hasher.update(&[_]u8{@intFromEnum(key.name)});
+        hasher.update(&[_]u8{@backingInt(key.name)});
         return hasher.final();
     }
 };

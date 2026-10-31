@@ -106,7 +106,7 @@ pub const CookieChangeListeners = struct {
     /// The Browser's service worker registrations hear every change from
     /// now until `stopHearingRegistrations` (its manager's own end).
     pub fn hearRegistrations(self: *CookieChangeListeners, hook: RegistrationsHook) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         self.registrations = hook;
     }
@@ -114,7 +114,7 @@ pub const CookieChangeListeners = struct {
     /// The registrations owner `context` hears nothing more: once this
     /// returns, no call to its hook is under way or will start.
     pub fn stopHearingRegistrations(self: *CookieChangeListeners, context: *anyopaque) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const hook = self.registrations orelse return;
         if (hook.context == context) self.registrations = null;
@@ -125,7 +125,7 @@ pub const CookieChangeListeners = struct {
     pub fn listen(self: *CookieChangeListeners, listener: *runtime.Instance, deliver: Deliver) Allocator.Error!void {
         const sink: ?*runtime.TaskSink = if (listener.ctx.task_sink) |s| s.retain() else null;
         errdefer if (sink) |s| s.release();
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         try self.entries.append(self.allocator, .{
             .listener = listener,
@@ -139,7 +139,7 @@ pub const CookieChangeListeners = struct {
     /// `listener` hears nothing more; a delivery already posted finds it
     /// gone (`isListening`).
     pub fn unlisten(self: *CookieChangeListeners, listener: *runtime.Instance) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         var i: usize = 0;
         while (i < self.entries.items.len) {
@@ -156,7 +156,7 @@ pub const CookieChangeListeners = struct {
 
     /// Whether `listener`, as it was at `generation`, still hears changes.
     pub fn isListening(self: *CookieChangeListeners, listener: *runtime.Instance, generation: u64) bool {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         for (self.entries.items) |entry| {
             if (entry.listener == listener and entry.generation == generation) return true;
@@ -177,7 +177,7 @@ pub const CookieChangeListeners = struct {
         var local: std.ArrayListUnmanaged(Local) = .empty;
         defer local.deinit(self.allocator);
         {
-            std.Io.Threaded.mutexLock(&self.mutex);
+            std.Io.Threaded.mutexLockUncancelable(&self.mutex);
             defer std.Io.Threaded.mutexUnlock(&self.mutex);
             for (self.entries.items) |entry| {
                 if (entry.thread == here) {

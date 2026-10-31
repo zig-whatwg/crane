@@ -34,7 +34,7 @@ test "the gap decoration longhands are non-inherited and stored outside every gr
     for (gap_longhands) |name| {
         const l = try longhandNamed(name);
         try testing.expect(!l.inherited());
-        const location = computed.groups.location[@intFromEnum(l)];
+        const location = computed.groups.location[@backingInt(l)];
         try testing.expect(location.stored);
         // A rare group, never a hot one.
         try testing.expectEqualStrings("rare", computed.groups.names[location.group]);
@@ -49,5 +49,5 @@ test "writing one gap decoration longhand holds exactly its own group" {
     defer ruled.destroy();
     const row_color = try longhandNamed("row-rule-color");
     try testing.expectEqual(plain.held.count() + 1, ruled.held.count());
-    try testing.expect(ruled.held.isSet(computed.groups.location[@intFromEnum(row_color)].group));
+    try testing.expect(ruled.held.isSet(computed.groups.location[@backingInt(row_color)].group));
 }

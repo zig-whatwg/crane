@@ -295,7 +295,7 @@ fn detectCallbackType(comptime ZigFn: type) CallbackType {
         else => @compileError("Expected function type"),
     };
 
-    const params = fn_data.params;
+    const params = zig017ParamsOf(fn_data);
     const return_type = fn_data.return_type;
 
     // Determine if it returns void
@@ -648,4 +648,19 @@ test "createVoidCallback - simple creation" {
     // 2. Create void callback
     // 3. Verify it returns a V8 Function
     // 4. Call it and verify it returns undefined
+}
+
+// Zig 0.17 compat: Zig 0.17's @typeInfo is struct-of-arrays. These rebuild 0.16's lists
+// (comptime-only element types, so every call is evaluated at comptime).
+const Zig017Param = struct { type: ?type, is_generic: bool, is_noalias: bool };
+fn zig017ParamsOf(comptime info: @import("std").builtin.Type.Fn) [info.param_types.len]Zig017Param {
+    var out: [info.param_types.len]Zig017Param = undefined;
+    for (info.param_types, info.param_attrs, 0..) |t, a, i| out[i] = .{ .type = t, .is_generic = t == null, .is_noalias = a.@"noalias" };
+    return out;
+}
+const Zig017Decl = struct { name: [:0]const u8, comptime_only: type = void };
+fn zig017DeclsOf(comptime names: []const [:0]const u8) [names.len]Zig017Decl {
+    var out: [names.len]Zig017Decl = undefined;
+    for (names, 0..) |n, i| out[i] = .{ .name = n };
+    return out;
 }

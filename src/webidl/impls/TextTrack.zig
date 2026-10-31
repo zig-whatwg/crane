@@ -91,7 +91,7 @@ fn elementDestroyed(track: *runtime.Instance) void {
     if (track.getState(State).own._internal) |data| data.element = null;
 }
 pub fn get_kind(instance: *runtime.Instance) anyerror!enums.TextTrackKind {
-    return @enumFromInt(@intFromEnum(internal(instance).kind));
+    return @fromBackingInt(@intCast(@backingInt(internal(instance).kind)));
 }
 pub fn get_label(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return internal(instance).label.clone(instance.ctx.allocator);
@@ -106,11 +106,11 @@ pub fn get_inBandMetadataTrackDispatchType(_: *runtime.Instance) anyerror!runtim
     return .initEmpty();
 }
 pub fn get_mode(instance: *runtime.Instance) anyerror!enums.TextTrackMode {
-    return @enumFromInt(@intFromEnum(internal(instance).mode));
+    return @fromBackingInt(@intCast(@backingInt(internal(instance).mode)));
 }
 pub fn set_mode(instance: *runtime.Instance, value: enums.TextTrackMode) anyerror!void {
     const data = internal(instance);
-    const mode: hooks.Mode = @enumFromInt(@intFromEnum(value));
+    const mode: hooks.Mode = @fromBackingInt(@intCast(@backingInt(value)));
     const old = data.mode;
     if (old == mode) return;
     data.mode = mode;

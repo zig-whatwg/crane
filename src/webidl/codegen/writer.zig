@@ -2541,8 +2541,8 @@ pub fn writeLifecycleFunctions(
     try writer.writeAll("    /// construction, as a C++ constructor's parameters. Each field of `args`\n");
     try writer.writeAll("    /// must be taken by an impl on the chain (its `construction_args`).\n");
     try writer.writeAll("    pub fn initWith(allocator: std.mem.Allocator, ctx: runtime.Context, args: anytype) !*runtime.Instance {\n");
-    try writer.writeAll("        inline for (@typeInfo(@TypeOf(args)).@\"struct\".fields) |field| {\n");
-    try writer.print("            if (comptime !takesConstructionArg(field.name)) @compileError(\"{s} has no construction argument '\" ++ field.name ++ \"'\");\n", .{name});
+    try writer.writeAll("        inline for (@typeInfo(@TypeOf(args)).@\"struct\".field_names) |field_name| {\n");
+    try writer.print("            if (comptime !takesConstructionArg(field_name)) @compileError(\"{s} has no construction argument '\" ++ field_name ++ \"'\");\n", .{name});
     try writer.writeAll("        }\n");
     try writer.writeAll("        return initChain(allocator, State, &vtable, ctx, args);\n");
     try writer.writeAll("    }\n\n");
@@ -2693,8 +2693,8 @@ pub fn writeRootInstallHooks(writer: anytype, kind: []const u8) !void {
     try writer.writeAll("pub const process_hooks = struct {\n");
     try writer.writeAll("    pub fn install() void {\n");
     try writer.writeAll("        @setEvalBranchQuota(100_000);\n");
-    try writer.writeAll("        inline for (@typeInfo(members).@\"struct\".decls) |decl| {\n");
-    try writer.writeAll("            const member = @field(members, decl.name);\n");
+    try writer.writeAll("        inline for (@typeInfo(members).@\"struct\".decl_names) |decl_name| {\n");
+    try writer.writeAll("            const member = @field(members, decl_name);\n");
     try writer.writeAll("            if (@TypeOf(member) == type and @hasDecl(member, \"installHooks\")) member.installHooks();\n");
     try writer.writeAll("        }\n");
     try writer.writeAll("    }\n");
@@ -6249,7 +6249,7 @@ test "a root's installHooks calls every member's, once, through a comptime loop"
     const output = buffer.written();
     // A struct, so loops that take every root declaration for a type pass it by.
     try testing.expect(std.mem.indexOf(u8, output, "pub const process_hooks = struct {\n") != null);
-    try testing.expect(std.mem.indexOf(u8, output, "inline for (@typeInfo(members).@\"struct\".decls) |decl| {") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "inline for (@typeInfo(members).@\"struct\".decl_names) |decl_name| {") != null);
     // One helper for unit tests with no Browser, refused outside tests.
     try testing.expect(std.mem.indexOf(u8, output, "    pub fn startHooksForTest() void {\n") != null);
     try testing.expect(std.mem.indexOf(u8, output, "@compileError(\"startHooksForTest is for tests") != null);

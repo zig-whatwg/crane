@@ -155,8 +155,8 @@ fn validityFlags(instance: *runtime.Instance) ce.ValidityFlags {
 }
 
 fn flagsAreValid(flags: ce.ValidityFlags) bool {
-    inline for (std.meta.fields(ce.ValidityFlags)) |field| {
-        if (@field(flags, field.name) orelse false) return false;
+    inline for (comptime std.meta.fieldNames(ce.ValidityFlags)) |field_name| {
+        if (@field(flags, field_name) orelse false) return false;
     }
     return true;
 }
@@ -212,12 +212,12 @@ pub fn deinit(instance: *runtime.Instance) void {
         engine.forgetTracedChild(instance, .{ .name = member ++ ":cached" });
     }
     // ARIA's generated string fields own the internal default values.
-    inline for (std.meta.fields(@TypeOf(state.own))) |field| {
-        if (comptime field.type == ?runtime.DOMString and
-            (std.mem.eql(u8, field.name, "role") or std.mem.startsWith(u8, field.name, "aria")))
+    inline for (comptime std.meta.fieldNames(@TypeOf(state.own)), comptime std.meta.fieldTypes(@TypeOf(state.own))) |field_name, field_type| {
+        if (comptime field_type == ?runtime.DOMString and
+            (std.mem.eql(u8, field_name, "role") or std.mem.startsWith(u8, field_name, "aria")))
         {
-            if (@field(state.own, field.name)) |*value| value.deinit(internal.allocator);
-            @field(state.own, field.name) = null;
+            if (@field(state.own, field_name)) |*value| value.deinit(internal.allocator);
+            @field(state.own, field_name) = null;
         }
     }
     internal.allocator.destroy(internal);

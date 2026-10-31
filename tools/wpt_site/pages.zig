@@ -591,7 +591,7 @@ fn writeFileTable(w: W, site: *const Site, base: []const u8, files: []const usiz
             try html.num(w, f.counts.failed);
             try w.writeAll("</span>");
         } else try w.writeAll("<span class=\"quiet\">0</span>");
-        try w.print("</td><td data-v=\"{d}\">", .{@intFromEnum(f.gate)});
+        try w.print("</td><td data-v=\"{d}\">", .{@backingInt(f.gate)});
         try gateSpan(w, f.gate);
         try w.writeAll("</td></tr>\n");
     }
@@ -821,7 +821,7 @@ fn writeEvidence(w: W, e: *const model.Exemption) Error!void {
     try html.text(w, e.spec);
     try w.writeAll("</a></dd></div>");
     inline for (comptime std.enums.values(model.Browser)) |b| {
-        const i = @intFromEnum(b);
+        const i = @backingInt(b);
         try w.print("<div><dt>{s}</dt><dd>", .{b.label()});
         try html.text(w, e.result[i]);
         try w.writeAll("; intent: <a href=\"");

@@ -48,8 +48,8 @@ pub const Edge = enum {
 
     fn parse(t: tokenizer.Token) ?Edge {
         if (t.token_type != .ident) return null;
-        inline for (@typeInfo(Edge).@"enum".fields) |f| {
-            const e: Edge = @enumFromInt(f.value);
+        inline for (@typeInfo(Edge).@"enum".field_values) |f_value| {
+            const e: Edge = @fromBackingInt(@intCast(f_value));
             if (tokenizer.nameEql(t.value, e.name())) return e;
         }
         return null;

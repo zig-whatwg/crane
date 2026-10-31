@@ -31,8 +31,8 @@ pub const Kind = enum {
     }
     fn parse(t: tokenizer.Token) ?Kind {
         if (t.token_type != .function) return null;
-        inline for (@typeInfo(Kind).@"enum".fields) |f| {
-            const k: Kind = @enumFromInt(f.value);
+        inline for (@typeInfo(Kind).@"enum".field_values) |f_value| {
+            const k: Kind = @fromBackingInt(@intCast(f_value));
             if (tokenizer.nameEql(t.value, k.name())) return k;
         }
         return null;

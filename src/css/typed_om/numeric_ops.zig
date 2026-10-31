@@ -5,10 +5,10 @@ const numeric = @import("numeric.zig");
 const Allocator = std.mem.Allocator;
 pub const Kind = enum { unit, sum, product, negate, invert, min, max, clamp };
 pub const View = struct { kind: Kind, number: math.Numeric = .{ .value = 0, .unit = .number }, count: usize = 0 };
-const unit_count = @typeInfo(math.Unit).@"enum".fields.len;
+const unit_count = @typeInfo(math.Unit).@"enum".field_names.len;
 pub const Term = struct {
     value: f64,
-    units: [unit_count]i32 = .{0} ** unit_count,
+    units: [unit_count]i32 = @splat(0),
 
     fn from(number: math.Numeric) Term {
         var result: Term = .{ .value = number.value };
@@ -17,7 +17,7 @@ pub const Term = struct {
             result.value *= scale;
             unit = unit.canonical();
         }
-        if (unit != .number) result.units[@intFromEnum(unit)] = 1;
+        if (unit != .number) result.units[@backingInt(unit)] = 1;
         return result;
     }
 
@@ -27,7 +27,7 @@ pub const Term = struct {
         for (self.units, 0..) |power, index| {
             if (power == 0) continue;
             if (power != 1 or unit != .number) return error.Invalid;
-            unit = @enumFromInt(index);
+            unit = @fromBackingInt(@intCast(index));
         }
         return .{ .value = self.value, .unit = unit };
     }
@@ -60,9 +60,9 @@ fn typeOf(item: Term) error{Invalid}!math.Type {
     var result: math.Type = .{};
     for (item.units, 0..) |power, index| {
         if (power == 0) continue;
-        const unit: math.Unit = @enumFromInt(index);
+        const unit: math.Unit = @fromBackingInt(@intCast(index));
         const base = unit.base() orelse continue;
-        const b = @intFromEnum(base);
+        const b = @backingInt(base);
         result.powers[b] +%= power;
     }
     return result;

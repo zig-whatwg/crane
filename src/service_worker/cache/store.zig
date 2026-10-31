@@ -100,7 +100,7 @@ pub const Storage = struct {
     }
 
     fn lock(self: *Storage) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
     }
 
     fn unlock(self: *Storage) void {

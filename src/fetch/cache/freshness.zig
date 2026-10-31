@@ -307,7 +307,7 @@ fn utcDateFields(seconds: i64) HttpDate {
     const time = epoch.getDaySeconds();
     return .{
         .year = @as(i64, year_day.year) + @divFloor(seconds, cycle_seconds) * 400,
-        .month = @intFromEnum(month_day.month),
+        .month = @backingInt(month_day.month),
         .day = @as(u8, month_day.day_index) + 1,
         .hour = time.getHoursIntoDay(),
         .minute = time.getMinutesIntoHour(),

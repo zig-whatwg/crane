@@ -35,7 +35,7 @@ const Harness = struct {
         var waited: u64 = 0;
         while (waited < budget_ms) : (waited += 5) {
             {
-                std.Io.Threaded.mutexLock(&self.mutex);
+                std.Io.Threaded.mutexLockUncancelable(&self.mutex);
                 defer std.Io.Threaded.mutexUnlock(&self.mutex);
                 if (self.dispatches.items.len > 0) return self.dispatches.orderedRemove(0);
             }
@@ -93,7 +93,7 @@ fn dropPostMessage(manager: *Manager, _: manager_mod.Started, message: *manager_
 
 fn keepDispatchFetch(manager: *Manager, _: manager_mod.Started, dispatch: *manager_mod.FetchDispatch, worker_id: u64, generation: u64) void {
     const harness = Harness.of(manager);
-    std.Io.Threaded.mutexLock(&harness.mutex);
+    std.Io.Threaded.mutexLockUncancelable(&harness.mutex);
     defer std.Io.Threaded.mutexUnlock(&harness.mutex);
     harness.dispatches.append(manager.allocator, .{ .dispatch = dispatch, .worker = worker_id, .generation = generation }) catch {
         dispatch.fail();
@@ -198,13 +198,13 @@ fn activate(manager: *Manager, sink: *runtime.TaskSink, allocator: std.mem.Alloc
 
 /// clients.claim() for the worker, as its thread would ask.
 fn claim(manager: *Manager, worker_id: u64) !void {
-    std.Io.Threaded.mutexLock(&manager.mutex);
+    std.Io.Threaded.mutexLockUncancelable(&manager.mutex);
     defer std.Io.Threaded.mutexUnlock(&manager.mutex);
     try manager.registry.claim(worker_id);
 }
 
 fn controllerOf(manager: *Manager, environment_id: u64) u64 {
-    std.Io.Threaded.mutexLock(&manager.mutex);
+    std.Io.Threaded.mutexLockUncancelable(&manager.mutex);
     defer std.Io.Threaded.mutexUnlock(&manager.mutex);
     const environment = manager.registry.findEnvironment(environment_id) orelse return 0;
     const worker = environment.active_worker orelse return 0;
@@ -631,14 +631,14 @@ fn noFreePattern(_: *anyopaque, _: std.mem.Allocator) void {}
 
 /// Give the worker `rules` (taken) as addRoutes() would have.
 fn setRules(manager: *Manager, worker_id: u64, rules: []sw.router.Rule) !void {
-    std.Io.Threaded.mutexLock(&manager.mutex);
+    std.Io.Threaded.mutexLockUncancelable(&manager.mutex);
     defer std.Io.Threaded.mutexUnlock(&manager.mutex);
     const worker = manager.registry.findWorker(worker_id).?;
     worker.router_rules = try sw.router.Rules.create(manager.allocator, rules, .{ .free = noFreePattern });
 }
 
 fn setHandlesFetch(manager: *Manager, worker_id: u64, value: bool) void {
-    std.Io.Threaded.mutexLock(&manager.mutex);
+    std.Io.Threaded.mutexLockUncancelable(&manager.mutex);
     defer std.Io.Threaded.mutexUnlock(&manager.mutex);
     manager.registry.findWorker(worker_id).?.handles_fetch = value;
 }

@@ -74,20 +74,20 @@ pub fn Union(comptime Types: type) type {
         pub fn fromJSValue(allocator: std.mem.Allocator, V: JSValue) !Self {
             // Step 1: If union includes undefined and V is undefined, return undefined
             if (V == .undefined) {
-                inline for (type_info.@"union".fields) |field| {
-                    if (field.type == void and std.mem.eql(u8, field.name, "undefined")) {
-                        return Self{ .value = @unionInit(Types, field.name, {}) };
+                inline for (type_info.@"union".field_names, type_info.@"union".field_types) |field_name, field_type| {
+                    if (field_type == void and std.mem.eql(u8, field_name, "undefined")) {
+                        return Self{ .value = @unionInit(Types, field_name, {}) };
                     }
                 }
             }
 
             // Step 2: If union includes nullable type and V is null or undefined
             if (V == .null or V == .undefined) {
-                inline for (type_info.@"union".fields) |field| {
-                    const field_type_info = @typeInfo(field.type);
+                inline for (type_info.@"union".field_names, type_info.@"union".field_types) |field_name, field_type| {
+                    const field_type_info = @typeInfo(field_type);
                     if (field_type_info == .optional) {
                         // Return null for the nullable type
-                        return Self{ .value = @unionInit(Types, field.name, null) };
+                        return Self{ .value = @unionInit(Types, field_name, null) };
                     }
                 }
             }
@@ -97,20 +97,20 @@ pub fn Union(comptime Types: type) type {
             // Step 4: If V is null or undefined, check for dictionary type
             // NOTE: Dictionary type detection requires JS runtime integration
             if (V == .null or V == .undefined) {
-                inline for (type_info.@"union".fields) |field| {
-                    _ = field;
+                inline for (type_info.@"union".field_names) |field_name| {
+                    _ = field_name;
                 }
             }
 
             // Step 5: If V is platform object (interface)
             if (V == .interface_ptr) {
-                inline for (type_info.@"union".fields) |field| {
-                    if (field.type == @TypeOf(JSValue.interface_ptr)) {
-                        return Self{ .value = @unionInit(Types, field.name, V.interface_ptr) };
+                inline for (type_info.@"union".field_names, type_info.@"union".field_types) |field_name, field_type| {
+                    if (field_type == @TypeOf(JSValue.interface_ptr)) {
+                        return Self{ .value = @unionInit(Types, field_name, V.interface_ptr) };
                     }
                 }
-                inline for (type_info.@"union".fields) |field| {
-                    if (field.type == JSObject) {
+                inline for (type_info.@"union".field_types) |field_type| {
+                    if (field_type == JSObject) {
                         // NOTE: Wrapping interface_ptr requires JS runtime
                         return error.NotImplemented;
                     }
@@ -123,13 +123,13 @@ pub fn Union(comptime Types: type) type {
 
             // Step 10: If IsCallable(V) is true
             if (V == .function) {
-                inline for (type_info.@"union".fields) |field| {
-                    if (field.type == callbacks.GenericCallback) {
-                        return Self{ .value = @unionInit(Types, field.name, V.function) };
+                inline for (type_info.@"union".field_names, type_info.@"union".field_types) |field_name, field_type| {
+                    if (field_type == callbacks.GenericCallback) {
+                        return Self{ .value = @unionInit(Types, field_name, V.function) };
                     }
                 }
-                inline for (type_info.@"union".fields) |field| {
-                    if (field.type == JSObject) {
+                inline for (type_info.@"union".field_types) |field_type| {
+                    if (field_type == JSObject) {
                         // NOTE: Wrapping function requires JS runtime
                         return error.NotImplemented;
                     }
@@ -145,29 +145,29 @@ pub fn Union(comptime Types: type) type {
             // - Callback interface conversion (step 11.6)
             if (V == .object) {
                 // Step 11.7: Object type
-                inline for (type_info.@"union".fields) |field| {
-                    if (field.type == JSObject) {
-                        return Self{ .value = @unionInit(Types, field.name, V.object) };
+                inline for (type_info.@"union".field_names, type_info.@"union".field_types) |field_name, field_type| {
+                    if (field_type == JSObject) {
+                        return Self{ .value = @unionInit(Types, field_name, V.object) };
                     }
                 }
             }
 
             // Step 12: If V is Boolean
             if (V == .boolean) {
-                inline for (type_info.@"union".fields) |field| {
-                    if (field.type == bool) {
-                        return Self{ .value = @unionInit(Types, field.name, V.boolean) };
+                inline for (type_info.@"union".field_names, type_info.@"union".field_types) |field_name, field_type| {
+                    if (field_type == bool) {
+                        return Self{ .value = @unionInit(Types, field_name, V.boolean) };
                     }
                 }
             }
 
             // Step 13: If V is Number
             if (V == .number) {
-                inline for (type_info.@"union".fields) |field| {
-                    const field_type_info = @typeInfo(field.type);
+                inline for (type_info.@"union".field_names, type_info.@"union".field_types) |field_name, field_type| {
+                    const field_type_info = @typeInfo(field_type);
                     if (field_type_info == .int or field_type_info == .float) {
-                        const converted = try convertToNumericType(field.type, V.number);
-                        return Self{ .value = @unionInit(Types, field.name, converted) };
+                        const converted = try convertToNumericType(field_type, V.number);
+                        return Self{ .value = @unionInit(Types, field_name, converted) };
                     }
                 }
             }
@@ -176,13 +176,13 @@ pub fn Union(comptime Types: type) type {
             // NOTE: BigInt support requires JS runtime (JSValue.bigint variant)
 
             // Step 15: If types includes string type
-            inline for (type_info.@"union".fields) |field| {
-                const field_type_info = @typeInfo(field.type);
+            inline for (type_info.@"union".field_names, type_info.@"union".field_types) |field_name, field_type| {
+                const field_type_info = @typeInfo(field_type);
                 switch (field_type_info) {
                     .pointer => |ptr| {
                         if (ptr.size == .slice and ptr.child == u8) {
                             const converted = try convertToStringType(allocator, V);
-                            return Self{ .value = @unionInit(Types, field.name, converted) };
+                            return Self{ .value = @unionInit(Types, field_name, converted) };
                         }
                     },
                     else => {},
@@ -193,19 +193,19 @@ pub fn Union(comptime Types: type) type {
             // NOTE: Numeric + bigint fallback requires JS runtime
 
             // Step 17: If types includes numeric type (fallback conversion)
-            inline for (type_info.@"union".fields) |field| {
-                const field_type_info = @typeInfo(field.type);
+            inline for (type_info.@"union".field_names, type_info.@"union".field_types) |field_name, field_type| {
+                const field_type_info = @typeInfo(field_type);
                 if (field_type_info == .int or field_type_info == .float) {
                     const num = V.toNumber();
-                    const converted = try convertToNumericType(field.type, num);
-                    return Self{ .value = @unionInit(Types, field.name, converted) };
+                    const converted = try convertToNumericType(field_type, num);
+                    return Self{ .value = @unionInit(Types, field_name, converted) };
                 }
             }
 
             // Step 18: If types includes boolean (fallback conversion)
-            inline for (type_info.@"union".fields) |field| {
-                if (field.type == bool) {
-                    return Self{ .value = @unionInit(Types, field.name, V.toBoolean()) };
+            inline for (type_info.@"union".field_names, type_info.@"union".field_types) |field_name, field_type| {
+                if (field_type == bool) {
+                    return Self{ .value = @unionInit(Types, field_name, V.toBoolean()) };
                 }
             }
 
@@ -218,8 +218,8 @@ pub fn Union(comptime Types: type) type {
 
         // Helper: Check if union has undefined type
         fn hasUndefinedType() bool {
-            inline for (type_info.@"union".fields) |field| {
-                if (field.type == void and std.mem.eql(u8, field.name, "undefined")) {
+            inline for (type_info.@"union".field_names, type_info.@"union".field_types) |field_name, field_type| {
+                if (field_type == void and std.mem.eql(u8, field_name, "undefined")) {
                     return true;
                 }
             }
@@ -227,19 +227,19 @@ pub fn Union(comptime Types: type) type {
         }
 
         fn getUndefinedFieldName() ?[]const u8 {
-            inline for (type_info.@"union".fields) |field| {
-                if (field.type == void and std.mem.eql(u8, field.name, "undefined")) {
-                    return field.name;
+            inline for (type_info.@"union".field_names, type_info.@"union".field_types) |field_name, field_type| {
+                if (field_type == void and std.mem.eql(u8, field_name, "undefined")) {
+                    return field_name;
                 }
             }
             return null;
         }
 
         fn getNullableFieldName() ?[]const u8 {
-            inline for (type_info.@"union".fields) |field| {
-                const field_type_info = @typeInfo(field.type);
+            inline for (type_info.@"union".field_names, type_info.@"union".field_types) |field_name, field_type| {
+                const field_type_info = @typeInfo(field_type);
                 if (field_type_info == .optional) {
-                    return field.name;
+                    return field_name;
                 }
             }
             return null;
@@ -251,57 +251,57 @@ pub fn Union(comptime Types: type) type {
         }
 
         fn getInterfaceFieldName() ?[]const u8 {
-            inline for (type_info.@"union".fields) |field| {
-                if (field.type == @TypeOf(JSValue.interface_ptr)) {
-                    return field.name;
+            inline for (type_info.@"union".field_names, type_info.@"union".field_types) |field_name, field_type| {
+                if (field_type == @TypeOf(JSValue.interface_ptr)) {
+                    return field_name;
                 }
             }
             return null;
         }
 
         fn getCallbackFieldName() ?[]const u8 {
-            inline for (type_info.@"union".fields) |field| {
-                if (field.type == callbacks.GenericCallback) {
-                    return field.name;
+            inline for (type_info.@"union".field_names, type_info.@"union".field_types) |field_name, field_type| {
+                if (field_type == callbacks.GenericCallback) {
+                    return field_name;
                 }
             }
             return null;
         }
 
         fn getObjectFieldName() ?[]const u8 {
-            inline for (type_info.@"union".fields) |field| {
-                if (field.type == JSObject) {
-                    return field.name;
+            inline for (type_info.@"union".field_names, type_info.@"union".field_types) |field_name, field_type| {
+                if (field_type == JSObject) {
+                    return field_name;
                 }
             }
             return null;
         }
 
         fn getBooleanFieldName() ?[]const u8 {
-            inline for (type_info.@"union".fields) |field| {
-                if (field.type == bool) {
-                    return field.name;
+            inline for (type_info.@"union".field_names, type_info.@"union".field_types) |field_name, field_type| {
+                if (field_type == bool) {
+                    return field_name;
                 }
             }
             return null;
         }
 
         fn getNumericFieldName() ?[]const u8 {
-            inline for (type_info.@"union".fields) |field| {
-                const field_type_info = @typeInfo(field.type);
+            inline for (type_info.@"union".field_names, type_info.@"union".field_types) |field_name, field_type| {
+                const field_type_info = @typeInfo(field_type);
                 if (field_type_info == .int or field_type_info == .float) {
-                    return field.name;
+                    return field_name;
                 }
             }
             return null;
         }
 
         fn getStringFieldName() ?[]const u8 {
-            inline for (type_info.@"union".fields) |field| {
-                const field_type_info = @typeInfo(field.type);
+            inline for (type_info.@"union".field_names, type_info.@"union".field_types) |field_name, field_type| {
+                const field_type_info = @typeInfo(field_type);
                 if (field_type_info == .pointer) |ptr| {
                     if (ptr.size == .slice and ptr.child == u8) {
-                        return field.name;
+                        return field_name;
                     }
                 }
             }
@@ -309,9 +309,9 @@ pub fn Union(comptime Types: type) type {
         }
 
         fn getFieldType(comptime field_name: []const u8) type {
-            inline for (type_info.@"union".fields) |field| {
-                if (std.mem.eql(u8, field.name, field_name)) {
-                    return field.type;
+            inline for (type_info.@"union".field_names, type_info.@"union".field_types) |f_name, f_type| {
+                if (std.mem.eql(u8, f_name, field_name)) {
+                    return f_type;
                 }
             }
             @compileError("Field not found: " ++ field_name);

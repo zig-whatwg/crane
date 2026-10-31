@@ -379,7 +379,7 @@ const LiveScripts = struct {
 var live_scripts: LiveScripts = .{};
 
 fn track(script: *ModuleScript) void {
-    std.Io.Threaded.mutexLock(&live_scripts.mutex);
+    std.Io.Threaded.mutexLockUncancelable(&live_scripts.mutex);
     defer std.Io.Threaded.mutexUnlock(&live_scripts.mutex);
     script.live_prev = null;
     script.live_next = live_scripts.head;
@@ -389,7 +389,7 @@ fn track(script: *ModuleScript) void {
 }
 
 fn untrack(script: *ModuleScript) void {
-    std.Io.Threaded.mutexLock(&live_scripts.mutex);
+    std.Io.Threaded.mutexLockUncancelable(&live_scripts.mutex);
     defer std.Io.Threaded.mutexUnlock(&live_scripts.mutex);
     if (!script.live) return;
     if (script.live_prev) |prev| prev.live_next = script.live_next else live_scripts.head = script.live_next;
@@ -403,7 +403,7 @@ fn untrack(script: *ModuleScript) void {
 /// [[HostDefined]] of the calling thread's own realms, so the script found
 /// is this thread's, and stays while its realm does.
 pub fn scriptOf(host_defined: *anyopaque) ?*ModuleScript {
-    std.Io.Threaded.mutexLock(&live_scripts.mutex);
+    std.Io.Threaded.mutexLockUncancelable(&live_scripts.mutex);
     defer std.Io.Threaded.mutexUnlock(&live_scripts.mutex);
     var it = live_scripts.head;
     while (it) |script| : (it = script.live_next) {

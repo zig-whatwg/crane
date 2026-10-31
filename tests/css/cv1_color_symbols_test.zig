@@ -26,11 +26,11 @@ test "relative color computation copies scalar channels and never keeps their co
     const parsed = (try math.parse(testing.allocator, "calc(r / 2 + alpha)", .{ .kind = .number, .allowed_symbols = math.Symbol.r.bit() | math.Symbol.alpha.bit() })).?;
     defer parsed.expression.unref();
     var symbols = math.SymbolValues{};
-    symbols.values[@intFromEnum(math.Symbol.r)] = 80;
-    symbols.values[@intFromEnum(math.Symbol.alpha)] = 0.5;
+    symbols.values[@backingInt(math.Symbol.r)] = 80;
+    symbols.values[@backingInt(math.Symbol.alpha)] = 0.5;
     const computed = try parsed.expression.compute(testing.allocator, .{ .symbols = &symbols });
     defer computed.unref();
-    symbols.values[@intFromEnum(math.Symbol.r)] = 20;
+    symbols.values[@backingInt(math.Symbol.r)] = 20;
     try testing.expectEqual(@as(f64, 40.5), computed.computedNumber().?.value);
     const again = try parsed.expression.compute(testing.allocator, .{ .symbols = &symbols });
     defer again.unref();
@@ -50,7 +50,7 @@ test "relative color symbols retain CSS numeric types and distinguish their name
     const percentage = (try math.parse(testing.allocator, "calc(r * 100%)", .{ .kind = .percentage, .allowed_symbols = allowed })).?;
     defer percentage.expression.unref();
     var symbols = math.SymbolValues{};
-    symbols.values[@intFromEnum(math.Symbol.r)] = 0.5;
+    symbols.values[@backingInt(math.Symbol.r)] = 0.5;
     const result = try percentage.expression.compute(testing.allocator, .{ .symbols = &symbols });
     defer result.unref();
     try testing.expectEqual(math.Unit.percent, result.computedNumber().?.unit);
@@ -66,8 +66,8 @@ fn allocationFailure(allocator: std.mem.Allocator) !void {
     const parsed = (try math.parse(allocator, "calc(r / 2 + alpha)", .{ .kind = .number, .allowed_symbols = math.Symbol.r.bit() | math.Symbol.alpha.bit() })).?;
     defer parsed.expression.unref();
     var symbols = math.SymbolValues{};
-    symbols.values[@intFromEnum(math.Symbol.r)] = 0.8;
-    symbols.values[@intFromEnum(math.Symbol.alpha)] = 0.1;
+    symbols.values[@backingInt(math.Symbol.r)] = 0.8;
+    symbols.values[@backingInt(math.Symbol.alpha)] = 0.1;
     const result = try parsed.expression.compute(allocator, .{ .symbols = &symbols });
     defer result.unref();
     var out: std.ArrayList(u8) = .empty;

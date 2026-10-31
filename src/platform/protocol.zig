@@ -3287,22 +3287,22 @@ fn checkPlatform(comptime platform: type) void {
     checkBrowserOptions(label, platform.PlatformBrowserOptions);
     // Every public inline function here is an operation.
     const protocol = @This();
-    for (@typeInfo(protocol).@"struct".decls) |decl| {
-        const expected = switch (@typeInfo(@TypeOf(@field(protocol, decl.name)))) {
+    for (@typeInfo(protocol).@"struct".decl_names) |decl_name| {
+        const expected = switch (@typeInfo(@TypeOf(@field(protocol, decl_name)))) {
             .@"fn" => |f| f,
             else => continue,
         };
-        if (expected.calling_convention != .@"inline") continue;
-        switch (conformance(platform, decl.name, expected)) {
+        if (expected.attrs.@"callconv" != .@"inline") continue;
+        switch (conformance(platform, decl_name, expected)) {
             .matches => {},
-            .missing => @compileError(label ++ " lacks protocol operation `" ++ decl.name ++ "`"),
-            .not_a_function => @compileError(label ++ ": `" ++ decl.name ++ "` is not a function"),
-            .mistyped => @compileError(label ++ ": `" ++ decl.name ++ "` is " ++
-                @typeName(@TypeOf(@field(platform, decl.name))) ++ "; the protocol's signature is " ++ signatureText(expected)),
+            .missing => @compileError(label ++ " lacks protocol operation `" ++ decl_name ++ "`"),
+            .not_a_function => @compileError(label ++ ": `" ++ decl_name ++ "` is not a function"),
+            .mistyped => @compileError(label ++ ": `" ++ decl_name ++ "` is " ++
+                @typeName(@TypeOf(@field(platform, decl_name))) ++ "; the protocol's signature is " ++ signatureText(expected)),
         }
         // In a test build, compile the implementation's function whole: a stub
         // nothing calls still has to type-check.
-        if (@import("builtin").is_test) _ = &@field(platform, decl.name);
+        if (@import("builtin").is_test) _ = &@field(platform, decl_name);
     }
 }
 
@@ -3321,8 +3321,8 @@ fn checkBrowserOptions(comptime label: []const u8, comptime T: type) void {
         else => @compileError(label ++ ": `PlatformBrowserOptions` must be an extern struct"),
     };
     if (info.layout != .@"extern") @compileError(label ++ ": `PlatformBrowserOptions` must be an extern struct (C-representable, contract 1.4)");
-    for (info.fields) |field| {
-        if (field.default_value_ptr == null) @compileError(label ++ ": `PlatformBrowserOptions." ++ field.name ++ "` needs a default, so `.{}` is valid");
+    for (info.field_names, info.field_attrs) |field_name, field_attrs| {
+        if (field_attrs.default_value_ptr == null) @compileError(label ++ ": `PlatformBrowserOptions." ++ field_name ++ "` needs a default, so `.{}` is valid");
     }
 }
 
@@ -3340,15 +3340,15 @@ pub fn conformance(comptime platform: type, comptime operation: []const u8, comp
         .@"fn" => |f| f,
         else => return .not_a_function,
     };
-    if (actual.is_generic or actual.return_type != expected.return_type or actual.params.len != expected.params.len) return .mistyped;
-    for (actual.params, expected.params) |a, e| {
-        if (a.type != e.type) return .mistyped;
+    if (actual.is_generic or actual.return_type != expected.return_type or actual.param_types.len != expected.param_types.len) return .mistyped;
+    for (actual.param_types, expected.param_types) |a, e| {
+        if (a != e) return .mistyped;
     }
     return .matches;
 }
 
 fn signatureText(comptime f: std.builtin.Type.Fn) []const u8 {
     var text: []const u8 = "fn (";
-    for (f.params, 0..) |p, i| text = text ++ (if (i == 0) "" else ", ") ++ @typeName(p.type.?);
+    for (f.param_types, 0..) |p, i| text = text ++ (if (i == 0) "" else ", ") ++ @typeName(p.?);
     return text ++ ") " ++ @typeName(f.return_type.?);
 }

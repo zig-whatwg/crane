@@ -245,7 +245,7 @@ pub const WptServer = struct {
             // Something serves the port. Remember the lockfile's pid only if it
             // is a live process; otherwise adopt with no pid, which `stop()`
             // already treats as "not ours to signal".
-            self.pid = if (lock) |l| (if (std.c.kill(l.pid, @enumFromInt(0)) == 0) l.pid else null) else null;
+            self.pid = if (lock) |l| (if (std.c.kill(l.pid, @fromBackingInt(@intCast(0))) == 0) l.pid else null) else null;
             self.we_spawned = false;
             return true;
         }
@@ -390,7 +390,7 @@ pub const WptServer = struct {
         clock.sleep(100 * std.time.ns_per_ms);
         // Signal 0 is the existence probe; a zombie answers it, and SIGKILL
         // to one is harmless.
-        if (std.c.kill(pid, @enumFromInt(0)) == 0) {
+        if (std.c.kill(pid, @fromBackingInt(@intCast(0))) == 0) {
             posix.kill(pid, posix.SIG.KILL) catch {};
         }
     }

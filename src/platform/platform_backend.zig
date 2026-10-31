@@ -310,8 +310,8 @@ pub const PlatformBackend = extern struct {
         var list: std.ArrayListUnmanaged(Capability) = .empty;
         errdefer list.deinit(allocator);
 
-        inline for (std.meta.fields(Capability)) |field| {
-            const cap: Capability = @enumFromInt(field.value);
+        inline for (@typeInfo(Capability).@"enum".field_values) |field_value| {
+            const cap: Capability = @fromBackingInt(@intCast(field_value));
             if (self.hasCapability(cap)) {
                 try list.append(allocator, cap);
             }

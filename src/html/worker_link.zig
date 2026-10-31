@@ -135,7 +135,7 @@ pub const WorkerLink = struct {
     /// script in it. False when the owner terminated the worker before it
     /// started - the caller runs nothing then, and ends.
     pub fn publishAgent(self: *WorkerLink, agent: *engine.Agent) bool {
-        std.Io.Threaded.mutexLock(&self.agent_lock);
+        std.Io.Threaded.mutexLockUncancelable(&self.agent_lock);
         defer std.Io.Threaded.mutexUnlock(&self.agent_lock);
         self.agent = agent;
         return self.runsTasks();
@@ -144,7 +144,7 @@ pub const WorkerLink = struct {
     /// The worker thread is about to destroy its agent: after this the owner
     /// can no longer reach it. The agent, for the caller to destroy.
     pub fn retireAgent(self: *WorkerLink) ?*engine.Agent {
-        std.Io.Threaded.mutexLock(&self.agent_lock);
+        std.Io.Threaded.mutexLockUncancelable(&self.agent_lock);
         defer std.Io.Threaded.mutexUnlock(&self.agent_lock);
         const agent = self.agent;
         self.agent = null;
@@ -167,7 +167,7 @@ pub const WorkerLink = struct {
         // terminate - is past its last task, and an abort requested now would
         // land in its teardown.
         if (moved) {
-            std.Io.Threaded.mutexLock(&self.agent_lock);
+            std.Io.Threaded.mutexLockUncancelable(&self.agent_lock);
             defer std.Io.Threaded.mutexUnlock(&self.agent_lock);
             if (self.agent) |agent| {
                 if (comptime engine.capabilities.script_abort != .unsupported) engine.abortRunningScript(agent);
@@ -207,7 +207,7 @@ pub const WorkerLink = struct {
 
     /// Record the thread the owner spawned for the worker.
     pub fn setThread(self: *WorkerLink, thread: std.Thread) void {
-        std.Io.Threaded.mutexLock(&self.thread_lock);
+        std.Io.Threaded.mutexLockUncancelable(&self.thread_lock);
         defer std.Io.Threaded.mutexUnlock(&self.thread_lock);
         std.debug.assert(self.thread == null);
         self.thread = thread;
@@ -218,7 +218,7 @@ pub const WorkerLink = struct {
     /// the Browser's end - and a second caller returns at once.
     pub fn join(self: *WorkerLink) void {
         const thread = blk: {
-            std.Io.Threaded.mutexLock(&self.thread_lock);
+            std.Io.Threaded.mutexLockUncancelable(&self.thread_lock);
             defer std.Io.Threaded.mutexUnlock(&self.thread_lock);
             const taken = self.thread;
             self.thread = null;
@@ -229,7 +229,7 @@ pub const WorkerLink = struct {
 
     /// Whether a thread is still waiting to be joined.
     pub fn hasThread(self: *WorkerLink) bool {
-        std.Io.Threaded.mutexLock(&self.thread_lock);
+        std.Io.Threaded.mutexLockUncancelable(&self.thread_lock);
         defer std.Io.Threaded.mutexUnlock(&self.thread_lock);
         return self.thread != null;
     }

@@ -173,7 +173,7 @@ pub const SlabAllocator = struct {
 
     /// Allocate an Instance with the given vtable
     pub fn alloc(self: *SlabAllocator, vtable: *const VTable) !*Instance {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         // Try to get a slot from the free list
         if (self.free_list) |slot| {
@@ -246,7 +246,7 @@ pub const SlabAllocator = struct {
     /// Free an Instance (return slot to free list). Its lifecycle flags stay
     /// until the slot is issued again.
     pub fn free(self: *SlabAllocator, inst: *Instance) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const slot: *Slot = @ptrCast(inst);
         slot.stamp = (slot.stamp & ~generation_mask) | dead_generation;
@@ -260,7 +260,7 @@ pub const SlabAllocator = struct {
 
     /// Get allocation statistics
     pub fn stats(self: *SlabAllocator) Stats {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return Stats{
             .total_slabs = self.total_slabs,

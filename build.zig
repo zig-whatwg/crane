@@ -3,6 +3,16 @@ const std = @import("std");
 /// std-only and pinned by `zig build test`.
 const runner_build_mode = @import("tests/wpt_runner/build_mode.zig");
 
+// Crane builds with a Zig from the 0.17.x branch pinned at 77c319a0f00a
+// (0.17.1-dev+77c319a0f0) until 0.17.1 ships. Zig 0.17.0 itself cannot build
+// aarch64-ios (ziglang/zig#37061) and its checkAllAllocationFailures lets
+// resizes reach SafeAllocator, so tests fail with NondeterministicMemoryUsage
+// (ziglang/zig#37142). build.zig.zon's minimum_zig_version is not enforced.
+comptime {
+    const v = @import("builtin").zig_version;
+    if (v.major == 0 and v.minor == 17 and v.patch == 0) @compileError("Crane does not build with Zig 0.17.0 (ziglang/zig#37061: aarch64-ios; #37142: checkAllAllocationFailures resizes): use the pinned 0.17.x-branch build 0.17.1-dev+77c319a0f0 (77c319a0f00a), or 0.17.1 once it ships");
+}
+
 // ============================================================================
 // Platform-Specific Storage Backend Configuration (Phase 9)
 // ============================================================================
@@ -745,6 +755,8 @@ const nghttp2_sources = [_][]const u8{
 /// Advisory only: `-Dsystem-curl` is a legitimate shortcut for work that never
 /// opens a WebSocket, so a missing feature must warn rather than fail.
 fn warnIfSystemCurlLacksWebSockets(b: *std.Build) void {
+    // A configure-time probe of the machine the configure cache cannot track.
+    b.graph.poisonCache();
     var code: u8 = 0;
     const features = b.runAllowFail(
         &.{ "curl-config", "--features" },
@@ -1100,16 +1112,18 @@ fn engineProtocolBinding(
 /// Queried rather than hardcoded: the SDK version moves with Xcode, and a stale
 /// path fails as missing libc headers rather than as a missing SDK. The option
 /// is for a machine whose xcode-select names the Command Line Tools, which
-/// have no iPhoneOS SDK: the pool hosts keep it that way for the macOS SDK
-/// choice (useBuildableMacosSdk) and link their Xcode's SDK at
-/// ~/sdks/iPhoneOS.sdk (`zig build check-ios -Dios-sdk=$HOME/sdks/iPhoneOS.sdk`).
+/// have no iPhoneOS SDK: the pool hosts are set up that way and link their
+/// Xcode's SDK at ~/sdks/iPhoneOS.sdk (`zig build check-ios -Dios-sdk=$HOME/sdks/iPhoneOS.sdk`).
 /// build() declares the option; this reads it, since one option cannot be
 /// declared twice and every caller here holds only `b`.
 fn iosSdkPath(b: *std.Build) ?[]const u8 {
-    if (b.user_input_options.get("ios-sdk")) |option| switch (option.value) {
+    if (b.user_input_options.get("ios-sdk")) |option| switch (option) {
         .scalar => |path| return path,
         else => {},
     };
+    // A configure-time probe of the machine: the configure cache cannot see
+    // what xcrun answers, so a cached configuration must not be reused.
+    b.graph.poisonCache();
     var code: u8 = 0;
     const out = b.runAllowFail(
         &.{ "xcrun", "--sdk", "iphoneos", "--show-sdk-path" },
@@ -1218,90 +1232,7 @@ fn addCImport(b: *std.Build, name: []const u8, target: std.Build.ResolvedTarget,
     if (target.result.os.tag == .ios) if (iosSdkPath(b)) |sdk| {
         translate.addSystemIncludePath(.{ .cwd_relative = b.fmt("{s}/usr/include", .{sdk}) });
     };
-    // On a machine whose default macOS SDK is 27+, the C libraries compile
-    // against the 26.x SDK through useBuildableMacosSdk's libc file, which a
-    // translate-c step does not take: give it that SDK's headers first, so the
-    // translation sees the declarations the libraries were built with.
-    if (target.result.os.tag == .macos) if (libcFileIncludeDir(b)) |dir| {
-        translate.addSystemIncludePath(.{ .cwd_relative = dir });
-    };
     return translate.createModule();
-}
-
-/// The `include_dir` of the build's libc file (useBuildableMacosSdk), or null.
-fn libcFileIncludeDir(b: *std.Build) ?[]const u8 {
-    const path = b.libc_file orelse return null;
-    const text = std.Io.Dir.cwd().readFileAlloc(b.graph.io, path, b.allocator, .limited(64 * 1024)) catch return null;
-    var lines = std.mem.splitScalar(u8, text, '\n');
-    while (lines.next()) |line| {
-        const key = "include_dir=";
-        if (std.mem.startsWith(u8, line, key) and line.len > key.len) return std.mem.trim(u8, line[key.len..], " \r\t");
-    }
-    return null;
-}
-
-/// Zig 0.16's bundled libcxx does not compile against the macOS 27 SDK:
-///
-///     zig/0.16.0/lib/libcxx/include/__random/clamp_to_integral.h:47:58:
-///       use of undeclared identifier 'INFINITY'
-///     error: sub-compilation of libcxx failed
-///
-/// The 27 SDK's `math.h` defines INFINITY only when clang modules are off or
-/// `<float.h>` cannot be included, leaving it to `<float.h>` - and the clang
-/// `float.h` Zig ships defines it only for C23 or a non-strict `-std`, which
-/// libcxx's strict C++ compile is not. So neither header defines it, and every
-/// build that has to recompile libcxx fails. It surfaced when Xcode updated
-/// itself from the 26.5 SDK to 27.0 on 2026-09-22, mid-build.
-///
-/// Zig picks the SDK with `xcrun --sdk macosx --show-sdk-path`, which ignores
-/// SDKROOT, so the override has to be a libc file: when the default SDK is 27
-/// or newer and the Command Line Tools still ship a 26.x SDK, every compile
-/// step builds against that. An explicit `--libc` always wins, and nothing
-/// happens off macOS or for a non-macOS target.
-fn useBuildableMacosSdk(b: *std.Build, target: std.Build.ResolvedTarget) void {
-    if (b.libc_file != null) return;
-    if (@import("builtin").os.tag != .macos) return;
-    if (target.result.os.tag != .macos or !target.query.isNativeOs()) return;
-
-    var code: u8 = 0;
-    const version_out = b.runAllowFail(
-        &.{ "xcrun", "--sdk", "macosx", "--show-sdk-version" },
-        &code,
-        .ignore,
-    ) catch return;
-    const version = std.mem.trim(u8, version_out, " \t\r\n");
-    const major_end = std.mem.indexOfScalar(u8, version, '.') orelse version.len;
-    const major = std.fmt.parseInt(u32, version[0..major_end], 10) catch return;
-    if (major < 27) return;
-
-    // The newest real 26.x SDK directory; `MacOSX26.sdk` is a symlink to it.
-    const sdk_root = "/Library/Developer/CommandLineTools/SDKs";
-    const io = b.graph.io;
-    var dir = std.Io.Dir.cwd().openDir(io, sdk_root, .{ .iterate = true }) catch return;
-    defer dir.close(io);
-    var best_name: ?[]const u8 = null;
-    var best_minor: u32 = 0;
-    var it = dir.iterate();
-    while (it.next(io) catch null) |entry| {
-        if (entry.kind != .directory) continue;
-        const prefix = "MacOSX26.";
-        const suffix = ".sdk";
-        if (!std.mem.startsWith(u8, entry.name, prefix) or !std.mem.endsWith(u8, entry.name, suffix)) continue;
-        const minor = std.fmt.parseInt(u32, entry.name[prefix.len .. entry.name.len - suffix.len], 10) catch continue;
-        if (best_name == null or minor > best_minor) {
-            best_minor = minor;
-            best_name = b.dupe(entry.name);
-        }
-    }
-    const sdk = b.fmt("{s}/{s}", .{ sdk_root, best_name orelse return });
-
-    const contents = b.fmt(
-        "include_dir={s}/usr/include\nsys_include_dir={s}/usr/include\ncrt_dir=\nmsvc_lib_dir=\nkernel32_lib_dir=\ngcc_dir=\n",
-        .{ sdk, sdk },
-    );
-    const libc_name = "crane-macos-sdk.libc";
-    b.cache_root.handle.writeFile(io, .{ .sub_path = libc_name, .data = contents }) catch return;
-    b.libc_file = b.cache_root.join(b.allocator, &.{libc_name}) catch return;
 }
 
 /// The platform a module graph is built for (docs/platform-protocol.md 1.1):
@@ -1600,7 +1531,6 @@ fn graphModule(b: *std.Build, public: bool, name: []const u8, options: std.Build
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    useBuildableMacosSdk(b, target);
 
     // Where this target's V8 archives live.
     //
@@ -1932,7 +1862,7 @@ pub fn build(b: *std.Build) void {
             "Optimize mode of wpt_runner and gc_bench (default: ReleaseSafe, or -Doptimize when given; Debug for a diagnosis)",
         ),
         optimize,
-        b.user_input_options.contains("optimize") or b.release_mode != .off,
+        b.user_input_options.contains("optimize") or b.graph.release_mode != .off,
     );
     const runner_graph = if (!runner_modes.ownCLibraries() or use_system_curl) testing_graph else runner_graph: {
         var runner_config = module_config;
@@ -3007,7 +2937,7 @@ pub fn build(b: *std.Build) void {
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| run_cmd.addArgs(args);
+    run_cmd.addPassthruArgs();
 
     const run_step = b.step("run", "Run the WHATWG CLI tool");
     run_step.dependOn(&run_cmd.step);
@@ -3410,7 +3340,10 @@ pub fn build(b: *std.Build) void {
     // present (every artifact that links V8 links it, and only these two ran
     // the scripts), fetch_v8 still cloned depot_tools, 772 MB, into a checkout
     // without one: every `zig build crane` in a lane mirror on chat.
-    const v8_prebuilt_present = if (b.build_root.handle.access(b.graph.io, v8_dir ++ "/out/static/obj/libv8_monolith.a", .{})) true else |_| false;
+    // A configure-time file probe: Zig 0.17 caches the configuration, and its
+    // cache cannot see this file appear or go, so the probe poisons it.
+    b.graph.poisonCache();
+    const v8_prebuilt_present = if (b.root.root_dir.handle.access(b.graph.io, v8_dir ++ "/out/static/obj/libv8_monolith.a", .{})) true else |_| false;
     if (!v8_prebuilt_present) {
         install_crane_lib.step.dependOn(&build_v8.step);
         install_crane_exe.step.dependOn(&build_v8.step);
@@ -3447,8 +3380,10 @@ pub fn build(b: *std.Build) void {
         // graph's C libraries instead of building a ReleaseSafe set of its own
         // for a binary that is never linked (build_mode.zig, ownCLibraries).
         const sub_build = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "check-target", b.fmt("-Dtarget={s}", .{triple}), "-Dplatform=linux", "-Dwpt-runner-optimize=Debug", "-j2" });
-        sub_build.addArgs(&.{ "--cache-dir", b.cache_root.path orelse "." });
-        sub_build.addArgs(&.{ "--global-cache-dir", b.graph.global_cache_root.path orelse "." });
+        // The parent's local cache; the global one travels as ZIG_GLOBAL_CACHE_DIR
+        // in the environment (Zig 0.17's `zig build` takes no --global-cache-dir).
+        sub_build.addArg("--cache-dir");
+        sub_build.addDirectoryArg2(std.Build.LazyPath.cache_root, .{ .make_absolute = true });
         sub_build.setCwd(b.path("."));
         // The sub-build decides what is up to date; this step always asks it.
         sub_build.has_side_effects = true;
@@ -3466,8 +3401,10 @@ pub fn build(b: *std.Build) void {
     const check_ios_step = b.step("check-ios", "lib-full for aarch64-ios (a static library: built, not linked); -Dios-sdk passes through");
     const ios_build = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "lib-full", "-Dtarget=aarch64-ios", "-j2" });
     if (ios_sdk_option) |sdk| ios_build.addArg(b.fmt("-Dios-sdk={s}", .{sdk}));
-    ios_build.addArgs(&.{ "--cache-dir", b.cache_root.path orelse "." });
-    ios_build.addArgs(&.{ "--global-cache-dir", b.graph.global_cache_root.path orelse "." });
+    // The parent's local cache; the global one travels as ZIG_GLOBAL_CACHE_DIR
+    // in the environment (Zig 0.17's `zig build` takes no --global-cache-dir).
+    ios_build.addArg("--cache-dir");
+    ios_build.addDirectoryArg2(std.Build.LazyPath.cache_root, .{ .make_absolute = true });
     ios_build.setCwd(b.path("."));
     ios_build.has_side_effects = true;
     check_ios_step.dependOn(&ios_build.step);
@@ -3497,7 +3434,7 @@ pub fn build(b: *std.Build) void {
 
     // Add run step for codegen (don't depend on full install to avoid build errors in other tools)
     const run_codegen = b.addRunArtifact(codegen_exe);
-    if (b.args) |args| run_codegen.addArgs(args);
+    run_codegen.addPassthruArgs();
 
     const codegen_step = b.step("codegen", "Run WebIDL code generator (use -- to pass args)");
     codegen_step.dependOn(&run_codegen.step);
@@ -3542,7 +3479,7 @@ pub fn build(b: *std.Build) void {
     // Add run step for idl-scanner
     const run_idl_scanner = b.addRunArtifact(idl_scanner_exe);
     run_idl_scanner.step.dependOn(b.getInstallStep());
-    if (b.args) |args| run_idl_scanner.addArgs(args);
+    run_idl_scanner.addPassthruArgs();
 
     const idl_scanner_step = b.step("idl-scanner", "Run IDL scanner tool (use -- to pass args)");
     idl_scanner_step.dependOn(&run_idl_scanner.step);
@@ -3565,7 +3502,7 @@ pub fn build(b: *std.Build) void {
     // Add run step for interfaces tool
     const run_interfaces_tool = b.addRunArtifact(interfaces_exe);
     run_interfaces_tool.step.dependOn(b.getInstallStep());
-    if (b.args) |args| run_interfaces_tool.addArgs(args);
+    run_interfaces_tool.addPassthruArgs();
 
     const interfaces_tool_step = b.step("interfaces-tool", "Run interfaces tool (use -- to pass args)");
     interfaces_tool_step.dependOn(&run_interfaces_tool.step);
@@ -3623,7 +3560,7 @@ pub fn build(b: *std.Build) void {
 
     // Add run step for Snapshot Generator (manual use)
     const run_snapshot_gen = b.addRunArtifact(snapshot_gen_exe);
-    if (b.args) |args| run_snapshot_gen.addArgs(args);
+    run_snapshot_gen.addPassthruArgs();
 
     const snapshot_gen_step = b.step("snapshot-generator", "Run snapshot generator (use -- to pass output path)");
     snapshot_gen_step.dependOn(&run_snapshot_gen.step);
@@ -3714,7 +3651,7 @@ pub fn build(b: *std.Build) void {
     // Add run step for REPL
     const run_repl = b.addRunArtifact(repl_exe);
     run_repl.step.dependOn(b.getInstallStep());
-    if (b.args) |args| run_repl.addArgs(args);
+    run_repl.addPassthruArgs();
 
     const repl_step = b.step("repl", "Run REPL tool (use -- to pass args)");
     repl_step.dependOn(&run_repl.step);
@@ -3790,7 +3727,7 @@ pub fn build(b: *std.Build) void {
     // installed artifacts, a root-module analysis of the tree each, before a
     // run that needs one of them.
     run_gc_bench.step.dependOn(&b.addInstallArtifact(gc_bench_exe, .{}).step);
-    if (b.args) |args| run_gc_bench.addArgs(args);
+    run_gc_bench.addPassthruArgs();
 
     const gc_bench_step = b.step("gc-bench", "Measure RSS across createElement+discard cycles (Phase 6)");
     gc_bench_step.dependOn(&run_gc_bench.step);
@@ -4047,7 +3984,7 @@ pub fn build(b: *std.Build) void {
     }
 
     // Pass through any additional args (e.g., category filters)
-    if (b.args) |args| run_wpt.addArgs(args);
+    run_wpt.addPassthruArgs();
 
     const wpt_step = b.step("wpt", "Run Web Platform Tests (use -- to pass args like url/)");
     wpt_step.dependOn(&run_wpt.step);
@@ -4090,7 +4027,7 @@ pub fn build(b: *std.Build) void {
     const wpt_site_run = b.addRunArtifact(wpt_site_exe);
     wpt_site_run.has_side_effects = true;
     wpt_site_run.setCwd(b.path("."));
-    if (b.args) |args| wpt_site_run.addArgs(args);
+    wpt_site_run.addPassthruArgs();
     const wpt_site_step = b.step("wpt-site", "Regenerate the public WPT results site in wpt-results/site/ (-- --out=<dir> --no-commit ...)");
     wpt_site_step.dependOn(&wpt_site_run.step);
     // The same, after the report: every regeneration of the report regenerates the site.
@@ -4350,7 +4287,7 @@ pub fn build(b: *std.Build) void {
     // It reads src/ and the baseline, which the build graph does not track.
     lint_impls.has_side_effects = true;
     lint_impls.setCwd(b.path("."));
-    if (b.args) |args| lint_impls.addArgs(args);
+    lint_impls.addPassthruArgs();
     lint_impls_step.dependOn(&lint_impls.step);
 
     // Part of `zig build test`: the check itself (never with --update) and the
@@ -4388,7 +4325,7 @@ pub fn build(b: *std.Build) void {
     // It reads src/, tests/, tools/ and the baseline, which the build graph does not track.
     lint_engine.has_side_effects = true;
     lint_engine.setCwd(b.path("."));
-    if (b.args) |args| lint_engine.addArgs(args);
+    lint_engine.addPassthruArgs();
     lint_engine_step.dependOn(&lint_engine.step);
 
     // Part of `zig build test`: the check itself (never with --update) and the
@@ -4426,7 +4363,7 @@ pub fn build(b: *std.Build) void {
     // It reads src/, tests/, tools/ and the baseline, which the build graph does not track.
     lint_platform.has_side_effects = true;
     lint_platform.setCwd(b.path("."));
-    if (b.args) |args| lint_platform.addArgs(args);
+    lint_platform.addPassthruArgs();
     lint_platform_step.dependOn(&lint_platform.step);
 
     // Part of `zig build test`: the check itself (never with --update) and the
@@ -4466,7 +4403,7 @@ pub fn build(b: *std.Build) void {
     // It reads src/ and the baseline, which the build graph does not track.
     lint_global_state.has_side_effects = true;
     lint_global_state.setCwd(b.path("."));
-    if (b.args) |args| lint_global_state.addArgs(args);
+    lint_global_state.addPassthruArgs();
     lint_global_state_step.dependOn(&lint_global_state.step);
 
     // Part of `zig build test`: the check itself (never with --update) and the
@@ -4485,7 +4422,7 @@ pub fn build(b: *std.Build) void {
     const idna_tables_run = b.addRunArtifact(idna_tables_exe);
     idna_tables_run.setCwd(b.path("."));
     idna_tables_run.has_side_effects = true;
-    if (b.args) |args| idna_tables_run.addArgs(args);
+    idna_tables_run.addPassthruArgs();
     b.step("idna-tables", "Regenerate the pinned Unicode IDNA tables from local inputs").dependOn(&idna_tables_run.step);
     test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = idna_tables_module })).step);
 
@@ -4499,7 +4436,7 @@ pub fn build(b: *std.Build) void {
     const case_tables_run = b.addRunArtifact(case_tables_exe);
     case_tables_run.setCwd(b.path("."));
     case_tables_run.has_side_effects = true;
-    if (b.args) |args| case_tables_run.addArgs(args);
+    case_tables_run.addPassthruArgs();
     b.step("case-tables", "Regenerate pinned Unicode full case mappings from local inputs").dependOn(&case_tables_run.step);
     test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = case_tables_module })).step);
 
@@ -4539,7 +4476,7 @@ pub fn build(b: *std.Build) void {
     // It reads src/ and the baseline, which the build graph does not track.
     lint_refcount.has_side_effects = true;
     lint_refcount.setCwd(b.path("."));
-    if (b.args) |args| lint_refcount.addArgs(args);
+    lint_refcount.addPassthruArgs();
     lint_refcount_step.dependOn(&lint_refcount.step);
     // Part of `zig build test`: the check itself (never with --update) and the
     // tool's own tests.
@@ -4549,60 +4486,6 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&lint_refcount_check.step);
     const lint_refcount_tests = b.addTest(.{ .root_module = lint_refcount_module });
     test_step.dependOn(&b.addRunArtifact(lint_refcount_tests).step);
-
-    // ========================================================================
-    // AUDIT: @hasDecl answers that Zig 0.17 changes (roadmap zig-017)
-    // ========================================================================
-    // Zig 0.17 answers @hasDecl true only for pub declarations; 0.16 also for a
-    // non-pub one declared in the same file as the @hasDecl, and nothing fails
-    // to compile when the answer flips. tools/hasdecl_audit.zig reads every
-    // @hasDecl through std.zig.Ast and lists those whose answer can change
-    // (`-- --all` lists every site; `-- --instrument=<dir>` writes probe copies
-    // that a 0.16 build turns into exact HASDECL-FLIP compile logs). A report,
-    // not a ratchet; its tests run in `zig build test`. Flips left for the port
-    // window because another lane holds their file are reported `known`.
-    const hasdecl_audit_module = b.createModule(.{
-        .root_source_file = b.path("tools/hasdecl_audit.zig"),
-        // Build-time tool: runs on the host, as codegen does.
-        .target = b.graph.host,
-        .optimize = .Debug,
-    });
-    const hasdecl_audit_exe = b.addExecutable(.{
-        .name = "hasdecl_audit",
-        .root_module = hasdecl_audit_module,
-    });
-    const hasdecl_audit = b.addRunArtifact(hasdecl_audit_exe);
-    // It reads the tree, which the build graph does not track.
-    hasdecl_audit.has_side_effects = true;
-    hasdecl_audit.setCwd(b.path("."));
-    if (b.args) |args| hasdecl_audit.addArgs(args);
-    b.step("hasdecl-audit", "List the @hasDecl answers Zig 0.17 changes (-- --all, -- --instrument=<dir>)").dependOn(&hasdecl_audit.step);
-    test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = hasdecl_audit_module })).step);
-
-    // ========================================================================
-    // CODEMOD: `a ** n` -> @splat (roadmap zig-017)
-    // ========================================================================
-    // Zig 0.17 removes array multiplication. tools/zig017/starstar_codemod.zig
-    // rewrites the forms @splat covers (the same meaning on 0.16 and 0.17) and
-    // lists the rest for a hand rewrite. A migration tool: the port window runs
-    // it over the files lanes held, then deletes it with hasdecl-audit once
-    // 0.17 is in and no site is left. Its tests run in `zig build test`.
-    const starstar_codemod_module = b.createModule(.{
-        .root_source_file = b.path("tools/zig017/starstar_codemod.zig"),
-        // Build-time tool: runs on the host, as codegen does.
-        .target = b.graph.host,
-        .optimize = .Debug,
-    });
-    const starstar_codemod = b.addRunArtifact(b.addExecutable(.{
-        .name = "starstar_codemod",
-        .root_module = starstar_codemod_module,
-    }));
-    // It reads and rewrites the files it is given, which the graph does not track.
-    starstar_codemod.has_side_effects = true;
-    starstar_codemod.setCwd(b.path("."));
-    if (b.args) |args| starstar_codemod.addArgs(args);
-    b.step("starstar-codemod", "Rewrite `a ** n` as @splat where it covers the form (-- [--dry-run] <file.zig>...)").dependOn(&starstar_codemod.step);
-    test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = starstar_codemod_module })).step);
 
     // ========================================================================
     // LINT: long-lived hash maps that never clear their tombstones
@@ -4632,7 +4515,7 @@ pub fn build(b: *std.Build) void {
     // It reads src/ and the baseline, which the build graph does not track.
     lint_tombstones.has_side_effects = true;
     lint_tombstones.setCwd(b.path("."));
-    if (b.args) |args| lint_tombstones.addArgs(args);
+    lint_tombstones.addPassthruArgs();
     lint_tombstones_step.dependOn(&lint_tombstones.step);
     // Part of `zig build test`: the check itself (never with --update) and the
     // tool's own tests.
@@ -4664,7 +4547,7 @@ pub fn build(b: *std.Build) void {
     const wpt_upload_package_run = b.addRunArtifact(wpt_upload_package_exe);
     wpt_upload_package_run.has_side_effects = true;
     wpt_upload_package_run.setCwd(b.path("."));
-    if (b.args) |args| wpt_upload_package_run.addArgs(args);
+    wpt_upload_package_run.addPassthruArgs();
     wpt_upload_package_step.dependOn(&wpt_upload_package_run.step);
     const wpt_upload_package_tests = b.addTest(.{ .root_module = wpt_upload_package_module });
     test_step.dependOn(&b.addRunArtifact(wpt_upload_package_tests).step);
@@ -4730,7 +4613,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(cldr_download_exe);
 
     const run_cldr_download = b.addRunArtifact(cldr_download_exe);
-    if (b.args) |args| run_cldr_download.addArgs(args);
+    run_cldr_download.addPassthruArgs();
 
     const cldr_download_step = b.step("cldr-download", "Download CLDR JSON data from Unicode");
     cldr_download_step.dependOn(&run_cldr_download.step);
@@ -4750,7 +4633,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(cldr_extract_exe);
 
     const run_cldr_extract = b.addRunArtifact(cldr_extract_exe);
-    if (b.args) |args| run_cldr_extract.addArgs(args);
+    run_cldr_extract.addPassthruArgs();
 
     const cldr_extract_step = b.step("cldr-extract", "Extract CLDR data to Zig source");
     cldr_extract_step.dependOn(&run_cldr_extract.step);
@@ -4770,7 +4653,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(cldr_encode_exe);
 
     const run_cldr_encode = b.addRunArtifact(cldr_encode_exe);
-    if (b.args) |args| run_cldr_encode.addArgs(args);
+    run_cldr_encode.addPassthruArgs();
 
     const cldr_encode_step = b.step("cldr-encode", "Encode CLDR data to binary format");
     cldr_encode_step.dependOn(&run_cldr_encode.step);
@@ -5240,7 +5123,7 @@ pub fn build(b: *std.Build) void {
     // check's binary (an install, a run, getEmittedBin) would link against the
     // stubs. Asked or not is known here, once every step exists.
     for ([_]*std.Build.Step.Compile{ crane_check, wpt_runner_check }) |check| {
-        if (check.generated_bin != null) std.debug.panic("build.zig: {s} is compile-only; nothing may ask for its binary (addCrossLibraryStubs)", .{check.name});
+        if (check.generated_bin != .none) std.debug.panic("build.zig: {s} is compile-only; nothing may ask for its binary (addCrossLibraryStubs)", .{check.name});
     }
 }
 

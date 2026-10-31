@@ -248,7 +248,7 @@ pub const NetworkContext = struct {
     /// use; null when curl cannot make one. curl's global state is
     /// initialized first (curl_backend's Transfer.create does).
     pub fn connectionShare(self: *NetworkContext) ?*Share {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         if (self.share_tried) return self.share;
         self.share_tried = true;
@@ -262,14 +262,14 @@ pub const NetworkContext = struct {
     /// Take `key` (a host and port) for `holder`'s handshake, or report that
     /// another connection's handshake to it is in flight.
     pub fn tryAcquireConnecting(self: *NetworkContext, key: []const u8, holder: *const anyopaque) Allocator.Error!bool {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return self.connecting.tryAcquire(self.allocator, key, holder);
     }
 
     /// Let go of whatever `holder` holds of the gate.
     pub fn releaseConnecting(self: *NetworkContext, holder: *const anyopaque) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         self.connecting.release(holder);
     }

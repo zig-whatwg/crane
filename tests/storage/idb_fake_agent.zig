@@ -25,7 +25,7 @@ pub const FakeAgent = struct {
     }
 
     pub fn close(self: *FakeAgent) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         self.closed = true;
         var queued = self.inbox;
         self.inbox = .empty;
@@ -44,7 +44,7 @@ pub const FakeAgent = struct {
 
     fn post(sink: *anyopaque, task: server.Task) bool {
         const self: *FakeAgent = @ptrCast(@alignCast(sink));
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         const accepted = !self.closed and if (self.inbox.append(self.allocator, task)) true else |_| false;
         std.Io.Threaded.mutexUnlock(&self.mutex);
         if (!accepted) task.drop(task.data);
@@ -57,7 +57,7 @@ pub const FakeAgent = struct {
     /// many ran.
     pub fn drain(self: *FakeAgent) usize {
         std.debug.assert(self.thread == std.Thread.getCurrentId());
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         var taken = self.inbox;
         self.inbox = .empty;
         std.Io.Threaded.mutexUnlock(&self.mutex);

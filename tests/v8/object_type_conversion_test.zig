@@ -16,7 +16,7 @@ const interfaces = @import("interfaces");
 const conversions = v8.conversions;
 
 /// structuredClone(value, options)'s `options`: `sequence<object> transfer = []`.
-const StructuredSerializeOptions = @FieldType(@typeInfo(@TypeOf(interfaces.Window.call_structuredClone)).@"fn".params[2].type.?, "value");
+const StructuredSerializeOptions = @FieldType(@typeInfo(@TypeOf(interfaces.Window.call_structuredClone)).@"fn".param_types[2].?, "value");
 
 const Env = struct {
     isolate: *ffi.Isolate,

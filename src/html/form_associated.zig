@@ -466,8 +466,8 @@ fn controlValidationState(element: *Instance) @import("dom").custom_elements.Val
         }
         const internals = ce.attachedInternals(element) orelse return .valid;
         const flags = ce.validityFlags(internals);
-        inline for (std.meta.fields(ce.ValidityFlags)) |field| {
-            if (@field(flags, field.name) orelse false) return .invalid;
+        inline for (comptime std.meta.fieldNames(ce.ValidityFlags)) |field_name| {
+            if (@field(flags, field_name) orelse false) return .invalid;
         }
         return .valid;
     }

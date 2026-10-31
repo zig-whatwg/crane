@@ -164,8 +164,8 @@ test "construction arguments travel the chain, and each must be taken by an impl
     defer testing.allocator.free(leaf);
 
     const with = try body(leaf, "    pub fn initWith(allocator: std.mem.Allocator, ctx: runtime.Context, args: anytype) !*runtime.Instance {");
-    try testing.expect(contains(with, "inline for (@typeInfo(@TypeOf(args)).@\"struct\".fields) |field| {"));
-    try testing.expect(contains(with, "if (comptime !takesConstructionArg(field.name)) @compileError(\"Leaf has no construction argument '\" ++ field.name ++ \"'\");"));
+    try testing.expect(contains(with, "inline for (@typeInfo(@TypeOf(args)).@\"struct\".field_names) |field_name| {"));
+    try testing.expect(contains(with, "if (comptime !takesConstructionArg(field_name)) @compileError(\"Leaf has no construction argument '\" ++ field_name ++ \"'\");"));
     try testing.expect(contains(with, "return initChain(allocator, State, &vtable, ctx, args);"));
 
     const takes = try body(leaf, "    pub fn takesConstructionArg(comptime name: []const u8) bool {");

@@ -253,7 +253,7 @@ pub const WorkQueue = struct {
 
     /// Add work item to queue
     pub fn push(self: *Self, item: WorkItem) !void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         try self.items.append(self.allocator, item);
@@ -262,7 +262,7 @@ pub const WorkQueue = struct {
 
     /// Get next work item (blocks if empty)
     pub fn pop(self: *Self) ?WorkItem {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         while (self.items.items.len == 0) {
@@ -282,7 +282,7 @@ pub const WorkQueue = struct {
 
     /// Try to get work item without blocking
     pub fn tryPop(self: *Self) ?WorkItem {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (self.items.items.len == 0) {
@@ -302,7 +302,7 @@ pub const WorkQueue = struct {
 
     /// Get queue length
     pub fn len(self: *Self) usize {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return self.items.items.len;
     }
@@ -350,7 +350,7 @@ pub const ConnectionPool = struct {
 
     /// Register a new connection
     pub fn register(self: *Self, path: []const u8) !u64 {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         const id = self.next_id.fetchAdd(1, .monotonic);
@@ -367,7 +367,7 @@ pub const ConnectionPool = struct {
 
     /// Mark connection as closed
     pub fn markClosed(self: *Self, id: u64) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (self.connections.getPtr(id)) |info| {
@@ -377,7 +377,7 @@ pub const ConnectionPool = struct {
 
     /// Get connection path
     pub fn getPath(self: *Self, id: u64) ?[]const u8 {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (self.connections.get(id)) |info| {
@@ -388,7 +388,7 @@ pub const ConnectionPool = struct {
 
     /// Check if connection is open
     pub fn isOpen(self: *Self, id: u64) bool {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (self.connections.get(id)) |info| {
@@ -399,7 +399,7 @@ pub const ConnectionPool = struct {
 
     /// Get count of open connections
     pub fn openCount(self: *Self) usize {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         var count: usize = 0;
@@ -613,7 +613,7 @@ pub const AsyncSQLite = struct {
         const req_id = self.next_request_id.fetchAdd(1, .monotonic);
 
         {
-            std.Io.Threaded.mutexLock(&self.mutex);
+            std.Io.Threaded.mutexLockUncancelable(&self.mutex);
             defer std.Io.Threaded.mutexUnlock(&self.mutex);
             try self.pending.put(self.allocator, req_id, null);
         }
@@ -629,7 +629,7 @@ pub const AsyncSQLite = struct {
         const req_id = self.next_request_id.fetchAdd(1, .monotonic);
 
         {
-            std.Io.Threaded.mutexLock(&self.mutex);
+            std.Io.Threaded.mutexLockUncancelable(&self.mutex);
             defer std.Io.Threaded.mutexUnlock(&self.mutex);
             try self.pending.put(self.allocator, req_id, null);
         }
@@ -642,7 +642,7 @@ pub const AsyncSQLite = struct {
 
     /// Check if a request is complete
     pub fn isComplete(self: *Self, request_id: u64) bool {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (self.pending.get(request_id)) |maybe_result| {
@@ -653,7 +653,7 @@ pub const AsyncSQLite = struct {
 
     /// Get result for a request (returns null if not complete)
     pub fn getResult(self: *Self, request_id: u64) ?WorkResult {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (self.pending.fetchRemove(request_id)) |kv| {

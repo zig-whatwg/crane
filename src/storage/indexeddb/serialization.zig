@@ -660,7 +660,7 @@ pub const BinaryFormat = struct {
 
     fn encodeValue(allocator: std.mem.Allocator, buffer: *std.ArrayListUnmanaged(u8), value: SerializedValue) EncodeError!void {
         // Write type tag
-        try buffer.append(allocator, @intFromEnum(value.type_tag));
+        try buffer.append(allocator, @backingInt(value.type_tag));
 
         // Write type-specific data
         switch (value.type_tag) {
@@ -716,7 +716,7 @@ pub const BinaryFormat = struct {
                 try encodeSetData(allocator, buffer, value.set_data);
             },
             .@"error" => {
-                try buffer.append(allocator, @intFromEnum(value.data.@"error".name));
+                try buffer.append(allocator, @backingInt(value.data.@"error".name));
                 if (value.data.@"error".message) |msg| {
                     try buffer.append(allocator, 1);
                     try writeLength(allocator, buffer, @intCast(msg.len));
@@ -797,7 +797,7 @@ pub const BinaryFormat = struct {
     fn decodeValue(allocator: std.mem.Allocator, bytes: []const u8, pos: *usize) DecodeError!SerializedValue {
         if (pos.* >= bytes.len) return error.UnexpectedEof;
 
-        const type_tag: SerializedType = @enumFromInt(bytes[pos.*]);
+        const type_tag: SerializedType = @fromBackingInt(@intCast(bytes[pos.*]));
         pos.* += 1;
 
         return switch (type_tag) {
@@ -950,7 +950,7 @@ pub const BinaryFormat = struct {
             },
             .@"error" => blk: {
                 if (pos.* >= bytes.len) return error.UnexpectedEof;
-                const name: ErrorName = @enumFromInt(bytes[pos.*]);
+                const name: ErrorName = @fromBackingInt(@intCast(bytes[pos.*]));
                 pos.* += 1;
 
                 if (pos.* >= bytes.len) return error.UnexpectedEof;

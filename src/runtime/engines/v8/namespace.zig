@@ -225,21 +225,21 @@ pub fn V8Namespace(comptime Namespace: type) type {
         // CSS alone has ~75 operations, each name scanned for an overload suffix.
         @setEvalBranchQuota(100_000);
         var method_list: []const MethodInfo = &.{};
-        for (ns_info.@"struct".decls) |decl| {
-            if (std.mem.startsWith(u8, decl.name, "call_") and !isFurtherOverload(decl.name)) {
-                const method_name = decl.name[5..]; // Remove "call_" prefix
-                const method_fn = @field(Namespace, decl.name);
+        for (ns_info.@"struct".decl_names) |decl_name| {
+            if (std.mem.startsWith(u8, decl_name, "call_") and !isFurtherOverload(decl_name)) {
+                const method_name = decl_name[5..]; // Remove "call_" prefix
+                const method_fn = @field(Namespace, decl_name);
                 const fn_info = @typeInfo(@TypeOf(method_fn));
 
                 if (fn_info != .@"fn") {
-                    @compileError("Expected function for " ++ decl.name);
+                    @compileError("Expected function for " ++ decl_name);
                 }
 
                 method_list = method_list ++ [_]MethodInfo{.{
                     .name = method_name,
-                    .zig_name = decl.name,
-                    .param_count = fn_info.@"fn".params.len,
-                    .length = webidlLength(Namespace, decl.name),
+                    .zig_name = decl_name,
+                    .param_count = fn_info.@"fn".param_types.len,
+                    .length = webidlLength(Namespace, decl_name),
                 }};
             }
         }
@@ -516,7 +516,7 @@ pub fn V8Namespace(comptime Namespace: type) type {
                     const callback = comptime generateCallback(.{
                         .name = set[0].function["call_".len..],
                         .zig_name = overload.function,
-                        .param_count = @typeInfo(@TypeOf(@field(Namespace, overload.function))).@"fn".params.len,
+                        .param_count = @typeInfo(@TypeOf(@field(Namespace, overload.function))).@"fn".param_types.len,
                     });
                     callback(info);
                     return true;
@@ -565,7 +565,7 @@ pub fn V8Namespace(comptime Namespace: type) type {
                     const argc = info.length();
                     const required_params = comptime blk: {
                         var count: usize = 0;
-                        for (fn_type_info.params) |param| {
+                        for (zig017ParamsOf(fn_type_info)) |param| {
                             const ParamType = param.type.?;
                             // Stop counting at variadic parameters or runtime.Context
                             if (ParamType == []const *const anyopaque or
@@ -624,7 +624,7 @@ pub fn V8Namespace(comptime Namespace: type) type {
                     defer releaseArguments(&args, converted, allocator);
 
                     // Extract each argument based on its type
-                    inline for (fn_type_info.params, 0..) |param, i| {
+                    inline for (zig017ParamsOf(fn_type_info), 0..) |param, i| {
                         const ParamType = param.type.?;
 
                         // Handle special case: runtime.Context - the
@@ -794,10 +794,10 @@ pub fn V8Namespace(comptime Namespace: type) type {
         /// operation's: bit i for the operation's argument i, which is
         /// parameter i once the realm parameters before it are skipped).
         fn argModeOf(comptime zig_name: []const u8, comptime param_index: usize) interface.ArgMode {
-            const params = @typeInfo(@TypeOf(@field(Namespace, zig_name))).@"fn".params;
+            const param_types = @typeInfo(@TypeOf(@field(Namespace, zig_name))).@"fn".param_types;
             comptime var argument_index: usize = 0;
-            inline for (params[0..param_index]) |param| {
-                if (param.type.? != runtime.Context) argument_index += 1;
+            inline for (param_types[0..param_index]) |param_type| {
+                if (param_type.? != runtime.Context) argument_index += 1;
             }
             const table = if (@hasDecl(Namespace, "restricted_floats")) Namespace.restricted_floats else .{};
             return .{ .restricted = interface.restrictedBit(interface.restrictedFloatTableMask(table, zig_name), argument_index) };
@@ -817,7 +817,7 @@ pub fn V8Namespace(comptime Namespace: type) type {
         /// slice) is not released: no namespace takes one today, and such an
         /// impl's use of the handle cannot be read off its value.
         fn releaseArguments(args: anytype, converted: usize, allocator: std.mem.Allocator) void {
-            const params = @typeInfo(@typeInfo(@TypeOf(args)).pointer.child).@"struct".fields;
+            const params = zig017FieldsOf(@typeInfo(@typeInfo(@TypeOf(args)).pointer.child).@"struct");
             inline for (params, 0..) |field, i| {
                 const P = field.type;
                 if (i < converted) {
@@ -914,4 +914,58 @@ test "V8Namespace extracts methods from namespace struct" {
     try testing.expectEqual(@as(usize, 2), Binding.all_methods.len);
     try testing.expectEqualStrings("foo", Binding.all_methods[0].name);
     try testing.expectEqualStrings("bar", Binding.all_methods[1].name);
+}
+
+// Zig 0.17 compat: Zig 0.17's @typeInfo is struct-of-arrays. These rebuild 0.16's lists
+// (comptime-only element types, so every call is evaluated at comptime).
+const Zig017Param = struct { type: ?type, is_generic: bool, is_noalias: bool };
+fn zig017ParamsOf(comptime info: @import("std").builtin.Type.Fn) [info.param_types.len]Zig017Param {
+    var out: [info.param_types.len]Zig017Param = undefined;
+    for (info.param_types, info.param_attrs, 0..) |t, a, i| out[i] = .{ .type = t, .is_generic = t == null, .is_noalias = a.@"noalias" };
+    return out;
+}
+const Zig017Decl = struct { name: [:0]const u8, comptime_only: type = void };
+fn zig017DeclsOf(comptime names: []const [:0]const u8) [names.len]Zig017Decl {
+    var out: [names.len]Zig017Decl = undefined;
+    for (names, 0..) |n, i| out[i] = .{ .name = n };
+    return out;
+}
+
+// Zig 0.17 compat: 0.16's StructField/UnionField/EnumField list, rebuilt at comptime from
+// Zig 0.17's struct-of-arrays @typeInfo (a comptime-only element type: calls run at comptime).
+const Zig017Field = struct {
+    name: [:0]const u8,
+    type: type = void,
+    default_value_ptr: ?*const anyopaque = null,
+    is_comptime: bool = false,
+    alignment: ?usize = null,
+    value: comptime_int = 0,
+
+    pub fn defaultValue(comptime f: Zig017Field) ?f.type {
+        const dp: *const f.type = @ptrCast(@alignCast(f.default_value_ptr orelse return null));
+        return dp.*;
+    }
+};
+fn zig017FieldsOf(comptime info: anytype) [info.field_names.len]Zig017Field {
+    var out: [info.field_names.len]Zig017Field = undefined;
+    if (@hasField(@TypeOf(info), "field_values")) {
+        for (info.field_names, info.field_values, 0..) |n, v, i| out[i] = .{ .name = n, .value = v };
+        return out;
+    }
+    for (info.field_names, info.field_types, info.field_attrs, 0..) |n, t, a, i| out[i] = .{
+        .name = n,
+        .type = t,
+        .default_value_ptr = if (@hasField(@TypeOf(a), "default_value_ptr")) a.default_value_ptr else null,
+        .is_comptime = if (@hasField(@TypeOf(a), "comptime")) a.@"comptime" else false,
+        .alignment = a.@"align",
+    };
+    return out;
+}
+fn zig017FieldsOfType(comptime T: type) [@import("std").meta.fieldNames(T).len]Zig017Field {
+    return switch (@typeInfo(T)) {
+        .@"struct" => |s| zig017FieldsOf(s),
+        .@"union" => |u| zig017FieldsOf(u),
+        .@"enum" => |e| zig017FieldsOf(e),
+        else => @compileError("zig017FieldsOfType: not a struct, union or enum"),
+    };
 }

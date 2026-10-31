@@ -25,7 +25,7 @@
     .fingerprint = 0x5635e07e060f11da, // Changing this has security and trust implications.
     // Tracks the earliest Zig version that the package considers to be a
     // supported use case.
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0",
     // This field is optional.
     // Each dependency must either provide a `url` and `hash`, or a `path`.
     // `zig build --fetch` can be used to fetch all dependencies of a package, recursively.
@@ -56,8 +56,8 @@
         // libcurl - HTTP client library for Fetch network requests
         // Static compilation via allyourcodebase package
         .curl = .{
-            .url = "git+https://github.com/allyourcodebase/curl#c59c65cd767951abfe9ac0b1e075e64733953361",
-            .hash = "curl-8.18.0-mFDAWPf7AACO9V1eofR62eABcrB1QQtT1a-DN5XumC53",
+            .url = "git+https://github.com/allyourcodebase/curl#5184bb9ff29cb0878be7983734c6852602570ea5",
+            .hash = "curl-8.18.0-mFDAWJ34AADFSd4AEhTLroKwtVlgX9N-T9lU_2qW-VAf",
             .lazy = true, // Only fetch when fetch module is used
         },
         // mbedTLS - TLS for libcurl, and WebCrypto's PSA/RSA/NIST-KW. The curl

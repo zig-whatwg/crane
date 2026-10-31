@@ -183,7 +183,7 @@ pub const IDBDatabase = struct {
     /// durable database's server's. Taken around every read or change of the
     /// map that may race another thread (a readwrite abort swaps entries).
     pub fn lockSchema(self: *const Self) void {
-        if (self.schemaMutex()) |mutex| std.Io.Threaded.mutexLock(mutex);
+        if (self.schemaMutex()) |mutex| std.Io.Threaded.mutexLockUncancelable(mutex);
     }
     pub fn unlockSchema(self: *const Self) void {
         if (self.schemaMutex()) |mutex| std.Io.Threaded.mutexUnlock(mutex);

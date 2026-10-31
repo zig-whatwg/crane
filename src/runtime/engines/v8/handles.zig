@@ -761,7 +761,7 @@ pub const V8Module = struct {
     /// Get module status
     pub fn getStatus(self: Self) HandleError!ffi.ModuleStatus {
         const p = self.ptr orelse return HandleError.HandleInvalid;
-        return @enumFromInt(ffi.v8_Module_GetStatus(p));
+        return @fromBackingInt(@intCast(ffi.v8_Module_GetStatus(p)));
     }
 };
 

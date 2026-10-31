@@ -36,8 +36,9 @@ test "ordinary image URLs fit call-local parsing storage" {
     defer page.close();
     try dom.document_internals.setURL(page.document, "http://web-platform.test:8000/crane/page.html");
     var fallback = std.testing.FailingAllocator.init(std.testing.allocator, .{});
-    var memory = std.heap.stackFallback(4096, fallback.allocator());
-    const allocator = memory.get();
+    var memory_buffer: [4096]u8 = undefined;
+    var memory: std.heap.BufferFirstAllocator = .init(&memory_buffer, fallback.allocator());
+    const allocator = memory.allocator();
     const url = (try dom.encoding_parse.encodingParseAndSerializeWithAllocator(allocator, page.element, "/images/green.png?ds1-image-cost=42")) orelse return error.InvalidURL;
     defer allocator.free(url);
     try std.testing.expectEqualStrings("http://web-platform.test:8000/images/green.png?ds1-image-cost=42", url);
@@ -57,8 +58,9 @@ test "long document-relative URLs use and release the fallback allocator" {
     defer std.testing.allocator.free(expected);
     var fallback = std.testing.FailingAllocator.init(std.testing.allocator, .{});
     {
-        var memory = std.heap.stackFallback(4096, fallback.allocator());
-        const allocator = memory.get();
+        var memory_buffer: [4096]u8 = undefined;
+        var memory: std.heap.BufferFirstAllocator = .init(&memory_buffer, fallback.allocator());
+        const allocator = memory.allocator();
         const url = (try dom.encoding_parse.encodingParseAndSerializeWithAllocator(allocator, page.element, input)) orelse return error.InvalidURL;
         defer allocator.free(url);
         try std.testing.expectEqualStrings(expected, url);
@@ -78,8 +80,9 @@ fn parseAtFailures(allocator: std.mem.Allocator, element: *runtime.Instance, inp
 }
 
 fn fallbackAtFailures(allocator: std.mem.Allocator, element: *runtime.Instance, input: []const u8, expected: []const u8) !void {
-    var memory = std.heap.stackFallback(4096, allocator);
-    const temporary = memory.get();
+    var memory_buffer: [4096]u8 = undefined;
+    var memory: std.heap.BufferFirstAllocator = .init(&memory_buffer, allocator);
+    const temporary = memory.allocator();
     const url = (try dom.encoding_parse.encodingParseAndSerializeWithAllocator(temporary, element, input)) orelse return error.InvalidURL;
     defer temporary.free(url);
     // Only this durable allocation is allowed to survive the lookup's stack.

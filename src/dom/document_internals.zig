@@ -713,7 +713,7 @@ pub fn addPrefetchHint(
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     if (internal.prefetch_hints.get(url)) |existing_eagerness| {
-        if (@intFromEnum(eagerness) < @intFromEnum(existing_eagerness)) {
+        if (@backingInt(eagerness) < @backingInt(existing_eagerness)) {
             internal.prefetch_hints.put(url, eagerness) catch return error.OutOfMemory;
         }
         return;

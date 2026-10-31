@@ -54,8 +54,9 @@ pub fn hasSurrogateCodePoint(bytes: []const u8) bool {
 
 /// A new V8 string of the code units `bytes` encodes as WTF-8. OWNED.
 pub fn stringFromWtf8(isolate: *ffi.Isolate, bytes: []const u8) EngineError!*ffi.Value {
-    var fallback = std.heap.stackFallback(2048, std.heap.c_allocator);
-    const allocator = fallback.get();
+    var fallback_buffer: [2048]u8 = undefined;
+    var fallback: std.heap.BufferFirstAllocator = .init(&fallback_buffer, std.heap.c_allocator);
+    const allocator = fallback.allocator();
     // Never more code units than bytes: each decodes from at least one.
     const units = allocator.alloc(u16, bytes.len) catch return EngineError.OutOfMemory;
     defer allocator.free(units);

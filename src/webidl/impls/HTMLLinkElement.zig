@@ -306,9 +306,9 @@ const LinkType = enum { none, stylesheet, preload, modulepreload, prefetch, icon
 fn asDestination(as: ?[]const u8) ?Destination {
     const value = as orelse return null;
     if (std.ascii.eqlIgnoreCase(value, "fetch")) return .empty;
-    inline for (@typeInfo(Destination).@"enum".fields) |field| {
-        if (field.value != @intFromEnum(Destination.empty) and keywordIs(field.name, value)) {
-            return @field(Destination, field.name);
+    inline for (@typeInfo(Destination).@"enum".field_names, @typeInfo(Destination).@"enum".field_values) |field_name, field_value| {
+        if (field_value != @backingInt(Destination.empty) and keywordIs(field_name, value)) {
+            return @field(Destination, field_name);
         }
     }
     return null;
@@ -378,9 +378,9 @@ fn supportedType(value: ?[]const u8) bool {
 /// case-insensitively, else the empty string.
 fn referrerPolicyState(value: ?[]const u8) ReferrerPolicy {
     const v = value orelse return .empty;
-    inline for (@typeInfo(ReferrerPolicy).@"enum".fields) |field| {
-        if (field.value != @intFromEnum(ReferrerPolicy.empty) and keywordIs(field.name, v)) {
-            return @field(ReferrerPolicy, field.name);
+    inline for (@typeInfo(ReferrerPolicy).@"enum".field_names, @typeInfo(ReferrerPolicy).@"enum".field_values) |field_name, field_value| {
+        if (field_value != @backingInt(ReferrerPolicy.empty) and keywordIs(field_name, v)) {
+            return @field(ReferrerPolicy, field_name);
         }
     }
     return .empty;

@@ -205,7 +205,7 @@ pub fn documentOfRule(rule: *Rule) ?*runtime.Instance {
 /// wrapper. The model's link is weak; rule and map trace each other.
 pub fn fontFeatureMapObject(rule: *Rule, owner: *runtime.Instance, block: @import("css").font_feature_values.Block) !*runtime.Instance {
     if (rule.data != .font_feature_values) return error.InvalidStateError;
-    const link = &rule.data.font_feature_values.objects[@intFromEnum(block)];
+    const link = &rule.data.font_feature_values.objects[@backingInt(block)];
     if (link.get()) |object| return object;
     const object = try interfaces.CSSFontFeatureValuesMap.initWith(owner.ctx.allocator, owner.ctx, .{
         .font_feature_values_of = rule,

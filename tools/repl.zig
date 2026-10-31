@@ -531,8 +531,8 @@ const Repl = struct {
             var raw = original_termios;
             raw.lflag.ICANON = false;
             raw.lflag.ECHO = false;
-            raw.cc[@intFromEnum(std.posix.V.MIN)] = 1;
-            raw.cc[@intFromEnum(std.posix.V.TIME)] = 0;
+            raw.cc[@backingInt(std.posix.V.MIN)] = 1;
+            raw.cc[@backingInt(std.posix.V.TIME)] = 0;
             try std.posix.tcsetattr(stdin.handle, .FLUSH, raw);
         }
         defer if (is_tty) {

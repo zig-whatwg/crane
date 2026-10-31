@@ -175,7 +175,7 @@ pub const Channel = struct {
     }
 
     fn lock(self: *Channel) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
     }
 
     fn unlock(self: *Channel) void {

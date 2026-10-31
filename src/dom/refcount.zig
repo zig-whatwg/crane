@@ -57,7 +57,7 @@ const log = std.log.scoped(.refcount);
 /// The Debug bookkeeping (ids, entries, stacks) exists only in Debug builds.
 /// Everything else - underflow, ref on a garbage node, the thread check in
 /// Debug - works in every mode.
-pub const tracking = builtin.mode == .Debug;
+pub const tracking = builtin.mode == .debug;
 
 /// What a violation does.
 pub const Mode = enum {
@@ -112,7 +112,7 @@ const trace_depth = 12;
 const Entry = struct {
     node: *NodeBase,
     kind: Kind,
-    addresses: [trace_depth]usize = [_]usize{0} ** trace_depth,
+    addresses: [trace_depth]usize = @as([trace_depth]usize, @splat(0)),
     address_count: usize = 0,
 };
 
@@ -558,8 +558,8 @@ var hooks: Hooks = .{};
 /// (runtime.lifetime) are this module's own and go in with them.
 pub fn install(owned: Hooks) void {
     process_start.assertInstalling();
-    inline for (@typeInfo(Hooks).@"struct".fields) |field| {
-        if (@field(owned, field.name)) |accessor| @field(hooks, field.name) = accessor;
+    inline for (@typeInfo(Hooks).@"struct".field_names) |field_name| {
+        if (@field(owned, field_name)) |accessor| @field(hooks, field_name) = accessor;
     }
     runtime.lifetime.install(.{ .acquire = wrapperAcquire, .release = wrapperRelease });
 }
@@ -1314,7 +1314,7 @@ fn nodeBaseOf(comptime T: type, ptr: *T) *NodeBase {
 fn assertNodeLike(comptime T: type) void {
     if (T == NodeBase) return;
     const info = @typeInfo(T);
-    if (info != .@"struct" or info.@"struct".fields.len == 0 or info.@"struct".fields[0].type != NodeBase) {
+    if (info != .@"struct" or info.@"struct".field_names.len == 0 or info.@"struct".field_types[0] != NodeBase) {
         @compileError("Ref(" ++ @typeName(T) ++ "): a counted type is NodeBase or a node struct with NodeBase as its first field");
     }
 }

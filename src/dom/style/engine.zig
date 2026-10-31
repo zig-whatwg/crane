@@ -453,7 +453,7 @@ pub const StyleEngine = struct {
     /// the active sheets and replace cached styles under the outer read
     /// (Codex row 61 Q16): a Debug build stops there.
     fn enterResolution(self: *StyleEngine) void {
-        if (builtin.mode == .Debug and self.resolving) @panic("dom.style.computedStyle re-entered while it resolves the same document");
+        if (builtin.mode == .debug and self.resolving) @panic("dom.style.computedStyle re-entered while it resolves the same document");
         self.resolving = true;
     }
 
@@ -951,7 +951,7 @@ fn colorSchemeMetaContent(element: *runtime.Instance) ?[]const u8 {
 
 /// The document's singleton states, by address and generation.
 fn singletonKey(document: *runtime.Instance) [5]u64 {
-    var key: [5]u64 = .{0} ** 5;
+    var key: [5]u64 = @splat(0);
     if (focused_area.get(document)) |d| if (d.isLive()) {
         key[0] = @intFromPtr(d.element) ^ d.generation;
     };
@@ -1328,7 +1328,7 @@ fn substitutedUrl(context: *const anyopaque, allocator: Allocator, base: []const
 /// DOM sibling relation; Q44 follows the newer outer-scope zero rule.
 /// The two-pass fill follows selector_matching's NthIndexCache design,
 /// but scalar records live on ElementStyle across separate style reads.
-fn treeCounts(context: *anyopaque) css.math_values.TreeCounts {
+pub fn treeCounts(context: *anyopaque) css.math_values.TreeCounts {
     const node: *NodeBase = @ptrCast(@alignCast(context));
     const parent = node.parent_node orelse return .{ .index = 1, .count = 1 };
     const element = instanceOf(node);
@@ -1592,7 +1592,7 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
             const next = 1 - current;
             const forwarded = try parts.forward(allocators[next], names.items, exported.value);
             names.deinit(allocators[current]);
-            buffers[current].fixed_buffer_allocator.reset();
+            buffers[current].first.fixed_buffer_allocator.reset();
             names = forwarded;
             current = next;
             part_root = host_root;
@@ -1916,11 +1916,11 @@ pub fn visitFontRules(document: *runtime.Instance, callback: anytype) !void {
 fn visitFontSheets(engine: *StyleEngine, document: *runtime.Instance, active: *Active, sheets: []const ActiveSheet, root: *runtime.Instance, callback: anytype) !void {
     const generation = engine.generation;
     const sheets_version = engine.sheets_version;
-    const tree_version = if (builtin.mode == .Debug) refcount.treeVersion(document) else null;
+    const tree_version = if (builtin.mode == .debug) refcount.treeVersion(document) else null;
     for (sheets) |sheet| for (sheet.contents.font_rules.items) |entry| {
         if (!sheet.contents.conditionHolds(entry.condition, &active.media)) continue;
         try callback.visit(entry.rule, root);
-        if (builtin.mode == .Debug) {
+        if (builtin.mode == .debug) {
             // Check before reading the next borrowed index entry: a callback
             // that edits/rebuilds a sheet could otherwise invalidate it.
             std.debug.assert(engine.generation == generation and engine.sheets_version == sheets_version);

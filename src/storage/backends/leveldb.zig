@@ -172,7 +172,7 @@ pub const LevelDBKeyEncoder = struct {
     /// Encode a database metadata key
     pub fn encodeDatabaseMeta(allocator: std.mem.Allocator, db_id: u32) ![]u8 {
         var result = try allocator.alloc(u8, 5);
-        result[0] = @intFromEnum(KeyPrefix.database_meta);
+        result[0] = @backingInt(KeyPrefix.database_meta);
         std.mem.writeInt(u32, result[1..5], db_id, .big);
         return result;
     }
@@ -180,7 +180,7 @@ pub const LevelDBKeyEncoder = struct {
     /// Encode an object store metadata key
     pub fn encodeObjectStoreMeta(allocator: std.mem.Allocator, db_id: u32, store_id: u32) ![]u8 {
         var result = try allocator.alloc(u8, 9);
-        result[0] = @intFromEnum(KeyPrefix.object_store_meta);
+        result[0] = @backingInt(KeyPrefix.object_store_meta);
         std.mem.writeInt(u32, result[1..5], db_id, .big);
         std.mem.writeInt(u32, result[5..9], store_id, .big);
         return result;
@@ -189,7 +189,7 @@ pub const LevelDBKeyEncoder = struct {
     /// Encode an object store data key
     pub fn encodeObjectStoreData(allocator: std.mem.Allocator, db_id: u32, store_id: u32, idb_key: []const u8) ![]u8 {
         var result = try allocator.alloc(u8, 9 + idb_key.len);
-        result[0] = @intFromEnum(KeyPrefix.object_store_data);
+        result[0] = @backingInt(KeyPrefix.object_store_data);
         std.mem.writeInt(u32, result[1..5], db_id, .big);
         std.mem.writeInt(u32, result[5..9], store_id, .big);
         @memcpy(result[9..], idb_key);
@@ -199,7 +199,7 @@ pub const LevelDBKeyEncoder = struct {
     /// Encode an index metadata key
     pub fn encodeIndexMeta(allocator: std.mem.Allocator, db_id: u32, store_id: u32, index_id: u32) ![]u8 {
         var result = try allocator.alloc(u8, 13);
-        result[0] = @intFromEnum(KeyPrefix.index_meta);
+        result[0] = @backingInt(KeyPrefix.index_meta);
         std.mem.writeInt(u32, result[1..5], db_id, .big);
         std.mem.writeInt(u32, result[5..9], store_id, .big);
         std.mem.writeInt(u32, result[9..13], index_id, .big);
@@ -210,7 +210,7 @@ pub const LevelDBKeyEncoder = struct {
     pub fn encodeIndexData(allocator: std.mem.Allocator, db_id: u32, store_id: u32, index_id: u32, index_key: []const u8, primary_key: []const u8) ![]u8 {
         // Format: [prefix][db_id][store_id][index_id][index_key_len:4][index_key][primary_key]
         var result = try allocator.alloc(u8, 17 + index_key.len + primary_key.len);
-        result[0] = @intFromEnum(KeyPrefix.index_data);
+        result[0] = @backingInt(KeyPrefix.index_data);
         std.mem.writeInt(u32, result[1..5], db_id, .big);
         std.mem.writeInt(u32, result[5..9], store_id, .big);
         std.mem.writeInt(u32, result[9..13], index_id, .big);
@@ -223,7 +223,7 @@ pub const LevelDBKeyEncoder = struct {
     /// Encode a range start key for object store iteration
     pub fn encodeObjectStoreRangeStart(allocator: std.mem.Allocator, db_id: u32, store_id: u32) ![]u8 {
         var result = try allocator.alloc(u8, 9);
-        result[0] = @intFromEnum(KeyPrefix.object_store_data);
+        result[0] = @backingInt(KeyPrefix.object_store_data);
         std.mem.writeInt(u32, result[1..5], db_id, .big);
         std.mem.writeInt(u32, result[5..9], store_id, .big);
         return result;
@@ -233,7 +233,7 @@ pub const LevelDBKeyEncoder = struct {
     pub fn encodeObjectStoreRangeEnd(allocator: std.mem.Allocator, db_id: u32, store_id: u32) ![]u8 {
         // Use store_id + 1 to get exclusive end
         var result = try allocator.alloc(u8, 9);
-        result[0] = @intFromEnum(KeyPrefix.object_store_data);
+        result[0] = @backingInt(KeyPrefix.object_store_data);
         std.mem.writeInt(u32, result[1..5], db_id, .big);
         std.mem.writeInt(u32, result[5..9], store_id +| 1, .big);
         return result;
@@ -242,7 +242,7 @@ pub const LevelDBKeyEncoder = struct {
     /// Extract IDBKEY from an object store data key
     pub fn extractIDBKey(full_key: []const u8) ?[]const u8 {
         if (full_key.len < 9) return null;
-        if (full_key[0] != @intFromEnum(KeyPrefix.object_store_data)) return null;
+        if (full_key[0] != @backingInt(KeyPrefix.object_store_data)) return null;
         return full_key[9..];
     }
 };
@@ -267,7 +267,7 @@ pub fn leveldbComparator(state: ?*anyopaque, a_ptr: [*]const u8, a_len: usize, b
     const first_byte = a[0];
 
     // Only apply IDBKEY comparison for our known data prefixes
-    if (first_byte == @intFromEnum(KeyPrefix.object_store_data)) {
+    if (first_byte == @backingInt(KeyPrefix.object_store_data)) {
         // Compare db_id, store_id first
         if (a.len < 9 or b.len < 9) {
             return if (a.len < b.len) @as(c_int, -1) else if (a.len > b.len) @as(c_int, 1) else @as(c_int, 0);
@@ -287,7 +287,7 @@ pub fn leveldbComparator(state: ?*anyopaque, a_ptr: [*]const u8, a_len: usize, b
 
         // Compare IDBKEY portion
         return sqlite.idbkeyCollation(null, @intCast(a.len - 9), a.ptr + 9, @intCast(b.len - 9), b.ptr + 9);
-    } else if (first_byte == @intFromEnum(KeyPrefix.index_data)) {
+    } else if (first_byte == @backingInt(KeyPrefix.index_data)) {
         // Similar handling for index data
         if (a.len < 13 or b.len < 13) {
             return if (a.len < b.len) @as(c_int, -1) else if (a.len > b.len) @as(c_int, 1) else @as(c_int, 0);
@@ -926,7 +926,7 @@ test "LevelDBKeyEncoder - database meta key" {
     const key = try LevelDBKeyEncoder.encodeDatabaseMeta(allocator, 1);
     defer allocator.free(key);
 
-    try std.testing.expectEqual(@as(u8, @intFromEnum(KeyPrefix.database_meta)), key[0]);
+    try std.testing.expectEqual(@as(u8, @backingInt(KeyPrefix.database_meta)), key[0]);
     try std.testing.expectEqual(@as(usize, 5), key.len);
 }
 
@@ -939,7 +939,7 @@ test "LevelDBKeyEncoder - object store data key" {
     const key = try LevelDBKeyEncoder.encodeObjectStoreData(allocator, 1, 2, idb_key);
     defer allocator.free(key);
 
-    try std.testing.expectEqual(@as(u8, @intFromEnum(KeyPrefix.object_store_data)), key[0]);
+    try std.testing.expectEqual(@as(u8, @backingInt(KeyPrefix.object_store_data)), key[0]);
     try std.testing.expectEqual(@as(usize, 9 + idb_key.len), key.len);
 }
 
@@ -959,8 +959,8 @@ test "LevelDBKeyEncoder - extract IDBKEY" {
 
 test "leveldbComparator - prefix ordering" {
     // database_meta < object_store_meta < object_store_data
-    const a = [_]u8{@intFromEnum(KeyPrefix.database_meta)};
-    const b = [_]u8{@intFromEnum(KeyPrefix.object_store_data)};
+    const a = [_]u8{@backingInt(KeyPrefix.database_meta)};
+    const b = [_]u8{@backingInt(KeyPrefix.object_store_data)};
 
     const result = leveldbComparator(null, &a, 1, &b, 1);
     try std.testing.expect(result < 0);

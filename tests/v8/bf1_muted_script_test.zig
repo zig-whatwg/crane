@@ -15,7 +15,7 @@ fn readMuted(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
 fn run(isolate: *ffi.Isolate, context: *ffi.Context, source: []const u8, muted: bool) !*ffi.Value {
     const text = ffi.v8_String_NewFromUtf8(isolate, source.ptr, @intCast(source.len)) orelse return error.NoString;
     defer ffi.v8_String_Dispose(text);
-    const compiled = if (comptime @typeInfo(@TypeOf(ffi.v8_Script_CompileWithHostDefined_Safe)).@"fn".params.len == 7)
+    const compiled = if (comptime @typeInfo(@TypeOf(ffi.v8_Script_CompileWithHostDefined_Safe)).@"fn".param_types.len == 7)
         ffi.v8_Script_CompileWithHostDefined_Safe(context, text, null, 0, 0, null, muted)
     else
         ffi.v8_Script_CompileWithHostDefined_Safe(context, text, null, 0, 0, null);

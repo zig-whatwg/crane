@@ -62,16 +62,26 @@ fn destroyMockIsolate(isolate: *v8.Isolate) void {
     testing.allocator.destroy(ptr);
 }
 
+/// A mock wrapper's storage. The cache arms a weak finalizer on every wrapper
+/// it takes (`armWeak` -> v8_Global_SetWeakFinalizer), and V8 reads the
+/// Global's first word as the location of its handle node and writes the
+/// node's flags, parameter and callback after it. The first word points at
+/// the storage itself, so the storage must hold a whole node: one u64 let V8
+/// write past the allocation - into its neighbours under 0.16's
+/// DebugAllocator, into a canary under 0.17's SafeAllocator, which reports it.
+const MockWrapperStorage = [8]u64;
+
 /// Create a mock V8 Object (wrapper) for testing
 fn createMockWrapper(allocator: std.mem.Allocator) !*v8.Object {
-    const wrapper_storage = try allocator.create(u64);
-    wrapper_storage.* = @intFromPtr(wrapper_storage); // Unique value per wrapper
+    const wrapper_storage = try allocator.create(MockWrapperStorage);
+    wrapper_storage.* = @splat(0);
+    wrapper_storage[0] = @intFromPtr(wrapper_storage); // Unique value per wrapper
     return @ptrCast(wrapper_storage);
 }
 
 /// Destroy mock V8 Object
 fn destroyMockWrapper(allocator: std.mem.Allocator, wrapper: *v8.Object) void {
-    const ptr: *u64 = @ptrCast(@alignCast(wrapper));
+    const ptr: *MockWrapperStorage = @ptrCast(@alignCast(wrapper));
     allocator.destroy(ptr);
 }
 

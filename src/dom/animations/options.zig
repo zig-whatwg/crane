@@ -78,10 +78,10 @@ pub fn fromOptionalEffectTiming(realm: runtime.Context, dict: anytype, easing_bu
     var input: OptionalTiming = .{
         .delay = dict.delay,
         .end_delay = dict.endDelay,
-        .fill = if (dict.fill) |f| @enumFromInt(@intFromEnum(f)) else null,
+        .fill = if (dict.fill) |f| @fromBackingInt(@intCast(@backingInt(f))) else null,
         .iteration_start = dict.iterationStart,
         .iterations = dict.iterations,
-        .direction = if (dict.direction) |d| @enumFromInt(@intFromEnum(d)) else null,
+        .direction = if (dict.direction) |d| @fromBackingInt(@intCast(@backingInt(d))) else null,
     };
     if (dict.duration) |value| input.duration = try durationOf(realm, value, allocator);
     if (dict.easing) |text| {
@@ -258,7 +258,7 @@ fn enumOf(comptime E: type, realm: runtime.Context, value: JSValue, comptime nam
         else => return err,
     };
     inline for (names, 0..) |name, i| {
-        if (std.mem.eql(u8, text, name)) return @enumFromInt(i);
+        if (std.mem.eql(u8, text, name)) return @fromBackingInt(@intCast(i));
     }
     return error.TypeError;
 }
@@ -288,11 +288,11 @@ pub fn parsePseudoElement(allocator: Allocator, value: ?[]const u8) error{ Synta
 
 /// getTiming()'s fill, direction and duration as the dictionary types.
 pub fn fillEnum(fill: timing_mod.FillMode) enums.FillMode {
-    return @enumFromInt(@intFromEnum(fill));
+    return @fromBackingInt(@intCast(@backingInt(fill)));
 }
 
 pub fn directionEnum(direction: timing_mod.Direction) enums.PlaybackDirection {
-    return @enumFromInt(@intFromEnum(direction));
+    return @fromBackingInt(@intCast(@backingInt(direction)));
 }
 
 test "pseudo-element parsing keeps supported names and rewrites legacy ones" {

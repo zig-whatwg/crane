@@ -44,7 +44,7 @@ pub const Clipboard = struct {
     /// Replace the contents with a copy of `items`; delivers when done, drops
     /// when out of memory (the write rejects).
     pub fn write(self: *Clipboard, items: *const platform.ClipboardItems, reply: platform.Reply(platform.Unit)) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         self.copyIn(items) catch {
             self.clear();
@@ -72,7 +72,7 @@ pub const Clipboard = struct {
     /// Deliver the contents, keeping only representations of `types` (all of
     /// them when `types` is empty). The value is borrowed for `deliver`.
     pub fn read(self: *Clipboard, types: []const platform.Str, reply: platform.Reply(platform.ClipboardItems)) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         var arena_state = std.heap.ArenaAllocator.init(self.allocator);
         defer arena_state.deinit();

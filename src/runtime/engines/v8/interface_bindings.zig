@@ -285,7 +285,7 @@ pub fn registerAllInterfaces(
     context: *v8.Context,
 ) void {
     @setEvalBranchQuota(200_000);
-    const iface_decls = @typeInfo(interfaces).@"struct".decls;
+    const iface_decls = zig017DeclsOf(@typeInfo(interfaces).@"struct".decl_names);
 
     // OPTIMIZATION: Cache global object - don't fetch it 1231 times. OWNED:
     // a handle to the global kept pins the realm (its proxy until detached).
@@ -364,7 +364,7 @@ pub fn registerAllTemplatesOnly(
 ) void {
     @setEvalBranchQuota(200_000);
     const template_registry = @import("template_registry.zig");
-    const iface_decls = @typeInfo(interfaces).@"struct".decls;
+    const iface_decls = zig017DeclsOf(@typeInfo(interfaces).@"struct".decl_names);
 
     // Get global object for reinstalling constructors
     const global = v8.v8_Context_Global(context) orelse return;
@@ -521,7 +521,7 @@ pub fn hideSecureContextInterfaceObjects(
     if (interface_mod.realmIsSecureContext(context)) return;
     const global = v8.v8_Context_Global(context) orelse return;
     defer v8.v8_Object_Dispose(global);
-    const iface_decls = @typeInfo(interfaces).@"struct".decls;
+    const iface_decls = zig017DeclsOf(@typeInfo(interfaces).@"struct".decl_names);
     inline for (iface_decls) |decl| {
         if (comptime shouldSkipInterface(decl.name)) continue;
         const InterfaceType = @field(interfaces, decl.name);
@@ -550,7 +550,7 @@ pub fn installForScope(
 ) void {
     @setEvalBranchQuota(200_000);
     if (@import("context_manager.zig").getEntry(context)) |entry| entry.exposure_scope = scope;
-    const iface_decls = @typeInfo(interfaces).@"struct".decls;
+    const iface_decls = zig017DeclsOf(@typeInfo(interfaces).@"struct".decl_names);
     const global = v8.v8_Context_Global(context) orelse return;
     defer v8.v8_Object_Dispose(global);
     // V8 13.1 Genesis copies the default snapshot global's properties even
@@ -966,7 +966,7 @@ fn registerLegacyInterfaceAliasesWithMode(
 
     // Register [LegacyWindowAlias] aliases from extended_attributes
     // Per WebIDL spec, [LegacyWindowAlias=Name] creates an alias on Window
-    const iface_decls = @typeInfo(interfaces).@"struct".decls;
+    const iface_decls = zig017DeclsOf(@typeInfo(interfaces).@"struct".decl_names);
     inline for (iface_decls) |decl| {
         if (comptime shouldSkipInterface(decl.name)) continue;
 
@@ -1046,8 +1046,8 @@ pub fn registerNamespacesGeneric(
     context: *v8.Context,
 ) void {
     @setEvalBranchQuota(50_000_000);
-    const ns_decls = @typeInfo(namespaces_mod).@"struct".decls;
-    const iface_decls = @typeInfo(interfaces).@"struct".decls;
+    const ns_decls = zig017DeclsOf(@typeInfo(namespaces_mod).@"struct".decl_names);
+    const iface_decls = zig017DeclsOf(@typeInfo(interfaces).@"struct".decl_names);
 
     inline for (ns_decls) |decl| {
         install_namespace: {
@@ -1262,7 +1262,7 @@ pub fn setupConstructorInheritance(
     // Note: We skip interfaces in the centralized skip list.
     @setEvalBranchQuota(200_000); // Increase quota for large number of interfaces
 
-    const decls = @typeInfo(interfaces).@"struct".decls;
+    const decls = zig017DeclsOf(@typeInfo(interfaces).@"struct".decl_names);
 
     inline for (decls) |decl| {
         // Skip problematic interfaces using centralized skip list
@@ -1457,11 +1457,11 @@ pub fn getOrCreateTemplateByName(
 /// Uses inline for to match interface name at runtime and create the appropriate template.
 pub inline fn installConditionalUnforgeablesByName(interface_name: []const u8, isolate: *v8.Isolate, context: *v8.Context, object: *v8.Object) void {
     @setEvalBranchQuota(10_000_000);
-    inline for (@typeInfo(interfaces).@"struct".decls) |decl| {
-        const InterfaceType = @field(interfaces, decl.name);
+    inline for (@typeInfo(interfaces).@"struct".decl_names) |decl_name| {
+        const InterfaceType = @field(interfaces, decl_name);
         if (@typeInfo(InterfaceType) != .@"struct" or !@hasDecl(InterfaceType, "Meta")) continue;
         if (comptime interface_mod.hasConditionalUnforgeables(InterfaceType)) {
-            if (std.mem.eql(u8, decl.name, interface_name)) {
+            if (std.mem.eql(u8, decl_name, interface_name)) {
                 V8Interface(InterfaceType).installConditionalUnforgeables(isolate, context, object);
                 return;
             }
@@ -1475,7 +1475,7 @@ pub fn createTemplateOnDemandByName(
 ) ?*v8.FunctionTemplate {
     @setEvalBranchQuota(10_000_000);
     const template_registry = @import("template_registry.zig");
-    const iface_decls = @typeInfo(interfaces).@"struct".decls;
+    const iface_decls = zig017DeclsOf(@typeInfo(interfaces).@"struct".decl_names);
 
     inline for (iface_decls) |decl| {
         const InterfaceType = @field(interfaces, decl.name);
@@ -1527,7 +1527,7 @@ pub fn materializeInterfaceObjectByName(
     context: *v8.Context,
 ) ?*v8.Function {
     @setEvalBranchQuota(10_000_000);
-    const iface_decls = @typeInfo(interfaces).@"struct".decls;
+    const iface_decls = zig017DeclsOf(@typeInfo(interfaces).@"struct".decl_names);
 
     inline for (iface_decls) |decl| {
         // At comptime, as registerAllTemplatesOnly does: a skipped interface's
@@ -1585,7 +1585,7 @@ pub fn registerPropertiesOnPrototypeByName(
 ) bool {
     @setEvalBranchQuota(200000);
 
-    const decls = @typeInfo(interfaces).@"struct".decls;
+    const decls = zig017DeclsOf(@typeInfo(interfaces).@"struct".decl_names);
 
     inline for (decls) |decl| {
         const T = @field(interfaces, decl.name);
@@ -1606,4 +1606,19 @@ pub fn registerPropertiesOnPrototypeByName(
     }
 
     return false;
+}
+
+// Zig 0.17 compat: Zig 0.17's @typeInfo is struct-of-arrays. These rebuild 0.16's lists
+// (comptime-only element types, so every call is evaluated at comptime).
+const Zig017Param = struct { type: ?type, is_generic: bool, is_noalias: bool };
+fn zig017ParamsOf(comptime info: @import("std").builtin.Type.Fn) [info.param_types.len]Zig017Param {
+    var out: [info.param_types.len]Zig017Param = undefined;
+    for (info.param_types, info.param_attrs, 0..) |t, a, i| out[i] = .{ .type = t, .is_generic = t == null, .is_noalias = a.@"noalias" };
+    return out;
+}
+const Zig017Decl = struct { name: [:0]const u8, comptime_only: type = void };
+fn zig017DeclsOf(comptime names: []const [:0]const u8) [names.len]Zig017Decl {
+    var out: [names.len]Zig017Decl = undefined;
+    for (names, 0..) |n, i| out[i] = .{ .name = n };
+    return out;
 }

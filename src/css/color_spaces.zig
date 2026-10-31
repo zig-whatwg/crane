@@ -35,14 +35,14 @@ pub const Space = enum {
     }
     pub fn parse(text: []const u8) ?Space {
         if (tokens.nameEql(text, "xyz")) return .xyz_d65;
-        inline for (@typeInfo(Space).@"enum".fields) |field| {
-            const space: Space = @enumFromInt(field.value);
+        inline for (@typeInfo(Space).@"enum".field_values) |field_value| {
+            const space: Space = @fromBackingInt(@intCast(field_value));
             if (tokens.nameEql(text, space.name())) return space;
         }
         return null;
     }
     pub fn predefined(self: Space) bool {
-        return @intFromEnum(self) <= @intFromEnum(Space.xyz_d65);
+        return @backingInt(self) <= @backingInt(Space.xyz_d65);
     }
     pub fn hue(self: Space) ?usize {
         return switch (self) {

@@ -66,14 +66,14 @@ pub const Sink = struct {
     /// could act on it, so a write error is dropped. Anything that must survive
     /// goes through `journal.zig` instead.
     pub fn print(self: *Sink, comptime fmt: []const u8, args: anytype) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         self.w.print(fmt, args) catch {};
     }
 
     /// Pushes everything buffered so far to the underlying sink.
     pub fn flush(self: *Sink) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         self.w.flush() catch {};
     }

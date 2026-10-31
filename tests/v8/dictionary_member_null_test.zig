@@ -26,13 +26,13 @@ const conversions = v8.conversions;
 /// (tests/v8 has no `dictionaries` import of its own).
 const dictionaries = struct {
     /// LockManager.request(name, options, callback)'s `options`.
-    const LockOptions = @typeInfo(@TypeOf(interfaces.LockManager.call_request__1)).@"fn".params[2].type.?;
+    const LockOptions = @typeInfo(@TypeOf(interfaces.LockManager.call_request__1)).@"fn".param_types[2].?;
     /// new Request(input, init)'s `init`.
-    const RequestInit = @FieldType(@typeInfo(@TypeOf(interfaces.Request.call_constructor)).@"fn".params[2].type.?, "value");
+    const RequestInit = @FieldType(@typeInfo(@TypeOf(interfaces.Request.call_constructor)).@"fn".param_types[2].?, "value");
     /// element.setHTML(html, options)'s `options`: `(Sanitizer or
     /// SanitizerConfig or SanitizerPresets) sanitizer = "default"`, an inline
     /// union typed runtime.JSValue.
-    const SetHTMLOptions = @FieldType(@typeInfo(@TypeOf(interfaces.Element.call_setHTML)).@"fn".params[2].type.?, "value");
+    const SetHTMLOptions = @FieldType(@typeInfo(@TypeOf(interfaces.Element.call_setHTML)).@"fn".param_types[2].?, "value");
 };
 
 const Env = struct {
@@ -64,8 +64,8 @@ fn eval(code: []const u8) !*ffi.Value {
     return ffi.v8_Script_Run(e.context, script) orelse error.RunFailed;
 }
 
-fn field(comptime T: type, comptime name: []const u8) std.builtin.Type.StructField {
-    inline for (std.meta.fields(T)) |f| {
+fn field(comptime T: type, comptime name: []const u8) Zig017Field {
+    inline for (zig017FieldsOfType(T)) |f| {
         if (comptime std.mem.eql(u8, f.name, name)) return f;
     }
     @compileError("no member " ++ name);
@@ -160,4 +160,32 @@ test "an inline union member typed JSValue keeps a present null apart from absen
     defer ffi.v8_Value_Dispose(absent);
     const omitted = try conversions.fromV8Value(dictionaries.SetHTMLOptions, testing.allocator, e.isolate, e.context, absent);
     try testing.expect(omitted.sanitizer == null);
+}
+
+// Zig 0.17 compat: 0.16's StructField/UnionField/EnumField list, rebuilt at comptime from
+// Zig 0.17's struct-of-arrays @typeInfo (a comptime-only element type: calls run at comptime).
+// The binding's own type: presentNullConvertsByType takes a conversions.Zig017Field.
+const Zig017Field = conversions.Zig017Field;
+fn zig017FieldsOf(comptime info: anytype) [info.field_names.len]Zig017Field {
+    var out: [info.field_names.len]Zig017Field = undefined;
+    if (@hasField(@TypeOf(info), "field_values")) {
+        for (info.field_names, info.field_values, 0..) |n, v, i| out[i] = .{ .name = n, .value = v };
+        return out;
+    }
+    for (info.field_names, info.field_types, info.field_attrs, 0..) |n, t, a, i| out[i] = .{
+        .name = n,
+        .type = t,
+        .default_value_ptr = if (@hasField(@TypeOf(a), "default_value_ptr")) a.default_value_ptr else null,
+        .is_comptime = if (@hasField(@TypeOf(a), "comptime")) a.@"comptime" else false,
+        .alignment = a.@"align",
+    };
+    return out;
+}
+fn zig017FieldsOfType(comptime T: type) [@import("std").meta.fieldNames(T).len]Zig017Field {
+    return switch (@typeInfo(T)) {
+        .@"struct" => |s| zig017FieldsOf(s),
+        .@"union" => |u| zig017FieldsOf(u),
+        .@"enum" => |e| zig017FieldsOf(e),
+        else => @compileError("zig017FieldsOfType: not a struct, union or enum"),
+    };
 }

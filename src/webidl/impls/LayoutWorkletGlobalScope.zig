@@ -112,10 +112,10 @@ fn layoutOptions(realm: runtime.Context, ctor: runtime.JSValue, allocator: std.m
         else => return error.TypeError,
     }
     if (try enumMember(realm, options.value, "childDisplay", allocator, &.{ "block", "normal" })) |index| {
-        child_display.* = @enumFromInt(index);
+        child_display.* = @fromBackingInt(@intCast(index));
     }
     if (try enumMember(realm, options.value, "sizing", allocator, &.{ "block-like", "manual" })) |index| {
-        sizing.* = @enumFromInt(index);
+        sizing.* = @fromBackingInt(@intCast(index));
     }
 }
 

@@ -17,7 +17,7 @@ test "longhand IDs have room beyond u8 without changing declaration or style lay
         @sizeOf(css.computed_style.ComputedStyle),
     });
     try testing.expect(@typeInfo(@typeInfo(Longhand).@"enum".tag_type).int.bits > 8);
-    try testing.expectEqual(@typeInfo(Longhand).@"enum".fields.len, Longhand.count);
+    try testing.expectEqual(@typeInfo(Longhand).@"enum".field_names.len, Longhand.count);
     try testing.expectEqual(Longhand.count, css.properties.lexicographic.len);
     try testing.expectEqual(Longhand.count, css.computed_style.initial_values.len);
     try testing.expectEqual(Longhand.count, css.cascade.default_path.len);

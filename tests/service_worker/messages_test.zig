@@ -186,7 +186,7 @@ fn clientMessage(allocator: std.mem.Allocator) !*manager_mod.ClientMessage {
 }
 
 fn eventsInFlight(manager: *Manager, worker_id: u64) u32 {
-    std.Io.Threaded.mutexLock(&manager.mutex);
+    std.Io.Threaded.mutexLockUncancelable(&manager.mutex);
     defer std.Io.Threaded.mutexUnlock(&manager.mutex);
     const worker = manager.registry.findWorker(worker_id) orelse return 0;
     return worker.events_in_flight;

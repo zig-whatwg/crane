@@ -63,12 +63,12 @@ test "conformance: a missing operation is missing, a non-function is not a funct
 test "conformance: the bound platform matches every operation" {
     @setEvalBranchQuota(100_000);
     comptime var count: usize = 0;
-    inline for (@typeInfo(platform).@"struct".decls) |decl| {
-        const T = @TypeOf(@field(platform, decl.name));
+    inline for (@typeInfo(platform).@"struct".decl_names) |decl_name| {
+        const T = @TypeOf(@field(platform, decl_name));
         if (@typeInfo(T) != .@"fn") continue;
         const f = @typeInfo(T).@"fn";
-        if (f.calling_convention != .@"inline") continue;
-        try testing.expectEqual(platform.Conformance.matches, comptime platform.conformance(platform.adapter, decl.name, f));
+        if (f.attrs.@"callconv" != .@"inline") continue;
+        try testing.expectEqual(platform.Conformance.matches, comptime platform.conformance(platform.adapter, decl_name, f));
         count += 1;
     }
     // Every operation of the contract is declared (section 6): pin the count,
@@ -83,7 +83,7 @@ test "conformance: the bound platform matches every operation" {
 test "withoutCapabilities forces exactly the named capabilities unsupported" {
     const without = comptime blk: {
         var all_native: platform.Capabilities = undefined;
-        for (@typeInfo(platform.Capabilities).@"struct".fields) |field| @field(all_native, field.name) = .native;
+        for (@typeInfo(platform.Capabilities).@"struct".field_names) |field_name| @field(all_native, field_name) = .native;
         break :blk platform.withoutCapabilities(all_native, &.{ "camera", "clipboard" });
     };
     try testing.expectEqual(platform.Support.unsupported, without.camera);
@@ -210,8 +210,12 @@ test "the storage engine: ordered keys, snapshot reads, commit and abort" {
     platform.abortTransaction(before);
     try platform.commitTransaction(write);
 
+    // Ended before deleteStore below, which frees the store this transaction
+    // points into (a deferred abort ran after it: a use-after-free that
+    // Zig 0.17's std.testing.allocator, a SafeAllocator, turns into a fault).
     const read = try platform.beginTransaction(store, .read);
-    defer platform.abortTransaction(read);
+    var read_open = true;
+    defer if (read_open) platform.abortTransaction(read);
     const value = (try platform.storeGet(read, allocator, platform.Bytes.from("a"))).?;
     defer allocator.free(value);
     try testing.expectEqualStrings("1", value);
@@ -232,6 +236,9 @@ test "the storage engine: ordered keys, snapshot reads, commit and abort" {
         try testing.expectEqualStrings(expected[0], keys[0]);
         try testing.expectEqualStrings(expected[1], keys[1]);
     }
+
+    platform.abortTransaction(read);
+    read_open = false;
 
     const aborted = try platform.beginTransaction(store, .write);
     try platform.storeDeleteRange(aborted, .all);

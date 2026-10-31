@@ -50,7 +50,7 @@ var init_mutex: std.Io.Mutex = .init;
 /// `gpa` must outlive the process and must itself be thread-safe:
 /// `Io.Threaded` allocates from it on worker threads.
 pub fn init(gpa: std.mem.Allocator) void {
-    std.Io.Threaded.mutexLock(&init_mutex);
+    std.Io.Threaded.mutexLockUncancelable(&init_mutex);
     defer std.Io.Threaded.mutexUnlock(&init_mutex);
     if (cached_io != null) return;
     threaded = .init(gpa, .{});
@@ -68,7 +68,7 @@ pub fn init(gpa: std.mem.Allocator) void {
 /// a second set of SIGIO/SIGPIPE handlers - and it carries the process
 /// environment, which a self-built `Threaded` does not (see `seedEnviron`).
 pub fn adopt(process_io: std.Io) void {
-    std.Io.Threaded.mutexLock(&init_mutex);
+    std.Io.Threaded.mutexLockUncancelable(&init_mutex);
     defer std.Io.Threaded.mutexUnlock(&init_mutex);
     if (cached_io != null) return;
     cached_io = process_io;
@@ -98,7 +98,7 @@ fn seedEnviron(t: *std.Io.Threaded) void {
 
 /// Release the process Io and restore the signal handlers `init` replaced.
 pub fn deinit() void {
-    std.Io.Threaded.mutexLock(&init_mutex);
+    std.Io.Threaded.mutexLockUncancelable(&init_mutex);
     defer std.Io.Threaded.mutexUnlock(&init_mutex);
     if (threaded) |*t| {
         t.deinit();

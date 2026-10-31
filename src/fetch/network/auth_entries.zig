@@ -98,7 +98,7 @@ pub const AuthEntries = struct {
 
     pub fn lookup(self: *AuthEntries, a: Allocator, partition: []const u8, origin: []const u8, path: []const u8) !?Credentials {
         if (self.isEmpty()) return null;
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const bucket = self.entries.getPtr(.{ .partition = partition, .origin = origin }) orelse return null;
         var best: ?*const Entry = null;
@@ -116,7 +116,7 @@ pub const AuthEntries = struct {
 
     pub fn put(self: *AuthEntries, partition: []const u8, origin: []const u8, realm: []const u8, path: []const u8, username: []const u8, password: []const u8) !void {
         if (self.max_entries == 0) return;
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const a = self.allocator;
         const key: Key = .{ .partition = partition, .origin = origin };
@@ -180,7 +180,7 @@ pub const AuthEntries = struct {
     /// A rejected older request must not remove newer credentials.
     pub fn removeMatching(self: *AuthEntries, partition: []const u8, origin: []const u8, realm: []const u8, username: ?[]const u8, password: ?[]const u8) void {
         if (self.isEmpty()) return;
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const key: Key = .{ .partition = partition, .origin = origin };
         const bucket = self.entries.getPtr(key) orelse return;
@@ -195,7 +195,7 @@ pub const AuthEntries = struct {
     }
     pub fn clear(self: *AuthEntries) void {
         if (self.isEmpty()) return;
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         var it = self.entries.iterator();
         while (it.next()) |bucket| {

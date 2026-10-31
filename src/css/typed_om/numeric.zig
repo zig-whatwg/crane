@@ -11,10 +11,10 @@ const values = @import("../style_values.zig");
 pub fn parseUnit(name: []const u8) ?math.Unit {
     if (std.mem.eql(u8, name, "number")) return .number;
     if (std.mem.eql(u8, name, "percent")) return .percent;
-    inline for (@typeInfo(math.Unit).@"enum".fields) |field| {
-        const unit: math.Unit = @enumFromInt(field.value);
+    inline for (@typeInfo(math.Unit).@"enum".field_names, @typeInfo(math.Unit).@"enum".field_values) |field_name, field_value| {
+        const unit: math.Unit = @fromBackingInt(@intCast(field_value));
         if (comptime unit != .number and unit != .percent) {
-            if (std.ascii.eqlIgnoreCase(name, field.name)) return unit;
+            if (std.ascii.eqlIgnoreCase(name, field_name)) return unit;
         }
     }
     return null;
@@ -38,8 +38,8 @@ pub const Error = error{Invalid};
 fn applyHint(value: Type, hint: Base) Error!Type {
     var result = value;
     if (hint != .percent) {
-        const h = @intFromEnum(hint);
-        const p = @intFromEnum(Base.percent);
+        const h = @backingInt(hint);
+        const p = @backingInt(Base.percent);
         result.powers[h] +%= result.powers[p];
         result.powers[p] = 0;
     }
@@ -62,13 +62,13 @@ pub fn addTypes(lhs: Type, rhs: Type) Error!Type {
     var b = rhs;
     try harmonize(&a, &b);
     if (std.mem.eql(i32, &a.powers, &b.powers)) return a;
-    const p = @intFromEnum(Base.percent);
+    const p = @backingInt(Base.percent);
     if (a.powers[p] == 0 and b.powers[p] == 0) return error.Invalid;
     var has_other = false;
     for (a.powers[0..p], b.powers[0..p]) |x, y| has_other = has_other or x != 0 or y != 0;
     if (!has_other) return error.Invalid;
     for (0..p) |index| {
-        const hint: Base = @enumFromInt(index);
+        const hint: Base = @fromBackingInt(@intCast(index));
         const x = applyHint(a, hint) catch continue;
         const y = applyHint(b, hint) catch continue;
         if (std.mem.eql(i32, &x.powers, &y.powers)) return x;

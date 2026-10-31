@@ -25,7 +25,7 @@ fn checkAttributes() !void {
     inline for (.{ .{ "ordinary", @as(c_int, 0) }, .{ "fixed", @as(c_int, 4) } }) |entry| {
         const name = ffi.v8_String_NewFromUtf8(isolate, entry[0].ptr, entry[0].len) orelse return error.NoString;
         defer ffi.v8_String_Dispose(name);
-        const ok = if (comptime @typeInfo(@TypeOf(ffi.v8_Object_SetAccessorPropertyChecked)).@"fn".params.len == 8)
+        const ok = if (comptime @typeInfo(@TypeOf(ffi.v8_Object_SetAccessorPropertyChecked)).@"fn".param_types.len == 8)
             ffi.v8_Object_SetAccessorPropertyChecked(global, context, name, getter, null, true, true, entry[1])
         else
             ffi.v8_Object_SetAccessorPropertyChecked(global, context, name, getter, null, true, true);

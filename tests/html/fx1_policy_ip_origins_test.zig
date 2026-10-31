@@ -258,11 +258,11 @@ fn extremeIPv4Policy(allocator: std.mem.Allocator) !void {
 
 test "policy origin parsing keeps the OOM-only contract at extreme IPv4 addresses" {
     const Result = @typeInfo(@TypeOf(policy.PermissionsPolicy.fromAllowAttributeOrigins)).@"fn".return_type.?;
-    const expected_errors: []const std.builtin.Type.Error = &.{.{ .name = "OutOfMemory" }};
-    const parse_errors = @typeInfo(@typeInfo(Result).error_union.error_set).error_set orelse return error.UnboundedErrorSet;
+    const expected_errors: []const [:0]const u8 = &.{"OutOfMemory"};
+    const parse_errors = @typeInfo(@typeInfo(Result).error_union.error_set).error_set.error_names orelse return error.UnboundedErrorSet;
     try std.testing.expectEqualDeep(expected_errors, parse_errors);
     const ReservationResult = @typeInfo(@TypeOf(@import("dom").policy_containers.inheritedDeferredFetchPolicy)).@"fn".return_type.?;
-    const reservation_errors = @typeInfo(@typeInfo(ReservationResult).error_union.error_set).error_set orelse return error.UnboundedErrorSet;
+    const reservation_errors = @typeInfo(@typeInfo(ReservationResult).error_union.error_set).error_set.error_names orelse return error.UnboundedErrorSet;
     try std.testing.expectEqualDeep(expected_errors, reservation_errors);
     try std.testing.checkAllAllocationFailures(std.testing.allocator, extremeIPv4Policy, .{});
 }

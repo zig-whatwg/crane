@@ -13,9 +13,9 @@ const runtime = @import("runtime");
 const JSValue = runtime.JSValue;
 
 test "an engine handle is only the engine's pointer" {
-    const fields = @typeInfo(JSValue.EngineHandle).@"struct".fields;
+    const fields = @typeInfo(JSValue.EngineHandle).@"struct".field_names;
     try std.testing.expectEqual(@as(usize, 1), fields.len);
-    try std.testing.expectEqualStrings("ptr", fields[0].name);
+    try std.testing.expectEqualStrings("ptr", fields[0]);
 }
 
 test "fromHandle names the pointer it is given" {

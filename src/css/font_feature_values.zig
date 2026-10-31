@@ -22,8 +22,8 @@ pub const Block = enum {
     }
 
     pub fn parse(name_text: []const u8) ?Block {
-        inline for (@typeInfo(Block).@"enum".fields) |field| {
-            const block: Block = @enumFromInt(field.value);
+        inline for (@typeInfo(Block).@"enum".field_values) |field_value| {
+            const block: Block = @fromBackingInt(@intCast(field_value));
             if (std.mem.eql(u8, name_text, block.name())) return block;
         }
         // Q33 probe (Chrome 156, Firefox 158, Safari 27, 2026-10-27):
@@ -105,7 +105,7 @@ pub const Data = struct {
     allocator: Allocator,
     font_families: *families.Families,
     font_display: ?FontDisplay = null,
-    maps: [6]Map = [1]Map{.{}} ** 6,
+    maps: [6]Map = @splat(.{}),
 
     pub fn deinit(self: *Data) void {
         self.font_families.unref();
@@ -113,7 +113,7 @@ pub const Data = struct {
     }
 
     pub fn map(self: *Data, block: Block) *Map {
-        return &self.maps[@intFromEnum(block)];
+        return &self.maps[@backingInt(block)];
     }
 
     pub fn setFamily(self: *Data, text: []const u8) Allocator.Error!bool {
@@ -134,9 +134,9 @@ pub const Data = struct {
             try out.appendSlice(allocator, @tagName(display));
             try out.appendSlice(allocator, "; ");
         }
-        inline for (@typeInfo(Block).@"enum".fields) |field| {
-            const block: Block = @enumFromInt(field.value);
-            const entries = &self.maps[field.value];
+        inline for (@typeInfo(Block).@"enum".field_values) |field_value| {
+            const block: Block = @fromBackingInt(@intCast(field_value));
+            const entries = &self.maps[field_value];
             if (entries.entries.count() != 0) {
                 try out.append(allocator, '@');
                 try out.appendSlice(allocator, block.name());
@@ -174,8 +174,8 @@ pub fn fromParsed(allocator: Allocator, parsed: *const rules.Rule) Allocator.Err
         var stream = properties.Stream.init(declaration.value);
         const token = stream.next();
         if (token.token_type != .ident or !stream.atEnd()) continue;
-        inline for (@typeInfo(FontDisplay).@"enum".fields) |field| {
-            if (tokens.nameEql(token.value, field.name)) data.font_display = @enumFromInt(field.value);
+        inline for (@typeInfo(FontDisplay).@"enum".field_names, @typeInfo(FontDisplay).@"enum".field_values) |field_name, field_value| {
+            if (tokens.nameEql(token.value, field_name)) data.font_display = @fromBackingInt(@intCast(field_value));
         }
     }
     for (parsed.children) |child| {

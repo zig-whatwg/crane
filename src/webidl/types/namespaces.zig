@@ -98,8 +98,8 @@ fn validateNamespaceDefinition(comptime Definition: type) void {
     switch (type_info) {
         .@"struct" => |struct_info| {
             // Check that there are no instance fields
-            if (struct_info.fields.len > 0) {
-                @compileError("Namespace '" ++ @typeName(Definition) ++ "' cannot have instance fields. Found " ++ std.fmt.comptimePrint("{d}", .{struct_info.fields.len}) ++ " fields. Use only functions (pub fn) and constants (pub const).");
+            if (struct_info.field_names.len > 0) {
+                @compileError("Namespace '" ++ @typeName(Definition) ++ "' cannot have instance fields. Found " ++ std.fmt.comptimePrint("{d}", .{struct_info.field_names.len}) ++ " fields. Use only functions (pub fn) and constants (pub const).");
             }
 
             // Note: In Zig 0.15+, struct decls don't have is_pub field

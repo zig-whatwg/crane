@@ -88,7 +88,7 @@ pub const TaskSink = struct {
     /// poster's thread, and the answer is false. So a caller never frees a
     /// posted task's data itself.
     pub fn post(self: *TaskSink, task: CrossThreadTask) bool {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         const accepted = if (self.closed) false else if (self.inbox.append(self.allocator, task)) true else |_| blk: {
             log.debug("out of memory posting a task; dropped", .{});
             break :blk false;
@@ -112,7 +112,7 @@ pub const TaskSink = struct {
     /// in the order it was posted. On OutOfMemory nothing moved, and the
     /// tasks stay for the next call.
     pub fn takeAll(self: *TaskSink, out: *std.ArrayListUnmanaged(CrossThreadTask), out_allocator: Allocator) Allocator.Error!void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         if (self.inbox.items.len == 0) return;
         try out.appendSlice(out_allocator, self.inbox.items);
@@ -121,7 +121,7 @@ pub const TaskSink = struct {
 
     /// Whether a task waits to be taken.
     pub fn hasPosted(self: *TaskSink) bool {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return self.inbox.items.len > 0;
     }
@@ -131,7 +131,7 @@ pub const TaskSink = struct {
     /// (to another sink) or release a reference to this one. Closing twice
     /// does nothing more.
     pub fn close(self: *TaskSink) void {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         self.closed = true;
         var queued = self.inbox;
         self.inbox = .empty;
@@ -143,7 +143,7 @@ pub const TaskSink = struct {
 
     /// Whether the sink is closed.
     pub fn isClosed(self: *TaskSink) bool {
-        std.Io.Threaded.mutexLock(&self.mutex);
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return self.closed;
     }

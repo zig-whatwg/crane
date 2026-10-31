@@ -55,8 +55,8 @@ pub fn FlattenedState(
             // Check own fields
             const own_info = @typeInfo(OwnFields);
             if (own_info == .@"struct") {
-                inline for (own_info.@"struct".fields) |field| {
-                    if (std.mem.eql(u8, field.name, name)) return true;
+                inline for (own_info.@"struct".field_names) |field_name| {
+                    if (std.mem.eql(u8, field_name, name)) return true;
                 }
             }
 
@@ -64,8 +64,8 @@ pub fn FlattenedState(
             const MixinStruct = MixinFieldsStruct(MixinTypes);
             const mixin_info = @typeInfo(MixinStruct);
             if (mixin_info == .@"struct") {
-                inline for (mixin_info.@"struct".fields) |field| {
-                    if (std.mem.eql(u8, field.name, name)) return true;
+                inline for (mixin_info.@"struct".field_names) |field_name| {
+                    if (std.mem.eql(u8, field_name, name)) return true;
                 }
             }
 
@@ -108,7 +108,7 @@ fn MixinFieldsStruct(comptime MixinTypes: []const type) type {
         if (mixin_info != .@"struct") {
             @compileError("Mixin type must be a struct");
         }
-        total_fields += mixin_info.@"struct".fields.len;
+        total_fields += mixin_info.@"struct".field_names.len;
     }
 
     // Build the three parallel arrays @Struct takes. Zig 0.16 removed @Type in
@@ -117,20 +117,16 @@ fn MixinFieldsStruct(comptime MixinTypes: []const type) type {
     // separately, so the single field array has to be split.
     var names: [total_fields][:0]const u8 = undefined;
     var types: [total_fields]type = undefined;
-    var attrs: [total_fields]std.builtin.Type.StructField.Attributes = undefined;
+    var attrs: [total_fields]std.builtin.Type.Struct.FieldAttributes = undefined;
     comptime var field_index: usize = 0;
 
     // Collect fields from all mixins
     inline for (MixinTypes) |MixinType| {
         const mixin_info = @typeInfo(MixinType).@"struct";
-        inline for (mixin_info.fields) |field| {
-            names[field_index] = field.name;
-            types[field_index] = field.type;
-            attrs[field_index] = .{
-                .@"comptime" = field.is_comptime,
-                .@"align" = field.alignment,
-                .default_value_ptr = field.default_value_ptr,
-            };
+        inline for (mixin_info.field_names, mixin_info.field_types, mixin_info.field_attrs) |field_name, field_type, field_attrs| {
+            names[field_index] = field_name;
+            types[field_index] = field_type;
+            attrs[field_index] = field_attrs;
             field_index += 1;
         }
     }
