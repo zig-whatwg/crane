@@ -335,6 +335,10 @@ border-spacing: 0px
 caption-side: top
 empty-cells: show
 table-layout: auto
+block-step-size: none
+block-step-insert: margin-box
+block-step-align: auto
+block-step-round: up
 == initial root and child / 0
 display: block
 == initial root and child / 1

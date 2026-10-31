@@ -268,6 +268,8 @@ pub fn clampFinal(l: Longhand, v: Value) Value {
 
 fn nonNegativeLengths(grammar: properties.Grammar) bool {
     return switch (grammar) {
+        // Rhythm1 §2.1: the final animated <length [0,∞]> is nonnegative.
+        .block_step_size => true,
         .length_percentage_nonneg, .size, .max_size, .line_width, .font_size, .column_size, .gap, .stroke_width, .perspective, .line_height, .flex_basis => true,
         else => false,
     };

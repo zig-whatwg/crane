@@ -438,6 +438,12 @@ pub const Longhand = enum(u16) {
     empty_cells,
     table_layout,
 
+    // CSS Rhythm 1 §§2.1–2.5: declaration values without used-size layout.
+    block_step_size,
+    block_step_insert,
+    block_step_align,
+    block_step_round,
+
     pub const count = @typeInfo(Longhand).@"enum".field_names.len;
 
     /// The property name.
@@ -619,6 +625,7 @@ pub const Grammar = enum {
     column_count,
     positive_integer,
     table_spacing,
+    block_step_size,
     column_size,
     scroll_snap,
     scroll_padding,
@@ -758,6 +765,11 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .box_decoration_break, .inherited = false, .initial = Value.kw(.slice), .grammar = .keywords, .keywords = &.{ .slice, .clone } },
         .{ .longhand = .orphans, .inherited = true, .initial = .{ .integer = 2 }, .grammar = .positive_integer },
         .{ .longhand = .widows, .inherited = true, .initial = .{ .integer = 2 }, .grammar = .positive_integer },
+        // Rhythm1 §§2.1–2.4: all four properties are non-inherited.
+        .{ .longhand = .block_step_size, .inherited = false, .initial = Value.kw(.none), .grammar = .block_step_size },
+        .{ .longhand = .block_step_insert, .inherited = false, .initial = Value.kw(.margin_box), .grammar = .keywords, .keywords = &.{ .margin_box, .padding_box, .content_box } },
+        .{ .longhand = .block_step_align, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .center, .start, .end } },
+        .{ .longhand = .block_step_round, .inherited = false, .initial = Value.kw(.up), .grammar = .keywords, .keywords = &.{ .up, .down, .nearest } },
         // Tables3 §§3.5 and 5.2: table-layout alone is not inherited.
         .{ .longhand = .border_collapse, .inherited = true, .initial = Value.kw(.separate), .grammar = .keywords, .keywords = &.{ .separate, .collapse } },
         .{ .longhand = .border_spacing, .inherited = true, .initial = .{ .corner_radius = .zero }, .grammar = .table_spacing },
@@ -1219,6 +1231,7 @@ pub const Shorthand = enum(u8) {
     scroll_padding,
     scroll_padding_block,
     scroll_padding_inline,
+    block_step,
 
     pub fn name(self: Shorthand) []const u8 {
         return switch (self) {
@@ -1293,6 +1306,7 @@ pub const Shorthand = enum(u8) {
             .line_clamp, ._webkit_line_clamp => &.{ .max_lines, .block_ellipsis, .@"continue" },
             .flex_flow => &.{ .flex_direction, .flex_wrap },
             .columns => &.{ .column_width, .column_count, .column_height },
+            .block_step => &@import("rhythm_values.zig").longhands,
             .column_rule, .row_rule, .rule, .rule_color, .rule_style, .rule_width, .rule_break, .rule_visibility_items, .column_rule_inset, .row_rule_inset, .rule_inset, .column_rule_inset_cap, .column_rule_inset_junction, .row_rule_inset_cap, .row_rule_inset_junction, .rule_inset_cap, .rule_inset_junction, .column_rule_inset_start, .column_rule_inset_end, .row_rule_inset_start, .row_rule_inset_end, .rule_inset_start, .rule_inset_end => @import("gap_decorations.zig").longhands(self),
             .scroll_margin => &.{ .scroll_margin_top, .scroll_margin_right, .scroll_margin_bottom, .scroll_margin_left },
             .scroll_margin_block => &.{ .scroll_margin_block_start, .scroll_margin_block_end },
@@ -1775,6 +1789,11 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         // Break3/4 §3.3: <integer [1,∞]>, including computed math bounds.
         .positive_integer => return @import("box_values.zig").consumeInteger(options, stream, 1),
         .table_spacing => return @import("table_values.zig").consumeSpacing(options, stream),
+        .block_step_size => {
+            // Rhythm1 §2.1: none | <length [0,∞]>, without percentages.
+            if (takeKeyword(stream, &.{.none})) |k| return Value.kw(k);
+            return lengthPercentage(options, stream, .{ .negative = false, .percent = false, .quirky = false });
+        },
         .column_size => {
             // Multicol 2 §§4.1–4.2: auto | <length [0,∞]>, no percentages.
             if (takeKeyword(stream, &.{.auto})) |k| return Value.kw(k);
@@ -2542,6 +2561,7 @@ fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *st
         .line_clamp, ._webkit_line_clamp => return @import("box_overflow_values.zig").parseClamp(options, s == ._webkit_line_clamp, stream, out),
         .flex_flow => return @import("box_values.zig").parseFlexFlow(options, stream, out),
         .columns => return @import("box_multicol_values.zig").parseColumns(options, stream, out),
+        .block_step => return @import("rhythm_values.zig").consume(options, stream, out),
         .column_rule, .row_rule, .rule, .rule_color, .rule_style, .rule_width, .rule_break, .rule_visibility_items, .column_rule_inset, .row_rule_inset, .rule_inset, .column_rule_inset_cap, .column_rule_inset_junction, .row_rule_inset_cap, .row_rule_inset_junction, .rule_inset_cap, .rule_inset_junction, .column_rule_inset_start, .column_rule_inset_end, .row_rule_inset_start, .row_rule_inset_end, .rule_inset_start, .rule_inset_end => return @import("gap_decorations.zig").parseShorthand(options, s, stream, out),
         .font_variant => return @import("font_variants.zig").parseShorthand(options, stream, out),
         .font => return @import("font_shorthand.zig").parse(options, stream, out),
@@ -3067,6 +3087,7 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
         .line_clamp, ._webkit_line_clamp => return @import("box_overflow_values.zig").serializeClamp(s == ._webkit_line_clamp, vs, out, allocator),
         .flex_flow => return @import("box_values.zig").serializeFlexFlow(vs, out, allocator),
         .columns => return @import("box_multicol_values.zig").serializeColumns(vs, out, allocator),
+        .block_step => return @import("rhythm_values.zig").serialize(vs, out, allocator),
         .column_rule, .row_rule, .rule, .rule_color, .rule_style, .rule_width, .rule_break, .rule_visibility_items, .column_rule_inset, .row_rule_inset, .rule_inset, .column_rule_inset_cap, .column_rule_inset_junction, .row_rule_inset_cap, .row_rule_inset_junction, .rule_inset_cap, .rule_inset_junction, .column_rule_inset_start, .column_rule_inset_end, .row_rule_inset_start, .row_rule_inset_end, .rule_inset_start, .rule_inset_end => return @import("gap_decorations.zig").serializeShorthand(s, vs, mode, out, allocator),
         .container => return @import("container_values.zig").serializeShorthand(vs, out, allocator),
         .font_variant => return @import("font_variants.zig").serialize(vs, out, allocator),

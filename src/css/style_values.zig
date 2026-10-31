@@ -389,6 +389,12 @@ pub const Keyword = enum(u16) {
     show,
     hide,
 
+    // CSS Rhythm 1 §§2.2 and 2.4.
+    margin_box,
+    padding_box,
+    up,
+    down,
+
     /// The keyword's CSS spelling.
     pub fn name(self: Keyword) []const u8 {
         return switch (self) {
