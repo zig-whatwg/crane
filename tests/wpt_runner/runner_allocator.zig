@@ -83,7 +83,7 @@ pub fn wantsAttribution(value: ?[]const u8) bool {
 /// ReleaseSafe six frames of _Builtins_CallApiCallbackGeneric. The counts are
 /// the same in every mode; only the traces need the Debug runner.
 pub fn tracesNote(mode: std.builtin.OptimizeMode, want_traces: bool) ?[]const u8 {
-    if (!want_traces or mode == .Debug) return null;
+    if (!want_traces or mode == .debug) return null;
     return "CRANE_LEAK_TRACES in an optimized runner: inlined allocations are traced from their callers' return addresses and the traces name no allocation site; build the Debug runner (-Dwpt-runner-optimize=Debug) for traces. Leak and double-free reports are complete in every mode.";
 }
 

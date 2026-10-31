@@ -62,6 +62,20 @@ pub fn runnerModes(runner_option: ?Mode, optimize: Mode, optimize_given: bool) R
     };
 }
 
+/// A mode's name as `-Doptimize` spells it, for the runner's banner
+/// (`wpt_runner: ReleaseSafe build (Crane modules Debug, C libraries
+/// ReleaseSafe)`, as AGENTS.md documents it). Zig 0.17 renamed the
+/// OptimizeMode tags to debug, safe, fast and small, so @tagName no longer
+/// gives these names.
+pub fn displayName(mode: Mode) []const u8 {
+    return switch (mode) {
+        .debug => "Debug",
+        .safe => "ReleaseSafe",
+        .fast => "ReleaseFast",
+        .small => "ReleaseSmall",
+    };
+}
+
 const testing = std.testing;
 
 test "the default runner is ReleaseSafe, its C libraries too, and Crane's modules keep Debug" {
@@ -103,4 +117,15 @@ test "an explicit release -Doptimize builds everything in that mode" {
     try testing.expectEqual(Mode.ReleaseFast, modes.root);
     try testing.expectEqual(Mode.ReleaseFast, modes.crane_modules);
     try testing.expect(!modes.ownCLibraries());
+}
+
+test "the banner names each mode as -Doptimize spells it" {
+    // AGENTS.md documents the runner's banner as `wpt_runner: ReleaseSafe build
+    // (Crane modules Debug, C libraries ReleaseSafe)`. Zig 0.17 renamed the
+    // OptimizeMode tags (debug, safe, fast, small), so @tagName no longer
+    // gives these names.
+    try testing.expectEqualStrings("Debug", displayName(.debug));
+    try testing.expectEqualStrings("ReleaseSafe", displayName(.safe));
+    try testing.expectEqualStrings("ReleaseFast", displayName(.fast));
+    try testing.expectEqualStrings("ReleaseSmall", displayName(.small));
 }

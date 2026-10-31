@@ -236,7 +236,7 @@ pub const EngineContext = struct {
     /// In debug builds, panics if the engine type doesn't match.
     /// In release builds, this is a no-op.
     pub fn assertEngineType(self: Self, expected: EngineType) void {
-        if (@import("builtin").mode == .Debug) {
+        if (@import("builtin").mode == .debug) {
             if (self.engine_type != expected and self.engine_type != .unknown) {
                 std.debug.panic(
                     "Engine type mismatch: expected {s}, got {s}",

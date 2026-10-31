@@ -2669,7 +2669,7 @@ pub fn call_execCommand(instance: *runtime.Instance, commandId: runtime.DOMStrin
         false,
         value_slice,
     ) catch |err| {
-        if (@import("builtin").mode == .Debug) {
+        if (@import("builtin").mode == .debug) {
             log.err("execCommand error: {any}", .{err});
         }
         return false;
@@ -3471,7 +3471,7 @@ pub fn call_getSelection(instance: *runtime.Instance) anyerror!?*runtime.Instanc
     // The document's one selection, made on first use.
     const selection = internal.selection orelse blk: {
         const made = interfaces.Selection.init(internal.allocator, instance.ctx) catch |err| {
-            if (@import("builtin").mode == .Debug) {
+            if (@import("builtin").mode == .debug) {
                 log.err("Failed to create Selection: {any}", .{err});
             }
             return null;
