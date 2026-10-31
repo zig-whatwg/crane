@@ -596,3 +596,51 @@ why = 9 -> 8 in the generation 196 sweep ('Main resource load matched with the c
 pair.1 = base 9/9; tip 9/9
 pair.2 = base 9/9; tip 9/9
 pair.3 = base 9/9; tip 9/9
+
+[html/browsers/history/the-location-interface/location-protocol-setter-non-broken.html]
+generation = 197
+kind = flake
+why = 10 -> 7 in the generation 197 sweep: "Set HTTP URL frame location.protocol to data/file/http+x" FAIL with SecurityError, a sweep-only failure (the sweep ran beside the Zig 0.17 port lanes' builds). Isolated, integrator 2026-10-31, base gen 196 (~/crane-frozen/main-c7ab229911) vs tip gen 197 (~/crane-frozen/main-9d21eafa7f), chat.local, --parallel=1, alternating base/tip three times (tmp/debug/gen197-pairs.log): 10/10 on both sides in every pair. Four of the six fail with SecurityError on a frame's cross-origin access under load: watch them in the next sweep.
+pair.1 = base 10/10; tip 10/10
+pair.2 = base 10/10; tip 10/10
+pair.3 = base 10/10; tip 10/10
+
+[html/browsers/origin/cross-origin-objects/cross-origin-objects.html]
+generation = 197
+kind = flake
+why = 81 -> 79 in the generation 197 sweep: "Only certain properties are accessible cross-origin (same-origin + document.domain)" and "(cross-site)" FAIL with SecurityError, a sweep-only failure (the sweep ran beside the Zig 0.17 port lanes' builds). Isolated, integrator 2026-10-31, base gen 196 (~/crane-frozen/main-c7ab229911) vs tip gen 197 (~/crane-frozen/main-9d21eafa7f), chat.local, --parallel=1, alternating base/tip three times (tmp/debug/gen197-pairs.log): 81/81 on both sides in every pair. Four of the six fail with SecurityError on a frame's cross-origin access under load: watch them in the next sweep.
+pair.1 = base 81/81; tip 81/81
+pair.2 = base 81/81; tip 81/81
+pair.3 = base 81/81; tip 81/81
+
+[html/browsers/history/the-location-interface/per-global.window.js]
+generation = 197
+kind = flake
+why = 3 -> 2 in the generation 197 sweep: "document.open() must not replace window.location" FAIL with SecurityError, a sweep-only failure (the sweep ran beside the Zig 0.17 port lanes' builds). Isolated, integrator 2026-10-31, base gen 196 (~/crane-frozen/main-c7ab229911) vs tip gen 197 (~/crane-frozen/main-9d21eafa7f), chat.local, --parallel=1, alternating base/tip three times (tmp/debug/gen197-pairs.log): 3/3 on both sides in every pair. Four of the six fail with SecurityError on a frame's cross-origin access under load: watch them in the next sweep.
+pair.1 = base 3/3; tip 3/3
+pair.2 = base 3/3; tip 3/3
+pair.3 = base 3/3; tip 3/3
+
+[html/browsers/history/the-session-history-of-browsing-contexts/navigation-in-onload.html]
+generation = 197
+kind = flake
+why = 1 -> 0 in the generation 197 sweep: "Navigation in onload handler" TIMEOUT (file TIMEOUT), a sweep-only failure (the sweep ran beside the Zig 0.17 port lanes' builds). Isolated, integrator 2026-10-31, base gen 196 (~/crane-frozen/main-c7ab229911) vs tip gen 197 (~/crane-frozen/main-9d21eafa7f), chat.local, --parallel=1, alternating base/tip three times (tmp/debug/gen197-pairs.log): 1/1 on both sides in every pair. Four of the six fail with SecurityError on a frame's cross-origin access under load: watch them in the next sweep.
+pair.1 = base 1/1; tip 1/1
+pair.2 = base 1/1; tip 1/1
+pair.3 = base 1/1; tip 1/1
+
+[html/browsers/origin/cross-origin-objects/cross-origin-objects-on-new-window.html]
+generation = 197
+kind = flake
+why = 1 -> 0 in the generation 197 sweep: the one subtest failed, a sweep-only failure (the sweep ran beside the Zig 0.17 port lanes' builds). Isolated, integrator 2026-10-31, base gen 196 (~/crane-frozen/main-c7ab229911) vs tip gen 197 (~/crane-frozen/main-9d21eafa7f), chat.local, --parallel=1, alternating base/tip three times (tmp/debug/gen197-pairs.log): 1/1 on both sides in every pair. Four of the six fail with SecurityError on a frame's cross-origin access under load: watch them in the next sweep.
+pair.1 = base 1/1; tip 1/1
+pair.2 = base 1/1; tip 1/1
+pair.3 = base 1/1; tip 1/1
+
+[html/semantics/scripting-1/the-script-element/module/dynamic-import/microtasks/basic.any.js]
+generation = 197
+kind = flake
+why = 9 -> 8 in the generation 197 sweep: the sharedworker variant's "import() should drain the microtask queue when fetching a new module" FAIL (expected 1000000 but got 3), a sweep-only failure (the sweep ran beside the Zig 0.17 port lanes' builds). Isolated, integrator 2026-10-31, base gen 196 (~/crane-frozen/main-c7ab229911) vs tip gen 197 (~/crane-frozen/main-9d21eafa7f), chat.local, --parallel=1, alternating base/tip three times (tmp/debug/gen197-pairs.log): 9/9 on both sides in every pair. Four of the six fail with SecurityError on a frame's cross-origin access under load: watch them in the next sweep.
+pair.1 = base 9/9; tip 9/9
+pair.2 = base 9/9; tip 9/9
+pair.3 = base 9/9; tip 9/9
