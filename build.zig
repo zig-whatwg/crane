@@ -3,6 +3,16 @@ const std = @import("std");
 /// std-only and pinned by `zig build test`.
 const runner_build_mode = @import("tests/wpt_runner/build_mode.zig");
 
+// Crane builds with a Zig from the 0.17.x branch pinned at 77c319a0f00a
+// (0.17.1-dev+77c319a0f0) until 0.17.1 ships. Zig 0.17.0 itself cannot build
+// aarch64-ios (ziglang/zig#37061) and its checkAllAllocationFailures lets
+// resizes reach SafeAllocator, so tests fail with NondeterministicMemoryUsage
+// (ziglang/zig#37142). build.zig.zon's minimum_zig_version is not enforced.
+comptime {
+    const v = @import("builtin").zig_version;
+    if (v.major == 0 and v.minor == 17 and v.patch == 0) @compileError("Crane does not build with Zig 0.17.0 (ziglang/zig#37061: aarch64-ios; #37142: checkAllAllocationFailures resizes): use the pinned 0.17.x-branch build 0.17.1-dev+77c319a0f0 (77c319a0f00a), or 0.17.1 once it ships");
+}
+
 // ============================================================================
 // Platform-Specific Storage Backend Configuration (Phase 9)
 // ============================================================================
