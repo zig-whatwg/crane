@@ -34,6 +34,8 @@ const Transfer = curl_backend.Transfer;
 const NetworkRequest = backend.NetworkRequest;
 const NetworkResponse = backend.NetworkResponse;
 const NetworkError = backend.NetworkError;
+const network_context = @import("network_context.zig");
+const NetworkContext = network_context.NetworkContext;
 
 const log = std.log.scoped(.network_scheduler);
 
@@ -91,6 +93,44 @@ pub const NetworkScheduler = struct {
         /// How the last attempt ended, from the moment curl reports it until
         /// `pump` delivers it.
         ended: ?curl.CURLcode = null,
+        /// Waiting for one of its destination's connection slots
+        /// (network_context.max_connections_per_host, Browser-wide): not in
+        /// the multi handle yet. `pump` starts it, in turn, once one is free.
+        slot_wait: bool = false,
+        /// When it began to wait (the monotonic clock, ns).
+        slot_wait_since_ns: i128 = 0,
+        /// The context whose slot it holds or waits for; null when it is not
+        /// limited (a request with no context - a unit test's - or no
+        /// destination, a URL `destinationOf` cannot read).
+        network: ?*NetworkContext = null,
+        destination_buf: [network_context.max_host_key]u8 = undefined,
+        destination_len: usize = 0,
+
+        fn destination(self: *const Job) []const u8 {
+            return self.destination_buf[0..self.destination_len];
+        }
+
+        /// One of its destination's slots, if one is free or it needs none.
+        /// Out of memory it goes ahead: a slot not recorded is a connection
+        /// too many, never a transfer that cannot start.
+        fn takeSlot(self: *Job) bool {
+            const context = self.network orelse return true;
+            return context.tryTakeConnectionSlot(self.destination(), self) catch true;
+        }
+
+        fn releaseSlot(self: *Job) void {
+            if (self.network) |context| context.releaseConnectionSlot(self);
+        }
+
+        /// The response came over `version`: an HTTP/2 destination shares one
+        /// connection among all its requests, so they take no slots from now
+        /// on (Chromium's HttpStreamFactory hands an existing SPDY session's
+        /// streams out without a socket).
+        fn noteVersion(self: *Job, version: backend.HttpVersion) void {
+            if (version != .http_2) return;
+            const context = self.network orelse return;
+            context.noteMultiplexed(self.destination()) catch {};
+        }
     };
 
     pub fn init(allocator: Allocator) NetworkScheduler {
@@ -153,15 +193,47 @@ pub const NetworkScheduler = struct {
             .transfer = transfer,
             .client = client,
         };
+        // HTTP/1.x connections to one destination are limited per Browser
+        // (network_context.max_connections_per_host): the context counts
+        // them, across its agents' schedulers.
+        if (request.network) |context| {
+            if (network_context.destinationOf(&job.destination_buf, request.url)) |found| {
+                job.network = context;
+                job.destination_len = found.len;
+            }
+        }
         self.jobs.append(self.allocator, job) catch return NetworkError.OutOfMemory;
         errdefer _ = self.jobs.pop();
 
-        transfer.prepareAttempt();
-        if (curl.multi_add_handle(multi, transfer.handle) != curl.CURLM_OK) return NetworkError.OutOfMemory;
-        job.running = true;
+        // Every slot of its destination is taken: it waits, in order, for
+        // `pump` to start it. Fetch "obtain a connection" has not begun, so
+        // none of its connection timing has either (step 4.1 sets the
+        // domain lookup start time when the lookup starts).
+        if (!job.takeSlot()) {
+            job.slot_wait = true;
+            job.slot_wait_since_ns = monotonicNs();
+            return job;
+        }
+        if (!self.addToMulti(job)) {
+            job.releaseSlot();
+            return NetworkError.OutOfMemory;
+        }
 
         kick(multi, transfer);
         return job;
+    }
+
+    /// The clock the scheduler reads: retry backoffs and slot waits.
+    fn monotonicNs() i128 {
+        return clock.monotonicNanos();
+    }
+
+    /// Start an attempt of `job`'s transfer: into the multi handle, running.
+    fn addToMulti(self: *NetworkScheduler, job: *Job) bool {
+        job.transfer.prepareAttempt();
+        if (curl.multi_add_handle(self.multi.?, job.transfer.handle) != curl.CURLM_OK) return false;
+        job.running = true;
+        return true;
     }
 
     /// Rounds `kick` gives a new transfer to put its request on the wire, and
@@ -210,6 +282,7 @@ pub const NetworkScheduler = struct {
         const index = self.indexOf(job) orelse return;
         _ = self.jobs.orderedRemove(index);
         if (job.running) _ = curl.multi_remove_handle(self.multi.?, job.transfer.handle);
+        job.releaseSlot();
         job.transfer.destroy();
         job.allocator.destroy(job);
     }
@@ -237,18 +310,41 @@ pub const NetworkScheduler = struct {
         return self.jobs.items.len;
     }
 
+    /// Transfers waiting for a connection slot (counted in `inFlight`).
+    pub fn waitingForSlot(self: *const NetworkScheduler) usize {
+        var n: usize = 0;
+        for (self.jobs.items) |job| {
+            if (job.slot_wait) n += 1;
+        }
+        return n;
+    }
+
     /// Move every transfer as far as it can go without waiting, and deliver
     /// the ones that finished. Returns whether any callback ran.
     pub fn pump(self: *NetworkScheduler) bool {
         const multi = self.multi orelse return false;
         if (self.jobs.items.len == 0) return false;
 
-        // A retry whose backoff has run out goes back in the multi handle.
-        const now = clock.monotonicNanos();
+        const now = monotonicNs();
+        // A transfer waiting for a connection slot starts once one is free -
+        // the jobs are in the order they were started, so each destination's
+        // wait in order; another agent of the Browser may have let one go.
+        // Its wait goes with its measurements (Transfer.queue_wait_ms): the
+        // connection's times start after it, and Resource Timing shows it
+        // between fetchStart and domainLookupStart, as a stalled request.
         for (self.jobs.items) |job| {
-            if (job.running or job.retry_at_ns > now) continue;
-            job.transfer.prepareAttempt();
-            if (curl.multi_add_handle(multi, job.transfer.handle) == curl.CURLM_OK) job.running = true;
+            if (!job.slot_wait or !job.takeSlot()) continue;
+            job.slot_wait = false;
+            job.transfer.queue_wait_ms = @as(f64, @floatFromInt(now - job.slot_wait_since_ns)) / std.time.ns_per_ms;
+            // Not added (out of memory): the loop below tries again, as it
+            // does a retry's.
+            _ = self.addToMulti(job);
+        }
+
+        // A retry whose backoff has run out goes back in the multi handle.
+        for (self.jobs.items) |job| {
+            if (job.running or job.slot_wait or job.ended != null or job.retry_at_ns > now) continue;
+            _ = self.addToMulti(job);
         }
 
         var still_running: c_int = 0;
@@ -278,7 +374,7 @@ pub const NetworkScheduler = struct {
             const backoff_ns = Transfer.retryBackoffNs(result, job.attempt) orelse continue;
             job.ended = null;
             job.attempt += 1;
-            job.retry_at_ns = clock.monotonicNanos() + backoff_ns;
+            job.retry_at_ns = monotonicNs() + backoff_ns;
             log.debug("{s} {s}: connection failed, retrying in {d}ms", .{ job.transfer.method, job.transfer.url, backoff_ns / std.time.ns_per_ms });
         }
 
@@ -304,6 +400,7 @@ pub const NetworkScheduler = struct {
                                 client.end(client.context, err);
                                 continue;
                             };
+                            job.noteVersion(head.http_version);
                             client.head(client.context, head);
                             continue;
                         }
@@ -330,6 +427,7 @@ pub const NetworkScheduler = struct {
                 .complete => |client| {
                     const result = job.ended.?;
                     const response = job.transfer.finish(result);
+                    if (response) |r| job.noteVersion(r.http_version) else |_| {}
                     self.finalize(job);
                     client.callback(client.context, response);
                 },
@@ -358,6 +456,7 @@ pub const NetworkScheduler = struct {
     /// free it, before its last callback runs.
     fn finalize(self: *NetworkScheduler, job: *Job) void {
         if (job.running) _ = curl.multi_remove_handle(self.multi.?, job.transfer.handle);
+        job.releaseSlot();
         const index = self.indexOf(job).?;
         _ = self.jobs.orderedRemove(index);
         job.transfer.destroy();

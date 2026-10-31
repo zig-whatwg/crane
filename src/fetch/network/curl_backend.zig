@@ -493,6 +493,10 @@ pub const Transfer = struct {
     /// The request's method and URL, for the diagnostics `finish` writes.
     method: []u8,
     url: []u8,
+    /// How long it waited for a connection slot before its first attempt
+    /// (the scheduler's, NetworkScheduler.pump), in milliseconds; its
+    /// response carries it (NetworkResponse.queue_wait_ms).
+    queue_wait_ms: f64 = 0,
 
     pub const Options = struct {
         /// The flag an abort sets. Null: the transfer's own.
@@ -706,6 +710,7 @@ pub const Transfer = struct {
             .app_connect_time_ms = connection.app_connect_time_ms,
             .pretransfer_time_ms = connection.pretransfer_time_ms,
             .connection_reused = connection.connection_reused,
+            .queue_wait_ms = self.queue_wait_ms,
         };
     }
 
@@ -886,6 +891,7 @@ pub const Transfer = struct {
             .pretransfer_time_ms = connection.pretransfer_time_ms,
             .redirect_time_ms = @intFromFloat(redirect_time * 1000),
             .connection_reused = connection.connection_reused,
+            .queue_wait_ms = self.queue_wait_ms,
         };
     }
 };
