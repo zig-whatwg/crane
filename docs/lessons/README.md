@@ -712,6 +712,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Refresh aliases with their realm's interface objects](codegen-refresh-aliases-with-their-realms-interface-objects.md) - An alias names the realm's interface object, not the current contents of another global property.
 
 ### Testing
+- [Testing: A runner finds its snapshot from its working directory, so run another build's runner from its own root](testing-a-runner-finds-its-snapshot-from-its-working-directory.md) - A runner binary is not self-contained: its snapshot comes from the directory it runs in. Run another build's runner from that build's root, with absolute paths.
 - [Testing: A test of teardown inside one script must make the engine collect inside it](testing-a-test-of-teardown-inside-one-script-must-make-the-engine-collect.md) - A RED and a GREEN that read the same number are a test that never reached the code - make the engine do in the test what it does in the page (here, collect inside the script).
 - [A shared limit below one file's parallel demand flakes by interleaving](testing-a-shared-limit-below-one-files-parallel-demand-flakes-by-interleaving.md) - A flake that hits only the subtests sharing a capped resource, always with the same message, is the cap: count the file's peak demand before looking for a race.
 - [QuotaExceededError needs its dedicated WPT assertion](testing-quotaexceedederror-needs-its-dedicated-wpt-assertion.md) - **Check what the harness actually asserts, and replace invalid failing evidence with a fresh BASE/TIP comparison.**

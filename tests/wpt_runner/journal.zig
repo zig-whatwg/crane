@@ -184,7 +184,65 @@ pub const Record = struct {
     native_contexts: u64 = 0,
 
     message: ?[]const u8 = null,
+
+    /// The same file's second run, when the run retried it
+    /// (`--retry-failures`: a file that did not fully pass runs once more at
+    /// the end of its run, in the same runner). It is evidence, never a
+    /// result: the fields above stay the FIRST run's, and nothing sums the
+    /// retry - a retry's pass is not a pass. Null for a file never retried,
+    /// and in journals written before retries existed.
+    retry: ?Retry = null,
+
+    /// The two runs disagree: the file is flaky in this run. A retried file
+    /// whose second run matches its first failed the same way twice.
+    pub fn isFlaky(self: Record) bool {
+        const r = self.retry orelse return false;
+        return r.status != self.status or r.passed != self.passed or r.failed != self.failed or
+            r.timed_out != self.timed_out or r.notrun != self.notrun;
+    }
 };
+
+/// What a retried file's second run reported (`Record.retry`).
+pub const Retry = struct {
+    status: Status,
+    passed: usize = 0,
+    failed: usize = 0,
+    timed_out: usize = 0,
+    notrun: usize = 0,
+    message: ?[]const u8 = null,
+};
+
+/// Whether a sweep retries this file: anything short of a full pass - a
+/// TIMEOUT, ERROR or CRASH, a subtest that did not pass, or an OK with
+/// nothing passing (a blocking file under the 0.1 gate's NONE-PASSED rule).
+/// Without expectations the runner cannot tell a deterministic failure from
+/// a flaky one; the retry is what tells them apart.
+pub fn wantsRetry(rec: Record) bool {
+    if (rec.status != .ok) return true;
+    if (rec.failed + rec.timed_out + rec.notrun > 0) return true;
+    return rec.passed == 0;
+}
+
+/// Attach each retry's result to the first record of the same path that has
+/// none yet. The retry worklist is the retried files in their own order,
+/// indexed from 0, so paths - not indices - match them. A retry's message is
+/// copied with `allocator`; a `Log` frees it with its records.
+pub fn annotateRetries(allocator: Allocator, records: []Record, retries: []const Record) !void {
+    for (retries) |r| {
+        for (records) |*rec| {
+            if (rec.retry != null or !std.mem.eql(u8, rec.path, r.path)) continue;
+            rec.retry = .{
+                .status = r.status,
+                .passed = r.passed,
+                .failed = r.failed,
+                .timed_out = r.timed_out,
+                .notrun = r.notrun,
+                .message = if (r.message) |m| try allocator.dupe(u8, m) else null,
+            };
+            break;
+        }
+    }
+}
 
 /// The message a file's record carries: the harness's own words for why a run
 /// went wrong ("Error: Illegal invocation", "Test timed out"), without which
@@ -264,6 +322,16 @@ pub fn writeRecord(w: *std.Io.Writer, rec: Record) !void {
         try w.writeAll(",\"message\":");
         try writeJsonString(w, msg);
     }
+    if (rec.retry) |r| {
+        try w.print(",\"flaky\":{s},\"retry\":{{\"status\":", .{if (rec.isFlaky()) "true" else "false"});
+        try writeJsonString(w, r.status.toString());
+        try w.print(",\"passed\":{d},\"failed\":{d},\"timed_out\":{d},\"notrun\":{d}", .{ r.passed, r.failed, r.timed_out, r.notrun });
+        if (r.message) |msg| {
+            try w.writeAll(",\"message\":");
+            try writeJsonString(w, msg);
+        }
+        try w.writeByte('}');
+    }
     try w.writeAll("}\n");
 }
 
@@ -337,6 +405,11 @@ pub const Summary = struct {
     /// "N checks, invariant held". Collapsing to violations alone loses that.
     ownership_checks: usize = 0,
     ownership_violations: usize = 0,
+
+    /// Files the run retried (`--retry-failures`), and of those, the ones
+    /// whose second run disagreed with the first (`Record.isFlaky`).
+    retried: usize = 0,
+    flaky: usize = 0,
 };
 
 /// A parsed journal.
@@ -345,11 +418,7 @@ pub const Log = struct {
     records: []Record,
 
     pub fn deinit(self: *Log) void {
-        for (self.records) |rec| {
-            self.allocator.free(rec.path);
-            self.allocator.free(rec.context);
-            if (rec.message) |m| self.allocator.free(m);
-        }
+        for (self.records) |rec| freeRecordStrings(self.allocator, rec);
         self.allocator.free(self.records);
     }
 
@@ -382,10 +451,41 @@ pub const Log = struct {
             s.subtests_notrun += rec.notrun;
             s.ownership_checks += rec.ownership_checks;
             s.ownership_violations += rec.ownership_violations;
+            if (rec.retry != null) s.retried += 1;
+            if (rec.isFlaky()) s.flaky += 1;
         }
         return s;
     }
 };
+
+fn freeRecordStrings(allocator: Allocator, rec: Record) void {
+    allocator.free(rec.path);
+    allocator.free(rec.context);
+    if (rec.message) |m| allocator.free(m);
+    if (rec.retry) |r| if (r.message) |m| allocator.free(m);
+}
+
+/// The `retry` object of a journal line, if it has one.
+fn parseRetry(allocator: Allocator, obj: std.json.ObjectMap) !?Retry {
+    const v = obj.get("retry") orelse return null;
+    const r = switch (v) {
+        .object => |o| o,
+        else => return null,
+    };
+    const status_str = switch (r.get("status") orelse return null) {
+        .string => |s| s,
+        else => return null,
+    };
+    const status = Status.fromString(status_str) orelse return null;
+    return .{
+        .status = status,
+        .passed = jsonUint(r, "passed"),
+        .failed = jsonUint(r, "failed"),
+        .timed_out = jsonUint(r, "timed_out"),
+        .notrun = jsonUint(r, "notrun"),
+        .message = try jsonString(allocator, r, "message"),
+    };
+}
 
 fn jsonUint(obj: std.json.ObjectMap, key: []const u8) usize {
     const v = obj.get(key) orelse return 0;
@@ -412,11 +512,7 @@ fn jsonString(allocator: Allocator, obj: std.json.ObjectMap, key: []const u8) !?
 pub fn parseLines(allocator: Allocator, bytes: []const u8) !Log {
     var records: std.ArrayListUnmanaged(Record) = .empty;
     errdefer {
-        for (records.items) |rec| {
-            allocator.free(rec.path);
-            allocator.free(rec.context);
-            if (rec.message) |m| allocator.free(m);
-        }
+        for (records.items) |rec| freeRecordStrings(allocator, rec);
         records.deinit(allocator);
     }
 
@@ -446,6 +542,8 @@ pub fn parseLines(allocator: Allocator, bytes: []const u8) !Log {
         errdefer allocator.free(context);
         const message = try jsonString(allocator, obj, "message");
         errdefer if (message) |m| allocator.free(m);
+        const retry = try parseRetry(allocator, obj);
+        errdefer if (retry) |r| if (r.message) |m| allocator.free(m);
 
         try records.append(allocator, .{
             .index = jsonUint(obj, "index"),
@@ -465,6 +563,7 @@ pub fn parseLines(allocator: Allocator, bytes: []const u8) !Log {
             .heap_used_kb = jsonUint(obj, "heap_used_kb"),
             .native_contexts = jsonUint(obj, "native_contexts"),
             .message = message,
+            .retry = retry,
         });
     }
 
@@ -971,4 +1070,104 @@ test "the runner restarts its Browser after a file that left a service worker re
     // Leftovers are a question about a live process: after a crash there
     // is no Browser left to ask.
     try std.testing.expect(!Status.crash.restartsBrowser(left));
+}
+
+// ----------------------------------------------------------------------------
+// Sweep retries (`--retry-failures`): a file that does not fully pass runs once
+// more at the end of its run, and the journal says whether the two runs agree.
+// ----------------------------------------------------------------------------
+
+test "a file that does not fully pass is retried, and a full pass is not" {
+    try std.testing.expect(!wantsRetry(.{ .index = 0, .path = "a.html", .status = .ok, .passed = 4 }));
+    try std.testing.expect(wantsRetry(.{ .index = 0, .path = "a.html", .status = .ok, .passed = 3, .failed = 1 }));
+    try std.testing.expect(wantsRetry(.{ .index = 0, .path = "a.html", .status = .ok, .passed = 3, .timed_out = 1 }));
+    try std.testing.expect(wantsRetry(.{ .index = 0, .path = "a.html", .status = .ok, .passed = 3, .notrun = 1 }));
+    try std.testing.expect(wantsRetry(.{ .index = 0, .path = "a.html", .status = .timeout, .passed = 4 }));
+    try std.testing.expect(wantsRetry(.{ .index = 0, .path = "a.html", .status = .@"error" }));
+    try std.testing.expect(wantsRetry(.{ .index = 0, .path = "a.html", .status = .crash }));
+    // OK with nothing passing is a blocking file (the 0.1 gate's NONE-PASSED).
+    try std.testing.expect(wantsRetry(.{ .index = 0, .path = "a.html", .status = .ok }));
+}
+
+test "a file that fails then passes is journalled flaky, and its first result stands" {
+    const allocator = std.testing.allocator;
+    var first = [_]Record{
+        .{ .index = 0, .path = "x/pass.html", .status = .ok, .passed = 2 },
+        .{ .index = 1, .path = "x/flaky.html", .status = .ok, .passed = 3, .failed = 1 },
+        .{ .index = 2, .path = "x/steady.html", .status = .timeout, .passed = 1, .timed_out = 1 },
+    };
+    const retries = [_]Record{
+        .{ .index = 0, .path = "x/flaky.html", .status = .ok, .passed = 4 },
+        .{ .index = 1, .path = "x/steady.html", .status = .timeout, .passed = 1, .timed_out = 1 },
+    };
+    try annotateRetries(allocator, &first, &retries);
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    defer out.deinit();
+    for (first) |rec| try writeRecord(&out.writer, rec);
+
+    var log = try parseLines(allocator, out.written());
+    defer log.deinit();
+    try std.testing.expectEqual(@as(usize, 3), log.records.len);
+
+    // Never retried: no retry, not flaky.
+    try std.testing.expect(log.records[0].retry == null);
+    try std.testing.expect(!log.records[0].isFlaky());
+
+    // Failed, then passed: flaky, with both results - and the FIRST counts.
+    const f = log.records[1];
+    try std.testing.expect(f.isFlaky());
+    try std.testing.expectEqual(Status.ok, f.status);
+    try std.testing.expectEqual(@as(usize, 3), f.passed);
+    try std.testing.expectEqual(@as(usize, 1), f.failed);
+    try std.testing.expectEqual(@as(usize, 4), f.retry.?.passed);
+    try std.testing.expectEqual(@as(usize, 0), f.retry.?.failed);
+
+    // Failed the same way twice: retried, not flaky.
+    const s = log.records[2];
+    try std.testing.expect(s.retry != null);
+    try std.testing.expect(!s.isFlaky());
+
+    // The retry's pass is never a pass: the run's totals are the first results'.
+    const sum = log.summarize();
+    try std.testing.expectEqual(@as(usize, 6), sum.subtests_passed);
+    try std.testing.expectEqual(@as(usize, 1), sum.subtests_failed);
+    try std.testing.expectEqual(@as(usize, 2), sum.retried);
+    try std.testing.expectEqual(@as(usize, 1), sum.flaky);
+}
+
+test "a flaky record says so on the wire, for the progress report" {
+    const allocator = std.testing.allocator;
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    defer out.deinit();
+    try writeRecord(&out.writer, .{
+        .index = 7,
+        .path = "a.html",
+        .status = .timeout,
+        .passed = 1,
+        .timed_out = 1,
+        .retry = .{ .status = .ok, .passed = 2, .message = "second \"run\"" },
+    });
+    const line = out.written();
+    try std.testing.expect(std.mem.indexOf(u8, line, "\"flaky\":true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, line, "\"retry\":{\"status\":\"OK\",\"passed\":2,") != null);
+    try std.testing.expect(std.mem.endsWith(u8, line, "}\n"));
+
+    var log = try parseLines(allocator, line);
+    defer log.deinit();
+    try std.testing.expectEqualStrings("second \"run\"", log.records[0].retry.?.message.?);
+}
+
+test "a retry is matched to its file by path, once per first record" {
+    var first = [_]Record{
+        .{ .index = 0, .path = "a.html", .status = .ok, .failed = 1 },
+        .{ .index = 1, .path = "b.html", .status = .ok, .failed = 1 },
+    };
+    // The retry worklist is the failing files in their own order, indexed from 0.
+    const retries = [_]Record{
+        .{ .index = 0, .path = "b.html", .status = .ok, .passed = 1 },
+    };
+    try annotateRetries(std.testing.allocator, &first, &retries);
+    try std.testing.expect(first[0].retry == null);
+    try std.testing.expect(first[1].isFlaky());
 }

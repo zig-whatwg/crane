@@ -90,6 +90,11 @@ pub const Options = struct {
     /// `--load=K`: K threads of the supervisor spin for the whole repeat
     /// series - background CPU load, added on purpose.
     load_threads: u32 = 0,
+    /// `--retry-failures`: after a supervised run, run every file that did not
+    /// fully pass once more, in the same runner, and journal each one's second
+    /// result beside its first (`journal.Record.retry`; flaky when they
+    /// differ). The first result is the result; a retry's pass never counts.
+    retry_failures: bool = false,
 
     pub fn init(allocator: std.mem.Allocator) Options {
         return Options{
@@ -245,7 +250,7 @@ pub const ChildRun = struct {
 /// The command line of a supervised child. Only the options every runner's
 /// child has always taken (a frozen runner from before `--repeat` runs as a
 /// repeat child), and none of the supervisor's own: no `--parallel`,
-/// `--repeat*`, `--load`, and never the supervisor's `--journal=` -
+/// `--repeat*`, `--load`, `--retry-failures`, and never the supervisor's `--journal=` -
 /// the child's journal is `run.journal`. Strings are allocated in `arena`.
 pub fn childArgv(arena: std.mem.Allocator, options: Options, run: ChildRun) ![]const []const u8 {
     var argv: std.ArrayList([]const u8) = .empty;
@@ -350,6 +355,8 @@ pub fn parseArgsDiagnosed(allocator: std.mem.Allocator, args: []const []const u8
             options.repeat_with = arg["--repeat-with=".len..];
         } else if (std.mem.startsWith(u8, arg, "--load=")) {
             options.load_threads = std.fmt.parseInt(u32, arg["--load=".len..], 10) catch 0;
+        } else if (std.mem.eql(u8, arg, "--retry-failures")) {
+            options.retry_failures = true;
         } else if (std.mem.startsWith(u8, arg, "-")) {
             diag.unknown_option = arg;
             return error.UnknownOption;
@@ -826,13 +833,15 @@ test "--repeat runs the worklist N times under the supervisor, optionally beside
     try testing.expectEqual(@as(usize, 0), plain.repeat);
     try testing.expect(plain.repeat_with == null);
     try testing.expectEqual(@as(u32, 0), plain.load_threads);
+    try testing.expect(!plain.retry_failures);
     try testing.expect(!plain.wantsSupervisor());
 }
 
 test "a supervised child's command line is the old child's, without the supervisor's options" {
     const testing = std.testing;
-    var options = try parseArgs(testing.allocator, &.{ "--parallel=4", "--repeat=3", "--load=2", "--quiet", "dom/" });
+    var options = try parseArgs(testing.allocator, &.{ "--parallel=4", "--repeat=3", "--load=2", "--retry-failures", "--quiet", "dom/" });
     defer options.deinit();
+    try testing.expect(options.retry_failures);
 
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
@@ -848,6 +857,7 @@ test "a supervised child's command line is the old child's, without the supervis
     for (argv) |arg| {
         try testing.expect(!std.mem.startsWith(u8, arg, "--repeat"));
         try testing.expect(!std.mem.startsWith(u8, arg, "--load"));
+        try testing.expect(!std.mem.startsWith(u8, arg, "--retry"));
         try testing.expect(!std.mem.startsWith(u8, arg, "--parallel"));
     }
     // A child is the old child: worklist, start, journal, root, output, heartbeat, --quiet.
