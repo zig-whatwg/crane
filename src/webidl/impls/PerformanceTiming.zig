@@ -52,7 +52,7 @@ fn epoch(instance: *runtime.Instance, relative: f64) u64 {
 
 /// One of the navigation timing entry's resource timing attributes (0 for
 /// a document no navigation made), where 0 means "did not happen" - a
-/// redirect's times, secureConnectionStart without TLS.
+/// redirect's times.
 fn fromEntry(instance: *runtime.Instance, comptime getter: fn (*runtime.Instance) anyerror!f64) !u64 {
     const entry = performance_timeline.navigationEntryOf(instance.ctx) orelse return 0;
     return epoch(instance, try getter(entry));
@@ -118,9 +118,25 @@ pub fn get_connectEnd(instance: *runtime.Instance) anyerror!u64 {
     return alwaysFromEntry(instance, interfaces.PerformanceResourceTiming.get_connectEnd);
 }
 
-/// Getter for secureConnectionStart
+/// Getter for secureConnectionStart. Navigation Timing 1: "if the scheme of
+/// the current page is "https", this attribute must return the time
+/// immediately before the user agent starts the handshake process to secure
+/// the current connection. If ... HTTPS is not used, this attribute must
+/// return zero." So on an https page the entry's time always happened, and
+/// a relative 0 is the time origin itself - the handshake began within the
+/// fetch start's coarsening tick, as connectStart's 0 does - while any other
+/// page reads 0. Gecko keys it on the page's scheme the same way
+/// (PerformanceTimingData::SecureConnectionStartHighRes returns 0 only
+/// without mSecureConnection, its channel URI being https); Blink returns a
+/// time whenever the load had an SSL start (PerformanceTiming::
+/// secureConnectionStart). Reading the 0 as "did not happen" made it 0 on an
+/// https page in 34 of 50 runs of navigation-timing/
+/// test-performance-attributes.sub.html (lane flaky4).
 pub fn get_secureConnectionStart(instance: *runtime.Instance) anyerror!u64 {
-    return fromEntry(instance, interfaces.PerformanceResourceTiming.get_secureConnectionStart);
+    const entry = performance_timeline.navigationEntryOf(instance.ctx) orelse return 0;
+    const data = performance_timeline.dataOf(entry) orelse return 0;
+    if (!std.ascii.startsWithIgnoreCase(data.name, "https:")) return 0;
+    return alwaysFromEntry(instance, interfaces.PerformanceResourceTiming.get_secureConnectionStart);
 }
 
 /// Getter for requestStart

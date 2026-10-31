@@ -367,14 +367,14 @@ src/fetch/network/root.zig curl-wrapper.curl_backend.Transfer 1
 src/fetch/network/root.zig curl-wrapper.curl_backend.globalCleanup 1
 src/fetch/network/root.zig curl-wrapper.curl_backend.globalInit 1
 src/fetch/network/scheduler.zig clock.@import 1
-src/fetch/network/scheduler.zig clock.monotonicNanos 2
+src/fetch/network/scheduler.zig clock.monotonicNanos 1
 src/fetch/network/scheduler.zig curl-wrapper.curl_backend.Transfer 1
 src/fetch/network/scheduler.zig curl.CURL 1
 src/fetch/network/scheduler.zig curl.CURLE_OK 1
 src/fetch/network/scheduler.zig curl.CURLINFO_REQUEST_SIZE 1
 src/fetch/network/scheduler.zig curl.CURLM 2
 src/fetch/network/scheduler.zig curl.CURLMSG_DONE 1
-src/fetch/network/scheduler.zig curl.CURLM_OK 2
+src/fetch/network/scheduler.zig curl.CURLM_OK 1
 src/fetch/network/scheduler.zig curl.CURLPAUSE_CONT 1
 src/fetch/network/scheduler.zig curl.CURLPAUSE_RECV 1
 src/fetch/network/scheduler.zig curl.CURLcode 1

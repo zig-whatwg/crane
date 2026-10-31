@@ -164,6 +164,10 @@ pub const NetworkResponse = struct {
     redirect_time_ms: u64 = 0,
     /// Whether connection was reused from pool
     connection_reused: bool = false,
+    /// How long the transfer waited for a connection slot before it started
+    /// (network_context.max_connections_per_host), in milliseconds: the
+    /// times above are after the transfer started, and so after this wait.
+    queue_wait_ms: f64 = 0,
 
     pub const Header = struct {
         name: []const u8,

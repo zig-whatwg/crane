@@ -1474,6 +1474,18 @@ pub fn createNavigationTimingEntry(realm: runtime.Context, record: NavigationRec
         .start_time = convert.call(sw.start_time),
         .fetch_event_dispatch_time = convert.call(sw.fetch_event_dispatch_time),
     } else null;
+    // The fetchStart getter steps: with a service worker timing, fetchStart
+    // is its fetch event dispatch time (made relative to the time origin, as
+    // every other attribute), not the fetch's post-redirect start - so it
+    // follows the worker's activation. Chrome and Firefox mark fetchStart
+    // after activation, Safari does not (service-workers/.../
+    // navigation-timing-extended.https.html, wpt.fyi df642c4142). Set on the
+    // timing the entry is made from AND the copy kept for the body's end
+    // (`navigationBodyEnded` sets the entry up again from it): set on the
+    // entry alone, the body's end gave fetchStart back the post-redirect
+    // start whenever the response's body was still arriving when the
+    // document was made - 8 of 50 runs of that file (lane flaky4).
+    if (service_worker_timing) |sw| timing.fetch_start = sw.fetch_event_dispatch_time;
     // 1-2, 4-11. A new PerformanceNavigationTiming in global's realm.
     // 11. Its not restored reasons (the hook copies them).
     const entry = try impl.create(realm, &timing, record.redirect_count, record.navigation_type, service_worker_timing, record.not_restored_reasons);
