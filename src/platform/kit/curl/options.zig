@@ -26,6 +26,7 @@ const CURLOPT_SSL_VERIFYPEER: c_uint = 64;
 const CURLOPT_CAINFO: c_uint = 10065;
 const CURLOPT_SSL_VERIFYHOST: c_uint = 81;
 const CURLOPT_NOPROXY: c_uint = 10177;
+const CURLOPT_FORBID_REUSE: c_uint = 75;
 
 /// A proxy for one transfer.
 pub const Proxy = struct {
@@ -72,4 +73,24 @@ fn setString(handle: *anyopaque, allocator: Allocator, option: c_uint, value: []
     const copy = try allocator.dupeSentinel(u8, value, 0);
     defer allocator.free(copy);
     _ = curl_easy_setopt(handle, option, copy.ptr);
+}
+
+/// The connection the transfer on `handle` uses is closed when the transfer
+/// ends, not kept for another (CURLOPT_FORBID_REUSE). curl reads it when the
+/// transfer is done (multi_done), so a header callback may set it for the
+/// response it is reading.
+pub fn forbidReuse(handle: *anyopaque) void {
+    _ = curl_easy_setopt(handle, CURLOPT_FORBID_REUSE, @as(c_long, 1));
+}
+
+test "forbidReuse sets curl's option on a handle" {
+    const c = struct {
+        extern fn curl_easy_init() ?*anyopaque;
+        extern fn curl_easy_cleanup(curl: ?*anyopaque) void;
+    };
+    const handle = c.curl_easy_init() orelse return error.SkipZigTest;
+    defer c.curl_easy_cleanup(handle);
+    forbidReuse(handle);
+    // CURLE_OK: curl knows the option id and takes a long.
+    try std.testing.expectEqual(@as(c_uint, 0), curl_easy_setopt(handle, CURLOPT_FORBID_REUSE, @as(c_long, 1)));
 }

@@ -545,6 +545,40 @@ test "a streamed transfer's head says whether its connection was reused" {
     try testing.expectEqual(@as(?bool, true), second.connection_reused);
 }
 
+test "a connection is not reused after a bodyless response that announced a body" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    var first_buf: [256]u8 = undefined;
+    const first_request = get(try urlFor(&first_buf, server, "/not-modified-with-body"));
+    var second_buf: [256]u8 = undefined;
+    const second_request = get(try urlFor(&second_buf, server, "/keep-alive"));
+    // A 304 has no body, whatever its Content-Length says - and the server
+    // sends one anyway, later. Reused, the connection would hand the next
+    // request "TESTHTTP/1.1 200 OK": curl's "Invalid status line"
+    // (xhr/send-redirect.htm, 12 of 72 runs under 8 runner processes, after
+    // the per-destination cap made reuse more frequent).
+    var first: StreamRecord = .{};
+    defer first.deinit();
+    _ = try scheduler.startStreaming(testing.allocator, &first_request, first.client());
+    _ = pumpUntil(&scheduler, 5_000, StreamRecord.isEnded, &first);
+    try testing.expectEqual(@as(?NetworkError, null), first.end_error);
+    try testing.expectEqual(@as(u16, 304), first.status);
+
+    var second: StreamRecord = .{};
+    defer second.deinit();
+    _ = try scheduler.startStreaming(testing.allocator, &second_request, second.client());
+    _ = pumpUntil(&scheduler, 5_000, StreamRecord.isEnded, &second);
+    try testing.expectEqual(@as(?NetworkError, null), second.end_error);
+    try testing.expectEqual(@as(u16, 200), second.status);
+    try testing.expectEqualStrings("ok", second.bytes.items);
+    try testing.expectEqual(@as(?bool, false), second.connection_reused);
+}
+
 test "a streamed transfer that fails after its headers ends in error" {
     try network.globalInit();
     defer network.globalCleanup();

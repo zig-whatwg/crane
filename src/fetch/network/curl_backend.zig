@@ -185,6 +185,12 @@ pub const LibcurlBackend = struct {
         /// response on at that point, before the body.
         block_start: usize = 0,
         head_end: ?usize = null,
+        /// The easy handle the callbacks read for, so the header callback
+        /// can keep its connection from being reused (`noteHeaderLine`).
+        easy: ?*anyopaque = null,
+        /// The request was a HEAD: its response's Content-Length describes a
+        /// body that is not sent.
+        head_request: bool = false,
 
         // Strings that must persist until request completes (curl doesn't copy them)
         url_z: ?[:0]u8 = null,
@@ -263,7 +269,8 @@ pub const LibcurlBackend = struct {
         // and with no transfer timeout that hung the whole process: every
         // xhr/ test that sends HEAD. CURLOPT_NOBODY is how libcurl makes a
         // HEAD request.
-        if (std.mem.eql(u8, request.method, "HEAD")) {
+        ctx.head_request = std.mem.eql(u8, request.method, "HEAD");
+        if (ctx.head_request) {
             _ = curl.easy_setopt(handle, curl.CURLOPT_NOBODY, @as(c_long, 1));
         } else if (!std.mem.eql(u8, request.method, "GET")) {
             ctx.method_z = try ctx.allocator.dupeSentinel(u8, request.method, 0);
@@ -534,6 +541,7 @@ pub const Transfer = struct {
             .url = url,
         };
         self.ctx = LibcurlBackend.CallbackContext.init(allocator, options.aborted orelse &self.own_aborted);
+        self.ctx.easy = handle;
         errdefer self.ctx.deinit();
 
         // The Browser's connection share: its transfers reuse its own
@@ -946,8 +954,46 @@ fn noteHeaderLine(ctx: *LibcurlBackend.CallbackContext, line: []const u8) void {
             ctx.block_start = ctx.raw_headers.items.len;
             return;
         }
+        if (!ctx.head_request and announcesBodyItHasNot(status, block)) {
+            if (ctx.easy) |easy| kit_curl.options.forbidReuse(easy);
+        }
     }
     ctx.head_end = ctx.raw_headers.items.len;
+}
+
+/// A final response that has no body - 204, 205, 304 (RFC 9110 15.3.5,
+/// 15.3.6, 15.4.5) - whose header block says `Content-Length` greater than
+/// 0. Some servers send that many bytes anyway (wpt serve's redirect.py for
+/// a 304). curl, rightly, reads none and keeps the connection; the bytes
+/// then arrive ahead of the next response on it, which curl refuses as an
+/// "Invalid status line" - xhr/send-redirect.htm, 12 of 72 runs under eight
+/// runner processes. Browsers parse past such junk instead: Chromium finds
+/// the status line up to 4 bytes in (HttpUtil::LocateStartOfStatusLine,
+/// slop 4), Firefox skips up to MAX_INVALID_RESPONSE_BODY_SIZE of it
+/// (nsHttpTransaction::LocateHttpStart). curl cannot, so Crane does not
+/// reuse that one connection: the outcome is the same, and nothing fails.
+/// The one observable difference: the next request to the destination
+/// opens a new connection where a browser would reuse one, so its connect
+/// times are not zero. A response to HEAD is not one of these: its
+/// Content-Length describes the body a GET would get (the caller checks).
+fn announcesBodyItHasNot(status: u16, block: []const u8) bool {
+    if (status != 204 and status != 205 and status != 304) return false;
+    var lines = headerLines(block);
+    while (lines.next()) |line| {
+        const colon = std.mem.indexOfScalar(u8, line, ':') orelse continue;
+        if (!std.ascii.eqlIgnoreCase(std.mem.trim(u8, line[0..colon], " \t"), "content-length")) continue;
+        const length = std.fmt.parseInt(u64, std.mem.trim(u8, line[colon + 1 ..], " \t\r"), 10) catch return true;
+        if (length > 0) return true;
+    }
+    return false;
+}
+
+test "a bodyless response that announces a body is told apart" {
+    try std.testing.expect(announcesBodyItHasNot(304, "HTTP/1.1 304 Not Modified\r\nContent-Length: 4\r\n\r\n"));
+    try std.testing.expect(announcesBodyItHasNot(204, "HTTP/1.1 204 No Content\r\ncontent-length:12\r\n\r\n"));
+    try std.testing.expect(!announcesBodyItHasNot(304, "HTTP/1.1 304 Not Modified\r\nContent-Length: 0\r\n\r\n"));
+    try std.testing.expect(!announcesBodyItHasNot(304, "HTTP/1.1 304 Not Modified\r\nETag: x\r\n\r\n"));
+    try std.testing.expect(!announcesBodyItHasNot(200, "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\n"));
 }
 
 /// The final response's header block in `raw`, every block curl read: the

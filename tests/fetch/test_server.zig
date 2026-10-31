@@ -25,6 +25,9 @@
 //!   GET  /big/{kib}        - kib KiB of "x", as fast as the peer reads
 //!   GET  /keep-alive       - "ok" on a persistent connection: up to eight
 //!                            requests answered on one socket
+//!   GET  /not-modified-with-body - a 304 that says Content-Length: 4, and
+//!                            "TEST" ahead of the answer to a next request
+//!                            on the same connection
 //!   GET  /split-head       - the status line now; the rest of the header
 //!                            block and a 5-byte body once the test calls
 //!                            `releaseHead` (`headStarted` says the first
@@ -267,6 +270,21 @@ pub const TestServer = struct {
                 };
             }
             return;
+        }
+        // A server that sends a body after a response that has none: a 304
+        // announcing `Content-Length: 4`, and - if the client sends its next
+        // request on this connection - the four bytes "TEST" ahead of that
+        // request's answer (wpt serve's redirect.py?code=304 does this). A
+        // client that reused the connection reads "TESTHTTP/1.1 ..."; one
+        // that closed it is answered on its next connection.
+        if (std.mem.eql(u8, path, "/not-modified-with-body")) {
+            try writeAllToStream(io, stream, "HTTP/1.1 304 Not Modified\r\nContent-Length: 4\r\n\r\n");
+            reader.tossBuffered();
+            reader.fillMore() catch |err| switch (err) {
+                error.EndOfStream => return,
+                error.ReadFailed => return stream_reader.err.?,
+            };
+            return writeAllToStream(io, stream, "TESTHTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok");
         }
         if (std.mem.eql(u8, path, "/bad-chunk")) {
             try writeAllToStream(io, stream, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n6\r\nchunk\n\r\n");
