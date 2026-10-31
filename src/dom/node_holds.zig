@@ -608,7 +608,7 @@ pub fn ElementTask(comptime Payload: type) type {
         /// Whether `entry` is in `tasks`' list: until the task runs, is
         /// cancelled or ends.
         linked: bool = false,
-        holds: [held_count]TaskHold = [_]TaskHold{.{}} ** held_count,
+        holds: [held_count]TaskHold = @as([held_count]TaskHold, @splat(.{})),
         payload: Payload,
         allocator: Allocator,
         cancelled: bool = false,

@@ -454,11 +454,11 @@ pub fn consumeShorthand(options: properties.ParseOptions, shorthand: properties.
     if (shorthand == .transition) return consumeTransition(options, stream, out);
     const longhands = shorthand.longhands();
     const count: usize = if (shorthand == .animation) 8 else 2;
-    var lists: [8]?*List = .{null} ** 8;
+    var lists: [8]?*List = @splat(null);
     defer for (lists) |list| if (list) |owned| owned.unref();
     for (longhands[0..count], 0..) |l, i| lists[i] = try List.create(options.allocator, l);
     while (true) {
-        var items: [8]?Item = .{null} ** 8;
+        var items: [8]?Item = @splat(null);
         defer for (items) |item| if (item) |owned| owned.release(options.allocator);
         if (shorthand == .animation_range) {
             items[0] = try consumeItem(options, longhands[0], stream) orelse return false;
@@ -574,11 +574,11 @@ fn isInitial(item: Item, l: Longhand) bool {
 /// consume all the other grammar components before the property identifier.
 fn consumeTransition(options: properties.ParseOptions, stream: *Stream, out: *std.ArrayList(properties.Assignment)) Allocator.Error!bool {
     const longhands = properties.Shorthand.transition.longhands();
-    var lists: [5]?*List = .{null} ** 5;
+    var lists: [5]?*List = @splat(null);
     defer for (lists) |list| if (list) |owned| owned.unref();
     for (longhands, 0..) |longhand, index| lists[index] = try List.create(options.allocator, longhand);
     while (true) {
-        var items: [5]?Item = .{null} ** 5;
+        var items: [5]?Item = @splat(null);
         defer for (items) |item| if (item) |owned| owned.release(options.allocator);
         var consumed: usize = 0;
         while (!stream.atEnd() and stream.peek().token_type != .comma) {

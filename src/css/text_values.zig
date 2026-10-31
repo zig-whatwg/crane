@@ -292,7 +292,7 @@ fn consumeAutospace(options: properties.ParseOptions, stream: *Stream) Allocator
     // covers punctuation and replace, ahead of current stable implementations.
     if (keyword(stream, &.{ .normal, .auto, .no_autospace })) |k| return Value.kw(k);
     const order = [_]Keyword{ .ideograph_alpha, .ideograph_numeric, .punctuation, .insert, .replace };
-    var present: [order.len]bool = .{false} ** order.len;
+    var present: [order.len]bool = @splat(false);
     var count: usize = 0;
     while (keyword(stream, &order)) |k| {
         for (order, 0..) |candidate, i| if (k == candidate) {

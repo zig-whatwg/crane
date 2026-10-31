@@ -105,7 +105,7 @@ pub const Data = struct {
     allocator: Allocator,
     font_families: *families.Families,
     font_display: ?FontDisplay = null,
-    maps: [6]Map = [1]Map{.{}} ** 6,
+    maps: [6]Map = @splat(.{}),
 
     pub fn deinit(self: *Data) void {
         self.font_families.unref();

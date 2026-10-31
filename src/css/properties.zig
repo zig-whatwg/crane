@@ -697,7 +697,7 @@ const border_styles = [_]Keyword{ .none, .hidden, .dotted, .dashed, .solid, .dou
 const infos: [Longhand.count]Info = blk: {
     @setEvalBranchQuota(100_000);
     var out: [Longhand.count]Info = undefined;
-    var set: [Longhand.count]bool = .{false} ** Longhand.count;
+    var set: [Longhand.count]bool = @splat(false);
     const zero = Value.px(0);
     const medium_width = Value.kw(.medium);
     const defs = [_]Info{
@@ -2696,7 +2696,7 @@ fn fourSides(options: ParseOptions, ls: []const Longhand, stream: *Stream, out: 
         3 => .{ 0, 1, 2, 1 },
         else => .{ 0, 1, 2, 3 },
     };
-    var used: [4]bool = .{false} ** 4;
+    var used: [4]bool = @splat(false);
     for (ls, 0..) |l, i| {
         const v = vs[order[i]];
         if (used[order[i]]) v.retain();
@@ -3500,7 +3500,7 @@ test "logical sides map by writing mode and direction" {
 }
 
 test "CSSOM enumeration sorts names independently of property blocks" {
-    var seen = [_]bool{false} ** Longhand.count;
+    var seen = @as([Longhand.count]bool, @splat(false));
     var last_standard: ?Longhand = null;
     var saw_prefixed = false;
     for (lexicographic, 0..) |l, i| {

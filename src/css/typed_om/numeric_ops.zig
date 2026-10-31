@@ -8,7 +8,7 @@ pub const View = struct { kind: Kind, number: math.Numeric = .{ .value = 0, .uni
 const unit_count = @typeInfo(math.Unit).@"enum".field_names.len;
 pub const Term = struct {
     value: f64,
-    units: [unit_count]i32 = .{0} ** unit_count,
+    units: [unit_count]i32 = @splat(0),
 
     fn from(number: math.Numeric) Term {
         var result: Term = .{ .value = number.value };

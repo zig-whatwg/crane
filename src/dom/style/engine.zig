@@ -951,7 +951,7 @@ fn colorSchemeMetaContent(element: *runtime.Instance) ?[]const u8 {
 
 /// The document's singleton states, by address and generation.
 fn singletonKey(document: *runtime.Instance) [5]u64 {
-    var key: [5]u64 = .{0} ** 5;
+    var key: [5]u64 = @splat(0);
     if (focused_area.get(document)) |d| if (d.isLive()) {
         key[0] = @intFromPtr(d.element) ^ d.generation;
     };

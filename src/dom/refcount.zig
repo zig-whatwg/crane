@@ -112,7 +112,7 @@ const trace_depth = 12;
 const Entry = struct {
     node: *NodeBase,
     kind: Kind,
-    addresses: [trace_depth]usize = [_]usize{0} ** trace_depth,
+    addresses: [trace_depth]usize = @as([trace_depth]usize, @splat(0)),
     address_count: usize = 0,
 };
 

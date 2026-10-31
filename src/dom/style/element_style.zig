@@ -219,7 +219,7 @@ pub fn existingOf(element: *runtime.Instance) ?*ElementStyle {
 test "an element's style state keeps one cached style per pseudo-element" {
     const state = try ElementStyle.create(std.testing.allocator);
     defer state.destroy();
-    const key: Key = .{ .tree_version = 1, .generation = 1, .singletons = .{0} ** 5 };
+    const key: Key = .{ .tree_version = 1, .generation = 1, .singletons = @splat(0) };
     state.setCached(.{ .style = try ComputedStyle.initial(std.testing.allocator), .key = key, .@"volatile" = false });
     state.setCached(.{ .style = try ComputedStyle.initial(std.testing.allocator), .key = key, .@"volatile" = false });
     try state.setPseudoCached("before", .{ .style = try ComputedStyle.initial(std.testing.allocator), .key = key, .@"volatile" = false });

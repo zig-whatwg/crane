@@ -142,7 +142,7 @@ pub const Import = struct {
 /// Q55: rare payloads do not enlarge every ordinary style rule.
 pub const FontFeaturePayload = struct {
     descriptors: css.font_feature_values.Data,
-    objects: [6]ObjectLink = [1]ObjectLink{.{}} ** 6,
+    objects: [6]ObjectLink = @splat(.{}),
 };
 
 pub const Data = union(Kind) {

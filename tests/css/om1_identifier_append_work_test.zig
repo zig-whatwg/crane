@@ -10,7 +10,7 @@ test "appendIdentifier - unchanged long name needs only one growth allocation" {
     });
     const allocator = counted.allocator();
     const prefix = "prefix: ";
-    const identifier = "--" ++ "a" ** 510;
+    const identifier = "--" ++ &@as([510:0]u8, @splat('a'));
     var work: usize = 0;
     {
         var output: std.ArrayList(u8) = .empty;
@@ -67,7 +67,7 @@ test "appendIdentifier - first growth OOM preserves prefix and permits cleanup" 
     var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
     const allocator = failing.allocator();
     const prefix = "prefix: ";
-    const identifier = "--" ++ "a" ** 510;
+    const identifier = "--" ++ &@as([510:0]u8, @splat('a'));
     {
         var output: std.ArrayList(u8) = .empty;
         defer output.deinit(allocator);

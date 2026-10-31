@@ -56,7 +56,7 @@ pub const Data = struct {
     allocator: Allocator,
     /// Serialized identifier, owned; getters need no further CSS parsing.
     name: []u8,
-    descriptors: [10]?Parsed = .{null} ** 10,
+    descriptors: [10]?Parsed = @splat(null),
 
     pub fn deinit(self: *Data) void {
         self.allocator.free(self.name);

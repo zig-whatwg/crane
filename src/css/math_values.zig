@@ -15,7 +15,7 @@ const base_count = @typeInfo(Base).@"enum".field_names.len;
 pub const Type = struct {
     // Q84 Chrome156/Safari27 probe,2026-10-27: full WebIDL long powers.
     // Overflow wraps like Chrome; zero powers remain absent from dictionaries.
-    powers: [base_count]i32 = .{0} ** base_count,
+    powers: [base_count]i32 = @splat(0),
     hint: ?Base = null,
 
     pub fn one(base: ?Base) Type {
@@ -242,7 +242,7 @@ pub const Symbol = enum(u4) {
 /// Missing origin channels are zero INSIDE a calculation (Color 5 §4.10).
 /// Direct channel references retain missingness in the color value itself.
 pub const SymbolValues = struct {
-    values: [@typeInfo(Symbol).@"enum".field_names.len]f64 = .{0} ** @typeInfo(Symbol).@"enum".field_names.len,
+    values: [@typeInfo(Symbol).@"enum".field_names.len]f64 = @splat(0),
 };
 
 pub const Grammar = struct {
@@ -1024,7 +1024,7 @@ const Parser = struct {
         if (Function.parse(token.value)) |kind| return self.numericFunction(kind);
         const clamp = tokens.nameEql(token.value, "clamp");
         var list: std.ArrayList(*Node) = .empty;
-        var missing: [3]bool = .{false} ** 3;
+        var missing: [3]bool = @splat(false);
         while (true) {
             const next_token = self.peek();
             if (clamp and next_token.token_type == .ident and tokens.nameEql(next_token.value, "none")) {
@@ -1495,7 +1495,7 @@ const Builder = struct {
                 // majority beyond its literal "all children numeric": fold
                 // the numeric subset around unresolved factors too. Different
                 // unresolved units still wait for computed/used information.
-                var powers: [@typeInfo(Unit).@"enum".field_names.len]i32 = .{0} ** @typeInfo(Unit).@"enum".field_names.len;
+                var powers: [@typeInfo(Unit).@"enum".field_names.len]i32 = @splat(0);
                 var product: f64 = 1;
                 var numeric_count: usize = 0;
                 var numeric_type = Type.one(null);
