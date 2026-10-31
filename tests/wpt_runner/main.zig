@@ -39,6 +39,33 @@
 //!   kills the process, until the worklist is exhausted. Writes
 //!   `<output>/worklist.txt` and `<output>/journal.jsonl`.
 //!
+//! Flakiness (repeat.zig):
+//! - `--repeat=N` - Run the worklist (normally one file: name it as an
+//!   argument) N times, each time in a fresh child process, and print each
+//!   subtest's failure rate over the N runs; written to
+//!   `<output>/repeat-tally.txt`. The children journal under
+//!   `<output>/repeat/<k>/`, never at `--journal=`: a repeat series is never a
+//!   sweep record.
+//! - `--repeat-with=path` - Also run N repetitions of that runner binary (a
+//!   frozen main's), alternating with this one, the other first; the tally's
+//!   second column is its rate.
+//! - `--load=K` - Keep K supervisor threads busy for the whole series
+//!   (background CPU load, stated in the tally). Ask the pool for K+1 tokens.
+//!
+//! A lane measures in the compute pool under its own pair id, on the
+//! measurement host the integrator names for it, with both runners on that
+//! host (the integrator: `--pair <lane>-m` -> chat2.local, which keeps the
+//! frozen bases in ~/crane-frozen/):
+//!
+//! ```bash
+//! tmp/remote/crane-pool.sh wpt <mirror> --pair <lane>-m \
+//!   '~/crane-measure.sh run <lane>-rep 1 ./zig-out/bin/wpt_runner --repeat=50 \
+//!      --repeat-with=$HOME/crane-frozen/main-0aa6c6c8cf/zig-out/bin/wpt_runner \
+//!      <path/to/test.html> --wpt-root=tests/wpt --output=tmp/<lane>-rep/<name>'
+//! # under load: --load=4, and ask for 5 runners: crane-measure.sh run <lane>-rep 5 ...
+//! # the result: crane-pool.sh on <mirror> --pair <lane>-m 'cat tmp/<lane>-rep/<name>/repeat-tally.txt'
+//! ```
+//!
 //! Regression gating:
 //! - `--baseline=path` - Compare the finished run against recorded
 //!   expectations. Exits nonzero if anything regressed.
@@ -63,6 +90,7 @@ const wpt_server = @import("wpt_server.zig");
 const wpt_manifest = @import("manifest.zig");
 const selection = @import("selection.zig");
 const journal = @import("journal.zig");
+const repeat = @import("repeat.zig");
 const baseline = @import("baseline.zig");
 const options_mod = @import("options.zig");
 const discovery_mod = @import("discovery.zig");
@@ -1784,23 +1812,16 @@ fn runShard(allocator: std.mem.Allocator, shard: Shard) !void {
 
         if (next >= total) break;
 
-        const start_arg = try std.fmt.allocPrint(allocator, "--start-index={d}", .{next});
-        defer allocator.free(start_arg);
-        const from_arg = try std.fmt.allocPrint(allocator, "--from-file={s}", .{shard.worklist_path});
-        defer allocator.free(from_arg);
-        const journal_arg = try std.fmt.allocPrint(allocator, "--journal={s}", .{shard.journal_path});
-        defer allocator.free(journal_arg);
-        const root_arg = try std.fmt.allocPrint(allocator, "--wpt-root={s}", .{options.wpt_root});
-        defer allocator.free(root_arg);
-        const out_arg = try std.fmt.allocPrint(allocator, "--output={s}", .{options.output_dir});
-        defer allocator.free(out_arg);
-        const beat_arg = try std.fmt.allocPrint(allocator, "--heartbeat={s}", .{heartbeat_path});
-        defer allocator.free(beat_arg);
-
-        var argv: std.ArrayList([]const u8) = .empty;
-        defer argv.deinit(allocator);
-        try argv.appendSlice(allocator, &.{ shard.self_exe, from_arg, start_arg, journal_arg, root_arg, out_arg, beat_arg });
-        if (!options.verbose) try argv.append(allocator, "--quiet");
+        var argv_arena: std.heap.ArenaAllocator = .init(allocator);
+        defer argv_arena.deinit();
+        const argv = try options_mod.childArgv(argv_arena.allocator(), options.*, .{
+            .exe = shard.self_exe,
+            .worklist = shard.worklist_path,
+            .start_index = next,
+            .journal = shard.journal_path,
+            .output_dir = options.output_dir,
+            .heartbeat = heartbeat_path,
+        });
 
         print("{s}running tests {d}..{d}\n", .{ shard.label orelse "--> ", next, total });
 
@@ -1812,7 +1833,7 @@ fn runShard(allocator: std.mem.Allocator, shard: Shard) !void {
         // 0.16: Child.init + spawnAndWait become std.process.spawn(io, options)
         // followed by wait(io). Behaviour is unchanged - still a blocking wait for
         // this one shard - and Term's union tags are lowercase now.
-        var child = try std.process.spawn(shard.io, .{ .argv = argv.items });
+        var child = try std.process.spawn(shard.io, .{ .argv = argv });
 
         // The per-file ceiling only bounds the wait for `__wpt_complete`. The
         // navigation, the parse and every script the parser runs are unbounded,
@@ -2043,6 +2064,11 @@ fn supervise(
         else => return err,
     };
 
+    // A repeat series writes no journal of its own and never the
+    // `--journal=` it was given: each repetition's child journals under
+    // <output>/repeat/<k>/, and the series' result is repeat-tally.txt.
+    if (options.repeat > 0) return superviseRepeat(allocator, io, options, discovery);
+
     const worklist_path = try std.fs.path.join(allocator, &.{ options.output_dir, "worklist.txt" });
     defer allocator.free(worklist_path);
     try writeWorklistFile(allocator, worklist_path, discovery);
@@ -2142,6 +2168,124 @@ fn supervise(
     const selected = try selectedPaths(allocator, discovery);
     defer allocator.free(selected);
     return settleBaseline(allocator, options, selected);
+}
+
+/// `--repeat=N` (repeat.zig): the worklist N times, each repetition a fresh
+/// child under this supervisor's server and watchdog, alternating with
+/// `--repeat-with`'s runner when one is given, with `--load` busy threads
+/// beside the whole series. Writes `<output>/repeat-tally.txt` and prints it.
+fn superviseRepeat(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    options: Options,
+    discovery: DiscoveryResult,
+) !u8 {
+    const layout: repeat.Layout = .{ .output_dir = options.output_dir };
+    const repeat_dir = try layout.dir(allocator);
+    defer allocator.free(repeat_dir);
+    host.cwd().createDirPath(host.io(), repeat_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+    const worklist_path = try layout.worklist(allocator);
+    defer allocator.free(worklist_path);
+    try writeWorklistFile(allocator, worklist_path, discovery);
+
+    const paths = try selectedPaths(allocator, discovery);
+    defer allocator.free(paths);
+
+    const self_exe = try std.process.executablePathAlloc(host.io(), allocator);
+    defer allocator.free(self_exe);
+
+    const server = try wpt_server.WptServer.init(allocator, options.wpt_root);
+    defer server.deinit();
+    try server.start();
+
+    const alternating = options.repeat_with != null;
+    const runs = repeat.totalRuns(options.repeat, alternating);
+    print("\nRepeating {d} file(s) {d} times{s}{s}{s}\n", .{
+        paths.len,
+        options.repeat,
+        if (alternating) " with each of this runner and " else "",
+        options.repeat_with orelse "",
+        if (options.load_threads > 0) " under load" else "",
+    });
+
+    var load: repeat.Load = .{};
+    try load.start(allocator, options.load_threads);
+    defer load.stop(allocator);
+
+    var tally = repeat.Tally.init(allocator);
+    defer tally.deinit();
+
+    var k: usize = 0;
+    while (k < runs) : (k += 1) {
+        const side = repeat.sideOf(k, alternating);
+        const exe = if (side == .with) options.repeat_with.? else self_exe;
+
+        const run_dir = try layout.runDir(allocator, k);
+        defer allocator.free(run_dir);
+        host.cwd().createDirPath(host.io(), run_dir) catch |err| switch (err) {
+            error.PathAlreadyExists => {},
+            else => return err,
+        };
+        const run_journal = try layout.runJournal(allocator, k);
+        defer allocator.free(run_journal);
+        {
+            var fresh = try journal.Journal.create(allocator, run_journal);
+            fresh.deinit();
+        }
+        var run_options = options;
+        run_options.output_dir = run_dir;
+
+        const label = try std.fmt.allocPrint(allocator, "[repeat {d}/{d} {s}] ", .{ k + 1, runs, @tagName(side) });
+        defer allocator.free(label);
+        try runShard(allocator, .{
+            .allocator = allocator,
+            .io = io,
+            .options = &run_options,
+            .self_exe = exe,
+            .worklist_path = worklist_path,
+            .journal_path = run_journal,
+            .paths = paths,
+            .label = label,
+        });
+
+        const stream_path = try layout.runStream(allocator, k);
+        defer allocator.free(stream_path);
+        const journal_bytes = host.cwd().readFileAlloc(host.io(), run_journal, allocator, .limited(64 * 1024 * 1024)) catch |err| switch (err) {
+            error.FileNotFound => try allocator.dupe(u8, ""),
+            else => return err,
+        };
+        defer allocator.free(journal_bytes);
+        const stream_bytes = host.cwd().readFileAlloc(host.io(), stream_path, allocator, .limited(256 * 1024 * 1024)) catch |err| switch (err) {
+            error.FileNotFound => try allocator.dupe(u8, ""),
+            else => return err,
+        };
+        defer allocator.free(stream_bytes);
+        try tally.addRun(side, journal_bytes, stream_bytes);
+
+        var one = try journal.parseLines(allocator, journal_bytes);
+        defer one.deinit();
+        const sum = one.summarize();
+        print("{s}OK {d} TIMEOUT {d} ERROR {d} CRASH {d}; subtests passed {d} failed {d}\n", .{
+            label, sum.ok, sum.timed_out, sum.errored, sum.crashed, sum.subtests_passed, sum.subtests_failed + sum.subtests_timed_out + sum.subtests_notrun,
+        });
+    }
+
+    var report: std.Io.Writer.Allocating = .init(allocator);
+    defer report.deinit();
+    try tally.write(&report.writer, .{ .this = self_exe, .with = options.repeat_with, .load_threads = options.load_threads });
+
+    const tally_path = try layout.tally(allocator);
+    defer allocator.free(tally_path);
+    {
+        var file = try host.cwd().createFile(host.io(), tally_path, .{ .truncate = true });
+        defer file.close(host.io());
+        try file.writeStreamingAll(host.io(), report.written());
+    }
+    print("\n{s}\nTally: {s}\n", .{ report.written(), tally_path });
+    return 0;
 }
 
 // The tests below never run: main.zig is only ever built as an executable, so

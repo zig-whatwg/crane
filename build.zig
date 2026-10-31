@@ -3756,6 +3756,7 @@ pub fn build(b: *std.Build) void {
             "tests/wpt_runner/config.zig",
             "tests/wpt_runner/selection.zig",
             "tests/wpt_runner/journal.zig",
+            "tests/wpt_runner/repeat.zig",
             // Not part of the WPT runner, but the same shape - std-only, and its
             // test blocks would otherwise never run, since the build collects
             // tests/**/*_test.zig and nothing else.
