@@ -275,6 +275,8 @@ test "deinit cancels what is still in flight" {
 const StreamRecord = struct {
     status: u16 = 0,
     content_type_seen: bool = false,
+    /// The head's word on its connection: one the transfer reused.
+    connection_reused: ?bool = null,
     head_at_ms: i64 = 0,
     chunks: usize = 0,
     bytes: std.ArrayListUnmanaged(u8) = .empty,
@@ -294,6 +296,7 @@ const StreamRecord = struct {
         defer r.deinit();
         if (self.ended or self.chunks > 0) self.order_ok = false;
         self.status = r.status;
+        self.connection_reused = r.connection_reused;
         self.head_at_ms = clock.monotonicMillis();
         for (r.headers) |h| {
             if (std.ascii.eqlIgnoreCase(h.name, "content-type")) self.content_type_seen = true;
@@ -357,6 +360,39 @@ test "a streamed transfer hands on its headers before its body, and its body as 
     try testing.expect(record.end_at_ms - record.first_data_at_ms >= 700);
     try testing.expect(longest < 250);
     try testing.expectEqual(@as(usize, 0), scheduler.inFlight());
+}
+
+test "a streamed transfer's head says whether its connection was reused" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    var url_buf: [256]u8 = undefined;
+    const request = get(try urlFor(&url_buf, server, "/keep-alive"));
+    // The first transfer opens the connection; the second, after the first
+    // has ended, finds it idle and reuses it. A navigation is a streamed
+    // transfer, and Resource Timing reads a reused connection's times from
+    // this word (HTTP-network fetch step 8.2): a head that always said
+    // "fresh" made navigation-timing/secure-connection-start-reuse.https.html
+    // compare two clock readings (16 of 50 runs failed).
+    var first: StreamRecord = .{};
+    defer first.deinit();
+    _ = try scheduler.startStreaming(testing.allocator, &request, first.client());
+    _ = pumpUntil(&scheduler, 5_000, StreamRecord.isEnded, &first);
+    try testing.expectEqual(@as(?NetworkError, null), first.end_error);
+    try testing.expectEqualStrings("ok", first.bytes.items);
+    try testing.expectEqual(@as(?bool, false), first.connection_reused);
+
+    var second: StreamRecord = .{};
+    defer second.deinit();
+    _ = try scheduler.startStreaming(testing.allocator, &request, second.client());
+    _ = pumpUntil(&scheduler, 5_000, StreamRecord.isEnded, &second);
+    try testing.expectEqual(@as(?NetworkError, null), second.end_error);
+    try testing.expectEqualStrings("ok", second.bytes.items);
+    try testing.expectEqual(@as(?bool, true), second.connection_reused);
 }
 
 test "a streamed transfer that fails after its headers ends in error" {

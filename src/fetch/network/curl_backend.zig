@@ -437,6 +437,42 @@ pub const LibcurlBackend = struct {
 // Transfer
 // =============================================================================
 
+/// What Resource Timing reads of the connection a transfer used: curl's DNS,
+/// TCP, TLS and pre-transfer times, each in whole milliseconds after the
+/// transfer started, and whether the transfer reused a connection - it made
+/// none (CURLINFO_NUM_CONNECTS 0). The same for a whole response (`finish`)
+/// and a streamed one's head (`Transfer.head`): a head that said "fresh"
+/// for every connection made each reused navigation connection look like a
+/// new one, timed by a second clock reading (lane flaky4).
+const ConnectionMeasures = struct {
+    dns_lookup_time_ms: u64,
+    connect_time_ms: u64,
+    app_connect_time_ms: u64,
+    pretransfer_time_ms: u64,
+    connection_reused: bool,
+
+    fn of(transfer: *const Transfer) ConnectionMeasures {
+        const handle = transfer.handle;
+        var namelookup_time: f64 = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_NAMELOOKUP_TIME, &namelookup_time);
+        var connect_time: f64 = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_CONNECT_TIME, &connect_time);
+        var appconnect_time: f64 = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_APPCONNECT_TIME, &appconnect_time);
+        var pretransfer_time: f64 = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_PRETRANSFER_TIME, &pretransfer_time);
+        var num_connects: c_long = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_NUM_CONNECTS, &num_connects);
+        return .{
+            .dns_lookup_time_ms = @intFromFloat(namelookup_time * 1000),
+            .connect_time_ms = @intFromFloat(connect_time * 1000),
+            .app_connect_time_ms = @intFromFloat(appconnect_time * 1000),
+            .pretransfer_time_ms = @intFromFloat(pretransfer_time * 1000),
+            .connection_reused = num_connects == 0,
+        };
+    }
+};
+
 /// One HTTP transfer: an easy handle configured for a request, and everything
 /// it receives until it ends.
 ///
@@ -636,6 +672,11 @@ pub const Transfer = struct {
         var primary_port: c_long = 0;
         _ = curl.easy_getinfo(self.handle, curl.CURLINFO_PRIMARY_PORT, &primary_port);
 
+        // The connection is made and the request sent once the response's
+        // headers are in: its measurements are all known now, and HTTP-network
+        // fetch records them from this head (a navigation is streamed).
+        const connection = ConnectionMeasures.of(self);
+
         const status_message = try ownedReason(allocator, block);
         errdefer if (status_message.len > 0) allocator.free(status_message);
         const owned_headers = headers.toOwnedSlice(allocator) catch return NetworkError.OutOfMemory;
@@ -660,6 +701,11 @@ pub const Transfer = struct {
             .redirect_count = 0,
             .remote_ip = if (primary_ip != null) allocator.dupe(u8, std.mem.span(primary_ip.?)) catch null else null,
             .remote_port = if (primary_port > 0) @intCast(primary_port) else null,
+            .dns_lookup_time_ms = connection.dns_lookup_time_ms,
+            .connect_time_ms = connection.connect_time_ms,
+            .app_connect_time_ms = connection.app_connect_time_ms,
+            .pretransfer_time_ms = connection.pretransfer_time_ms,
+            .connection_reused = connection.connection_reused,
         };
     }
 
@@ -765,25 +811,11 @@ pub const Transfer = struct {
         var effective_url: [*c]const u8 = null;
         _ = curl.easy_getinfo(handle, curl.CURLINFO_EFFECTIVE_URL, &effective_url);
 
-        // Resource Timing API: Extract detailed timing information
-        var namelookup_time: f64 = 0;
-        _ = curl.easy_getinfo(handle, curl.CURLINFO_NAMELOOKUP_TIME, &namelookup_time);
-
-        var connect_time: f64 = 0;
-        _ = curl.easy_getinfo(handle, curl.CURLINFO_CONNECT_TIME, &connect_time);
-
-        var appconnect_time: f64 = 0;
-        _ = curl.easy_getinfo(handle, curl.CURLINFO_APPCONNECT_TIME, &appconnect_time);
-
-        var pretransfer_time: f64 = 0;
-        _ = curl.easy_getinfo(handle, curl.CURLINFO_PRETRANSFER_TIME, &pretransfer_time);
+        // Resource Timing API: the connection's measurements.
+        const connection = ConnectionMeasures.of(self);
 
         var redirect_time: f64 = 0;
         _ = curl.easy_getinfo(handle, curl.CURLINFO_REDIRECT_TIME, &redirect_time);
-
-        // Check if connection was reused (num_connects == 0 means reused)
-        var num_connects: c_long = 0;
-        _ = curl.easy_getinfo(handle, curl.CURLINFO_NUM_CONNECTS, &num_connects);
 
         log.debug("{s} {s}: {d}, {d} body bytes, {d:.3}s", .{
             self.method,
@@ -848,12 +880,12 @@ pub const Transfer = struct {
             .remote_ip = remote_ip,
             .remote_port = if (primary_port > 0) @intCast(primary_port) else null,
             // Resource Timing API fields
-            .dns_lookup_time_ms = @intFromFloat(namelookup_time * 1000),
-            .connect_time_ms = @intFromFloat(connect_time * 1000),
-            .app_connect_time_ms = @intFromFloat(appconnect_time * 1000),
-            .pretransfer_time_ms = @intFromFloat(pretransfer_time * 1000),
+            .dns_lookup_time_ms = connection.dns_lookup_time_ms,
+            .connect_time_ms = connection.connect_time_ms,
+            .app_connect_time_ms = connection.app_connect_time_ms,
+            .pretransfer_time_ms = connection.pretransfer_time_ms,
             .redirect_time_ms = @intFromFloat(redirect_time * 1000),
-            .connection_reused = (num_connects == 0),
+            .connection_reused = connection.connection_reused,
         };
     }
 };

@@ -1,6 +1,8 @@
 # Debugging: A reuse test can open fresh connections
 
 **Date**: 2026-10-14
+**Status (2026-10-31, lane flaky4)**: superseded. The "all 100 requests were fresh connections" reading came from the backend's `connection_reused` flag, which a streamed transfer's head never set: curl's own connection ids show the innermost navigation reusing the interim frame's connection every time. See [A streamed response's head carried no connection timing](debugging-a-streamed-response-head-carried-no-connection-timing.md).
+
 **Lesson**: Verify the transport's reuse flag before treating a timing equality failure as a reused-connection timestamp bug.
 
 **Why**: A test's name states its intended setup, not the network path the engine actually took. A fresh TLS connection with sub-millisecond measurements rounded to integer milliseconds can appear equal to fetchStart on most runs and differ across a coarsening boundary.

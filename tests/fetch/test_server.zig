@@ -23,6 +23,8 @@
 //!   GET  /trickle/{n}      - n chunks of "chunk\n", 100ms apart, chunked
 //!   GET  /bad-chunk        - one good chunk, then a malformed one
 //!   GET  /big/{kib}        - kib KiB of "x", as fast as the peer reads
+//!   GET  /keep-alive       - "ok" on a persistent connection: up to eight
+//!                            requests answered on one socket
 //!   GET  /split-head       - the status line now; the rest of the header
 //!                            block and a 5-byte body once the test calls
 //!                            `releaseHead` (`headStarted` says the first
@@ -249,6 +251,22 @@ pub const TestServer = struct {
             // depends on this sleep.
             clock.sleep(30 * std.time.ns_per_ms);
             return writeAllToStream(io, stream, "Content-Type: text/plain\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello");
+        }
+        // A persistent connection: each request on it is answered "ok" with
+        // a Content-Length and no `Connection: close`, and the next request
+        // is read from the same socket (at most eight), so a client can
+        // reuse the connection - and a test can tell whether it did.
+        if (std.mem.eql(u8, path, "/keep-alive")) {
+            var served: usize = 0;
+            while (served < 8) : (served += 1) {
+                try writeAllToStream(io, stream, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nok");
+                reader.tossBuffered();
+                reader.fillMore() catch |err| switch (err) {
+                    error.EndOfStream => return,
+                    error.ReadFailed => return stream_reader.err.?,
+                };
+            }
+            return;
         }
         if (std.mem.eql(u8, path, "/bad-chunk")) {
             try writeAllToStream(io, stream, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n6\r\nchunk\n\r\n");
