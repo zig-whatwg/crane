@@ -22,11 +22,11 @@
 <h1 class="page-title"><code>non-<wbr>fully-<wbr>active.<wbr>https.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="permissions/non-fully-active.https.html">
 <p class="figures-main"><span class="fg-pass">1</span><span class="fg-of"> / 2</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>1</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>1</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-9d21eafa7f</code>, <span class="nowrap">31 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9d21eafa7f"><code>9d21eafa7f</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-timeout g-block">TIMEOUT</span> <span class="quiet">runner status <code>TIMEOUT</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-0aa6c6c8cf</code>, <span class="nowrap">31 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/0aa6c6c8cf"><code>0aa6c6c8cf</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/permissions/non-fully-active.https.html"><code>permissions/<wbr>non-<wbr>fully-<wbr>active.<wbr>https.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -34,9 +34,10 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
+<h3 class="run-head"><code>/permissions/non-fully-active.https.html</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>1</b> / 2</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-bc1d54d3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Trying to query() a non-fully active document rejects with a InvalidStateError</span></div><a class="self" href="#s-bc1d54d3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-8b845498"><details><summary><span class="mark">FAIL</span><span class="sub-name">Permission change events shouldn&#39;t fire on non-fully active document</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;[object Event]&quot;</pre></details><a class="self" href="#s-8b845498" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-timeout" id="s-8b845498"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">Permission change events shouldn&#39;t fire on non-fully active document</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-8b845498" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>
