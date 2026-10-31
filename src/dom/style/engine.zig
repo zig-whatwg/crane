@@ -1328,7 +1328,7 @@ fn substitutedUrl(context: *const anyopaque, allocator: Allocator, base: []const
 /// DOM sibling relation; Q44 follows the newer outer-scope zero rule.
 /// The two-pass fill follows selector_matching's NthIndexCache design,
 /// but scalar records live on ElementStyle across separate style reads.
-fn treeCounts(context: *anyopaque) css.math_values.TreeCounts {
+pub fn treeCounts(context: *anyopaque) css.math_values.TreeCounts {
     const node: *NodeBase = @ptrCast(@alignCast(context));
     const parent = node.parent_node orelse return .{ .index = 1, .count = 1 };
     const element = instanceOf(node);

@@ -356,7 +356,7 @@ fn appliesTo(pseudo: ?[]const u8) ?*const LonghandSet {
 /// Like Blink's MatchResult/CascadeMap, candidates refer back to their
 /// matched declarations rather than duplicating all source data per property.
 /// A declaration of a longhand outside `applies` is not a candidate.
-fn collectCandidates(allocator: Allocator, matched: []const Matched, applies: ?*const LonghandSet) Allocator.Error!std.ArrayList(Candidate) {
+pub fn collectCandidates(allocator: Allocator, matched: []const Matched, applies: ?*const LonghandSet) Allocator.Error!std.ArrayList(Candidate) {
     var candidates: std.ArrayList(Candidate) = .empty;
     errdefer candidates.deinit(allocator);
     for (matched) |*m| {
@@ -428,7 +428,7 @@ fn collectCustomCandidates(allocator: Allocator, matched: []const Matched) Alloc
 /// Like Blink's CascadeMap and WebKit's PropertyCascade, lookup starts at
 /// that property's head. Candidate order and borrowed Source identity stay
 /// unchanged; the separate links keep Candidate at 32 bytes.
-const CandidateIndex = struct {
+pub const CandidateIndex = struct {
     const none = std.math.maxInt(usize);
     heads: [Longhand.count]usize = @splat(none),
     links: []usize,
