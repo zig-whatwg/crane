@@ -794,10 +794,10 @@ pub fn V8Namespace(comptime Namespace: type) type {
         /// operation's: bit i for the operation's argument i, which is
         /// parameter i once the realm parameters before it are skipped).
         fn argModeOf(comptime zig_name: []const u8, comptime param_index: usize) interface.ArgMode {
-            const params = @typeInfo(@TypeOf(@field(Namespace, zig_name))).@"fn".params;
+            const param_types = @typeInfo(@TypeOf(@field(Namespace, zig_name))).@"fn".param_types;
             comptime var argument_index: usize = 0;
-            inline for (params[0..param_index]) |param| {
-                if (param.type.? != runtime.Context) argument_index += 1;
+            inline for (param_types[0..param_index]) |param_type| {
+                if (param_type.? != runtime.Context) argument_index += 1;
             }
             const table = if (@hasDecl(Namespace, "restricted_floats")) Namespace.restricted_floats else .{};
             return .{ .restricted = interface.restrictedBit(interface.restrictedFloatTableMask(table, zig_name), argument_index) };

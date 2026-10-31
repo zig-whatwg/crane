@@ -66,9 +66,10 @@ pub fn runnerModes(runner_option: ?Mode, optimize: Mode, optimize_given: bool) R
 /// (`wpt_runner: ReleaseSafe build (Crane modules Debug, C libraries
 /// ReleaseSafe)`, as AGENTS.md documents it). Zig 0.17 renamed the
 /// OptimizeMode tags to debug, safe, fast and small, so @tagName no longer
-/// gives these names.
-pub fn displayName(mode: Mode) []const u8 {
-    return switch (mode) {
+/// gives these names. Takes any OptimizeMode-shaped enum: the runner's build
+/// options module declares a copy of the type of its own.
+pub fn displayName(comptime mode: anytype) []const u8 {
+    return switch (@field(Mode, @tagName(mode))) {
         .debug => "Debug",
         .safe => "ReleaseSafe",
         .fast => "ReleaseFast",

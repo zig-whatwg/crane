@@ -764,8 +764,8 @@ pub fn specialOperationValueIsUnderstood(comptime T: type) bool {
             .optional => |o| return specialOperationValueIsUnderstood(o.child),
             .@"union" => |u| {
                 if (u.tag_type == null) return false;
-                for (u.fields) |field| {
-                    if (!specialOperationValueIsUnderstood(field.type)) return false;
+                for (u.field_types) |field_type| {
+                    if (!specialOperationValueIsUnderstood(field_type)) return false;
                 }
                 return true;
             },
@@ -811,9 +811,9 @@ fn specialResultType(comptime function: anytype) type {
 /// A special setter's value type: its third parameter's (instance, key,
 /// value), or void for one the interceptors do not bind.
 fn specialValueType(comptime function: anytype) type {
-    const params = @typeInfo(@TypeOf(function)).@"fn".params;
-    if (params.len < 3) return void;
-    return params[2].type.?;
+    const param_types = @typeInfo(@TypeOf(function)).@"fn".param_types;
+    if (param_types.len < 3) return void;
+    return param_types[2].?;
 }
 
 /// Refuse, at compile time, a special operation whose value type has no
