@@ -12,6 +12,15 @@
 //! where HTTPS is not used. navigation-timing/test-performance-attributes.sub.html
 //! failed 34 of 50 isolated runs (frozen main 0aa6c6c8cf) on exactly this.
 //!
+//! 2. A service-worker-controlled navigation's fetchStart (the fetch event's
+//! dispatch time, Navigation Timing's fetchStart getter step 3) once its body
+//! has arrived after the entry was made: the body's end gave the entry back
+//! the fetch's post-redirect start, so whether fetchStart followed the
+//! worker's activation depended on whether the service worker's response
+//! body was all there when the document was made -
+//! service-workers/service-worker/navigation-timing-extended.https.html
+//! failed 8 of 50 runs.
+//!
 //! tests/html is one executable: the engine may already be started.
 const std = @import("std");
 const testing = std.testing;
@@ -105,4 +114,61 @@ test "a page fetched without TLS keeps secureConnectionStart at 0" {
     try navigateWithConnectionAtTimeOrigin(browser, "http://f4-legacy-secure.test/page.html", false);
     try testing.expect(try evaluateNumber(browser, "performance.timing.connectStart") > 0);
     try testing.expectEqual(@as(f64, 0), try evaluateNumber(browser, "performance.timing.secureConnectionStart"));
+}
+
+/// A navigation answered by a service worker, whose entry is made while the
+/// response's body is still arriving: the fetch started at `start`, the
+/// worker took it at `start + 1` and dispatched its fetch event at
+/// `start + 400` (after activating), and the body ends later.
+fn navigateThroughServiceWorker(browser: *browser_mod.Browser, url: []const u8, start: f64) !void {
+    try browser.navigateWithOptions(url, .window, .{ .skip_load = true });
+    const context = browser.current_context orelse return error.NoPage;
+    try context.loadHTML("<!doctype html><body>controlled", .{ .base_url = url });
+    try waitForComplete(browser);
+    const realm = browser.getRealm() orelse return error.NoRealm;
+
+    var timing_info: fetch.internal.FetchTimingInfo = .{ .allocator = testing.allocator, .server_timing_headers = .empty };
+    defer timing_info.deinit();
+    timing_info.start_time = start;
+    timing_info.post_redirect_start_time = start;
+    timing_info.final_service_worker_start_time = start + 1;
+    timing_info.service_worker_timing_info = .{ .start_time = start + 1, .fetch_event_dispatch_time = start + 400 };
+    timing_info.final_connection_timing_info = fetch.internal.ConnectionTimingInfo.forReusedConnection(start);
+    timing_info.final_network_request_start_time = start + 400;
+    timing_info.final_network_response_start_time = start + 401;
+    timing_info.end_time = start + 402;
+    const report: fetch.internal.TimingReport = .{
+        .timing_info = &timing_info,
+        .url = url,
+        .initiator_type = .other,
+        .cache_state = "",
+        .body_info = .{},
+        .response_status = 200,
+    };
+    try dom.performance_timeline.createNavigationTimingEntry(realm, .{
+        .report = &report,
+        .redirect_count = 0,
+        .navigation_type = .navigate,
+        .service_worker_timing = timing_info.service_worker_timing_info,
+        .body_arriving = true,
+    });
+}
+
+test "a service worker's navigation keeps its fetch event's fetchStart once the body has arrived" {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    const start = fetch.algorithms.http_fetch.getCurrentTimeMs();
+    try navigateThroughServiceWorker(browser, "https://f4-sw-fetch-start.test/page.html", start);
+    const fetch_start = "performance.getEntriesByType('navigation')[0].fetchStart";
+    // fetchStart is the fetch event's dispatch time, 400 ms after the time
+    // origin (the fetch's start), on the 100 us grid or finer.
+    const before = try evaluateNumber(browser, fetch_start);
+    try testing.expect(before >= 399.8 and before <= 400.2);
+    // The body arrives: the entry's sizes are its, and fetchStart is still
+    // the dispatch time, not the fetch's start.
+    const realm = browser.getRealm() orelse return error.NoRealm;
+    dom.performance_timeline.navigationBodyEnded(realm, 61, 61);
+    try testing.expectEqual(@as(f64, 61), try evaluateNumber(browser, "performance.getEntriesByType('navigation')[0].encodedBodySize"));
+    try testing.expectEqual(before, try evaluateNumber(browser, fetch_start));
+    try testing.expectEqual(@as(f64, 1), @round(try evaluateNumber(browser, "performance.getEntriesByType('navigation')[0].workerStart")));
 }
