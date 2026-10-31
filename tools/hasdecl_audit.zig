@@ -653,7 +653,7 @@ test "the probe compiles, and finds exactly the flips, when instrumented code is
     ;
     const audit = try auditSource(arena, source);
     const text = try arena.dupeSentinel(u8, (try instrument(arena, "src/f.zig", source, audit)).?, 0);
-    const tree = try Ast.parse(arena, text, .zig);
+    const tree = try Ast.parse(arena, text, .{ .mode = .zig });
     try testing.expectEqual(@as(usize, 0), tree.errors.len);
     try testing.expectEqual(@as(usize, 3), std.mem.count(u8, text, "HASDECL-FLIP"));
 }
