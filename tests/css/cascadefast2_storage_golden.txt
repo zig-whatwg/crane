@@ -324,6 +324,12 @@ will-change: auto
 container-name: none
 container-type: normal
 page: auto
+break-before: auto
+break-after: auto
+break-inside: auto
+box-decoration-break: slice
+orphans: 2
+widows: 2
 == initial root and child / 0
 display: block
 == initial root and child / 1

@@ -423,6 +423,14 @@ pub const Longhand = enum(u16) {
     // Paged Media3 §8.1. Append so existing rare-group members stay put.
     page,
 
+    // CSS Fragmentation 3/4: values independent of used fragmentation.
+    break_before,
+    break_after,
+    break_inside,
+    box_decoration_break,
+    orphans,
+    widows,
+
     pub const count = @typeInfo(Longhand).@"enum".field_names.len;
 
     /// The property name.
@@ -602,6 +610,7 @@ pub const Grammar = enum {
     shape_outside,
     box,
     column_count,
+    positive_integer,
     column_size,
     scroll_snap,
     scroll_padding,
@@ -732,6 +741,15 @@ const infos: [Longhand.count]Info = blk: {
         // Paged Media3 §8.1; Q86 Chrome/Firefox choose noninheritance.
         // The computed value is specified; ancestor resolution is a used value.
         .{ .longhand = .page, .inherited = false, .initial = Value.kw(.auto), .grammar = .page_name },
+        // Break4 §§3.1–3.2: computed keywords do not propagate. The region
+        // values remain unimplemented in Blink, Gecko and WebKit (FM1 Q3).
+        .{ .longhand = .break_before, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .avoid, .always, .all, .avoid_page, .page, .left, .right, .recto, .verso, .avoid_column, .column } },
+        .{ .longhand = .break_after, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .avoid, .always, .all, .avoid_page, .page, .left, .right, .recto, .verso, .avoid_column, .column } },
+        .{ .longhand = .break_inside, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .avoid, .avoid_page, .avoid_column } },
+        // Break3/4 §5.4 and §3.3: only the line-count constraints inherit.
+        .{ .longhand = .box_decoration_break, .inherited = false, .initial = Value.kw(.slice), .grammar = .keywords, .keywords = &.{ .slice, .clone } },
+        .{ .longhand = .orphans, .inherited = true, .initial = .{ .integer = 2 }, .grammar = .positive_integer },
+        .{ .longhand = .widows, .inherited = true, .initial = .{ .integer = 2 }, .grammar = .positive_integer },
         .{ .longhand = .hanging_punctuation, .inherited = true, .initial = Value.kw(.none), .grammar = .text_value },
         .{ .longhand = .hyphenate_limit_lines, .inherited = true, .initial = Value.kw(.no_limit), .grammar = .text_value },
         // Text4 §7.6, WebKit's cssTextGroupAlignEnabled implementation.
@@ -1740,6 +1758,8 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
             if (takeKeyword(stream, &.{.auto})) |k| return Value.kw(k);
             return @import("box_values.zig").consumeInteger(options, stream, 1);
         },
+        // Break3/4 §3.3: <integer [1,∞]>, including computed math bounds.
+        .positive_integer => return @import("box_values.zig").consumeInteger(options, stream, 1),
         .column_size => {
             // Multicol 2 §§4.1–4.2: auto | <length [0,∞]>, no percentages.
             if (takeKeyword(stream, &.{.auto})) |k| return Value.kw(k);

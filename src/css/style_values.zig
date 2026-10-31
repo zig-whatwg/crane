@@ -374,6 +374,16 @@ pub const Keyword = enum(u16) {
     row_over_column,
     column_over_row,
 
+    // CSS Fragmentation 3/4 §§3.1–3.2 and 5.4.
+    avoid,
+    avoid_page,
+    page,
+    recto,
+    verso,
+    avoid_column,
+    slice,
+    clone,
+
     /// The keyword's CSS spelling.
     pub fn name(self: Keyword) []const u8 {
         return switch (self) {

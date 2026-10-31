@@ -251,10 +251,13 @@ pub fn clampFinal(l: Longhand, v: Value) Value {
             };
             return .{ .number = clamped };
         },
-        .integer => |i| return .{ .integer = switch (grammar) {
-            .column_count => @max(i, 1),
-            else => i,
-        } },
+        .integer => |i| return .{
+            .integer = switch (grammar) {
+                // Break3/4 §3.3: orphans/widows stay positive after compositing.
+                .column_count, .positive_integer => @max(i, 1),
+                else => i,
+            },
+        },
         .length => |len| {
             if (nonNegativeLengths(grammar) and len.value < 0) return .{ .length = .{ .value = 0, .unit = len.unit } };
             return v;
