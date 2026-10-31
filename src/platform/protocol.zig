@@ -3287,22 +3287,22 @@ fn checkPlatform(comptime platform: type) void {
     checkBrowserOptions(label, platform.PlatformBrowserOptions);
     // Every public inline function here is an operation.
     const protocol = @This();
-    for (@typeInfo(protocol).@"struct".decls) |decl| {
-        const expected = switch (@typeInfo(@TypeOf(@field(protocol, decl.name)))) {
+    for (@typeInfo(protocol).@"struct".decl_names) |decl_name| {
+        const expected = switch (@typeInfo(@TypeOf(@field(protocol, decl_name)))) {
             .@"fn" => |f| f,
             else => continue,
         };
         if (expected.calling_convention != .@"inline") continue;
-        switch (conformance(platform, decl.name, expected)) {
+        switch (conformance(platform, decl_name, expected)) {
             .matches => {},
-            .missing => @compileError(label ++ " lacks protocol operation `" ++ decl.name ++ "`"),
-            .not_a_function => @compileError(label ++ ": `" ++ decl.name ++ "` is not a function"),
-            .mistyped => @compileError(label ++ ": `" ++ decl.name ++ "` is " ++
-                @typeName(@TypeOf(@field(platform, decl.name))) ++ "; the protocol's signature is " ++ signatureText(expected)),
+            .missing => @compileError(label ++ " lacks protocol operation `" ++ decl_name ++ "`"),
+            .not_a_function => @compileError(label ++ ": `" ++ decl_name ++ "` is not a function"),
+            .mistyped => @compileError(label ++ ": `" ++ decl_name ++ "` is " ++
+                @typeName(@TypeOf(@field(platform, decl_name))) ++ "; the protocol's signature is " ++ signatureText(expected)),
         }
         // In a test build, compile the implementation's function whole: a stub
         // nothing calls still has to type-check.
-        if (@import("builtin").is_test) _ = &@field(platform, decl.name);
+        if (@import("builtin").is_test) _ = &@field(platform, decl_name);
     }
 }
 

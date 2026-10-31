@@ -123,9 +123,9 @@ const Allowed = struct {
     top_navigation_to_custom_protocols: bool = false,
 
     fn note(self: *Allowed, token: []const u8) void {
-        inline for (@typeInfo(Allowed).@"struct".fields) |field| {
-            const keyword = comptime keywordOf(field.name);
-            if (std.ascii.eqlIgnoreCase(token, keyword)) @field(self, field.name) = true;
+        inline for (@typeInfo(Allowed).@"struct".field_names) |field_name| {
+            const keyword = comptime keywordOf(field_name);
+            if (std.ascii.eqlIgnoreCase(token, keyword)) @field(self, field_name) = true;
         }
     }
 

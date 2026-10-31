@@ -77,8 +77,8 @@ const not_animatable = [_]Longhand{
     .text_orientation,      .contain,                   .interpolate_size,
 };
 
-const type_table: [std.meta.fields(Longhand).len]AnimationType = blk: {
-    var table = [_]AnimationType{.by_computed_value} ** std.meta.fields(Longhand).len;
+const type_table: [std.meta.fieldNames(Longhand).len]AnimationType = blk: {
+    var table = [_]AnimationType{.by_computed_value} ** std.meta.fieldNames(Longhand).len;
     for (not_animatable) |l| table[@intFromEnum(l)] = .not_animatable;
     table[@intFromEnum(Longhand.visibility)] = .visibility;
     break :blk table;

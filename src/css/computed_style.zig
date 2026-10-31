@@ -134,8 +134,8 @@ fn analyse(comptime T: type) bool {
 const counted_tags: std.EnumSet(std.meta.Tag(Value)) = blk: {
     @setEvalBranchQuota(100_000);
     var set: std.EnumSet(std.meta.Tag(Value)) = .initEmpty();
-    for (@typeInfo(Value).@"union".fields) |f| {
-        if (mayHoldReference(f.type)) set.insert(@field(std.meta.Tag(Value), f.name));
+    for (@typeInfo(Value).@"union".field_names, @typeInfo(Value).@"union".field_types) |f_name, f_type| {
+        if (mayHoldReference(f_type)) set.insert(@field(std.meta.Tag(Value), f_name));
     }
     break :blk set;
 };

@@ -34,9 +34,9 @@ pub const Owned = struct {
     data: Data = .{},
 
     pub fn deinit(self: *Owned, allocator: std.mem.Allocator) void {
-        inline for (std.meta.fields(Data)) |field| {
-            if (field.type == ?[]const u8) {
-                if (@field(self.data, field.name)) |text| erase(allocator, text);
+        inline for (std.meta.fieldNames(Data), std.meta.fieldTypes(Data)) |field_name, field_type| {
+            if (field_type == ?[]const u8) {
+                if (@field(self.data, field_name)) |text| erase(allocator, text);
             }
         }
         if (self.data.key_ops) |operations| {
@@ -45,8 +45,8 @@ pub const Owned = struct {
         }
         if (self.data.oth) |primes| {
             for (primes) |prime| {
-                inline for (std.meta.fields(OtherPrime)) |field| {
-                    if (@field(prime, field.name)) |text| erase(allocator, text);
+                inline for (std.meta.fieldNames(OtherPrime)) |field_name| {
+                    if (@field(prime, field_name)) |text| erase(allocator, text);
                 }
             }
             allocator.free(primes);
@@ -118,7 +118,7 @@ pub fn exportOctet(allocator: std.mem.Allocator, key: *const keys.Slots) ![]u8 {
         std.crypto.secureZero(u8, material);
         allocator.free(material);
     }
-    var operations: [@typeInfo(keys.Usage).@"enum".fields.len][]const u8 = undefined;
+    var operations: [@typeInfo(keys.Usage).@"enum".field_names.len][]const u8 = undefined;
     var count: usize = 0;
     var iterator = key.usages.iterator();
     while (iterator.next()) |usage| : (count += 1) operations[count] = @tagName(usage);

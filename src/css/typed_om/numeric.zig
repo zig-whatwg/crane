@@ -11,10 +11,10 @@ const values = @import("../style_values.zig");
 pub fn parseUnit(name: []const u8) ?math.Unit {
     if (std.mem.eql(u8, name, "number")) return .number;
     if (std.mem.eql(u8, name, "percent")) return .percent;
-    inline for (@typeInfo(math.Unit).@"enum".fields) |field| {
-        const unit: math.Unit = @enumFromInt(field.value);
+    inline for (@typeInfo(math.Unit).@"enum".field_names, @typeInfo(math.Unit).@"enum".field_values) |field_name, field_value| {
+        const unit: math.Unit = @enumFromInt(field_value);
         if (comptime unit != .number and unit != .percent) {
-            if (std.ascii.eqlIgnoreCase(name, field.name)) return unit;
+            if (std.ascii.eqlIgnoreCase(name, field_name)) return unit;
         }
     }
     return null;

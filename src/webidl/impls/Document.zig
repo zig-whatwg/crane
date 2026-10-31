@@ -2996,7 +2996,7 @@ fn createLegacyEvent(realm: runtime.Context, interface: LegacyEventInterface) an
             if (comptime @hasDecl(Interface, "call_constructor")) {
                 // Step 2: the dictionary the JavaScript value undefined
                 // converts to - the constructor's, not passed.
-                const Dictionary = @typeInfo(@TypeOf(Interface.call_constructor)).@"fn".params[2].type.?;
+                const Dictionary = @typeInfo(@TypeOf(Interface.call_constructor)).@"fn".param_types[2].?;
                 return Interface.call_constructor(realm, runtime.DOMString.initEmpty(), Dictionary.notPassed());
             } else {
                 // No constructor (BeforeUnloadEvent, TextEvent): a new object

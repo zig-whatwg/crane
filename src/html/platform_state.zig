@@ -69,7 +69,7 @@ fn environmentValue(document: *runtime.Instance, variable: @import("dom").style.
     const browser = of(document.ctx) orelse return null;
     comptime {
         const Variable = @import("dom").style.environment_variables.Variable;
-        if (@typeInfo(Variable).@"enum".fields.len != @typeInfo(platform.CssEnvironmentVariable).@"enum".fields.len)
+        if (@typeInfo(Variable).@"enum".field_names.len != @typeInfo(platform.CssEnvironmentVariable).@"enum".field_names.len)
             @compileError("CSS and platform environment variable sets must match");
     }
     // Exhaustively resolve tags by name at compile time, never by ordinal.

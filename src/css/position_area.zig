@@ -136,8 +136,8 @@ const by_name = blk: {
 fn keyword(token: tokenizer.Token) ?Keyword {
     if (token.token_type != .ident) return null;
     if (std.mem.indexOfScalar(u8, token.value, '\\') != null) {
-        inline for (@typeInfo(Keyword).@"enum".fields) |f| {
-            const k: Keyword = @enumFromInt(f.value);
+        inline for (@typeInfo(Keyword).@"enum".field_values) |f_value| {
+            const k: Keyword = @enumFromInt(f_value);
             if (tokenizer.nameEql(token.value, k.name())) return k;
         }
         return null;

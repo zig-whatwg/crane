@@ -31,8 +31,8 @@ pub const Kind = enum {
     perspective,
 
     fn parse(raw: []const u8) ?Kind {
-        inline for (@typeInfo(Kind).@"enum".fields) |field| {
-            if (tokens.nameEql(raw, field.name)) return @enumFromInt(field.value);
+        inline for (@typeInfo(Kind).@"enum".field_names, @typeInfo(Kind).@"enum".field_values) |field_name, field_value| {
+            if (tokens.nameEql(raw, field_name)) return @enumFromInt(field_value);
         }
         return null;
     }

@@ -857,8 +857,8 @@ pub fn hydrateContextFromSnapshot(
     log.debug("[HYDRATE-SNAPSHOT] hydrateContextFromSnapshot called, context={*}, scope={s}\n", .{ v8_ctx, @tagName(scope) });
 
     // Use inline for to convert runtime scope to comptime for installForScope
-    inline for (std.meta.fields(helpers.GlobalScope)) |field| {
-        if (scope == @field(helpers.GlobalScope, field.name)) {
+    inline for (std.meta.fieldNames(helpers.GlobalScope)) |field_name| {
+        if (scope == @field(helpers.GlobalScope, field_name)) {
             // NOTE: Do NOT call installLazyConstructorsOnGlobal here!
             // The snapshot already contains all WebIDL constructors registered via initializeBindings().
             // Installing lazy getters would OVERWRITE the snapshot's constructors with fresh ones,

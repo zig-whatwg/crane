@@ -2627,8 +2627,8 @@ pub fn call_insertAdjacentHTML(instance: *runtime.Instance, position: runtime.DO
     // HTML 8.5.6 steps 2–3: choose a context or throw before parsing.
     const Position = enum { beforebegin, afterbegin, beforeend, afterend };
     const where: Position = blk: {
-        inline for (std.meta.fields(Position)) |field| {
-            if (std.ascii.eqlIgnoreCase(position.asSlice(), field.name)) break :blk @enumFromInt(field.value);
+        inline for (std.meta.fieldNames(Position), @typeInfo(Position).@"enum".field_values) |field_name, field_value| {
+            if (std.ascii.eqlIgnoreCase(position.asSlice(), field_name)) break :blk @enumFromInt(field_value);
         }
         return error.SyntaxError;
     };

@@ -291,14 +291,14 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
             break :blk typeRetainsContextDepth(info.pointer.child, depth + 1);
         }
         if (info == .@"struct") {
-            for (info.@"struct".fields) |field| {
-                if (typeRetainsContextDepth(field.type, depth + 1)) break :blk true;
+            for (info.@"struct".field_types) |field_type| {
+                if (typeRetainsContextDepth(field_type, depth + 1)) break :blk true;
             }
             break :blk false;
         }
         if (info == .@"union") {
-            for (info.@"union".fields) |field| {
-                if (typeRetainsContextDepth(field.type, depth + 1)) break :blk true;
+            for (info.@"union".field_types) |field_type| {
+                if (typeRetainsContextDepth(field_type, depth + 1)) break :blk true;
             }
             break :blk false;
         }
@@ -397,21 +397,21 @@ pub fn argHandleIsCopied(comptime T: type) bool {
         // rule - a JSValue member aliasing ITS OWN handle is fine - so that an
         // unknown pointer keeps the conservative answer.
         if (info == .@"struct" and !@hasDecl(T, "Meta")) {
-            for (info.@"struct".fields) |field| {
+            for (info.@"struct".field_types) |field_type| {
                 // A member that is a sequence of the dictionary itself
                 // (AuctionAdConfig.componentAuctions,
                 // HIDCollectionInfo.children) is as safe as the rest of
                 // the dictionary; walking it would recurse forever.
-                if (isSelfMember(field.type, T)) continue;
-                if (!memberHandleIsSafe(field.type)) break :blk false;
+                if (isSelfMember(field_type, T)) continue;
+                if (!memberHandleIsSafe(field_type)) break :blk false;
             }
             break :blk true;
         }
 
         // A union converts the same handle through whichever arm matches.
         if (info == .@"union") {
-            for (info.@"union".fields) |field| {
-                if (!argHandleIsCopied(field.type)) break :blk false;
+            for (info.@"union".field_types) |field_type| {
+                if (!argHandleIsCopied(field_type)) break :blk false;
             }
             break :blk true;
         }
@@ -493,10 +493,10 @@ fn callbackArmsOnlyKeepHandle(comptime T: type) bool {
         if (info != .@"union" or info.@"union".tag_type == null) break :blk false;
         if (T == runtime.JSValue or T == runtime.DOMString) break :blk false;
         var callbacks = 0;
-        for (info.@"union".fields) |field| {
-            if (isCallbackFunctionShape(field.type)) {
+        for (info.@"union".field_types) |field_type| {
+            if (isCallbackFunctionShape(field_type)) {
                 callbacks += 1;
-            } else if (!argHandleIsCopied(field.type)) {
+            } else if (!argHandleIsCopied(field_type)) {
                 break :blk false;
             }
         }
@@ -1130,10 +1130,10 @@ pub fn anyHandleIsKeptOnlyAsHandle(comptime T: type) bool {
         if (isOptWrapper(T)) break :blk anyHandleIsKeptOnlyAsHandle(@FieldType(T, "value"));
         if (info == .@"union" and info.@"union".tag_type != null) {
             var objects = 0;
-            for (info.@"union".fields) |field| {
-                if (isObjectArm(T, field.name)) {
+            for (info.@"union".field_names, info.@"union".field_types) |field_name, field_type| {
+                if (isObjectArm(T, field_name)) {
                     objects += 1;
-                } else if (!argHandleIsCopied(field.type)) {
+                } else if (!argHandleIsCopied(field_type)) {
                     break :blk false;
                 }
             }
@@ -1229,10 +1229,10 @@ pub fn bufferHandleIsKeptInValue(comptime T: type) bool {
         if (isOptWrapper(T)) break :blk bufferHandleIsKeptInValue(@FieldType(T, "value"));
         if (info == .@"union" and info.@"union".tag_type != null) {
             var buffers = 0;
-            for (info.@"union".fields) |field| {
-                if (bufferHandleIsKeptInValue(field.type)) {
+            for (info.@"union".field_types) |field_type| {
+                if (bufferHandleIsKeptInValue(field_type)) {
                     buffers += 1;
-                } else if (!argHandleIsCopied(field.type)) {
+                } else if (!argHandleIsCopied(field_type)) {
                     break :blk false;
                 }
             }
@@ -1750,14 +1750,14 @@ pub fn needsArgCleanup(comptime T: type) bool {
     }
     // Struct types (dictionaries) - check if any field needs cleanup
     if (@typeInfo(T) == .@"struct") {
-        inline for (std.meta.fields(T)) |field| {
-            if (needsArgCleanup(field.type)) return true;
+        inline for (std.meta.fieldTypes(T)) |field_type| {
+            if (needsArgCleanup(field_type)) return true;
         }
     }
     // Union types (WebIDL union types) - check if any variant needs cleanup
     if (@typeInfo(T) == .@"union") {
-        inline for (std.meta.fields(T)) |field| {
-            if (needsArgCleanup(field.type)) return true;
+        inline for (std.meta.fieldTypes(T)) |field_type| {
+            if (needsArgCleanup(field_type)) return true;
         }
     }
     return false;
@@ -1848,11 +1848,11 @@ pub fn freeConvertedArg(comptime T: type, allocator: std.mem.Allocator, arg: T) 
         // (realms3: a removed frame kept alive by a dropped
         // CustomEvent). A sequence<any> member's elements go with
         // the sequence (`freeSequenceElement`).
-        inline for (std.meta.fields(T)) |field| {
-            if (comptime needsArgCleanup(field.type)) {
-                freeConvertedArg(field.type, allocator, @field(arg, field.name));
+        inline for (std.meta.fieldNames(T), std.meta.fieldTypes(T)) |field_name, field_type| {
+            if (comptime needsArgCleanup(field_type)) {
+                freeConvertedArg(field_type, allocator, @field(arg, field_name));
             }
-            releaseAnyArgument(field.type, @field(arg, field.name));
+            releaseAnyArgument(field_type, @field(arg, field_name));
         }
     } else if (@typeInfo(T) == .@"union") {
         // Union types (WebIDL union types) - free the active variant if it needs cleanup
@@ -6630,7 +6630,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // item()'s one argument, as an operation's: missing (no argument,
             // or undefined) is "not provided".
-            const NameOrIndex = @typeInfo(@TypeOf(Interface.call_item)).@"fn".params[1].type.?;
+            const NameOrIndex = @typeInfo(@TypeOf(Interface.call_item)).@"fn".param_types[1].?;
             const name_or_index: NameOrIndex = if (info.length() == 0)
                 NameOrIndex.notPassed()
             else
@@ -7309,7 +7309,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     if (comptime has_indexed_setter) {
                         const setter_name = comptime special.indexed_setter.?;
                         const setter_fn = @field(Interface, setter_name);
-                        const value_type = comptime @typeInfo(@TypeOf(setter_fn)).@"fn".params[2].type.?;
+                        const value_type = comptime @typeInfo(@TypeOf(setter_fn)).@"fn".param_types[2].?;
                         // Released unless converting the value can keep it
                         // (typeRetainsContext).
                         const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kYes;
@@ -7660,7 +7660,7 @@ pub fn V8Interface(comptime Interface: type) type {
         fn invokeNamedSetter(isolate: *v8.Isolate, instance: *runtime.Instance, key: []const u8, value: *v8.Value) bool {
             const setter_name = comptime special.named_setter.?;
             const setter_fn = @field(Interface, setter_name);
-            const ValueType = comptime @typeInfo(@TypeOf(setter_fn)).@"fn".params[2].type.?;
+            const ValueType = comptime @typeInfo(@TypeOf(setter_fn)).@"fn".param_types[2].?;
             // Released unless converting a `ValueType` can keep it
             // (typeRetainsContext). A fresh Global of the callee's realm per
             // call; acquired at entry and never released, every

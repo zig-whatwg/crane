@@ -225,21 +225,21 @@ pub fn V8Namespace(comptime Namespace: type) type {
         // CSS alone has ~75 operations, each name scanned for an overload suffix.
         @setEvalBranchQuota(100_000);
         var method_list: []const MethodInfo = &.{};
-        for (ns_info.@"struct".decls) |decl| {
-            if (std.mem.startsWith(u8, decl.name, "call_") and !isFurtherOverload(decl.name)) {
-                const method_name = decl.name[5..]; // Remove "call_" prefix
-                const method_fn = @field(Namespace, decl.name);
+        for (ns_info.@"struct".decl_names) |decl_name| {
+            if (std.mem.startsWith(u8, decl_name, "call_") and !isFurtherOverload(decl_name)) {
+                const method_name = decl_name[5..]; // Remove "call_" prefix
+                const method_fn = @field(Namespace, decl_name);
                 const fn_info = @typeInfo(@TypeOf(method_fn));
 
                 if (fn_info != .@"fn") {
-                    @compileError("Expected function for " ++ decl.name);
+                    @compileError("Expected function for " ++ decl_name);
                 }
 
                 method_list = method_list ++ [_]MethodInfo{.{
                     .name = method_name,
-                    .zig_name = decl.name,
-                    .param_count = fn_info.@"fn".params.len,
-                    .length = webidlLength(Namespace, decl.name),
+                    .zig_name = decl_name,
+                    .param_count = fn_info.@"fn".param_types.len,
+                    .length = webidlLength(Namespace, decl_name),
                 }};
             }
         }
@@ -516,7 +516,7 @@ pub fn V8Namespace(comptime Namespace: type) type {
                     const callback = comptime generateCallback(.{
                         .name = set[0].function["call_".len..],
                         .zig_name = overload.function,
-                        .param_count = @typeInfo(@TypeOf(@field(Namespace, overload.function))).@"fn".params.len,
+                        .param_count = @typeInfo(@TypeOf(@field(Namespace, overload.function))).@"fn".param_types.len,
                     });
                     callback(info);
                     return true;

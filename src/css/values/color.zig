@@ -269,8 +269,8 @@ pub const ColorParser = struct {
         const function: Function = blk: {
             if (std.ascii.eqlIgnoreCase(name, "rgba")) break :blk .rgb;
             if (std.ascii.eqlIgnoreCase(name, "hsla")) break :blk .hsl;
-            inline for (std.meta.fields(Function)) |field| {
-                if (std.ascii.eqlIgnoreCase(name, field.name)) break :blk @enumFromInt(field.value);
+            inline for (std.meta.fieldNames(Function), @typeInfo(Function).@"enum".field_values) |field_name, field_value| {
+                if (std.ascii.eqlIgnoreCase(name, field_name)) break :blk @enumFromInt(field_value);
             }
             return error.InvalidColor;
         };

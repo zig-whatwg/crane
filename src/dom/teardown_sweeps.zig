@@ -88,7 +88,7 @@ pub const Phase = enum {
     /// Document.
     documents,
 };
-const phase_count = @typeInfo(Phase).@"enum".fields.len;
+const phase_count = @typeInfo(Phase).@"enum".field_names.len;
 
 /// Room per phase: `.element_types` holds a sweep per node type whose state
 /// has one (dom.orphan_states), eighteen since lane orphanleak.

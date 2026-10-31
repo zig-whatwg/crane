@@ -58,7 +58,7 @@ const dictionaries = struct {
     /// `DOMString? _namespace = null`.
     const SanitizerAttributeNamespace = Arm(SanitizerAttribute, "sanitizer_attribute_namespace");
     /// new Event(type, eventInitDict)'s: `boolean bubbles = false` and two more.
-    const EventInit = @FieldType(@typeInfo(@TypeOf(interfaces.Event.call_constructor)).@"fn".params[2].type.?, "value");
+    const EventInit = @FieldType(@typeInfo(@TypeOf(interfaces.Event.call_constructor)).@"fn".param_types[2].?, "value");
 };
 
 const Env = struct {

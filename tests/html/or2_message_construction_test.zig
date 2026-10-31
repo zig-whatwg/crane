@@ -7,7 +7,7 @@ const dom = @import("dom");
 const OriginRecord = dom.origin_record.OriginRecord;
 // Use the public constructor's dictionary type without adding a test-module
 // dependency to build.zig.
-const MessageEventInit = @FieldType(@typeInfo(@TypeOf(interfaces.MessageEvent.call_constructor)).@"fn".params[2].type.?, "value");
+const MessageEventInit = @FieldType(@typeInfo(@TypeOf(interfaces.MessageEvent.call_constructor)).@"fn".param_types[2].?, "value");
 
 fn construct(ctx: runtime.Context, record: ?*OriginRecord) !*runtime.Instance {
     const dictionary = MessageEventInit{

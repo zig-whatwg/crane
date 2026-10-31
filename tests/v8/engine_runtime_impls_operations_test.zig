@@ -480,20 +480,20 @@ test "every protocol operation's V8 function compiles" {
     // a stub nothing calls yet still has to type-check.
     comptime {
         @setEvalBranchQuota(100_000);
-        for (@typeInfo(protocol).@"struct".decls) |decl| {
-            const T = @TypeOf(@field(protocol, decl.name));
+        for (@typeInfo(protocol).@"struct".decl_names) |decl_name| {
+            const T = @TypeOf(@field(protocol, decl_name));
             if (@typeInfo(T) != .@"fn") continue;
             if (@typeInfo(T).@"fn".calling_convention != .@"inline") continue;
-            _ = &@field(v8.protocol, decl.name);
+            _ = &@field(v8.protocol, decl_name);
         }
     }
 }
 
 test "the protocol is bound to V8, with explicit native and emulated capabilities" {
     try std.testing.expectEqualStrings("V8", protocol.name);
-    inline for (@typeInfo(protocol.Capabilities).@"struct".fields) |field| {
-        const expected: protocol.Support = if (std.mem.eql(u8, field.name, "cross_origin_objects")) .emulated else .native;
-        try std.testing.expectEqual(expected, @field(protocol.capabilities, field.name));
+    inline for (@typeInfo(protocol.Capabilities).@"struct".field_names) |field_name| {
+        const expected: protocol.Support = if (std.mem.eql(u8, field_name, "cross_origin_objects")) .emulated else .native;
+        try std.testing.expectEqual(expected, @field(protocol.capabilities, field_name));
     }
 }
 

@@ -203,7 +203,7 @@ fn construct(comptime kind: Kind, isolate: *v8.Isolate, context: *v8.Context, in
 }
 
 fn createElement(document: *runtime.Instance, comptime local_name: []const u8) !*runtime.Instance {
-    const Options = @typeInfo(@TypeOf(interfaces.Document.call_createElement)).@"fn".params[2].type.?;
+    const Options = @typeInfo(@TypeOf(interfaces.Document.call_createElement)).@"fn".param_types[2].?;
     return interfaces.Document.call_createElement(document, runtime.DOMString.initInterned(local_name), Options.notPassed());
 }
 

@@ -114,20 +114,20 @@ test "every interface-typed position of every generated interface and dictionary
                     inline for (params[1..], 0..) |param, index| {
                         const P = param.type.?;
                         if (comptime @hasDecl(I, "ConstructorArgs") and P == I.ConstructorArgs) {
-                            inline for (@typeInfo(P).@"union".fields) |variant| {
-                                if (comptime @typeInfo(variant.type) == .@"struct" and !@hasDecl(variant.type, "notPassed") and variant.type != void) {
-                                    inline for (@typeInfo(variant.type).@"struct".fields, 0..) |field, i| {
-                                        if (comptime conv.needsInterface(field.type)) {
-                                            if (comptime binding.constructorArgumentInterface(I, variant.name, i) == null) {
-                                                std.debug.print("{s} constructor {s} argument {d} names no interface\n", .{ I.Meta.name, variant.name, i });
+                            inline for (@typeInfo(P).@"union".field_names, @typeInfo(P).@"union".field_types) |variant_name, variant_type| {
+                                if (comptime @typeInfo(variant_type) == .@"struct" and !@hasDecl(variant_type, "notPassed") and variant_type != void) {
+                                    inline for (@typeInfo(variant_type).@"struct".field_types, 0..) |field_type, i| {
+                                        if (comptime conv.needsInterface(field_type)) {
+                                            if (comptime binding.constructorArgumentInterface(I, variant_name, i) == null) {
+                                                std.debug.print("{s} constructor {s} argument {d} names no interface\n", .{ I.Meta.name, variant_name, i });
                                                 missing += 1;
                                             }
                                             checked += 1;
                                         }
                                     }
-                                } else if (comptime conv.needsInterface(variant.type)) {
-                                    if (comptime binding.constructorArgumentInterface(I, variant.name, 0) == null) {
-                                        std.debug.print("{s} constructor {s} names no interface\n", .{ I.Meta.name, variant.name });
+                                } else if (comptime conv.needsInterface(variant_type)) {
+                                    if (comptime binding.constructorArgumentInterface(I, variant_name, 0) == null) {
+                                        std.debug.print("{s} constructor {s} names no interface\n", .{ I.Meta.name, variant_name });
                                         missing += 1;
                                     }
                                     checked += 1;
@@ -157,10 +157,10 @@ test "every interface-typed position of every generated interface and dictionary
         const unlaid = comptime std.mem.eql(u8, decl.name, "RouterCondition") or std.mem.eql(u8, decl.name, "RouterRule");
         const D = @field(dictionaries, decl.name);
         if (comptime !unlaid and @TypeOf(D) == type and @typeInfo(D) == .@"struct") {
-            inline for (@typeInfo(D).@"struct".fields) |field| {
-                if (comptime conv.needsInterface(field.type)) {
-                    if (comptime conv.memberInterface(D, field.name) == null) {
-                        std.debug.print("dictionary {s}.{s} names no interface\n", .{ decl.name, field.name });
+            inline for (@typeInfo(D).@"struct".field_names, @typeInfo(D).@"struct".field_types) |field_name, field_type| {
+                if (comptime conv.needsInterface(field_type)) {
+                    if (comptime conv.memberInterface(D, field_name) == null) {
+                        std.debug.print("dictionary {s}.{s} names no interface\n", .{ decl.name, field_name });
                         missing += 1;
                     }
                     checked += 1;

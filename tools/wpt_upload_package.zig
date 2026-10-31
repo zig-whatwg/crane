@@ -194,8 +194,8 @@ pub const RunInfo = struct {
     revision: []const u8 = "",
 
     fn field(self: *RunInfo, name: []const u8) ?*[]const u8 {
-        inline for (@typeInfo(RunInfo).@"struct".fields) |f| {
-            if (std.mem.eql(u8, f.name, name)) return &@field(self, f.name);
+        inline for (@typeInfo(RunInfo).@"struct".field_names) |f_name| {
+            if (std.mem.eql(u8, f_name, name)) return &@field(self, f_name);
         }
         return null;
     }
@@ -411,12 +411,12 @@ pub const Package = struct {
             self.run_info = incoming;
             return;
         };
-        inline for (@typeInfo(RunInfo).@"struct".fields) |f| {
-            if (!std.mem.eql(u8, @field(have, f.name), @field(incoming, f.name))) {
+        inline for (@typeInfo(RunInfo).@"struct".field_names) |f_name| {
+            if (!std.mem.eql(u8, @field(have, f_name), @field(incoming, f_name))) {
                 try self.run_info_conflicts.append(self.arena(), try std.fmt.allocPrint(
                     self.arena(),
                     "{s}: \"{s}\" vs \"{s}\"",
-                    .{ f.name, @field(have, f.name), @field(incoming, f.name) },
+                    .{ f_name, @field(have, f_name), @field(incoming, f_name) },
                 ));
             }
         }

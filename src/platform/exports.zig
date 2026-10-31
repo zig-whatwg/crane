@@ -228,8 +228,8 @@ pub export fn whatwg_platform_has_capability(backend: ?*const PlatformBackend, c
 pub export fn whatwg_platform_capability_count(backend: ?*const PlatformBackend) callconv(.c) u32 {
     if (backend) |b| {
         var count: u32 = 0;
-        inline for (std.meta.fields(Capability)) |field| {
-            const cap: Capability = @enumFromInt(field.value);
+        inline for (@typeInfo(Capability).@"enum".field_values) |field_value| {
+            const cap: Capability = @enumFromInt(field_value);
             if (b.hasCapability(cap)) {
                 count += 1;
             }

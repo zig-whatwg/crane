@@ -55,8 +55,8 @@ pub fn FlattenedState(
             // Check own fields
             const own_info = @typeInfo(OwnFields);
             if (own_info == .@"struct") {
-                inline for (own_info.@"struct".fields) |field| {
-                    if (std.mem.eql(u8, field.name, name)) return true;
+                inline for (own_info.@"struct".field_names) |field_name| {
+                    if (std.mem.eql(u8, field_name, name)) return true;
                 }
             }
 
@@ -64,8 +64,8 @@ pub fn FlattenedState(
             const MixinStruct = MixinFieldsStruct(MixinTypes);
             const mixin_info = @typeInfo(MixinStruct);
             if (mixin_info == .@"struct") {
-                inline for (mixin_info.@"struct".fields) |field| {
-                    if (std.mem.eql(u8, field.name, name)) return true;
+                inline for (mixin_info.@"struct".field_names) |field_name| {
+                    if (std.mem.eql(u8, field_name, name)) return true;
                 }
             }
 
@@ -108,7 +108,7 @@ fn MixinFieldsStruct(comptime MixinTypes: []const type) type {
         if (mixin_info != .@"struct") {
             @compileError("Mixin type must be a struct");
         }
-        total_fields += mixin_info.@"struct".fields.len;
+        total_fields += mixin_info.@"struct".field_names.len;
     }
 
     // Build the three parallel arrays @Struct takes. Zig 0.16 removed @Type in

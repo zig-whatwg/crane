@@ -83,7 +83,7 @@ const Slot = enum {
         };
     }
 };
-const slot_count = @typeInfo(Slot).@"enum".fields.len;
+const slot_count = @typeInfo(Slot).@"enum".field_names.len;
 const Piece = struct { text: []const u8, owned: ?[]u8 = null };
 const Components = struct {
     pieces: [slot_count]?Piece = @splat(null),

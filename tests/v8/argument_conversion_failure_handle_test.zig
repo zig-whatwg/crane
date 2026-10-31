@@ -22,9 +22,9 @@ const interfaces = @import("interfaces");
 const iface = v8.interface_mod;
 
 /// LockManager.request(name, callback)'s `callback`: LockGrantedCallback.
-const LockGrantedCallback = @typeInfo(@TypeOf(interfaces.LockManager.call_request)).@"fn".params[2].type.?;
+const LockGrantedCallback = @typeInfo(@TypeOf(interfaces.LockManager.call_request)).@"fn".param_types[2].?;
 /// LockManager.request(name, options, callback)'s `options`: LockOptions.
-const LockOptions = @typeInfo(@TypeOf(interfaces.LockManager.call_request__1)).@"fn".params[2].type.?;
+const LockOptions = @typeInfo(@TypeOf(interfaces.LockManager.call_request__1)).@"fn".param_types[2].?;
 
 const Env = struct {
     isolate: *ffi.Isolate,

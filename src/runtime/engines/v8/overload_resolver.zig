@@ -123,14 +123,14 @@ fn convertPrefix(
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) !void {
-    inline for (@typeInfo(UnionType).@"union".fields, 0..) |field, k| {
+    inline for (@typeInfo(UnionType).@"union".field_names, @typeInfo(UnionType).@"union".field_types, 0..) |field_name, field_type, k| {
         // A variant of one argument has no argument before index 0.
         if (comptime overloads[k].args.len > 1) {
             if (k == prefix.entry) {
-                inline for (@typeInfo(field.type).@"struct".fields, 0..) |arg_field, i| {
+                inline for (@typeInfo(field_type).@"struct".field_types, 0..) |arg_field_type, i| {
                     if (i < prefix.d) {
-                        const value = try interface_mod.convertArgChecked(arg_field.type, comptime variantArgMode(interface_arguments, restricted_floats, field.name, i), allocator, isolate, context, info.get(@intCast(i)));
-                        interface_mod.freeArgument(arg_field.type, allocator, value);
+                        const value = try interface_mod.convertArgChecked(arg_field_type, comptime variantArgMode(interface_arguments, restricted_floats, field_name, i), allocator, isolate, context, info.get(@intCast(i)));
+                        interface_mod.freeArgument(arg_field_type, allocator, value);
                     }
                 }
             }
@@ -155,8 +155,8 @@ pub fn freeConstructorOverload(comptime UnionType: type, comptime overloads: []c
             // struct with a field per argument.
             const arity = comptime overloads[@intFromEnum(tag)].args.len;
             if (comptime arity > 1) {
-                inline for (@typeInfo(VariantType).@"struct".fields) |field| {
-                    interface_mod.freeArgument(field.type, allocator, @field(payload, field.name));
+                inline for (@typeInfo(VariantType).@"struct".field_names, @typeInfo(VariantType).@"struct".field_types) |field_name, field_type| {
+                    interface_mod.freeArgument(field_type, allocator, @field(payload, field_name));
                 }
             } else {
                 interface_mod.freeArgument(VariantType, allocator, payload);
@@ -218,22 +218,22 @@ fn buildVariant(
     // they are freed here: kept, every `new URLPattern(input, baseURL)`
     // whose base URL failed leaked its input.
     var converted: usize = 0;
-    errdefer inline for (type_info.@"struct".fields, 0..) |struct_field, i| {
-        if (i < converted) interface_mod.freeArgument(struct_field.type, allocator, @field(variant_struct, struct_field.name));
+    errdefer inline for (type_info.@"struct".field_names, type_info.@"struct".field_types, 0..) |struct_field_name, struct_field_type, i| {
+        if (i < converted) interface_mod.freeArgument(struct_field_type, allocator, @field(variant_struct, struct_field_name));
     };
 
     // Convert each JavaScript argument to corresponding struct field
-    inline for (type_info.@"struct".fields, 0..) |struct_field, i| {
+    inline for (type_info.@"struct".field_names, type_info.@"struct".field_types, 0..) |struct_field_name, struct_field_type, i| {
         const v8_arg = info.get(@intCast(i));
         const field_value = try interface_mod.convertArgChecked(
-            struct_field.type,
+            struct_field_type,
             comptime variantArgMode(interface_arguments, restricted_floats, field.name, i),
             allocator,
             isolate,
             context,
             v8_arg,
         );
-        @field(variant_struct, struct_field.name) = field_value;
+        @field(variant_struct, struct_field_name) = field_value;
         converted += 1;
     }
 

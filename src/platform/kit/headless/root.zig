@@ -865,7 +865,7 @@ pub fn hideVirtualKeyboard(browser: *BrowserPlatform, tab: TabId) void {
 /// what it has.
 pub const capabilities: platform.Capabilities = blk: {
     var all: platform.Capabilities = undefined;
-    for (@typeInfo(platform.Capabilities).@"struct".fields) |field| @field(all, field.name) = .unsupported;
+    for (@typeInfo(platform.Capabilities).@"struct".field_names) |field_name| @field(all, field_name) = .unsupported;
     break :blk all;
 };
 

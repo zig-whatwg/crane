@@ -15,7 +15,7 @@ const Trial = struct {
         defer runtime.deinitializeRuntime();
         var context = try runtime.ContextData.init(a, .{});
         defer context.deinit();
-        const Init = @typeInfo(@TypeOf(interfaces.Request.call_constructor)).@"fn".params[2].type.?;
+        const Init = @typeInfo(@TypeOf(interfaces.Request.call_constructor)).@"fn".param_types[2].?;
         const original = try interfaces.Request.call_constructor(&context, .{ .usvstring = "https://example.test/" }, Init.passed(.{
             .integrity = runtime.DOMString.initInterned("sha256-original"),
         }));

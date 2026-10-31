@@ -29,8 +29,8 @@ pub const Descriptor = enum {
         };
     }
     pub fn parse(text: []const u8) ?Descriptor {
-        inline for (@typeInfo(Descriptor).@"enum".fields) |field| {
-            const d: Descriptor = @enumFromInt(field.value);
+        inline for (@typeInfo(Descriptor).@"enum".field_values) |field_value| {
+            const d: Descriptor = @enumFromInt(field_value);
             if (std.mem.eql(u8, text, d.name())) return d;
         }
         return null;
@@ -111,9 +111,9 @@ pub const Data = struct {
         try out.appendSlice(allocator, "@counter-style ");
         try out.appendSlice(allocator, self.name);
         try out.appendSlice(allocator, " { ");
-        inline for (@typeInfo(Descriptor).@"enum".fields) |field| {
-            const descriptor: Descriptor = @enumFromInt(field.value);
-            if (self.descriptors[field.value]) |parsed| {
+        inline for (@typeInfo(Descriptor).@"enum".field_values) |field_value| {
+            const descriptor: Descriptor = @enumFromInt(field_value);
+            if (self.descriptors[field_value]) |parsed| {
                 try out.appendSlice(allocator, descriptor.name());
                 try out.appendSlice(allocator, ": ");
                 try out.appendSlice(allocator, parsed.text);
@@ -264,8 +264,8 @@ pub fn parseDescriptor(allocator: Allocator, descriptor: Descriptor, input: []co
             const token = stream.next();
             if (token.token_type != .ident) return null;
             var algorithm: ?Algorithm = null;
-            inline for (@typeInfo(Algorithm).@"enum".fields) |field| if (tokens.nameEql(token.value, field.name)) {
-                algorithm = @enumFromInt(field.value);
+            inline for (@typeInfo(Algorithm).@"enum".field_names, @typeInfo(Algorithm).@"enum".field_values) |field_name, field_value| if (tokens.nameEql(token.value, field_name)) {
+                algorithm = @enumFromInt(field_value);
             };
             result.algorithm = algorithm orelse return null;
             try out.appendSlice(allocator, @tagName(result.algorithm));

@@ -27,8 +27,8 @@ const Function = enum {
     fn parse(name: []const u8) ?Function {
         if (tokens.nameEql(name, "rgba")) return .rgb;
         if (tokens.nameEql(name, "hsla")) return .hsl;
-        inline for (@typeInfo(Function).@"enum".fields) |field|
-            if (tokens.nameEql(name, field.name)) return @enumFromInt(field.value);
+        inline for (@typeInfo(Function).@"enum".field_names, @typeInfo(Function).@"enum".field_values) |field_name, field_value|
+            if (tokens.nameEql(name, field_name)) return @enumFromInt(field_value);
         return null;
     }
     fn space(self: Function) Space {
@@ -657,8 +657,8 @@ const Parser = struct {
             if (self.stream.peek().token_type == .ident) {
                 if (result.space.hue() == null) return error.Invalid;
                 const method = self.stream.next();
-                result.hue = inline for (@typeInfo(spaces.HueMethod).@"enum".fields) |field| {
-                    if (tokens.nameEql(method.value, field.name)) break @enumFromInt(field.value);
+                result.hue = inline for (@typeInfo(spaces.HueMethod).@"enum".field_names, @typeInfo(spaces.HueMethod).@"enum".field_values) |field_name, field_value| {
+                    if (tokens.nameEql(method.value, field_name)) break @enumFromInt(field_value);
                 } else return error.Invalid;
                 if (!self.ident("hue")) return error.Invalid;
             }

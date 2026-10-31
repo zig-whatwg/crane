@@ -56,9 +56,9 @@ pub fn numericLink(links: NumericLinks, index: usize) !*runtime.Instance {
 pub fn numericType(value: *runtime.Instance) !math.Type {
     const dictionary = try interfaces.CSSNumericValue.call_type(value);
     var result: math.Type = .{};
-    inline for (@typeInfo(math.Base).@"enum".fields) |field| {
-        const power = @field(dictionary, field.name) orelse 0;
-        result.powers[field.value] = power; // Q84: the shared exponent is WebIDL long.
+    inline for (@typeInfo(math.Base).@"enum".field_names, @typeInfo(math.Base).@"enum".field_values) |field_name, field_value| {
+        const power = @field(dictionary, field_name) orelse 0;
+        result.powers[field_value] = power; // Q84: the shared exponent is WebIDL long.
     }
     if (dictionary.percentHint) |hint| result.hint = std.meta.stringToEnum(math.Base, @import("enums").CSSNumericBaseType.idl_values[@intFromEnum(hint)]) orelse return error.TypeError;
     return result;
@@ -66,9 +66,9 @@ pub fn numericType(value: *runtime.Instance) !math.Type {
 
 pub fn numericDictionary(value: math.Type) dictionaries.CSSNumericType {
     var result: dictionaries.CSSNumericType = .{};
-    inline for (@typeInfo(math.Base).@"enum".fields) |field| {
-        const power = value.powers[field.value];
-        if (power != 0) @field(result, field.name) = power;
+    inline for (@typeInfo(math.Base).@"enum".field_names, @typeInfo(math.Base).@"enum".field_values) |field_name, field_value| {
+        const power = value.powers[field_value];
+        if (power != 0) @field(result, field_name) = power;
     }
     if (value.hint) |hint| result.percentHint = @enumFromInt(@intFromEnum(hint));
     return result;
@@ -1384,8 +1384,8 @@ pub fn mapEntries(instance: *runtime.Instance) !IterableSnapshot {
     const computed = try map.computed() orelse return result;
     var names: std.ArrayList([]const u8) = .empty;
     defer names.deinit(allocator);
-    inline for (@typeInfo(properties.Longhand).@"enum".fields) |field| {
-        const longhand: properties.Longhand = @enumFromInt(field.value);
+    inline for (@typeInfo(properties.Longhand).@"enum".field_values) |field_value| {
+        const longhand: properties.Longhand = @enumFromInt(field_value);
         try names.append(allocator, longhand.name());
     }
     const customs = try computed.customNames(allocator);

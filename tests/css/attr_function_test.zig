@@ -38,8 +38,8 @@ test "attr simple types accept future units but exclude CSS-wide and default key
     for ([_][]const u8{ "inherit", "INITIAL", "unset", "revert", "revert-layer", "default", "\\69 nherit", "&", "px px", "10px" }) |text| {
         try testing.expect(attr.parseSimpleType(text) == null);
     }
-    inline for (@typeInfo(css.math_values.Unit).@"enum".fields) |field| {
-        const unit: css.math_values.Unit = @enumFromInt(field.value);
+    inline for (@typeInfo(css.math_values.Unit).@"enum".field_values) |field_value| {
+        const unit: css.math_values.Unit = @enumFromInt(field_value);
         if (unit != .number and unit.base() != .resolution) try testing.expectEqual(unit, attr.parseSimpleType(unit.name()).?.unit);
     }
     for ([_][]const u8{ "dpi", "dpcm", "dppx", "x", "DPI" }) |text| {

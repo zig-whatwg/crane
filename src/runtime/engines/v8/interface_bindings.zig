@@ -1457,11 +1457,11 @@ pub fn getOrCreateTemplateByName(
 /// Uses inline for to match interface name at runtime and create the appropriate template.
 pub inline fn installConditionalUnforgeablesByName(interface_name: []const u8, isolate: *v8.Isolate, context: *v8.Context, object: *v8.Object) void {
     @setEvalBranchQuota(10_000_000);
-    inline for (@typeInfo(interfaces).@"struct".decls) |decl| {
-        const InterfaceType = @field(interfaces, decl.name);
+    inline for (@typeInfo(interfaces).@"struct".decl_names) |decl_name| {
+        const InterfaceType = @field(interfaces, decl_name);
         if (@typeInfo(InterfaceType) != .@"struct" or !@hasDecl(InterfaceType, "Meta")) continue;
         if (comptime interface_mod.hasConditionalUnforgeables(InterfaceType)) {
-            if (std.mem.eql(u8, decl.name, interface_name)) {
+            if (std.mem.eql(u8, decl_name, interface_name)) {
                 V8Interface(InterfaceType).installConditionalUnforgeables(isolate, context, object);
                 return;
             }

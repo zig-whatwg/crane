@@ -107,12 +107,12 @@ fn provider(document: *runtime.Instance, browser: *platform.BrowserPlatform) !vo
     try testing.expectEqual(@as(u64, 0), dom.style.hooks.environmentRevision(document));
     var failing = testing.FailingAllocator.init(testing.allocator, .{ .fail_index = 0 });
     try testing.expectError(error.OutOfMemory, env.lookup(document, failing.allocator(), "safe-area-inset-top", &.{}));
-    inline for (@typeInfo(platform.CssEnvironmentVariable).@"enum".fields, 0..) |field, i| {
-        const variable: platform.CssEnvironmentVariable = @enumFromInt(field.value);
+    inline for (@typeInfo(platform.CssEnvironmentVariable).@"enum".field_names, @typeInfo(platform.CssEnvironmentVariable).@"enum".field_values, 0..) |field_name, field_value, i| {
+        const variable: platform.CssEnvironmentVariable = @enumFromInt(field_value);
         const number: f64 = @as(f64, @floatFromInt(i)) + 0.25;
         try platform.adapter.setCssEnvironmentVariable(browser, 0, variable, 0, 0, number);
-        var name: [field.name.len]u8 = undefined;
-        for (field.name, 0..) |c, j| name[j] = if (c == '_') '-' else c;
+        var name: [field_name.len]u8 = undefined;
+        for (field_name, 0..) |c, j| name[j] = if (c == '_') '-' else c;
         const query = dom.style.css.environment_variables.query(&name, &.{});
         const indices: []const u32 = if (query != null) &.{} else &.{ 0, 0 };
         const expected = try std.fmt.allocPrint(testing.allocator, "{d}{s}", .{ number, if (variable == .preferred_text_scale) @as([]const u8, "") else "px" });

@@ -118,25 +118,25 @@ pub fn validateDelegates(comptime delegates: anytype) void {
     }
 
     // Verify each field
-    inline for (delegates_info.@"struct".fields) |field| {
+    inline for (delegates_info.@"struct".field_names, delegates_info.@"struct".field_types) |field_name, field_type| {
         // Check that field name maps to a Method
-        _ = std.meta.stringToEnum(Method, field.name) orelse {
-            @compileError("Unknown method name in delegates: " ++ field.name);
+        _ = std.meta.stringToEnum(Method, field_name) orelse {
+            @compileError("Unknown method name in delegates: " ++ field_name);
         };
 
         // Check that field type is a function pointer
-        const field_info = @typeInfo(field.type);
+        const field_info = @typeInfo(field_type);
         if (field_info != .pointer) {
-            @compileError("Delegate field must be a pointer: " ++ field.name);
+            @compileError("Delegate field must be a pointer: " ++ field_name);
         }
 
         if (field_info.pointer.size != .One) {
-            @compileError("Delegate must be a single-item pointer: " ++ field.name);
+            @compileError("Delegate must be a single-item pointer: " ++ field_name);
         }
 
         const child_info = @typeInfo(field_info.pointer.child);
         if (child_info != .@"fn") {
-            @compileError("Delegate must point to a function: " ++ field.name);
+            @compileError("Delegate must point to a function: " ++ field_name);
         }
     }
 }

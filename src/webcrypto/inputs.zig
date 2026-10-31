@@ -57,17 +57,17 @@ pub fn dictionary(realm: runtime.Context, value: runtime.JSValue) engine.Error!j
     }
     // WebIDL dictionary conversion visits members in lexicographic order.
     // Data's fields use that order, including the installed modern members.
-    inline for (std.meta.fields(jwk.Data)) |field| {
-        const member = try engine.getProperty(realm, value, field.name);
+    inline for (std.meta.fieldNames(jwk.Data), std.meta.fieldTypes(jwk.Data)) |field_name, field_type| {
+        const member = try engine.getProperty(realm, value, field_name);
         defer member.release();
         if (engine.typeOf(realm, member.borrow()) != .undefined) {
-            if (field.type == ?[]const u8) {
-                @field(result.data, field.name) = try engine.convertToDOMString(realm, member.borrow(), realm.allocator);
-            } else if (comptime std.mem.eql(u8, field.name, "ext")) {
+            if (field_type == ?[]const u8) {
+                @field(result.data, field_name) = try engine.convertToDOMString(realm, member.borrow(), realm.allocator);
+            } else if (comptime std.mem.eql(u8, field_name, "ext")) {
                 result.data.ext = engine.toBoolean(realm, member.borrow());
-            } else if (comptime std.mem.eql(u8, field.name, "key_ops")) {
+            } else if (comptime std.mem.eql(u8, field_name, "key_ops")) {
                 result.data.key_ops = try strings(realm, member.borrow());
-            } else if (comptime std.mem.eql(u8, field.name, "oth")) {
+            } else if (comptime std.mem.eql(u8, field_name, "oth")) {
                 result.data.oth = try otherPrimes(realm, member.borrow());
             }
         }
@@ -107,11 +107,11 @@ fn otherPrimes(realm: runtime.Context, value: runtime.JSValue) engine.Error![]co
             switch (engine.typeOf(self.realm, item)) {
                 .undefined, .null => {},
                 .object => {
-                    inline for (std.meta.fields(jwk.OtherPrime)) |field| {
-                        const member = try engine.getProperty(self.realm, item, field.name);
+                    inline for (std.meta.fieldNames(jwk.OtherPrime)) |field_name| {
+                        const member = try engine.getProperty(self.realm, item, field_name);
                         defer member.release();
                         if (engine.typeOf(self.realm, member.borrow()) != .undefined) {
-                            @field(result, field.name) = try engine.convertToDOMString(self.realm, member.borrow(), self.realm.allocator);
+                            @field(result, field_name) = try engine.convertToDOMString(self.realm, member.borrow(), self.realm.allocator);
                         }
                     }
                 },
@@ -129,8 +129,8 @@ fn otherPrimes(realm: runtime.Context, value: runtime.JSValue) engine.Error![]co
 }
 
 fn freePrime(allocator: std.mem.Allocator, prime: jwk.OtherPrime) void {
-    inline for (std.meta.fields(jwk.OtherPrime)) |field| {
-        if (@field(prime, field.name)) |text| erase(allocator, text);
+    inline for (std.meta.fieldNames(jwk.OtherPrime)) |field_name| {
+        if (@field(prime, field_name)) |text| erase(allocator, text);
     }
 }
 

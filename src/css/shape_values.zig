@@ -33,8 +33,8 @@ pub const GeometryBox = enum {
         };
     }
     pub fn parse(stream: *properties.Stream) ?GeometryBox {
-        inline for (@typeInfo(GeometryBox).@"enum".fields) |f| {
-            const box: GeometryBox = @enumFromInt(f.value);
+        inline for (@typeInfo(GeometryBox).@"enum".field_values) |f_value| {
+            const box: GeometryBox = @enumFromInt(f_value);
             if (components.keyword(stream, box.name())) return box;
         }
         return null;
@@ -555,8 +555,8 @@ fn parseRect(options: properties.ParseOptions, stream: *properties.Stream, kind:
 }
 
 fn parseRadius(options: properties.ParseOptions, stream: *properties.Stream) Allocator.Error!?ShapeRadius {
-    inline for (@typeInfo(Extent).@"enum".fields) |f| {
-        const e: Extent = @enumFromInt(f.value);
+    inline for (@typeInfo(Extent).@"enum".field_values) |f_value| {
+        const e: Extent = @enumFromInt(f_value);
         if (components.keyword(stream, e.name())) return .{ .extent = e };
     }
     return if (try components.length(options, stream, false, true)) |v| .{ .value = v } else null;

@@ -74,8 +74,8 @@ pub const EntryType = enum {
     /// The registry entry `identifier` names - exactly, the registry's
     /// identifiers being case-sensitive - or null for one it does not.
     pub fn fromName(identifier: []const u8) ?EntryType {
-        inline for (@typeInfo(EntryType).@"enum".fields) |field| {
-            if (std.mem.eql(u8, identifier, field.name)) return @enumFromInt(field.value);
+        inline for (@typeInfo(EntryType).@"enum".field_names, @typeInfo(EntryType).@"enum".field_values) |field_name, field_value| {
+            if (std.mem.eql(u8, identifier, field_name)) return @enumFromInt(field_value);
         }
         return null;
     }
@@ -126,8 +126,8 @@ pub fn supportedEntryTypes(kind: GlobalKind) []const EntryType {
         var result: [2][]const EntryType = undefined;
         for ([_]GlobalKind{ .window, .worker }, 0..) |k, i| {
             var list: []const EntryType = &.{};
-            for (@typeInfo(EntryType).@"enum".fields) |field| {
-                const t: EntryType = @enumFromInt(field.value);
+            for (@typeInfo(EntryType).@"enum".field_values) |field_value| {
+                const t: EntryType = @enumFromInt(field_value);
                 if (t.isSupported(k)) list = list ++ &[_]EntryType{t};
             }
             result[i] = list;
@@ -312,8 +312,8 @@ pub const Timeline = struct {
 
     pub fn init(allocator: std.mem.Allocator, owner: *Instance) Timeline {
         var buffers: std.EnumArray(EntryType, Buffer) = undefined;
-        inline for (@typeInfo(EntryType).@"enum".fields) |field| {
-            const t: EntryType = @enumFromInt(field.value);
+        inline for (@typeInfo(EntryType).@"enum".field_values) |field_value| {
+            const t: EntryType = @enumFromInt(field_value);
             buffers.set(t, .{ .max_size = t.maxBufferSize(), .available_from_timeline = t.availableFromTimeline() });
         }
         var prng = std.Random.DefaultPrng.init(blk: {

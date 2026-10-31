@@ -390,10 +390,10 @@ fn interpolation(stream: *properties.Stream) ?Method {
     if (token.token_type != .ident) return null;
     var method = Method{ .space = spaces.Space.parse(token.value) orelse return null };
     if (method.space.hue() != null) {
-        inline for (@typeInfo(spaces.HueMethod).@"enum".fields) |field| {
-            if (keyword(stream, field.name)) {
+        inline for (@typeInfo(spaces.HueMethod).@"enum".field_names, @typeInfo(spaces.HueMethod).@"enum".field_values) |field_name, field_value| {
+            if (keyword(stream, field_name)) {
                 if (!keyword(stream, "hue")) return null;
-                method.hue = @enumFromInt(field.value);
+                method.hue = @enumFromInt(field_value);
                 return method;
             }
         }
@@ -447,8 +447,8 @@ fn geometry(result: *Gradient, options: properties.ParseOptions, stream: *proper
                     continue;
                 }
                 var extent: ?Extent = null;
-                inline for (@typeInfo(Extent).@"enum".fields) |field| {
-                    const candidate: Extent = @enumFromInt(field.value);
+                inline for (@typeInfo(Extent).@"enum".field_values) |field_value| {
+                    const candidate: Extent = @enumFromInt(field_value);
                     if (extent == null and keyword(stream, extentName(candidate))) extent = candidate;
                 }
                 if (extent) |found| {

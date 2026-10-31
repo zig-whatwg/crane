@@ -57,8 +57,8 @@ pub const Word = enum {
     fn parse(token: tokenizer.Token) ?Word {
         if (token.token_type != .ident) return null;
         if (names.get(token.value)) |word| return word;
-        inline for (@typeInfo(Word).@"enum".fields) |field| {
-            const word: Word = @enumFromInt(field.value);
+        inline for (@typeInfo(Word).@"enum".field_values) |field_value| {
+            const word: Word = @enumFromInt(field_value);
             if (tokenizer.nameEql(token.value, word.name())) return word;
         }
         return null;

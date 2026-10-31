@@ -43,8 +43,8 @@ test "every element the HTML factory makes runs its own deinit when its tree is 
     // ones document.createElement and the parser make - with an inline style,
     // which only HTMLElement's deinit frees: reached through the element's
     // own deinit, or not at all.
-    inline for (@typeInfo(element_interface.ElementInterface).@"enum".fields) |field| {
-        const child = try @field(interfaces, field.name).init(testing.allocator, &ctx);
+    inline for (@typeInfo(element_interface.ElementInterface).@"enum".field_names) |field_name| {
+        const child = try @field(interfaces, field_name).init(testing.allocator, &ctx);
         try styleDisplayNone(child);
         _ = try interfaces.Node.call_appendChild(parent, child);
     }

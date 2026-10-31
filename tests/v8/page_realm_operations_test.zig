@@ -445,15 +445,15 @@ test "every conversions throw helper leaves no handle behind" {
     // line.
     const rounds = 32;
     var leaked = false;
-    inline for (std.meta.fields(Thrower.Kind)) |field| {
-        var thrower: Thrower = .{ .context = context_once.?, .kind = @enumFromInt(field.value) };
+    inline for (std.meta.fieldNames(Thrower.Kind), @typeInfo(Thrower.Kind).@"enum".field_values) |field_name, field_value| {
+        var thrower: Thrower = .{ .context = context_once.?, .kind = @enumFromInt(field_value) };
         // The first call may make what every later one reuses.
         try thrower.throwAndCatch();
         const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
         for (0..rounds) |_| try thrower.throwAndCatch();
         const after = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
         if (after -| before >= handle_bytes * rounds / 4) {
-            std.debug.print("{s}: global handles {d} -> {d} bytes over {d} throws ({d} bytes a handle)\n", .{ field.name, before, after, rounds, handle_bytes });
+            std.debug.print("{s}: global handles {d} -> {d} bytes over {d} throws ({d} bytes a handle)\n", .{ field_name, before, after, rounds, handle_bytes });
             leaked = true;
         }
     }
@@ -472,8 +472,8 @@ test "an exception thrown in a realm does not keep that realm alive" {
     // Every helper throws in it - the DOMException ones through the fallback,
     // for this realm has no DOMException - and everything thrown is released.
     const other = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-    inline for (std.meta.fields(Thrower.Kind)) |field| {
-        var thrower: Thrower = .{ .context = other, .kind = @enumFromInt(field.value) };
+    inline for (@typeInfo(Thrower.Kind).@"enum".field_values) |field_value| {
+        var thrower: Thrower = .{ .context = other, .kind = @enumFromInt(field_value) };
         for (0..4) |_| try thrower.throwAndCatch();
     }
     ffi.v8_Context_Dispose(other);
@@ -1850,7 +1850,7 @@ test "protocol: traceChild and forgetTracedChild leave no global handle behind" 
 /// A Headers made the way an impl makes a platform object (its interface's
 /// constructor, from Zig): script has not seen it, so it has no wrapper.
 fn unwrappedHeaders(r: runtime.Context) !*runtime.Instance {
-    const Init = @typeInfo(@TypeOf(interfaces.Headers.call_constructor)).@"fn".params[1].type.?;
+    const Init = @typeInfo(@TypeOf(interfaces.Headers.call_constructor)).@"fn".param_types[1].?;
     return interfaces.Headers.call_constructor(r, Init.notPassed());
 }
 

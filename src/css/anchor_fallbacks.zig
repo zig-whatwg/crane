@@ -23,8 +23,8 @@ pub const Tactic = enum {
     }
     fn parse(token: tokenizer.Token) ?Tactic {
         if (token.token_type != .ident) return null;
-        inline for (@typeInfo(Tactic).@"enum".fields) |field| {
-            const tactic: Tactic = @enumFromInt(field.value);
+        inline for (@typeInfo(Tactic).@"enum".field_values) |field_value| {
+            const tactic: Tactic = @enumFromInt(field_value);
             if (tokenizer.nameEql(token.value, tactic.name())) return tactic;
         }
         return null;

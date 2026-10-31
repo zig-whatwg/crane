@@ -962,7 +962,7 @@ fn scan(
 
 /// Totals per kind and per class.
 fn printTotals(out: *std.Io.Writer, arena: std.mem.Allocator, current: *const Counts, baseline: ?*const Baseline) !void {
-    var per_kind = @as([std.meta.fields(Kind).len]u32, @splat(0));
+    var per_kind = @as([std.meta.fieldNames(Kind).len]u32, @splat(0));
     var per_class: std.StringArrayHashMapUnmanaged(u32) = .empty;
     var it = current.iterator();
     while (it.next()) |entry| {
@@ -973,9 +973,9 @@ fn printTotals(out: *std.Io.Writer, arena: std.mem.Allocator, current: *const Co
         gop.value_ptr.* += entry.value_ptr.count;
     }
     try out.print("  by kind:", .{});
-    inline for (std.meta.fields(Kind)) |field| {
-        const kind: Kind = @enumFromInt(field.value);
-        try out.print(" {s} {d}", .{ kind.label(), per_kind[field.value] });
+    inline for (@typeInfo(Kind).@"enum".field_values) |field_value| {
+        const kind: Kind = @enumFromInt(field_value);
+        try out.print(" {s} {d}", .{ kind.label(), per_kind[field_value] });
     }
     try out.print("\n  by class:", .{});
     const classes = try arena.dupe([]const u8, per_class.keys());

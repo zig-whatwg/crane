@@ -94,7 +94,7 @@ pub const ConversionError = error{
 /// without its wrapping underscores, the rest turned into hyphens.
 pub fn idlEnumValue(comptime T: type, value: T) []const u8 {
     if (comptime @hasDecl(T, "idl_values")) {
-        comptime std.debug.assert(T.idl_values.len == std.meta.fields(T).len);
+        comptime std.debug.assert(T.idl_values.len == std.meta.fieldNames(T).len);
         return T.idl_values[@intFromEnum(value)];
     }
     return switch (value) {
@@ -123,8 +123,8 @@ pub fn enumFromIdlValue(comptime T: type, string: []const u8) ?T {
         }
         return null;
     }
-    inline for (std.meta.fields(T)) |field| {
-        if (enumNameMatches(field.name, string)) return @enumFromInt(field.value);
+    inline for (std.meta.fieldNames(T), @typeInfo(T).@"enum".field_values) |field_name, field_value| {
+        if (enumNameMatches(field_name, string)) return @enumFromInt(field_value);
     }
     return null;
 }
@@ -1505,9 +1505,9 @@ pub fn unionArmInterface(comptime arm: []const u8) ?type {
         for (aliases) |alias| {
             if (std.mem.eql(u8, alias[0], arm)) return @field(interfaces, alias[1]);
         }
-        for (@typeInfo(interfaces).@"struct".decls) |decl| {
-            if (!isArmNameOf(decl.name, arm)) continue;
-            const I = @field(interfaces, decl.name);
+        for (@typeInfo(interfaces).@"struct".decl_names) |decl_name| {
+            if (!isArmNameOf(decl_name, arm)) continue;
+            const I = @field(interfaces, decl_name);
             if (@TypeOf(I) != type or !@hasDecl(I, "State")) continue;
             return I;
         }
@@ -1620,8 +1620,8 @@ fn platformObjectArm(comptime T: type, value: *v8.Value) ?T {
 /// SVGImageElement. Codegen keeps such a member as a nested union.
 pub fn isInterfaceUnion(comptime T: type) bool {
     if (@typeInfo(T) != .@"union") return false;
-    inline for (@typeInfo(T).@"union".fields) |field| {
-        if (field.type != *runtime.Instance and !isInterfaceUnion(field.type)) return false;
+    inline for (@typeInfo(T).@"union".field_types) |field_type| {
+        if (field_type != *runtime.Instance and !isInterfaceUnion(field_type)) return false;
     }
     return true;
 }
@@ -1629,11 +1629,11 @@ pub fn isInterfaceUnion(comptime T: type) bool {
 /// The arm of `T` - a nested interface union's included - whose named
 /// interface `instance` implements, in member order.
 fn checkedArm(comptime T: type, instance: *runtime.Instance) ?T {
-    inline for (@typeInfo(T).@"union".fields) |field| {
-        if (comptime field.type == *runtime.Instance and unionArmInterface(field.name) != null) {
-            if (implementsArm(field.name, instance)) return @unionInit(T, field.name, instance);
-        } else if (comptime isInterfaceUnion(field.type)) {
-            if (checkedArm(field.type, instance)) |nested| return @unionInit(T, field.name, nested);
+    inline for (@typeInfo(T).@"union".field_names, @typeInfo(T).@"union".field_types) |field_name, field_type| {
+        if (comptime field_type == *runtime.Instance and unionArmInterface(field_name) != null) {
+            if (implementsArm(field_name, instance)) return @unionInit(T, field_name, instance);
+        } else if (comptime isInterfaceUnion(field_type)) {
+            if (checkedArm(field_type, instance)) |nested| return @unionInit(T, field_name, nested);
         }
     }
     return null;
@@ -1642,11 +1642,11 @@ fn checkedArm(comptime T: type, instance: *runtime.Instance) ?T {
 /// The first arm of `T` (a nested interface union's included) that names no
 /// interface, and so accepts any platform object.
 fn uncheckedArm(comptime T: type, instance: *runtime.Instance) ?T {
-    inline for (@typeInfo(T).@"union".fields) |field| {
-        if (comptime field.type == *runtime.Instance and unionArmInterface(field.name) == null) {
-            return @unionInit(T, field.name, instance);
-        } else if (comptime isInterfaceUnion(field.type)) {
-            if (uncheckedArm(field.type, instance)) |nested| return @unionInit(T, field.name, nested);
+    inline for (@typeInfo(T).@"union".field_names, @typeInfo(T).@"union".field_types) |field_name, field_type| {
+        if (comptime field_type == *runtime.Instance and unionArmInterface(field_name) == null) {
+            return @unionInit(T, field_name, instance);
+        } else if (comptime isInterfaceUnion(field_type)) {
+            if (uncheckedArm(field_type, instance)) |nested| return @unionInit(T, field_name, nested);
         }
     }
     return null;
@@ -1667,10 +1667,10 @@ fn isSequenceMember(comptime M: type) bool {
 /// (`base`, converted by recursion) followed by its own members in IDL
 /// declaration order, so the order is imposed here: `base`, then the rest by
 /// code unit. Reading `view` before `detail` is observable to a getter.
-fn dictionaryMemberOrder(comptime T: type) [std.meta.fields(T).len]std.builtin.Type.StructField {
+fn dictionaryMemberOrder(comptime T: type) [std.meta.fieldNames(T).len]std.builtin.Type.StructField {
     comptime {
         @setEvalBranchQuota(20_000);
-        var fields = std.meta.fields(T)[0..std.meta.fields(T).len].*;
+        var fields = std.meta.fields(T)[0..std.meta.fieldNames(T).len].*;
         std.sort.insertion(std.builtin.Type.StructField, &fields, {}, struct {
             fn lessThan(_: void, a: std.builtin.Type.StructField, b: std.builtin.Type.StructField) bool {
                 if (isInheritedDictionaryField(b)) return false;
@@ -1685,8 +1685,8 @@ fn dictionaryMemberOrder(comptime T: type) [std.meta.fields(T).len]std.builtin.T
 /// Whether union `T` has an arm for a typed array type (`typedArrayArmName`).
 fn hasTypedArrayArm(comptime T: type) bool {
     comptime {
-        for (@typeInfo(T).@"union".fields) |field| {
-            if (field.type == runtime.JSValue and typedArrayArmName(field.name) != null) return true;
+        for (@typeInfo(T).@"union".field_names, @typeInfo(T).@"union".field_types) |field_name, field_type| {
+            if (field_type == runtime.JSValue and typedArrayArmName(field_name) != null) return true;
         }
         return false;
     }
@@ -3522,12 +3522,12 @@ fn writeDictionaryMembers(comptime T: type, isolate: *v8.Isolate, context: *v8.C
 /// property for each - so a nullable attribute that is null is a property
 /// whose value is null (toV8Value's null for an optional that is null).
 fn writeDefaultToJsonMembers(comptime T: type, isolate: *v8.Isolate, context: *v8.Context, obj: *v8.Object, value: T) ConversionError!void {
-    inline for (std.meta.fields(T)) |field| {
-        const field_value = @field(value, field.name);
-        const field_v8 = try toV8Value(field.type, isolate, context, field_value);
+    inline for (std.meta.fieldNames(T), std.meta.fieldTypes(T)) |field_name, field_type| {
+        const field_value = @field(value, field_name);
+        const field_v8 = try toV8Value(field_type, isolate, context, field_value);
         // A null is the Null toV8Null made (`memberValueIsOwned`).
-        defer if (memberValueIsOwned(field.type, field_value)) v8.v8_Value_Dispose(field_v8);
-        try defineMember(isolate, context, obj, field.name, field_v8);
+        defer if (memberValueIsOwned(field_type, field_value)) v8.v8_Value_Dispose(field_v8);
+        try defineMember(isolate, context, obj, field_name, field_v8);
     }
 }
 
@@ -3671,7 +3671,7 @@ pub fn toV8Value(
         if (elem_type_info == .@"struct") {
             const has_key = @hasField(ElemType, "key");
             const has_value = @hasField(ElemType, "value");
-            const field_count = std.meta.fields(ElemType).len;
+            const field_count = std.meta.fieldNames(ElemType).len;
             if (has_key and has_value and field_count == 2) {
                 // This is a record-like type - convert to object. WebIDL
                 // 3.2.20: "Let result be OrdinaryObjectCreate(%Object.prototype%)"

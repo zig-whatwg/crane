@@ -69,13 +69,13 @@ test "environment values: all supplied values reach only their named variable" {
     if (comptime !std.mem.eql(u8, platform.name, "testing")) return error.SkipZigTest;
     const browser = try platform.createBrowserPlatform(testing.allocator, &.{}, no_events);
     defer platform.destroyBrowserPlatform(browser);
-    inline for (@typeInfo(platform.CssEnvironmentVariable).@"enum".fields, 0..) |field, index| {
-        const variable: platform.CssEnvironmentVariable = @enumFromInt(field.value);
+    inline for (@typeInfo(platform.CssEnvironmentVariable).@"enum".field_values, 0..) |field_value, index| {
+        const variable: platform.CssEnvironmentVariable = @enumFromInt(field_value);
         const value: f64 = @as(f64, @floatFromInt(index)) + 0.25;
         try platform.adapter.setCssEnvironmentVariable(browser, 4, variable, 0, 0, value);
     }
-    inline for (@typeInfo(platform.CssEnvironmentVariable).@"enum".fields, 0..) |field, index| {
-        const variable: platform.CssEnvironmentVariable = @enumFromInt(field.value);
+    inline for (@typeInfo(platform.CssEnvironmentVariable).@"enum".field_values, 0..) |field_value, index| {
+        const variable: platform.CssEnvironmentVariable = @enumFromInt(field_value);
         const value: f64 = @as(f64, @floatFromInt(index)) + 0.25;
         try testing.expectEqual(@as(?f64, value), platform.cssEnvironmentVariable(browser, 4, variable, 0, 0));
     }

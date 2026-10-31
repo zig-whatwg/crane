@@ -38,9 +38,9 @@ pub const GlobalScope = enum {
 
     /// Convert from string identifier
     pub fn fromString(identifier: []const u8) ?GlobalScope {
-        inline for (std.meta.fields(GlobalScope)) |field| {
-            if (std.mem.eql(u8, identifier, field.name)) {
-                return @enumFromInt(field.value);
+        inline for (std.meta.fieldNames(GlobalScope), @typeInfo(GlobalScope).@"enum".field_values) |field_name, field_value| {
+            if (std.mem.eql(u8, identifier, field_name)) {
+                return @enumFromInt(field_value);
             }
         }
         return null;

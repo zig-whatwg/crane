@@ -5,7 +5,7 @@ const numeric = @import("numeric.zig");
 const Allocator = std.mem.Allocator;
 pub const Kind = enum { unit, sum, product, negate, invert, min, max, clamp };
 pub const View = struct { kind: Kind, number: math.Numeric = .{ .value = 0, .unit = .number }, count: usize = 0 };
-const unit_count = @typeInfo(math.Unit).@"enum".fields.len;
+const unit_count = @typeInfo(math.Unit).@"enum".field_names.len;
 pub const Term = struct {
     value: f64,
     units: [unit_count]i32 = .{0} ** unit_count,

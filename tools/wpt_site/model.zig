@@ -150,7 +150,7 @@ pub const Totals = struct {
     }
 
     pub fn merge(t: *Totals, o: Totals) void {
-        inline for (@typeInfo(Totals).@"struct".fields) |f| @field(t, f.name) += @field(o, f.name);
+        inline for (@typeInfo(Totals).@"struct".field_names) |f_name| @field(t, f_name) += @field(o, f_name);
     }
 
     pub fn blocking(t: Totals) u64 {

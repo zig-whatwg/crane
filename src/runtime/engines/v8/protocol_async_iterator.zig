@@ -49,7 +49,7 @@ const Slot = enum(u32) {
     /// The default asynchronous iterator object itself.
     object,
 };
-const slot_count = @typeInfo(Slot).@"enum".fields.len;
+const slot_count = @typeInfo(Slot).@"enum".field_names.len;
 
 fn slotGet(at: anytype, state: *ffi.Value, slot: Slot) Error!*ffi.Value {
     return ffi.v8_Array_Get(at.context(), @ptrCast(state), @intFromEnum(slot)) orelse error.OperationFailed;

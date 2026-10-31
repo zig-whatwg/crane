@@ -35,8 +35,8 @@ pub const Space = enum {
     }
     pub fn parse(text: []const u8) ?Space {
         if (tokens.nameEql(text, "xyz")) return .xyz_d65;
-        inline for (@typeInfo(Space).@"enum".fields) |field| {
-            const space: Space = @enumFromInt(field.value);
+        inline for (@typeInfo(Space).@"enum".field_values) |field_value| {
+            const space: Space = @enumFromInt(field_value);
             if (tokens.nameEql(text, space.name())) return space;
         }
         return null;

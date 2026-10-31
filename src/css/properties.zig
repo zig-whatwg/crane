@@ -423,7 +423,7 @@ pub const Longhand = enum(u16) {
     // Paged Media3 §8.1. Append so existing rare-group members stay put.
     page,
 
-    pub const count = @typeInfo(Longhand).@"enum".fields.len;
+    pub const count = @typeInfo(Longhand).@"enum".field_names.len;
 
     /// The property name.
     pub fn name(self: Longhand) []const u8 {

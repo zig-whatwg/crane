@@ -65,7 +65,7 @@ pub const Reason = enum {
 pub const BlockingDetails = struct {
     reasons: std.EnumSet(Reason) = .initEmpty(),
     /// The order of first recording ("append to a set").
-    order: [std.meta.fields(Reason).len]Reason = undefined,
+    order: [std.meta.fieldNames(Reason).len]Reason = undefined,
     len: usize = 0,
 
     /// "Append details to document's bfcache blocking details": a reason

@@ -9,7 +9,7 @@ const Allocator = std.mem.Allocator;
 const Error = Allocator.Error || error{Invalid};
 
 pub const Base = enum(u3) { length, angle, time, frequency, resolution, flex, percent };
-const base_count = @typeInfo(Base).@"enum".fields.len;
+const base_count = @typeInfo(Base).@"enum".field_names.len;
 
 /// CSS Typed OM §4.3.2: exponents, with the context's percentage hint.
 pub const Type = struct {
@@ -156,8 +156,8 @@ pub const Unit = enum(u8) {
     }
 
     pub fn parse(raw: []const u8) ?Unit {
-        inline for (@typeInfo(Unit).@"enum".fields) |field| {
-            const unit: Unit = @enumFromInt(field.value);
+        inline for (@typeInfo(Unit).@"enum".field_values) |field_value| {
+            const unit: Unit = @enumFromInt(field_value);
             if (unit != .number and unit != .percent and tokens.nameEql(raw, unit.name())) return unit;
         }
         return null;
@@ -233,8 +233,8 @@ pub const Symbol = enum(u4) {
         return @as(u16, 1) << @intFromEnum(self);
     }
     pub fn parse(name: []const u8) ?Symbol {
-        inline for (@typeInfo(Symbol).@"enum".fields) |field|
-            if (tokens.nameEql(name, field.name)) return @enumFromInt(field.value);
+        inline for (@typeInfo(Symbol).@"enum".field_names, @typeInfo(Symbol).@"enum".field_values) |field_name, field_value|
+            if (tokens.nameEql(name, field_name)) return @enumFromInt(field_value);
         return null;
     }
 };
@@ -242,7 +242,7 @@ pub const Symbol = enum(u4) {
 /// Missing origin channels are zero INSIDE a calculation (Color 5 §4.10).
 /// Direct channel references retain missingness in the color value itself.
 pub const SymbolValues = struct {
-    values: [@typeInfo(Symbol).@"enum".fields.len]f64 = .{0} ** @typeInfo(Symbol).@"enum".fields.len,
+    values: [@typeInfo(Symbol).@"enum".field_names.len]f64 = .{0} ** @typeInfo(Symbol).@"enum".field_names.len,
 };
 
 pub const Grammar = struct {
@@ -448,8 +448,8 @@ const Anchor = struct {
         }
         fn parse(token: tokens.Token, size: bool) ?Side {
             if (token.token_type != .ident) return null;
-            inline for (@typeInfo(Side).@"enum".fields) |field| {
-                const side: Side = @enumFromInt(field.value);
+            inline for (@typeInfo(Side).@"enum".field_values) |field_value| {
+                const side: Side = @enumFromInt(field_value);
                 const size_side = @intFromEnum(side) >= @intFromEnum(Side.width);
                 if (size == size_side and tokens.nameEql(token.value, side.name())) return side;
             }
@@ -486,8 +486,8 @@ const Function = enum {
     progress,
 
     fn parse(name: []const u8) ?Function {
-        inline for (@typeInfo(Function).@"enum".fields) |field|
-            if (tokens.nameEql(name, field.name)) return @enumFromInt(field.value);
+        inline for (@typeInfo(Function).@"enum".field_names, @typeInfo(Function).@"enum".field_values) |field_name, field_value|
+            if (tokens.nameEql(name, field_name)) return @enumFromInt(field_value);
         return null;
     }
 };
@@ -502,8 +502,8 @@ const Rounding = enum {
     }
     fn parse(token: tokens.Token) ?Rounding {
         if (token.token_type != .ident) return null;
-        inline for (@typeInfo(Rounding).@"enum".fields) |field| {
-            const value: Rounding = @enumFromInt(field.value);
+        inline for (@typeInfo(Rounding).@"enum".field_values) |field_value| {
+            const value: Rounding = @enumFromInt(field_value);
             if (tokens.nameEql(token.value, value.name())) return value;
         }
         return null;
@@ -1238,8 +1238,8 @@ const Parser = struct {
         // §10.9: each math function must resolve to a CSS numeric type.
         // Parenthesized arithmetic may have compound intermediate units.
         if (self.builder.context_free or node.typ.is(null)) return node;
-        inline for (@typeInfo(Base).@"enum".fields) |field| {
-            if (node.typ.is(@enumFromInt(field.value))) return node;
+        inline for (@typeInfo(Base).@"enum".field_values) |field_value| {
+            if (node.typ.is(@enumFromInt(field_value))) return node;
         }
         return error.Invalid;
     }
@@ -1495,7 +1495,7 @@ const Builder = struct {
                 // majority beyond its literal "all children numeric": fold
                 // the numeric subset around unresolved factors too. Different
                 // unresolved units still wait for computed/used information.
-                var powers: [@typeInfo(Unit).@"enum".fields.len]i32 = .{0} ** @typeInfo(Unit).@"enum".fields.len;
+                var powers: [@typeInfo(Unit).@"enum".field_names.len]i32 = .{0} ** @typeInfo(Unit).@"enum".field_names.len;
                 var product: f64 = 1;
                 var numeric_count: usize = 0;
                 var numeric_type = Type.one(null);

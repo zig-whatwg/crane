@@ -192,8 +192,8 @@ test "the counted-value predicate defaults to counted" {
     }
     // Value: every arm whose payload is a pointer is counted; the plain
     // keyword, length, number and display arms are not.
-    inline for (@typeInfo(Value).@"union".fields) |f| {
-        if (@typeInfo(f.type) == .pointer) try testing.expect(may(f.type));
+    inline for (@typeInfo(Value).@"union".field_types) |f_type| {
+        if (@typeInfo(f_type) == .pointer) try testing.expect(may(f_type));
     }
     try testing.expect(!computed.isCounted(Value.kw(.none)));
     try testing.expect(!computed.isCounted(Value.px(3)));

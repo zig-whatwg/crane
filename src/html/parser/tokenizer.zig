@@ -419,8 +419,8 @@ pub const Tokenizer = struct {
     /// - 5-15% speedup for state-heavy parsing
     ///
     /// The table is indexed by @intFromEnum(State), providing O(1) dispatch.
-    const state_handlers: [@typeInfo(State).@"enum".fields.len]StateHandler = blk: {
-        var handlers: [@typeInfo(State).@"enum".fields.len]StateHandler = undefined;
+    const state_handlers: [@typeInfo(State).@"enum".field_names.len]StateHandler = blk: {
+        var handlers: [@typeInfo(State).@"enum".field_names.len]StateHandler = undefined;
         // Initialize each handler based on the State enum field order
         handlers[@intFromEnum(State.data)] = dataState;
         handlers[@intFromEnum(State.rcdata)] = rcdataState;

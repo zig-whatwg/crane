@@ -133,8 +133,8 @@ test "Capability - all capabilities have unique values" {
     var seen = std.AutoHashMap(u8, void).init(testing.allocator);
     defer seen.deinit();
 
-    inline for (std.meta.fields(Capability)) |field| {
-        const result = seen.getOrPut(field.value) catch unreachable;
+    inline for (@typeInfo(Capability).@"enum".field_values) |field_value| {
+        const result = seen.getOrPut(field_value) catch unreachable;
         try testing.expect(!result.found_existing);
     }
 }
@@ -382,8 +382,8 @@ test "createEmptyBackend - no capabilities available" {
     try testing.expect(backend.geolocation == null);
 
     // hasCapability should return false for all
-    inline for (std.meta.fields(Capability)) |field| {
-        const cap: Capability = @enumFromInt(field.value);
+    inline for (@typeInfo(Capability).@"enum".field_values) |field_value| {
+        const cap: Capability = @enumFromInt(field_value);
         try testing.expect(!backend.hasCapability(cap));
     }
 }

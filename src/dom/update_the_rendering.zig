@@ -148,7 +148,7 @@ pub fn latestRefresh(realm: runtime.Context) ?i64 {
     return get(realm);
 }
 
-const step_count = @typeInfo(Step).@"enum".fields.len;
+const step_count = @typeInfo(Step).@"enum".field_names.len;
 
 // process-wide: function pointers the browser layer installs once at process start (crane.Process), the same for every Browser and thread
 var loop: ?Loop = null;
@@ -224,9 +224,9 @@ test "the steps keep the spec's numbers and order" {
     comptime {
         std.debug.assert(step_count == 17);
         var previous: u5 = 0;
-        for (@typeInfo(Step).@"enum".fields) |field| {
-            std.debug.assert(field.value > previous);
-            previous = field.value;
+        for (@typeInfo(Step).@"enum".field_values) |field_value| {
+            std.debug.assert(field_value > previous);
+            previous = field_value;
         }
     }
     try std.testing.expectEqual(@as(u5, 6), @intFromEnum(Step.reveal));

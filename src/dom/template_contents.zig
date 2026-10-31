@@ -21,8 +21,8 @@ var hooks: Hooks = .{};
 
 pub fn install(owned: Hooks) void {
     process_start.assertInstalling();
-    inline for (@typeInfo(Hooks).@"struct".fields) |field| {
-        if (@field(owned, field.name)) |algorithm| @field(hooks, field.name) = algorithm;
+    inline for (@typeInfo(Hooks).@"struct".field_names) |field_name| {
+        if (@field(owned, field_name)) |algorithm| @field(hooks, field_name) = algorithm;
     }
 }
 

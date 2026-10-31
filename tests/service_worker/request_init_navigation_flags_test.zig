@@ -27,7 +27,7 @@ const Trial = struct {
         defer runtime.deinitializeRuntime();
         var context = try runtime.ContextData.init(testing.allocator, .{});
         defer context.deinit();
-        const Init = @typeInfo(@TypeOf(interfaces.Request.call_constructor)).@"fn".params[2].type.?;
+        const Init = @typeInfo(@TypeOf(interfaces.Request.call_constructor)).@"fn".param_types[2].?;
         const input = try interfaces.Request.call_constructor(&context, .{ .usvstring = "https://a.example/page" }, Init.notPassed());
         defer destroyRequest(input);
         // The navigation's request, as a fetch event's Request object holds it.

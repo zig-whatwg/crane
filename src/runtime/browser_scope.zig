@@ -118,7 +118,7 @@ pub const BrowserScope = struct {
         font_face,
         font_face_set,
     };
-    const table_count = @typeInfo(Table).@"enum".fields.len;
+    const table_count = @typeInfo(Table).@"enum".field_names.len;
 
     const Supplement = struct {
         /// `@typeName` of the supplement's type: its key.

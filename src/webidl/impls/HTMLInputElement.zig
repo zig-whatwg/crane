@@ -90,8 +90,8 @@ pub const InputType = enum {
     /// case-insensitively, else Text.
     pub fn fromAttribute(value: ?[]const u8) InputType {
         const v = value orelse return .text;
-        inline for (std.meta.fields(InputType)) |field| {
-            if (std.ascii.eqlIgnoreCase(v, field.name)) return @enumFromInt(field.value);
+        inline for (std.meta.fieldNames(InputType), @typeInfo(InputType).@"enum".field_values) |field_name, field_value| {
+            if (std.ascii.eqlIgnoreCase(v, field_name)) return @enumFromInt(field_value);
         }
         return .text;
     }

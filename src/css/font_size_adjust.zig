@@ -26,8 +26,8 @@ pub const Metric = enum {
     fn parse(stream: *properties.Stream) ?Metric {
         const token = stream.peek();
         if (token.token_type != .ident) return null;
-        inline for (@typeInfo(Metric).@"enum".fields) |field| {
-            const metric: Metric = @enumFromInt(field.value);
+        inline for (@typeInfo(Metric).@"enum".field_values) |field_value| {
+            const metric: Metric = @enumFromInt(field_value);
             if (tokens.nameEql(token.value, metric.name())) {
                 _ = stream.next();
                 return metric;

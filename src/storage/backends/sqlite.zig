@@ -491,10 +491,10 @@ pub const PreparedStmtCache = struct {
 
     /// Finalize all cached statements
     pub fn deinit(self: *Self) void {
-        inline for (@typeInfo(Self).@"struct".fields) |field| {
-            if (@field(self, field.name)) |stmt| {
+        inline for (@typeInfo(Self).@"struct".field_names) |field_name| {
+            if (@field(self, field_name)) |stmt| {
                 _ = c.sqlite3_finalize(stmt);
-                @field(self, field.name) = null;
+                @field(self, field_name) = null;
             }
         }
     }

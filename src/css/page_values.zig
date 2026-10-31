@@ -65,8 +65,8 @@ pub const Descriptor = enum {
         return if (self == .page_orientation) "page-orientation" else @tagName(self);
     }
     pub fn parse(name_text: []const u8) ?Descriptor {
-        inline for (@typeInfo(Descriptor).@"enum".fields) |field| {
-            const kind: Descriptor = @enumFromInt(field.value);
+        inline for (@typeInfo(Descriptor).@"enum".field_values) |field_value| {
+            const kind: Descriptor = @enumFromInt(field_value);
             if (std.ascii.eqlIgnoreCase(name_text, kind.name())) return kind;
         }
         return null;

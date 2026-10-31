@@ -8,7 +8,7 @@ const Value = css.style_values.Value;
 test "keyword IDs have room beyond u8 and keep per-element layout measurable" {
     const Cursor = @typeInfo(@FieldType(Value, "cursor")).pointer.child;
     std.debug.print("BX1_KEYWORD_LAYOUT keywords={d} Keyword={d} Value={d} Declaration={d} ComputedStyle={d} AnimationItem={d} Cursor={d}\n", .{
-        @typeInfo(Keyword).@"enum".fields.len,
+        @typeInfo(Keyword).@"enum".field_names.len,
         @sizeOf(Keyword),
         @sizeOf(Value),
         @sizeOf(css.declarations.Declaration),

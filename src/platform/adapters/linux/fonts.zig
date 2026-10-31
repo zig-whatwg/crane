@@ -83,13 +83,13 @@ const Fc = struct {
         const handle = std.c.dlopen("libfontconfig.so.1", .{ .LAZY = true, .NODELETE = true }) orelse return null;
         var fc: Fc = undefined;
         fc.handle = handle;
-        inline for (@typeInfo(Fc).@"struct".fields) |field| {
-            if (comptime std.mem.eql(u8, field.name, "handle")) continue;
-            const symbol = std.c.dlsym(handle, "Fc" ++ field.name) orelse {
+        inline for (@typeInfo(Fc).@"struct".field_names) |field_name| {
+            if (comptime std.mem.eql(u8, field_name, "handle")) continue;
+            const symbol = std.c.dlsym(handle, "Fc" ++ field_name) orelse {
                 _ = std.c.dlclose(handle);
                 return null;
             };
-            @field(fc, field.name) = @ptrCast(@alignCast(symbol));
+            @field(fc, field_name) = @ptrCast(@alignCast(symbol));
         }
         return fc;
     }

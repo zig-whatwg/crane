@@ -49,7 +49,7 @@ const StrategyShaped = struct {
 };
 
 fn ConstructorParam(comptime I: type, comptime index: usize) type {
-    return @typeInfo(@TypeOf(I.call_constructor)).@"fn".params[index].type.?;
+    return @typeInfo(@TypeOf(I.call_constructor)).@"fn".param_types[index].?;
 }
 
 test "a dictionary whose member is a callback function is copied: the callback adopts its own Get handle" {

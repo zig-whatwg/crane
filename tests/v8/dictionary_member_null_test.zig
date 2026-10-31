@@ -26,13 +26,13 @@ const conversions = v8.conversions;
 /// (tests/v8 has no `dictionaries` import of its own).
 const dictionaries = struct {
     /// LockManager.request(name, options, callback)'s `options`.
-    const LockOptions = @typeInfo(@TypeOf(interfaces.LockManager.call_request__1)).@"fn".params[2].type.?;
+    const LockOptions = @typeInfo(@TypeOf(interfaces.LockManager.call_request__1)).@"fn".param_types[2].?;
     /// new Request(input, init)'s `init`.
-    const RequestInit = @FieldType(@typeInfo(@TypeOf(interfaces.Request.call_constructor)).@"fn".params[2].type.?, "value");
+    const RequestInit = @FieldType(@typeInfo(@TypeOf(interfaces.Request.call_constructor)).@"fn".param_types[2].?, "value");
     /// element.setHTML(html, options)'s `options`: `(Sanitizer or
     /// SanitizerConfig or SanitizerPresets) sanitizer = "default"`, an inline
     /// union typed runtime.JSValue.
-    const SetHTMLOptions = @FieldType(@typeInfo(@TypeOf(interfaces.Element.call_setHTML)).@"fn".params[2].type.?, "value");
+    const SetHTMLOptions = @FieldType(@typeInfo(@TypeOf(interfaces.Element.call_setHTML)).@"fn".param_types[2].?, "value");
 };
 
 const Env = struct {
