@@ -453,7 +453,7 @@ pub const StyleEngine = struct {
     /// the active sheets and replace cached styles under the outer read
     /// (Codex row 61 Q16): a Debug build stops there.
     fn enterResolution(self: *StyleEngine) void {
-        if (builtin.mode == .Debug and self.resolving) @panic("dom.style.computedStyle re-entered while it resolves the same document");
+        if (builtin.mode == .debug and self.resolving) @panic("dom.style.computedStyle re-entered while it resolves the same document");
         self.resolving = true;
     }
 
@@ -1916,11 +1916,11 @@ pub fn visitFontRules(document: *runtime.Instance, callback: anytype) !void {
 fn visitFontSheets(engine: *StyleEngine, document: *runtime.Instance, active: *Active, sheets: []const ActiveSheet, root: *runtime.Instance, callback: anytype) !void {
     const generation = engine.generation;
     const sheets_version = engine.sheets_version;
-    const tree_version = if (builtin.mode == .Debug) refcount.treeVersion(document) else null;
+    const tree_version = if (builtin.mode == .debug) refcount.treeVersion(document) else null;
     for (sheets) |sheet| for (sheet.contents.font_rules.items) |entry| {
         if (!sheet.contents.conditionHolds(entry.condition, &active.media)) continue;
         try callback.visit(entry.rule, root);
-        if (builtin.mode == .Debug) {
+        if (builtin.mode == .debug) {
             // Check before reading the next borrowed index entry: a callback
             // that edits/rebuilds a sheet could otherwise invalidate it.
             std.debug.assert(engine.generation == generation and engine.sheets_version == sheets_version);

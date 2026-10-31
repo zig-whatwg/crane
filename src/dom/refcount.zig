@@ -57,7 +57,7 @@ const log = std.log.scoped(.refcount);
 /// The Debug bookkeeping (ids, entries, stacks) exists only in Debug builds.
 /// Everything else - underflow, ref on a garbage node, the thread check in
 /// Debug - works in every mode.
-pub const tracking = builtin.mode == .Debug;
+pub const tracking = builtin.mode == .debug;
 
 /// What a violation does.
 pub const Mode = enum {

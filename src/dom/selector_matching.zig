@@ -1016,7 +1016,7 @@ fn eql(a: []const u8, b: []const u8, insensitive: bool) bool {
 
 fn contains(haystack: []const u8, needle: []const u8, insensitive: bool) bool {
     if (!insensitive) return std.mem.indexOf(u8, haystack, needle) != null;
-    return std.ascii.indexOfIgnoreCase(haystack, needle) != null;
+    return std.ascii.findIgnoreCase(haystack, needle) != null;
 }
 
 /// Whether the class attribute value `classes`, split on ASCII whitespace

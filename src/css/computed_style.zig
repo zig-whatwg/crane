@@ -133,7 +133,7 @@ fn analyse(comptime T: type) bool {
 /// Value tags whose payload may hold a reference.
 const counted_tags: std.EnumSet(std.meta.Tag(Value)) = blk: {
     @setEvalBranchQuota(100_000);
-    var set: std.EnumSet(std.meta.Tag(Value)) = .initEmpty();
+    var set: std.EnumSet(std.meta.Tag(Value)) = .empty;
     for (@typeInfo(Value).@"union".field_names, @typeInfo(Value).@"union".field_types) |f_name, f_type| {
         if (mayHoldReference(f_type)) set.insert(@field(std.meta.Tag(Value), f_name));
     }
@@ -167,7 +167,7 @@ pub fn identical(a: Value, b: Value) bool {
 
 fn same(comptime T: type, a: T, b: T) bool {
     return switch (@typeInfo(T)) {
-        .float => @as(std.meta.Int(.unsigned, @bitSizeOf(T)), @bitCast(a)) == @as(std.meta.Int(.unsigned, @bitSizeOf(T)), @bitCast(b)),
+        .float => @as(@Int(.unsigned, @bitSizeOf(T)), @bitCast(a)) == @as(@Int(.unsigned, @bitSizeOf(T)), @bitCast(b)),
         .bool, .int, .@"enum", .void => a == b,
         .pointer => |p| if (p.size == .slice) a.ptr == b.ptr and a.len == b.len else a == b,
         .optional => |o| if (a) |x| (if (b) |y| same(o.child, x, y) else false) else b == null,
@@ -216,7 +216,7 @@ pub const ComputedStyle = struct {
     /// group's initial values.
     slots: [groups.count][*]const Value = all_initial,
     /// The groups this style holds one reference on.
-    held: Held = .initEmpty(),
+    held: Held = .empty,
     /// CSS Color Adjustment 1 2.2, the element color scheme: what its system
     /// colors were resolved against.
     used_color_scheme: color_scheme.Scheme = .light,

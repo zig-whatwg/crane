@@ -996,7 +996,7 @@ pub fn isBeingRendered(element: *runtime.Instance) bool {
 /// `display` `none` - the last `display` declaration, an `!important` one
 /// over any that is not (CSS Cascade's order within one declaration block).
 fn inlineDisplayIsNone(style: []const u8) bool {
-    if (std.ascii.indexOfIgnoreCase(style, "display") == null) return false;
+    if (std.ascii.findIgnoreCase(style, "display") == null) return false;
     const allocator = std.heap.page_allocator;
     const text = std.mem.concat(allocator, u8, &.{ "x{", style, "}" }) catch return false;
     defer allocator.free(text);

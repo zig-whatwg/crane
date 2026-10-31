@@ -427,7 +427,7 @@ pub const PolicyDirective = struct {
 /// owned. Chromium PermissionsPolicy::CreateFromParentPolicy and
 /// GetFeatureValueForOrigin (33aa7cdb) use this separation; no code copied.
 pub const PermissionsPolicy = struct {
-    disabled_inherited: std.enums.EnumSet(Feature) = .initEmpty(),
+    disabled_inherited: std.enums.EnumSet(Feature) = .empty,
     // tombstones: bounded by Feature; populated at construction, then the
     // one-time lazy inheritance resolution only removes, never reinserts.
     declared_policy: std.AutoHashMap(Feature, Allowlist),
@@ -612,7 +612,7 @@ pub const PermissionsPolicy = struct {
     /// Compatibility for native callers: snapshot inheritance with no container
     /// declaration. A later change/destruction of parent cannot affect this.
     pub fn setInheritedPolicy(self: *Self, parent: *const Self) void {
-        self.disabled_inherited = .initEmpty();
+        self.disabled_inherited = .empty;
         inline for (@typeInfo(Feature).@"enum".field_values) |field_value| {
             const feature: Feature = @enumFromInt(field_value);
             if (!inheritedValue(feature, parent, null, self.origin())) self.disabled_inherited.insert(feature);
@@ -766,7 +766,7 @@ pub const Policies = struct {
         // Opaque identity comes from the actual origin; tuple comparison
         // uses the construction-time domain copied into child_origin.
         const target = if (std.mem.eql(u8, origin.serialized, "null")) origin else originView(snapshot.child_origin);
-        var disabled: std.enums.EnumSet(Feature) = .initEmpty();
+        var disabled: std.enums.EnumSet(Feature) = .empty;
         inline for (@typeInfo(Feature).@"enum".field_values) |field_value| {
             const feature: Feature = @enumFromInt(field_value);
             if (!PermissionsPolicy.inheritedValue(feature, &snapshot.parent, if (snapshot.container) |*container| container else null, target)) disabled.insert(feature);

@@ -433,7 +433,7 @@ const CandidateIndex = struct {
     heads: [Longhand.count]usize = @splat(none),
     links: []usize,
     /// The longhands with a chain (a logical one until merge moves it).
-    declared: LonghandSet = .initEmpty(),
+    declared: LonghandSet = .empty,
 
     fn init(candidates: []const Candidate, links: []usize) CandidateIndex {
         std.debug.assert(candidates.len == links.len);
@@ -572,7 +572,7 @@ pub fn defaultPathFor(l: Longhand, initial: Value) DefaultPath {
 /// physical one that is not high-priority.
 const low_priority: LonghandSet = blk: {
     @setEvalBranchQuota(100_000);
-    var set: LonghandSet = .initEmpty();
+    var set: LonghandSet = .empty;
     for (0..Longhand.count) |i| {
         const l: Longhand = @enumFromInt(i);
         if (l.logical() == null and !isHighPriority(l)) set.insert(l);
@@ -583,7 +583,7 @@ const low_priority: LonghandSet = blk: {
 /// The logical longhands, whose chains merge into physical ones.
 const logical_longhands: LonghandSet = blk: {
     @setEvalBranchQuota(100_000);
-    var set: LonghandSet = .initEmpty();
+    var set: LonghandSet = .empty;
     for (0..Longhand.count) |i| if (@as(Longhand, @enumFromInt(i)).logical() != null) set.insert(@enumFromInt(i));
     break :blk set;
 };
@@ -592,7 +592,7 @@ const logical_longhands: LonghandSet = blk: {
 /// (default_path .compute, high-priority ones aside).
 const computed_when_untouched: LonghandSet = blk: {
     @setEvalBranchQuota(100_000);
-    var set: LonghandSet = .initEmpty();
+    var set: LonghandSet = .empty;
     for (0..Longhand.count) |i| if (default_path[i] == .compute) set.insert(@enumFromInt(i));
     break :blk set;
 };

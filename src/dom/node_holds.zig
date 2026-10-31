@@ -430,7 +430,7 @@ pub const TaskHold = struct {
         switch (self.state) {
             .empty => return,
             .released => {
-                if (builtin.mode == .Debug) std.debug.panic("node_holds.TaskHold {*} released twice", .{self});
+                if (builtin.mode == .debug) std.debug.panic("node_holds.TaskHold {*} released twice", .{self});
                 log.err("node_holds.TaskHold {*} released twice", .{self});
                 return;
             },
