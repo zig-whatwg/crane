@@ -2029,6 +2029,7 @@ fn geometryLength(l: Longhand) bool {
         .box_overflow => l == .overflow_clip_margin,
         .gap_rule => l == .column_rule_width or l == .row_rule_width,
         .gap_inset => true,
+        .table_spacing => true,
         .image_position => l == .perspective_origin,
         else => false,
     };

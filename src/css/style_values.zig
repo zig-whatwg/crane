@@ -384,6 +384,11 @@ pub const Keyword = enum(u16) {
     slice,
     clone,
 
+    // CSS Tables 3 §§3.5.2 and 5.2.
+    separate,
+    show,
+    hide,
+
     /// The keyword's CSS spelling.
     pub fn name(self: Keyword) []const u8 {
         return switch (self) {

@@ -431,6 +431,13 @@ pub const Longhand = enum(u16) {
     orphans,
     widows,
 
+    // CSS Tables 3: values independent of table used geometry.
+    border_collapse,
+    border_spacing,
+    caption_side,
+    empty_cells,
+    table_layout,
+
     pub const count = @typeInfo(Longhand).@"enum".field_names.len;
 
     /// The property name.
@@ -611,6 +618,7 @@ pub const Grammar = enum {
     box,
     column_count,
     positive_integer,
+    table_spacing,
     column_size,
     scroll_snap,
     scroll_padding,
@@ -750,6 +758,12 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .box_decoration_break, .inherited = false, .initial = Value.kw(.slice), .grammar = .keywords, .keywords = &.{ .slice, .clone } },
         .{ .longhand = .orphans, .inherited = true, .initial = .{ .integer = 2 }, .grammar = .positive_integer },
         .{ .longhand = .widows, .inherited = true, .initial = .{ .integer = 2 }, .grammar = .positive_integer },
+        // Tables3 §§3.5 and 5.2: table-layout alone is not inherited.
+        .{ .longhand = .border_collapse, .inherited = true, .initial = Value.kw(.separate), .grammar = .keywords, .keywords = &.{ .separate, .collapse } },
+        .{ .longhand = .border_spacing, .inherited = true, .initial = .{ .corner_radius = .zero }, .grammar = .table_spacing },
+        .{ .longhand = .caption_side, .inherited = true, .initial = Value.kw(.top), .grammar = .keywords, .keywords = &.{ .top, .bottom } },
+        .{ .longhand = .empty_cells, .inherited = true, .initial = Value.kw(.show), .grammar = .keywords, .keywords = &.{ .show, .hide } },
+        .{ .longhand = .table_layout, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .fixed } },
         .{ .longhand = .hanging_punctuation, .inherited = true, .initial = Value.kw(.none), .grammar = .text_value },
         .{ .longhand = .hyphenate_limit_lines, .inherited = true, .initial = Value.kw(.no_limit), .grammar = .text_value },
         // Text4 §7.6, WebKit's cssTextGroupAlignEnabled implementation.
@@ -1760,6 +1774,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         },
         // Break3/4 §3.3: <integer [1,∞]>, including computed math bounds.
         .positive_integer => return @import("box_values.zig").consumeInteger(options, stream, 1),
+        .table_spacing => return @import("table_values.zig").consumeSpacing(options, stream),
         .column_size => {
             // Multicol 2 §§4.1–4.2: auto | <length [0,∞]>, no percentages.
             if (takeKeyword(stream, &.{.auto})) |k| return Value.kw(k);

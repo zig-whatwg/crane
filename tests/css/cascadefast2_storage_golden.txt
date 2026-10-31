@@ -330,6 +330,11 @@ break-inside: auto
 box-decoration-break: slice
 orphans: 2
 widows: 2
+border-collapse: separate
+border-spacing: 0px
+caption-side: top
+empty-cells: show
+table-layout: auto
 == initial root and child / 0
 display: block
 == initial root and child / 1
