@@ -776,7 +776,7 @@ test "only a traversal's apply lets synchronous navigations jump: a reload, an u
     const queue = try top.traversalQueue(Harness.schedule);
 
     apply_history_step.traverse(top, testing.allocator, .{ .delta = -1 }, .{});
-    apply_history_step.reload(top, testing.allocator, history.currentEntry(top.id).?.id, null, false);
+    apply_history_step.reload(top, testing.allocator, history.currentEntry(top.id).?.id, null, .reload);
     apply_history_step.updateForNavigableCreationDestruction(top);
     const nav = try history.navigateSameDocument(top.id, "http://x.test/t#1", .null, .push, null);
     apply_history_step.finalizeSameDocument(top, testing.allocator, nav);

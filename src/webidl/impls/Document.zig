@@ -4445,9 +4445,13 @@ fn refreshComesDue(data: ?*anyopaque) void {
     const dom = @import("dom");
     if (reload) {
         // Location.reload()'s path: History installs the hook when it is
-        // made.
+        // made. Its "apply the reload history step" keeps one step of the
+        // navigate it stands in for: step 24.3, the document aborted once
+        // beforeunload lets the reload go on (Firefox and Safari stop the
+        // old document's loads when the refresh's reload begins: History
+        // reloadWindowForDeclarativeRefresh).
         if (!dom.history_traversal.isInstalled()) _ = interfaces.Window.get_history(window) catch {};
-        dom.history_traversal.reload(window);
+        dom.history_traversal.reloadForDeclarativeRefresh(window);
         return;
     }
     // The document's navigable - a frame's, a popup's or the host page's
