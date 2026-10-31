@@ -81,6 +81,15 @@ pub const Options = struct {
     /// (`runner_allocator.selfCheck`). The proof that a runner's build mode
     /// kept the checks every sweep log is grepped for.
     allocator_self_check: bool = false,
+    /// `--repeat=N`: run the worklist N times, each time in a fresh child
+    /// process, and report each subtest's failure rate (repeat.zig). 0 = off.
+    repeat: usize = 0,
+    /// `--repeat-with=<runner>`: N more repetitions with this runner binary,
+    /// alternating with this one (the other first), on the same server.
+    repeat_with: ?[]const u8 = null,
+    /// `--load=K`: K threads of the supervisor spin for the whole repeat
+    /// series - background CPU load, added on purpose.
+    load_threads: u32 = 0,
 
     pub fn init(allocator: std.mem.Allocator) Options {
         return Options{
@@ -113,7 +122,7 @@ pub const Options = struct {
     /// the worklist across child processes; there is no in-process path to it.
     /// A child never sees either flag, so this cannot recurse.
     pub fn wantsSupervisor(self: Options) bool {
-        return self.supervise or self.parallel != null;
+        return self.supervise or self.parallel != null or self.repeat > 0;
     }
 
     /// True when this process runs tests with nobody watching it - neither a
@@ -222,6 +231,37 @@ pub const Options = struct {
     }
 };
 
+/// One supervised child process: which binary, over which worklist from
+/// which index, journalling where, writing its report where.
+pub const ChildRun = struct {
+    exe: []const u8,
+    worklist: []const u8,
+    start_index: usize,
+    journal: []const u8,
+    output_dir: []const u8,
+    heartbeat: []const u8,
+};
+
+/// The command line of a supervised child. Only the options every runner's
+/// child has always taken (a frozen runner from before `--repeat` runs as a
+/// repeat child), and none of the supervisor's own: no `--parallel`,
+/// `--repeat*`, `--load`, and never the supervisor's `--journal=` -
+/// the child's journal is `run.journal`. Strings are allocated in `arena`.
+pub fn childArgv(arena: std.mem.Allocator, options: Options, run: ChildRun) ![]const []const u8 {
+    var argv: std.ArrayList([]const u8) = .empty;
+    try argv.appendSlice(arena, &.{
+        run.exe,
+        try std.fmt.allocPrint(arena, "--from-file={s}", .{run.worklist}),
+        try std.fmt.allocPrint(arena, "--start-index={d}", .{run.start_index}),
+        try std.fmt.allocPrint(arena, "--journal={s}", .{run.journal}),
+        try std.fmt.allocPrint(arena, "--wpt-root={s}", .{options.wpt_root}),
+        try std.fmt.allocPrint(arena, "--output={s}", .{run.output_dir}),
+        try std.fmt.allocPrint(arena, "--heartbeat={s}", .{run.heartbeat}),
+    });
+    if (!options.verbose) try argv.append(arena, "--quiet");
+    return argv.toOwnedSlice(arena);
+}
+
 /// A journal's file name without its directory or `.jsonl` extension.
 fn journalStem(journal_path: []const u8) []const u8 {
     const base = std.fs.path.basename(journal_path);
@@ -304,6 +344,12 @@ pub fn parseArgsDiagnosed(allocator: std.mem.Allocator, args: []const []const u8
             options.heartbeat_path = arg["--heartbeat=".len..];
         } else if (std.mem.eql(u8, arg, "--allocator-self-check")) {
             options.allocator_self_check = true;
+        } else if (std.mem.startsWith(u8, arg, "--repeat=")) {
+            options.repeat = std.fmt.parseInt(usize, arg["--repeat=".len..], 10) catch 0;
+        } else if (std.mem.startsWith(u8, arg, "--repeat-with=")) {
+            options.repeat_with = arg["--repeat-with=".len..];
+        } else if (std.mem.startsWith(u8, arg, "--load=")) {
+            options.load_threads = std.fmt.parseInt(u32, arg["--load=".len..], 10) catch 0;
         } else if (std.mem.startsWith(u8, arg, "-")) {
             diag.unknown_option = arg;
             return error.UnknownOption;
@@ -764,4 +810,53 @@ test "only a run with neither a supervisor nor a parent bounds itself" {
     var off = try parseArgs(testing.allocator, &.{ "wpt-runner", "--stall-limit-ms=0", "dom/x.html" });
     defer off.deinit();
     try testing.expect(!off.wantsSelfDeadline());
+}
+
+test "--repeat runs the worklist N times under the supervisor, optionally beside a second runner and load" {
+    const testing = std.testing;
+    var options = try parseArgs(testing.allocator, &.{ "--repeat=50", "--repeat-with=/frozen/wpt_runner", "--load=4", "a/b.html" });
+    defer options.deinit();
+    try testing.expectEqual(@as(usize, 50), options.repeat);
+    try testing.expectEqualStrings("/frozen/wpt_runner", options.repeat_with.?);
+    try testing.expectEqual(@as(u32, 4), options.load_threads);
+    try testing.expect(options.wantsSupervisor());
+
+    var plain = try parseArgs(testing.allocator, &.{"a/b.html"});
+    defer plain.deinit();
+    try testing.expectEqual(@as(usize, 0), plain.repeat);
+    try testing.expect(plain.repeat_with == null);
+    try testing.expectEqual(@as(u32, 0), plain.load_threads);
+    try testing.expect(!plain.wantsSupervisor());
+}
+
+test "a supervised child's command line is the old child's, without the supervisor's options" {
+    const testing = std.testing;
+    var options = try parseArgs(testing.allocator, &.{ "--parallel=4", "--repeat=3", "--load=2", "--quiet", "dom/" });
+    defer options.deinit();
+
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const argv = try childArgv(arena.allocator(), options, .{
+        .exe = "wpt_runner",
+        .worklist = "o/worklist.shard0.txt",
+        .start_index = 3,
+        .journal = "o/journal.shard0.jsonl",
+        .output_dir = "o",
+        .heartbeat = "o/journal.shard0.jsonl.heartbeat",
+    });
+    try testing.expectEqualStrings("wpt_runner", argv[0]);
+    for (argv) |arg| {
+        try testing.expect(!std.mem.startsWith(u8, arg, "--repeat"));
+        try testing.expect(!std.mem.startsWith(u8, arg, "--load"));
+        try testing.expect(!std.mem.startsWith(u8, arg, "--parallel"));
+    }
+    // A child is the old child: worklist, start, journal, root, output, heartbeat, --quiet.
+    try testing.expectEqualStrings("--from-file=o/worklist.shard0.txt", argv[1]);
+    try testing.expectEqualStrings("--start-index=3", argv[2]);
+    try testing.expectEqualStrings("--journal=o/journal.shard0.jsonl", argv[3]);
+    try testing.expectEqualStrings("--wpt-root=tests/wpt", argv[4]);
+    try testing.expectEqualStrings("--output=o", argv[5]);
+    try testing.expectEqualStrings("--heartbeat=o/journal.shard0.jsonl.heartbeat", argv[6]);
+    try testing.expectEqualStrings("--quiet", argv[7]);
+    try testing.expectEqual(@as(usize, 8), argv.len);
 }
