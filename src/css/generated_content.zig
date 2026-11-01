@@ -543,7 +543,9 @@ const Parser = struct {
             const counter_style = self.next();
             if (counter_style.token_type == .ident) {
                 const style_name = try self.ident(counter_style);
-                if (values.CssWide.parse(style_name) != null or std.ascii.eqlIgnoreCase(style_name, "default")) return null;
+                // Counter Styles3 §2.1 excludes none. Firefox and Safari
+                // implement this newer Lists3 §4.7 grammar (row131 Q49).
+                if (values.CssWide.parse(style_name) != null or std.ascii.eqlIgnoreCase(style_name, "default") or std.ascii.eqlIgnoreCase(style_name, "none")) return null;
                 if (!std.ascii.eqlIgnoreCase(style_name, "decimal")) {
                     try out.appendSlice(self.allocator, ", ");
                     try out.appendSlice(self.allocator, try css_serialize.serializeIdentifier(self.allocator, style_name));
