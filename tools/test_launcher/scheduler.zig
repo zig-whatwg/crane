@@ -17,7 +17,8 @@
 //! every batch to end. Then:
 //!   - every alone run fails:                  FAIL
 //!   - the alone runs disagree:                FLAKY
-//!   - every alone run passes: the batch's prefix up to the test is replayed
+//!   - every alone run passes: the tests that ran before it in its process
+//!     (its batch from where that process started) are replayed, then it,
 //!     in one fresh process, same order -
 //!       it fails again:                       ORDER-DEPENDENT (batch + seed)
 //!       it passes:                            FLAKY
@@ -136,6 +137,10 @@ pub const TestRecord = struct {
     /// The test's batch and its position in it (from the plan).
     batch: u32 = 0,
     position: u32 = 0,
+    /// The position in its batch where the process that ran it first
+    /// started: after a crash or timeout a new process takes over the batch,
+    /// so only the tests from here to `position` shared its process.
+    process_start: u32 = 0,
     first: Status = .pass,
     ran: bool = false,
     ns: u64 = 0,
@@ -285,15 +290,17 @@ pub const Run = struct {
     }
 
     /// Runs `tests` in order in fresh processes, restarting after a crash or
-    /// timeout, and hands each result to `sink`. A failed start blames every
-    /// test still to run.
+    /// timeout, and hands each result to `sink` with the index in `tests`
+    /// where its process started. A failed start blames every test still to
+    /// run.
     fn runSequence(r: *Run, w: u32, tests: []const u32, sink: anytype) void {
         var i: usize = 0;
         while (i < tests.len) {
+            const started_at: u32 = @intCast(i);
             r.startProcess(w) catch |err| {
                 while (i < tests.len) : (i += 1) {
                     const msg: []u8 = std.fmt.allocPrint(r.gpa, "launcher: could not start the test process: {t}\n", .{err}) catch &.{};
-                    sink.take(tests[i], .{ .status = .crash, .output = msg });
+                    sink.take(tests[i], .{ .status = .crash, .output = msg }, @intCast(i));
                 }
                 return;
             };
@@ -305,7 +312,7 @@ pub const Run = struct {
                     .output = std.fmt.allocPrint(r.gpa, "launcher: lost the test process: {t}\n", .{err}) catch &.{},
                 };
                 const dead = res.status.killsProcess();
-                sink.take(t, res);
+                sink.take(t, res, started_at);
                 if (dead) break;
             }
             r.exec.stop(w);
@@ -315,12 +322,13 @@ pub const Run = struct {
     fn batchWorker(r: *Run, w: u32) Io.Cancelable!void {
         const Sink = struct {
             run: *Run,
-            fn take(s: @This(), t: u32, res: RunResult) void {
+            fn take(s: @This(), t: u32, res: RunResult, process_start: u32) void {
                 const rec = &s.run.records[t];
                 rec.ran = true;
                 rec.first = res.status;
                 rec.ns = res.ns;
                 rec.output = res.output;
+                rec.process_start = process_start;
             }
         };
         const total = r.batchCount();
@@ -357,7 +365,7 @@ pub const Run = struct {
             run: *Run,
             target: u32,
             out: *?Status,
-            fn take(s: @This(), test_index: u32, res: RunResult) void {
+            fn take(s: @This(), test_index: u32, res: RunResult, _: u32) void {
                 s.run.gpa.free(res.output);
                 if (test_index == s.target) s.out.* = res.status;
             }
@@ -373,8 +381,9 @@ pub const Run = struct {
         for (rec.aloneRuns()) |s| {
             if (!s.ok()) all_pass = false;
         }
-        if (all_pass and rec.position > 0) {
-            const prefix = r.plan.batchTests(rec.batch)[0 .. rec.position + 1];
+        // Replay what shared its process: from where that process started.
+        if (all_pass and rec.position > rec.process_start) {
+            const prefix = r.plan.batchTests(rec.batch)[rec.process_start .. rec.position + 1];
             var got: ?Status = null;
             r.runSequence(w, prefix, Collect{ .run = r, .target = t, .out = &got });
             rec.replay = got orelse .crash;
@@ -714,4 +723,26 @@ test "longest first: batches by expected duration, unknown tests at the known me
     const plain = try longestFirst(testing.allocator, &p, &none);
     defer testing.allocator.free(plain);
     try testing.expectEqualSlices(u32, &.{ 0, 1, 2, 3 }, plain);
+}
+
+/// Test 2 crashes; test 4 fails when test 3 ran before it in its process.
+fn crashThenFourNeedsThree(_: *Fake, t: u32, history: []const u32, _: u32) Status {
+    if (t == 2) return .crash;
+    if (t != 4) return .pass;
+    return if (std.mem.indexOfScalar(u32, history, 3) != null) .fail else .pass;
+}
+
+test "the prefix replay starts where the failing test's process started, not at its batch's start" {
+    var h: Harness = undefined;
+    // One batch, index order: 0 1 2(crash) | restart: 3 4 5.
+    try h.init(crashThenFourNeedsThree, 6, .{ .seed = 1, .shuffle = false, .batch_size = 0 }, .{ .jobs = 1, .alone_runs = 2 });
+    defer h.deinit();
+    try h.run.execute();
+    // The batch; 2 alone twice; 4 alone twice; then 4 after 3 only - the
+    // tests that shared its process - not 0 1 2 again, which would meet the
+    // crash and cost the whole batch's prefix.
+    try testing.expectEqualSlices(u32, &.{ 0, 1, 2, 3, 4, 5, 2, 2, 4, 4, 3, 4 }, h.fake.log.items);
+    try testing.expectEqual(Verdict.fail, h.run.records[2].verdict);
+    try testing.expectEqual(Verdict.order_dependent, h.run.records[4].verdict);
+    try testing.expectEqual(@as(u32, 3), h.run.records[4].process_start);
 }

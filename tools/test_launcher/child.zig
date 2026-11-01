@@ -450,10 +450,11 @@ test "real processes: each kind of result, a crash and a timeout blamed and rest
     // The crash report names the panic.
     try testing.expect(std.mem.indexOf(u8, run.records[2].output, "the fixture crashes here") != null);
     // One batch process, a restart after the crash and after the timeout;
-    // then one alone run each for the five failures; then the prefix replay
-    // of "needs a clean process", which meets the crash and the timeout
-    // again and restarts after each, as the batch did.
-    try testing.expectEqual(@as(u32, 3 + 5 + 3), run.processes.load(.monotonic));
+    // then one alone run each for the five failures; then the replay of
+    // "needs a clean process" after the tests that shared its process -
+    // "leaks" and "poisons", from where the restart after the timeout began.
+    try testing.expectEqual(@as(u32, 3 + 5 + 1), run.processes.load(.monotonic));
+    try testing.expectEqual(@as(u32, 4), run.records[6].process_start);
     try testing.expectEqual(@as(u32, 0), exec.exit_failures.load(.monotonic));
     try testing.expect(exec.cpu_ns.load(.monotonic) > 0);
 }

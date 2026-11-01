@@ -48,7 +48,7 @@ pub fn writeVerdictBlock(w: *std.Io.Writer, name: []const u8, rec: *const sched.
         rec.verdict.label(), name, rec.first, rec.batch, rec.position, seed,
     });
     for (rec.aloneRuns()) |s| try w.print(" {t}", .{s});
-    if (rec.replay) |s| try w.print("; after its batch prefix: {t}", .{s});
+    if (rec.replay) |s| try w.print("; after the tests before it in its process (from position {d}): {t}", .{ rec.process_start, s });
     try w.writeAll(")\n");
     const tail = lastLines(rec.output, 40);
     if (tail.len != 0) try w.print("{s}\n", .{tail});
