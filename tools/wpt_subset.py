@@ -20,6 +20,12 @@ it. This emits a path worklist the runner consumes directly:
 Every entry below carries the reason it is in or out. When something is added,
 add the reason too - a bare path list rots into folklore within a month.
 
+Who changes it (the user, 2026-11-01): the integrator adds any file that meets
+the scope line - in a merged or ratified spec, shipped by at least one browser,
+not tentative, and asserting no geometry - and removes any listed file that turns
+out not to meet it, without asking first, reporting the headline change. Files
+that do not fit the line cleanly go to the user.
+
 Scope decisions this encodes (updated 2026-10-22):
   * Headless. No iOS build. WPT compliance gates the iOS move.
   * A file blocks when its harness is not OK or its nonempty subtest set has
@@ -584,6 +590,69 @@ INCLUDE = [
     ('web-locks/',                 'Web Locks'),
     ('compression/',               'Compression Streams'),
     ('permissions/',               'Permissions API'),
+    # Codex row 131's candidates (2026-11-01): files its CSS property-family work
+    # changed outside the parsing directories, screened against the scope line
+    # (merged or ratified spec, shipped by at least one browser, not tentative, no
+    # geometry). 58 of its 68 qualify; the other ten read laid-out sizes or are
+    # tentative. Measured per file in tmp/analysis/archive/codex-cssfam-row131/.
+    ('css/css-break/animation/break-no-interpolation.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/css-break/animation/orphans-interpolation.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/css-break/animation/widows-interpolation.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/css-break/page-break-important.html', 'property syntax, cascade or computed value outside the parsing directory'),
+    ('css/css-break/page-break-legacy-shorthands.html', 'property syntax, cascade or computed value outside the parsing directory'),
+    ('css/css-font-loading/empty-family-load.html', 'CSS Font Loading API: FontFace and FontFaceSet'),
+    ('css/css-font-loading/font-face-reject.html', 'CSS Font Loading API: FontFace and FontFaceSet'),
+    ('css/css-font-loading/fontface-css-connected-descriptors.html', 'CSS Font Loading API: FontFace and FontFaceSet'),
+    ('css/css-font-loading/fontface-font-variation-settings-persisted-js-api.html', 'CSS Font Loading API: FontFace and FontFaceSet'),
+    ('css/css-font-loading/fontface-fonts-loading.html', 'CSS Font Loading API: FontFace and FontFaceSet'),
+    ('css/css-font-loading/fontface-invalid-arraybuffer.html', 'CSS Font Loading API: FontFace and FontFaceSet'),
+    ('css/css-font-loading/fontface-loadingevent.html', 'CSS Font Loading API: FontFace and FontFaceSet'),
+    ('css/css-font-loading/fontface-override-descriptor-getter-setter.sub.html', 'CSS Font Loading API: FontFace and FontFaceSet'),
+    ('css/css-font-loading/fontface-width.html', 'CSS Font Loading API: FontFace and FontFaceSet'),
+    ('css/css-font-loading/fontfaceset-clear-css-connected.html', 'CSS Font Loading API: FontFace and FontFaceSet'),
+    ('css/css-font-loading/fontfaceset-delete-css-connected.html', 'CSS Font Loading API: FontFace and FontFaceSet'),
+    ('css/css-font-loading/fontfaceset-has.html', 'CSS Font Loading API: FontFace and FontFaceSet'),
+    ('css/css-font-loading/fontfaceset-load-css-connected.html', 'CSS Font Loading API: FontFace and FontFaceSet'),
+    ('css/css-font-loading/fontfaceset-load-css-wide-keywords.html', 'CSS Font Loading API: FontFace and FontFaceSet'),
+    ('css/css-font-loading/fontfaceset-load-var.html', 'CSS Font Loading API: FontFace and FontFaceSet'),
+    ('css/css-font-loading/fontfaceset-update-after-stylesheet-change.html', 'CSS Font Loading API: FontFace and FontFaceSet'),
+    ('css/css-font-loading/fontfacesetloadevent-constructor.html', 'CSS Font Loading API: FontFace and FontFaceSet'),
+    ('css/css-font-loading/historical.html', 'CSS Font Loading API: FontFace and FontFaceSet'),
+    ('css/css-font-loading/idlharness.https.html', 'CSS Font Loading API: FontFace and FontFaceSet'),
+    ('css/css-font-loading/nonexistent-file-url.html', 'CSS Font Loading API: FontFace and FontFaceSet'),
+    ('css/css-fonts/animations/font-palette-animation-not-specified-endpoints.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/css-fonts/animations/font-palette-interpolation.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/css-fonts/animations/multiple-elements-font-palette-animation.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/css-fonts/font-palette-vs-shorthand.html', 'property syntax, cascade or computed value outside the parsing directory'),
+    ('css/css-images/animation/object-view-box-interpolation.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/css-lists/animations/list-style-image-interpolation.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/css-lists/counter-important.html', 'property syntax, cascade or computed value outside the parsing directory'),
+    ('css/css-lists/list-style-type-transition-tree-scope-custom-ident.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/css-lists/list-style-type-transition-tree-scope-keyword.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/css-lists/nested-list-with-list-style-type-none.html', 'property syntax, cascade or computed value outside the parsing directory'),
+    ('css/css-tables/animations/border-spacing-interpolation.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/motion/animation/offset-anchor-composition.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/motion/animation/offset-anchor-interpolation.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/motion/animation/offset-distance-composition.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/motion/animation/offset-distance-interpolation.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/motion/animation/offset-interpolation.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/motion/animation/offset-path-composition.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/motion/animation/offset-path-coord-box-interpolation.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/motion/animation/offset-path-interpolation-001.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/motion/animation/offset-path-interpolation-002.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/motion/animation/offset-path-interpolation-003.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/motion/animation/offset-path-interpolation-004.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/motion/animation/offset-path-interpolation-005.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/motion/animation/offset-path-interpolation-006.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/motion/animation/offset-path-interpolation-007.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/motion/animation/offset-path-interpolation-008.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/motion/animation/offset-path-interpolation-009.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/motion/animation/offset-position-composition.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/motion/animation/offset-position-interpolation.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/motion/animation/offset-rotate-composition.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/motion/animation/offset-rotate-interpolation-math-functions.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/motion/animation/offset-rotate-interpolation.html', 'computed values sampled from animations and transitions (no geometry)'),
+    ('css/motion/offset-supports-calc.html', 'property syntax, cascade or computed value outside the parsing directory'),
 ]
 
 # Substring or prefix -> why it is out. Only the two tentative rules below
@@ -615,10 +684,11 @@ EXCLUDE = [
     ('accname/name/comp_name_from_content_alt_counter_invalidation.html', 'all accessible-name assertions require generated CSS counter content (row 112)'),
     ('accname/name/comp_name_from_content_alt_counter_multi_instance.html', 'all accessible-name assertions require generated CSS counter content (row 112)'),
     ('css/cssom/caretPositionFromPoint', 'asserts caret offsets from hit-tested viewport coordinates'),
-    # The user, 2026-10-25: no animation engine yet (element.animate and the
-    # Animation objects are stubs), so the registered-property animation and
-    # transition files would block whatever is built. Out for now.
-    ('css/css-properties-values-api/animation/', 'needs an animation engine, which Crane does not have yet (the user, 2026-10-25)'),
+    # css/css-properties-values-api/animation/ is back in (2026-11-01): it was out
+    # from 2026-10-25 only until an animation engine was planned, and the user
+    # put web-animations/ in 0.1 on 2026-10-29. Its files animate registered
+    # custom properties with element.animate() and read getComputedStyle - no
+    # geometry. Its tentative files stay out by the blanket rule.
     ('css/css-variables/variable-reference-perspective-origin.html', 'every case asserts perspective-origin percentages resolved against the used 200px box'),
     ('css/css-variables/variable-animation-guaranteed-invalid.html', 'check-layout-th asserts each animated box offsetWidth (the invalid case stretches to its container)'),
     ('web-animations/responsive/fill-forwards-viewport-units.html', 'every assertion resolves vw against an iframe viewport resized through its laid-out width'),
