@@ -405,6 +405,15 @@ pub const Keyword = enum(u16) {
     dark,
     oblique_only,
 
+    // Images3/4 image fit, resampling and orientation values.
+    cover,
+    scale_down,
+    smooth,
+    high_quality,
+    pixelated,
+    crisp_edges,
+    from_image,
+
     /// The keyword's CSS spelling.
     pub fn name(self: Keyword) []const u8 {
         return switch (self) {

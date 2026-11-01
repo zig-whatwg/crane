@@ -58,6 +58,150 @@ pub const CrossFade = struct {
     }
 };
 
+/// Images4 §2.6: one image or color and an independently optional percentage.
+pub const WeightedImage = struct { image: Value, percentage: ?Value = null };
+pub const StandardCrossFade = struct {
+    items: []const WeightedImage,
+    computed: bool = false,
+
+    /// §2.6: omitted weights share max(0, 100 - explicit sum). Oversums
+    /// stay unnormalized here; sizing/painting normalizes separately. The
+    /// authored omission remains absent in serialization (row131 Q5/Q36).
+    pub fn effectivePercentage(self: StandardCrossFade, index: usize) ?f64 {
+        if (!self.computed or index >= self.items.len) return null;
+        var sum: f64 = 0;
+        var omitted: usize = 0;
+        for (self.items) |item| {
+            if (item.percentage) |percentage| {
+                sum += computedPercentage(percentage) orelse return null;
+            } else omitted += 1;
+        }
+        if (self.items[index].percentage) |percentage| return computedPercentage(percentage);
+        return @max(0, 100 - sum) / @as(f64, @floatFromInt(omitted));
+    }
+    // Image contexts may keep a computed scalar inside its math owner.
+    // Read only a computed percentage; unresolved math stays unknown.
+    fn computedPercentage(value: Value) ?f64 {
+        return switch (value) {
+            .length => |length| if (length.unit == .percent) length.value else null,
+            .calculation => |expression| if (expression.computedNumber()) |number|
+                if (number.unit == .percent) number.value else null
+            else
+                null,
+            else => null,
+        };
+    }
+    fn clone(self: StandardCrossFade, allocator: Allocator) Allocator.Error!StandardCrossFade {
+        const items = try allocator.dupe(WeightedImage, self.items);
+        for (items) |item| {
+            item.image.retain();
+            if (item.percentage) |percentage| percentage.retain();
+        }
+        return .{ .items = items, .computed = self.computed };
+    }
+    fn release(self: StandardCrossFade, allocator: Allocator) void {
+        for (self.items) |item| {
+            item.image.release();
+            if (item.percentage) |percentage| percentage.release();
+        }
+        allocator.free(self.items);
+    }
+    fn eql(self: StandardCrossFade, other: StandardCrossFade) bool {
+        if (self.computed != other.computed or self.items.len != other.items.len) return false;
+        for (self.items, other.items) |left, right| {
+            if (!left.image.eql(right.image) or (left.percentage == null) != (right.percentage == null)) return false;
+            if (left.percentage) |percentage| if (!percentage.eql(right.percentage.?)) return false;
+        }
+        return true;
+    }
+    fn needsUnavailableMetrics(self: StandardCrossFade, geometry_length: bool) bool {
+        for (self.items) |item| {
+            if (item.image.needsUnavailableMetrics(geometry_length)) return true;
+            if (item.percentage) |percentage| if (percentage.needsUnavailableMetrics(false)) return true;
+        }
+        return false;
+    }
+    fn needsTreeCounts(self: StandardCrossFade) bool {
+        for (self.items) |item| {
+            if (item.image.needsTreeCounts()) return true;
+            if (item.percentage) |percentage| if (percentage.needsTreeCounts()) return true;
+        }
+        return false;
+    }
+    fn needsRandomBase(self: StandardCrossFade) bool {
+        for (self.items) |item| {
+            if (item.image.needsRandomBase()) return true;
+            if (item.percentage) |percentage| if (percentage.needsRandomBase()) return true;
+        }
+        return false;
+    }
+    fn containsCurrentColor(self: StandardCrossFade) bool {
+        for (self.items) |item| {
+            if (item.image == .color) {
+                if (item.image.color.containsCurrentColor()) return true;
+            } else if (image_values.containsCurrentColor(item.image)) return true;
+        }
+        return false;
+    }
+    fn resolveColors(self: StandardCrossFade, allocator: Allocator, context: values.Color.Context) Allocator.Error!Value {
+        const items = try allocator.alloc(WeightedImage, self.items.len);
+        var initialized: usize = 0;
+        defer {
+            for (items[0..initialized]) |item| item.image.release();
+            allocator.free(items);
+        }
+        for (self.items, items) |item, *replacement| {
+            const image: Value = if (item.image == .color)
+                .{ .color = try item.image.color.resolveComputed(allocator, context) }
+            else
+                try resolveCurrentColors(allocator, .list_style_image, item.image, context);
+            // Only images are owned temporaries; percentages stay borrowed.
+            replacement.* = .{ .image = image, .percentage = item.percentage };
+            initialized += 1;
+        }
+        return .{ .image = try Image.create(allocator, .{ .standard_cross_fade = .{ .items = items, .computed = self.computed } }) };
+    }
+    fn compute(self: StandardCrossFade, allocator: Allocator, context: anytype) Allocator.Error!Value {
+        const items = try allocator.alloc(WeightedImage, self.items.len);
+        var initialized: usize = 0;
+        defer {
+            for (items[0..initialized]) |item| {
+                item.image.release();
+                if (item.percentage) |percentage| percentage.release();
+            }
+            allocator.free(items);
+        }
+        for (self.items, items) |item, *replacement| {
+            replacement.* = try computeItem(item, context);
+            initialized += 1;
+        }
+        // Images4 §2.6.3 is an unwritten WG-resolution placeholder. Q36
+        // keeps equal and nested components, including their URL provenance.
+        return .{ .image = try Image.create(allocator, .{ .standard_cross_fade = .{ .items = items, .computed = true } }) };
+    }
+    fn computeItem(item: WeightedImage, context: anytype) Allocator.Error!WeightedImage {
+        const image: Value = if (item.image == .color)
+            .{ .color = try context.color(item.image.color) }
+        else
+            try context.component(.list_style_image, item.image);
+        errdefer image.release();
+        const percentage = if (item.percentage) |weight| try context.length(weight) else null;
+        return .{ .image = image, .percentage = percentage };
+    }
+    fn serialize(self: StandardCrossFade, out: *std.ArrayList(u8), urls: *resources.Builder, allocator: Allocator) Allocator.Error!void {
+        try out.appendSlice(allocator, "cross-fade(");
+        for (self.items, 0..) |item, index| {
+            if (index > 0) try out.appendSlice(allocator, ", ");
+            try appendImage(item.image, out, urls, allocator);
+            if (item.percentage) |percentage| {
+                try out.append(allocator, ' ');
+                try properties.serializeValue(.margin_left, percentage, out, allocator);
+            }
+        }
+        // Data.text appends the closing parenthesis for every image function.
+    }
+};
+
 pub const TypeSupport = struct {
     context: *const anyopaque,
     /// True only for a valid MIME type naming a supported image format.
@@ -101,11 +245,13 @@ pub const Data = union(enum) {
     image_set: Set,
     light_dark: [2]Value,
     cross_fade: CrossFade,
+    standard_cross_fade: StandardCrossFade,
     solid_color: values.Color,
     gradient: gradients.Gradient,
 
     fn clone(self: Data, allocator: Allocator) Allocator.Error!Data {
         return switch (self) {
+            .standard_cross_fade => |cross| .{ .standard_cross_fade = try cross.clone(allocator) },
             .gradient => |gradient| .{ .gradient = try gradient.clone(allocator) },
             .image_set => |set| blk: {
                 const copy = try allocator.alloc(Candidate, set.candidates.len);
@@ -144,6 +290,7 @@ pub const Data = union(enum) {
 
     fn release(self: Data, allocator: Allocator) void {
         switch (self) {
+            .standard_cross_fade => |cross| cross.release(allocator),
             .gradient => |gradient| gradient.release(allocator),
             .image_set => |set| {
                 for (set.candidates) |item| {
@@ -168,6 +315,7 @@ pub const Data = union(enum) {
         var urls = resources.Builder{ .allocator = allocator };
         defer urls.deinit();
         switch (self) {
+            .standard_cross_fade => |cross| try cross.serialize(&out, &urls, allocator),
             .gradient => |gradient| {
                 try gradient.serialize(&out, allocator);
                 return values.SharedText.create(allocator, out.items);
@@ -258,6 +406,7 @@ pub const Image = struct {
         // An omitted resolution and an explicit 1x serialize alike but have
         // different natural-resolution behavior (Images4 §2.4).
         switch (self.data) {
+            .standard_cross_fade => |cross| if (!cross.eql(other.data.standard_cross_fade)) return false,
             .image_set => |set| {
                 const a = set.candidates;
                 const b = other.data.image_set.candidates;
@@ -284,6 +433,7 @@ pub const Image = struct {
 
     pub fn needsUnavailableMetrics(self: *const Image, geometry_length: bool) bool {
         return switch (self.data) {
+            .standard_cross_fade => |cross| cross.needsUnavailableMetrics(geometry_length),
             .image_set => |set| blk: {
                 for (set.candidates) |candidate| {
                     if (candidate.image.needsUnavailableMetrics(geometry_length)) break :blk true;
@@ -301,6 +451,7 @@ pub const Image = struct {
 
     pub fn needsTreeCounts(self: *const Image) bool {
         return switch (self.data) {
+            .standard_cross_fade => |cross| cross.needsTreeCounts(),
             .image_set => |set| blk: {
                 for (set.candidates) |candidate| {
                     if (candidate.image.needsTreeCounts()) break :blk true;
@@ -318,6 +469,7 @@ pub const Image = struct {
 
     pub fn needsRandomBase(self: *const Image) bool {
         return switch (self.data) {
+            .standard_cross_fade => |cross| cross.needsRandomBase(),
             .image_set => |set| blk: {
                 for (set.candidates) |candidate| {
                     if (candidate.image.needsRandomBase()) break :blk true;
@@ -336,6 +488,7 @@ pub const Image = struct {
     /// Structural dependency query; Color alone owns color graph inspection.
     pub fn containsCurrentColor(self: *const Image) bool {
         return switch (self.data) {
+            .standard_cross_fade => |cross| cross.containsCurrentColor(),
             .gradient => |gradient| gradient.containsCurrentColor(),
             .solid_color => |color| color.containsCurrentColor(),
             .image_set => |set| blk: {
@@ -352,6 +505,7 @@ pub const Image = struct {
     // descriptor computation or URL resolution belongs to this CSSOM copy.
     fn resolveColors(self: *const Image, allocator: Allocator, context: values.Color.Context) Allocator.Error!Value {
         switch (self.data) {
+            .standard_cross_fade => |cross| return cross.resolveColors(allocator, context),
             .gradient => |gradient| {
                 const resolved = try gradient.resolveCurrentColors(allocator, context);
                 defer resolved.release(allocator);
@@ -400,6 +554,7 @@ pub const Image = struct {
 
     pub fn compute(self: *const Image, allocator: Allocator, scheme: Scheme, context: anytype) Allocator.Error!Value {
         switch (self.data) {
+            .standard_cross_fade => |cross| return cross.compute(allocator, context),
             .gradient => |gradient| {
                 const computed = try gradient.compute(allocator, scheme, context);
                 defer computed.release(allocator);
@@ -521,6 +676,7 @@ pub const View = union(enum) {
     image_set: *const Set,
     light_dark: *const [2]Value,
     cross_fade: *const CrossFade,
+    standard_cross_fade: *const StandardCrossFade,
     solid_color: values.Color,
     gradient: *const values.SharedText,
     other: *const values.SharedText,
@@ -532,6 +688,7 @@ pub fn view(value: Value) ?View {
         .image_set => .{ .image_set = &value.image.data.image_set },
         .light_dark => .{ .light_dark = &value.image.data.light_dark },
         .cross_fade => .{ .cross_fade = &value.image.data.cross_fade },
+        .standard_cross_fade => .{ .standard_cross_fade = &value.image.data.standard_cross_fade },
         .solid_color => |color| .{ .solid_color = color },
         .gradient => .{ .gradient = value.image.text },
     };
@@ -595,6 +752,10 @@ fn parseAtDepth(options: properties.ParseOptions, stream: *properties.Stream, po
         if (tokenizer.nameEql(token.value, "light-dark")) {
             if (depth == 128) return null;
             return parseLightDark(options, stream, policy, depth + 1);
+        }
+        if (tokenizer.nameEql(token.value, "cross-fade")) {
+            if (!policy.generated or depth == 128) return null;
+            return parseStandardCrossFade(options, stream, policy, depth + 1);
         }
         if (tokenizer.nameEql(token.value, "-webkit-cross-fade")) {
             if (!policy.generated or depth == 128) return null;
@@ -784,4 +945,62 @@ fn parseCrossFade(options: properties.ParseOptions, stream: *properties.Stream, 
     const weight = std.math.clamp(if (token.token_type == .percentage) number / 100 else number, 0, 1);
     if (!endFunction(stream)) return null;
     return .{ .image = try Image.create(options.allocator, .{ .cross_fade = .{ .inputs = .{ first, second }, .weight = weight } }) };
+}
+
+fn consumeCrossFadePercentage(options: properties.ParseOptions, stream: *properties.Stream) Allocator.Error!?Value {
+    const number = try @import("numeric_values.zig").Number.consume(options, stream, .{ .kind = .percentage, .minimum = 0, .maximum = 100 }, false) orelse return null;
+    return switch (number) {
+        .literal => |n| .{ .length = values.Length.percent(n.value) },
+        .calculation => |expression| .{ .calculation = expression },
+    };
+}
+
+fn parseStandardCrossFade(options: properties.ParseOptions, stream: *properties.Stream, policy: Policy, depth: usize) Allocator.Error!?Value {
+    if (!beginFunction(stream)) return null;
+    var items: std.ArrayList(WeightedImage) = .empty;
+    defer {
+        for (items.items) |item| {
+            item.image.release();
+            if (item.percentage) |percentage| percentage.release();
+        }
+        items.deinit(options.allocator);
+    }
+    // Images4 §2.6; no stable engine ships the standard function (0/7 in
+    // all three on wpt.fyi, row131 Q5). The approved worklist uses the spec.
+    while (true) {
+        var percentage: ?Value = null;
+        defer if (percentage) |value| value.release();
+        var trial = stream.*;
+        if (try consumeCrossFadePercentage(options, &trial)) |weight| {
+            percentage = weight;
+            stream.* = trial;
+        }
+        var strict = options;
+        strict.quirks = false;
+        trial = stream.*;
+        const image: Value = if (try properties.parseLonghand(strict, .color, &trial)) |color| blk: {
+            stream.* = trial;
+            break :blk color;
+        } else blk: {
+            // Propagate image-set restrictions and the shared recursion depth.
+            var child_policy = policy;
+            child_policy.none = false;
+            break :blk try parseAtDepth(options, stream, child_policy, depth) orelse return null;
+        };
+        defer image.release();
+        if (percentage == null) {
+            trial = stream.*;
+            if (try consumeCrossFadePercentage(options, &trial)) |weight| {
+                percentage = weight;
+                stream.* = trial;
+            }
+        }
+        try items.append(options.allocator, .{ .image = image, .percentage = percentage });
+        image.retain();
+        if (percentage) |weight| weight.retain();
+        if (stream.peek().token_type != .comma) break;
+        _ = stream.next();
+    }
+    if (!endFunction(stream)) return null;
+    return .{ .image = try Image.create(options.allocator, .{ .standard_cross_fade = .{ .items = items.items } }) };
 }

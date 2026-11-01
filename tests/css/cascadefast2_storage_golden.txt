@@ -354,6 +354,9 @@ offset-path: none
 offset-distance: 0px
 offset-rotate: auto
 offset-anchor: auto
+object-fit: fill
+image-rendering: auto
+image-orientation: from-image
 == initial root and child / 0
 display: block
 == initial root and child / 1

@@ -465,6 +465,11 @@ pub const Longhand = enum(u16) {
     offset_rotate,
     offset_anchor,
 
+    // Images3/4: image fit, resampling preference and metadata orientation.
+    object_fit,
+    image_rendering,
+    image_orientation,
+
     pub const count = @typeInfo(Longhand).@"enum".field_names.len;
 
     /// The property name.
@@ -631,6 +636,7 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
 
 /// A longhand's grammar.
 pub const Grammar = enum {
+    object_fit,
     motion_position,
     motion_path,
     motion_distance,
@@ -793,6 +799,12 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .box_decoration_break, .inherited = false, .initial = Value.kw(.slice), .grammar = .keywords, .keywords = &.{ .slice, .clone } },
         .{ .longhand = .orphans, .inherited = true, .initial = .{ .integer = 2 }, .grammar = .positive_integer },
         .{ .longhand = .widows, .inherited = true, .initial = .{ .integer = 2 }, .grammar = .positive_integer },
+        // Images4 §5.1; Images3 §§5.1–5.2 (row131 Q10).
+        .{ .longhand = .object_fit, .inherited = false, .initial = Value.kw(.fill), .grammar = .object_fit },
+        .{ .longhand = .image_rendering, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .smooth, .high_quality, .pixelated, .crisp_edges } },
+        // Optional deprecated angle/flip values are rejected by all three
+        // browsers; from-image remains a computed keyword, not EXIF data.
+        .{ .longhand = .image_orientation, .inherited = true, .initial = Value.kw(.from_image), .grammar = .keywords, .keywords = &.{ .none, .from_image } },
         // Motion1 §§2.1–2.5: none of the motion properties inherits.
         .{ .longhand = .offset_position, .inherited = false, .initial = Value.kw(.normal), .grammar = .motion_position },
         .{ .longhand = .offset_path, .inherited = false, .initial = Value.kw(.none), .grammar = .motion_path },
@@ -1813,6 +1825,7 @@ pub const Stream = struct {
 pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Allocator.Error!?Value {
     const def = l.info();
     switch (def.grammar) {
+        .object_fit => return @import("image_misc_values.zig").consumeFit(stream),
         .motion_position => return @import("motion_values.zig").consumePosition(options, stream, l == .offset_position),
         .motion_path => return @import("motion_values.zig").consumePath(options, stream),
         .motion_rotation => return @import("motion_values.zig").consumeRotation(options, stream),
