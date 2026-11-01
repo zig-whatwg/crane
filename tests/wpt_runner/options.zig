@@ -95,6 +95,14 @@ pub const Options = struct {
     /// result beside its first (`journal.Record.retry`; flaky when they
     /// differ). The first result is the result; a retry's pass never counts.
     retry_failures: bool = false,
+    /// `--retry-failures=<journal.jsonl>`: the previous generation's journal.
+    /// With it a file that did not fully pass is retried only when its first
+    /// result differs from that journal's record (a different status or
+    /// count, or no record: a new file); one that matches is journalled with
+    /// `retry_skipped` and not run again. Without it, every such file is
+    /// retried. One flag, not a second one beside it: a baseline without a
+    /// retry means nothing, so the option that asks for retries carries it.
+    retry_baseline: ?[]const u8 = null,
 
     pub fn init(allocator: std.mem.Allocator) Options {
         return Options{
@@ -357,6 +365,9 @@ pub fn parseArgsDiagnosed(allocator: std.mem.Allocator, args: []const []const u8
             options.load_threads = std.fmt.parseInt(u32, arg["--load=".len..], 10) catch 0;
         } else if (std.mem.eql(u8, arg, "--retry-failures")) {
             options.retry_failures = true;
+        } else if (std.mem.startsWith(u8, arg, "--retry-failures=")) {
+            options.retry_failures = true;
+            options.retry_baseline = arg["--retry-failures=".len..];
         } else if (std.mem.startsWith(u8, arg, "-")) {
             diag.unknown_option = arg;
             return error.UnknownOption;
@@ -834,6 +845,7 @@ test "--repeat runs the worklist N times under the supervisor, optionally beside
     try testing.expect(plain.repeat_with == null);
     try testing.expectEqual(@as(u32, 0), plain.load_threads);
     try testing.expect(!plain.retry_failures);
+    try testing.expect(plain.retry_baseline == null);
     try testing.expect(!plain.wantsSupervisor());
 }
 
@@ -869,4 +881,23 @@ test "a supervised child's command line is the old child's, without the supervis
     try testing.expectEqualStrings("--heartbeat=o/journal.shard0.jsonl.heartbeat", argv[6]);
     try testing.expectEqualStrings("--quiet", argv[7]);
     try testing.expectEqual(@as(usize, 8), argv.len);
+}
+
+test "--retry-failures takes an optional baseline journal" {
+    const testing = std.testing;
+    var bare = try parseArgs(testing.allocator, &.{ "--retry-failures", "dom/" });
+    defer bare.deinit();
+    try testing.expect(bare.retry_failures);
+    try testing.expect(bare.retry_baseline == null);
+
+    var based = try parseArgs(testing.allocator, &.{ "--retry-failures=/prev/journal.jsonl", "dom/" });
+    defer based.deinit();
+    try testing.expect(based.retry_failures);
+    try testing.expectEqualStrings("/prev/journal.jsonl", based.retry_baseline.?);
+
+    // The supervisor's own option never reaches a child.
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const argv = try childArgv(arena.allocator(), based, .{ .exe = "r", .worklist = "w", .start_index = 0, .journal = "j", .output_dir = "o", .heartbeat = "h" });
+    for (argv) |arg| try testing.expect(!std.mem.startsWith(u8, arg, "--retry"));
 }
