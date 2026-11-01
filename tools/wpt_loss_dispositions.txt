@@ -660,3 +660,11 @@ why = 34 -> 33 in the generation 198 sweep (the Zig 0.17 port's quiet validation
 pair.1 = base 34/34; tip 34/34
 pair.2 = base 34/34; tip 34/34
 pair.3 = base 34/34; tip 34/34
+
+[service-workers/service-worker/static-router-subresource.https.html]
+generation = 201
+kind = flake
+why = 18 -> 17 in generation 201 (Codex row 131's final full A/B on chat2, which supplies this generation): "Subresource load matched with the cache source rule" failed with "assert_equals: expected 200 but got 404" on BOTH sides of that same window, BASE frozen main-fcf30638f8 and TIP (main a4f425fee2's runner), so the row did not cause it. Three isolated alternating pairs on chat2.local (tmp/scratch/srsub-pairs.sh: each side run alone from its own frozen root, BASE ~/crane-frozen/main-fcf30638f8 and TIP ~/crane-frozen/main-a4f425fee2) pass 18/18 every time. It is the static-router cache race already queued with an owner (tmp/plans/feature-queue.md, FROM LANE flaky4 (3)): the install handler does not wait for cache.put()'s promise, so the cache write races the page's read under sweep load. A test race and an upstream issue candidate; filing it needs the user's OK. This path's first flake disposition; a second occurrence is a bug for that item's owner.
+pair.1 = base 18/18; tip 18/18
+pair.2 = base 18/18; tip 18/18
+pair.3 = base 18/18; tip 18/18
