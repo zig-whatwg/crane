@@ -185,6 +185,12 @@ pub const LibcurlBackend = struct {
         /// response on at that point, before the body.
         block_start: usize = 0,
         head_end: ?usize = null,
+        /// The easy handle the callbacks read for, so the header callback
+        /// can keep its connection from being reused (`noteHeaderLine`).
+        easy: ?*anyopaque = null,
+        /// The request was a HEAD: its response's Content-Length describes a
+        /// body that is not sent.
+        head_request: bool = false,
 
         // Strings that must persist until request completes (curl doesn't copy them)
         url_z: ?[:0]u8 = null,
@@ -263,7 +269,8 @@ pub const LibcurlBackend = struct {
         // and with no transfer timeout that hung the whole process: every
         // xhr/ test that sends HEAD. CURLOPT_NOBODY is how libcurl makes a
         // HEAD request.
-        if (std.mem.eql(u8, request.method, "HEAD")) {
+        ctx.head_request = std.mem.eql(u8, request.method, "HEAD");
+        if (ctx.head_request) {
             _ = curl.easy_setopt(handle, curl.CURLOPT_NOBODY, @as(c_long, 1));
         } else if (!std.mem.eql(u8, request.method, "GET")) {
             ctx.method_z = try ctx.allocator.dupeSentinel(u8, request.method, 0);
@@ -437,6 +444,42 @@ pub const LibcurlBackend = struct {
 // Transfer
 // =============================================================================
 
+/// What Resource Timing reads of the connection a transfer used: curl's DNS,
+/// TCP, TLS and pre-transfer times, each in whole milliseconds after the
+/// transfer started, and whether the transfer reused a connection - it made
+/// none (CURLINFO_NUM_CONNECTS 0). The same for a whole response (`finish`)
+/// and a streamed one's head (`Transfer.head`): a head that said "fresh"
+/// for every connection made each reused navigation connection look like a
+/// new one, timed by a second clock reading (lane flaky4).
+const ConnectionMeasures = struct {
+    dns_lookup_time_ms: u64,
+    connect_time_ms: u64,
+    app_connect_time_ms: u64,
+    pretransfer_time_ms: u64,
+    connection_reused: bool,
+
+    fn of(transfer: *const Transfer) ConnectionMeasures {
+        const handle = transfer.handle;
+        var namelookup_time: f64 = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_NAMELOOKUP_TIME, &namelookup_time);
+        var connect_time: f64 = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_CONNECT_TIME, &connect_time);
+        var appconnect_time: f64 = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_APPCONNECT_TIME, &appconnect_time);
+        var pretransfer_time: f64 = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_PRETRANSFER_TIME, &pretransfer_time);
+        var num_connects: c_long = 0;
+        _ = curl.easy_getinfo(handle, curl.CURLINFO_NUM_CONNECTS, &num_connects);
+        return .{
+            .dns_lookup_time_ms = @intFromFloat(namelookup_time * 1000),
+            .connect_time_ms = @intFromFloat(connect_time * 1000),
+            .app_connect_time_ms = @intFromFloat(appconnect_time * 1000),
+            .pretransfer_time_ms = @intFromFloat(pretransfer_time * 1000),
+            .connection_reused = num_connects == 0,
+        };
+    }
+};
+
 /// One HTTP transfer: an easy handle configured for a request, and everything
 /// it receives until it ends.
 ///
@@ -457,6 +500,10 @@ pub const Transfer = struct {
     /// The request's method and URL, for the diagnostics `finish` writes.
     method: []u8,
     url: []u8,
+    /// How long it waited for a connection slot before its first attempt
+    /// (the scheduler's, NetworkScheduler.pump), in milliseconds; its
+    /// response carries it (NetworkResponse.queue_wait_ms).
+    queue_wait_ms: f64 = 0,
 
     pub const Options = struct {
         /// The flag an abort sets. Null: the transfer's own.
@@ -494,6 +541,7 @@ pub const Transfer = struct {
             .url = url,
         };
         self.ctx = LibcurlBackend.CallbackContext.init(allocator, options.aborted orelse &self.own_aborted);
+        self.ctx.easy = handle;
         errdefer self.ctx.deinit();
 
         // The Browser's connection share: its transfers reuse its own
@@ -636,6 +684,11 @@ pub const Transfer = struct {
         var primary_port: c_long = 0;
         _ = curl.easy_getinfo(self.handle, curl.CURLINFO_PRIMARY_PORT, &primary_port);
 
+        // The connection is made and the request sent once the response's
+        // headers are in: its measurements are all known now, and HTTP-network
+        // fetch records them from this head (a navigation is streamed).
+        const connection = ConnectionMeasures.of(self);
+
         const status_message = try ownedReason(allocator, block);
         errdefer if (status_message.len > 0) allocator.free(status_message);
         const owned_headers = headers.toOwnedSlice(allocator) catch return NetworkError.OutOfMemory;
@@ -660,6 +713,12 @@ pub const Transfer = struct {
             .redirect_count = 0,
             .remote_ip = if (primary_ip != null) allocator.dupe(u8, std.mem.span(primary_ip.?)) catch null else null,
             .remote_port = if (primary_port > 0) @intCast(primary_port) else null,
+            .dns_lookup_time_ms = connection.dns_lookup_time_ms,
+            .connect_time_ms = connection.connect_time_ms,
+            .app_connect_time_ms = connection.app_connect_time_ms,
+            .pretransfer_time_ms = connection.pretransfer_time_ms,
+            .connection_reused = connection.connection_reused,
+            .queue_wait_ms = self.queue_wait_ms,
         };
     }
 
@@ -765,25 +824,11 @@ pub const Transfer = struct {
         var effective_url: [*c]const u8 = null;
         _ = curl.easy_getinfo(handle, curl.CURLINFO_EFFECTIVE_URL, &effective_url);
 
-        // Resource Timing API: Extract detailed timing information
-        var namelookup_time: f64 = 0;
-        _ = curl.easy_getinfo(handle, curl.CURLINFO_NAMELOOKUP_TIME, &namelookup_time);
-
-        var connect_time: f64 = 0;
-        _ = curl.easy_getinfo(handle, curl.CURLINFO_CONNECT_TIME, &connect_time);
-
-        var appconnect_time: f64 = 0;
-        _ = curl.easy_getinfo(handle, curl.CURLINFO_APPCONNECT_TIME, &appconnect_time);
-
-        var pretransfer_time: f64 = 0;
-        _ = curl.easy_getinfo(handle, curl.CURLINFO_PRETRANSFER_TIME, &pretransfer_time);
+        // Resource Timing API: the connection's measurements.
+        const connection = ConnectionMeasures.of(self);
 
         var redirect_time: f64 = 0;
         _ = curl.easy_getinfo(handle, curl.CURLINFO_REDIRECT_TIME, &redirect_time);
-
-        // Check if connection was reused (num_connects == 0 means reused)
-        var num_connects: c_long = 0;
-        _ = curl.easy_getinfo(handle, curl.CURLINFO_NUM_CONNECTS, &num_connects);
 
         log.debug("{s} {s}: {d}, {d} body bytes, {d:.3}s", .{
             self.method,
@@ -848,12 +893,13 @@ pub const Transfer = struct {
             .remote_ip = remote_ip,
             .remote_port = if (primary_port > 0) @intCast(primary_port) else null,
             // Resource Timing API fields
-            .dns_lookup_time_ms = @intFromFloat(namelookup_time * 1000),
-            .connect_time_ms = @intFromFloat(connect_time * 1000),
-            .app_connect_time_ms = @intFromFloat(appconnect_time * 1000),
-            .pretransfer_time_ms = @intFromFloat(pretransfer_time * 1000),
+            .dns_lookup_time_ms = connection.dns_lookup_time_ms,
+            .connect_time_ms = connection.connect_time_ms,
+            .app_connect_time_ms = connection.app_connect_time_ms,
+            .pretransfer_time_ms = connection.pretransfer_time_ms,
             .redirect_time_ms = @intFromFloat(redirect_time * 1000),
-            .connection_reused = (num_connects == 0),
+            .connection_reused = connection.connection_reused,
+            .queue_wait_ms = self.queue_wait_ms,
         };
     }
 };
@@ -908,8 +954,46 @@ fn noteHeaderLine(ctx: *LibcurlBackend.CallbackContext, line: []const u8) void {
             ctx.block_start = ctx.raw_headers.items.len;
             return;
         }
+        if (!ctx.head_request and announcesBodyItHasNot(status, block)) {
+            if (ctx.easy) |easy| kit_curl.options.forbidReuse(easy);
+        }
     }
     ctx.head_end = ctx.raw_headers.items.len;
+}
+
+/// A final response that has no body - 204, 205, 304 (RFC 9110 15.3.5,
+/// 15.3.6, 15.4.5) - whose header block says `Content-Length` greater than
+/// 0. Some servers send that many bytes anyway (wpt serve's redirect.py for
+/// a 304). curl, rightly, reads none and keeps the connection; the bytes
+/// then arrive ahead of the next response on it, which curl refuses as an
+/// "Invalid status line" - xhr/send-redirect.htm, 12 of 72 runs under eight
+/// runner processes. Browsers parse past such junk instead: Chromium finds
+/// the status line up to 4 bytes in (HttpUtil::LocateStartOfStatusLine,
+/// slop 4), Firefox skips up to MAX_INVALID_RESPONSE_BODY_SIZE of it
+/// (nsHttpTransaction::LocateHttpStart). curl cannot, so Crane does not
+/// reuse that one connection: the outcome is the same, and nothing fails.
+/// The one observable difference: the next request to the destination
+/// opens a new connection where a browser would reuse one, so its connect
+/// times are not zero. A response to HEAD is not one of these: its
+/// Content-Length describes the body a GET would get (the caller checks).
+fn announcesBodyItHasNot(status: u16, block: []const u8) bool {
+    if (status != 204 and status != 205 and status != 304) return false;
+    var lines = headerLines(block);
+    while (lines.next()) |line| {
+        const colon = std.mem.indexOfScalar(u8, line, ':') orelse continue;
+        if (!std.ascii.eqlIgnoreCase(std.mem.trim(u8, line[0..colon], " \t"), "content-length")) continue;
+        const length = std.fmt.parseInt(u64, std.mem.trim(u8, line[colon + 1 ..], " \t\r"), 10) catch return true;
+        if (length > 0) return true;
+    }
+    return false;
+}
+
+test "a bodyless response that announces a body is told apart" {
+    try std.testing.expect(announcesBodyItHasNot(304, "HTTP/1.1 304 Not Modified\r\nContent-Length: 4\r\n\r\n"));
+    try std.testing.expect(announcesBodyItHasNot(204, "HTTP/1.1 204 No Content\r\ncontent-length:12\r\n\r\n"));
+    try std.testing.expect(!announcesBodyItHasNot(304, "HTTP/1.1 304 Not Modified\r\nContent-Length: 0\r\n\r\n"));
+    try std.testing.expect(!announcesBodyItHasNot(304, "HTTP/1.1 304 Not Modified\r\nETag: x\r\n\r\n"));
+    try std.testing.expect(!announcesBodyItHasNot(200, "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\n"));
 }
 
 /// The final response's header block in `raw`, every block curl read: the

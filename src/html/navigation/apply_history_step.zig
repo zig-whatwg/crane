@@ -175,6 +175,11 @@ pub const ApplyItem = struct {
     reload_api_state: ?joint_history.SerializedState = null,
     /// `.reload` made by history.go(0) (the reload rules in History).
     go_zero: bool = false,
+    /// `.reload` made by a declarative refresh (`ReloadCause.declarative_refresh`):
+    /// once beforeunload let it go on, the reloaded navigable's active
+    /// document and its descendants are aborted, as the navigate the refresh
+    /// stands for aborts them (navigate step 24.3).
+    reload_aborts_document: bool = false,
     /// A navigation API traversal ("perform a navigation API traversal" step
     /// 12): its key's checks, which run first (12.1-12.3), and the navigable
     /// whose navigation API asked. Owned until rejected or dropped.
@@ -425,6 +430,28 @@ pub const ApplyItem = struct {
             if (try self.unloadingCanceled(top, history, target, crossing.items, skipped.items)) return .done;
             // The handlers ran script: the traversable - and its history -
             // may be gone.
+            if (navigables.byId(self.top_id) != top) return .done;
+        }
+
+        // A declarative refresh's reload: the refresh steps navigate (HTML
+        // "shared declarative refresh steps" step 13), and navigate step 24.3
+        // aborts the active document and its descendants once checking if
+        // unloading is canceled said "continue" - before the reload's fetch,
+        // which step 12's job starts. Document.refreshComesDue reloads
+        // instead, as all three browsers do (stated there); the abort it
+        // would lose is kept here. Firefox and Safari stop the old document's
+        // loads when any reload begins (nsDocShell::InternalLoad,
+        // StopInternal(STOP_NETWORK); FrameLoader::
+        // continueLoadAfterNavigationPolicy, stopAllLoaders), so a fetch the
+        // refreshing document started is never answered
+        // (html/webappapis/dynamic-markup-insertion/opening-the-input-stream/
+        // abort-refresh-immediate.window.js: the fetch() cases pass in every
+        // Firefox and Safari run on wpt.fyi). Without it, the document's
+        // fetch raced the reload's response.
+        if (self.kind == .reload and self.reload_aborts_document) {
+            if (navigables.byId(self.reload_navigable)) |bc| history_traversal.abortForNavigation(bc, self.allocator);
+            // Aborting runs the documents' abort steps: the traversable may
+            // be gone.
             if (navigables.byId(self.top_id) != top) return .done;
         }
 
@@ -857,17 +884,24 @@ pub fn traverse(top: *BrowsingContext, allocator: Allocator, target: Target, opt
     append(top, self);
 }
 
+/// What asked for a reload: script (location.reload(), navigation.reload()),
+/// history.go(0) (`go_zero`), or a declarative refresh, whose reload aborts
+/// the active document as the navigate it stands for does
+/// (`reload_aborts_document`).
+pub const ReloadCause = enum { reload, go_zero, declarative_refresh };
+
 /// HTML "reload" step 4: "Append the following session history traversal
 /// steps to traversable: apply the reload history step to traversable" -
 /// for `navigable`, whose active entry `entry_id` is the one reloaded, with
-/// navigation API state `api_state` (BORROWED; null keeps the entry's).
-/// `go_zero`: history.go(0) asked for it.
-pub fn reload(navigable: *BrowsingContext, allocator: Allocator, entry_id: u64, api_state: ?joint_history.SerializedState, go_zero: bool) void {
+/// navigation API state `api_state` (BORROWED; null keeps the entry's),
+/// asked for by `cause`.
+pub fn reload(navigable: *BrowsingContext, allocator: Allocator, entry_id: u64, api_state: ?joint_history.SerializedState, cause: ReloadCause) void {
     const top = navigable.getTop();
     const self = ApplyItem.make(top, allocator, .reload) orelse return;
     self.reload_navigable = navigable.id;
     self.reload_entry = entry_id;
-    self.go_zero = go_zero;
+    self.go_zero = cause == .go_zero;
+    self.reload_aborts_document = cause == .declarative_refresh;
     if (api_state) |state| {
         self.reload_api_state = state.clone(allocator) catch {
             self.item.destroy(&self.item);

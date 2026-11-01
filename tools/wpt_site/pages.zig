@@ -374,6 +374,11 @@ const Figures = struct {
     notrun: u64,
     files: ?u64 = null,
     blocking: ?u64 = null,
+    /// The latest generation's flaky files (index only).
+    flaky: ?u64 = null,
+    /// Beside the flaky count: files retried, and skipped as unchanged.
+    retried: ?u64 = null,
+    retry_skipped: ?u64 = null,
 
     fn ofTotals(t: model.Totals) Figures {
         return .{ .pass = t.sub_pass, .reported = t.subReported(), .failed = t.sub_fail, .timed_out = t.sub_timeout, .notrun = t.sub_notrun, .files = t.files, .blocking = t.blocking() };
@@ -389,6 +394,9 @@ fn writeCounts(w: W, cls: []const u8, f: Figures) Error!void {
         .{ "Not run", f.notrun, "" },
         .{ "Test files", f.files, "" },
         .{ "Blocking files", f.blocking, " class=\"blk\"" },
+        .{ "Flaky files", f.flaky, "" },
+        .{ "Files retried", f.retried, "" },
+        .{ "Retry skipped (unchanged)", f.retry_skipped, "" },
     };
     for (rows) |r| {
         const v = r[1] orelse continue;
@@ -614,8 +622,11 @@ pub const index_file_cap = 24;
 
 pub fn writeIndex(w: W, site: *const Site) Error!void {
     const tot = site.root().totals;
-    const f = Figures.ofTotals(tot);
     const g = site.latest();
+    var f = Figures.ofTotals(tot);
+    f.flaky = g.flaky;
+    f.retried = g.retried;
+    f.retry_skipped = g.retry_skipped;
 
     try writeHead(w, .{ .root = "", .title = "Crane WPT Results", .description = "Crane's own web-platform-tests results: a headless web platform engine written in Zig, measured by its own runner. Testharness tests only; rendering and layout are out of scope by design." });
     try writeSocial(w, site, f);
@@ -974,7 +985,7 @@ fn writeHistory(w: W, site: *const Site, tot: model.Totals) Error!void {
     try w.writeAll("</p>\n</div>\n");
 
     try w.writeAll("<details class=\"gens\" id=\"gens\">\n<summary><svg class=\"twisty\" viewBox=\"0 0 16 16\" aria-hidden=\"true\"><path d=\"M6 3.5 10.5 8 6 12.5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>Every generation, newest first</summary>\n<div class=\"table-wrap\">\n<table>\n<thead><tr>");
-    for ([_][]const u8{ "Gen.", "Date", "Crane", "Subtests passing", "Total subtests", "Not passing", "Blocking files" }) |h| {
+    for ([_][]const u8{ "Gen.", "Date", "Crane", "Subtests passing", "Total subtests", "Not passing", "Blocking files", "Flaky files" }) |h| {
         try w.print("<th scope=\"col\">{s}</th>", .{h});
     }
     try w.writeAll("</tr></thead>\n<tbody>\n");
@@ -1016,6 +1027,9 @@ fn writeGenRow(w: W, g: Generation) Error!void {
         try w.print(" data-fail=\"{d}\" data-timeout=\"{d}\" data-notrun=\"{d}\"", .{ sb.failed, sb.timed_out, sb.notrun });
     } else try w.writeAll(" data-est=\"1\"");
     try w.print(" data-blocking=\"{d}\" data-files=\"{d}\"", .{ g.blocking, g.total });
+    if (g.flaky) |n| try w.print(" data-flaky=\"{d}\"", .{n});
+    if (g.retried) |n| try w.print(" data-retried=\"{d}\"", .{n});
+    if (g.retry_skipped) |n| try w.print(" data-retry-skipped=\"{d}\"", .{n});
     if (g.reconstructed) try w.writeAll(" data-recon=\"1\"");
     if (chart.eventAt(&chart.events, g.n)) |label| {
         try w.writeAll(" data-event=\"");
@@ -1046,6 +1060,20 @@ fn writeGenRow(w: W, g: Generation) Error!void {
     try html.num(w, g.subTotal() - g.passing());
     try w.writeAll("</td><td class=\"blk\">");
     try html.num(w, g.blocking);
+    try w.writeAll("</td><td class=\"flaky\">");
+    if (g.flaky) |n| try html.num(w, n) else try w.writeAll("&mdash;");
+    if (g.retried) |r| {
+        // The count beside what was asked of it: a flaky number shrinks when fewer files are retried.
+        try w.writeAll(" <small class=\"dim\">of ");
+        try html.num(w, r);
+        try w.writeAll(" retried");
+        if (g.retry_skipped) |k| if (k > 0) {
+            try w.writeAll(", ");
+            try html.num(w, k);
+            try w.writeAll(" skipped");
+        };
+        try w.writeAll("</small>");
+    }
     try w.writeAll("</td></tr>\n");
 }
 

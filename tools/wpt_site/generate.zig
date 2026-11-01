@@ -1400,6 +1400,45 @@ test "range: a first-parent log gives the commits and the merges among them" {
     try testing.expectEqual(@as(usize, 0), none.landed.len);
 }
 
+const fixture_history_flaky =
+    \\{"gate_rule":2,"generations":[
+    \\{"n":2,"at":"2026-09-30T11:21:23","head":"5c8dd64da","gate_rule":2,"total":5,"run":4,"unrun":1,"blocking":2,"crash":0,"timeout":1,"error":0,"none_passed":1,"clean":1,"partial":1,"sub_pass":5,"sub_fail":3,"sub_passing":5,"sub_targeted":8,"subs":{"passed":5,"failed":3,"timed_out":0,"notrun":0}},
+    \\{"n":3,"at":"2026-10-01T09:00:00","head":"6d9ee75eb","gate_rule":2,"total":5,"run":4,"unrun":1,"blocking":2,"flaky":1,"retried":6,"retry_skipped":4,"flaky_paths":["dom/b.html"],"crash":0,"timeout":1,"error":0,"none_passed":1,"clean":1,"partial":1,"sub_pass":5,"sub_fail":3,"sub_passing":5,"sub_targeted":8,"subs":{"passed":5,"failed":3,"timed_out":0,"notrun":0}}
+    \\],"last_statuses":{}}
+;
+
+test "site: each generation shows its flaky files beside its blocking files" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    const st = try f.state(gpa);
+    defer gpa.free(st);
+    var out = try f.tmp.dir.createDirPathOpen(testing.io, "flaky", .{ .open_options = .{ .iterate = true } });
+    defer out.close(testing.io);
+    _ = try generate(gpa, testing.io, .{
+        .state_json = st,
+        .history_json = fixture_history_flaky,
+        .worklist_text = fixture_worklist,
+        .results = f.results,
+        .assets = null,
+        .wpt = fixture_wpt,
+    }, out);
+    const index = try readOut(gpa, &f, "flaky/index.html");
+    defer gpa.free(index);
+    // The table's column, after blocking files.
+    try expectHas(index, "<th scope=\"col\">Blocking files</th><th scope=\"col\">Flaky files</th>");
+    // A generation that measured it: the count, and an attribute for the chart.
+    try expectHas(index, "data-blocking=\"2\" data-files=\"5\" data-flaky=\"1\"");
+    try expectHas(index, "<td class=\"blk\">2</td><td class=\"flaky\">1 <small class=\"dim\">of 6 retried, 4 skipped</small></td></tr>");
+    try expectHas(index, "data-flaky=\"1\" data-retried=\"6\" data-retry-skipped=\"4\"");
+    try expectHas(index, "<dt>Files retried</dt><dd>6</dd>");
+    try expectHas(index, "<dt>Retry skipped (unchanged)</dt><dd>4</dd>");
+    // One from before the runner retried anything: unknown, not zero.
+    try expectHas(index, "<td class=\"blk\">2</td><td class=\"flaky\">&mdash;</td></tr>");
+    // The headline: the latest generation's count beside its blocking files.
+    try expectHas(index, "<dt>Flaky files</dt><dd>1</dd>");
+}
+
 test "range: consecutive generations with known heads are the ranges to ask git for" {
     const a = testing.allocator;
     var arena_state: std.heap.ArenaAllocator = .init(a);

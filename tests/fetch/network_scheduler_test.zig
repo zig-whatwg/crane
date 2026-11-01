@@ -27,6 +27,7 @@ const Outcome = struct {
     body_len: usize = 0,
     err: ?NetworkError = null,
     finished_at_ms: i64 = 0,
+    queue_wait_ms: f64 = 0,
 
     fn record(context: ?*anyopaque, result: NetworkError!NetworkResponse) void {
         const self: *Outcome = @ptrCast(@alignCast(context.?));
@@ -39,6 +40,7 @@ const Outcome = struct {
         defer response.deinit();
         self.status = response.status;
         self.body_len = if (response.body) |b| b.len else 0;
+        self.queue_wait_ms = response.queue_wait_ms;
     }
 };
 
@@ -271,10 +273,160 @@ test "deinit cancels what is still in flight" {
     try testing.expectEqual(@as(usize, 0), outcome.calls);
 }
 
+fn allDone(ctx: *anyopaque) bool {
+    const outcomes: *[]Outcome = @ptrCast(@alignCast(ctx));
+    for (outcomes.*) |o| if (o.calls == 0) return false;
+    return true;
+}
+
+/// Pump both schedulers - two agents of one Browser - until every outcome is in.
+fn pumpBothUntil(a: *NetworkScheduler, b: *NetworkScheduler, limit_ms: i64, outcomes: []Outcome) void {
+    const deadline = clock.monotonicMillis() + limit_ms;
+    var all = outcomes;
+    while (!allDone(@ptrCast(&all)) and clock.monotonicMillis() < deadline) {
+        _ = a.pump();
+        _ = b.pump();
+        clock.sleep(std.time.ns_per_ms);
+    }
+}
+
+fn expectAllOk(outcomes: []const Outcome) !void {
+    for (outcomes) |o| {
+        try testing.expectEqual(@as(usize, 1), o.calls);
+        try testing.expectEqual(@as(?NetworkError, null), o.err);
+        try testing.expectEqual(@as(u16, 200), o.status);
+    }
+}
+
+test "a Browser opens six connections to a destination; more transfers wait their turn and all complete" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var context = network.NetworkContext.init(testing.allocator);
+    defer context.deinit();
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    var url_buf: [256]u8 = undefined;
+    var request = get(try urlFor(&url_buf, server, "/get"));
+    request.network = &context;
+    var outcomes: [8]Outcome = @splat(.{});
+    for (&outcomes) |*outcome| _ = try scheduler.start(testing.allocator, &request, Outcome.record, outcome);
+    // Six under way, two waiting for a slot (every browser's six,
+    // network_context.max_connections_per_host); all eight are in flight.
+    try testing.expectEqual(@as(usize, 8), scheduler.inFlight());
+    try testing.expectEqual(@as(usize, 2), scheduler.waitingForSlot());
+
+    var all: []Outcome = &outcomes;
+    _ = pumpUntil(&scheduler, 10_000, allDone, @ptrCast(&all));
+    try expectAllOk(&outcomes);
+    try testing.expectEqual(@as(usize, 0), scheduler.inFlight());
+    // The six that started at once waited for nothing; the two that waited
+    // carry how long, which Resource Timing places before domainLookupStart.
+    var waited: usize = 0;
+    for (outcomes[0..6]) |o| try testing.expectEqual(@as(f64, 0), o.queue_wait_ms);
+    for (outcomes[6..]) |o| if (o.queue_wait_ms > 0) {
+        waited += 1;
+    };
+    try testing.expectEqual(@as(usize, 2), waited);
+    // Every slot was given back: six more start at once.
+    var again: [6]Outcome = @splat(.{});
+    for (&again) |*outcome| _ = try scheduler.start(testing.allocator, &request, Outcome.record, outcome);
+    try testing.expectEqual(@as(usize, 0), scheduler.waitingForSlot());
+    var rest: []Outcome = &again;
+    _ = pumpUntil(&scheduler, 10_000, allDone, @ptrCast(&rest));
+    try expectAllOk(&again);
+}
+
+test "connection slots are the Browser's: two agents' schedulers share a destination's six" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var context = network.NetworkContext.init(testing.allocator);
+    defer context.deinit();
+    var window = NetworkScheduler.init(testing.allocator);
+    defer window.deinit();
+    var worker = NetworkScheduler.init(testing.allocator);
+    defer worker.deinit();
+
+    var url_buf: [256]u8 = undefined;
+    var request = get(try urlFor(&url_buf, server, "/get"));
+    request.network = &context;
+    var outcomes: [8]Outcome = @splat(.{});
+    for (outcomes[0..4]) |*outcome| _ = try window.start(testing.allocator, &request, Outcome.record, outcome);
+    for (outcomes[4..]) |*outcome| _ = try worker.start(testing.allocator, &request, Outcome.record, outcome);
+    try testing.expectEqual(@as(usize, 0), window.waitingForSlot());
+    try testing.expectEqual(@as(usize, 2), worker.waitingForSlot());
+    // A slot the window's transfers give back starts the worker's.
+    pumpBothUntil(&window, &worker, 10_000, &outcomes);
+    try expectAllOk(&outcomes);
+    try testing.expectEqual(@as(usize, 0), worker.inFlight());
+}
+
+test "a cancelled transfer gives its slot to the next, and a waiting one cancelled holds none" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var context = network.NetworkContext.init(testing.allocator);
+    defer context.deinit();
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    var url_buf: [256]u8 = undefined;
+    var request = get(try urlFor(&url_buf, server, "/get"));
+    request.network = &context;
+    var outcomes: [8]Outcome = @splat(.{});
+    var jobs: [8]*NetworkScheduler.Job = undefined;
+    for (&outcomes, &jobs) |*outcome, *job| job.* = try scheduler.start(testing.allocator, &request, Outcome.record, outcome);
+    try testing.expectEqual(@as(usize, 2), scheduler.waitingForSlot());
+    // A waiting one cancelled: still one waiting, no slot freed.
+    scheduler.cancel(jobs[7]);
+    try testing.expectEqual(@as(usize, 1), scheduler.waitingForSlot());
+    // A running one cancelled: its slot goes to the one still waiting, at
+    // the next pump.
+    scheduler.cancel(jobs[0]);
+    _ = scheduler.pump();
+    try testing.expectEqual(@as(usize, 0), scheduler.waitingForSlot());
+    var live: []Outcome = outcomes[1..7];
+    _ = pumpUntil(&scheduler, 10_000, allDone, @ptrCast(&live));
+    try expectAllOk(outcomes[1..7]);
+    try testing.expectEqual(@as(usize, 0), outcomes[0].calls);
+    try testing.expectEqual(@as(usize, 0), outcomes[7].calls);
+}
+
+test "a destination that speaks HTTP/2 is not limited to six transfers" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var context = network.NetworkContext.init(testing.allocator);
+    defer context.deinit();
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    var url_buf: [256]u8 = undefined;
+    var request = get(try urlFor(&url_buf, server, "/get"));
+    request.network = &context;
+    var destination_buf: [network.network_context.max_host_key]u8 = undefined;
+    // As a head over HTTP/2 records it: its requests share one connection.
+    try context.noteMultiplexed(network.network_context.destinationOf(&destination_buf, request.url).?);
+    var outcomes: [8]Outcome = @splat(.{});
+    for (&outcomes) |*outcome| _ = try scheduler.start(testing.allocator, &request, Outcome.record, outcome);
+    try testing.expectEqual(@as(usize, 0), scheduler.waitingForSlot());
+    var all: []Outcome = &outcomes;
+    _ = pumpUntil(&scheduler, 10_000, allDone, @ptrCast(&all));
+    try expectAllOk(&outcomes);
+}
+
 /// What a streamed transfer's client heard, in order.
 const StreamRecord = struct {
     status: u16 = 0,
     content_type_seen: bool = false,
+    /// The head's word on its connection: one the transfer reused.
+    connection_reused: ?bool = null,
     head_at_ms: i64 = 0,
     chunks: usize = 0,
     bytes: std.ArrayListUnmanaged(u8) = .empty,
@@ -294,6 +446,7 @@ const StreamRecord = struct {
         defer r.deinit();
         if (self.ended or self.chunks > 0) self.order_ok = false;
         self.status = r.status;
+        self.connection_reused = r.connection_reused;
         self.head_at_ms = clock.monotonicMillis();
         for (r.headers) |h| {
             if (std.ascii.eqlIgnoreCase(h.name, "content-type")) self.content_type_seen = true;
@@ -357,6 +510,73 @@ test "a streamed transfer hands on its headers before its body, and its body as 
     try testing.expect(record.end_at_ms - record.first_data_at_ms >= 700);
     try testing.expect(longest < 250);
     try testing.expectEqual(@as(usize, 0), scheduler.inFlight());
+}
+
+test "a streamed transfer's head says whether its connection was reused" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    var url_buf: [256]u8 = undefined;
+    const request = get(try urlFor(&url_buf, server, "/keep-alive"));
+    // The first transfer opens the connection; the second, after the first
+    // has ended, finds it idle and reuses it. A navigation is a streamed
+    // transfer, and Resource Timing reads a reused connection's times from
+    // this word (HTTP-network fetch step 8.2): a head that always said
+    // "fresh" made navigation-timing/secure-connection-start-reuse.https.html
+    // compare two clock readings (16 of 50 runs failed).
+    var first: StreamRecord = .{};
+    defer first.deinit();
+    _ = try scheduler.startStreaming(testing.allocator, &request, first.client());
+    _ = pumpUntil(&scheduler, 5_000, StreamRecord.isEnded, &first);
+    try testing.expectEqual(@as(?NetworkError, null), first.end_error);
+    try testing.expectEqualStrings("ok", first.bytes.items);
+    try testing.expectEqual(@as(?bool, false), first.connection_reused);
+
+    var second: StreamRecord = .{};
+    defer second.deinit();
+    _ = try scheduler.startStreaming(testing.allocator, &request, second.client());
+    _ = pumpUntil(&scheduler, 5_000, StreamRecord.isEnded, &second);
+    try testing.expectEqual(@as(?NetworkError, null), second.end_error);
+    try testing.expectEqualStrings("ok", second.bytes.items);
+    try testing.expectEqual(@as(?bool, true), second.connection_reused);
+}
+
+test "a connection is not reused after a bodyless response that announced a body" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    var first_buf: [256]u8 = undefined;
+    const first_request = get(try urlFor(&first_buf, server, "/not-modified-with-body"));
+    var second_buf: [256]u8 = undefined;
+    const second_request = get(try urlFor(&second_buf, server, "/keep-alive"));
+    // A 304 has no body, whatever its Content-Length says - and the server
+    // sends one anyway, later. Reused, the connection would hand the next
+    // request "TESTHTTP/1.1 200 OK": curl's "Invalid status line"
+    // (xhr/send-redirect.htm, 12 of 72 runs under 8 runner processes, after
+    // the per-destination cap made reuse more frequent).
+    var first: StreamRecord = .{};
+    defer first.deinit();
+    _ = try scheduler.startStreaming(testing.allocator, &first_request, first.client());
+    _ = pumpUntil(&scheduler, 5_000, StreamRecord.isEnded, &first);
+    try testing.expectEqual(@as(?NetworkError, null), first.end_error);
+    try testing.expectEqual(@as(u16, 304), first.status);
+
+    var second: StreamRecord = .{};
+    defer second.deinit();
+    _ = try scheduler.startStreaming(testing.allocator, &second_request, second.client());
+    _ = pumpUntil(&scheduler, 5_000, StreamRecord.isEnded, &second);
+    try testing.expectEqual(@as(?NetworkError, null), second.end_error);
+    try testing.expectEqual(@as(u16, 200), second.status);
+    try testing.expectEqualStrings("ok", second.bytes.items);
+    try testing.expectEqual(@as(?bool, false), second.connection_reused);
 }
 
 test "a streamed transfer that fails after its headers ends in error" {

@@ -319,7 +319,7 @@ pub fn queueEvent(animation: *model.Animation, event: *runtime.Instance, target:
         .event_instance = event,
         .target = Link.to(target),
         .animation = Link.to(animation.instance),
-        .scheduled = scheduled,
+        .scheduled = if (scheduled) |time| atTimePrecision(time) else null,
         .class = animation.class,
         .sequence = animation.sequence,
         .order = 0,
@@ -340,6 +340,29 @@ pub fn queueEvent(animation: *model.Animation, event: *runtime.Instance, target:
     // "Otherwise, queue a task to dispatch the event at animation", on the
     // DOM manipulation task source.
     EventTask.queue(animation, queued) catch owned.release();
+}
+
+/// A scheduled event time at the precision of time values (Web Animations 1
+/// 8.1: "it is RECOMMENDED that user agents be able to represent input time
+/// values with microsecond precision"): `ms` rounded to the microsecond.
+///
+/// 4.4 step 6 sorts by scheduled event time, and "within events with equal
+/// scheduled event times" keeps queue order. Times that are equal in the model
+/// must compare equal here, and doubles alone do not make them so: finish()
+/// sets the start time to (timeline time - effect end / rate) and the finish
+/// event's scheduled time converts the effect end back (effect end * (1 /
+/// rate) + start time), which lands a rounding step above or below the
+/// timeline time a cancel() right after it is scheduled at. About 2 in 5 runs
+/// of update-and-send-events.html "Playback events with the same timeline
+/// retain the order in which they are queued" sorted cancel before finish
+/// (lane flaky2). Gecko keeps scheduled event times as integer TimeStamp ticks
+/// (Animation::AnimationTimeToTimeStamp, AnimationEventInfo::Compare), so the
+/// round trip there is exact; WebKit never reorders two playback events of one
+/// animation (compareAnimationEventsByCompositeOrder). Chrome, Firefox and
+/// Safari all pass the subtest on wpt.fyi (stable d399fdd963).
+pub fn atTimePrecision(ms: f64) f64 {
+    if (!std.math.isFinite(ms)) return ms;
+    return @round(ms * 1000) / 1000;
 }
 
 /// An event dispatched from a task: the animation has no document for

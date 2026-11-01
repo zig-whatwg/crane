@@ -222,6 +222,40 @@ LOSS_KEYS = {
 }
 
 
+# The one-flake rule (the user, 2026-10-31; lane flaky1): a path may carry ONE
+# `kind = flake` disposition across all generations. A file that flakes again is
+# a bug with an owner, not another disposition: the second entry is an error
+# naming the path and its first generation. The paths below already carried more
+# than one when the rule came in. They are grandfathered for exactly the
+# generations listed - a new flake entry for any of them is an error too - and
+# each says what lane flaky1 did about it.
+FLAKE_GRANDFATHERED = {
+    'hr-time/timeOrigin.html': ((178, 194),
+        'explained: lane flaky1 - the worker origin falls in the window\'s last 100 us bucket and windowOrigin + now() rounds one ulp above it in doubles (gen 194: 898.4 vs 898.4001); the epoch estimate is also per Performance object, not shared (src/webidl/impls/Performance.zig timeOriginOf). Owner: lane flaky2'),
+    'html/cross-origin-opener-policy/coep-with-same-origin.https.html': ((176, 195),
+        'explained: lane flaky1 - a sweep-only stall of the COOP/COEP popup files under load (TIMEOUT, OK alone). Owner: lane flaky3'),
+    'html/cross-origin-opener-policy/coop-coep-sandbox.https.html': ((177, 181, 190, 194, 196),
+        'explained: lane flaky1 - the same sweep-only stall (supervisor kill after 150 s of no progress; OK 3/4 alone). Owner: lane flaky3'),
+    'html/semantics/scripting-1/the-script-element/module/dynamic-import/microtasks/basic.any.js':
+        ((179, 185, 194, 195, 197),
+        'explained: lane flaky1 - the sharedworker variant resolves a "new" module in 3 microtasks: tests 2 and 3 build their specifier from Date.now(), so a fetch that ends inside the same millisecond makes test 3 import test 2\'s module from the module map (a hypothesis to measure). Owner: lane flaky2'),
+    'html/webappapis/dynamic-markup-insertion/opening-the-input-stream/abort-refresh-immediate.window.js':
+        ((179, 184, 186, 188, 191, 193, 196),
+        'explained: lane flaky1 - the fetch() variants flip on whether the 0 ms refresh navigation is ongoing when document.open() runs (the file times out on both sides every run). Owner: lane flaky3'),
+    'navigation-timing/secure-connection-start-reuse.https.html': ((183, 198),
+        'explained: lane flaky1 - the test frame\'s navigation sometimes opens a new connection instead of reusing the interim frame\'s keep-alive one, so secureConnectionStart is the TLS start, not fetchStart. Owner: lane flaky4'),
+    'navigation-timing/test-performance-attributes.sub.html': ((175, 177, 179, 184, 188, 195),
+        'explained: lane flaky1 - legacy performance.timing.secureConnectionStart reads a relative 0 (a localhost connect under 1 ms, at the time origin) as "no TLS" and returns 0 below connectStart (src/webidl/impls/PerformanceTiming.zig fromEntry); patch in tmp/scratch/flaky1-handoff/. Owner: lane flaky4'),
+    'service-workers/service-worker/navigation-timing-extended.https.html':
+        ((171, 177, 183, 185, 188, 190, 196),
+        'explained: lane flaky1 - fetchStart and the fetch handler\'s time tie at coarse resolution in some runs. Owner: lane flaky4'),
+    'service-workers/service-worker/static-router-main-resource.https.html': ((175, 183, 196),
+        'explained: lane flaky1 - a sweep-only loss of "Main resource load matched with the cache source" (9/9 alone). Owner: lane flaky4'),
+    'xhr/send-redirect.htm': ((173, 176, 179, 185, 189, 192, 194, 198),
+        'explained: lane flaky1 - one of 34 concurrent redirected XHRs reads a final response without X-Request-Method (a different method/code each time: a connection-level race, sweep-only). Owner: lane flaky4'),
+}
+
+
 class LossDispositionError(Exception):
     pass
 
@@ -230,9 +264,11 @@ def parse_loss_dispositions(text, worklist):
     """Strict [path] / key = value entries, keyed by (path, generation).
 
     Each kind requires its evidence; a typo must never silently accept a loss.
-    Repeating a path is allowed only for a different generation.
+    Repeating a path is allowed only for a different generation, and a path may
+    be a flake only once (FLAKE_GRANDFATHERED lists the exceptions it inherited).
     """
     out, cur = {}, None
+    first_flake = {}
     common = {'generation', 'kind', 'why'}
     allowed = common.union(*LOSS_KEYS.values())
     in_worklist = set(worklist)
@@ -284,6 +320,12 @@ def parse_loss_dispositions(text, worklist):
         identity = path, generation
         if identity in out:
             error(f'generation {generation} is listed twice')
+        if kind == 'flake':
+            grandfathered = FLAKE_GRANDFATHERED.get(path, ((), ''))[0]
+            if path in first_flake and generation not in grandfathered:
+                error(f'a second flake disposition (its first is generation {first_flake[path]}): a path may be '
+                      'a flake once - a file that flakes again is a bug with an owner, not another disposition')
+            first_flake.setdefault(path, generation)
         out[identity] = dict(values)
 
     for n, raw in enumerate(text.splitlines(), 1):
@@ -1239,6 +1281,37 @@ def prepare_loss_baseline(worklist):
     _save_history(history)
 
 
+def flaky_paths(worklist, records):
+    """Worklist files whose latest record is flaky: the sweep retried the file
+    (it did not fully pass) and the retry disagreed with the first run."""
+    return sorted(p for p in worklist if (records.get(p) or {}).get('flaky') is True)
+
+
+def retry_counts(worklist, records):
+    """How the sweep's retries stand, so a flaky count is read against what was
+    asked of it. `retried` files had a second run (record has "retry"),
+    `skipped` did not fully pass but matched the baseline journal and were not
+    retried (record has "retry_skipped"), `flaky` are the retried files whose
+    second run disagreed. A flaky count can shrink because fewer files were
+    retried; these three numbers say so."""
+    retried = skipped = flaky = 0
+    for p in worklist:
+        rec = records.get(p) or {}
+        if rec.get('retry') is not None:
+            retried += 1
+        if rec.get('retry_skipped'):
+            skipped += 1
+        if rec.get('flaky') is True:
+            flaky += 1
+    return {'retried': retried, 'retry_skipped': skipped, 'flaky': flaky}
+
+
+def retry_summary(counts):
+    """The three numbers as one line."""
+    return (f"{counts['flaky']:,} flaky of {counts['retried']:,} retried, "
+            f"{counts['retry_skipped']:,} not retried (same as the previous generation)")
+
+
 def record_generation(worklist, records, areas, previous_records=None):
     """Append this generation to HISTORY if anything moved; return the history.
 
@@ -1301,6 +1374,13 @@ def record_generation(worklist, records, areas, previous_records=None):
         'error': tot['gating'] - tot['crash'] - tot['timeout'] - tot['none-passed'],
         'none_passed': tot['none-passed'],
         'exempt': tot['exempt'],
+        # Files the sweep re-ran because they did not fully pass, whose second run
+        # disagreed with the first (the runner's --retry-failures: "flaky" in the
+        # journal record). The first result is the one counted everywhere else.
+        'flaky': len(flaky_paths(worklist, records)),
+        'flaky_paths': flaky_paths(worklist, records),
+        'retried': retry_counts(worklist, records)['retried'],
+        'retry_skipped': retry_counts(worklist, records)['retry_skipped'],
         'clean': tot['clean'], 'partial': tot['partial'],
         'sub_pass': tot['sub_pass'], 'sub_fail': tot['sub_fail'],
         'sub_targeted': round(tot['sub_targeted']),
@@ -1704,6 +1784,18 @@ def render_history(history):
             pct_ = (sp_ / st_ * 100) if st_ else 0.0
             subcell = (f'{sp_:,} {_delta(g, prev, "sub_passing", False)}'
                        f'<br><span class="dim">{pct_:.2f}% of {st_:,}</span>')
+        if g.get('flaky') is None:
+            flakycell = '<span class="dim" title="measured from generation 199 on: the runner retries files that did not fully pass">&mdash;</span>'
+        else:
+            flakytip = ", ".join(g.get("flaky_paths", []))
+            if g.get('retried') is not None:
+                flakytip = (f'{g["flaky"]:,} flaky of {g["retried"]:,} retried; {g.get("retry_skipped", 0):,} not retried '
+                            f'(same result as the previous generation). ' + flakytip)
+            flakycell = (f'<span title="{html.escape(flakytip)}">{g["flaky"]:,}</span> '
+                         f'{_delta(g, prev, "flaky", True) if prev and prev.get("flaky") is not None else ""}')
+            if g.get('retried') is not None:
+                flakycell += (f'<br><span class="dim">of {g["retried"]:,} retried'
+                              f'{", " + format(g.get("retry_skipped", 0), ",") + " skipped" if g.get("retry_skipped") else ""}</span>')
         regen = g.get('regenerations', 0)
         when = html.escape(g['at'][:16].replace('T', ' '))
         if g.get('reconstructed'):
@@ -1716,6 +1808,7 @@ def render_history(history):
         <td class="when">{when}<br><code class="dim">{html.escape(g['head'])}</code>{_render_sources(g)}</td>
         <td class="num">{g['run']:,} {_delta(g, prev, 'run', False)}</td>
         <td class="num gate">{g['blocking']:,} {_delta(g, prev, 'blocking', True)}</td>
+        <td class="num">{flakycell}</td>
         <td class="num">{g['crash']:,} {_delta(g, prev, 'crash', True)}</td>
         <td class="num">{g['timeout']:,} {_delta(g, prev, 'timeout', True)}</td>
         <td class="num">{g['error']:,} {_delta(g, prev, 'error', True)}</td>
@@ -1742,7 +1835,7 @@ status survives.</p>
 {chart}
 <table class="history">
   <thead><tr>
-    <th>#</th><th>When / head</th><th>Run</th><th>Blocking</th>
+    <th>#</th><th>When / head</th><th>Run</th><th>Blocking</th><th title="files whose retry disagreed with their first run">Flaky</th>
     <th>Crash</th><th>Timeout</th><th>Error</th><th>Clean</th>
     <th class="hide-sm">Subtests&nbsp;pass</th><th>What moved</th>
   </tr></thead>
@@ -2025,6 +2118,7 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
   <div class="card"><div class="k">Run</div><div class="v">{run:,}<span class="dim" style="font-size:14px"> / {total:,}</span></div></div>
   <div class="card"><div class="k">Timeouts</div><div class="v" style="color:var(--bad)">{tot['timeout']:,}</div></div>
   <div class="card"><div class="k">Crashes</div><div class="v" style="color:var(--bad)">{tot['crash']:,}</div></div>
+  <div class="card"><div class="k">Flaky</div><div class="v" style="color:var(--bad)">{len(flaky_paths(worklist, records)):,}</div><div class="dim" style="font-size:12px">of {retry_counts(worklist, records)['retried']:,} retried, {retry_counts(worklist, records)['retry_skipped']:,} skipped as unchanged</div></div>
   <div class="card"><div class="k">OK, none passed</div><div class="v" style="color:var(--bad)">{tot['none-passed']:,}</div></div>
   {f'<div class="card"><div class="k">Exempt</div><div class="v">{tot["exempt"]:,}</div></div>' if EXEMPTIONS else ''}
   <div class="card"><div class="k">Clean files</div><div class="v" style="color:var(--ok)">{clean:,}</div></div>
@@ -2115,7 +2209,8 @@ def main():
         tot.update(c)
     targeted, passing = round(tot['sub_targeted']), round(tot['sub_passing'])
     unexplained = unexplained_losses(history, dispositions)
-    print(f"{run:,} of {total:,} sources run  |  {gating:,} blocking  |  {clean:,} clean  |  "
+    print(f"{run:,} of {total:,} sources run  |  {gating:,} blocking  |  "
+          f"{retry_summary(retry_counts(worklist, records))}  |  {clean:,} clean  |  "
           f"{len(unexplained):,} unexplained subtest losses")
     print(f"subtests: {passing:,} passing of {targeted:,} targeted  "
           f"({passing / targeted * 100 if targeted else 0:.2f}%)  |  "
@@ -2547,7 +2642,8 @@ def _check_loss_dispositions():
     parsed = parse_loss_dispositions(_LOSS_FIXTURE, wl)
     assert parsed[('a.html', 170)]['kind'] == 'flake'
     assert parse_loss_dispositions('# no entries\n', wl) == {}
-    assert len(parse_loss_dispositions(_LOSS_FIXTURE + _LOSS_FIXTURE.replace('170', '171'), wl)) == 2
+    ruling171 = '[a.html]\ngeneration = 171\nkind = user-ruling\nwhy = accepted\ndate = 2026-10-20\ndecision = the user accepted it\n'
+    assert len(parse_loss_dispositions(_LOSS_FIXTURE + ruling171, wl)) == 2
 
     def invalid(text, needle):
         try:
@@ -2578,6 +2674,88 @@ def _check_loss_dispositions():
     assert parse_loss_dispositions(change, wl)[('a.html', 3)]['wpt.after'] == 'b' * 40
     invalid(change.replace('b' * 40, 'a' * 40), 'different')
     invalid(change.replace('b' * 40, 'unknown'), 'revision')
+
+
+def _check_flaky_count():
+    """A file is flaky in a generation when its latest record says so; nothing else counts."""
+    wl = ['a.html', 'b.html', 'c.html', 'd.html']
+    records = {'a.html': {'flaky': True, 'passed': 3}, 'b.html': {'flaky': False, 'retry': {'passed': 1}},
+               'c.html': {'passed': 2}, 'other.html': {'flaky': True}}
+    assert flaky_paths(wl, records) == ['a.html']
+
+
+def _check_retry_counts():
+    """Retried, skipped-as-unchanged and flaky are counted apart, so a flaky
+    number cannot shrink unseen because fewer files were retried."""
+    wl = ['flaky.html', 'agreed.html', 'skipped.html', 'clean.html', 'unrun.html']
+    records = {
+        'flaky.html': {'flaky': True, 'retry': {'status': 'OK', 'passed': 4}, 'passed': 3, 'failed': 1},
+        'agreed.html': {'flaky': False, 'retry': {'status': 'OK', 'passed': 3}, 'passed': 3, 'failed': 1},
+        'skipped.html': {'retry_skipped': 'matches baseline', 'passed': 3, 'failed': 1},
+        'clean.html': {'passed': 4},
+        'other.html': {'flaky': True, 'retry': {}},
+    }
+    c = retry_counts(wl, records)
+    assert c == {'retried': 2, 'retry_skipped': 1, 'flaky': 1}, c
+    assert retry_summary(c) == '1 flaky of 2 retried, 1 not retried (same as the previous generation)'
+    # A skipped file is neither retried nor flaky.
+    assert 'skipped.html' not in flaky_paths(wl, records)
+    # A sweep without retries reports zeros for all three.
+    assert retry_counts(wl, {'clean.html': {'passed': 4}}) == {'retried': 0, 'retry_skipped': 0, 'flaky': 0}
+
+
+def _check_one_flake_rule():
+    """A path may carry one flake disposition; the inherited exceptions are exact."""
+    wl = ['a.html'] + list(FLAKE_GRANDFATHERED)
+    second = _LOSS_FIXTURE.replace('170', '175')
+    try:
+        parse_loss_dispositions(_LOSS_FIXTURE + second, wl)
+    except LossDispositionError as err:
+        assert '[a.html]' in str(err) and 'first is generation 170' in str(err), str(err)
+    else:
+        raise AssertionError('accepted a second flake disposition for one path')
+    # The order in the file does not matter: the earlier entry in the file is "the first".
+    try:
+        parse_loss_dispositions(second + _LOSS_FIXTURE, wl)
+    except LossDispositionError as err:
+        assert 'first is generation 175' in str(err), str(err)
+    else:
+        raise AssertionError('accepted a second flake disposition for one path')
+    # A flake and another kind for one path are fine (a flake, then a ruling).
+    ruling = '[a.html]\ngeneration = 180\nkind = user-ruling\nwhy = x\ndate = 2026-10-20\ndecision = y\n'
+    assert len(parse_loss_dispositions(_LOSS_FIXTURE + ruling, wl)) == 2
+
+    def flake(path, generation):
+        return _LOSS_FIXTURE.replace('[a.html]', f'[{path}]').replace('170', str(generation))
+
+    # A grandfathered path keeps exactly its listed generations, and no more.
+    for path, (generations, reason) in FLAKE_GRANDFATHERED.items():
+        assert len(generations) > 1 and reason.strip(), path
+        assert reason.startswith(('fixed', 'explained')), (path, reason)
+        text = ''.join(flake(path, g) for g in generations)
+        assert len(parse_loss_dispositions(text, wl)) == len(generations)
+        try:
+            parse_loss_dispositions(text + flake(path, 999), wl)
+        except LossDispositionError as err:
+            assert path in str(err) and f'first is generation {generations[0]}' in str(err), str(err)
+        else:
+            raise AssertionError('accepted a new flake disposition for a grandfathered path: ' + path)
+
+    # The list is exactly the real file's inherited duplicates: none missing, none stale.
+    with open(LOSS_DISPOSITIONS_FILE) as f:
+        text = f.read()
+    flakes = collections.defaultdict(list)
+    path = None
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith('['):
+            path, generation = line[1:-1], None
+        elif line.startswith('generation ='):
+            generation = int(line.split('=', 1)[1])
+        elif line == 'kind = flake':
+            flakes[path].append(generation)
+    repeated = {p: tuple(sorted(g)) for p, g in flakes.items() if len(g) > 1}
+    assert repeated == {p: tuple(sorted(g)) for p, (g, _) in FLAKE_GRANDFATHERED.items()}, repeated
 
 
 def _check_loss_baseline_migration():
@@ -2686,6 +2864,9 @@ if __name__ == '__main__':
         _check_revision_high_water()
         _check_subtest_losses()
         _check_loss_dispositions()
+        _check_one_flake_rule()
+        _check_flaky_count()
+        _check_retry_counts()
         _check_loss_baseline_migration()
         _check_loss_exit_status()
         print('wpt_progress self-test: ok')

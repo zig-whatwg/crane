@@ -33,6 +33,16 @@ pub const Generation = struct {
     run: u64 = 0,
     unrun: u64 = 0,
     blocking: u64 = 0,
+    /// Files whose sweep retry disagreed with their first run (the runner's
+    /// `--retry-failures`); null for a generation from before it measured them.
+    flaky: ?u64 = null,
+    /// Of the files that did not fully pass: how many the sweep retried, and
+    /// how many it skipped because their result matched the previous
+    /// generation's (`--retry-failures=<journal>`). Without them a flaky count
+    /// can shrink because fewer files were retried. Null from before they
+    /// were recorded.
+    retried: ?u64 = null,
+    retry_skipped: ?u64 = null,
     crash: u64 = 0,
     timeout: u64 = 0,
     @"error": u64 = 0,

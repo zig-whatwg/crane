@@ -95,6 +95,21 @@ Then branch on type:
 | **WPT** | Isolate one test, fix, uncomment all, re-verify |
 | **Engine** | Measure before and after; regression-check with timers |
 
+### Batch the expensive gates (the user, 2026-11-01)
+
+Wall-clock time matters as much as tokens. A full `zig build test` is 30-45 minutes on a shared host, a
+ReleaseSafe runner build about 12, and a sweep over an hour. Never pay those for a two-line change on its own.
+
+- **Each change still gets its own cheap proof:** its targeted test fails first, then passes
+  (`-Dtest-file=`, `--repeat`, a few WPT files).
+- **Changes whose files and WPT directories don't overlap share ONE native gate, ONE runner build and ONE
+  A/B** over the union of their directories. The directories keep the attribution, and each change is
+  still its own commit.
+- **Before starting any gate or run over 20 minutes,** look at what else is about to land, and batch it in
+  instead of starting the next long job the moment this one ends.
+- **Merge current main into your branch before you report.** If your gated tip's tree is the tree the
+  integrator would merge, your gates stand and the merge needs no re-run.
+
 ### Fixing a WPT failure
 
 ```bash
@@ -309,7 +324,10 @@ regression ([lesson](docs/lessons/workflow-a-zig-cache-in-tmp-is-pruned-by-macos
 whichever worktree last built the codegen binary, so a regeneration can silently use another lane's
 generator: on 2026-10-17 lane leaks4's regeneration picked up lane worklets' unmerged generator hunk.
 
-**Never run a bare `zig build`, and always pass `-j2`.** `build.zig` installs
+**Never run a bare `zig build`, and always pass `-j2`.** In a pool job the hosts' zig shim replaces
+the `-j` you pass with that host's fair share of root compiles, which it sizes from free memory and the
+builds sharing the host. So `-j2` is the Mac's hard cap, and on chat/chat2 it is only a request (the user,
+2026-11-01: a fixed `-j2` left a quiet 64 GB host idle). `build.zig` installs
 19 artifacts, and every one that embeds the tree is a separate root-module
 analysis of ~1M lines at ~6 GB of RAM each, three at a time by default. One
 bare build is 18 GB; one bare build plus two agents doing the same on a 32 GB

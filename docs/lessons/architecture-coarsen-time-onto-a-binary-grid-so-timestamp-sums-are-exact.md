@@ -1,0 +1,12 @@
+# Architecture: Coarsen time onto a binary grid, so timestamp sums are exact
+
+**Date**: 2026-10-31
+**Lesson**: Every DOMHighResTimeStamp is a double of milliseconds. A coarsening grid of 0.1 ms is no double, so `timeOrigin + now()` rounds; a grid of 2^-k ms (125 us, 15.625 us cross-origin isolated) is exact, and so is every sum a page makes of two coarse times.
+
+**Why**: HR-Time lets "coarsen time" pick any resolution of 100 us or more (5 us isolated). timeOrigin is about 1.79e12 ms, where a double's step is 2.4e-4 ms. On the 0.1 ms grid fl(fl(a) + fl(b)) landed one step above fl(a + b) for about 1 pair in 5. Firefox and Safari coarsen to whole milliseconds (reduceTimerPrecision.microseconds = 1000; WebKit Performance.cpp `timePrecision { 1_ms }`), which are exact; Chrome uses 100 us but starts workers milliseconds later, so its sums never meet at one coarse moment.
+
+**What Happened**: hr-time/timeOrigin.html "Window and worker timeOrigins are close when created one after another" failed 7 of 60 isolated runs and 9 of 90 under load, every one by a single step ("expected >= 1793461618246.4001 but got 1793461618246.4"). Crane's `new Worker()` reads its creation time in the same 100 us as the page's performance.now() just before, so the worker's timeOrigin is exactly windowOrigin + before, and the double sum rounded above it. The ns-to-ms conversion also rounded: 1.79e18 ns is beyond 2^53. A second, rarer cause was the estimated monotonic time of the Unix epoch, estimated once per Performance object: preemption between its two clock reads moved one global's timeOrigin against another's. HR-Time 4 makes it one per communicating group; Gecko keeps one PerformanceService per process.
+
+**Fix**: hr_time/coarsen.zig floors onto 125 us (15.625 us isolated); clock.toMilliseconds converts whole milliseconds and the remainder apart, so a grid moment converts exactly; fetch_timing.coarsenTime uses the same grid (coarsenMilliseconds), not a second one. The epoch is estimated once at process start (Performance.installHooks), a `// process-wide:` variable. tests/dom/hr_time_coarsen_exactness_test.zig pins the exactness, and shows the 0.1 ms grid failing the same check.
+
+**Takeaway**: **When two coarse times must compare by sum or difference, pick a resolution that is a power-of-two fraction of the unit the doubles count in; then the arithmetic is exact and the comparison is the spec's, not the rounding's.**

@@ -1336,10 +1336,16 @@ pub fn httpNetworkFetchFinish(
     // one took no time to obtain), the final network-request start time
     // (the request was ready to go) and the final network-response start
     // time (its first byte).
+    // The network's measurements count from when its transfer started:
+    // after any wait for one of the destination's connection slots - Fetch
+    // "obtain a connection" step 4.1 sets the domain lookup start time when
+    // the lookup starts, so the wait falls between fetchStart and
+    // domainLookupStart, where browsers show a stalled request.
     const end_time = getCurrentTimeMs();
-    params.timing_info.final_connection_timing_info = connectionTimingInfo(request, network_response, start_time, params.timing_info.post_redirect_start_time);
-    params.timing_info.final_network_request_start_time = start_time + @as(f64, @floatFromInt(network_response.pretransfer_time_ms));
-    params.timing_info.final_network_response_start_time = start_time + @as(f64, @floatFromInt(network_response.time_to_first_byte_ms));
+    const transfer_start = start_time + network_response.queue_wait_ms;
+    params.timing_info.final_connection_timing_info = connectionTimingInfo(request, network_response, transfer_start, params.timing_info.post_redirect_start_time);
+    params.timing_info.final_network_request_start_time = transfer_start + @as(f64, @floatFromInt(network_response.pretransfer_time_ms));
+    params.timing_info.final_network_response_start_time = transfer_start + @as(f64, @floatFromInt(network_response.time_to_first_byte_ms));
     params.timing_info.end_time = end_time;
 
     return response;

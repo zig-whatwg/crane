@@ -80,16 +80,12 @@ fn createEntry(realm: runtime.Context, timing: *const performance_timeline.Resou
     // PerformanceEntry (startTime 0, "navigation", the document's URL), and
     // steps 4-11 are the rest of `timing`.
     try performance_timeline.initializeEntry(instance, timing.start_time, .navigation, timing.url, timing.end_time);
-    // 8, and the fetchStart getter steps: with a service worker timing,
-    // fetchStart is its fetch event dispatch time (made relative to the
-    // time origin, as every other attribute), not the fetch's post-redirect
-    // start - so it follows the worker's activation. Chrome and Firefox
-    // mark fetchStart after activation, Safari does not
-    // (service-workers/.../navigation-timing-extended.https.html, wpt.fyi
-    // df642c4142). The entry's setup copies what it is given.
-    var own = timing.*;
-    if (service_worker_timing) |sw| own.fetch_start = sw.fetch_event_dispatch_time;
-    try performance_timeline.setupResourceTiming(instance, &own);
+    // 8, and the fetchStart getter steps: `timing.fetch_start` is already the
+    // service worker timing's fetch event dispatch time when there is one
+    // (performance_timeline.createNavigationTimingEntry, which keeps the same
+    // timing for the body's end). The entry's setup copies what it is given.
+    _ = service_worker_timing;
+    try performance_timeline.setupResourceTiming(instance, timing);
     // 6-7. Redirect count and navigation type. 11. Its not restored
     // reasons, a copy (the object is made when first read).
     const internal = try allocator.create(InternalState);

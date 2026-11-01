@@ -51,6 +51,11 @@ pub const Implementation = struct {
     /// The navigation API's reload with an explicit serialized state.
     /// `state` is borrowed for this synchronous call.
     reload_with_navigation_api_state: ?*const fn (window: *runtime.Instance, state: joint_history.SerializedState) void = null,
+    /// A declarative refresh's reload of `window`'s navigable: a reload
+    /// whose "apply the reload history step" aborts the active document and
+    /// its descendants once beforeunload has let it go on, as the navigate
+    /// it stands for does (navigate step 24.3). Null: a plain reload.
+    reload_for_declarative_refresh: ?*const fn (window: *runtime.Instance) void = null,
     /// HTML "URL and history update steps" given `window`'s associated
     /// Document and `url`, with serializedData `serialized` (null: the
     /// default, null) and historyHandling `handling` - what committing an
@@ -78,6 +83,11 @@ pub const Implementation = struct {
     /// `contexts`, in order: beforeunload at each - each document held with
     /// its generation, skipped if it went. True when one was canceled.
     before_unload_canceled: *const fn (contexts: []const *BrowsingContext, allocator: std.mem.Allocator) bool,
+    /// HTML "abort a document and its descendants" for `navigable`'s active
+    /// document, as a navigation that has passed its beforeunload does it
+    /// (navigate step 24.3): its fetches end, its live XHRs are left to the
+    /// unload. Null: nothing is aborted.
+    abort_for_navigation: ?*const fn (navigable: *BrowsingContext, allocator: std.mem.Allocator) void = null,
     /// "Update document for history step application" for `navigable`'s
     /// active document and the entry `entry` of its document: its History
     /// and navigation API views written, its URL, history.state, the
@@ -119,6 +129,18 @@ pub fn reload(window: *runtime.Instance) void {
     impl.reload(window);
 }
 
+/// Reload `window`'s navigable for its document's declarative refresh
+/// (Implementation.reload_for_declarative_refresh); a plain reload when the
+/// owner has no such step.
+pub fn reloadForDeclarativeRefresh(window: *runtime.Instance) void {
+    const impl = implementation orelse return;
+    if (impl.reload_for_declarative_refresh) |reload_for_refresh| {
+        reload_for_refresh(window);
+    } else {
+        impl.reload(window);
+    }
+}
+
 /// Reload with the navigation API state supplied by navigation.reload().
 /// The reload implementation clones the borrowed state before running script.
 pub fn reloadWithNavigationApiState(window: *runtime.Instance, state: joint_history.SerializedState) void {
@@ -157,6 +179,13 @@ pub fn beforeUnloadCanceled(contexts: []const *BrowsingContext, allocator: std.m
     return impl.before_unload_canceled(contexts, allocator);
 }
 
+/// See Implementation.abort_for_navigation.
+pub fn abortForNavigation(navigable: *BrowsingContext, allocator: std.mem.Allocator) void {
+    const impl = implementation orelse return;
+    const abort = impl.abort_for_navigation orelse return;
+    abort(navigable, allocator);
+}
+
 /// "Update document for history step application" for a same-document
 /// entry of `navigable`.
 pub fn updateSameDocument(navigable: *BrowsingContext, old_url: []const u8, entry: *joint_history.Entry) void {
@@ -178,4 +207,5 @@ test "without an installed implementation nothing traverses" {
     var window: runtime.Instance = undefined;
     traverseToStep(&window, 1, null);
     reload(&window);
+    reloadForDeclarativeRefresh(&window);
 }

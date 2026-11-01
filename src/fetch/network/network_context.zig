@@ -66,6 +66,9 @@ pub const NetworkContext = struct {
     tls: CertVerifyOptions = .{},
     /// WebSocket's CONNECTING gate: one holder per host and port.
     connecting: ConnectingGate = .{},
+    /// HTTP/1.x connections per destination: at most `max_connections_per_
+    /// host` transfers in flight to one scheme, host and port, Browser-wide.
+    slots: ConnectionSlots = .{},
     /// The user agent string `configure` set (OWNED); null: the default.
     user_agent: ?[]u8 = null,
     /// Where the Browser's requests go (`configure`; OWNED strings).
@@ -151,6 +154,7 @@ pub const NetworkContext = struct {
         self.share = null;
         self.share_tried = false;
         self.connecting.deinit(self.allocator);
+        self.slots.deinit(self.allocator);
         if (self.tls.ca_bundle_path) |path| self.allocator.free(path);
         self.tls = .{};
         if (self.user_agent) |value| self.allocator.free(value);
@@ -273,6 +277,144 @@ pub const NetworkContext = struct {
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         self.connecting.release(holder);
     }
+
+    /// Take one of `destination`'s connection slots for `holder` (a
+    /// transfer): true when it may start now - it got a slot, or the
+    /// destination multiplexes and needs none - false when it must wait for
+    /// one. `destination` is `destinationOf` a request URL.
+    pub fn tryTakeConnectionSlot(self: *NetworkContext, destination: []const u8, holder: *const anyopaque) Allocator.Error!bool {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        return self.slots.tryTake(self.allocator, destination, holder);
+    }
+
+    /// Give back the slot `holder` took, if it took one.
+    pub fn releaseConnectionSlot(self: *NetworkContext, holder: *const anyopaque) void {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        self.slots.release(holder);
+    }
+
+    /// `destination` answered over HTTP/2: its requests share one
+    /// connection from now on and take no slots.
+    pub fn noteMultiplexed(self: *NetworkContext, destination: []const u8) Allocator.Error!void {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        return self.slots.noteMultiplexed(self.allocator, destination);
+    }
+};
+
+/// How many HTTP/1.x connections a Browser opens to one destination at once.
+/// Every browser has six: Chromium, g_max_sockets_per_group's kNormal entry
+/// ("Default to allow up to 6 connections per host",
+/// net/socket/client_socket_pool_manager.cc); Firefox,
+/// network.http.max-persistent-connections-per-server (6, modules/libpref/
+/// init/all.js); Safari, CFNetwork's NSURLSessionConfiguration
+/// HTTPMaximumConnectionsPerHost ("The default value is 6 in macOS").
+/// HTTP/1.1 itself sets no number any more (RFC 9112 9.4: "A client ought to
+/// limit the number of simultaneous open connections"), so golden rule 2
+/// decides: the browsers' six. Without it a page with 34 XHRs opened 34
+/// connections at once, and WPT's server, under a sweep's several runners,
+/// reset connections past its listen queue - xhr/send-redirect.htm failed 35
+/// of 150 runs under 6x load (lane flaky4). More transfers than that wait,
+/// in order, for one to end; none fails.
+///
+/// Two kinds of connection do not count, as in Chromium:
+/// - a WebSocket's: Chromium keeps them in a pool of their own
+///   (g_max_sockets_per_group's kWebSocket entry, 255: "WebSocket connections
+///   are long-lived, and should be treated differently"), so the gate they
+///   pass is RFC 6455's one-CONNECTING-per-host (`ConnectingGate`) alone;
+/// - a synchronous XMLHttpRequest's: its transfer (LibcurlBackend.send)
+///   blocks its agent's thread until it ends, and with it the event loop
+///   that would finish the agent's other transfers and free their slots -
+///   waiting for a slot there would wait forever.
+pub const max_connections_per_host = 6;
+
+/// The destination a connection is for - "scheme://host:port", the port
+/// explicit - from a request URL (with no userinfo: buildNetworkRequest
+/// strips it). Chromium groups its sockets by scheme, host and port the same
+/// way (ClientSocketPool::GroupId). `buffer` holds the result; a URL whose
+/// destination does not fit gives null, and is not limited.
+pub fn destinationOf(buffer: *[max_host_key]u8, url: []const u8) ?[]const u8 {
+    const scheme_end = std.mem.indexOf(u8, url, "://") orelse return null;
+    const scheme = url[0..scheme_end];
+    const rest = url[scheme_end + 3 ..];
+    const authority_end = std.mem.indexOfAny(u8, rest, "/?#") orelse rest.len;
+    const authority = rest[0..authority_end];
+    if (authority.len == 0) return null;
+    // A port after the host ("]" ends an IPv6 literal, whose colons are not
+    // ports).
+    const host_end = if (std.mem.lastIndexOfScalar(u8, authority, ':')) |colon|
+        (if (std.mem.lastIndexOfScalar(u8, authority, ']')) |bracket| (if (colon > bracket) colon else authority.len) else colon)
+    else
+        authority.len;
+    const host = authority[0..host_end];
+    const port: []const u8 = if (host_end < authority.len) authority[host_end + 1 ..] else if (std.ascii.eqlIgnoreCase(scheme, "https")) "443" else if (std.ascii.eqlIgnoreCase(scheme, "http")) "80" else return null;
+    return std.fmt.bufPrint(buffer, "{s}://{s}:{s}", .{ scheme, host, port }) catch null;
+}
+
+/// The connection slots of a Browser's destinations (`max_connections_per_
+/// host` each) and the destinations that multiplex. NOT locked: the
+/// context's mutex guards it.
+pub const ConnectionSlots = struct {
+    taken: std.ArrayListUnmanaged(Slot) = .empty,
+    /// Destinations that answered over HTTP/2.
+    multiplexed: std.ArrayListUnmanaged(Key) = .empty,
+
+    const Key = struct {
+        bytes: [max_host_key]u8,
+        len: usize,
+
+        fn of(destination: []const u8) Key {
+            var key: Key = .{ .bytes = undefined, .len = @min(destination.len, max_host_key) };
+            @memcpy(key.bytes[0..key.len], destination[0..key.len]);
+            return key;
+        }
+
+        fn is(self: *const Key, destination: []const u8) bool {
+            return std.mem.eql(u8, self.bytes[0..self.len], destination);
+        }
+    };
+
+    const Slot = struct {
+        key: Key,
+        holder: *const anyopaque,
+    };
+
+    /// A slot of `destination` for `holder` if one is free (or none is
+    /// needed); `holder` asking again keeps the one it has.
+    pub fn tryTake(self: *ConnectionSlots, allocator: Allocator, destination: []const u8, holder: *const anyopaque) Allocator.Error!bool {
+        for (self.multiplexed.items) |*key| if (key.is(destination)) return true;
+        var used: usize = 0;
+        for (self.taken.items) |*slot| {
+            if (!slot.key.is(destination)) continue;
+            if (slot.holder == holder) return true;
+            used += 1;
+        }
+        if (used >= max_connections_per_host) return false;
+        try self.taken.append(allocator, .{ .key = .of(destination), .holder = holder });
+        return true;
+    }
+
+    /// Give back `holder`'s slot, if it has one.
+    pub fn release(self: *ConnectionSlots, holder: *const anyopaque) void {
+        for (self.taken.items, 0..) |slot, i| {
+            if (slot.holder != holder) continue;
+            _ = self.taken.orderedRemove(i);
+            return;
+        }
+    }
+
+    pub fn noteMultiplexed(self: *ConnectionSlots, allocator: Allocator, destination: []const u8) Allocator.Error!void {
+        for (self.multiplexed.items) |*key| if (key.is(destination)) return;
+        try self.multiplexed.append(allocator, .of(destination));
+    }
+
+    pub fn deinit(self: *ConnectionSlots, allocator: Allocator) void {
+        self.taken.deinit(allocator);
+        self.multiplexed.deinit(allocator);
+        self.* = .{};
+    }
 };
 
 /// The longest host-and-port key the gate keeps.
@@ -325,6 +467,46 @@ pub const ConnectingGate = struct {
         self.* = .{};
     }
 };
+
+test "six connection slots per destination; the seventh waits for a release" {
+    var context = NetworkContext.init(std.testing.allocator);
+    defer context.deinit();
+    var holders: [8]u8 = undefined;
+    for (0..max_connections_per_host) |i| try std.testing.expect(try context.tryTakeConnectionSlot("http://a.test:80", &holders[i]));
+    try std.testing.expect(!try context.tryTakeConnectionSlot("http://a.test:80", &holders[6]));
+    // A holder asking again keeps its slot; another destination has its own.
+    try std.testing.expect(try context.tryTakeConnectionSlot("http://a.test:80", &holders[0]));
+    try std.testing.expect(try context.tryTakeConnectionSlot("https://a.test:443", &holders[7]));
+    context.releaseConnectionSlot(&holders[2]);
+    try std.testing.expect(try context.tryTakeConnectionSlot("http://a.test:80", &holders[6]));
+    try std.testing.expect(!try context.tryTakeConnectionSlot("http://a.test:80", &holders[2]));
+    // Releasing what holds no slot changes nothing.
+    var stranger: u8 = 0;
+    context.releaseConnectionSlot(&stranger);
+    try std.testing.expect(!try context.tryTakeConnectionSlot("http://a.test:80", &holders[2]));
+}
+
+test "a destination that multiplexes takes no connection slots" {
+    var context = NetworkContext.init(std.testing.allocator);
+    defer context.deinit();
+    var holders: [8]u8 = undefined;
+    for (0..max_connections_per_host) |i| try std.testing.expect(try context.tryTakeConnectionSlot("https://h2.test:9000", &holders[i]));
+    try std.testing.expect(!try context.tryTakeConnectionSlot("https://h2.test:9000", &holders[6]));
+    try context.noteMultiplexed("https://h2.test:9000");
+    try std.testing.expect(try context.tryTakeConnectionSlot("https://h2.test:9000", &holders[6]));
+    try std.testing.expect(try context.tryTakeConnectionSlot("https://h2.test:9000", &holders[7]));
+}
+
+test "a request URL's destination is its scheme, host and port" {
+    var buffer: [max_host_key]u8 = undefined;
+    try std.testing.expectEqualStrings("http://web-platform.test:8000", destinationOf(&buffer, "http://web-platform.test:8000/xhr/resources/redirect.py?code=301").?);
+    try std.testing.expectEqualStrings("https://a.test:443", destinationOf(&buffer, "https://a.test/b").?);
+    try std.testing.expectEqualStrings("http://a.test:80", destinationOf(&buffer, "http://a.test?q").?);
+    try std.testing.expectEqualStrings("http://[::1]:8080", destinationOf(&buffer, "http://[::1]:8080/").?);
+    try std.testing.expectEqualStrings("http://[::1]:80", destinationOf(&buffer, "http://[::1]/x").?);
+    try std.testing.expectEqual(@as(?[]const u8, null), destinationOf(&buffer, "data:text/plain,x"));
+    try std.testing.expectEqual(@as(?[]const u8, null), destinationOf(&buffer, "http:///x"));
+}
 
 test "the CONNECTING gate keeps one holder per host and port" {
     var context = NetworkContext.init(std.testing.allocator);

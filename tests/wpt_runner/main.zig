@@ -39,6 +39,45 @@
 //!   kills the process, until the worklist is exhausted. Writes
 //!   `<output>/worklist.txt` and `<output>/journal.jsonl`.
 //!
+//! Flakiness (repeat.zig):
+//! - `--repeat=N` - Run the worklist (normally one file: name it as an
+//!   argument) N times, each time in a fresh child process, and print each
+//!   subtest's failure rate over the N runs; written to
+//!   `<output>/repeat-tally.txt`. The children journal under
+//!   `<output>/repeat/<k>/`, never at `--journal=`: a repeat series is never a
+//!   sweep record.
+//! - `--repeat-with=path` - Also run N repetitions of that runner binary (a
+//!   frozen main's), alternating with this one, the other first; the tally's
+//!   second column is its rate.
+//! - `--load=K` - Keep K supervisor threads busy for the whole series
+//!   (background CPU load, stated in the tally). Ask the pool for K+1 tokens.
+//!
+//! A lane measures in the compute pool under its own pair id, on the
+//! measurement host the integrator names for it, with both runners on that
+//! host (the integrator: `--pair <lane>-m` -> chat2.local, which keeps the
+//! frozen bases in ~/crane-frozen/):
+//!
+//! ```bash
+//! tmp/remote/crane-pool.sh wpt <mirror> --pair <lane>-m \
+//!   '~/crane-measure.sh run <lane>-rep 1 ./zig-out/bin/wpt_runner --repeat=50 \
+//!      --repeat-with=$HOME/crane-frozen/main-0aa6c6c8cf/zig-out/bin/wpt_runner \
+//!      <path/to/test.html> --wpt-root=tests/wpt --output=tmp/<lane>-rep/<name>'
+//! # under load: --load=4, and ask for 5 runners: crane-measure.sh run <lane>-rep 5 ...
+//! # the result: crane-pool.sh on <mirror> --pair <lane>-m 'cat tmp/<lane>-rep/<name>/repeat-tally.txt'
+//! ```
+//!
+//! Sweep retries:
+//! - `--retry-failures` - After a supervised run, run every file that did not
+//!   fully pass once more, in the same runner, at the end of the run, and
+//!   journal its second result beside its first: `"retry": {...}` and
+//!   `"flaky": true` when the two disagree. The first result stands; the
+//!   retry's pass never counts (`retryFailures`).
+//! - `--retry-failures=<previous journal.jsonl>` - The same, but a file whose
+//!   first result (status and the four counts) equals its record in that
+//!   journal is not retried: it fails as it failed last generation. It is
+//!   journalled with `"retry_skipped":"matches baseline"` and no `retry`. A
+//!   changed file, and a file the baseline has no record of, are retried.
+//!
 //! Regression gating:
 //! - `--baseline=path` - Compare the finished run against recorded
 //!   expectations. Exits nonzero if anything regressed.
@@ -63,6 +102,7 @@ const wpt_server = @import("wpt_server.zig");
 const wpt_manifest = @import("manifest.zig");
 const selection = @import("selection.zig");
 const journal = @import("journal.zig");
+const repeat = @import("repeat.zig");
 const baseline = @import("baseline.zig");
 const options_mod = @import("options.zig");
 const discovery_mod = @import("discovery.zig");
@@ -1698,7 +1738,7 @@ fn writeWorklistFile(
     try file_writer.interface.flush();
 }
 
-/// Write the subset of `discovery` named by `indices` as its own worklist.
+/// Write the subset of `all` named by `indices` as its own worklist.
 ///
 /// A shard gets a private worklist rather than a stride over the shared one so
 /// that its indices stay contiguous from zero. The resume-past-a-crash loop is
@@ -1707,7 +1747,7 @@ fn writeWorklistFile(
 fn writeShardWorklist(
     allocator: std.mem.Allocator,
     path: []const u8,
-    discovery: DiscoveryResult,
+    all: []const []const u8,
     indices: []const usize,
 ) !void {
     const io = host.io();
@@ -1720,7 +1760,7 @@ fn writeShardWorklist(
 
     var paths = try allocator.alloc([]const u8, indices.len);
     defer allocator.free(paths);
-    for (indices, 0..) |global, local| paths[local] = discovery.test_files.items[global].path;
+    for (indices, 0..) |global, local| paths[local] = all[global];
 
     var file = try host.cwd().createFile(io, path, .{});
     defer file.close(io);
@@ -1747,6 +1787,12 @@ const Shard = struct {
     /// Prefix for this shard's progress lines. Null when there is only one
     /// shard and the output needs no disambiguating.
     label: ?[]const u8,
+    /// The child's working directory, or null for this process's own. A
+    /// runner finds its snapshot from its working directory
+    /// (browser.Process, zig-out/bin/whatwg_snapshot.bin first), so a repeat
+    /// series' other runner runs from its own root (repeat.runnerRoot), with
+    /// every path it is given absolute.
+    cwd: ?[]const u8 = null,
 };
 
 /// Run one shard's worklist to exhaustion, respawning past each crash.
@@ -1784,23 +1830,16 @@ fn runShard(allocator: std.mem.Allocator, shard: Shard) !void {
 
         if (next >= total) break;
 
-        const start_arg = try std.fmt.allocPrint(allocator, "--start-index={d}", .{next});
-        defer allocator.free(start_arg);
-        const from_arg = try std.fmt.allocPrint(allocator, "--from-file={s}", .{shard.worklist_path});
-        defer allocator.free(from_arg);
-        const journal_arg = try std.fmt.allocPrint(allocator, "--journal={s}", .{shard.journal_path});
-        defer allocator.free(journal_arg);
-        const root_arg = try std.fmt.allocPrint(allocator, "--wpt-root={s}", .{options.wpt_root});
-        defer allocator.free(root_arg);
-        const out_arg = try std.fmt.allocPrint(allocator, "--output={s}", .{options.output_dir});
-        defer allocator.free(out_arg);
-        const beat_arg = try std.fmt.allocPrint(allocator, "--heartbeat={s}", .{heartbeat_path});
-        defer allocator.free(beat_arg);
-
-        var argv: std.ArrayList([]const u8) = .empty;
-        defer argv.deinit(allocator);
-        try argv.appendSlice(allocator, &.{ shard.self_exe, from_arg, start_arg, journal_arg, root_arg, out_arg, beat_arg });
-        if (!options.verbose) try argv.append(allocator, "--quiet");
+        var argv_arena: std.heap.ArenaAllocator = .init(allocator);
+        defer argv_arena.deinit();
+        const argv = try options_mod.childArgv(argv_arena.allocator(), options.*, .{
+            .exe = shard.self_exe,
+            .worklist = shard.worklist_path,
+            .start_index = next,
+            .journal = shard.journal_path,
+            .output_dir = options.output_dir,
+            .heartbeat = heartbeat_path,
+        });
 
         print("{s}running tests {d}..{d}\n", .{ shard.label orelse "--> ", next, total });
 
@@ -1812,7 +1851,10 @@ fn runShard(allocator: std.mem.Allocator, shard: Shard) !void {
         // 0.16: Child.init + spawnAndWait become std.process.spawn(io, options)
         // followed by wait(io). Behaviour is unchanged - still a blocking wait for
         // this one shard - and Term's union tags are lowercase now.
-        var child = try std.process.spawn(shard.io, .{ .argv = argv.items });
+        var child = try std.process.spawn(shard.io, .{
+            .argv = argv,
+            .cwd = if (shard.cwd) |dir| .{ .path = dir } else .inherit,
+        });
 
         // The per-file ceiling only bounds the wait for `__wpt_complete`. The
         // navigation, the parse and every script the parser runs are unbounded,
@@ -1936,12 +1978,13 @@ fn runShardsInParallel(
     allocator: std.mem.Allocator,
     io: std.Io,
     options: Options,
-    discovery: DiscoveryResult,
+    /// The worklist, in order.
+    all: []const []const u8,
     self_exe: []const u8,
     journal_path: []const u8,
     shard_count: usize,
 ) !void {
-    const total = discovery.test_files.items.len;
+    const total = all.len;
 
     const runs = try allocator.alloc(ShardRun, shard_count);
     defer allocator.free(runs);
@@ -1962,13 +2005,13 @@ fn runShardsInParallel(
         const i = built;
         const indices = try selection.shardIndices(allocator, total, shard_count, i);
         const paths = try allocator.alloc([]const u8, indices.len);
-        for (indices, 0..) |global, local| paths[local] = discovery.test_files.items[global].path;
+        for (indices, 0..) |global, local| paths[local] = all[global];
 
         const wl = try std.fmt.allocPrint(allocator, "{s}/worklist.shard{d}.txt", .{ options.output_dir, i });
         const jl = try std.fmt.allocPrint(allocator, "{s}/journal.shard{d}.jsonl", .{ options.output_dir, i });
         const label = try std.fmt.allocPrint(allocator, "[shard {d}] ", .{i});
 
-        try writeShardWorklist(allocator, wl, discovery, indices);
+        try writeShardWorklist(allocator, wl, all, indices);
         // Start each shard from an empty ledger, for the same reason the whole
         // run does: a stale journal resumes at indices that mean nothing now.
         {
@@ -2043,6 +2086,11 @@ fn supervise(
         else => return err,
     };
 
+    // A repeat series writes no journal of its own and never the
+    // `--journal=` it was given: each repetition's child journals under
+    // <output>/repeat/<k>/, and the series' result is repeat-tally.txt.
+    if (options.repeat > 0) return superviseRepeat(allocator, io, options, discovery);
+
     const worklist_path = try std.fs.path.join(allocator, &.{ options.output_dir, "worklist.txt" });
     defer allocator.free(worklist_path);
     try writeWorklistFile(allocator, worklist_path, discovery);
@@ -2088,13 +2136,13 @@ fn supervise(
         std.Thread.getCpuCount() catch 1,
     );
 
-    if (shard_count > 1) {
-        try runShardsInParallel(allocator, io, options, discovery, self_exe, journal_path, shard_count);
-    } else {
-        const worklist_paths = try allocator.alloc([]const u8, total);
-        defer allocator.free(worklist_paths);
-        for (discovery.test_files.items, 0..) |f, i| worklist_paths[i] = f.path;
+    const worklist_paths = try allocator.alloc([]const u8, total);
+    defer allocator.free(worklist_paths);
+    for (discovery.test_files.items, 0..) |f, i| worklist_paths[i] = f.path;
 
+    if (shard_count > 1) {
+        try runShardsInParallel(allocator, io, options, worklist_paths, self_exe, journal_path, shard_count);
+    } else {
         try runShard(allocator, .{
             .allocator = allocator,
             .io = io,
@@ -2106,6 +2154,8 @@ fn supervise(
             .label = null,
         });
     }
+
+    if (options.retry_failures) try retryFailures(allocator, io, options, self_exe, journal_path, shard_count);
 
     var log = try journal.read(allocator, journal_path);
     defer log.deinit();
@@ -2137,11 +2187,271 @@ fn supervise(
         });
     }
 
+    if (options.retry_failures) {
+        print("Retried:  {d} files that did not fully pass; {d} flaky (the second run disagreed; the first result stands); {d} skipped (same result as the baseline journal)\n", .{ s.retried, s.flaky, s.retry_skipped });
+    }
+
     print("\nJournal: {s}\n", .{journal_path});
 
     const selected = try selectedPaths(allocator, discovery);
     defer allocator.free(selected);
     return settleBaseline(allocator, options, selected);
+}
+
+/// `--retry-failures`: every file the run journalled short of a full pass
+/// (journal.wantsRetry) runs once more, at the end of the run, in this same
+/// runner, and its second result is journalled beside its first
+/// (journal.Record.retry; flaky when the two differ). The first result stays
+/// the result - a retry's pass never counts as a pass.
+///
+/// The retry is a supervised run of its own under `<output>/retry/` - its
+/// worklist, shard journals and result streams - so nothing of it lands where
+/// a sweep's journals and streams are collected (crane-measure.sh takes
+/// `<output>/journal.jsonl`; the site's streams are `<output>/journal*.wptreport.jsonl`).
+/// Only the run's own journal changes: it is rewritten with the retries
+/// attached, in one rename.
+fn retryFailures(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    options: Options,
+    self_exe: []const u8,
+    journal_path: []const u8,
+    shard_request: usize,
+) !void {
+    var log = try journal.read(allocator, journal_path);
+    defer log.deinit();
+
+    // `--retry-failures=<journal>`: the previous generation's journal. An
+    // absent or empty one is no baseline (journal.read answers an absent file
+    // with an empty log), and the run says so rather than silently retrying
+    // everything or nothing.
+    var retry_base: ?journal.RetryBaseline = null;
+    defer if (retry_base) |*b| b.deinit();
+    if (options.retry_baseline) |bp| {
+        const prev = try journal.read(allocator, bp);
+        if (prev.records.len == 0) {
+            var empty = prev;
+            empty.deinit();
+            print("\nNo records in the retry baseline {s}: retrying every file that did not fully pass\n", .{bp});
+        } else {
+            retry_base = try journal.RetryBaseline.init(allocator, prev);
+        }
+    }
+
+    var paths: std.ArrayList([]const u8) = .empty;
+    defer paths.deinit(allocator);
+    var skipped: usize = 0;
+    for (log.records) |*rec| {
+        if (!journal.wantsRetry(rec.*)) continue;
+        if (retry_base) |*b| {
+            if (!b.wantsRetry(rec.*)) {
+                // Same result as the previous generation: a known failure, not retried.
+                rec.retry_skipped = true;
+                skipped += 1;
+                continue;
+            }
+        }
+        const seen = for (paths.items) |p| {
+            if (std.mem.eql(u8, p, rec.path)) break true;
+        } else false;
+        if (!seen) try paths.append(allocator, rec.path);
+    }
+    if (skipped > 0) print("\nSkipping the retry of {d} files whose result matches the baseline journal\n", .{skipped});
+    if (paths.items.len == 0) {
+        if (skipped > 0) try rewriteJournal(allocator, journal_path, log.records);
+        return;
+    }
+
+    const retry_dir = try std.fs.path.join(allocator, &.{ options.output_dir, "retry" });
+    defer allocator.free(retry_dir);
+    host.cwd().createDirPath(host.io(), retry_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+    const retry_journal = try std.fs.path.join(allocator, &.{ retry_dir, "journal.jsonl" });
+    defer allocator.free(retry_journal);
+    {
+        var fresh = try journal.Journal.create(allocator, retry_journal);
+        fresh.deinit();
+    }
+
+    var retry_options = options;
+    retry_options.output_dir = retry_dir;
+
+    print("\nRetrying {d} files that did not fully pass (results under {s})\n\n", .{ paths.items.len, retry_dir });
+    const shards = @min(shard_request, paths.items.len);
+    if (shards > 1) {
+        try runShardsInParallel(allocator, io, retry_options, paths.items, self_exe, retry_journal, shards);
+    } else {
+        const wl = try std.fs.path.join(allocator, &.{ retry_dir, "worklist.txt" });
+        defer allocator.free(wl);
+        const all = try allocator.alloc(usize, paths.items.len);
+        defer allocator.free(all);
+        for (all, 0..) |*x, i| x.* = i;
+        try writeShardWorklist(allocator, wl, paths.items, all);
+        try runShard(allocator, .{
+            .allocator = allocator,
+            .io = io,
+            .options = &retry_options,
+            .self_exe = self_exe,
+            .worklist_path = wl,
+            .journal_path = retry_journal,
+            .paths = paths.items,
+            .label = null,
+        });
+    }
+
+    var retried = try journal.read(allocator, retry_journal);
+    defer retried.deinit();
+    try journal.annotateRetries(allocator, log.records, retried.records);
+
+    try rewriteJournal(allocator, journal_path, log.records);
+}
+
+/// Rewrite the run's journal with the retries (and skip markers) attached:
+/// written whole beside it, then renamed over it, so a reader sees the old
+/// journal or the new one and never half of either.
+fn rewriteJournal(allocator: std.mem.Allocator, journal_path: []const u8, records: []const journal.Record) !void {
+    const tmp_path = try std.fmt.allocPrint(allocator, "{s}.retry-tmp", .{journal_path});
+    defer allocator.free(tmp_path);
+    {
+        var out = try journal.Journal.create(allocator, tmp_path);
+        defer out.deinit();
+        for (records) |rec| try out.record(rec);
+    }
+    try host.cwd().rename(tmp_path, host.cwd(), journal_path, host.io());
+}
+
+/// `--repeat=N` (repeat.zig): the worklist N times, each repetition a fresh
+/// child under this supervisor's server and watchdog, alternating with
+/// `--repeat-with`'s runner when one is given, with `--load` busy threads
+/// beside the whole series. Writes `<output>/repeat-tally.txt` and prints it.
+fn superviseRepeat(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    options: Options,
+    discovery: DiscoveryResult,
+) !u8 {
+    // Absolute paths throughout: `--repeat-with`'s runner runs from its own
+    // root (repeat.runnerRoot), not from here.
+    host.cwd().createDirPath(host.io(), options.output_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+    const output_abs = try host.cwd().realPathFileAlloc(host.io(), options.output_dir, allocator);
+    defer allocator.free(output_abs);
+    const wpt_root_abs = try host.cwd().realPathFileAlloc(host.io(), options.wpt_root, allocator);
+    defer allocator.free(wpt_root_abs);
+    var abs_options = options;
+    abs_options.output_dir = output_abs;
+    abs_options.wpt_root = wpt_root_abs;
+    const layout: repeat.Layout = .{ .output_dir = output_abs };
+    const repeat_dir = try layout.dir(allocator);
+    defer allocator.free(repeat_dir);
+    host.cwd().createDirPath(host.io(), repeat_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+    const worklist_path = try layout.worklist(allocator);
+    defer allocator.free(worklist_path);
+    try writeWorklistFile(allocator, worklist_path, discovery);
+
+    const paths = try selectedPaths(allocator, discovery);
+    defer allocator.free(paths);
+
+    const self_exe = try std.process.executablePathAlloc(host.io(), allocator);
+    defer allocator.free(self_exe);
+
+    const server = try wpt_server.WptServer.init(allocator, options.wpt_root);
+    defer server.deinit();
+    try server.start();
+
+    const alternating = options.repeat_with != null;
+    const runs = repeat.totalRuns(options.repeat, alternating);
+    print("\nRepeating {d} file(s) {d} times{s}{s}{s}\n", .{
+        paths.len,
+        options.repeat,
+        if (alternating) " with each of this runner and " else "",
+        options.repeat_with orelse "",
+        if (options.load_threads > 0) " under load" else "",
+    });
+
+    var load: repeat.Load = .{};
+    try load.start(allocator, options.load_threads);
+    defer load.stop(allocator);
+
+    var tally = repeat.Tally.init(allocator);
+    defer tally.deinit();
+
+    var k: usize = 0;
+    while (k < runs) : (k += 1) {
+        const side = repeat.sideOf(k, alternating);
+        const exe = if (side == .with) options.repeat_with.? else self_exe;
+
+        const run_dir = try layout.runDir(allocator, k);
+        defer allocator.free(run_dir);
+        host.cwd().createDirPath(host.io(), run_dir) catch |err| switch (err) {
+            error.PathAlreadyExists => {},
+            else => return err,
+        };
+        const run_journal = try layout.runJournal(allocator, k);
+        defer allocator.free(run_journal);
+        {
+            var fresh = try journal.Journal.create(allocator, run_journal);
+            fresh.deinit();
+        }
+        var run_options = abs_options;
+        run_options.output_dir = run_dir;
+
+        const label = try std.fmt.allocPrint(allocator, "[repeat {d}/{d} {s}] ", .{ k + 1, runs, @tagName(side) });
+        defer allocator.free(label);
+        try runShard(allocator, .{
+            .allocator = allocator,
+            .io = io,
+            .options = &run_options,
+            .self_exe = exe,
+            .worklist_path = worklist_path,
+            .journal_path = run_journal,
+            .paths = paths,
+            .label = label,
+            .cwd = if (side == .with) repeat.runnerRoot(exe) else null,
+        });
+
+        const stream_path = try layout.runStream(allocator, k);
+        defer allocator.free(stream_path);
+        const journal_bytes = host.cwd().readFileAlloc(host.io(), run_journal, allocator, .limited(64 * 1024 * 1024)) catch |err| switch (err) {
+            error.FileNotFound => try allocator.dupe(u8, ""),
+            else => return err,
+        };
+        defer allocator.free(journal_bytes);
+        const stream_bytes = host.cwd().readFileAlloc(host.io(), stream_path, allocator, .limited(256 * 1024 * 1024)) catch |err| switch (err) {
+            error.FileNotFound => try allocator.dupe(u8, ""),
+            else => return err,
+        };
+        defer allocator.free(stream_bytes);
+        try tally.addRun(side, journal_bytes, stream_bytes);
+
+        var one = try journal.parseLines(allocator, journal_bytes);
+        defer one.deinit();
+        const sum = one.summarize();
+        print("{s}OK {d} TIMEOUT {d} ERROR {d} CRASH {d}; subtests passed {d} failed {d}\n", .{
+            label, sum.ok, sum.timed_out, sum.errored, sum.crashed, sum.subtests_passed, sum.subtests_failed + sum.subtests_timed_out + sum.subtests_notrun,
+        });
+    }
+
+    var report: std.Io.Writer.Allocating = .init(allocator);
+    defer report.deinit();
+    try tally.write(&report.writer, .{ .this = self_exe, .with = options.repeat_with, .load_threads = options.load_threads });
+
+    const tally_path = try layout.tally(allocator);
+    defer allocator.free(tally_path);
+    {
+        var file = try host.cwd().createFile(host.io(), tally_path, .{ .truncate = true });
+        defer file.close(host.io());
+        try file.writeStreamingAll(host.io(), report.written());
+    }
+    print("\n{s}\nTally: {s}\n", .{ report.written(), tally_path });
+    return 0;
 }
 
 // The tests below never run: main.zig is only ever built as an executable, so
