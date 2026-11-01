@@ -430,18 +430,26 @@ pub fn main(init: std.process.Init) !void {
 
     const c = run.counts();
     const exit_failures = executor.exit_failures.load(.monotonic);
-    // One summary line (+ the replay) per suite: in server mode this is the
-    // step's stderr in `zig build test`, which prints the seed and the
-    // suite's own wall time.
-    try out.print(
+    const cpu_s = fmtSeconds(executor.cpu_ns.load(.monotonic));
+    const rss_mb = executor.peak_rss.load(.monotonic) / (1 << 20);
+    if (args.listen) {
+        // One line per suite: in `zig build test` this is the step's stderr,
+        // which prints each suite's seed and its own wall time. The replay
+        // command only when something did not pass.
+        try out.print(
+            "test_launcher: {s}: seed 0x{x}, batch {d}: PASS {d} SKIP {d} FAIL {d} ORDER-DEPENDENT {d} FLAKY {d} NOT-RUN {d}; wall {d:.1} s, child CPU {d:.1} s, {d} processes, peak child RSS {d} MB\n",
+            .{ name, seed, args.batch, c.pass, c.skip, c.fail, c.order_dependent, c.flaky, c.not_run, fmtSeconds(wall_ns), cpu_s, run.processes.load(.monotonic), rss_mb },
+        );
+        if (c.bad() != 0) try out.print("  replay: {s}\n", .{replay});
+        if (exit_failures != 0) try out.print("  {d} test processes exited non-zero after exit\n", .{exit_failures});
+    } else try out.print(
         "test_launcher: {s}: PASS {d}  SKIP {d}  FAIL {d}  ORDER-DEPENDENT {d}  FLAKY {d}  NOT-RUN {d}  (seed 0x{x}, batch {d}, {d} jobs)\n" ++
             "  wall {d:.1} s, child CPU {d:.1} s, {d} processes, peak child RSS {d} MB, {d} exited non-zero after exit\n",
         .{
-            name,                c.pass,                                       c.skip,                         c.fail,                                         c.order_dependent, c.flaky, c.not_run, seed, args.batch, jobs,
-            fmtSeconds(wall_ns), fmtSeconds(executor.cpu_ns.load(.monotonic)), run.processes.load(.monotonic), executor.peak_rss.load(.monotonic) / (1 << 20), exit_failures,
+            name,                c.pass, c.skip,                         c.fail, c.order_dependent, c.flaky, c.not_run, seed, args.batch, jobs,
+            fmtSeconds(wall_ns), cpu_s,  run.processes.load(.monotonic), rss_mb, exit_failures,
         },
     );
-    if (args.listen) try out.print("  replay: {s}\n", .{replay});
 
     if (args.out) |path| {
         var aw: Io.Writer.Allocating = .init(arena);

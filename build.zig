@@ -839,8 +839,12 @@ const TestLaunch = struct {
     /// the cache skips it), "random" (a fresh seed every run; the step is
     /// then never cached), or a value.
     seed: []const u8,
-    /// -Dlaunch-timeout: per-test seconds.
-    timeout: ?u32,
+    /// -Dlaunch-timeout: per-test seconds; a slow test gets 4x. Default 300:
+    /// Crane's tests run in Debug, and under a full build's load (compiles
+    /// beside a test process per core) tests took up to 3x their time alone -
+    /// at 60 s, tests that take 20-28 s alone timed out (lane tlaunch2). It
+    /// is there to catch hangs; the build runner had no timeout at all.
+    timeout: u32,
     /// -Dlaunch-shuffle=false: index order.
     shuffle: bool,
 };
@@ -868,23 +872,49 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     .{ .name = "tests-intl_bench", .config = .{ .batch = 0, .jobs = 1, .shuffle = false } },
     // Suites that start V8 or a Browser: a process per test.
     .{ .name = "tests-dom", .config = .{ .batch = 1 } },
-    .{ .name = "tests-html", .config = .{ .batch = 1 } },
+    .{ .name = "tests-html", .config = .{ .batch = 1, .slow = &html_slow } },
     .{ .name = "tests-service_worker", .config = .{ .batch = 1 } },
     .{ .name = "tests-websocket", .config = .{ .batch = 1 } },
-    .{ .name = "tests-v8", .config = .{ .batch = 1 } },
+    // Not yet a process per test: at batch 1 (lane tlaunch2, seed
+    // 0x53e719cc383a1086) 22 tests FAIL alone - context_counter_test (16),
+    // page_realm_operations_test (4) and refcount_wrapper_link_test (2) count
+    // handles or references and pass only after an earlier test has made the
+    // engine's lazily created ones (32 bytes of global handles in a fresh
+    // process) - and template_registry_isolation_test crashes alone (its two
+    // threads race V8's platform initialization). Any shuffled order puts
+    // some of them first, so until they are fixed the suite keeps the build
+    // runner's old shape: one process, index order. -Dlaunch-batch=1 still
+    // runs it a process per test.
+    .{ .name = "tests-v8", .config = .{ .batch = 0, .shuffle = false } },
     .{ .name = "src-browser", .config = .{ .batch = 1 } },
     .{ .name = "test-browser", .config = .{ .batch = 1 } },
     .{ .name = "lib-exports", .config = .{ .batch = 1 } },
-    .{
-        .name = "tests-css",
-        .config = .{
-            .slow = &.{
-                // 95.9 s alone (lane tlaunch1): an allocation-failure sweep over 128
-                // composite levels. Lane tfix1 is splitting it.
-                "ci1_image_set_test.test.128 composite image levels parse compute and release at every allocation failure",
-            },
-        },
-    },
+    .{ .name = "tests-css", .config = .{ .slow = &css_slow } },
+    .{ .name = "tests-codegen", .config = .{ .slow = &codegen_slow } },
+};
+
+// Slow tests: over 45 s alone on chat.local in Debug (lane tlaunch2,
+// 2026-11-01, four at once); under a full build's load they took up to 3x.
+const css_slow = [_][]const u8{
+    // 95.1 s: an allocation-failure sweep over 128 composite levels. Lane
+    // tfix1 is splitting it.
+    "ci1_image_set_test.test.128 composite image levels parse compute and release at every allocation failure",
+};
+const codegen_slow = [_][]const u8{
+    // 82.7 s: every committed interface and mixin module.
+    "ce_reactions_emission_test.test.every committed interface and mixin module's table matches its brackets",
+};
+const html_slow = [_][]const u8{
+    // 137.6 s.
+    "editing2_white_space_join_test.test.joining blocks keeps the moved line's white-space",
+    // 74.6, 78.9 and 50.4 s: 300,000 live ranges; two Browsers churning.
+    "rangeuaf_live_range_walk_test.test.removing a node after 300,000 ranges were made in it moves every live range it holds",
+    "rangeuaf_live_range_walk_test.test.splitting text after 300,000 ranges were made in it moves every live range it holds",
+    "rangeuaf_live_range_walk_test.test.two Browsers on two threads churn live ranges and walk their own lists at once",
+    // 77.2 s: 1,000 dropped lists, two collections each.
+    "nodeholds_cost_test.test.1,000 dropped querySelectorAll lists that rescued their trees retain nothing past two collections",
+    // 77.0 s.
+    "rc9_document_tasks_test.test.documents dropped inside one script stay bounded by the queue's high water, not by their number",
 };
 
 fn suiteConfig(name: []const u8) SuiteConfig {
@@ -912,7 +942,7 @@ fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.St
     run.addArg(b.fmt("--batch={d}", .{launch.batch orelse config.batch}));
     if (config.jobs orelse launch.jobs) |jobs| run.addArg(b.fmt("--jobs={d}", .{jobs}));
     run.addArg(b.fmt("--launch-seed={s}", .{launch.seed}));
-    if (launch.timeout) |t| run.addArg(b.fmt("--timeout={d}", .{t}));
+    run.addArg(b.fmt("--timeout={d}", .{launch.timeout}));
     if (!launch.shuffle or !config.shuffle) run.addArg("--no-shuffle");
     for (config.slow) |slow| run.addArg(b.fmt("--slow={s}", .{slow}));
     // Relative to the repository root, where tests open their fixtures.
@@ -2113,7 +2143,7 @@ pub fn build(b: *std.Build) void {
             .batch = b.option(u32, "launch-batch", "Tests per child process for every suite, overriding build.zig's suite_configs (1 = a process per test; 0 = the whole suite in one process)"),
             .jobs = b.option(u32, "launch-jobs", "Test processes at once for the whole build (default: the CPU count)"),
             .seed = b.option([]const u8, "launch-seed", "The launcher's seed: digest (default: from each test executable's bytes, printed; unchanged suites stay cached), random (fresh every run, never cached), or a value") orelse "digest",
-            .timeout = b.option(u32, "launch-timeout", "Per-test timeout in seconds (default 60; slow tests get 4x)"),
+            .timeout = b.option(u32, "launch-timeout", "Per-test timeout in seconds (default 300; tests build.zig lists as slow get 4x)") orelse 300,
             .shuffle = b.option(bool, "launch-shuffle", "Shuffle the order and the batches from the seed (default true)") orelse true,
         };
         break :launch l;
