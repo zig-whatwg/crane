@@ -16,16 +16,12 @@ const runtime = @import("runtime");
 test "snapshot validation - valid snapshot" {
     const allocator = std.testing.allocator;
 
-    // The snapshot this build generated - not a copy in the current
-    // directory, which is what a stale one looks like.
-    const snapshot_path = "zig-out/bin/whatwg_snapshot.bin";
+    // The snapshot this build generated (build.zig passes its path, and the
+    // test depends on the step that makes it) - never a copy found from the
+    // current directory, which is what a stale one looks like. Missing is a
+    // failure, not a skip.
+    const snapshot_path = @import("test_snapshot").path;
     const io = std.testing.io;
-    std.Io.Dir.cwd().access(io, snapshot_path, .{}) catch |err| {
-        std.log.warn("Skipping snapshot test - file not found: {}", .{err});
-        return;
-    };
-
-    // Load snapshot file
     const file = try std.Io.Dir.cwd().openFile(io, snapshot_path, .{});
     defer file.close(io);
 

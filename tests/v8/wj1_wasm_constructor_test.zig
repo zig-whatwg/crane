@@ -206,13 +206,10 @@ test "snapshot Window worklet and ShadowRealm use their own wasm adapter intrins
         std.log.warn("skipping Wasm snapshot control: run wj1_wasm_constructor_test.zig with -Dtest-file=", .{});
         return error.SkipZigTest;
     }
-    // An isolated native test can be built without a snapshot. The final
-    // runner+snapshot gate supplies this build's blob and runs this case.
+    // The snapshot this build generated (build.zig passes its path and
+    // makes the test depend on it); missing is a failure.
     const io = std.testing.io;
-    const file = std.Io.Dir.cwd().openFile(io, "zig-out/bin/whatwg_snapshot.bin", .{}) catch |err| switch (err) {
-        error.FileNotFound => return error.SkipZigTest,
-        else => return err,
-    };
+    const file = try std.Io.Dir.cwd().openFile(io, @import("test_snapshot").path, .{});
     defer file.close(io);
     const stat = try file.stat(io);
     const bytes = try std.testing.allocator.alloc(u8, stat.size);

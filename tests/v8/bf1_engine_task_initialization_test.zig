@@ -72,7 +72,8 @@ fn check(comptime snapshot: bool) !void {
         // this file alone so that this path is exercised, not skipped.
         if (ffi.v8_Platform_IsInitialized()) return error.SkipZigTest;
         const io = std.testing.io;
-        const file = std.Io.Dir.cwd().openFile(io, "zig-out/bin/whatwg_snapshot.bin", .{}) catch return error.SkipZigTest;
+        // The snapshot this build generated; missing is a failure.
+        const file = try std.Io.Dir.cwd().openFile(io, @import("test_snapshot").path, .{});
         defer file.close(io);
         const bytes = try std.testing.allocator.alloc(u8, (try file.stat(io)).size);
         defer std.testing.allocator.free(bytes);

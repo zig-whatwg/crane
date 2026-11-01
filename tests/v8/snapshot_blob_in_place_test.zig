@@ -14,9 +14,9 @@
 //! (gin/v8_initializer.cc: GetMappedFileData points the StartupData into
 //! g_mapped_snapshot, "never freed nor closed").
 //!
-//! The snapshot is the one this build generates, zig-out/bin/whatwg_snapshot.bin
-//! (the `snapshot` step; `wpt-runner` depends on it). Without it the test is
-//! skipped. It runs only where this file is the first in its process to start
+//! The snapshot is the one this build generates: a cached run of the
+//! snapshot generator that tests/v8 depends on, its path passed as
+//! `test_snapshot.path`. A missing snapshot fails the test. It runs only where this file is the first in its process to start
 //! V8, for pattern_attribute_snapshot_test.zig's reason: in tests/v8's shared
 //! executable it skips, saying so; it runs under `-Dtest-file=` and
 //! `-Dtest-isolation=file`.
@@ -28,7 +28,9 @@ const interfaces = @import("interfaces");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 
-const snapshot_path = "zig-out/bin/whatwg_snapshot.bin";
+/// The snapshot this build generated: build.zig passes its path and makes
+/// the test depend on the step that writes it.
+const snapshot_path = @import("test_snapshot").path;
 
 const no_hooks: protocol.HostHooks = .{};
 
@@ -69,10 +71,8 @@ test "agents restored from the snapshot read the engine's blob in place, and all
         return error.SkipZigTest;
     }
     const io = std.testing.io;
-    const file = std.Io.Dir.cwd().openFile(io, snapshot_path, .{}) catch |err| {
-        std.log.warn("skipping: no snapshot at {s} ({s}); `zig build snapshot` makes it", .{ snapshot_path, @errorName(err) });
-        return error.SkipZigTest;
-    };
+    // Missing is a failure: the build made it for this test.
+    const file = try std.Io.Dir.cwd().openFile(io, snapshot_path, .{});
     const bytes = blk: {
         defer file.close(io);
         const size = (try file.stat(io)).size;
