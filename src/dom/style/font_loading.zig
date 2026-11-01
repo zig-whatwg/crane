@@ -795,14 +795,70 @@ fn numeric(token: css.Token, kind: Descriptor) ?Numeric {
     return .{ .value = n.? };
 }
 
+const StretchEndpoint = union(enum) {
+    literal: Numeric,
+    calculation: values.Value,
+
+    fn consume(allocator: Allocator, stream: *Stream) Allocator.Error!?StretchEndpoint {
+        if (css.math_values.isFunction(stream.peek())) {
+            const value = try css.properties.mathValue(.{ .allocator = allocator }, stream, .{ .kind = .percentage, .minimum = 0 }) orelse return null;
+            return .{ .calculation = value };
+        }
+        return .{ .literal = numeric(stream.next(), .stretch) orelse return null };
+    }
+
+    fn release(self: StretchEndpoint) void {
+        if (self == .calculation) self.calculation.release();
+    }
+
+    fn append(self: StretchEndpoint, allocator: Allocator, out: *std.ArrayList(u8)) Allocator.Error!void {
+        switch (self) {
+            .literal => |value| try value.append(allocator, out),
+            .calculation => |value| try css.properties.serializeValue(.font_width, value, out, allocator),
+        }
+    }
+
+    fn eql(a: StretchEndpoint, b: StretchEndpoint) bool {
+        return switch (a) {
+            .literal => |value| b == .literal and value.value == b.literal.value,
+            .calculation => |value| b == .calculation and value.eql(b.calculation),
+        };
+    }
+};
+
+fn stretchDescriptor(allocator: Allocator, stream: *Stream) Allocator.Error!?[]u8 {
+    // Fonts 4 §4.4 / Values 4 §10.12: literal bounds are checked by numeric,
+    // while math records the nonnegative range for use, without clamping here.
+    // Q62 follows Gecko font_face.rs impl_range!/FontWidthRange and specified
+    // Percentage's NumericUnion PartialEq: compare simplified specified arms,
+    // never a calculation's numeric result with a literal; sort only at compute.
+    const first = try StretchEndpoint.consume(allocator, stream) orelse return null;
+    defer first.release();
+    var second: ?StretchEndpoint = null;
+    defer if (second) |value| value.release();
+    if (!stream.atEnd()) {
+        second = try StretchEndpoint.consume(allocator, stream) orelse return null;
+        if (!stream.atEnd()) return null;
+    }
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(allocator);
+    try first.append(allocator, &out);
+    if (second) |value| if (!first.eql(value)) {
+        try out.append(allocator, ' ');
+        try value.append(allocator, &out);
+    };
+    return try out.toOwnedSlice(allocator);
+}
+
 /// CSS Fonts 4 §4.4 and §13.2: specified endpoints keep their order;
-/// matching sorts them. A zero-width range serializes as one value.
+/// matching sorts them. Equal specified endpoints serialize as one value.
 fn numericDescriptor(allocator: Allocator, kind: Descriptor, stream: *Stream) Allocator.Error!?[]u8 {
     const token = stream.peek();
     // All three browsers reject left/right (integrator fontstyle probe,
     // 2026-10-22). CSSWG #9392 remains an explicit follow-up.
     if (kind == .style and !ident(token, "oblique")) return oneKeyword(allocator, stream, &.{ "auto", "normal", "italic" });
     if ((kind == .weight or kind == .stretch) and ident(token, "auto")) return oneKeyword(allocator, stream, &.{"auto"});
+    if (kind == .stretch) return stretchDescriptor(allocator, stream);
     const metric = kind == .ascent_override or kind == .descent_override or kind == .line_gap_override;
     if (metric and ident(token, "normal")) return oneKeyword(allocator, stream, &.{"normal"});
     var out: std.ArrayList(u8) = .empty;
