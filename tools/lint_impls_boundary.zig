@@ -49,6 +49,8 @@
 //! a ratchet over tools/impls_naming_baseline.txt for mixin impls.
 
 const std = @import("std");
+// stdout as a stream: Zig 0.17's positional File.writer overwrites a shared log.
+const stdout_stream = @import("stdout_stream.zig");
 
 const baseline_path = "tools/impls_boundary_baseline.txt";
 const naming_baseline_path = "tools/impls_naming_baseline.txt";
@@ -790,7 +792,7 @@ pub fn main(init: std.process.Init) !void {
     }
 
     var buffer: [8192]u8 = undefined;
-    var stdout_writer = std.Io.File.stdout().writer(io, &buffer);
+    var stdout_writer = stdout_stream.writer(io, &buffer);
     const out = &stdout_writer.interface;
 
     // --list: every site, one per line, sorted - what a batch converts.
@@ -1457,4 +1459,8 @@ test "only --rebase-for-rule-change may record an increase" {
     try testing.expect(mayRecord(true, false, 0));
     try testing.expect(!mayRecord(false, false, 0));
     try testing.expect(mayRecord(false, true, 3));
+}
+
+test {
+    _ = stdout_stream;
 }

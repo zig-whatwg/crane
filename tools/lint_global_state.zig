@@ -42,6 +42,8 @@
 //! which keeps each surviving key's class and refuses to record an increase.
 
 const std = @import("std");
+// stdout as a stream: Zig 0.17's positional File.writer overwrites a shared log.
+const stdout_stream = @import("stdout_stream.zig");
 
 const baseline_path = "tools/global_state_baseline.txt";
 
@@ -1024,7 +1026,7 @@ pub fn main(init: std.process.Init) !void {
     try scan(arena, io, &current, &sites);
 
     var stdout_buf: [4096]u8 = undefined;
-    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buf);
+    var stdout_writer = stdout_stream.writer(io, &stdout_buf);
     const out = &stdout_writer.interface;
     defer out.flush() catch {};
 
@@ -1561,4 +1563,8 @@ test "the baseline round-trips, sorted, keeps each key's class and ignores comme
 test "a malformed or duplicated baseline line is an error" {
     try testing.expectError(error.MalformedBaseline, parseBaseline(testing.allocator, "src/a.zig x notanumber G H\n"));
     try testing.expectError(error.MalformedBaseline, parseBaseline(testing.allocator, "src/a.zig x 1 G H\nsrc/a.zig x 1 G H\n"));
+}
+
+test {
+    _ = stdout_stream;
 }

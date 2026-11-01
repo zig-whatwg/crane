@@ -30,6 +30,8 @@
 //! rule; this lint then only guards it.
 
 const std = @import("std");
+// stdout as a stream: Zig 0.17's positional File.writer overwrites a shared log.
+const stdout_stream = @import("stdout_stream.zig");
 
 const baseline_path = "tools/engine_boundary_baseline.txt";
 
@@ -382,7 +384,7 @@ pub fn main(init: std.process.Init) !void {
     for (scanned_roots) |root| try scanDir(arena, io, root, &current, &sites, &files);
 
     var stdout_buf: [4096]u8 = undefined;
-    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buf);
+    var stdout_writer = stdout_stream.writer(io, &stdout_buf);
     const out = &stdout_writer.interface;
     defer out.flush() catch {};
 
@@ -588,4 +590,8 @@ test "the baseline round-trips, sorted, and ignores comments" {
     try testing.expectEqual(@as(u32, 2), parsed.get("src/b.zig v8.ffi").?);
     try testing.expectEqual(@as(u32, 1), parsed.get("src/a.zig @import(\"v8\")").?);
     try testing.expectEqual(@as(u32, 2), parsed.count());
+}
+
+test {
+    _ = stdout_stream;
 }

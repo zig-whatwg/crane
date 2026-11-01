@@ -22,11 +22,18 @@ const count = 5_000;
 /// A thread with a loop: it runs what its sink receives until told to stop.
 const Side = struct {
     sink: *TaskSink,
-    /// Numbers received, in arrival order.
+    /// Numbers received, in arrival order. Written only on this side's
+    /// thread; the main thread reads it only after joining that thread.
     got: std.ArrayListUnmanaged(u32) = .empty,
-    closes: u32 = 0,
+    /// How many numbers `got` holds, published after each append: what the
+    /// main thread polls while this side's thread is still running (reading
+    /// `got.items.len` there would race the append - ThreadSanitizer).
+    received: std.atomic.Value(usize) = .init(0),
+    /// `closed` calls, polled by the main thread like `received`.
+    closes: std.atomic.Value(u32) = .init(0),
     /// The thread that ran the hooks: must be this side's own.
     thread_id: std.Thread.Id = 0,
+    /// Set from the hooks, read after the join.
     wrong_thread: bool = false,
     stop: std.atomic.Value(bool) = .init(false),
     /// What this side posts once its loop is running.
@@ -40,13 +47,14 @@ const Side = struct {
         const message = delivery.next() orelse return;
         defer message.destroy();
         const n = std.mem.readInt(u32, message.serialized[0..4], .little);
-        self.got.append(std.heap.page_allocator, n) catch {};
+        self.got.append(std.heap.page_allocator, n) catch return;
+        _ = self.received.fetchAdd(1, .release);
     }
 
     fn closed(receiver: *anyopaque, _: u64) void {
         const self: *Side = @ptrCast(@alignCast(receiver));
         if (std.Thread.getCurrentId() != self.thread_id) self.wrong_thread = true;
-        self.closes += 1;
+        _ = self.closes.fetchAdd(1, .release);
     }
 
     fn owner(self: *Side) port_channels.Owner {
@@ -81,9 +89,9 @@ fn numbered(n: u32) !*PortMessage {
 
 fn waitUntil(side: *Side, n: usize) void {
     var spins: usize = 0;
-    // The other thread appends; reading the length is a race only in the
-    // sense that it may lag, and the loop asks again.
-    while (@atomicLoad(usize, &side.got.items.len, .acquire) < n and spins < 20_000) : (spins += 1) {
+    // The side's own thread appends to `got` and then publishes the count;
+    // this thread reads only the count until it has joined that thread.
+    while (side.received.load(.acquire) < n and spins < 20_000) : (spins += 1) {
         @import("clock").sleep(1 * std.time.ns_per_ms);
     }
 }
@@ -109,7 +117,7 @@ test "both directions across two threads: every message once, in order, on the o
     a.stop.store(true, .release);
     ta.join();
     var spins: usize = 0;
-    while (@atomicLoad(u32, &b.closes, .acquire) == 0 and spins < 5_000) : (spins += 1) @import("clock").sleep(1 * std.time.ns_per_ms);
+    while (b.closes.load(.acquire) == 0 and spins < 5_000) : (spins += 1) @import("clock").sleep(1 * std.time.ns_per_ms);
     b.stop.store(true, .release);
     tb.join();
 
@@ -119,8 +127,8 @@ test "both directions across two threads: every message once, in order, on the o
         for (side.got.items, 0..) |n, i| try testing.expectEqual(@as(u32, @intCast(i)), n);
         side.got.deinit(allocator);
     }
-    try testing.expectEqual(@as(u32, 1), b.closes);
-    try testing.expectEqual(@as(u32, 0), a.closes);
+    try testing.expectEqual(@as(u32, 1), b.closes.load(.acquire));
+    try testing.expectEqual(@as(u32, 0), a.closes.load(.acquire));
 
     channel.end(0).discard();
     channel.end(1).discard();

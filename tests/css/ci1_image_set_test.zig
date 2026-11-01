@@ -166,9 +166,33 @@ const DepthChecks = if (@hasDecl(css, "image_values")) struct {
     }
 } else struct {};
 
+/// `checkAllAllocationFailures` for a callback that allocates a lot, made
+/// fast without dropping a failure point or a leak check.
+///
+/// The 128-level case makes 1,577 allocations, and the failure sweep replays
+/// the callback for each, about 1.24 million allocations in all. Through
+/// `std.testing.allocator` each costs ~78 us, almost all of it the stack trace
+/// it records (124 ms per full run against 1.2 ms with smp_allocator; the
+/// sweep took 93 s, over the launcher's 60 s timeout). So the unlimited run
+/// goes through `std.testing.allocator`, where a leak names its allocation,
+/// and the sweep through a leak-checking DebugAllocator that records no
+/// traces: each failure index still fails, unwinds and must free every byte
+/// it allocated (checked per index by `checkAllAllocationFailures`, which
+/// prints the failed allocation's trace), and the allocator's own leak check
+/// runs at the end (lesson testing-the-test-allocator-costs-more-than-a-fast-
+/// native-operation.md).
+fn checkAllAllocationFailuresUntraced(comptime test_fn: anytype) !void {
+    try test_fn(testing.allocator);
+    var debug: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    const swept = testing.checkAllAllocationFailures(debug.allocator(), test_fn, .{});
+    const check = debug.deinit();
+    try swept;
+    try testing.expectEqual(std.heap.Check.ok, check);
+}
+
 test "128 composite image levels parse compute and release at every allocation failure" {
     if (comptime !@hasDecl(css, "image_values")) return error.TypedImagesNotImplemented;
-    try testing.checkAllAllocationFailures(testing.allocator, DepthChecks.accepted, .{});
+    try checkAllAllocationFailuresUntraced(DepthChecks.accepted);
 }
 
 test "129 composite image levels reject without a partial value or leaked reference" {
