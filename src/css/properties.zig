@@ -834,7 +834,7 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .block_step_round, .inherited = false, .initial = Value.kw(.up), .grammar = .keywords, .keywords = &.{ .up, .down, .nearest } },
         // Tables3 §§3.5 and 5.2: table-layout alone is not inherited.
         .{ .longhand = .border_collapse, .inherited = true, .initial = Value.kw(.separate), .grammar = .keywords, .keywords = &.{ .separate, .collapse } },
-        .{ .longhand = .border_spacing, .inherited = true, .initial = .{ .corner_radius = .zero }, .grammar = .table_spacing },
+        .{ .longhand = .border_spacing, .inherited = true, .initial = .{ .corner_radius = .zero }, .grammar = .table_spacing, .quirky_length = true },
         .{ .longhand = .caption_side, .inherited = true, .initial = Value.kw(.top), .grammar = .keywords, .keywords = &.{ .top, .bottom } },
         .{ .longhand = .empty_cells, .inherited = true, .initial = Value.kw(.show), .grammar = .keywords, .keywords = &.{ .show, .hide } },
         .{ .longhand = .table_layout, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .fixed } },
@@ -1868,7 +1868,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         },
         // Break3/4 §3.3: <integer [1,∞]>, including computed math bounds.
         .positive_integer => return @import("box_values.zig").consumeInteger(options, stream, 1),
-        .table_spacing => return @import("table_values.zig").consumeSpacing(options, stream),
+        .table_spacing => return @import("table_values.zig").consumeSpacing(options, stream, def.quirky_length),
         .block_step_size => {
             // Rhythm1 §2.1: none | <length [0,∞]>, without percentages.
             if (takeKeyword(stream, &.{.none})) |k| return Value.kw(k);

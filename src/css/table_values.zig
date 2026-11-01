@@ -7,10 +7,11 @@ const Corner = @import("border_radius.zig").Corner;
 /// Parse one or two lengths. The existing immutable two-axis value owns,
 /// computes and serializes these scalars just as it does corner radii;
 /// percentages are excluded by this property's grammar before storage.
-pub fn consumeSpacing(options: properties.ParseOptions, stream: *properties.Stream) std.mem.Allocator.Error!?values.Value {
+pub fn consumeSpacing(options: properties.ParseOptions, stream: *properties.Stream, quirky_length: bool) std.mem.Allocator.Error!?values.Value {
     // Tables3 §3.5.2.1: first horizontal, then vertical; an omitted second
     // length copies the first. Values4 range checks clamp outer math only.
-    const flags: properties.LengthFlags = .{ .negative = false, .percent = false, .quirky = false };
+    // Values4 Appendix C: the property table enables quirky lengths on both axes.
+    const flags: properties.LengthFlags = .{ .negative = false, .percent = false, .quirky = quirky_length };
     const horizontal = try properties.lengthPercentage(options, stream, flags) orelse return null;
     defer horizontal.release();
     const vertical = try properties.lengthPercentage(options, stream, flags);
