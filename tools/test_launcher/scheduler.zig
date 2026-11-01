@@ -1,6 +1,7 @@
 //! Runs a plan's batches on N workers and classifies every failure.
 //!
-//! Phase 1 (the run): each worker claims the next batch, starts a child
+//! The run: each worker claims the next batch (in `claim_order`, longest
+//! expected first when the launcher has timings), starts a child
 //! process, and runs the batch's tests in order. A crash or a timeout kills
 //! the process; the test that was running is blamed, a new process starts,
 //! and the batch continues with the next test - what Zig's build runner does
@@ -8,10 +9,12 @@
 //! and continue to the next test"), and what Chromium's launcher and WebKit's
 //! api-tests runner do after a crash.
 //!
-//! Phase 2 (classification): every test that did not pass is re-run ALONE,
-//! in a fresh process, `alone_runs` times, with the same seed (V8's
-//! run-tests.py reruns with the same seed; Chromium retries serially with
-//! batch size 1). Then:
+//! Classification, as soon as a batch ends and by the worker that ran it:
+//! every test of the batch that did not pass is re-run ALONE, in a fresh
+//! process, `alone_runs` times, with the same seed (V8's run-tests.py reruns
+//! with the same seed; Chromium retries serially with batch size 1) - so a
+//! slow failure's re-runs overlap the other batches instead of waiting for
+//! every batch to end. Then:
 //!   - every alone run fails:                  FAIL
 //!   - the alone runs disagree:                FLAKY
 //!   - every alone run passes: the batch's prefix up to the test is replayed
@@ -159,7 +162,47 @@ pub const Options = struct {
     on_progress: ?*const fn (ctx: ?*anyopaque, done: u32, total: u32) void = null,
     /// Run only this batch of the plan (to replay an ORDER-DEPENDENT report).
     only_batch: ?u32 = null,
+    /// The order workers claim batches in (a permutation of the plan's batch
+    /// ids; `longestFirst` makes one). Null: the plan's order. Only the claim
+    /// order changes - every batch keeps its tests and its number, so a
+    /// replay by seed and batch is unaffected.
+    claim_order: ?[]const u32 = null,
 };
+
+/// The plan's batch ids, longest expected duration first, so a long batch
+/// never starts last and leaves one worker running alone at the end (the
+/// lesson "a scheduler that walks its id map pays its biggest moment
+/// forever": give "what next" a structure ordered that way - here the
+/// priorities are fixed before the run, so a sorted claim list is that
+/// structure). `expected_ns[t]` is test t's duration in an earlier run, null
+/// when unknown; an unknown test counts as the mean of the known ones. Ties,
+/// and a run with no timings at all, keep the plan's order. Caller frees.
+pub fn longestFirst(gpa: Allocator, plan: *const Plan, expected_ns: []const ?u64) ![]u32 {
+    var known_sum: u64 = 0;
+    var known_count: u64 = 0;
+    for (plan.order) |t| if (t < expected_ns.len) if (expected_ns[t]) |ns| {
+        known_sum += ns;
+        known_count += 1;
+    };
+    const mean: u64 = if (known_count == 0) 0 else known_sum / known_count;
+    const Key = struct { id: u32, ns: u64 };
+    const keys = try gpa.alloc(Key, plan.batches.len);
+    defer gpa.free(keys);
+    for (keys, 0..) |*k, b| {
+        var sum: u64 = 0;
+        for (plan.batchTests(b)) |t| sum += if (t < expected_ns.len) expected_ns[t] orelse mean else mean;
+        k.* = .{ .id = @intCast(b), .ns = sum };
+    }
+    std.mem.sort(Key, keys, {}, struct {
+        fn lessThan(_: void, a: Key, b: Key) bool {
+            if (a.ns != b.ns) return a.ns > b.ns;
+            return a.id < b.id;
+        }
+    }.lessThan);
+    const order = try gpa.alloc(u32, keys.len);
+    for (order, keys) |*o, k| o.* = k.id;
+    return order;
+}
 
 /// The run's state: one record per test index of the binary (tests the
 /// plan does not select stay `not_run`).
@@ -172,8 +215,6 @@ pub const Run = struct {
     records: []TestRecord,
     next_batch: std.atomic.Value(u32) = .init(0),
     done_batches: std.atomic.Value(u32) = .init(0),
-    next_suspect: std.atomic.Value(u32) = .init(0),
-    suspects: std.ArrayList(u32) = .empty,
     /// Child processes started (each `start`).
     processes: std.atomic.Value(u32) = .init(0),
     lock: Io.Mutex = .init,
@@ -193,7 +234,6 @@ pub const Run = struct {
     pub fn deinit(r: *Run) void {
         for (r.records) |rec| r.gpa.free(rec.output);
         r.gpa.free(r.records);
-        r.suspects.deinit(r.gpa);
     }
 
     /// The batches this run covers.
@@ -206,23 +246,16 @@ pub const Run = struct {
         return r.options.only_batch orelse k;
     }
 
-    /// Both phases. Returns when every selected test has a verdict.
+    /// Runs every batch and classifies every failure. Returns when every
+    /// selected test has a verdict.
     pub fn execute(r: *Run) !void {
         if (r.options.only_batch) |b| {
             if (b >= r.plan.batches.len) return error.NoSuchBatch;
         }
-        try r.parallel(phase1Worker);
-        for (0..r.batchCount()) |k| {
-            for (r.plan.batchTests(r.batchId(@intCast(k)))) |t| {
-                const rec = &r.records[t];
-                if (!rec.ran) continue;
-                if (rec.first.ok()) {
-                    rec.verdict = classify(rec.first, &.{}, null);
-                    r.report(t);
-                } else try r.suspects.append(r.gpa, t);
-            }
+        if (r.options.claim_order) |order| {
+            if (r.options.only_batch == null and order.len != r.plan.batches.len) return error.BadClaimOrder;
         }
-        try r.parallel(phase2Worker);
+        try r.parallel(batchWorker);
     }
 
     fn parallel(r: *Run, comptime worker: fn (*Run, u32) Io.Cancelable!void) !void {
@@ -279,7 +312,7 @@ pub const Run = struct {
         }
     }
 
-    fn phase1Worker(r: *Run, w: u32) Io.Cancelable!void {
+    fn batchWorker(r: *Run, w: u32) Io.Cancelable!void {
         const Sink = struct {
             run: *Run,
             fn take(s: @This(), t: u32, res: RunResult) void {
@@ -294,23 +327,25 @@ pub const Run = struct {
         while (true) {
             const k = r.next_batch.fetchAdd(1, .monotonic);
             if (k >= total) return;
-            r.runSequence(w, r.plan.batchTests(r.batchId(k)), Sink{ .run = r });
+            const batch = if (r.options.only_batch) |b| b else if (r.options.claim_order) |order| order[k] else k;
+            const tests = r.plan.batchTests(batch);
+            r.runSequence(w, tests, Sink{ .run = r });
+            // Settle the batch now: its passes are final, and its failures
+            // are re-run alone by this worker before it claims another batch.
+            for (tests) |t| {
+                const rec = &r.records[t];
+                if (!rec.ran) continue;
+                if (rec.first.ok()) {
+                    rec.verdict = classify(rec.first, &.{}, null);
+                } else r.classifyOne(w, t);
+                r.report(t);
+            }
             const done = r.done_batches.fetchAdd(1, .monotonic) + 1;
             if (r.options.on_progress) |cb| {
                 r.lock.lockUncancelable(r.io);
                 defer r.lock.unlock(r.io);
                 cb(r.options.on_verdict_ctx, done, total);
             }
-        }
-    }
-
-    fn phase2Worker(r: *Run, w: u32) Io.Cancelable!void {
-        while (true) {
-            const k = r.next_suspect.fetchAdd(1, .monotonic);
-            if (k >= r.suspects.items.len) return;
-            const t = r.suspects.items[k];
-            r.classifyOne(w, t);
-            r.report(t);
         }
     }
 
@@ -637,4 +672,46 @@ test "only one batch: replays that batch alone, with its own numbering" {
     try testing.expectEqual(@as(u32, 3), h.run.counts().pass);
     try testing.expectEqual(@as(u32, 1), h.run.records[4].batch);
     try testing.expectEqual(Verdict.not_run, h.run.records[0].verdict);
+}
+
+test "a failure's alone runs start as soon as its batch ends, before the next batch" {
+    var h: Harness = undefined;
+    // No shuffle, batches of 3: {0 1 2} {3 4 5} {6 7 8}; test 1 always fails.
+    try h.init(struct {
+        fn f(_: *Fake, t: u32, _: []const u32, _: u32) Status {
+            return if (t == 1) .fail else .pass;
+        }
+    }.f, 9, .{ .seed = 1, .shuffle = false, .batch_size = 3 }, .{ .jobs = 1, .alone_runs = 2 });
+    defer h.deinit();
+    try h.run.execute();
+    try testing.expectEqualSlices(u32, &.{ 0, 1, 2, 1, 1, 3, 4, 5, 6, 7, 8 }, h.fake.log.items);
+    try testing.expectEqual(Verdict.fail, h.run.records[1].verdict);
+}
+
+test "batches are claimed in the given order; their numbering does not change" {
+    var h: Harness = undefined;
+    const order = [_]u32{ 2, 0, 1 };
+    try h.init(allPass, 6, .{ .seed = 1, .shuffle = false, .batch_size = 2 }, .{ .jobs = 1, .claim_order = &order });
+    defer h.deinit();
+    try h.run.execute();
+    try testing.expectEqualSlices(u32, &.{ 4, 5, 0, 1, 2, 3 }, h.fake.log.items);
+    try testing.expectEqual(@as(u32, 2), h.run.records[4].batch);
+}
+
+test "longest first: batches by expected duration, unknown tests at the known mean" {
+    var buf: [7]u32 = undefined;
+    // Batches of 2, index order: {0 1} {2 3} {4 5} {6}.
+    const p = try plan_mod.make(testing.allocator, iota(&buf), .{ .seed = 1, .shuffle = false, .batch_size = 2 });
+    defer p.deinit(testing.allocator);
+    // Test 6 has no timing: it counts as the mean of the known (60 / 6 = 10).
+    const expected = [_]?u64{ 1, 2, 30, 0, 5, 7, null };
+    const order = try longestFirst(testing.allocator, &p, &expected);
+    defer testing.allocator.free(order);
+    // Sums: 3, 30, 12, 10.
+    try testing.expectEqualSlices(u32, &.{ 1, 2, 3, 0 }, order);
+    // No timings at all: the plan's own order.
+    const none: [7]?u64 = @splat(null);
+    const plain = try longestFirst(testing.allocator, &p, &none);
+    defer testing.allocator.free(plain);
+    try testing.expectEqualSlices(u32, &.{ 0, 1, 2, 3 }, plain);
 }
