@@ -809,6 +809,21 @@ const TestSelection = struct {
     file: ?[]const u8 = null,
     /// -Dtest-isolation: one executable per directory (the default) or per file.
     isolation: TestIsolation = .directory,
+    /// `zig build test-launch`: each test executable selected here is also run
+    /// through tools/test_launcher (see `TestLaunch`).
+    launch: ?TestLaunch = null,
+};
+
+/// `zig build test-launch -Dspec=<dir>`: runs the test executables that
+/// `zig build test` would run, unchanged, through tools/test_launcher -
+/// seeded batches in parallel child processes, a per-test timeout, and every
+/// failure re-run alone and classified (FAIL, ORDER-DEPENDENT, FLAKY).
+/// `zig build test` itself does not change.
+const TestLaunch = struct {
+    step: *std.Build.Step,
+    launcher: *std.Build.Step.Compile,
+    /// From -Dlaunch-*; `zig build test-launch -- <args>` appends more.
+    args: []const []const u8,
 };
 
 const TestIsolation = enum { directory, file };
@@ -851,7 +866,7 @@ fn addTestFilesFromDir(
 
     if (select.file) |file| {
         if (!std.mem.startsWith(u8, file, dir_path) or file.len <= dir_path.len or file[dir_path.len] != '/') return;
-        addTestRoot(builder, step, file, builder.fmt("{s}", .{std.fs.path.stem(file)}), target, modules, link_v8);
+        addTestRoot(builder, step, file, builder.fmt("{s}", .{std.fs.path.stem(file)}), target, modules, link_v8, select.launch);
         return;
     }
 
@@ -881,7 +896,7 @@ fn addTestFilesFromDir(
         for (files.items) |file| {
             var name: std.ArrayList(u8) = .empty;
             for (builder.fmt("{s}/{s}", .{ dir_path, file[0 .. file.len - ".zig".len] })) |c| try name.append(allocator, if (c == '/') '-' else c);
-            addTestRoot(builder, step, builder.fmt("{s}/{s}", .{ dir_path, file }), name.items, target, modules, link_v8);
+            addTestRoot(builder, step, builder.fmt("{s}/{s}", .{ dir_path, file }), name.items, target, modules, link_v8, select.launch);
         }
         return;
     }
@@ -911,7 +926,7 @@ fn addTestFilesFromDir(
 
     var name: std.ArrayList(u8) = .empty;
     for (dir_path) |c| try name.append(allocator, if (c == '/') '-' else c);
-    addTestRoot(builder, step, root_path, name.items, target, modules, link_v8);
+    addTestRoot(builder, step, root_path, name.items, target, modules, link_v8, select.launch);
 }
 
 fn addTestRoot(
@@ -922,6 +937,7 @@ fn addTestRoot(
     target: std.Build.ResolvedTarget,
     modules: []const std.Build.Module.Import,
     link_v8: bool,
+    launch: ?TestLaunch,
 ) void {
     const test_exe = builder.addTest(.{
         .name = name,
@@ -937,6 +953,20 @@ fn addTestRoot(
 
     const run_test = builder.addRunArtifact(test_exe);
     step.dependOn(&run_test.step);
+
+    // The same executable, through the launcher (nothing new is compiled).
+    if (launch) |l| {
+        const run_launch = builder.addRunArtifact(l.launcher);
+        run_launch.addArtifactArg(test_exe);
+        run_launch.addArgs(l.args);
+        run_launch.addArg(builder.fmt("--out=tmp/test-launch/{s}.jsonl", .{name}));
+        // Tests open fixtures relative to the repository root, as under
+        // `zig build test`; the result file lands under it too.
+        run_launch.setCwd(builder.path("."));
+        run_launch.has_side_effects = true;
+        run_launch.addPassthruArgs();
+        l.step.dependOn(&run_launch.step);
+    }
 }
 
 /// An executable that is compiled and never linked - nothing asks for its
@@ -1611,7 +1641,7 @@ pub fn build(b: *std.Build) void {
         "spec",
         "Run tests for a specific spec (infra, webidl, dom, encoding, url, console, streams, mimesniff, wpt_runner, or 'all')",
     );
-    const test_selection: TestSelection = .{
+    var test_selection: TestSelection = .{
         .file = b.option(
             []const u8,
             "test-file",
@@ -1915,6 +1945,58 @@ pub fn build(b: *std.Build) void {
     // ========================================================================
 
     const test_step = b.step("test", "Run WHATWG spec tests (use -Dspec=<name> to filter)");
+
+    // tools/test_launcher: runs a compiled test executable as seeded batches
+    // of child processes over the Zig test runner's protocol, and classifies
+    // every failure (tmp/plans/test-architecture-recommendation.md, step 2).
+    // `test-launch` runs the executables `test` would run, with -Dspec and
+    // -Dtest-file selecting them as for `test`; `test` itself is unchanged.
+    {
+        const launcher_module = b.createModule(.{
+            .root_source_file = b.path("tools/test_launcher/main.zig"),
+            // Build-time tool: runs on the host, as codegen does.
+            .target = b.graph.host,
+            .optimize = .Debug,
+        });
+        const launcher = b.addExecutable(.{ .name = "test_launcher", .root_module = launcher_module });
+        const launch_step = b.step("test-launch", "Run the selected test executables through tools/test_launcher (-Dspec=<dir> -Dlaunch-batch=B -Dlaunch-jobs=N -Dlaunch-seed=S; -- <launcher args>)");
+        var launch_args: std.ArrayList([]const u8) = .empty;
+        const batch = b.option(u32, "launch-batch", "test-launch: tests per child process (default 10; 1 = per-test isolation; 0 = the whole suite in one process)") orelse 10;
+        launch_args.append(b.allocator, b.fmt("--batch={d}", .{batch})) catch @panic("OOM");
+        if (b.option(u32, "launch-jobs", "test-launch: child processes at once (default: the CPU count)")) |jobs|
+            launch_args.append(b.allocator, b.fmt("--jobs={d}", .{jobs})) catch @panic("OOM");
+        if (b.option([]const u8, "launch-seed", "test-launch: the run's seed, decimal or 0x hex (default: random, printed)")) |seed|
+            launch_args.append(b.allocator, b.fmt("--seed={s}", .{seed})) catch @panic("OOM");
+        if (b.option(u32, "launch-timeout", "test-launch: per-test timeout in seconds (default 60)")) |timeout|
+            launch_args.append(b.allocator, b.fmt("--timeout={d}", .{timeout})) catch @panic("OOM");
+        if (!(b.option(bool, "launch-shuffle", "test-launch: shuffle the order and the batches from the seed (default true)") orelse true))
+            launch_args.append(b.allocator, "--no-shuffle") catch @panic("OOM");
+        test_selection.launch = .{ .step = launch_step, .launcher = launcher, .args = launch_args.items };
+
+        // The launcher's own tests (the scheduler, the seeded plan, the
+        // classification and the protocol, against fakes): part of `test`,
+        // and `test-launcher` alone.
+        // child.zig's real-process test runs a fixture test executable.
+        const launcher_fixture = b.addTest(.{
+            .name = "test_launcher_fixture",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("tools/test_launcher/fixture_test.zig"),
+                .target = b.graph.host,
+                .optimize = .Debug,
+            }),
+        });
+        const launcher_fixture_options = b.addOptions();
+        launcher_fixture_options.addOptionPath("path", launcher_fixture.getEmittedBin());
+        const launcher_test_module = b.createModule(.{
+            .root_source_file = b.path("tools/test_launcher/main.zig"),
+            .target = b.graph.host,
+            .optimize = .Debug,
+            .imports = &.{.{ .name = "launcher_fixture", .module = launcher_fixture_options.createModule() }},
+        });
+        const launcher_tests = b.addRunArtifact(b.addTest(.{ .root_module = launcher_test_module }));
+        test_step.dependOn(&launcher_tests.step);
+        b.step("test-launcher", "Run tools/test_launcher's own tests").dependOn(&launcher_tests.step);
+    }
 
     // What -Dtarget can build without running anything there: the artifacts
     // that link no V8 are built (libwhatwg, the image codecs, the platform
@@ -3823,7 +3905,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "cookiestore", .module = testing_graph.cookiestore },
             .{ .name = "permissions", .module = testing_graph.permissions },
         };
-        addTestRoot(b, test_step, command_lifetime_test, "ar3-command-lifetime", target, &command_test_imports, true);
+        addTestRoot(b, test_step, command_lifetime_test, "ar3-command-lifetime", target, &command_test_imports, true, test_selection.launch);
     }
 
     // WPT Runner executable for running Web Platform Tests
