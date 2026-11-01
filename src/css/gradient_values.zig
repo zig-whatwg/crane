@@ -88,7 +88,7 @@ const Corner = struct {
     vertical: ?enum { top, bottom } = null,
 };
 const Extent = enum { closest_side, closest_corner, farthest_side, farthest_corner };
-const Method = struct { space: spaces.Space, hue: spaces.HueMethod = .shorter };
+pub const Method = struct { space: spaces.Space, hue: spaces.HueMethod = .shorter };
 const Query = enum { metrics, tree, random };
 
 pub const Gradient = struct {
@@ -385,7 +385,7 @@ fn numeric(options: properties.ParseOptions, stream: *properties.Stream, kind: m
     return null;
 }
 
-fn interpolation(stream: *properties.Stream) ?Method {
+pub fn interpolation(stream: *properties.Stream) ?Method {
     const token = stream.next();
     if (token.token_type != .ident) return null;
     var method = Method{ .space = spaces.Space.parse(token.value) orelse return null };

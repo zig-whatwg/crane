@@ -1621,6 +1621,7 @@ const Builder = struct {
         if (v == .transform_origin) return .{ .transform_origin = try v.transform_origin.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         if (v == .grid_line) return .{ .grid_line = try v.grid_line.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         if (v == .counters) return .{ .counters = try v.counters.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
+        if (v == .palette_mix) return v.palette_mix.compute(self.ctx.allocator, self.computationContext(l, v, source));
         if (v == .grid_tracks) return .{ .grid_tracks = try v.grid_tracks.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         if (v == .caret_pair) return .{ .caret_pair = try v.caret_pair.compute(self.ctx.allocator, .{
             .scheme = self.used_scheme,

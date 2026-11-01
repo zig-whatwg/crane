@@ -374,15 +374,19 @@ pub const DeclarationBlock = struct {
                 var important: ?bool = null;
                 for (s.longhands(), 0..) |l, i| {
                     const d = self.get(l) orelse return;
-                    // CSSOM getPropertyValue steps 1.2.2–1.2.3: serialize
-                    // the shorthand from its longhands. Pending system-font
-                    // members have no serializable longhand value here.
-                    // Q200, tmp/analysis/integrator-probes-1024d: the coupled
-                    // longhand/getter rule follows Safari; cssText is separate.
-                    if (s == .font_variant and d.value == .value and d.value.value == .font_system) return;
                     if (important) |imp| if (imp != d.important) return;
                     important = d.important;
                     vs[i] = d.value;
+                }
+                // CSSOM getPropertyValue 1.2.2–1.2.3 / Q200: an entirely
+                // pending system-font variant has empty getter readback.
+                // Q9 (codex-cssfam): an independently overridden member
+                // reaches the existing serializer; cssText is unchanged.
+                if (s == .font_variant) {
+                    const all_system = for (vs[0..s.longhands().len]) |value| {
+                        if (value != .value or value.value != .font_system) break false;
+                    } else true;
+                    if (all_system) return;
                 }
                 const start = out.items.len;
                 if (!try properties.serializeShorthand(s, vs[0..s.longhands().len], .specified, out, self.allocator)) out.shrinkRetainingCapacity(start);

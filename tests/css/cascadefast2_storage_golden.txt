@@ -344,6 +344,11 @@ counter-set: none
 counter-increment: none
 list-style-type: disc
 list-style-position: outside
+font-palette: normal
+font-synthesis-weight: auto
+font-synthesis-style: auto
+font-synthesis-small-caps: auto
+font-synthesis-position: auto
 == initial root and child / 0
 display: block
 == initial root and child / 1
