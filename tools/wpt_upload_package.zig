@@ -36,6 +36,8 @@
 //!   `--crane-commit` supplies it, and a package without one is refused.
 
 const std = @import("std");
+// stdout as a stream: Zig 0.17's positional File.writer overwrites a shared log.
+const stdout_stream = @import("stdout_stream.zig");
 const Allocator = std.mem.Allocator;
 
 // ============================================================================
@@ -809,7 +811,7 @@ pub fn main(init: std.process.Init) !void {
     const cmd = args.next() orelse usage();
 
     var stdout_buf: [64 * 1024]u8 = undefined;
-    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buf);
+    var stdout_writer = stdout_stream.writer(io, &stdout_buf);
     const out = &stdout_writer.interface;
     defer out.flush() catch {};
 
@@ -1183,4 +1185,8 @@ test "chunks round-trip through gzip and pass the check; the check catches dupli
     const no_commit = try std.mem.replaceOwned(u8, a, round.items[0], "0.1.0-dev+93049ebc2", "0.1.0-dev");
     const nc = try checkChunks(a, &.{no_commit});
     try testing.expectEqual(@as(usize, 1), nc.problems.items.len);
+}
+
+test {
+    _ = stdout_stream;
 }
