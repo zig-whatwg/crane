@@ -423,6 +423,54 @@ pub const Longhand = enum(u16) {
     // Paged Media3 §8.1. Append so existing rare-group members stay put.
     page,
 
+    // CSS Fragmentation 3/4: values independent of used fragmentation.
+    break_before,
+    break_after,
+    break_inside,
+    box_decoration_break,
+    orphans,
+    widows,
+
+    // CSS Tables 3: values independent of table used geometry.
+    border_collapse,
+    border_spacing,
+    caption_side,
+    empty_cells,
+    table_layout,
+
+    // CSS Rhythm 1 §§2.1–2.5: declaration values without used-size layout.
+    block_step_size,
+    block_step_insert,
+    block_step_align,
+    block_step_round,
+
+    // CSS Lists 3: counter declarations and marker style values.
+    counter_reset,
+    counter_set,
+    counter_increment,
+    list_style_type,
+    list_style_position,
+
+    // Fonts4 §§2.8,9.1: independent inherited synthesis and palette controls.
+    font_palette,
+    font_synthesis_weight,
+    font_synthesis_style,
+    font_synthesis_small_caps,
+    font_synthesis_position,
+
+    // Motion Path1 §§2.1–2.6: used geometry stays with the layout backend.
+    offset_position,
+    offset_path,
+    offset_distance,
+    offset_rotate,
+    offset_anchor,
+
+    // Images3/4: image fit, resampling preference and metadata orientation.
+    object_fit,
+    image_rendering,
+    image_orientation,
+    object_view_box,
+
     pub const count = @typeInfo(Longhand).@"enum".field_names.len;
 
     /// The property name.
@@ -589,6 +637,15 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
 
 /// A longhand's grammar.
 pub const Grammar = enum {
+    object_fit,
+    object_view_box,
+    motion_position,
+    motion_path,
+    motion_distance,
+    motion_rotation,
+    font_palette,
+    counter_list,
+    list_style_type,
     container,
     will_change,
     text_value,
@@ -602,6 +659,9 @@ pub const Grammar = enum {
     shape_outside,
     box,
     column_count,
+    positive_integer,
+    table_spacing,
+    block_step_size,
     column_size,
     scroll_snap,
     scroll_padding,
@@ -732,6 +792,52 @@ const infos: [Longhand.count]Info = blk: {
         // Paged Media3 §8.1; Q86 Chrome/Firefox choose noninheritance.
         // The computed value is specified; ancestor resolution is a used value.
         .{ .longhand = .page, .inherited = false, .initial = Value.kw(.auto), .grammar = .page_name },
+        // Break4 §§3.1–3.2: computed keywords do not propagate. The region
+        // values remain unimplemented in Blink, Gecko and WebKit (FM1 Q3).
+        .{ .longhand = .break_before, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .avoid, .always, .all, .avoid_page, .page, .left, .right, .recto, .verso, .avoid_column, .column } },
+        .{ .longhand = .break_after, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .avoid, .always, .all, .avoid_page, .page, .left, .right, .recto, .verso, .avoid_column, .column } },
+        .{ .longhand = .break_inside, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .avoid, .avoid_page, .avoid_column } },
+        // Break3/4 §5.4 and §3.3: only the line-count constraints inherit.
+        .{ .longhand = .box_decoration_break, .inherited = false, .initial = Value.kw(.slice), .grammar = .keywords, .keywords = &.{ .slice, .clone } },
+        .{ .longhand = .orphans, .inherited = true, .initial = .{ .integer = 2 }, .grammar = .positive_integer },
+        .{ .longhand = .widows, .inherited = true, .initial = .{ .integer = 2 }, .grammar = .positive_integer },
+        // Images4 §5.1; Images3 §§5.1–5.2 (row131 Q10).
+        .{ .longhand = .object_fit, .inherited = false, .initial = Value.kw(.fill), .grammar = .object_fit },
+        .{ .longhand = .image_rendering, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .smooth, .high_quality, .pixelated, .crisp_edges } },
+        // Optional deprecated angle/flip values are rejected by all three
+        // browsers; from-image remains a computed keyword, not EXIF data.
+        .{ .longhand = .image_orientation, .inherited = true, .initial = Value.kw(.from_image), .grammar = .keywords, .keywords = &.{ .none, .from_image } },
+        // Images5 §3.1: the computed rectangular shape does not inherit.
+        .{ .longhand = .object_view_box, .inherited = false, .initial = Value.kw(.none), .grammar = .object_view_box },
+        // Motion1 §§2.1–2.5: none of the motion properties inherits.
+        .{ .longhand = .offset_position, .inherited = false, .initial = Value.kw(.normal), .grammar = .motion_position },
+        .{ .longhand = .offset_path, .inherited = false, .initial = Value.kw(.none), .grammar = .motion_path },
+        .{ .longhand = .offset_distance, .inherited = false, .initial = .{ .length = Length.px(0) }, .grammar = .motion_distance },
+        .{ .longhand = .offset_rotate, .inherited = false, .initial = Value.kw(.auto), .grammar = .motion_rotation },
+        .{ .longhand = .offset_anchor, .inherited = false, .initial = Value.kw(.auto), .grammar = .motion_position },
+        // Fonts4 §§2.8 and 9.1: these cascade independently of `font`.
+        .{ .longhand = .font_palette, .inherited = true, .initial = Value.kw(.normal), .grammar = .font_palette },
+        .{ .longhand = .font_synthesis_weight, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .none } },
+        .{ .longhand = .font_synthesis_style, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .none, .oblique_only } },
+        .{ .longhand = .font_synthesis_small_caps, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .none } },
+        .{ .longhand = .font_synthesis_position, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .none } },
+        // Lists3 §§3.4–3.5,4.1–4.2: marker style inherits, counter lists do not.
+        .{ .longhand = .counter_reset, .inherited = false, .initial = Value.kw(.none), .grammar = .counter_list },
+        .{ .longhand = .counter_set, .inherited = false, .initial = Value.kw(.none), .grammar = .counter_list },
+        .{ .longhand = .counter_increment, .inherited = false, .initial = Value.kw(.none), .grammar = .counter_list },
+        .{ .longhand = .list_style_type, .inherited = true, .initial = Value.kw(.disc), .grammar = .list_style_type },
+        .{ .longhand = .list_style_position, .inherited = true, .initial = Value.kw(.outside), .grammar = .keywords, .keywords = &.{ .inside, .outside } },
+        // Rhythm1 §§2.1–2.4: all four properties are non-inherited.
+        .{ .longhand = .block_step_size, .inherited = false, .initial = Value.kw(.none), .grammar = .block_step_size },
+        .{ .longhand = .block_step_insert, .inherited = false, .initial = Value.kw(.margin_box), .grammar = .keywords, .keywords = &.{ .margin_box, .padding_box, .content_box } },
+        .{ .longhand = .block_step_align, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .center, .start, .end } },
+        .{ .longhand = .block_step_round, .inherited = false, .initial = Value.kw(.up), .grammar = .keywords, .keywords = &.{ .up, .down, .nearest } },
+        // Tables3 §§3.5 and 5.2: table-layout alone is not inherited.
+        .{ .longhand = .border_collapse, .inherited = true, .initial = Value.kw(.separate), .grammar = .keywords, .keywords = &.{ .separate, .collapse } },
+        .{ .longhand = .border_spacing, .inherited = true, .initial = .{ .corner_radius = .zero }, .grammar = .table_spacing, .quirky_length = true },
+        .{ .longhand = .caption_side, .inherited = true, .initial = Value.kw(.top), .grammar = .keywords, .keywords = &.{ .top, .bottom } },
+        .{ .longhand = .empty_cells, .inherited = true, .initial = Value.kw(.show), .grammar = .keywords, .keywords = &.{ .show, .hide } },
+        .{ .longhand = .table_layout, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .fixed } },
         .{ .longhand = .hanging_punctuation, .inherited = true, .initial = Value.kw(.none), .grammar = .text_value },
         .{ .longhand = .hyphenate_limit_lines, .inherited = true, .initial = Value.kw(.no_limit), .grammar = .text_value },
         // Text4 §7.6, WebKit's cssTextGroupAlignEnabled implementation.
@@ -1187,6 +1293,22 @@ pub const Shorthand = enum(u8) {
     scroll_padding,
     scroll_padding_block,
     scroll_padding_inline,
+    block_step,
+    list_style,
+    font_synthesis,
+    offset,
+    page_break_before,
+    page_break_after,
+    page_break_inside,
+
+    /// Cascade 5 §3.1 / Break 3 §3.4: omitted only from cssText selection.
+    /// Everywhere else these behave exactly as regular shorthands.
+    pub fn isLegacyShorthand(self: Shorthand) bool {
+        return switch (self) {
+            .page_break_before, .page_break_after, .page_break_inside => true,
+            else => false,
+        };
+    }
 
     pub fn name(self: Shorthand) []const u8 {
         return switch (self) {
@@ -1197,6 +1319,9 @@ pub const Shorthand = enum(u8) {
     /// The longhands, in canonical order (CSSOM "shorthand ... maps to").
     pub fn longhands(self: Shorthand) []const Longhand {
         return switch (self) {
+            .page_break_before => &.{.break_before},
+            .page_break_after => &.{.break_after},
+            .page_break_inside => &.{.break_inside},
             ._webkit_transform => &.{.transform},
             ._webkit_perspective => &.{.perspective},
             .container => &.{ .container_name, .container_type },
@@ -1261,6 +1386,10 @@ pub const Shorthand = enum(u8) {
             .line_clamp, ._webkit_line_clamp => &.{ .max_lines, .block_ellipsis, .@"continue" },
             .flex_flow => &.{ .flex_direction, .flex_wrap },
             .columns => &.{ .column_width, .column_count, .column_height },
+            .block_step => &@import("rhythm_values.zig").longhands,
+            .list_style => &@import("list_values.zig").longhands,
+            .font_synthesis => &@import("font_synthesis_values.zig").longhands,
+            .offset => &@import("motion_values.zig").longhands,
             .column_rule, .row_rule, .rule, .rule_color, .rule_style, .rule_width, .rule_break, .rule_visibility_items, .column_rule_inset, .row_rule_inset, .rule_inset, .column_rule_inset_cap, .column_rule_inset_junction, .row_rule_inset_cap, .row_rule_inset_junction, .rule_inset_cap, .rule_inset_junction, .column_rule_inset_start, .column_rule_inset_end, .row_rule_inset_start, .row_rule_inset_end, .rule_inset_start, .rule_inset_end => @import("gap_decorations.zig").longhands(self),
             .scroll_margin => &.{ .scroll_margin_top, .scroll_margin_right, .scroll_margin_bottom, .scroll_margin_left },
             .scroll_margin_block => &.{ .scroll_margin_block_start, .scroll_margin_block_end },
@@ -1715,6 +1844,18 @@ pub const Stream = struct {
 pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Allocator.Error!?Value {
     const def = l.info();
     switch (def.grammar) {
+        .object_fit => return @import("image_misc_values.zig").consumeFit(stream),
+        .object_view_box => return @import("image_misc_values.zig").consumeViewBox(options, stream),
+        .motion_position => return @import("motion_values.zig").consumePosition(options, stream, l == .offset_position),
+        .motion_path => return @import("motion_values.zig").consumePath(options, stream),
+        .motion_rotation => return @import("motion_values.zig").consumeRotation(options, stream),
+        .motion_distance => return lengthPercentage(options, stream, .{ .negative = true, .percent = true, .quirky = false }),
+        .font_palette => return @import("font_palette_values.zig").consume(options, stream),
+        .counter_list => {
+            if (takeKeyword(stream, &.{.none})) |k| return Value.kw(k);
+            return .{ .counters = try @import("list_values.zig").Counters.consume(options, l, stream) orelse return null };
+        },
+        .list_style_type => return @import("list_values.zig").consumeType(options, stream),
         .container => return @import("container_values.zig").consume(options, l, stream),
         .will_change => return willChange(options, stream),
         .text_value => return @import("text_values.zig").parse(options, l, stream),
@@ -1739,6 +1880,14 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
             // Multicol 2 §4.3: auto | <integer [1,∞]>.
             if (takeKeyword(stream, &.{.auto})) |k| return Value.kw(k);
             return @import("box_values.zig").consumeInteger(options, stream, 1);
+        },
+        // Break3/4 §3.3: <integer [1,∞]>, including computed math bounds.
+        .positive_integer => return @import("box_values.zig").consumeInteger(options, stream, 1),
+        .table_spacing => return @import("table_values.zig").consumeSpacing(options, stream, def.quirky_length),
+        .block_step_size => {
+            // Rhythm1 §2.1: none | <length [0,∞]>, without percentages.
+            if (takeKeyword(stream, &.{.none})) |k| return Value.kw(k);
+            return lengthPercentage(options, stream, .{ .negative = false, .percent = false, .quirky = false });
         },
         .column_size => {
             // Multicol 2 §§4.1–4.2: auto | <length [0,∞]>, no percentages.
@@ -2498,6 +2647,7 @@ fn append(options: ParseOptions, out: *std.ArrayList(Assignment), l: Longhand, v
 
 fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
     switch (s) {
+        .page_break_before, .page_break_after, .page_break_inside => return @import("fragmentation_values.zig").consume(options, s, stream, out),
         .container => return @import("container_values.zig").consumeShorthand(options, stream, out),
         .text_wrap => return @import("text_values.zig").parseWrap(options, stream, out),
         .text_spacing => return @import("text_values.zig").parseSpacing(options, stream, out),
@@ -2507,6 +2657,10 @@ fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *st
         .line_clamp, ._webkit_line_clamp => return @import("box_overflow_values.zig").parseClamp(options, s == ._webkit_line_clamp, stream, out),
         .flex_flow => return @import("box_values.zig").parseFlexFlow(options, stream, out),
         .columns => return @import("box_multicol_values.zig").parseColumns(options, stream, out),
+        .block_step => return @import("rhythm_values.zig").consume(options, stream, out),
+        .list_style => return @import("list_values.zig").consumeShorthand(options, stream, out),
+        .font_synthesis => return @import("font_synthesis_values.zig").consume(options, stream, out),
+        .offset => return @import("motion_values.zig").consumeShorthand(options, stream, out),
         .column_rule, .row_rule, .rule, .rule_color, .rule_style, .rule_width, .rule_break, .rule_visibility_items, .column_rule_inset, .row_rule_inset, .rule_inset, .column_rule_inset_cap, .column_rule_inset_junction, .row_rule_inset_cap, .row_rule_inset_junction, .rule_inset_cap, .rule_inset_junction, .column_rule_inset_start, .column_rule_inset_end, .row_rule_inset_start, .row_rule_inset_end, .rule_inset_start, .rule_inset_end => return @import("gap_decorations.zig").parseShorthand(options, s, stream, out),
         .font_variant => return @import("font_variants.zig").parseShorthand(options, stream, out),
         .font => return @import("font_shorthand.zig").parse(options, stream, out),
@@ -2930,6 +3084,10 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
             try out.append(allocator, ')');
         },
         .grid_line => |line| try line.serialize(out, allocator),
+        .counters => |list| try list.serialize(out, allocator),
+        .palette_mix => |mix| try mix.serialize(out, allocator),
+        .motion_path => |path| try path.serialize(out, allocator),
+        .motion_rotation => |rotation| try rotation.serialize(out, allocator),
         .grid_tracks => |tracks| try tracks.serialize(out, allocator),
         .grid_areas => |areas| try areas.serialize(out, allocator),
         .grid_flow => |flow| try flow.serialize(out, allocator),
@@ -3022,6 +3180,7 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
     if (s == .all) return false;
     const ls = s.longhands();
     switch (s) {
+        .page_break_before, .page_break_after, .page_break_inside => return @import("fragmentation_values.zig").serialize(s, vs, out, allocator),
         ._webkit_transform, ._webkit_perspective => {
             if (s == ._webkit_transform and mode == .computed and vs[0].value == .transform_list)
                 try vs[0].value.transform_list.serializeResolved(out, allocator)
@@ -3032,6 +3191,10 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
         .line_clamp, ._webkit_line_clamp => return @import("box_overflow_values.zig").serializeClamp(s == ._webkit_line_clamp, vs, out, allocator),
         .flex_flow => return @import("box_values.zig").serializeFlexFlow(vs, out, allocator),
         .columns => return @import("box_multicol_values.zig").serializeColumns(vs, out, allocator),
+        .block_step => return @import("rhythm_values.zig").serialize(vs, out, allocator),
+        .list_style => return @import("list_values.zig").serializeShorthand(vs, out, allocator),
+        .font_synthesis => return @import("font_synthesis_values.zig").serialize(vs, out, allocator),
+        .offset => return @import("motion_values.zig").serializeShorthand(vs, out, allocator),
         .column_rule, .row_rule, .rule, .rule_color, .rule_style, .rule_width, .rule_break, .rule_visibility_items, .column_rule_inset, .row_rule_inset, .rule_inset, .column_rule_inset_cap, .column_rule_inset_junction, .row_rule_inset_cap, .row_rule_inset_junction, .rule_inset_cap, .rule_inset_junction, .column_rule_inset_start, .column_rule_inset_end, .row_rule_inset_start, .row_rule_inset_end, .rule_inset_start, .rule_inset_end => return @import("gap_decorations.zig").serializeShorthand(s, vs, mode, out, allocator),
         .container => return @import("container_values.zig").serializeShorthand(vs, out, allocator),
         .font_variant => return @import("font_variants.zig").serialize(vs, out, allocator),

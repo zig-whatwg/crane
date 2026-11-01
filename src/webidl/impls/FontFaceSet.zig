@@ -87,9 +87,10 @@ pub fn call_clear(instance: *runtime.Instance) anyerror!void {
     (try setOf(instance)).clear();
 }
 
-// Font shorthand matching awaits row119's typed request helper (Q39).
-pub fn call_load(_: *runtime.Instance, _: typedefs.CSSOMString, _: webidl.Opt(typedefs.CSSOMString)) anyerror!runtime.JSValue {
-    return error.NotImplemented;
+/// Font Loading3 §3.2: parse, match and wait for every selected face.
+pub fn call_load(instance: *runtime.Instance, font: typedefs.CSSOMString, text: webidl.Opt(typedefs.CSSOMString)) anyerror!runtime.JSValue {
+    const set = try setOf(instance);
+    return (try set.load(font.asSlice(), if (text.was_passed) text.value.asSlice() else " ")).take();
 }
 
 pub fn call_check(_: *runtime.Instance, _: typedefs.CSSOMString, _: webidl.Opt(typedefs.CSSOMString)) anyerror!bool {

@@ -212,6 +212,22 @@ pub const Expression = struct {
             .alpha => |alpha| alpha.origin.eql(b.data.alpha.origin) and optionalComponentEql(alpha.override, b.data.alpha.override),
         };
     }
+    /// Color5 §2: relative colors and mixes are absolute only when every
+    /// color origin is absolute, including a zero-weight mix component.
+    /// A future device-cmyk arm must be false; no permissive default here.
+    pub fn isAbsolute(self: *const Expression) bool {
+        return switch (self.data) {
+            .resolved => true,
+            .channels => |channels| if (channels.origin) |origin| origin.isAbsolute() else true,
+            .mix => |mix| blk: {
+                for (mix.items) |item| if (!item.color.isAbsolute()) break :blk false;
+                break :blk true;
+            },
+            .alpha => |alpha| alpha.origin.isAbsolute(),
+            .light_dark, .contrast => false,
+        };
+    }
+
     /// Color dependencies follow the typed graph, without resolving it or
     /// allocating. Numeric components and weights cannot contain a Color.
     /// After light-dark computation only the selected branch remains.

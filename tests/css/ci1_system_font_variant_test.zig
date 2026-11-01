@@ -55,10 +55,10 @@ fn check(allocator: Allocator, case: Case) !void {
         try property(&block, if (case == .weight_override) "font-weight" else "font-kerning", if (case == .weight_override) "700" else "none", allocator);
     }
 
-    // Q200 says ANY pending member prevents the getter's serialization.
+    // Q9 (codex-cssfam): mixed pending members serialize normally (font-variant-serialization.html; Chrome, Firefox, Safari 1/1). Q200 needs all seven pending.
     try testing.expect(try block.setProperty(options, "font-variant-caps", "small-caps", ""));
     try property(&block, "font-variant-caps", "small-caps", allocator);
-    try property(&block, "font-variant", "", allocator);
+    try property(&block, "font-variant", "small-caps", allocator);
     // Replacing all pending members restores the ordinary shorthand path.
     try testing.expect(try block.setProperty(options, "font-variant", "normal", ""));
     try property(&block, "font-variant", "normal", allocator);

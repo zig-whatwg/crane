@@ -93,6 +93,14 @@ pub fn shorthandKeyword(v: Value) ?Keyword {
         .font_width_keyword => |k| k,
         .keyword => |k| if (k == .normal) .normal else null,
         .length => |l| if (l.unit == .percent) Keyword.fromPercentage(l.value) else null,
+        // Q61(4): Chrome 156 and Firefox 159 pass calc() keyword conversion
+        // in font-shorthand-serialization-font-stretch.html; Safari 27.2 does
+        // not. Follow the majority only when the specified calc is context-free.
+        .calculation => |expression| blk: {
+            const number = expression.knownNumber() orelse break :blk null;
+            if (number.unit != .percent) break :blk null;
+            break :blk Keyword.fromPercentage(number.value);
+        },
         else => null,
     };
 }

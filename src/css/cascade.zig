@@ -1620,6 +1620,10 @@ const Builder = struct {
         if (v == .transform_list) return .{ .transform_list = try v.transform_list.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         if (v == .transform_origin) return .{ .transform_origin = try v.transform_origin.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         if (v == .grid_line) return .{ .grid_line = try v.grid_line.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
+        if (v == .counters) return .{ .counters = try v.counters.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
+        if (v == .palette_mix) return v.palette_mix.compute(self.ctx.allocator, self.computationContext(l, v, source));
+        if (v == .motion_path) return .{ .motion_path = try v.motion_path.compute(self.ctx.allocator, ComponentContext.init(self, source), self.computationContext(l, v, source)) };
+        if (v == .motion_rotation) return v.motion_rotation.compute(self.ctx.allocator, self.computationContext(l, v, source));
         if (v == .grid_tracks) return .{ .grid_tracks = try v.grid_tracks.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         if (v == .caret_pair) return .{ .caret_pair = try v.caret_pair.compute(self.ctx.allocator, .{
             .scheme = self.used_scheme,
@@ -2029,6 +2033,10 @@ fn geometryLength(l: Longhand) bool {
         .box_overflow => l == .overflow_clip_margin,
         .gap_rule => l == .column_rule_width or l == .row_rule_width,
         .gap_inset => true,
+        .table_spacing => true,
+        .block_step_size => true,
+        .object_view_box => true,
+        .motion_position, .motion_path, .motion_distance => true,
         .image_position => l == .perspective_origin,
         else => false,
     };

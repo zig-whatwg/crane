@@ -294,11 +294,25 @@ fn documentOfRealm(realm: runtime.Context) ?*runtime.Instance {
     return interfaces.Window.get_document(global) catch null;
 }
 
-/// One temporary validation boundary (Q2): the approved platform capability
-/// will replace this answer. A successful HTTP response alone is NOT a font.
+/// Fonts4 §4.8.2 processResponse step 2; Loading3 §2.1 step 3 and §2.2
+/// steps 4–5: a successful HTTP response alone is not a valid font.
 pub const FontValidation = enum { valid, invalid, cannot_validate };
-pub fn validateFontData(_: []const u8) FontValidation {
-    return .cannot_validate;
+const platform = @import("platform");
+// Row131 Q17/D8: Blink DecodeWebFont's input and decompressed-output caps.
+const font_limits: platform.FontLimits = .{ .max_bytes = 128 * 1024 * 1024, .max_sfnt_bytes = 128 * 1024 * 1024 };
+
+pub fn validateFontData(allocator: Allocator, bytes: []const u8, fragment: []const u8) Allocator.Error!FontValidation {
+    if (platform.capabilities.font_decoding != .unsupported) {
+        if (bytes.len > font_limits.max_bytes) return .invalid;
+        var decoded = platform.decodeFont(allocator, .from(bytes), .from(fragment), font_limits) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => return .invalid,
+        };
+        defer decoded.deinit(allocator);
+        // Row131 Q21 / protocol.zig decodeFont: a successful face-0
+        // fallback validates even when the requested name did not match.
+        return .valid;
+    } else return .cannot_validate;
 }
 
 const resource_loading = @import("resource_loading.zig");
@@ -385,7 +399,12 @@ pub const ResourceEntry = struct {
         const response = result.response;
         if (response.response_type == .@"error" or !fetch.internal.isOkStatus(response.status)) return self.complete(.invalid);
         const body = response.body orelse return self.complete(.invalid);
-        self.complete(validateFontData(body.getBytes()));
+        // Fonts4 §4.3.2 / row131 Q21: use the ORIGINAL source's serialized
+        // fragment, as WebKit does. No percent decoding or prefetch name
+        // rejection: browsers do not perform the draft's preflight skip.
+        var source = @import("api_parser").parseURL(self.allocator, self.key.url, null) catch return self.complete(.invalid);
+        defer source.deinit();
+        self.complete(validateFontData(self.allocator, body.getBytes(), source.fragment() orelse "") catch .invalid);
     }
 
     fn complete(self: *ResourceEntry, validation: FontValidation) void {
@@ -606,7 +625,10 @@ const FaceLoad = struct {
             .start_buffer => {
                 face.status = .loading;
                 face.notifySets();
-                self.queue(if (validateFontData(self.bytes orelse &.{}) == .valid) .success else .failure);
+                // Loading3 §2.1 step 3: buffer fonts have no URL fragment;
+                // outcome tasks and their existing error names are unchanged.
+                const validation = validateFontData(self.allocator, self.bytes orelse &.{}, "") catch .invalid;
+                self.queue(if (validation == .valid) .success else .failure);
             },
             .next_source => self.tryNext(),
             .success, .failure => {
@@ -795,14 +817,70 @@ fn numeric(token: css.Token, kind: Descriptor) ?Numeric {
     return .{ .value = n.? };
 }
 
+const StretchEndpoint = union(enum) {
+    literal: Numeric,
+    calculation: values.Value,
+
+    fn consume(allocator: Allocator, stream: *Stream) Allocator.Error!?StretchEndpoint {
+        if (css.math_values.isFunction(stream.peek())) {
+            const value = try css.properties.mathValue(.{ .allocator = allocator }, stream, .{ .kind = .percentage, .minimum = 0 }) orelse return null;
+            return .{ .calculation = value };
+        }
+        return .{ .literal = numeric(stream.next(), .stretch) orelse return null };
+    }
+
+    fn release(self: StretchEndpoint) void {
+        if (self == .calculation) self.calculation.release();
+    }
+
+    fn append(self: StretchEndpoint, allocator: Allocator, out: *std.ArrayList(u8)) Allocator.Error!void {
+        switch (self) {
+            .literal => |value| try value.append(allocator, out),
+            .calculation => |value| try css.properties.serializeValue(.font_width, value, out, allocator),
+        }
+    }
+
+    fn eql(a: StretchEndpoint, b: StretchEndpoint) bool {
+        return switch (a) {
+            .literal => |value| b == .literal and value.value == b.literal.value,
+            .calculation => |value| b == .calculation and value.eql(b.calculation),
+        };
+    }
+};
+
+fn stretchDescriptor(allocator: Allocator, stream: *Stream) Allocator.Error!?[]u8 {
+    // Fonts 4 §4.4 / Values 4 §10.12: literal bounds are checked by numeric,
+    // while math records the nonnegative range for use, without clamping here.
+    // Q62 follows Gecko font_face.rs impl_range!/FontWidthRange and specified
+    // Percentage's NumericUnion PartialEq: compare simplified specified arms,
+    // never a calculation's numeric result with a literal; sort only at compute.
+    const first = try StretchEndpoint.consume(allocator, stream) orelse return null;
+    defer first.release();
+    var second: ?StretchEndpoint = null;
+    defer if (second) |value| value.release();
+    if (!stream.atEnd()) {
+        second = try StretchEndpoint.consume(allocator, stream) orelse return null;
+        if (!stream.atEnd()) return null;
+    }
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(allocator);
+    try first.append(allocator, &out);
+    if (second) |value| if (!first.eql(value)) {
+        try out.append(allocator, ' ');
+        try value.append(allocator, &out);
+    };
+    return try out.toOwnedSlice(allocator);
+}
+
 /// CSS Fonts 4 §4.4 and §13.2: specified endpoints keep their order;
-/// matching sorts them. A zero-width range serializes as one value.
+/// matching sorts them. Equal specified endpoints serialize as one value.
 fn numericDescriptor(allocator: Allocator, kind: Descriptor, stream: *Stream) Allocator.Error!?[]u8 {
     const token = stream.peek();
     // All three browsers reject left/right (integrator fontstyle probe,
     // 2026-10-22). CSSWG #9392 remains an explicit follow-up.
     if (kind == .style and !ident(token, "oblique")) return oneKeyword(allocator, stream, &.{ "auto", "normal", "italic" });
     if ((kind == .weight or kind == .stretch) and ident(token, "auto")) return oneKeyword(allocator, stream, &.{"auto"});
+    if (kind == .stretch) return stretchDescriptor(allocator, stream);
     const metric = kind == .ascent_override or kind == .descent_override or kind == .line_gap_override;
     if (metric and ident(token, "normal")) return oneKeyword(allocator, stream, &.{"normal"});
     var out: std.ArrayList(u8) = .empty;
@@ -1698,6 +1776,64 @@ pub const FamilyMatch = struct {
     found_faces: bool,
 };
 
+/// Font Loading3 §3.1 step 1: parse and absolutize through the existing
+/// FontRequest owner. Null means invalid syntax, never unavailable metrics.
+pub fn matchFontForText(options: css.font_request.Options, faces: []const FamilyFace, font: []const u8, text: []const u8) Allocator.Error!?FamilyMatch {
+    var request = try css.font_request.parseForFontLoading(options, font) orelse return null;
+    defer request.deinit();
+    return try matchParsedFontForText(options.allocator, faces, &request, text);
+}
+
+/// The read-only consumer of a parsed request (row131 Q14/Q38/Q39).
+/// Unknown axes use initial matching values without changing the request;
+/// size and line-height are irrelevant to face selection.
+pub fn matchParsedFontForText(allocator: Allocator, faces: []const FamilyFace, parsed: *const css.font_request.FontLoadingResult, text: []const u8) Allocator.Error!FamilyMatch {
+    var request: MatchRequest = .{};
+    const families = switch (parsed.*) {
+        .resolved => |value| blk: {
+            request.weight = value.weight;
+            request.width = value.stretch_pct;
+            switch (value.style) {
+                .normal => {},
+                .italic => request.style = .italic,
+                .oblique => |angle| {
+                    request.style = .oblique;
+                    request.angle = angle;
+                },
+            }
+            break :blk value.families;
+        },
+        .accepted_unavailable => |value| blk: {
+            request.weight = value.weight orelse 400;
+            request.width = value.stretch_pct orelse 100;
+            switch (value.style) {
+                .normal => {},
+                .italic => request.style = .italic,
+                .oblique => |angle| if (angle) |known| {
+                    request.style = .oblique;
+                    request.angle = known;
+                },
+            }
+            break :blk value.families;
+        },
+    };
+    var selected: std.ArrayList(usize) = .empty;
+    errdefer selected.deinit(allocator);
+    var found = false;
+    // §3.1 steps 5–9: requested-family order, including duplicates (Q24).
+    // Each existing family matcher narrows axes before Unicode coverage.
+    for (families) |family| switch (family) {
+        .generic => {},
+        .named => |named| {
+            const matched = try matchFamilyForText(allocator, faces, named.name, request, text);
+            defer allocator.free(matched.indices);
+            found = found or matched.found_faces;
+            try selected.appendSlice(allocator, matched.indices);
+        },
+    };
+    return .{ .indices = try selected.toOwnedSlice(allocator), .found_faces = found };
+}
+
 /// Font Loading 3 §3.1 steps 6–9 for ONE already-decoded family. Narrow
 /// the numeric axes before intersecting unicode-range: an uncovered text
 /// must not select a different weight or style. Blink FontFaceSet::load
@@ -1751,19 +1887,68 @@ fn readFamily(allocator: Allocator, stream: *Stream) Allocator.Error!?struct { n
     return .{ .name = try name.toOwnedSlice(allocator), .generic = generic };
 }
 
-fn matchingRange(text: []const u8, kind: Descriptor, initial: f64) MatchRange {
+fn normalizeStretchCalculation(expression: *const css.math_values.Expression, known: f64) f64 {
+    // Values 4 §10.9.2 / §10.12: censor only the top-level known result.
+    // https://drafts.csswg.org/css-values-4/#calc-ieee
+    // https://drafts.csswg.org/css-values-4/#calc-range
+    // 1. NaN becomes zero. It is known, not unavailable context.
+    var result = if (std.math.isNan(known)) 0 else known;
+    // 2. Clamp to this expression's grammar, including infinite results.
+    result = std.math.clamp(result, expression.grammar.minimum, expression.grammar.maximum);
+    // 3. Signed zero cannot escape a top-level calculation.
+    if (result == 0) result = 0;
+    return result;
+}
+
+fn matchingStretchValue(endpoint: StretchEndpoint) ?f64 {
+    return switch (endpoint) {
+        .literal => |value| value.value,
+        .calculation => |value| blk: {
+            const expression = value.calculation;
+            const number = expression.knownNumber() orelse break :blk null;
+            if (number.unit != .percent) break :blk null;
+            break :blk normalizeStretchCalculation(expression, number.value);
+        },
+    };
+}
+
+fn matchingRange(allocator: Allocator, text: []const u8, kind: Descriptor, initial: f64) Allocator.Error!MatchRange {
     var stream = Stream.init(text);
+    if (kind == .stretch) {
+        const automatic: MatchRange = .{ .first = initial, .last = initial };
+        // Q66: Gecko FontWidthRange::compute / Percentage::resolve reduce
+        // context-free endpoints only. Servo_FontFaceRule_GetFontWidth and
+        // FontFaceImpl::GetAttributesFromRule leave auto-width intact when
+        // either endpoint is unavailable; never keep a partial first bound.
+        // https://github.com/mozilla-firefox/firefox/blob/main/servo/components/style/font_face.rs#L372
+        // https://github.com/mozilla-firefox/firefox/blob/main/servo/components/style/values/specified/percentage.rs#L184
+        // https://github.com/mozilla-firefox/firefox/blob/main/servo/ports/geckolib/glue.rs#L3810
+        // https://github.com/mozilla-firefox/firefox/blob/main/layout/style/FontFaceImpl.cpp#L639
+        const first = try StretchEndpoint.consume(allocator, &stream) orelse return automatic;
+        defer first.release();
+        const first_value = matchingStretchValue(first) orelse return automatic;
+        var last_value = first_value;
+        if (!stream.atEnd()) {
+            const last = try StretchEndpoint.consume(allocator, &stream) orelse return automatic;
+            defer last.release();
+            last_value = matchingStretchValue(last) orelse return automatic;
+        }
+        // Fonts 4 §4.4: sort the computed range, preserving specified text.
+        return .{ .first = @min(first_value, last_value), .last = @max(first_value, last_value) };
+    }
     const first = numeric(stream.next(), kind) orelse return .{ .first = initial, .last = initial };
     const last = if (stream.atEnd()) first else numeric(stream.next(), kind) orelse first;
     return .{ .first = first.value, .last = last.value };
 }
 
-fn matchingDescriptors(face: *const Face) MatchFace {
+/// Borrow canonical descriptors for synchronous face matching. Missing axes
+/// use their normal matching values; the returned record retains no input.
+pub fn matchingDescriptors(allocator: Allocator, block: *const Block) Allocator.Error!MatchFace {
     var result: MatchFace = .{
-        .width = matchingRange(face.getDescriptor("font-stretch"), .stretch, 100),
-        .weight = matchingRange(face.getDescriptor("font-weight"), .weight, 400),
+        .width = try matchingRange(allocator, descriptorValue(block, "font-stretch"), .stretch, 100),
+        .weight = try matchingRange(allocator, descriptorValue(block, "font-weight"), .weight, 400),
     };
-    var stream = Stream.init(face.getDescriptor("font-style"));
+    var stream = Stream.init(descriptorValue(block, "font-style"));
     const token = stream.next();
     if (ident(token, "italic")) {
         result.style = .{ .axis = .italic, .range = .{ .first = 1, .last = 1 } };
@@ -1778,6 +1963,54 @@ fn matchingDescriptors(face: *const Face) MatchFace {
 
 /// One rendering/ready-flush pass. The owning set traces its members;
 /// these synchronous borrowed links never survive the caller's hold.
+/// Font Loading3 §3.1 step 4: all live set members, INCLUDING failed faces
+/// (row131 Q27, Blink/Gecko). Rendering's UsedFonts has a different policy.
+/// Temporary names/ranges are owned; these instance links are borrowed only
+/// until SetLoad acquires all result roots before starting any face.
+const LoadingFaces = struct {
+    allocator: Allocator,
+    entries: std.ArrayList(Entry) = .empty,
+    faces: std.ArrayList(FamilyFace) = .empty,
+
+    const Entry = struct {
+        face: InstanceLink,
+        family: []u8,
+        ranges: []UnicodeRange,
+    };
+
+    fn init(set: *Set) Allocator.Error!LoadingFaces {
+        var self: LoadingFaces = .{ .allocator = set.allocator };
+        errdefer self.deinit();
+        for (set.members.items) |member| {
+            if (!member.face.isLive()) continue;
+            const face = hooks.fontFaceOf(member.face.instance) orelse continue;
+            if (face.retired) continue;
+            var stream = Stream.init(face.getDescriptor("font-family"));
+            const family = try readFamily(self.allocator, &stream) orelse continue;
+            var owns_family = true;
+            defer if (owns_family) self.allocator.free(family.name);
+            const ranges = try parseUnicodeRanges(self.allocator, face.getDescriptor("unicode-range")) orelse continue;
+            var owns_ranges = true;
+            defer if (owns_ranges) self.allocator.free(ranges);
+            const matching = try matchingDescriptors(self.allocator, &face.descriptors.block);
+            try self.entries.append(self.allocator, .{ .face = member.face, .family = family.name, .ranges = ranges });
+            owns_family = false;
+            owns_ranges = false;
+            try self.faces.append(self.allocator, .{ .family = family.name, .ranges = ranges, .matching = matching });
+        }
+        return self;
+    }
+
+    fn deinit(self: *LoadingFaces) void {
+        for (self.entries.items) |entry| {
+            self.allocator.free(entry.family);
+            self.allocator.free(entry.ranges);
+        }
+        self.entries.deinit(self.allocator);
+        self.faces.deinit(self.allocator);
+    }
+};
+
 const UsedFonts = struct {
     allocator: Allocator,
     entries: std.ArrayList(Entry) = .empty,
@@ -1806,7 +2039,7 @@ const UsedFonts = struct {
                 continue;
             };
             errdefer self.allocator.free(ranges);
-            try self.entries.append(self.allocator, .{ .face = face, .family = family.name, .ranges = ranges, .matching = matchingDescriptors(face) });
+            try self.entries.append(self.allocator, .{ .face = face, .family = family.name, .ranges = ranges, .matching = try matchingDescriptors(self.allocator, &face.descriptors.block) });
         }
         return self;
     }
@@ -2040,6 +2273,7 @@ pub const Set = struct {
     document: ?InstanceLink,
     ready: OwnerPromise = .{ .slot = .{ .name = "FontFaceSet:ready" } },
     members: std.ArrayList(Member) = .empty,
+    pending_loads: std.ArrayList(*SetLoad) = .empty,
     status: enum { loading, loaded } = .loaded,
     next_id: u64 = 0,
     retired: bool = false,
@@ -2058,17 +2292,100 @@ pub const Set = struct {
     pub fn ownerLive(self: *const Set) bool {
         return self.realm.hasEngine() and runtime.SlabAllocator.generationOf(self.owner) == self.generation;
     }
+    /// Loading3 §3.2 steps 1–4. Q24 follows the three engines' synchronous
+    /// initiation and empty result; face completion still uses its own tasks.
+    pub fn load(self: *Set, font: []const u8, text: []const u8) !engine.Owned {
+        if (self.retired or !self.ownerLive()) return error.InvalidStateError;
+        const allocator = self.allocator;
+        const realm = self.realm;
+        // WebIDL's current realm creates operation results; the Set's
+        // relevant realm still owns all activity and retention (Q45).
+        const result_realm = engine.currentRealm() orelse realm;
+        if (!result_realm.hasEngine()) return error.InvalidStateError;
+        var capability: ?engine.PromiseCapability = try engine.createPromise(result_realm);
+        defer if (capability) |*pending| engine.releasePromiseCapability(pending);
+        const result = try engine.retainValue(result_realm, capability.?.promise);
+        errdefer result.release();
+        var available = try LoadingFaces.init(self);
+        defer available.deinit();
+        var options: css.font_request.Options = .{ .allocator = allocator };
+        if (self.liveDocument()) |document| {
+            const media = hooks.mediaValues(document);
+            options.viewport_width = media.width;
+            options.viewport_height = media.height;
+        }
+        const matched = try matchFontForText(options, available.faces.items, font, text) orelse {
+            // Step 3: syntax rejects the promise with a DOMException.
+            if (!result_realm.hasEngine()) return result;
+            const exception = try engine.createDOMException(result_realm, "SyntaxError", "Invalid font shorthand.");
+            defer exception.release();
+            if (result_realm.hasEngine()) try engine.rejectPromise(&capability.?, exception.borrow());
+            return result;
+        };
+        defer allocator.free(matched.indices);
+        if (matched.indices.len == 0) {
+            if (!result_realm.hasEngine()) return result;
+            const empty = try engine.createSequenceOfValues(result_realm, &.{});
+            defer empty.release();
+            if (result_realm.hasEngine()) try engine.resolvePromise(&capability.?, empty.borrow());
+            return result;
+        }
+        // Q44: a void pending keep can fail before wrapping. An owned wrapper
+        // makes the counted keep below infallible and protects the setup call.
+        const owner_root = try engine.retainValue(realm, .{ .instance = self.owner });
+        defer owner_root.release();
+        const pending = try SetLoad.create(self, result_realm, capability.?, available.entries.items, matched.indices);
+        capability = null; // The record owns it after successful creation.
+        defer pending.release(); // Setup hold, independent of list/reactions.
+        errdefer pending.cancel();
+        try self.pending_loads.append(allocator, pending);
+        pending.retain();
+        pending.attached = true;
+        engine.keepPlatformObjectAlive(self.owner);
+        pending.kept = true;
+        try pending.start();
+        return result;
+    }
+
+    fn detachPendingLoad(self: *Set, pending: *SetLoad) void {
+        for (self.pending_loads.items, 0..) |candidate, index| if (candidate == pending) {
+            _ = self.pending_loads.orderedRemove(index);
+            pending.attached = false;
+            pending.release(); // The set's one record reference.
+            return;
+        };
+        unreachable; // An attached live record belongs to this list.
+    }
+
+    fn cancelPendingLoads(self: *Set) void {
+        while (self.pending_loads.pop()) |pending| {
+            // Removal also works when realm teardown has invalidated the
+            // owner link; cancel then needs no lookup back into the set.
+            pending.attached = false;
+            pending.cancel();
+            pending.release();
+        }
+    }
+
     pub fn liveDocument(self: *const Set) ?*runtime.Instance {
         const link = self.document orelse return null;
         return if (link.isLive()) link.instance else null;
     }
     pub fn deinit(self: *Set) void {
+        const hold = engine.holdTeardowns(if (self.ownerLive()) self.realm else null);
+        defer hold.release();
+        self.retired = true;
+        self.cancelPendingLoads();
+        self.pending_loads.deinit(self.allocator);
         for (self.members.items) |member| self.endMember(member);
         self.members.deinit(self.allocator);
         self.ready.deinit(self.owner, self.ownerLive());
     }
     pub fn discard(self: *Set) void {
+        const hold = engine.holdTeardowns(if (self.ownerLive()) self.realm else null);
+        defer hold.release();
         self.retired = true;
+        self.cancelPendingLoads();
         if (self.ownerLive()) self.ready.abandon(self.owner);
     }
     fn indexOf(self: *const Set, face: *runtime.Instance) ?usize {
@@ -2339,5 +2656,268 @@ pub const Set = struct {
         const generation = runtime.SlabAllocator.generationOf(event);
         defer event.releaseIfUnwrapped(generation);
         _ = @import("../fire_event.zig").dispatchTrusted(self.owner, event) catch {};
+    }
+};
+
+/// One §3.2 wait-for-all. The Set owns one ref while attached; each
+/// successful reaction attachment owns one. Like Navigation.Wait, a setup
+/// hold keeps the record alive while attachments can fail. Storage uses the
+/// realm allocator, never the Set registry's arena (row131 Q14).
+const SetLoad = struct {
+    allocator: Allocator,
+    refs: usize = 1,
+    owner: *runtime.Instance,
+    generation: u64,
+    realm: runtime.Context,
+    result_realm: runtime.Context,
+    capability: ?engine.PromiseCapability,
+    entries: []LoadReaction,
+    results: ?[]?engine.Owned = null,
+    remaining: usize,
+    attached: bool = false,
+    kept: bool = false,
+    canceled: bool = false,
+
+    fn create(set: *Set, result_realm: runtime.Context, capability: engine.PromiseCapability, available: []const LoadingFaces.Entry, indices: []const usize) Allocator.Error!*SetLoad {
+        const allocator = set.allocator;
+        const self = try allocator.create(SetLoad);
+        errdefer allocator.destroy(self);
+        const entries = try allocator.alloc(LoadReaction, indices.len);
+        self.* = .{
+            .allocator = allocator,
+            .owner = set.owner,
+            .generation = set.generation,
+            .realm = set.realm,
+            .result_realm = result_realm,
+            .capability = capability,
+            .entries = entries,
+            .remaining = entries.len,
+        };
+        for (entries, indices, 0..) |*entry, source, index|
+            entry.* = .{ .load = self, .index = index, .face = available[source].face };
+        return self;
+    }
+
+    fn retain(self: *SetLoad) void {
+        self.refs += 1;
+    }
+    fn release(self: *SetLoad) void {
+        self.refs -= 1;
+        if (self.refs != 0) return;
+        std.debug.assert(!self.attached and !self.kept and self.capability == null and self.results == null);
+        for (self.entries) |entry| std.debug.assert(entry.root == null and entry.promise == null);
+        self.allocator.free(self.entries);
+        self.allocator.destroy(self);
+    }
+    fn ownerLive(self: *const SetLoad) bool {
+        return self.realm.hasEngine() and runtime.SlabAllocator.generationOf(self.owner) == self.generation;
+    }
+    fn current(self: *const SetLoad) bool {
+        return self.attached and !self.canceled and self.ownerLive();
+    }
+
+    fn start(self: *SetLoad) !void {
+        var retired_face = false;
+        // Q14: acquire every face before starting ANY face or reacting to
+        // a promise. Requested duplicate faces each have an owned slot.
+        for (self.entries) |*entry| {
+            if (!self.current()) return;
+            if (!entry.face.isLive()) {
+                retired_face = true;
+                continue;
+            }
+            const root = try engine.retainValue(self.realm, .{ .instance = entry.face.instance });
+            if (!self.current()) {
+                root.release();
+                return;
+            }
+            entry.root = root;
+        }
+        // §3.2 step 4.1, Q24: start all faces synchronously, BEFORE 4.2's
+        // promise reactions. The generated FontFace interface is the API.
+        for (self.entries) |*entry| {
+            if (!self.current()) return;
+            // Q47: a previous face's resolution may run an author then
+            // getter and retire this face's realm. A root keeps its wrapper,
+            // not a native instance after that realm has ended.
+            if (!entry.face.isLive()) {
+                retired_face = true;
+                continue;
+            }
+            const promise: engine.Owned = .{ .value = try interfaces.FontFace.call_load(entry.face.instance) };
+            if (!self.current()) {
+                promise.release();
+                return;
+            }
+            entry.promise = promise;
+        }
+        if (retired_face) {
+            // Q47: all later live faces still load, but a retired face
+            // cannot finish wait-for-all. Q48 preserves its handled state
+            // for each live promise this record obtained, without reactions.
+            for (self.entries, 0..) |entry, index| {
+                if (!self.current()) return;
+                if (!entry.face.isLive()) continue;
+                const promise = entry.promise orelse continue;
+                // Repeated family names can yield the same stored promise.
+                // Mark each distinct live promise once, without saved state.
+                const already_handled = for (self.entries[0..index]) |previous| {
+                    if (!previous.face.isLive()) continue;
+                    const earlier = previous.promise orelse continue;
+                    if (engine.sameValue(self.realm, earlier.borrow(), promise.borrow())) break true;
+                } else false;
+                if (!already_handled) engine.markPromiseAsHandled(self.realm, promise.borrow());
+            }
+            self.cancel();
+            return;
+        }
+        for (self.entries) |*entry| {
+            if (!self.current()) return;
+            // A local root protects the borrowed input across an engine
+            // call even if that call cancels this whole record reentrantly.
+            const promise = entry.promise.?;
+            entry.promise = null;
+            defer promise.release();
+            self.retain();
+            engine.reactToPromise(self.realm, promise.borrow(), &LoadReaction.steps, entry) catch |err| {
+                self.release(); // Failure did not take callback ownership.
+                return err;
+            };
+        }
+    }
+
+    /// Idempotent cleanup. No script runs while the teardown hold protects
+    /// the native list and root releases; promise settlement is elsewhere.
+    fn finishPending(self: *SetLoad) void {
+        self.retain();
+        defer self.release();
+        const hold = engine.holdTeardowns(if (self.ownerLive()) self.realm else null);
+        defer hold.release();
+        self.canceled = true;
+        if (self.attached and self.ownerLive()) {
+            if (hooks.fontSetOf(self.owner)) |set| set.detachPendingLoad(self);
+        }
+        if (self.capability) |capability| {
+            self.capability = null;
+            var owned = capability;
+            engine.releasePromiseCapability(&owned);
+        }
+        if (self.results) |results| {
+            self.results = null;
+            self.releaseResults(results);
+        }
+        for (self.entries) |*entry| {
+            if (entry.promise) |promise| {
+                entry.promise = null;
+                promise.release();
+            }
+            if (entry.root) |root| {
+                entry.root = null;
+                root.release();
+            }
+        }
+        if (self.kept) {
+            self.kept = false;
+            if (self.ownerLive()) engine.releasePlatformObject(self.owner);
+        }
+    }
+    fn cancel(self: *SetLoad) void {
+        self.finishPending();
+    }
+    fn releaseResults(self: *SetLoad, results: []?engine.Owned) void {
+        for (results) |result| if (result) |owned| owned.release();
+        self.allocator.free(results);
+    }
+
+    fn settle(self: *SetLoad, value: runtime.JSValue, rejected: bool) !void {
+        if (!self.current()) return;
+        if (!self.result_realm.hasEngine()) {
+            self.cancel();
+            return;
+        }
+        // A resolve can read an author-defined `then`. The capability is
+        // local during that call; reentrant discard cannot release it.
+        var capability = self.capability orelse return;
+        self.capability = null;
+        defer engine.releasePromiseCapability(&capability);
+        defer self.finishPending();
+        if (rejected) try engine.rejectPromise(&capability, value) else try engine.resolvePromise(&capability, value);
+    }
+
+    fn fulfillAll(self: *SetLoad) !void {
+        if (!self.result_realm.hasEngine()) {
+            self.cancel();
+            return;
+        }
+        // §3.2 step 4.2: return the ordered fulfillment values. Own them
+        // locally across sequence creation and promise resolution, which
+        // may reenter and cancel the record. No borrowed Global dangles.
+        const roots = self.results.?;
+        self.results = null;
+        defer self.releaseResults(roots);
+        const values_for_array = try self.allocator.alloc(runtime.JSValue, roots.len);
+        defer self.allocator.free(values_for_array);
+        for (roots, values_for_array) |root, *value| value.* = root.?.borrow();
+        const array = try engine.createSequenceOfValues(self.result_realm, values_for_array);
+        defer array.release();
+        if (self.current()) try self.settle(array.borrow(), false);
+    }
+};
+
+const LoadReaction = struct {
+    load: *SetLoad,
+    index: usize,
+    face: InstanceLink,
+    root: ?engine.Owned = null,
+    promise: ?engine.Owned = null,
+
+    const steps: engine.PromiseReactionSteps = .{ .fulfilled = fulfilled, .rejected = rejected, .dropped = dropped };
+
+    fn fulfilled(data: ?*anyopaque, value: runtime.JSValue) void {
+        const self: *LoadReaction = @ptrCast(@alignCast(data.?));
+        const load = self.load;
+        defer load.release();
+        if (!load.current()) return;
+        if (load.results == null) {
+            const results = load.allocator.alloc(?engine.Owned, load.entries.len) catch {
+                // Row131 Q40 / Navigation.Wait: callback OOM abandons the
+                // record without allocating an invented rejection reason.
+                load.cancel();
+                return;
+            };
+            @memset(results, null);
+            load.results = results;
+        }
+        const owned = engine.retainValue(load.realm, value) catch {
+            // Q40: same cleanup if retaining the engine result fails.
+            load.cancel();
+            return;
+        };
+        if (!load.current()) {
+            owned.release();
+            return;
+        }
+        std.debug.assert(load.results.?[self.index] == null);
+        load.results.?[self.index] = owned;
+        load.remaining -= 1;
+        if (load.remaining == 0) load.fulfillAll() catch {
+            // Q40: local result roots unwind before cancellation releases
+            // the capability, faces and set; later reactions only unref.
+            load.cancel();
+        };
+    }
+
+    fn rejected(data: ?*anyopaque, reason: runtime.JSValue) void {
+        const self: *LoadReaction = @ptrCast(@alignCast(data.?));
+        const load = self.load;
+        defer load.release();
+        if (load.current()) load.settle(reason, true) catch {};
+    }
+
+    fn dropped(data: ?*anyopaque) void {
+        const self: *LoadReaction = @ptrCast(@alignCast(data.?));
+        const load = self.load;
+        load.cancel();
+        load.release();
     }
 };
