@@ -54,7 +54,9 @@ const Args = struct {
     fn parse(args: []const []const u8) !Args {
         var a: Args = .{};
         for (args) |arg| {
-            if (value(arg, "--jobs=")) |v| {
+            if (value(arg, "--jobs=") orelse value(arg, "--parallel=")) |v| {
+                // --parallel= too: the pool's crane-measure.sh rewrites it to
+                // the runner share a run gets.
                 a.jobs = try std.fmt.parseUnsigned(u32, v, 10);
             } else if (value(arg, "--batch=")) |v| {
                 a.batch = try std.fmt.parseUnsigned(u32, v, 10);
@@ -94,7 +96,7 @@ const usage =
     \\                     [--timeout=SECONDS] [--alone-runs=R] [--only-batch=K]
     \\                     [--filter=SUBSTRING] [--out=FILE.jsonl] [--list]
     \\  --batch=B       tests per child process (default 10; 1 = per-test isolation; 0 = the whole suite)
-    \\  --jobs=N        child processes at once (default: the CPU count)
+    \\  --jobs=N        child processes at once (default: the CPU count; --parallel=N is the same)
     \\  --seed=S        the run's seed, decimal or 0x hex (default: random, printed)
     \\  --no-shuffle    index order, as `zig build test` runs (batches still apply)
     \\  --timeout=S     per-test timeout in seconds (default 60)
@@ -120,6 +122,7 @@ test "args: options, defaults, and errors" {
     try std.testing.expectEqual(@as(u32, 10), d.batch);
     try std.testing.expect(d.shuffle);
     try std.testing.expectEqual(@as(?u64, null), d.seed);
+    try std.testing.expectEqual(@as(?u32, 3), (try Args.parse(&.{ "x", "--parallel=3" })).jobs);
     try std.testing.expectError(error.MissingExecutable, Args.parse(&.{}));
     try std.testing.expectError(error.UnknownOption, Args.parse(&.{ "x", "--bogus" }));
     try std.testing.expectError(error.UnexpectedArgument, Args.parse(&.{ "x", "y" }));
@@ -185,7 +188,10 @@ pub fn main(init: std.process.Init) !void {
     const arena = arena_state.allocator();
 
     var stdout_buf: [8192]u8 = undefined;
-    var stdout_writer = Io.File.stdout().writer(io, &stdout_buf);
+    // Streaming, not positional: stdout is often a file other writers append
+    // to (a log shared with `time` and the pool scripts), and a positional
+    // writer would overwrite them from offset 0.
+    var stdout_writer = Io.File.stdout().writerStreaming(io, &stdout_buf);
     const out = &stdout_writer.interface;
     defer out.flush() catch {};
 
