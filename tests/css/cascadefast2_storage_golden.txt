@@ -357,6 +357,7 @@ offset-anchor: auto
 object-fit: fill
 image-rendering: auto
 image-orientation: from-image
+object-view-box: none
 == initial root and child / 0
 display: block
 == initial root and child / 1

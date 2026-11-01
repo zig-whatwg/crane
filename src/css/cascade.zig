@@ -2035,6 +2035,7 @@ fn geometryLength(l: Longhand) bool {
         .gap_inset => true,
         .table_spacing => true,
         .block_step_size => true,
+        .object_view_box => true,
         .motion_position, .motion_path, .motion_distance => true,
         .image_position => l == .perspective_origin,
         else => false,

@@ -469,6 +469,7 @@ pub const Longhand = enum(u16) {
     object_fit,
     image_rendering,
     image_orientation,
+    object_view_box,
 
     pub const count = @typeInfo(Longhand).@"enum".field_names.len;
 
@@ -637,6 +638,7 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
 /// A longhand's grammar.
 pub const Grammar = enum {
     object_fit,
+    object_view_box,
     motion_position,
     motion_path,
     motion_distance,
@@ -805,6 +807,8 @@ const infos: [Longhand.count]Info = blk: {
         // Optional deprecated angle/flip values are rejected by all three
         // browsers; from-image remains a computed keyword, not EXIF data.
         .{ .longhand = .image_orientation, .inherited = true, .initial = Value.kw(.from_image), .grammar = .keywords, .keywords = &.{ .none, .from_image } },
+        // Images5 §3.1: the computed rectangular shape does not inherit.
+        .{ .longhand = .object_view_box, .inherited = false, .initial = Value.kw(.none), .grammar = .object_view_box },
         // Motion1 §§2.1–2.5: none of the motion properties inherits.
         .{ .longhand = .offset_position, .inherited = false, .initial = Value.kw(.normal), .grammar = .motion_position },
         .{ .longhand = .offset_path, .inherited = false, .initial = Value.kw(.none), .grammar = .motion_path },
@@ -1826,6 +1830,7 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
     const def = l.info();
     switch (def.grammar) {
         .object_fit => return @import("image_misc_values.zig").consumeFit(stream),
+        .object_view_box => return @import("image_misc_values.zig").consumeViewBox(options, stream),
         .motion_position => return @import("motion_values.zig").consumePosition(options, stream, l == .offset_position),
         .motion_path => return @import("motion_values.zig").consumePath(options, stream),
         .motion_rotation => return @import("motion_values.zig").consumeRotation(options, stream),

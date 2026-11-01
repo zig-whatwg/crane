@@ -2,6 +2,9 @@
 const properties = @import("properties.zig");
 const values = @import("style_values.zig");
 const keyword = @import("shape_components.zig").keyword;
+const tokenizer = @import("tokenizer.zig");
+const shapes = @import("shape_values.zig");
+const Allocator = @import("std").mem.Allocator;
 
 pub fn consumeFit(stream: *properties.Stream) ?values.Value {
     if (keyword(stream, "fill")) return values.Value.kw(.fill);
@@ -34,4 +37,16 @@ pub fn consumeFit(stream: *properties.Stream) ?values.Value {
     else
         values.Value.kw(.scale_down);
     return values.Value.kw(fit.?);
+}
+
+/// Images5 §3.1: the rectangular shape's natural-size reference box is a
+/// used-value input; specified and computed storage retain the shared Shape.
+pub fn consumeViewBox(options: properties.ParseOptions, stream: *properties.Stream) Allocator.Error!?values.Value {
+    if (keyword(stream, "none")) return values.Value.kw(.none);
+    const token = stream.peek();
+    if (token.token_type != .function) return null;
+    if (!tokenizer.nameEql(token.value, "inset") and
+        !tokenizer.nameEql(token.value, "rect") and
+        !tokenizer.nameEql(token.value, "xywh")) return null;
+    return .{ .shape = try shapes.consumeBasicShape(options, stream) orelse return null };
 }
