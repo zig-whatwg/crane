@@ -921,6 +921,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Feature-filtered loops can pass with no iterations](testing-feature-filtered-loops-can-pass-with-no-iterations.md) - Prove the feature-derived test population before attributing an apparent regression.
 - [In-process WPT journals need an existing output directory](testing-in-process-wpt-journals-need-an-existing-output-directory.md) - Create fresh output directories explicitly before in-process runner invocations.
 - [New CSS longhands extend the storage golden additively](testing-new-css-longhands-extend-the-storage-golden-additively.md) - Add only new properties to the existing storage characterization.
+- [An allocation-failure sweep through the test allocator is a stack-trace sweep](testing-an-allocation-failure-sweep-through-the-test-allocator-is-a-stack-trace-sweep.md) - Before splitting a slow allocation-failure test, measure one run through `std.testing.allocator` against a fast allocator: if the allocator is the cost, sweep untraced and keep the traced unlimited run.
 
 ### Debugging
 - [Profile a hot path before optimizing the structure the design names](debugging-profile-a-hot-path-before-optimizing-the-structure-the-design-names.md) - Profile the workload the bar measures before rebuilding the structure the design suspects; look for terms that grow with the session, wherever they live.
