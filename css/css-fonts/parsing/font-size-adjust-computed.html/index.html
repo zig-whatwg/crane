@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../css/"><code>css/</code></a></li><li><a href="../../../../css/css-fonts/"><code>css-<wbr>fonts/</code></a></li><li><a href="../../../../css/css-fonts/parsing/"><code>parsing/</code></a></li><li aria-current="page"><code>font-<wbr>size-<wbr>adjust-<wbr>computed.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>font-<wbr>size-<wbr>adjust-<wbr>computed.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="css/css-fonts/parsing/font-size-adjust-computed.html">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 1</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>1</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">13</span><span class="fg-of"> / 20</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>7</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-fcf30638f8</code>, <span class="nowrap">1 Nov 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/fcf30638f8"><code>fcf30638f8</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-a4f425fee2</code>, <span class="nowrap">1 Nov 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/a4f425fee2"><code>a4f425fee2</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-fonts/parsing/font-size-adjust-computed.html"><code>css/<wbr>css-<wbr>fonts/<wbr>parsing/<wbr>font-<wbr>size-<wbr>adjust-<wbr>computed.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -35,7 +35,26 @@
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-d2b92d38"><details><summary><span class="mark">FAIL</span><span class="sub-name">CSS Fonts Module Level 5: getComputedStyle().fontSizeAdjust</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-d2b92d38" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d2b92d38"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">CSS Fonts Module Level 5: getComputedStyle().fontSizeAdjust</span></div><a class="self" href="#s-d2b92d38" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-d0eb88f0"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Property font-size-adjust value &#39;none&#39;</span></div><a class="self" href="#s-d0eb88f0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-193b9bc3"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Property font-size-adjust value &#39;0.5&#39;</span></div><a class="self" href="#s-193b9bc3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-f0069f8b"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Property font-size-adjust value &#39;ex-height 0.5&#39;</span></div><a class="self" href="#s-f0069f8b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-35a8504d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Property font-size-adjust value &#39;cap-height 0.8&#39;</span></div><a class="self" href="#s-35a8504d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a581c105"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Property font-size-adjust value &#39;ch-width 0.4&#39;</span></div><a class="self" href="#s-a581c105" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-8f839a67"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Property font-size-adjust value &#39;ic-width 0.9&#39;</span></div><a class="self" href="#s-8f839a67" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7a9e605c"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Property font-size-adjust value &#39;ic-height 1.1&#39;</span></div><a class="self" href="#s-7a9e605c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1b1a053d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property font-size-adjust value &#39;from-font&#39;</span></summary><pre class="msg">assert_equals: expected &quot;0.5&quot; but got &quot;none&quot;</pre></details><a class="self" href="#s-1b1a053d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-424881c3"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property font-size-adjust value &#39;ex-height from-font&#39;</span></summary><pre class="msg">assert_equals: expected &quot;0.5&quot; but got &quot;none&quot;</pre></details><a class="self" href="#s-424881c3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0f3d8fb9"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property font-size-adjust value &#39;cap-height from-font&#39;</span></summary><pre class="msg">assert_equals: expected &quot;cap-height 0.5&quot; but got &quot;none&quot;</pre></details><a class="self" href="#s-0f3d8fb9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-71d2f9b1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property font-size-adjust value &#39;ch-width from-font&#39;</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-71d2f9b1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4aa7c0a9"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property font-size-adjust value &#39;ic-width from-font&#39;</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-4aa7c0a9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3ea00204"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property font-size-adjust value &#39;ic-height from-font&#39;</span></summary><pre class="msg">assert_equals: expected &quot;ic-height 1&quot; but got &quot;none&quot;</pre></details><a class="self" href="#s-3ea00204" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-b199c1e4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Property font-size-adjust value &#39;calc(0.5)&#39;</span></div><a class="self" href="#s-b199c1e4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-03c28f38"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Property font-size-adjust value &#39;ex-height calc(0.5)&#39;</span></div><a class="self" href="#s-03c28f38" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-cccf5da6"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Property font-size-adjust value &#39;cap-height calc(0.5)&#39;</span></div><a class="self" href="#s-cccf5da6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-387411f8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Property font-size-adjust value &#39;cap-height calc(0.5 + 1)&#39;</span></div><a class="self" href="#s-387411f8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c32978f5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Property font-size-adjust value &#39;cap-height calc(-0.5)&#39;</span></div><a class="self" href="#s-c32978f5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-701fa44d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property font-size-adjust value &#39;cap-height calc(10 + (sign(20cqw - 10px) * 5))&#39;</span></summary><pre class="msg">assert_equals: expected &quot;cap-height 5&quot; but got &quot;none&quot;</pre></details><a class="self" href="#s-701fa44d" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>
