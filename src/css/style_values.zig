@@ -775,6 +775,16 @@ pub const Color = union(enum) {
         };
     }
 
+    /// Color5 §2: absolute colors have no mode/device/receiver dependency.
+    /// Keep this exhaustive: a future device-cmyk variant is not absolute.
+    pub fn isAbsolute(self: Color) bool {
+        return switch (self) {
+            .rgba, .transparent_keyword, .named => true,
+            .current, .system => false,
+            .expression => |expression| expression.isAbsolute(),
+        };
+    }
+
     /// Aggregates forward this query without inspecting Color's variants.
     /// A future typed variant must explicitly describe its dependencies.
     pub fn containsCurrentColor(self: Color) bool {

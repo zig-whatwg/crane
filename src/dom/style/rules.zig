@@ -84,6 +84,7 @@ pub const Kind = enum {
     namespace,
     font_face,
     font_feature_values,
+    font_palette_values,
     counter_style,
     page,
     margin,
@@ -108,7 +109,7 @@ pub const Kind = enum {
             .keyframe => 8,
             .namespace => 10,
             .supports => 12,
-            .layer_block, .layer_statement => 0,
+            .layer_block, .layer_statement, .font_palette_values => 0,
             .position_try, .property, .nested_declarations, .container, .scope => 0,
         };
     }
@@ -181,6 +182,7 @@ pub const Data = union(Kind) {
     },
     font_face: @import("font_loading.zig").FontRule,
     font_feature_values: *FontFeaturePayload,
+    font_palette_values: *css.font_palette_descriptors.Data,
     counter_style: *css.counter_style_descriptors.Data,
     page: struct { descriptors: css.page_data.Data, children: std.ArrayList(*Rule) = .empty },
     margin: struct { name: []u8, block: DeclarationBlock },
@@ -251,6 +253,10 @@ pub const Rule = struct {
             .font_face => |*font| font.deinit(),
             .font_feature_values => |payload| {
                 payload.descriptors.deinit();
+                a.destroy(payload);
+            },
+            .font_palette_values => |payload| {
+                payload.deinit();
                 a.destroy(payload);
             },
             .counter_style => |payload| {
@@ -354,6 +360,11 @@ pub const Rule = struct {
             .property => |registration| try registration.serializeRule(out, allocator),
             .font_feature_values => |payload| {
                 const text = try payload.descriptors.cssText(allocator);
+                defer allocator.free(text);
+                try out.appendSlice(allocator, text);
+            },
+            .font_palette_values => |payload| {
+                const text = try payload.cssText(allocator);
                 defer allocator.free(text);
                 try out.appendSlice(allocator, text);
             },
@@ -1036,6 +1047,15 @@ pub fn build(options: BuildOptions, parsed: *const css.rules.Rule, position: Pos
         // make consumes the owned prelude, including allocation failure.
         const prelude = try css.serialize.serializeIdentifier(a, decoded);
         return make(a, prelude, .{ .position_try = declarations });
+    }
+    if (std.mem.eql(u8, name, "font-palette-values")) {
+        var native = try css.font_palette_descriptors.fromParsed(a, parsed) orelse return null;
+        errdefer native.deinit();
+        const payload = try a.create(css.font_palette_descriptors.Data);
+        errdefer a.destroy(payload);
+        payload.* = native;
+        // make consumes prelude even on failure; payload moves on success.
+        return make(a, try a.dupe(u8, ""), .{ .font_palette_values = payload });
     }
     if (std.mem.eql(u8, name, "font-feature-values")) {
         var native = try css.font_feature_values.fromParsed(a, parsed) orelse return null;

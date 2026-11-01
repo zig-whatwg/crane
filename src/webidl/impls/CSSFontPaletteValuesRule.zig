@@ -1,64 +1,36 @@
-//! Implementation for CSSFontPaletteValuesRule interface
-
-const std = @import("std");
+//! Fonts4 §12.3: a CSSFontPaletteValuesRule's readonly descriptor view.
+//! CSSRule's generated construction chain retains the native rule owner.
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const CSSFontPaletteValuesRule = interfaces.CSSFontPaletteValuesRule;
+const css = @import("css");
+const dom = @import("dom");
 
-pub const State = CSSFontPaletteValuesRule.State;
-
-pub const ImplError = error{
-    NotImplemented,
-};
-
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
+pub const State = interfaces.CSSFontPaletteValuesRule.State;
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+fn dataOf(instance: *runtime.Instance) !*const css.font_palette_descriptors.Data {
+    const rule = dom.style.hooks.cssRuleOf(instance) orelse return error.InvalidStateError;
+    if (rule.data != .font_palette_values) return error.InvalidStateError;
+    return rule.data.font_palette_values;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}
-
-/// Getter for name
 pub fn get_name(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return runtime.DOMString.initDupe(instance.ctx.allocator, (try dataOf(instance)).name);
 }
 
-/// Getter for fontFamily
+fn descriptor(instance: *runtime.Instance, kind: css.font_palette_descriptors.Descriptor) !typedefs.CSSOMString {
+    return runtime.DOMString.initDupe(instance.ctx.allocator, (try dataOf(instance)).get(kind));
+}
+
 pub fn get_fontFamily(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return descriptor(instance, .font_family);
 }
 
-/// Getter for basePalette
 pub fn get_basePalette(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return descriptor(instance, .base_palette);
 }
 
-/// Getter for overrideColors
 pub fn get_overrideColors(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return descriptor(instance, .override_colors);
 }
