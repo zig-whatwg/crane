@@ -458,6 +458,13 @@ pub const Longhand = enum(u16) {
     font_synthesis_small_caps,
     font_synthesis_position,
 
+    // Motion Path1 §§2.1–2.6: used geometry stays with the layout backend.
+    offset_position,
+    offset_path,
+    offset_distance,
+    offset_rotate,
+    offset_anchor,
+
     pub const count = @typeInfo(Longhand).@"enum".field_names.len;
 
     /// The property name.
@@ -624,6 +631,10 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
 
 /// A longhand's grammar.
 pub const Grammar = enum {
+    motion_position,
+    motion_path,
+    motion_distance,
+    motion_rotation,
     font_palette,
     counter_list,
     list_style_type,
@@ -782,6 +793,12 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .box_decoration_break, .inherited = false, .initial = Value.kw(.slice), .grammar = .keywords, .keywords = &.{ .slice, .clone } },
         .{ .longhand = .orphans, .inherited = true, .initial = .{ .integer = 2 }, .grammar = .positive_integer },
         .{ .longhand = .widows, .inherited = true, .initial = .{ .integer = 2 }, .grammar = .positive_integer },
+        // Motion1 §§2.1–2.5: none of the motion properties inherits.
+        .{ .longhand = .offset_position, .inherited = false, .initial = Value.kw(.normal), .grammar = .motion_position },
+        .{ .longhand = .offset_path, .inherited = false, .initial = Value.kw(.none), .grammar = .motion_path },
+        .{ .longhand = .offset_distance, .inherited = false, .initial = .{ .length = Length.px(0) }, .grammar = .motion_distance },
+        .{ .longhand = .offset_rotate, .inherited = false, .initial = Value.kw(.auto), .grammar = .motion_rotation },
+        .{ .longhand = .offset_anchor, .inherited = false, .initial = Value.kw(.auto), .grammar = .motion_position },
         // Fonts4 §§2.8 and 9.1: these cascade independently of `font`.
         .{ .longhand = .font_palette, .inherited = true, .initial = Value.kw(.normal), .grammar = .font_palette },
         .{ .longhand = .font_synthesis_weight, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .none } },
@@ -1263,6 +1280,7 @@ pub const Shorthand = enum(u8) {
     block_step,
     list_style,
     font_synthesis,
+    offset,
 
     pub fn name(self: Shorthand) []const u8 {
         return switch (self) {
@@ -1340,6 +1358,7 @@ pub const Shorthand = enum(u8) {
             .block_step => &@import("rhythm_values.zig").longhands,
             .list_style => &@import("list_values.zig").longhands,
             .font_synthesis => &@import("font_synthesis_values.zig").longhands,
+            .offset => &@import("motion_values.zig").longhands,
             .column_rule, .row_rule, .rule, .rule_color, .rule_style, .rule_width, .rule_break, .rule_visibility_items, .column_rule_inset, .row_rule_inset, .rule_inset, .column_rule_inset_cap, .column_rule_inset_junction, .row_rule_inset_cap, .row_rule_inset_junction, .rule_inset_cap, .rule_inset_junction, .column_rule_inset_start, .column_rule_inset_end, .row_rule_inset_start, .row_rule_inset_end, .rule_inset_start, .rule_inset_end => @import("gap_decorations.zig").longhands(self),
             .scroll_margin => &.{ .scroll_margin_top, .scroll_margin_right, .scroll_margin_bottom, .scroll_margin_left },
             .scroll_margin_block => &.{ .scroll_margin_block_start, .scroll_margin_block_end },
@@ -1794,6 +1813,10 @@ pub const Stream = struct {
 pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Allocator.Error!?Value {
     const def = l.info();
     switch (def.grammar) {
+        .motion_position => return @import("motion_values.zig").consumePosition(options, stream, l == .offset_position),
+        .motion_path => return @import("motion_values.zig").consumePath(options, stream),
+        .motion_rotation => return @import("motion_values.zig").consumeRotation(options, stream),
+        .motion_distance => return lengthPercentage(options, stream, .{ .negative = true, .percent = true, .quirky = false }),
         .font_palette => return @import("font_palette_values.zig").consume(options, stream),
         .counter_list => {
             if (takeKeyword(stream, &.{.none})) |k| return Value.kw(k);
@@ -2603,6 +2626,7 @@ fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *st
         .block_step => return @import("rhythm_values.zig").consume(options, stream, out),
         .list_style => return @import("list_values.zig").consumeShorthand(options, stream, out),
         .font_synthesis => return @import("font_synthesis_values.zig").consume(options, stream, out),
+        .offset => return @import("motion_values.zig").consumeShorthand(options, stream, out),
         .column_rule, .row_rule, .rule, .rule_color, .rule_style, .rule_width, .rule_break, .rule_visibility_items, .column_rule_inset, .row_rule_inset, .rule_inset, .column_rule_inset_cap, .column_rule_inset_junction, .row_rule_inset_cap, .row_rule_inset_junction, .rule_inset_cap, .rule_inset_junction, .column_rule_inset_start, .column_rule_inset_end, .row_rule_inset_start, .row_rule_inset_end, .rule_inset_start, .rule_inset_end => return @import("gap_decorations.zig").parseShorthand(options, s, stream, out),
         .font_variant => return @import("font_variants.zig").parseShorthand(options, stream, out),
         .font => return @import("font_shorthand.zig").parse(options, stream, out),
@@ -3028,6 +3052,8 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .grid_line => |line| try line.serialize(out, allocator),
         .counters => |list| try list.serialize(out, allocator),
         .palette_mix => |mix| try mix.serialize(out, allocator),
+        .motion_path => |path| try path.serialize(out, allocator),
+        .motion_rotation => |rotation| try rotation.serialize(out, allocator),
         .grid_tracks => |tracks| try tracks.serialize(out, allocator),
         .grid_areas => |areas| try areas.serialize(out, allocator),
         .grid_flow => |flow| try flow.serialize(out, allocator),
@@ -3133,6 +3159,7 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
         .block_step => return @import("rhythm_values.zig").serialize(vs, out, allocator),
         .list_style => return @import("list_values.zig").serializeShorthand(vs, out, allocator),
         .font_synthesis => return @import("font_synthesis_values.zig").serialize(vs, out, allocator),
+        .offset => return @import("motion_values.zig").serializeShorthand(vs, out, allocator),
         .column_rule, .row_rule, .rule, .rule_color, .rule_style, .rule_width, .rule_break, .rule_visibility_items, .column_rule_inset, .row_rule_inset, .rule_inset, .column_rule_inset_cap, .column_rule_inset_junction, .row_rule_inset_cap, .row_rule_inset_junction, .rule_inset_cap, .rule_inset_junction, .column_rule_inset_start, .column_rule_inset_end, .row_rule_inset_start, .row_rule_inset_end, .rule_inset_start, .rule_inset_end => return @import("gap_decorations.zig").serializeShorthand(s, vs, mode, out, allocator),
         .container => return @import("container_values.zig").serializeShorthand(vs, out, allocator),
         .font_variant => return @import("font_variants.zig").serialize(vs, out, allocator),

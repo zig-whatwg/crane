@@ -349,6 +349,11 @@ font-synthesis-weight: auto
 font-synthesis-style: auto
 font-synthesis-small-caps: auto
 font-synthesis-position: auto
+offset-position: normal
+offset-path: none
+offset-distance: 0px
+offset-rotate: auto
+offset-anchor: auto
 == initial root and child / 0
 display: block
 == initial root and child / 1
