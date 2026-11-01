@@ -915,6 +915,12 @@ A lane brief now carries the lessons chosen for its batch.
 - [A Date.now() specifier is unique only if a millisecond passes](testing-a-date-now-specifier-is-unique-only-if-a-millisecond-passes.md) - Before chasing a "drained too little" ordering flake, log the inputs the test assumed were fresh (Date.now(), random seeds): a fast engine can make two tests share one.
 - [A load A/B that always runs the base first is biased](testing-a-load-ab-that-always-runs-the-base-first-is-biased.md) - Under drifting load, the order of an A/B is a variable: alternate it, or the trend of the load becomes the result.
 - [Copy the upstream support page into crane/ to probe a WPT race](testing-copy-the-upstream-support-page-to-probe-a-wpt-race.md) - Before trusting a native log's story about a page's script, make the page tell you its own steps: a probed copy in crane/resources costs one run and can kill the leading hypothesis.
+- [A browser probe does not cover an extra mixed state](testing-a-browser-probe-does-not-cover-an-extra-mixed-state.md) - An additional state needs its own browser evidence.
+- [A discarded fixture never reaches a later liveness guard](testing-a-discarded-fixture-never-reaches-a-later-liveness-guard.md) - Pin that controlled inputs survive setup and enter the operation under test.
+- [CSS family cohorts include cross-directory quirks](testing-css-family-cohorts-include-cross-directory-quirks.md) - Choose cohorts by behavior and callers; preserve vacuous BASE passes too.
+- [Feature-filtered loops can pass with no iterations](testing-feature-filtered-loops-can-pass-with-no-iterations.md) - Prove the feature-derived test population before attributing an apparent regression.
+- [In-process WPT journals need an existing output directory](testing-in-process-wpt-journals-need-an-existing-output-directory.md) - Create fresh output directories explicitly before in-process runner invocations.
+- [New CSS longhands extend the storage golden additively](testing-new-css-longhands-extend-the-storage-golden-additively.md) - Add only new properties to the existing storage characterization.
 
 ### Debugging
 - [Profile a hot path before optimizing the structure the design names](debugging-profile-a-hot-path-before-optimizing-the-structure-the-design-names.md) - Profile the workload the bar measures before rebuilding the structure the design suspects; look for terms that grow with the session, wherever they live.
@@ -1093,3 +1099,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Verify Replayed Patch Bytes](workflow-verify-replayed-patch-bytes.md) - Exit zero is not proof that a patch changed its intended files. Verify the bytes before withdrawing work.
 - [Compare skip counts before comparing a test binary's cost](workflow-compare-skip-counts-before-comparing-a-test-binarys-cost.md) - A skipped test costs nothing: compare the skip counts before you compare the cost.
 - [A pgrep waiter matches its own command line](workflow-a-pgrep-waiter-matches-its-own-command-line.md) - A waiter must not be able to match itself: wait on a pid or a file, not on text that the wait itself contains.
+- [Archive metadata is not a declared payload](workflow-archive-metadata-is-not-a-declared-payload.md) - Verify archive members as well as source identities.
+- [Build wrapper text rewrites can alter hash commands](workflow-build-wrapper-text-rewrites-can-alter-hash-commands.md) - Check launcher transformations against filenames and quoted data.
+- [Pair routing does not export the pair environment](workflow-pair-routing-does-not-export-the-pair-environment.md) - Verify host routing and process environment separately.
+- [Zig 0.17 package storage is generated, not source](workflow-zig17-package-storage-is-generated-not-source.md) - Classify only compiler package storage as generated while retaining source and dependency checks.
+- [Stopping a pool job hands its cache to the auto-wipe](workflow-stopping-a-pool-job-hands-its-cache-to-the-auto-wipe.md) - A pool job's cache outlives the job only while something holds its mirror's slot; killing the job is also deleting its cache when the host is low on disk.
