@@ -395,7 +395,7 @@ const Parser = struct {
         // Images4 §2.5 / Q168: sole-color image() uses the owned image bridge.
         // Q232: other image() forms keep their existing Syntax3 EOF grammar.
         if (std.ascii.eqlIgnoreCase(name, "image")) return self.solidColorImage(token);
-        inline for (.{ "image-set", "-webkit-image-set", "light-dark", "-webkit-cross-fade", "linear-gradient", "radial-gradient", "conic-gradient", "repeating-linear-gradient", "repeating-radial-gradient", "repeating-conic-gradient" }) |image| if (std.ascii.eqlIgnoreCase(name, image)) return self.typedImage(token);
+        inline for (.{ "image-set", "-webkit-image-set", "light-dark", "-webkit-cross-fade", "cross-fade", "linear-gradient", "radial-gradient", "conic-gradient", "repeating-linear-gradient", "repeating-radial-gradient", "repeating-conic-gradient" }) |image| if (std.ascii.eqlIgnoreCase(name, image)) return self.typedImage(token);
         // Q76/Q115: standard gradients now share the typed EOF grammar.
         // Unrelated raw functions retain their original Syntax handling.
         inline for (.{ "cross-fade", "element", "paint" }) |image| if (std.ascii.eqlIgnoreCase(name, image)) return self.remainingFunction(token, .image);
