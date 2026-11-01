@@ -1287,6 +1287,31 @@ def flaky_paths(worklist, records):
     return sorted(p for p in worklist if (records.get(p) or {}).get('flaky') is True)
 
 
+def retry_counts(worklist, records):
+    """How the sweep's retries stand, so a flaky count is read against what was
+    asked of it. `retried` files had a second run (record has "retry"),
+    `skipped` did not fully pass but matched the baseline journal and were not
+    retried (record has "retry_skipped"), `flaky` are the retried files whose
+    second run disagreed. A flaky count can shrink because fewer files were
+    retried; these three numbers say so."""
+    retried = skipped = flaky = 0
+    for p in worklist:
+        rec = records.get(p) or {}
+        if rec.get('retry') is not None:
+            retried += 1
+        if rec.get('retry_skipped'):
+            skipped += 1
+        if rec.get('flaky') is True:
+            flaky += 1
+    return {'retried': retried, 'retry_skipped': skipped, 'flaky': flaky}
+
+
+def retry_summary(counts):
+    """The three numbers as one line."""
+    return (f"{counts['flaky']:,} flaky of {counts['retried']:,} retried, "
+            f"{counts['retry_skipped']:,} not retried (same as the previous generation)")
+
+
 def record_generation(worklist, records, areas, previous_records=None):
     """Append this generation to HISTORY if anything moved; return the history.
 
@@ -1354,6 +1379,8 @@ def record_generation(worklist, records, areas, previous_records=None):
         # journal record). The first result is the one counted everywhere else.
         'flaky': len(flaky_paths(worklist, records)),
         'flaky_paths': flaky_paths(worklist, records),
+        'retried': retry_counts(worklist, records)['retried'],
+        'retry_skipped': retry_counts(worklist, records)['retry_skipped'],
         'clean': tot['clean'], 'partial': tot['partial'],
         'sub_pass': tot['sub_pass'], 'sub_fail': tot['sub_fail'],
         'sub_targeted': round(tot['sub_targeted']),
@@ -1760,8 +1787,15 @@ def render_history(history):
         if g.get('flaky') is None:
             flakycell = '<span class="dim" title="measured from generation 199 on: the runner retries files that did not fully pass">&mdash;</span>'
         else:
-            flakycell = (f'<span title="{html.escape(", ".join(g.get("flaky_paths", [])))}">{g["flaky"]:,}</span> '
+            flakytip = ", ".join(g.get("flaky_paths", []))
+            if g.get('retried') is not None:
+                flakytip = (f'{g["flaky"]:,} flaky of {g["retried"]:,} retried; {g.get("retry_skipped", 0):,} not retried '
+                            f'(same result as the previous generation). ' + flakytip)
+            flakycell = (f'<span title="{html.escape(flakytip)}">{g["flaky"]:,}</span> '
                          f'{_delta(g, prev, "flaky", True) if prev and prev.get("flaky") is not None else ""}')
+            if g.get('retried') is not None:
+                flakycell += (f'<br><span class="dim">of {g["retried"]:,} retried'
+                              f'{", " + format(g.get("retry_skipped", 0), ",") + " skipped" if g.get("retry_skipped") else ""}</span>')
         regen = g.get('regenerations', 0)
         when = html.escape(g['at'][:16].replace('T', ' '))
         if g.get('reconstructed'):
@@ -2084,7 +2118,7 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
   <div class="card"><div class="k">Run</div><div class="v">{run:,}<span class="dim" style="font-size:14px"> / {total:,}</span></div></div>
   <div class="card"><div class="k">Timeouts</div><div class="v" style="color:var(--bad)">{tot['timeout']:,}</div></div>
   <div class="card"><div class="k">Crashes</div><div class="v" style="color:var(--bad)">{tot['crash']:,}</div></div>
-  <div class="card"><div class="k">Flaky</div><div class="v" style="color:var(--bad)">{len(flaky_paths(worklist, records)):,}</div></div>
+  <div class="card"><div class="k">Flaky</div><div class="v" style="color:var(--bad)">{len(flaky_paths(worklist, records)):,}</div><div class="dim" style="font-size:12px">of {retry_counts(worklist, records)['retried']:,} retried, {retry_counts(worklist, records)['retry_skipped']:,} skipped as unchanged</div></div>
   <div class="card"><div class="k">OK, none passed</div><div class="v" style="color:var(--bad)">{tot['none-passed']:,}</div></div>
   {f'<div class="card"><div class="k">Exempt</div><div class="v">{tot["exempt"]:,}</div></div>' if EXEMPTIONS else ''}
   <div class="card"><div class="k">Clean files</div><div class="v" style="color:var(--ok)">{clean:,}</div></div>
@@ -2176,7 +2210,7 @@ def main():
     targeted, passing = round(tot['sub_targeted']), round(tot['sub_passing'])
     unexplained = unexplained_losses(history, dispositions)
     print(f"{run:,} of {total:,} sources run  |  {gating:,} blocking  |  "
-          f"{len(flaky_paths(worklist, records)):,} flaky  |  {clean:,} clean  |  "
+          f"{retry_summary(retry_counts(worklist, records))}  |  {clean:,} clean  |  "
           f"{len(unexplained):,} unexplained subtest losses")
     print(f"subtests: {passing:,} passing of {targeted:,} targeted  "
           f"({passing / targeted * 100 if targeted else 0:.2f}%)  |  "
@@ -2650,6 +2684,26 @@ def _check_flaky_count():
     assert flaky_paths(wl, records) == ['a.html']
 
 
+def _check_retry_counts():
+    """Retried, skipped-as-unchanged and flaky are counted apart, so a flaky
+    number cannot shrink unseen because fewer files were retried."""
+    wl = ['flaky.html', 'agreed.html', 'skipped.html', 'clean.html', 'unrun.html']
+    records = {
+        'flaky.html': {'flaky': True, 'retry': {'status': 'OK', 'passed': 4}, 'passed': 3, 'failed': 1},
+        'agreed.html': {'flaky': False, 'retry': {'status': 'OK', 'passed': 3}, 'passed': 3, 'failed': 1},
+        'skipped.html': {'retry_skipped': 'matches baseline', 'passed': 3, 'failed': 1},
+        'clean.html': {'passed': 4},
+        'other.html': {'flaky': True, 'retry': {}},
+    }
+    c = retry_counts(wl, records)
+    assert c == {'retried': 2, 'retry_skipped': 1, 'flaky': 1}, c
+    assert retry_summary(c) == '1 flaky of 2 retried, 1 not retried (same as the previous generation)'
+    # A skipped file is neither retried nor flaky.
+    assert 'skipped.html' not in flaky_paths(wl, records)
+    # A sweep without retries reports zeros for all three.
+    assert retry_counts(wl, {'clean.html': {'passed': 4}}) == {'retried': 0, 'retry_skipped': 0, 'flaky': 0}
+
+
 def _check_one_flake_rule():
     """A path may carry one flake disposition; the inherited exceptions are exact."""
     wl = ['a.html'] + list(FLAKE_GRANDFATHERED)
@@ -2812,6 +2866,7 @@ if __name__ == '__main__':
         _check_loss_dispositions()
         _check_one_flake_rule()
         _check_flaky_count()
+        _check_retry_counts()
         _check_loss_baseline_migration()
         _check_loss_exit_status()
         print('wpt_progress self-test: ok')

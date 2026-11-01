@@ -72,6 +72,11 @@
 //!   journal its second result beside its first: `"retry": {...}` and
 //!   `"flaky": true` when the two disagree. The first result stands; the
 //!   retry's pass never counts (`retryFailures`).
+//! - `--retry-failures=<previous journal.jsonl>` - The same, but a file whose
+//!   first result (status and the four counts) equals its record in that
+//!   journal is not retried: it fails as it failed last generation. It is
+//!   journalled with `"retry_skipped":"matches baseline"` and no `retry`. A
+//!   changed file, and a file the baseline has no record of, are retried.
 //!
 //! Regression gating:
 //! - `--baseline=path` - Compare the finished run against recorded
@@ -2183,7 +2188,7 @@ fn supervise(
     }
 
     if (options.retry_failures) {
-        print("Retried:  {d} files that did not fully pass; {d} flaky (the second run disagreed; the first result stands)\n", .{ s.retried, s.flaky });
+        print("Retried:  {d} files that did not fully pass; {d} flaky (the second run disagreed; the first result stands); {d} skipped (same result as the baseline journal)\n", .{ s.retried, s.flaky, s.retry_skipped });
     }
 
     print("\nJournal: {s}\n", .{journal_path});
@@ -2216,16 +2221,46 @@ fn retryFailures(
     var log = try journal.read(allocator, journal_path);
     defer log.deinit();
 
+    // `--retry-failures=<journal>`: the previous generation's journal. An
+    // absent or empty one is no baseline (journal.read answers an absent file
+    // with an empty log), and the run says so rather than silently retrying
+    // everything or nothing.
+    var retry_base: ?journal.RetryBaseline = null;
+    defer if (retry_base) |*b| b.deinit();
+    if (options.retry_baseline) |bp| {
+        const prev = try journal.read(allocator, bp);
+        if (prev.records.len == 0) {
+            var empty = prev;
+            empty.deinit();
+            print("\nNo records in the retry baseline {s}: retrying every file that did not fully pass\n", .{bp});
+        } else {
+            retry_base = try journal.RetryBaseline.init(allocator, prev);
+        }
+    }
+
     var paths: std.ArrayList([]const u8) = .empty;
     defer paths.deinit(allocator);
-    for (log.records) |rec| {
-        if (!journal.wantsRetry(rec)) continue;
+    var skipped: usize = 0;
+    for (log.records) |*rec| {
+        if (!journal.wantsRetry(rec.*)) continue;
+        if (retry_base) |*b| {
+            if (!b.wantsRetry(rec.*)) {
+                // Same result as the previous generation: a known failure, not retried.
+                rec.retry_skipped = true;
+                skipped += 1;
+                continue;
+            }
+        }
         const seen = for (paths.items) |p| {
             if (std.mem.eql(u8, p, rec.path)) break true;
         } else false;
         if (!seen) try paths.append(allocator, rec.path);
     }
-    if (paths.items.len == 0) return;
+    if (skipped > 0) print("\nSkipping the retry of {d} files whose result matches the baseline journal\n", .{skipped});
+    if (paths.items.len == 0) {
+        if (skipped > 0) try rewriteJournal(allocator, journal_path, log.records);
+        return;
+    }
 
     const retry_dir = try std.fs.path.join(allocator, &.{ options.output_dir, "retry" });
     defer allocator.free(retry_dir);
@@ -2270,15 +2305,19 @@ fn retryFailures(
     defer retried.deinit();
     try journal.annotateRetries(allocator, log.records, retried.records);
 
-    // Rewrite the run's journal with the retries attached: written whole
-    // beside it, then renamed over it, so a reader sees the old journal or
-    // the new one and never half of either.
+    try rewriteJournal(allocator, journal_path, log.records);
+}
+
+/// Rewrite the run's journal with the retries (and skip markers) attached:
+/// written whole beside it, then renamed over it, so a reader sees the old
+/// journal or the new one and never half of either.
+fn rewriteJournal(allocator: std.mem.Allocator, journal_path: []const u8, records: []const journal.Record) !void {
     const tmp_path = try std.fmt.allocPrint(allocator, "{s}.retry-tmp", .{journal_path});
     defer allocator.free(tmp_path);
     {
         var out = try journal.Journal.create(allocator, tmp_path);
         defer out.deinit();
-        for (log.records) |rec| try out.record(rec);
+        for (records) |rec| try out.record(rec);
     }
     try host.cwd().rename(tmp_path, host.cwd(), journal_path, host.io());
 }
