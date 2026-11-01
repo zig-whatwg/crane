@@ -845,8 +845,11 @@ const TestLaunch = struct {
     /// at 60 s, tests that take 20-28 s alone timed out (lane tlaunch2). It
     /// is there to catch hangs; the build runner had no timeout at all.
     timeout: u32,
-    /// -Dlaunch-shuffle=false: index order.
-    shuffle: bool,
+    /// -Dlaunch-shuffle: true shuffles every suite (an explicit check, such
+    /// as the whole-suite runs with several seeds - even a suite whose
+    /// `suite_configs` row keeps index order), false runs every suite in index
+    /// order; unset, each suite's row decides.
+    shuffle: ?bool,
 };
 
 /// One suite's launcher settings. Batch size per the measurements
@@ -943,7 +946,7 @@ fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.St
     if (config.jobs orelse launch.jobs) |jobs| run.addArg(b.fmt("--jobs={d}", .{jobs}));
     run.addArg(b.fmt("--launch-seed={s}", .{launch.seed}));
     run.addArg(b.fmt("--timeout={d}", .{launch.timeout}));
-    if (!launch.shuffle or !config.shuffle) run.addArg("--no-shuffle");
+    if (!(launch.shuffle orelse config.shuffle)) run.addArg("--no-shuffle");
     for (config.slow) |slow| run.addArg(b.fmt("--slow={s}", .{slow}));
     // Relative to the repository root, where tests open their fixtures.
     run.addArg(b.fmt("--out=tmp/test-launch/{s}.jsonl", .{name}));
@@ -2144,7 +2147,7 @@ pub fn build(b: *std.Build) void {
             .jobs = b.option(u32, "launch-jobs", "Test processes at once for the whole build (default: the CPU count)"),
             .seed = b.option([]const u8, "launch-seed", "The launcher's seed: digest (default: from each test executable's bytes, printed; unchanged suites stay cached), random (fresh every run, never cached), or a value") orelse "digest",
             .timeout = b.option(u32, "launch-timeout", "Per-test timeout in seconds (default 300; tests build.zig lists as slow get 4x)") orelse 300,
-            .shuffle = b.option(bool, "launch-shuffle", "Shuffle the order and the batches from the seed (default true)") orelse true,
+            .shuffle = b.option(bool, "launch-shuffle", "true: shuffle every suite's order and batches from the seed; false: index order everywhere (default: each suite's suite_configs row, mostly shuffled)"),
         };
         break :launch l;
     };
