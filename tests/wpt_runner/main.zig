@@ -2225,8 +2225,8 @@ fn retryFailures(
     // absent or empty one is no baseline (journal.read answers an absent file
     // with an empty log), and the run says so rather than silently retrying
     // everything or nothing.
-    var baseline: ?journal.RetryBaseline = null;
-    defer if (baseline) |*b| b.deinit();
+    var retry_base: ?journal.RetryBaseline = null;
+    defer if (retry_base) |*b| b.deinit();
     if (options.retry_baseline) |bp| {
         const prev = try journal.read(allocator, bp);
         if (prev.records.len == 0) {
@@ -2234,7 +2234,7 @@ fn retryFailures(
             empty.deinit();
             print("\nNo records in the retry baseline {s}: retrying every file that did not fully pass\n", .{bp});
         } else {
-            baseline = try journal.RetryBaseline.init(allocator, prev);
+            retry_base = try journal.RetryBaseline.init(allocator, prev);
         }
     }
 
@@ -2243,7 +2243,7 @@ fn retryFailures(
     var skipped: usize = 0;
     for (log.records) |*rec| {
         if (!journal.wantsRetry(rec.*)) continue;
-        if (baseline) |*b| {
+        if (retry_base) |*b| {
             if (!b.wantsRetry(rec.*)) {
                 // Same result as the previous generation: a known failure, not retried.
                 rec.retry_skipped = true;
