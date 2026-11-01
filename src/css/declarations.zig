@@ -802,17 +802,17 @@ const preferred_shorthands = blk: {
         for (zig017_info.field_names, zig017_info.field_values, 0..) |zig017_n, zig017_v, zig017_i| zig017_out[zig017_i] = .{ .name = zig017_n, .value = zig017_v };
         break :zig017_fields zig017_out;
     };
-    var out: [fields.len - 4]Shorthand = undefined;
+    var out: [fields.len]Shorthand = undefined;
     var n: usize = 0;
     for (fields) |f| {
         const s: Shorthand = @fromBackingInt(@intCast(f.value));
         // Legacy one-member aliases are emitted with their canonical longhand.
-        if (s == .all or s == ._webkit_text_orientation or s == ._webkit_transform or s == ._webkit_perspective) continue;
+        if (s == .all or s == ._webkit_text_orientation or s == ._webkit_transform or s == ._webkit_perspective or s.isLegacyShorthand()) continue;
         out[n] = s;
         n += 1;
     }
     // Insertion sort, comptime.
-    for (1..out.len) |i| {
+    for (1..n) |i| {
         var j = i;
         while (j > 0) : (j -= 1) {
             const a = out[j - 1];
@@ -832,7 +832,7 @@ const preferred_shorthands = blk: {
             out[j] = a;
         }
     }
-    break :blk out;
+    break :blk out[0..n].*;
 };
 
 fn logicalGroup(l: Longhand) ?properties.Logical.Group {
@@ -967,4 +967,111 @@ test "CSS-wide keywords serialize, and a shorthand of one keyword is that keywor
     var block = try DeclarationBlock.parse(testOptions(), "padding: inherit; color: initial");
     defer block.deinit();
     try expectCssText(&block, "padding: inherit; color: initial;");
+}
+
+test "page-break repair preserves every preferred shorthand in its original order" {
+    const expected = [_][]const u8{
+        "font",
+        "border",
+        "mask",
+        "animation",
+        "background",
+        "rule-inset",
+        "font-variant",
+        "border-block",
+        "border-inline",
+        "grid",
+        "rule",
+        "border-image",
+        "mask-border",
+        "offset",
+        "transition",
+        "block-step",
+        "border-color",
+        "border-radius",
+        "border-style",
+        "border-width",
+        "column-rule-inset",
+        "font-synthesis",
+        "grid-area",
+        "inset",
+        "margin",
+        "padding",
+        "row-rule-inset",
+        "rule-inset-cap",
+        "rule-inset-end",
+        "rule-inset-junction",
+        "rule-inset-start",
+        "scroll-margin",
+        "scroll-padding",
+        "text-decoration",
+        "border-block-end",
+        "border-block-start",
+        "border-bottom",
+        "border-inline-end",
+        "border-inline-start",
+        "border-left",
+        "border-right",
+        "border-top",
+        "column-rule",
+        "columns",
+        "flex",
+        "grid-template",
+        "line-clamp",
+        "list-style",
+        "marker",
+        "outline",
+        "row-rule",
+        "vertical-align",
+        "-webkit-line-clamp",
+        "animation-range",
+        "background-position",
+        "border-block-color",
+        "border-block-style",
+        "border-block-width",
+        "border-inline-color",
+        "border-inline-style",
+        "border-inline-width",
+        "column-rule-inset-cap",
+        "column-rule-inset-end",
+        "column-rule-inset-junction",
+        "column-rule-inset-start",
+        "container",
+        "flex-flow",
+        "gap",
+        "grid-column",
+        "grid-row",
+        "inset-block",
+        "inset-inline",
+        "margin-block",
+        "margin-inline",
+        "overflow",
+        "padding-block",
+        "padding-inline",
+        "place-content",
+        "place-items",
+        "place-self",
+        "position-try",
+        "row-rule-inset-cap",
+        "row-rule-inset-end",
+        "row-rule-inset-junction",
+        "row-rule-inset-start",
+        "rule-break",
+        "rule-color",
+        "rule-style",
+        "rule-visibility-items",
+        "rule-width",
+        "scroll-margin-block",
+        "scroll-margin-inline",
+        "scroll-padding-block",
+        "scroll-padding-inline",
+        "text-box",
+        "text-emphasis",
+        "text-spacing",
+        "text-wrap",
+        "white-space",
+    };
+    try std.testing.expectEqual(expected.len, preferred_shorthands.len);
+    for (expected, preferred_shorthands) |name, shorthand|
+        try std.testing.expectEqualStrings(name, shorthand.name());
 }

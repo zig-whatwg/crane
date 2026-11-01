@@ -1297,6 +1297,18 @@ pub const Shorthand = enum(u8) {
     list_style,
     font_synthesis,
     offset,
+    page_break_before,
+    page_break_after,
+    page_break_inside,
+
+    /// Cascade 5 §3.1 / Break 3 §3.4: omitted only from cssText selection.
+    /// Everywhere else these behave exactly as regular shorthands.
+    pub fn isLegacyShorthand(self: Shorthand) bool {
+        return switch (self) {
+            .page_break_before, .page_break_after, .page_break_inside => true,
+            else => false,
+        };
+    }
 
     pub fn name(self: Shorthand) []const u8 {
         return switch (self) {
@@ -1307,6 +1319,9 @@ pub const Shorthand = enum(u8) {
     /// The longhands, in canonical order (CSSOM "shorthand ... maps to").
     pub fn longhands(self: Shorthand) []const Longhand {
         return switch (self) {
+            .page_break_before => &.{.break_before},
+            .page_break_after => &.{.break_after},
+            .page_break_inside => &.{.break_inside},
             ._webkit_transform => &.{.transform},
             ._webkit_perspective => &.{.perspective},
             .container => &.{ .container_name, .container_type },
@@ -2632,6 +2647,7 @@ fn append(options: ParseOptions, out: *std.ArrayList(Assignment), l: Longhand, v
 
 fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
     switch (s) {
+        .page_break_before, .page_break_after, .page_break_inside => return @import("fragmentation_values.zig").consume(options, s, stream, out),
         .container => return @import("container_values.zig").consumeShorthand(options, stream, out),
         .text_wrap => return @import("text_values.zig").parseWrap(options, stream, out),
         .text_spacing => return @import("text_values.zig").parseSpacing(options, stream, out),
@@ -3164,6 +3180,7 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
     if (s == .all) return false;
     const ls = s.longhands();
     switch (s) {
+        .page_break_before, .page_break_after, .page_break_inside => return @import("fragmentation_values.zig").serialize(s, vs, out, allocator),
         ._webkit_transform, ._webkit_perspective => {
             if (s == ._webkit_transform and mode == .computed and vs[0].value == .transform_list)
                 try vs[0].value.transform_list.serializeResolved(out, allocator)
