@@ -833,6 +833,17 @@ EXCLUDE = [
      'click at a text node\'s start: the caret offset comes from hit testing laid-out text'),
     ('selection/user-select-on-input-and-contenteditable.html',
      'click at each field\'s centre must move the caret to the clicked character: needs text layout'),
+    # The used size of an <img> with no width/height: each file first asserts
+    # getComputedStyle(img).width/height = 100px/50px, the layout size taken from
+    # the decoded image's EXIF-rotated dimensions, before its image-orientation
+    # check. Crane has no layout, so these are geometry (the user's 2026-10-16
+    # rule, confirmed 2026-11-01 after Codex row 131's Q74 evidence; Crane returns
+    # `auto`, all three browsers pass 1/1). image-orientation parsing and computed
+    # values stay in scope (css/css-images/parsing/image-orientation-*).
+    ('css/css-images/image-orientation/image-orientation-from-image-computed-style.html',
+     'asserts the img used width/height from the EXIF-rotated natural size: needs layout'),
+    ('css/css-images/image-orientation/image-orientation-none-computed-style.html',
+     'asserts the img used width/height from the natural size: needs layout'),
     # Two more (the user's ruling 2026-10-27, after Codex row 129's Q25/Q26).
     ('selection/fire-selectionchange-event-on-pressing-backspace.html',
      'click at the centre of a one-glyph <i>: wor|ld vs worl|d comes from which half of the laid-out glyph is hit'),
