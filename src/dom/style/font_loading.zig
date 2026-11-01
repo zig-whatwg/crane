@@ -294,11 +294,25 @@ fn documentOfRealm(realm: runtime.Context) ?*runtime.Instance {
     return interfaces.Window.get_document(global) catch null;
 }
 
-/// One temporary validation boundary (Q2): the approved platform capability
-/// will replace this answer. A successful HTTP response alone is NOT a font.
+/// Fonts4 §4.8.2 processResponse step 2; Loading3 §2.1 step 3 and §2.2
+/// steps 4–5: a successful HTTP response alone is not a valid font.
 pub const FontValidation = enum { valid, invalid, cannot_validate };
-pub fn validateFontData(_: []const u8) FontValidation {
-    return .cannot_validate;
+const platform = @import("platform");
+// Row131 Q17/D8: Blink DecodeWebFont's input and decompressed-output caps.
+const font_limits: platform.FontLimits = .{ .max_bytes = 128 * 1024 * 1024, .max_sfnt_bytes = 128 * 1024 * 1024 };
+
+pub fn validateFontData(allocator: Allocator, bytes: []const u8, fragment: []const u8) Allocator.Error!FontValidation {
+    if (platform.capabilities.font_decoding != .unsupported) {
+        if (bytes.len > font_limits.max_bytes) return .invalid;
+        var decoded = platform.decodeFont(allocator, .from(bytes), .from(fragment), font_limits) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => return .invalid,
+        };
+        defer decoded.deinit(allocator);
+        // Row131 Q21 / protocol.zig decodeFont: a successful face-0
+        // fallback validates even when the requested name did not match.
+        return .valid;
+    } else return .cannot_validate;
 }
 
 const resource_loading = @import("resource_loading.zig");
@@ -385,7 +399,12 @@ pub const ResourceEntry = struct {
         const response = result.response;
         if (response.response_type == .@"error" or !fetch.internal.isOkStatus(response.status)) return self.complete(.invalid);
         const body = response.body orelse return self.complete(.invalid);
-        self.complete(validateFontData(body.getBytes()));
+        // Fonts4 §4.3.2 / row131 Q21: use the ORIGINAL source's serialized
+        // fragment, as WebKit does. No percent decoding or prefetch name
+        // rejection: browsers do not perform the draft's preflight skip.
+        var source = @import("api_parser").parseURL(self.allocator, self.key.url, null) catch return self.complete(.invalid);
+        defer source.deinit();
+        self.complete(validateFontData(self.allocator, body.getBytes(), source.fragment() orelse "") catch .invalid);
     }
 
     fn complete(self: *ResourceEntry, validation: FontValidation) void {
@@ -606,7 +625,10 @@ const FaceLoad = struct {
             .start_buffer => {
                 face.status = .loading;
                 face.notifySets();
-                self.queue(if (validateFontData(self.bytes orelse &.{}) == .valid) .success else .failure);
+                // Loading3 §2.1 step 3: buffer fonts have no URL fragment;
+                // outcome tasks and their existing error names are unchanged.
+                const validation = validateFontData(self.allocator, self.bytes orelse &.{}, "") catch .invalid;
+                self.queue(if (validation == .valid) .success else .failure);
             },
             .next_source => self.tryNext(),
             .success, .failure => {
