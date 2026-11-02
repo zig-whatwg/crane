@@ -14,6 +14,7 @@
 //! `(name, {})` ... (web-locks/acquire.https.any.js; binding3's follow-up 4).
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -31,17 +32,20 @@ const Env = struct {
     context: *ffi.Context,
 };
 
-var env_once: ?Env = null;
+var test_env: ?Env = null;
+
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_env = null;
+}
 
 fn env() !Env {
-    if (env_once) |e| return e;
-    const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(isolate);
-    _ = ffi.v8_HandleScope_New(isolate);
-    const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    env_once = .{ .isolate = isolate, .context = context };
-    return env_once.?;
+    const isolate = try test_agent.open(.{});
+    if (test_env == null) test_env = .{ .isolate = isolate, .context = test_agent.context.? };
+    return test_env.?;
 }
 
 /// Script's value of `code`, OWNED - a Global, as `info.get(i)` makes one.
@@ -74,12 +78,14 @@ fn bytesLeftByFailures(comptime T: type, code: []const u8, rounds: usize) !i64 {
 }
 
 test "a callback function argument that is not callable leaves no handle" {
+    defer test_agent.close();
     // 512 failures keeping their argument would be 8,192 bytes.
     try testing.expect(try bytesLeftByFailures(LockGrantedCallback, "123", 512) < 2048);
     try testing.expect(try bytesLeftByFailures(LockGrantedCallback, "({})", 512) < 2048);
 }
 
 test "a dictionary argument whose member fails to convert leaves no handle" {
+    defer test_agent.close();
     // `{mode: 'foo'}`: not a LockMode, a TypeError in the member's conversion.
     try testing.expect(try bytesLeftByFailures(LockOptions, "({ mode: 'foo' })", 512) < 2048);
 }

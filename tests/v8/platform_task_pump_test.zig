@@ -10,29 +10,37 @@
 //! checkpoint after every task that ran.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const clock = @import("clock");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 
-/// A live isolate with an entered context, one for the whole file, as in
-/// event_loop_turn_test.zig - V8 is never torn down here.
-var isolate_once: ?*ffi.Isolate = null;
-var context_once: ?*ffi.Context = null;
+/// A live isolate with an entered context, as in event_loop_turn_test.zig:
+/// the test's own agent's (test_agent), ended with the test.
+var test_isolate: ?*ffi.Isolate = null;
+var test_context: ?*ffi.Context = null;
+
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+    test_context = null;
+}
 
 fn isolate() !*ffi.Isolate {
-    if (isolate_once) |i| return i;
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    isolate_once = i;
-    context_once = context;
-    return i;
+    const i = try test_agent.open(.{});
+    if (test_isolate == null) {
+        const context = test_agent.context.?;
+        test_isolate = i;
+        test_context = context;
+    }
+    return test_isolate.?;
 }
 
 fn run(i: *ffi.Isolate, source: []const u8) !*ffi.Value {
-    const context = context_once.?;
+    const context = test_context.?;
     const code = ffi.v8_String_NewFromUtf8(i, source.ptr, @intCast(source.len)) orelse return error.StringFailed;
     const script = ffi.v8_Script_Compile(context, code) orelse return error.CompileFailed;
     defer ffi.v8_Script_Dispose(script);
@@ -42,10 +50,11 @@ fn run(i: *ffi.Isolate, source: []const u8) !*ffi.Value {
 fn settled(i: *ffi.Isolate) !i32 {
     const value = try run(i, "globalThis.settled");
     defer ffi.v8_Value_Dispose(value);
-    return ffi.v8_Value_Int32Value(value, context_once.?);
+    return ffi.v8_Value_Int32Value(value, test_context.?);
 }
 
 test "a WebAssembly.compile promise settles within the event loop's turns" {
+    defer test_agent.close();
     const i = try isolate();
     var loop = v8.V8EventLoop.initWithoutTimers(i, std.testing.allocator);
     defer loop.deinit();

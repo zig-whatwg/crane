@@ -17,6 +17,7 @@
 //! count would move if a root's teardown released its count on it.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -26,23 +27,28 @@ const dom = @import("dom");
 
 const WrapperCache = v8.WrapperCache;
 
-var isolate_once: ?*ffi.Isolate = null;
-var context_once: ?*ffi.Context = null;
+var test_isolate: ?*ffi.Isolate = null;
+var test_context: ?*ffi.Context = null;
 
-/// One isolate and context for the file, never torn down (as
-/// teardown_gc_window_test.zig); each test makes its own realm data and
-/// wrapper cache, which it sweeps.
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+    test_context = null;
+}
+
+/// The test's isolate and context, its own agent's (test_agent), ended with
+/// the test (as teardown_gc_window_test.zig); each test makes its own realm
+/// data and wrapper cache, which it sweeps.
 fn engine() !void {
-    if (isolate_once != null) return;
-    interfaces.process_hooks.startHooksForTest();
-    runtime.initializeRuntime(std.heap.page_allocator);
-    const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(isolate);
-    _ = ffi.v8_HandleScope_New(isolate);
-    const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    isolate_once = isolate;
-    context_once = context;
+    const isolate = try test_agent.open(.{});
+    if (test_isolate == null) {
+        const context = test_agent.context.?;
+        test_isolate = isolate;
+        test_context = context;
+    }
 }
 
 const Realm = struct {
@@ -53,10 +59,10 @@ const Realm = struct {
         try engine();
         const data = try testing.allocator.create(runtime.ContextData);
         errdefer testing.allocator.destroy(data);
-        data.* = try runtime.ContextData.init(testing.allocator, .{ .engine_ctx = context_once.? });
-        data.agent = @ptrCast(isolate_once.?);
+        data.* = try runtime.ContextData.init(testing.allocator, .{ .engine_ctx = test_context.? });
+        data.agent = @ptrCast(test_isolate.?);
         const cache = try testing.allocator.create(WrapperCache);
-        cache.* = try WrapperCache.init(testing.allocator, @ptrCast(context_once.?));
+        cache.* = try WrapperCache.init(testing.allocator, @ptrCast(test_context.?));
         data.setV8WrapperCacheStorage(@ptrCast(cache));
         return .{ .data = data, .cache = cache };
     }
@@ -78,8 +84,8 @@ const Realm = struct {
     /// real V8 object, held by the cache.
     fn wrap(self: Realm, instance: *runtime.Instance) !void {
         runtime.instance_lifecycle.markWrapped(instance);
-        const wrapper = ffi.v8_Object_New(isolate_once.?) orelse return error.ObjectFailed;
-        try self.cache.set(instance, @ptrCast(wrapper), @ptrCast(isolate_once.?));
+        const wrapper = ffi.v8_Object_New(test_isolate.?) orelse return error.ObjectFailed;
+        try self.cache.set(instance, @ptrCast(wrapper), @ptrCast(test_isolate.?));
     }
 };
 
@@ -102,6 +108,7 @@ fn detachedRoot(ctx: runtime.Context, document: *runtime.Instance, vtable: ?*con
 }
 
 test "a torn-down Document's slot survives the sweep: an allocation after it never lands there" {
+    defer test_agent.close();
     const realm = try Realm.open();
     defer realm.close();
     var coordinator = runtime.CleanupCoordinator.init(testing.allocator);
@@ -218,6 +225,7 @@ fn sweepOnce() !bool {
 }
 
 test "inside the sweep, a root after its Document's entry finds the slot still the Document's" {
+    defer test_agent.close();
     // Each teardown's hash order is its own; a run where every root came
     // before the Document's entry did not exercise the window, so teardowns
     // repeat until one did (each misses with odds 1 in 25).

@@ -12,6 +12,7 @@
 //! "Perform ! CreateDataPropertyOrThrow(O, key, jsValue)".
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -21,17 +22,20 @@ const Env = struct {
     context: *ffi.Context,
 };
 
-var env_once: ?Env = null;
+var test_env: ?Env = null;
+
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_env = null;
+}
 
 fn env() !Env {
-    if (env_once) |e| return e;
-    const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(isolate);
-    _ = ffi.v8_HandleScope_New(isolate);
-    const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    env_once = .{ .isolate = isolate, .context = context };
-    return env_once.?;
+    const isolate = try test_agent.open(.{});
+    if (test_env == null) test_env = .{ .isolate = isolate, .context = test_agent.context.? };
+    return test_env.?;
 }
 
 fn eval(code: []const u8) !*ffi.Value {
@@ -46,7 +50,7 @@ fn eval(code: []const u8) !*ffi.Value {
 fn evalInt(code: []const u8) !i32 {
     const value = try eval(code);
     defer ffi.v8_Value_Dispose(value);
-    return ffi.v8_Value_Int32Value(value, env_once.?.context);
+    return ffi.v8_Value_Int32Value(value, test_env.?.context);
 }
 
 /// A dictionary as codegen emits one: optional members, null when absent.
@@ -61,6 +65,7 @@ const Inner = struct {
 };
 
 test "a dictionary's conversion leaves only the object it returns" {
+    defer test_agent.close();
     const e = try env();
     const value: Result = .{ .committed = 1, .finished = 2, .nested = .{ .flag = true } };
     // Warm up, so the handle table's blocks exist before the measurement.
@@ -79,6 +84,7 @@ test "a dictionary's conversion leaves only the object it returns" {
 }
 
 test "a dictionary's members are defined, not assigned" {
+    defer test_agent.close();
     const e = try env();
     const poison = try eval("globalThis.calls = 0; Object.defineProperty(Object.prototype, 'committed', { set(v) { calls++; }, configurable: true }); 0");
     ffi.v8_Value_Dispose(poison);

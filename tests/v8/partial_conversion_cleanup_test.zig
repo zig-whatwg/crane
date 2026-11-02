@@ -13,6 +13,7 @@
 //! test as a leak.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -24,17 +25,20 @@ const Env = struct {
     context: *ffi.Context,
 };
 
-var env_once: ?Env = null;
+var test_env: ?Env = null;
+
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_env = null;
+}
 
 fn env() !Env {
-    if (env_once) |e| return e;
-    const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(isolate);
-    _ = ffi.v8_HandleScope_New(isolate);
-    const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    env_once = .{ .isolate = isolate, .context = context };
-    return env_once.?;
+    const isolate = try test_agent.open(.{});
+    if (test_env == null) test_env = .{ .isolate = isolate, .context = test_agent.context.? };
+    return test_env.?;
 }
 
 /// Script's value of `code`, OWNED.
@@ -50,7 +54,7 @@ fn eval(code: []const u8) !*ffi.Value {
 fn evalInt(code: []const u8) !i32 {
     const value = try eval(code);
     defer ffi.v8_Value_Dispose(value);
-    return ffi.v8_Value_Int32Value(value, env_once.?.context);
+    return ffi.v8_Value_Int32Value(value, test_env.?.context);
 }
 
 /// A dictionary as codegen emits one: optional members, a restricted
@@ -72,6 +76,7 @@ const Child = struct {
 };
 
 test "a dictionary whose later member fails frees the members before it" {
+    defer test_agent.close();
     const e = try env();
     // `a` converts (an owned copy), then `b` is NaN: a TypeError.
     const object = try eval("({ a: 'a'.repeat(64), b: NaN })");
@@ -80,6 +85,7 @@ test "a dictionary whose later member fails frees the members before it" {
 }
 
 test "a dictionary whose own member fails frees its inherited members" {
+    defer test_agent.close();
     const e = try env();
     const object = try eval("({ a: 'a'.repeat(64), c: Infinity })");
     defer ffi.v8_Value_Dispose(object);
@@ -87,6 +93,7 @@ test "a dictionary whose own member fails frees its inherited members" {
 }
 
 test "a dictionary that converts whole is the caller's to free" {
+    defer test_agent.close();
     const e = try env();
     const object = try eval("({ a: 'a'.repeat(64), b: 1.5 })");
     defer ffi.v8_Value_Dispose(object);
@@ -115,7 +122,7 @@ const Probe = struct {
     var failed: bool = false;
 
     fn callback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
-        const e = env_once.?;
+        const e = test_env.?;
         const args = resolver.resolveConstructorOverload(Overloads, overloads, .{}, info, testing.allocator, e.isolate, e.context) catch {
             failed = true;
             return;
@@ -139,6 +146,7 @@ const Probe = struct {
 };
 
 test "an overload variant whose later argument fails frees the arguments before it" {
+    defer test_agent.close();
     try Probe.install();
     // `text` converts (an owned copy), then ToNumber(Symbol()) fails: the
     // call fails. (What reaches script is
@@ -148,6 +156,7 @@ test "an overload variant whose later argument fails frees the arguments before 
 }
 
 test "the arguments of the overload chosen are freed with freeConstructorOverload" {
+    defer test_agent.close();
     try Probe.install();
     try testing.expectEqual(@as(i32, 0), try evalInt("probe('t'.repeat(64), 2); 0"));
     try testing.expect(!Probe.failed);

@@ -9,6 +9,7 @@
 //! empty-name assertions).
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -19,17 +20,20 @@ const Env = struct {
     context: *ffi.Context,
 };
 
-var env_once: ?Env = null;
+var test_env: ?Env = null;
+
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_env = null;
+}
 
 fn env() !Env {
-    if (env_once) |e| return e;
-    const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(isolate);
-    _ = ffi.v8_HandleScope_New(isolate);
-    const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    env_once = .{ .isolate = isolate, .context = context };
-    return env_once.?;
+    const isolate = try test_agent.open(.{});
+    if (test_env == null) test_env = .{ .isolate = isolate, .context = test_agent.context.? };
+    return test_env.?;
 }
 
 /// `value` through toV8Value, as script would read it: a string's UTF-8, or
@@ -48,6 +52,7 @@ fn converted(comptime T: type, value: T, buffer: []u8) ![]const u8 {
 }
 
 test "an empty DOMString converts to the empty string, not undefined" {
+    defer test_agent.close();
     var buffer: [16]u8 = undefined;
     try testing.expectEqualStrings("", try converted(runtime.DOMString, runtime.DOMString.initEmpty(), &buffer));
     // initDupe of "" is the empty variant too.
@@ -56,6 +61,7 @@ test "an empty DOMString converts to the empty string, not undefined" {
 }
 
 test "interned and owned DOMStrings convert to their text" {
+    defer test_agent.close();
     var buffer: [16]u8 = undefined;
     try testing.expectEqualStrings("interned", try converted(runtime.DOMString, runtime.DOMString.initInterned("interned"), &buffer));
     const owned = try testing.allocator.dupe(u8, "owned");
@@ -64,6 +70,7 @@ test "interned and owned DOMStrings convert to their text" {
 }
 
 test "a nullable DOMString converts to a string, or null" {
+    defer test_agent.close();
     var buffer: [16]u8 = undefined;
     try testing.expectEqualStrings("", try converted(?runtime.DOMString, runtime.DOMString.initEmpty(), &buffer));
     const e = try env();

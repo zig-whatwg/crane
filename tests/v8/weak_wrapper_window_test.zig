@@ -20,6 +20,7 @@
 //! young generation's. A canary counts collections so a pass is not vacuous.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -29,17 +30,20 @@ const Env = struct {
     context: *ffi.Context,
 };
 
-var env_once: ?Env = null;
+var test_env: ?Env = null;
+
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_env = null;
+}
 
 fn env() !Env {
-    if (env_once) |e| return e;
-    const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(isolate);
-    _ = ffi.v8_HandleScope_New(isolate);
-    const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    env_once = .{ .isolate = isolate, .context = context };
-    return env_once.?;
+    const isolate = try test_agent.open(.{});
+    if (test_env == null) test_env = .{ .isolate = isolate, .context = test_agent.context.? };
+    return test_env.?;
 }
 
 fn noop(_: ?*anyopaque, _: usize) callconv(.c) void {}
@@ -75,6 +79,7 @@ fn weakMember(isolate: *ffi.Isolate) !*ffi.Object {
 }
 
 test "a data property descriptor of a value only a weak handle holds carries the value" {
+    defer test_agent.close();
     const e = try env();
     var canaries: Canaries = .{};
     defer canaries.deinit();
@@ -97,6 +102,7 @@ test "a data property descriptor of a value only a weak handle holds carries the
 }
 
 test "an event handler compiled with a scope only a weak handle holds sees that scope" {
+    defer test_agent.close();
     const e = try env();
     var canaries: Canaries = .{};
     defer canaries.deinit();

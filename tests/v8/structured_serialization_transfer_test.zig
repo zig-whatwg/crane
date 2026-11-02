@@ -24,6 +24,7 @@
 //! isolate entered that it entered.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const protocol = @import("engine");
 const interfaces = @import("interfaces");
@@ -53,7 +54,7 @@ fn setup() !void {
     try protocol.initializeEngine(.{});
     // The runtime's pools start once per process: another file of the
     // directory may have started them.
-    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.page_allocator);
+    test_process.start();
     interfaces.process_hooks.startHooksForTest();
 }
 

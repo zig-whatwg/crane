@@ -3,6 +3,7 @@
 //! Each test owns a fresh isolate on a fresh thread, makes actual Wasm values
 //! through script, and releases every FFI handle before destroying its isolate.
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const engine = @import("engine");
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -84,7 +85,7 @@ const WindowHost = struct {
 };
 
 fn inPlatformRealm(source: []const u8, kind: PlatformKind, from_snapshot: bool) !void {
-    runtime.initializeRuntime(std.heap.page_allocator);
+    test_process.start();
     interfaces.process_hooks.startHooksForTest();
     try v8.context_manager.init(std.testing.allocator);
     defer v8.context_manager.deinit();
@@ -215,6 +216,9 @@ test "snapshot Window worklet and ShadowRealm use their own wasm adapter intrins
     const bytes = try std.testing.allocator.alloc(u8, stat.size);
     defer std.testing.allocator.free(bytes);
     try std.testing.expectEqual(bytes.len, try file.readPositionalAll(io, bytes, 0));
+    // The process first - it starts the engine with no snapshot - and
+    // then the engine's snapshot (test_process.zig).
+    test_process.start();
     try engine.initializeEngine(.{ .snapshot = bytes });
     defer engine.deinitializeEngine();
     const RunSnapshot = struct {
@@ -1126,7 +1130,7 @@ const FirstWasmDelivery = struct {
     };
 
     fn body(kind: Kind) !void {
-        runtime.initializeRuntime(std.heap.page_allocator);
+        test_process.start();
         interfaces.process_hooks.startHooksForTest();
         try v8.context_manager.init(std.testing.allocator);
         defer v8.context_manager.deinit();

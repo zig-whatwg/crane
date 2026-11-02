@@ -10,6 +10,7 @@
 //! (IndexedDB/bindings-inject-keys-bypass, codex-indexeddb Q39).
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -19,26 +20,25 @@ const protocol = @import("engine");
 const window_agent_hooks: protocol.HostHooks = .{};
 const interfaces = @import("interfaces");
 
-var isolate_once: ?*ffi.Isolate = null;
-var pools_ready = false;
+var test_isolate: ?*ffi.Isolate = null;
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
 
+fn reset() void {
+    test_isolate = null;
+}
+
+/// The file's agent, made once and current while the calling test runs.
 fn agent() !*ffi.Isolate {
-    if (isolate_once) |i| return i;
-    // An agent createAgent made: it keeps its Window realms on its record
-    // (protocol_realms.WindowRealms), which a bare isolate has none of.
-    const i: *ffi.Isolate = @ptrCast(@alignCast(try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &window_agent_hooks, .host = null })));
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    v8.context_manager.init(std.heap.page_allocator) catch {};
-    _ = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-    if (!pools_ready) {
-        runtime.initializeRuntime(std.heap.page_allocator);
-        pools_ready = true;
+    const i = try test_agent.open(.{ .hooks = &window_agent_hooks });
+    if (test_isolate == null) {
+        const context = test_agent.context.?;
+        v8.context_manager.init(std.heap.page_allocator) catch {};
+        _ = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+        test_isolate = i;
     }
-    isolate_once = i;
-    return i;
+    return test_isolate.?;
 }
 
 const WindowHost = struct {
@@ -87,6 +87,7 @@ const poison =
 const unpoison = "delete Array.prototype[0]; delete Array.prototype[1];";
 
 test "a sequence of values is an Array whose elements are its own data properties" {
+    defer test_agent.close();
     const page = try windowRealm();
     defer protocol.destroyWindowRealm(page, .global_detached);
     try run(page, poison);

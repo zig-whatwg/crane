@@ -1,6 +1,7 @@
 # Workflow: A test executable per file re-analyses the engine every time
 
 **Date**: 2026-10-04
+**Status** (2026-11-01): point 2's `-Dtest-isolation=file` is retired; the launcher's batch-1 run, `zig build test-launch -Dlaunch-batch=1`, runs every test in a process of its own from the per-directory binaries (tools/test_launcher, lane tlaunch2).
 **Lesson**: `zig build test` built one executable per `tests/**/*_test.zig` file, and each one that reaches the engine is a full root-module analysis of most of the ~1M-line tree plus its own V8 link; one executable per test directory did the same work in a fifth of the time.
 
 **Why**: Zig shares no semantic analysis between compilations. A named module (`impls`, `html`, `v8`) imported by 53 test executables is analysed 53 times, and every change to a core file invalidates all of them. Each lane that follows "tests first" adds files, so every batch made every later gate slower.

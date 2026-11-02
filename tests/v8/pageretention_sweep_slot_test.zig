@@ -26,6 +26,7 @@
 //! impostor element and records whether it landed in a slot a child had.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -35,23 +36,28 @@ const dom = @import("dom");
 
 const WrapperCache = v8.WrapperCache;
 
-var isolate_once: ?*ffi.Isolate = null;
-var context_once: ?*ffi.Context = null;
+var test_isolate: ?*ffi.Isolate = null;
+var test_context: ?*ffi.Context = null;
 
-/// One isolate and context for the file, never torn down (as
-/// teardown_document_slot_reuse_test.zig); each sweep makes its own realm
-/// data and wrapper cache.
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+    test_context = null;
+}
+
+/// The test's isolate and context, its own agent's (test_agent), ended with
+/// the test (as teardown_document_slot_reuse_test.zig); each sweep makes its
+/// own realm data and wrapper cache.
 fn engine() !void {
-    if (isolate_once != null) return;
-    interfaces.process_hooks.startHooksForTest();
-    runtime.initializeRuntime(std.heap.page_allocator);
-    const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(isolate);
-    _ = ffi.v8_HandleScope_New(isolate);
-    const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    isolate_once = isolate;
-    context_once = context;
+    const isolate = try test_agent.open(.{});
+    if (test_isolate == null) {
+        const context = test_agent.context.?;
+        test_isolate = isolate;
+        test_context = context;
+    }
 }
 
 const Realm = struct {
@@ -62,10 +68,10 @@ const Realm = struct {
         try engine();
         const data = try testing.allocator.create(runtime.ContextData);
         errdefer testing.allocator.destroy(data);
-        data.* = try runtime.ContextData.init(testing.allocator, .{ .engine_ctx = context_once.? });
-        data.agent = @ptrCast(isolate_once.?);
+        data.* = try runtime.ContextData.init(testing.allocator, .{ .engine_ctx = test_context.? });
+        data.agent = @ptrCast(test_isolate.?);
         const cache = try testing.allocator.create(WrapperCache);
-        cache.* = try WrapperCache.init(testing.allocator, @ptrCast(context_once.?));
+        cache.* = try WrapperCache.init(testing.allocator, @ptrCast(test_context.?));
         data.setV8WrapperCacheStorage(@ptrCast(cache));
         return .{ .data = data, .cache = cache };
     }
@@ -86,8 +92,8 @@ const Realm = struct {
     /// Wrap `instance` as the binding leaves an object script has seen.
     fn wrap(self: Realm, instance: *runtime.Instance) !void {
         runtime.instance_lifecycle.markWrapped(instance);
-        const wrapper = ffi.v8_Object_New(isolate_once.?) orelse return error.ObjectFailed;
-        try self.cache.set(instance, @ptrCast(wrapper), @ptrCast(isolate_once.?));
+        const wrapper = ffi.v8_Object_New(test_isolate.?) orelse return error.ObjectFailed;
+        try self.cache.set(instance, @ptrCast(wrapper), @ptrCast(test_isolate.?));
     }
 };
 
@@ -199,6 +205,7 @@ fn sweepOnce(coordinator_allocator: std.mem.Allocator, expect_returned: bool) !b
 }
 
 test "a detached wrapped tree's nodes give their slots to the teardown, in either sweep order" {
+    defer test_agent.close();
     // Each sweep's hash order is its own; repeat until one put some children
     // before their roots and some roots after a handled child.
     var exercised = false;
@@ -208,6 +215,7 @@ test "a detached wrapped tree's nodes give their slots to the teardown, in eithe
 }
 
 test "a sweep that cannot record a slot keeps it, as before" {
+    defer test_agent.close();
     // The set-aside list allocates nothing (an entry's own link); only the
     // teardown's record of the slot can fail - then the slot stays with its
     // Browser, never freed twice or early.

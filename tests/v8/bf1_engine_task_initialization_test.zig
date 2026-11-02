@@ -1,5 +1,6 @@
 //! Runners obtained during V8 initialization share the later host wake target.
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const engine = @import("engine");
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -78,6 +79,9 @@ fn check(comptime snapshot: bool) !void {
         const bytes = try std.testing.allocator.alloc(u8, (try file.stat(io)).size);
         defer std.testing.allocator.free(bytes);
         _ = try file.readPositionalAll(io, bytes, 0);
+        // The process first - it starts the engine with no snapshot - and
+        // then the engine's snapshot (test_process.zig).
+        test_process.start();
         try engine.initializeEngine(.{ .snapshot = bytes });
         defer engine.deinitializeEngine();
         const isolate = ffi.v8_Isolate_NewFromSnapshot(bytes.ptr, @intCast(bytes.len), v8.external_references.getRuntimeExternalReferencesPtr()) orelse return error.NoSnapshotIsolate;

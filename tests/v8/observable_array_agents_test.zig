@@ -9,6 +9,7 @@
 //! and one's end leaves the other's arrays as they were.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const protocol = @import("engine");
@@ -98,7 +99,7 @@ const Side = struct {
 
 test "each agent keeps its own ObservableArrays, and another agent's end leaves them" {
     try protocol.initializeEngine(.{});
-    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.page_allocator);
+    test_process.start();
     interfaces.process_hooks.startHooksForTest();
 
     var other: Side = .{ .arrays = 20 };

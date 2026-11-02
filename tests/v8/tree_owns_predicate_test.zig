@@ -14,6 +14,7 @@
 //! answers false and is freed as it always was.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -22,39 +23,33 @@ const interfaces = @import("interfaces");
 
 const treeOwns = v8.wrapper_cache_mod.treeOwns;
 
-/// One isolate, context and realm for the whole file; V8 is never torn down
-/// here (see engine_realm_operations_test.zig).
-var realm_once: ?runtime.Context = null;
+/// The test's isolate, context and realm: its own agent's (test_agent), ended
+/// with the test.
+var test_realm: ?runtime.Context = null;
 
-/// The process-wide pools Instances come from, made once for the file and,
-/// like V8 here, never torn down.
-var pools_ready = false;
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
 
-fn ensurePools() void {
-    if (pools_ready) return;
-    // A file-isolated executable has no earlier test to install Node's
-    // creation and tree hooks before DocumentFragment.init.
-    interfaces.process_hooks.startHooksForTest();
-    runtime.initializeRuntime(std.heap.page_allocator);
-    pools_ready = true;
+fn reset() void {
+    test_realm = null;
 }
 
 fn realm() !runtime.Context {
-    ensurePools();
-    if (realm_once) |r| return r;
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    // Already initialized is fine: the manager is per thread, not per test.
-    v8.context_manager.init(std.heap.page_allocator) catch {};
-    const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-    realm_once = r;
-    return r;
+    _ = try test_agent.open(.{});
+    if (test_realm == null) {
+        const context = test_agent.context.?;
+        // Already initialized is fine: the manager is per thread (the test's
+        // agent is its thread's host agent, whose end takes it down).
+        v8.context_manager.init(std.heap.page_allocator) catch {};
+        const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+        test_realm = r;
+    }
+    return test_realm.?;
 }
 
 test "treeOwns: a node with a parent is its tree's; its detached root is not" {
+    defer test_agent.close();
     const r = try realm();
     const allocator = testing.allocator;
 
@@ -75,6 +70,7 @@ test "treeOwns: a node with a parent is its tree's; its detached root is not" {
 }
 
 test "treeOwns: a node removed from its parent is a root again" {
+    defer test_agent.close();
     const r = try realm();
     const allocator = testing.allocator;
 
@@ -90,6 +86,7 @@ test "treeOwns: a node removed from its parent is a root again" {
 }
 
 test "treeOwns: the default - anything that is not a node answers false" {
+    defer test_agent.close();
     const r = try realm();
     const headers = try interfaces.Headers.init(testing.allocator, r);
     defer interfaces.Headers.deinit(headers);

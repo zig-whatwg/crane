@@ -13,6 +13,7 @@
 //! V8PerIsolateData, which nothing of another isolate touches.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const protocol = @import("engine");
@@ -137,7 +138,7 @@ fn startProcess() !void {
     // The engine, the standalone runtime and the hooks start on this thread
     // first, as crane.Process starts them before any Browser.
     try protocol.initializeEngine(.{});
-    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.page_allocator);
+    test_process.start();
     interfaces.process_hooks.startHooksForTest();
 }
 

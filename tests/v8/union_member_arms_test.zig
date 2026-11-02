@@ -15,6 +15,7 @@
 //! TaskSignal), were TypeErrors.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -23,33 +24,38 @@ const interfaces = @import("interfaces");
 const ffi = v8.ffi;
 const conversions = v8.conversions;
 
-var isolate_once: ?*ffi.Isolate = null;
-var context_once: ?*ffi.Context = null;
-var realm_once: ?runtime.Context = null;
+var test_isolate: ?*ffi.Isolate = null;
+var test_context: ?*ffi.Context = null;
+var test_realm: ?runtime.Context = null;
+
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+    test_context = null;
+    test_realm = null;
+}
 
 fn realm() !runtime.Context {
-    if (realm_once) |r| return r;
-    try engine.initializeEngine(.{});
-    interfaces.process_hooks.startHooksForTest();
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    v8.context_manager.init(std.heap.page_allocator) catch {};
-    const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-    runtime.initializeRuntime(std.heap.page_allocator);
-    v8.interface_bindings.registerAllInterfaces(i, context);
-    isolate_once = i;
-    context_once = context;
-    realm_once = r;
-    return r;
+    const i = try test_agent.open(.{});
+    if (test_realm == null) {
+        const context = test_agent.context.?;
+        v8.context_manager.init(std.heap.page_allocator) catch {};
+        const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+        v8.interface_bindings.registerAllInterfaces(i, context);
+        test_isolate = i;
+        test_context = context;
+        test_realm = r;
+    }
+    return test_realm.?;
 }
 
 fn eval(code: []const u8) !*ffi.Value {
     _ = try realm();
-    const context = context_once.?;
-    const text = ffi.v8_String_NewFromUtf8(isolate_once.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
+    const context = test_context.?;
+    const text = ffi.v8_String_NewFromUtf8(test_isolate.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(text);
     const script = ffi.v8_Script_Compile(context, text) orelse return error.CompileFailed;
     defer ffi.v8_Script_Dispose(script);
@@ -78,10 +84,11 @@ const Choice = union(enum) {
 fn convert(code: []const u8) !Choice {
     const value = try eval(code);
     defer ffi.v8_Value_Dispose(value);
-    return conversions.fromV8Value(Choice, testing.allocator, isolate_once.?, context_once.?, value);
+    return conversions.fromV8Value(Choice, testing.allocator, test_isolate.?, test_context.?, value);
 }
 
 test "a string that is one of the values is the enumeration arm; any other is a TypeError" {
+    defer test_agent.close();
     const preset = try convert("'default'");
     try testing.expect(preset == .presets and preset.presets == .default);
     try testing.expectError(error.TypeError, convert("'bogus'"));
@@ -90,6 +97,7 @@ test "a string that is one of the values is the enumeration arm; any other is a 
 }
 
 test "null and undefined are the dictionary arm" {
+    defer test_agent.close();
     const from_null = try convert("null");
     try testing.expect(from_null == .config and from_null.config.comments == null);
     const from_undefined = try convert("undefined");
@@ -97,11 +105,13 @@ test "null and undefined are the dictionary arm" {
 }
 
 test "an object that is no platform object is the dictionary arm" {
+    defer test_agent.close();
     const config = try convert("({ comments: true })");
     try testing.expect(config == .config and config.config.comments.? == true);
 }
 
 test "a platform object implementing the interface is the interface arm" {
+    defer test_agent.close();
     const signal = try convert("new AbortController().signal");
     try testing.expect(signal == .abort_signal);
     try testing.expect(conversions.implements(signal.abort_signal, interfaces.AbortSignal));
@@ -114,9 +124,10 @@ const StringFirst = union(enum) {
 };
 
 test "with both a string and an enumeration arm, a string goes to the string arm" {
+    defer test_agent.close();
     const value = try eval("'bogus'");
     defer ffi.v8_Value_Dispose(value);
-    var converted = try conversions.fromV8Value(StringFirst, testing.allocator, isolate_once.?, context_once.?, value);
+    var converted = try conversions.fromV8Value(StringFirst, testing.allocator, test_isolate.?, test_context.?, value);
     try testing.expect(converted == .domstring);
     converted.domstring.deinit(testing.allocator);
 }

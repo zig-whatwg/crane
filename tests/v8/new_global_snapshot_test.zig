@@ -19,15 +19,16 @@
 //! snapshot generator that tests/v8 depends on, its path passed as
 //! `test_snapshot.path`. A missing snapshot fails the tests.
 //!
-//! They run only where this file is the first in its process to start V8, as
+//! They run only where the test is the first in its process to start V8, as
 //! pattern_attribute_snapshot_test.zig's do and for its reason: in tests/v8's
 //! shared executable, restoring the snapshot after other files had started V8
 //! crashed inside V8's isolate deserialization, before any code of the
 //! operation ran. So there they skip, saying so; they run under
-//! `-Dtest-file=` and `-Dtest-isolation=file`. The engine is given the
+//! a process of their own (tests-v8 runs at batch 1; `-Dtest-file=`). The engine is given the
 //! snapshot for these tests only and forgets it after (deinitializeEngine).
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const protocol = @import("engine");
 const interfaces = @import("interfaces");
@@ -59,12 +60,6 @@ const Reports = struct {
     }
 };
 
-var pools_ready = false;
-
-/// Whether V8 was not yet started in this process when this file first
-/// asked: decided once, by the first test here to open a page.
-var first_in_process: ?bool = null;
-
 const no_hooks: protocol.HostHooks = .{};
 
 /// An agent restored from the snapshot, and a Window realm of it restored
@@ -76,11 +71,14 @@ const SnapshotPage = struct {
     realm: runtime.Context,
 
     /// Null (the test skips) when this build's snapshot has not been
-    /// generated, or when V8 was started in this process before this file.
+    /// generated, or when V8 was started in this process before this test.
     fn open() !?SnapshotPage {
-        if (first_in_process == null) first_in_process = !ffi.v8_Platform_IsInitialized();
-        if (!first_in_process.?) {
-            std.log.warn("skipping: V8 was started in this process before this file; run it with -Dtest-file= or -Dtest-isolation=file", .{});
+        // Read for each test, never cached: a test of the file that ran
+        // first in a shuffled process left a cached "first" to the file's
+        // later tests, which then restored the snapshot after other files'
+        // isolates and crashed there (lane v8order1, seed 0x47d641a3).
+        if (ffi.v8_Platform_IsInitialized()) {
+            std.log.warn("skipping: V8 was started in this process before this test; run it in a process of its own (tests-v8 runs at batch 1; -Dlaunch-batch=1 or -Dtest-file=)", .{});
             return null;
         }
         const io = std.testing.io;
@@ -92,13 +90,11 @@ const SnapshotPage = struct {
         errdefer std.heap.c_allocator.free(bytes);
         _ = try file.readPositionalAll(io, bytes, 0);
 
+        // The process first - it starts the engine with no snapshot - and
+        // then the engine's snapshot, for this page alone.
+        test_process.start();
         try protocol.initializeEngine(.{ .snapshot = bytes });
         errdefer protocol.deinitializeEngine();
-        if (!pools_ready) {
-            interfaces.process_hooks.startHooksForTest();
-            runtime.initializeRuntime(std.heap.page_allocator);
-            pools_ready = true;
-        }
         const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = true, .hooks = &no_hooks, .host = null });
         errdefer protocol.destroyAgent(agent);
         // Restored, not made afresh: v8_Isolate_NewFromSnapshot keeps the

@@ -2,6 +2,7 @@
 //! Server-Timing array, then measure V8's live handles after repeated calls.
 //! WPT covers JSON surviving collection after its resource entry is dropped.
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
@@ -33,8 +34,10 @@ const Trial = struct {
         // A fresh thread owns all per-thread runtime state. Never change
         // V8 flags: another tests/v8 file may already have started V8.
         try engine.initializeEngine(.{});
-        runtime.initializeRuntime(std.testing.allocator);
-        defer runtime.deinitializeRuntime();
+        // A standalone runtime of this test's own, the process's given back
+        // after (test_process.OwnRuntime).
+        const own_runtime = test_process.OwnRuntime.begin(std.testing.allocator);
+        defer own_runtime.end();
         interfaces.process_hooks.startHooksForTest();
         var scope = runtime.BrowserScope.init(std.testing.allocator);
         defer scope.deinit();

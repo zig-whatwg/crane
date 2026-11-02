@@ -1,5 +1,6 @@
 //! Location's exotic methods must preserve identity, brands and caller realms.
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const engine = @import("engine");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
@@ -24,8 +25,10 @@ fn expect(realm: runtime.Context, source: []const u8, expected: []const u8) !voi
 }
 fn check() !void {
     try engine.initializeEngine(.{});
-    runtime.initializeRuntime(std.testing.allocator);
-    defer runtime.deinitializeRuntime();
+    // A standalone runtime of this test's own, the process's given back
+    // after (test_process.OwnRuntime).
+    const own_runtime = test_process.OwnRuntime.begin(std.testing.allocator);
+    defer own_runtime.end();
     interfaces.process_hooks.startHooksForTest();
     const hooks: engine.HostHooks = .{};
     const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &hooks, .allocator = std.testing.allocator });

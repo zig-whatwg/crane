@@ -17,6 +17,7 @@
 //! torn-down Window has no global to answer with, so it is null too.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const protocol = @import("engine");
@@ -30,14 +31,10 @@ const WindowHost = struct {
     }
 };
 
-var pools_ready = false;
-
+/// What every test here needs started: the engine, the process's hooks and
+/// the standalone runtime (test_process.zig).
 fn setup() !void {
-    try protocol.initializeEngine(.{});
-    if (pools_ready) return;
-    interfaces.process_hooks.startHooksForTest();
-    runtime.initializeRuntime(std.heap.page_allocator);
-    pools_ready = true;
+    test_process.start();
 }
 
 const Ignored = struct {

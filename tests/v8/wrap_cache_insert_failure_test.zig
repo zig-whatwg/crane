@@ -7,6 +7,7 @@
 //! wrapper's counted reference (refcount step 4) is not taken.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -36,14 +37,10 @@ const Reports = struct {
     }
 };
 
-var pools_ready = false;
-
+/// What every test here needs started: the engine, the process's hooks and
+/// the standalone runtime (test_process.zig).
 fn setup() !void {
-    try protocol.initializeEngine(.{});
-    if (pools_ready) return;
-    interfaces.process_hooks.startHooksForTest();
-    runtime.initializeRuntime(std.heap.page_allocator);
-    pools_ready = true;
+    test_process.start();
 }
 
 const Page = struct {

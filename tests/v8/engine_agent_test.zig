@@ -11,43 +11,59 @@
 //! enters it.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 const protocol = @import("engine");
 
-/// Two isolates, each with a context and a realm over it, for the whole file.
-/// The first stays entered - "the page's"; the second is "the worker's", and
-/// is entered only by the operations under test.
+/// Two agents, each with a context and a realm over it, for the test. The
+/// first is "the page's" - the test's own (test_agent), entered while the
+/// test runs; the second is "the worker's", made with the page's entered as
+/// a worker's owner makes it, and entered only by the operations under test.
+/// Both end with the test, the worker's first.
 var page: ?*ffi.Isolate = null;
-var page_context_once: ?*ffi.Context = null;
+var page_context: ?*ffi.Context = null;
 var worker: ?*ffi.Isolate = null;
 var worker_context: ?*ffi.Context = null;
 var worker_realm: ?*runtime.ContextData = null;
 
-fn setup() !void {
-    if (page != null) return;
-    const p = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(p);
-    _ = ffi.v8_HandleScope_New(p);
-    const page_context = ffi.v8_Context_New(p) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(page_context);
-    page_context_once = page_context;
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
 
-    // The worker's isolate, entered only to make its context.
-    const w = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+fn reset() void {
+    page = null;
+    page_context = null;
+    worker = null;
+    worker_context = null;
+    worker_realm = null;
+}
+
+fn setup() !void {
+    const p = try test_agent.open(.{});
+    if (page == null) try makeAgents(p);
+}
+
+fn makeAgents(p: *ffi.Isolate) !void {
+    page = p;
+    page_context = test_agent.context.?;
+
+    // The worker's agent, entered only to make its context.
+    const worker_agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &test_process.no_hooks, .host = null });
+    test_agent.endWith(.{ .agent = worker_agent });
+    const w: *ffi.Isolate = @ptrCast(@alignCast(worker_agent));
     ffi.v8_Isolate_Enter(w);
     const scope = ffi.v8_HandleScope_New(w);
     const context = ffi.v8_Context_New(w) orelse return error.ContextCreationFailed;
     if (scope) |s| ffi.v8_HandleScope_Dispose(s);
     ffi.v8_Isolate_Exit(w);
+    test_agent.endWith(.{ .context = context });
 
-    const data = try std.heap.page_allocator.create(runtime.ContextData);
-    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
+    const data = try test_agent.contextData(std.heap.page_allocator, .{ .engine_ctx = context });
     // What the context manager records for every realm it registers.
     data.agent = @ptrCast(w);
 
-    page = p;
     worker = w;
     worker_context = context;
     worker_realm = data;
@@ -65,6 +81,7 @@ fn observe(data: ?*anyopaque) void {
 }
 
 test "a task fired into a realm from another agent runs with the realm's agent entered" {
+    defer test_agent.close();
     try setup();
     try std.testing.expectEqual(page, ffi.v8_Isolate_GetCurrent());
 
@@ -82,6 +99,7 @@ test "a task fired into a realm from another agent runs with the realm's agent e
 }
 
 test "script runs in the realm's agent, not the current one" {
+    defer test_agent.close();
     try setup();
     const Reports = struct {
         count: usize = 0,
@@ -110,6 +128,7 @@ test "script runs in the realm's agent, not the current one" {
 // ("the current agent is running") skipped every one of them in a page.
 
 test "an agent with no script on the stack is not running any, entered or not" {
+    defer test_agent.close();
     try setup();
     try std.testing.expect(!protocol.hasRunningScript(@ptrCast(worker.?)));
     // The page's agent is entered, and its context too, but no realm
@@ -119,6 +138,7 @@ test "an agent with no script on the stack is not running any, entered or not" {
 }
 
 test "a prepared realm is on the stack until its clean-up" {
+    defer test_agent.close();
     try setup();
     const scope = try protocol.prepareToRunScript(worker_realm.?);
     try std.testing.expect(protocol.hasRunningScript(@ptrCast(worker.?)));
@@ -134,9 +154,10 @@ fn recordRunning(_: *const ffi.FunctionCallbackInfo) callconv(.c) void {
 }
 
 test "a JavaScript frame on the stack is running script, with no realm prepared" {
+    defer test_agent.close();
     try setup();
     const isolate = page.?;
-    const context = page_context_once.?;
+    const context = page_context.?;
     const template = ffi.v8_FunctionTemplate_New(isolate, recordRunning, null) orelse return error.TemplateFailed;
     defer ffi.v8_FunctionTemplate_Dispose(template);
     const function = ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return error.FunctionFailed;
@@ -167,6 +188,7 @@ fn observeProtocol(data: ?*anyopaque) void {
 }
 
 test "a task's own steps run with the stack empty, in the realm's entered agent" {
+    defer test_agent.close();
     try setup();
     var seen: Seen = .{ .running = true };
     try v8.engine.v8RunTaskInRealm(worker_realm.?, observeProtocol, &seen);
@@ -175,6 +197,7 @@ test "a task's own steps run with the stack empty, in the realm's entered agent"
 }
 
 test "a new agent is made and disposed, and an idle one has no engine work" {
+    defer test_agent.close();
     try setup();
     const agent = try v8.worker_realm.createAgent();
     try std.testing.expect(!v8.worker_realm.hasRunningScript(agent));
@@ -234,6 +257,7 @@ fn destroyTestingRealm(data: *runtime.ContextData) void {
 }
 
 test "abortRunningScript from another thread ends an infinite loop, and the agent runs script after resumeScripts" {
+    defer test_agent.close();
     try setup();
     const agent: *protocol.Agent = @ptrCast(worker.?);
     const realm = try testingRealm();
@@ -265,6 +289,7 @@ test "abortRunningScript from another thread ends an infinite loop, and the agen
 }
 
 test "an abort requested while no script runs ends the next script; resumeScripts first lets it run" {
+    defer test_agent.close();
     try setup();
     const agent: *protocol.Agent = @ptrCast(worker.?);
     const realm = try testingRealm();
@@ -305,6 +330,7 @@ const ParseReport = struct {
 };
 
 test "a classic script that fails to parse is reported as its parse error; one that throws, even a SyntaxError, is not" {
+    defer test_agent.close();
     try setup();
     // HTML "create a classic script": unparsable source text - the script's
     // parse error and error to rethrow ("run a worker" onComplete step 1).
