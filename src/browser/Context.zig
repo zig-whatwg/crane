@@ -308,14 +308,15 @@ test "a suspended timer keeps the wait it had left, and a resumed one is armed f
 // Crane already had a correct implementation of this in
 // src/html/event_loop/timers.zig (MIN_NESTED_DELAY_MS, NESTING_LEVEL_THRESHOLD,
 // setTimerInternal). It is DEAD CODE - nothing references its TimerManager. The live
-// path is this file -> the thread-local TimerInterface -> the Browser's event loop
+// path is this file -> the realm's TimerInterface -> its agent's event loop
 // (browser/event_loop.zig) -> runtime.native_timer,
 // which applied no clamping whatsoever. So the clamp is implemented here, at the
 // setTimeout boundary, which is where the spec puts it: initialisation runs before
 // the timer is handed to any scheduler.
 //
-// Thread-local because the nesting level belongs to the agent, and one agent is one
-// thread with one isolate.
+// The nesting level is the agent's - its event loop's running task's - kept on the
+// agent's host (html AgentHost.timer_nesting_level, `timerNestingLevel`). It was
+// one per thread.
 
 // HTML §8.6's nesting and clamp live in `runtime.timer`, shared with the worker
 // binding - which previously had no clamp at all. Aliases, not a second copy: two
@@ -334,8 +335,20 @@ const clampTimeout = runtime.timer.clampTimeout;
 /// spec boundary: a setTimeout called synchronously from the callback nests one
 /// deeper, while one scheduled from a microtask does not inherit the level at all.
 /// The checkpoint runs between tasks, so the level there is 0 by definition.
-fn resetNestingMicrotask(_: ?*anyopaque) void {
-    runtime.timer.nesting_level = 0;
+fn resetNestingMicrotask(data: ?*anyopaque) void {
+    const level: *u32 = @ptrCast(@alignCast(data orelse return));
+    level.* = 0;
+}
+
+/// HTML timer initialization step 3's "currently running task"'s timer nesting
+/// level, of the agent `realm` belongs to: the agent's, kept on its host
+/// (html AgentHost.timer_nesting_level), BORROWED for as long as the agent.
+/// Null for a realm with no agent or an agent with no host (a unit test's
+/// realm), whose level is always 0.
+fn timerNestingLevel(realm: runtime.Context) ?*u32 {
+    const agent = realm.agent orelse return null;
+    const host: *html_mod.agent_host.AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
+    return &host.timer_nesting_level;
 }
 
 /// Give back a value the engine handed over (OWNED).
@@ -667,7 +680,7 @@ const WindowTimerData = struct {
     /// For intervals: whether the interval has been cancelled
     cancelled: bool = false,
     /// This timer's nesting level, per the timer initialisation steps. While its
-    /// callback runs, `runtime.timer.nesting_level` is set to this, so timers created inside
+    /// callback runs, its agent's timer nesting level is set to this, so timers created inside
     /// nest one deeper and eventually trip the 4ms clamp.
     nesting_level: u32 = 0,
     /// True while this timer's callback is on the stack.
@@ -774,12 +787,15 @@ fn runTimerSteps(opaque_data: ?*anyopaque) void {
     // checkpoint runs after the task's callback returns, so a timer scheduled from a
     // microtask must NOT inherit the task's nesting level and must not be clamped to
     // 4ms. (wpt: html/webappapis/timers/timer-nesting-not-inherited-in-microtask.html)
-    const saved_nesting = runtime.timer.nesting_level;
-    runtime.timer.nesting_level = data.nesting_level;
-    defer runtime.timer.nesting_level = saved_nesting;
+    const level = timerNestingLevel(data.realm);
+    const saved_nesting = if (level) |l| l.* else 0;
+    if (level) |l| l.* = data.nesting_level;
+    defer if (level) |l| {
+        l.* = saved_nesting;
+    };
 
     // Runs ahead of any microtask the callback enqueues; see resetNestingMicrotask.
-    if (data.realm.agent) |agent| engine.queueMicrotask(agent, resetNestingMicrotask, null) catch {};
+    if (level) |l| if (data.realm.agent) |agent| engine.queueMicrotask(agent, resetNestingMicrotask, l) catch {};
 
     // This handler owns the wrapper for the duration of the callback, so a
     // clearTimeout/clearInterval from inside it defers the free to us.
@@ -976,7 +992,7 @@ fn initializeTimer(realm: runtime.Context, handler: runtime.WindowTimerHandler, 
 
     // Step 3: this timer's nesting level is one deeper than the running
     // task's, if that task is a timer's; 0 otherwise.
-    const nesting = runtime.timer.nesting_level;
+    const nesting: u32 = if (timerNestingLevel(realm)) |level| level.* else 0;
     // Step 4: a negative timeout is 0.
     const timeout_ms: i64 = @max(timeout, 0);
 

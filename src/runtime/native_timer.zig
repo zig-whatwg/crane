@@ -89,8 +89,8 @@ const TombstoneGuard = @import("infra").tombstones.TombstoneGuard;
 // loop, so that copy never runs.
 
 /// The timer nesting state is HTML's, in runtime.timer; these aliases keep
-/// this manager's callers and tests compiling. The level itself is
-/// `runtime.timer.nesting_level` (a threadlocal var cannot be aliased).
+/// this manager's callers and tests compiling. The level itself is the
+/// agent's (html AgentHost.timer_nesting_level).
 pub const nested_min_delay_ms = runtime.timer.nested_min_delay_ms;
 pub const nesting_threshold = runtime.timer.nesting_threshold;
 pub const clampTimeout = runtime.timer.clampTimeout;

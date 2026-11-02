@@ -616,7 +616,7 @@ test "real processes: the Crane test runner fails a test that leaves process sta
         .{ .name = "starts the process, installing a hook", .first = .pass, .says = null },
         .{ .name = "leaves the process starting", .first = .log_err, .says = "process_start.phase: not_started -> starting" },
         .{ .name = "ends the process", .first = .log_err, .says = "process_start.phase: not_started -> ended" },
-        .{ .name = "leaves the timer nesting level raised", .first = .log_err, .says = "global src/runtime/timer.zig nesting_level: 0 -> 1" },
+        .{ .name = "leaves the active cleanup coordinator set", .first = .log_err, .says = "global src/runtime/cleanup_coordinator.zig active_coordinator: " },
     };
     try testing.expectEqual(cases.len, md.names.len);
     var all: [cases.len]u32 = undefined;
