@@ -33,7 +33,11 @@ const fake_entries: dom.navigation_history_entries.Implementation = .{ .create =
 test "installs a hook for itself, as startHooksForTest does" {
     // A unit test with no Browser starts the hooks it needs itself: the
     // process start's to make, so not a change it left.
-    dom.navigation_history_entries.install(fake_entries);
+    dom.process_start.installForTest(struct {
+        fn installFake() void {
+            dom.navigation_history_entries.install(fake_entries);
+        }
+    }.installFake);
 }
 
 test "starts the process, installing a hook" {

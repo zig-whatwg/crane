@@ -1262,11 +1262,13 @@ pub const process_hooks = struct {
     }
 
     /// For a unit test that makes platform objects with no Browser: installs
-    /// these hooks only - not the engine, not the browser layer's. Production
-    /// starts through crane.Process. Installing again adds nothing.
+    /// these hooks only - not the engine, not the browser layer's - through
+    /// the sanctioned test start (dom.process_start.installForTest), the one
+    /// way a test installs a hook. Production starts through crane.Process.
+    /// Installing again adds nothing.
     pub fn startHooksForTest() void {
         if (!@import("builtin").is_test) @compileError("startHooksForTest is for tests; a host starts crane.Process");
-        install();
+        @import("dom").process_start.installForTest(install);
     }
 };
 const members = @This();
