@@ -18,6 +18,7 @@ const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const InMessage = std.zig.Server.Message;
 const sched = @import("scheduler.zig");
+const Slots = @import("slots.zig").Slots;
 
 pub const Metadata = struct {
     names: [][]const u8,
@@ -87,7 +88,16 @@ pub const Executor = struct {
     /// The child's argv: the test executable, `--listen=-`, `--seed=`.
     argv: []const []const u8,
     test_timeout_ns: u64,
+    /// Tests declared slow (indexed by test index; shorter than the test
+    /// count means "not slow"): their timeout is `slow_factor` times the
+    /// default - Chromium's and V8's SLOW x4, WebKit's `Slow` expectation.
+    slow: []const bool = &.{},
+    slow_factor: u64 = 4,
+    /// The build-wide cap on test processes (slots.zig), when set: each
+    /// child holds a slot while it lives.
+    slots: ?*Slots = null,
     procs: []?*Proc,
+    held: []?Slots.Slot,
     /// Summed over every child: user + system CPU, and the largest peak RSS.
     cpu_ns: std.atomic.Value(u64) = .init(0),
     peak_rss: std.atomic.Value(u64) = .init(0),
@@ -97,8 +107,17 @@ pub const Executor = struct {
 
     pub fn init(gpa: Allocator, io: Io, argv: []const []const u8, test_timeout_ns: u64, jobs: u32) !Executor {
         const procs = try gpa.alloc(?*Proc, @max(jobs, 1));
+        errdefer gpa.free(procs);
         @memset(procs, null);
-        return .{ .gpa = gpa, .io = io, .argv = argv, .test_timeout_ns = test_timeout_ns, .procs = procs };
+        const held = try gpa.alloc(?Slots.Slot, procs.len);
+        @memset(held, null);
+        return .{ .gpa = gpa, .io = io, .argv = argv, .test_timeout_ns = test_timeout_ns, .procs = procs, .held = held };
+    }
+
+    /// Test `t`'s timeout.
+    pub fn timeoutFor(e: *const Executor, t: u32) u64 {
+        const slow = t < e.slow.len and e.slow[t];
+        return if (slow) e.test_timeout_ns * e.slow_factor else e.test_timeout_ns;
     }
 
     pub fn deinit(e: *Executor) void {
@@ -106,6 +125,7 @@ pub const Executor = struct {
             if (p != null) _ = e.finish(@intCast(w), .kill);
         }
         e.gpa.free(e.procs);
+        e.gpa.free(e.held);
     }
 
     pub fn executor(e: *Executor) sched.Executor {
@@ -115,6 +135,11 @@ pub const Executor = struct {
     fn start(ptr: *anyopaque, w: u32) anyerror!void {
         const e: *Executor = @ptrCast(@alignCast(ptr));
         std.debug.assert(e.procs[w] == null);
+        if (e.slots) |slots| {
+            std.debug.assert(e.held[w] == null);
+            e.held[w] = try slots.acquire();
+        }
+        errdefer e.releaseSlot(w);
         const p = try e.gpa.create(Proc);
         errdefer e.gpa.destroy(p);
         p.child = try std.process.spawn(e.io, .{
@@ -130,6 +155,13 @@ pub const Executor = struct {
         e.procs[w] = p;
     }
 
+    fn releaseSlot(e: *Executor, w: u32) void {
+        const slots = e.slots orelse return;
+        const slot = e.held[w] orelse return;
+        e.held[w] = null;
+        slots.release(slot);
+    }
+
     fn deadline(e: *Executor, from: Io.Clock.Timestamp, ns: u64) Io.Timeout {
         _ = e;
         return .{ .deadline = from.addDuration(.{ .clock = .awake, .raw = .fromNanoseconds(ns) }) };
@@ -141,7 +173,8 @@ pub const Executor = struct {
         const p = e.procs[w].?;
         // Waiting for the runner itself (test_started) gets at least 60 s,
         // as in the build runner (`response_timeout`).
-        const response_ns = @max(e.test_timeout_ns, 60 * std.time.ns_per_s);
+        const test_ns = e.timeoutFor(t);
+        const response_ns = @max(test_ns, 60 * std.time.ns_per_s);
 
         p.client.serveRunTest(t) catch return e.died(w, "could not send run_test (the process is gone)", 0);
 
@@ -151,7 +184,7 @@ pub const Executor = struct {
             const header = p.client.receiveMessageWithMultiReader(&p.mr, timeout) catch |err| switch (err) {
                 error.Timeout => {
                     const ns = elapsed(io, began);
-                    const out = try e.stderrSnapshot(p, "timed out");
+                    const out = try e.stderrSnapshot(p, "timed out", test_ns);
                     _ = e.finish(w, .kill);
                     return .{ .status = .timeout, .ns = ns, .output = out };
                 },
@@ -165,7 +198,7 @@ pub const Executor = struct {
             switch (header.tag) {
                 .test_started => {
                     began = Io.Clock.Timestamp.now(io, .awake);
-                    timeout = e.deadline(began, e.test_timeout_ns);
+                    timeout = e.deadline(began, test_ns);
                 },
                 .test_results => {
                     const res = try parseResults(body);
@@ -202,9 +235,9 @@ pub const Executor = struct {
         return .{ .status = .crash, .ns = ns, .output = out };
     }
 
-    fn stderrSnapshot(e: *Executor, p: *Proc, what: []const u8) ![]u8 {
+    fn stderrSnapshot(e: *Executor, p: *Proc, what: []const u8, ns: u64) ![]u8 {
         return std.fmt.allocPrint(e.gpa, "launcher: test {s} after {d} s\n{s}", .{
-            what, e.test_timeout_ns / std.time.ns_per_s, p.mr.reader(1).buffered(),
+            what, ns / std.time.ns_per_s, p.mr.reader(1).buffered(),
         });
     }
 
@@ -218,6 +251,8 @@ pub const Executor = struct {
         const p = e.procs[w] orelse return null;
         e.procs[w] = null;
         defer e.gpa.destroy(p);
+        // After the process is gone (defers run last-in first-out).
+        defer e.releaseSlot(w);
 
         var term: ?std.process.Child.Term = null;
         var kill = how == .kill;
@@ -335,6 +370,19 @@ test "parses the metadata std.zig.Server sends" {
     try testing.expectEqualSlices(bool, &.{ false, true }, md.expects_panic);
 }
 
+test "a test declared slow gets the slow factor times the timeout" {
+    var e = try Executor.init(testing.allocator, testing.io, &.{"x"}, 10 * std.time.ns_per_s, 1);
+    defer e.deinit();
+    const slow = [_]bool{ false, true };
+    e.slow = &slow;
+    try testing.expectEqual(10 * std.time.ns_per_s, e.timeoutFor(0));
+    try testing.expectEqual(40 * std.time.ns_per_s, e.timeoutFor(1));
+    // Past the end of the list: not slow.
+    try testing.expectEqual(10 * std.time.ns_per_s, e.timeoutFor(7));
+    e.slow_factor = 8;
+    try testing.expectEqual(80 * std.time.ns_per_s, e.timeoutFor(1));
+}
+
 test "a truncated metadata body is an error, not a crash" {
     try testing.expectError(error.EndOfStream, parseMetadata(testing.allocator, "\x05\x00"));
 }
@@ -402,10 +450,11 @@ test "real processes: each kind of result, a crash and a timeout blamed and rest
     // The crash report names the panic.
     try testing.expect(std.mem.indexOf(u8, run.records[2].output, "the fixture crashes here") != null);
     // One batch process, a restart after the crash and after the timeout;
-    // then one alone run each for the five failures; then the prefix replay
-    // of "needs a clean process", which meets the crash and the timeout
-    // again and restarts after each, as the batch did.
-    try testing.expectEqual(@as(u32, 3 + 5 + 3), run.processes.load(.monotonic));
+    // then one alone run each for the five failures; then the replay of
+    // "needs a clean process" after the tests that shared its process -
+    // "leaks" and "poisons", from where the restart after the timeout began.
+    try testing.expectEqual(@as(u32, 3 + 5 + 1), run.processes.load(.monotonic));
+    try testing.expectEqual(@as(u32, 4), run.records[6].process_start);
     try testing.expectEqual(@as(u32, 0), exec.exit_failures.load(.monotonic));
     try testing.expect(exec.cpu_ns.load(.monotonic) > 0);
 }
