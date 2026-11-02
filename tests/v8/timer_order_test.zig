@@ -44,11 +44,11 @@ const Armed = struct {
 };
 
 /// Arm `tag` for `ms`, and read back the deadline it got - checked against
-/// the clock read around the call: `ms` after a moment within it.
+/// the manager's clock read around the call: `ms` after a moment within it.
 fn arm(mgr: *NativeTimerManager, ms: u64, comptime tag: u8) !Armed {
-    const before = clock.monotonicNanos();
+    const before = mgr.nowNs();
     const id = mgr.setTimeout(ms, Order.mk(tag), null);
-    const after = clock.monotonicNanos();
+    const after = mgr.nowNs();
     const entry = mgr.timers.get(id) orelse return error.TestTimerNotArmed;
     const delay: i128 = @as(i128, @intCast(ms)) * std.time.ns_per_ms;
     try std.testing.expect(entry.deadline_ns >= before + delay and entry.deadline_ns <= after + delay);
