@@ -88,6 +88,13 @@ const Args = struct {
     slow: []const []const u8 = &.{},
     list: bool = false,
     listen: bool = false,
+    /// The executable is built with ThreadSanitizer (-Dsanitize-thread).
+    sanitize_thread: bool = false,
+    tsan_suppressions: ?[]const u8 = null,
+    /// The many-Browsers variant (-Dmany-browsers).
+    many_browsers: bool = false,
+    /// Report every non-pass without failing (server.Session.report_only).
+    report_only: bool = false,
 
     fn parse(arena: std.mem.Allocator, args: []const []const u8) !Args {
         var a: Args = .{};
@@ -129,6 +136,14 @@ const Args = struct {
                 a.name = v;
             } else if (std.mem.eql(u8, arg, "--list")) {
                 a.list = true;
+            } else if (std.mem.eql(u8, arg, "--sanitize-thread")) {
+                a.sanitize_thread = true;
+            } else if (value(arg, "--tsan-suppressions=")) |v| {
+                a.tsan_suppressions = v;
+            } else if (std.mem.eql(u8, arg, "--many-browsers")) {
+                a.many_browsers = true;
+            } else if (std.mem.eql(u8, arg, "--report-only")) {
+                a.report_only = true;
             } else if (std.mem.eql(u8, arg, "--listen=-")) {
                 a.listen = true;
             } else if (std.mem.startsWith(u8, arg, "--")) {
@@ -138,6 +153,7 @@ const Args = struct {
             } else return error.UnexpectedArgument;
         }
         if (a.exe == null) return error.MissingExecutable;
+        if (a.tsan_suppressions != null and !a.sanitize_thread) return error.SuppressionsWithoutSanitizeThread;
         a.slow = slow.items;
         return a;
     }
@@ -174,6 +190,13 @@ const usage =
     \\  --slots-dir=DIR   share a cap of --jobs test processes with every launcher using DIR
     \\  --name=NAME       the suite's name in the report (default: the executable's)
     \\  --listen=-        server mode: answer the Zig test-runner protocol (what `zig build test` does)
+    \\  --sanitize-thread the executable is built with ThreadSanitizer: TSAN_OPTIONS=halt_on_error=1 in
+    \\                    every child, so a race crashes its process and is blamed on the running test
+    \\  --tsan-suppressions=FILE  with --sanitize-thread: the suppression file (proven false positives only)
+    \\  --many-browsers   the many-Browsers variant: every test runs beside a busy Browser on another
+    \\                    thread (CRANE_TEST_MANY_BROWSERS=1; the Crane test runner starts it)
+    \\  --report-only     print and record every verdict, but answer the build runner `pass` for a
+    \\                    failure and exit 0 for one: a variant's report mode (a TEMPORARY suite row)
     \\
 ;
 
@@ -194,6 +217,11 @@ test "args: options, defaults, and errors" {
     try std.testing.expect(d.shuffle);
     try std.testing.expectEqual(SeedSpec.random, d.seedSpec());
     try std.testing.expectEqual(@as(?u32, 3), (try Args.parse(arena, &.{ "x", "--parallel=3" })).jobs);
+    const t = try Args.parse(arena, &.{ "x", "--sanitize-thread", "--tsan-suppressions=/s.txt", "--many-browsers", "--report-only" });
+    try std.testing.expect(t.sanitize_thread and t.many_browsers and t.report_only);
+    try std.testing.expectEqualStrings("/s.txt", t.tsan_suppressions.?);
+    try std.testing.expect(!d.sanitize_thread and !d.many_browsers);
+    try std.testing.expectError(error.SuppressionsWithoutSanitizeThread, Args.parse(arena, &.{ "x", "--tsan-suppressions=/s.txt" }));
     try std.testing.expectError(error.MissingExecutable, Args.parse(arena, &.{}));
     try std.testing.expectError(error.UnknownOption, Args.parse(arena, &.{ "x", "--bogus" }));
     try std.testing.expectError(error.UnexpectedArgument, Args.parse(arena, &.{ "x", "y" }));
@@ -376,7 +404,10 @@ pub fn main(init: std.process.Init) !void {
     defer executor.deinit();
     // Every test child: the launcher's environment with the time zone and
     // locale fixed and the proxies cleared (child.testEnvironment).
-    var test_environ = try child_mod.testEnvironment(gpa, init.environ_map);
+    var test_environ = try child_mod.testEnvironment(gpa, init.environ_map, .{
+        .sanitize_thread = if (args.sanitize_thread) .{ .suppressions = args.tsan_suppressions } else null,
+        .many_browsers = args.many_browsers,
+    });
     defer test_environ.deinit();
     executor.environ_map = &test_environ;
     executor.slow = slow;
@@ -392,8 +423,11 @@ pub fn main(init: std.process.Init) !void {
     defer if (slots) |*s| s.close();
     if (slots) |*s| executor.slots = s;
 
-    const replay = try std.fmt.allocPrint(arena, "test_launcher {s} --seed=0x{x} --batch={d}{s}", .{
-        exe, seed, args.batch, if (args.shuffle) "" else " --no-shuffle",
+    // A replay runs the same variants: the race or the busy Browser is part
+    // of what failed.
+    const replay = try std.fmt.allocPrint(arena, "test_launcher {s} --seed=0x{x} --batch={d}{s}{s}{s}", .{
+        exe,                                                    seed,                                               args.batch, if (args.shuffle) "" else " --no-shuffle",
+        if (args.sanitize_thread) " --sanitize-thread" else "", if (args.many_browsers) " --many-browsers" else "",
     });
 
     var printer: Printer = .{
@@ -416,6 +450,7 @@ pub fn main(init: std.process.Init) !void {
 
     if (args.listen) {
         session = try server_mod.Session.init(gpa, io, md.names, md.expects_panic, is_selected, &run, seed);
+        session.report_only = args.report_only;
         defer session.deinit(gpa);
         var stdin_buf: [4096]u8 = undefined;
         var stdin_reader = Io.File.stdin().readerStreaming(io, &stdin_buf);
@@ -440,22 +475,29 @@ pub fn main(init: std.process.Init) !void {
     const exit_failures = executor.exit_failures.load(.monotonic);
     const cpu_s = fmtSeconds(executor.cpu_ns.load(.monotonic));
     const rss_mb = executor.peak_rss.load(.monotonic) / (1 << 20);
+    // The variants the suite ran under, after its name: a nightly greps the
+    // line, and a report-only suite's failures must not read as a gate's.
+    const variants = try std.fmt.allocPrint(arena, "{s}{s}{s}", .{
+        if (args.sanitize_thread) " [ThreadSanitizer]" else "",
+        if (args.many_browsers) " [many Browsers]" else "",
+        if (args.report_only) " [REPORT-ONLY]" else "",
+    });
     if (args.listen) {
         // One line per suite: in `zig build test` this is the step's stderr,
         // which prints each suite's seed and its own wall time. The replay
         // command only when something did not pass.
         try out.print(
-            "test_launcher: {s}: seed 0x{x}, batch {d}: PASS {d} SKIP {d} FAIL {d} ORDER-DEPENDENT {d} FLAKY {d} NOT-RUN {d} LAUNCHER-ERROR {d}; wall {d:.1} s, child CPU {d:.1} s, {d} processes, peak child RSS {d} MB\n",
-            .{ name, seed, args.batch, c.pass, c.skip, c.fail, c.order_dependent, c.flaky, c.not_run, c.launcher_error, fmtSeconds(wall_ns), cpu_s, run.processes.load(.monotonic), rss_mb },
+            "test_launcher: {s}{s}: seed 0x{x}, batch {d}: PASS {d} SKIP {d} FAIL {d} ORDER-DEPENDENT {d} FLAKY {d} NOT-RUN {d} LAUNCHER-ERROR {d}; wall {d:.1} s, child CPU {d:.1} s, {d} processes, peak child RSS {d} MB\n",
+            .{ name, variants, seed, args.batch, c.pass, c.skip, c.fail, c.order_dependent, c.flaky, c.not_run, c.launcher_error, fmtSeconds(wall_ns), cpu_s, run.processes.load(.monotonic), rss_mb },
         );
         if (c.bad() != 0) try out.print("  replay: {s}\n", .{replay});
         if (exit_failures != 0) try out.print("  {d} test processes exited non-zero after exit\n", .{exit_failures});
     } else try out.print(
-        "test_launcher: {s}: PASS {d}  SKIP {d}  FAIL {d}  ORDER-DEPENDENT {d}  FLAKY {d}  NOT-RUN {d}  LAUNCHER-ERROR {d}  (seed 0x{x}, batch {d}, {d} jobs)\n" ++
+        "test_launcher: {s}{s}: PASS {d}  SKIP {d}  FAIL {d}  ORDER-DEPENDENT {d}  FLAKY {d}  NOT-RUN {d}  LAUNCHER-ERROR {d}  (seed 0x{x}, batch {d}, {d} jobs)\n" ++
             "  wall {d:.1} s, child CPU {d:.1} s, {d} processes, peak child RSS {d} MB, {d} exited non-zero after exit\n",
         .{
-            name,                c.pass, c.skip,                         c.fail, c.order_dependent, c.flaky, c.not_run, c.launcher_error, seed, args.batch, jobs,
-            fmtSeconds(wall_ns), cpu_s,  run.processes.load(.monotonic), rss_mb, exit_failures,
+            name,                variants, c.pass,                         c.skip, c.fail,        c.order_dependent, c.flaky, c.not_run, c.launcher_error, seed, args.batch, jobs,
+            fmtSeconds(wall_ns), cpu_s,    run.processes.load(.monotonic), rss_mb, exit_failures,
         },
     );
 
@@ -469,7 +511,7 @@ pub fn main(init: std.process.Init) !void {
     }
     try out.flush();
 
-    const status = exitStatus(args.listen, c, exit_failures);
+    const status = exitStatus(args.listen, args.report_only, c, exit_failures);
     if (status != 0) std.process.exit(status);
 }
 
@@ -479,22 +521,31 @@ pub fn main(init: std.process.Init) !void {
 /// not run (LAUNCHER-ERROR, answered `skip`: the build runner then reports
 /// the step failed, "test process unexpectedly exited with code 1", with the
 /// launcher's account of the cause). By hand, any non-pass fails the run.
-fn exitStatus(listen: bool, c: sched.Run.Counts, exit_failures: u32) u8 {
-    if (exit_failures != 0 or c.launcher_error != 0) return 1;
+/// `--report-only` fails only for the launcher's own failure: a variant's
+/// findings - the tests' verdicts and an exit after the last test - are
+/// printed and recorded, not failed.
+fn exitStatus(listen: bool, report_only: bool, c: sched.Run.Counts, exit_failures: u32) u8 {
+    if (c.launcher_error != 0) return 1;
+    if (report_only) return 0;
+    if (exit_failures != 0) return 1;
     if (!listen and c.bad() != 0) return 1;
     return 0;
 }
 
 test "exit status: a launcher error fails the run in server mode too, where a test's failure does not" {
     // Server mode: failures went to the build runner as failures.
-    try testing.expectEqual(@as(u8, 0), exitStatus(true, .{ .pass = 3, .fail = 1, .flaky = 1 }, 0));
-    try testing.expectEqual(@as(u8, 1), exitStatus(true, .{ .pass = 3, .launcher_error = 1 }, 0));
-    try testing.expectEqual(@as(u8, 1), exitStatus(true, .{ .pass = 3 }, 1));
-    try testing.expectEqual(@as(u8, 0), exitStatus(true, .{ .pass = 3, .skip = 2 }, 0));
+    try testing.expectEqual(@as(u8, 0), exitStatus(true, false, .{ .pass = 3, .fail = 1, .flaky = 1 }, 0));
+    try testing.expectEqual(@as(u8, 1), exitStatus(true, false, .{ .pass = 3, .launcher_error = 1 }, 0));
+    try testing.expectEqual(@as(u8, 1), exitStatus(true, false, .{ .pass = 3 }, 1));
+    try testing.expectEqual(@as(u8, 0), exitStatus(true, false, .{ .pass = 3, .skip = 2 }, 0));
     // By hand: any non-pass.
-    try testing.expectEqual(@as(u8, 1), exitStatus(false, .{ .pass = 3, .fail = 1 }, 0));
-    try testing.expectEqual(@as(u8, 1), exitStatus(false, .{ .pass = 3, .launcher_error = 1 }, 0));
-    try testing.expectEqual(@as(u8, 0), exitStatus(false, .{ .pass = 3, .skip = 1 }, 0));
+    try testing.expectEqual(@as(u8, 1), exitStatus(false, false, .{ .pass = 3, .fail = 1 }, 0));
+    try testing.expectEqual(@as(u8, 1), exitStatus(false, false, .{ .pass = 3, .launcher_error = 1 }, 0));
+    try testing.expectEqual(@as(u8, 0), exitStatus(false, false, .{ .pass = 3, .skip = 1 }, 0));
+    // Report-only: only the launcher's own failure fails.
+    try testing.expectEqual(@as(u8, 0), exitStatus(false, true, .{ .pass = 3, .fail = 1, .flaky = 2 }, 0));
+    try testing.expectEqual(@as(u8, 0), exitStatus(true, true, .{ .pass = 3 }, 1));
+    try testing.expectEqual(@as(u8, 1), exitStatus(true, true, .{ .pass = 3, .launcher_error = 1 }, 0));
 }
 
 /// A failure of the launcher itself, outside any test (it could not list

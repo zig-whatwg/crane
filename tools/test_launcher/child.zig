@@ -368,14 +368,56 @@ pub const cleared_environment = [_][]const u8{
     "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
 };
 
+/// The variable that turns on the Crane test runner's many-Browsers variant
+/// (tests/test_runner/neighbour.zig): a second, busy Browser on another
+/// thread of every test process.
+pub const many_browsers_variable = "CRANE_TEST_MANY_BROWSERS";
+
+/// What a run adds to every test child's environment.
+pub const EnvironmentOptions = struct {
+    /// The test executable is built with ThreadSanitizer (-Dsanitize-thread):
+    /// TSAN_OPTIONS makes the first race a crash of the process
+    /// (`halt_on_error=1`) - so the launcher blames the test that was
+    /// running, as it blames any crash - where by default a race only
+    /// changes the exit status at `exit`, with no test to blame.
+    sanitize_thread: ?SanitizeThread = null,
+    /// The many-Browsers variant (`many_browsers_variable`).
+    many_browsers: bool = false,
+
+    pub const SanitizeThread = struct {
+        /// The suppression file: only proven false positives of the
+        /// uninstrumented V8 (tools/test_launcher/tsan_suppressions.txt).
+        suppressions: ?[]const u8 = null,
+    };
+};
+
+/// TSAN_OPTIONS: the launcher's flags, then any the launcher was given in
+/// its own environment, which come later and so win (a run by hand with
+/// TSAN_OPTIONS=history_size=7 keeps it).
+fn tsanOptions(gpa: Allocator, tsan: EnvironmentOptions.SanitizeThread, own: ?[]const u8) Allocator.Error![]u8 {
+    var aw: Io.Writer.Allocating = .init(gpa);
+    errdefer aw.deinit();
+    const w = &aw.writer;
+    w.writeAll("halt_on_error=1:second_deadlock_stack=1") catch return error.OutOfMemory;
+    if (tsan.suppressions) |path| w.print(":suppressions={s}", .{path}) catch return error.OutOfMemory;
+    if (own) |text| if (text.len != 0) w.print(":{s}", .{text}) catch return error.OutOfMemory;
+    return aw.toOwnedSlice();
+}
+
 /// The environment of every test child: `base` (the launcher's), with
-/// `fixed_environment` set and `cleared_environment` removed. The caller
-/// owns the result; `base` is not changed.
-pub fn testEnvironment(gpa: Allocator, base: *const std.process.Environ.Map) Allocator.Error!std.process.Environ.Map {
+/// `fixed_environment` set and `cleared_environment` removed, and what
+/// `options` adds. The caller owns the result; `base` is not changed.
+pub fn testEnvironment(gpa: Allocator, base: *const std.process.Environ.Map, options: EnvironmentOptions) Allocator.Error!std.process.Environ.Map {
     var env = try base.clone(gpa);
     errdefer env.deinit();
     for (fixed_environment) |pair| try env.put(pair[0], pair[1]);
     for (cleared_environment) |name| _ = env.swapRemove(name);
+    if (options.sanitize_thread) |tsan| {
+        const value = try tsanOptions(gpa, tsan, base.get("TSAN_OPTIONS"));
+        defer gpa.free(value);
+        try env.put("TSAN_OPTIONS", value);
+    }
+    if (options.many_browsers) try env.put(many_browsers_variable, "1");
     return env;
 }
 
@@ -544,7 +586,7 @@ test "the test environment: the launcher's own, with the time zone and locale fi
     try base.put("http_proxy", "http://proxy.invalid:3128");
     try base.put("HTTPS_PROXY", "http://proxy.invalid:3128");
     try base.put("PATH", "/usr/bin:/bin");
-    var env = try testEnvironment(gpa, &base);
+    var env = try testEnvironment(gpa, &base, .{});
     defer env.deinit();
     try testing.expectEqualStrings("America/Los_Angeles", env.get("TZ").?);
     try testing.expectEqualStrings("en_US.UTF-8", env.get("LANG").?);
@@ -555,6 +597,71 @@ test "the test environment: the launcher's own, with the time zone and locale fi
     try testing.expectEqualStrings("/usr/bin:/bin", env.get("PATH").?);
     // The launcher's own map is not changed.
     try testing.expectEqualStrings("UTC", base.get("TZ").?);
+}
+
+test "the test environment under ThreadSanitizer: a race halts the child, with the suppressions; the launcher's own TSAN_OPTIONS come last and win" {
+    const gpa = testing.allocator;
+    var base: std.process.Environ.Map = .init(gpa);
+    defer base.deinit();
+    // Not instrumented: no TSAN_OPTIONS is added.
+    var plain = try testEnvironment(gpa, &base, .{});
+    defer plain.deinit();
+    try testing.expect(plain.get("TSAN_OPTIONS") == null);
+    try testing.expect(plain.get(many_browsers_variable) == null);
+
+    var tsan = try testEnvironment(gpa, &base, .{ .sanitize_thread = .{ .suppressions = "/abs/tsan_suppressions.txt" } });
+    defer tsan.deinit();
+    try testing.expectEqualStrings("halt_on_error=1:second_deadlock_stack=1:suppressions=/abs/tsan_suppressions.txt", tsan.get("TSAN_OPTIONS").?);
+
+    try base.put("TSAN_OPTIONS", "history_size=7");
+    var by_hand = try testEnvironment(gpa, &base, .{ .sanitize_thread = .{} });
+    defer by_hand.deinit();
+    try testing.expectEqualStrings("halt_on_error=1:second_deadlock_stack=1:history_size=7", by_hand.get("TSAN_OPTIONS").?);
+    try testing.expectEqualStrings("history_size=7", base.get("TSAN_OPTIONS").?);
+
+    // The many-Browsers variant: the Crane test runner starts its busy Browser.
+    var many = try testEnvironment(gpa, &base, .{ .many_browsers = true });
+    defer many.deinit();
+    try testing.expectEqualStrings("1", many.get(many_browsers_variable).?);
+}
+
+test "real processes: under ThreadSanitizer a data race halts the test child, and the launcher blames the test that raced" {
+    // build.zig compiles tools/test_launcher/tsan_fixture_test.zig with
+    // sanitize_thread and passes its path.
+    const fixture = @import("launcher_fixture");
+    const gpa = testing.allocator;
+    const io = testing.io;
+    const argv = [_][]const u8{ fixture.tsan_path, "--listen=-", "--seed=0x1" };
+    const md = try queryMetadata(gpa, io, &argv);
+    defer md.deinit(gpa);
+    const names = [_][]const u8{ "passes before", "races", "passes after" };
+    try testing.expectEqual(names.len, md.names.len);
+    var all: [names.len]u32 = undefined;
+    for (names, 0..) |want, i| {
+        try testing.expect(std.mem.endsWith(u8, md.names[i], want));
+        all[i] = @intCast(i);
+    }
+
+    var base: std.process.Environ.Map = .init(gpa);
+    defer base.deinit();
+    var env = try testEnvironment(gpa, &base, .{ .sanitize_thread = .{} });
+    defer env.deinit();
+    // One process for the three: the race kills it, the test after runs in
+    // a new one.
+    var plan = try @import("plan.zig").make(gpa, &all, .{ .seed = 1, .shuffle = false, .batch_size = 0 });
+    defer plan.deinit(gpa);
+    var exec = try Executor.init(gpa, io, &argv, 60 * std.time.ns_per_s, 1);
+    defer exec.deinit();
+    exec.environ_map = &env;
+    var run = try sched.Run.init(gpa, io, &plan, md.names.len, exec.executor(), .{ .jobs = 1, .alone_runs = 1 });
+    defer run.deinit();
+    try run.execute();
+    errdefer std.debug.print("{s}\n", .{run.records[1].output});
+    try testing.expectEqual(sched.Status.pass, run.records[0].first);
+    try testing.expectEqual(sched.Status.crash, run.records[1].first);
+    try testing.expectEqual(sched.Verdict.fail, run.records[1].verdict);
+    try testing.expect(std.mem.indexOf(u8, run.records[1].output, "WARNING: ThreadSanitizer: data race") != null);
+    try testing.expectEqual(sched.Status.pass, run.records[2].first);
 }
 
 test "real processes: a test child sees the fixed environment whatever the launcher's was" {
@@ -573,7 +680,7 @@ test "real processes: a test child sees the fixed environment whatever the launc
     try base.put("TZ", "Asia/Tokyo");
     try base.put("LANG", "de_DE.UTF-8");
     try base.put("https_proxy", "http://proxy.invalid:3128");
-    var fixed = try testEnvironment(gpa, &base);
+    var fixed = try testEnvironment(gpa, &base, .{});
     defer fixed.deinit();
 
     // The fixture is sensitive: run with the launcher's environment as it

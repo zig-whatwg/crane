@@ -18,6 +18,15 @@
 //! `log_err_count` do, and the launcher keeps the text of every test that
 //! did not pass.
 //!
+//! The many-Browsers variant (CRANE_TEST_MANY_BROWSERS=1, which
+//! tools/test_launcher's --many-browsers sets; build.zig -Dmany-browsers):
+//! from the first test on, a second, busy Browser works on another thread of
+//! the process (neighbour.zig, busy_browser.zig). The runner holds it between
+//! two of its iterations while it takes each digest, so the check compares
+//! the process as it would without it, and fails the test during which the
+//! busy Browser failed (`std.log.err`, naming it). Its log lines reach
+//! `log` too, so an error it logs fails the test it ran beside.
+//!
 //! Not a test file: build.zig copies this directory beside the suite's
 //! generated `suite.zig` and points the executable's `test_runner` here.
 
@@ -27,12 +36,16 @@ const Io = std.Io;
 const testing = std.testing;
 const panic = std.debug.panic;
 const state = @import("state.zig");
+const neighbour_mod = @import("neighbour.zig");
+const busy_browser = @import("busy_browser.zig");
+const suite = @import("suite.zig");
 
 pub const std_options: std.Options = .{
     .logFn = log,
 };
 
-var log_err_count: usize = 0;
+/// Atomic: the many-Browsers variant's busy Browser logs from its own thread.
+var log_err_count: std.atomic.Value(usize) = .init(0);
 var fba: std.heap.FixedBufferAllocator = .init(&fba_buffer);
 var fba_buffer: [8192]u8 = undefined;
 var stdin_buffer: [4096]u8 = undefined;
@@ -40,6 +53,11 @@ var stdout_buffer: [4096]u8 = undefined;
 var stdin_reader: Io.File.Reader = undefined;
 var stdout_writer: Io.File.Writer = undefined;
 const runner_threaded_io: Io = Io.Threaded.global_single_threaded.io();
+
+/// The many-Browsers variant's busy Browser, when the environment asks for
+/// it (`configureNeighbour`); started before the first test runs.
+var neighbour: neighbour_mod.Neighbour = .init(runner_threaded_io, .{ .iterate = busy_browser.iterate });
+var neighbour_wanted = false;
 
 comptime {
     // Zig's backends that need the simple runner (std's `need_simple`) are
@@ -69,6 +87,7 @@ pub fn main(init: std.process.Init.Minimal) void {
     }
 
     state.configure(init.environ);
+    configureNeighbour(init.environ);
 
     if (listen) {
         return mainServer(init) catch |err| panic("internal test runner failure: {t}", .{err});
@@ -77,14 +96,69 @@ pub fn main(init: std.process.Init.Minimal) void {
     }
 }
 
+/// The many-Browsers variant, from the environment the launcher gives its
+/// children (tools/test_launcher child.zig, `many_browsers_variable`).
+fn configureNeighbour(environ: std.process.Environ) void {
+    const value = environ.getPosix("CRANE_TEST_MANY_BROWSERS") orelse return;
+    if (value.len == 0 or std.mem.eql(u8, value, "0")) return;
+    if (suite.browser == null) {
+        // A suite with no Browser to run (no V8, or built without
+        // -Dmany-browsers, which adds the browser module): said once per
+        // process, and the tests run as usual.
+        std.debug.print("test runner ({s}): CRANE_TEST_MANY_BROWSERS is set, but this executable has no Browser (build it with -Dmany-browsers; a suite that links no V8 cannot run one) - the tests run without the busy Browser\n", .{suite.name});
+        return;
+    }
+    neighbour_wanted = true;
+}
+
+/// Starts the busy Browser before the first test, not at process start: the
+/// launcher's process that only lists the tests never runs one.
+fn startNeighbourOnce() void {
+    if (!neighbour_wanted or neighbour.running()) return;
+    neighbour.start() catch |err| panic("the many-Browsers variant could not start its busy Browser's thread: {t}", .{err});
+}
+
+/// Ends the busy Browser before the process exits: an exit with the thread
+/// mid-iteration would tear the engine down under it.
+fn stopNeighbour() void {
+    neighbour.stop();
+}
+
+/// After a test: whether the busy Browser failed while it ran (called while
+/// held). A failure fails the test it ran beside - as a race under
+/// ThreadSanitizer is blamed on the running test - naming the busy Browser,
+/// so the report says which side failed.
+fn checkNeighbour(test_name: []const u8) void {
+    if (!neighbour.running()) return;
+    const got = neighbour.take();
+    const failure = got.failure orelse return;
+    std.log.scoped(.many_browsers).err("the busy Browser on another thread failed during {s}: iteration {d}: {t}: {s}{s}", .{
+        test_name,
+        failure.iteration,
+        failure.err,
+        failure.message(),
+        if (got.more_failures != 0) " (and later iterations failed too)" else "",
+    });
+}
+
 /// One test, with the state check around it. The digest before is taken
 /// after the test's allocator and Io are made and the one after before they
 /// end, so neither sees the other's allocations; the digests themselves
-/// allocate nothing from the test's allocator.
+/// allocate nothing from the test's allocator. Each digest is taken with
+/// the busy Browser held between two of its iterations, when it has
+/// nothing alive.
 fn runOne(test_fn: std.lang.TestFn, index: u32) anyerror!void {
+    startNeighbourOnce();
+    neighbour.hold();
     state.before();
+    // What failed before this test started (between tests) is not its.
+    if (neighbour.running()) _ = neighbour.take();
+    neighbour.release();
     const result = test_fn.func();
+    neighbour.hold();
     state.after(index, test_fn.name);
+    checkNeighbour(test_fn.name);
+    neighbour.release();
     return result;
 }
 
@@ -101,6 +175,7 @@ fn mainServer(init: std.process.Init.Minimal) !void {
         const hdr = try server.receiveMessage();
         switch (hdr.tag) {
             .exit => {
+                stopNeighbour();
                 return std.process.exit(0);
             },
             .query_test_metadata => {
@@ -143,7 +218,7 @@ fn mainServer(init: std.process.Init.Minimal) !void {
                     .argv0 = .init(init.args),
                     .environ = init.environ,
                 });
-                log_err_count = 0;
+                log_err_count.store(0, .monotonic);
                 const index = try server.receiveBody_u32();
                 const test_fn = builtin.test_functions[index];
 
@@ -172,7 +247,7 @@ fn mainServer(init: std.process.Init.Minimal) !void {
                         .fuzz = false,
                         .log_err_count = std.math.lossyCast(
                             @FieldType(TestResults.Flags, "log_err_count"),
-                            log_err_count,
+                            log_err_count.load(.monotonic),
                         ),
                         .leak_count = std.math.lossyCast(
                             @FieldType(TestResults.Flags, "leak_count"),
@@ -253,18 +328,20 @@ fn mainTerminal(init: std.process.Init.Minimal) void {
         }
     }
     root_node.end();
+    stopNeighbour();
     if (ok_count == test_fn_list.len) {
         std.debug.print("All {d} tests passed.\n", .{ok_count});
     } else {
         std.debug.print("{d} passed; {d} skipped; {d} failed.\n", .{ ok_count, skip_count, fail_count });
     }
-    if (log_err_count != 0) {
-        std.debug.print("{d} errors were logged.\n", .{log_err_count});
+    const errors_logged = log_err_count.load(.monotonic);
+    if (errors_logged != 0) {
+        std.debug.print("{d} errors were logged.\n", .{errors_logged});
     }
     if (leaks != 0) {
         std.debug.print("{d} tests leaked memory.\n", .{leaks});
     }
-    if (leaks != 0 or log_err_count != 0 or fail_count != 0) {
+    if (leaks != 0 or errors_logged != 0 or fail_count != 0) {
         std.process.exit(1);
     }
 }
@@ -276,7 +353,16 @@ pub fn log(
     args: anytype,
 ) void {
     if (@backingInt(message_level) <= @backingInt(std.log.Level.err)) {
-        log_err_count +|= 1;
+        _ = log_err_count.fetchAdd(1, .monotonic);
+    }
+    // The busy Browser's thread prints at warn and above, marked, and never
+    // reads `testing.log_level`, which a test may set while it runs.
+    if (neighbour.isOwnThread()) {
+        if (@backingInt(message_level) <= @backingInt(std.log.Level.warn)) std.debug.print(
+            "[busy Browser] [" ++ @tagName(scope) ++ "] (" ++ @tagName(message_level) ++ "): " ++ format ++ "\n",
+            args,
+        );
+        return;
     }
     if (@backingInt(message_level) <= @backingInt(testing.log_level)) {
         std.debug.print(

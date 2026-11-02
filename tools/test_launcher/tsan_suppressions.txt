@@ -1,0 +1,12 @@
+# ThreadSanitizer suppressions for -Dsanitize-thread (build.zig passes this file to
+# tools/test_launcher, which names it in every test child's TSAN_OPTIONS).
+#
+# ONLY proven false positives belong here: a report whose race is inside the
+# uninstrumented V8 prebuilt, or ordered by V8's own atomics that TSAN cannot see.
+# V8 is a static archive, so `called_from_lib:` (dynamic libraries only) cannot
+# name it; an entry names the V8 frame instead (`race:v8::internal::<function>`).
+# Each entry carries, above it: the report (test, both stacks' top frames), why it
+# is a false positive (the V8 code that orders the two accesses), and who proved it.
+# A race in Crane's own code is never suppressed: it is a bug with an owner.
+#
+# (none yet: tests-dom and tests-html under TSAN, lane tsan1, 2026-11-02)
