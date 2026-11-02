@@ -701,9 +701,18 @@ test "an abort inside a listener the binding dispatched to leaves no handle and 
     ));
     const body = "abortTarget.dispatchEvent(new Event('spin')); 1";
     const isolate = test_isolate.?;
-    // Two rounds first: what the first makes and later ones reuse.
-    try abortedRound(body);
-    try abortedRound(body);
+    // A window of eight rounds and a collection first, the shape of the one
+    // measured, so that what the first window makes and later ones reuse is
+    // not counted: the realm's wrapper cache grows its map once to hold a
+    // window's eight Events until their collection, and a map never shrinks.
+    // Measured after two rounds, the first window left 136-408 bytes of the
+    // realm's allocator (alone and shuffled; in index order an earlier test
+    // had grown the map) - one 296-byte allocation, HashMap(*Instance,
+    // *CacheEntry).allocate, still live after a second collection - and every
+    // later window +0; forty rounds each followed by its own collection left
+    // 0 (lane v8order1's probe, 2026-11-02). A leak per aborted dispatch
+    // would grow with every round.
+    for (0..8) |_| try abortedRound(body);
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
     const contexts_before = ffi.v8_Debug_LiveContextGlobals();
     const bytes_before: i64 = @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate));
