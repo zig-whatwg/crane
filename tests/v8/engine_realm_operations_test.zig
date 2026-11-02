@@ -10,49 +10,48 @@ const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 
-/// A live isolate with an entered context and a runtime realm over it, one for
-/// the whole file, as in platform_task_pump_test.zig - V8 is never torn down
-/// here. Microtasks are explicit, as the browser runs them.
-var isolate_once: ?*ffi.Isolate = null;
-var context_once: ?*ffi.Context = null;
-var realm_once: ?*runtime.Realm = null;
-var data_once: ?*runtime.ContextData = null;
+/// A live isolate with an entered context and a runtime realm over it: the
+/// test's own agent's (test_agent), ended with the test. Microtasks are
+/// explicit, as the browser runs them.
+var test_isolate: ?*ffi.Isolate = null;
+var test_context: ?*ffi.Context = null;
+var test_realm: ?*runtime.Realm = null;
+var test_data: ?*runtime.ContextData = null;
 
-/// The file's isolate: current only while one of its tests runs
-/// (test_process.FileIsolate).
-var file: test_process.FileIsolate = .{};
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+    test_context = null;
+    test_realm = null;
+    test_data = null;
+}
 
 fn realm() !runtime.Context {
-    test_process.start();
-    if (data_once == null) {
-        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-        ffi.v8_Isolate_Enter(i);
-        defer ffi.v8_Isolate_Exit(i);
+    const i = try test_agent.open(.{});
+    if (test_data == null) {
         ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
-        _ = ffi.v8_HandleScope_New(i);
-        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-        ffi.v8_Context_Enter(context);
-        const r = try runtime.Realm.init(std.heap.page_allocator, .{ .engine_realm = context, .agent = @ptrCast(i) });
-        const data = try std.heap.page_allocator.create(runtime.ContextData);
-        data.* = try runtime.ContextData.init(std.heap.page_allocator, .{
+        const context = test_agent.context.?;
+        const r = try test_agent.realmRecord(std.heap.page_allocator, .{ .engine_realm = context, .agent = @ptrCast(i) });
+        const data = try test_agent.contextData(std.heap.page_allocator, .{
             .engine_ctx = context,
             .realm = r,
         });
-        isolate_once = i;
-        context_once = context;
-        realm_once = r;
-        data_once = data;
-        file.isolate = i;
+        test_isolate = i;
+        test_context = context;
+        test_realm = r;
+        test_data = data;
     }
-    file.enter();
-    return data_once.?;
+    return test_data.?;
 }
 
 /// Run `source` in the realm's context, as a test's own setup does - not an
 /// engine operation.
 fn runScript(source: []const u8) !void {
-    const i = isolate_once.?;
-    const context = context_once.?;
+    const i = test_isolate.?;
+    const context = test_context.?;
     const code = ffi.v8_String_NewFromUtf8(i, source.ptr, @intCast(source.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(code);
     const script = ffi.v8_Script_Compile(context, code) orelse return error.CompileFailed;
@@ -63,8 +62,8 @@ fn runScript(source: []const u8) !void {
 
 /// A global's value as an integer, read by script.
 fn globalInt(name: []const u8) !i32 {
-    const i = isolate_once.?;
-    const context = context_once.?;
+    const i = test_isolate.?;
+    const context = test_context.?;
     const code = ffi.v8_String_NewFromUtf8(i, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(code);
     const script = ffi.v8_Script_Compile(context, code) orelse return error.CompileFailed;
@@ -82,7 +81,7 @@ fn setFromTask(data: ?*anyopaque) void {
 }
 
 test "a task and a synchronous step run inside the realm" {
-    defer file.leave();
+    defer test_agent.close();
     const ctx = try realm();
     var ran = false;
     try v8.engine.v8RunTaskInRealm(ctx, setFromTask, &ran);
@@ -95,7 +94,7 @@ test "a task and a synchronous step run inside the realm" {
 }
 
 test "a DOMException is created as an owned value and released" {
-    defer file.leave();
+    defer test_agent.close();
     const ctx = try realm();
     // With no DOMException constructor in the realm, creation fails - it is
     // reported, not papered over.
@@ -110,10 +109,10 @@ test "a DOMException is created as an owned value and released" {
     try std.testing.expect(made == .handle);
 
     // Put it where script can look at it.
-    const context = context_once.?;
+    const context = test_context.?;
     const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
     defer ffi.v8_Object_Dispose(global);
-    const key = ffi.v8_String_NewFromUtf8(isolate_once.?, "made", 4) orelse return error.StringFailed;
+    const key = ffi.v8_String_NewFromUtf8(test_isolate.?, "made", 4) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(key);
     _ = ffi.v8_Object_Set(global, context, @ptrCast(key), @ptrCast(@alignCast(made.handle.ptr)));
     try std.testing.expectEqual(@as(i32, 1), try globalInt("globalThis.made.name === 'AbortError' && globalThis.made.message === 'aborted' ? 1 : 0"));
@@ -124,15 +123,15 @@ test "a DOMException is created as an owned value and released" {
 }
 
 test "an object survives StructuredSerializeForStorage and StructuredDeserialize" {
-    defer file.leave();
+    defer test_agent.close();
     const ctx = try realm();
     try runScript("globalThis.state = { a: 1, b: [2, 3], c: 'x' };");
 
     // The object, as a handle the caller owns.
-    const context = context_once.?;
+    const context = test_context.?;
     const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
     defer ffi.v8_Object_Dispose(global);
-    const key = ffi.v8_String_NewFromUtf8(isolate_once.?, "state", 5) orelse return error.StringFailed;
+    const key = ffi.v8_String_NewFromUtf8(test_isolate.?, "state", 5) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(key);
     const state = ffi.v8_Object_Get(global, context, @ptrCast(key)) orelse return error.GetFailed;
     defer ffi.v8_Value_Dispose(state);
@@ -143,7 +142,7 @@ test "an object survives StructuredSerializeForStorage and StructuredDeserialize
 
     const copy = try v8.engine.v8StructuredDeserialize(ctx, bytes);
     defer v8.engine.v8ReleaseValue(copy);
-    const copy_key = ffi.v8_String_NewFromUtf8(isolate_once.?, "copy", 4) orelse return error.StringFailed;
+    const copy_key = ffi.v8_String_NewFromUtf8(test_isolate.?, "copy", 4) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(copy_key);
     _ = ffi.v8_Object_Set(global, context, @ptrCast(copy_key), @ptrCast(@alignCast(copy.handle.ptr)));
     try std.testing.expectEqual(@as(i32, 1), try globalInt("globalThis.copy !== globalThis.state && globalThis.copy.a === 1 && globalThis.copy.b[1] === 3 && globalThis.copy.c === 'x' ? 1 : 0"));
@@ -156,17 +155,17 @@ fn roundTrip(ctx: runtime.Context, value: runtime.JSValue, check: []const u8) !i
     defer std.testing.allocator.free(bytes);
     const copy = try v8.engine.v8StructuredDeserialize(ctx, bytes);
     defer v8.engine.v8ReleaseValue(copy);
-    const context = context_once.?;
+    const context = test_context.?;
     const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
     defer ffi.v8_Object_Dispose(global);
-    const copy_key = ffi.v8_String_NewFromUtf8(isolate_once.?, "copy", 4) orelse return error.StringFailed;
+    const copy_key = ffi.v8_String_NewFromUtf8(test_isolate.?, "copy", 4) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(copy_key);
     _ = ffi.v8_Object_Set(global, context, @ptrCast(copy_key), @ptrCast(@alignCast(copy.handle.ptr)));
     return globalInt(check);
 }
 
 test "structuredSerializeForStorage serializes a primitive the binding hands over inline" {
-    defer file.leave();
+    defer test_agent.close();
     // HTML StructuredSerializeInternal step 4: a primitive value is serialized
     // as it is - forStorage too. The binding hands an `any` primitive over as an
     // inline tag, not a handle (IndexedDB's put/add values, codex-indexeddb Q24).
@@ -181,7 +180,7 @@ test "structuredSerializeForStorage serializes a primitive the binding hands ove
 }
 
 test "a promise is rejected with any value, and marked as handled" {
-    defer file.leave();
+    defer test_agent.close();
     const ctx = try realm();
     const handle = try v8.engine.v8CreatePromise(ctx.engine_ctx.?, std.testing.allocator);
     defer v8.engine.v8DestroyPromiseHandle(handle, std.testing.allocator);
@@ -191,11 +190,11 @@ test "a promise is rejected with any value, and marked as handled" {
     try std.testing.expectEqual(@as(c_int, 2), ffi.v8_Promise_State(promise));
     const result = ffi.v8_Promise_Result(promise) orelse return error.NoResult;
     defer ffi.v8_Value_Dispose(result);
-    try std.testing.expectEqual(@as(i32, 42), ffi.v8_Value_Int32Value(result, context_once.?));
+    try std.testing.expectEqual(@as(i32, 42), ffi.v8_Value_Int32Value(result, test_context.?));
 }
 
 test "an empty sequence is a new empty array" {
-    defer file.leave();
+    defer test_agent.close();
     const ctx = try realm();
     const array = try v8.webidl_conversions.createSequenceOfValues(ctx, &.{});
     defer v8.engine.v8ReleaseValue(array);
@@ -204,7 +203,7 @@ test "an empty sequence is a new empty array" {
 }
 
 test "a realm records its document URL, replacing and forgetting it" {
-    defer file.leave();
+    defer test_agent.close();
     const ctx = try realm();
     try std.testing.expect(ctx.documentUrl() == null);
     try ctx.setDocumentUrl("https://example.test/a.html");
@@ -215,7 +214,7 @@ test "a realm records its document URL, replacing and forgetting it" {
 }
 
 test "a realm's creation URL is its document's when made: a same-document change leaves it, a new document moves it" {
-    defer file.leave();
+    defer test_agent.close();
     const ctx = try realm();
     defer ctx.clearDocumentUrl();
     try std.testing.expect(ctx.creationUrl() == null);
@@ -241,10 +240,10 @@ test "a realm's creation URL is its document's when made: a same-document change
 }
 
 test "defining an interface object on the global leaves no handle behind" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
-    const isolate = isolate_once.?;
-    const context = context_once.?;
+    const isolate = test_isolate.?;
+    const context = test_context.?;
     // The first definition makes the template and the interface object, which
     // the isolate and the context keep; every later one redefines the same
     // property to the same function.
@@ -260,9 +259,9 @@ test "defining an interface object on the global leaves no handle behind" {
 }
 
 test "a context keeps its registry key across compacting garbage collections" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     // Contexts interleaved with old-space garbage: once the garbage is gone a
     // full collection evacuates the sparse pages, moving whatever lives there.
     // context_manager keys realms by this value, so it must not move with them.

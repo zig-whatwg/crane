@@ -20,30 +20,25 @@ const protocol = @import("engine");
 const window_agent_hooks: protocol.HostHooks = .{};
 const interfaces = @import("interfaces");
 
-var isolate_once: ?*ffi.Isolate = null;
-/// The file's isolate: current only while one of its tests runs
-/// (test_process.FileIsolate).
-var file: test_process.FileIsolate = .{};
+var test_isolate: ?*ffi.Isolate = null;
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+}
 
 /// The file's agent, made once and current while the calling test runs.
 fn agent() !*ffi.Isolate {
-    test_process.start();
-    if (isolate_once == null) {
-        // An agent createAgent made: it keeps its Window realms on its record
-        // (protocol_realms.WindowRealms), which a bare isolate has none of.
-        const i: *ffi.Isolate = @ptrCast(@alignCast(try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &window_agent_hooks, .host = null })));
-        ffi.v8_Isolate_Enter(i);
-        defer ffi.v8_Isolate_Exit(i);
-        _ = ffi.v8_HandleScope_New(i);
-        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-        ffi.v8_Context_Enter(context);
+    const i = try test_agent.open(.{ .hooks = &window_agent_hooks });
+    if (test_isolate == null) {
+        const context = test_agent.context.?;
         v8.context_manager.init(std.heap.page_allocator) catch {};
         _ = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-        isolate_once = i;
-        file.isolate = i;
+        test_isolate = i;
     }
-    file.enter();
-    return isolate_once.?;
+    return test_isolate.?;
 }
 
 const WindowHost = struct {
@@ -92,7 +87,7 @@ const poison =
 const unpoison = "delete Array.prototype[0]; delete Array.prototype[1];";
 
 test "a sequence of values is an Array whose elements are its own data properties" {
-    defer file.leave();
+    defer test_agent.close();
     const page = try windowRealm();
     defer protocol.destroyWindowRealm(page, .global_detached);
     try run(page, poison);

@@ -41,26 +41,20 @@ const Env = struct {
     context: *ffi.Context,
 };
 
-var env_once: ?Env = null;
+var test_env: ?Env = null;
 
-/// The file's isolate: current only while one of its tests runs
-/// (test_process.FileIsolate).
-var file: test_process.FileIsolate = .{};
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_env = null;
+}
 
 fn env() !Env {
-    test_process.start();
-    if (env_once == null) {
-        const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-        ffi.v8_Isolate_Enter(isolate);
-        defer ffi.v8_Isolate_Exit(isolate);
-        _ = ffi.v8_HandleScope_New(isolate);
-        const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-        ffi.v8_Context_Enter(context);
-        env_once = .{ .isolate = isolate, .context = context };
-        file.isolate = isolate;
-    }
-    file.enter();
-    return env_once.?;
+    const isolate = try test_agent.open(.{});
+    if (test_env == null) test_env = .{ .isolate = isolate, .context = test_agent.context.? };
+    return test_env.?;
 }
 
 /// Script's value of `code`, OWNED - an object made as the binding receives
@@ -103,7 +97,7 @@ const Shaped = struct {
 };
 
 test "a present null converts by type only for a non-nullable member with a scalar type - the default is not present" {
-    defer file.leave();
+    defer test_agent.close();
     try testing.expect(comptime conversions.presentNullConvertsByType(Shaped, field(Shaped, "text")));
     try testing.expect(comptime conversions.presentNullConvertsByType(Shaped, field(Shaped, "flag")));
     try testing.expect(comptime conversions.presentNullConvertsByType(Shaped, field(Shaped, "count")));
@@ -117,7 +111,7 @@ test "a present null converts by type only for a non-nullable member with a scal
 }
 
 test "LockOptions {mode: null} is a TypeError: null is not a LockMode" {
-    defer file.leave();
+    defer test_agent.close();
     const e = try env();
     const object = try eval("({ mode: null })");
     defer ffi.v8_Value_Dispose(object);
@@ -125,7 +119,7 @@ test "LockOptions {mode: null} is a TypeError: null is not a LockMode" {
 }
 
 test "LockOptions {ifAvailable: null} is false, and an absent member stays absent" {
-    defer file.leave();
+    defer test_agent.close();
     const e = try env();
     const object = try eval("({ ifAvailable: null, steal: undefined })");
     defer ffi.v8_Value_Dispose(object);
@@ -136,7 +130,7 @@ test "LockOptions {ifAvailable: null} is false, and an absent member stays absen
 }
 
 test "a non-nullable DOMString member's null is the string \"null\"; a nullable member's null is null" {
-    defer file.leave();
+    defer test_agent.close();
     const e = try env();
     const object = try eval("({ text: null, nullable_text: null, required: 'r' })");
     defer ffi.v8_Value_Dispose(object);
@@ -148,7 +142,7 @@ test "a non-nullable DOMString member's null is the string \"null\"; a nullable 
 }
 
 test "RequestInit's signal is AbortSignal?: a present null is null" {
-    defer file.leave();
+    defer test_agent.close();
     const e = try env();
     const object = try eval("({ signal: null })");
     defer ffi.v8_Value_Dispose(object);
@@ -157,7 +151,7 @@ test "RequestInit's signal is AbortSignal?: a present null is null" {
 }
 
 test "an inline union member typed JSValue keeps a present null apart from absent" {
-    defer file.leave();
+    defer test_agent.close();
     // WebIDL 3.2.18: only undefined is "not present"; a present null converts
     // by the union's type (3.2.25 step 4: to the SanitizerConfig arm, an empty
     // dictionary). The impl converts the JSValue, so it must see the null:

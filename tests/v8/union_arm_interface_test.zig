@@ -26,7 +26,7 @@ fn nameOf(comptime arm: []const u8) ?[]const u8 {
 }
 
 test "arm names map back to the interfaces codegen derived them from" {
-    defer file.leave();
+    defer test_agent.close();
     try std.testing.expectEqualStrings("Request", nameOf("request").?);
     try std.testing.expectEqualStrings("Node", nameOf("node").?);
     try std.testing.expectEqualStrings("ReadableStream", nameOf("readable_stream").?);
@@ -40,13 +40,13 @@ test "arm names map back to the interfaces codegen derived them from" {
 }
 
 test "a typedef of an interface type maps to the interface" {
-    defer file.leave();
+    defer test_agent.close();
     // MessageEventSource's first arm is WindowProxy, a typedef for Window.
     try std.testing.expectEqualStrings("Window", nameOf("window_proxy").?);
 }
 
 test "an arm naming no interface maps to nothing, so it cannot be checked" {
-    defer file.leave();
+    defer test_agent.close();
     // The default: `implementsArm` accepts any platform object for such an
     // arm - what every arm did before the check existed. It must stay rare;
     // the next test is what keeps it so.
@@ -56,7 +56,7 @@ test "an arm naming no interface maps to nothing, so it cannot be checked" {
 }
 
 test "every interface arm of every generated union typedef maps to an interface" {
-    defer file.leave();
+    defer test_agent.close();
     @setEvalBranchQuota(10_000_000);
     const typedefs = conv.generated_typedefs;
     var checked: usize = 0;
@@ -79,7 +79,7 @@ test "every interface arm of every generated union typedef maps to an interface"
 }
 
 test "a union member of a union adds its interfaces to the outer union's" {
-    defer file.leave();
+    defer test_agent.close();
     // WebIDL 2.13.29: the flattened member types of CanvasImageSource
     // include HTMLOrSVGImageElement's members. Codegen keeps that member a
     // nested union; an img given to drawImage() was a TypeError while the
@@ -95,7 +95,7 @@ test "a union member of a union adds its interfaces to the outer union's" {
 }
 
 test "every interface arm of every nested interface union maps to an interface" {
-    defer file.leave();
+    defer test_agent.close();
     @setEvalBranchQuota(10_000_000);
     const typedefs = conv.generated_typedefs;
     var nested: usize = 0;
@@ -131,34 +131,32 @@ test "every interface arm of every nested interface union maps to an interface" 
 
 const ffi = v8.ffi;
 
-/// A live isolate with an entered context, one for the whole file, as in
-/// platform_task_pump_test.zig - V8 is never torn down here.
-var isolate_once: ?*ffi.Isolate = null;
-var context_once: ?*ffi.Context = null;
+/// A live isolate with an entered context, as in platform_task_pump_test.zig:
+/// the test's own agent's (test_agent), ended with the test.
+var test_isolate: ?*ffi.Isolate = null;
+var test_context: ?*ffi.Context = null;
 
-/// The file's isolate: current only while one of its tests runs
-/// (test_process.FileIsolate).
-var file: test_process.FileIsolate = .{};
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+    test_context = null;
+}
 
 fn isolate() !*ffi.Isolate {
-    test_process.start();
-    if (isolate_once == null) {
-        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-        ffi.v8_Isolate_Enter(i);
-        defer ffi.v8_Isolate_Exit(i);
-        _ = ffi.v8_HandleScope_New(i);
-        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-        ffi.v8_Context_Enter(context);
-        isolate_once = i;
-        context_once = context;
-        file.isolate = i;
+    const i = try test_agent.open(.{});
+    if (test_isolate == null) {
+        const context = test_agent.context.?;
+        test_isolate = i;
+        test_context = context;
     }
-    file.enter();
-    return isolate_once.?;
+    return test_isolate.?;
 }
 
 fn run(i: *ffi.Isolate, source: []const u8) !*ffi.Value {
-    const context = context_once.?;
+    const context = test_context.?;
     const code = ffi.v8_String_NewFromUtf8(i, source.ptr, @intCast(source.len)) orelse return error.StringFailed;
     const script = ffi.v8_Script_Compile(context, code) orelse return error.CompileFailed;
     defer ffi.v8_Script_Dispose(script);
@@ -166,24 +164,24 @@ fn run(i: *ffi.Isolate, source: []const u8) !*ffi.Value {
 }
 
 test "a function given to a union with no callback arm is the string it stringifies to" {
-    defer file.leave();
+    defer test_agent.close();
     const i = try isolate();
     const value = try run(i, "(function input() {})");
     defer ffi.v8_Value_Dispose(value);
     const RequestInfo = conv.generated_typedefs.RequestInfo;
-    const result = try conv.fromV8Value(RequestInfo, std.testing.allocator, i, context_once.?, value);
+    const result = try conv.fromV8Value(RequestInfo, std.testing.allocator, i, test_context.?, value);
     try std.testing.expect(result == .usvstring);
     defer if (result.usvstring.len > 0) std.testing.allocator.free(result.usvstring);
     try std.testing.expectEqualStrings("function input() {}", result.usvstring);
 }
 
 test "a function given to a union with a callback arm is the callback" {
-    defer file.leave();
+    defer test_agent.close();
     const i = try isolate();
     const value = try run(i, "(function handler() {})");
     defer ffi.v8_Value_Dispose(value);
     const TimerHandler = conv.generated_typedefs.TimerHandler;
-    const result = try conv.fromV8Value(TimerHandler, std.testing.allocator, i, context_once.?, value);
+    const result = try conv.fromV8Value(TimerHandler, std.testing.allocator, i, test_context.?, value);
     try std.testing.expect(result == .function);
 }
 
@@ -198,18 +196,18 @@ test "a function given to a union with a callback arm is the callback" {
 
 const js = @import("impls").Response.streams_js;
 
-/// Make `data` a realm over this file's isolate and context whose allocator
+/// Make `data` a realm over the test's isolate and context whose allocator
 /// is std.testing.allocator. The caller deinits it.
 fn initTestingRealm(data: *runtime.ContextData) !void {
     const i = try isolate();
     data.* = try runtime.ContextData.init(std.testing.allocator, .{
-        .engine_ctx = context_once.?,
+        .engine_ctx = test_context.?,
     });
     data.agent = @ptrCast(i);
 }
 
 test "a Deferred's settled cell is allocated, settled and freed with the Deferred" {
-    defer file.leave();
+    defer test_agent.close();
     var data: runtime.ContextData = undefined;
     try initTestingRealm(&data);
     defer data.deinit();
@@ -228,7 +226,7 @@ test "a Deferred's settled cell is allocated, settled and freed with the Deferre
 }
 
 test "copies of a Deferred share its cell, and deinitResolverOnly frees it too" {
-    defer file.leave();
+    defer test_agent.close();
     var data: runtime.ContextData = undefined;
     try initTestingRealm(&data);
     defer data.deinit();
@@ -259,14 +257,15 @@ const blob_bytes = @import("dom").blob_bytes;
 const protocol = @import("engine");
 
 /// The process-wide pools a platform object's Instance comes from, made
-/// once for the file and, like V8 here, never torn down; and the hooks a
-/// Blob installs (dom.blob_bytes), which installing again leaves as they are.
+/// once for the process (test_process.start) and never torn down; and the
+/// hooks a Blob installs (dom.blob_bytes), which installing again leaves as
+/// they are.
 fn ensurePools() void {
     test_process.start();
     interfaces.process_hooks.startHooksForTest();
 }
 
-/// The value `source` evaluates to in this file's context. OWNED.
+/// The value `source` evaluates to in the test's context. OWNED.
 fn evalValue(source: []const u8) !protocol.Owned {
     return .{ .value = runtime.JSValue.fromHandle(@ptrCast(try run(try isolate(), source))) };
 }
@@ -296,7 +295,7 @@ fn blobPartsOf(realm: runtime.Context, source: []const u8, endings: Endings) ![]
 }
 
 test "a BlobPart is a buffer source's bytes, or else the USVString it converts to" {
-    defer file.leave();
+    defer test_agent.close();
     var data: runtime.ContextData = undefined;
     try initTestingRealm(&data);
     defer data.deinit();
@@ -309,7 +308,7 @@ test "a BlobPart is a buffer source's bytes, or else the USVString it converts t
 }
 
 test "a sequence<BlobPart> is any iterable, and a value with no @@iterator is a TypeError" {
-    defer file.leave();
+    defer test_agent.close();
     var data: runtime.ContextData = undefined;
     try initTestingRealm(&data);
     defer data.deinit();
@@ -326,7 +325,7 @@ test "a sequence<BlobPart> is any iterable, and a value with no @@iterator is a 
 }
 
 test "endings: native converts a string part's line endings, and never a buffer's" {
-    defer file.leave();
+    defer test_agent.close();
     var data: runtime.ContextData = undefined;
     try initTestingRealm(&data);
     defer data.deinit();
@@ -345,7 +344,7 @@ fn fulfillmentOf(promise: runtime.JSValue) !*ffi.Value {
 }
 
 test "Blob.text() is the UTF-8 decode of its bytes: the BOM stripped, an invalid byte U+FFFD" {
-    defer file.leave();
+    defer test_agent.close();
     var data: runtime.ContextData = undefined;
     try initTestingRealm(&data);
     defer data.deinit();
@@ -360,7 +359,7 @@ test "Blob.text() is the UTF-8 decode of its bytes: the BOM stripped, an invalid
 }
 
 test "Blob.arrayBuffer() and bytes() are fulfilled with a copy of every byte" {
-    defer file.leave();
+    defer test_agent.close();
     var data: runtime.ContextData = undefined;
     try initTestingRealm(&data);
     defer data.deinit();
@@ -394,23 +393,23 @@ fn expectNoHandleLeft(comptime method: fn (*runtime.Instance) anyerror!runtime.J
     const blob = try blob_bytes.create(&data, "abc", "");
     defer interfaces.Blob.deinit(blob);
     protocol.releaseValue(.{ .value = try method(blob) });
-    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?);
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(test_isolate.?);
     for (0..32) |_| protocol.releaseValue(.{ .value = try method(blob) });
-    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?) <= before);
+    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(test_isolate.?) <= before);
 }
 
 test "Blob.text() leaves no engine handle behind" {
-    defer file.leave();
+    defer test_agent.close();
     try expectNoHandleLeft(interfaces.Blob.call_text);
 }
 
 test "Blob.arrayBuffer() leaves no engine handle behind" {
-    defer file.leave();
+    defer test_agent.close();
     try expectNoHandleLeft(interfaces.Blob.call_arrayBuffer);
 }
 
 test "Blob.bytes() leaves no engine handle behind" {
-    defer file.leave();
+    defer test_agent.close();
     try expectNoHandleLeft(interfaces.Blob.call_bytes);
 }
 
@@ -426,7 +425,7 @@ test "Blob.bytes() leaves no engine handle behind" {
 const Response = interfaces.Response;
 
 test "Response.arrayBuffer(), bytes() and text() leave no engine handle behind" {
-    defer file.leave();
+    defer test_agent.close();
     var data: runtime.ContextData = undefined;
     try initTestingRealm(&data);
     defer data.deinit();
@@ -442,13 +441,13 @@ test "Response.arrayBuffer(), bytes() and text() leave no engine handle behind" 
         }
     }.run;
     try round(response);
-    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?);
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(test_isolate.?);
     for (0..32) |_| try round(response);
-    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?) <= before);
+    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(test_isolate.?) <= before);
 }
 
 test "Response.arrayBuffer() of a null body is fulfilled with an empty ArrayBuffer" {
-    defer file.leave();
+    defer test_agent.close();
     var data: runtime.ContextData = undefined;
     try initTestingRealm(&data);
     defer data.deinit();

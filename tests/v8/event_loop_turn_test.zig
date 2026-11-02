@@ -15,28 +15,22 @@ const v8 = @import("v8");
 const ffi = v8.ffi;
 
 /// A live isolate with an entered context: a turn performs a microtask
-/// checkpoint, which needs one. One for the whole file, as in
-/// weak_callback_ownership_test.zig - V8 is never torn down here.
-var isolate_once: ?*ffi.Isolate = null;
+/// checkpoint, which needs one. The test's own agent's (test_agent), ended
+/// with the test.
+var test_isolate: ?*ffi.Isolate = null;
 
-/// The file's isolate: current only while one of its tests runs
-/// (test_process.FileIsolate).
-var file: test_process.FileIsolate = .{};
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+}
 
 fn isolate() !*ffi.Isolate {
-    test_process.start();
-    if (isolate_once == null) {
-        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-        ffi.v8_Isolate_Enter(i);
-        defer ffi.v8_Isolate_Exit(i);
-        _ = ffi.v8_HandleScope_New(i);
-        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-        ffi.v8_Context_Enter(context);
-        isolate_once = i;
-        file.isolate = i;
-    }
-    file.enter();
-    return isolate_once.?;
+    const i = try test_agent.open(.{});
+    if (test_isolate == null) test_isolate = i;
+    return test_isolate.?;
 }
 
 const Chain = struct {
@@ -55,7 +49,7 @@ fn step(context: ?*anyopaque) void {
 }
 
 test "a task queued by a task waits for the next turn" {
-    defer file.leave();
+    defer test_agent.close();
     var loop = v8.V8EventLoop.initWithoutTimers(try isolate(), std.testing.allocator);
     defer loop.deinit();
 
@@ -73,7 +67,7 @@ test "a task queued by a task waits for the next turn" {
 }
 
 test "a task that always queues another cannot keep a turn from returning" {
-    defer file.leave();
+    defer test_agent.close();
     var loop = v8.V8EventLoop.initWithoutTimers(try isolate(), std.testing.allocator);
     defer loop.deinit();
 
@@ -87,7 +81,7 @@ test "a task that always queues another cannot keep a turn from returning" {
 }
 
 test "every task queued before a turn runs in it" {
-    defer file.leave();
+    defer test_agent.close();
     var loop = v8.V8EventLoop.initWithoutTimers(try isolate(), std.testing.allocator);
     defer loop.deinit();
 

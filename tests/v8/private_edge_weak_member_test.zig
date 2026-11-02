@@ -26,34 +26,27 @@ const testing = std.testing;
 const v8 = @import("v8");
 const ffi = v8.ffi;
 
-/// A live isolate with an entered context. One test binary per file
-/// (`addTestFilesFromDir`), so this process owns the V8 platform; one isolate
-/// for the file, never torn down (see weak_callback_ownership_test.zig).
+/// A live isolate with an entered context: the test's own agent's
+/// (test_agent), ended with the test.
 const Env = struct {
     isolate: *ffi.Isolate,
     context: *ffi.Context,
 };
 
-var env_once: ?Env = null;
+var test_env: ?Env = null;
 
-/// The file's isolate: current only while one of its tests runs
-/// (test_process.FileIsolate).
-var file: test_process.FileIsolate = .{};
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_env = null;
+}
 
 fn env() !Env {
-    test_process.start();
-    if (env_once == null) {
-        const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-        ffi.v8_Isolate_Enter(isolate);
-        defer ffi.v8_Isolate_Exit(isolate);
-        _ = ffi.v8_HandleScope_New(isolate);
-        const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-        ffi.v8_Context_Enter(context);
-        env_once = .{ .isolate = isolate, .context = context };
-        file.isolate = isolate;
-    }
-    file.enter();
-    return env_once.?;
+    const isolate = try test_agent.open(.{});
+    if (test_env == null) test_env = .{ .isolate = isolate, .context = test_agent.context.? };
+    return test_env.?;
 }
 
 fn noop(_: ?*anyopaque, _: usize) callconv(.c) void {}
@@ -66,7 +59,7 @@ fn countCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
 const children_key = "crane:test:children";
 
 test "a member only a weak handle holds survives its edge being drawn" {
-    defer file.leave();
+    defer test_agent.close();
     const e = try env();
 
     var collected_canaries: usize = 0;

@@ -26,31 +26,27 @@ const protocol = @import("engine");
 const window_agent_hooks: protocol.HostHooks = .{};
 const interfaces = @import("interfaces");
 
-var isolate_once: ?*ffi.Isolate = null;
+var test_isolate: ?*ffi.Isolate = null;
 
-/// The file's isolate: current only while one of its tests runs
-/// (test_process.FileIsolate).
-var file: test_process.FileIsolate = .{};
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+}
 
 fn agent() !*ffi.Isolate {
-    test_process.start();
-    if (isolate_once == null) {
-        // An agent createAgent made: it keeps its Window realms on its record
-        // (protocol_realms.WindowRealms), which a bare isolate has none of.
-        const i: *ffi.Isolate = @ptrCast(@alignCast(try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &window_agent_hooks, .host = null })));
-        ffi.v8_Isolate_Enter(i);
-        defer ffi.v8_Isolate_Exit(i);
-        _ = ffi.v8_HandleScope_New(i);
-        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-        ffi.v8_Context_Enter(context);
-        // Already initialized is fine: the manager is per thread, not per test.
+    const i = try test_agent.open(.{ .hooks = &window_agent_hooks });
+    if (test_isolate == null) {
+        const context = test_agent.context.?;
+        // Already initialized is fine: the manager is per thread (the test's
+        // agent is its thread's host agent, whose end takes it down).
         v8.context_manager.init(std.heap.page_allocator) catch {};
         _ = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-        isolate_once = i;
-        file.isolate = i;
+        test_isolate = i;
     }
-    file.enter();
-    return isolate_once.?;
+    return test_isolate.?;
 }
 
 const WindowHost = struct {
@@ -100,7 +96,7 @@ fn share(from: runtime.Context, source: []const u8, to: runtime.Context, name: [
 }
 
 test "an object a method borrowed from another realm returns is wrapped in its own realm" {
-    defer file.leave();
+    defer test_agent.close();
     const page = try windowRealmIn(null);
     defer protocol.destroyWindowRealm(page, .global_detached);
     const frame = try windowRealmIn(page);
@@ -113,7 +109,7 @@ test "an object a method borrowed from another realm returns is wrapped in its o
 }
 
 test "an object of another realm returned by this realm's method keeps its own realm's wrapper" {
-    defer file.leave();
+    defer test_agent.close();
     const page = try windowRealmIn(null);
     defer protocol.destroyWindowRealm(page, .global_detached);
     const frame = try windowRealmIn(page);
@@ -125,7 +121,7 @@ test "an object of another realm returned by this realm's method keeps its own r
 }
 
 test "an existing object a borrowed method returns is the one wrapper its realm has" {
-    defer file.leave();
+    defer test_agent.close();
     const page = try windowRealmIn(null);
     defer protocol.destroyWindowRealm(page, .global_detached);
     const frame = try windowRealmIn(page);

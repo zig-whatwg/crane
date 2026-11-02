@@ -17,39 +17,39 @@ const interfaces = @import("interfaces");
 const dom = @import("dom");
 const ffi = v8.ffi;
 
-var isolate_once: ?*ffi.Isolate = null;
-var context_once: ?*ffi.Context = null;
-var realm_once: ?runtime.Context = null;
+var test_isolate: ?*ffi.Isolate = null;
+var test_context: ?*ffi.Context = null;
+var test_realm: ?runtime.Context = null;
 var policy_exposed = false;
 
-/// The file's isolate: current only while one of its tests runs
-/// (test_process.FileIsolate).
-var file: test_process.FileIsolate = .{};
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+    test_context = null;
+    test_realm = null;
+    policy_exposed = false;
+}
 
 fn realm() !runtime.Context {
-    test_process.start();
-    if (realm_once == null) {
-        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-        ffi.v8_Isolate_Enter(i);
-        defer ffi.v8_Isolate_Exit(i);
-        _ = ffi.v8_HandleScope_New(i);
-        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-        ffi.v8_Context_Enter(context);
+    const i = try test_agent.open(.{});
+    if (test_realm == null) {
+        const context = test_agent.context.?;
         v8.context_manager.init(std.heap.page_allocator) catch {};
         const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
         v8.interface_bindings.registerAllInterfaces(i, context);
-        isolate_once = i;
-        context_once = context;
-        realm_once = r;
-        file.isolate = i;
+        test_isolate = i;
+        test_context = context;
+        test_realm = r;
     }
-    file.enter();
-    return realm_once.?;
+    return test_realm.?;
 }
 
 fn eval(code: []const u8) !*ffi.Value {
-    const context = context_once.?;
-    const text = ffi.v8_String_NewFromUtf8(isolate_once.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
+    const context = test_context.?;
+    const text = ffi.v8_String_NewFromUtf8(test_isolate.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(text);
     const script = ffi.v8_Script_Compile(context, text) orelse return error.CompileFailed;
     defer ffi.v8_Script_Dispose(script);
@@ -59,14 +59,14 @@ fn eval(code: []const u8) !*ffi.Value {
 fn evalInt(code: []const u8) !i32 {
     const value = try eval(code);
     defer ffi.v8_Value_Dispose(value);
-    return ffi.v8_Value_Int32Value(value, context_once.?);
+    return ffi.v8_Value_Int32Value(value, test_context.?);
 }
 
 fn setGlobal(name: []const u8, value: *ffi.Value) !void {
-    const context = context_once.?;
+    const context = test_context.?;
     const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
     defer ffi.v8_Object_Dispose(global);
-    const key = ffi.v8_String_NewFromUtf8(isolate_once.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
+    const key = ffi.v8_String_NewFromUtf8(test_isolate.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(key);
     if (!ffi.v8_Object_Set(global, context, @ptrCast(key), value)) return error.SetFailed;
 }
@@ -82,12 +82,12 @@ fn policy() !void {
     const callback: engine.CallbackFunction = .{ .function = held, .context = null };
     defer callback.release();
     const instance = try dom.trusted_types.createPolicy(r, "variadic", .{ .html = callback });
-    try setGlobal("testPolicy", v8.conversions.instanceToV8(isolate_once.?, instance));
+    try setGlobal("testPolicy", v8.conversions.instanceToV8(test_isolate.?, instance));
     policy_exposed = true;
 }
 
 test "a trailing variadic takes no, one or several extra arguments" {
-    defer file.leave();
+    defer test_agent.close();
     try policy();
     try std.testing.expectEqual(@as(i32, 1), try evalInt("testPolicy.createHTML('x').toString() === 'x|0|' ? 1 : 0"));
     try std.testing.expectEqual(@as(i32, 1), try evalInt("testPolicy.createHTML('x', 'a').toString() === 'x|1|a' ? 1 : 0"));
@@ -98,7 +98,7 @@ test "a trailing variadic takes no, one or several extra arguments" {
 
 /// V8's global handle bytes left by 64 runs of `body`, after a collection.
 fn handleBytesLeftBy(comptime body: []const u8) !i64 {
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     const loop = "(() => { for (let i = 0; i < {N}; i++) { " ++ body ++ " } return 0 })()";
     _ = try evalInt(comptime replaceN(loop, "2"));
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
@@ -114,7 +114,7 @@ fn replaceN(comptime loop: []const u8, comptime n: []const u8) []const u8 {
 }
 
 fn oneHandleBytes() i64 {
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
     const one = ffi.v8_Number_New(isolate, 1);
     const with_one = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
@@ -123,7 +123,7 @@ fn oneHandleBytes() i64 {
 }
 
 test "the extra arguments' handles go when the call returns" {
-    defer file.leave();
+    defer test_agent.close();
     try policy();
     const control_left = try handleBytesLeftBy("testPolicy.createHTML('x');");
     const left = try handleBytesLeftBy("testPolicy.createHTML('x', {}, [], 'a');");

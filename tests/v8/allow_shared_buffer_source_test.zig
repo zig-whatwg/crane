@@ -23,39 +23,39 @@ const iface = v8.interface_mod;
 const AllowSharedBufferSource = conv.generated_typedefs.AllowSharedBufferSource;
 const testing_allocator = std.testing.allocator;
 
-var isolate_once: ?*ffi.Isolate = null;
-var context_once: ?*ffi.Context = null;
-var realm_once: ?runtime.Context = null;
+var test_isolate: ?*ffi.Isolate = null;
+var test_context: ?*ffi.Context = null;
+var test_realm: ?runtime.Context = null;
 
-/// The file's isolate: current only while one of its tests runs
-/// (test_process.FileIsolate).
-var file: test_process.FileIsolate = .{};
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
 
-/// One isolate and realm for the file, registered with the context manager
-/// so that the engine's operations can enter it; V8 is never torn down here.
+fn reset() void {
+    test_isolate = null;
+    test_context = null;
+    test_realm = null;
+}
+
+/// The test's isolate and realm - its own agent's (test_agent), ended with
+/// the test - registered with the context manager so that the engine's
+/// operations can enter it.
 fn setUp() !void {
-    test_process.start();
-    if (context_once == null) {
-        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-        ffi.v8_Isolate_Enter(i);
-        defer ffi.v8_Isolate_Exit(i);
-        _ = ffi.v8_HandleScope_New(i);
-        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-        ffi.v8_Context_Enter(context);
+    const i = try test_agent.open(.{});
+    if (test_context == null) {
+        const context = test_agent.context.?;
         v8.context_manager.init(std.heap.page_allocator) catch {};
-        realm_once = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-        isolate_once = i;
-        context_once = context;
-        file.isolate = i;
+        test_realm = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+        test_isolate = i;
+        test_context = context;
     }
-    file.enter();
 }
 
 /// The value `code` evaluates to: a Global the caller disposes, made the way
 /// the binding's `info.get(i)` makes an argument's.
 fn eval(code: []const u8) !*ffi.Value {
-    const context = context_once.?;
-    const text = ffi.v8_String_NewFromUtf8(isolate_once.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
+    const context = test_context.?;
+    const text = ffi.v8_String_NewFromUtf8(test_isolate.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(text);
     const script = ffi.v8_Script_Compile(context, text) orelse return error.CompileFailed;
     defer ffi.v8_Script_Dispose(script);
@@ -65,14 +65,14 @@ fn eval(code: []const u8) !*ffi.Value {
 /// `handle` converted, as the binding converts an argument: the value takes
 /// the argument's handle, and freeing the value releases it.
 fn convert(handle: *ffi.Value) !AllowSharedBufferSource {
-    return conv.fromV8Value(AllowSharedBufferSource, testing_allocator, isolate_once.?, context_once.?, handle);
+    return conv.fromV8Value(AllowSharedBufferSource, testing_allocator, test_isolate.?, test_context.?, handle);
 }
 
 /// What the operation reads at its own step: a copy of the bytes the value's
 /// object holds now. OWNED by the testing allocator.
 fn bytesAtTheStep(source: AllowSharedBufferSource) ![]u8 {
     const value = source.jsValue(runtime.JSValue) orelse return error.NoReference;
-    return (try engine.getCopyOfAllowSharedBufferSourceBytes(realm_once.?, value, testing_allocator)) orelse error.NotABufferSource;
+    return (try engine.getCopyOfAllowSharedBufferSourceBytes(test_realm.?, value, testing_allocator)) orelse error.NotABufferSource;
 }
 
 /// `code`'s value converts to a reference whose bytes are `expected`.
@@ -98,35 +98,35 @@ fn expectBytes(code: []const u8, expected: []const u8) !void {
 }
 
 test "an ArrayBuffer is a reference to it, and its bytes are its own" {
-    defer file.leave();
+    defer test_agent.close();
     try expectBytes("new Uint8Array([104, 105]).buffer", "hi");
 }
 
 test "a SharedArrayBuffer is a reference to it, and its bytes are its own" {
-    defer file.leave();
+    defer test_agent.close();
     try expectBytes("(() => { const s = new SharedArrayBuffer(3); new Uint8Array(s).set([1, 2, 3]); return s; })()", &.{ 1, 2, 3 });
 }
 
 test "a typed array's bytes are its own window of its buffer" {
-    defer file.leave();
+    defer test_agent.close();
     try expectBytes("new Uint8Array([1, 2, 3, 4, 5]).subarray(1, 4)", &.{ 2, 3, 4 });
     try expectBytes("new Uint16Array([0x0201, 0x0403, 0x0605]).subarray(1)", &.{ 3, 4, 5, 6 });
 }
 
 test "a DataView's bytes are its own window of its buffer, not its whole buffer" {
-    defer file.leave();
+    defer test_agent.close();
     try expectBytes("new DataView(new Uint8Array([1, 2, 3, 4, 5]).buffer, 1, 3)", &.{ 2, 3, 4 });
     try expectBytes("new DataView(new Uint8Array([7, 8]).buffer)", &.{ 7, 8 });
 }
 
 test "a view over a SharedArrayBuffer is allowed ([AllowShared])" {
-    defer file.leave();
+    defer test_agent.close();
     try expectBytes("(() => { const s = new SharedArrayBuffer(4); new Uint8Array(s).set([9, 8, 7, 6]); return new Uint8Array(s, 1, 2); })()", &.{ 8, 7 });
     try expectBytes("(() => { const s = new SharedArrayBuffer(4); new Uint8Array(s).set([9, 8, 7, 6]); return new DataView(s, 2); })()", &.{ 7, 6 });
 }
 
 test "a detached ArrayBuffer, and a view over one, hold no bytes" {
-    defer file.leave();
+    defer test_agent.close();
     try expectBytes("(() => { const b = new Uint8Array([1, 2]).buffer; b.transfer(); return b; })()", &.{});
     try expectBytes("(() => { const v = new Uint8Array([1, 2]); v.buffer.transfer(); return v; })()", &.{});
     try expectBytes("(() => { const v = new DataView(new Uint8Array([1, 2]).buffer); v.buffer.transfer(); return v; })()", &.{});
@@ -140,7 +140,7 @@ test "a detached ArrayBuffer, and a view over one, hold no bytes" {
 // before and after: the address it would have kept, and the object's own
 // answer once detached. The reference reads what the object holds now.
 test "a buffer detached after its conversion reads as empty, not as its freed store" {
-    defer file.leave();
+    defer test_agent.close();
     try setUp();
     const kinds = [_][]const u8{
         "globalThis.input = new Uint8Array(10000).fill(42)",
@@ -194,7 +194,7 @@ const InitWithData = struct {
 // dictionary), and the later member's getter detaches the buffer before the
 // operation's step reads it.
 test "a dictionary member a later member's getter detaches reads as empty" {
-    defer file.leave();
+    defer test_agent.close();
     try setUp();
     const init = try eval(
         \\(() => {
@@ -203,7 +203,7 @@ test "a dictionary member a later member's getter detaches reads as empty" {
         \\})()
     );
     defer ffi.v8_Value_Dispose(init);
-    const dict = try conv.fromV8Value(InitWithData, testing_allocator, isolate_once.?, context_once.?, init);
+    const dict = try conv.fromV8Value(InitWithData, testing_allocator, test_isolate.?, test_context.?, init);
     // Releases the member's handle; the testing allocator fails on a leak of
     // anything the conversion allocated.
     defer iface.freeConvertedArg(InitWithData, testing_allocator, dict);
@@ -215,7 +215,7 @@ test "a dictionary member a later member's getter detaches reads as empty" {
 }
 
 test "null and undefined hold no bytes and no reference" {
-    defer file.leave();
+    defer test_agent.close();
     try setUp();
     for ([_][]const u8{ "null", "undefined" }) |code| {
         const handle = try eval(code);
@@ -249,7 +249,7 @@ fn withConverted(code: []const u8, check: *const fn (AllowSharedBufferSource, *f
 fn expectBorrowed(code: []const u8, comptime expected: []const u8) !void {
     try withConverted(code, struct {
         fn check(source: AllowSharedBufferSource, handle: *ffi.Value) !void {
-            const bytes = engine.borrowBufferSourceBytes(realm_once.?, source.jsValue(runtime.JSValue).?) orelse return error.NotBorrowed;
+            const bytes = engine.borrowBufferSourceBytes(test_realm.?, source.jsValue(runtime.JSValue).?) orelse return error.NotBorrowed;
             try std.testing.expectEqualSlices(u8, expected, bytes);
             if (expected.len == 0) return;
             var data: ?*anyopaque = null;
@@ -261,7 +261,7 @@ fn expectBorrowed(code: []const u8, comptime expected: []const u8) !void {
 }
 
 test "borrowBufferSourceBytes reads an ArrayBuffer and a view's window in place" {
-    defer file.leave();
+    defer test_agent.close();
     try expectBorrowed("new Uint8Array([104, 105]).buffer", "hi");
     try expectBorrowed("new Uint8Array([1, 2, 3, 4, 5]).subarray(1, 4)", &.{ 2, 3, 4 });
     try expectBorrowed("new Uint16Array([0x0201, 0x0403, 0x0605]).subarray(1)", &.{ 3, 4, 5, 6 });
@@ -272,7 +272,7 @@ test "borrowBufferSourceBytes reads an ArrayBuffer and a view's window in place"
 }
 
 test "borrowBufferSourceBytes reads a detached buffer as empty" {
-    defer file.leave();
+    defer test_agent.close();
     try expectBorrowed("(() => { const b = new Uint8Array([1, 2]).buffer; b.transfer(); return b; })()", &.{});
     try expectBorrowed("(() => { const v = new Uint8Array([1, 2]); v.buffer.transfer(); return v; })()", &.{});
     try expectBorrowed("(() => { const v = new DataView(new Uint8Array([1, 2]).buffer); v.buffer.transfer(); return v; })()", &.{});
@@ -281,7 +281,7 @@ test "borrowBufferSourceBytes reads a detached buffer as empty" {
 // Shared memory is never borrowed: another agent can write it while it is
 // read. The copy still reads it.
 test "borrowBufferSourceBytes refuses a SharedArrayBuffer and a view over one; the copy takes them" {
-    defer file.leave();
+    defer test_agent.close();
     const shared = [_][]const u8{
         "(() => { const s = new SharedArrayBuffer(2); new Uint8Array(s).set([1, 2]); return s; })()",
         "(() => { const s = new SharedArrayBuffer(2); new Uint8Array(s).set([1, 2]); return new Uint8Array(s); })()",
@@ -290,7 +290,7 @@ test "borrowBufferSourceBytes refuses a SharedArrayBuffer and a view over one; t
     for (shared) |code| {
         try withConverted(code, struct {
             fn check(source: AllowSharedBufferSource, _: *ffi.Value) !void {
-                try std.testing.expectEqual(@as(?[]const u8, null), engine.borrowBufferSourceBytes(realm_once.?, source.jsValue(runtime.JSValue).?));
+                try std.testing.expectEqual(@as(?[]const u8, null), engine.borrowBufferSourceBytes(test_realm.?, source.jsValue(runtime.JSValue).?));
                 const bytes = try bytesAtTheStep(source);
                 defer testing_allocator.free(bytes);
                 try std.testing.expectEqualSlices(u8, &.{ 1, 2 }, bytes);
@@ -300,31 +300,31 @@ test "borrowBufferSourceBytes refuses a SharedArrayBuffer and a view over one; t
 }
 
 test "borrowBufferSourceBytes answers null for anything that is not a buffer source" {
-    defer file.leave();
+    defer test_agent.close();
     try setUp();
-    try std.testing.expectEqual(@as(?[]const u8, null), engine.borrowBufferSourceBytes(realm_once.?, .{ .number = 1 }));
-    try std.testing.expectEqual(@as(?[]const u8, null), engine.borrowBufferSourceBytes(realm_once.?, runtime.JSValue.jsNull));
+    try std.testing.expectEqual(@as(?[]const u8, null), engine.borrowBufferSourceBytes(test_realm.?, .{ .number = 1 }));
+    try std.testing.expectEqual(@as(?[]const u8, null), engine.borrowBufferSourceBytes(test_realm.?, runtime.JSValue.jsNull));
     const object = try eval("({ byteLength: 2 })");
     defer ffi.v8_Value_Dispose(object);
-    try std.testing.expectEqual(@as(?[]const u8, null), engine.borrowBufferSourceBytes(realm_once.?, runtime.JSValue.fromHandle(object)));
+    try std.testing.expectEqual(@as(?[]const u8, null), engine.borrowBufferSourceBytes(test_realm.?, runtime.JSValue.fromHandle(object)));
 }
 
 // What decode() relies on: borrowed at its step, after a getter detached the
 // buffer, the bytes are none - never the freed store.
 test "a buffer detached after its conversion borrows as empty" {
-    defer file.leave();
+    defer test_agent.close();
     try withConverted("globalThis.input = new Uint8Array(10000).fill(42)", struct {
         fn check(source: AllowSharedBufferSource, _: *ffi.Value) !void {
             const detach = try eval("input.buffer.transfer(0), 0");
             ffi.v8_Value_Dispose(detach);
-            const bytes = engine.borrowBufferSourceBytes(realm_once.?, source.jsValue(runtime.JSValue).?) orelse return error.NotBorrowed;
+            const bytes = engine.borrowBufferSourceBytes(test_realm.?, source.jsValue(runtime.JSValue).?) orelse return error.NotBorrowed;
             try std.testing.expectEqual(@as(usize, 0), bytes.len);
         }
     }.check);
 }
 
 test "anything else is a TypeError" {
-    defer file.leave();
+    defer test_agent.close();
     try setUp();
     const cases = [_][]const u8{ "({ byteLength: 2 })", "'hi'", "4", "[1, 2]", "Symbol()" };
     for (cases) |code| {

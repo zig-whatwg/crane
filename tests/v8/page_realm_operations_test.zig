@@ -15,43 +15,41 @@ const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 
-/// One isolate, context and realm for the whole file; V8 is never torn down
-/// here (see engine_realm_operations_test.zig).
-var isolate_once: ?*ffi.Isolate = null;
-var context_once: ?*ffi.Context = null;
-var realm_once: ?runtime.Context = null;
+/// The test's isolate, context and realm: its own agent's (test_agent), ended
+/// with the test.
+var test_isolate: ?*ffi.Isolate = null;
+var test_context: ?*ffi.Context = null;
+var test_realm: ?runtime.Context = null;
 
-/// The file's isolate: current only while one of its tests runs
-/// (test_process.FileIsolate).
-var file: test_process.FileIsolate = .{};
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+    test_context = null;
+    test_realm = null;
+}
 
 fn realm() !runtime.Context {
-    test_process.start();
-    if (realm_once == null) {
-        // An agent createAgent made: it keeps its Window realms on its record
-        // (protocol_realms.WindowRealms), which a bare isolate has none of.
-        const i: *ffi.Isolate = @ptrCast(@alignCast(try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &window_agent_hooks, .host = null })));
-        ffi.v8_Isolate_Enter(i);
-        defer ffi.v8_Isolate_Exit(i);
-        _ = ffi.v8_HandleScope_New(i);
-        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-        ffi.v8_Context_Enter(context);
-        // Already initialized is fine: the manager is per thread, not per test.
+    const i = try test_agent.open(.{ .hooks = &window_agent_hooks });
+    if (test_realm == null) {
+        const context = test_agent.context.?;
+        // Already initialized is fine: the manager is per thread (the test's
+        // agent is its thread's host agent, whose end takes it down).
         v8.context_manager.init(std.heap.page_allocator) catch {};
         const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-        isolate_once = i;
-        context_once = context;
-        realm_once = r;
-        file.isolate = i;
+        test_isolate = i;
+        test_context = context;
+        test_realm = r;
     }
-    file.enter();
-    return realm_once.?;
+    return test_realm.?;
 }
 
 /// Script's value of `expression`, as an integer.
 fn scriptInt(expression: []const u8) !i32 {
-    const i = isolate_once.?;
-    const context = context_once.?;
+    const i = test_isolate.?;
+    const context = test_context.?;
     const code = ffi.v8_String_NewFromUtf8(i, expression.ptr, @intCast(expression.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(code);
     const script = ffi.v8_Script_Compile(context, code) orelse return error.CompileFailed;
@@ -63,8 +61,8 @@ fn scriptInt(expression: []const u8) !i32 {
 
 /// Script's value of `expression`, as a handle the caller disposes.
 fn scriptValue(expression: []const u8) !*ffi.Value {
-    const i = isolate_once.?;
-    const context = context_once.?;
+    const i = test_isolate.?;
+    const context = test_context.?;
     const code = ffi.v8_String_NewFromUtf8(i, expression.ptr, @intCast(expression.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(code);
     const script = ffi.v8_Script_Compile(context, code) orelse return error.CompileFailed;
@@ -75,7 +73,7 @@ fn scriptValue(expression: []const u8) !*ffi.Value {
 /// `value` as the binding hands an object to an impl: conversions.fromV8Value
 /// makes a `.handle` - borrowed for the call - over the same Global.
 fn borrowed(value: *ffi.Value) runtime.JSValue {
-    return v8.conversions.fromV8Value(runtime.JSValue, std.testing.allocator, isolate_once.?, context_once.?, value) catch unreachable;
+    return v8.conversions.fromV8Value(runtime.JSValue, std.testing.allocator, test_isolate.?, test_context.?, value) catch unreachable;
 }
 
 const Reports = struct {
@@ -94,7 +92,7 @@ const Reports = struct {
         self.had_value = info.error_value != null;
         if (self.run_inside) |source| {
             var ignored: Reports = .{};
-            protocol.runClassicScript(realm_once.?, .{ .utf8 = source }, "", null, ignored.reporter()) catch {};
+            protocol.runClassicScript(test_realm.?, .{ .utf8 = source }, "", null, ignored.reporter()) catch {};
         }
     }
 
@@ -135,7 +133,7 @@ fn run(source: []const u8) !Reports {
 // ============================================================================
 
 test "a callback is invoked with its arguments and the realm's global as this" {
-    defer file.leave();
+    defer test_agent.close();
     const ctx = try realm();
     _ = try run("globalThis.cb = function (a, b) { globalThis.sum = a + b; globalThis.thisIsGlobal = this === globalThis ? 1 : 0; };");
     const cb = try scriptValue("globalThis.cb");
@@ -149,7 +147,7 @@ test "a callback is invoked with its arguments and the realm's global as this" {
 }
 
 test "a callback's this is undefined, or the value given" {
-    defer file.leave();
+    defer test_agent.close();
     const ctx = try realm();
     _ = try run("globalThis.strictCb = function () { 'use strict'; globalThis.seenThis = this === undefined ? -1 : this; };");
     const cb = try scriptValue("globalThis.strictCb");
@@ -163,7 +161,7 @@ test "a callback's this is undefined, or the value given" {
 }
 
 test "more arguments than fit inline all arrive" {
-    defer file.leave();
+    defer test_agent.close();
     const ctx = try realm();
     _ = try run("globalThis.manyCb = function () { globalThis.argCount = arguments.length; globalThis.last = arguments[arguments.length - 1]; };");
     const cb = try scriptValue("globalThis.manyCb");
@@ -177,7 +175,7 @@ test "more arguments than fit inline all arrive" {
 }
 
 test "what a callback throws is reported, after the microtasks it queued" {
-    defer file.leave();
+    defer test_agent.close();
     const ctx = try realm();
     _ = try run("globalThis.order = ''; globalThis.thrower = function () { Promise.resolve().then(() => { globalThis.order += 'm'; }); throw new RangeError('nope'); };");
     const cb = try scriptValue("globalThis.thrower");
@@ -194,7 +192,7 @@ test "what a callback throws is reported, after the microtasks it queued" {
 }
 
 test "a callback that is not callable is not called" {
-    defer file.leave();
+    defer test_agent.close();
     const ctx = try realm();
     const object = try scriptValue("({})");
     defer ffi.v8_Value_Dispose(object);
@@ -290,7 +288,7 @@ fn installed() !runtime.Context {
 }
 
 test "setTimeout and setInterval hand their converted arguments to the host" {
-    defer file.leave();
+    defer test_agent.close();
     const ctx = try installed();
 
     var reports = try run("globalThis.id = setTimeout(function () {}, 5, 'a', 1);");
@@ -317,7 +315,7 @@ test "setTimeout and setInterval hand their converted arguments to the host" {
 }
 
 test "setTimeout without a handler, or with one whose ToString throws, throws" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try installed();
 
     var reports = try run("setTimeout();");
@@ -331,7 +329,7 @@ test "setTimeout without a handler, or with one whose ToString throws, throws" {
 }
 
 test "clearTimeout and clearInterval convert the id with ToInt32" {
-    defer file.leave();
+    defer test_agent.close();
     const ctx = try installed();
     _ = try run("clearTimeout('5');");
     try std.testing.expectEqual(@as(?i32, 5), seen.cleared);
@@ -341,7 +339,7 @@ test "clearTimeout and clearInterval convert the id with ToInt32" {
 }
 
 test "requestAnimationFrame takes a callable; cancelAnimationFrame a handle in range" {
-    defer file.leave();
+    defer test_agent.close();
     const ctx = try installed();
     _ = try run("globalThis.handle = requestAnimationFrame(function () {});");
     try std.testing.expectEqual(@as(usize, 1), seen.frames);
@@ -372,7 +370,7 @@ test "requestAnimationFrame takes a callable; cancelAnimationFrame a handle in r
 
 /// Native contexts alive after a full collection.
 fn liveContexts() usize {
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
     var count: usize = 0;
     ffi.v8_Isolate_GetContextCounts(isolate, &count, null);
@@ -381,7 +379,7 @@ fn liveContexts() usize {
 
 /// Script's value of `expression` in `context`, as a handle the caller disposes.
 fn scriptValueIn(context: *ffi.Context, expression: []const u8) !*ffi.Value {
-    const i = isolate_once.?;
+    const i = test_isolate.?;
     const code = ffi.v8_String_NewFromUtf8(i, expression.ptr, @intCast(expression.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(code);
     const script = ffi.v8_Script_Compile(context, code) orelse return error.CompileFailed;
@@ -391,10 +389,10 @@ fn scriptValueIn(context: *ffi.Context, expression: []const u8) !*ffi.Value {
 
 /// `globalThis[name] = value` in the test realm.
 fn exposeValue(name: []const u8, value: *ffi.Value) !void {
-    const context = context_once.?;
+    const context = test_context.?;
     const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
     defer ffi.v8_Object_Dispose(global);
-    const key = ffi.v8_String_NewFromUtf8(isolate_once.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
+    const key = ffi.v8_String_NewFromUtf8(test_isolate.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(key);
     if (!ffi.v8_Object_Set(global, context, @ptrCast(key), value)) return error.SetFailed;
 }
@@ -417,7 +415,7 @@ const Thrower = struct {
 
     fn body(data: ?*anyopaque) callconv(.c) void {
         const self: *Thrower = @ptrCast(@alignCast(data.?));
-        const isolate = isolate_once.?;
+        const isolate = test_isolate.?;
         const conv = v8.conversions;
         // Entered, so the helpers that throw in the current realm throw in this one.
         ffi.v8_Context_Enter(self.context);
@@ -437,15 +435,15 @@ const Thrower = struct {
     /// Throw once and catch it; what was thrown is released.
     fn throwAndCatch(self: *Thrower) !void {
         var thrown: ?*ffi.Value = null;
-        if (!ffi.v8_RunCatching(isolate_once.?, body, self, &thrown)) return error.DidNotThrow;
+        if (!ffi.v8_RunCatching(test_isolate.?, body, self, &thrown)) return error.DidNotThrow;
         ffi.v8_Value_Dispose(thrown orelse return error.NothingThrown);
     }
 };
 
 test "every conversions throw helper leaves no handle behind" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     // throwDOMException constructs through the realm's DOMException.
     _ = try run("globalThis.DOMException = class { constructor(m, n) { this.message = m; this.name = n; } };");
 
@@ -466,7 +464,7 @@ test "every conversions throw helper leaves no handle behind" {
     const rounds = 32;
     var leaked = false;
     inline for (comptime std.meta.fieldNames(Thrower.Kind), @typeInfo(Thrower.Kind).@"enum".field_values) |field_name, field_value| {
-        var thrower: Thrower = .{ .context = context_once.?, .kind = @fromBackingInt(@intCast(field_value)) };
+        var thrower: Thrower = .{ .context = test_context.?, .kind = @fromBackingInt(@intCast(field_value)) };
         // The first call may make what every later one reuses.
         try thrower.throwAndCatch();
         const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
@@ -481,9 +479,9 @@ test "every conversions throw helper leaves no handle behind" {
 }
 
 test "an exception thrown in a realm does not keep that realm alive" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     const baseline = liveContexts();
 
     // The control: a realm nothing refers to any more is collected.
@@ -515,18 +513,18 @@ fn ensurePools() void {
 fn eventInRealm() !void {
     _ = try realm();
     ensurePools();
-    const context = context_once.?;
+    const context = test_context.?;
     const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
     defer ffi.v8_Object_Dispose(global);
-    v8.interface_bindings.Event.registerGlobalFast(isolate_once.?, context, global, "Event");
+    v8.interface_bindings.Event.registerGlobalFast(test_isolate.?, context, global, "Event");
     const reports = try run("globalThis.e = new Event('x'); e.cancelBubble = false;");
     try std.testing.expectEqual(@as(usize, 0), reports.count);
 }
 
 test "an attribute setter releases the handle of the value it converted" {
-    defer file.leave();
+    defer test_agent.close();
     try eventInRealm();
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
 
     // The same loop assigning an expando - no setter - is the control: what
     // running a script costs, if anything.
@@ -550,10 +548,10 @@ test "an attribute setter releases the handle of the value it converted" {
 /// after a call is the binding's.
 fn customEventInRealm() !void {
     try eventInRealm();
-    const context = context_once.?;
+    const context = test_context.?;
     const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
     defer ffi.v8_Object_Dispose(global);
-    v8.interface_bindings.CustomEvent.registerGlobalFast(isolate_once.?, context, global, "CustomEvent");
+    v8.interface_bindings.CustomEvent.registerGlobalFast(test_isolate.?, context, global, "CustomEvent");
     const reports = try run("globalThis.ce = new CustomEvent('x');");
     try std.testing.expectEqual(@as(usize, 0), reports.count);
 }
@@ -563,9 +561,9 @@ fn customEventInRealm() !void {
 const primitive_details = "['Test cleanup', 'Test cleanup ' + i, i, i % 2 == 0, null, undefined][i % 6]";
 
 test "an `any` argument that converts to a primitive leaves no handle behind" {
-    defer file.leave();
+    defer test_agent.close();
     try customEventInRealm();
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
 
     // The control: the same values stored as an expando - no conversion.
     var start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
@@ -585,9 +583,9 @@ test "an `any` argument that converts to a primitive leaves no handle behind" {
 }
 
 test "an `any` argument that is an object is released once the call returns" {
-    defer file.leave();
+    defer test_agent.close();
     try customEventInRealm();
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
 
     // The control: the same objects stored as an expando - no conversion.
     var start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
@@ -620,9 +618,9 @@ test "an `any` argument that is an object is released once the call returns" {
 }
 
 test "an `any` dictionary member that converts to a primitive leaves no handle behind" {
-    defer file.leave();
+    defer test_agent.close();
     try customEventInRealm();
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
 
     // The control: 64 Events, whose EventInit has boolean members only - each
     // converted and its handle released. Every event is wrapped (a weak
@@ -651,10 +649,10 @@ test "an `any` dictionary member that converts to a primitive leaves no handle b
 }
 
 test "converting a sequence leaves no handle of its own behind" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
-    const isolate = isolate_once.?;
-    const context = context_once.?;
+    const isolate = test_isolate.?;
+    const context = test_context.?;
     const array = try scriptValue("['a', 'bb', 'ccc', 'dddd', 1, true, null, 'eeeee']");
     defer ffi.v8_Value_Dispose(array);
 
@@ -689,9 +687,9 @@ test "converting a sequence leaves no handle of its own behind" {
 }
 
 test "a value assigned through an attribute setter does not keep its realm alive" {
-    defer file.leave();
+    defer test_agent.close();
     try eventInRealm();
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     const baseline = liveContexts();
 
     // The control: an object of another realm, stored and forgotten, lets it go.
@@ -725,10 +723,10 @@ test "a value assigned through an attribute setter does not keep its realm alive
 // ============================================================================
 
 test "the interfaces defined on a realm without the snapshot keep none of its handles" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
     ensurePools();
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     const handle_bytes = blk: {
         const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
         const one = ffi.v8_Number_New(isolate, 1);
@@ -804,7 +802,7 @@ fn windowRealm(host: *WindowHost, from_snapshot: bool, global_this: protocol.Glo
     _ = try realm();
     ensurePools();
     return protocol.createWindowRealm(&.{
-        .agent = @ptrCast(isolate_once.?),
+        .agent = @ptrCast(test_isolate.?),
         .allocator = std.heap.c_allocator,
         .from_snapshot = from_snapshot,
         .timer = null,
@@ -868,7 +866,7 @@ fn globalInt(r: runtime.Context, name: []const u8) ?i32 {
     const context = contextOf(r);
     const global = ffi.v8_Context_Global(context) orelse return null;
     defer ffi.v8_Object_Dispose(global);
-    const key = ffi.v8_String_NewFromUtf8(isolate_once.?, name.ptr, @intCast(name.len)) orelse return null;
+    const key = ffi.v8_String_NewFromUtf8(test_isolate.?, name.ptr, @intCast(name.len)) orelse return null;
     defer ffi.v8_String_Dispose(key);
     const value = ffi.v8_Object_Get(global, context, @ptrCast(key)) orelse return null;
     defer ffi.v8_Value_Dispose(value);
@@ -881,7 +879,7 @@ fn setGlobal(r: runtime.Context, name: []const u8, value: runtime.JSValue) !void
     const context = contextOf(r);
     const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
     defer ffi.v8_Object_Dispose(global);
-    const key = ffi.v8_String_NewFromUtf8(isolate_once.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
+    const key = ffi.v8_String_NewFromUtf8(test_isolate.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(key);
     const handle: *ffi.Value = @ptrCast(@alignCast(value.handle.ptr));
     if (!ffi.v8_Object_Set(global, context, @ptrCast(key), handle)) return error.SetFailed;
@@ -909,7 +907,7 @@ fn evalOwned(r: runtime.Context, source: []const u8) !protocol.Owned {
 }
 
 test "protocol: a Window realm made afresh has the host's Window as its global object" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w, .global_detached);
@@ -934,11 +932,11 @@ test "protocol: a Window realm made afresh has the host's Window as its global o
 }
 
 test "protocol: a Window's indexed property enumerator leaves no handle behind" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w, .global_detached);
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
 
     // The control: the same enumeration of an ordinary object, no interceptor.
     var start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
@@ -958,7 +956,7 @@ test "protocol: a Window's indexed property enumerator leaves no handle behind" 
 }
 
 test "protocol: a realm restored from a snapshot the agent lacks is built afresh" {
-    defer file.leave();
+    defer test_agent.close();
     // The no-snapshot startup path: an agent made without a snapshot (as on
     // JavaScriptCore, always) still gets a working Window realm.
     var host: WindowHost = .{};
@@ -969,21 +967,21 @@ test "protocol: a realm restored from a snapshot the agent lacks is built afresh
 }
 
 test "protocol: a realm whose Window the host could not make is undone" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
     const before = liveContexts();
     var host: WindowHost = .{ .fail = true };
     try std.testing.expectError(error.OperationFailed, windowRealm(&host, false, .new_window_proxy));
-    // Its context was exited - the file's context is the entered one again -
+    // Its context was exited - the test's context is the entered one again -
     // and released.
-    const entered = ffi.v8_Isolate_GetEnteredOrMicrotaskContext(isolate_once.?) orelse return error.NothingEntered;
+    const entered = ffi.v8_Isolate_GetEnteredOrMicrotaskContext(test_isolate.?) orelse return error.NothingEntered;
     defer ffi.v8_Context_Dispose(entered);
-    try std.testing.expectEqual(ffi.v8_Context_GetRawAddress(context_once.?), ffi.v8_Context_GetRawAddress(entered));
+    try std.testing.expectEqual(ffi.v8_Context_GetRawAddress(test_context.?), ffi.v8_Context_GetRawAddress(entered));
     try std.testing.expectEqual(before, liveContexts());
 }
 
 test "protocol: a realm made around another's WindowProxy is what that WindowProxy reaches" {
-    defer file.leave();
+    defer test_agent.close();
     var host_a: WindowHost = .{};
     const a = try windowRealm(&host_a, false, .new_window_proxy);
     const proxy = try evalOwned(a, "globalThis.fromA = 1; globalThis");
@@ -1004,7 +1002,7 @@ test "protocol: a realm made around another's WindowProxy is what that WindowPro
 }
 
 test "protocol: destroyWindowRealm retires the realm and lets its context go" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
     const baseline = liveContexts();
     var host: WindowHost = .{};
@@ -1021,7 +1019,7 @@ test "protocol: destroyWindowRealm retires the realm and lets its context go" {
 }
 
 test "protocol: iterating a platform object from another realm leaves no Global<Context> and no extra native context" {
-    defer file.leave();
+    defer test_agent.close();
     // A page reading its frame's objects: html5lib_write.html walks each
     // frame's childNodes with for...of from the parent. The iterable callbacks
     // run in the callee's realm - the frame's - and every one of them took
@@ -1029,7 +1027,7 @@ test "protocol: iterating a platform object from another realm leaves no Global<
     // prototype (and its functions) a call, so every frame the page ever
     // iterated stayed alive: 898 realms, 1.17 GB, for that one file.
     _ = try realm();
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     const baseline = liveContexts();
 
     var page_host: WindowHost = .{};
@@ -1111,9 +1109,9 @@ test "protocol: iterating a platform object from another realm leaves no Global<
 }
 
 test "protocol: a Window realm made and ended leaves no global handle behind" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     // What one handle costs in V8's count.
     const handle_bytes = blk: {
         const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
@@ -1162,7 +1160,7 @@ const FrameRealm = struct {
     fn steps(data: ?*anyopaque) void {
         const self: *FrameRealm = @ptrCast(@alignCast(data.?));
         self.made = protocol.createWindowRealm(&.{
-            .agent = @ptrCast(isolate_once.?),
+            .agent = @ptrCast(test_isolate.?),
             .allocator = std.heap.c_allocator,
             .from_snapshot = false,
             .timer = null,
@@ -1181,7 +1179,7 @@ const FrameRealm = struct {
 };
 
 test "protocol: a frame's realm is made inside its parent's script and not left entered" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(parent, .global_detached);
@@ -1198,7 +1196,7 @@ test "protocol: a frame's realm is made inside its parent's script and not left 
 }
 
 test "protocol: a frame's realm shares its parent's security token" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(parent, .global_detached);
@@ -1217,7 +1215,7 @@ test "protocol: a frame's realm shares its parent's security token" {
 }
 
 test "protocol: ending a parent's realm ends its frames' realms first" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);
     var frame_realm: FrameRealm = .{ .parent = parent };
@@ -1233,7 +1231,7 @@ test "protocol: ending a parent's realm ends its frames' realms first" {
 }
 
 test "protocol: a frame's realm whose WindowProxy went on lives while script reaches it, and is severed from its Window at its end" {
-    defer file.leave();
+    defer test_agent.close();
     const base = try realm();
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);
@@ -1276,7 +1274,7 @@ test "protocol: a frame's realm whose WindowProxy went on lives while script rea
 }
 
 test "protocol: a replaced realm whose frames were already destroyed leaves them detached" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(parent, .global_detached);
@@ -1310,7 +1308,7 @@ test "protocol: a replaced realm whose frames were already destroyed leaves them
 }
 
 test "protocol: a frame's realm a navigation replaced is collected once nothing reaches it" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);
@@ -1363,7 +1361,7 @@ const NoSteps = struct {
 };
 
 test "protocol: the V8 adapter reuses a WindowProxy, and a realm is no popup's unless it says so" {
-    defer file.leave();
+    defer test_agent.close();
     // [reuse_window_proxy]: the capability the host page's new Window per
     // load is gated on; JavaScriptCore, QuickJS and the test adapter declare
     // it unsupported and keep one Window per navigable.
@@ -1381,7 +1379,7 @@ test "protocol: the V8 adapter reuses a WindowProxy, and a realm is no popup's u
 }
 
 test "protocol: a top-level realm whose WindowProxy went on lives while script reaches it, and ends with the realm that took its proxy" {
-    defer file.leave();
+    defer test_agent.close();
     const base = try realm();
     var host_old: WindowHost = .{};
     const old = try windowRealm(&host_old, false, .new_window_proxy);
@@ -1419,7 +1417,7 @@ test "protocol: a top-level realm whose WindowProxy went on lives while script r
 }
 
 test "protocol: a top-level realm a navigation replaced is collected once nothing reaches it" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
     var host_old: WindowHost = .{};
     const old = try windowRealm(&host_old, false, .new_window_proxy);
@@ -1458,9 +1456,9 @@ fn windowRealmIn(agent: *protocol.Agent, host: *WindowHost, global_this: protoco
 }
 
 test "protocol: a top-level realm's successor takes over its isolate entry" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
-    const file_isolate = isolate_once.?;
+    const file_isolate = test_isolate.?;
     // An agent of its own, not entered: its first top-level realm enters its
     // isolate for the realm's life.
     const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &window_agent_hooks, .host = null });
@@ -1487,7 +1485,7 @@ test "protocol: a top-level realm's successor takes over its isolate entry" {
 }
 
 test "protocol: a popup's realm follows its opener page's WindowProxy to the realm a navigation made" {
-    defer file.leave();
+    defer test_agent.close();
     var host_page: WindowHost = .{};
     const page = try windowRealm(&host_page, false, .new_window_proxy);
     var popup_realm: FrameRealm = .{ .parent = page, .auxiliary = true };
@@ -1512,7 +1510,7 @@ test "protocol: a popup's realm follows its opener page's WindowProxy to the rea
 }
 
 test "protocol: a popup a frame opened outlives that frame's navigation" {
-    defer file.leave();
+    defer test_agent.close();
     var host_page: WindowHost = .{};
     const page = try windowRealm(&host_page, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(page, .global_detached);
@@ -1532,7 +1530,7 @@ test "protocol: a popup a frame opened outlives that frame's navigation" {
 }
 
 test "protocol: a destroyed navigable's realm keeps its Window while script holds its WindowProxy, and ends when it is collected" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);
@@ -1576,7 +1574,7 @@ test "protocol: a destroyed navigable's realm keeps its Window while script hold
 }
 
 test "protocol: a listener stored on a destroyed navigable's object, closing over the frame, does not keep it" {
-    defer file.leave();
+    defer test_agent.close();
     // The frame's Event and EventTarget reach the owners' hooks; with no
     // Browser here crane.Process is not started, so install them rather than
     // rely on a file before this one in the shared process.
@@ -1613,7 +1611,7 @@ test "protocol: a listener stored on a destroyed navigable's object, closing ove
 }
 
 test "protocol: a destroyed navigable's realm that its page outlives is not run, and its page's end frees its Window" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);
     var frame_realm: FrameRealm = .{ .parent = parent };
@@ -1646,7 +1644,7 @@ test "protocol: a destroyed navigable's realm that its page outlives is not run,
 }
 
 test "protocol: a wrapper another realm still holds is severed when its realm ends" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(parent, .global_detached);
@@ -1670,7 +1668,7 @@ test "protocol: a wrapper another realm still holds is severed when its realm en
 }
 
 test "protocol: a namespace operation keeps neither its realm nor its result" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
     // The first realm to call a namespace operation that takes a
     // runtime.Context becomes the process-wide one (namespace.zig's
@@ -1734,12 +1732,12 @@ const Watched = struct {
 /// the first one finds unreachable has its weak callback - which frees its
 /// instance - run by then.
 fn collectTwice() void {
-    ffi.v8_Isolate_RequestGarbageCollection(isolate_once.?);
-    ffi.v8_Isolate_RequestGarbageCollection(isolate_once.?);
+    ffi.v8_Isolate_RequestGarbageCollection(test_isolate.?);
+    ffi.v8_Isolate_RequestGarbageCollection(test_isolate.?);
 }
 
 test "protocol: a traced child lives as long as its owner's wrapper, and goes with it" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w, .global_detached);
@@ -1765,7 +1763,7 @@ test "protocol: a traced child lives as long as its owner's wrapper, and goes wi
 }
 
 test "protocol: a slot holds one child; forgetTracedChild lets it go and leaves the other slots" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w, .global_detached);
@@ -1796,7 +1794,7 @@ test "protocol: a slot holds one child; forgetTracedChild lets it go and leaves 
 }
 
 test "protocol: an owner and a child that trace each other keep each other, and go together" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w, .global_detached);
@@ -1819,7 +1817,7 @@ test "protocol: an owner and a child that trace each other keep each other, and 
 }
 
 test "protocol: a child traced from a Window lives as long as its realm" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w, .global_detached);
@@ -1833,7 +1831,7 @@ test "protocol: a child traced from a Window lives as long as its realm" {
 }
 
 test "protocol: a Window whose WindowProxy went on to a new realm traces from its own global object" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(parent, .global_detached);
@@ -1865,11 +1863,11 @@ test "protocol: a Window whose WindowProxy went on to a new realm traces from it
 }
 
 test "protocol: traceChild and forgetTracedChild leave no global handle behind" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w, .global_detached);
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     const handle_bytes = blk: {
         const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
         const one = ffi.v8_Number_New(isolate, 1);
@@ -1909,7 +1907,7 @@ fn unwrappedHeaders(r: runtime.Context) !*runtime.Instance {
 }
 
 test "protocol: an owner script has not seen keeps its traced child, and draws the edge on its wrapper once made" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w, .global_detached);
@@ -1944,7 +1942,7 @@ test "protocol: an owner script has not seen keeps its traced child, and draws t
 }
 
 test "protocol: forgetTracedChild ends an edge that waits for its owner's wrapper, and a slot keeps one child" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w, .global_detached);
@@ -1970,7 +1968,7 @@ test "protocol: forgetTracedChild ends an edge that waits for its owner's wrappe
 }
 
 test "protocol: an owner freed unwrapped lets its waiting edges go" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w, .global_detached);
@@ -2006,11 +2004,11 @@ test "protocol: an owner freed unwrapped lets its waiting edges go" {
 }
 
 test "protocol: edges waiting for an owner's wrapper leave no global handle behind" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w, .global_detached);
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     const handle_bytes = blk: {
         const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
         const one = ffi.v8_Number_New(isolate, 1);
@@ -2053,7 +2051,7 @@ fn promiseState(capability: *const protocol.PromiseCapability) c_int {
 }
 
 test "protocol: a pending promise capability of a live realm survives collections, and settles" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w, .global_detached);
@@ -2082,7 +2080,7 @@ test "protocol: a pending promise capability of a live realm survives collection
 }
 
 test "protocol: a detached realm's promise capability keeps it while reachable, and goes with it" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);
@@ -2123,11 +2121,11 @@ test "protocol: a detached realm's promise capability keeps it while reachable, 
 }
 
 test "protocol: creating and releasing promise capabilities leaves no global handle behind" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w, .global_detached);
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     const handle_bytes = blk: {
         const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
         const one = ffi.v8_Number_New(isolate, 1);
@@ -2180,7 +2178,7 @@ fn tracedToGlobal(r: runtime.Context, owner: *runtime.Instance, slot: []const u8
 }
 
 test "protocol: a traced value lives as long as its owner's wrapper, and goes with it" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w, .global_detached);
@@ -2214,7 +2212,7 @@ test "protocol: a traced value lives as long as its owner's wrapper, and goes wi
 }
 
 test "protocol: tracedValue reads back the value itself; a slot holds one; forgetTracedChild empties it" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w, .global_detached);
@@ -2253,7 +2251,7 @@ test "protocol: tracedValue reads back the value itself; a slot holds one; forge
 }
 
 test "protocol: a value that reaches back to its owner does not keep it" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w, .global_detached);
@@ -2274,7 +2272,7 @@ test "protocol: a value that reaches back to its owner does not keep it" {
 }
 
 test "protocol: an owner script has not seen keeps its traced value, readable before and after its wrapper is made" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w, .global_detached);
@@ -2310,11 +2308,11 @@ test "protocol: an owner script has not seen keeps its traced value, readable be
 }
 
 test "protocol: traceValue and tracedValue leave no global handle behind" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w, .global_detached);
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     const handle_bytes = blk: {
         const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
         const one = ffi.v8_Number_New(isolate, 1);
@@ -2371,7 +2369,7 @@ fn withTreeHooks() void {
 }
 
 test "protocol: a node script holds keeps its detached tree's root, and the tree goes once script drops it" {
-    defer file.leave();
+    defer test_agent.close();
     withTreeHooks();
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
@@ -2405,7 +2403,7 @@ test "protocol: a node script holds keeps its detached tree's root, and the tree
 }
 
 test "protocol: a node whose ancestors' wrappers script dropped keeps them, and its tree" {
-    defer file.leave();
+    defer test_agent.close();
     withTreeHooks();
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
@@ -2432,7 +2430,7 @@ test "protocol: a node whose ancestors' wrappers script dropped keeps them, and 
 }
 
 test "protocol: a node's wrapper in a live tree keeps its expandos without being a root" {
-    defer file.leave();
+    defer test_agent.close();
     withTreeHooks();
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
@@ -2459,7 +2457,7 @@ test "protocol: a node's wrapper in a live tree keeps its expandos without being
 }
 
 test "a window's indexedDB, when making its IDBFactory fails at any allocation, frees what it made once" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w, .global_detached);
@@ -2480,7 +2478,7 @@ test "a window's indexedDB, when making its IDBFactory fails at any allocation, 
 }
 
 test "protocol: performMicrotaskCheckpoint runs the agent's microtasks, whichever realm queued them" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(parent, .global_detached);
@@ -2506,9 +2504,9 @@ test "protocol: performMicrotaskCheckpoint runs the agent's microtasks, whicheve
 }
 
 test "protocol: notifyMemoryPressure critical collects what a realm that ended held" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
-    const agent: *protocol.Agent = @ptrCast(isolate_once.?);
+    const agent: *protocol.Agent = @ptrCast(test_isolate.?);
     const baseline = liveContexts();
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
@@ -2517,7 +2515,7 @@ test "protocol: notifyMemoryPressure critical collects what a realm that ended h
     // What the page held is garbage now: the host asks for it back.
     protocol.notifyMemoryPressure(agent, .critical);
     var count: usize = 0;
-    ffi.v8_Isolate_GetContextCounts(isolate_once.?, &count, null);
+    ffi.v8_Isolate_GetContextCounts(test_isolate.?, &count, null);
     if (count != baseline) {
         std.debug.print("native contexts: {d} before, {d} after the realm ended and memory pressure\n", .{ baseline, count });
         return error.RealmKeptAlive;
@@ -2527,7 +2525,7 @@ test "protocol: notifyMemoryPressure critical collects what a realm that ended h
 }
 
 test "protocol: the entry and incumbent realms are the innermost prepared realm" {
-    defer file.leave();
+    defer test_agent.close();
     // Two realms made here: the context manager names a realm by where its
     // context is, and a full collection (liveContexts, in earlier tests) can
     // move the file's.
@@ -2552,7 +2550,7 @@ test "protocol: the entry and incumbent realms are the innermost prepared realm"
 }
 
 test "protocol: functionRealm follows bound functions and proxies to their target's realm" {
-    defer file.leave();
+    defer test_agent.close();
     var host_w: WindowHost = .{};
     const w = try windowRealm(&host_w, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w, .global_detached);
@@ -2584,7 +2582,7 @@ test "protocol: functionRealm follows bound functions and proxies to their targe
 }
 
 test "protocol: runClassicScript runs a string value, and a parse error names the URL it was given" {
-    defer file.leave();
+    defer test_agent.close();
     const base = try realm();
     var reports: ProtocolReports = .{};
     const text = try evalOwned(base, "'globalThis.fromStringSource = 5;'");
@@ -2605,7 +2603,7 @@ test "protocol: runClassicScript runs a string value, and a parse error names th
 }
 
 test "protocol: what a classic script throws is reported before the microtask checkpoint" {
-    defer file.leave();
+    defer test_agent.close();
     const base = try realm();
     var reports: ProtocolReports = .{ .probe = "microtaskRan" };
     try std.testing.expectError(error.ExceptionReported, protocol.runClassicScript(
@@ -2630,7 +2628,7 @@ test "protocol: what a classic script throws is reported before the microtask ch
 }
 
 test "protocol: clean up after running script checkpoints only when no script is prepared" {
-    defer file.leave();
+    defer test_agent.close();
     const base = try realm();
     var reports: ProtocolReports = .{};
     const outer = try protocol.prepareToRunScript(base);
@@ -2642,7 +2640,7 @@ test "protocol: clean up after running script checkpoints only when no script is
 }
 
 test "protocol: evaluateClassicScript keeps the completion value; ToString's throw is reported" {
-    defer file.leave();
+    defer test_agent.close();
     const base = try realm();
     var reports: ProtocolReports = .{};
 
@@ -2664,7 +2662,7 @@ test "protocol: evaluateClassicScript keeps the completion value; ToString's thr
 }
 
 test "protocol: compileEventHandler makes the handler's function, or reports why it could not" {
-    defer file.leave();
+    defer test_agent.close();
     const base = try realm();
     var reports: ProtocolReports = .{};
     var source: protocol.EventHandlerSource = .{
@@ -2725,7 +2723,7 @@ test "protocol: compileEventHandler makes the handler's function, or reports why
 }
 
 test "protocol: extractErrorInformation reads an error's message and where it was made" {
-    defer file.leave();
+    defer test_agent.close();
     const base = try realm();
     var reports: ProtocolReports = .{};
     const made = try protocol.evaluateClassicScript(base, .{ .utf8 = "\n  new RangeError('far')" }, "https://example.test/e.js", null, reports.reporter());
@@ -2756,7 +2754,7 @@ test "protocol: extractErrorInformation reads an error's message and where it wa
 // ----------------------------------------------------------------------------
 
 test "protocol: initializeEngine starts V8 once, and refuses a snapshot this build did not make" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
     try protocol.initializeEngine(.{});
     // No build stamp.
@@ -2801,7 +2799,7 @@ const AgentRealm = struct {
 };
 
 test "protocol: an agent ended while another isolate is entered leaves that isolate's realms working" {
-    defer file.leave();
+    defer test_agent.close();
     const base = try realm();
     const no_hooks: protocol.HostHooks = .{};
     // Made with its per-isolate state (templates, allocator, ShadowRealm
@@ -2812,20 +2810,20 @@ test "protocol: an agent ended while another isolate is entered leaves that isol
         defer in_agent.end();
         try expectEval(in_agent.realm, "typeof ShadowRealm === 'function' || typeof ShadowRealm === 'undefined'", "true");
     }
-    // Ended while this file's isolate is the entered one: only its own
-    // isolate's state goes, not the thread's (the context manager keeps this
-    // file's realm).
+    // Ended while the test's isolate is the entered one: only its own
+    // isolate's state goes, not the thread's (the context manager keeps the
+    // test's realm).
     protocol.destroyAgent(agent);
-    try std.testing.expectEqual(isolate_once, ffi.v8_Isolate_GetCurrent());
+    try std.testing.expectEqual(test_isolate, ffi.v8_Isolate_GetCurrent());
     try expectEval(base, "[1, 2, 3].map((x) => x * 2).join()", "2,4,6");
-    try std.testing.expect(v8.context_manager.get(context_once.?) != null);
+    try std.testing.expect(v8.context_manager.get(test_context.?) != null);
 }
 
 test "protocol: an agent made inside another's realm is not the host agent, even when it ends with no isolate entered" {
-    defer file.leave();
+    defer test_agent.close();
     const base = try realm();
     const no_hooks: protocol.HostHooks = .{};
-    // Made while this file's isolate is entered: as a worker's agent is made,
+    // Made while the test's isolate is entered: as a worker's agent is made,
     // by its owner's script.
     const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &no_hooks });
     {
@@ -2835,8 +2833,8 @@ test "protocol: an agent made inside another's realm is not the host agent, even
     // Ended with NO isolate entered: as a Browser ends its workers once its
     // page realm has exited the page isolate. What is entered at the end says
     // nothing about whose agent this is; it is still not the thread's host,
-    // so only its own isolate's state goes - the context manager keeps this
-    // file's realm, and its templates still work.
+    // so only its own isolate's state goes - the context manager keeps the
+    // test's realm, and its templates still work.
     {
         // Every isolate this thread has entered is exited, not only this
         // file's: tests/v8 runs in one process, and the files before this one
@@ -2855,13 +2853,13 @@ test "protocol: an agent made inside another's realm is not the host agent, even
         protocol.destroyAgent(agent);
         try std.testing.expect(ffi.v8_Isolate_GetCurrent() == null);
     }
-    try std.testing.expectEqual(isolate_once, ffi.v8_Isolate_GetCurrent());
-    try std.testing.expect(v8.context_manager.get(context_once.?) != null);
+    try std.testing.expectEqual(test_isolate, ffi.v8_Isolate_GetCurrent());
+    try std.testing.expect(v8.context_manager.get(test_context.?) != null);
     try expectEval(base, "[1, 2, 3].map((x) => x * 2).join()", "2,4,6");
 }
 
 test "protocol: an agent's [[CanBlock]] decides whether Atomics.wait may block" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
     const no_hooks: protocol.HostHooks = .{};
     const blocking = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &no_hooks });
@@ -2870,7 +2868,7 @@ test "protocol: an agent's [[CanBlock]] decides whether Atomics.wait may block" 
     const window_agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = true, .hooks = &no_hooks });
     defer protocol.destroyAgent(window_agent);
     // Neither is left entered.
-    try std.testing.expectEqual(isolate_once, ffi.v8_Isolate_GetCurrent());
+    try std.testing.expectEqual(test_isolate, ffi.v8_Isolate_GetCurrent());
 
     const in_blocking = try AgentRealm.make(blocking);
     defer in_blocking.end();
@@ -2914,7 +2912,7 @@ const AgentHost = struct {
 };
 
 test "protocol: an agent's host hears of rejections, their handling, and each microtask checkpoint" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
     var host: AgentHost = .{};
     const hooks: protocol.HostHooks = .{
@@ -3000,7 +2998,7 @@ fn expectErrorMentions(r: runtime.Context, value: runtime.JSValue, needle: []con
 }
 
 test "protocol: a module graph is parsed, its requests read, linked and evaluated" {
-    defer file.leave();
+    defer test_agent.close();
     const base = try realm();
     const dep = try parsed(try protocol.parseModule(base, "export const answer = 42;", .{}, "https://example.test/dep.js", null));
     defer protocol.releaseModuleRecord(dep);
@@ -3068,7 +3066,7 @@ test "protocol: a module graph is parsed, its requests read, linked and evaluate
 }
 
 test "protocol: what a module graph gets wrong comes back as its parse, link or evaluation error" {
-    defer file.leave();
+    defer test_agent.close();
     const base = try realm();
 
     // A SyntaxError is the parse error, not a throw.
@@ -3156,7 +3154,7 @@ const ImportHost = struct {
 };
 
 test "protocol: import() reaches the agent's host with its referrer, and finishes with the namespace" {
-    defer file.leave();
+    defer test_agent.close();
     // The agent's realm is registered (AgentRealm.make) after createAgent
     // installed the protocol's import() - and must not replace it (a realm's
     // registration used to install the legacy import() handler).
@@ -3186,7 +3184,7 @@ test "protocol: import() reaches the agent's host with its referrer, and finishe
     defer protocol.releaseModuleRecord(m);
     protocol.finishDynamicImport(try host.takeRequest(), .{ .module = m });
     try protocol.performMicrotaskCheckpoint(r.agent.?);
-    // (Read through the protocol: globalInt reads the file's own agent.)
+    // (Read through the protocol: globalInt reads the test's own agent.)
     try expectEval(r, "globalThis.done", "7");
     // HostGetImportMetaProperties: the host's module script's URL.
     try expectEval(r, "globalThis.metaUrl", "https://example.test/m.js");
@@ -3218,7 +3216,7 @@ test "protocol: import() reaches the agent's host with its referrer, and finishe
     };
     const handler = (try protocol.compileEventHandler(r, &source, reports.reporter())) orelse return error.NoFunction;
     defer handler.release();
-    // (Through the protocol: setGlobal writes in the file's own agent.)
+    // (Through the protocol: setGlobal writes in the test's own agent.)
     const global = try evalOwned(r, "globalThis");
     defer global.release();
     try protocol.setProperty(r, global.value, "handler", handler.value);
@@ -3249,7 +3247,7 @@ const ResolveHost = struct {
 };
 
 test "protocol: import.meta.resolve is a builtin that asks the host with the module's realm and base URL" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
     var host: ResolveHost = .{};
     const hooks: protocol.HostHooks = .{ .importMetaUrl = ImportHost.metaUrl, .importMetaResolve = ResolveHost.resolve };
@@ -3294,12 +3292,12 @@ test "protocol: import.meta.resolve is a builtin that asks the host with the mod
 }
 
 test "constructing a DOMException leaves no handle behind, as constructing an Event does" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
     ensurePools();
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     // DOMException's interface object, and Event's for the control.
-    v8.interface_bindings.registerAllInterfaces(isolate, context_once.?);
+    v8.interface_bindings.registerAllInterfaces(isolate, test_context.?);
 
     // What one handle costs in V8's count.
     const handle_bytes = blk: {
@@ -3343,7 +3341,7 @@ test "constructing a DOMException leaves no handle behind, as constructing an Ev
 }
 
 test "protocol: listeners added and removed in a loop leave no callback wrapper behind" {
-    defer file.leave();
+    defer test_agent.close();
     // WebIDL: a callback interface argument (EventListener) is the call's; a
     // listener the target keeps is its own callback interface value. Every
     // wrapper the binding makes for the argument must be gone once the call
@@ -3372,7 +3370,7 @@ test "protocol: listeners added and removed in a loop leave no callback wrapper 
 }
 
 test "protocol: what a getter returns is the binding's - a kept value reads the same, and no read leaves a handle" {
-    defer file.leave();
+    defer test_agent.close();
     // AGENTS.md "The engine boundary", rule 3: the binding releases every
     // value an impl returns. A value the object keeps goes back as a hold of
     // the binding's own (engine.retainValue(...).take()), so it reads the same
@@ -3408,7 +3406,7 @@ test "protocol: what a getter returns is the binding's - a kept value reads the 
         \\].join()
     , "true,true,true,true,true,true,true,true");
 
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     // What one handle costs in V8's count.
     const handle_bytes = blk: {
         const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
@@ -3436,7 +3434,7 @@ test "protocol: what a getter returns is the binding's - a kept value reads the 
 }
 
 test "protocol: engine code that reads a kept value through its getter releases the hold it gets" {
-    defer file.leave();
+    defer test_agent.close();
     // A getter's result is a hold of the caller's own (retainValue().take()),
     // for engine code that calls the getter through `interfaces` as much as
     // for the binding. The special error event handling reads
@@ -3460,7 +3458,7 @@ test "protocol: engine code that reads a kept value through its getter releases 
         \\[seen.length, seen[0] === object ? 'object' : String(seen[0]), String(seen[1])].join()
     , "2,object,1");
 
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     const handle_bytes = blk: {
         const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
         const one = ffi.v8_Number_New(isolate, 1);
@@ -3490,7 +3488,7 @@ test "protocol: engine code that reads a kept value through its getter releases 
 }
 
 test "protocol: a MessageEvent made with ports keeps one frozen array, the one every read returns" {
-    defer file.leave();
+    defer test_agent.close();
     // FrozenArray: the constructor makes the event's ports array at once
     // (the array is what keeps the ports) and keeps it; every read returns a
     // hold of that array, before a collection and after it. The WeakMap marks
@@ -3517,21 +3515,21 @@ test "protocol: a MessageEvent made with ports keeps one frozen array, the one e
         \\globalThis.marks = new WeakMap([[withPorts.ports, 1]]);
         \\[withPorts.ports === withPorts.ports, withPorts.ports[0] === port, Object.isFrozen(withPorts.ports)].join()
     , "true,true,true");
-    ffi.v8_Isolate_RequestGarbageCollection(isolate_once.?);
+    ffi.v8_Isolate_RequestGarbageCollection(test_isolate.?);
     try expectEval(w, "[marks.has(withPorts.ports), withPorts.ports === withPorts.ports, withPorts.ports[0] === port].join()", "true,true,true");
 }
 
 /// Bytes of global handles `source` leaves behind in `w` (it must evaluate
 /// to "ok").
 fn handleBytesLeftBy(w: runtime.Context, source: []const u8) !usize {
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
     try expectEval(w, source, "ok");
     return ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
 }
 
 test "protocol: the indexed and named property interceptors release the handles they return" {
-    defer file.leave();
+    defer test_agent.close();
     // A string a named getter returns (`el.dataset.x`) is converted to a
     // Global that setReturnValue only reads: kept, it was one handle per read,
     // and encoding/legacy-mb-*-decode read 60,000 a page - a megabyte of
@@ -3563,7 +3561,7 @@ test "protocol: the indexed and named property interceptors release the handles 
 }
 
 test "protocol: a trusted animation event reaches a listener for its legacy webkit type, renamed, and keeps its own type" {
-    defer file.leave();
+    defer test_agent.close();
     // The hooks this test's objects reach (no Browser here: crane.Process is not started).
     @import("interfaces").process_hooks.startHooksForTest();
     // DOM "invoke" step 9: when no listener on a target matched a trusted
@@ -3669,7 +3667,7 @@ fn runIn(r: runtime.Context, source: []const u8) !void {
 }
 
 test "protocol: a callback of a frame realm a navigation replaced is not run" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(parent, .global_detached);
@@ -3697,7 +3695,7 @@ test "protocol: a callback of a frame realm a navigation replaced is not run" {
 }
 
 test "protocol: a callback of a removed frame's realm is not run" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(parent, .global_detached);
@@ -3716,7 +3714,7 @@ test "protocol: a callback of a removed frame's realm is not run" {
 }
 
 test "protocol: a callback of a frame realm still fully active runs, whoever calls it" {
-    defer file.leave();
+    defer test_agent.close();
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(parent, .global_detached);

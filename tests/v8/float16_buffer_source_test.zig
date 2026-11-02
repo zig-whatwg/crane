@@ -23,41 +23,40 @@ const BufferSource = iface.non_owning_arg_types.BufferSource;
 const ArrayBufferView = iface.non_owning_arg_types.ArrayBufferView;
 const testing_allocator = std.testing.allocator;
 
-var isolate_once: ?*ffi.Isolate = null;
-var context_once: ?*ffi.Context = null;
-var data_once: ?*runtime.ContextData = null;
+var test_isolate: ?*ffi.Isolate = null;
+var test_context: ?*ffi.Context = null;
+var test_data: ?*runtime.ContextData = null;
 
-/// The file's isolate: current only while one of its tests runs
-/// (test_process.FileIsolate).
-var file: test_process.FileIsolate = .{};
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
 
-/// One isolate and realm for the file; V8 is never torn down here.
+fn reset() void {
+    test_isolate = null;
+    test_context = null;
+    test_data = null;
+}
+
+/// The test's isolate and realm: its own agent's (test_agent), ended with the
+/// test.
 fn realm() !runtime.Context {
-    test_process.start();
-    if (data_once == null) {
-        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-        ffi.v8_Isolate_Enter(i);
-        defer ffi.v8_Isolate_Exit(i);
-        _ = ffi.v8_HandleScope_New(i);
-        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-        ffi.v8_Context_Enter(context);
-        const data = try std.heap.page_allocator.create(runtime.ContextData);
-        data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
+    const i = try test_agent.open(.{});
+    if (test_data == null) {
+        const context = test_agent.context.?;
+        const data = try test_agent.contextData(std.heap.page_allocator, .{ .engine_ctx = context });
         data.agent = @ptrCast(i);
-        isolate_once = i;
-        context_once = context;
-        data_once = data;
-        file.isolate = i;
+        test_isolate = i;
+        test_context = context;
+        test_data = data;
     }
-    file.enter();
-    return data_once.?;
+    return test_data.?;
 }
 
 /// The value `code` evaluates to: a Global the caller disposes, made the way
 /// the binding's `info.get(i)` makes an argument's.
 fn eval(code: []const u8) !*ffi.Value {
-    const context = context_once.?;
-    const text = ffi.v8_String_NewFromUtf8(isolate_once.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
+    const context = test_context.?;
+    const text = ffi.v8_String_NewFromUtf8(test_isolate.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(text);
     const script = ffi.v8_Script_Compile(context, text) orelse return error.CompileFailed;
     defer ffi.v8_Script_Dispose(script);
@@ -67,7 +66,7 @@ fn eval(code: []const u8) !*ffi.Value {
 fn evalInt(code: []const u8) !i32 {
     const value = try eval(code);
     defer ffi.v8_Value_Dispose(value);
-    return ffi.v8_Value_Int32Value(value, context_once.?);
+    return ffi.v8_Value_Int32Value(value, test_context.?);
 }
 
 /// The realm, or null (the test skips) when this process's V8 has no
@@ -85,11 +84,11 @@ const window_code = "new Float16Array([1, 2, -2, 0.5]).subarray(1, 3)";
 const window_bytes = [_]u8{ 0x00, 0x40, 0x00, 0xC0 };
 
 test "a Float16Array converts to a BufferSource that refers to it, and copies its own window" {
-    defer file.leave();
+    defer test_agent.close();
     const r = (try realmWithFloat16()) orelse return;
     const handle = try eval(window_code);
     defer ffi.v8_Value_Dispose(handle);
-    const source = try conv.fromV8Value(BufferSource, testing_allocator, isolate_once.?, context_once.?, handle);
+    const source = try conv.fromV8Value(BufferSource, testing_allocator, test_isolate.?, test_context.?, handle);
     try std.testing.expect(source == .array_buffer_view);
     try std.testing.expect(source.array_buffer_view == .float16_array);
     try std.testing.expectEqual(@as(?*anyopaque, @ptrCast(handle)), source.jsHandle());
@@ -103,22 +102,22 @@ test "a Float16Array converts to a BufferSource that refers to it, and copies it
 }
 
 test "a Float16Array converts to an ArrayBufferView, and one over a SharedArrayBuffer is a TypeError" {
-    defer file.leave();
+    defer test_agent.close();
     _ = (try realmWithFloat16()) orelse return;
     const handle = try eval(window_code);
     defer ffi.v8_Value_Dispose(handle);
-    const view = try conv.fromV8Value(ArrayBufferView, testing_allocator, isolate_once.?, context_once.?, handle);
+    const view = try conv.fromV8Value(ArrayBufferView, testing_allocator, test_isolate.?, test_context.?, handle);
     try std.testing.expect(view == .float16_array);
     try std.testing.expectEqual(@as(?*anyopaque, @ptrCast(handle)), view.jsHandle());
 
     const shared = try eval("new Float16Array(new SharedArrayBuffer(4))");
     defer ffi.v8_Value_Dispose(shared);
-    try std.testing.expectError(error.TypeError, conv.fromV8Value(BufferSource, testing_allocator, isolate_once.?, context_once.?, shared));
-    try std.testing.expectError(error.TypeError, conv.fromV8Value(ArrayBufferView, testing_allocator, isolate_once.?, context_once.?, shared));
+    try std.testing.expectError(error.TypeError, conv.fromV8Value(BufferSource, testing_allocator, test_isolate.?, test_context.?, shared));
+    try std.testing.expectError(error.TypeError, conv.fromV8Value(ArrayBufferView, testing_allocator, test_isolate.?, test_context.?, shared));
 }
 
 test "describeArrayBufferView names a Float16Array, and the union arm match knows its [[TypedArrayName]]" {
-    defer file.leave();
+    defer test_agent.close();
     const r = (try realmWithFloat16()) orelse return;
     const handle = try eval(window_code);
     defer ffi.v8_Value_Dispose(handle);
@@ -132,7 +131,7 @@ test "describeArrayBufferView names a Float16Array, and the union arm match know
 }
 
 test "createArrayBufferView makes a Float16Array over a buffer" {
-    defer file.leave();
+    defer test_agent.close();
     const r = (try realmWithFloat16()) orelse return;
     const buffer = try eval("globalThis.f16buffer = new Uint8Array([0, 0, 0, 0x40, 0, 0xC0]).buffer; f16buffer");
     defer ffi.v8_Value_Dispose(buffer);
@@ -150,7 +149,7 @@ test "createArrayBufferView makes a Float16Array over a buffer" {
 }
 
 test "every other typed array kind still converts and is described as before" {
-    defer file.leave();
+    defer test_agent.close();
     const r = try realm();
     const cases = [_]struct { code: []const u8, view_type: engine.ViewType }{
         .{ .code = "new Int8Array(2)", .view_type = .int8_array },
@@ -172,6 +171,6 @@ test "every other typed array kind still converts and is described as before" {
         const description = engine.describeArrayBufferView(r, runtime.JSValue.fromHandle(@ptrCast(handle))) orelse return error.NotDescribed;
         try std.testing.expectEqual(case.view_type, description.view_type);
         try std.testing.expectEqual(@as(usize, @intCast(case.view_type.elementSize() * 2)), description.byte_length);
-        _ = try conv.fromV8Value(BufferSource, testing_allocator, isolate_once.?, context_once.?, handle);
+        _ = try conv.fromV8Value(BufferSource, testing_allocator, test_isolate.?, test_context.?, handle);
     }
 }

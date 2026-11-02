@@ -18,8 +18,9 @@
 //!
 //! The values are made as the binding makes them: the realms are page realms
 //! (createWindowRealm / destroyWindowRealm), the queue is the agent's own.
-//! One isolate and bootstrap context for the file, never torn down; the file
-//! shares tests/v8's process, so it starts the engine as any file may.
+//! Each test has its own isolate and bootstrap context (test_process.TestAgent),
+//! ended with it; the file shares tests/v8's process, so it starts the engine
+//! as any file may.
 
 const std = @import("std");
 const test_process = @import("test_process.zig");
@@ -32,31 +33,27 @@ const protocol = @import("engine");
 const window_agent_hooks: protocol.HostHooks = .{};
 const interfaces = @import("interfaces");
 
-var isolate_once: ?*ffi.Isolate = null;
+var test_isolate: ?*ffi.Isolate = null;
 
-/// The file's isolate: current only while one of its tests runs
-/// (test_process.FileIsolate).
-var file: test_process.FileIsolate = .{};
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+}
 
 fn agent() !*ffi.Isolate {
-    test_process.start();
-    if (isolate_once == null) {
-        // An agent createAgent made: it keeps its Window realms on its record
-        // (protocol_realms.WindowRealms), which a bare isolate has none of.
-        const i: *ffi.Isolate = @ptrCast(@alignCast(try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &window_agent_hooks, .host = null })));
-        ffi.v8_Isolate_Enter(i);
-        defer ffi.v8_Isolate_Exit(i);
-        _ = ffi.v8_HandleScope_New(i);
-        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-        ffi.v8_Context_Enter(context);
-        // Already initialized is fine: the manager is per thread, not per test.
+    const i = try test_agent.open(.{ .hooks = &window_agent_hooks });
+    if (test_isolate == null) {
+        const context = test_agent.context.?;
+        // Already initialized is fine: the manager is per thread (the test's
+        // agent is its thread's host agent, whose end takes it down).
         v8.context_manager.init(std.heap.page_allocator) catch {};
         _ = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-        isolate_once = i;
-        file.isolate = i;
+        test_isolate = i;
     }
-    file.enter();
-    return isolate_once.?;
+    return test_isolate.?;
 }
 
 const WindowHost = struct {
@@ -81,7 +78,7 @@ fn windowRealm() !runtime.Context {
 }
 
 fn collect() void {
-    ffi.v8_Isolate_RequestGarbageCollection(isolate_once.?);
+    ffi.v8_Isolate_RequestGarbageCollection(test_isolate.?);
 }
 
 /// What ran, in order: 'a', 'b', 'c' for the steps of three microtasks.
@@ -144,7 +141,7 @@ const Plain = struct {
 };
 
 test "the steps run at the agent's next checkpoint, never inside the call that queues them" {
-    defer file.leave();
+    defer test_agent.close();
     const w = try windowRealm();
     defer protocol.destroyWindowRealm(w, .global_detached);
     var continuation: Continuation = .{};
@@ -166,7 +163,7 @@ test "the steps run at the agent's next checkpoint, never inside the call that q
 }
 
 test "it is a microtask like any other: first in, first out with engine.queueMicrotask" {
-    defer file.leave();
+    defer test_agent.close();
     const w = try windowRealm();
     defer protocol.destroyWindowRealm(w, .global_detached);
     var log: Log = .{};
@@ -183,7 +180,7 @@ test "it is a microtask like any other: first in, first out with engine.queueMic
 }
 
 test "queued when its realm ends: dropped exactly once, and a later checkpoint runs nothing" {
-    defer file.leave();
+    defer test_agent.close();
     const w = try windowRealm();
     var continuation: Continuation = .{};
     try protocol.queueRealmMicrotask(w, &Continuation.steps, &continuation);
@@ -240,7 +237,7 @@ fn queueAbortingCheckpoint(w: runtime.Context, abort: *Abort) !void {
 }
 
 test "queued when the agent's queue is discarded under it: dropped exactly once, never run" {
-    defer file.leave();
+    defer test_agent.close();
     const w = try windowRealm();
     var abort: Abort = .{ .agent = w.agent.? };
     var continuation: Continuation = .{};
@@ -263,7 +260,7 @@ test "queued when the agent's queue is discarded under it: dropped exactly once,
 }
 
 test "on a realm that has ended it fails, runs neither step, and the data stays the caller's" {
-    defer file.leave();
+    defer test_agent.close();
     const w = try windowRealm();
     protocol.destroyWindowRealm(w, .global_detached);
     var continuation: Continuation = .{};
@@ -275,7 +272,7 @@ test "on a realm that has ended it fails, runs neither step, and the data stays 
 }
 
 test "run, dropped by the realm's end, or dropped with the queue: no global handle or weak record left" {
-    defer file.leave();
+    defer test_agent.close();
     const isolate = try agent();
     const round = struct {
         fn run(ends: *[3]Continuation) !void {

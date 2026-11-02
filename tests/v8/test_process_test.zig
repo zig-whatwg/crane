@@ -1,12 +1,14 @@
 //! test_process.zig's promises, which every tests/v8 test relies on to run in
 //! any order (lane v8order1): the process starts once and stays started, a
-//! test's own standalone runtime gives the process's back, a file's isolate
-//! is current only while its test runs, and V8 runs with the runtime's flags
-//! whichever test started it.
+//! test's own standalone runtime gives the process's back, a test's agent is
+//! current only while its test runs and takes its realms down with it, and
+//! V8 runs with the runtime's flags whichever test started it.
 
 const std = @import("std");
 const runtime = @import("runtime");
-const ffi = @import("v8").ffi;
+const v8 = @import("v8");
+const ffi = v8.ffi;
+const interfaces = @import("interfaces");
 const test_process = @import("test_process.zig");
 
 test "start leaves the process started with a standalone runtime, and a second start changes nothing" {
@@ -31,23 +33,85 @@ test "a test's own standalone runtime ends with the test and gives the process's
     try std.testing.expectEqual(process_scope, runtime.BrowserScope.standalone().?);
 }
 
-test "a file's isolate is the current one only until its test leaves it" {
+var reset_calls: usize = 0;
+fn countReset() void {
+    reset_calls += 1;
+}
+
+test "a test's agent is the current isolate while its test runs, and nothing is current after it ends" {
+    try std.testing.expectEqual(@as(?*ffi.Isolate, null), ffi.v8_Isolate_GetCurrent());
+    var test_agent: test_process.TestAgent = .{};
+    {
+        defer test_agent.close();
+        const isolate = try test_agent.open(.{});
+        try std.testing.expectEqual(@as(?*ffi.Isolate, isolate), ffi.v8_Isolate_GetCurrent());
+        // Opening it again in the same test is the same agent, and adds no
+        // entry to undo.
+        try std.testing.expectEqual(isolate, try test_agent.open(.{}));
+        try std.testing.expectEqual(@as(u32, 1), test_agent.entries);
+        try std.testing.expect(test_agent.context != null);
+    }
+    try std.testing.expectEqual(@as(?*ffi.Isolate, null), ffi.v8_Isolate_GetCurrent());
+    try std.testing.expectEqual(@as(?*ffi.Isolate, null), test_agent.isolate);
+}
+
+test "a test's agent takes its realms down with it: the thread's context manager keeps none of them" {
+    var test_agent: test_process.TestAgent = .{};
+    var key: usize = 0;
+    {
+        defer test_agent.close();
+        _ = try test_agent.open(.{});
+        const context = test_agent.context.?;
+        v8.context_manager.init(std.heap.page_allocator) catch {};
+        const realm = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+        key = v8.context_manager.keyOf(context).?;
+        try std.testing.expectEqual(@as(?runtime.Context, realm), v8.context_manager.getByKey(key));
+    }
+    // The agent was its thread's host agent: its end took the thread's
+    // context manager down, and the realm with it.
+    try std.testing.expectEqual(@as(?runtime.Context, null), v8.context_manager.getByKey(key));
+}
+
+test "a test's agent is its thread's host agent: with an isolate left entered it is not made" {
     test_process.start();
     const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
     defer ffi.v8_Isolate_Dispose(isolate);
-    const before = ffi.v8_Isolate_GetCurrent();
-    var file: test_process.FileIsolate = .{ .isolate = isolate };
+    var test_agent: test_process.TestAgent = .{};
     {
-        defer file.leave();
-        file.enter();
-        try std.testing.expectEqual(@as(?*ffi.Isolate, isolate), ffi.v8_Isolate_GetCurrent());
-        // Entering it again while it is current adds no entry to undo.
-        file.enter();
-        try std.testing.expectEqual(@as(u32, 1), file.entries);
+        ffi.v8_Isolate_Enter(isolate);
+        defer ffi.v8_Isolate_Exit(isolate);
+        try std.testing.expectError(error.IsolateLeftEntered, test_agent.open(.{}));
     }
-    try std.testing.expectEqual(before, ffi.v8_Isolate_GetCurrent());
-    try std.testing.expectEqual(@as(u32, 0), file.entries);
+    test_agent.close();
 }
+
+test "a test's agent ends its Window realms before itself, then runs the file's reset" {
+    reset_calls = 0;
+    var test_agent: test_process.TestAgent = .{ .reset = countReset };
+    {
+        defer test_agent.close();
+        _ = try test_agent.open(.{ .context = false });
+        _ = try test_agent.windowRealm(&.{
+            .agent = test_agent.agent(),
+            .allocator = std.heap.c_allocator,
+            .from_snapshot = false,
+            .timer = null,
+            .origin = "https://example.test",
+            .create_global_object = WindowHost.createGlobalObject,
+        });
+        try std.testing.expectEqual(@as(usize, 1), test_agent.end_count);
+        try std.testing.expectEqual(@as(usize, 0), reset_calls);
+    }
+    try std.testing.expectEqual(@as(usize, 1), reset_calls);
+    // The reset is kept for the file's next test.
+    try std.testing.expect(test_agent.reset != null);
+}
+
+const WindowHost = struct {
+    fn createGlobalObject(r: runtime.Context, _: runtime.JSValue, _: ?*anyopaque) ?*runtime.Instance {
+        return interfaces.Window.init(std.heap.c_allocator, r) catch null;
+    }
+};
 
 test "V8 runs with the runtime's flags, whichever test started it" {
     // A bare v8_Isolate_New starts V8's platform without them when nothing

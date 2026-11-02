@@ -47,44 +47,33 @@ fn noopFinalizer(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
     _ = length_in_bytes;
 }
 
-/// A live isolate with an entered context, which `v8_Object_New` needs.
-///
-/// One test binary per file (`addTestFilesFromDir`), so this process owns the V8
-/// platform outright and no other test can be disturbed by initialising it. One
-/// isolate for the whole file, because V8 is never torn down here: this codebase
-/// has a known teardown race, and a flaky test in the correctness suite is worse
-/// than a process-lifetime reservation that `exit` releases. Every assertion
-/// below is a delta against a baseline read inside the test, so sharing the
-/// isolate costs nothing.
+/// A live isolate with an entered context, which `v8_Object_New` needs: the
+/// test's own agent's (test_agent), made by the engine's createAgent and ended
+/// with the test through destroyAgent, as a Browser ends its page agent.
+/// Every assertion below is a delta against a baseline read inside the test.
 const Env = struct {
     isolate: *ffi.Isolate,
     context: *ffi.Context,
 };
 
-var env_once: ?Env = null;
+var test_env: ?Env = null;
 
-/// The file's isolate: current only while one of its tests runs
-/// (test_process.FileIsolate).
-var file: test_process.FileIsolate = .{};
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_env = null;
+}
 
 fn env() !Env {
-    test_process.start();
-    if (env_once == null) {
-        const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-        ffi.v8_Isolate_Enter(isolate);
-        defer ffi.v8_Isolate_Exit(isolate);
-        _ = ffi.v8_HandleScope_New(isolate);
-        const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-        ffi.v8_Context_Enter(context);
-        env_once = .{ .isolate = isolate, .context = context };
-        file.isolate = isolate;
-    }
-    file.enter();
-    return env_once.?;
+    const isolate = try test_agent.open(.{});
+    if (test_env == null) test_env = .{ .isolate = isolate, .context = test_agent.context.? };
+    return test_env.?;
 }
 
 test "disarming a handle frees the record V8 hands back" {
-    defer file.leave();
+    defer test_agent.close();
     const e = try env();
 
     const baseline = ffi.v8_Debug_LiveWeakCallbackData();
@@ -106,7 +95,7 @@ test "disarming a handle frees the record V8 hands back" {
 }
 
 test "disposing an armed handle ends the arm - the record cannot outlive the Global" {
-    defer file.leave();
+    defer test_agent.close();
     const e = try env();
 
     const baseline = ffi.v8_Debug_LiveWeakCallbackData();
@@ -125,7 +114,7 @@ test "disposing an armed handle ends the arm - the record cannot outlive the Glo
 }
 
 test "re-arming the same handle replaces the record rather than stacking one" {
-    defer file.leave();
+    defer test_agent.close();
     const e = try env();
 
     const baseline = ffi.v8_Debug_LiveWeakCallbackData();
@@ -144,7 +133,7 @@ test "re-arming the same handle replaces the record rather than stacking one" {
 }
 
 test "a handle that was never armed is unaffected by disarm and dispose" {
-    defer file.leave();
+    defer test_agent.close();
     const e = try env();
 
     const baseline = ffi.v8_Debug_LiveWeakCallbackData();
@@ -162,7 +151,7 @@ test "a handle that was never armed is unaffected by disarm and dispose" {
 }
 
 test "v8_Value_ToWeakGlobal arms the handle it returns, not a null one" {
-    defer file.leave();
+    defer test_agent.close();
     const e = try env();
 
     const baseline = ffi.v8_Debug_LiveWeakCallbackData();
@@ -226,7 +215,7 @@ fn pairFinalizer(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
 }
 
 test "disposing an isolate leaves another isolate's detached records alone" {
-    defer file.leave();
+    defer test_agent.close();
     const e = try env();
     const baseline = ffi.v8_Debug_LiveWeakCallbackData();
 
@@ -278,7 +267,7 @@ fn probeFinalize(_: ?*anyopaque, _: usize) callconv(.c) void {
 }
 
 test "a finalizer runs in V8's second pass, after its first-pass unlink, and its record goes with it" {
-    defer file.leave();
+    defer test_agent.close();
     const e = try env();
     const baseline = ffi.v8_Debug_LiveWeakCallbackData();
     pass_probe = .{};
@@ -303,7 +292,7 @@ test "a finalizer runs in V8's second pass, after its first-pass unlink, and its
 }
 
 test "disposing a handle before its second pass cancels the finalizer and frees its record" {
-    defer file.leave();
+    defer test_agent.close();
     const e = try env();
     const baseline = ffi.v8_Debug_LiveWeakCallbackData();
     pass_probe = .{};

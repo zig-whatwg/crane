@@ -35,27 +35,22 @@ const Env = struct {
     context: *ffi.Context,
 };
 
-var env_once: ?Env = null;
+var test_env: ?Env = null;
 
-/// The file's isolate: current only while one of its tests runs
-/// (test_process.FileIsolate).
-var file: test_process.FileIsolate = .{};
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
 
-/// One isolate and context for the file; V8 is never torn down here.
+fn reset() void {
+    test_env = null;
+}
+
+/// The test's isolate and context: its own agent's (test_agent), ended with
+/// the test.
 fn env() !Env {
-    test_process.start();
-    if (env_once == null) {
-        const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-        ffi.v8_Isolate_Enter(isolate);
-        defer ffi.v8_Isolate_Exit(isolate);
-        _ = ffi.v8_HandleScope_New(isolate);
-        const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-        ffi.v8_Context_Enter(context);
-        env_once = .{ .isolate = isolate, .context = context };
-        file.isolate = isolate;
-    }
-    file.enter();
-    return env_once.?;
+    const isolate = try test_agent.open(.{});
+    if (test_env == null) test_env = .{ .isolate = isolate, .context = test_agent.context.? };
+    return test_env.?;
 }
 
 /// The value `code` evaluates to: a Global the caller disposes, made the way
@@ -71,7 +66,7 @@ fn eval(code: []const u8) !*ffi.Value {
 
 /// `value`'s ToString, written into `buffer`.
 fn stringOf(value: *ffi.Value, buffer: []u8) ![]const u8 {
-    const string = ffi.v8_Value_ToString(value, env_once.?.context) orelse return error.ToStringFailed;
+    const string = ffi.v8_Value_ToString(value, test_env.?.context) orelse return error.ToStringFailed;
     defer ffi.v8_String_Dispose(string);
     const length: usize = @intCast(ffi.v8_String_Utf8Length(string));
     if (length > buffer.len) return error.TooLong;
@@ -95,13 +90,13 @@ const Conversion = struct {
 
     fn body(data: ?*anyopaque) callconv(.c) void {
         const self: *Conversion = @ptrCast(@alignCast(data.?));
-        const e = env_once.?;
+        const e = test_env.?;
         self.result = conv.fromV8Value(HeadersInit, testing.allocator, e.isolate, e.context, self.handle);
     }
 
     fn run(handle: *ffi.Value) Conversion {
         var self: Conversion = .{ .handle = handle };
-        _ = ffi.v8_RunCatching(env_once.?.isolate, body, &self, &self.thrown);
+        _ = ffi.v8_RunCatching(test_env.?.isolate, body, &self, &self.thrown);
         return self;
     }
 
@@ -205,30 +200,30 @@ fn expectThrown(code: []const u8, message: []const u8) !void {
 // ---- step 11.2: any iterable is the sequence member ----
 
 test "an Array of pairs is the sequence member" {
-    defer file.leave();
+    defer test_agent.close();
     try expectSequence("[['a', 'b'], ['c', 'd']]", &.{ .{ "a", "b" }, .{ "c", "d" } });
     try expectSequence("[]", &.{});
 }
 
 test "a Map is the sequence member, not a record of its own properties" {
-    defer file.leave();
+    defer test_agent.close();
     try expectSequence("new Map([['a', 'b'], ['c', 'd']])", &.{ .{ "a", "b" }, .{ "c", "d" } });
 }
 
 test "a generator is the sequence member, and its pairs may be iterables too" {
-    defer file.leave();
+    defer test_agent.close();
     try expectSequence("(function* () { yield ['a', 'b']; yield new Set(['c', 'd']); })()", &.{ .{ "a", "b" }, .{ "c", "d" } });
 }
 
 test "an object with its own @@iterator is the sequence member" {
-    defer file.leave();
+    defer test_agent.close();
     // headers-basic.any.js, "Create headers with existing headers with
     // custom iterator": the method is the object's, whatever else it holds.
     try expectSequence("({ x: 'y', *[Symbol.iterator]() { yield ['test', 'test']; } })", &.{.{ "test", "test" }});
 }
 
 test "a pair that is no Object is a TypeError" {
-    defer file.leave();
+    defer test_agent.close();
     // 3.2.21 step 1 for the inner sequence<ByteString>.
     try expectTypeError("[['a', 'b'], 'cd']");
     // 3.2.21 step 3: an Object with no @@iterator.
@@ -236,20 +231,20 @@ test "a pair that is no Object is a TypeError" {
 }
 
 test "an @@iterator that is not callable is a TypeError" {
-    defer file.leave();
+    defer test_agent.close();
     // GetMethod step 3.
     try expectTypeError("({ [Symbol.iterator]: 1 })");
 }
 
 test "what the iterator throws propagates" {
-    defer file.leave();
+    defer test_agent.close();
     try expectThrown("({ [Symbol.iterator]() { throw 'boom'; } })", "boom");
     try expectThrown("({ [Symbol.iterator]() { return { next() { throw 'next'; } }; } })", "next");
     try expectThrown("[['a', { toString() { throw 'item'; } }]]", "item");
 }
 
 test "an item is converted before the next one is asked for" {
-    defer file.leave();
+    defer test_agent.close();
     // 3.2.21.1 step 3: IteratorStepValue, then converting `next`, in turn.
     try expectSequence(
         \\(globalThis.order = [], (function* () {
@@ -264,7 +259,7 @@ test "an item is converted before the next one is asked for" {
 // ---- step 11.5: any other Object is the record member ----
 
 test "an Object without @@iterator is the record member" {
-    defer file.leave();
+    defer test_agent.close();
     try expectRecord("({ a: 'b', c: 'd' })", &.{ .{ "a", "b" }, .{ "c", "d" } });
     try expectRecord("({})", &.{});
     // ToString of the values: headers-basic's headerDict.
@@ -272,7 +267,7 @@ test "an Object without @@iterator is the record member" {
 }
 
 test "the record reads its keys, descriptors and values in the record conversion's order" {
-    defer file.leave();
+    defer test_agent.close();
     // headers-record.any.js: [[Get]] of @@iterator (the union's step 11.2),
     // [[OwnPropertyKeys]], then per key [[GetOwnProperty]] and, for an
     // enumerable one, [[Get]]; a non-enumerable key is skipped.
@@ -295,7 +290,7 @@ test "the record reads its keys, descriptors and values in the record conversion
 }
 
 test "an enumerable Symbol key is a TypeError, a non-enumerable one is skipped" {
-    defer file.leave();
+    defer test_agent.close();
     try expectTypeError("({ a: 'b', [Symbol.toStringTag]: 'x' })");
     try expectRecord("Object.defineProperty({ a: 'b' }, Symbol.toStringTag, { value: 'x', enumerable: false })", &.{.{ "a", "b" }});
 }
@@ -303,7 +298,7 @@ test "an enumerable Symbol key is a TypeError, a non-enumerable one is skipped" 
 // ---- step 19: a primitive is neither member ----
 
 test "a primitive is a TypeError" {
-    defer file.leave();
+    defer test_agent.close();
     try expectTypeError("null");
     try expectTypeError("'a: b'");
     try expectTypeError("1");
@@ -313,7 +308,7 @@ test "a primitive is a TypeError" {
 // ---- ByteString (3.2.11): a code unit above 0xFF is a TypeError ----
 
 test "a code unit above 0xFF in a name or a value is a TypeError" {
-    defer file.leave();
+    defer test_agent.close();
     try expectTypeError("[['\\u0100', 'b']]");
     try expectTypeError("[['a', '\\uFFFF']]");
     try expectTypeError("({ '\\uFFFF': 'd' })");
@@ -323,14 +318,14 @@ test "a code unit above 0xFF in a name or a value is a TypeError" {
 }
 
 test "code units up to 0xFF are a ByteString" {
-    defer file.leave();
+    defer test_agent.close();
     // WebIDL 3.2.11: one raw byte per code unit; other string types stay UTF-8.
     try expectSequence("[['a', '\\u00e9\\u00ff\\u0080']]", &.{.{ "a", "\xE9\xFF\x80" }});
     try expectRecord("({ a: '\\u00e9' })", &.{.{ "a", "\xE9" }});
 }
 
 test "codeUnitsFitInByte reads the code units WTF-8 encodes" {
-    defer file.leave();
+    defer test_agent.close();
     try testing.expect(conv.codeUnitsFitInByte("plain ASCII"));
     try testing.expect(conv.codeUnitsFitInByte("\u{80}\u{ff}"));
     try testing.expect(!conv.codeUnitsFitInByte("\u{100}"));
@@ -358,7 +353,7 @@ fn handleBytesLeftBy(code: []const u8) !i64 {
 }
 
 test "converting keeps no handle" {
-    defer file.leave();
+    defer test_agent.close();
     // Every Get, method, iterator and item is the conversion's to release.
     const cases = [_][]const u8{
         "[['a', 'b'], ['c', 'd']]",

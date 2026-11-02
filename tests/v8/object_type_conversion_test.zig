@@ -24,26 +24,20 @@ const Env = struct {
     context: *ffi.Context,
 };
 
-var env_once: ?Env = null;
+var test_env: ?Env = null;
 
-/// The file's isolate: current only while one of its tests runs
-/// (test_process.FileIsolate).
-var file: test_process.FileIsolate = .{};
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_env = null;
+}
 
 fn env() !Env {
-    test_process.start();
-    if (env_once == null) {
-        const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-        ffi.v8_Isolate_Enter(isolate);
-        defer ffi.v8_Isolate_Exit(isolate);
-        _ = ffi.v8_HandleScope_New(isolate);
-        const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-        ffi.v8_Context_Enter(context);
-        env_once = .{ .isolate = isolate, .context = context };
-        file.isolate = isolate;
-    }
-    file.enter();
-    return env_once.?;
+    const isolate = try test_agent.open(.{});
+    if (test_env == null) test_env = .{ .isolate = isolate, .context = test_agent.context.? };
+    return test_env.?;
 }
 
 fn eval(code: []const u8) !*ffi.Value {
@@ -67,12 +61,12 @@ fn release(options: StructuredSerializeOptions) void {
 }
 
 test "codegen marks StructuredSerializeOptions.transfer an object member" {
-    defer file.leave();
+    defer test_agent.close();
     try testing.expect(@hasDecl(StructuredSerializeOptions, "object_members"));
 }
 
 test "a sequence<object> element that is not an Object is a TypeError" {
-    defer file.leave();
+    defer test_agent.close();
     try testing.expectError(error.TypeError, convert("({ transfer: [1] })"));
     try testing.expectError(error.TypeError, convert("({ transfer: ['buffer'] })"));
     try testing.expectError(error.TypeError, convert("({ transfer: [null] })"));
@@ -82,7 +76,7 @@ test "a sequence<object> element that is not an Object is a TypeError" {
 }
 
 test "Objects - a function and an array included - convert" {
-    defer file.leave();
+    defer test_agent.close();
     const options = try convert("({ transfer: [new ArrayBuffer(1), function () {}, []] })");
     defer release(options);
     try testing.expectEqual(@as(usize, 3), options.transfer.?.len);
@@ -92,7 +86,7 @@ test "Objects - a function and an array included - convert" {
 }
 
 test "a failed element check leaves no handle behind" {
-    defer file.leave();
+    defer test_agent.close();
     const e = try env();
     for (0..64) |_| _ = convert("({ transfer: [new ArrayBuffer(1), 2] })") catch {};
     const before = ffi.v8_Isolate_GetGlobalHandleBytes(e.isolate);
@@ -103,7 +97,7 @@ test "a failed element check leaves no handle behind" {
 }
 
 test "requireObject: a primitive is not an Object; a nullable or absent value passes" {
-    defer file.leave();
+    defer test_agent.close();
     try testing.expectError(error.TypeError, conversions.requireObject(runtime.JSValue, .{ .number = 1 }));
     try testing.expectError(error.TypeError, conversions.requireObject(runtime.JSValue, .null));
     try conversions.requireObject(?runtime.JSValue, null);

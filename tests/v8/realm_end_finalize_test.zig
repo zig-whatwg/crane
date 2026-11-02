@@ -28,35 +28,32 @@ const protocol = @import("engine");
 const window_agent_hooks: protocol.HostHooks = .{};
 const interfaces = @import("interfaces");
 
-/// One isolate and one bootstrap context for the whole file; V8 is never torn
-/// down here (see engine_realm_operations_test.zig).
-var isolate_once: ?*ffi.Isolate = null;
-var context_once: ?*ffi.Context = null;
+/// The test's isolate and bootstrap context: its own agent's (test_agent),
+/// ended with the test.
+var test_isolate: ?*ffi.Isolate = null;
+var test_context: ?*ffi.Context = null;
 
-/// The file's isolate: current only while one of its tests runs
-/// (test_process.FileIsolate).
-var file: test_process.FileIsolate = .{};
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+    test_context = null;
+}
 
 fn agent() !*ffi.Isolate {
-    test_process.start();
-    if (isolate_once == null) {
-        // An agent createAgent made: it keeps its Window realms on its record
-        // (protocol_realms.WindowRealms), which a bare isolate has none of.
-        const i: *ffi.Isolate = @ptrCast(@alignCast(try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &window_agent_hooks, .host = null })));
-        ffi.v8_Isolate_Enter(i);
-        defer ffi.v8_Isolate_Exit(i);
-        _ = ffi.v8_HandleScope_New(i);
-        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-        ffi.v8_Context_Enter(context);
-        // Already initialized is fine: the manager is per thread, not per test.
+    const i = try test_agent.open(.{ .hooks = &window_agent_hooks });
+    if (test_isolate == null) {
+        const context = test_agent.context.?;
+        // Already initialized is fine: the manager is per thread (the test's
+        // agent is its thread's host agent, whose end takes it down).
         v8.context_manager.init(std.heap.page_allocator) catch {};
         _ = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-        isolate_once = i;
-        context_once = context;
-        file.isolate = i;
+        test_isolate = i;
+        test_context = context;
     }
-    file.enter();
-    return isolate_once.?;
+    return test_isolate.?;
 }
 
 /// The test's host for a Window realm: it makes the realm's Window.
@@ -116,7 +113,7 @@ fn expectEval(r: runtime.Context, source: []const u8, expected: []const u8) !voi
 }
 
 fn collect() void {
-    ffi.v8_Isolate_RequestGarbageCollection(isolate_once.?);
+    ffi.v8_Isolate_RequestGarbageCollection(test_isolate.?);
 }
 
 // ============================================================================
@@ -155,7 +152,7 @@ const Reaction = struct {
 };
 
 test "a reaction on a promise that never settles is dropped once when its realm ends" {
-    defer file.leave();
+    defer test_agent.close();
     const w = try windowRealm();
     var capability = try protocol.createPromise(w);
     defer protocol.releasePromiseCapability(&capability);
@@ -171,7 +168,7 @@ test "a reaction on a promise that never settles is dropped once when its realm 
 }
 
 test "a reaction whose promise settles runs its step once and is never dropped" {
-    defer file.leave();
+    defer test_agent.close();
     const w = try windowRealm();
     var capability = try protocol.createPromise(w);
     defer protocol.releasePromiseCapability(&capability);
@@ -188,7 +185,7 @@ test "a reaction whose promise settles runs its step once and is never dropped" 
 }
 
 test "a reaction whose outcome has no step given is dropped once when its promise settles" {
-    defer file.leave();
+    defer test_agent.close();
     const w = try windowRealm();
     defer protocol.destroyWindowRealm(w, .global_detached);
     var capability = try protocol.createPromise(w);
@@ -204,7 +201,7 @@ test "a reaction whose outcome has no step given is dropped once when its promis
 }
 
 test "a reaction collected with its promise unsettled is dropped once, after the collection" {
-    defer file.leave();
+    defer test_agent.close();
     const w = try windowRealm();
     var reaction: Reaction = .{};
     {
@@ -221,7 +218,7 @@ test "a reaction collected with its promise unsettled is dropped once, after the
 }
 
 test "a reaction of an ended realm on another realm's promise does nothing when that promise settles" {
-    defer file.leave();
+    defer test_agent.close();
     const page = try windowRealm();
     defer protocol.destroyWindowRealm(page, .global_detached);
     var capability = try protocol.createPromise(page);
@@ -241,7 +238,7 @@ test "a reaction of an ended realm on another realm's promise does nothing when 
 }
 
 test "reactToPromise on a realm that has ended fails, and the data stays the caller's" {
-    defer file.leave();
+    defer test_agent.close();
     const page = try windowRealm();
     defer protocol.destroyWindowRealm(page, .global_detached);
     var capability = try protocol.createPromise(page);
@@ -254,7 +251,7 @@ test "reactToPromise on a realm that has ended fails, and the data stays the cal
 }
 
 test "reactions settled, dropped by the realm's end or collected leave no global handle behind" {
-    defer file.leave();
+    defer test_agent.close();
     const isolate = try agent();
     const round = struct {
         fn run(reactions: *[3]Reaction) !void {
@@ -325,14 +322,14 @@ fn setGlobal(r: runtime.Context, name: []const u8, value: runtime.JSValue) !void
     const context: *ffi.Context = @ptrCast(@alignCast(r.engine_ctx.?));
     const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
     defer ffi.v8_Object_Dispose(global);
-    const key = ffi.v8_String_NewFromUtf8(isolate_once.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
+    const key = ffi.v8_String_NewFromUtf8(test_isolate.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(key);
     const handle: *ffi.Value = @ptrCast(@alignCast(value.handle.ptr));
     if (!ffi.v8_Object_Set(global, context, @ptrCast(key), handle)) return error.SetFailed;
 }
 
 test "an asynchronous iterator alive at its realm's end is finalized once, outside any collection" {
-    defer file.leave();
+    defer test_agent.close();
     const w = try windowRealm();
     var iterated: Iterated = .{ .realm = w };
     {
@@ -352,7 +349,7 @@ test "an asynchronous iterator alive at its realm's end is finalized once, outsi
 }
 
 test "an asynchronous iterator of an ended realm never calls its steps again" {
-    defer file.leave();
+    defer test_agent.close();
     const page = try windowRealm();
     defer protocol.destroyWindowRealm(page, .global_detached);
     const frame = try frameRealm(page);

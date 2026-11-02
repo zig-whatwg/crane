@@ -67,26 +67,20 @@ const Env = struct {
     context: *ffi.Context,
 };
 
-var env_once: ?Env = null;
+var test_env: ?Env = null;
 
-/// The file's isolate: current only while one of its tests runs
-/// (test_process.FileIsolate).
-var file: test_process.FileIsolate = .{};
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_env = null;
+}
 
 fn env() !Env {
-    test_process.start();
-    if (env_once == null) {
-        const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-        ffi.v8_Isolate_Enter(isolate);
-        defer ffi.v8_Isolate_Exit(isolate);
-        _ = ffi.v8_HandleScope_New(isolate);
-        const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-        ffi.v8_Context_Enter(context);
-        env_once = .{ .isolate = isolate, .context = context };
-        file.isolate = isolate;
-    }
-    file.enter();
-    return env_once.?;
+    const isolate = try test_agent.open(.{});
+    if (test_env == null) test_env = .{ .isolate = isolate, .context = test_agent.context.? };
+    return test_env.?;
 }
 
 fn eval(code: []const u8) !*ffi.Value {
@@ -123,7 +117,7 @@ fn expectShape(comptime T: type, value: T, expected: []const u8) !void {
 const html_namespace = "http://www.w3.org/1999/xhtml";
 
 test "an inherited dictionary's members are the object's own, least-derived first" {
-    defer file.leave();
+    defer test_agent.close();
     // Sanitizer.get()'s canonical element: name and namespace inherited from
     // SanitizerElementNamespace, removeAttributes its own.
     try expectShape(dictionaries.SanitizerElementNamespaceWithAttributes, .{
@@ -133,7 +127,7 @@ test "an inherited dictionary's members are the object's own, least-derived firs
 }
 
 test "each dictionary's members are written in code-unit order, not declaration order" {
-    defer file.leave();
+    defer test_agent.close();
     // SanitizerConfig declares elements, removeElements, ..., comments,
     // dataAttributes, javascriptURLs; 3.2.18 writes them sorted.
     try expectShape(dictionaries.SanitizerConfig, .{
@@ -145,7 +139,7 @@ test "each dictionary's members are written in code-unit order, not declaration 
 }
 
 test "a nullable member whose default is null is written as null" {
-    defer file.leave();
+    defer test_agent.close();
     // `DOMString? _namespace = null`: Sanitizer.get()'s unnamespaced attribute.
     try expectShape(dictionaries.SanitizerAttributeNamespace, .{
         .name = runtime.DOMString.initInterned("title"),
@@ -154,7 +148,7 @@ test "a nullable member whose default is null is written as null" {
 }
 
 test "a webidl.Opt member not given takes its default; given null, it is null" {
-    defer file.leave();
+    defer test_agent.close();
     try expectShape(dictionaries.SanitizerElementNamespace, .{
         .name = runtime.DOMString.initInterned("p"),
     }, "{\"name\":\"p\",\"namespace\":\"" ++ html_namespace ++ "\"}");
@@ -165,7 +159,7 @@ test "a webidl.Opt member not given takes its default; given null, it is null" {
 }
 
 test "a defaulted member the value leaves unset is written with its default" {
-    defer file.leave();
+    defer test_agent.close();
     try expectShape(dictionaries.EventInit, .{ .cancelable = true }, "{\"bubbles\":false,\"cancelable\":true,\"composed\":false}");
 }
 
@@ -201,7 +195,7 @@ const WithBaseMember = struct {
 };
 
 test "every default kind converts, and only a dictionary-typed `base` is inheritance" {
-    defer file.leave();
+    defer test_agent.close();
     // JSON writes the infinities as null; their numbers are checked apart.
     try expectShape(Descendant, .{ .base = .{} }, "{\"alpha\":\"a\",\"zeta\":true,\"count\":1.5,\"limit\":null,\"list\":[],\"lowest\":null,\"nothing\":null}");
     const e = try env();
@@ -221,7 +215,7 @@ test "every default kind converts, and only a dictionary-typed `base` is inherit
 }
 
 test "writing defaults and inherited members leaves no handle behind" {
-    defer file.leave();
+    defer test_agent.close();
     const e = try env();
     const value: dictionaries.SanitizerElementNamespaceWithAttributes = .{
         .base = .{ .name = runtime.DOMString.initInterned("div") },

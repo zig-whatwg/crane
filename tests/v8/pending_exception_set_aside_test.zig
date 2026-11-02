@@ -27,9 +27,9 @@ const engine = @import("engine");
 const interfaces = @import("interfaces");
 const ffi = v8.ffi;
 
-var isolate_once: ?*ffi.Isolate = null;
-var context_once: ?*ffi.Context = null;
-var realm_once: ?runtime.Context = null;
+var test_isolate: ?*ffi.Isolate = null;
+var test_context: ?*ffi.Context = null;
+var test_realm: ?runtime.Context = null;
 
 /// What the probe's last bracket saw.
 const Outcome = enum { not_called, ran, not_supported, terminating, failed };
@@ -37,37 +37,37 @@ var last_outcome: Outcome = .not_called;
 /// The reaction's exception, as the reporter was handed it (OWNED).
 var reported: ?engine.Owned = null;
 
-/// The file's isolate: current only while one of its tests runs
-/// (test_process.FileIsolate).
-var file: test_process.FileIsolate = .{};
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
 
-/// One isolate and realm for the file, registered with the context manager
-/// as a page's is, the probe installed as a global; V8 is never torn down.
+fn reset() void {
+    test_isolate = null;
+    test_context = null;
+    test_realm = null;
+}
+
+/// The test's isolate and realm - its own agent's (test_agent), ended with
+/// the test - registered with the context manager as a page's is, the probe
+/// installed as a global.
 fn realm() !runtime.Context {
-    test_process.start();
-    if (realm_once == null) {
-        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-        ffi.v8_Isolate_Enter(i);
-        defer ffi.v8_Isolate_Exit(i);
-        _ = ffi.v8_HandleScope_New(i);
-        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-        ffi.v8_Context_Enter(context);
+    const i = try test_agent.open(.{});
+    if (test_realm == null) {
+        const context = test_agent.context.?;
         v8.context_manager.init(std.heap.page_allocator) catch {};
         const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
         r.agent = @ptrCast(i);
         v8.V8Interface(Probe).registerGlobal(i, context, Probe.Meta.name);
-        isolate_once = i;
-        context_once = context;
-        realm_once = r;
-        file.isolate = i;
+        test_isolate = i;
+        test_context = context;
+        test_realm = r;
     }
-    file.enter();
-    return realm_once.?;
+    return test_realm.?;
 }
 
 fn eval(code: []const u8) !*ffi.Value {
-    const context = context_once.?;
-    const text = ffi.v8_String_NewFromUtf8(isolate_once.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
+    const context = test_context.?;
+    const text = ffi.v8_String_NewFromUtf8(test_isolate.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(text);
     const script = ffi.v8_Script_Compile(context, text) orelse return error.CompileFailed;
     defer ffi.v8_Script_Dispose(script);
@@ -77,14 +77,14 @@ fn eval(code: []const u8) !*ffi.Value {
 fn evalInt(code: []const u8) !i32 {
     const value = try eval(code);
     defer ffi.v8_Value_Dispose(value);
-    return ffi.v8_Value_Int32Value(value, context_once.?);
+    return ffi.v8_Value_Int32Value(value, test_context.?);
 }
 
 fn setGlobal(name: []const u8, value: *ffi.Value) !void {
-    const context = context_once.?;
+    const context = test_context.?;
     const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
     defer ffi.v8_Object_Dispose(global);
-    const key = ffi.v8_String_NewFromUtf8(isolate_once.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
+    const key = ffi.v8_String_NewFromUtf8(test_isolate.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(key);
     if (!ffi.v8_Object_Set(global, context, @ptrCast(key), value)) return error.SetFailed;
 }
@@ -103,7 +103,7 @@ fn clearKept() void {
 
 fn report(_: ?*anyopaque, info: *const engine.ErrorInfo) void {
     if (reported) |r| r.release();
-    reported = engine.retainValue(realm_once.?, info.error_value) catch null;
+    reported = engine.retainValue(test_realm.?, info.error_value) catch null;
 }
 
 /// A custom element reactions bracket, as `runtime.CEReactions` will be: an
@@ -228,7 +228,7 @@ const Probe = struct {
 };
 
 test "a member's throw survives its reactions: set aside, the reaction runs, the same value is pending again in the scope" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
     defer clearKept();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
@@ -243,7 +243,7 @@ test "a member's throw survives its reactions: set aside, the reaction runs, the
 }
 
 test "a primitive thrown by the member comes back as itself" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
     defer clearKept();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
@@ -256,7 +256,7 @@ test "a primitive thrown by the member comes back as itself" {
 }
 
 test "nothing pending: the reactions run and the member's result stands" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
     defer clearKept();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
@@ -270,7 +270,7 @@ test "nothing pending: the reactions run and the member's result stands" {
 }
 
 test "a reaction's throw is reported, and the member's result stands" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
     defer clearKept();
     try std.testing.expectEqual(@as(i32, 42), try evalInt(
@@ -284,7 +284,7 @@ test "a reaction's throw is reported, and the member's result stands" {
 }
 
 test "steps that leave an exception pending: it is cleared, never restored in the member's place" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
     defer clearKept();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
@@ -303,7 +303,7 @@ test "steps that leave an exception pending: it is cleared, never restored in th
 }
 
 test "nested: a reaction's member that throws is set aside and rethrown at its own level, then reported" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
     defer clearKept();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
@@ -327,7 +327,7 @@ test "nested: a reaction's member that throws is set aside and rethrown at its o
 }
 
 test "outside a binding catch scope a pending exception is NotSupported: the steps do not run, and it stays pending" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
     defer clearKept();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
@@ -342,7 +342,7 @@ test "outside a binding catch scope a pending exception is NotSupported: the ste
 }
 
 test "outside a scope with nothing pending, the steps run" {
-    defer file.leave();
+    defer test_agent.close();
     _ = try realm();
     defer clearKept();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
@@ -355,7 +355,7 @@ test "outside a scope with nothing pending, the steps run" {
 }
 
 test "the binding finds a member's bracket in its interface's ce_reactions table" {
-    defer file.leave();
+    defer test_agent.close();
     const binding = v8.interface_mod;
     try std.testing.expect(binding.runsCEReactions(interfaces.Element, "set_id"));
     try std.testing.expect(!binding.runsCEReactions(interfaces.Element, "get_id"));

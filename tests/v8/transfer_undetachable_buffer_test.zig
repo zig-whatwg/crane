@@ -18,30 +18,30 @@ const ffi = v8.ffi;
 
 const allocator = std.testing.allocator;
 
-var isolate_once: ?*ffi.Isolate = null;
-var context_once: ?*ffi.Context = null;
-var realm_once: ?*runtime.ContextData = null;
+var test_isolate: ?*ffi.Isolate = null;
+var test_context: ?*ffi.Context = null;
+var test_realm: ?*runtime.ContextData = null;
 
-/// The file's isolate: current only while one of its tests runs
-/// (test_process.FileIsolate).
-var file: test_process.FileIsolate = .{};
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+    test_context = null;
+    test_realm = null;
+}
 
 fn setup() !void {
-    test_process.start();
-    if (realm_once == null) {
-        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-        ffi.v8_Isolate_Enter(i);
-        defer ffi.v8_Isolate_Exit(i);
+    const i = try test_agent.open(.{});
+    if (test_realm == null) {
         ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
-        _ = ffi.v8_HandleScope_New(i);
-        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-        const r = try runtime.Realm.init(std.heap.page_allocator, .{ .engine_realm = context, .agent = @ptrCast(i) });
-        const d = try std.heap.page_allocator.create(runtime.ContextData);
-        d.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context, .realm = r });
-        ffi.v8_Context_Enter(context);
-        isolate_once = i;
-        context_once = context;
-        realm_once = d;
+        const context = test_agent.context.?;
+        const r = try test_agent.realmRecord(std.heap.page_allocator, .{ .engine_realm = context, .agent = @ptrCast(i) });
+        const d = try test_agent.contextData(std.heap.page_allocator, .{ .engine_ctx = context, .realm = r });
+        test_isolate = i;
+        test_context = context;
+        test_realm = d;
 
         // `serialize(value, list)`: StructuredSerializeWithTransfer of `value` with
         // `list` as the transfer list, as MessagePort.postMessage runs it from
@@ -51,31 +51,29 @@ fn setup() !void {
         const function = ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return error.FunctionFailed;
         defer ffi.v8_Function_Dispose(function);
         try setGlobal("serialize", @ptrCast(function));
-        file.isolate = i;
     }
-    file.enter();
 }
 
 fn eval(code: []const u8) !*ffi.Value {
-    const text = ffi.v8_String_NewFromUtf8(isolate_once.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
+    const text = ffi.v8_String_NewFromUtf8(test_isolate.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(text);
-    const script = ffi.v8_Script_Compile(context_once.?, text) orelse return error.CompileFailed;
+    const script = ffi.v8_Script_Compile(test_context.?, text) orelse return error.CompileFailed;
     defer ffi.v8_Script_Dispose(script);
-    return ffi.v8_Script_Run(context_once.?, script) orelse error.RunFailed;
+    return ffi.v8_Script_Run(test_context.?, script) orelse error.RunFailed;
 }
 
 fn evalInt(code: []const u8) !i32 {
     const value = try eval(code);
     defer ffi.v8_Value_Dispose(value);
-    return ffi.v8_Value_Int32Value(value, context_once.?);
+    return ffi.v8_Value_Int32Value(value, test_context.?);
 }
 
 fn setGlobal(name: []const u8, handle: *anyopaque) !void {
-    const global = ffi.v8_Context_Global(context_once.?) orelse return error.NoGlobal;
+    const global = ffi.v8_Context_Global(test_context.?) orelse return error.NoGlobal;
     defer ffi.v8_Object_Dispose(global);
-    const key = ffi.v8_String_NewFromUtf8(isolate_once.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
+    const key = ffi.v8_String_NewFromUtf8(test_isolate.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(key);
-    _ = ffi.v8_Object_Set(global, context_once.?, @ptrCast(key), @ptrCast(@alignCast(handle)));
+    _ = ffi.v8_Object_Set(global, test_context.?, @ptrCast(key), @ptrCast(@alignCast(handle)));
 }
 
 fn noPlatformObjects(_: ?*anyopaque, _: *runtime.Instance) runtime.TransferableState {
@@ -83,7 +81,7 @@ fn noPlatformObjects(_: ?*anyopaque, _: *runtime.Instance) runtime.TransferableS
 }
 
 fn serializeCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
-    const realm = realm_once.?;
+    const realm = test_realm.?;
     const value_handle = info.get(0);
     defer ffi.v8_Global_Dispose(value_handle);
     const list_handle = info.get(1);
@@ -112,7 +110,7 @@ fn serializeCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
 }
 
 test "a WebAssembly.Memory's buffer in the transfer list is a TypeError, and it stays attached" {
-    defer file.leave();
+    defer test_agent.close();
     try setup();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
         \\(() => {
@@ -124,7 +122,7 @@ test "a WebAssembly.Memory's buffer in the transfer list is a TypeError, and it 
 }
 
 test "a failed transfer leaves every buffer of the list attached" {
-    defer file.leave();
+    defer test_agent.close();
     try setup();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
         \\(() => {
@@ -137,7 +135,7 @@ test "a failed transfer leaves every buffer of the list attached" {
 }
 
 test "a detachable buffer still transfers" {
-    defer file.leave();
+    defer test_agent.close();
     try setup();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
         \\(() => {

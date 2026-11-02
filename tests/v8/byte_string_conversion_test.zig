@@ -28,27 +28,22 @@ const Env = struct {
     context: *ffi.Context,
 };
 
-var env_once: ?Env = null;
+var test_env: ?Env = null;
 
-/// The file's isolate: current only while one of its tests runs
-/// (test_process.FileIsolate).
-var file: test_process.FileIsolate = .{};
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
 
-/// One isolate and context for the file; V8 is never torn down here.
+fn reset() void {
+    test_env = null;
+}
+
+/// The test's isolate and context: its own agent's (test_agent), ended with
+/// the test.
 fn env() !Env {
-    test_process.start();
-    if (env_once == null) {
-        const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-        ffi.v8_Isolate_Enter(isolate);
-        defer ffi.v8_Isolate_Exit(isolate);
-        _ = ffi.v8_HandleScope_New(isolate);
-        const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-        ffi.v8_Context_Enter(context);
-        env_once = .{ .isolate = isolate, .context = context };
-        file.isolate = isolate;
-    }
-    file.enter();
-    return env_once.?;
+    const isolate = try test_agent.open(.{});
+    if (test_env == null) test_env = .{ .isolate = isolate, .context = test_agent.context.? };
+    return test_env.?;
 }
 
 /// The value `code` evaluates to: a Global the caller disposes, made the way
@@ -73,7 +68,7 @@ fn check(comptime T: type, code: []const u8) !void {
 }
 
 test "code units up to 0xFF are a ByteString" {
-    defer file.leave();
+    defer test_agent.close();
     try check([]const u8, "'GET'");
     try check([]const u8, "'\\u00e9\\u00ff\\u0080'");
     try check([]const u8, "''");
@@ -82,7 +77,7 @@ test "code units up to 0xFF are a ByteString" {
 }
 
 test "a code unit above 0xFF is a TypeError" {
-    defer file.leave();
+    defer test_agent.close();
     try testing.expectError(error.TypeError, check([]const u8, "'\\u0100'"));
     // xhr/setrequestheader-bogus-value.htm's value.
     try testing.expectError(error.TypeError, check([]const u8, "'\\uFF83\\uFF7D\\uFF84'"));
@@ -93,7 +88,7 @@ test "a code unit above 0xFF is a TypeError" {
 }
 
 test "a nullable, optional or sequence ByteString is checked through" {
-    defer file.leave();
+    defer test_agent.close();
     try check(?[]const u8, "null");
     try testing.expectError(error.TypeError, check(?[]const u8, "'\\u0100'"));
     // An optional argument: checked only when it was passed.
@@ -114,7 +109,7 @@ const Init = struct {
 };
 
 test "a dictionary's ByteString member is checked as it is converted" {
-    defer file.leave();
+    defer test_agent.close();
     const e = try env();
     {
         const object = try eval("({ body: 'x'.repeat(64), method: '\\u0100', referrer: 'r'.repeat(64) })");
@@ -135,7 +130,7 @@ test "a dictionary's ByteString member is checked as it is converted" {
 }
 
 test "byteStringMask reads codegen's table, and an interface without one has none" {
-    defer file.leave();
+    defer test_agent.close();
     const Marked = struct {
         pub const byte_string_arguments = .{ .{ "call_append", 0b11 }, .{ "set_token", 0b1 } };
     };

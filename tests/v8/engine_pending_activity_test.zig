@@ -22,9 +22,9 @@ const ffi = v8.ffi;
 
 const WrapperCache = v8.WrapperCache;
 
-var isolate_once: ?*ffi.Isolate = null;
-var data_once: ?*runtime.ContextData = null;
-var cache_once: ?*WrapperCache = null;
+var test_isolate: ?*ffi.Isolate = null;
+var test_data: ?*runtime.ContextData = null;
+var test_cache: ?*WrapperCache = null;
 
 /// An instance as (address, slab generation): a freed slot is reissued to the
 /// next instance, so the address alone does not say which one it was.
@@ -54,31 +54,29 @@ const mock_vtable = runtime.VTable{
 };
 var mock_state: u64 = 0;
 
-/// The file's isolate: current only while one of its tests runs
-/// (test_process.FileIsolate).
-var file: test_process.FileIsolate = .{};
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+    test_data = null;
+    test_cache = null;
+}
 
 fn setup() !void {
-    test_process.start();
-    if (data_once == null) {
-        const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-        ffi.v8_Isolate_Enter(isolate);
-        defer ffi.v8_Isolate_Exit(isolate);
-        _ = ffi.v8_HandleScope_New(isolate);
-        const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-        ffi.v8_Context_Enter(context);
-        const data = try std.heap.page_allocator.create(runtime.ContextData);
-        data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
+    const isolate = try test_agent.open(.{});
+    if (test_data == null) {
+        const context = test_agent.context.?;
+        const data = try test_agent.contextData(std.heap.page_allocator, .{ .engine_ctx = context });
         data.agent = @ptrCast(isolate);
         const cache = try std.heap.page_allocator.create(WrapperCache);
         cache.* = try WrapperCache.init(std.heap.page_allocator, @ptrCast(context));
         data.setV8WrapperCacheStorage(@ptrCast(cache));
-        isolate_once = isolate;
-        data_once = data;
-        cache_once = cache;
-        file.isolate = isolate;
+        test_isolate = isolate;
+        test_data = data;
+        test_cache = cache;
     }
-    file.enter();
 }
 
 /// A new instance of the realm, wrapped: a real V8 object, owned by the
@@ -93,17 +91,17 @@ fn wrapped() !Made {
 fn unwrapped() !Made {
     const instance = try runtime.BrowserScope.standalone().?.slab.alloc(&mock_vtable);
     instance.state = @ptrCast(&mock_state);
-    instance.ctx = data_once.?;
+    instance.ctx = test_data.?;
     return Made.of(instance);
 }
 
 fn wrap(made: Made) !void {
-    const wrapper = ffi.v8_Object_New(isolate_once.?) orelse return error.ObjectFailed;
-    try cache_once.?.set(made.instance, @ptrCast(wrapper), @ptrCast(isolate_once.?));
+    const wrapper = ffi.v8_Object_New(test_isolate.?) orelse return error.ObjectFailed;
+    try test_cache.?.set(made.instance, @ptrCast(wrapper), @ptrCast(test_isolate.?));
 }
 
 fn collect() void {
-    ffi.v8_Isolate_RequestGarbageCollection(isolate_once.?);
+    ffi.v8_Isolate_RequestGarbageCollection(test_isolate.?);
 }
 
 fn wasFreed(made: Made) bool {
@@ -112,16 +110,16 @@ fn wasFreed(made: Made) bool {
 }
 
 fn isStrong(made: Made) bool {
-    const entry = cache_once.?.cache.get(made.instance) orelse return false;
+    const entry = test_cache.?.cache.get(made.instance) orelse return false;
     return entry.strong;
 }
 
 fn isCached(made: Made) bool {
-    return cache_once.?.get(made.instance) != null;
+    return test_cache.?.get(made.instance) != null;
 }
 
 test "a wrapper nothing holds is weak, and a full GC frees its instance" {
-    defer file.leave();
+    defer test_agent.close();
     try setup();
     const plain = try wrapped();
     // The predicate's default: no reason, not a node, never held - weak.
@@ -131,7 +129,7 @@ test "a wrapper nothing holds is weak, and a full GC frees its instance" {
 }
 
 test "a kept wrapper survives a full GC; released, it is collected and its deinit runs" {
-    defer file.leave();
+    defer test_agent.close();
     try setup();
     const worker = try wrapped();
     v8.worker_realm.keepPlatformObjectAlive(worker.instance);
@@ -147,7 +145,7 @@ test "a kept wrapper survives a full GC; released, it is collected and its deini
 }
 
 test "pending activity is counted: each keep is ended by its own release" {
-    defer file.leave();
+    defer test_agent.close();
     try setup();
     // Two owners keep one object - a script element's queued task and its
     // fetch (WebKit's m_pendingActivityInstanceCount, design 2.3): the first
@@ -167,7 +165,7 @@ test "pending activity is counted: each keep is ended by its own release" {
 }
 
 test "pending activity kept twice before the wrapper exists is taken whole by the wrapper" {
-    defer file.leave();
+    defer test_agent.close();
     try setup();
     const early = try unwrapped();
     v8.worker_realm.keepPlatformObjectAlive(early.instance);
@@ -183,7 +181,7 @@ test "pending activity kept twice before the wrapper exists is taken whole by th
 }
 
 test "releasing pending activity leaves a wrapper held for another reason" {
-    defer file.leave();
+    defer test_agent.close();
     try setup();
     // A window's document's hold (holdStrong) and pending activity are
     // separate reasons: ending one leaves the other.
@@ -198,7 +196,7 @@ test "releasing pending activity leaves a wrapper held for another reason" {
 }
 
 test "a hold placed before the wrapper exists is taken by the wrapper when it is made" {
-    defer file.leave();
+    defer test_agent.close();
     try setup();
     // A timeout signal's timer is armed before the binding wraps the signal.
     const early = try unwrapped();
@@ -222,7 +220,7 @@ test "a hold placed before the wrapper exists is taken by the wrapper when it is
 }
 
 test "a hold recorded for a freed instance is not inherited by its slot's next occupant" {
-    defer file.leave();
+    defer test_agent.close();
     try setup();
     const first = try unwrapped();
     v8.worker_realm.keepPlatformObjectAlive(first.instance);
@@ -241,7 +239,7 @@ test "a hold recorded for a freed instance is not inherited by its slot's next o
 const protocol = @import("engine");
 
 test "protocol: keepPlatformObjectAlive holds a wrapper through a full GC, and releasePlatformObject ends the hold" {
-    defer file.leave();
+    defer test_agent.close();
     try setup();
     const worker = try wrapped();
     protocol.keepPlatformObjectAlive(worker.instance);
@@ -304,17 +302,17 @@ fn probeAt(index: usize) !Made {
     const instance = try runtime.BrowserScope.standalone().?.slab.alloc(&probe_vtable);
     probe_states[index] = index;
     instance.state = @ptrCast(&probe_states[index]);
-    instance.ctx = data_once.?;
+    instance.ctx = test_data.?;
     const made = Made.of(instance);
     // Made and cached in a scope of its own: no Local of the test's keeps it.
-    const scope = ffi.v8_HandleScope_New(isolate_once.?);
+    const scope = ffi.v8_HandleScope_New(test_isolate.?);
     defer if (scope) |s| ffi.v8_HandleScope_Dispose(s);
     try wrap(made);
     return made;
 }
 
 test "a collected wrapper's instance is torn down after the collection, not inside it" {
-    defer file.leave();
+    defer test_agent.close();
     try setup();
     probes[0] = .{};
     const made = try probeAt(0);
@@ -326,7 +324,7 @@ test "a collected wrapper's instance is torn down after the collection, not insi
 }
 
 test "a teardown may read a handle whose object died in the same collection" {
-    defer file.leave();
+    defer test_agent.close();
     try setup();
     // Pairs that die together: each probe's deinit reads a weak handle to an
     // object of the same collection. Inside the first pass that handle may
@@ -336,9 +334,9 @@ test "a teardown may read a handle whose object died in the same collection" {
     var handles: [pairs]*ffi.Value = undefined;
     for (0..pairs) |i| {
         probes[i] = .{};
-        const scope = ffi.v8_HandleScope_New(isolate_once.?);
+        const scope = ffi.v8_HandleScope_New(test_isolate.?);
         defer if (scope) |s| ffi.v8_HandleScope_Dispose(s);
-        const object = ffi.v8_Object_New(isolate_once.?) orelse return error.ObjectFailed;
+        const object = ffi.v8_Object_New(test_isolate.?) orelse return error.ObjectFailed;
         ffi.v8_Global_SetWeak(@ptrCast(object), null, noopCollected);
         handles[i] = @ptrCast(object);
         probes[i].other = handles[i];
@@ -354,18 +352,18 @@ test "a teardown may read a handle whose object died in the same collection" {
 }
 
 test "a teardown the collection deferred is not run for an instance wrapped again before it" {
-    defer file.leave();
+    defer test_agent.close();
     try setup();
     probes[0] = .{};
     const made = try probeAt(0);
     // The entry leaves the cache in the first pass; a wrap before the second
     // pass makes a new wrapper, which owns the instance from then on.
-    const entry = cache_once.?.cache.get(made.instance).?;
-    _ = cache_once.?.cache.remove(made.instance);
+    const entry = test_cache.?.cache.get(made.instance).?;
+    _ = test_cache.?.cache.remove(made.instance);
     entry.collected = true;
-    cache_once.?.linkPendingForTest(entry);
+    test_cache.?.linkPendingForTest(entry);
     try wrap(made);
-    cache_once.?.finalizePendingForTest();
+    test_cache.?.finalizePendingForTest();
     try std.testing.expect(!probes[0].ran);
     try std.testing.expect(isCached(made));
 }
@@ -401,9 +399,9 @@ const SideWorst = struct {
 };
 
 test "pending activity kept before the wrapper exists keeps half the side map's unused slots free, page after page" {
-    defer file.leave();
+    defer test_agent.close();
     try setup();
-    const cache = cache_once.?;
+    const cache = test_cache.?;
     var worst: SideWorst = .{};
     // A burst first: a page that keeps 2,000 objects before wrapping them.
     var burst: [2000]Made = undefined;
@@ -433,9 +431,9 @@ test "pending activity kept before the wrapper exists keeps half the side map's 
 }
 
 test "edges traced from owners script has not seen keep half the side map's unused slots free, page after page" {
-    defer file.leave();
+    defer test_agent.close();
     try setup();
-    const cache = cache_once.?;
+    const cache = test_cache.?;
     var worst: SideWorst = .{};
     for (0..300) |page| {
         // A page's owners: each traces a child before its own wrapper is
@@ -447,7 +445,7 @@ test "edges traced from owners script has not seen keep half the side map's unus
         for (0..owners_per_page) |i| {
             const owner = try unwrapped();
             try owners.append(std.heap.page_allocator, owner);
-            const child = ffi.v8_Object_New(isolate_once.?) orelse return error.ObjectFailed;
+            const child = ffi.v8_Object_New(test_isolate.?) orelse return error.ObjectFailed;
             try cache.deferEdge(owner.instance, "child", @ptrCast(child));
             if (i == 0 and page > 0) worst.note(&cache.edges_before_wrap);
         }

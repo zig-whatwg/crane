@@ -6,7 +6,7 @@
 //! as it found it (the approved test plan, tmp/plans/test-architecture-
 //! recommendation.md section 3: Blink gives each test a fresh isolate,
 //! SpiderMonkey's jsapi-tests assert no runtime is alive at exit). Lane
-//! v8order1 found four ways tests/v8 broke that, each a test changing state
+//! v8order1 found five ways tests/v8 broke that, each a test changing state
 //! that later tests of the same process read (docs/testing/
 //! tests-v8-order-findings-2026-11-01.tsv):
 //!
@@ -19,7 +19,11 @@
 //!   V8 freezes when it starts (`start`);
 //! - an isolate left entered: a file's helper that entered its isolate for
 //!   the process made it the current isolate of every later test
-//!   (`FileIsolate`);
+//!   (`TestAgent`);
+//! - a realm kept for the process: a file's realm, registered with the
+//!   thread's context manager, was freed under the file by the first later
+//!   test whose own agent was its thread's host agent - whose end takes the
+//!   thread's context manager down (`TestAgent`);
 //! - process hooks installed lazily: a test that swapped a hook before its
 //!   helper's first call had the helper's start-up overwrite the swap, and
 //!   then restored "no hooks" over the real ones (`start` first).
@@ -77,23 +81,104 @@ pub const OwnRuntime = struct {
     }
 };
 
-/// An isolate a test file keeps for the whole process, the current isolate
-/// only while one of its tests runs: left entered, it would be the current
-/// isolate of every later test of the process (engine_agent_test's "the
-/// page's" isolate was, and every test after it that compared the current
-/// isolate with its own failed). Its entered context and handle scope are its
-/// own (V8 keeps both per isolate), so they stay between tests.
-///
-/// The file's helper sets `isolate` once, then calls `enter` wherever a test
-/// needs it current; every test of the file starts with
-/// `defer file.leave();`, which undoes every entry `enter` made.
-pub const FileIsolate = struct {
-    isolate: ?*ffi.Isolate = null,
-    /// The entries `enter` made since the last `leave`.
-    entries: u32 = 0,
+/// The host hooks of an agent whose host supplies none.
+pub const no_hooks: engine.HostHooks = .{};
 
-    /// Make the file's isolate the current one, unless it is.
-    pub fn enter(self: *FileIsolate) void {
+/// A test's own agent: made by the engine's createAgent on the test's first
+/// call to `open`, ended by `close` through destroyAgent - the engine's own
+/// path, as a Browser makes and ends its page agent (Blink gives each test a
+/// fresh isolate: the approved test plan, tmp/plans/test-architecture-
+/// recommendation.md section 3). Nothing current when it is made, it is its
+/// thread's host agent, so its end also takes down what the adapter keeps for
+/// the thread (protocol_agents.endAgent): the context manager and every realm
+/// in it. So no realm outlives its test, and no test keeps one another
+/// test's agent would free - which a file's realm kept for the process was,
+/// the first time a later test's own agent ended (docs/lessons/
+/// testing-a-test-may-assume-only-what-the-process-start-makes.md, the
+/// fifth mechanism).
+///
+/// A file declares one, `var test_agent: test_process.TestAgent = .{ .reset
+/// = reset };`, its helper calls `open` (the isolate, current while the test
+/// runs) and caches what it makes in the agent; every test of the file
+/// starts with `defer test_agent.close();`, which ends the agent and calls
+/// `reset` to clear the file's caches.
+pub const TestAgent = struct {
+    isolate: ?*ffi.Isolate = null,
+    /// The context `open` made and entered: the test's realm.
+    context: ?*ffi.Context = null,
+    /// The handle scope `open` opened, for the test's whole life.
+    scope: ?*ffi.HandleScope = null,
+    /// The entries `enter` made that `close` (or `leave`) undoes.
+    entries: u32 = 0,
+    /// What ends with the agent, before it: run last first by `close`.
+    ends: [16]End = undefined,
+    end_count: usize = 0,
+    /// The file's own reset of what it cached for the agent, called by
+    /// `close` once the agent has ended.
+    reset: ?*const fn () void = null,
+
+    pub const Options = struct {
+        /// The agent's host hooks, BORROWED for its life.
+        hooks: *const engine.HostHooks = &no_hooks,
+        /// [[CanBlock]]: false, as a similar-origin window agent's.
+        can_block: bool = false,
+        /// What the engine allocates for the agent itself - the isolate's
+        /// allocator - BORROWED for its life.
+        allocator: std.mem.Allocator = std.heap.c_allocator,
+        /// A context of the agent, made and entered: `context`.
+        context: bool = true,
+    };
+
+    /// What ends before the agent does.
+    pub const End = union(enum) {
+        /// A Window realm engine.createWindowRealm made in the agent.
+        window_realm: runtime.Context,
+        /// A context of the agent the test made besides its own.
+        context: *ffi.Context,
+        /// Another agent the test made: a worker's, ended before its owner's.
+        agent: *engine.Agent,
+        /// A realm's runtime state the test made for a context of the agent
+        /// (`contextData`): deinit, then its storage.
+        context_data: struct { data: *runtime.ContextData, allocator: std.mem.Allocator },
+        /// A realm record the test made for a context of the agent
+        /// (`realmRecord`).
+        realm: *runtime.Realm,
+        /// Anything else: `call(data)`, with the agent's isolate current.
+        call: struct { call: *const fn (?*anyopaque) void, data: ?*anyopaque },
+    };
+
+    /// The test's agent - made on its first call, with what every test may
+    /// assume started (`start`) - and the current isolate from here on.
+    pub fn open(self: *TestAgent, options: Options) !*ffi.Isolate {
+        start();
+        if (self.isolate) |isolate| {
+            self.enter();
+            return isolate;
+        }
+        // Nothing current, or the agent would not be its thread's host
+        // agent, and its end would leave its realms in the thread's context
+        // manager: a test before this one left an isolate entered.
+        if (ffi.v8_Isolate_GetCurrent() != null) return error.IsolateLeftEntered;
+        const made = try engine.createAgent(.{ .can_block = options.can_block, .from_snapshot = false, .hooks = options.hooks, .host = null, .allocator = options.allocator });
+        const isolate: *ffi.Isolate = @ptrCast(@alignCast(made));
+        self.isolate = isolate;
+        self.enter();
+        self.scope = ffi.v8_HandleScope_New(isolate);
+        if (options.context) {
+            const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
+            ffi.v8_Context_Enter(context);
+            self.context = context;
+        }
+        return isolate;
+    }
+
+    /// The test's agent, as the engine names it.
+    pub fn agent(self: *const TestAgent) *engine.Agent {
+        return @ptrCast(self.isolate.?);
+    }
+
+    /// Make the agent's isolate the current one, unless it is.
+    pub fn enter(self: *TestAgent) void {
         const isolate = self.isolate.?;
         if (ffi.v8_Isolate_GetCurrent() == isolate) return;
         ffi.v8_Isolate_Enter(isolate);
@@ -101,7 +186,81 @@ pub const FileIsolate = struct {
     }
 
     /// Undo every entry `enter` made: the current isolate is the one before.
-    pub fn leave(self: *FileIsolate) void {
+    pub fn leave(self: *TestAgent) void {
         while (self.entries > 0) : (self.entries -= 1) ffi.v8_Isolate_Exit(self.isolate.?);
+    }
+
+    /// End `what` before the agent, last registered first.
+    pub fn endWith(self: *TestAgent, what: End) void {
+        if (self.end_count == self.ends.len) @panic("tests/v8: TestAgent.ends is full");
+        self.ends[self.end_count] = what;
+        self.end_count += 1;
+    }
+
+    /// A Window realm of the agent (`options.agent`), made by
+    /// engine.createWindowRealm and destroyed before the agent ends.
+    pub fn windowRealm(self: *TestAgent, options: *const engine.WindowRealmOptions) !runtime.Context {
+        std.debug.assert(options.agent == self.agent());
+        const realm = try engine.createWindowRealm(options);
+        self.endWith(.{ .window_realm = realm });
+        return realm;
+    }
+
+    /// A realm's runtime state for a context of the agent, freed before the
+    /// agent ends.
+    pub fn contextData(self: *TestAgent, allocator: std.mem.Allocator, options: runtime.ContextData.Options) !*runtime.ContextData {
+        const data = try allocator.create(runtime.ContextData);
+        errdefer allocator.destroy(data);
+        data.* = try runtime.ContextData.init(allocator, options);
+        self.endWith(.{ .context_data = .{ .data = data, .allocator = allocator } });
+        return data;
+    }
+
+    /// A realm record for a context of the agent, freed before the agent ends.
+    pub fn realmRecord(self: *TestAgent, allocator: std.mem.Allocator, options: runtime.Realm.InitOptions) !*runtime.Realm {
+        const realm = try runtime.Realm.init(allocator, options);
+        self.endWith(.{ .realm = realm });
+        return realm;
+    }
+
+    /// Another context of the agent, not entered, disposed before it ends.
+    pub fn newContext(self: *TestAgent) !*ffi.Context {
+        const context = ffi.v8_Context_New(self.isolate.?) orelse return error.ContextCreationFailed;
+        self.endWith(.{ .context = context });
+        return context;
+    }
+
+    /// End the test's agent: what `endWith` registered, last first; its
+    /// context, its handle scope; then the agent itself, through
+    /// engine.destroyAgent, with no isolate current. Then the file's `reset`.
+    pub fn close(self: *TestAgent) void {
+        const reset = self.reset;
+        defer {
+            self.* = .{ .reset = reset };
+            if (reset) |r| r();
+        }
+        const isolate = self.isolate orelse return;
+        self.enter();
+        while (self.end_count > 0) {
+            self.end_count -= 1;
+            switch (self.ends[self.end_count]) {
+                .window_realm => |realm| engine.destroyWindowRealm(realm, .global_detached),
+                .context => |context| ffi.v8_Context_Dispose(context),
+                .agent => |other| engine.destroyAgent(other),
+                .context_data => |made| {
+                    made.data.deinit();
+                    made.allocator.destroy(made.data);
+                },
+                .realm => |realm| realm.deinit(),
+                .call => |c| c.call(c.data),
+            }
+        }
+        if (self.context) |context| {
+            ffi.v8_Context_Exit(context);
+            ffi.v8_Context_Dispose(context);
+        }
+        if (self.scope) |scope| ffi.v8_HandleScope_Dispose(scope);
+        self.leave();
+        engine.destroyAgent(@ptrCast(isolate));
     }
 };

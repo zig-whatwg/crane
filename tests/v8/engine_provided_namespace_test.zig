@@ -17,12 +17,12 @@ const v8 = @import("v8");
 const bindings = v8.interface_bindings;
 
 test "WebAssembly is the engine's" {
-    defer file.leave();
+    defer test_agent.close();
     try std.testing.expect(comptime bindings.namespaceIsEngineProvided("WebAssembly"));
 }
 
 test "every other namespace is ours by default" {
-    defer file.leave();
+    defer test_agent.close();
     try std.testing.expect(!comptime bindings.namespaceIsEngineProvided("console"));
     try std.testing.expect(!comptime bindings.namespaceIsEngineProvided("CSS"));
     try std.testing.expect(!comptime bindings.namespaceIsEngineProvided("webassembly"));
@@ -41,51 +41,50 @@ test "every other namespace is ours by default" {
 // A namespace operation's arguments convert with the realm's allocator,
 // whatever their size, and a string it returns is the binding's to free.
 // The context here has no realm, so the binding makes one for each call
-// (namespace.zig, CallRealm) over the isolate's allocator - which each test
-// sets to std.testing.allocator for its evaluation.
+// (namespace.zig, CallRealm) over the isolate's allocator - std.testing.allocator,
+// which each test's agent is made with.
 
 const runtime = @import("runtime");
 const ffi = v8.ffi;
 const namespace_binding = v8.namespace_mod;
 const CSSBinding = v8.V8Namespace(namespace_binding.generated_namespaces.CSS);
 
-/// A live isolate with an entered context and `CSS` on its global, one for
-/// the whole file - V8 is never torn down here.
-var isolate_once: ?*ffi.Isolate = null;
-var context_once: ?*ffi.Context = null;
+/// A live isolate with an entered context and `CSS` on its global: the
+/// test's own agent's (test_agent), ended with the test.
+var test_isolate: ?*ffi.Isolate = null;
+var test_context: ?*ffi.Context = null;
 
-/// The file's isolate: current only while one of its tests runs
-/// (test_process.FileIsolate).
-var file: test_process.FileIsolate = .{};
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+    test_context = null;
+}
 
 fn cssContext() !*ffi.Isolate {
-    test_process.start();
-    if (isolate_once == null) {
-        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-        ffi.v8_Isolate_Enter(i);
-        defer ffi.v8_Isolate_Exit(i);
-        _ = ffi.v8_HandleScope_New(i);
-        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-        ffi.v8_Context_Enter(context);
+    // The isolate's allocator - what a realm-less namespace call's runtime
+    // context is made over - is std.testing.allocator.
+    const i = try test_agent.open(.{ .allocator = std.testing.allocator });
+    if (test_isolate == null) {
+        const context = test_agent.context.?;
         CSSBinding.registerGlobal(i, context, "CSS");
-        isolate_once = i;
-        context_once = context;
-        file.isolate = i;
+        test_isolate = i;
+        test_context = context;
     }
-    file.enter();
-    return isolate_once.?;
+    return test_isolate.?;
 }
 
 /// Run `source` with the isolate's allocator - what a realm-less namespace
-/// call's runtime context is made over - std.testing.allocator, and return
-/// its completion value as a string (owned by std.testing.allocator; an empty
-/// one is static). Each call's runtime context ends with the call, so a test
-/// that leaks fails.
+/// call's runtime context is made over - std.testing.allocator (the test's
+/// agent's, `cssContext`), and return its completion value as a string
+/// (owned by std.testing.allocator; an empty one is static). Each call's
+/// runtime context ends with the call and the agent with the test, so a
+/// test that leaks fails.
 fn evalToString(source: []const u8) ![]const u8 {
     const i = try cssContext();
-    try v8.isolate_allocator.initIsolateAllocator(i, std.testing.allocator, false);
-    defer v8.isolate_allocator.deinitIsolateAllocator(i);
-    const context = context_once.?;
+    const context = test_context.?;
     const code = ffi.v8_String_NewFromUtf8(i, source.ptr, @intCast(source.len)) orelse return error.StringFailed;
     const script = ffi.v8_Script_Compile(context, code) orelse return error.CompileFailed;
     defer ffi.v8_Script_Dispose(script);
@@ -101,7 +100,7 @@ fn expectEval(source: []const u8, expected: []const u8) !void {
 }
 
 test "CSS.supports: two arguments reach supports(property, value), one reaches supports(conditionText)" {
-    defer file.leave();
+    defer test_agent.close();
     try expectEval(
         \\[CSS.supports('color', 'red'), CSS.supports('color', '10px'),
         \\ CSS.supports('(color: red)'), CSS.supports('color: red'), CSS.supports('(color: 10px)'),
@@ -110,14 +109,14 @@ test "CSS.supports: two arguments reach supports(property, value), one reaches s
 }
 
 test "CSS.supports with no argument is a TypeError, before any overload runs" {
-    defer file.leave();
+    defer test_agent.close();
     try expectEval(
         \\try { CSS.supports(); 'no exception' } catch (e) { e instanceof TypeError ? 'TypeError' : String(e) }
     , "TypeError");
 }
 
 test "CSS has one supports, and no own property whose name the IDL does not give it" {
-    defer file.leave();
+    defer test_agent.close();
     try expectEval(
         \\typeof CSS.supports + ',' +
         \\Object.getOwnPropertyNames(CSS).filter(n => n.includes('_')).join('|')
@@ -125,21 +124,21 @@ test "CSS has one supports, and no own property whose name the IDL does not give
 }
 
 test "CSS.escape serializes an identifier" {
-    defer file.leave();
+    defer test_agent.close();
     try expectEval(
         \\[CSS.escape('0a'), CSS.escape('-'), CSS.escape('a b'), CSS.escape('\0')].join('|')
     , "\\30 a|\\-|a\\ b|\u{FFFD}");
 }
 
 test "64 CSS.escape calls leak nothing: the binding frees the string the impl returns" {
-    defer file.leave();
+    defer test_agent.close();
     try expectEval(
         \\let n = 0; for (let i = 0; i < 64; i++) n += CSS.escape('id' + i).length; String(n)
     , "246");
 }
 
 test "a 64 KB argument converts: CSS.escape and both CSS.supports overloads" {
-    defer file.leave();
+    defer test_agent.close();
     try expectEval(
         \\const s = 'a'.repeat(65536);
         \\[CSS.escape(s).length, CSS.supports('color', s), CSS.supports(' '.repeat(65536) + '(color: red)')].join()
@@ -147,7 +146,7 @@ test "a 64 KB argument converts: CSS.escape and both CSS.supports overloads" {
 }
 
 test "a CSS operation's length is its shortest overload's required arguments (WebIDL 3.7.6)" {
-    defer file.leave();
+    defer test_agent.close();
     // registerMethod set no length, so every namespace operation's was 0
     // (row 120 Q21: idlharness "CSS namespace: operation escape(CSSOMString)").
     try expectEval(
