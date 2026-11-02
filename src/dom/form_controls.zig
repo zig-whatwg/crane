@@ -183,34 +183,33 @@ pub fn setSelectedcontentInterest(select: *runtime.Instance, present: bool) !voi
     return error.NotSupported;
 }
 
-var test_resets: usize = 0;
-fn testIs(_: *runtime.Instance) bool {
-    return true;
-}
-fn testReset(_: *runtime.Instance) void {
-    test_resets += 1;
-}
-
 test "an element runs the reset algorithm whose brand check accepts it, installed once" {
+    // The test's control: its count lives in the test, not in the product.
+    const Test = struct {
+        var resets: usize = 0;
+        fn is(_: *runtime.Instance) bool {
+            return true;
+        }
+        fn reset(_: *runtime.Instance) void {
+            resets += 1;
+        }
+    };
     const saved = count;
     const saved_controls = controls;
-    const saved_resets = test_resets;
     defer {
         count = saved;
         controls = saved_controls;
-        test_resets = saved_resets;
     }
     count = 0;
-    test_resets = 0;
     // Never dereferenced: nothing installed reads the element.
     var element: runtime.Instance = undefined;
     reset(&element);
-    try std.testing.expectEqual(@as(usize, 0), test_resets);
-    install(.{ .is = &testIs, .reset = &testReset });
-    install(.{ .is = &testIs, .reset = &testReset });
+    try std.testing.expectEqual(@as(usize, 0), Test.resets);
+    install(.{ .is = &Test.is, .reset = &Test.reset });
+    install(.{ .is = &Test.is, .reset = &Test.reset });
     try std.testing.expectEqual(@as(usize, 1), count);
     reset(&element);
-    try std.testing.expectEqual(@as(usize, 1), test_resets);
+    try std.testing.expectEqual(@as(usize, 1), Test.resets);
 }
 
 test "installs that share a brand check keep their algorithms: a release build makes two types' identical checks one function" {
@@ -220,13 +219,20 @@ test "installs that share a brand check keep their algorithms: a release build m
     // ReleaseSafe runner folds them into ONE function (nm: Debug has both
     // symbols, ReleaseSafe only the option's), so both installs arrive with
     // the same `is`. Each must keep its algorithms.
+    const Test = struct {
+        var resets: usize = 0;
+        fn is(_: *runtime.Instance) bool {
+            return true;
+        }
+        fn reset(_: *runtime.Instance) void {
+            resets += 1;
+        }
+    };
     const saved_controls = controls;
     const saved_count = count;
-    const saved_resets = test_resets;
     defer {
         controls = saved_controls;
         count = saved_count;
-        test_resets = saved_resets;
     }
     const Select = struct {
         fn flags(_: *runtime.Instance) ValidityFlags {
@@ -238,23 +244,29 @@ test "installs that share a brand check keep their algorithms: a release build m
     };
     var element: runtime.Instance = undefined;
     count = 0;
-    test_resets = 0;
-    install(.{ .is = &testIs, .validity_flags = &Select.flags });
-    install(.{ .is = &testIs, .reset = &testReset, .selected_index = &Select.selected });
+    install(.{ .is = &Test.is, .validity_flags = &Select.flags });
+    install(.{ .is = &Test.is, .reset = &Test.reset, .selected_index = &Select.selected });
     try std.testing.expect(validityFlags(&element).valueMissing orelse false);
     try std.testing.expectEqual(@as(?usize, 3), try selectedIndex(&element));
     reset(&element);
-    try std.testing.expectEqual(@as(usize, 1), test_resets);
+    try std.testing.expectEqual(@as(usize, 1), Test.resets);
 }
 
 test "control dispatch skips matching entries without its callback, in either order" {
+    const Test = struct {
+        var resets: usize = 0;
+        fn is(_: *runtime.Instance) bool {
+            return true;
+        }
+        fn reset(_: *runtime.Instance) void {
+            resets += 1;
+        }
+    };
     const saved_controls = controls;
     const saved_count = count;
-    const saved_resets = test_resets;
     defer {
         controls = saved_controls;
         count = saved_count;
-        test_resets = saved_resets;
     }
     const ValidityOnly = struct {
         fn is(_: *runtime.Instance) bool {
@@ -277,17 +289,17 @@ test "control dispatch skips matching entries without its callback, in either or
     var element: runtime.Instance = undefined;
     for ([_]bool{ false, true }) |validity_first| {
         count = 0;
-        test_resets = 0;
+        Test.resets = 0;
         try std.testing.expectEqual(null, try editorText(&element));
         try std.testing.expectError(error.NotSupported, selectedIndex(&element));
         try std.testing.expectError(error.NotSupported, setSelectedIndex(&element, 7));
         try std.testing.expect(!try userEdit(&element, .{ .text = "x", .selection_start = 1, .selection_end = 1 }));
         const validity = Control{ .is = &ValidityOnly.is, .validity_flags = &ValidityOnly.flags, .user_edit = &ValidityOnly.edit, .editor_text = &ValidityOnly.text, .selected_index = &ValidityOnly.selected, .set_selected_index = &ValidityOnly.setSelected };
-        const reset_only = Control{ .is = &testIs, .reset = &testReset };
+        const reset_only = Control{ .is = &Test.is, .reset = &Test.reset };
         install(if (validity_first) validity else reset_only);
         install(if (validity_first) reset_only else validity);
         reset(&element);
-        try std.testing.expectEqual(@as(usize, 1), test_resets);
+        try std.testing.expectEqual(@as(usize, 1), Test.resets);
         try std.testing.expect(validityFlags(&element).customError orelse false);
         try std.testing.expectEqual(@as(?usize, 7), try selectedIndex(&element));
         try setSelectedIndex(&element, 7);

@@ -375,12 +375,6 @@ pub fn of(global: *runtime.Instance) ?Settings {
     return null;
 }
 
-var test_owned: runtime.Instance = undefined;
-
-fn testOwns(global: *runtime.Instance) bool {
-    return @intFromPtr(global) == @intFromPtr(&test_owned);
-}
-
 fn testOrigin(global: *runtime.Instance) anyerror!runtime.USVString {
     _ = global;
     return error.Unexpected;
@@ -402,9 +396,16 @@ test "kinds that share an owns check: the first installed answers, as a Debug bu
     const saved = installed;
     defer installed = saved;
     installed = @splat(null);
-    const global = &test_owned;
-    install(.{ .owns = &testOwns, .origin = &testOrigin, .is_secure_context = &testFalse, .cross_origin_isolated = &testFalse });
-    install(.{ .owns = &testOwns, .origin = &testOrigin, .is_secure_context = &testTrue, .cross_origin_isolated = &testFalse });
+    // The global the test's kind owns: it lives in the test, not in the product.
+    const Test = struct {
+        var owned: runtime.Instance = undefined;
+        fn owns(global: *runtime.Instance) bool {
+            return @intFromPtr(global) == @intFromPtr(&owned);
+        }
+    };
+    const global = &Test.owned;
+    install(.{ .owns = &Test.owns, .origin = &testOrigin, .is_secure_context = &testFalse, .cross_origin_isolated = &testFalse });
+    install(.{ .owns = &Test.owns, .origin = &testOrigin, .is_secure_context = &testTrue, .cross_origin_isolated = &testFalse });
     const settings = of(global) orelse return error.TestExpectedSettings;
     try std.testing.expect(!settings.is_secure_context(global));
 }
@@ -415,10 +416,16 @@ test "a global no kind owns has no settings, and a kind installs once" {
     installed = @splat(null);
 
     // Never dereferenced: `owns` compares the address only.
-    const global = &test_owned;
+    const Test = struct {
+        var owned: runtime.Instance = undefined;
+        fn owns(global: *runtime.Instance) bool {
+            return @intFromPtr(global) == @intFromPtr(&owned);
+        }
+    };
+    const global = &Test.owned;
     try std.testing.expect(of(global) == null);
 
-    const settings: Settings = .{ .owns = &testOwns, .origin = &testOrigin, .is_secure_context = &testFalse, .cross_origin_isolated = &testFalse };
+    const settings: Settings = .{ .owns = &Test.owns, .origin = &testOrigin, .is_secure_context = &testFalse, .cross_origin_isolated = &testFalse };
     install(settings);
     install(settings);
     try std.testing.expect(of(global) != null);
