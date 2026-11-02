@@ -2444,6 +2444,14 @@ struct IsolateData {
     /// BORROWED until the isolate is disposed.
     int64_t (*clock_wall_now)(void*) = nullptr;
     void* clock_context = nullptr;
+    /// Whether the isolate counts in the process's read-only heap record
+    /// (g_read_only_heap): made by v8_Isolate_NewWithOptions or
+    /// v8_Isolate_NewFromSnapshotWithOptions, given back by v8_Isolate_Dispose.
+    bool holds_read_only_heap = false;
+    /// [module_scripts] import.meta.resolve, only for an agent whose host
+    /// resolves (engine.HostHooks.importMetaResolve): the dispatcher is the
+    /// process's, so whether the builtin is made is the isolate's.
+    bool import_meta_resolve = false;
 
 
     /// Take out the entry whose module is `module`, if any.
@@ -12385,13 +12393,15 @@ bool v8_Platform_IsInitialized() {
 }
 
 /// The engine protocol's HostPromiseRejectionTracker dispatcher: one Zig
-/// function for every agent, which finds the agent's hooks by its isolate.
-/// Set to the same function by every agent that installs the callback, so
-/// agents on other threads never see another value.
-static void (*g_protocol_promise_reject)(Isolate*, int, Global<Value>*, Global<Value>*) = nullptr;
+/// function for every agent (protocol_agents.onPromiseReject), which finds the
+/// agent's hooks by its isolate.
+typedef void (*ProtocolPromiseRejectDispatch)(Isolate*, int, Global<Value>*, Global<Value>*);
+
+// process-wide: the one Zig dispatcher every agent's isolate calls, finding its agent by isolate; set at process start (protocol_agents.initializeEngine), never per agent - every createAgent used to write it on its own thread, a data race between Browsers (ThreadSanitizer, docs/testing/test-variant-findings-2026-11-02.tsv F1). Atomic: a test may start the engine again on another thread, storing the same function.
+static std::atomic<ProtocolPromiseRejectDispatch> g_protocol_promise_reject{nullptr};
 
 static void ProtocolPromiseRejectCallback(PromiseRejectMessage message) {
-    auto dispatch = g_protocol_promise_reject;
+    auto dispatch = g_protocol_promise_reject.load(std::memory_order_acquire);
     if (!dispatch) return;
     // The callback runs on the isolate's own thread, synchronously.
     Isolate* isolate = Isolate::GetCurrent();
@@ -12407,12 +12417,18 @@ static void ProtocolPromiseRejectCallback(PromiseRejectMessage message) {
     );
 }
 
-/// Install HostPromiseRejectionTracker on `isolate`, dispatched to
+/// The process's HostPromiseRejectionTracker dispatcher: once, while the
+/// process starts (engine.initializeEngine), before any agent's thread runs.
 /// `dispatch(isolate, event, promise, reason)` - `event` a
 /// v8::PromiseRejectEvent, `promise` and `reason` (null when V8 gives none)
 /// Globals the dispatcher owns.
-void v8_Isolate_SetProtocolPromiseRejectCallback(Isolate* isolate, void (*dispatch)(Isolate*, int, Global<Value>*, Global<Value>*)) {
-    g_protocol_promise_reject = dispatch;
+void v8_SetProtocolPromiseRejectDispatcher(ProtocolPromiseRejectDispatch dispatch) {
+    g_protocol_promise_reject.store(dispatch, std::memory_order_release);
+}
+
+/// Install HostPromiseRejectionTracker on `isolate` alone, dispatched to the
+/// process's dispatcher.
+void v8_Isolate_SetProtocolPromiseRejectCallback(Isolate* isolate) {
     isolate->SetPromiseRejectCallback(ProtocolPromiseRejectCallback);
 }
 
@@ -12714,9 +12730,12 @@ typedef const char* (*ProtocolImportMetaUrlDispatch)(Isolate* isolate, Global<Mo
 /// the caller frees it) or null for failure.
 typedef char* (*ProtocolImportMetaResolveDispatch)(Isolate* isolate, Global<Context>* context, const char* base_url, size_t base_url_len, const char* specifier, size_t specifier_len, size_t* len);
 
-static ProtocolDynamicImportDispatch g_protocol_dynamic_import = nullptr;
-static ProtocolImportMetaUrlDispatch g_protocol_import_meta_url = nullptr;
-static ProtocolImportMetaResolveDispatch g_protocol_import_meta_resolve = nullptr;
+// process-wide: the one Zig dispatcher (protocol_modules.onDynamicImport) every agent's isolate calls, finding its agent by isolate; set at process start (protocol_agents.initializeEngine), never per agent (createAgent wrote it on each agent's thread: tsanfix1, F1). Atomic, as g_protocol_promise_reject.
+static std::atomic<ProtocolDynamicImportDispatch> g_protocol_dynamic_import{nullptr};
+// process-wide: the one Zig dispatcher (protocol_modules.onImportMetaUrl) every agent's isolate calls; set at process start beside g_protocol_dynamic_import, for the same reasons.
+static std::atomic<ProtocolImportMetaUrlDispatch> g_protocol_import_meta_url{nullptr};
+// process-wide: the one Zig dispatcher (protocol_modules.onImportMetaResolve) every agent's isolate calls; set at process start beside g_protocol_dynamic_import. Whether an isolate's import.meta has resolve is the isolate's (IsolateData::import_meta_resolve).
+static std::atomic<ProtocolImportMetaResolveDispatch> g_protocol_import_meta_resolve{nullptr};
 
 /// HostLoadImportedModule for an import(): the referrer from the host-defined
 /// options the protocol compiled the script or module with, the realm from
@@ -12736,7 +12755,7 @@ static MaybeLocal<Promise> ProtocolHostImportModuleDynamically(
     Local<Promise::Resolver> resolver;
     if (!Promise::Resolver::New(context).ToLocal(&resolver)) return MaybeLocal<Promise>();
 
-    auto dispatch = g_protocol_dynamic_import;
+    auto dispatch = g_protocol_dynamic_import.load(std::memory_order_acquire);
     if (!dispatch) {
         (void)resolver->Reject(context, Exception::TypeError(String::NewFromUtf8Literal(isolate, "import() is not supported here")));
         return handle_scope.Escape(resolver->GetPromise());
@@ -12789,7 +12808,7 @@ static void ProtocolImportMetaResolve(const FunctionCallbackInfo<Value>& info) {
     Local<String> specifier;
     if (!argument->ToString(context).ToLocal(&specifier)) return;
     // Step 4.2: resolve a module specifier given moduleScript and specifier.
-    auto dispatch = g_protocol_import_meta_resolve;
+    auto dispatch = g_protocol_import_meta_resolve.load(std::memory_order_acquire);
     String::Utf8Value base_utf8(isolate, info.Data());
     String::Utf8Value specifier_utf8(isolate, specifier);
     Global<Context> realm(isolate, context);
@@ -12812,7 +12831,7 @@ static void ProtocolImportMetaResolve(const FunctionCallbackInfo<Value>& info) {
 /// script (found by its record on the Zig side), and - step 5 -
 /// CreateBuiltinFunction(steps, 1, "resolve", « »), when the host resolves.
 static void ProtocolInitializeImportMeta(Local<Context> context, Local<Module> module, Local<Object> meta) {
-    auto dispatch = g_protocol_import_meta_url;
+    auto dispatch = g_protocol_import_meta_url.load(std::memory_order_acquire);
     if (!dispatch) return;
     Isolate* isolate = context->GetIsolate();
     Global<Module> handle(isolate, module);
@@ -12822,23 +12841,30 @@ static void ProtocolInitializeImportMeta(Local<Context> context, Local<Module> m
     Local<String> value;
     if (!String::NewFromUtf8(isolate, url, NewStringType::kNormal, static_cast<int>(len)).ToLocal(&value)) return;
     (void)meta->CreateDataProperty(context, String::NewFromUtf8Literal(isolate, "url"), value).FromMaybe(false);
-    if (!g_protocol_import_meta_resolve) return;
+    // Only for an agent whose host resolves (the isolate's flag).
+    const IsolateData* record = isolateData(isolate);
+    if (!record || !record->import_meta_resolve || !g_protocol_import_meta_resolve.load(std::memory_order_acquire)) return;
     Local<Function> resolve;
     if (!Function::New(context, ProtocolImportMetaResolve, value, 1, ConstructorBehavior::kThrow).ToLocal(&resolve)) return;
     resolve->SetName(String::NewFromUtf8Literal(isolate, "resolve"));
     (void)meta->CreateDataProperty(context, String::NewFromUtf8Literal(isolate, "resolve"), resolve).FromMaybe(false);
 }
 
-/// Install the protocol's import() and import.meta hooks on `isolate`, each
-/// only when given.
-void v8_Isolate_SetProtocolModuleHooks(Isolate* isolate, ProtocolDynamicImportDispatch dynamic_import, ProtocolImportMetaUrlDispatch import_meta_url, ProtocolImportMetaResolveDispatch import_meta_resolve) {
-    if (dynamic_import) {
-        g_protocol_dynamic_import = dynamic_import;
-        isolate->SetHostImportModuleDynamicallyCallback(ProtocolHostImportModuleDynamically);
-    }
+/// The process's import() and import.meta dispatchers: once, while the
+/// process starts (engine.initializeEngine), before any agent's thread runs.
+void v8_SetProtocolModuleDispatchers(ProtocolDynamicImportDispatch dynamic_import, ProtocolImportMetaUrlDispatch import_meta_url, ProtocolImportMetaResolveDispatch import_meta_resolve) {
+    g_protocol_dynamic_import.store(dynamic_import, std::memory_order_release);
+    g_protocol_import_meta_url.store(import_meta_url, std::memory_order_release);
+    g_protocol_import_meta_resolve.store(import_meta_resolve, std::memory_order_release);
+}
+
+/// Install the protocol's import() and import.meta hooks on `isolate` alone,
+/// each only when asked; import.meta.resolve only beside import.meta.url. The
+/// dispatchers they reach are the process's.
+void v8_Isolate_SetProtocolModuleHooks(Isolate* isolate, bool dynamic_import, bool import_meta_url, bool import_meta_resolve) {
+    if (dynamic_import) isolate->SetHostImportModuleDynamicallyCallback(ProtocolHostImportModuleDynamically);
     if (import_meta_url) {
-        g_protocol_import_meta_url = import_meta_url;
-        if (import_meta_resolve) g_protocol_import_meta_resolve = import_meta_resolve;
+        if (IsolateData* record = isolateData(isolate)) record->import_meta_resolve = import_meta_resolve;
         isolate->SetHostInitializeImportMetaObjectCallback(ProtocolInitializeImportMeta);
     }
 }
@@ -13627,10 +13653,10 @@ typedef int (*ProtocolCodeGenerationDispatch)(
 );
 typedef bool (*ProtocolWasmCodeGenerationDispatch)(Isolate* isolate, Global<Context>* context);
 
-// process-wide: the one Zig dispatcher (protocol_agents.onCodeGenerationFromStrings) every hooked agent's isolate calls, finding its agent by isolate; written once at process start (protocol_agents.initializeEngine, before any agent thread exists), read-only after.
-static ProtocolCodeGenerationDispatch g_protocol_code_generation = nullptr;
-// process-wide: the one Zig dispatcher (protocol_agents.onWasmCodeGeneration) every hooked agent's isolate calls, finding its agent by isolate; written once at process start (protocol_agents.initializeEngine, before any agent thread exists), read-only after.
-static ProtocolWasmCodeGenerationDispatch g_protocol_wasm_code_generation = nullptr;
+// process-wide: the one Zig dispatcher (protocol_agents.onCodeGenerationFromStrings) every hooked agent's isolate calls, finding its agent by isolate; written at process start (protocol_agents.initializeEngine, before any agent thread exists). Atomic: a test may start the engine again on another thread, storing the same function (tsanfix1).
+static std::atomic<ProtocolCodeGenerationDispatch> g_protocol_code_generation{nullptr};
+// process-wide: the one Zig dispatcher (protocol_agents.onWasmCodeGeneration) every hooked agent's isolate calls, finding its agent by isolate; written at process start (protocol_agents.initializeEngine, before any agent thread exists). Atomic, as g_protocol_code_generation.
+static std::atomic<ProtocolWasmCodeGenerationDispatch> g_protocol_wasm_code_generation{nullptr};
 
 /// V8 calls this from eval (direct and indirect) and CreateDynamicFunction,
 /// inside their own HandleScope: the modified source made here lives in it.
@@ -13641,7 +13667,7 @@ static ModifyCodeGenerationFromStringsResult ProtocolModifyCodeGenerationFromStr
 ) {
     ModifyCodeGenerationFromStringsResult result;
     result.codegen_allowed = true;
-    auto dispatch = g_protocol_code_generation;
+    auto dispatch = g_protocol_code_generation.load(std::memory_order_acquire);
     if (!dispatch) return result;
     Isolate* isolate = context->GetIsolate();
     Global<Context> realm(isolate, context);
@@ -13677,7 +13703,7 @@ static ModifyCodeGenerationFromStringsResult ProtocolModifyCodeGenerationFromStr
 
 static bool ProtocolAllowWasmCodeGeneration(Local<Context> context, Local<String> source) {
     (void)source;  // V8 passes the empty string (wasm-module.cc IsWasmCodegenAllowed).
-    auto dispatch = g_protocol_wasm_code_generation;
+    auto dispatch = g_protocol_wasm_code_generation.load(std::memory_order_acquire);
     if (!dispatch) return true;
     Isolate* isolate = context->GetIsolate();
     Global<Context> realm(isolate, context);
@@ -13690,8 +13716,8 @@ static bool ProtocolAllowWasmCodeGeneration(Local<Context> context, Local<String
 /// per agent, which with agents on their own threads would be concurrent
 /// writes of one global.
 void v8_SetProtocolCodeGenerationDispatchers(ProtocolCodeGenerationDispatch strings, ProtocolWasmCodeGenerationDispatch wasm) {
-    g_protocol_code_generation = strings;
-    g_protocol_wasm_code_generation = wasm;
+    g_protocol_code_generation.store(strings, std::memory_order_release);
+    g_protocol_wasm_code_generation.store(wasm, std::memory_order_release);
 }
 
 /// Install the protocol's code generation checks on `isolate`, each only
@@ -15554,8 +15580,8 @@ struct CraneWasmResponseCompilation {
 /// compilation is still the caller's.
 typedef bool (*ProtocolWasmStreamingDispatch)(Isolate* isolate, Global<Context>* context, Global<Value>* source, CraneWasmResponseCompilation* compilation);
 
-// process-wide: the one dispatcher (a Zig function finding the agent's hooks by isolate), set once by engine.initializeEngine before any agent's thread runs, beside g_protocol_code_generation; every agent's isolate reads the same function.
-static ProtocolWasmStreamingDispatch g_protocol_wasm_streaming = nullptr;
+// process-wide: the one dispatcher (a Zig function finding the agent's hooks by isolate), set by engine.initializeEngine before any agent's thread runs, beside g_protocol_code_generation; every agent's isolate reads the same function. Atomic, as g_protocol_code_generation.
+static std::atomic<ProtocolWasmStreamingDispatch> g_protocol_wasm_streaming{nullptr};
 
 /// Reject a compilation no host took with a TypeError of the current
 /// context, and delete it.
@@ -15575,7 +15601,7 @@ static void ProtocolWasmStreamingCallback(const FunctionCallbackInfo<Value>& inf
     HandleScope scope(isolate);
     auto* compilation = new CraneWasmResponseCompilation{isolate, WasmStreaming::Unpack(isolate, info.Data())};
     Local<Context> context = isolate->GetCurrentContext();
-    auto dispatch = g_protocol_wasm_streaming;
+    auto dispatch = g_protocol_wasm_streaming.load(std::memory_order_acquire);
     if (!dispatch || context.IsEmpty()) {
         RefuseWasmStreaming(isolate, compilation, "WebAssembly streaming compilation is not available here");
         return;
@@ -15591,7 +15617,7 @@ extern "C" {
 
 /// The process's dispatcher: once, at process start (initializeEngine).
 void v8_SetProtocolWasmStreamingDispatcher(ProtocolWasmStreamingDispatch dispatch) {
-    g_protocol_wasm_streaming = dispatch;
+    g_protocol_wasm_streaming.store(dispatch, std::memory_order_release);
 }
 
 /// Isolate::SetWasmStreamingCallback: every context made in `isolate` from
