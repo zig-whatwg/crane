@@ -140,6 +140,12 @@ fn shadowRealmContextCallback(initiator_context_ptr: ?*anyopaque) callconv(.c) ?
         std.log.err("[ShadowRealm] Failed to create context from snapshot", .{});
         return null;
     };
+    // OWNED, like every v8_* return (AGENTS.md, the C++ seam): the
+    // ShadowRealm keeps `global_context` below and the context manager its
+    // own copy, so this one goes when the callback returns. It was never
+    // released: one Global<Context> per ShadowRealm (lane tstate1's
+    // engine.live_context_globals, agents_concurrent_engine_state_test).
+    defer ffi.v8_Context_Dispose(context);
 
     // Share the initiator context's security token with the ShadowRealm
     //
@@ -199,6 +205,15 @@ fn shadowRealmContextCallback(initiator_context_ptr: ?*anyopaque) callconv(.c) ?
     return global_context;
 }
 
+/// Dispose a ShadowRealm's context handle - a Global<Context> that
+/// v8_Context_GlobalHandle_New made and counted - through v8_Context_Dispose,
+/// its counterpart: v8_Context_GlobalHandle_Dispose deletes the handle without
+/// taking it off engine.live_context_globals, so every ShadowRealm read as a
+/// live context handle after its agent ended.
+fn disposeContextHandle(handle: *anyopaque) void {
+    ffi.v8_Context_Dispose(@ptrCast(@alignCast(handle)));
+}
+
 /// The process's ShadowRealm dispatcher, set once while the process starts
 /// (protocol_agents.initializeEngine), before any agent's thread exists.
 pub fn installDispatcher() void {
@@ -242,7 +257,7 @@ pub fn deinitializeShadowRealmSupport(data: *ShadowRealmCallbackData) void {
     var iter = data.tracked_realms.iterator();
     while (iter.next()) |entry| {
         if (entry.value_ptr.context_handle) |handle| {
-            ffi.v8_Context_GlobalHandle_Dispose(handle);
+            disposeContextHandle(handle);
         }
     }
     const count = data.tracked_realms.count();
@@ -266,7 +281,7 @@ pub fn disposeShadowRealm(context_handle: ?*anyopaque) void {
         const key = @intFromPtr(context_handle);
         if (data.tracked_realms.fetchRemove(key)) |entry| {
             if (entry.value.context_handle) |handle| {
-                ffi.v8_Context_GlobalHandle_Dispose(handle);
+                disposeContextHandle(handle);
             }
             std.log.debug("[ShadowRealm] Disposed ShadowRealm context", .{});
         }
@@ -299,7 +314,7 @@ pub fn disposeByInitiator(initiator_raw_addr: ?*anyopaque) void {
         for (to_remove.items) |key| {
             if (data.tracked_realms.fetchRemove(key)) |entry| {
                 if (entry.value.context_handle) |handle| {
-                    ffi.v8_Context_GlobalHandle_Dispose(handle);
+                    disposeContextHandle(handle);
                 }
             }
         }

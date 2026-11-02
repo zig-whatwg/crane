@@ -55,24 +55,29 @@ test "a test's agent is the current isolate while its test runs, and nothing is 
     try std.testing.expectEqual(@as(?*ffi.Isolate, null), test_agent.isolate);
 }
 
-test "a test's agent takes its realms down with it: the thread's context manager keeps none of them" {
+test "a test's agent takes its realms down with it, their context handles too" {
     var test_agent: test_process.TestAgent = .{};
     var key: usize = 0;
+    // Every Global<Context> v8_wrapper.cpp has made and not disposed, in
+    // the process: the realm's entry holds one of its own
+    // (context_manager.getOrCreateWithIsolate), which the agent's end must
+    // dispose with the entry.
+    const context_globals = ffi.v8_Debug_LiveContextGlobals();
     {
         defer test_agent.close();
         _ = try test_agent.open(.{});
         const context = test_agent.context.?;
-        v8.context_manager.init(std.heap.page_allocator) catch {};
         const realm = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
         key = v8.context_manager.keyOf(context).?;
         try std.testing.expectEqual(@as(?runtime.Context, realm), v8.context_manager.getByKey(key));
     }
-    // The agent was its thread's host agent: its end took the thread's
-    // context manager down, and the realm with it.
+    // The realm was its agent's (context_manager.Realms, on the agent's
+    // record): the agent's end took it down.
     try std.testing.expectEqual(@as(?runtime.Context, null), v8.context_manager.getByKey(key));
+    try std.testing.expectEqual(context_globals, ffi.v8_Debug_LiveContextGlobals());
 }
 
-test "a test's agent is its thread's host agent: with an isolate left entered it is not made" {
+test "a test's agent is not made while an earlier test left an isolate entered" {
     test_process.start();
     const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
     defer ffi.v8_Isolate_Dispose(isolate);

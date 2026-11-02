@@ -30,7 +30,6 @@ fn setup() void {
     // collections this test asks for itself (requestGarbageCollection)
     // stay.
     test_process.start();
-    v8.context_manager.init(std.heap.page_allocator) catch {};
 }
 
 const Reports = struct {
@@ -56,8 +55,8 @@ fn evalIn(realm: runtime.Context, source: []const u8) ![]u8 {
 
 test "a TextDecoderStream made in a worker realm has live readable and writable sides" {
     setup();
-    const agent = try v8.worker_realm.createAgent();
-    defer v8.worker_realm.destroyAgent(agent);
+    const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &test_process.no_hooks });
+    defer protocol.destroyAgent(agent);
     const made = try v8.worker_realm.createWorkerRealm(agent, .{
         .url = "http://web-platform.test:8000/encoding/streams/w.js",
         .timer = null,
@@ -108,8 +107,8 @@ test "a TextDecoderStream made in a worker realm has live readable and writable 
 
 test "a TextDecoderStream keeps its TransformStream through a collection" {
     setup();
-    const agent = try v8.worker_realm.createAgent();
-    defer v8.worker_realm.destroyAgent(agent);
+    const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &test_process.no_hooks });
+    defer protocol.destroyAgent(agent);
     const made = try v8.worker_realm.createWorkerRealm(agent, .{
         .url = "http://web-platform.test:8000/encoding/streams/w.js",
         .timer = null,

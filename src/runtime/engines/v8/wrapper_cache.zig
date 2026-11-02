@@ -715,38 +715,66 @@ fn detachedHolderCollected(_: ?*anyopaque, _: usize) callconv(.c) void {}
 /// from the global object: nothing to do when it is collected.
 fn deferredChildCollected(_: ?*anyopaque, _: usize) callconv(.c) void {}
 
-/// Every live WrapperCache on this thread - one per realm. A node has one
-/// wrapper whatever realm reads it (its bound wrapper), but any other platform
-/// object gets a wrapper in each realm's cache that wraps it: a span's
-/// DOMStringMap read by its frame and by the frame's parent has two. The
-/// instance must outlive all of them - Blink traces it from every world's
-/// wrapper - so a cache frees an instance only when no other live cache still
-/// wraps it. Freeing it on the first wrapper's death left the other realm's
-/// wrapper, and the element's [SameObject] cache, on freed memory.
-threadlocal var live_caches: std.ArrayListUnmanaged(*WrapperCache) = .empty;
+/// One agent's live WrapperCaches - one per realm: a field of its record
+/// (protocol_agents.AgentRecord.caches). A node has one wrapper whatever
+/// realm reads it (its bound wrapper), but any other platform object gets a
+/// wrapper in each realm's cache that wraps it: a span's DOMStringMap read by
+/// its frame and by the frame's parent has two. The instance must outlive all
+/// of them - Blink traces it from every world's wrapper - so a cache frees an
+/// instance only when no other live cache of its agent still wraps it.
+/// Freeing it on the first wrapper's death left the other realm's wrapper,
+/// and the element's [SameObject] cache, on freed memory. A platform object
+/// is one agent's, so its wrappers are all in that agent's caches. It was a
+/// `threadlocal`, every agent's caches on the thread in one list.
+pub const Caches = std.ArrayListUnmanaged(*WrapperCache);
 
-/// The wrappers every live cache on this thread holds - every realm's - for
-/// the diagnostics tier (protocol.zig diagnosticCounters,
-/// `wrapper_cache_entries`).
+/// The current agent's live caches; null with no isolate current, or for an
+/// isolate createAgent did not make.
+fn currentCaches() ?*Caches {
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return null;
+    return @import("protocol_agents.zig").cachesOf(isolate);
+}
+
+/// The wrappers every live cache of the current agent holds - every realm's -
+/// for the diagnostics tier (protocol.zig diagnosticCounters,
+/// `wrapper_cache_entries`). A cache left registered at its agent's end is
+/// reported then (`endAgent`).
 pub fn liveEntryCount() usize {
+    const caches = currentCaches() orelse return 0;
     var total: usize = 0;
-    for (live_caches.items) |cache| total += cache.size();
+    for (caches.items) |cache| total += cache.size();
     return total;
 }
 
-/// The edges every live cache on this thread holds for owners script has
-/// not seen yet (`WrapperCache.deferEdge`), for tests and diagnostics.
+/// The edges every live cache of the current agent holds for owners script
+/// has not seen yet (`WrapperCache.deferEdge`), for tests and diagnostics.
 pub fn liveDeferredEdgeCount() usize {
+    const caches = currentCaches() orelse return 0;
     var total: usize = 0;
-    for (live_caches.items) |cache| total += cache.deferredEdgeCount();
+    for (caches.items) |cache| total += cache.deferredEdgeCount();
     return total;
 }
 
-/// Whether a live cache other than `except` holds a wrapper for this very
-/// instance - same slot, same generation.
+/// The agent's end, once its realms - and so their caches - have ended
+/// (protocol_agents.removeAgent): the list's storage goes. A cache still on
+/// it outlived its agent's realms; it is taken off, so that its own end
+/// touches no freed list.
+pub fn endAgent(caches: *Caches) void {
+    if (caches.items.len != 0) log.err("{d} wrapper cache(s) outlived their agent's realms", .{caches.items.len});
+    for (caches.items) |cache| {
+        cache.peers = null;
+        cache.registered = false;
+    }
+    caches.deinit(std.heap.page_allocator);
+    caches.* = .empty;
+}
+
+/// Whether a live cache other than `except`, of its agent, holds a wrapper
+/// for this very instance - same slot, same generation.
 fn wrappedElsewhere(instance: *runtime.Instance, except: *const WrapperCache) bool {
     const generation = runtime.SlabAllocator.generationOf(instance);
-    for (live_caches.items) |other| {
+    const caches = except.peers orelse currentCaches() orelse return false;
+    for (caches.items) |other| {
         if (other == except) continue;
         const entry = other.cache.get(instance) orelse continue;
         if (entry.original_generation == generation and entry.original_vtable == instance.vtable) return true;
@@ -866,11 +894,10 @@ pub const TeardownHolds = struct {
     }
 
     /// The agent's record is going (protocol_agents.forgetAgent): no cache
-    /// of this thread may read these holds again. Every realm of the agent
-    /// ended before it, so none should still point here; one that does
-    /// holds nothing from now on.
-    pub fn forgetCaches(self: *TeardownHolds) void {
-        for (live_caches.items) |cache| {
+    /// of the agent (`caches`, its live ones) may read these holds again;
+    /// one that does holds nothing from now on.
+    pub fn forgetCaches(self: *TeardownHolds, caches: *const Caches) void {
+        for (caches.items) |cache| {
             if (cache.holds == self) cache.holds = null;
         }
     }
@@ -1080,7 +1107,7 @@ fn finalizeEntry(entry: *CacheEntry) void {
     }
 
     // Another realm's cache still wraps this instance: only this realm's
-    // wrapper goes. See `live_caches`.
+    // wrapper goes. See `Caches`.
     if (wrappedElsewhere(entry.instance, entry.cache)) {
         disposeEntryWrapper(entry);
         entry.cache.allocator.destroy(entry);
@@ -1140,8 +1167,11 @@ pub const WrapperCache = struct {
     /// V8 Context (unused currently, kept for future extensions)
     context: *v8.Context,
 
-    /// Whether this cache is in `live_caches`.
+    /// Whether this cache is on its agent's live caches (`peers`).
     registered: bool = false,
+    /// Its agent's live caches (`Caches`, on the agent's record), which it
+    /// joined at its first `set`; null until then, and once its agent ended.
+    peers: ?*Caches = null,
 
     /// Pending-activity holds placed before the instance was wrapped
     /// (`holdForPendingActivity`), by slab generation so a reissued address
@@ -1909,27 +1939,32 @@ pub const WrapperCache = struct {
         self.disposeDetachedHolder();
     }
 
-    /// Join `live_caches` - on first use, when this cache's address is
-    /// final (callers copy `init`'s result into place).
-    fn register(self: *Self) void {
+    /// Join its agent's live caches (`isolate`'s: the realm's, whose wrapper
+    /// `set` is storing) - on first use, when this cache's address is final
+    /// (callers copy `init`'s result into place). A cache of an isolate
+    /// createAgent did not make joins none.
+    fn register(self: *Self, isolate: *v8.Isolate) void {
         if (self.registered) return;
-        live_caches.append(std.heap.page_allocator, self) catch return;
+        const caches = @import("protocol_agents.zig").cachesOf(isolate) orelse return;
+        caches.append(std.heap.page_allocator, self) catch return;
+        self.peers = caches;
         self.registered = true;
     }
 
     fn unregister(self: *Self) void {
         if (!self.registered) return;
-        for (live_caches.items, 0..) |c, i| {
+        const caches = self.peers orelse return;
+        for (caches.items, 0..) |c, i| {
             if (c == self) {
-                _ = live_caches.swapRemove(i);
+                _ = caches.swapRemove(i);
                 break;
             }
         }
-        // The list's memory goes with its last cache: a worker thread's
-        // caches all go before it ends, and what a threadlocal still holds
-        // when its thread exits is never freed.
-        if (live_caches.items.len == 0) live_caches.clearAndFree(std.heap.page_allocator);
+        // The list's memory goes with its last cache (and with its agent,
+        // `endAgent`).
+        if (caches.items.len == 0) caches.clearAndFree(std.heap.page_allocator);
         self.registered = false;
+        self.peers = null;
     }
 
     /// The wrapper `instance` already has, BORROWED - a node's one wrapper
@@ -1977,14 +2012,13 @@ pub const WrapperCache = struct {
         wrapper: *v8.Object,
         isolate: *v8.Isolate,
     ) !void {
-        _ = isolate; // Will be used for weak callback in next commit
         // A cache being torn down takes no wrapper: its sweep (`deinit`)
         // walks the map, and an entry put in now would be met or not as the
         // hash order fell - a wrapper whose instance the sweep then never
         // freed. The object stays its maker's to free (releaseIfUnwrapped
         // finds it unwrapped).
         if (self.is_tearing_down) return error.CacheTornDown;
-        self.register();
+        self.register(isolate);
 
         // An instance has ONE wrapper in a realm. One that is live already
         // is never replaced: every edge drawn on it - a traced child, a

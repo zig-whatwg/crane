@@ -7143,6 +7143,11 @@ pub fn V8Interface(comptime Interface: type) type {
                     conv.throwTypeError(isolate, msg);
                     return .kYes;
                 };
+                // Owned - a fresh Global<Context> - and only entered to make
+                // the error: one leaked per strict-mode write to a read-only
+                // collection (lane tstate1's engine.live_context_globals,
+                // indexed_property_semantics_test 0 -> 6).
+                defer v8.v8_Context_Dispose(creation_ctx);
 
                 var buf: [64]u8 = undefined;
                 const msg = std.fmt.bufPrint(&buf, "Cannot set property \"{d}\" on read-only indexed collection", .{index}) catch "Cannot set property on read-only indexed collection";

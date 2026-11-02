@@ -200,12 +200,10 @@ src/runtime/browser_scope.zig live_scopes 1 G P-res decl:224489c067b5c8fe
 src/runtime/browser_scope.zig standalone_scope 1 G P-res decl:900c140c0fed34c8
 src/runtime/ce_reactions.zig hooks 1 G P-res decl:af7149130290d354
 src/runtime/cleanup_coordinator.zig active_coordinator 1 TL C decl:30416084c34bdb90
-src/runtime/engines/v8/callback_registry.zig live 1 TL I/engine decl:cb121b88af7eecfc
 src/runtime/engines/v8/context_manager.zig accessor_stack 1 TL A decl:0fb068263d50ee81
 src/runtime/engines/v8/context_manager.zig accessor_stack_depth 1 TL A decl:3796f88280404836
 src/runtime/engines/v8/context_manager.zig child_context_globals_callback 1 TL H decl:8dc371340b266bfc
 src/runtime/engines/v8/context_manager.zig child_window_cleanup_callback 1 TL H decl:e117c619ecb2c79d
-src/runtime/engines/v8/context_manager.zig manager_state 1 TL I/engine decl:998e9887e732e6e8
 src/runtime/engines/v8/conversions.zig callback_allocator 1 G P-res decl:da54bbf97cc3b9a6
 src/runtime/engines/v8/external_references.zig runtime_ref_count 1 G P-const decl:3796f88280404836
 src/runtime/engines/v8/external_references.zig runtime_refs 1 G P-const decl:015c834d8ed6a3bf
@@ -216,8 +214,6 @@ src/runtime/engines/v8/page_realm.zig window_operations 1 TL H decl:933ecc861800
 src/runtime/engines/v8/protocol_agents.zig agents 1 G P-res decl:995683c5efe41adb
 src/runtime/engines/v8/protocol_agents.zig agents_lock 1 G P-res decl:ee0617868871b920
 src/runtime/engines/v8/protocol_agents.zig engine_snapshot 1 G P-res decl:3f5aa6740061fdcb
-src/runtime/engines/v8/protocol_modules.zig records 1 TL I/engine decl:82a83aad0cca3275
-src/runtime/engines/v8/protocol_realms.zig ending_realms 1 TL C decl:c88d9a0f7cc07e27
 src/runtime/engines/v8/protocol_scripts.zig prepared_depth 1 TL A decl:cf9dca8c2da04496
 src/runtime/engines/v8/snapshot_loader.zig tracked_snapshot_allocator 1 G P-res decl:72369f58d4c42d35
 src/runtime/engines/v8/snapshot_loader.zig tracked_snapshot_data 1 G P-res decl:25bf0c215167358c
@@ -253,8 +249,6 @@ src/runtime/engines/v8/v8_wrapper.cpp realmTagLock.lock 1 C++G P-res decl:563f7b
 src/runtime/engines/v8/v8_wrapper.cpp realmTaggedHandles.map 1 C++G I/engine decl:2aab0d876a6579e1
 src/runtime/engines/v8/v8_wrapper.cpp t_protocol_resolver 1 C++TL C decl:e2dc91ee6bfc953e
 src/runtime/engines/v8/v8_wrapper.cpp weakDataLock.lock 1 C++G P-res decl:e4340cacbab94ffb
-src/runtime/engines/v8/worker_realm.zig records 1 TL I/engine decl:07a3f05d79fd67cb
-src/runtime/engines/v8/wrapper_cache.zig live_caches 1 TL I/engine decl:647404af22eb8c78
 src/runtime/engines/v8/wrapper_type_info.zig global_registry 1 G P-const decl:eb2faada9e73e22b
 src/runtime/instance.zig TypeIdHolder.marker 1 G P-res decl:f33e1c60fc8c8315
 src/runtime/lifetime.zig hooks 1 G P-res decl:4dad5b7413d7153c
