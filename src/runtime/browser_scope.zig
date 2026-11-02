@@ -37,6 +37,11 @@ const Instance = @import("instance.zig").Instance;
 // process-wide: the one scope of objects made outside any Browser (unit tests and runtime-only hosts), set by runtime.initializeRuntime before any such object and cleared by its end; no Browser reads it.
 var standalone_scope: ?*BrowserScope = null;
 
+/// How many scopes are alive - every Browser's and the standalone one -
+/// from `init` to `deinit`, for diagnostics (`liveCount`).
+// process-wide: a diagnostics count over every Browser in the process (Blink's leak detector's instance counters); the test runner reads it after each test to find a Browser the test left alive
+var live_scopes: std.atomic.Value(usize) = .init(0);
+
 pub const BrowserScope = struct {
     /// Thread-safe: supplements are made on whichever thread first asks.
     allocator: Allocator,
@@ -131,6 +136,7 @@ pub const BrowserScope = struct {
     /// scope's address once it issues an object: a scope is not moved after
     /// its first platform object.
     pub fn init(allocator: Allocator) BrowserScope {
+        _ = live_scopes.fetchAdd(1, .monotonic);
         return .{
             .allocator = allocator,
             .slab = SlabAllocator.init(allocator),
@@ -166,6 +172,15 @@ pub const BrowserScope = struct {
 
         self.arena.deinit();
         self.slab.deinit();
+        _ = live_scopes.fetchSub(1, .monotonic);
+    }
+
+    /// How many scopes are alive in the process: every Browser's, and the
+    /// standalone one while the runtime runs without a Browser. Diagnostics
+    /// only - the Crane test runner (tests/test_runner/) reads it before and
+    /// after each test, so a test that leaves a Browser alive fails by name.
+    pub fn liveCount() usize {
+        return live_scopes.load(.monotonic);
     }
 
     /// The scope of the Browser that made `instance`: the scope whose slab

@@ -414,13 +414,27 @@ test "pending activity kept before the wrapper exists keeps half the side map's 
     try setup();
     const cache = test_cache.?;
     var worst: SideWorst = .{};
+    // The objects released unwrapped are the test's own to free - nothing
+    // wraps them, so no collection will - and are freed once the measuring
+    // is done, so the slab hands out fresh slots throughout as before. Left
+    // in the process's standalone slab they were 4,400 objects every later
+    // test of the process inherited (the Crane test runner's
+    // runtime.standalone_objects).
+    var released: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    defer {
+        for (released.items) |instance| runtime.BrowserScope.standalone().?.slab.free(instance);
+        released.deinit(std.testing.allocator);
+    }
     // A burst first: a page that keeps 2,000 objects before wrapping them.
     var burst: [2000]Made = undefined;
     for (&burst) |*made| {
         made.* = try unwrapped();
         v8.worker_realm.keepPlatformObjectAlive(made.instance);
     }
-    for (burst) |made| v8.worker_realm.releasePlatformObject(made.instance);
+    for (burst) |made| {
+        v8.worker_realm.releasePlatformObject(made.instance);
+        try released.append(std.testing.allocator, made.instance);
+    }
     for (0..300) |_| {
         var page: [16]Made = undefined;
         for (&page, 0..) |*made, i| {
@@ -434,7 +448,10 @@ test "pending activity kept before the wrapper exists keeps half the side map's 
             if (i % 2 == 0) {
                 try wrap(made);
                 v8.worker_realm.releasePlatformObject(made.instance);
-            } else v8.worker_realm.releasePlatformObject(made.instance);
+            } else {
+                v8.worker_realm.releasePlatformObject(made.instance);
+                try released.append(std.testing.allocator, made.instance);
+            }
         }
     }
     try std.testing.expectEqual(@as(usize, 0), cache.pending_before_wrap.count());
