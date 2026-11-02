@@ -254,6 +254,11 @@ standalone runtime of its own and the process's back, and a test that needs a
 realm gets its own `TestAgent`, made by `engine.createAgent` and ended with the
 test through `engine.destroyAgent` - no realm outlives its test
 ([lesson](docs/lessons/testing-a-test-may-assume-only-what-the-process-start-makes.md)).
+The Crane test runner (`tests/test_runner/`) checks this after every test: a
+test that leaves a Browser, agent, Global handle or standalone object alive, or
+leaves the start unfinished, fails naming the field and its before and after
+values. `CRANE_TEST_STATE=report|off` for a survey; a suite still in report
+mode is listed in build.zig as TEMPORARY with its findings file.
 A test that needs a fresh per-thread state runs its body on a `std.Thread` of
 its own. A race test
 between Browsers on different threads gives each Browser its own leak-checking

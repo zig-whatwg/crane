@@ -196,6 +196,7 @@ src/platform/stub_platform_backend.zig stub_source_buffer_counter 1 G X decl:84c
 src/platform/timer_backend.zig custom_backend 1 TL H decl:3d002d161da743ae
 src/platform/timer_backend.zig default_backend_allocator 1 TL A decl:72369f58d4c42d35
 src/platform/timer_backend.zig default_backend_instance 1 TL A decl:0bf910b86e57773a
+src/runtime/browser_scope.zig live_scopes 1 G P-res decl:224489c067b5c8fe
 src/runtime/browser_scope.zig standalone_scope 1 G P-res decl:900c140c0fed34c8
 src/runtime/ce_reactions.zig hooks 1 G P-res decl:af7149130290d354
 src/runtime/cleanup_coordinator.zig active_coordinator 1 TL C decl:30416084c34bdb90
