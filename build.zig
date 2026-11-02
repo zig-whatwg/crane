@@ -881,7 +881,7 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     // TEMPORARY: tests-v8 keeps the build runner's old shape - one process,
     // index order - because its tests depend on order (lane tlaunch2,
     // 2026-11-01; the bug list, every test with its seed and reason:
-    // tmp/analysis/tlaunch2-tests-v8-order.tsv). Remove this row's batch and
+    // docs/testing/tests-v8-order-findings-2026-11-01.tsv). Remove this row's batch and
     // shuffle when `zig build test-launch -Dspec=v8 -Dlaunch-batch=1` passes:
     // - a process per test (batch 1, seed 0x5eed11): 22 tests FAIL alone -
     //   context_counter_test (16), page_realm_operations_test (4) and
