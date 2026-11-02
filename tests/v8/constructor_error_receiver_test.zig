@@ -92,6 +92,17 @@ const Page = struct {
         try std.testing.expectEqualStrings(expected, got);
     }
 
+    /// A full collection, twice: what script let go of is finalized.
+    fn collect(self: Page) !void {
+        const Collect = struct {
+            fn steps(data: ?*anyopaque) void {
+                protocol.requestGarbageCollection(@ptrCast(@alignCast(data.?)));
+            }
+        };
+        try protocol.runInRealm(self.realm, Collect.steps, self.agent);
+        try protocol.runInRealm(self.realm, Collect.steps, self.agent);
+    }
+
     /// Runs `source` - which answers "64" when each of its 64 constructions
     /// failed as it should - once to warm up (the first call makes what
     /// later ones reuse), then again, and fails when the second run left
@@ -100,12 +111,17 @@ const Page = struct {
     /// no Browser). A construction that failed returned no object to the
     /// binding, so nothing else can ever free the one it made: its failure
     /// path frees it whole (docs/lessons/architecture-an-interfaces-deinit-
-    /// is-a-destructor-not-a-free.md).
+    /// is-a-destructor-not-a-free.md). Both counts are read after a full
+    /// collection: an error the binding throws as a DOMException is itself
+    /// a platform object, its wrapper the cache's until script lets go of it
+    /// and the collector takes it - a leaked handle or object outlives that.
     fn expectNoReceiverLeft(self: Page, source: []const u8) !void {
         try self.expect(source, "64");
+        try self.collect();
         const before = ffi.v8_Debug_LiveObjectGlobals();
         const objects_before = liveObjects();
         try self.expect(source, "64");
+        try self.collect();
         const after = ffi.v8_Debug_LiveObjectGlobals();
         const objects_after = liveObjects();
         if (after != before) {
