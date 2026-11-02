@@ -316,246 +316,78 @@ fn endRealms(state: *Realms) void {
     // An agent that never hosted a realm has nothing to end.
     if (state.contexts.capacity() == 0 and state.retired.capacity == 0) return;
     log.debug("[context_manager.endRealms] {} live, {} retired", .{ state.contexts.count(), state.retired.items.len });
-    {
-        const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
-        const cleanup_coordinator = runtime.cleanup_coordinator;
+    const cleanup_coordinator = runtime.cleanup_coordinator;
 
-        // Create coordinator for this teardown
-        var coordinator = cleanup_coordinator.CleanupCoordinator.init(state.alloc());
-        defer coordinator.deinit();
+    // Create coordinator for this teardown
+    var coordinator = cleanup_coordinator.CleanupCoordinator.init(state.alloc());
+    defer coordinator.deinit();
 
-        // Set coordinator as active so GC callbacks can check teardown state,
-        // and give the one it replaces back after (see removeContextByKey).
-        const previous_coordinator = cleanup_coordinator.getActiveCoordinator();
-        cleanup_coordinator.setActiveCoordinator(&coordinator);
-        defer cleanup_coordinator.setActiveCoordinator(previous_coordinator);
+    // Set coordinator as active so GC callbacks can check teardown state,
+    // and give the one it replaces back after (see removeContextByKey).
+    const previous_coordinator = cleanup_coordinator.getActiveCoordinator();
+    cleanup_coordinator.setActiveCoordinator(&coordinator);
+    defer cleanup_coordinator.setActiveCoordinator(previous_coordinator);
 
-        // Begin coordinated cleanup - signals GC callbacks to skip
-        coordinator.beginContextCleanup();
+    // Begin coordinated cleanup - signals GC callbacks to skip
+    coordinator.beginContextCleanup();
+    state.is_tearing_down = true;
 
-        // Set legacy teardown flag for backwards compatibility
-        // When wrapper_cache.deinit() triggers onObjectFreed for iframes,
-        // the iframe cleanup will try to call destroyChildContext. We need
-        // to skip those calls since we're already tearing everything down.
-        state.is_tearing_down = true;
+    // Phase: Static Registries (cleanup before context-specific resources)
+    // (The Intl objects' and ObservableArrays' states are the agent's:
+    // protocol_agents.endAgent frees them.)
+    coordinator.cleanupPhase(.static_registries);
 
-        // Phase: Static Registries (cleanup before context-specific resources)
-        // (The Intl objects' and ObservableArrays' states are the agent's:
-        // protocol_agents.endAgent frees them.)
-        coordinator.cleanupPhase(.static_registries);
-
-        // Deinit all owned runtime contexts
-        // Note: The order doesn't matter for cleanup because we skip onObjectFreed
-        // during teardown (is_tearing_down flag prevents nested calls).
-        log.debug("[context_manager.deinit] Starting context iteration, {} contexts in map\n", .{state.contexts.count()});
-        var it = state.contexts.valueIterator();
-        while (it.next()) |entry_ptr| {
-            const entry = entry_ptr.*; // Dereference the pointer to get *ContextEntry
-            log.debug("[context_manager.deinit] Processing context entry, owns_context={}, window_instance={?}\n", .{ entry.owns_context, entry.window_instance });
-            if (entry.owns_context) {
-                log.debug("[context_manager.deinit] Owns context - processing\n", .{});
-                // A pointer, not a copy. Every Instance created in this context
-                // holds `ctx == &entry.runtime_ctx`, so anything that clears a
-                // field has to land on the entry's own ContextData; on a copy it
-                // is a no-op and the entry goes on advertising resources this
-                // function has already freed.
-                const ctx_data = &entry.runtime_ctx;
-
-                // Phase: ShadowRealm cleanup
-                // Dispose any ShadowRealm contexts that were created by this context.
-                // This must happen BEFORE we destroy the wrapper cache and context data,
-                // as ShadowRealm cleanup may need to access V8 handles.
-                const raw_addr = v8.v8_Context_GetRawAddress(entry.v8_ctx);
-                if (raw_addr) |addr| {
-                    shadow_realm.disposeByInitiator(addr);
-                }
-
-                // Phase: Location cleanup
-                // Location may not be in the wrapper cache if never accessed from JS.
-                // Clean it up explicitly to prevent memory leaks.
-                // Strategy:
-                // 1. Remove Location from wrapper_cache FIRST (if present) - disposes V8 handle
-                // 2. Call gc.onObjectFreed to clean InternalState AND free Instance to slab
-                // 3. wrapper_cache.deinit won't find Location (already removed) - no double-free
-                if (entry.window_instance) |window_instance| {
-                    std.log.debug("[context_manager.deinit] Processing Window {*} for Location cleanup", .{window_instance});
-                    const WindowImpl = @import("impls").Window;
-                    if (WindowImpl.getInternal(window_instance)) |window_internal| {
-                        if (window_internal.location) |loc| {
-                            std.log.debug("[context_manager.deinit] Explicit Location cleanup for {*}", .{loc});
-                            // Step 1: Remove from wrapper cache if present
-                            if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
-                                const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
-                                _ = cache_ptr.remove(loc);
-                            }
-                            // Step 2: Clean up InternalState and free Instance
-                            runtime.gc.onObjectFreed(loc);
-                            window_internal.location = null; // Prevent double-free
-                        } else {
-                            std.log.debug("[context_manager.deinit] Window {*} has no Location", .{window_instance});
-                        }
-                    } else {
-                        std.log.debug("[context_manager.deinit] Window {*} has no internal state", .{window_instance});
-                    }
-                } else {
-                    std.log.debug("[context_manager.deinit] Context entry has no window_instance", .{});
-                }
-
-                // Phase: DOM Tree cleanup
-                // Clean up Window instance and its Document FIRST
-                // This cleans up the DOM tree, and each Node.deinit removes itself
-                // from the wrapper cache to prevent double-free.
-                // CRITICAL: We must call Window.deinit to trigger Document.deinit → Node.deinit
-                // which recursively cleans up all DOM nodes. Without this, DOM nodes
-                // (including HTMLScriptElement in iframes) would leak.
-                // To prevent double-free, we remove Window from wrapper cache FIRST.
-                coordinator.cleanupPhase(.dom_tree);
-
-                if (entry.window_instance) |window_instance| {
-                    log.debug("[context_manager.deinit] DOM Tree cleanup: Window.deinit for {*}", .{window_instance});
-
-                    // Remove Window from wrapper cache FIRST to prevent double-free
-                    if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
-                        const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
-                        _ = cache_ptr.remove(window_instance);
-                    }
-
-                    // Now call Window.deinit to clean up Document and DOM tree,
-                    // marked as removeContextByKey marks it.
-                    deinitWindow(window_instance);
-                    log.debug("[context_manager.deinit] DOM Tree cleanup: Window.deinit DONE", .{});
-                } else {
-                    log.debug("[context_manager.deinit] DOM Tree cleanup: NO window_instance for context", .{});
-                }
-
-                // Phase: Orphaned Iframe cleanup
-                // Clean up HTMLIFrameElements that were removed from the DOM (via iframe.remove())
-                // but never explicitly deinited. These are still in the wrapper cache and their
-                // BrowsingContext needs to be freed. We must do this before wrapper_cache.deinit()
-                // to ensure IFrameIntegration.deinit() → BrowsingContext.deinit() is called.
-                //
-                // We identify iframes by checking Node's local_name == "iframe".
-                log.debug("[context_manager.deinit] Starting orphaned iframe cleanup phase\n", .{});
-                if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
-                    log.debug("[context_manager.deinit] Got wrapper cache storage\n", .{});
-                    const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
-                    const NodeImpl = @import("impls").Node;
-                    const HTMLIFrameElementIface = @import("interfaces").HTMLIFrameElement;
-
-                    // Collect iframe instances first to avoid modifying cache while iterating
-                    var iframe_instances: [64]*runtime.Instance = undefined;
-                    var iframe_count: usize = 0;
-
-                    var iter = cache_ptr.cache.iterator();
-                    while (iter.next()) |kv| {
-                        const instance = kv.key_ptr.*;
-
-                        // Skip if already being cleaned up
-                        if (runtime.instance_lifecycle.isCleanupStarted(instance)) continue;
-
-                        // Check if this is an HTMLIFrameElement by checking local_name
-                        if (NodeImpl.getInternalState(instance)) |node_internal| {
-                            if (node_internal.local_name) |ln| {
-                                if (std.mem.eql(u8, ln.asSlice(), "iframe")) {
-                                    if (iframe_count < iframe_instances.len) {
-                                        iframe_instances[iframe_count] = instance;
-                                        iframe_count += 1;
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Now clean up the collected iframes
-                    log.debug("[context_manager.deinit] Cleaning up {} orphaned iframes\n", .{iframe_count});
-                    for (iframe_instances[0..iframe_count]) |iframe_instance| {
-                        log.debug("[context_manager.deinit] Calling deinit for iframe instance {*}\n", .{iframe_instance});
-                        HTMLIFrameElementIface.deinit(iframe_instance);
-                    }
-                } else {
-                    log.debug("[context_manager.deinit] No wrapper cache storage found\n", .{});
-                }
-
-                // Phase: Wrapper Cache cleanup
-                // Clean up V8 wrapper cache WITH callbacks
-                // Now safe to call deinit() because:
-                // 1. DOM nodes already removed themselves from cache via Node.deinit
-                // 2. Orphaned iframes already cleaned up explicitly above
-                // 3. Remaining entries are non-DOM objects (AbortController, etc.)
-                // 4. These need their deinit called to free InternalState
-                coordinator.cleanupPhase(.wrapper_cache);
-                if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
-                    const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
-                    cache_ptr.deinit();
-                    ctx_data.getAllocator().destroy(cache_ptr);
-                    // The realm and context-data phases below still run, and both
-                    // can reach an Instance whose ctx is this one. Leave no pointer
-                    // to the cache we just freed.
-                    ctx_data.clearV8WrapperCacheStorage();
-                }
-
-                // Phase: Event Loop cleanup
-                // Clean up V8 event loop (must be done before context deinit)
-                coordinator.cleanupPhase(.event_loop);
-                if (entry.event_loop) |ev_loop| {
-                    ev_loop.deinit();
-                    ctx_data.getAllocator().destroy(ev_loop);
-                }
-
-                // Phase: Realm cleanup
-                coordinator.cleanupPhase(.realm);
-                if (entry.realm) |realm| {
-                    @import("realm_v8.zig").disposeIntrinsics(realm);
-                    realm.deinit();
-                }
-
-                // Clean up children list (entries themselves are in the map)
-                var children = entry.children;
-                children.deinit(entry.allocator);
-
-                // Phase: Context Data cleanup
-                coordinator.cleanupPhase(.context_data);
-                ctx_data.deinit();
-            }
-
-            entry.runtime_ctx.clearDocumentUrl();
-
-            // The entry's own context handle (getOrCreateWithIsolate makes
-            // one: owns_v8_ctx), as retireEntry disposes it: the agent is
-            // entered and its isolate alive. Freeing the entry without it
-            // leaked one Global<Context> for every realm an agent's end tore
-            // down (lane tstate1: engine.live_context_globals 0 -> 1 per test
-            // realm, tests/v8/test_process_test.zig).
-            if (entry.owns_v8_ctx) {
-                v8.v8_Context_Dispose(entry.v8_ctx);
-                entry.owns_v8_ctx = false;
-            }
-
-            // Free the heap-allocated entry itself
-            state.alloc().destroy(entry);
+    // Every realm still on the record - one its host never ended (a
+    // ShadowRealm's context, a context a constructor registered, a test's) -
+    // ends as a realm's own end ends it (`removeContextByKey`): its garbage
+    // and orphans drained, its finalizers run (pending promise reactions,
+    // live async iterators), the callbacks its script registered released,
+    // its Window and tree, wrapper cache, event loop and realm record torn
+    // down, and the entry retired - which disposes the entry's own context
+    // handle. This path had a teardown of its own (the host agent's
+    // context_manager.deinit) that skipped the drains, the finalizers and
+    // the callbacks, and never disposed the context handle: one leaked
+    // Global<Context> per realm, and the Globals those held (lane tstate1).
+    // One realm at a time, from a fresh walk: an end can end others (its
+    // frames) and takes its own entry out. A teardown that keeps making
+    // realms is cut off rather than followed for ever.
+    var budget = state.contexts.count() * 4 + 16;
+    while (state.contexts.count() != 0) : (budget -= 1) {
+        if (budget == 0) {
+            log.err("an agent's end left {d} realm(s): their teardown kept making realms", .{state.contexts.count()});
+            break;
         }
-
-        // Free the entries retired earlier by removeContext/destroyChildContext.
-        // Held until the agent's end because Instances created in those
-        // contexts may still point at `entry.runtime_ctx`; once the agent has
-        // ended, none of its realms' Instances is read through one (a worker
-        // on a thread of its own freed its retired entries at its end before
-        // too, as that thread's host agent).
-        for (state.retired.items) |entry| {
-            if (entry.owns_context) entry.runtime_ctx.deinit();
-            state.alloc().destroy(entry);
-        }
-
-        // Mark cleanup complete
-        coordinator.endContextCleanup();
-
-        // Free the lists' storage. The record goes right after this
-        // (protocol_agents.removeAgent); until then it reads as an agent
-        // with no realms.
-        state.retired.deinit(state.alloc());
-        state.contexts.deinit(state.alloc());
-        state.* = .{ .allocator = state.allocator };
+        var it = state.contexts.iterator();
+        const kv = it.next().?;
+        const entry = kv.value_ptr.*;
+        // A context handle the entry does not own is its maker's, which may
+        // have let it go: the entry's Window is found without it.
+        removeContextByKey(kv.key_ptr.*, if (entry.owns_v8_ctx) entry.v8_ctx else null);
     }
+
+    // Free the entries retired by each realm's end, the ones above
+    // included. Held until the agent's end because Instances created in
+    // those contexts may still point at `entry.runtime_ctx`; once the agent
+    // has ended, none of its realms' Instances is read through one (a worker
+    // on a thread of its own freed its retired entries at its end before
+    // too, as that thread's host agent).
+    coordinator.cleanupPhase(.context_data);
+    for (state.retired.items) |entry| {
+        if (entry.owns_context) entry.runtime_ctx.deinit();
+        state.alloc().destroy(entry);
+    }
+
+    // Mark cleanup complete
+    coordinator.endContextCleanup();
+
+    // Free the lists' storage. The record goes right after this
+    // (protocol_agents.removeAgent); until then it reads as an agent
+    // with no realms. What a walk-out above left is freed unended.
+    var left = state.contexts.valueIterator();
+    while (left.next()) |entry| state.alloc().destroy(entry.*);
+    state.retired.deinit(state.alloc());
+    state.contexts.deinit(state.alloc());
+    state.* = .{ .allocator = state.allocator };
 }
 
 /// Get or create a runtime context for the given V8 context
