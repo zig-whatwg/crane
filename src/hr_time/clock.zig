@@ -80,6 +80,40 @@ pub const WallClock = struct {
     }
 };
 
+/// The clocks a time origin reads: HR-Time's monotonic and wall clocks -
+/// the process's (`process`, every function null), unless its global's
+/// Browser has clocks of its own: platform.BrowserClock, which the Performance
+/// and Window impls hand over (hr_time imports no platform). The testing
+/// platform's opt-in virtual clock is one: then performance.now() and the
+/// time origins read virtual time, as the Browser's timers do. `context` is
+/// BORROWED from the Browser's platform state, which outlives every realm.
+pub const Source = struct {
+    context: ?*anyopaque = null,
+    /// ns on the monotonic clock's origin. Null: MonotonicClock.
+    monotonic_now: ?*const fn (context: ?*anyopaque) callconv(.c) u64 = null,
+    /// ns since the Unix epoch. Null: WallClock.
+    wall_now: ?*const fn (context: ?*anyopaque) callconv(.c) i64 = null,
+
+    /// The process's clocks.
+    pub const process: Source = .{};
+
+    pub fn isProcess(self: Source) bool {
+        return self.monotonic_now == null;
+    }
+
+    /// The monotonic clock's unsafe current time.
+    pub fn monotonicTime(self: Source) Nanoseconds {
+        const now = self.monotonic_now orelse return MonotonicClock.unsafeCurrentTime();
+        return now(self.context);
+    }
+
+    /// The wall clock's unsafe current time.
+    pub fn wallTime(self: Source) Nanoseconds {
+        const now = self.wall_now orelse return WallClock.unsafeCurrentTime();
+        return now(self.context);
+    }
+};
+
 /// Get realtime (wall clock) nanoseconds since Unix epoch.
 ///
 /// This uses platform-specific APIs to get the actual wall clock time,

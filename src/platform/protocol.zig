@@ -593,6 +593,67 @@ pub const Stopwatch = struct {
     }
 };
 
+/// A Browser's clocks: what its event loop, its timers and the HR-Time and
+/// Date reads of its window realms measure time with. The platform's own
+/// clocks (`monotonicNow`, `wallNow`) - every function null, `real` - unless
+/// the platform gives the Browser a clock of its own: the testing platform's
+/// VIRTUAL clock (its PlatformBrowserOptions.virtual_clock), which moves only
+/// when the Browser's event loop is idle and a timer is due, or when a test
+/// advances it - Chromium's TaskEnvironment::TimeSource::MOCK_TIME ("a mock
+/// clock which only advances when reaching 'idle' ... time advances to the
+/// soonest delay", base/test/task_environment.h). Opt-in deterministic
+/// execution (the approved test plan, tmp/plans/test-architecture-
+/// recommendation.md section 5); WPT keeps real time, as all three browsers'
+/// WPT runs do.
+///
+/// The three functions are all set or all null. C-shaped (contract 1.4) and
+/// copied by value; `context` is BORROWED from the BrowserPlatform, which
+/// its Browser ends after everything that holds the clock (Browser.deinit
+/// ends the event loop and the agent first).
+pub const BrowserClock = extern struct {
+    context: ?*anyopaque = null,
+    /// The Browser's monotonic clock, ns on an arbitrary origin. Null:
+    /// `monotonicNow`.
+    monotonic_now: ?*const fn (context: ?*anyopaque) callconv(.c) u64 = null,
+    /// The Browser's wall clock, ns since the Unix epoch. Null: `wallNow`.
+    wall_now: ?*const fn (context: ?*anyopaque) callconv(.c) i64 = null,
+    /// Chromium's TimeDomain::MaybeFastForwardToWakeUp: the Browser's event
+    /// loop is idle - no runnable task, no I/O in flight - and its next
+    /// wake-up is `wake_up` (ns on the monotonic clock). A virtual clock moves
+    /// to it (never back) and answers true: the loop runs what is due without
+    /// waiting. Null - a real clock - means false: the loop waits.
+    fast_forward_to: ?*const fn (context: ?*anyopaque, wake_up: u64) callconv(.c) bool = null,
+
+    /// The platform's own clocks.
+    pub const real: BrowserClock = .{};
+
+    pub fn isReal(self: BrowserClock) bool {
+        return self.monotonic_now == null;
+    }
+
+    pub fn monotonicNow(self: BrowserClock) Instant {
+        const now = self.monotonic_now orelse return impl.monotonicNow();
+        return .{ .ns = now(self.context) };
+    }
+
+    pub fn wallNow(self: BrowserClock) WallTime {
+        const now = self.wall_now orelse return impl.wallNow();
+        return .{ .ns_since_epoch = now(self.context) };
+    }
+
+    /// `fast_forward_to`: whether the loop may run what is due at
+    /// `wake_up` now instead of waiting for it.
+    pub fn maybeFastForwardToWakeUp(self: BrowserClock, wake_up: Instant) bool {
+        const forward = self.fast_forward_to orelse return false;
+        return forward(self.context, wake_up.ns);
+    }
+};
+
+/// `browser`'s clocks (BrowserClock), fixed for the Browser's life. Any thread.
+pub inline fn browserClock(browser: *BrowserPlatform) BrowserClock {
+    return impl.browserClock(browser);
+}
+
 // ============================================================================
 // 6.3 Randomness
 // ============================================================================
@@ -602,6 +663,26 @@ pub const Stopwatch = struct {
 /// Cannot fail: the platform aborts if the OS cannot supply entropy.
 pub inline fn fillRandom(bytes: []u8) void {
     return impl.fillRandom(bytes);
+}
+
+/// The Browser's own random stream, for randomness a page can observe that
+/// need not be secret - first of all its agent's Math.random seed
+/// (engine.AgentOptions.random_seed). True, with `bytes` filled from the
+/// stream, for a Browser that has one: the testing platform's seeded Browser
+/// (its PlatformBrowserOptions.random_seed), which a run replays from its
+/// seed - per Browser, never per process: V8's --random-seed gives every
+/// context of every isolate the same Math.random sequence. False, `bytes`
+/// untouched, for every other Browser: the consumer uses its own entropy
+/// (the engine's, or `fillRandom`), as it would without this operation.
+///
+/// Never cryptographic randomness: crypto.getRandomValues, randomUUID and
+/// key generation read `fillRandom` in every mode, as no browser seeds them
+/// (Chromium's virtual time and V8's seeds leave base::RandBytes alone;
+/// WebKit's forceWeakRandomSeed reaches only Math.random), and a seed that
+/// reached them would be a predictable key the day it is set outside a test.
+/// Any thread; a stream replays only if its consumers draw in the same order.
+pub inline fn fillBrowserRandom(browser: *BrowserPlatform, bytes: []u8) bool {
+    return impl.fillBrowserRandom(browser, bytes);
 }
 
 // ============================================================================

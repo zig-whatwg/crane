@@ -340,17 +340,25 @@ fn releaseEngineSink(data: ?*anyopaque) callconv(.c) void {
 pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     // Before the new isolate exists: whether another is entered above it.
     const host_agent = ffi.v8_Isolate_GetCurrent() == null;
+    // [seeded_random] and [host_clock]: in the isolate's record before it
+    // initializes - V8 may make its random number generator then. None of
+    // either: an isolate exactly as before (v8_wrapper.cpp IsolateData).
+    const isolate_options: ffi.IsolateOptions = .{
+        .seeded = options.random_seed != null,
+        .random_seed = options.random_seed orelse 0,
+        .clock_context = if (options.clock) |agent_clock| agent_clock.context else null,
+        .clock_wall_now = if (options.clock) |agent_clock| agent_clock.wall_now else null,
+    };
     const isolate: *ffi.Isolate = blk: {
         if (options.from_snapshot) {
             if (engine_snapshot) |blob| {
-                if (ffi.v8_Isolate_NewFromSnapshot(blob.ptr, @intCast(blob.len), external_references.getRuntimeExternalReferencesPtr())) |i| break :blk i;
+                if (ffi.v8_Isolate_NewFromSnapshotWithOptions(blob.ptr, @intCast(blob.len), external_references.getRuntimeExternalReferencesPtr(), &isolate_options)) |i| break :blk i;
                 log.warn("V8 could not make an isolate from the snapshot; making one without it", .{});
             }
         }
         // The engine is started by initializeEngine; a host that has not
         // called it gets the platform here, as worker_realm's agents do.
-        const agent = worker_realm.createAgent() catch |err| return support.protocolError(err);
-        break :blk @ptrCast(@alignCast(agent));
+        break :blk ffi.v8_Isolate_NewWithOptions(&isolate_options) orelse return support.protocolError(error.OperationFailed);
     };
     errdefer ffi.v8_Isolate_Dispose(isolate);
     if (options.engine_task_sink) |sink| {

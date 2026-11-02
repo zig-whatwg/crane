@@ -183,9 +183,25 @@ pub const Frames = struct {
     /// each document's default timeline, animation time and pending
     /// animation event queue. Step 11 runs them.
     animations: dom_mod.animations.Registry,
+    /// The loop's clock - its Browser's (EventLoop.browser_clock) - which the
+    /// refresh grid and the frame timer are read against: a virtual clock
+    /// gives frames in virtual time. BORROWED, as the loop's.
+    clock: platform.BrowserClock = .real,
 
     pub fn init(allocator: Allocator, origin_ns: i64) Frames {
         return .{ .allocator = allocator, .origin_ns = origin_ns, .animations = dom_mod.animations.Registry.init(allocator) };
+    }
+
+    /// A loop's frames on `clock`, the grid's origin its now.
+    pub fn initWithClock(allocator: Allocator, clock: platform.BrowserClock) Frames {
+        var frames = init(allocator, @intCast(clock.monotonicNow().ns));
+        frames.clock = clock;
+        return frames;
+    }
+
+    /// The loop's clock now (ns).
+    fn nowNs(self: *const Frames) i64 {
+        return @intCast(self.clock.monotonicNow().ns);
     }
 
     /// The loop ends (EventLoop.deinit, before its agent): what the page's
@@ -358,7 +374,7 @@ fn animationRegistryOf(realm: runtime.Context) ?*dom_mod.animations.Registry {
 /// The latest refresh moment at or before now on `realm`'s loop's grid.
 fn latestRefreshOf(realm: runtime.Context) ?i64 {
     const frames = framesOf(realm) orelse return null;
-    return frames.latestRefreshAtOrBefore(monotonicNs());
+    return frames.latestRefreshAtOrBefore(frames.nowNs());
 }
 
 /// `document` has work for its event loop's next rendering opportunity.
@@ -446,7 +462,7 @@ fn schedule(frames: *Frames) void {
     if (!anyMayRender(frames)) return;
     const timers = frames.loop().timerInterface() orelse return;
     refreshIntervalFromPlatform(frames);
-    const now = monotonicNs();
+    const now = frames.nowNs();
     // The next refresh moment after the last rendering opportunity: at most
     // one opportunity per refresh.
     const due = frames.nextRefreshAtOrAfter(@max(now, frames.last_render_opportunity_ns + 1));
@@ -502,7 +518,7 @@ fn refreshIntervalFromPlatform(frames: *Frames) void {
 fn frameTimerFired(data: ?*anyopaque) void {
     const frames: *Frames = @ptrCast(@alignCast(data orelse return));
     frames.timer_id = null;
-    const now = monotonicNs();
+    const now = frames.nowNs();
     // Never before the refresh moment it was armed for (the timer counts
     // whole milliseconds): a frame's instant is never after its now.
     if (now < frames.timer_due_ns) {
@@ -956,12 +972,6 @@ pub fn endPage(realm: runtime.Context) void {
 /// Give back a value the engine handed over (OWNED).
 fn releaseValue(value: runtime.JSValue) void {
     engine.releaseValue(.{ .value = value });
-}
-
-/// The monotonic clock (ns), the platform's: the frame clock's time base,
-/// and the time origins'.
-fn monotonicNs() i64 {
-    return @intCast(platform.monotonicNow().ns);
 }
 
 // ============================================================================

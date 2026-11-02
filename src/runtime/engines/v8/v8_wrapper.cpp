@@ -2202,10 +2202,16 @@ class CranePlatform final : public Platform {
     std::shared_ptr<TaskRunner> GetForegroundTaskRunner(Isolate*, TaskPriority) override;
     bool IdleTasksEnabled(Isolate* isolate) override { return backend_->IdleTasksEnabled(isolate); }
     std::unique_ptr<ScopedBlockingCall> CreateBlockingScope(BlockingType type) override { return backend_->CreateBlockingScope(type); }
+    // V8's own clock (GC heuristics, compile timing): the backend's, always.
+    // A host's clock (engine.AgentOptions.clock) is what a page reads - Date -
+    // not what the engine schedules its own work by.
     double MonotonicallyIncreasingTime() override { return backend_->MonotonicallyIncreasingTime(); }
-    double CurrentClockTimeMillis() override { return backend_->CurrentClockTimeMillis(); }
-    int64_t CurrentClockTimeMilliseconds() override { return backend_->CurrentClockTimeMilliseconds(); }
-    double CurrentClockTimeMillisecondsHighResolution() override { return backend_->CurrentClockTimeMillisecondsHighResolution(); }
+    // The wall clock Date reads (13.1 JSDate::CurrentTimeValue reads
+    // CurrentClockTimeMilliseconds): the current isolate's clock when its
+    // agent was given one, else the backend's - defined below IsolateData.
+    double CurrentClockTimeMillis() override;
+    int64_t CurrentClockTimeMilliseconds() override;
+    double CurrentClockTimeMillisecondsHighResolution() override;
     StackTracePrinter GetStackTracePrinter() override { return backend_->GetStackTracePrinter(); }
     TracingController* GetTracingController() override { return backend_->GetTracingController(); }
     void DumpWithoutCrashing() override { backend_->DumpWithoutCrashing(); }
@@ -2234,6 +2240,9 @@ class CranePlatform final : public Platform {
 static Platform* defaultPlatform() {
     return static_cast<CranePlatform*>(g_platform.platform.get())->backend();
 }
+
+/// The per-isolate seed V8 asks for (defined with IsolateData, below).
+static bool craneEntropySource(unsigned char* buffer, size_t length);
 
 /// v8_Platform_Start's answer (ffi.zig PlatformStart).
 enum PlatformStartResult : int {
@@ -2274,6 +2283,10 @@ int v8_Platform_Start(const char* flags) {
             // Flags first: V8 reads them from InitializePlatform on and
             // freezes them in Initialize (crbug.com/v8/11043).
             if (flags && *flags) V8::SetFlagsFromString(flags);
+            // Per-isolate seeds (engine.AgentOptions.random_seed), before V8
+            // makes its first random number generator; an isolate without
+            // one gets V8's own entropy, as before (craneEntropySource).
+            V8::SetEntropySource(craneEntropySource);
             V8::InitializeICUDefaultLocation("");
             V8::InitializeExternalStartupData("");
             g_platform.platform = std::make_unique<CranePlatform>();
@@ -2417,6 +2430,21 @@ struct IsolateData {
     void (*test_promise_hook)(int, void*) = nullptr;
     void* test_promise_hook_data = nullptr;
 
+    /// engine.AgentOptions.random_seed: whether the isolate was made with a
+    /// seed, and the seed. Set before Isolate::Initialize - V8 may make the
+    /// isolate's random number generator while it initializes - and never
+    /// changed. craneEntropySource answers it for every generator V8 makes
+    /// while this isolate is current.
+    bool seeded = false;
+    uint64_t random_seed = 0;
+    /// engine.AgentOptions.clock: the host's wall clock (ns since the epoch)
+    /// that Date reads in this isolate, through CranePlatform's
+    /// CurrentClockTimeMilli*. Null: the backend platform's clock. Set
+    /// before Isolate::Initialize, never changed; the context is the host's,
+    /// BORROWED until the isolate is disposed.
+    int64_t (*clock_wall_now)(void*) = nullptr;
+    void* clock_context = nullptr;
+
 
     /// Take out the entry whose module is `module`, if any.
     SyntheticJsonExport* takeSyntheticExport(Local<Module> module) {
@@ -2434,6 +2462,71 @@ struct IsolateData {
 /// snapshot creator's).
 static IsolateData* isolateData(Isolate* isolate) {
     return isolate ? static_cast<IsolateData*>(isolate->GetData(kIsolateDataSlot)) : nullptr;
+}
+
+/// The host's wall clock of the isolate current on this thread (ns since the
+/// epoch) into `ns`, when its agent was given one (engine.AgentOptions.clock).
+/// V8 asks its platform for the time with no isolate argument, so the
+/// isolate is the one entered on the asking thread: script's own, for every
+/// Date read. Another thread - a V8 worker, a thread with no isolate entered
+/// - reads the backend's clock.
+static bool currentHostClock(int64_t* ns) {
+    const IsolateData* record = isolateData(Isolate::TryGetCurrent());
+    if (!record || !record->clock_wall_now) return false;
+    *ns = record->clock_wall_now(record->clock_context);
+    return true;
+}
+
+double CranePlatform::CurrentClockTimeMillis() {
+    int64_t ns;
+    if (currentHostClock(&ns)) return static_cast<double>(ns) / 1e6;
+    return backend_->CurrentClockTimeMillis();
+}
+
+int64_t CranePlatform::CurrentClockTimeMilliseconds() {
+    int64_t ns;
+    if (currentHostClock(&ns)) {
+        // Floor, as Platform's default floors CurrentClockTimeMillis: the
+        // millisecond before the epoch is -1.
+        int64_t ms = ns / 1000000;
+        if (ns % 1000000 < 0) ms -= 1;
+        return ms;
+    }
+    return backend_->CurrentClockTimeMilliseconds();
+}
+
+double CranePlatform::CurrentClockTimeMillisecondsHighResolution() {
+    int64_t ns;
+    if (currentHostClock(&ns)) return static_cast<double>(ns) / 1e6;
+    return backend_->CurrentClockTimeMillisecondsHighResolution();
+}
+
+/// V8::SetEntropySource's callback, installed once by v8_Platform_Start
+/// before V8 initializes. V8 asks it for a seed each time it makes a random
+/// number generator with no seed of its own (13.1 base/utils/random-number-
+/// generator.cc). An isolate made with a seed (engine.AgentOptions.random_seed)
+/// answers that seed for every generator made while it is the current
+/// isolate - its own above all, made lazily on its thread (Isolate::
+/// random_number_generator; Isolate::Initialize enters the isolate, 13.1
+/// api.cc:9897), which seeds each context's Math.random state the first
+/// time script asks (math-random.cc RefillCache) and the identity hashes.
+/// The same bytes every time: whichever generator V8 happens to make first,
+/// the isolate's own gets the seed, so a replay does not depend on what an
+/// earlier isolate of the process made.
+///
+/// Per isolate, never per process: --random-seed would give every context of
+/// every isolate one sequence (V8's own mjsunit.status skips d8-os in the
+/// isolates variant for exactly that). Every other generator - no isolate
+/// current, or one made without a seed - gets false, and V8 falls back to
+/// its own entropy (arc4random_buf, /dev/urandom) exactly as with no
+/// callback at all.
+static bool craneEntropySource(unsigned char* buffer, size_t length) {
+    const IsolateData* record = isolateData(Isolate::TryGetCurrent());
+    if (!record || !record->seeded) return false;
+    for (size_t i = 0; i < length; i++) {
+        buffer[i] = static_cast<unsigned char>(record->random_seed >> (8 * (i % 8)));
+    }
+    return true;
 }
 
 std::shared_ptr<TaskRunner> CranePlatform::GetForegroundTaskRunner(Isolate* isolate, TaskPriority priority) {
@@ -2501,7 +2594,32 @@ static void deleteSyntheticExport(SyntheticJsonExport* entry) {
     delete entry;
 }
 
+/// What an agent asks of its isolate before it initializes (ffi.zig
+/// IsolateOptions; engine.AgentOptions.random_seed and .clock). Null, or
+/// every field zero: an isolate exactly as v8_Isolate_New made it before.
+struct CraneIsolateOptions {
+    bool seeded;
+    uint64_t random_seed;
+    void* clock_context;
+    int64_t (*clock_wall_now)(void*);
+};
+
+/// `options` into the record, before Isolate::Initialize.
+static void applyIsolateOptions(IsolateData* record, const CraneIsolateOptions* options) {
+    if (!options) return;
+    record->seeded = options->seeded;
+    record->random_seed = options->random_seed;
+    record->clock_wall_now = options->clock_wall_now;
+    record->clock_context = options->clock_context;
+}
+
+Isolate* v8_Isolate_NewWithOptions(const CraneIsolateOptions* options);
+
 Isolate* v8_Isolate_New() {
+    return v8_Isolate_NewWithOptions(nullptr);
+}
+
+Isolate* v8_Isolate_NewWithOptions(const CraneIsolateOptions* options) {
     // Thread-safe, and a no-op once V8 has started. ffi.zig's v8_Isolate_New
     // starts it first with the runtime flags; this is the net below it.
     if (v8_Platform_Start(nullptr) == kPlatformDisposed) return nullptr;
@@ -2510,6 +2628,7 @@ Isolate* v8_Isolate_New() {
     create_params.array_buffer_allocator_shared =
         std::shared_ptr<ArrayBuffer::Allocator>(ArrayBuffer::Allocator::NewDefaultAllocator());
     auto record = std::make_unique<IsolateData>();
+    applyIsolateOptions(record.get(), options);
     // Isolate::New is exactly Allocate + Initialize (13.1 api.cc:9935).
     // Only GetData/SetData are allowed between them (v8-isolate.h:591).
     Isolate* isolate = Isolate::Allocate();
@@ -9153,10 +9272,28 @@ void v8_Snapshot_FreeData(const char* data) {
 /// @param external_references - Null-terminated array of external references
 ///                              (must match snapshot creation order exactly)
 /// @return New isolate with snapshot state, or nullptr on failure
+Isolate* v8_Isolate_NewFromSnapshotWithOptions(
+    const char* snapshot_data,
+    int snapshot_size,
+    const intptr_t* external_references,
+    const CraneIsolateOptions* options
+);
+
 Isolate* v8_Isolate_NewFromSnapshot(
     const char* snapshot_data,
     int snapshot_size,
     const intptr_t* external_references
+) {
+    return v8_Isolate_NewFromSnapshotWithOptions(snapshot_data, snapshot_size, external_references, nullptr);
+}
+
+/// v8_Isolate_NewFromSnapshot, with what the agent asks of its isolate
+/// before it initializes (CraneIsolateOptions; null: none).
+Isolate* v8_Isolate_NewFromSnapshotWithOptions(
+    const char* snapshot_data,
+    int snapshot_size,
+    const intptr_t* external_references,
+    const CraneIsolateOptions* options
 ) {
     // As v8_Isolate_New: the net below ffi.zig's start.
     if (v8_Platform_Start(nullptr) == kPlatformDisposed) return nullptr;
@@ -9182,6 +9319,7 @@ Isolate* v8_Isolate_NewFromSnapshot(
     IsolateData* isolate_data = new IsolateData();
     isolate_data->startup_data.data = snapshot_data;
     isolate_data->startup_data.raw_size = snapshot_size;
+    applyIsolateOptions(isolate_data, options);
     
     // Validate the snapshot
     if (!isolate_data->startup_data.IsValid()) {

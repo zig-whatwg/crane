@@ -174,6 +174,11 @@ pub const InternalState = struct {
     /// recorded when the Window is made, which stands in for it until the
     /// navigation's timing records its start.
     time_origin_ns: i64 = 0,
+    /// Its Browser's clock (platform.BrowserClock, set by initOwn): what its
+    /// idle callbacks read "now" from, as the Browser's event loop measures
+    /// its idle periods. The platform's own clocks unless the Browser has
+    /// one of its own. BORROWED from the Browser's platform state.
+    browser_clock: @import("platform").BrowserClock = .real,
     /// WebCrypto §10: this global's Crypto, traced for its whole lifetime.
     crypto: ?struct {
         owner: *runtime.Instance,
@@ -555,6 +560,12 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     const navigables = @import("dom").browser_state.navigablesOf(instance.ctx) orelse return error.NoBrowserScope;
     internal.* = try InternalState.init(allocator, navigables);
     internal.ui_backend = internal.stub_ui_backend.backend();
+    // Its Browser's clock (html.platform_state.clockOf), which its idle
+    // callbacks read, as the event loop's idle periods do. A Browser with a
+    // clock of its own (the testing platform's opt-in virtual clock) has
+    // the time origin recorded on it, as performance.now() reads it.
+    internal.browser_clock = @import("html").platform_state.browserClockOf(instance.ctx);
+    if (!internal.browser_clock.isReal()) internal.time_origin_ns = @intCast(internal.browser_clock.monotonicNow().ns);
     state.own._internal = internal;
 }
 
@@ -3085,7 +3096,7 @@ const InvokeIdleCallbacks = struct {
         // early due to newly scheduled high-priority work, return": the
         // deadline below already ends it at the next timer.
         // 2. "Let now be the current time."
-        const now: i64 = @intCast(clock.monotonicNanos());
+        const now: i64 = @intCast(found.internal.browser_clock.monotonicNow().ns);
         // 3. "If now is less than the result of calling getDeadline and the
         // window's list of runnable idle callbacks is not empty:"
         if (now < idle_periods.deadline(realm, self.period) and idle.runnable.items.len > 0) {
@@ -3176,7 +3187,7 @@ const IdleTimeout = struct {
         // IdleDeadline. Set the get deadline time algorithm associated with
         // deadlineArg to an algorithm returning now and set the timeout
         // associated with deadlineArg to true."
-        const now: i64 = @intCast(clock.monotonicNanos());
+        const now: i64 = @intCast(found.internal.browser_clock.monotonicNow().ns);
         // 2.4. "Invoke callback with « deadlineArg » and "report"."
         invokeIdleCallback(self.realm, entry.callback, .{ .timed_out = now });
         entry.callback.release();
@@ -4287,7 +4298,6 @@ pub fn call_getScreenDetails(instance: *runtime.Instance) anyerror!runtime.JSVal
 // A document's ID and named-property maps (domindex1): its elements' IDs,
 // name attributes and types, kept by insertion, removal and attribute change.
 const tree_ordered_map = @import("dom").tree_ordered_map;
-const clock = @import("clock");
 
 /// HTML 7.2.2.3 "the document-tree child navigable target name property
 /// set", asked for one name (domindex1): the window of the FIRST child
