@@ -9,6 +9,11 @@
 //! - lived to the agent's end, one per `for await`. Found by instances B2's
 //! measurement (agents_concurrent_engine_state_test.zig): the live weak
 //! callback records grew by one per round, in every agent.
+//!
+//! Measured in the agent's own isolate - V8's used global handle bytes, which
+//! a kept iterator's strong Global and its weak-armed record's both count in
+//! - not the process's live weak record count, which any other Browser of
+//! the process moves (docs/testing/test-variant-findings-2026-11-02.tsv M2).
 
 const std = @import("std");
 const test_process = @import("test_process.zig");
@@ -50,20 +55,38 @@ fn expectEval(realm: runtime.Context, source: []const u8, expected: []const u8) 
     try testing.expectEqualStrings(expected, answer);
 }
 
-/// The live weak callback records `source`, run `rounds` times in `realm`,
-/// leaves behind once collected.
-fn recordsLeftBy(agent: *protocol.Agent, realm: runtime.Context, source: []const u8, rounds: usize) !i64 {
+/// The global handles (in handles: the agent's isolate's used global handle
+/// bytes over one handle's) `source`, run `rounds` times in `realm`, leaves
+/// behind once collected.
+fn handlesLeftBy(agent: *protocol.Agent, realm: runtime.Context, source: []const u8, rounds: usize) !i64 {
+    const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
     try expectEval(realm, source, "ok");
     for (0..8) |_| try protocol.performMicrotaskCheckpoint(agent);
     protocol.notifyMemoryPressure(agent, .critical);
-    const before = ffi.v8_Debug_LiveWeakCallbackData();
+    const before: i64 = @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate));
     for (0..rounds) |_| {
         try expectEval(realm, source, "ok");
         for (0..4) |_| try protocol.performMicrotaskCheckpoint(agent);
     }
     protocol.notifyMemoryPressure(agent, .critical);
     protocol.notifyMemoryPressure(agent, .critical);
-    return ffi.v8_Debug_LiveWeakCallbackData() - before;
+    const after: i64 = @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate));
+    return @divTrunc(after - before, try handleBytes(realm, isolate));
+}
+
+/// One global handle's bytes in `isolate`: a value of `realm` held beside
+/// another (the first evaluation's own one-time handles made by then), then
+/// let go.
+fn handleBytes(realm: runtime.Context, isolate: *ffi.Isolate) !i64 {
+    var reports: Reports = .{};
+    const first = try protocol.evaluateClassicScript(realm, .{ .utf8 = "({})" }, "", null, reports.reporter());
+    defer first.release();
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    const held = try protocol.evaluateClassicScript(realm, .{ .utf8 = "({})" }, "", null, reports.reporter());
+    const holding = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    held.release();
+    try testing.expect(holding > before);
+    return @intCast(holding - before);
 }
 
 test "an async iterator script drops is collected: values() and for await keep nothing per call" {
@@ -87,16 +110,16 @@ test "an async iterator script drops is collected: values() and for await keep n
 
     const rounds = 100;
     // An iterator made and dropped at once.
-    const values_left = try recordsLeftBy(agent, realm, "new ReadableStream({ start(c) { c.close(); } }).values(); 'ok'", rounds);
+    const values_left = try handlesLeftBy(agent, realm, "new ReadableStream({ start(c) { c.close(); } }).values(); 'ok'", rounds);
     // A for await to the end of the stream (its iterator from @@asyncIterator).
-    const for_await_left = try recordsLeftBy(agent, realm,
+    const for_await_left = try handlesLeftBy(agent, realm,
         \\globalThis.total = 0;
         \\(async () => { for await (const chunk of new ReadableStream({ start(c) { c.enqueue(2); c.enqueue(3); c.close(); } })) total += chunk; })();
         \\'ok'
     , rounds);
     try expectEval(realm, "String(total)", "5");
     if (values_left >= rounds / 2 or for_await_left >= rounds / 2) {
-        std.debug.print("weak callback records left: {d} by values(), {d} by for await, over {d} rounds each\n", .{ values_left, for_await_left, rounds });
+        std.debug.print("global handles left: {d} by values(), {d} by for await, over {d} rounds each\n", .{ values_left, for_await_left, rounds });
         return error.IteratorsKept;
     }
 }
