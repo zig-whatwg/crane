@@ -996,7 +996,19 @@ const v8_alone = snapshot_first ++ [_]DeclaredTest{
     // The subject is a count the whole process shares.
     .{ .name = "diagnostic_live_counters_test.test.live_agents counts an agent from createAgent to destroyAgent", .reason = "the subject is engine.live_agents, the process's count of live agents, which the busy Browser's agent is in" },
     .{ .name = "worker_thread_state_test.test.worker threads that end leave no per-thread containers mapped", .reason = "the subject is the process's mapped memory over 32 worker threads, which the busy Browser's allocations grow" },
-} ++ v8state1_pending;
+    .{ .name = "test_process_test.test.a test's agent takes its realms down with it, their context handles too", .reason = "the subject is the process's live Global<Context> count after the agent's end - its isolate is gone, so nothing per isolate is left to read - which the busy Browser's realms move" },
+} ++ ledger_tests ++ v8state1_pending;
+
+/// object_global_ledger_test: the subject of each is the adapter's
+/// process-wide live_object_globals ledger itself.
+const ledger_reason = "the subject is the adapter's process-wide live_object_globals ledger, which every Browser of the process moves (V8's per-isolate global handle bytes are its cross-check, not its subject)";
+const ledger_tests = [_]DeclaredTest{
+    .{ .name = "object_global_ledger_test.test.v8_Object_New is counted when made and when released by v8_Object_Dispose", .reason = ledger_reason },
+    .{ .name = "object_global_ledger_test.test.v8_Object_New released as a Value (the binding's release) leaves the ledger where it started", .reason = ledger_reason },
+    .{ .name = "object_global_ledger_test.test.the other object constructors are counted the same way", .reason = ledger_reason },
+    .{ .name = "object_global_ledger_test.test.a counted entry point released through a generic dispose leaves nothing counted", .reason = ledger_reason },
+    .{ .name = "object_global_ledger_test.test.a binding call that makes and releases objects leaves the ledger where it started", .reason = ledger_reason },
+};
 
 /// The many-Browsers variant's reason for a test that restores agents from
 /// Crane's snapshot.
