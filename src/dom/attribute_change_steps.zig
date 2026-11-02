@@ -134,11 +134,6 @@ pub fn run(
     }
 }
 
-var test_calls: usize = 0;
-fn testSteps(_: *runtime.Instance, _: []const u8, _: ?[]const u8, _: ?[]const u8, _: ?[]const u8) void {
-    test_calls += 1;
-}
-
 test "steps run only for the element type that installed them, once however often installed" {
     const saved_count = count;
     const saved_entries = entries;
@@ -146,16 +141,22 @@ test "steps run only for the element type that installed them, once however ofte
         count = saved_count;
         entries = saved_entries;
     }
+    // The test's steps: their count lives in the test, not in the product.
+    const Test = struct {
+        var calls: usize = 0;
+        fn steps(_: *runtime.Instance, _: []const u8, _: ?[]const u8, _: ?[]const u8, _: ?[]const u8) void {
+            calls += 1;
+        }
+    };
     count = .{};
-    test_calls = 0;
-    install("x-test", &testSteps);
-    install("x-test", &testSteps);
+    install("x-test", &Test.steps);
+    install("x-test", &Test.steps);
     try std.testing.expectEqual(@as(usize, 1), count.elements);
     // Never dereferenced: the steps ignore the element.
     var element: runtime.Instance = undefined;
     run(&element, "x-test", "src", null, "a", null);
     run(&element, "div", "src", null, "a", null);
-    try std.testing.expectEqual(@as(usize, 1), test_calls);
+    try std.testing.expectEqual(@as(usize, 1), Test.calls);
 }
 
 test "attribute steps dispatch by attribute then element namespace, with an independent reader" {
@@ -165,21 +166,26 @@ test "attribute steps dispatch by attribute then element namespace, with an inde
         count = saved_count;
         entries = saved_entries;
     }
+    const Test = struct {
+        var calls: usize = 0;
+        fn steps(_: *runtime.Instance, _: []const u8, _: ?[]const u8, _: ?[]const u8, _: ?[]const u8) void {
+            calls += 1;
+        }
+    };
     count = .{};
-    test_calls = 0;
     const Read = struct {
         fn read(_: *runtime.Instance) []const u8 {
             return "private slot";
         }
     };
-    installForAttribute("urn:a", "nonce", .{ .change = &testSteps, .read = &Read.read });
-    installForAttribute("urn:a", "nonce", .{ .change = &testSteps, .read = &Read.read });
+    installForAttribute("urn:a", "nonce", .{ .change = &Test.steps, .read = &Read.read });
+    installForAttribute("urn:a", "nonce", .{ .change = &Test.steps, .read = &Read.read });
     try std.testing.expectEqual(@as(usize, 1), count.attributes);
     var element: runtime.Instance = undefined;
     runForAttribute(&element, "urn:a", "nonce", null, "value", null);
     runForAttribute(&element, "urn:a", "class", null, "value", null);
     runForAttribute(&element, "urn:b", "nonce", null, "value", null);
-    try std.testing.expectEqual(@as(usize, 1), test_calls);
+    try std.testing.expectEqual(@as(usize, 1), Test.calls);
     try std.testing.expectEqualStrings("private slot", readForAttribute(&element, "urn:a", "nonce").?);
     try std.testing.expect(readForAttribute(&element, "urn:b", "nonce") == null);
 }
