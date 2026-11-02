@@ -40,6 +40,8 @@ pub const capabilities: engine.Capabilities = .{
     .cross_origin_objects = .unsupported,
     .webassembly_streaming = .unsupported,
     .wrap_tracking = .unsupported,
+    .host_clock = .unsupported,
+    .seeded_random = .unsupported,
 };
 
 /// No engine behind it.
