@@ -45,9 +45,6 @@ const routes = [_]http.Route{
         "addEventListener('pagehide', e => { if (e.persisted) hidden = performance.now(); });" ++
         "addEventListener('pageshow', e => { if (e.persisted) shown = performance.now(); });" ++
         "function arm(ms) { setTimeout(() => { fired = performance.now(); }, ms); }") },
-    // A page whose response answers late: the navigation to it takes longer
-    // in real time than the timer page's wait.
-    .{ .path = "/b-slow.html", .content_type = "text/html", .body = page("b-slow", ""), .delay_ms = 400 },
     // A page that listens on a BroadcastChannel.
     .{ .path = "/channel.html", .content_type = "text/html", .body = page("channel", "var heard = 0; new BroadcastChannel('bfb').onmessage = () => { heard++; };") },
     // A page that holds a Web Lock until it is destroyed.
@@ -270,9 +267,12 @@ fn keptPageTimerWaits() !void {
     const realm = activeRealm(bc).?;
     const armed = try evaluateIn(realm, "globalThis.armedAt = performance.now(); arm(300); String(armedAt)");
     defer testing.allocator.free(armed);
-    // Left by a navigation slower in real time than the timer's wait: the
-    // page is cached with its timer still waiting.
-    try fixture.goTo(bc, "location.href = '/b-slow.html'", "/b-slow.html");
+    // Left by a navigation: however long it takes in real time, the page's
+    // clock stands still while its fetch is in flight, and the page is cached
+    // with its timer still waiting (shown with /b.html answering after 400 ms,
+    // longer than the wait: lane tsanfix1's RED, main's test failing, and this
+    // one passing).
+    try fixture.goTo(bc, "location.href = '/b.html'", "/b.html");
     try testing.expectEqual(@as(usize, 1), fixture.cached());
     // Cached for 500 ms of its clock, longer than the timer's wait.
     try fixture.advance(500);
