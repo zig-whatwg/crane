@@ -826,6 +826,32 @@ pub fn v8_Isolate_New() ?*Isolate {
     return isolate_entries.v8_Isolate_New();
 }
 pub extern fn v8_Isolate_Dispose(isolate: *Isolate) void;
+
+/// What the process's live isolates' read-only heap came from, as seen by an
+/// isolate that would restore `blob` (null: V8's built-in snapshot). V8 keeps
+/// ONE read-only heap per process, made by the first live isolate from its
+/// snapshot (v8_wrapper.cpp, g_read_only_heap): a restore from a blob that did
+/// not make it is refused (v8_Isolate_NewFromSnapshot answers null).
+pub const ReadOnlyHeapOrigin = enum(c_int) {
+    /// No isolate is alive: the next one makes the heap.
+    none = 0,
+    /// From the same snapshot.
+    same = 1,
+    /// From V8's built-in snapshot, and `blob` is Crane's.
+    builtin = 2,
+    /// From another blob than `blob` (Crane's, when `blob` is null).
+    other_blob = 3,
+    _,
+};
+extern fn v8_Process_ReadOnlyHeapOrigin(blob: ?[*]const u8, blob_size: c_int) c_int;
+/// The origin of the live isolates' read-only heap for `blob`: for a
+/// message, and for tests - another thread may change it at once.
+pub fn readOnlyHeapOrigin(blob: ?[]const u8) ReadOnlyHeapOrigin {
+    return @fromBackingInt(@intCast(v8_Process_ReadOnlyHeapOrigin(if (blob) |b| b.ptr else null, if (blob) |b| @intCast(b.len) else 0)));
+}
+/// How many isolates made through these entries are alive in the process,
+/// for tests that must make the process's first isolate.
+pub extern fn v8_Process_LiveIsolates() usize;
 /// Whether `isolate` was restored from a snapshot (v8_Isolate_NewFromSnapshot).
 pub extern fn v8_Isolate_IsFromSnapshot(isolate: *Isolate) bool;
 /// The bytes V8 restores `isolate` from (its StartupData's data) and their

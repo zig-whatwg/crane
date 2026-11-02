@@ -440,6 +440,30 @@ fn releaseEngineSink(data: ?*anyopaque) callconv(.c) void {
     sink.release();
 }
 
+/// A restore from `blob` was refused or failed, and the agent is made without
+/// the snapshot: said at warn, with why. V8 keeps ONE read-only heap per
+/// process, made by the first live isolate from ITS snapshot (v8_wrapper.cpp
+/// g_read_only_heap; V8 13.1 ReadOnlyHeap::SetUp): while isolates made from
+/// another snapshot live, Crane's blob cannot be restored - it crashed V8
+/// (docs/testing/test-variant-findings-2026-11-02.tsv M1). Normal use never
+/// gets here: a Browser's window agent is its process's first isolate, and
+/// its workers come after it.
+fn warnSnapshotRefused(blob: []const u8) void {
+    switch (ffi.readOnlyHeapOrigin(blob)) {
+        .builtin => log.warn("an agent asked for the engine's snapshot ({d} bytes at {*}) is made without it: the process's first live isolate was made from V8's built-in snapshot, and V8 keeps one read-only heap per process (a Browser with snapshot_path \"\", or a bare isolate, made before any snapshot agent)", .{ blob.len, blob.ptr }),
+        .other_blob => log.warn("an agent asked for the engine's snapshot ({d} bytes at {*}) is made without it: the process's first live isolate was made from another snapshot blob, and V8 keeps one read-only heap per process", .{ blob.len, blob.ptr }),
+        .none, .same, _ => log.warn("V8 could not make an isolate from the engine's snapshot ({d} bytes at {*}); making one without it", .{ blob.len, blob.ptr }),
+    }
+}
+
+/// Whether `agent` was restored from the engine's snapshot
+/// (engine.agentRestoredFromSnapshot): only then can its Window realms be
+/// restored from it.
+pub fn restoredFromSnapshot(agent: *Agent) bool {
+    const record = recordOf(@ptrCast(@alignCast(agent))) orelse return false;
+    return record.from_snapshot;
+}
+
 /// HTML "obtain an agent" (a similar-origin window agent or a worker's): a
 /// new isolate - restored from the engine's snapshot when asked for and one
 /// was given - with [[CanBlock]] as the options say and the host's hooks
@@ -458,7 +482,7 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
         if (options.from_snapshot) {
             if (engine_snapshot) |blob| {
                 if (ffi.v8_Isolate_NewFromSnapshotWithOptions(blob.ptr, @intCast(blob.len), external_references.getRuntimeExternalReferencesPtr(), &isolate_options)) |i| break :blk i;
-                log.warn("V8 could not make an isolate from the snapshot; making one without it", .{});
+                warnSnapshotRefused(blob);
             }
         }
         // The engine is started by initializeEngine; a host that has not

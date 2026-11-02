@@ -188,6 +188,10 @@ pub fn destroyAgent(agent: *Agent) void {
     worker_realm.destroyAgent(agent);
 }
 
+pub fn agentRestoredFromSnapshot(agent: *Agent) bool {
+    return protocol_agents.restoredFromSnapshot(agent);
+}
+
 pub fn agentHost(agent: *Agent) ?*anyopaque {
     return protocol_agents.agentHost(agent);
 }

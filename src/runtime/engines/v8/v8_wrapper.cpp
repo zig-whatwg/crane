@@ -2621,6 +2621,133 @@ static void applyIsolateOptions(IsolateData* record, const CraneIsolateOptions* 
     record->clock_context = options->clock_context;
 }
 
+// ---- one read-only heap per process (lane tsanfix1, M1) ----
+//
+// With pointer compression in one shared cage (Crane's V8:
+// V8_COMPRESS_POINTERS with V8_ENABLE_SANDBOX) every isolate of the process is
+// in ONE isolate group, and the group keeps ONE read-only heap: the first live
+// isolate makes it from its snapshot's read-only part, every later one reuses
+// it, and it goes when the group's last isolate ends (V8 13.1
+// src/heap/read-only-heap.cc, ReadOnlyHeap::SetUp and ReadOnlyHeap::TearDown).
+// An isolate restored from Crane's blob while that heap came from V8's built-in
+// snapshot reads objects the heap does not have: Isolate::Initialize crashed in
+// SharedHeapDeserializer::DeserializeStringTable (SIGSEGV 0x10488,
+// docs/testing/test-variant-findings-2026-11-02.tsv M1) - a snapshot Browser
+// made while a snapshot_path "" Browser's isolate was the process's first.
+// V8's DEBUG build CHECKs that every isolate of a group restores the same
+// read-only snapshot (src/heap/read-only-spaces.cc:76-104,
+// ReadOnlyArtifacts::VerifyChecksum); the release build Crane links does not.
+//
+// So the adapter records which snapshot the live isolates' read-only heap came
+// from, and refuses a restore from a blob that is not it: the caller makes the
+// isolate without the blob (protocol_agents.createAgent says so at warn).
+//
+// The other direction - an isolate from V8's built-in snapshot while the heap
+// came from Crane's blob, which is how every worker of a snapshot process is
+// made today - is allowed, and rests on two facts of the linked V8 and nothing
+// else:
+//  - v8_enable_extensible_ro_snapshot = true (13.1 BUILD.gn:436): a
+//    SnapshotCreator starts from V8's built-in snapshot and EXTENDS its
+//    read-only space, never rearranges it, so Crane's read-only heap keeps
+//    every object of the built-in one where the built-in startup data expects
+//    it;
+//  - VerifyChecksum's CHECK is compiled only #ifdef DEBUG
+//    (read-only-spaces.cc:76-104): a DEBUG V8 aborts on it.
+// Neither is a contract. The queued follow-up removes the dependency: every
+// isolate of a process made from one blob, workers included, as Chromium's gin
+// does - after the snapshot's default context is made plain, since Genesis
+// copies the default global's properties onto every fresh context
+// (bootstrapper.cc:7056-7062) and Crane's default global is a Window's.
+
+/// What the live isolates' read-only heap came from, as seen by an isolate
+/// that would restore `blob` (null: V8's built-in snapshot).
+enum CraneReadOnlyOrigin : int {
+    /// No isolate is alive: the next one makes the heap.
+    kReadOnlyNone = 0,
+    /// From the same snapshot.
+    kReadOnlySame = 1,
+    /// From V8's built-in snapshot, and `blob` is Crane's.
+    kReadOnlyBuiltin = 2,
+    /// From another blob than `blob` (Crane's, when `blob` is null).
+    kReadOnlyOtherBlob = 3,
+};
+
+struct ReadOnlyHeapRecord {
+    std::mutex lock;
+    /// Isolates made here and not yet disposed.
+    size_t live = 0;
+    /// The blob the heap came from; null for V8's built-in snapshot (while
+    /// `live` > 0).
+    const char* blob = nullptr;
+    int blob_size = 0;
+};
+
+// process-wide: V8's isolate group - one per process with Crane's single pointer-compression cage - keeps ONE read-only heap for every isolate of every Browser and thread; this records which snapshot made it, under its own lock, for every thread that makes or ends an isolate.
+static ReadOnlyHeapRecord g_read_only_heap;
+
+/// Whether two blobs are one snapshot: the same bytes, or equal ones.
+static bool sameSnapshot(const char* a, int a_size, const char* b, int b_size) {
+    if (a == b && a_size == b_size) return true;
+    return a && b && a_size == b_size && std::memcmp(a, b, static_cast<size_t>(a_size)) == 0;
+}
+
+/// The origin of the live isolates' read-only heap for `blob`; the lock held.
+static CraneReadOnlyOrigin readOnlyOriginLocked(const char* blob, int blob_size) {
+    if (g_read_only_heap.live == 0) return kReadOnlyNone;
+    if (!g_read_only_heap.blob) return blob ? kReadOnlyBuiltin : kReadOnlySame;
+    if (!blob) return kReadOnlyOtherBlob;
+    return sameSnapshot(g_read_only_heap.blob, g_read_only_heap.blob_size, blob, blob_size) ? kReadOnlySame : kReadOnlyOtherBlob;
+}
+
+/// Count an isolate about to be made from `blob` (null: V8's built-in
+/// snapshot) in the read-only heap record - or refuse it: false when the live
+/// isolates' heap came from another snapshot and `blob` is Crane's (the
+/// comment above says why the built-in direction is let through).
+static bool claimReadOnlyHeap(const char* blob, int blob_size) {
+    std::lock_guard<std::mutex> guard(g_read_only_heap.lock);
+    switch (readOnlyOriginLocked(blob, blob_size)) {
+        case kReadOnlyNone:
+            g_read_only_heap.blob = blob;
+            g_read_only_heap.blob_size = blob ? blob_size : 0;
+            break;
+        case kReadOnlySame:
+            break;
+        case kReadOnlyOtherBlob:
+            if (blob) return false;
+            break;
+        case kReadOnlyBuiltin:
+            return false;
+    }
+    g_read_only_heap.live += 1;
+    return true;
+}
+
+/// An isolate counted by claimReadOnlyHeap has ended (or was never made).
+static void releaseReadOnlyHeap() {
+    std::lock_guard<std::mutex> guard(g_read_only_heap.lock);
+    if (g_read_only_heap.live == 0) return;
+    g_read_only_heap.live -= 1;
+    if (g_read_only_heap.live == 0) {
+        g_read_only_heap.blob = nullptr;
+        g_read_only_heap.blob_size = 0;
+    }
+}
+
+/// What the live isolates' read-only heap came from, for an isolate that
+/// would restore `blob` (null: V8's built-in snapshot): a CraneReadOnlyOrigin.
+/// For a caller's message and for tests; another thread may change it at once.
+int v8_Process_ReadOnlyHeapOrigin(const char* blob, int blob_size) {
+    std::lock_guard<std::mutex> guard(g_read_only_heap.lock);
+    return readOnlyOriginLocked(blob, blob_size);
+}
+
+/// How many isolates made by this file are alive in the process, for tests
+/// that must make the process's first isolate.
+size_t v8_Process_LiveIsolates() {
+    std::lock_guard<std::mutex> guard(g_read_only_heap.lock);
+    return g_read_only_heap.live;
+}
+
 Isolate* v8_Isolate_NewWithOptions(const CraneIsolateOptions* options);
 
 Isolate* v8_Isolate_New() {
@@ -2637,10 +2764,16 @@ Isolate* v8_Isolate_NewWithOptions(const CraneIsolateOptions* options) {
         std::shared_ptr<ArrayBuffer::Allocator>(ArrayBuffer::Allocator::NewDefaultAllocator());
     auto record = std::make_unique<IsolateData>();
     applyIsolateOptions(record.get(), options);
+    // V8's built-in snapshot: always allowed (g_read_only_heap says why).
+    (void)claimReadOnlyHeap(nullptr, 0);
+    record->holds_read_only_heap = true;
     // Isolate::New is exactly Allocate + Initialize (13.1 api.cc:9935).
     // Only GetData/SetData are allowed between them (v8-isolate.h:591).
     Isolate* isolate = Isolate::Allocate();
-    if (!isolate) return nullptr;
+    if (!isolate) {
+        releaseReadOnlyHeap();
+        return nullptr;
+    }
     isolate->SetData(kIsolateDataSlot, record.release());
     Isolate::Initialize(isolate, create_params);
     return isolate;
@@ -2747,6 +2880,10 @@ void v8_Isolate_Dispose(Isolate* isolate) {
                 }
             }
         }
+
+        // The isolate has left the group's count (ReadOnlyHeap::TearDown ran
+        // inside Dispose): so does the adapter's record of its read-only heap.
+        if (record && record->holds_read_only_heap) releaseReadOnlyHeap();
 
         // The record last: a snapshot isolate's StartupData is in it, and V8
         // held a pointer to that until Dispose returned ("The embedder owns
@@ -9335,6 +9472,14 @@ Isolate* v8_Isolate_NewFromSnapshotWithOptions(
         delete isolate_data;
         return nullptr;
     }
+
+    // One read-only heap per process (g_read_only_heap): not from this blob
+    // while the live isolates' heap came from another snapshot.
+    if (!claimReadOnlyHeap(snapshot_data, snapshot_size)) {
+        delete isolate_data;
+        return nullptr;
+    }
+    isolate_data->holds_read_only_heap = true;
     
     // Create isolate params with snapshot and external references. The
     // ArrayBuffer allocator is V8's to free once the isolate and every
@@ -9347,6 +9492,7 @@ Isolate* v8_Isolate_NewFromSnapshotWithOptions(
     
     Isolate* isolate = Isolate::Allocate();
     if (!isolate) {
+        releaseReadOnlyHeap();
         delete isolate_data;
         return nullptr;
     }
