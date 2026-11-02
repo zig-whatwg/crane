@@ -312,7 +312,8 @@ pub fn main(init: std.process.Init) !void {
     const name = args.name orelse std.fs.path.basename(exe);
     const seed: u64 = switch (args.seedSpec()) {
         .value => |v| v,
-        .digest => try seedFromFile(io, exe),
+        .digest => seedFromFile(io, exe) catch |err|
+            launcherFailure(out, "could not read {s} for its seed: {f}", .{ name, exe, child_mod.FmtError{ .err = err } }),
         .random => seed: {
             var bytes: [8]u8 = undefined;
             io.random(&bytes);
@@ -327,7 +328,8 @@ pub fn main(init: std.process.Init) !void {
     };
 
     const started = Io.Clock.Timestamp.now(io, .awake);
-    const md = try child_mod.queryMetadata(gpa, io, &child_argv);
+    const md = child_mod.queryMetadata(gpa, io, &child_argv) catch |err|
+        launcherFailure(out, "could not list the tests of {s}: {f}", .{ name, exe, child_mod.FmtError{ .err = err } });
     defer md.deinit(gpa);
 
     var index_of: std.StringHashMapUnmanaged(u32) = .empty;
@@ -380,7 +382,8 @@ pub fn main(init: std.process.Init) !void {
         try std.fs.path.join(arena, &.{ args.cache_dir.?, "test-launcher-slots" })
     else
         null;
-    var slots: ?Slots = if (slots_dir) |d| try Slots.open(io, d, jobs) else null;
+    var slots: ?Slots = if (slots_dir) |d| (Slots.open(io, d, jobs) catch |err|
+        launcherFailure(out, "could not open the test-process slot directory {s}: {f}", .{ name, d, child_mod.FmtError{ .err = err } })) else null;
     defer if (slots) |*s| s.close();
     if (slots) |*s| executor.slots = s;
 
@@ -437,49 +440,90 @@ pub fn main(init: std.process.Init) !void {
         // which prints each suite's seed and its own wall time. The replay
         // command only when something did not pass.
         try out.print(
-            "test_launcher: {s}: seed 0x{x}, batch {d}: PASS {d} SKIP {d} FAIL {d} ORDER-DEPENDENT {d} FLAKY {d} NOT-RUN {d}; wall {d:.1} s, child CPU {d:.1} s, {d} processes, peak child RSS {d} MB\n",
-            .{ name, seed, args.batch, c.pass, c.skip, c.fail, c.order_dependent, c.flaky, c.not_run, fmtSeconds(wall_ns), cpu_s, run.processes.load(.monotonic), rss_mb },
+            "test_launcher: {s}: seed 0x{x}, batch {d}: PASS {d} SKIP {d} FAIL {d} ORDER-DEPENDENT {d} FLAKY {d} NOT-RUN {d} LAUNCHER-ERROR {d}; wall {d:.1} s, child CPU {d:.1} s, {d} processes, peak child RSS {d} MB\n",
+            .{ name, seed, args.batch, c.pass, c.skip, c.fail, c.order_dependent, c.flaky, c.not_run, c.launcher_error, fmtSeconds(wall_ns), cpu_s, run.processes.load(.monotonic), rss_mb },
         );
         if (c.bad() != 0) try out.print("  replay: {s}\n", .{replay});
         if (exit_failures != 0) try out.print("  {d} test processes exited non-zero after exit\n", .{exit_failures});
     } else try out.print(
-        "test_launcher: {s}: PASS {d}  SKIP {d}  FAIL {d}  ORDER-DEPENDENT {d}  FLAKY {d}  NOT-RUN {d}  (seed 0x{x}, batch {d}, {d} jobs)\n" ++
+        "test_launcher: {s}: PASS {d}  SKIP {d}  FAIL {d}  ORDER-DEPENDENT {d}  FLAKY {d}  NOT-RUN {d}  LAUNCHER-ERROR {d}  (seed 0x{x}, batch {d}, {d} jobs)\n" ++
             "  wall {d:.1} s, child CPU {d:.1} s, {d} processes, peak child RSS {d} MB, {d} exited non-zero after exit\n",
         .{
-            name,                c.pass, c.skip,                         c.fail, c.order_dependent, c.flaky, c.not_run, seed, args.batch, jobs,
+            name,                c.pass, c.skip,                         c.fail, c.order_dependent, c.flaky, c.not_run, c.launcher_error, seed, args.batch, jobs,
             fmtSeconds(wall_ns), cpu_s,  run.processes.load(.monotonic), rss_mb, exit_failures,
         },
     );
 
+    // What the launcher could not run fails the run; say what, once.
+    try report.writeLauncherErrors(out, gpa, name, md.names, run.records);
+
     if (args.out) |path| {
-        var aw: Io.Writer.Allocating = .init(arena);
-        for (0..run.batchCount()) |k| {
-            for (plan.batchTests(run.batchId(@intCast(k)))) |t| {
-                try report.writeLine(&aw.writer, md.names[t], t, &run.records[t], seed);
-            }
-        }
-        if (std.fs.path.dirname(path)) |dir| try Io.Dir.cwd().createDirPath(io, dir);
-        try Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = aw.written() });
-        // The output of every test that did not pass, beside it.
-        var log: Io.Writer.Allocating = .init(arena);
-        for (0..run.batchCount()) |k| {
-            for (plan.batchTests(run.batchId(@intCast(k)))) |t| {
-                const rec = &run.records[t];
-                if (rec.verdict.ok()) continue;
-                try log.writer.print("=== {s} {s} (batch {d} position {d}, seed 0x{x})\n{s}\n", .{
-                    rec.verdict.label(), md.names[t], rec.batch, rec.position, seed, rec.output,
-                });
-            }
-        }
-        const log_path = try std.fmt.allocPrint(arena, "{s}.log", .{path});
-        try Io.Dir.cwd().writeFile(io, .{ .sub_path = log_path, .data = log.written() });
-        if (!args.listen) try out.print("  results: {s} (failure output: {s})\n", .{ path, log_path });
+        writeResults(io, arena, path, md.names, &plan, &run, seed) catch |err|
+            launcherFailure(out, "could not write the result file {s}: {f}", .{ name, path, child_mod.FmtError{ .err = err } });
+        if (!args.listen) try out.print("  results: {s} (failure output: {s}.log)\n", .{ path, path });
     }
     try out.flush();
 
-    // In server mode the verdicts reached the build runner test by test; a
-    // child that exited non-zero after `exit` has no test to blame, so it
-    // fails the step here. By hand, any non-pass fails the run.
-    if (exit_failures != 0) std.process.exit(1);
-    if (!args.listen and c.bad() != 0) std.process.exit(1);
+    const status = exitStatus(args.listen, c, exit_failures);
+    if (status != 0) std.process.exit(status);
+}
+
+/// The launcher's exit status. In server mode the verdicts reached the build
+/// runner test by test, and what has no test to blame fails the step here: a
+/// child that exited non-zero after `exit`, and a test the launcher could
+/// not run (LAUNCHER-ERROR, answered `skip`: the build runner then reports
+/// the step failed, "test process unexpectedly exited with code 1", with the
+/// launcher's account of the cause). By hand, any non-pass fails the run.
+fn exitStatus(listen: bool, c: sched.Run.Counts, exit_failures: u32) u8 {
+    if (exit_failures != 0 or c.launcher_error != 0) return 1;
+    if (!listen and c.bad() != 0) return 1;
+    return 0;
+}
+
+test "exit status: a launcher error fails the run in server mode too, where a test's failure does not" {
+    // Server mode: failures went to the build runner as failures.
+    try testing.expectEqual(@as(u8, 0), exitStatus(true, .{ .pass = 3, .fail = 1, .flaky = 1 }, 0));
+    try testing.expectEqual(@as(u8, 1), exitStatus(true, .{ .pass = 3, .launcher_error = 1 }, 0));
+    try testing.expectEqual(@as(u8, 1), exitStatus(true, .{ .pass = 3 }, 1));
+    try testing.expectEqual(@as(u8, 0), exitStatus(true, .{ .pass = 3, .skip = 2 }, 0));
+    // By hand: any non-pass.
+    try testing.expectEqual(@as(u8, 1), exitStatus(false, .{ .pass = 3, .fail = 1 }, 0));
+    try testing.expectEqual(@as(u8, 1), exitStatus(false, .{ .pass = 3, .launcher_error = 1 }, 0));
+    try testing.expectEqual(@as(u8, 0), exitStatus(false, .{ .pass = 3, .skip = 1 }, 0));
+}
+
+/// A failure of the launcher itself, outside any test (it could not list
+/// the tests, open the slot directory, write the results): printed with its
+/// cause as an `error: '<step>' failed:` line (the form gate scripts grep,
+/// as `report.writeLauncherErrors`), and the run fails - in server mode,
+/// the step, with no test blamed. `args` starts with the suite's name.
+fn launcherFailure(out: *Io.Writer, comptime what: []const u8, args: anytype) noreturn {
+    out.print("error: 'test {s}' failed: LAUNCHER-ERROR: " ++ what ++ "\n", args) catch {};
+    out.flush() catch {};
+    std.process.exit(1);
+}
+
+/// The result file (one JSON line per test, `report.writeLine`) and, beside
+/// it, `<path>.log`: the output of every test that did not pass.
+fn writeResults(io: Io, arena: std.mem.Allocator, path: []const u8, names: []const []const u8, plan: *const plan_mod.Plan, run: *const sched.Run, seed: u64) !void {
+    var aw: Io.Writer.Allocating = .init(arena);
+    for (0..run.batchCount()) |k| {
+        for (plan.batchTests(run.batchId(@intCast(k)))) |t| {
+            try report.writeLine(&aw.writer, names[t], t, &run.records[t], seed);
+        }
+    }
+    if (std.fs.path.dirname(path)) |dir| try Io.Dir.cwd().createDirPath(io, dir);
+    try Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = aw.written() });
+    var log: Io.Writer.Allocating = .init(arena);
+    for (0..run.batchCount()) |k| {
+        for (plan.batchTests(run.batchId(@intCast(k)))) |t| {
+            const rec = &run.records[t];
+            if (rec.verdict.ok()) continue;
+            try log.writer.print("=== {s} {s} (batch {d} position {d}, seed 0x{x})\n{s}{s}\n", .{
+                rec.verdict.label(), names[t], rec.batch, rec.position, seed, rec.cause, rec.output,
+            });
+        }
+    }
+    const log_path = try std.fmt.allocPrint(arena, "{s}.log", .{path});
+    try Io.Dir.cwd().writeFile(io, .{ .sub_path = log_path, .data = log.written() });
 }
