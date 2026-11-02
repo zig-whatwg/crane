@@ -239,7 +239,11 @@ pub fn call_constructor(ctx: runtime.Context, body: webidl.Opt(?typedefs.BodyIni
     // 1-2. This's response is a new response, its headers a new Headers
     //      with guard "response" (init, InternalState.headers_guard).
     const instance = try init(ctx.allocator, State, &Response.vtable, ctx);
-    errdefer deinit(instance);
+    // Until it is returned, the construction is the object's only owner: a
+    // failed step frees it whole. Its own deinit is its destructor, not a
+    // free, and left its slot in the slab (tests/v8/constructor_error_receiver_test.zig;
+    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
+    errdefer runtime.gc.releaseOwned(instance);
     const internal = instance.getState(State).own._internal.?;
 
     // 3-4. Let bodyWithType be null; if body is non-null, set it to the
