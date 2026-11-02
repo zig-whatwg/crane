@@ -43,25 +43,34 @@ const Record = struct {
     /// [[HostDefined]]: the host's module script.
     host_defined: ?*anyopaque,
     identity_hash: c_int,
+    /// Its agent's isolate: the agent whose `Records` it is on.
+    isolate: *ffi.Isolate,
 };
 
 fn recordOf(record: *engine.ModuleRecord) *Record {
     return @ptrCast(@alignCast(record));
 }
 
-/// The records alive on this thread, by their module's identity hash (which
-/// V8 does not promise unique: a collision is told apart with Equals).
-/// Modules belong to an agent, and an agent to its thread.
-threadlocal var records: std.AutoHashMapUnmanaged(c_int, std.ArrayListUnmanaged(*Record)) = .empty;
+/// One agent's module records alive, by their module's identity hash (which
+/// V8 does not promise unique: a collision is told apart with Equals): a
+/// field of its record (protocol_agents.AgentRecord.modules), as modules
+/// belong to an agent. It was a `threadlocal`, every agent's on the thread
+/// in one map. Its storage goes with its last record, and with its agent
+/// (`endAgent`).
+// tombstones: freed (clearAndFree) with its last record, which each page's end brings (its module map releases every record), and with its agent
+pub const Records = std.AutoHashMapUnmanaged(c_int, std.ArrayListUnmanaged(*Record));
 const registry_allocator = std.heap.c_allocator;
 
 fn register(record: *Record) Error!void {
+    // Every record is parsed in a realm, and every realm is an agent's.
+    const records = protocol_agents.modulesOf(record.isolate) orelse return error.OperationFailed;
     const entry = records.getOrPut(registry_allocator, record.identity_hash) catch return error.OutOfMemory;
     if (!entry.found_existing) entry.value_ptr.* = .empty;
     entry.value_ptr.append(registry_allocator, record) catch return error.OutOfMemory;
 }
 
 fn unregister(record: *Record) void {
+    const records = protocol_agents.modulesOf(record.isolate) orelse return;
     const list = records.getPtr(record.identity_hash) orelse return;
     for (list.items, 0..) |r, i| {
         if (r == record) {
@@ -73,14 +82,23 @@ fn unregister(record: *Record) void {
         list.deinit(registry_allocator);
         _ = records.remove(record.identity_hash);
     }
-    // The map's own memory goes with its last record: a worker thread's
-    // records all go before it ends, and what a threadlocal still holds
-    // when its thread exits is never freed.
+    // The map's own memory goes with its last record.
     if (records.count() == 0) records.clearAndFree(registry_allocator);
 }
 
-/// The record whose module `module` is (a handle V8 lent a callback).
-fn find(module: *ffi.Module, identity_hash: c_int) ?*Record {
+/// The agent's end, once its realms have ended (protocol_agents.removeAgent):
+/// the map's storage goes. A record still on it is the host's to release.
+pub fn endAgent(records: *Records) void {
+    var lists = records.valueIterator();
+    while (lists.next()) |list| list.deinit(registry_allocator);
+    records.deinit(registry_allocator);
+    records.* = .empty;
+}
+
+/// The record whose module `module` is (a handle V8 lent a callback), of the
+/// agent whose isolate this is.
+fn find(isolate: *ffi.Isolate, module: *ffi.Module, identity_hash: c_int) ?*Record {
+    const records = protocol_agents.modulesOf(isolate) orelse return null;
     const list = records.get(identity_hash) orelse return null;
     for (list.items) |r| {
         if (ffi.v8_Module_Equals(r.module, module)) return r;
@@ -88,7 +106,7 @@ fn find(module: *ffi.Module, identity_hash: c_int) ?*Record {
     return null;
 }
 
-fn newRecord(module: *ffi.Module, realm: Context, host_defined: ?*anyopaque) Error!*engine.ModuleRecord {
+fn newRecord(isolate: *ffi.Isolate, module: *ffi.Module, realm: Context, host_defined: ?*anyopaque) Error!*engine.ModuleRecord {
     const record = registry_allocator.create(Record) catch return error.OutOfMemory;
     errdefer registry_allocator.destroy(record);
     record.* = .{
@@ -96,6 +114,7 @@ fn newRecord(module: *ffi.Module, realm: Context, host_defined: ?*anyopaque) Err
         .realm = realm,
         .host_defined = host_defined,
         .identity_hash = ffi.v8_Module_GetIdentityHash(module),
+        .isolate = isolate,
     };
     try register(record);
     return @ptrCast(record);
@@ -145,7 +164,7 @@ pub fn parseModule(realm: Context, source: []const u8, start: engine.SourcePosit
         }
     }
 
-    return .{ .record = newRecord(module, realm, host_defined) catch |err| {
+    return .{ .record = newRecord(entered.isolate, module, realm, host_defined) catch |err| {
         ffi.v8_Module_Dispose(module);
         return err;
     } };
@@ -167,7 +186,7 @@ pub fn parseJSONModule(realm: Context, source: []const u8, url: []const u8, host
         @intCast(url.len),
         &parse_error,
     ) orelse return .{ .parse_error = try caughtError(parse_error) };
-    return .{ .record = newRecord(module, realm, host_defined) catch |err| {
+    return .{ .record = newRecord(entered.isolate, module, realm, host_defined) catch |err| {
         ffi.v8_Module_Dispose(module);
         return err;
     } };
@@ -187,7 +206,7 @@ pub fn createDefaultExportSyntheticModule(realm: Context, value: JSValue, url: [
         url.ptr,
         @intCast(url.len),
     ) orelse return error.OperationFailed;
-    return newRecord(module, realm, host_defined) catch |err| {
+    return newRecord(entered.isolate, module, realm, host_defined) catch |err| {
         ffi.v8_Module_Dispose(module);
         return err;
     };
@@ -238,7 +257,9 @@ const Resolving = struct {
         const self: *Resolving = @ptrCast(@alignCast(data orelse return null));
         // The referrer is a record the host holds: every record in its graph
         // came from parseModule or parseJSONModule.
-        const referrer_record = find(referrer, ffi.v8_Module_GetIdentityHash(referrer)) orelse return null;
+        // Linking runs with the graph's agent current.
+        const isolate = ffi.v8_Isolate_GetCurrent() orelse return null;
+        const referrer_record = find(isolate, referrer, ffi.v8_Module_GetIdentityHash(referrer)) orelse return null;
         const resolved = self.resolve(self.data, @ptrCast(referrer_record), .{
             .specifier = specifier[0..@intCast(specifier_len)],
             .type_attribute = if (type_attribute) |t| std.mem.span(t) else null,
@@ -399,7 +420,7 @@ pub fn finishDynamicImport(request: *engine.ImportRequest, outcome: engine.Dynam
 pub fn onImportMetaUrl(isolate: *ffi.Isolate, module: *ffi.Module, identity_hash: c_int, len: *usize) callconv(.c) ?[*]const u8 {
     const agent = protocol_agents.recordOf(isolate) orelse return null;
     const url_of = agent.hooks.importMetaUrl orelse return null;
-    const record = find(module, identity_hash) orelse return null;
+    const record = find(isolate, module, identity_hash) orelse return null;
     const host_defined = record.host_defined orelse return null;
     const url = url_of(agent.host, host_defined);
     len.* = url.len;

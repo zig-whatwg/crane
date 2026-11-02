@@ -18,8 +18,6 @@ const ffi = v8.ffi;
 
 fn setup() void {
     test_process.start();
-    // Already initialized is fine: the manager is per thread, not per test.
-    v8.context_manager.init(std.heap.page_allocator) catch {};
 }
 
 fn workerRealm(agent: *runtime.Agent) !runtime.WorkerRealm {
@@ -77,8 +75,8 @@ fn evalIntIn(agent: *runtime.Agent, realm: runtime.Context, code: []const u8) !i
 // worker is installed: not DedicatedWorkerGlobalScope, nor its postMessage.
 test "a shared worker realm's global object is a SharedWorkerGlobalScope" {
     setup();
-    const agent = try v8.worker_realm.createAgent();
-    defer v8.worker_realm.destroyAgent(agent);
+    const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &test_process.no_hooks });
+    defer protocol.destroyAgent(agent);
     const made = try sharedWorkerRealm(agent);
     defer v8.worker_realm.destroyWorkerRealm(made.realm, null, null);
 
@@ -107,8 +105,8 @@ test "a shared worker realm's global object is a SharedWorkerGlobalScope" {
 // globals nor a dedicated worker's postMessage.
 test "a service worker realm's global object is a ServiceWorkerGlobalScope" {
     setup();
-    const agent = try v8.worker_realm.createAgent();
-    defer v8.worker_realm.destroyAgent(agent);
+    const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &test_process.no_hooks });
+    defer protocol.destroyAgent(agent);
     const made = try serviceWorkerRealm(agent);
     defer v8.worker_realm.destroyWorkerRealm(made.realm, null, null);
 
@@ -133,8 +131,8 @@ test "a service worker realm's global object is a ServiceWorkerGlobalScope" {
 // DedicatedWorkerGlobalScope, and SharedWorkerGlobalScope is not exposed to it.
 test "a worker realm's global object is a DedicatedWorkerGlobalScope unless asked for a shared one" {
     setup();
-    const agent = try v8.worker_realm.createAgent();
-    defer v8.worker_realm.destroyAgent(agent);
+    const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &test_process.no_hooks });
+    defer protocol.destroyAgent(agent);
     const made = try workerRealm(agent);
     defer v8.worker_realm.destroyWorkerRealm(made.realm, null, null);
 
@@ -146,8 +144,8 @@ test "a worker realm's global object is a DedicatedWorkerGlobalScope unless aske
 
 test "a worker realm's record is a dedicated worker's, its global object the global scope, its intrinsics populated" {
     setup();
-    const agent = try v8.worker_realm.createAgent();
-    defer v8.worker_realm.destroyAgent(agent);
+    const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &test_process.no_hooks });
+    defer protocol.destroyAgent(agent);
     const made = try workerRealm(agent);
     defer v8.worker_realm.destroyWorkerRealm(made.realm, null, null);
 
@@ -193,8 +191,8 @@ fn recordRound(isolate: *ffi.Isolate) !void {
 // record - installing the [Exposed] interfaces, not the record.
 test "a worker realm's record lets its context go when the context is removed" {
     setup();
-    const agent = try v8.worker_realm.createAgent();
-    defer v8.worker_realm.destroyAgent(agent);
+    const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &test_process.no_hooks });
+    defer protocol.destroyAgent(agent);
     const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
     ffi.v8_Isolate_Enter(isolate);
     defer ffi.v8_Isolate_Exit(isolate);
@@ -213,8 +211,8 @@ test "a worker realm's record lets its context go when the context is removed" {
 // some kinds of Global.
 test "a worker realm made and destroyed leaves no global handle behind, and lets its context go" {
     setup();
-    const agent = try v8.worker_realm.createAgent();
-    defer v8.worker_realm.destroyAgent(agent);
+    const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &test_process.no_hooks });
+    defer protocol.destroyAgent(agent);
     const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
     // What one handle costs in V8's count.
     const handle_bytes = blk: {

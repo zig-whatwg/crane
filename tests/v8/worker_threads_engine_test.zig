@@ -71,8 +71,6 @@ const Agent = struct {
     }
 
     fn runRounds(self: *Agent) !void {
-        // The context manager is per thread, as each worker thread's will be.
-        v8.context_manager.init(std.heap.page_allocator) catch {};
         const agent = try protocol.createAgent(.{
             .can_block = true,
             .from_snapshot = false,

@@ -2,12 +2,13 @@
 //! must end with it.
 //!
 //! Every dedicated worker runs its agent on a thread of its own
-//! (docs/instances.md, "Decisions"). The adapter and the impls keep some
+//! (docs/instances.md, "Decisions"). The adapter and the impls kept some
 //! per-agent bookkeeping in threadlocal containers - the worker realms made
 //! on the thread (worker_realm.zig `records`), its wrapper caches
 //! (wrapper_cache.zig `live_caches`), its callback wrappers
 //! (callback_registry.zig `live`), its module records (protocol_modules.zig
-//! `records`), its MessagePorts (MessagePort.zig `live_ports`). Each entry is
+//! `records`), its MessagePorts (MessagePort.zig `live_ports`); the adapter's
+//! are fields of the agent's record now (lane engown1), freed with it. Each entry is
 //! removed when its owner goes, but a container that keeps its capacity
 //! after its last entry leaves it allocated when the thread's TLS goes: one
 //! block per container per worker thread, for the life of the process. The

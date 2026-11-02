@@ -35,9 +35,6 @@ fn realm() !runtime.Context {
     const i = try test_agent.open(.{ .hooks = &window_agent_hooks });
     if (test_realm == null) {
         const context = test_agent.context.?;
-        // Already initialized is fine: the manager is per thread (the test's
-        // agent is its thread's host agent, whose end takes it down).
-        v8.context_manager.init(std.heap.page_allocator) catch {};
         const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
         test_isolate = i;
         test_context = context;
@@ -2783,7 +2780,6 @@ const AgentRealm = struct {
         const scope = ffi.v8_HandleScope_New(isolate);
         defer if (scope) |s| ffi.v8_HandleScope_Dispose(s);
         const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-        v8.context_manager.init(std.heap.page_allocator) catch {};
         const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
         return .{ .realm = r, .context = context, .isolate = isolate };
     }
@@ -2811,15 +2807,14 @@ test "protocol: an agent ended while another isolate is entered leaves that isol
         try expectEval(in_agent.realm, "typeof ShadowRealm === 'function' || typeof ShadowRealm === 'undefined'", "true");
     }
     // Ended while the test's isolate is the entered one: only its own
-    // isolate's state goes, not the thread's (the context manager keeps the
-    // test's realm).
+    // state goes (the test's agent keeps its realm).
     protocol.destroyAgent(agent);
     try std.testing.expectEqual(test_isolate, ffi.v8_Isolate_GetCurrent());
     try expectEval(base, "[1, 2, 3].map((x) => x * 2).join()", "2,4,6");
     try std.testing.expect(v8.context_manager.get(test_context.?) != null);
 }
 
-test "protocol: an agent made inside another's realm is not the host agent, even when it ends with no isolate entered" {
+test "protocol: an agent made inside another's realm and ended with no isolate entered leaves the other's realms" {
     defer test_agent.close();
     const base = try realm();
     const no_hooks: protocol.HostHooks = .{};
@@ -2832,9 +2827,8 @@ test "protocol: an agent made inside another's realm is not the host agent, even
     }
     // Ended with NO isolate entered: as a Browser ends its workers once its
     // page realm has exited the page isolate. What is entered at the end says
-    // nothing about whose agent this is; it is still not the thread's host,
-    // so only its own isolate's state goes - the context manager keeps the
-    // test's realm, and its templates still work.
+    // nothing about whose agent this is: only its own state goes - the
+    // test's agent keeps its realm, and its templates still work.
     {
         // Every isolate this thread has entered is exited, not only this
         // file's: tests/v8 runs in one process, and the files before this one

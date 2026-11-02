@@ -33,7 +33,6 @@ fn agent() !*ffi.Isolate {
     const i = try test_agent.open(.{ .hooks = &window_agent_hooks });
     if (test_isolate == null) {
         const context = test_agent.context.?;
-        v8.context_manager.init(std.heap.page_allocator) catch {};
         _ = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
         test_isolate = i;
     }
