@@ -29,6 +29,7 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const tombstones = @import("infra").tombstones;
+const address_map = @import("infra").address_map;
 
 const testing = std.testing;
 const Instance = runtime.Instance;
@@ -36,9 +37,9 @@ const Instance = runtime.Instance;
 const no_methods = .{};
 const vtable: runtime.VTable = .{ .name = "Clustering", .deinit = null, .methods_ptr = &no_methods };
 
-/// The map type Crane's instance-keyed tables use.
+/// The map type Crane's instance-keyed tables use: a seed per table.
 fn InstanceMap(comptime V: type) type {
-    return std.AutoHashMapUnmanaged(*Instance, V);
+    return address_map.AddressHashMapUnmanaged(*Instance, V);
 }
 
 /// The worst a page of the side map began with (engine_pending_activity_test's
