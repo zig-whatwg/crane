@@ -86,7 +86,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 pub fn call_constructor(ctx: runtime.Context, args: interfaces.URLPattern.ConstructorArgs) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(ctx.allocator, State, &URLPatternInterface.vtable, ctx);
-    errdefer deinit(instance);
+    // Until it is returned, the construction is the object's only owner: a
+    // failed step frees it whole. Its own deinit is its destructor, not a
+    // free, and left its slot in the slab (tests/v8/constructor_error_receiver_test.zig;
+    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
+    errdefer runtime.gc.releaseOwned(instance);
 
     const state = instance.getState(State);
 
