@@ -14,6 +14,8 @@ const engine = @import("engine");
 
 const ffi = @import("ffi.zig");
 const realm_entry = @import("realm_entry.zig");
+const js_scope = @import("js_scope.zig");
+const protocol_agents = @import("protocol_agents.zig");
 const context_manager = @import("context_manager.zig");
 const conversions = @import("conversions.zig");
 const support = @import("protocol_support.zig");
@@ -24,19 +26,32 @@ const Owned = engine.Owned;
 const Error = engine.Error;
 const Allocator = std.mem.Allocator;
 
-/// The protocol's "prepare to run script" state: the realm entered.
-pub const ScriptScope = realm_entry.Entered;
+/// The protocol's "prepare to run script" state: the realm entered, and the
+/// count of its agent's open prepares it added to.
+pub const ScriptScope = struct {
+    isolate: *ffi.Isolate,
+    entered_isolate: bool,
+    scope: js_scope.JsScope,
+    /// The agent's count of open "prepare to run script"s
+    /// (protocol_agents `AgentRecord.prepared_scripts`), found once, when
+    /// the scope is prepared; null for an isolate createAgent did not make,
+    /// whose prepares are not counted.
+    prepared: ?*u32,
 
-/// How many "prepare to run script"s are open on this thread without their
-/// "clean up": each is a realm execution context on HTML's JavaScript
-/// execution context stack, whether or not a JavaScript frame runs above it.
-threadlocal var prepared_depth: u32 = 0;
+    pub fn context(self: ScriptScope) *ffi.Context {
+        return self.scope.context;
+    }
+};
 
-/// Whether a "prepare to run script" is open on this thread without its
-/// "clean up": a realm execution context on the JavaScript execution context
-/// stack (engine.hasRunningScript).
-pub fn hasPreparedScript() bool {
-    return prepared_depth > 0;
+/// Whether a "prepare to run script" is open on `isolate`'s agent without its
+/// "clean up": a realm execution context on the agent's JavaScript execution
+/// context stack (engine.hasRunningScript). Each agent has its own stack
+/// (ECMAScript 9.4), so the count is the agent's
+/// (`protocol_agents.preparedScriptsOf`); it was one per thread, and one
+/// agent's open prepare made another agent's clean up skip its checkpoint.
+pub fn hasPreparedScript(isolate: *ffi.Isolate) bool {
+    const prepared = protocol_agents.preparedScriptsOf(isolate) orelse return false;
+    return prepared.* > 0;
 }
 
 // ============================================================================
@@ -47,27 +62,31 @@ pub fn hasPreparedScript() bool {
 pub fn prepareToRunScript(realm: Context) Error!ScriptScope {
     // 1. Push the realm execution context onto the JavaScript execution
     // context stack: the realm entered - V8's entered context, which is what
-    // entryRealm() reads.
-    const scope = try support.enter(realm);
+    // entryRealm() reads - on its agent's stack.
+    const entered = try support.enter(realm);
+    const prepared = protocol_agents.preparedScriptsOf(entered.isolate);
+    if (prepared) |count| count.* += 1;
     // 2. (The currently running task's script evaluation environment settings
     // object set is the host event loop's; Crane's records none.)
-    prepared_depth += 1;
-    return scope;
+    return .{ .isolate = entered.isolate, .entered_isolate = entered.entered_isolate, .scope = entered.scope, .prepared = prepared };
 }
 
 /// HTML "clean up after running script" with the settings object `scope`
 /// prepared.
 pub fn cleanUpAfterRunningScript(scope: ScriptScope) void {
-    // 1-2. Remove the realm execution context from the stack.
-    prepared_depth -|= 1;
+    // 1-2. Remove the realm execution context from its agent's stack.
+    const open: u32 = if (scope.prepared) |count| blk: {
+        count.* -|= 1;
+        break :blk count.*;
+    } else 0;
     const isolate = scope.isolate;
     ffi.v8_Context_Exit(scope.scope.context);
-    // 3. If the JavaScript execution context stack is now empty - no realm
-    // execution context the host pushed, no JavaScript frame - perform a
-    // microtask checkpoint. The agent stays entered for it, and the scope's
+    // 3. If the agent's JavaScript execution context stack is now empty - no
+    // realm execution context the host pushed, no JavaScript frame - perform
+    // a microtask checkpoint. The agent stays entered for it, and the scope's
     // handle scope stays open: an agent the host entered only for this has
     // no other, and the checkpoint's callbacks make handles.
-    if (prepared_depth == 0 and !ffi.v8_Isolate_HasJavaScriptOnStack(isolate)) {
+    if (open == 0 and !ffi.v8_Isolate_HasJavaScriptOnStack(isolate)) {
         ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
     }
     ffi.v8_HandleScope_Dispose(scope.scope.handle_scope);
@@ -89,6 +108,8 @@ pub const JobScope = struct {
     /// OWNED: disposed by cleanUpAfterRunningJob.
     context: *ffi.Context,
     handle_scope: *ffi.HandleScope,
+    /// The agent's count of open prepares (ScriptScope.prepared).
+    prepared: ?*u32,
 };
 
 /// `prepareToRunScript` for the promise job running now, in its realm
@@ -102,8 +123,9 @@ pub fn prepareToRunJob(isolate: *ffi.Isolate) ?JobScope {
         return null;
     };
     ffi.v8_Context_Enter(context);
-    prepared_depth += 1;
-    return .{ .isolate = isolate, .context = context, .handle_scope = handle_scope };
+    const prepared = protocol_agents.preparedScriptsOf(isolate);
+    if (prepared) |count| count.* += 1;
+    return .{ .isolate = isolate, .context = context, .handle_scope = handle_scope, .prepared = prepared };
 }
 
 /// "Clean up after running script" for a promise job: steps 1-2 only. The
@@ -112,7 +134,7 @@ pub fn prepareToRunJob(isolate: *ffi.Isolate) ?JobScope {
 /// is true, return") - and asking whether the stack is empty costs a stack
 /// walk per job. Reads nothing of the job's realm, which may have ended.
 pub fn cleanUpAfterRunningJob(scope: JobScope) void {
-    prepared_depth -|= 1;
+    if (scope.prepared) |count| count.* -|= 1;
     ffi.v8_Context_Exit(scope.context);
     ffi.v8_HandleScope_Dispose(scope.handle_scope);
     ffi.v8_Context_Dispose(scope.context);
