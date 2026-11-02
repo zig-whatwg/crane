@@ -878,19 +878,22 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     .{ .name = "tests-html", .config = .{ .batch = 1, .slow = &html_slow } },
     .{ .name = "tests-service_worker", .config = .{ .batch = 1 } },
     .{ .name = "tests-websocket", .config = .{ .batch = 1 } },
-    // tests-v8 keeps the build runner's old shape - one process, index order
-    // - because its tests depend on order (lane tlaunch2, 2026-11-01; every
-    // test, seed and reason: tmp/analysis/tlaunch2-tests-v8-order.tsv):
+    // TEMPORARY: tests-v8 keeps the build runner's old shape - one process,
+    // index order - because its tests depend on order (lane tlaunch2,
+    // 2026-11-01; the bug list, every test with its seed and reason:
+    // tmp/analysis/tlaunch2-tests-v8-order.tsv). Remove this row's batch and
+    // shuffle when `zig build test-launch -Dspec=v8 -Dlaunch-batch=1` passes:
     // - a process per test (batch 1, seed 0x5eed11): 22 tests FAIL alone -
     //   context_counter_test (16), page_realm_operations_test (4) and
     //   refcount_wrapper_link_test (2) count handles or references and pass
     //   only after an earlier test has made the engine's lazily created ones
     //   (32 bytes of global handles in a fresh process) - and
     //   template_registry_isolation_test crashes alone (its two threads race
-    //   V8's platform initialization);
+    //   ffi.v8_Isolate_New's lazy V8 platform initialization: the test skips
+    //   engine start-up, and v8_Platform_Initialize checks a plain bool);
     // - the whole suite shuffled in one process (batch 0, seeds 0x5eed01-03):
-    //   52-60 ORDER-DEPENDENT a run, 162 tests over the three; 124 of them
-    //   panic "a platform object made in a realm no Browser owns, with no
+    //   52-60 ORDER-DEPENDENT a run, 162 tests over the three; 124 of the 221
+    //   non-passes panic "a platform object made in a realm no Browser owns, with no
     //   standalone runtime" after another test of the same process
     //   (urlpattern_*, page_realm_operations, callback_argument_borrowed,
     //   per_call_handle, ...).
