@@ -25,6 +25,13 @@
 //! None of the three counts as a pass (Crane's one-flake-then-bug rule;
 //! Gecko's retries, which absorb flakes, are the cautionary case).
 //!
+//! A test the launcher could not run - its process could not be started:
+//! no slot, no spawn - is none of those: its verdict is LAUNCHER-ERROR,
+//! with the cause, and it is not re-run. The failure is the launcher's, so
+//! it is never charged to the test (lane tlfix1: a failed start was
+//! reported as each of its batch's tests crashing, and the alone runs that
+//! passed made every one FLAKY); the launcher fails the run instead.
+//!
 //! The process work goes through `Executor`, so the scheduling, the restart
 //! and the classification are tested here with a fake one.
 
@@ -47,6 +54,9 @@ pub const Status = enum {
     leak,
     /// Passed, but logged errors (the build runner fails these too).
     log_err,
+    /// The launcher could not run the test: its process could not be
+    /// started (no slot, no spawn). Not an outcome of the test.
+    launcher_error,
 
     pub fn ok(s: Status) bool {
         return s == .pass or s == .skip;
@@ -73,6 +83,10 @@ pub const Verdict = enum {
     flaky,
     /// Never ran (the launcher was stopped).
     not_run,
+    /// The launcher could not run it, or could not finish classifying it:
+    /// a process it needed could not be started. The launcher's failure,
+    /// not the test's - never FAIL or FLAKY - and it fails the run.
+    launcher_error,
 
     pub fn label(v: Verdict) []const u8 {
         return switch (v) {
@@ -82,6 +96,7 @@ pub const Verdict = enum {
             .order_dependent => "ORDER-DEPENDENT",
             .flaky => "FLAKY",
             .not_run => "NOT-RUN",
+            .launcher_error => "LAUNCHER-ERROR",
         };
     }
 
@@ -97,6 +112,12 @@ pub const max_alone_runs = 8;
 pub fn classify(first: Status, alone: []const Status, replay: ?Status) Verdict {
     if (first == .pass) return .pass;
     if (first == .skip) return .skip;
+    // A run the launcher could not start says nothing about the test.
+    if (first == .launcher_error) return .launcher_error;
+    for (alone) |s| {
+        if (s == .launcher_error) return .launcher_error;
+    }
+    if (replay) |r| if (r == .launcher_error) return .launcher_error;
     if (alone.len == 0) return .fail;
     var bad: usize = 0;
     for (alone) |s| {
@@ -117,13 +138,15 @@ pub const Executor = struct {
     vtable: *const VTable,
 
     pub const VTable = struct {
-        start: *const fn (ptr: *anyopaque, worker: u32) anyerror!void,
+        /// Starts the worker's process. On an error it writes what failed
+        /// to `diag` - the step and the path - for the report.
+        start: *const fn (ptr: *anyopaque, worker: u32, diag: *Io.Writer) anyerror!void,
         run: *const fn (ptr: *anyopaque, worker: u32, test_index: u32) anyerror!RunResult,
         stop: *const fn (ptr: *anyopaque, worker: u32) void,
     };
 
-    fn start(e: Executor, w: u32) anyerror!void {
-        return e.vtable.start(e.ptr, w);
+    fn start(e: Executor, w: u32, diag: *Io.Writer) anyerror!void {
+        return e.vtable.start(e.ptr, w, diag);
     }
     fn run(e: Executor, w: u32, t: u32) anyerror!RunResult {
         return e.vtable.run(e.ptr, w, t);
@@ -144,7 +167,11 @@ pub const TestRecord = struct {
     first: Status = .pass,
     ran: bool = false,
     ns: u64 = 0,
+    /// What the test printed (its first run).
     output: []u8 = &.{},
+    /// Why the launcher could not run it, when a run ended
+    /// `launcher_error` (the first such run's message).
+    cause: []u8 = &.{},
     alone: [max_alone_runs]Status = undefined,
     alone_len: u8 = 0,
     replay: ?Status = null,
@@ -237,7 +264,10 @@ pub const Run = struct {
     }
 
     pub fn deinit(r: *Run) void {
-        for (r.records) |rec| r.gpa.free(rec.output);
+        for (r.records) |rec| {
+            r.gpa.free(rec.output);
+            r.gpa.free(rec.cause);
+        }
         r.gpa.free(r.records);
     }
 
@@ -284,23 +314,28 @@ pub const Run = struct {
         cb(r.options.on_verdict_ctx, t, &r.records[t]);
     }
 
-    fn startProcess(r: *Run, w: u32) !void {
+    fn startProcess(r: *Run, w: u32, diag: *Io.Writer) !void {
         _ = r.processes.fetchAdd(1, .monotonic);
-        try r.exec.start(w);
+        try r.exec.start(w, diag);
     }
 
     /// Runs `tests` in order in fresh processes, restarting after a crash or
     /// timeout, and hands each result to `sink` with the index in `tests`
-    /// where its process started. A failed start blames every test still to
-    /// run.
+    /// where its process started. A failed start is the launcher's failure:
+    /// every test still to run gets `launcher_error`, with the cause as its
+    /// output - none ran.
     fn runSequence(r: *Run, w: u32, tests: []const u32, sink: anytype) void {
         var i: usize = 0;
         while (i < tests.len) {
             const started_at: u32 = @intCast(i);
-            r.startProcess(w) catch |err| {
+            var why: Io.Writer.Allocating = .init(r.gpa);
+            defer why.deinit();
+            r.startProcess(w, &why.writer) catch |err| {
                 while (i < tests.len) : (i += 1) {
-                    const msg: []u8 = std.fmt.allocPrint(r.gpa, "launcher: could not start the test process: {t}\n", .{err}) catch &.{};
-                    sink.take(tests[i], .{ .status = .crash, .output = msg }, @intCast(i));
+                    const msg: []u8 = std.fmt.allocPrint(r.gpa, "launcher: could not start the test process: {s}\n", .{
+                        if (why.written().len != 0) why.written() else @errorName(err),
+                    }) catch &.{};
+                    sink.take(tests[i], .{ .status = .launcher_error, .output = msg }, @intCast(i));
                 }
                 return;
             };
@@ -327,7 +362,7 @@ pub const Run = struct {
                 rec.ran = true;
                 rec.first = res.status;
                 rec.ns = res.ns;
-                rec.output = res.output;
+                if (res.status == .launcher_error) rec.cause = res.output else rec.output = res.output;
                 rec.process_start = process_start;
             }
         };
@@ -340,10 +375,12 @@ pub const Run = struct {
             r.runSequence(w, tests, Sink{ .run = r });
             // Settle the batch now: its passes are final, and its failures
             // are re-run alone by this worker before it claims another batch.
+            // A test the launcher could not start is not re-run: it never
+            // ran, and the failure is the launcher's.
             for (tests) |t| {
                 const rec = &r.records[t];
                 if (!rec.ran) continue;
-                if (rec.first.ok()) {
+                if (rec.first.ok() or rec.first == .launcher_error) {
                     rec.verdict = classify(rec.first, &.{}, null);
                 } else r.classifyOne(w, t);
                 r.report(t);
@@ -366,8 +403,12 @@ pub const Run = struct {
             target: u32,
             out: *?Status,
             fn take(s: @This(), test_index: u32, res: RunResult, _: u32) void {
-                s.run.gpa.free(res.output);
                 if (test_index == s.target) s.out.* = res.status;
+                // Keep the launcher's first failure: it is the verdict's cause.
+                const target = &s.run.records[test_index];
+                if (test_index == s.target and res.status == .launcher_error and target.cause.len == 0) {
+                    target.cause = res.output;
+                } else s.run.gpa.free(res.output);
             }
         };
         const runs = @min(r.options.alone_runs, max_alone_runs);
@@ -376,6 +417,8 @@ pub const Run = struct {
             r.runSequence(w, &.{t}, Collect{ .run = r, .target = t, .out = &got });
             rec.alone[rec.alone_len] = got orelse .crash;
             rec.alone_len += 1;
+            // The launcher failed: the test cannot be classified.
+            if (rec.alone[rec.alone_len - 1] == .launcher_error) break;
         }
         var all_pass = rec.alone_len > 0;
         for (rec.aloneRuns()) |s| {
@@ -398,9 +441,10 @@ pub const Run = struct {
         order_dependent: u32 = 0,
         flaky: u32 = 0,
         not_run: u32 = 0,
+        launcher_error: u32 = 0,
 
         pub fn bad(c: Counts) u32 {
-            return c.fail + c.order_dependent + c.flaky + c.not_run;
+            return c.fail + c.order_dependent + c.flaky + c.not_run + c.launcher_error;
         }
     };
 
@@ -413,6 +457,7 @@ pub const Run = struct {
             .order_dependent => c.order_dependent += 1,
             .flaky => c.flaky += 1,
             .not_run => c.not_run += 1,
+            .launcher_error => c.launcher_error += 1,
         };
         return c;
     }
@@ -462,6 +507,10 @@ const Fake = struct {
     alive: [8]bool = @splat(false),
     attempts: [64]std.atomic.Value(u32) = @splat(.init(0)),
     starts: std.atomic.Value(u32) = .init(0),
+    /// Which starts fail (by the order they are asked for), as the launcher
+    /// failing to start a process; null: none.
+    start_fails: ?*const fn (n: u32) bool = null,
+    start_attempts: std.atomic.Value(u32) = .init(0),
     /// Every (worker, test) run, for the order checks.
     log: std.ArrayList(u32) = .empty,
     log_lock: std.atomic.Mutex = .unlocked,
@@ -473,9 +522,14 @@ const Fake = struct {
         for (&f.history) |*h| h.deinit(f.gpa);
         f.log.deinit(f.gpa);
     }
-    fn start(ptr: *anyopaque, w: u32) anyerror!void {
+    fn start(ptr: *anyopaque, w: u32, diag: *Io.Writer) anyerror!void {
         const f: *Fake = @ptrCast(@alignCast(ptr));
         std.debug.assert(!f.alive[w]);
+        const n = f.start_attempts.fetchAdd(1, .monotonic);
+        if (f.start_fails) |fails| if (fails(n)) {
+            try diag.print("could not take a test-process slot, /cache/test-launcher-slots/slot-{d}: FileNotFound (ENOENT)", .{w});
+            return error.FileNotFound;
+        };
         f.alive[w] = true;
         f.history[w].clearRetainingCapacity();
         _ = f.starts.fetchAdd(1, .monotonic);
@@ -745,4 +799,76 @@ test "the prefix replay starts where the failing test's process started, not at 
     try testing.expectEqual(Verdict.fail, h.run.records[2].verdict);
     try testing.expectEqual(Verdict.order_dependent, h.run.records[4].verdict);
     try testing.expectEqual(@as(u32, 3), h.run.records[4].process_start);
+}
+
+test "classify: a run the launcher could not start is LAUNCHER-ERROR, never FAIL or FLAKY" {
+    try testing.expectEqual(Verdict.launcher_error, classify(.launcher_error, &.{}, null));
+    // A real first failure whose alone run could not start: it cannot be
+    // classified, and calling it FAIL or FLAKY would be a guess.
+    try testing.expectEqual(Verdict.launcher_error, classify(.fail, &.{.launcher_error}, null));
+    try testing.expectEqual(Verdict.launcher_error, classify(.fail, &.{ .pass, .launcher_error }, null));
+    try testing.expectEqual(Verdict.launcher_error, classify(.crash, &.{ .pass, .pass }, .launcher_error));
+    try testing.expect(!Verdict.launcher_error.ok());
+    try testing.expect(!Status.launcher_error.ok());
+    try testing.expectEqualStrings("LAUNCHER-ERROR", Verdict.launcher_error.label());
+}
+
+fn firstStartFails(n: u32) bool {
+    return n == 0;
+}
+
+test "a process the launcher could not start: its tests are LAUNCHER-ERROR with the cause, are not re-run, and fail the run" {
+    var h: Harness = undefined;
+    // One worker, batches of 3, index order: {0 1 2} {3 4 5}; the first
+    // start (batch 0's process) fails.
+    try h.init(allPass, 6, .{ .seed = 1, .shuffle = false, .batch_size = 3 }, .{ .jobs = 1, .alone_runs = 2 });
+    defer h.deinit();
+    h.fake.start_fails = firstStartFails;
+    try h.run.execute();
+    // Batch 0 never ran and none of its tests ran alone: only batch 1 ran.
+    try testing.expectEqualSlices(u32, &.{ 3, 4, 5 }, h.fake.log.items);
+    for (0..3) |t| {
+        const rec = h.run.records[t];
+        try testing.expectEqual(Status.launcher_error, rec.first);
+        try testing.expectEqual(Verdict.launcher_error, rec.verdict);
+        try testing.expectEqual(@as(usize, 0), rec.aloneRuns().len);
+        try testing.expectEqualStrings(
+            "launcher: could not start the test process: could not take a test-process slot, /cache/test-launcher-slots/slot-0: FileNotFound (ENOENT)\n",
+            rec.cause,
+        );
+        try testing.expectEqual(@as(usize, 0), rec.output.len);
+    }
+    const c = h.run.counts();
+    try testing.expectEqual(@as(u32, 3), c.launcher_error);
+    try testing.expectEqual(@as(u32, 3), c.pass);
+    try testing.expectEqual(@as(u32, 0), c.fail + c.flaky + c.order_dependent);
+    try testing.expectEqual(@as(u32, 3), c.bad());
+}
+
+fn secondStartFails(n: u32) bool {
+    return n == 1;
+}
+
+fn oneFails(_: *Fake, t: u32, _: []const u32, _: u32) Status {
+    return if (t == 1) .fail else .pass;
+}
+
+test "a failure whose alone run the launcher could not start: LAUNCHER-ERROR, with its own output and the cause" {
+    var h: Harness = undefined;
+    // One batch, 0 1 2; test 1 fails. Start 0 is the batch's process,
+    // start 1 test 1's first alone run, which fails to start.
+    try h.init(oneFails, 3, .{ .seed = 1, .shuffle = false, .batch_size = 0 }, .{ .jobs = 1, .alone_runs = 2 });
+    defer h.deinit();
+    h.fake.start_fails = secondStartFails;
+    try h.run.execute();
+    const rec = h.run.records[1];
+    try testing.expectEqual(Status.fail, rec.first);
+    // No second alone run and no replay after the launcher failed.
+    try testing.expectEqualSlices(Status, &.{.launcher_error}, rec.aloneRuns());
+    try testing.expectEqual(@as(?Status, null), rec.replay);
+    try testing.expectEqual(Verdict.launcher_error, rec.verdict);
+    try testing.expectEqualStrings("test 1 said no\n", rec.output);
+    try testing.expect(std.mem.indexOf(u8, rec.cause, "slot-0: FileNotFound (ENOENT)") != null);
+    try testing.expectEqualSlices(u32, &.{ 0, 1, 2 }, h.fake.log.items);
+    try testing.expectEqual(@as(u32, 1), h.run.counts().launcher_error);
 }
