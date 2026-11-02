@@ -21,13 +21,13 @@ const std = @import("std");
 const testing = std.testing;
 const browser_mod = @import("browser");
 const engine = @import("engine");
+const LoopbackListener = @import("loopback_listener").LoopbackListener;
 
 /// A loopback HTTP server that answers every request after `delay_ms`, one
 /// connection per thread, so both Browsers' requests wait at once.
 const SlowServer = struct {
-    server: std.Io.net.Server,
+    listener: LoopbackListener,
     thread: ?std.Thread = null,
-    stopping: std.atomic.Value(bool) = .init(false),
     in_flight: std.atomic.Value(usize) = .init(0),
     most_in_flight: std.atomic.Value(usize) = .init(0),
     served: std.atomic.Value(usize) = .init(0),
@@ -38,31 +38,31 @@ const SlowServer = struct {
     fn start() !*SlowServer {
         const self = try testing.allocator.create(SlowServer);
         errdefer testing.allocator.destroy(self);
-        const address: std.Io.net.IpAddress = .{ .ip4 = std.Io.net.Ip4Address.loopback(0) };
-        var server = try address.listen(testing.io, .{ .reuse_address = true });
-        errdefer server.deinit(testing.io);
-        self.* = .{ .server = server };
-        self.thread = try std.Thread.spawn(.{}, serve, .{ self, server });
+        self.* = .{ .listener = try LoopbackListener.open(.{}) };
+        errdefer self.listener.close();
+        self.thread = try std.Thread.spawn(.{}, serve, .{self});
         return self;
     }
 
     fn port(self: *const SlowServer) u16 {
-        return self.server.socket.address.getPort();
+        return self.listener.port();
     }
 
+    /// Stop the accept thread, then close the listener - in that order
+    /// (tests/support/loopback_listener.zig): closing the listener to
+    /// unblock accept(), as this did, raced the thread, and an accept()
+    /// begun after the close panics on EBADF (lane fixes1).
     fn stop(self: *SlowServer) void {
-        self.stopping.store(true, .release);
-        self.server.deinit(testing.io);
+        self.listener.stop();
         self.thread.?.join();
+        self.listener.close();
         // Handler threads are detached: wait for the last to finish.
         while (self.handlers.load(.acquire) != 0) testing.io.sleep(.fromMilliseconds(5), .awake) catch {};
         testing.allocator.destroy(self);
     }
 
-    fn serve(self: *SlowServer, listener: std.Io.net.Server) void {
-        var server = listener;
-        while (!self.stopping.load(.acquire)) {
-            const stream = server.accept(testing.io) catch continue;
+    fn serve(self: *SlowServer) void {
+        while (self.listener.accept()) |stream| {
             _ = self.handlers.fetchAdd(1, .acq_rel);
             const handler = std.Thread.spawn(.{}, handle, .{ self, stream }) catch {
                 stream.close(testing.io);

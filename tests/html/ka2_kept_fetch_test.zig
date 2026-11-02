@@ -21,13 +21,20 @@ const dom = @import("dom");
 const fetch = @import("fetch");
 const runtime = @import("runtime");
 const http = @import("module1_http_server.zig");
+const clock = @import("clock");
 const keepalive_fetch = dom.keepalive_fetch;
+
+/// The most `Page.turnUntil` waits for its condition.
+const turn_limit_ms = 30 * std.time.ms_per_s;
 
 const routes = [_]http.Route{
     // Answered at once.
     .{ .path = "/ka2/beacon", .content_type = "text/plain", .body = "ok" },
-    // Answered after a while: the fetch is in flight when the Browser ends.
-    .{ .path = "/ka2/slow", .content_type = "text/plain", .body = "late", .delay_ms = 1500 },
+    // Counted when it arrives, never answered while the test runs (the
+    // server answers it as it stops, after the Browser ended): its fetch is
+    // in flight when the Browser ends. A 1.5 s delay_ms was a bet that the
+    // test noticed the request before the answer came.
+    .{ .path = "/ka2/slow", .content_type = "text/plain", .body = "late", .held = true },
 };
 
 /// What an observer heard, in order.
@@ -145,10 +152,13 @@ const Page = struct {
         try self.browser.navigate("about:blank", .window);
     }
 
-    /// Turn the event loop until `done` says so, or about two seconds pass.
+    /// Turn the event loop until `done` says so. The bound only stops a
+    /// test whose condition never comes; it is not a budget the work must
+    /// fit in (100 turns of 20 ms, as this was, is a bet on the host's load).
     fn turnUntil(self: *Page, context: anytype, comptime done: fn (@TypeOf(context)) bool) !void {
-        var turns: usize = 0;
-        while (!done(context) and turns < 100) : (turns += 1) {
+        const deadline = clock.monotonicMillis() + turn_limit_ms;
+        while (!done(context)) {
+            if (clock.monotonicMillis() >= deadline) return error.TestConditionNeverCame;
             _ = try self.browser.runEventLoopBlocking(20);
         }
     }
@@ -196,8 +206,18 @@ test "a keepalive dispatch whose realm retires before the network ran still reac
             const before = page.fetches().inFlight();
             var heard: Heard = .{};
             _ = try keepalive_fetch.start(try page.window(), try page.request("/ka2/beacon"), .{ .observer = heard.observer() });
-            // Nothing has been sent: the network is pumped by the event loop.
-            try std.testing.expectEqual(@as(u32, 0), page.server.count("/ka2/beacon"));
+            // The event loop has not turned, so the dispatch has heard
+            // nothing: only the loop's network step delivers (Observer). The
+            // request itself may be at the server already - the scheduler
+            // sends a new transfer's request as it starts it
+            // (NetworkScheduler.kick; lesson
+            // architecture-single-threaded-networking-must-send-the-request) -
+            // so whether the server has counted it yet is a race with the
+            // server's thread, which this test cannot assert: "the server has
+            // none yet" failed under host load ("expected 0, found 1").
+            try std.testing.expectEqual(@as(usize, 0), heard.responses);
+            try std.testing.expectEqual(@as(usize, 0), heard.ends);
+            try std.testing.expectEqual(before + 1, page.fetches().inFlight());
             try page.leave();
             // The dispatch is over for its client - its realm is gone - and
             // it heard no response; the fetch is the agent's now.
@@ -260,6 +280,7 @@ test "a Browser that ends with a kept keepalive fetch in flight frees it with it
             // The request is at the server, whose answer is still to come.
             try page.turnUntil(&page, slowArrived);
             try std.testing.expectEqual(@as(u32, 1), page.server.count("/ka2/slow"));
+            try std.testing.expectEqual(@as(u32, 0), page.server.answered("/ka2/slow"));
             try std.testing.expectEqual(before + 1, page.fetches().inFlight());
             // The Browser ends now: the kept fetch ends with its agent, and
             // the testing allocator finds nothing of it left.

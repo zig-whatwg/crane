@@ -3,40 +3,38 @@
 //! so a TypeError cannot pass merely because DNS or the network failed.
 const std = @import("std");
 const Browser = @import("browser").Browser;
+const LoopbackListener = @import("loopback_listener").LoopbackListener;
 
 /// A minimal HTTP proxy on an ephemeral loopback port. The requested host
 /// remains mx2-resource.test, so mixed-content checks do not exempt it as
 /// loopback. The counter distinguishes a blocked fetch from a network error.
 const Proxy = struct {
-    server: std.Io.net.Server,
+    listener: LoopbackListener,
     thread: ?std.Thread = null,
-    stopping: std.atomic.Value(bool) = .init(false),
     received: std.atomic.Value(usize) = .init(0),
 
     fn start() !*Proxy {
         const self = try std.testing.allocator.create(Proxy);
         errdefer std.testing.allocator.destroy(self);
-        const address: std.Io.net.IpAddress = .{ .ip4 = std.Io.net.Ip4Address.loopback(0) };
-        var server = try address.listen(std.testing.io, .{ .reuse_address = true });
-        errdefer server.deinit(std.testing.io);
-        self.* = .{ .server = server };
-        self.thread = try std.Thread.spawn(.{}, serve, .{ self, server });
+        self.* = .{ .listener = try LoopbackListener.open(.{}) };
+        errdefer self.listener.close();
+        self.thread = try std.Thread.spawn(.{}, serve, .{self});
         return self;
     }
 
+    /// Stop the accept thread, then close the listener - in that order
+    /// (tests/support/loopback_listener.zig): closing the listener to
+    /// unblock accept(), as this did, raced the thread, and an accept()
+    /// begun after the close panics on EBADF (lane fixes1).
     fn stop(self: *Proxy) void {
-        self.stopping.store(true, .release);
-        self.server.deinit(std.testing.io);
+        self.listener.stop();
         self.thread.?.join();
+        self.listener.close();
         std.testing.allocator.destroy(self);
     }
 
-    fn serve(self: *Proxy, listener: std.Io.net.Server) void {
-        // stop() closes the shared socket, but accept reads a thread-local
-        // copy of its descriptor and options while the close wakes it.
-        var server = listener;
-        while (!self.stopping.load(.acquire)) {
-            const stream = server.accept(std.testing.io) catch continue;
+    fn serve(self: *Proxy) void {
+        while (self.listener.accept()) |stream| {
             defer stream.close(std.testing.io);
             self.reply(stream) catch {};
         }
@@ -97,7 +95,7 @@ fn check(shared: bool, worker_type: []const u8, nested: bool) !void {
     const server = try Proxy.start();
     defer server.stop();
     var proxy_buf: [128]u8 = undefined;
-    const proxy = try std.fmt.bufPrint(&proxy_buf, "http://127.0.0.1:{d}", .{server.server.socket.address.getPort()});
+    const proxy = try std.fmt.bufPrint(&proxy_buf, "http://127.0.0.1:{d}", .{server.listener.port()});
     for ([_]bool{ false, true }) |secure_owner| {
         const before = server.received.load(.acquire);
         const browser = try Browser.init(allocator, .{

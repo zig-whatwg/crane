@@ -8,6 +8,7 @@
 //! with a 404 (a failure the module map must not keep), or echo the request's
 //! Accept header as its body.
 const std = @import("std");
+const LoopbackListener = @import("loopback_listener").LoopbackListener;
 
 pub const Route = struct {
     path: []const u8,
@@ -22,44 +23,58 @@ pub const Route = struct {
     echo_referrer: bool = false,
     /// Milliseconds to wait before answering, so that requests overlap.
     delay_ms: u32 = 0,
+    /// Count each request when it arrives, then answer it only once the
+    /// test calls `Server.release` for the route - or `Server.stop`, which
+    /// answers every held request, so that a test that never releases
+    /// cannot keep a connection or the process waiting. For a test that
+    /// needs a request to be at the server with its answer still to come,
+    /// without betting on how long a `delay_ms` lasts on a loaded host.
+    held: bool = false,
 };
 
 pub const max_routes = 16;
 
 pub const Server = struct {
     allocator: std.mem.Allocator,
-    server: std.Io.net.Server,
+    /// Stopped without a race (tests/support/loopback_listener.zig): an
+    /// accept() can never run on a closed listener.
+    listener: LoopbackListener,
     thread: ?std.Thread = null,
-    stopping: std.atomic.Value(bool) = .init(false),
     /// Connections being answered: stop() waits for them, since each reads
     /// the routes and counters.
     active: std.atomic.Value(u32) = .init(0),
     routes: []const Route,
     counts: [max_routes]std.atomic.Value(u32) = @splat(.init(0)),
+    /// Per route: the requests it has answered, and whether a held route
+    /// was released.
+    answers: [max_routes]std.atomic.Value(u32) = @splat(.init(0)),
+    released: [max_routes]std.atomic.Value(bool) = @splat(.init(false)),
 
     pub fn start(allocator: std.mem.Allocator, routes: []const Route) !*Server {
         std.debug.assert(routes.len <= max_routes);
         const self = try allocator.create(Server);
         errdefer allocator.destroy(self);
-        const address: std.Io.net.IpAddress = .{ .ip4 = std.Io.net.Ip4Address.loopback(0) };
-        var server = try address.listen(std.testing.io, .{ .reuse_address = true });
-        errdefer server.deinit(std.testing.io);
-        self.* = .{ .allocator = allocator, .server = server, .routes = routes };
-        self.thread = try std.Thread.spawn(.{}, serve, .{ self, server });
+        self.* = .{ .allocator = allocator, .listener = try LoopbackListener.open(.{}), .routes = routes };
+        errdefer self.listener.close();
+        self.thread = try std.Thread.spawn(.{}, serve, .{self});
         return self;
     }
 
+    /// Stop the accept thread, then close the listener - in that order
+    /// (LoopbackListener; closing the listener under accept() panicked on
+    /// EBADF, FLAKY in lane tstate1's gates). Held requests are answered as
+    /// it stops, and their connections are waited for.
     pub fn stop(self: *Server) void {
-        self.stopping.store(true, .release);
-        self.server.deinit(std.testing.io);
+        self.listener.stop();
         self.thread.?.join();
+        self.listener.close();
         while (self.active.load(.acquire) != 0) std.Thread.yield() catch {};
         self.allocator.destroy(self);
     }
 
     /// "http://127.0.0.1:<port>", the Browser's proxy. Written into `buffer`.
     pub fn proxyUrl(self: *const Server, buffer: []u8) ![]const u8 {
-        return std.fmt.bufPrint(buffer, "http://127.0.0.1:{d}", .{self.server.socket.address.getPort()});
+        return std.fmt.bufPrint(buffer, "http://127.0.0.1:{d}", .{self.listener.port()});
     }
 
     /// How many requests the route for `path` has answered.
@@ -70,11 +85,26 @@ pub const Server = struct {
         return 0;
     }
 
-    fn serve(self: *Server, listener: std.Io.net.Server) void {
-        // stop() closes the shared socket; accept reads a copy of it.
-        var server = listener;
-        while (!self.stopping.load(.acquire)) {
-            const stream = server.accept(std.testing.io) catch continue;
+    /// How many requests the route for `path` has answered (written its
+    /// response to, whether the client was still there or not).
+    pub fn answered(self: *const Server, path: []const u8) u32 {
+        for (self.routes, 0..) |route, i| {
+            if (std.mem.eql(u8, route.path, path)) return self.answers[i].load(.acquire);
+        }
+        return 0;
+    }
+
+    /// A held route answers the requests it holds, and every later one at
+    /// once.
+    pub fn release(self: *Server, path: []const u8) void {
+        for (self.routes, 0..) |route, i| {
+            if (std.mem.eql(u8, route.path, path)) self.released[i].store(true, .release);
+        }
+    }
+
+    fn serve(self: *Server) void {
+        // Null once stop() began.
+        while (self.listener.accept()) |stream| {
             // One thread per connection: a delayed answer must not hold the
             // requests behind it.
             _ = self.active.fetchAdd(1, .acq_rel);
@@ -117,7 +147,13 @@ pub const Server = struct {
         for (self.routes, 0..) |route, i| {
             if (!std.mem.eql(u8, route.path, path)) continue;
             const n = self.counts[i].fetchAdd(1, .acq_rel);
+            defer _ = self.answers[i].fetchAdd(1, .acq_rel);
             if (route.delay_ms > 0) std.Io.sleep(std.testing.io, .fromMilliseconds(route.delay_ms), .awake) catch {};
+            if (route.held) {
+                while (!self.released[i].load(.acquire) and !self.listener.isStopping()) {
+                    std.Io.sleep(std.testing.io, .fromMilliseconds(1), .awake) catch {};
+                }
+            }
             if (n < route.fail_first) return reply(&writer.interface, 404, "text/plain", "not yet");
             if (route.echo_referrer) {
                 var module_buf: [1024]u8 = undefined;
