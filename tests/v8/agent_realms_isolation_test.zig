@@ -332,3 +332,34 @@ fn workerRealmsAreTheAgentsOwn() !void {
 test "an agent keeps the records of its worker realms, and no other agent's" {
     try runOnThread(workerRealmsAreTheAgentsOwn);
 }
+
+/// How many live wrapper caches `agent` has (wrapper_cache.Caches).
+fn cachesOf(agent: *protocol.Agent) usize {
+    const caches = v8.protocol_agents.cachesOf(@ptrCast(@alignCast(agent))) orelse return 0;
+    return caches.items.len;
+}
+
+/// A realm's wrapper cache joins its own agent's live caches, and leaves
+/// them at the realm's end; another agent on the thread never sees it.
+fn cachesAreTheAgentsOwn() !void {
+    const first = try newAgent();
+    defer protocol.destroyAgent(first);
+    const first_realm = try windowRealmIn(first);
+    defer protocol.destroyWindowRealm(first_realm, .global_detached);
+    const second = try newAgent();
+    defer protocol.destroyAgent(second);
+    const before_first = cachesOf(first);
+    const before_second = cachesOf(second);
+    const second_realm = try workerRealmIn(second);
+    var buffer: [256]u8 = undefined;
+    try std.testing.expectEqualStrings("ok", try evalStringIn(second, second_realm, works_script, &buffer));
+    try std.testing.expectEqual(before_second + 1, cachesOf(second));
+    try std.testing.expectEqual(before_first, cachesOf(first));
+    protocol.destroyWorkerRealm(second_realm, null, null);
+    try std.testing.expectEqual(before_second, cachesOf(second));
+    try std.testing.expectEqual(before_first, cachesOf(first));
+}
+
+test "a realm's wrapper cache is one of its agent's live caches, and no other agent's" {
+    try runOnThread(cachesAreTheAgentsOwn);
+}

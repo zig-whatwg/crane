@@ -214,6 +214,12 @@ const AgentRecord = struct {
     /// manager has retired it. Read and written on the agent's own thread
     /// only; its storage goes with the record. It was a `threadlocal`.
     worker_realms: worker_realm.Records = .empty,
+    /// The agent's live wrapper caches, one per realm (wrapper_cache.Caches):
+    /// where a cache looks for another of the agent's realms still wrapping
+    /// an instance before it frees it. Read and written on the agent's own
+    /// thread only, through its end; its storage goes with the record. It was
+    /// a `threadlocal`.
+    caches: @import("wrapper_cache.zig").Caches = .empty,
     /// The agent is ending (`endAgent`): its hooks are forgotten, and
     /// `recordOf` no longer finds it - nothing reaches the host from here on,
     /// and nothing is made for the agent - while its realms end, which still
@@ -325,6 +331,17 @@ pub fn workerRealmsOf(isolate: *ffi.Isolate) ?*worker_realm.Records {
     defer std.Io.Threaded.mutexUnlock(&agents_lock);
     const record = agents.get(isolate) orelse return null;
     return &record.worker_realms;
+}
+
+/// The live wrapper caches of the agent whose isolate this is
+/// (wrapper_cache.Caches), until the agent's record goes - through its end,
+/// while its realms' caches end; null for an isolate createAgent did not
+/// make. Called on the agent's own thread only.
+pub fn cachesOf(isolate: *ffi.Isolate) ?*@import("wrapper_cache.zig").Caches {
+    std.Io.Threaded.mutexLockUncancelable(&agents_lock);
+    defer std.Io.Threaded.mutexUnlock(&agents_lock);
+    const record = agents.get(isolate) orelse return null;
+    return &record.caches;
 }
 
 /// The realms of the agent whose isolate this is (context_manager.Realms),
@@ -705,7 +722,7 @@ pub fn forgetAgent(agent: *Agent) void {
     // every entry it deferred was torn down by the last resume or by its
     // realm's end, which ran before.
     if (record.teardown_holds.count != 0) log.err("the agent ended inside {d} teardown hold(s); a walk did not release its engine.holdTeardowns", .{record.teardown_holds.count});
-    record.teardown_holds.forgetCaches();
+    record.teardown_holds.forgetCaches(&record.caches);
     record.teardown_holds.deinit();
 }
 
@@ -729,6 +746,7 @@ fn removeAgent(isolate: *ffi.Isolate) void {
     callback_registry.endAgent(&record.callbacks);
     protocol_modules.endAgent(&record.modules);
     worker_realm.endAgent(&record.worker_realms);
+    @import("wrapper_cache.zig").endAgent(&record.caches);
     std.heap.c_allocator.destroy(record);
 }
 
