@@ -244,6 +244,16 @@ pub fn liveSnapshotAgents() usize {
     return count;
 }
 
+/// How many agents createAgent made that are not yet ended - each with its
+/// realms, Browsers' and tests' alike. Diagnostics only (the adapter's
+/// `live_agents` counter): the Crane test runner reads it after every test,
+/// and an agent a test left alive fails that test by name.
+pub fn liveAgentCount() usize {
+    std.Io.Threaded.mutexLockUncancelable(&agents_lock);
+    defer std.Io.Threaded.mutexUnlock(&agents_lock);
+    return agents.count();
+}
+
 /// The hooks of the agent whose isolate this is; null for an isolate
 /// createAgent did not make (a test's own).
 pub fn recordOf(isolate: *ffi.Isolate) ?*AgentRecord {
