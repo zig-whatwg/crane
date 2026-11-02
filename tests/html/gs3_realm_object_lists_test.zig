@@ -34,7 +34,10 @@ fn openBrowser(url: []const u8) !*Browser {
     errdefer browser.deinit();
     try browser.navigateWithOptions(url, .window, .{ .skip_load = true });
     const page = browser.current_context orelse return error.NoPage;
-    try page.loadHTML("<!doctype html><head></head><body><iframe></iframe>", .{ .base_url = url });
+    try page.loadHTML("<!doctype html><head></head><body>", .{ .base_url = url });
+    // A frame made by script: its realm exists once it is connected.
+    const held = try browser.evaluateScript("document.body.appendChild(document.createElement('iframe')); true");
+    held.release();
     return browser;
 }
 
@@ -54,9 +57,10 @@ fn objectsAreTheirRealms() !void {
     defer b.deinit();
     const page = a.getRealm().?;
     const other = b.getRealm().?;
-    const frame_function = try a.evaluateScript("document.querySelector('iframe').contentWindow.MessageChannel");
-    defer frame_function.release();
-    const frame = engine.functionRealm(frame_function.borrow()) orelse return error.NoFrameRealm;
+    // The frame's realm: its document's.
+    const frame_document = try a.evaluateScript("document.querySelector('iframe').contentDocument");
+    defer frame_document.release();
+    const frame = (engine.convertToPlatformObject(page, frame_document.borrow()) orelse return error.NoFrameDocument).ctx;
     try testing.expect(frame != page);
 
     // The page makes one of each kind.

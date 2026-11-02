@@ -53,7 +53,10 @@ fn expectAnswer(realm: runtime.Context, source: []const u8, want: []const u8) !v
 }
 
 fn statePerAgent() !void {
-    const a = try openBrowser("http://gs3-mo-a.test/", "<!doctype html><body><iframe></iframe>");
+    const a = try openBrowser("http://gs3-mo-a.test/", "<!doctype html><body>");
+    // A frame made by script: its realm exists once it is connected.
+    const made = try a.evaluateScript("document.body.appendChild(document.createElement('iframe')); true");
+    made.release();
     defer a.deinit();
     const b = try openBrowser("http://gs3-mo-b.test/", "<!doctype html><body>");
     defer b.deinit();
@@ -66,9 +69,9 @@ fn statePerAgent() !void {
     try testing.expect(state_a != state_b);
 
     // A frame's realm is of its page's agent: the same state.
-    const frame_window = try a.evaluateScript("document.querySelector('iframe').contentWindow.setTimeout");
-    defer frame_window.release();
-    const frame_realm = engine.functionRealm(frame_window.borrow()) orelse return error.NoFrameRealm;
+    const frame_document = try a.evaluateScript("document.querySelector('iframe').contentDocument");
+    defer frame_document.release();
+    const frame_realm = (engine.convertToPlatformObject(realm_a, frame_document.borrow()) orelse return error.NoFrameDocument).ctx;
     try testing.expect(frame_realm != realm_a);
     try testing.expectEqual(state_a, dom.mutation_observer_algorithms.agentOf(frame_realm).?);
 }
