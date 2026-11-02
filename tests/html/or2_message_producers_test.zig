@@ -2,6 +2,7 @@
 //! server for the network producers. No shared WPT server is required.
 const std = @import("std");
 const Browser = @import("browser").Browser;
+const LoopbackListener = @import("loopback_listener").LoopbackListener;
 const h = @import("refcount_holders_helpers.zig");
 
 // Construction and Window's queued-origin lifetime cases are part of the
@@ -12,32 +13,31 @@ test {
 }
 
 const Server = struct {
-    listener: std.Io.net.Server,
+    listener: LoopbackListener,
     thread: ?std.Thread = null,
-    stopping: std.atomic.Value(bool) = .init(false),
 
     fn start() !*Server {
         const self = try std.testing.allocator.create(Server);
         errdefer std.testing.allocator.destroy(self);
-        const address: std.Io.net.IpAddress = .{ .ip4 = std.Io.net.Ip4Address.loopback(0) };
-        var listener = try address.listen(std.testing.io, .{ .reuse_address = true });
-        errdefer listener.deinit(std.testing.io);
-        self.* = .{ .listener = listener };
-        self.thread = try std.Thread.spawn(.{}, serve, .{ self, listener });
+        self.* = .{ .listener = try LoopbackListener.open(.{}) };
+        errdefer self.listener.close();
+        self.thread = try std.Thread.spawn(.{}, serve, .{self});
         return self;
     }
 
+    /// Stop the accept thread, then close the listener - in that order
+    /// (tests/support/loopback_listener.zig): closing the listener to
+    /// unblock accept(), as this did, raced the thread, and an accept()
+    /// begun after the close panics on EBADF (lane fixes1).
     fn stop(self: *Server) void {
-        self.stopping.store(true, .release);
-        self.listener.deinit(std.testing.io);
+        self.listener.stop();
         self.thread.?.join();
+        self.listener.close();
         std.testing.allocator.destroy(self);
     }
 
-    fn serve(self: *Server, listener: std.Io.net.Server) void {
-        var server = listener;
-        while (!self.stopping.load(.acquire)) {
-            const stream = server.accept(std.testing.io) catch continue;
+    fn serve(self: *Server) void {
+        while (self.listener.accept()) |stream| {
             defer stream.close(std.testing.io);
             reply(stream) catch {};
         }
@@ -98,7 +98,7 @@ fn exercise(comptime producer: Producer) !void {
     const server = try Server.start();
     defer server.stop();
     var url_buffer: [128]u8 = undefined;
-    const url = try std.fmt.bufPrint(&url_buffer, "http://127.0.0.1:{d}/page", .{server.listener.socket.address.getPort()});
+    const url = try std.fmt.bufPrint(&url_buffer, "http://127.0.0.1:{d}/page", .{server.listener.port()});
     const browser = try Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigateWithOptions(url, .window, .{ .skip_load = true });

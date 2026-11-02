@@ -30,42 +30,42 @@ const std = @import("std");
 const testing = std.testing;
 const Browser = @import("browser").Browser;
 const clock = @import("clock");
+const LoopbackListener = @import("loopback_listener").LoopbackListener;
 
 /// Answers every connection with its headers and the start of a body that
 /// never finishes, until the test stops it.
 const Server = struct {
-    socket: std.Io.net.Server,
+    listener: LoopbackListener,
     thread: ?std.Thread = null,
-    stopping: std.atomic.Value(bool) = .init(false),
     active: std.atomic.Value(u32) = .init(0),
 
     fn start() !*Server {
         const self = try testing.allocator.create(Server);
         errdefer testing.allocator.destroy(self);
-        const address: std.Io.net.IpAddress = .{ .ip4 = std.Io.net.Ip4Address.loopback(0) };
-        var socket = try address.listen(testing.io, .{ .reuse_address = true });
-        errdefer socket.deinit(testing.io);
-        self.* = .{ .socket = socket };
-        self.thread = try std.Thread.spawn(.{}, serve, .{ self, socket });
+        self.* = .{ .listener = try LoopbackListener.open(.{}) };
+        errdefer self.listener.close();
+        self.thread = try std.Thread.spawn(.{}, serve, .{self});
         return self;
     }
 
+    /// Stop the accept thread, then close the listener - in that order
+    /// (tests/support/loopback_listener.zig): closing the listener to
+    /// unblock accept(), as this did, raced the thread, and an accept()
+    /// begun after the close panics on EBADF (lane fixes1).
     fn stop(self: *Server) void {
-        self.stopping.store(true, .release);
-        self.socket.deinit(testing.io);
+        self.listener.stop();
         self.thread.?.join();
+        self.listener.close();
         while (self.active.load(.acquire) != 0) std.Thread.yield() catch {};
         testing.allocator.destroy(self);
     }
 
     fn port(self: *const Server) u16 {
-        return self.socket.socket.address.getPort();
+        return self.listener.port();
     }
 
-    fn serve(self: *Server, listener: std.Io.net.Server) void {
-        var socket = listener;
-        while (!self.stopping.load(.acquire)) {
-            const stream = socket.accept(testing.io) catch continue;
+    fn serve(self: *Server) void {
+        while (self.listener.accept()) |stream| {
             _ = self.active.fetchAdd(1, .acq_rel);
             const thread = std.Thread.spawn(.{}, answerAndClose, .{ self, stream }) catch {
                 stream.close(testing.io);
@@ -97,7 +97,7 @@ const Server = struct {
             try writer.interface.writeAll(&part);
         }
         try writer.interface.flush();
-        while (!self.stopping.load(.acquire)) clock.sleep(std.time.ns_per_ms);
+        while (!self.listener.isStopping()) clock.sleep(std.time.ns_per_ms);
     }
 };
 

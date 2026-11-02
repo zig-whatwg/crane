@@ -15,7 +15,7 @@ const limit_ms = 10 * std.time.ms_per_s;
 
 /// A request for `path` on a connection of its own, sent and flushed.
 fn send(server: *const http.Server, path: []const u8) !std.Io.net.Stream {
-    const address: std.Io.net.IpAddress = .{ .ip4 = std.Io.net.Ip4Address.loopback(server.server.socket.address.getPort()) };
+    const address: std.Io.net.IpAddress = .{ .ip4 = std.Io.net.Ip4Address.loopback(server.listener.port()) };
     const stream = try address.connect(std.testing.io, .{ .mode = .stream });
     errdefer stream.close(std.testing.io);
     var buffer: [256]u8 = undefined;
