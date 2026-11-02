@@ -57,6 +57,7 @@ const helpers = @import("webidl").helpers;
 const shadow_realm = @import("shadow_realm.zig");
 /// The agent records, where each agent's realms live (`Realms`).
 const protocol_agents = @import("protocol_agents.zig");
+const tombstones = @import("webidl").utils.tombstones;
 const host = @import("host");
 const node_document = @import("dom").node_document;
 
@@ -243,6 +244,10 @@ pub const Realms = struct {
     /// would become dangling after rehash. By heap-allocating entries and
     /// storing pointers, the entries themselves don't move when HashMap grows.
     contexts: std.AutoHashMapUnmanaged(usize, *ContextEntry) = .empty,
+    /// Bounds `contexts`' tombstones: every realm an agent makes is put in
+    /// and taken out again at its end, page after page, for the agent's
+    /// life (infra.tombstones.TombstoneGuard).
+    guard: tombstones.TombstoneGuard = .{},
 
     /// Entries taken out of `contexts` but not yet freed.
     ///
@@ -636,6 +641,7 @@ pub fn getOrCreateWithExternalEventLoop(
 
     // Store pointer in map - entry won't move even if HashMap rehashes
     try reserveRetirement(state);
+    state.guard.beforeInsert(&state.contexts);
     try state.contexts.put(state.alloc(), key, entry);
 
     return &entry.runtime_ctx;
@@ -821,6 +827,7 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
 
     // Store pointer in map - entry won't move even if HashMap rehashes
     try reserveRetirement(state);
+    state.guard.beforeInsert(&state.contexts);
     try state.contexts.put(state.alloc(), key, entry);
 
     // Return pointer to context data - stable because entry is heap-allocated
@@ -978,6 +985,7 @@ pub fn removeContextByKey(key: usize, v8_ctx: ?*v8.Context) void {
     }
 
     if (state.contexts.fetchRemove(key)) |kv| {
+        state.guard.noteRemoval(&state.contexts);
         const entry = kv.value; // This is now *ContextEntry
         // Retire rather than destroy: Instances created in this context are not
         // destroyed below (they go with the slab) and their `ctx` points into
