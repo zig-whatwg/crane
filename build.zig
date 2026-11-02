@@ -1000,12 +1000,13 @@ fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []
         \\pub const roots = .{{
         \\
     , .{ name, name, checks }) catch @panic("OOM");
-    // Every import rooted at a src/<dir>/root.zig, but none whose directory
-    // holds another's: its root may import the other's root as a file
-    // (src/webidl/root.zig imports codegen/root.zig, the `codegen` module's
-    // root), and once the runner's import makes it reachable that file would
-    // be in two modules - which the compile refuses even where the tests
-    // themselves never imported the outer module.
+    // Every import rooted at a src/<dir>/root.zig - but, besides `dom` and
+    // `runtime` (the counters' own, which import no other module's root as
+    // a file), none whose directory holds another's: its root may import the
+    // other's root as a file (src/webidl/root.zig imports codegen/root.zig,
+    // the `codegen` module's root), and once the runner's import makes it
+    // reachable that file would be in two modules - which the compile refuses
+    // even where the tests themselves never imported the outer module.
     var dirs: std.ArrayList(struct { name: []const u8, dir: []const u8 }) = .empty;
     for (root.import_table.keys(), root.import_table.values()) |import_name, module| {
         const source = module.root_source_file orelse continue;
@@ -1017,9 +1018,11 @@ fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []
     var has_dom = false;
     var has_runtime = false;
     outer: for (dirs.items) |entry| {
-        for (dirs.items) |other| {
+        const counters = (std.mem.eql(u8, entry.name, "dom") and std.mem.eql(u8, entry.dir, "src/dom/")) or
+            (std.mem.eql(u8, entry.name, "runtime") and std.mem.eql(u8, entry.dir, "src/runtime/"));
+        if (!counters) for (dirs.items) |other| {
             if (other.dir.len > entry.dir.len and std.mem.startsWith(u8, other.dir, entry.dir)) continue :outer;
-        }
+        };
         w.print("    .{{ \"{s}\", @import(\"{s}\") }},\n", .{ entry.dir, entry.name }) catch @panic("OOM");
         if (std.mem.eql(u8, entry.name, "dom") and std.mem.eql(u8, entry.dir, "src/dom/")) has_dom = true;
         if (std.mem.eql(u8, entry.name, "runtime") and std.mem.eql(u8, entry.dir, "src/runtime/")) has_runtime = true;
