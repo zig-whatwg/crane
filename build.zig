@@ -891,7 +891,17 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     // tests-v8 ran as one index-order process until lane v8order1
     // (2026-11-01) made its tests hermetic (tests/v8/test_process.zig; the
     // order findings it fixed: docs/testing/tests-v8-order-findings-2026-11-01.tsv).
-    .{ .name = "tests-v8", .config = .{ .batch = 1 } },
+    // TEMPORARY: tests-v8's process-state check only reports (lane tstate1,
+    // 2026-11-02). At batch 1 its tests leave, every one listed with its
+    // field and values in docs/testing/test-state-findings-2026-11-02.tsv:
+    // one Global<Context> per realm a host agent's end tears down (the V8
+    // adapter's context_manager.deinit never disposes an entry's own handle,
+    // as retireEntry does - a product bug, reported), platform objects left
+    // in the standalone runtime's slab, Global<Object> handles, and
+    // worker_streams_test's deliberate --stress-compaction. Switch it to
+    // failing when `CRANE_TEST_STATE=fail zig build test-launch -Dspec=v8
+    // -Dlaunch-batch=1` passes.
+    .{ .name = "tests-v8", .config = .{ .batch = 1, .state_checks = .report } },
     .{ .name = "src-browser", .config = .{ .batch = 1 } },
     .{ .name = "test-browser", .config = .{ .batch = 1 } },
     .{ .name = "lib-exports", .config = .{ .batch = 1 } },
@@ -990,17 +1000,29 @@ fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []
         \\pub const roots = .{{
         \\
     , .{ name, name, checks }) catch @panic("OOM");
-    var has_dom = false;
-    var has_runtime = false;
+    // Every import rooted at a src/<dir>/root.zig, but none whose directory
+    // holds another's: its root may import the other's root as a file
+    // (src/webidl/root.zig imports codegen/root.zig, the `codegen` module's
+    // root), and once the runner's import makes it reachable that file would
+    // be in two modules - which the compile refuses even where the tests
+    // themselves never imported the outer module.
+    var dirs: std.ArrayList(struct { name: []const u8, dir: []const u8 }) = .empty;
     for (root.import_table.keys(), root.import_table.values()) |import_name, module| {
         const source = module.root_source_file orelse continue;
         if (source != .src_path) continue;
         const sub_path = source.src_path.sub_path;
         if (!std.mem.startsWith(u8, sub_path, "src/") or !std.mem.eql(u8, std.fs.path.basename(sub_path), "root.zig")) continue;
-        const dir = std.fs.path.dirname(sub_path).?;
-        w.print("    .{{ \"{s}/\", @import(\"{s}\") }},\n", .{ dir, import_name }) catch @panic("OOM");
-        if (std.mem.eql(u8, import_name, "dom") and std.mem.eql(u8, dir, "src/dom")) has_dom = true;
-        if (std.mem.eql(u8, import_name, "runtime") and std.mem.eql(u8, dir, "src/runtime")) has_runtime = true;
+        dirs.append(b.allocator, .{ .name = import_name, .dir = b.fmt("{s}/", .{std.fs.path.dirname(sub_path).?}) }) catch @panic("OOM");
+    }
+    var has_dom = false;
+    var has_runtime = false;
+    outer: for (dirs.items) |entry| {
+        for (dirs.items) |other| {
+            if (other.dir.len > entry.dir.len and std.mem.startsWith(u8, other.dir, entry.dir)) continue :outer;
+        }
+        w.print("    .{{ \"{s}\", @import(\"{s}\") }},\n", .{ entry.dir, entry.name }) catch @panic("OOM");
+        if (std.mem.eql(u8, entry.name, "dom") and std.mem.eql(u8, entry.dir, "src/dom/")) has_dom = true;
+        if (std.mem.eql(u8, entry.name, "runtime") and std.mem.eql(u8, entry.dir, "src/runtime/")) has_runtime = true;
     }
     w.writeAll("};\n\n") catch @panic("OOM");
     w.print("pub const dom: ?type = {s};\n", .{if (has_dom) "@import(\"dom\")" else "null"}) catch @panic("OOM");

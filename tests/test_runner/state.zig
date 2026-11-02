@@ -272,6 +272,26 @@ pub fn configure(environ: std.process.Environ) void {
     if (mode == .off) return;
     report_dir = environ.getPosix("CRANE_TEST_STATE_REPORT_DIR");
     take(&initial_digest);
+    if (report_dir) |dir| writeFields(dir) catch {};
+}
+
+/// `<dir>/<suite>.fields`: the fields this executable's digest has and their
+/// values when the runner started, by the first process of the suite to get
+/// there - what a survey shows each suite was checked for.
+fn writeFields(dir: []const u8) !void {
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const path = try std.fmt.bufPrint(&path_buf, "{s}/{s}.fields", .{ dir, suite.name });
+    const file = Io.Dir.cwd().createFile(io, path, .{ .exclusive = true }) catch |err| switch (err) {
+        error.PathAlreadyExists => return,
+        else => |e| return e,
+    };
+    defer file.close(io);
+    var buf: [4096]u8 = undefined;
+    var fw = file.writerStreaming(io, &buf);
+    const w = &fw.interface;
+    try w.print("# {s}: {d} fields; inventory variables readable here: {d} of {d}\n", .{ suite.name, initial_digest.len, globals.readable, globals.entries.len });
+    for (initial_digest.slice()) |f| try w.print("{s}\t{t}\t{f}\n", .{ f.name, f.kind, f.value });
+    try w.flush();
 }
 
 pub fn before() void {
