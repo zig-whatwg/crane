@@ -56,30 +56,28 @@ using namespace v8;
 // (docs/lessons/architecture-suppressmicrotaskexecutionscope-must-live-on-the.md).
 using NativeStepScope = Isolate::SuppressMicrotaskExecutionScope;
 
-// Platform singleton: made by the start (v8_Platform_Start), under
-// g_platform_start.mutex, before v8_initialized is published.
-static std::unique_ptr<Platform> g_platform = nullptr;
-/// Whether V8 has started. Stored true (release) once, by the start, after
-/// V8::Initialize and after g_platform and g_platform_start.flags are
-/// written; stored false only by v8_Platform_Dispose. Read without the lock
-/// (acquire): true means those are written and stay so.
-static std::atomic<bool> v8_initialized = false;
-
-/// V8's start, once per process (v8_Platform_Start). V8 itself allows one:
-/// V8::InitializePlatform and V8::Initialize advance a process-wide state and
-/// FATAL on a second or concurrent start (13.1.203 src/init/v8.cc
-/// AdvanceStartupState), and its flags freeze when it starts (V8::Initialize,
-/// FlagList::FreezeFlags). So the start and the flags it applies are taken
-/// under one lock, by whichever thread asks first.
-struct PlatformStartState {
+/// V8's platform and its start, once per process (v8_Platform_Start). V8
+/// itself allows one start: V8::InitializePlatform and V8::Initialize advance
+/// a process-wide state and FATAL on a second or concurrent start (13.1.203
+/// src/init/v8.cc AdvanceStartupState), and its flags freeze when it starts
+/// (V8::Initialize, FlagList::FreezeFlags). So the start and the flags it
+/// applies are taken under one lock, by whichever thread asks first.
+struct PlatformStart {
+    /// Made by the start, under `mutex`, before `started` is published.
+    std::unique_ptr<Platform> platform;
+    /// Whether V8 has started. Stored true (release) once, by the start,
+    /// after V8::Initialize and after `platform` and `flags` are written;
+    /// stored false only by v8_Platform_Dispose. Read without the lock
+    /// (acquire): true means those are written and stay so.
+    std::atomic<bool> started = false;
+    /// Orders the start, v8_SetFlagsFromString and v8_Platform_Dispose.
     std::mutex mutex;
     /// The flags the start applied ("" for none), written once by it.
     std::string flags;
     /// v8_Platform_Dispose ran: V8 cannot start again in this process.
     bool disposed = false;
 };
-// process-wide: V8 starts once per process and never again once disposed (13.1.203 src/init/v8.cc), so the lock that orders its start and the flags it started with are the process's, shared by every Browser and worker thread that may be first to need it.
-static PlatformStartState g_platform_start;
+static PlatformStart g_platform;
 
 // ============================================================================
 // Snapshot Mode Global Handle Tracking
@@ -2047,7 +2045,7 @@ void v8_Snapshot_ClearGlobalHandles() {
 /// @param flags - Null-terminated string of V8 command-line flags
 void v8_SetFlagsFromString(const char* flags) {
     if (flags) {
-        std::lock_guard<std::mutex> guard(g_platform_start.mutex);
+        std::lock_guard<std::mutex> guard(g_platform.mutex);
         V8::SetFlagsFromString(flags);
     }
 }
@@ -2219,7 +2217,7 @@ class CranePlatform final : public Platform {
 };
 
 static Platform* defaultPlatform() {
-    return static_cast<CranePlatform*>(g_platform.get())->backend();
+    return static_cast<CranePlatform*>(g_platform.platform.get())->backend();
 }
 
 /// v8_Platform_Start's answer (ffi.zig PlatformStart).
@@ -2254,32 +2252,32 @@ enum PlatformStartResult : int {
 /// false and the second V8::InitializePlatform aborted ("Wrong
 /// initialization order": tests/v8/platform_start_once_test.zig).
 int v8_Platform_Start(const char* flags) {
-    if (!v8_initialized.load(std::memory_order_acquire)) {
-        std::lock_guard<std::mutex> guard(g_platform_start.mutex);
-        if (g_platform_start.disposed) return kPlatformDisposed;
-        if (!v8_initialized.load(std::memory_order_relaxed)) {
+    if (!g_platform.started.load(std::memory_order_acquire)) {
+        std::lock_guard<std::mutex> guard(g_platform.mutex);
+        if (g_platform.disposed) return kPlatformDisposed;
+        if (!g_platform.started.load(std::memory_order_relaxed)) {
             // Flags first: V8 reads them from InitializePlatform on and
             // freezes them in Initialize (crbug.com/v8/11043).
             if (flags && *flags) V8::SetFlagsFromString(flags);
             V8::InitializeICUDefaultLocation("");
             V8::InitializeExternalStartupData("");
-            g_platform = std::make_unique<CranePlatform>();
-            V8::InitializePlatform(g_platform.get());
+            g_platform.platform = std::make_unique<CranePlatform>();
+            V8::InitializePlatform(g_platform.platform.get());
             V8::Initialize();
-            g_platform_start.flags = flags ? flags : "";
-            v8_initialized.store(true, std::memory_order_release);
+            g_platform.flags = flags ? flags : "";
+            g_platform.started.store(true, std::memory_order_release);
             return kPlatformStartedNow;
         }
     }
     if (!flags) return kPlatformAlreadyStarted;
-    // Written by the start before it published v8_initialized, never after.
-    return g_platform_start.flags == flags ? kPlatformAlreadyStarted : kPlatformStartedWithOtherFlags;
+    // Written by the start before it published `started`, never after.
+    return g_platform.flags == flags ? kPlatformAlreadyStarted : kPlatformStartedWithOtherFlags;
 }
 
 /// The flags V8's start applied ("" for none), or null before it started.
 /// Lives as long as the process.
 const char* v8_Platform_StartFlags() {
-    return v8_initialized.load(std::memory_order_acquire) ? g_platform_start.flags.c_str() : nullptr;
+    return g_platform.started.load(std::memory_order_acquire) ? g_platform.flags.c_str() : nullptr;
 }
 
 /// Write a V8 heap snapshot of |isolate| to |path| as JSON (the format
@@ -2328,7 +2326,7 @@ bool v8_Isolate_HasPendingBackgroundTasks(Isolate* isolate) {
 }
 
 bool v8_Platform_PumpMessageLoop(Isolate* isolate) {
-    if (!v8_initialized.load(std::memory_order_acquire) || !isolate) return false;
+    if (!g_platform.started.load(std::memory_order_acquire) || !isolate) return false;
     return platform::PumpMessageLoop(defaultPlatform(), isolate,
                                      platform::MessageLoopBehavior::kDoNotWait);
 }
@@ -2336,12 +2334,12 @@ bool v8_Platform_PumpMessageLoop(Isolate* isolate) {
 /// End V8 for the process: it cannot start again (v8_Platform_Start answers
 /// kPlatformDisposed). After every isolate is disposed, from one thread.
 void v8_Platform_Dispose() {
-    std::lock_guard<std::mutex> guard(g_platform_start.mutex);
-    if (v8_initialized.load(std::memory_order_relaxed)) {
+    std::lock_guard<std::mutex> guard(g_platform.mutex);
+    if (g_platform.started.load(std::memory_order_relaxed)) {
         V8::Dispose();
         V8::DisposePlatform();
-        v8_initialized.store(false, std::memory_order_release);
-        g_platform_start.disposed = true;
+        g_platform.started.store(false, std::memory_order_release);
+        g_platform.disposed = true;
     }
 }
 
@@ -2585,7 +2583,7 @@ void v8_Isolate_Dispose(Isolate* isolate) {
         // what V8 posted for it; without this a later isolate at the same
         // address inherits it and its stale tasks. d8 does this before every
         // Dispose (Worker::ExecuteInThread).
-        if (v8_initialized.load(std::memory_order_acquire)) platform::NotifyIsolateShutdown(defaultPlatform(), isolate);
+        if (g_platform.started.load(std::memory_order_acquire)) platform::NotifyIsolateShutdown(defaultPlatform(), isolate);
 
         // Dispose the isolate first
         isolate->Dispose();
@@ -12230,7 +12228,7 @@ int v8_Script_RunRethrowingErrors(
 /// set before it is (they are frozen after), and it cannot be initialized
 /// again once disposed.
 bool v8_Platform_IsInitialized() {
-    return v8_initialized.load(std::memory_order_acquire);
+    return g_platform.started.load(std::memory_order_acquire);
 }
 
 /// The engine protocol's HostPromiseRejectionTracker dispatcher: one Zig
