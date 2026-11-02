@@ -18,7 +18,9 @@
 //!   * A map: a container field, or a container-level `var` (threadlocal or
 //!     not), whose type is a std hash map that deletes by tombstone -
 //!     `std.HashMap`, `std.AutoHashMap`, `std.StringHashMap` and their
-//!     `Unmanaged` forms, optional or not, or a container-level `const` of
+//!     `Unmanaged` forms, and infra's `address_map.AddressHashMap` (std's
+//!     HashMap with a seed per table) and its `Unmanaged` form, optional or
+//!     not, or a container-level `const` of
 //!     the file naming one of them. `std.ArrayHashMap` and friends are not:
 //!     they delete by swapping or shifting, with no tombstone. A local `var`
 //!     in a function is not long-lived and is not looked at; nor is anything
@@ -91,8 +93,16 @@ const tombstoning_types = [_][]const u8{
     "AutoHashMapUnmanaged(", "StringHashMap(",    "StringHashMapUnmanaged(",
 };
 
+/// The address-keyed maps of `infra.address_map` (src/infra/address_map.zig):
+/// std's HashMap with a seed per table, so they delete by tombstone too.
+const address_map_types = [_][]const u8{ "AddressHashMap(", "AddressHashMapUnmanaged(" };
+
+/// The ways a file names `infra.address_map`.
+const address_map_prefixes = [_][]const u8{ "@import(\"infra\").address_map.", "infra.address_map.", "address_map." };
+
 /// Whether `text` (a type expression with its whitespace removed) is one of
-/// `tombstoning_types`, optional or not. A pointer to a map is not the map.
+/// `tombstoning_types`, or one of `address_map_types`, optional or not. A
+/// pointer to a map is not the map.
 pub fn isTombstoningType(text: []const u8) bool {
     var t = text;
     while (t.len > 0 and t[0] == '?') t = t[1..];
@@ -100,6 +110,11 @@ pub fn isTombstoningType(text: []const u8) bool {
         if (!std.mem.startsWith(u8, t, prefix)) continue;
         const rest = t[prefix.len..];
         for (tombstoning_types) |name| if (std.mem.startsWith(u8, rest, name)) return true;
+    }
+    for (address_map_prefixes) |prefix| {
+        if (!std.mem.startsWith(u8, t, prefix)) continue;
+        const rest = t[prefix.len..];
+        for (address_map_types) |name| if (std.mem.startsWith(u8, rest, name)) return true;
     }
     return false;
 }
@@ -847,6 +862,21 @@ test "a field map removed from with no guard is flagged, qualified by its contai
     , &.{"Manager.timers"});
 }
 
+test "an address map removed from with no guard is flagged, as the std map it wraps would be" {
+    try expectFindings(
+        \\const std = @import("std");
+        \\const address_map = @import("infra").address_map;
+        \\pub const Queues = struct {
+        \\    queues: address_map.AddressHashMap(*Instance, u8),
+        \\    index: address_map.AddressHashMapUnmanaged(usize, u8) = .empty,
+        \\    fn drop(self: *Queues, k: *Instance, i: usize) void {
+        \\        _ = self.queues.fetchRemove(k);
+        \\        _ = self.index.remove(i);
+        \\    }
+        \\};
+    , &.{ "Queues.queues", "Queues.index" });
+}
+
 test "a map guarded by noteRemoval and beforeInsert is not flagged; one of the two is not a guard" {
     try expectFindings(
         \\const std = @import("std");
@@ -1128,6 +1158,16 @@ test "isTombstoningType: the HashMaps, optional or not, under std or std.hash_ma
     try testing.expect(!isTombstoningType("std.StringArrayHashMapUnmanaged(u8)"));
     try testing.expect(!isTombstoningType("*std.AutoHashMap(u32,u8)"));
     try testing.expect(!isTombstoningType("std.ArrayList(u8)"));
+}
+
+test "isTombstoningType: infra's address maps, however the file names the module" {
+    try testing.expect(isTombstoningType("address_map.AddressHashMap(*runtime.Instance,*CacheEntry)"));
+    try testing.expect(isTombstoningType("?address_map.AddressHashMap(usize,*InternalState)"));
+    try testing.expect(isTombstoningType("infra.address_map.AddressHashMapUnmanaged(*Instance,u64)"));
+    try testing.expect(isTombstoningType("@import(\"infra\").address_map.AddressHashMapUnmanaged(*Node,void)"));
+    try testing.expect(!isTombstoningType("*address_map.AddressHashMap(usize,u8)"));
+    try testing.expect(!isTombstoningType("address_map.AddressContext(usize)"));
+    try testing.expect(!isTombstoningType("other.AddressHashMap(usize,u8)"));
 }
 
 test "exemptWhy: only a why, only in the comment block directly above" {

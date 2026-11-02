@@ -17,12 +17,13 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const tombstones = @import("infra").tombstones;
+const address_map = @import("infra").address_map;
 
 pub fn InstanceStateMap(comptime State: type) type {
     return struct {
         const Self = @This();
 
-        map: std.AutoHashMap(usize, State),
+        map: address_map.AddressHashMap(usize, State),
         /// Rehashes `map` before an insert once its removals could take half
         /// the unused slots. A rehash moves the values, as growing does:
         /// a `*State` from `get` or `getOrPut` is borrowed only until the
@@ -30,7 +31,7 @@ pub fn InstanceStateMap(comptime State: type) type {
         guard: tombstones.TombstoneGuard = .{},
 
         pub fn init(allocator: std.mem.Allocator) Self {
-            return .{ .map = std.AutoHashMap(usize, State).init(allocator) };
+            return .{ .map = address_map.AddressHashMap(usize, State).init(allocator) };
         }
 
         /// With its Browser: each state's own `deinit`, if it has one, then
