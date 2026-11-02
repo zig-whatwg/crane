@@ -1439,6 +1439,10 @@ fn run(init: std.process.Init) !u8 {
             print("wpt_runner: unknown option {s}\n", .{diag.unknown_option});
             return 2;
         },
+        error.VerifyWithoutRepeat => {
+            print("wpt_runner: --verify needs --repeat=N: it checks that the N runs agree\n", .{});
+            return 2;
+        },
         else => return err,
     };
     defer options.deinit();
@@ -2441,7 +2445,7 @@ fn superviseRepeat(
 
     var report: std.Io.Writer.Allocating = .init(allocator);
     defer report.deinit();
-    try tally.write(&report.writer, .{ .this = self_exe, .with = options.repeat_with, .load_threads = options.load_threads });
+    try tally.write(&report.writer, .{ .this = self_exe, .with = options.repeat_with, .load_threads = options.load_threads, .verify = options.verify });
 
     const tally_path = try layout.tally(allocator);
     defer allocator.free(tally_path);
@@ -2451,6 +2455,8 @@ fn superviseRepeat(
         try file.writeStreamingAll(host.io(), report.written());
     }
     print("\n{s}\nTally: {s}\n", .{ report.written(), tally_path });
+    // --verify: the series fails when a status differed between runs.
+    if (options.verify) return tally.verifyExitCode();
     return 0;
 }
 
