@@ -520,6 +520,17 @@ fn endRealms(state: *Realms) void {
 
             entry.runtime_ctx.clearDocumentUrl();
 
+            // The entry's own context handle (getOrCreateWithIsolate makes
+            // one: owns_v8_ctx), as retireEntry disposes it: the agent is
+            // entered and its isolate alive. Freeing the entry without it
+            // leaked one Global<Context> for every realm an agent's end tore
+            // down (lane tstate1: engine.live_context_globals 0 -> 1 per test
+            // realm, tests/v8/test_process_test.zig).
+            if (entry.owns_v8_ctx) {
+                v8.v8_Context_Dispose(entry.v8_ctx);
+                entry.owns_v8_ctx = false;
+            }
+
             // Free the heap-allocated entry itself
             state.alloc().destroy(entry);
         }
