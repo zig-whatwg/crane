@@ -528,6 +528,28 @@ pub const AgentOptions = struct {
     /// it. Null - or an adapter that does not count yet (JavaScriptCore,
     /// QuickJS) - frees at the event loop's slices only.
     deferred_teardown: ?*runtime.gc.DeferredTeardown = null,
+    /// The agent's clock: the time ECMAScript's Date reads - Date.now(),
+    /// `new Date()`, `Date()` - honoured where `host_clock`. A host gives one
+    /// when its Browser's clock is not the process's (the testing platform's
+    /// virtual clock, platform.BrowserClock). Null, the default: the engine's
+    /// own clock, exactly as without this option.
+    clock: ?AgentClock = null,
+    /// The seed of the agent's non-cryptographic randomness - Math.random -
+    /// honoured where `seeded_random`: a host that replays a run gives one
+    /// (a Browser's seeded stream, platform.fillBrowserRandom). Per agent,
+    /// never per process: an engine's process-wide seed (V8's --random-seed)
+    /// would give every agent the same sequence. Null, the default: the
+    /// engine's own entropy, exactly as without this option.
+    random_seed: ?u64 = null,
+};
+
+/// A host's wall clock for an agent (AgentOptions.clock): nanoseconds since
+/// the Unix epoch. C-shaped, so an adapter can call it from the engine's own
+/// clock callback; `context` is BORROWED until destroyAgent returns. Called
+/// on the agent's thread, while it runs script.
+pub const AgentClock = extern struct {
+    context: ?*anyopaque,
+    wall_now: *const fn (context: ?*anyopaque) callconv(.c) i64,
 };
 
 /// The host's side of the ECMAScript host hooks, installed per agent. A hook
@@ -940,6 +962,19 @@ pub const Capabilities = struct {
     /// (instance_lifecycle.provablyUnwrapped's default) - a realm's end keeps
     /// those slots, and an orphan stays until its Browser ends.
     wrap_tracking: Support,
+    /// AgentOptions.clock: the agent's Date reads the host's clock.
+    /// Unsupported: Date reads the engine's own clock, so a Browser with a
+    /// virtual clock has virtual timers and HR-Time but a real Date
+    /// (JavaScriptCore's public C API has no clock hook; QuickJS reads
+    /// gettimeofday).
+    host_clock: Support,
+    /// AgentOptions.random_seed: Math.random is seeded per agent.
+    /// Unsupported: the engine's own entropy, so a seeded Browser replays its
+    /// timers but not Math.random (JavaScriptCore's forceWeakRandomSeed is a
+    /// private, process-wide option, as V8's --random-seed is; emulation is
+    /// possible by replacing Math.random per global through the public
+    /// JSObjectMakeFunctionWithCallback).
+    seeded_random: Support,
 };
 
 /// The capabilities of the engine this build selected.

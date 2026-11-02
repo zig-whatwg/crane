@@ -62,7 +62,8 @@ const Storage = storage_mod.Storage;
 /// The page agent's event loop - the host's (HTML 8.1.7).
 const EventLoop = @import("event_loop.zig").EventLoop;
 const Process = @import("process.zig").Process;
-const media_backend_mod = @import("platform").media_backend;
+const platform = @import("platform");
+const media_backend_mod = platform.media_backend;
 
 /// A similar-origin window agent's host hooks: HostPromiseRejectionTracker
 /// and "notify about rejected promises" (html/rejected_promises.zig), and
@@ -135,6 +136,13 @@ pub const BrowserConfig = struct {
     /// backend's - and per-response cap - default an eighth of that, as
     /// Chromium and Gecko both derive it. A max_bytes of 0: no HTTP cache.
     http_cache: HttpCacheConfig = .{},
+    /// The platform's own per-Browser options (docs/platform-protocol.md
+    /// 3.2), given to the Browser's platform state: on the testing
+    /// platform, the opt-in deterministic modes - a virtual clock
+    /// (`virtual_clock`, `virtual_clock_wall_start_ms`) and a random seed
+    /// (`random_seed`) - among others. Code meant for every platform leaves
+    /// it `.{}`, which is real time and the engine's own entropy.
+    platform: platform.PlatformBrowserOptions = .{},
 
     pub const HttpCacheConfig = @import("fetch").network.NetworkContext.HttpCacheConfig;
 
@@ -226,6 +234,23 @@ pub const Browser = struct {
         // Atomics.wait() throws a TypeError rather than freezing the page's
         // one thread, as Blink's main thread does; a dedicated worker's agent
         // keeps it - and the host's hooks (window_agent_hooks).
+        // The Browser's scope, which its realms carry, and its platform
+        // state (docs/platform-protocol.md section 3), before its agent and
+        // its event loop: the agent takes the Browser's clock and the seed
+        // of its random stream, the loop its clock (platform.browserClock,
+        // platform.fillBrowserRandom) - the testing platform's opt-in
+        // virtual clock and seed, or none: the engine's own clock and
+        // entropy, exactly as before. Ended after the agent and the loop,
+        // here as in `deinit`.
+        const scope = try allocator.create(runtime.BrowserScope);
+        errdefer allocator.destroy(scope);
+        scope.* = runtime.BrowserScope.init(allocator);
+        errdefer scope.deinit();
+        const browser_platform = try @import("html").platform_state.createWith(scope, &.{ .platform = config.platform });
+        const browser_clock = platform.browserClock(browser_platform);
+        var random_seed: u64 = undefined;
+        const seeded = platform.fillBrowserRandom(browser_platform, std.mem.asBytes(&random_seed));
+
         const agent_host = try allocator.create(@import("html").agent_host.AgentHost);
         agent_host.* = @import("html").agent_host.AgentHost.init(allocator);
         errdefer {
@@ -241,9 +266,13 @@ pub const Browser = struct {
             // A collected node's teardown is queued here, for the event loop
             // to run between tasks (runtime.gc.DeferredTeardown).
             .deferred_teardown = &agent_host.deferred_teardown,
+            // Date reads the Browser's clock when it has one of its own.
+            .clock = if (browser_clock.wall_now) |wall_now| .{ .context = browser_clock.context, .wall_now = wall_now } else null,
+            // Math.random replays from the Browser's stream when it has one.
+            .random_seed = if (seeded) random_seed else null,
         }) catch return error.V8InitFailed;
 
-        return initBrowserWithAgent(allocator, agent, agent_host, from_snapshot, config);
+        return initBrowserWithAgent(allocator, agent, agent_host, from_snapshot, config, scope, browser_clock);
     }
 
     /// Complete browser initialization with its agent.
@@ -253,6 +282,8 @@ pub const Browser = struct {
         agent_host: *@import("html").agent_host.AgentHost,
         used_snapshot: bool,
         config: BrowserConfig,
+        scope: *runtime.BrowserScope,
+        browser_clock: platform.BrowserClock,
     ) !*Browser {
         errdefer engine.destroyAgent(agent);
 
@@ -263,20 +294,12 @@ pub const Browser = struct {
         // The agent's event loop, with its timers (the host's).
         const event_loop = try allocator.create(EventLoop);
         errdefer allocator.destroy(event_loop);
-        event_loop.* = try EventLoop.init(agent, allocator);
+        event_loop.* = try EventLoop.initWithClock(agent, allocator, browser_clock);
         // The agent's deferred teardown queue, which the loop runs between
         // tasks, and its fetches, which the loop pumps.
         event_loop.deferred_teardown = &agent_host.deferred_teardown;
         event_loop.fetches = &agent_host.fetches;
 
-        // The Browser's scope, which its realms carry.
-        const scope = try allocator.create(runtime.BrowserScope);
-        errdefer allocator.destroy(scope);
-        scope.* = runtime.BrowserScope.init(allocator);
-        errdefer scope.deinit();
-        // The Browser's platform state (docs/platform-protocol.md section 3),
-        // which its realms' per-Browser platform operations take.
-        try @import("html").platform_state.create(scope);
         // The host's media backend, which every realm of this Browser reads
         // (html.media_runtime.MediaHost), set before any realm exists.
         (try scope.of(@import("html").media_runtime.MediaHost)).backend = config.media_backend;

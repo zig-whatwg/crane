@@ -36,11 +36,21 @@ fn ignoreEvent(context: ?*anyopaque, event: *const platform.PlatformEvent) callc
 const no_events: platform.EventSink = .{ .context = null, .post = ignoreEvent };
 
 /// Make `scope`'s Browser's platform state - the platform's defaults for
-/// every option (contract 3.1). Browser.init's.
+/// every option (contract 3.1).
 pub fn create(scope: *runtime.BrowserScope) !void {
+    _ = try createWith(scope, &.{});
+}
+
+/// Make `scope`'s Browser's platform state with `options` (BrowserConfig's
+/// platform options among them), and answer it: Browser.init's, before the
+/// Browser's agent and event loop, which take its clock and its seed. A
+/// scope that has one already keeps it.
+pub fn createWith(scope: *runtime.BrowserScope, options: *const platform.BrowserOptions) !*platform.BrowserPlatform {
     const state = try scope.of(PlatformState);
-    if (state.browser != null) return;
-    state.browser = try platform.createBrowserPlatform(state.allocator, &.{}, no_events);
+    if (state.browser) |browser| return browser;
+    const browser = try platform.createBrowserPlatform(state.allocator, options, no_events);
+    state.browser = browser;
+    return browser;
 }
 
 /// End `scope`'s Browser's platform state. Browser.deinit's.
@@ -55,6 +65,29 @@ pub fn of(realm: runtime.Context) ?*platform.BrowserPlatform {
     const scope = realm.browserScope() orelse return null;
     const state = scope.existing(PlatformState) orelse return null;
     return state.browser;
+}
+
+/// The clock `realm`'s HR-Time reads measure time with: its Browser's
+/// (platform.browserClock) for a window realm, whose event loop - the
+/// Browser's - runs on it. The platform's own clocks for every other realm,
+/// a worker's among them: a worker's event loop runs on the process's clock
+/// (the virtual clock's first batch, docs/platform-protocol.md section 9),
+/// so its performance.now() must too. And for a realm with no Browser
+/// platform state. A lookup in the scope: callers keep the answer, which is
+/// fixed for the realm's life.
+pub fn clockOf(realm: runtime.Context) platform.BrowserClock {
+    if (!realm.isWindow()) return .real;
+    return browserClockOf(realm);
+}
+
+/// The clock of `realm`'s Browser, whatever kind of realm it is: for a
+/// Window being made, whose realm does not record its kind yet (the
+/// context's realm info is synced when its realm record is set, after the
+/// global exists) - the Window knows what it is. The platform's own clocks
+/// without Browser platform state.
+pub fn browserClockOf(realm: runtime.Context) platform.BrowserClock {
+    const browser = of(realm) orelse return .real;
+    return platform.browserClock(browser);
 }
 
 /// The platform owner installs the style provider once, at process start.

@@ -45,6 +45,10 @@ pub const TimeOrigin = struct {
     /// Affects timer resolution per spec section 3.6.
     cross_origin_isolated: bool,
 
+    /// The clocks it reads: the process's, or its global's Browser's
+    /// (clock.Source; the testing platform's opt-in virtual clock).
+    source: clock.Source = .process,
+
     const Self = @This();
 
     /// Initialize a new time origin for a context, now
@@ -56,11 +60,18 @@ pub const TimeOrigin = struct {
     /// The estimated monotonic time of the Unix epoch is the group's, one
     /// moment shared by every time origin (estimatedMonotonicTimeOfUnixEpoch).
     pub fn init(cross_origin_isolated: bool) Self {
-        const monotonic_time = clock.MonotonicClock.unsafeCurrentTime();
+        return initOn(.process, cross_origin_isolated);
+    }
+
+    /// `init`, now on `source` - its global's Browser's clocks - which the
+    /// time origin then reads.
+    pub fn initOn(source: clock.Source, cross_origin_isolated: bool) Self {
+        const monotonic_time = source.monotonicTime();
         return Self{
             .origin_moment = coarsen.coarsenTime(monotonic_time, cross_origin_isolated),
-            .estimated_epoch = estimatedMonotonicTimeOfUnixEpoch(),
+            .estimated_epoch = estimatedMonotonicTimeOfUnixEpochOn(source),
             .cross_origin_isolated = cross_origin_isolated,
+            .source = source,
         };
     }
 
@@ -84,7 +95,7 @@ pub const TimeOrigin = struct {
     ///
     /// This is what Performance.now() returns.
     pub fn currentRelativeTimestamp(self: *const Self) clock.Nanoseconds {
-        const current_time = clock.MonotonicClock.unsafeCurrentTime();
+        const current_time = self.source.monotonicTime();
         const coarsened = coarsen.coarsenTime(current_time, self.cross_origin_isolated);
         return coarsened - self.origin_moment;
     }
@@ -120,7 +131,7 @@ pub const TimeOrigin = struct {
     /// Per spec: "current monotonic time" for an environment settings object
     /// is the coarsened current time from the monotonic clock.
     pub fn currentMonotonicTime(self: *const Self) clock.Nanoseconds {
-        const current_time = clock.MonotonicClock.unsafeCurrentTime();
+        const current_time = self.source.monotonicTime();
         return coarsen.coarsenTime(current_time, self.cross_origin_isolated);
     }
 
@@ -129,7 +140,7 @@ pub const TimeOrigin = struct {
     /// Per spec: "current wall time" for an environment settings object
     /// is the coarsened current time from the wall clock.
     pub fn currentWallTime(self: *const Self) clock.Nanoseconds {
-        const current_time = clock.WallClock.unsafeCurrentTime();
+        const current_time = self.source.wallTime();
         return coarsen.coarsenTime(current_time, self.cross_origin_isolated);
     }
 };
@@ -156,6 +167,17 @@ pub const TimeOrigin = struct {
 /// computed from).
 pub fn estimatedMonotonicTimeOfUnixEpoch() clock.Nanoseconds {
     return process_estimated_epoch orelse estimateEpoch();
+}
+
+/// The estimated monotonic time of the Unix epoch on `source`: the
+/// process's one estimate for the process's clocks; for a Browser's own
+/// clocks (a virtual clock, which keeps its wall time a fixed offset from
+/// its monotonic time) the same steps on them - exact, since nothing moves
+/// between the two readings - so its time origins are measured on the
+/// clocks its performance.now() reads.
+pub fn estimatedMonotonicTimeOfUnixEpochOn(source: clock.Source) clock.Nanoseconds {
+    if (source.isProcess()) return estimatedMonotonicTimeOfUnixEpoch();
+    return coarsen.coarsenTime(source.monotonicTime() - source.wallTime(), false);
 }
 
 /// Estimate the process's estimated monotonic time of the Unix epoch. Once

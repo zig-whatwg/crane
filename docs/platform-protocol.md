@@ -330,12 +330,14 @@ today; a lane that implements the capability flips the constant.
 | `wallNow` | `() WallTime` | any | The wall clock's unsafe current time. |
 | `sleepThread` | `(nanoseconds: u64) void` | any | TRANSITIONAL: exists until the network step replaces the remaining sleeps with port waits (recipes step 2), then is deleted. |
 | helpers (`pub fn`) | `monotonicMillis`, `wallMillis`, `wallSeconds`, `Stopwatch` | any | Over the two clocks. |
+| `browserClock` | `(browser) BrowserClock` | any | The Browser's clocks, fixed for its life: what its event loop, its timers (setTimeout, the frame clock, idle periods) and its window realms' HR-Time and Date reads measure time with. `BrowserClock` is a C-shaped value - a context and three `callconv(.c)` functions, `monotonic_now`, `wall_now` and `fast_forward_to`, all set or all null - copied by its holders; its context is BORROWED from the BrowserPlatform, which the Browser ends after its event loop and agent. darwin and linux answer `.real` (every function null: `monotonicNow` and `wallNow`, one predictable branch). The testing platform answers its VIRTUAL clock for a Browser that asked (section 9). `maybeFastForwardToWakeUp(wake_up)` is Chromium's TimeDomain::MaybeFastForwardToWakeUp: the event loop is idle and its next wake-up is `wake_up`; a virtual clock moves there (never back) and answers true, a real one false. |
 
 ### 6.3 Randomness
 
 | Operation | Signature | Thread | Notes |
 |---|---|---|---|
 | `fillRandom` | `(bytes: []u8) void` | any | Cryptographically strong bytes from the OS. Cannot fail: the platform aborts if the OS cannot supply entropy. WebCrypto 10.1.1 getRandomValues, 10.1.2 randomUUID, every key generation, and every PRNG seed in Crane. |
+| `fillBrowserRandom` | `(browser, bytes: []u8) bool` | any | The Browser's own random stream, for randomness a page can observe that need not be secret - its agent's Math.random seed (engine `AgentOptions.random_seed`) first. True, `bytes` filled, for a Browser that has one (the testing platform's seeded Browser, section 9), which a run replays from its seed; false, `bytes` untouched, everywhere else - the consumer keeps its own entropy. Never cryptographic: getRandomValues, randomUUID and key generation read `fillRandom` in every mode (no browser seeds them; a seed that reached them would be a predictable key the day it is set outside a test). A stream replays only if its consumers draw in the same order. |
 
 ### 6.4 Threads
 
@@ -794,11 +796,21 @@ time), kit/memory_clipboard otherwise.
 | notifications, geolocation | recorded; positions scripted per Browser |
 | console | the per-Browser sink in its options (the runner's per-test log) |
 | layout | emulated, a STOPGAP (decision 19b): `replacedElementBox` sizes a connected img from Crane's facts (src/platform/adapters/testing/layout.zig); every other layout operation answers as headless |
+| clocks (`browserClock`), opt in | `PlatformBrowserOptions.virtual_clock`: a per-Browser VIRTUAL clock (src/platform/adapters/testing/virtual_clock.zig), Chromium's MOCK_TIME - it stands still while the Browser works and moves only when its event loop is idle (no runnable task, no posted task, no deferred teardown, no fetch in flight, no running worker) and a timer or an idle period is due, to exactly that wake-up, or when a test calls `platform.adapter.advanceClock(browser, ns)`. Monotonic and wall time move together; the wall clock starts at `virtual_clock_wall_start_ms` (2026-01-01T00:00:00Z by default), the monotonic one at an arbitrary origin that is not 0. Work takes no time: a page that busy-waits on performance.now() or Date.now() never sees time pass, as under MOCK_TIME. Off by default; WPT runs keep real time, as all three browsers' do. FIRST BATCH (2026-11-02): the Browser's window event loop, its timers, frame clock and idle periods, its window realms' performance.now()/timeOrigin/Event.timeStamp, IdleDeadline, and Date in its window agent (engine `host_clock`). Still on the process clock: workers' loops and realms, WebSocket and EventSource polling (their 1 ms pump timers make virtual time run ahead of their real I/O - a Blink-style virtual-time pauser is the next step), a navigation's fetch timing (so a virtual Browser's time origin stays its Window's creation, not the navigation's fetch start), and the other process-clock readers (cookie expiry, File.lastModified, XHR timeouts, IndexedDB, Reporting) |
+| randomness (`fillBrowserRandom`), opt in | `PlatformBrowserOptions.random_seed` (0, the default: none): a per-Browser SplitMix64 stream (src/platform/adapters/testing/seeded_random.zig), written out so a seed replays on every toolchain. Its first draw seeds the Browser's agent's Math.random (engine `seeded_random`); V8's process-wide --random-seed is never used, because it gives every isolate the same sequence |
 
 Its per-Browser options (`platform.PlatformBrowserOptions` in a testing build) carry the fake devices,
 the prompt policy and the console sink; its control surface for testdriver (queue a picked file,
 script a position) is `platform.adapter.control`, present only in a testing build. Fresh state per
 Browser is the point: WebKitTestRunner's process-global mocks need `resetStateToConsistentValues`.
+
+**The fixed environment** is the harness's, not the platform's (WebKit's model: its harness copies only
+a whitelist of environment variables to the driver and forces `TZ`): the test launcher starts every test
+process with `TZ=America/Los_Angeles` (WebKit's US/Pacific under its canonical IANA name; a zone with
+daylight saving and a negative offset exercises what UTC hides), `LANG=LC_ALL=en_US.UTF-8`
+(navigator.language is en-US) and curl's proxy variables cleared (`BrowserConfig.proxy = .system` reads
+them). V8 is built without ICU, so its Date reads libc's `TZ`. The testing platform does not set the
+environment itself: WPT runs build against it and keep the host's environment, as browsers' WPT runs do.
 
 ## 10. Link plans
 
