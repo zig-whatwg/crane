@@ -33,6 +33,10 @@ pub fn writeLine(w: *std.Io.Writer, name: []const u8, index: u32, rec: *const sc
     }
     try w.writeAll("],\"replay\":");
     if (rec.replay) |s| try w.print("\"{t}\"", .{s}) else try w.writeAll("null");
+    if (rec.cause.len != 0) {
+        try w.writeAll(",\"cause\":");
+        try writeJsonString(w, std.mem.trimEnd(u8, rec.cause, "\n"));
+    }
     try w.print(",\"batch\":{d},\"position\":{d},\"seed\":\"0x{x}\",\"duration_ms\":{d}.{d:0>3}}}\n", .{
         rec.batch, rec.position, seed, rec.ns / std.time.ns_per_ms, (rec.ns / std.time.ns_per_us) % 1000,
     });
@@ -43,16 +47,68 @@ pub fn writeLine(w: *std.Io.Writer, name: []const u8, index: u32, rec: *const sc
 /// prefix replay, then the end of its output.
 ///
 ///   FAIL css.x_test.test.it (first run: fail, batch 3 position 4, seed 0x1f; alone: fail fail)
+///
+/// A test the launcher could not start says so instead, and names why:
+///
+///   LAUNCHER-ERROR x.test.it (not run: the launcher could not start its process, batch 0 position 4, seed 0x1f)
+///   launcher: could not start the test process: could not spawn ...
 pub fn writeVerdictBlock(w: *std.Io.Writer, name: []const u8, rec: *const sched.TestRecord, seed: u64) std.Io.Writer.Error!void {
+    if (rec.first == .launcher_error) {
+        try w.print("{s} {s} (not run: the launcher could not start its process, batch {d} position {d}, seed 0x{x})\n{s}\n", .{
+            rec.verdict.label(), name, rec.batch, rec.position, seed, std.mem.trimEnd(u8, rec.cause, "\n"),
+        });
+        return;
+    }
     try w.print("{s} {s} (first run: {t}, batch {d} position {d}, seed 0x{x}; alone:", .{
         rec.verdict.label(), name, rec.first, rec.batch, rec.position, seed,
     });
     for (rec.aloneRuns()) |s| try w.print(" {t}", .{s});
     if (rec.replay) |s| try w.print("; after the tests before it in its process (from position {d}): {t}", .{ rec.process_start, s });
     try w.writeAll(")\n");
+    if (rec.cause.len != 0) try w.print("{s}\n", .{std.mem.trimEnd(u8, rec.cause, "\n")});
     const tail = lastLines(rec.output, 40);
     if (tail.len != 0) try w.print("{s}\n", .{tail});
 }
+
+/// The tests the launcher could not run, once per run, grouped by cause:
+/// what fails the run when a test process could not be started. Each cause
+/// is one line in the build runner's own form, `error: '<step>' failed:`,
+/// naming the suite's step (never a test: none failed), the path and the
+/// errno - the line gate scripts grep for (tmp/remote/gate-main.sh:
+/// `^error: '`), so a run whose skipped tests hide a launcher failure never
+/// reads green. The tests it hit follow, indented.
+///
+///   error: 'test tests-x' failed: LAUNCHER-ERROR, 3 tests not run (the launcher failed, not them): launcher: could not start the test process: could not take a test-process slot, /c/test-launcher-slots/slot-0: FileNotFound (ENOENT)
+///       x.test.one
+///       ...
+pub fn writeLauncherErrors(w: *std.Io.Writer, gpa: std.mem.Allocator, suite: []const u8, names: []const []const u8, records: []const sched.TestRecord) !void {
+    const Cause = struct { text: []const u8, count: u32 = 0, first: [max_named]u32 = undefined };
+    var causes: std.ArrayList(Cause) = .empty;
+    defer causes.deinit(gpa);
+    for (records, 0..) |*rec, t| {
+        if (rec.verdict != .launcher_error) continue;
+        const text = std.mem.trimEnd(u8, rec.cause, "\n");
+        const c = for (causes.items) |*c| {
+            if (std.mem.eql(u8, c.text, text)) break c;
+        } else c: {
+            try causes.append(gpa, .{ .text = text });
+            break :c &causes.items[causes.items.len - 1];
+        };
+        if (c.count < max_named) c.first[c.count] = @intCast(t);
+        c.count += 1;
+    }
+    for (causes.items) |c| {
+        try w.print("error: 'test {s}' failed: LAUNCHER-ERROR, {d} test{s} not run (the launcher failed, not {s}): {s}\n", .{
+            suite,                                                  c.count, if (c.count == 1) "" else "s", if (c.count == 1) "it" else "them",
+            if (c.text.len != 0) c.text else "(no cause recorded)",
+        });
+        for (c.first[0..@min(c.count, max_named)]) |t| try w.print("      {s}\n", .{names[t]});
+        if (c.count > max_named) try w.print("      and {d} more\n", .{c.count - max_named});
+    }
+}
+
+/// Tests named per cause in `writeLauncherErrors`.
+const max_named = 5;
 
 /// The last `n` lines of `s` (the end of a crash report is the useful part).
 pub fn lastLines(s: []const u8, n: usize) []const u8 {
@@ -105,6 +161,66 @@ test "a verdict block names the verdict, the runs, the batch, the seed and the o
     try testing.expectEqualStrings("FAIL x.test.boom (first run: crash, batch 2 position 1, seed 0x2a; alone: crash)\npanic: here\n", aw.written());
 }
 
+test "a test the launcher could not start: its block says it did not run, and why" {
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    var cause = "launcher: could not start the test process: could not spawn /x/t: FileNotFound (ENOENT); it is not there now\n".*;
+    const rec: sched.TestRecord = .{ .batch = 0, .position = 4, .first = .launcher_error, .ran = true, .verdict = .launcher_error, .cause = &cause };
+    try writeVerdictBlock(&aw.writer, "x.test.it", &rec, 0x1f);
+    try testing.expectEqualStrings(
+        "LAUNCHER-ERROR x.test.it (not run: the launcher could not start its process, batch 0 position 4, seed 0x1f)\n" ++
+            "launcher: could not start the test process: could not spawn /x/t: FileNotFound (ENOENT); it is not there now\n",
+        aw.written(),
+    );
+}
+
+test "a failure whose classification the launcher could not finish: its runs, the cause, then its output" {
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    var cause = "launcher: could not start the test process: no slot\n".*;
+    var output = "expected 1, found 2\n".*;
+    var rec: sched.TestRecord = .{ .batch = 1, .position = 2, .first = .fail, .ran = true, .verdict = .launcher_error, .cause = &cause, .output = &output };
+    rec.alone[0] = .launcher_error;
+    rec.alone_len = 1;
+    try writeVerdictBlock(&aw.writer, "x.test.it", &rec, 0x2);
+    try testing.expectEqualStrings(
+        "LAUNCHER-ERROR x.test.it (first run: fail, batch 1 position 2, seed 0x2; alone: launcher_error)\n" ++
+            "launcher: could not start the test process: no slot\nexpected 1, found 2\n",
+        aw.written(),
+    );
+}
+
+test "the launcher errors of a run, once, grouped by cause, with the tests they hit" {
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    var slot_cause = "launcher: could not start the test process: could not take a test-process slot, /c/slot-0: FileNotFound (ENOENT)\n".*;
+    var spawn_cause = "launcher: could not start the test process: could not spawn /x/t: FileBusy (ETXTBSY); it is there now\n".*;
+    const names = [_][]const u8{ "s.test.0", "s.test.1", "s.test.2", "s.test.3", "s.test.4", "s.test.5", "s.test.6", "s.test.7", "s.test.8" };
+    var records: [names.len]sched.TestRecord = @splat(.{ .verdict = .pass });
+    for (0..7) |t| records[t] = .{ .first = .launcher_error, .verdict = .launcher_error, .cause = &slot_cause };
+    records[8] = .{ .first = .launcher_error, .verdict = .launcher_error, .cause = &spawn_cause };
+    try writeLauncherErrors(&aw.writer, testing.allocator, "tests-s", &names, &records);
+    try testing.expectEqualStrings(
+        "error: 'test tests-s' failed: LAUNCHER-ERROR, 7 tests not run (the launcher failed, not them): launcher: could not start the test process: could not take a test-process slot, /c/slot-0: FileNotFound (ENOENT)\n" ++
+            "      s.test.0\n      s.test.1\n      s.test.2\n      s.test.3\n      s.test.4\n      and 2 more\n" ++
+            "error: 'test tests-s' failed: LAUNCHER-ERROR, 1 test not run (the launcher failed, not it): launcher: could not start the test process: could not spawn /x/t: FileBusy (ETXTBSY); it is there now\n" ++
+            "      s.test.8\n",
+        aw.written(),
+    );
+    // What the gate scripts grep finds every cause, and nothing else.
+    var it = std.mem.splitScalar(u8, aw.written(), '\n');
+    var gate_lines: u32 = 0;
+    while (it.next()) |line| {
+        if (std.mem.startsWith(u8, line, "error: '")) gate_lines += 1;
+    }
+    try testing.expectEqual(@as(u32, 2), gate_lines);
+    // None: nothing printed.
+    var clean: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer clean.deinit();
+    try writeLauncherErrors(&clean.writer, testing.allocator, "tests-s", &names, records[7..8]);
+    try testing.expectEqual(@as(usize, 0), clean.written().len);
+}
+
 test "timings: an earlier result file's durations by name; bad lines and unknown names are skipped" {
     var index_of: std.StringHashMapUnmanaged(u32) = .empty;
     defer index_of.deinit(testing.allocator);
@@ -127,6 +243,19 @@ test "json strings escape quotes, backslashes and control characters" {
     defer aw.deinit();
     try writeJsonString(&aw.writer, "a\"b\\c\nd\x01");
     try testing.expectEqualStrings("\"a\\\"b\\\\c\\nd\\u0001\"", aw.written());
+}
+
+test "a LAUNCHER-ERROR result line carries its cause" {
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    var cause = "launcher: could not start the test process: no slot\n".*;
+    const rec: sched.TestRecord = .{ .first = .launcher_error, .ran = true, .verdict = .launcher_error, .cause = &cause };
+    try writeLine(&aw.writer, "x.test.it", 0, &rec, 0x1);
+    const parsed = try std.json.parseFromSlice(std.json.Value, testing.allocator, aw.written(), .{});
+    defer parsed.deinit();
+    try testing.expectEqualStrings("LAUNCHER-ERROR", parsed.value.object.get("status").?.string);
+    try testing.expectEqualStrings("launcher_error", parsed.value.object.get("first").?.string);
+    try testing.expectEqualStrings("launcher: could not start the test process: no slot", parsed.value.object.get("cause").?.string);
 }
 
 test "a result line carries the verdict, the runs, the batch and the seed" {
