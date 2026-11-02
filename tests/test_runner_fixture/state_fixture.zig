@@ -48,6 +48,17 @@ test "starts the process, installing a hook" {
     dom.process_start.finish(false);
 }
 
+test "overrides a hook and gives it back" {
+    const override = dom.global_settings.overrideForTest();
+    override.restore();
+}
+
+test "leaves a hook overridden" {
+    // A swap the test never gives back: dom.Hook's override without its
+    // restore().
+    _ = dom.global_settings.overrideForTest();
+}
+
 test "leaves the process starting" {
     try std.testing.expect(dom.process_start.begin());
 }
