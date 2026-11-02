@@ -435,9 +435,9 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
         }
     }
 
-    if (options.parent != null) {
+    if (options.parent) |parent| {
         // A frame's window gets the window operations its parent's has.
-        page_realm.defineOnFrame(isolate, context);
+        page_realm.defineOnFrame(isolate, context, realm, parent);
         // Made while the parent's script runs: its context leaves the stack
         // now, and is entered for each call that runs in it.
         ffi.v8_Context_Exit(context);
@@ -832,10 +832,13 @@ fn detach(realm: Context, state: *WindowRealmState) void {
     record.* = .{ .realm = realm, .context = context, .key = key };
 
     // 1. Script activity stops: the window operations (timers, animation
-    // frames), and the callbacks this realm's script registered - each a
-    // strong handle into the context.
+    // frames) - the window's own, through which a realm with a parent (a
+    // frame, or a top-level predecessor, whose parent is the realm that
+    // replaced it) gives up its timers before they are forgotten; a page's
+    // own realm ended them with its page - and the callbacks this realm's
+    // script registered - each a strong handle into the context.
+    if (state.parent != null) page_realm.frameWindowDestroyed(realm);
     page_realm.endWindowOperations(realm);
-    page_realm.frameWindowDestroyed(realm);
     @import("callback_registry.zig").cleanupForContext(@ptrFromInt(key));
 
     // 2. No strong handle into the context is left: what the wrapper cache
@@ -937,11 +940,12 @@ fn endRealm(realm: Context, how: engine.WindowRealmEnd) void {
     const key = if (detached) |d| d.key else context_manager.keyOf(context) orelse return;
     const isolate: *ffi.Isolate = if (state) |s| s.isolate else @ptrCast(@alignCast(ffi.v8_Isolate_GetCurrent() orelse return));
 
-    // The window operations this realm installed end with it; a frame's
-    // window gives up its timers (a detached realm did at its detach).
+    // The realm's window operations end with it: a frame's window gives up
+    // its timers through them first - they are its own until then (a
+    // detached realm did both at its detach).
     if (detached == null) {
-        page_realm.endWindowOperations(realm);
         if (state) |s| if (s.parent != null) page_realm.frameWindowDestroyed(realm);
+        page_realm.endWindowOperations(realm);
     }
 
     // A global object whose WindowProxy went on to a later realm is not

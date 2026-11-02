@@ -117,52 +117,6 @@ pub const ContextEntry = struct {
     destroying: bool = false,
 };
 
-/// Callback type for registering globals on child contexts (iframes)
-/// This is called by createChildContext after the context is created
-/// to allow the browser layer to register setTimeout, setInterval, etc.
-pub const ChildContextGlobalsCallback = *const fn (
-    isolate: *v8.Isolate,
-    context: *v8.Context,
-    global: *v8.Object,
-) void;
-
-/// Thread-local callback for registering globals on child contexts
-/// Set by browser layer via setChildContextGlobalsCallback()
-threadlocal var child_context_globals_callback: ?ChildContextGlobalsCallback = null;
-
-/// Callback type for a child window whose document is being destroyed - its
-/// iframe removed, or its context torn down. The browser layer owns state
-/// that outlives a document unless something ends it - HTML's "unloading
-/// document cleanup steps" clear the window's map of active timers - and the
-/// runtime layer cannot reach it, so it asks through this. Called while the
-/// context and its global are still intact; running it twice for one context
-/// finds nothing the second time.
-pub const ChildWindowCleanupCallback = *const fn (context: *v8.Context) void;
-
-/// Set by the browser layer via setChildWindowCleanupCallback().
-threadlocal var child_window_cleanup_callback: ?ChildWindowCleanupCallback = null;
-
-/// Set the callback for registering globals on child contexts
-/// This should be called by the browser layer during initialization
-pub fn setChildContextGlobalsCallback(callback: ChildContextGlobalsCallback) void {
-    child_context_globals_callback = callback;
-}
-
-/// Clear the child context globals callback
-pub fn clearChildContextGlobalsCallback() void {
-    child_context_globals_callback = null;
-}
-
-/// Set the callback run as a child window's document is destroyed.
-pub fn setChildWindowCleanupCallback(callback: ChildWindowCleanupCallback) void {
-    child_window_cleanup_callback = callback;
-}
-
-/// Clear the child window cleanup callback
-pub fn clearChildWindowCleanupCallback() void {
-    child_window_cleanup_callback = null;
-}
-
 /// One agent's realms: the context manager's record of every context it
 /// hosts for the agent, live and retired.
 ///

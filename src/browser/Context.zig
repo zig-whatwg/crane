@@ -41,72 +41,93 @@ const typed_callback = runtime.typed_callback;
 const SelfContainedWorkCallback = typed_callback.SelfContainedWorkCallback;
 
 // ============================================================================
-// Thread-local storage for timer interface (mirrors browser_context.zig pattern)
+// Window timers: each Window's own map, run on its agent's loop
 // ============================================================================
 
-threadlocal var current_timer_interface: ?TimerInterface = null;
-threadlocal var current_allocator: ?std.mem.Allocator = null;
-threadlocal var timer_contexts: ?TimerMap = null;
-
-/// The window's map of active timers (HTML 8.6), by the id script holds.
-/// Every timer is a key it never saw - ids only grow - put when armed and
-/// removed when it runs its last time or is cleared: a
+/// A window's map of active timers (HTML 8.6: "each object that implements
+/// WindowOrWorkerGlobalScope has a map of active timers"), by the id script
+/// holds: the realm's own (`runtime.ContextData.active_timers`), whose values
+/// are this file's `*WindowTimerCallback`s, and whose timers run on the
+/// realm's agent's loop (`realm.timer`, its event loop's timer interface).
+/// It was one map and one "current timer interface" per THREAD, set by
+/// whichever Browser made a realm last: a Browser's setTimeout armed its timer
+/// on another Browser's loop, and one Browser's page end cleared every
+/// Browser's timers on the thread (tests/html/gs3_agent_state_one_thread_test.zig).
+///
+/// Every timer is a key the map never saw - ids only grow - put when armed
+/// and removed when it runs its last time or is cleared: a
 /// runtime.native_timer.TimerIdMap, which rehashes its tombstones away
 /// (before its guard the free slots ran out: a 1,069-file runner sample
 /// found none free at capacity 8-16 in 219 of 1,272 samples, and every arm
 /// walked the whole table) and gives back what a burst took (lane
 /// timerheap1: 5,000 timers armed and cleared left 8,192 slots that every
 /// later window's end walked, clearWindowState). Every insert and removal
-/// goes through here. Values are `*WindowTimerCallback`, their own
-/// allocations; no iteration of the map runs script, so no insert - which
-/// only script makes (`scheduleTimer`), and before which alone the map is
-/// rehashed or rebuilt - meets a live iterator.
+/// goes through here. No iteration of the map runs script, so no insert -
+/// which only script makes (`scheduleTimer`), and before which alone the map
+/// is rehashed or rebuilt - meets a live iterator.
 const TimerMap = struct {
-    ids: runtime.native_timer.TimerIdMap(*WindowTimerCallback) = .empty,
-    allocator: std.mem.Allocator,
+    realm: runtime.Context,
 
-    const Ids = runtime.native_timer.TimerIdMap(*WindowTimerCallback);
+    const Ids = runtime.native_timer.TimerIdMap(*anyopaque);
 
-    fn init(allocator: std.mem.Allocator) TimerMap {
-        return .{ .allocator = allocator };
+    /// One timer of the map, as the iterator gives it.
+    const Entry = struct { id: TimerId, wrapper: *WindowTimerCallback };
+
+    const Iterator = struct {
+        inner: Ids.Iterator,
+
+        fn next(self: *Iterator) ?Entry {
+            const entry = self.inner.next() orelse return null;
+            return .{ .id = entry.key_ptr.*, .wrapper = @ptrCast(@alignCast(entry.value_ptr.*)) };
+        }
+    };
+
+    fn of(realm: runtime.Context) TimerMap {
+        return .{ .realm = realm };
     }
 
-    fn deinit(self: *TimerMap) void {
-        self.ids.deinit(self.allocator);
+    fn ids(self: TimerMap) *Ids {
+        return &self.realm.active_timers;
     }
 
-    fn put(self: *TimerMap, id: TimerId, wrapper: *WindowTimerCallback) !void {
-        try self.ids.put(self.allocator, id, wrapper);
+    fn put(self: TimerMap, id: TimerId, wrapper: *WindowTimerCallback) !void {
+        try self.ids().put(self.realm.allocator, id, wrapper);
     }
 
-    fn remove(self: *TimerMap, id: TimerId) bool {
-        return self.ids.remove(id);
+    fn remove(self: TimerMap, id: TimerId) bool {
+        return self.ids().remove(id);
     }
 
-    fn fetchRemove(self: *TimerMap, id: TimerId) ?Ids.KV {
-        return self.ids.fetchRemove(id);
+    fn fetchRemove(self: TimerMap, id: TimerId) ?*WindowTimerCallback {
+        const kv = self.ids().fetchRemove(id) orelse return null;
+        return @ptrCast(@alignCast(kv.value));
     }
 
-    fn get(self: *const TimerMap, id: TimerId) ?*WindowTimerCallback {
-        return self.ids.get(id);
+    fn get(self: TimerMap, id: TimerId) ?*WindowTimerCallback {
+        const wrapper = self.ids().get(id) orelse return null;
+        return @ptrCast(@alignCast(wrapper));
     }
 
-    fn count(self: *const TimerMap) usize {
-        return self.ids.count();
+    fn count(self: TimerMap) usize {
+        return self.ids().count();
     }
 
     /// The slots a walk of the map reads (clearWindowState,
     /// activeTimerHandles, the suspension and its resumption).
-    fn capacity(self: *const TimerMap) usize {
-        return self.ids.capacity();
+    fn capacity(self: TimerMap) usize {
+        return self.ids().capacity();
     }
 
-    fn iterator(self: *const TimerMap) Ids.Iterator {
-        return self.ids.iterator();
+    fn iterator(self: TimerMap) Iterator {
+        return .{ .inner = self.ids().iterator() };
     }
 
-    fn clearRetainingCapacity(self: *TimerMap) void {
-        self.ids.clearRetainingCapacity();
+    /// Give back the map's storage once it is empty: a window whose timers
+    /// are all gone - its end, its unload - holds none.
+    fn releaseIfEmpty(self: TimerMap) void {
+        if (self.count() != 0) return;
+        self.ids().deinit(self.realm.allocator);
+        self.ids().* = .empty;
     }
 };
 
@@ -119,21 +140,11 @@ test "a held timer stays in its window's map until cleared, and clearing it free
     defer realm.deinit();
     var other = try runtime.ContextData.init(allocator, .{});
     defer other.deinit();
-    const saved_interface = current_timer_interface;
-    const saved_allocator = current_allocator;
-    const saved_contexts = timer_contexts;
-    defer {
-        current_timer_interface = saved_interface;
-        current_allocator = saved_allocator;
-        timer_contexts = saved_contexts;
-    }
     const manager = try runtime.native_timer.NativeTimerManager.init(allocator);
     defer manager.deinit();
-    current_timer_interface = manager.timerInterface();
-    current_allocator = allocator;
-    timer_contexts = TimerMap.init(allocator);
-    defer timer_contexts.?.deinit();
-
+    // Each window's timers run on its agent's loop: here, the manager.
+    realm.timer = manager.timerInterface();
+    other.timer = manager.timerInterface();
     const id: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 10, &.{}, false));
     const interval: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 10, &.{}, true));
     const elsewhere: TimerId = @intCast(initializeTimer(&other, .{ .function = .{ .number = 3 } }, 10, &.{}, false));
@@ -142,7 +153,7 @@ test "a held timer stays in its window's map until cleared, and clearing it free
     // Both of `realm`'s come due while its window's document is inactive:
     // their native timers have fired, and they are held.
     for ([_]TimerId{ id, interval }) |key| {
-        const data = timer_contexts.?.get(key).?.getData();
+        const data = TimerMap.of(&realm).get(key).?.getData();
         try std.testing.expect(manager.clearTimeout(data.current_timer_id));
         holdTimer(data);
         try std.testing.expect(data.held);
@@ -158,15 +169,15 @@ test "a held timer stays in its window's map until cleared, and clearing it free
     // clearTimeout frees a held timer at once - no native timer is armed to
     // free it later (std.testing.allocator reports a leak otherwise).
     clearTimer(&realm, @intCast(id));
-    try std.testing.expect(timer_contexts.?.get(id) == null);
+    try std.testing.expect(TimerMap.of(&realm).get(id) == null);
     // A held interval: the same (clearInterval, or its window's end, which
     // clears the map through the same unregistering).
     clearTimer(&realm, @intCast(interval));
-    try std.testing.expect(timer_contexts.?.get(interval) == null);
+    try std.testing.expect(TimerMap.of(&realm).get(interval) == null);
     // Another window's timer is untouched, and still armed.
-    try std.testing.expect(timer_contexts.?.get(elsewhere) != null);
+    try std.testing.expect(TimerMap.of(&other).get(elsewhere) != null);
     clearTimer(&other, @intCast(elsewhere));
-    try std.testing.expectEqual(@as(usize, 0), timer_contexts.?.count());
+    try std.testing.expectEqual(@as(usize, 0), TimerMap.of(&realm).count());
 }
 
 test "a window's map of active timers keeps half its unused slots free while timers come and go" {
@@ -178,21 +189,10 @@ test "a window's map of active timers keeps half its unused slots free while tim
     const allocator = std.testing.allocator;
     var realm = try runtime.ContextData.init(allocator, .{});
     defer realm.deinit();
-    const saved_interface = current_timer_interface;
-    const saved_allocator = current_allocator;
-    const saved_contexts = timer_contexts;
-    defer {
-        current_timer_interface = saved_interface;
-        current_allocator = saved_allocator;
-        timer_contexts = saved_contexts;
-    }
     const manager = try runtime.native_timer.NativeTimerManager.init(allocator);
     defer manager.deinit();
-    current_timer_interface = manager.timerInterface();
-    current_allocator = allocator;
-    timer_contexts = TimerMap.init(allocator);
-    defer timer_contexts.?.deinit();
-
+    // Each window's timers run on its agent's loop: here, the manager.
+    realm.timer = manager.timerInterface();
     const resident: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 3_600_000, &.{}, true));
     defer clearTimer(&realm, @intCast(resident));
     var starved: usize = 0;
@@ -203,7 +203,7 @@ test "a window's map of active timers keeps half its unused slots free while tim
         for (&ids, 0..) |*id, i| {
             id.* = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 60_000, &.{}, false));
             if (i == 0) {
-                const map = &timer_contexts.?.ids.map;
+                const map = &realm.active_timers.map;
                 if (!webidl.utils.tombstones.slotCounts(map).halfOfUnusedFree()) starved += 1;
                 worst = @max(worst, webidl.utils.tombstones.meanMissProbe(map));
             }
@@ -211,13 +211,13 @@ test "a window's map of active timers keeps half its unused slots free while tim
         for (ids) |id| clearTimer(&realm, @intCast(id));
     }
     if (starved != 0 or worst > 8) {
-        const counts = webidl.utils.tombstones.slotCounts(&timer_contexts.?.ids.map);
-        std.debug.print("timer_contexts: {d} of 400 pages began with fewer than half the unused slots free; worst mean miss {d} (capacity {d}, live {d}, free {d})\n", .{ starved, worst, counts.capacity, counts.live, counts.free });
+        const counts = webidl.utils.tombstones.slotCounts(&realm.active_timers.map);
+        std.debug.print("active_timers: {d} of 400 pages began with fewer than half the unused slots free; worst mean miss {d} (capacity {d}, live {d}, free {d})\n", .{ starved, worst, counts.capacity, counts.live, counts.free });
         return error.TombstonesFilledTheMap;
     }
     // The resident interval is still found after every rehash.
-    try std.testing.expect(timer_contexts.?.get(resident) != null);
-    try std.testing.expectEqual(@as(usize, 1), timer_contexts.?.count());
+    try std.testing.expect(TimerMap.of(&realm).get(resident) != null);
+    try std.testing.expectEqual(@as(usize, 1), TimerMap.of(&realm).count());
 }
 
 test "a window's map of active timers gives back what a burst of 5,000 took once the burst is gone" {
@@ -228,25 +228,14 @@ test "a window's map of active timers gives back what a burst of 5,000 took once
     const allocator = std.testing.allocator;
     var realm = try runtime.ContextData.init(allocator, .{});
     defer realm.deinit();
-    const saved_interface = current_timer_interface;
-    const saved_allocator = current_allocator;
-    const saved_contexts = timer_contexts;
-    defer {
-        current_timer_interface = saved_interface;
-        current_allocator = saved_allocator;
-        timer_contexts = saved_contexts;
-    }
     const manager = try runtime.native_timer.NativeTimerManager.init(allocator);
     defer manager.deinit();
-    current_timer_interface = manager.timerInterface();
-    current_allocator = allocator;
-    timer_contexts = TimerMap.init(allocator);
-    defer timer_contexts.?.deinit();
-
+    // Each window's timers run on its agent's loop: here, the manager.
+    realm.timer = manager.timerInterface();
     const resident: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 3_600_000, &.{}, true));
     defer clearTimer(&realm, @intCast(resident));
     for (0..16) |_| clearTimer(&realm, initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 60_000, &.{}, false));
-    const before = timer_contexts.?.capacity();
+    const before = TimerMap.of(&realm).capacity();
 
     const burst = try allocator.alloc(i32, 5_000);
     defer allocator.free(burst);
@@ -255,13 +244,13 @@ test "a window's map of active timers gives back what a burst of 5,000 took once
     // The next timers the pages that follow set.
     for (0..16) |_| clearTimer(&realm, initializeTimer(&realm, .{ .function = .{ .number = 4 } }, 60_000, &.{}, false));
 
-    const after = timer_contexts.?.capacity();
+    const after = TimerMap.of(&realm).capacity();
     if (after > @max(before, 64)) {
-        std.debug.print("timer_contexts: capacity {d} after a burst of 5,000 had gone, against {d} before it\n", .{ after, before });
+        std.debug.print("active_timers: capacity {d} after a burst of 5,000 had gone, against {d} before it\n", .{ after, before });
         return error.BurstKeptItsCapacity;
     }
-    try std.testing.expect(timer_contexts.?.get(resident) != null);
-    try std.testing.expectEqual(@as(usize, 1), timer_contexts.?.count());
+    try std.testing.expect(TimerMap.of(&realm).get(resident) != null);
+    try std.testing.expectEqual(@as(usize, 1), TimerMap.of(&realm).count());
 }
 
 test "a suspended timer keeps the wait it had left, and a resumed one is armed for it" {
@@ -270,35 +259,25 @@ test "a suspended timer keeps the wait it had left, and a resumed one is armed f
     defer realm.deinit();
     var other = try runtime.ContextData.init(allocator, .{});
     defer other.deinit();
-    const saved_interface = current_timer_interface;
-    const saved_allocator = current_allocator;
-    const saved_contexts = timer_contexts;
-    defer {
-        current_timer_interface = saved_interface;
-        current_allocator = saved_allocator;
-        timer_contexts = saved_contexts;
-    }
     const manager = try runtime.native_timer.NativeTimerManager.init(allocator);
     defer manager.deinit();
-    current_timer_interface = manager.timerInterface();
-    current_allocator = allocator;
-    timer_contexts = TimerMap.init(allocator);
-    defer timer_contexts.?.deinit();
-
+    // Each window's timers run on its agent's loop: here, the manager.
+    realm.timer = manager.timerInterface();
+    other.timer = manager.timerInterface();
     const id: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 5_000, &.{}, false));
     const elsewhere: TimerId = @intCast(initializeTimer(&other, .{ .function = .{ .number = 2 } }, 5_000, &.{}, false));
     try std.testing.expect(id != 0 and elsewhere != 0);
-    const armed = timer_contexts.?.get(id).?.getData().current_timer_id;
+    const armed = TimerMap.of(&realm).get(id).?.getData().current_timer_id;
 
     // The page is kept: its timer's native timer is cancelled, and the wait
     // it had left is kept.
     suspendWindowTimers(&realm);
-    const data = timer_contexts.?.get(id).?.getData();
+    const data = TimerMap.of(&realm).get(id).?.getData();
     try std.testing.expect(data.held);
     try std.testing.expectEqual(@as(?u64, null), manager.remainingMs(armed));
     try std.testing.expect(data.current_timer_id > 4_000 and data.current_timer_id <= 5_000);
     // Another window's timer is untouched.
-    try std.testing.expect(!timer_contexts.?.get(elsewhere).?.getData().held);
+    try std.testing.expect(!TimerMap.of(&other).get(elsewhere).?.getData().held);
 
     // Restored: armed again for what it had left, not its whole timeout
     // from now and not at once.
@@ -309,7 +288,7 @@ test "a suspended timer keeps the wait it had left, and a resumed one is armed f
 
     clearTimer(&realm, @intCast(id));
     clearTimer(&other, @intCast(elsewhere));
-    try std.testing.expectEqual(@as(usize, 0), timer_contexts.?.count());
+    try std.testing.expectEqual(@as(usize, 0), TimerMap.of(&realm).count());
 }
 
 // ============================================================================
@@ -426,53 +405,34 @@ pub fn performMicrotaskCheckpoint(realm: runtime.Context) void {
     engine.performMicrotaskCheckpoint(realm.agent orelse return) catch {};
 }
 
-/// Set the current timer interface
-pub fn setTimerInterface(timer: TimerInterface, allocator: std.mem.Allocator) void {
-    current_timer_interface = timer;
-    current_allocator = allocator;
-    // Initialize timer contexts map if needed
-    if (timer_contexts == null) {
-        timer_contexts = TimerMap.init(allocator);
+/// The end of `realm`'s window's timers, with its page (Context.deinit):
+/// every timer in its map of active timers is cancelled on its agent's loop
+/// and freed, and the map's storage given back. Only this window's: another
+/// window's timers - a frame's, which end with its realm (clearWindowState),
+/// another tab's, another Browser's on the thread - are theirs.
+fn endWindowTimers(realm: runtime.Context) void {
+    const map = TimerMap.of(realm);
+    var iter = map.iterator();
+    while (iter.next()) |entry| {
+        const wrapper = entry.wrapper;
+        // Cancel the timer at the loop's level so its callback cannot fire.
+        //
+        // The result is deliberately discarded: this is the window's end,
+        // and every wrapper must be freed here or leak. Unlike
+        // unregisterTimerContext there is no later callback to hand
+        // ownership to. (A held one has no native timer: its
+        // current_timer_id is a wait.)
+        if (realm.timer) |timer| if (!wrapper.getData().held) {
+            _ = timer.clearTimeout(wrapper.getData().current_timer_id);
+        };
+        destroyTimer(wrapper);
     }
-}
-
-/// Get the current timer interface
-pub fn getTimerInterface() ?TimerInterface {
-    return current_timer_interface;
-}
-
-/// Clear the timer interface reference and clean up ALL pending timer contexts
-/// This properly cancels libuv timers to prevent handle accumulation
-pub fn clearTimerInterface() void {
-    // Clean up any remaining timer contexts (both one-shot and intervals)
-    if (timer_contexts) |*map| {
-        var iter = map.iterator();
-        while (iter.next()) |entry| {
-            const wrapper = entry.value_ptr.*;
-            // Cancel the timer at the libuv level to prevent callback from firing
-            // and to properly clean up the libuv timer handle.
-            //
-            // The result is deliberately discarded: this is context teardown, so the
-            // timer manager is going away with us and every wrapper must be freed
-            // here or leak. Unlike unregisterTimerContext there is no later callback
-            // to hand ownership to.
-            // (A held one has no native timer: its current_timer_id is a wait.)
-            if (current_timer_interface) |timer| if (!wrapper.getData().held) {
-                _ = timer.clearTimeout(wrapper.getData().current_timer_id);
-            };
-            destroyTimer(wrapper);
-        }
-        map.deinit();
-        timer_contexts = null;
-    }
+    map.ids().deinit(realm.allocator);
+    map.ids().* = .empty;
 
     // (The animation frame callbacks end with the page: Context.deinit's
-    // rendering.endPage, before this.)
-
-    // (The window operations the page's realm installed end with the realm:
-    // destroyWindowRealm.)
-    current_timer_interface = null;
-    current_allocator = null;
+    // rendering.endPage, before this. The window operations the page's realm
+    // installed end with the realm: destroyWindowRealm.)
 }
 
 /// The window's native operations, as the engine binds them: the host's
@@ -515,18 +475,19 @@ fn clearWindowState(realm: runtime.Context) void {
     // File API's: the window's blob URL entries leave the store).
     dom_mod.unloading_cleanup.run(realm);
 
-    if (timer_contexts) |*map| {
+    // Its map of active timers - its own, so every entry is this window's.
+    const map = TimerMap.of(realm);
+    if (map.count() != 0) {
         var doomed: std.ArrayListUnmanaged(TimerId) = .empty;
-        defer if (current_allocator) |alloc| doomed.deinit(alloc);
+        defer doomed.deinit(realm.allocator);
         var iter = map.iterator();
-        while (iter.next()) |entry| {
-            if (entry.value_ptr.*.getData().realm != realm) continue;
-            const alloc = current_allocator orelse break;
-            doomed.append(alloc, entry.key_ptr.*) catch break;
-        }
+        while (iter.next()) |entry| doomed.append(realm.allocator, entry.id) catch break;
         // Not while iterating: unregistering removes from the map.
-        for (doomed.items) |id| unregisterTimerContext(id);
+        for (doomed.items) |id| unregisterTimerContext(realm, id);
     }
+    // A timer whose callback is on the stack stays until it returns; with
+    // none, the map's storage goes with its last timer.
+    map.releaseIfEmpty();
 
     // Its map of animation frame callbacks and its frame requests.
     rendering.windowDestroyed(realm);
@@ -536,14 +497,11 @@ fn clearWindowState(realm: runtime.Context) void {
 /// (HTML "unload a document" step 16), OWNED by the caller - the ids its
 /// setTimeout and setInterval returned, held ones included, in no order.
 fn activeTimerHandles(realm: runtime.Context, allocator: std.mem.Allocator) error{OutOfMemory}![]TimerId {
-    const map = if (timer_contexts) |*m| m else return &.{};
+    const map = TimerMap.of(realm);
     var handles: std.ArrayListUnmanaged(TimerId) = .empty;
     errdefer handles.deinit(allocator);
     var iter = map.iterator();
-    while (iter.next()) |entry| {
-        if (entry.value_ptr.*.getData().realm != realm) continue;
-        try handles.append(allocator, entry.key_ptr.*);
-    }
+    while (iter.next()) |entry| try handles.append(allocator, entry.id);
     return handles.toOwnedSlice(allocator);
 }
 
@@ -560,12 +518,11 @@ fn activeTimerHandles(realm: runtime.Context, allocator: std.mem.Allocator) erro
 /// callbacks wait too, without a frame scheduled for them (rendering.zig
 /// arms no rendering opportunity for a cached page).
 fn suspendWindowTimers(realm: runtime.Context) void {
-    const map = if (timer_contexts) |*m| m else return;
-    const timer = current_timer_interface orelse return;
-    var iter = map.iterator();
+    const timer = realm.timer orelse return;
+    var iter = TimerMap.of(realm).iterator();
     while (iter.next()) |entry| {
-        const data = entry.value_ptr.*.getData();
-        if (data.realm != realm or data.held or data.cancelled or data.executing) continue;
+        const data = entry.wrapper.getData();
+        if (data.held or data.cancelled or data.executing) continue;
         // The wait still to go, asked of the native timer before it is
         // cancelled - WebKit's SuspendableTimer saves its next-fire interval
         // the same way (m_savedNextFireInterval), and nothing is stored at
@@ -587,12 +544,12 @@ fn suspendWindowTimers(realm: runtime.Context) void {
 /// that came due while its document was inactive), and its animation frame
 /// callbacks and pending autofocus candidates get a frame again.
 fn resumeWindowTimers(realm: runtime.Context) void {
-    if (timer_contexts) |*map| if (current_timer_interface) |timer| {
-        var iter = map.iterator();
+    if (realm.timer) |timer| {
+        var iter = TimerMap.of(realm).iterator();
         while (iter.next()) |entry| {
-            const wrapper = entry.value_ptr.*;
+            const wrapper = entry.wrapper;
             const data = wrapper.getData();
-            if (data.realm != realm or !data.held) continue;
+            if (!data.held) continue;
             // A held timer's current_timer_id is its wait still to go.
             const id = timer.setTimeout(data.current_timer_id, WindowTimerCallback.getTrampolineCallback(), wrapper.eraseForFFI());
             // Not armed: it stays held, cleared or freed with its window.
@@ -600,26 +557,8 @@ fn resumeWindowTimers(realm: runtime.Context) void {
             data.held = false;
             data.current_timer_id = id;
         }
-    };
-    rendering.windowResumed(realm);
-}
-
-/// Clear ALL pending timer contexts but keep the timer interface
-/// This is used during test isolation to cancel timers without tearing down the interface
-pub fn clearPendingTimers() void {
-    if (timer_contexts) |*map| {
-        var iter = map.iterator();
-        while (iter.next()) |entry| {
-            const wrapper = entry.value_ptr.*;
-            // Cancel the timer at the libuv level (a held one has none: its
-            // current_timer_id is a wait).
-            if (current_timer_interface) |timer| if (!wrapper.getData().held) {
-                _ = timer.clearTimeout(wrapper.getData().current_timer_id);
-            };
-            destroyTimer(wrapper);
-        }
-        map.clearRetainingCapacity();
     }
+    rendering.windowResumed(realm);
 }
 
 /// Schedule `wrapper`'s first run and enter it in the map of active timers
@@ -633,10 +572,7 @@ pub fn clearPendingTimers() void {
 /// repeat's manager id, so after the first repeat clearInterval(id) found
 /// nothing and the interval ran until the page went away.
 fn scheduleTimer(timer: TimerInterface, wrapper: *WindowTimerCallback, delay_ms: u64) ?TimerId {
-    const map = if (timer_contexts) |*m| m else {
-        destroyTimer(wrapper);
-        return null;
-    };
+    const map = TimerMap.of(wrapper.getData().realm);
     const id = timer.setTimeout(delay_ms, WindowTimerCallback.getTrampolineCallback(), wrapper.eraseForFFI());
     if (id == 0) {
         destroyTimer(wrapper);
@@ -659,42 +595,37 @@ fn scheduleTimer(timer: TimerInterface, wrapper: *WindowTimerCallback, delay_ms:
 /// Timer IDs are looked up in the map and nowhere else. Passing script's number
 /// straight to the manager, as clearTimeout used to, cancelled whatever manager
 /// timer had that id - an animation frame, an AbortSignal timeout.
-fn unregisterTimerContext(timer_id: TimerId) void {
-    if (timer_contexts) |*map| {
-        if (map.fetchRemove(timer_id)) |kv| {
-            const wrapper = kv.value;
-            // Mark as cancelled so interval callbacks know to stop rescheduling.
-            // This must happen before anything else: it is the only signal that
-            // reaches a callback we could not cancel.
-            wrapper.getData().cancelled = true;
+fn unregisterTimerContext(realm: runtime.Context, timer_id: TimerId) void {
+    const wrapper = TimerMap.of(realm).fetchRemove(timer_id) orelse return;
+    // Mark as cancelled so interval callbacks know to stop rescheduling.
+    // This must happen before anything else: it is the only signal that
+    // reaches a callback we could not cancel.
+    wrapper.getData().cancelled = true;
 
-            // Cancel at the libuv level so the callback cannot fire.
-            //
-            // The thread-local TimerInterface belongs to the realm calling
-            // clearTimeout, which is NOT necessarily the realm that scheduled the
-            // timer. Cross-realm, the id is unknown to this manager and nothing is
-            // cancelled - clearTimeout used to return void, so that silent miss was
-            // invisible and the wrapper was freed anyway. The armed timer then fired
-            // on freed memory and destroyed it a second time: a double free, and a
-            // 0xaa-poisoned segfault in destroyChildContext just after.
-            //
-            // So the wrapper is only freed when cancellation is CONFIRMED. Otherwise
-            // ownership passes to the callback, which sees `cancelled` and destroys
-            // it when it fires.
-            const cancelled = if (wrapper.getData().held)
-                // Held (holdIfInactive): no native timer is armed for it, and
-                // no callback will come to free it.
-                true
-            else if (current_timer_interface) |timer|
-                timer.clearTimeout(wrapper.getData().current_timer_id)
-            else
-                false;
+    // Cancel at the loop's level so the callback cannot fire - on the loop
+    // of the agent the timer's window belongs to (`realm.timer`), the one
+    // that armed it.
+    //
+    // A timer interface the timer was not armed on knows nothing of its id
+    // and cancels nothing (the old thread-wide interface was whichever
+    // realm's was set last), and the wrapper must then not be freed: the
+    // armed timer would fire on freed memory and destroy it a second time
+    // (a double free, and a 0xaa-poisoned segfault in destroyChildContext
+    // just after). So the wrapper is only freed when cancellation is
+    // CONFIRMED. Otherwise ownership passes to the callback, which sees
+    // `cancelled` and destroys it when it fires.
+    const cancelled = if (wrapper.getData().held)
+        // Held (holdIfInactive): no native timer is armed for it, and
+        // no callback will come to free it.
+        true
+    else if (realm.timer) |timer|
+        timer.clearTimeout(wrapper.getData().current_timer_id)
+    else
+        false;
 
-            // Never free a wrapper whose callback is on the stack - that handler
-            // still reads `data` after the callback returns and frees it itself.
-            if (cancelled and !wrapper.getData().executing) destroyTimer(wrapper);
-        }
-    }
+    // Never free a wrapper whose callback is on the stack - that handler
+    // still reads `data` after the callback returns and frees it itself.
+    if (cancelled and !wrapper.getData().executing) destroyTimer(wrapper);
 }
 
 // ============================================================================
@@ -724,7 +655,7 @@ const WindowTimerData = struct {
     /// with it, and each repeat clamps afresh.
     timeout_ms: i64 = 0,
     /// The id setTimeout/setInterval returned, and this timer's key in
-    /// `timer_contexts`. Stable for the timer's life (see scheduleTimer).
+    /// its window's map of active timers. Stable for the timer's life (see scheduleTimer).
     id: TimerId = 0,
     /// The manager's id for the pending run. An interval gets a new one per
     /// repeat. While `held`, no native timer is armed and this is the wait
@@ -939,9 +870,7 @@ fn timerHandler(data: *WindowTimerData) void {
 
     // Step 8.9: remove global's map[id]. Before the run rather than after, so a
     // clearTimeout(id) from inside the callback finds nothing to free under us.
-    if (timer_contexts) |*map| {
-        _ = map.remove(data.id);
-    }
+    _ = TimerMap.of(data.realm).remove(data.id);
 
     runTimerTask(data);
 
@@ -980,7 +909,7 @@ fn intervalHandler(data: *WindowTimerData) void {
     // same id. Step 3 there: the running task is this timer's, so its nesting
     // level is this one's, and step 5 clamps with it; step 9 nests one deeper.
     if (!data.cancelled) {
-        if (getTimerInterface()) |timer| {
+        if (data.realm.timer) |timer| {
             const delay: u64 = @intCast(clampTimeout(data.timeout_ms, data.nesting_level));
             data.nesting_level +|= 1;
             const new_timer_id = timer.setTimeout(delay, WindowTimerCallback.getTrampolineCallback(), wrapper.eraseForFFI());
@@ -993,9 +922,8 @@ fn intervalHandler(data: *WindowTimerData) void {
     }
 
     // Cancelled, or it could not be rescheduled: this was its last run.
-    if (timer_contexts) |*map| {
-        if (map.get(data.id) == wrapper) _ = map.remove(data.id);
-    }
+    const map = TimerMap.of(data.realm);
+    if (map.get(data.id) == wrapper) _ = map.remove(data.id);
     destroyTimer(wrapper);
 }
 
@@ -1042,8 +970,9 @@ fn initializeTimer(realm: runtime.Context, handler: runtime.WindowTimerHandler, 
         },
     }
 
-    const timer = getTimerInterface() orelse return 0;
-    const allocator = current_allocator orelse return 0;
+    // The window's timers run on its agent's loop, and are its realm's.
+    const timer = realm.timer orelse return 0;
+    const allocator = realm.allocator;
 
     // Step 3: this timer's nesting level is one deeper than the running
     // task's, if that task is a timer's; 0 otherwise.
@@ -1082,10 +1011,8 @@ fn clearTimer(realm: runtime.Context, id: i32) void {
     // The map, and nothing but the map, decides what an id names - and it is
     // THIS window's map: an id another window's timer holds names nothing
     // here. The function's realm is the window whose method this is.
-    const map = if (timer_contexts) |*m| m else return;
-    const wrapper = map.get(@intCast(id)) orelse return;
-    if (wrapper.getData().realm != realm) return;
-    unregisterTimerContext(@intCast(id));
+    if (TimerMap.of(realm).get(@intCast(id)) == null) return;
+    unregisterTimerContext(realm, @intCast(id));
 }
 
 /// Context type for determining which globals to register
@@ -1235,9 +1162,6 @@ pub const Context = struct {
                 });
             };
         }
-
-        // The timers this realm's Window sets run on the Browser's loop.
-        if (self.timer) |timer| setTimerInterface(timer, self.allocator);
 
         self.initialized = true;
     }
@@ -2522,11 +2446,13 @@ pub const Context = struct {
         // (Instance lifecycle flags live in each instance's slab slot and go
         // with it: nothing of the page's to clear here.)
 
-        // The page's animation frame callbacks end with it, and the timer
-        // interface and every pending timer, before the realm ends, so that
-        // none fires into it.
-        if (self.realm) |realm| rendering.endPage(realm);
-        clearTimerInterface();
+        // The page's animation frame callbacks end with it, and its window's
+        // timers - its own map of active timers, and no other window's -
+        // before the realm ends, so that none fires into it.
+        if (self.realm) |realm| {
+            rendering.endPage(realm);
+            endWindowTimers(realm);
+        }
 
         // NOTE: Do NOT explicitly deinit singleton instances here! The
         // realm's end cleans up its wrapper cache, which frees each instance;
