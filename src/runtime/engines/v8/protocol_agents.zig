@@ -131,12 +131,6 @@ const AgentRecord = struct {
     host: ?*anyopaque,
     /// AgentOptions.allocator: the agent's own state.
     allocator: std.mem.Allocator,
-    /// DEAD: nothing reads it. It marked the thread's host agent, whose end
-    /// took down what the adapter kept per thread; the adapter keeps nothing
-    /// per thread now (`realms`), and every agent's end is the same. It goes
-    /// with createAgent's two lines that set it once lane detplat1 (which
-    /// holds createAgent) has merged.
-    host_agent: bool,
     /// The isolate was restored from the engine's snapshot, whose bytes it
     /// reads in place for its whole life (v8_Isolate_NewFromSnapshot): the
     /// host may free them only after the agent is destroyed
@@ -443,8 +437,6 @@ fn releaseEngineSink(data: ?*anyopaque) callconv(.c) void {
 /// was given - with [[CanBlock]] as the options say and the host's hooks
 /// installed. The isolate is not entered.
 pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
-    // Before the new isolate exists: whether another is entered above it.
-    const host_agent = ffi.v8_Isolate_GetCurrent() == null;
     // [seeded_random] and [host_clock]: in the isolate's record before it
     // initializes - V8 may make its random number generator then. None of
     // either: an isolate exactly as before (v8_wrapper.cpp IsolateData).
@@ -484,7 +476,7 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
 
     const record = std.heap.c_allocator.create(AgentRecord) catch return error.OutOfMemory;
     errdefer std.heap.c_allocator.destroy(record);
-    record.* = .{ .isolate = isolate, .hooks = options.hooks, .host = options.host, .allocator = options.allocator, .host_agent = host_agent, .from_snapshot = ffi.v8_Isolate_IsFromSnapshot(isolate), .deferred_teardown = options.deferred_teardown, .webassembly_compilations = .{ .allocator = options.allocator } };
+    record.* = .{ .isolate = isolate, .hooks = options.hooks, .host = options.host, .allocator = options.allocator, .from_snapshot = ffi.v8_Isolate_IsFromSnapshot(isolate), .deferred_teardown = options.deferred_teardown, .webassembly_compilations = .{ .allocator = options.allocator } };
     {
         std.Io.Threaded.mutexLockUncancelable(&agents_lock);
         defer std.Io.Threaded.mutexUnlock(&agents_lock);
