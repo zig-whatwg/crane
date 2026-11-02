@@ -396,14 +396,15 @@ test "FetchParams.isCanceled for terminated" {
     try std.testing.expect(params.isCanceled());
 }
 
-var chunk_length_received: u64 = 0;
-
-fn testProcessChunkLength(bytes_length: u64) void {
-    chunk_length_received = bytes_length;
-}
-
 test "FetchParams.processRequestBodyChunkLength callback" {
     const allocator = std.testing.allocator;
+    // The test's steps: what they saw lives in the test, not in the product.
+    const Test = struct {
+        var received: u64 = 0;
+        fn steps(bytes_length: u64) void {
+            received = bytes_length;
+        }
+    };
 
     const request = try InternalRequest.init(allocator, "https://example.com");
     defer request.deinit();
@@ -417,11 +418,10 @@ test "FetchParams.processRequestBodyChunkLength callback" {
     const params = try FetchParams.init(allocator, request, controller, &timing);
     defer params.deinit();
 
-    chunk_length_received = 0;
-    params.process_request_body_chunk_length = testProcessChunkLength;
+    params.process_request_body_chunk_length = Test.steps;
     params.processRequestBodyChunkLength(42);
 
-    try std.testing.expectEqual(@as(u64, 42), chunk_length_received);
+    try std.testing.expectEqual(@as(u64, 42), Test.received);
 }
 
 test "createAppropriateNetworkError for aborted" {
@@ -472,16 +472,15 @@ test "createAppropriateNetworkError for terminated" {
     try std.testing.expectEqual(response_mod.ResponseType.@"error", err.response_type);
 }
 
-var queue_task_executed = false;
-
-fn testQueueCallback() void {
-    queue_task_executed = true;
-}
-
 test "queueFetchTask with none destination" {
-    queue_task_executed = false;
-    queueFetchTask(testQueueCallback, .none);
-    try std.testing.expect(queue_task_executed);
+    const Test = struct {
+        var executed = false;
+        fn steps() void {
+            executed = true;
+        }
+    };
+    queueFetchTask(Test.steps, .none);
+    try std.testing.expect(Test.executed);
 }
 
 test "ParallelQueue.init and deinit" {

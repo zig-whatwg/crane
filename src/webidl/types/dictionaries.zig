@@ -458,48 +458,5 @@ fn clampToOctet(value: JSValue) u8 {
 const testing = std.testing;
 
 // ============================================================================
-// Callback Extraction Tests
-// ============================================================================
-
-// Mock vtable for testing
-const MockCallbackVTable = callbacks.CallbackVTable{
-    .invoke = mockInvoke,
-    .release = mockRelease,
-    .isCallable = mockIsCallable,
-};
-
-fn mockInvoke(
-    handle: *anyopaque,
-    context: ?*anyopaque,
-    args: []const primitives.JSValue,
-) anyerror!primitives.JSValue {
-    _ = handle;
-    _ = context;
-    _ = args;
-    return .{ .number = 42.0 };
-}
-
-fn mockRelease(handle: *anyopaque, context: ?*anyopaque) void {
-    _ = handle;
-    _ = context;
-}
-
-fn mockIsCallable(handle: *anyopaque, context: ?*anyopaque) bool {
-    _ = handle;
-    _ = context;
-    return true;
-}
-
-var mock_data: u8 = 0;
-
-fn createMockCallback() GenericCallback {
-    return .{
-        .handle = @ptrCast(&mock_data),
-        .context = null,
-        .vtable = &MockCallbackVTable,
-    };
-}
-
-// ============================================================================
 // Extended Attribute Tests
 // ============================================================================

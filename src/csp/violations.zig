@@ -205,7 +205,9 @@ pub const ReportingConfig = struct {
     /// Event dispatcher for SecurityPolicyViolationEvent (null = no events)
     event_dispatcher: ?EventDispatcher = null,
 
-    /// Rate limiter (null = no rate limiting, use default)
+    /// The rate limiter of the Browser the report comes from - a supplement
+    /// of its scope (`browser_scope.of(csp.RateLimiter)`) - or null for no
+    /// rate limiting. Reporting keeps no limiter of its own.
     rate_limiter: ?*RateLimiter = null,
 
     /// Allocator for report generation
@@ -221,6 +223,11 @@ pub const ReportingConfig = struct {
 ///
 /// Uses a sliding window approach: tracks reports per endpoint
 /// and limits to max_reports_per_window within the window duration.
+///
+/// State a Browser owns: its limiter is a supplement of its scope
+/// (runtime.BrowserScope.of: `init(allocator)` and `deinit`), passed by a
+/// reporting caller in ReportingConfig.rate_limiter. A supplement is reached
+/// from several threads - the Browser's workers' - so it locks its own state.
 pub const RateLimiter = struct {
     /// Maximum reports per endpoint within the window
     max_reports_per_window: u32 = 100,
@@ -233,6 +240,10 @@ pub const RateLimiter = struct {
 
     /// Allocator
     allocator: std.mem.Allocator,
+
+    /// Guards `report_counts`: a Browser's reports come from its window's
+    /// thread and each of its workers'.
+    mutex: std.Io.Mutex = .init,
 
     const ReportCount = struct {
         count: u32,
@@ -263,6 +274,8 @@ pub const RateLimiter = struct {
     /// Returns true if allowed, false if rate limited.
     pub fn shouldAllowReport(self: *Self, endpoint: []const u8) bool {
         const now = clock.wallSeconds();
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (self.report_counts.getPtr(endpoint)) |entry| {
             // Check if we're in a new window
@@ -305,25 +318,6 @@ pub const RateLimiter = struct {
         self.report_counts.deinit(self.allocator);
     }
 };
-
-/// Thread-local default rate limiter
-threadlocal var default_rate_limiter: ?RateLimiter = null;
-
-/// Get or create the default rate limiter
-fn getDefaultRateLimiter(allocator: std.mem.Allocator) *RateLimiter {
-    if (default_rate_limiter == null) {
-        default_rate_limiter = RateLimiter.init(allocator);
-    }
-    return &default_rate_limiter.?;
-}
-
-/// Deinitialize the thread-local rate limiter (for testing)
-pub fn deinitThreadLocalRateLimiter() void {
-    if (default_rate_limiter) |*limiter| {
-        limiter.deinit();
-        default_rate_limiter = null;
-    }
-}
 
 // ============================================================================
 // Violation Reporting
@@ -370,17 +364,8 @@ pub fn reportViolation(
     const endpoints = report_endpoints orelse return;
     if (endpoints.len == 0) return;
 
-    // Get rate limiter
-    var rate_limiter: *RateLimiter = undefined;
-    if (config) |cfg| {
-        if (cfg.rate_limiter) |limiter| {
-            rate_limiter = limiter;
-        } else {
-            rate_limiter = getDefaultRateLimiter(allocator);
-        }
-    } else {
-        rate_limiter = getDefaultRateLimiter(allocator);
-    }
+    // The rate limiter of the Browser reporting, when it has one.
+    const rate_limiter: ?*RateLimiter = if (config) |cfg| cfg.rate_limiter else null;
 
     // Get sender
     const sender = if (config) |cfg| cfg.sender else null;
@@ -388,8 +373,9 @@ pub fn reportViolation(
     // Send to each endpoint (with rate limiting)
     for (endpoints) |endpoint| {
         // Check rate limit
-        if (!rate_limiter.shouldAllowReport(endpoint)) {
-            continue; // Skip this endpoint due to rate limiting
+        if (rate_limiter) |limiter| {
+            // Skip this endpoint due to rate limiting
+            if (!limiter.shouldAllowReport(endpoint)) continue;
         }
 
         // Send the report
@@ -417,7 +403,7 @@ fn createLegacyReportWrapper(allocator: std.mem.Allocator, report_body: []const 
 }
 
 /// Simplified reporting function for common use case.
-/// Uses default rate limiting and no event dispatching.
+/// No rate limiting and no event dispatching.
 pub fn reportViolationSimple(
     allocator: std.mem.Allocator,
     violation: *const types.Violation,
@@ -864,7 +850,6 @@ test "createLegacyReportWrapper - wraps report correctly" {
 
 test "reportViolation - with mock sender" {
     const allocator = std.testing.allocator;
-    defer deinitThreadLocalRateLimiter();
 
     // Create a mock sender that tracks calls
     const MockSender = struct {
@@ -930,7 +915,6 @@ test "reportViolation - with mock sender" {
 
 test "reportViolation - with event dispatcher" {
     const allocator = std.testing.allocator;
-    defer deinitThreadLocalRateLimiter();
 
     // Create a mock event dispatcher that validates data inline
     const MockDispatcher = struct {
@@ -986,7 +970,6 @@ test "reportViolation - with event dispatcher" {
 
 test "reportViolation - no endpoints" {
     const allocator = std.testing.allocator;
-    defer deinitThreadLocalRateLimiter();
 
     var policy = types.Policy.init(allocator, .enforce, .header);
     defer policy.deinit();
@@ -1007,7 +990,6 @@ test "reportViolation - no endpoints" {
 
 test "reportViolationSimple - convenience function" {
     const allocator = std.testing.allocator;
-    defer deinitThreadLocalRateLimiter();
 
     var policy = types.Policy.init(allocator, .enforce, .header);
     defer policy.deinit();

@@ -50,26 +50,33 @@ pub fn run(environment: runtime.Context) void {
     for (steps[0..count]) |step| step(environment);
 }
 
-var test_runs: usize = 0;
-var test_last: ?runtime.Context = null;
-fn testStep(environment: runtime.Context) void {
-    test_runs += 1;
-    test_last = environment;
-}
-
 test "an installed step runs once per run, for the environment it is given, however often it was installed" {
-    const saved = count;
-    defer count = saved;
+    // The test's step: what it saw lives in the test, not in the product.
+    const Test = struct {
+        var runs: usize = 0;
+        var last: ?runtime.Context = null;
+        fn step(environment: runtime.Context) void {
+            runs += 1;
+            last = environment;
+        }
+    };
+    // Give back the whole table: restoring only the count would leave this
+    // test's step in the first slot of the process's own table.
+    const saved_steps = steps;
+    const saved_count = count;
+    defer {
+        steps = saved_steps;
+        count = saved_count;
+    }
     count = 0;
-    test_runs = 0;
 
     var realm: runtime.ContextData = undefined;
     run(&realm);
-    try std.testing.expectEqual(@as(usize, 0), test_runs);
+    try std.testing.expectEqual(@as(usize, 0), Test.runs);
 
-    install(&testStep);
-    install(&testStep);
+    install(&Test.step);
+    install(&Test.step);
     run(&realm);
-    try std.testing.expectEqual(@as(usize, 1), test_runs);
-    try std.testing.expectEqual(@as(?runtime.Context, &realm), test_last);
+    try std.testing.expectEqual(@as(usize, 1), Test.runs);
+    try std.testing.expectEqual(@as(?runtime.Context, &realm), Test.last);
 }

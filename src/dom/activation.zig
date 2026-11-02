@@ -63,27 +63,35 @@ pub fn of(target: *runtime.Instance) ?Behavior {
     return null;
 }
 
-var test_runs: usize = 0;
-fn testHas(_: *runtime.Instance) bool {
-    return true;
-}
-fn testRun(_: *runtime.Instance, _: *runtime.Instance) void {
-    test_runs += 1;
-}
-
 test "a target has the behaviour whose brand check accepts it, installed once" {
-    const saved = count;
-    defer count = saved;
+    // The test's behaviour: its count lives in the test, not in the product.
+    const Test = struct {
+        var runs: usize = 0;
+        fn has(_: *runtime.Instance) bool {
+            return true;
+        }
+        fn run(_: *runtime.Instance, _: *runtime.Instance) void {
+            runs += 1;
+        }
+    };
+    // Give back the whole table: restoring only the count would leave this
+    // test's always-true brand check in slot 0 for the process's later tests.
+    const saved_behaviors = behaviors;
+    const saved_count = count;
+    defer {
+        behaviors = saved_behaviors;
+        count = saved_count;
+    }
     count = 0;
     // Never dereferenced: nothing installed reads the target.
     var target: runtime.Instance = undefined;
     try std.testing.expect(of(&target) == null);
-    install(.{ .has = &testHas, .run = &testRun });
-    install(.{ .has = &testHas, .run = &testRun });
+    install(.{ .has = &Test.has, .run = &Test.run });
+    install(.{ .has = &Test.has, .run = &Test.run });
     try std.testing.expectEqual(@as(usize, 1), count);
     const behavior = of(&target) orelse return error.TestExpectedBehavior;
     behavior.run(&target, &target);
-    try std.testing.expectEqual(@as(usize, 1), test_runs);
+    try std.testing.expectEqual(@as(usize, 1), Test.runs);
 }
 
 test "behaviours that share a check stay two, and the first installed answers: a release build can make two checks one function" {
@@ -92,23 +100,27 @@ test "behaviours that share a check stay two, and the first installed answers: a
     // behaviours, the first one installed first.
     const saved_behaviors = behaviors;
     const saved_count = count;
-    const saved_runs = test_runs;
     defer {
         behaviors = saved_behaviors;
         count = saved_count;
-        test_runs = saved_runs;
     }
-    const Later = struct {
+    const Test = struct {
+        var runs: usize = 0;
+        fn has(_: *runtime.Instance) bool {
+            return true;
+        }
         fn run(_: *runtime.Instance, _: *runtime.Instance) void {
-            test_runs += 10;
+            runs += 1;
+        }
+        fn later(_: *runtime.Instance, _: *runtime.Instance) void {
+            runs += 10;
         }
     };
     count = 0;
-    test_runs = 0;
     var target: runtime.Instance = undefined;
-    install(.{ .has = &testHas, .run = &testRun });
-    install(.{ .has = &testHas, .run = &Later.run });
+    install(.{ .has = &Test.has, .run = &Test.run });
+    install(.{ .has = &Test.has, .run = &Test.later });
     const behavior = of(&target) orelse return error.TestExpectedBehavior;
     behavior.run(&target, &target);
-    try std.testing.expectEqual(@as(usize, 1), test_runs);
+    try std.testing.expectEqual(@as(usize, 1), Test.runs);
 }

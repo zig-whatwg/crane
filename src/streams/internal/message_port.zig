@@ -77,7 +77,8 @@ pub const SerializedMessage = struct {
 pub const MessagePort = struct {
     allocator: Allocator,
 
-    /// Unique port ID
+    /// The port's identity: its address, unique among live ports (a
+    /// process counter of ports made would be state every Browser shares).
     id: u64,
 
     /// Entangled port (if any)
@@ -123,7 +124,7 @@ pub const MessagePort = struct {
         const port = try allocator.create(MessagePort);
         port.* = .{
             .allocator = allocator,
-            .id = generatePortId(),
+            .id = @intFromPtr(port),
             .entangled_port = null,
             .message_queue = infra.List(*Message).init(allocator),
             .serialized_queue = infra.List(*SerializedMessage).init(allocator),
@@ -266,15 +267,6 @@ pub const MessagePort = struct {
     pub fn close(self: *MessagePort) void {
         self.closed = true;
         self.disentangle();
-    }
-
-    /// Generate unique port ID
-    fn generatePortId() u64 {
-        const S = struct {
-            var counter: u64 = 0;
-        };
-        S.counter += 1;
-        return S.counter;
     }
 };
 
