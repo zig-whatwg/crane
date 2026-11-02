@@ -6,9 +6,12 @@
 //! (2026-11-02), which starts a server and stops it at once.
 const std = @import("std");
 const clock = @import("clock");
-const LoopbackListener = @import("loopback_listener").LoopbackListener;
+const loopback_listener = @import("loopback_listener");
+const LoopbackListener = loopback_listener.LoopbackListener;
 
-/// A fixture's accept loop, reduced: every connection is counted and closed.
+/// A fixture's accept loop, reduced: every connection is counted and
+/// closed - with a reset, so that thousands of rounds leave no TIME_WAIT to
+/// use up the host's ephemeral ports.
 const Loop = struct {
     listener: LoopbackListener,
     served: std.atomic.Value(u32) = .init(0),
@@ -16,17 +19,21 @@ const Loop = struct {
     fn run(self: *Loop) void {
         while (self.listener.accept()) |stream| {
             _ = self.served.fetchAdd(1, .monotonic);
-            stream.close(std.testing.io);
+            loopback_listener.resetClose(stream);
         }
     }
 };
 
 /// A client connecting while the listener stops: refused once it closed,
-/// taken (and closed unanswered) before.
+/// taken (and reset) before, or reset with the listener. It waits for that
+/// end before closing its own, so it leaves no TIME_WAIT either.
 fn connectOnce(port: u16) void {
     const address: std.Io.net.IpAddress = .{ .ip4 = std.Io.net.Ip4Address.loopback(port) };
     const stream = address.connect(std.testing.io, .{ .mode = .stream }) catch return;
-    stream.close(std.testing.io);
+    defer stream.close(std.testing.io);
+    var buffer: [64]u8 = undefined;
+    var reader = stream.reader(std.testing.io, &buffer);
+    while (true) reader.interface.fillMore() catch return;
 }
 
 test "an accept loop stops 3,000 times - at once after it starts, and with a client racing the stop" {
