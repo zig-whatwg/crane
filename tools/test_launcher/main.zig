@@ -37,6 +37,7 @@ const child_mod = @import("child.zig");
 const report = @import("report.zig");
 const server_mod = @import("server.zig");
 const Slots = @import("slots.zig").Slots;
+const verify_mod = @import("verify.zig");
 
 test {
     _ = plan_mod;
@@ -45,6 +46,7 @@ test {
     _ = report;
     _ = server_mod;
     _ = @import("slots.zig");
+    _ = verify_mod;
     _ = Args;
     // Analyse main, so `zig build test` catches what only the executable uses.
     _ = &main;
@@ -65,6 +67,14 @@ const SeedSpec = union(enum) {
         return .{ .value = try plan_mod.parseSeed(text) };
     }
 };
+
+/// ThreadSanitizer's slowdown, for the per-test timeout: tests-dom's 642
+/// tests took 153 s of test time plain and 1,413 s under TSAN on chat.local
+/// (9.2x; the heaviest 30.6 s -> past 300 s, lane tsan1, 2026-11-02). Gecko
+/// gives TSAN 120 s where a plain run gets 45 s (tmp/analysis/test-research/
+/// gecko.md). The timeout is there to catch hangs: 4x (1,200 s by default)
+/// leaves the heaviest test of tests-dom four times its TSAN time.
+const tsan_timeout_factor = 4;
 
 const Args = struct {
     exe: ?[]const u8 = null,
@@ -95,10 +105,17 @@ const Args = struct {
     many_browsers: bool = false,
     /// Report every non-pass without failing (server.Session.report_only).
     report_only: bool = false,
+    /// Verify mode (verify.zig): the tests whose names start with any of
+    /// these, `verify_batched` times in one process and `verify_alone` times
+    /// each alone.
+    verify: []const []const u8 = &.{},
+    verify_batched: u32 = 10,
+    verify_alone: u32 = 5,
 
     fn parse(arena: std.mem.Allocator, args: []const []const u8) !Args {
         var a: Args = .{};
         var slow: std.ArrayList([]const u8) = .empty;
+        var verify: std.ArrayList([]const u8) = .empty;
         for (args) |arg| {
             if (value(arg, "--jobs=") orelse value(arg, "--parallel=")) |v| {
                 // --parallel= too: the pool's crane-measure.sh rewrites it to
@@ -144,6 +161,12 @@ const Args = struct {
                 a.many_browsers = true;
             } else if (std.mem.eql(u8, arg, "--report-only")) {
                 a.report_only = true;
+            } else if (value(arg, "--verify=")) |v| {
+                try verify.append(arena, v);
+            } else if (value(arg, "--verify-batched=")) |v| {
+                a.verify_batched = try std.fmt.parseUnsigned(u32, v, 10);
+            } else if (value(arg, "--verify-alone=")) |v| {
+                a.verify_alone = try std.fmt.parseUnsigned(u32, v, 10);
             } else if (std.mem.eql(u8, arg, "--listen=-")) {
                 a.listen = true;
             } else if (std.mem.startsWith(u8, arg, "--")) {
@@ -155,11 +178,21 @@ const Args = struct {
         if (a.exe == null) return error.MissingExecutable;
         if (a.tsan_suppressions != null and !a.sanitize_thread) return error.SuppressionsWithoutSanitizeThread;
         a.slow = slow.items;
+        a.verify = verify.items;
+        // Verify mode is a run of its own, with its own report: never the
+        // build runner's protocol.
+        if (a.verify.len != 0 and a.listen) return error.VerifyInServerMode;
         return a;
     }
 
     fn value(arg: []const u8, comptime prefix: []const u8) ?[]const u8 {
         return if (std.mem.startsWith(u8, arg, prefix)) arg[prefix.len..] else null;
+    }
+
+    /// The per-test timeout in force: `--timeout`, times
+    /// `tsan_timeout_factor` for an executable built with ThreadSanitizer.
+    fn effectiveTimeout(a: Args) u32 {
+        return if (a.sanitize_thread) a.timeout_s *| tsan_timeout_factor else a.timeout_s;
     }
 
     /// The seed spec in force: `--launch-seed=` first; then, outside server
@@ -195,6 +228,10 @@ const usage =
     \\  --tsan-suppressions=FILE  with --sanitize-thread: the suppression file (proven false positives only)
     \\  --many-browsers   the many-Browsers variant: every test runs beside a busy Browser on another
     \\                    thread (CRANE_TEST_MANY_BROWSERS=1; the Crane test runner starts it)
+    \\  --verify=PREFIX   verify mode: the tests whose names start with PREFIX (repeatable; build.zig's
+    \\                    test-verify passes one per changed file, "<file>.test."), each run
+    \\                    --verify-batched times in one process and --verify-alone times alone;
+    \\                    any run that is not a pass fails (defaults 10 and 5)
     \\  --report-only     print and record every verdict, but answer the build runner `pass` for a
     \\                    failure and exit 0 for one: a variant's report mode (a TEMPORARY suite row)
     \\
@@ -222,9 +259,26 @@ test "args: options, defaults, and errors" {
     try std.testing.expectEqualStrings("/s.txt", t.tsan_suppressions.?);
     try std.testing.expect(!d.sanitize_thread and !d.many_browsers);
     try std.testing.expectError(error.SuppressionsWithoutSanitizeThread, Args.parse(arena, &.{ "x", "--tsan-suppressions=/s.txt" }));
+    // ThreadSanitizer's slowdown stretches the timeout; nothing else does.
+    try std.testing.expectEqual(@as(u32, 300 * tsan_timeout_factor), (try Args.parse(arena, &.{ "x", "--sanitize-thread", "--timeout=300" })).effectiveTimeout());
+    try std.testing.expectEqual(@as(u32, 300), (try Args.parse(arena, &.{ "x", "--many-browsers", "--timeout=300" })).effectiveTimeout());
+    try std.testing.expectEqual(@as(u32, 10), d.verify_batched);
+    try std.testing.expectEqual(@as(u32, 5), d.verify_alone);
     try std.testing.expectError(error.MissingExecutable, Args.parse(arena, &.{}));
     try std.testing.expectError(error.UnknownOption, Args.parse(arena, &.{ "x", "--bogus" }));
     try std.testing.expectError(error.UnexpectedArgument, Args.parse(arena, &.{ "x", "y" }));
+}
+
+test "args: verify mode - prefixes, run counts, and never in server mode" {
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const v = try Args.parse(arena, &.{ "x", "--verify=a_test.test.", "--verify=sub.b_test.test.", "--verify-batched=1", "--verify-alone=0" });
+    try std.testing.expectEqual(@as(usize, 2), v.verify.len);
+    try std.testing.expectEqualStrings("sub.b_test.test.", v.verify[1]);
+    try std.testing.expectEqual(@as(u32, 1), v.verify_batched);
+    try std.testing.expectEqual(@as(u32, 0), v.verify_alone);
+    try std.testing.expectError(error.VerifyInServerMode, Args.parse(arena, &.{ "x", "--verify=a.", "--listen=-" }));
 }
 
 test "args: server mode takes the digest seed and ignores the build runner's --seed" {
@@ -400,7 +454,7 @@ pub fn main(init: std.process.Init) !void {
         claim_order = try sched.longestFirst(gpa, &plan, expected);
     }
 
-    var executor = try child_mod.Executor.init(gpa, io, &child_argv, @as(u64, args.timeout_s) * std.time.ns_per_s, jobs);
+    var executor = try child_mod.Executor.init(gpa, io, &child_argv, @as(u64, args.effectiveTimeout()) * std.time.ns_per_s, jobs);
     defer executor.deinit();
     // Every test child: the launcher's environment with the time zone and
     // locale fixed and the proxies cleared (child.testEnvironment).
@@ -422,6 +476,13 @@ pub fn main(init: std.process.Init) !void {
         launcherFailure(out, "could not open the test-process slot directory {s}: {f}", .{ name, d, child_mod.FmtError{ .err = err } })) else null;
     defer if (slots) |*s| s.close();
     if (slots) |*s| executor.slots = s;
+
+    if (args.verify.len != 0) {
+        const status = try runVerify(gpa, io, arena, out, name, md, args, &executor, jobs);
+        try out.flush();
+        if (status != 0) std.process.exit(status);
+        return;
+    }
 
     // A replay runs the same variants: the race or the busy Browser is part
     // of what failed.
@@ -462,7 +523,7 @@ pub fn main(init: std.process.Init) !void {
             "test_launcher: {s}: {d} tests, seed 0x{x}, {s}, batch {d} -> {d} processes, {d} jobs, timeout {d} s\n  replay: {s}\n",
             .{
                 name,       selected.items.len, seed, if (args.shuffle) "shuffled" else "index order",
-                args.batch, plan.batches.len,   jobs, args.timeout_s,
+                args.batch, plan.batches.len,   jobs, args.effectiveTimeout(),
                 replay,
             },
         );
@@ -513,6 +574,57 @@ pub fn main(init: std.process.Init) !void {
 
     const status = exitStatus(args.listen, args.report_only, c, exit_failures);
     if (status != 0) std.process.exit(status);
+}
+
+/// Verify mode (verify.zig): the tests named by `args.verify`'s prefixes,
+/// batched and alone; the report, the result file, and the exit status - 1
+/// when any test's verification failed or no prefix named a test.
+fn runVerify(gpa: std.mem.Allocator, io: Io, arena: std.mem.Allocator, out: *Io.Writer, name: []const u8, md: child_mod.Metadata, args: Args, executor: *child_mod.Executor, jobs: u32) !u8 {
+    var tests: std.ArrayList(u32) = .empty;
+    var unmatched: u32 = 0;
+    for (args.verify) |prefix| {
+        var matched = false;
+        for (md.names, md.expects_panic, 0..) |n, panics, i| {
+            if (panics or !std.mem.startsWith(u8, n, prefix)) continue;
+            matched = true;
+            if (std.mem.indexOfScalar(u32, tests.items, @intCast(i)) == null) try tests.append(arena, @intCast(i));
+        }
+        if (!matched) {
+            unmatched += 1;
+            try out.print("test_launcher: {s}: verify: no test of this executable starts with \"{s}\" (a file with no test blocks is not verified)\n", .{ name, prefix });
+        }
+    }
+    const options: verify_mod.Options = .{ .batched = args.verify_batched, .alone = args.verify_alone, .jobs = jobs };
+    try out.print("test_launcher: {s}{s}: verify {d} tests from {d} files: {d} times in one process, {d} times each alone\n", .{
+        name,            if (args.sanitize_thread) " [ThreadSanitizer]" else "",
+        tests.items.len, args.verify.len,
+        options.batched, options.alone,
+    });
+    try out.flush();
+    var v = try verify_mod.Verify.init(gpa, io, executor.executor(), tests.items, options);
+    defer v.deinit();
+    try v.execute();
+    try v.writeReport(out, md.names);
+    const failed = v.failures();
+    try out.print("test_launcher: {s}: verify: {d} of {d} tests PASS, {d} FAIL; {d} processes\n", .{
+        name, tests.items.len - failed, tests.items.len, failed, v.processes.load(.monotonic),
+    });
+    if (args.out) |path| {
+        var aw: Io.Writer.Allocating = .init(arena);
+        for (tests.items, v.outcomes) |t, o| {
+            try aw.writer.writeAll("{\"test\":");
+            try std.json.Stringify.value(md.names[t], .{}, &aw.writer);
+            try aw.writer.print(",\"verify\":\"{s}\",\"batched\":[{d},{d}],\"alone\":[{d},{d}]", .{
+                if (o.passed(options)) "PASS" else "FAIL", o.batched_ok, options.batched, o.alone_ok, options.alone,
+            });
+            if (o.first_bad) |bad| try aw.writer.print(",\"first_failure\":{{\"phase\":\"{t}\",\"run\":{d},\"status\":\"{t}\"}}", .{ bad.phase, bad.run, bad.status });
+            try aw.writer.writeAll("}\n");
+        }
+        if (std.fs.path.dirname(path)) |dir| try Io.Dir.cwd().createDirPath(io, dir);
+        try Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = aw.written() });
+        try out.print("  results: {s}\n", .{path});
+    }
+    return if (failed != 0 or (tests.items.len == 0 and unmatched != 0)) 1 else 0;
 }
 
 /// The launcher's exit status. In server mode the verdicts reached the build

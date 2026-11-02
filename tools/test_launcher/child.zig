@@ -532,9 +532,9 @@ test "real processes: each kind of result, a crash and a timeout blamed and rest
     const md = try queryMetadata(gpa, io, &argv);
     defer md.deinit(gpa);
     const names = [_][]const u8{ "passes", "fails", "crashes", "hangs", "leaks", "poisons", "needs a clean process", "skips" };
-    // The fixture's first eight tests; "sees the fixed environment" follows
-    // them and has a test of its own (below).
-    try testing.expectEqual(names.len + 1, md.names.len);
+    // The fixture's first eight tests; "sees the fixed environment" and
+    // verify mode's flake follow them and have tests of their own.
+    try testing.expectEqual(names.len + 2, md.names.len);
     var all: [names.len]u32 = undefined;
     for (names, 0..) |want, i| {
         try testing.expect(std.mem.endsWith(u8, md.names[i], want));
@@ -664,6 +664,48 @@ test "real processes: under ThreadSanitizer a data race halts the test child, an
     try testing.expectEqual(sched.Status.pass, run.records[2].first);
 }
 
+test "real processes: the many-Browsers variant runs a busy Browser beside each test, and only with it does a test that assumes it is alone fail" {
+    // build.zig compiles tests/test_runner_fixture/many_browsers_fixture.zig
+    // (it links V8) only with -Dmany-browsers.
+    const fixture = @import("launcher_fixture");
+    if (@hasDecl(fixture, "many_browsers_path")) try manyBrowsersFixture(fixture.many_browsers_path) else return error.SkipZigTest;
+}
+
+fn manyBrowsersFixture(path: []const u8) !void {
+    const gpa = testing.allocator;
+    const io = testing.io;
+    const argv = [_][]const u8{ path, "--listen=-", "--seed=0x1" };
+    const md = try queryMetadata(gpa, io, &argv);
+    defer md.deinit(gpa);
+    try testing.expectEqual(@as(usize, 2), md.names.len);
+    try testing.expect(std.mem.endsWith(u8, md.names[0], "assumes it is the only Browser in its process"));
+    try testing.expect(std.mem.endsWith(u8, md.names[1], "assumes nothing"));
+
+    var base: std.process.Environ.Map = .init(gpa);
+    defer base.deinit();
+    for ([_]struct { many: bool, want: [2]sched.Status }{
+        .{ .many = false, .want = .{ .pass, .pass } },
+        .{ .many = true, .want = .{ .fail, .pass } },
+    }) |case| {
+        var env = try testEnvironment(gpa, &base, .{ .many_browsers = case.many });
+        defer env.deinit();
+        var all = [_]u32{ 0, 1 };
+        var plan = try @import("plan.zig").make(gpa, &all, .{ .seed = 1, .shuffle = false, .batch_size = 1 });
+        defer plan.deinit(gpa);
+        var exec = try Executor.init(gpa, io, &argv, 120 * std.time.ns_per_s, 2);
+        defer exec.deinit();
+        exec.environ_map = &env;
+        var run = try sched.Run.init(gpa, io, &plan, md.names.len, exec.executor(), .{ .jobs = 2, .alone_runs = 1 });
+        defer run.deinit();
+        try run.execute();
+        for (case.want, 0..) |want, i| {
+            errdefer std.debug.print("many Browsers {}: test {d}: {t}\n{s}\n", .{ case.many, i, run.records[i].first, run.records[i].output });
+            try testing.expectEqual(want, run.records[i].first);
+        }
+        if (case.many) try testing.expect(std.mem.indexOf(u8, run.records[0].output, "AnotherBrowserIsAlive") != null);
+    }
+}
+
 test "real processes: a test child sees the fixed environment whatever the launcher's was" {
     const fixture = @import("launcher_fixture");
     const gpa = testing.allocator;
@@ -671,8 +713,9 @@ test "real processes: a test child sees the fixed environment whatever the launc
     const argv = [_][]const u8{ fixture.path, "--listen=-", "--seed=0x1" };
     const md = try queryMetadata(gpa, io, &argv);
     defer md.deinit(gpa);
-    const index: u32 = @intCast(md.names.len - 1);
-    try testing.expect(std.mem.endsWith(u8, md.names[index], "sees the fixed environment"));
+    const index: u32 = for (md.names, 0..) |n, i| {
+        if (std.mem.endsWith(u8, n, "sees the fixed environment")) break @intCast(i);
+    } else return error.FixtureTestMissing;
 
     // A launcher environment unlike the fixed one, as a shell might have it.
     var base: std.process.Environ.Map = .init(gpa);

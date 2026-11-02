@@ -45,9 +45,12 @@ const churn_page =
     \\let ticks = 0;
     \\const interval = setInterval(() => {
     \\  root.appendChild(document.createTextNode('t' + ticks));
-    \\  if (++ticks === 6) { clearInterval(interval); window.__done++; }
+    \\  if (++ticks === 6) {
+    \\    clearInterval(interval);
+    \\    Promise.resolve().then(() => { root.textContent = ''; window.__done++; });
+    \\  }
     \\}, 0);
-    \\setTimeout(() => Promise.resolve().then(() => { root.textContent = ''; window.__done++; }), 1);
+    \\setTimeout(() => { window.__done++; }, 1);
     \\queueMicrotask(() => { document.body.dataset.micro = 'ran'; });
     \\</script>
 ;

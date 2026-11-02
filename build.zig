@@ -864,6 +864,29 @@ const TestLaunch = struct {
     /// Every test executable `addSuiteRun` runs, for the instrumentation
     /// pass at the end of `build` (`instrumentForThreadSanitizer`).
     test_exes: *std.ArrayList(*std.Build.Step.Compile),
+    /// `zig build test-verify`: the changed test files and their step
+    /// (`TestVerify`).
+    verify: *TestVerify,
+};
+
+/// `zig build test-verify` (the approved test plan, section 6: Gecko's
+/// test-verify, Chromium's 20x, WebKit's 10x): every test of each named
+/// tests/<dir>/**/*_test.zig file, run by the launcher's verify mode from
+/// the file's directory executable - 10 times in one process and 5 times
+/// each alone; under -Dsanitize-thread, once - and any run that is not a
+/// pass fails the step. The files: -Dverify-files=<a,b,...> (repository-
+/// relative), or -Dverify-base=<git ref> for the *_test.zig files under
+/// tests/ that `git diff <ref>...HEAD` adds or changes - where there is a
+/// git checkout (a pool mirror has none: compute the list in the checkout
+/// and pass -Dverify-files).
+const TestVerify = struct {
+    step: *std.Build.Step,
+    files: []const []const u8 = &.{},
+    /// Which `files` a directory's executable took (the rest fail the step).
+    matched: []bool = &.{},
+    /// Whether the files were asked for at all (-Dverify-files or
+    /// -Dverify-base); without them the step fails, saying how to ask.
+    asked: bool = false,
 };
 
 /// One suite's launcher settings. Batch size per the measurements
@@ -1144,6 +1167,95 @@ fn checkEveryTestRunsThroughTheLauncher(b: *std.Build, launch: *const TestLaunch
     }
 }
 
+/// The `test-verify` step and its files: -Dverify-files, else
+/// -Dverify-base's git diff.
+fn testVerifySelection(b: *std.Build) *TestVerify {
+    const v = b.allocator.create(TestVerify) catch @panic("OOM");
+    v.* = .{ .step = b.step("test-verify", "Verify new and changed tests: each test of the files -Dverify-files=<a,b> (or -Dverify-base=<ref>: git diff <ref>...HEAD) 10 times in one process and 5 times alone; with -Dsanitize-thread, once") };
+    const files_option = b.option([]const u8, "verify-files", "test-verify: comma-separated tests/<dir>/**/*_test.zig files (repository-relative)");
+    const base = b.option([]const u8, "verify-base", "test-verify: the git ref whose diff (<ref>...HEAD) names the changed test files, where there is a git checkout");
+    var files: std.ArrayList([]const u8) = .empty;
+    if (files_option) |list| {
+        v.asked = true;
+        var it = std.mem.tokenizeAny(u8, list, ", \n");
+        while (it.next()) |file| files.append(b.allocator, file) catch @panic("OOM");
+    } else if (base) |ref| {
+        v.asked = true;
+        // A configure-time read of the checkout the configure cache cannot
+        // track.
+        b.graph.poisonCache();
+        var code: u8 = 0;
+        const out = b.runAllowFail(&.{ "git", "diff", "--name-only", "--diff-filter=AMR", b.fmt("{s}...HEAD", .{ref}), "--", "tests/" }, &code, .inherit) catch |err| {
+            v.step.dependOn(&b.addFail(b.fmt("test-verify: git diff {s}...HEAD failed ({t}): no git checkout here? Pass -Dverify-files=<a,b,...> instead", .{ ref, err })).step);
+            return v;
+        };
+        var lines = std.mem.tokenizeScalar(u8, out, '\n');
+        while (lines.next()) |file| {
+            if (std.mem.endsWith(u8, file, "_test.zig") and !std.mem.startsWith(u8, file, "tests/wpt/")) files.append(b.allocator, file) catch @panic("OOM");
+        }
+    }
+    v.files = files.items;
+    v.matched = b.allocator.alloc(bool, files.items.len) catch @panic("OOM");
+    @memset(v.matched, false);
+    return v;
+}
+
+/// Adds the verify run of `test_exe`, the executable of the test directory
+/// `dir_path` made of `files` (relative to it), for the verify files in it.
+/// Test names start with the file's path in the directory, '/' as '.', no
+/// `.zig`: "navigation.nav2h_indexes_test.test.<name>".
+fn addTestVerify(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.Step.Compile, name: []const u8, dir_path: []const u8, files: []const []const u8) void {
+    const v = launch.verify;
+    var prefixes: std.ArrayList([]const u8) = .empty;
+    for (v.files, v.matched) |file, *matched| {
+        if (!std.mem.startsWith(u8, file, dir_path) or file.len <= dir_path.len + 1 or file[dir_path.len] != '/') continue;
+        const rel = file[dir_path.len + 1 ..];
+        for (files) |f| {
+            if (!std.mem.eql(u8, f, rel)) continue;
+            matched.* = true;
+            const stem = rel[0 .. rel.len - ".zig".len];
+            const dotted = b.allocator.dupe(u8, stem) catch @panic("OOM");
+            std.mem.replaceScalar(u8, dotted, '/', '.');
+            prefixes.append(b.allocator, b.fmt("{s}.test.", .{dotted})) catch @panic("OOM");
+        }
+    }
+    if (prefixes.items.len == 0) return;
+    const config = suiteConfig(name);
+    const run = b.addRunArtifact(launch.launcher);
+    run.setName(b.fmt("test-verify {s}", .{name}));
+    run.addArtifactArg(test_exe);
+    run.addArg(b.fmt("--name={s}", .{name}));
+    for (prefixes.items) |prefix| run.addArg(b.fmt("--verify={s}", .{prefix}));
+    if (launch.sanitize_thread) {
+        // "Once under -Dsanitize-thread": the instrumented build is the
+        // slow one, and a race needs no repetition to be seen.
+        run.addArgs(&.{ "--verify-batched=1", "--verify-alone=0", "--sanitize-thread" });
+        run.addPrefixedFileArg("--tsan-suppressions=", b.path("tools/test_launcher/tsan_suppressions.txt"));
+    }
+    if (launch.many_browsers) run.addArg("--many-browsers");
+    if (launch.jobs) |jobs| run.addArg(b.fmt("--jobs={d}", .{jobs}));
+    run.addArg(b.fmt("--timeout={d}", .{launch.timeout}));
+    for (config.slow) |slow| run.addArg(b.fmt("--slow={s}", .{slow}));
+    run.addArg(b.fmt("--out=tmp/test-launch/{s}.verify{s}.jsonl", .{ name, if (launch.sanitize_thread) ".tsan" else "" }));
+    run.setCwd(b.path("."));
+    // A verification is a run, never a cache hit.
+    run.has_side_effects = true;
+    run.stdio = .inherit;
+    v.step.dependOn(&run.step);
+}
+
+/// The verify files no directory executable took fail the step, by name.
+fn finishTestVerify(b: *std.Build, v: *TestVerify) void {
+    if (!v.asked) {
+        v.step.dependOn(&b.addFail("test-verify: name the test files: -Dverify-files=tests/<dir>/<file>_test.zig,... (or -Dverify-base=main where there is a git checkout)").step);
+        return;
+    }
+    if (v.files.len == 0) return; // nothing changed: nothing to verify
+    for (v.files, v.matched) |file, matched| {
+        if (!matched) v.step.dependOn(&b.addFail(b.fmt("test-verify: {s} is no test file of a suite this build makes (a tests/<dir>/**/*_test.zig file; select every suite: no -Dspec, or -Dspec=all)", .{file})).step);
+    }
+}
+
 /// -Dsanitize-thread: ThreadSanitizer on every module of every test
 /// executable `addSuiteRun` runs that is Crane's own - made by this build,
 /// so not a dependency package's (curl, mbedTLS, zlib: their option sets
@@ -1211,7 +1323,7 @@ fn addTestFilesFromDir(
         if (!std.mem.startsWith(u8, file, dir_path) or file.len <= dir_path.len or file[dir_path.len] != '/') return;
         var dir_name: std.ArrayList(u8) = .empty;
         for (dir_path) |c| try dir_name.append(allocator, if (c == '/') '-' else c);
-        addTestRoot(builder, step, file, builder.fmt("{s}", .{std.fs.path.stem(file)}), dir_name.items, target, modules, link_v8, select.launch);
+        _ = addTestRoot(builder, step, file, builder.fmt("{s}", .{std.fs.path.stem(file)}), dir_name.items, target, modules, link_v8, select.launch);
         return;
     }
 
@@ -1262,7 +1374,8 @@ fn addTestFilesFromDir(
 
     var name: std.ArrayList(u8) = .empty;
     for (dir_path) |c| try name.append(allocator, if (c == '/') '-' else c);
-    addTestRoot(builder, step, root_path, name.items, null, target, modules, link_v8, select.launch);
+    const test_exe = addTestRoot(builder, step, root_path, name.items, null, target, modules, link_v8, select.launch);
+    addTestVerify(builder, select.launch, test_exe, name.items, dir_path, files.items);
 }
 
 fn addTestRoot(
@@ -1275,7 +1388,7 @@ fn addTestRoot(
     modules: []const std.Build.Module.Import,
     link_v8: bool,
     launch: *const TestLaunch,
-) void {
+) *std.Build.Step.Compile {
     const test_exe = builder.addTest(.{
         .name = name,
         .root_module = builder.createModule(.{
@@ -1305,6 +1418,7 @@ fn addTestRoot(
     }
 
     step.dependOn(&addSuiteRun(builder, launch, test_exe, name, config_name).step);
+    return test_exe;
 }
 
 /// An executable that is compiled and never linked - nothing asks for its
@@ -2286,6 +2400,7 @@ pub fn build(b: *std.Build) void {
     // `test-launch` runs the test executables alone, without the lints and
     // checks `test` adds; -Dspec and -Dtest-file select them for both.
     const launch: *const TestLaunch = launch: {
+        const many_browsers = b.option(bool, "many-browsers", "The many-Browsers variant: every test runs beside a second, busy Browser on another thread of its process (suites that link V8)") orelse false;
         const launcher_module = b.createModule(.{
             .root_source_file = b.path("tools/test_launcher/main.zig"),
             // Build-time tool: runs on the host, as codegen does.
@@ -2340,6 +2455,26 @@ pub fn build(b: *std.Build) void {
             }),
         });
         launcher_fixture_options.addOptionPath("tsan_path", tsan_fixture.getEmittedBin());
+        // -Dmany-browsers: a test that assumes it is the only Browser of its
+        // process, and one that assumes nothing - child.zig's tests check that
+        // the variant's busy Browser runs beside them and works cleanly. It
+        // links V8, so it is built only in that build.
+        if (many_browsers) {
+            const many_fixture = b.addTest(.{
+                .name = "test_many_browsers_fixture",
+                .root_module = b.createModule(.{
+                    .root_source_file = b.path("tests/test_runner_fixture/many_browsers_fixture.zig"),
+                    .target = target,
+                    .imports = &.{
+                        .{ .name = "runtime", .module = testing_graph.runtime },
+                        .{ .name = "browser", .module = testing_graph.browser },
+                    },
+                }),
+            });
+            linkV8(b, many_fixture.root_module, target);
+            useCraneTestRunner(b, many_fixture, "test_many_browsers_fixture", .fail, true);
+            launcher_fixture_options.addOptionPath("many_browsers_path", many_fixture.getEmittedBin());
+        }
         const launcher_test_module = b.createModule(.{
             .root_source_file = b.path("tools/test_launcher/main.zig"),
             .target = b.graph.host,
@@ -2362,13 +2497,14 @@ pub fn build(b: *std.Build) void {
             .timeout = b.option(u32, "launch-timeout", "Per-test timeout in seconds (default 300; tests build.zig lists as slow get 4x)") orelse 300,
             .shuffle = b.option(bool, "launch-shuffle", "true: shuffle every suite's order and batches from the seed; false: index order everywhere (default: each suite's suite_configs row, mostly shuffled)"),
             .sanitize_thread = b.option(bool, "sanitize-thread", "Build every test executable with ThreadSanitizer (Crane's own modules; not the C libraries or the V8 prebuilt) and run it so a race crashes its test (TSAN_OPTIONS=halt_on_error=1)") orelse false,
-            .many_browsers = b.option(bool, "many-browsers", "The many-Browsers variant: every test runs beside a second, busy Browser on another thread of its process (suites that link V8)") orelse false,
+            .many_browsers = many_browsers,
             .browser_module = testing_graph.browser,
             .test_exes = test_exes: {
                 const list = b.allocator.create(std.ArrayList(*std.Build.Step.Compile)) catch @panic("OOM");
                 list.* = .empty;
                 break :test_exes list;
             },
+            .verify = testVerifySelection(b),
         };
         break :launch l;
     };
@@ -4316,7 +4452,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "cookiestore", .module = testing_graph.cookiestore },
             .{ .name = "permissions", .module = testing_graph.permissions },
         };
-        addTestRoot(b, test_step, command_lifetime_test, "ar3-command-lifetime", null, target, &command_test_imports, true, launch);
+        _ = addTestRoot(b, test_step, command_lifetime_test, "ar3-command-lifetime", null, target, &command_test_imports, true, launch);
     }
 
     // WPT Runner executable for running Web Platform Tests
@@ -5626,6 +5762,7 @@ pub fn build(b: *std.Build) void {
     // the launcher runs `test` makes. Both known here, once every step exists.
     checkEveryTestRunsThroughTheLauncher(b, launch, test_step);
     if (launch.sanitize_thread) instrumentForThreadSanitizer(b, launch);
+    finishTestVerify(b, launch.verify);
 }
 
 /// Every Crane module, built for one platform (docs/platform-protocol.md 1.1).
