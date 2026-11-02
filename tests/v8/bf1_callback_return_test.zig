@@ -56,18 +56,20 @@ fn release(completion: engine.Completion) void {
 
 fn check(comptime site_only: bool) !void {
     try engine.initializeEngine(.{});
-    const isolate = ffi.v8_Isolate_New() orelse return error.NoIsolate;
-    defer ffi.v8_Isolate_Dispose(isolate);
+    // A standalone runtime of this test's own, the process's given back
+    // after (test_process.OwnRuntime). It outlives the agent, whose end
+    // tears its realms down.
+    const own_runtime = test_process.OwnRuntime.begin(std.testing.allocator);
+    defer own_runtime.end();
+    // The test's agent, its own state (its realms' record among it) through
+    // the test's allocator.
+    const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &test_process.no_hooks, .allocator = std.testing.allocator });
+    defer engine.destroyAgent(agent);
+    const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
     ffi.v8_Isolate_Enter(isolate);
     defer ffi.v8_Isolate_Exit(isolate);
     const scope = ffi.v8_HandleScope_New(isolate) orelse return error.NoScope;
     defer ffi.v8_HandleScope_Dispose(scope);
-    // A standalone runtime of this test's own, the process's given back
-    // after (test_process.OwnRuntime).
-    const own_runtime = test_process.OwnRuntime.begin(std.testing.allocator);
-    defer own_runtime.end();
-    try v8.context_manager.init(std.testing.allocator);
-    defer v8.context_manager.deinit();
 
     const caller = ffi.v8_Context_New(isolate) orelse return error.NoContext;
     defer ffi.v8_Context_Dispose(caller);

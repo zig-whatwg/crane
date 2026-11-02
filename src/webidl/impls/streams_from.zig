@@ -51,11 +51,47 @@ fn resolvedWith(realm: Realm, value: engine.Owned) js.Error!Value {
     return realm.promiseResolvedWith(resolution);
 }
 
+/// The source of a stream ReadableStreamFromIterable made: the closure its
+/// pull and cancel algorithms share over iteratorRecord.
+///
+/// Counted. The controller holds one reference - its [[pullAlgorithm]] and
+/// [[cancelAlgorithm]] - which ReadableStreamDefaultControllerClearAlgorithms
+/// drops (`deinitSource`); and each call into the iterator in progress holds
+/// one of its own. The iterator is script: its next() (or a getter on what
+/// next() returns) can cancel the very stream it feeds, and [[CancelSteps]]
+/// clears the controller's algorithms before the call returns - while
+/// IteratorNext still reads the record and the pull algorithm still reads
+/// the source. In the spec nothing ends there: the algorithms are closures
+/// over iteratorRecord, and clearing them only drops the controller's hold
+/// on them. Gecko does the same: ReadableStreamDefaultControllerCallPullIfNeeded
+/// and CancelSteps take a RefPtr<UnderlyingSourceAlgorithmsBase> to the
+/// controller's algorithms across the call (dom/streams/
+/// ReadableStreamDefaultController.cpp); Blink's algorithms are traced.
+/// (from.any.js "reader.cancel() inside next()" read the freed record in a
+/// sweep, 2026-11-02.)
 const FromSource = struct {
-    /// iteratorRecord. OWNED: engine.releaseIteratorRecord.
+    /// iteratorRecord. OWNED: engine.releaseIteratorRecord, with the last
+    /// reference.
     record: *engine.IteratorRecord,
     /// The realm the stream was made in: the record's steps run in it.
     ctx: runtime.Context,
+    /// What made this source; it frees it.
+    allocator: std.mem.Allocator,
+    /// The controller's reference and one per call into the iterator.
+    refs: u32 = 1,
+
+    fn retain(self: *FromSource) *FromSource {
+        self.refs += 1;
+        return self;
+    }
+
+    /// Drop one reference; the last frees the record and the source.
+    fn release(self: *FromSource) void {
+        self.refs -= 1;
+        if (self.refs > 0) return;
+        engine.releaseIteratorRecord(self.record);
+        self.allocator.destroy(self);
+    }
 
     /// Step 3: startAlgorithm, an algorithm that returns undefined.
     fn start(_: ?*anyopaque, realm: Realm, _: *runtime.Instance) js.Error!js.Completion {
@@ -75,7 +111,12 @@ const FromSource = struct {
 
     /// Step 4: pullAlgorithm.
     fn pull(ctx: ?*anyopaque, realm: Realm, controller: *runtime.Instance) js.Error!Value {
-        const self: *FromSource = @ptrCast(@alignCast(ctx.?));
+        // The pull's own reference: next() can clear the controller's.
+        const self = @as(*FromSource, @ptrCast(@alignCast(ctx.?))).retain();
+        defer self.release();
+        // Read before script runs: what the reaction is made with.
+        const allocator = controller.ctx.allocator;
+        const source_realm = self.ctx;
         // 1. Let nextResult be IteratorNext(iteratorRecord).
         var next = NextStep{ .source = self };
         const abrupt = engine.completionOf(self.ctx, NextStep.steps, &next) catch |err| return streamsError(err);
@@ -87,10 +128,9 @@ const FromSource = struct {
         defer js.dispose(next_promise);
         // 4. Return the result of reacting to nextPromise with the fulfillment
         //    steps (PullStep.fulfilled).
-        const allocator = controller.ctx.allocator;
         const step = try allocator.create(PullStep);
         errdefer allocator.destroy(step);
-        step.* = .{ .deferred = try js.Deferred.init(realm), .controller = controller, .allocator = allocator, .realm = realm, .ctx = self.ctx };
+        step.* = .{ .deferred = try js.Deferred.init(realm), .controller = controller, .allocator = allocator, .realm = realm, .ctx = source_realm };
         const result = js.clone(step.deferred.promise) catch |err| {
             step.deferred.deinit();
             return err;
@@ -117,7 +157,13 @@ const FromSource = struct {
 
     /// Step 5: cancelAlgorithm, given reason.
     fn cancelSource(ctx: ?*anyopaque, realm: Realm, controller: *runtime.Instance, reason: Value) js.Error!Value {
-        const self: *FromSource = @ptrCast(@alignCast(ctx.?));
+        // The cancel's own reference: [[CancelSteps]] clears the
+        // controller's once this returns, and return() can end the realm.
+        const self = @as(*FromSource, @ptrCast(@alignCast(ctx.?))).retain();
+        defer self.release();
+        // Read before script runs: what the reaction is made with.
+        const allocator = controller.ctx.allocator;
+        const source_realm = self.ctx;
         // 1. Let iterator be iteratorRecord.[[Iterator]].
         // 2. Let returnMethod be GetMethod(iterator, "return").
         // 5. Let returnResult be Call(returnMethod.[[Value]], iterator,
@@ -136,10 +182,9 @@ const FromSource = struct {
         defer js.dispose(return_promise);
         // 8. Return the result of reacting to returnPromise with the
         //    fulfillment steps (CancelStep.fulfilled).
-        const allocator = controller.ctx.allocator;
         const step = try allocator.create(CancelStep);
         errdefer allocator.destroy(step);
-        step.* = .{ .deferred = try js.Deferred.init(realm), .allocator = allocator, .realm = realm, .ctx = self.ctx };
+        step.* = .{ .deferred = try js.Deferred.init(realm), .allocator = allocator, .realm = realm, .ctx = source_realm };
         const result = js.clone(step.deferred.promise) catch |err| {
             step.deferred.deinit();
             return err;
@@ -151,10 +196,12 @@ const FromSource = struct {
         return result;
     }
 
-    fn deinitSource(ctx: ?*anyopaque, allocator: std.mem.Allocator) void {
+    /// ReadableStreamDefaultControllerClearAlgorithms steps 1-2: the
+    /// controller drops its reference. A call into the iterator still in
+    /// progress keeps the source until it returns.
+    fn deinitSource(ctx: ?*anyopaque, _: std.mem.Allocator) void {
         const self: *FromSource = @ptrCast(@alignCast(ctx.?));
-        engine.releaseIteratorRecord(self.record);
-        allocator.destroy(self);
+        self.release();
     }
 
     const vtable = srd.Source.VTable{ .start = start, .pull = pull, .cancel = cancelSource, .deinit = deinitSource };
@@ -268,7 +315,7 @@ pub fn fromIterable(realm: Realm, ctx: runtime.Context, iterable: runtime.JSValu
         engine.releaseIteratorRecord(record);
         return err;
     };
-    state.* = .{ .record = record, .ctx = ctx };
+    state.* = .{ .record = record, .ctx = ctx, .allocator = ctx.allocator };
     // 6. Set stream to ! CreateReadableStream(startAlgorithm, pullAlgorithm,
     //    cancelAlgorithm, 0).
     // 7. Return stream.

@@ -14,7 +14,6 @@ const runtime = @import("runtime");
 const v8 = @import("v8");
 const interfaces = @import("interfaces");
 const js = @import("impls").Response.streams_js;
-const ffi = v8.ffi;
 
 test "the wrapper cache reads the runtime's streams graph" {
     for (runtime.streams_graph.streams_graph_classes) |name| try std.testing.expect(v8.wrapper_cache_mod.isStreamsGraphObject(name));
@@ -23,19 +22,13 @@ test "the wrapper cache reads the runtime's streams graph" {
     }
 }
 
+/// The test's agent: made by `open`, ended at the test's end.
+var test_agent: test_process.TestAgent = .{};
+
 test "Realm.wrap refuses an AbortController - its wrapper is weak, so it is held with clone" {
-    test_process.start();
-    // The isolate is never disposed (its realm stays the context manager's),
-    // but it is the current isolate only while this test runs.
-    const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(isolate);
-    defer ffi.v8_Isolate_Exit(isolate);
-    _ = ffi.v8_HandleScope_New(isolate);
-    const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    defer ffi.v8_Context_Exit(context);
-    v8.context_manager.init(std.heap.page_allocator) catch {};
-    const realm_ctx = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+    defer test_agent.close();
+    _ = try test_agent.open(.{});
+    const realm_ctx = try v8.context_manager.getOrCreate(test_agent.context.?, std.heap.page_allocator);
 
     const controller = try interfaces.AbortController.call_constructor(realm_ctx);
     const realm = try js.Realm.of(controller);

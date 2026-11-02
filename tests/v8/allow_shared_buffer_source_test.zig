@@ -44,7 +44,6 @@ fn setUp() !void {
     const i = try test_agent.open(.{});
     if (test_context == null) {
         const context = test_agent.context.?;
-        v8.context_manager.init(std.heap.page_allocator) catch {};
         test_realm = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
         test_isolate = i;
         test_context = context;
