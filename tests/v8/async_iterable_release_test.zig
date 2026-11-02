@@ -109,14 +109,25 @@ test "an async iterator script drops is collected: values() and for await keep n
     defer protocol.destroyWindowRealm(realm, .global_detached);
 
     const rounds = 100;
+    // What a round leaves that is not an iterator's: the same script with the
+    // same stream and no iterator. The isolate's handles count every Global
+    // of the agent, and the evaluations themselves keep some (6 a round in
+    // this adapter, measured in lane tsanfix1) - only the difference is the
+    // iterator's.
+    const control_left = try handlesLeftBy(agent, realm, "new ReadableStream({ start(c) { c.close(); } }); 'ok'", rounds);
+    const control_async_left = try handlesLeftBy(agent, realm,
+        \\globalThis.total = 0;
+        \\(async () => { const s = new ReadableStream({ start(c) { c.enqueue(2); c.enqueue(3); c.close(); } }); await null; total += 5; })();
+        \\'ok'
+    , rounds);
     // An iterator made and dropped at once.
-    const values_left = try handlesLeftBy(agent, realm, "new ReadableStream({ start(c) { c.close(); } }).values(); 'ok'", rounds);
+    const values_left = try handlesLeftBy(agent, realm, "new ReadableStream({ start(c) { c.close(); } }).values(); 'ok'", rounds) - control_left;
     // A for await to the end of the stream (its iterator from @@asyncIterator).
     const for_await_left = try handlesLeftBy(agent, realm,
         \\globalThis.total = 0;
         \\(async () => { for await (const chunk of new ReadableStream({ start(c) { c.enqueue(2); c.enqueue(3); c.close(); } })) total += chunk; })();
         \\'ok'
-    , rounds);
+    , rounds) - control_async_left;
     try expectEval(realm, "String(total)", "5");
     if (values_left >= rounds / 2 or for_await_left >= rounds / 2) {
         std.debug.print("global handles left: {d} by values(), {d} by for await, over {d} rounds each\n", .{ values_left, for_await_left, rounds });
