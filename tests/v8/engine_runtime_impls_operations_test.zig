@@ -11,6 +11,7 @@
 //! (`@import("engine")`): the same adapter functions, statically dispatched.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -22,26 +23,35 @@ var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
 var data_once: ?*runtime.ContextData = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 fn realm() !runtime.Context {
-    if (data_once) |d| return d;
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    const r = try runtime.Realm.init(std.heap.page_allocator, .{ .engine_realm = context, .agent = @ptrCast(i) });
-    const data = try std.heap.page_allocator.create(runtime.ContextData);
-    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{
-        .engine_ctx = context,
-        .realm = r,
-    });
-    // The realm's agent: the protocol's checkpoint is the agent's.
-    data.agent = @ptrCast(i);
-    isolate_once = i;
-    context_once = context;
-    data_once = data;
-    return data;
+    test_process.start();
+    if (data_once == null) {
+        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        const r = try runtime.Realm.init(std.heap.page_allocator, .{ .engine_realm = context, .agent = @ptrCast(i) });
+        const data = try std.heap.page_allocator.create(runtime.ContextData);
+        data.* = try runtime.ContextData.init(std.heap.page_allocator, .{
+            .engine_ctx = context,
+            .realm = r,
+        });
+        // The realm's agent: the protocol's checkpoint is the agent's.
+        data.agent = @ptrCast(i);
+        isolate_once = i;
+        context_once = context;
+        data_once = data;
+        file.isolate = i;
+    }
+    file.enter();
+    return data_once.?;
 }
 
 /// Script's answer to `expression`, as an integer.
@@ -68,6 +78,7 @@ fn expose(name: []const u8, value: runtime.JSValue) !void {
 }
 
 test "a simple exception is the realm's own TypeError, RangeError or ReferenceError, and owned" {
+    defer file.leave();
     const ctx = try realm();
     const type_error = try v8.value_construction.createSimpleException(ctx, .TypeError, "bad argument");
     defer v8.engine.v8ReleaseValue(type_error);
@@ -99,6 +110,7 @@ test "a simple exception is the realm's own TypeError, RangeError or ReferenceEr
 }
 
 test "a dictionary is an ordinary object with its members in the order given" {
+    defer file.leave();
     const ctx = try realm();
     const members = [_]runtime.DictionaryMember{
         .{ .name = "name", .value = runtime.JSValue.fromStringRef("sid") },
@@ -131,6 +143,7 @@ test "a dictionary is an ordinary object with its members in the order given" {
 }
 
 test "a promise resolved with, and rejected with, a value" {
+    defer file.leave();
     const ctx = try realm();
     const resolved = try v8.value_construction.createResolvedPromise(ctx, runtime.JSValue.fromNumber(42));
     defer v8.engine.v8ReleaseValue(resolved);
@@ -166,6 +179,7 @@ const Ran = struct {
 };
 
 test "a queued microtask runs at the next checkpoint, once, after those queued before it" {
+    defer file.leave();
     const ctx = try realm();
     var ran: Ran = .{};
     try std.testing.expectEqual(@as(i32, 1), try eval("globalThis.order = []; Promise.resolve().then(() => order.push('script')); 1"));
@@ -179,6 +193,7 @@ test "a queued microtask runs at the next checkpoint, once, after those queued b
 }
 
 test "an observable array is an Array to script, and the engine's to keep" {
+    defer file.leave();
     const ctx = try realm();
     const array = try v8.observable_array.createObservableArray(ctx, .{});
     // ENGINE-OWNED: never released here.
@@ -195,12 +210,14 @@ test "an observable array is an Array to script, and the engine's to keep" {
 }
 
 test "a realm without an engine reports it rather than making nothing" {
+    defer file.leave();
     var bare = try runtime.ContextData.init(std.testing.allocator, .{});
     defer bare.deinit();
     try std.testing.expectError(error.OperationFailed, v8.observable_array.createObservableArray(&bare, .{}));
 }
 
 test "the current realm is the one the context manager hosts for the entered context" {
+    defer file.leave();
     _ = try realm();
     // A context no manager hosts is no realm the engine knows.
     try std.testing.expect(v8.current_realm.currentRealm() == null);
@@ -225,6 +242,7 @@ fn evalHandle(expression: []const u8) !*ffi.Value {
 }
 
 test "an ArrayBufferView is described by type, offset and length, and anything else is not one" {
+    defer file.leave();
     _ = try realm();
     const view = try evalHandle("globalThis.bytes = new Uint8Array(new ArrayBuffer(8), 2, 4); bytes");
     defer ffi.v8_Value_Dispose(view);
@@ -245,6 +263,7 @@ test "an ArrayBufferView is described by type, offset and length, and anything e
 }
 
 test "bytes are written into a view from its offset, and never past its end" {
+    defer file.leave();
     _ = try realm();
     const view = try evalHandle("globalThis.target = new Uint8Array(new ArrayBuffer(8), 2, 4); target");
     defer ffi.v8_Value_Dispose(view);
@@ -297,6 +316,7 @@ fn callbackOf(expression: []const u8) !*runtime.CallbackWrapper {
 }
 
 test "a callback interface value is called as a function, or through its operation, and what it throws stays in flight" {
+    defer file.leave();
     const ctx = try realm();
 
     // A function: called with undefined as this and the arguments given.
@@ -370,6 +390,7 @@ const ToNumber = struct {
 };
 
 test "convert to unrestricted double is ToNumber, and what it throws stays in flight" {
+    defer file.leave();
     const ctx = try realm();
     try std.testing.expectEqual(@as(f64, 2.5), try v8.webidl_conversions_numeric.convertToUnrestrictedDouble(ctx, runtime.JSValue.fromNumber(2.5)));
     try std.testing.expectEqual(@as(f64, 1), try v8.webidl_conversions_numeric.convertToUnrestrictedDouble(ctx, runtime.JSValue.fromBoolean(true)));
@@ -393,6 +414,7 @@ test "convert to unrestricted double is ToNumber, and what it throws stays in fl
 }
 
 test "a taken callback-function argument is an owned hold of its own on the same function" {
+    defer file.leave();
     _ = try realm();
     // What the conversion hands an impl for a callback-function argument: a
     // Global it made (a `.global_handle` tag is ignored), BORROWED for the
@@ -422,6 +444,7 @@ test "a taken callback-function argument is an owned hold of its own on the same
 }
 
 test "a callback-function argument converts to a value its function-pointer type may hold" {
+    defer file.leave();
     _ = try realm();
     // Codegen types a callback function as a Zig function pointer
     // (callbacks.EventHandlerNonNull is this shape), and the conversion
@@ -475,6 +498,7 @@ fn evalOwned(expression: []const u8) !protocol.Owned {
 }
 
 test "every protocol operation's V8 function compiles" {
+    defer file.leave();
     // The facade compiles an engine adapter's functions only as they are
     // called (links_engine); this binary links V8, so it compiles them all -
     // a stub nothing calls yet still has to type-check.
@@ -490,6 +514,7 @@ test "every protocol operation's V8 function compiles" {
 }
 
 test "the protocol is bound to V8, with explicit native and emulated capabilities" {
+    defer file.leave();
     try std.testing.expectEqualStrings("V8", protocol.name);
     inline for (@typeInfo(protocol.Capabilities).@"struct".field_names) |field_name| {
         const expected: protocol.Support = if (std.mem.eql(u8, field_name, "cross_origin_objects")) .emulated else .native;
@@ -498,6 +523,7 @@ test "the protocol is bound to V8, with explicit native and emulated capabilitie
 }
 
 test "protocol: currentRealm is the context manager's realm for the entered context, and holds no context" {
+    defer file.leave();
     _ = try realm();
     // Already initialized, and already hosted, are as good.
     v8.context_manager.init(std.heap.page_allocator) catch {};
@@ -510,6 +536,7 @@ test "protocol: currentRealm is the context manager's realm for the entered cont
 }
 
 test "protocol: isCallable is ECMAScript IsCallable" {
+    defer file.leave();
     const ctx = try realm();
     const function = try evalOwned("(function () {})");
     defer function.release();
@@ -522,6 +549,7 @@ test "protocol: isCallable is ECMAScript IsCallable" {
 }
 
 test "protocol: createResolvedPromise is an Owned promise of the realm, fulfilled with the value" {
+    defer file.leave();
     const ctx = try realm();
     const resolved = try protocol.createResolvedPromise(ctx, runtime.JSValue.fromNumber(42));
     defer resolved.release();
@@ -542,6 +570,7 @@ fn setFromProtocolTask(data: ?*anyopaque) void {
 }
 
 test "protocol: runTaskInRealm runs the steps as a task inside the realm" {
+    defer file.leave();
     const ctx = try realm();
     var ran = false;
     try protocol.runTaskInRealm(ctx, setFromProtocolTask, &ran);
@@ -557,6 +586,7 @@ fn handledOrUnknown(ctx: runtime.Context, promise: runtime.JSValue) ?bool {
 }
 
 test "protocol: promiseIsHandled, gated on promise_rejection_tracking, is [[PromiseIsHandled]]" {
+    defer file.leave();
     const ctx = try realm();
     const promise = try protocol.createResolvedPromise(ctx, runtime.JSValue.jsUndefined);
     defer promise.release();
@@ -569,6 +599,7 @@ test "protocol: promiseIsHandled, gated on promise_rejection_tracking, is [[Prom
 }
 
 test "protocol: requestGarbageCollection collects the agent's heap" {
+    defer file.leave();
     _ = try realm();
     // A realm's agent is its isolate, as the context manager records it.
     const agent: *protocol.Agent = @ptrCast(isolate_once.?);
@@ -589,6 +620,7 @@ test "protocol: requestGarbageCollection collects the agent's heap" {
 }
 
 test "protocol: a new promise is resolved with a primitive, a value or a platform object's wrapper, and released" {
+    defer file.leave();
     const ctx = try realm();
     var numeric = try protocol.createPromise(ctx);
     defer protocol.releasePromiseCapability(&numeric);
@@ -622,6 +654,7 @@ test "protocol: a new promise is resolved with a primitive, a value or a platfor
 }
 
 test "protocol: a SyntaxError is the realm's own, and owned" {
+    defer file.leave();
     const ctx = try realm();
     const syntax_error = try protocol.createSimpleException(ctx, .SyntaxError, "bad module");
     defer syntax_error.release();
@@ -651,6 +684,7 @@ const Reacted = struct {
 };
 
 test "protocol: react to a promise - upon fulfillment, upon rejection, and once" {
+    defer file.leave();
     const ctx = try realm();
     var reacted: Reacted = .{};
     const resolved = try protocol.createResolvedPromise(ctx, runtime.JSValue.fromNumber(5));
@@ -678,6 +712,7 @@ test "protocol: react to a promise - upon fulfillment, upon rejection, and once"
 }
 
 test "protocol: reactions and simple exceptions leave no Global behind" {
+    defer file.leave();
     const ctx = try realm();
     var reacted: Reacted = .{};
     const round = struct {
@@ -712,6 +747,7 @@ const Reported = struct {
 };
 
 test "protocol: runClassicScript reports what a UTF-8 script throws, with the realm it ran in" {
+    defer file.leave();
     const ctx = try realm();
     var reported: Reported = .{};
     try std.testing.expectError(error.ExceptionReported, protocol.runClassicScript(ctx, .{ .utf8 = "globalThis.ranClassic = 1;\nnull.x;" }, "https://example.test/a.js", null, .{ .report = Reported.report, .host = &reported }));
@@ -725,6 +761,7 @@ test "protocol: runClassicScript reports what a UTF-8 script throws, with the re
 }
 
 test "protocol: sequence<object> is a slice of Owned handles" {
+    defer file.leave();
     const ctx = try realm();
     const iterable = try evalOwned("[{ a: 1 }, { b: 2 }]");
     defer iterable.release();
@@ -739,6 +776,7 @@ test "protocol: sequence<object> is a slice of Owned handles" {
 }
 
 test "protocol: array buffers are allocated, viewed, borrowed and transferred" {
+    defer file.leave();
     const ctx = try realm();
     const buffer = try protocol.allocateArrayBuffer(ctx, 8);
     defer buffer.release();
@@ -771,6 +809,7 @@ test "protocol: array buffers are allocated, viewed, borrowed and transferred" {
 }
 
 test "protocol: the diagnostics tier reports the agent's heap and the adapter's counters" {
+    defer file.leave();
     _ = try realm();
     const agent: *protocol.Agent = @ptrCast(isolate_once.?);
     const statistics = protocol.heapStatistics(agent);
@@ -826,6 +865,7 @@ fn counterNamed(counters: []const protocol.Counter, name: []const u8) ?i64 {
 }
 
 test "protocol: a platform object in a realm that has wrapped nothing has no wrapper" {
+    defer file.leave();
     var bare = try runtime.ContextData.init(std.testing.allocator, .{});
     defer bare.deinit();
     // A realm with no wrapper cache has wrapped nothing.
@@ -835,6 +875,7 @@ test "protocol: a platform object in a realm that has wrapped nothing has no wra
 }
 
 test "protocol: retainValue holds a primitive by value and anything else as a handle of its own, and borrow lends it" {
+    defer file.leave();
     const ctx = try realm();
     // By value: no Global, nothing to release.
     const number = try protocol.retainValue(ctx, runtime.JSValue.fromNumber(4));
@@ -869,6 +910,7 @@ test "protocol: retainValue holds a primitive by value and anything else as a ha
 }
 
 test "protocol: a string's lone surrogates round-trip through retainValue unchanged" {
+    defer file.leave();
     const ctx = try realm();
     // A JSValue string is WTF-8: a lone surrogate is its three-byte form (ED
     // A0..BF xx), as conversions.fromV8Value writes it, and a pair is the
@@ -899,6 +941,7 @@ test "protocol: a string's lone surrogates round-trip through retainValue unchan
 }
 
 test "protocol: ToBoolean of engine values, and a boolean dictionary member read through it" {
+    defer file.leave();
     const ctx = try realm();
     const falsy = try evalOwned("[0n, '', NaN, -0, null, undefined, false]");
     defer falsy.release();

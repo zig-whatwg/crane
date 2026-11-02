@@ -10,6 +10,7 @@
 //! and IndexedDB's put of a File all failed.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -24,28 +25,31 @@ const webidl = @import("webidl");
 /// down here (see engine_realm_operations_test.zig).
 var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
-var pools_ready = false;
 var window_once: ?runtime.Context = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 fn agent() !*ffi.Isolate {
-    if (isolate_once) |i| return i;
-    interfaces.process_hooks.startHooksForTest();
-    // An agent createAgent made: it keeps its Window realms on its record
-    // (protocol_realms.WindowRealms), which a bare isolate has none of.
-    const i: *ffi.Isolate = @ptrCast(@alignCast(try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &window_agent_hooks, .host = null })));
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    v8.context_manager.init(std.heap.page_allocator) catch {};
-    _ = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-    if (!pools_ready) {
-        runtime.initializeRuntime(std.heap.page_allocator);
-        pools_ready = true;
+    test_process.start();
+    if (isolate_once == null) {
+        // An agent createAgent made: it keeps its Window realms on its record
+        // (protocol_realms.WindowRealms), which a bare isolate has none of.
+        const i: *ffi.Isolate = @ptrCast(@alignCast(try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &window_agent_hooks, .host = null })));
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        v8.context_manager.init(std.heap.page_allocator) catch {};
+        _ = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+        isolate_once = i;
+        context_once = context;
+        file.isolate = i;
     }
-    isolate_once = i;
-    context_once = context;
-    return i;
+    file.enter();
+    return isolate_once.?;
 }
 
 /// The test's host for a Window realm: it makes the realm's Window.
@@ -86,6 +90,7 @@ fn expectEval(r: runtime.Context, source: []const u8, expected: []const u8) !voi
 }
 
 test "the [Serializable] interfaces with steps are exactly this batch's" {
+    defer file.leave();
     const expected = [_][]const u8{
         "Blob",               "CryptoKey",       "DOMException",     "DOMMatrix",
         "DOMMatrixReadOnly",  "DOMPoint",        "DOMPointReadOnly", "DOMQuad",
@@ -104,6 +109,7 @@ test "the [Serializable] interfaces with steps are exactly this batch's" {
 }
 
 test "structuredClone keeps a point, a rectangle and a matrix" {
+    defer file.leave();
     const w = try window();
     try expectEval(w,
         \\(() => {
@@ -132,6 +138,7 @@ test "structuredClone keeps a point, a rectangle and a matrix" {
 }
 
 test "structuredClone keeps a quad's points, as new DOMPoints" {
+    defer file.leave();
     const w = try window();
     try expectEval(w,
         \\(() => {
@@ -144,6 +151,7 @@ test "structuredClone keeps a quad's points, as new DOMPoints" {
 }
 
 test "structuredClone keeps a DOMException and a QuotaExceededError" {
+    defer file.leave();
     const w = try window();
     try expectEval(w,
         \\(() => {
@@ -156,6 +164,7 @@ test "structuredClone keeps a DOMException and a QuotaExceededError" {
 }
 
 test "structuredClone keeps a Blob's type and size, and a File's name and lastModified" {
+    defer file.leave();
     const w = try window();
     try expectEval(w,
         \\(() => {
@@ -171,6 +180,7 @@ test "structuredClone keeps a Blob's type and size, and a File's name and lastMo
 }
 
 test "an ImageData's data is sub-serialized with the rest of the graph" {
+    defer file.leave();
     const w = try window();
     try expectEval(w,
         \\(() => {
@@ -184,6 +194,7 @@ test "an ImageData's data is sub-serialized with the rest of the graph" {
 }
 
 test "a platform object that is not [Serializable] throws DataCloneError, naming its interface" {
+    defer file.leave();
     const w = try window();
     try expectEval(w,
         \\(() => {
@@ -194,6 +205,7 @@ test "a platform object that is not [Serializable] throws DataCloneError, naming
 }
 
 test "StructuredSerializeForStorage takes a bare platform object and StructuredDeserialize makes it anew" {
+    defer file.leave();
     const w = try window();
     // A DOMPoint as the binding hands one over: its Instance, unwrapped.
     const point = try interfaces.DOMPoint.call_constructor(w, webidl.Opt(f64).passed(7), webidl.Opt(f64).passed(8), webidl.Opt(f64).passed(9), webidl.Opt(f64).passed(10));
@@ -209,6 +221,7 @@ test "StructuredSerializeForStorage takes a bare platform object and StructuredD
 }
 
 test "a record that names an interface this build does not deserialize is a DataCloneError" {
+    defer file.leave();
     const w = try window();
     // A serialized DOMPoint whose [[Type]] is renamed in place: same length,
     // an identifier no table entry has.

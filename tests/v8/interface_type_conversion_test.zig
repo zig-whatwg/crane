@@ -22,6 +22,7 @@
 //! converted" looks like, and a TypeError is the conversion's.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const engine = @import("engine");
@@ -32,25 +33,31 @@ var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
 var realm_once: ?runtime.Context = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 /// One isolate and realm for the file, registered with the context manager
 /// as a page's is, every interface installed; V8 is never torn down here.
 fn realm() !runtime.Context {
-    if (realm_once) |r| return r;
-    try engine.initializeEngine(.{});
-    interfaces.process_hooks.startHooksForTest();
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    v8.context_manager.init(std.heap.page_allocator) catch {};
-    const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-    runtime.initializeRuntime(std.heap.page_allocator);
-    v8.interface_bindings.registerAllInterfaces(i, context);
-    isolate_once = i;
-    context_once = context;
-    realm_once = r;
-    return r;
+    test_process.start();
+    if (realm_once == null) {
+        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        v8.context_manager.init(std.heap.page_allocator) catch {};
+        const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+        v8.interface_bindings.registerAllInterfaces(i, context);
+        isolate_once = i;
+        context_once = context;
+        realm_once = r;
+        file.isolate = i;
+    }
+    file.enter();
+    return realm_once.?;
 }
 
 /// What each thunk in `cases` (an array literal of functions) does when
@@ -112,6 +119,7 @@ fn expectKinds(comptime cases: []const u8, expected: []const u8) !void {
 }
 
 test "an operation's argument of another interface is a TypeError" {
+    defer file.leave();
     // Path2D.addPath(Path2D path, ...): a Blob, a plain object and null are
     // no Path2D; a Path2D reaches the operation.
     try expectKinds(
@@ -125,6 +133,7 @@ test "an operation's argument of another interface is a TypeError" {
 }
 
 test "a constructor's argument takes the interface and what inherits from it" {
+    defer file.leave();
     // CSSMatrixComponent(DOMMatrixReadOnly matrix, ...): DOMMatrix inherits
     // DOMMatrixReadOnly, so it implements it.
     try expectKinds(
@@ -137,6 +146,7 @@ test "a constructor's argument takes the interface and what inherits from it" {
 }
 
 test "an overloaded constructor chosen by its argument count checks the argument's interface" {
+    defer file.leave();
     // CSSRotate(CSSNumericValue angle) is the only one-argument constructor,
     // so overload resolution picks it without looking at the value's type
     // (WebIDL 3.6 step 12 runs only for two or more candidates): the
@@ -150,6 +160,7 @@ test "an overloaded constructor chosen by its argument count checks the argument
 }
 
 test "an attribute's value of another interface is a TypeError; null is a nullable's value" {
+    defer file.leave();
     // SpeechSynthesisUtterance.voice: SpeechSynthesisVoice?.
     try expectKinds(
         \\[
@@ -161,6 +172,7 @@ test "an attribute's value of another interface is a TypeError; null is a nullab
 }
 
 test "a dictionary member of another interface is a TypeError" {
+    defer file.leave();
     // MouseEventInit.relatedTarget: EventTarget?. An AbortSignal is an
     // EventTarget; a Blob is not.
     try expectKinds(
@@ -177,6 +189,7 @@ test "a dictionary member of another interface is a TypeError" {
 }
 
 test "a sequence's element of another interface is a TypeError" {
+    defer file.leave();
     // MessageEventInit.ports: sequence<MessagePort>.
     try expectKinds(
         \\[
@@ -188,6 +201,7 @@ test "a sequence's element of another interface is a TypeError" {
 }
 
 test "the overload FormData.append(name, blobValue, filename) takes only a Blob" {
+    defer file.leave();
     // The three-argument append is the only overload of three arguments, so
     // the conversion is the check (xhr/formdata/append-formelement.html,
     // testFormDataAppendToFormWrongPlatformObject). A File is a Blob.

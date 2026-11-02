@@ -29,6 +29,7 @@
 //! (pattern_attribute_snapshot_test.zig says why).
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -69,7 +70,6 @@ const no_hooks: protocol.HostHooks = .{};
 /// Whether V8 was not yet started in this process when this file first
 /// asked: decided once, by the first test here.
 var first_in_process: ?bool = null;
-var pools_ready = false;
 
 fn noteFirst() void {
     if (first_in_process == null) first_in_process = !ffi.v8_Platform_IsInitialized();
@@ -77,15 +77,7 @@ fn noteFirst() void {
 
 fn setup() !void {
     noteFirst();
-    try protocol.initializeEngine(.{});
-    preparePools();
-}
-
-fn preparePools() void {
-    if (pools_ready) return;
-    interfaces.process_hooks.startHooksForTest();
-    runtime.initializeRuntime(std.heap.page_allocator);
-    pools_ready = true;
+    test_process.start();
 }
 
 fn windowRealm(agent: *protocol.Agent, from_snapshot: bool) !runtime.Context {
@@ -167,9 +159,11 @@ test "snapshot realm: a Window realm restored from Crane's snapshot takes addres
     defer std.heap.c_allocator.free(bytes);
     _ = try file.readPositionalAll(io, bytes, 0);
 
+    // The process first - it starts the engine with no snapshot - and then
+    // the engine's snapshot, for this test alone.
+    test_process.start();
     try protocol.initializeEngine(.{ .snapshot = bytes });
     defer protocol.deinitializeEngine();
-    preparePools();
     const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = true, .hooks = &no_hooks, .host = null });
     defer protocol.destroyAgent(agent);
     // Restored, not made afresh (createAgent falls back to a fresh isolate,

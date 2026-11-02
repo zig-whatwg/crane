@@ -5,6 +5,7 @@
 //! the protocol's own, tested in page_realm_operations_test.zig.)
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -17,25 +18,34 @@ var context_once: ?*ffi.Context = null;
 var realm_once: ?*runtime.Realm = null;
 var data_once: ?*runtime.ContextData = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 fn realm() !runtime.Context {
-    if (data_once) |d| return d;
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    const r = try runtime.Realm.init(std.heap.page_allocator, .{ .engine_realm = context, .agent = @ptrCast(i) });
-    const data = try std.heap.page_allocator.create(runtime.ContextData);
-    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{
-        .engine_ctx = context,
-        .realm = r,
-    });
-    isolate_once = i;
-    context_once = context;
-    realm_once = r;
-    data_once = data;
-    return data;
+    test_process.start();
+    if (data_once == null) {
+        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        const r = try runtime.Realm.init(std.heap.page_allocator, .{ .engine_realm = context, .agent = @ptrCast(i) });
+        const data = try std.heap.page_allocator.create(runtime.ContextData);
+        data.* = try runtime.ContextData.init(std.heap.page_allocator, .{
+            .engine_ctx = context,
+            .realm = r,
+        });
+        isolate_once = i;
+        context_once = context;
+        realm_once = r;
+        data_once = data;
+        file.isolate = i;
+    }
+    file.enter();
+    return data_once.?;
 }
 
 /// Run `source` in the realm's context, as a test's own setup does - not an
@@ -72,6 +82,7 @@ fn setFromTask(data: ?*anyopaque) void {
 }
 
 test "a task and a synchronous step run inside the realm" {
+    defer file.leave();
     const ctx = try realm();
     var ran = false;
     try v8.engine.v8RunTaskInRealm(ctx, setFromTask, &ran);
@@ -84,6 +95,7 @@ test "a task and a synchronous step run inside the realm" {
 }
 
 test "a DOMException is created as an owned value and released" {
+    defer file.leave();
     const ctx = try realm();
     // With no DOMException constructor in the realm, creation fails - it is
     // reported, not papered over.
@@ -112,6 +124,7 @@ test "a DOMException is created as an owned value and released" {
 }
 
 test "an object survives StructuredSerializeForStorage and StructuredDeserialize" {
+    defer file.leave();
     const ctx = try realm();
     try runScript("globalThis.state = { a: 1, b: [2, 3], c: 'x' };");
 
@@ -153,6 +166,7 @@ fn roundTrip(ctx: runtime.Context, value: runtime.JSValue, check: []const u8) !i
 }
 
 test "structuredSerializeForStorage serializes a primitive the binding hands over inline" {
+    defer file.leave();
     // HTML StructuredSerializeInternal step 4: a primitive value is serialized
     // as it is - forStorage too. The binding hands an `any` primitive over as an
     // inline tag, not a handle (IndexedDB's put/add values, codex-indexeddb Q24).
@@ -167,6 +181,7 @@ test "structuredSerializeForStorage serializes a primitive the binding hands ove
 }
 
 test "a promise is rejected with any value, and marked as handled" {
+    defer file.leave();
     const ctx = try realm();
     const handle = try v8.engine.v8CreatePromise(ctx.engine_ctx.?, std.testing.allocator);
     defer v8.engine.v8DestroyPromiseHandle(handle, std.testing.allocator);
@@ -180,6 +195,7 @@ test "a promise is rejected with any value, and marked as handled" {
 }
 
 test "an empty sequence is a new empty array" {
+    defer file.leave();
     const ctx = try realm();
     const array = try v8.webidl_conversions.createSequenceOfValues(ctx, &.{});
     defer v8.engine.v8ReleaseValue(array);
@@ -188,6 +204,7 @@ test "an empty sequence is a new empty array" {
 }
 
 test "a realm records its document URL, replacing and forgetting it" {
+    defer file.leave();
     const ctx = try realm();
     try std.testing.expect(ctx.documentUrl() == null);
     try ctx.setDocumentUrl("https://example.test/a.html");
@@ -198,6 +215,7 @@ test "a realm records its document URL, replacing and forgetting it" {
 }
 
 test "a realm's creation URL is its document's when made: a same-document change leaves it, a new document moves it" {
+    defer file.leave();
     const ctx = try realm();
     defer ctx.clearDocumentUrl();
     try std.testing.expect(ctx.creationUrl() == null);
@@ -223,6 +241,7 @@ test "a realm's creation URL is its document's when made: a same-document change
 }
 
 test "defining an interface object on the global leaves no handle behind" {
+    defer file.leave();
     _ = try realm();
     const isolate = isolate_once.?;
     const context = context_once.?;
@@ -241,6 +260,7 @@ test "defining an interface object on the global leaves no handle behind" {
 }
 
 test "a context keeps its registry key across compacting garbage collections" {
+    defer file.leave();
     _ = try realm();
     const isolate = isolate_once.?;
     // Contexts interleaved with old-space garbage: once the garbage is gone a

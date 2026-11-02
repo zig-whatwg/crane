@@ -9,6 +9,7 @@
 //! empty-name assertions).
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -21,14 +22,23 @@ const Env = struct {
 
 var env_once: ?Env = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 fn env() !Env {
-    if (env_once) |e| return e;
-    const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(isolate);
-    _ = ffi.v8_HandleScope_New(isolate);
-    const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    env_once = .{ .isolate = isolate, .context = context };
+    test_process.start();
+    if (env_once == null) {
+        const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(isolate);
+        defer ffi.v8_Isolate_Exit(isolate);
+        _ = ffi.v8_HandleScope_New(isolate);
+        const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        env_once = .{ .isolate = isolate, .context = context };
+        file.isolate = isolate;
+    }
+    file.enter();
     return env_once.?;
 }
 
@@ -48,6 +58,7 @@ fn converted(comptime T: type, value: T, buffer: []u8) ![]const u8 {
 }
 
 test "an empty DOMString converts to the empty string, not undefined" {
+    defer file.leave();
     var buffer: [16]u8 = undefined;
     try testing.expectEqualStrings("", try converted(runtime.DOMString, runtime.DOMString.initEmpty(), &buffer));
     // initDupe of "" is the empty variant too.
@@ -56,6 +67,7 @@ test "an empty DOMString converts to the empty string, not undefined" {
 }
 
 test "interned and owned DOMStrings convert to their text" {
+    defer file.leave();
     var buffer: [16]u8 = undefined;
     try testing.expectEqualStrings("interned", try converted(runtime.DOMString, runtime.DOMString.initInterned("interned"), &buffer));
     const owned = try testing.allocator.dupe(u8, "owned");
@@ -64,6 +76,7 @@ test "interned and owned DOMStrings convert to their text" {
 }
 
 test "a nullable DOMString converts to a string, or null" {
+    defer file.leave();
     var buffer: [16]u8 = undefined;
     try testing.expectEqualStrings("", try converted(?runtime.DOMString, runtime.DOMString.initEmpty(), &buffer));
     const e = try env();

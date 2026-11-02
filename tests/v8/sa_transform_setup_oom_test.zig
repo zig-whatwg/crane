@@ -1,5 +1,6 @@
 //! The §9.3 native transformer belongs to setUp from the call onward.
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const engine = @import("engine");
@@ -48,6 +49,7 @@ const Trial = struct {
     fn check(self: *Trial) !void {
         // A fresh thread gives each trial its own per-thread pools/manager.
         // No V8 flags change, and no entered isolate escapes the test.
+        test_process.start();
         const isolate = ffi.v8_Isolate_New() orelse return error.NoIsolate;
         defer ffi.v8_Isolate_Dispose(isolate);
         ffi.v8_Isolate_Enter(isolate);
@@ -68,8 +70,10 @@ const Trial = struct {
         ffi.v8_Context_Enter(context);
         defer ffi.v8_Context_Exit(context);
         interfaces.process_hooks.startHooksForTest();
-        runtime.initializeRuntime(testing.allocator);
-        defer runtime.deinitializeRuntime();
+        // A standalone runtime of this test's own, the process's given back
+        // after (test_process.OwnRuntime).
+        const own_runtime = test_process.OwnRuntime.begin(testing.allocator);
+        defer own_runtime.end();
         var failing = testing.FailingAllocator.init(testing.allocator, .{});
         var counter: Counter = .{};
         {

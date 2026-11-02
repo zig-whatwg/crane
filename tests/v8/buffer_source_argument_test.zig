@@ -17,6 +17,7 @@
 //! with arguments whose handles are copied out.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const engine = @import("engine");
@@ -27,25 +28,31 @@ var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
 var realm_once: ?runtime.Context = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 /// One isolate and realm for the file, registered with the context manager
 /// as a page's is, every interface installed; V8 is never torn down here.
 fn realm() !runtime.Context {
-    if (realm_once) |r| return r;
-    try engine.initializeEngine(.{});
-    interfaces.process_hooks.startHooksForTest();
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    v8.context_manager.init(std.heap.page_allocator) catch {};
-    const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-    runtime.initializeRuntime(std.heap.page_allocator);
-    v8.interface_bindings.registerAllInterfaces(i, context);
-    isolate_once = i;
-    context_once = context;
-    realm_once = r;
-    return r;
+    test_process.start();
+    if (realm_once == null) {
+        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        v8.context_manager.init(std.heap.page_allocator) catch {};
+        const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+        v8.interface_bindings.registerAllInterfaces(i, context);
+        isolate_once = i;
+        context_once = context;
+        realm_once = r;
+        file.isolate = i;
+    }
+    file.enter();
+    return realm_once.?;
 }
 
 /// The value `code` evaluates to: a Global the caller disposes, made the way
@@ -145,6 +152,7 @@ fn expectNoMoreThanControl(comptime what: []const u8, comptime body: []const u8,
 // ---------------------------------------------------------------------------
 
 test "an ArrayBufferView argument leaves no handle once the call returns" {
+    defer file.leave();
     try cryptoObject();
     // Crypto.getRandomValues(ArrayBufferView): converted, the call made (the
     // impl's answer does not matter here), the argument released. The
@@ -157,6 +165,7 @@ test "an ArrayBufferView argument leaves no handle once the call returns" {
 }
 
 test "a BufferSource argument leaves no handle once the call returns" {
+    defer file.leave();
     try subtleObject();
     // SubtleCrypto.digest(AlgorithmIdentifier, BufferSource), a typed array
     // and an ArrayBuffer. The control rejects the same way, on arguments
@@ -174,6 +183,7 @@ test "a BufferSource argument leaves no handle once the call returns" {
 }
 
 test "an argument that is not a BufferSource leaves no handle either" {
+    defer file.leave();
     try subtleObject();
     // A failed conversion made nothing that refers to the argument.
     try expectNoMoreThanControl(
@@ -184,6 +194,7 @@ test "an argument that is not a BufferSource leaves no handle either" {
 }
 
 test "an AllowSharedBufferSource argument leaves no handle once the call returns" {
+    defer file.leave();
     _ = try realm();
     // TextDecoder.decode([AllowSharedBufferSource] input): the conversion is a
     // reference to the object - the argument's Global, kept in the value -
@@ -211,6 +222,7 @@ test "an AllowSharedBufferSource argument leaves no handle once the call returns
 }
 
 test "an object argument for (object or DOMString) leaves no handle once the call returns" {
+    defer file.leave();
     try subtleObject();
     try expectNoMoreThanControl(
         "testSubtle.digest({ name: 'SHA-256' }, new Uint8Array(4))",
@@ -241,6 +253,7 @@ fn copyOf(source: BufferSource) ![]u8 {
 }
 
 test "a typed array converts to a reference to itself, and a copy taken later sees later bytes" {
+    defer file.leave();
     _ = try realm();
     const handle = try eval("globalThis.u8 = new Uint8Array([1, 2, 3, 4]); u8");
     defer ffi.v8_Value_Dispose(handle);
@@ -259,6 +272,7 @@ test "a typed array converts to a reference to itself, and a copy taken later se
 }
 
 test "an ArrayBuffer converts to a reference, and one transferred before the copy reads as empty" {
+    defer file.leave();
     _ = try realm();
     const handle = try eval("globalThis.ab = new Uint8Array([5, 6]).buffer; ab");
     defer ffi.v8_Value_Dispose(handle);
@@ -279,6 +293,7 @@ test "an ArrayBuffer converts to a reference, and one transferred before the cop
 }
 
 test "a DataView converts to a view of its own window" {
+    defer file.leave();
     _ = try realm();
     const handle = try eval("new DataView(new Uint8Array([1, 2, 3, 4]).buffer, 1, 2)");
     defer ffi.v8_Value_Dispose(handle);
@@ -291,6 +306,7 @@ test "a DataView converts to a view of its own window" {
 }
 
 test "a SharedArrayBuffer, a view over one, and anything not a buffer are TypeErrors" {
+    defer file.leave();
     _ = try realm();
     const cases = [_][]const u8{
         "new SharedArrayBuffer(4)",
@@ -314,6 +330,7 @@ test "a SharedArrayBuffer, a view over one, and anything not a buffer are TypeEr
 }
 
 test "an ArrayBufferView converts to a reference to itself, and an ArrayBuffer is no view" {
+    defer file.leave();
     _ = try realm();
     const handle = try eval("new Int16Array([1, 2, 3])");
     defer ffi.v8_Value_Dispose(handle);
@@ -328,6 +345,7 @@ test "an ArrayBufferView converts to a reference to itself, and an ArrayBuffer i
 }
 
 test "a view result can be pointed at a hold of its own" {
+    defer file.leave();
     var buffer = ArrayBufferViewBuffer{};
     const view = ArrayBufferView.fromEngine(1, 0, 4, @ptrCast(&buffer.a)).?;
     const moved = view.withJsHandle(@ptrCast(&buffer.b));
@@ -339,6 +357,7 @@ test "a view result can be pointed at a hold of its own" {
 const ArrayBufferViewBuffer = struct { a: u64 = 0, b: u64 = 0 };
 
 test "an (object or DOMString) union takes any Object as a reference, and everything else as a string" {
+    defer file.leave();
     _ = try realm();
     const AlgorithmIdentifier = typedefs.AlgorithmIdentifier;
     const objects = [_][]const u8{ "({ name: 'SHA-256' })", "[1]", "(function () {})", "new Uint8Array(1)", "new String('s')" };
@@ -373,6 +392,7 @@ test "an (object or DOMString) union takes any Object as a reference, and everyt
 // ---------------------------------------------------------------------------
 
 test "argumentHandleIsKeptInValue - buffer sources and object arms are decided by their value" {
+    defer file.leave();
     const webidl = @import("webidl");
     const kept = iface.argumentHandleIsKeptInValue;
     try std.testing.expect(kept(BufferSource));
@@ -389,6 +409,7 @@ test "argumentHandleIsKeptInValue - buffer sources and object arms are decided b
 }
 
 test "argumentHandleIsKeptInValue - an unknown type, or a JSValue arm not named object, defaults to NO" {
+    defer file.leave();
     const kept = iface.argumentHandleIsKeptInValue;
     try std.testing.expect(!kept(runtime.DOMString));
     try std.testing.expect(!kept([]const BufferSource));
@@ -403,6 +424,7 @@ test "argumentHandleIsKeptInValue - an unknown type, or a JSValue arm not named 
 }
 
 test "argHandleIsCopied - a buffer source is a reference, never copied" {
+    defer file.leave();
     // Copied would release the argument's handle at conversion, under the
     // reference the impl is about to read.
     try std.testing.expect(!iface.argHandleIsCopied(BufferSource));
@@ -411,6 +433,7 @@ test "argHandleIsCopied - a buffer source is a reference, never copied" {
 }
 
 test "keptArgumentHandle - the handle a value still refers to, or null" {
+    defer file.leave();
     const webidl = @import("webidl");
     var slot: u64 = 0;
     const handle: *anyopaque = @ptrCast(&slot);
@@ -425,6 +448,7 @@ test "keptArgumentHandle - the handle a value still refers to, or null" {
 }
 
 test "freeing a converted buffer source releases its reference and its struct" {
+    defer file.leave();
     _ = try realm();
     const isolate = isolate_once.?;
     // V8's live count, before and after 32 conversions freed the binding's
@@ -448,6 +472,7 @@ test "freeing a converted buffer source releases its reference and its struct" {
 // ---------------------------------------------------------------------------
 
 test "a view a getter returns is released once it is the result, and stays the request's" {
+    defer file.leave();
     _ = try realm();
     // ReadableStreamBYOBRequest.view returns the request's [[view]]: over a
     // hold of the binding's own (the binding releases every view result), so
@@ -473,6 +498,7 @@ test "a view a getter returns is released once it is the result, and stays the r
 // ---------------------------------------------------------------------------
 
 test "argumentHandleIsKeptInValue is false for every type argHandleIsCopied accepts, BodyInit among them" {
+    defer file.leave();
     const BodyInit = iface.copied_arg_types.BodyInit;
     // BodyInit's XMLHttpRequestBodyInit arm holds a BufferSource, but
     // convertBodyInit copies the bytes: the type is copied, and must not also
@@ -490,6 +516,7 @@ test "argumentHandleIsKeptInValue is false for every type argHandleIsCopied acce
 }
 
 test "a dictionary with a copied BodyInit member releases its handle once" {
+    defer file.leave();
     _ = try realm();
     // RequestInit's `body` (BodyInit, copied) and `signal` (an interface,
     // copied): each member's Get handle is released exactly once. Twice was a
@@ -511,6 +538,7 @@ test "a dictionary with a copied BodyInit member releases its handle once" {
 // ---------------------------------------------------------------------------
 
 test "an object `any` dictionary member is released once the call returns" {
+    defer file.leave();
     _ = try realm();
     // Each event takes a hold of its own on an object member, released when
     // the event is collected; the Get handle the conversion made for the
@@ -525,6 +553,7 @@ test "an object `any` dictionary member is released once the call returns" {
 }
 
 test "an event keeps an object member past the call through a hold of its own" {
+    defer file.leave();
     _ = try realm();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
         \\globalThis.keptEvents = [];
@@ -550,6 +579,7 @@ test "an event keeps an object member past the call through a hold of its own" {
 // ---------------------------------------------------------------------------
 
 test "an object no other arm takes converts to the string arm by ToString" {
+    defer file.leave();
     _ = try realm();
     const U = typedefs.CSSOMStringOrBufferSource;
     const object = try eval("({ toString() { return 'url(x)'; } })");
@@ -571,6 +601,7 @@ test "an object no other arm takes converts to the string arm by ToString" {
 // ---------------------------------------------------------------------------
 
 test "convertToIntAs [EnforceRange]: NaN, the infinities and out-of-range values are TypeErrors" {
+    defer file.leave();
     const enforce = conv.IntegerConversion.enforce_range;
     // unsigned long long: [0, 2^53 - 1], not the type's own range.
     try std.testing.expectError(error.TypeError, conv.convertToIntAs(u64, enforce, -1));
@@ -593,6 +624,7 @@ test "convertToIntAs [EnforceRange]: NaN, the infinities and out-of-range values
 }
 
 test "convertToIntAs [Clamp]: clamped to the range, rounded half to even, NaN is 0" {
+    defer file.leave();
     const clamp = conv.IntegerConversion.clamp;
     try std.testing.expectEqual(@as(u8, 255), try conv.convertToIntAs(u8, clamp, 300));
     try std.testing.expectEqual(@as(u8, 0), try conv.convertToIntAs(u8, clamp, -5));
@@ -609,6 +641,7 @@ test "convertToIntAs [Clamp]: clamped to the range, rounded half to even, NaN is
 }
 
 test "fromV8ValueInteger: an optional argument left out is not passed, never a TypeError" {
+    defer file.leave();
     _ = try realm();
     const webidl = @import("webidl");
     const Optional = webidl.Opt(u64);
@@ -631,6 +664,7 @@ test "fromV8ValueInteger: an optional argument left out is not passed, never a T
 }
 
 test "AbortSignal.timeout(-1) through the binding is a TypeError, not a panic" {
+    defer file.leave();
     _ = try realm();
     // A static operation with an [EnforceRange] unsigned long long argument:
     // the generated check read the wrapped value through an i64 cast that
@@ -650,6 +684,7 @@ test "AbortSignal.timeout(-1) through the binding is a TypeError, not a panic" {
 // ---------------------------------------------------------------------------
 
 test "a QuotaExceededError the engine makes is the derived interface" {
+    defer file.leave();
     _ = try realm();
     // createDOMException's path (newDOMExceptionFromContext) and the
     // binding's error.QuotaExceededError (throwDOMExceptionFromContext) both
@@ -670,6 +705,7 @@ test "a QuotaExceededError the engine makes is the derived interface" {
 }
 
 test "getRandomValues returns the very view it was given, over a hold of the binding's own" {
+    defer file.leave();
     try cryptoObject();
     // The argument's reference is released before the result is converted,
     // and the result is the binding's: the impl returns the view over its

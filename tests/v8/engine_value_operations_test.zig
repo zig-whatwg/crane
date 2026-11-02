@@ -8,6 +8,7 @@
 //! platform objects - without a V8 type in sight.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -18,24 +19,33 @@ var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
 var data_once: ?*runtime.ContextData = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 fn realm() !runtime.Context {
-    if (data_once) |d| return d;
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    const r = try runtime.Realm.init(std.heap.page_allocator, .{ .engine_realm = context, .agent = @ptrCast(i) });
-    const data = try std.heap.page_allocator.create(runtime.ContextData);
-    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{
-        .engine_ctx = context,
-        .realm = r,
-    });
-    isolate_once = i;
-    context_once = context;
-    data_once = data;
-    return data;
+    test_process.start();
+    if (data_once == null) {
+        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        const r = try runtime.Realm.init(std.heap.page_allocator, .{ .engine_realm = context, .agent = @ptrCast(i) });
+        const data = try std.heap.page_allocator.create(runtime.ContextData);
+        data.* = try runtime.ContextData.init(std.heap.page_allocator, .{
+            .engine_ctx = context,
+            .realm = r,
+        });
+        isolate_once = i;
+        context_once = context;
+        data_once = data;
+        file.isolate = i;
+    }
+    file.enter();
+    return data_once.?;
 }
 
 /// The completion value of `code`: an owned Global.
@@ -82,6 +92,7 @@ fn asArgument(argument: *ffi.Value) !runtime.JSValue {
 // ----------------------------------------------------------------------------
 
 test "a retained value is the caller's own handle, and outlives the one it came from" {
+    defer file.leave();
     const ctx = try realm();
     const object = try eval("globalThis.original = { tag: 5 }; globalThis.original");
     const kept = try v8.value_operations.retainValue(ctx, asValue(object));
@@ -95,6 +106,7 @@ test "a retained value is the caller's own handle, and outlives the one it came 
 }
 
 test "primitives and strings are retained as values of the realm" {
+    defer file.leave();
     const ctx = try realm();
     const number = try v8.value_operations.retainValue(ctx, .{ .number = 42 });
     defer v8.engine.v8ReleaseValue(number);
@@ -134,6 +146,7 @@ fn installNative(name: []const u8, callback: ffi.FunctionCallback) !void {
 }
 
 test "a thrown value reaches the calling script's catch, as itself" {
+    defer file.leave();
     _ = try realm();
     try installNative("rethrow", throwFirstArgument);
     try std.testing.expectEqual(@as(i32, 7), try evalInt("(() => { try { rethrow(7); return -1; } catch (e) { return e; } })()"));
@@ -161,6 +174,7 @@ fn throwFirstArgumentAsBound(info: *const ffi.FunctionCallbackInfo) callconv(.c)
 }
 
 test "an argument as the binding hands it over is retained and thrown as itself" {
+    defer file.leave();
     _ = try realm();
     try installNative("keep", keepFirstArgument);
     try installNative("rethrowBound", throwFirstArgumentAsBound);
@@ -176,6 +190,7 @@ test "an argument as the binding hands it over is retained and thrown as itself"
 }
 
 test "throwing a value made from a Zig string" {
+    defer file.leave();
     const ctx = try realm();
     _ = ctx;
     try installNative("throwText", struct {
@@ -217,6 +232,7 @@ fn installPlatformObjects() !void {
 }
 
 test "an array of platform objects converts to their instances, in order" {
+    defer file.leave();
     const ctx = try realm();
     try installPlatformObjects();
     const array = try eval("[b, a, b]");
@@ -230,6 +246,7 @@ test "an array of platform objects converts to their instances, in order" {
 }
 
 test "any iterable converts, not only an Array" {
+    defer file.leave();
     const ctx = try realm();
     try installPlatformObjects();
     const set = try eval("new Set([a, b])");
@@ -253,6 +270,7 @@ test "any iterable converts, not only an Array" {
 }
 
 test "a non-object, a non-iterable, and a non-platform item are TypeErrors" {
+    defer file.leave();
     const ctx = try realm();
     try installPlatformObjects();
     const allocator = std.testing.allocator;
@@ -290,6 +308,7 @@ fn convertFirstArgument(info: *const ffi.FunctionCallbackInfo) callconv(.c) void
 }
 
 test "what the iteration throws propagates to the calling script" {
+    defer file.leave();
     _ = try realm();
     try installPlatformObjects();
     try installNative("convert", convertFirstArgument);
@@ -318,6 +337,7 @@ test "what the iteration throws propagates to the calling script" {
 // ----------------------------------------------------------------------------
 
 test "protocol: isConstructor is IsConstructor - [[Construct]], not callability" {
+    defer file.leave();
     // customElements.define() step 1 asks it of its argument; a function
     // that is callable but has no [[Construct]] (an arrow function, a method,
     // an async function) must answer false, and a Proxy answers for its

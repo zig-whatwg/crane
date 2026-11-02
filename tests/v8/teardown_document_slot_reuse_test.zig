@@ -17,6 +17,7 @@
 //! count would move if a root's teardown released its count on it.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -29,20 +30,27 @@ const WrapperCache = v8.WrapperCache;
 var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 /// One isolate and context for the file, never torn down (as
 /// teardown_gc_window_test.zig); each test makes its own realm data and
 /// wrapper cache, which it sweeps.
 fn engine() !void {
-    if (isolate_once != null) return;
-    interfaces.process_hooks.startHooksForTest();
-    runtime.initializeRuntime(std.heap.page_allocator);
-    const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(isolate);
-    _ = ffi.v8_HandleScope_New(isolate);
-    const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    isolate_once = isolate;
-    context_once = context;
+    test_process.start();
+    if (isolate_once == null) {
+        const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(isolate);
+        defer ffi.v8_Isolate_Exit(isolate);
+        _ = ffi.v8_HandleScope_New(isolate);
+        const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        isolate_once = isolate;
+        context_once = context;
+        file.isolate = isolate;
+    }
+    file.enter();
 }
 
 const Realm = struct {
@@ -102,6 +110,7 @@ fn detachedRoot(ctx: runtime.Context, document: *runtime.Instance, vtable: ?*con
 }
 
 test "a torn-down Document's slot survives the sweep: an allocation after it never lands there" {
+    defer file.leave();
     const realm = try Realm.open();
     defer realm.close();
     var coordinator = runtime.CleanupCoordinator.init(testing.allocator);
@@ -218,6 +227,7 @@ fn sweepOnce() !bool {
 }
 
 test "inside the sweep, a root after its Document's entry finds the slot still the Document's" {
+    defer file.leave();
     // Each teardown's hash order is its own; a run where every root came
     // before the Document's entry did not exercise the window, so teardowns
     // repeat until one did (each misses with odds 1 in 25).

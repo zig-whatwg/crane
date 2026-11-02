@@ -12,6 +12,7 @@
 //! "Perform ! CreateDataPropertyOrThrow(O, key, jsValue)".
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -23,14 +24,23 @@ const Env = struct {
 
 var env_once: ?Env = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 fn env() !Env {
-    if (env_once) |e| return e;
-    const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(isolate);
-    _ = ffi.v8_HandleScope_New(isolate);
-    const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    env_once = .{ .isolate = isolate, .context = context };
+    test_process.start();
+    if (env_once == null) {
+        const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(isolate);
+        defer ffi.v8_Isolate_Exit(isolate);
+        _ = ffi.v8_HandleScope_New(isolate);
+        const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        env_once = .{ .isolate = isolate, .context = context };
+        file.isolate = isolate;
+    }
+    file.enter();
     return env_once.?;
 }
 
@@ -61,6 +71,7 @@ const Inner = struct {
 };
 
 test "a dictionary's conversion leaves only the object it returns" {
+    defer file.leave();
     const e = try env();
     const value: Result = .{ .committed = 1, .finished = 2, .nested = .{ .flag = true } };
     // Warm up, so the handle table's blocks exist before the measurement.
@@ -79,6 +90,7 @@ test "a dictionary's conversion leaves only the object it returns" {
 }
 
 test "a dictionary's members are defined, not assigned" {
+    defer file.leave();
     const e = try env();
     const poison = try eval("globalThis.calls = 0; Object.defineProperty(Object.prototype, 'committed', { set(v) { calls++; }, configurable: true }); 0");
     ffi.v8_Value_Dispose(poison);

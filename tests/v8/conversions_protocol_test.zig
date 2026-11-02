@@ -14,6 +14,7 @@
 //! throwaway global is collected once nothing refers to it.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -23,22 +24,31 @@ var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
 var data_once: ?*runtime.ContextData = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 /// One isolate and realm for the file, as engine_webidl_conversions_test.zig
 /// makes it - V8 is never torn down here.
 fn realm() !runtime.Context {
-    if (data_once) |d| return d;
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    const data = try std.heap.page_allocator.create(runtime.ContextData);
-    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
-    data.agent = @ptrCast(i);
-    isolate_once = i;
-    context_once = context;
-    data_once = data;
-    return data;
+    test_process.start();
+    if (data_once == null) {
+        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        const data = try std.heap.page_allocator.create(runtime.ContextData);
+        data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
+        data.agent = @ptrCast(i);
+        isolate_once = i;
+        context_once = context;
+        data_once = data;
+        file.isolate = i;
+    }
+    file.enter();
+    return data_once.?;
 }
 
 fn eval(code: []const u8) !*ffi.Value {
@@ -98,6 +108,7 @@ fn collect() void {
 }
 
 test "the result's objects and arrays are the new global's, not the caller's" {
+    defer file.leave();
     const ctx = try realm();
     _ = try evalInt("Object.prototype.kty = 'oct'; Array.prototype.polluted = 1; 1");
     defer _ = evalInt("delete Object.prototype.kty; delete Array.prototype.polluted; 1") catch {};
@@ -116,6 +127,7 @@ test "the result's objects and arrays are the new global's, not the caller's" {
 }
 
 test "a replaced JSON.parse is not what parses, and a BOM is dropped" {
+    defer file.leave();
     const ctx = try realm();
     _ = try evalInt("globalThis.savedJSON = JSON; globalThis.JSON = { parse() { return 42; } }; 1");
     defer _ = evalInt("globalThis.JSON = savedJSON; 1") catch {};
@@ -125,6 +137,7 @@ test "a replaced JSON.parse is not what parses, and a BOM is dropped" {
 }
 
 test "a SyntaxError is thrown in the caller's realm, with the new global's message" {
+    defer file.leave();
     const ctx = try realm();
     var body: struct {
         ctx: runtime.Context,
@@ -144,6 +157,7 @@ test "a SyntaxError is thrown in the caller's realm, with the new global's messa
 }
 
 test "the new global is collected once the result is dropped, and no handle is left" {
+    defer file.leave();
     const ctx = try realm();
     const isolate = isolate_once.?;
     // One first, for what the first parse makes and later ones reuse.
@@ -183,6 +197,7 @@ fn handleValue(handle: *ffi.Value) runtime.JSValue {
 }
 
 test "hasOwnProperty: own, not inherited, and a Proxy trap's throw surfaces" {
+    defer file.leave();
     const ctx = try realm();
     const object = try eval("({ own: 1, __proto__: { inherited: 2 } })");
     defer ffi.v8_Value_Dispose(object);
@@ -208,6 +223,7 @@ test "hasOwnProperty: own, not inherited, and a Proxy trap's throw surfaces" {
 }
 
 test "thisTimeValue: a Date's [[DateValue]], and null for anything without the slot" {
+    defer file.leave();
     const ctx = try realm();
     const date = try eval("new Date(5)");
     defer ffi.v8_Value_Dispose(date);
@@ -228,6 +244,7 @@ test "thisTimeValue: a Date's [[DateValue]], and null for anything without the s
 }
 
 test "isArrayExoticObject: an array, a subclass instance; not a Proxy of one" {
+    defer file.leave();
     const ctx = try realm();
     const cases = [_]struct { code: []const u8, is: bool }{
         .{ .code = "[]", .is = true },
@@ -245,6 +262,7 @@ test "isArrayExoticObject: an array, a subclass instance; not a Proxy of one" {
 }
 
 test "createDate: a Date of the realm, its time clipped" {
+    defer file.leave();
     const ctx = try realm();
     const date = try protocol.createDate(ctx, 1000);
     defer date.release();
@@ -256,6 +274,7 @@ test "createDate: a Date of the realm, its time clipped" {
 }
 
 test "agentHost: the host pointer the agent was made with, and null once it is destroyed" {
+    defer file.leave();
     _ = try realm();
     try protocol.initializeEngine(.{});
     const no_hooks: protocol.HostHooks = .{};
@@ -274,6 +293,7 @@ test "agentHost: the host pointer the agent was made with, and null once it is d
 // ---------------------------------------------------------------------------
 
 test "getCopyOfAllowSharedBufferSourceBytes takes a SharedArrayBuffer and a view over one; the BufferSource form still refuses both" {
+    defer file.leave();
     const ctx = try realm();
     const allocator = std.testing.allocator;
     const shared = try eval("globalThis.sharedBytes = new SharedArrayBuffer(4); new Uint8Array(sharedBytes).set([1, 2, 3, 4]); sharedBytes");
@@ -319,6 +339,7 @@ fn freeKeys(keys: [][]u8) void {
 }
 
 test "enumerableOwnPropertyKeys: own enumerable String keys in property order, nothing Got" {
+    defer file.leave();
     const ctx = try realm();
     _ = try evalInt("globalThis.keyGetterRan = 0; 1");
     const object = try eval(
@@ -341,6 +362,7 @@ test "enumerableOwnPropertyKeys: own enumerable String keys in property order, n
 }
 
 test "enumerableOwnPropertyKeys: a Proxy is asked ownKeys, then getOwnPropertyDescriptor for String keys only" {
+    defer file.leave();
     const ctx = try realm();
     const proxy = try eval(
         \\(() => {

@@ -10,6 +10,7 @@
 //! checkpoint after every task that ran.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const clock = @import("clock");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -19,16 +20,25 @@ const ffi = v8.ffi;
 var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 fn isolate() !*ffi.Isolate {
-    if (isolate_once) |i| return i;
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    isolate_once = i;
-    context_once = context;
-    return i;
+    test_process.start();
+    if (isolate_once == null) {
+        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        isolate_once = i;
+        context_once = context;
+        file.isolate = i;
+    }
+    file.enter();
+    return isolate_once.?;
 }
 
 fn run(i: *ffi.Isolate, source: []const u8) !*ffi.Value {
@@ -46,6 +56,7 @@ fn settled(i: *ffi.Isolate) !i32 {
 }
 
 test "a WebAssembly.compile promise settles within the event loop's turns" {
+    defer file.leave();
     const i = try isolate();
     var loop = v8.V8EventLoop.initWithoutTimers(i, std.testing.allocator);
     defer loop.deinit();

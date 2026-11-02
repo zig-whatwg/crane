@@ -16,6 +16,7 @@
 //! (initializeEngine is idempotent) and makes its own agent.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -101,11 +102,7 @@ const Page = struct {
 
     fn open() !Page {
         try protocol.initializeEngine(.{});
-        // Once per process, whichever file of tests/v8 gets here first.
-        if (runtime.BrowserScope.standalone() == null) {
-            interfaces.process_hooks.startHooksForTest();
-            runtime.initializeRuntime(std.heap.page_allocator);
-        }
+        test_process.start();
         const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
         errdefer protocol.destroyAgent(agent);
         const realm = try protocol.createWindowRealm(&.{

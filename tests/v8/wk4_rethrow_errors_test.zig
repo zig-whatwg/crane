@@ -18,6 +18,7 @@
 //! pending for the binding's return.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -28,27 +29,29 @@ const window_agent_hooks: protocol.HostHooks = .{};
 const interfaces = @import("interfaces");
 
 var isolate_once: ?*ffi.Isolate = null;
-var pools_ready = false;
+
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
 
 fn agent() !*ffi.Isolate {
-    if (isolate_once) |i| return i;
-    try protocol.initializeEngine(.{});
-    // An agent createAgent made: it keeps its Window realms on its record
-    // (protocol_realms.WindowRealms), which a bare isolate has none of.
-    const i: *ffi.Isolate = @ptrCast(@alignCast(try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &window_agent_hooks, .host = null })));
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    v8.context_manager.init(std.heap.page_allocator) catch {};
-    _ = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-    if (!pools_ready) {
-        interfaces.process_hooks.startHooksForTest();
-        runtime.initializeRuntime(std.heap.page_allocator);
-        pools_ready = true;
+    test_process.start();
+    if (isolate_once == null) {
+        // An agent createAgent made: it keeps its Window realms on its record
+        // (protocol_realms.WindowRealms), which a bare isolate has none of.
+        const i: *ffi.Isolate = @ptrCast(@alignCast(try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &window_agent_hooks, .host = null })));
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        v8.context_manager.init(std.heap.page_allocator) catch {};
+        _ = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+        isolate_once = i;
+        file.isolate = i;
     }
-    isolate_once = i;
-    return i;
+    file.enter();
+    return isolate_once.?;
 }
 
 const WindowHost = struct {
@@ -171,6 +174,7 @@ fn runCalling(source: []const u8) !Report {
 }
 
 test "a parse error in an imported script is reported where it is, not at importScripts()" {
+    defer file.leave();
     const report = try runCalling("\n\nimportScript('parse');\n");
     try std.testing.expectEqual(@as(usize, 1), report.count);
     try std.testing.expectEqualStrings("https://example.test/parse.js", report.filenameSlice());
@@ -179,6 +183,7 @@ test "a parse error in an imported script is reported where it is, not at import
 }
 
 test "an error an imported script throws is reported at its throw" {
+    defer file.leave();
     const report = try runCalling("importScript('throws');\n");
     try std.testing.expectEqual(@as(usize, 1), report.count);
     try std.testing.expectEqualStrings("https://example.test/throws.js", report.filenameSlice());
@@ -187,6 +192,7 @@ test "an error an imported script throws is reported at its throw" {
 }
 
 test "through two imports, the innermost throw is still where it is reported" {
+    defer file.leave();
     const report = try runCalling("importScript('outer');\n");
     try std.testing.expectEqual(@as(usize, 1), report.count);
     try std.testing.expectEqualStrings("https://example.test/throws.js", report.filenameSlice());
@@ -194,6 +200,7 @@ test "through two imports, the innermost throw is still where it is reported" {
 }
 
 test "the calling script can catch what an imported script threw" {
+    defer file.leave();
     const report = try runCalling(
         \\let caught = null;
         \\try { importScript('throws'); } catch (e) { caught = e; }
@@ -203,6 +210,7 @@ test "the calling script can catch what an imported script threw" {
 }
 
 test "a muted script's error is cleared, not pending: the host throws NetworkError" {
+    defer file.leave();
     const before = importer.muted_failures;
     const report = try runCalling("if (importScript('muted') !== -1) throw new Error('the muted error was pending');\n");
     try std.testing.expectEqual(@as(usize, 0), report.count);
@@ -210,6 +218,7 @@ test "a muted script's error is cleared, not pending: the host throws NetworkErr
 }
 
 test "a script that completes normally returns normally" {
+    defer file.leave();
     const report = try runCalling("if (importScript('fine') !== 1 || globalThis.ran !== 1) throw new Error('did not run');\n");
     try std.testing.expectEqual(@as(usize, 0), report.count);
 }

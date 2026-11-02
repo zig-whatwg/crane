@@ -13,6 +13,7 @@
 //! test as a leak.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -26,14 +27,23 @@ const Env = struct {
 
 var env_once: ?Env = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 fn env() !Env {
-    if (env_once) |e| return e;
-    const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(isolate);
-    _ = ffi.v8_HandleScope_New(isolate);
-    const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    env_once = .{ .isolate = isolate, .context = context };
+    test_process.start();
+    if (env_once == null) {
+        const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(isolate);
+        defer ffi.v8_Isolate_Exit(isolate);
+        _ = ffi.v8_HandleScope_New(isolate);
+        const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        env_once = .{ .isolate = isolate, .context = context };
+        file.isolate = isolate;
+    }
+    file.enter();
     return env_once.?;
 }
 
@@ -72,6 +82,7 @@ const Child = struct {
 };
 
 test "a dictionary whose later member fails frees the members before it" {
+    defer file.leave();
     const e = try env();
     // `a` converts (an owned copy), then `b` is NaN: a TypeError.
     const object = try eval("({ a: 'a'.repeat(64), b: NaN })");
@@ -80,6 +91,7 @@ test "a dictionary whose later member fails frees the members before it" {
 }
 
 test "a dictionary whose own member fails frees its inherited members" {
+    defer file.leave();
     const e = try env();
     const object = try eval("({ a: 'a'.repeat(64), c: Infinity })");
     defer ffi.v8_Value_Dispose(object);
@@ -87,6 +99,7 @@ test "a dictionary whose own member fails frees its inherited members" {
 }
 
 test "a dictionary that converts whole is the caller's to free" {
+    defer file.leave();
     const e = try env();
     const object = try eval("({ a: 'a'.repeat(64), b: 1.5 })");
     defer ffi.v8_Value_Dispose(object);
@@ -139,6 +152,7 @@ const Probe = struct {
 };
 
 test "an overload variant whose later argument fails frees the arguments before it" {
+    defer file.leave();
     try Probe.install();
     // `text` converts (an owned copy), then ToNumber(Symbol()) fails: the
     // call fails. (What reaches script is
@@ -148,6 +162,7 @@ test "an overload variant whose later argument fails frees the arguments before 
 }
 
 test "the arguments of the overload chosen are freed with freeConstructorOverload" {
+    defer file.leave();
     try Probe.install();
     try testing.expectEqual(@as(i32, 0), try evalInt("probe('t'.repeat(64), 2); 0"));
     try testing.expect(!Probe.failed);

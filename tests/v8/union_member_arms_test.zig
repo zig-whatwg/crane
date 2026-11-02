@@ -15,6 +15,7 @@
 //! TaskSignal), were TypeErrors.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -27,23 +28,29 @@ var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
 var realm_once: ?runtime.Context = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 fn realm() !runtime.Context {
-    if (realm_once) |r| return r;
-    try engine.initializeEngine(.{});
-    interfaces.process_hooks.startHooksForTest();
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    v8.context_manager.init(std.heap.page_allocator) catch {};
-    const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-    runtime.initializeRuntime(std.heap.page_allocator);
-    v8.interface_bindings.registerAllInterfaces(i, context);
-    isolate_once = i;
-    context_once = context;
-    realm_once = r;
-    return r;
+    test_process.start();
+    if (realm_once == null) {
+        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        v8.context_manager.init(std.heap.page_allocator) catch {};
+        const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+        v8.interface_bindings.registerAllInterfaces(i, context);
+        isolate_once = i;
+        context_once = context;
+        realm_once = r;
+        file.isolate = i;
+    }
+    file.enter();
+    return realm_once.?;
 }
 
 fn eval(code: []const u8) !*ffi.Value {
@@ -82,6 +89,7 @@ fn convert(code: []const u8) !Choice {
 }
 
 test "a string that is one of the values is the enumeration arm; any other is a TypeError" {
+    defer file.leave();
     const preset = try convert("'default'");
     try testing.expect(preset == .presets and preset.presets == .default);
     try testing.expectError(error.TypeError, convert("'bogus'"));
@@ -90,6 +98,7 @@ test "a string that is one of the values is the enumeration arm; any other is a 
 }
 
 test "null and undefined are the dictionary arm" {
+    defer file.leave();
     const from_null = try convert("null");
     try testing.expect(from_null == .config and from_null.config.comments == null);
     const from_undefined = try convert("undefined");
@@ -97,11 +106,13 @@ test "null and undefined are the dictionary arm" {
 }
 
 test "an object that is no platform object is the dictionary arm" {
+    defer file.leave();
     const config = try convert("({ comments: true })");
     try testing.expect(config == .config and config.config.comments.? == true);
 }
 
 test "a platform object implementing the interface is the interface arm" {
+    defer file.leave();
     const signal = try convert("new AbortController().signal");
     try testing.expect(signal == .abort_signal);
     try testing.expect(conversions.implements(signal.abort_signal, interfaces.AbortSignal));
@@ -114,6 +125,7 @@ const StringFirst = union(enum) {
 };
 
 test "with both a string and an enumeration arm, a string goes to the string arm" {
+    defer file.leave();
     const value = try eval("'bogus'");
     defer ffi.v8_Value_Dispose(value);
     var converted = try conversions.fromV8Value(StringFirst, testing.allocator, isolate_once.?, context_once.?, value);

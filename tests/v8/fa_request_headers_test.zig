@@ -1,5 +1,6 @@
 //! Request constructor step 33 replaces or sanitizes the copied header list.
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const testing = std.testing;
@@ -14,8 +15,10 @@ const Trial = struct {
 
     fn check(self: *Trial) !void {
         interfaces.process_hooks.startHooksForTest();
-        runtime.initializeRuntime(testing.allocator);
-        defer runtime.deinitializeRuntime();
+        // A standalone runtime of this test's own, the process's given back
+        // after (test_process.OwnRuntime).
+        const own_runtime = test_process.OwnRuntime.begin(testing.allocator);
+        defer own_runtime.end();
         var context = try runtime.ContextData.init(testing.allocator, .{});
         defer context.deinit();
         const Init = @typeInfo(@TypeOf(interfaces.Request.call_constructor)).@"fn".param_types[2].?;

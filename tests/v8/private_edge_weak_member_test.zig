@@ -21,6 +21,7 @@
 //! counts how many collections ran, so the test cannot pass vacuously.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -35,14 +36,23 @@ const Env = struct {
 
 var env_once: ?Env = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 fn env() !Env {
-    if (env_once) |e| return e;
-    const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(isolate);
-    _ = ffi.v8_HandleScope_New(isolate);
-    const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    env_once = .{ .isolate = isolate, .context = context };
+    test_process.start();
+    if (env_once == null) {
+        const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(isolate);
+        defer ffi.v8_Isolate_Exit(isolate);
+        _ = ffi.v8_HandleScope_New(isolate);
+        const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        env_once = .{ .isolate = isolate, .context = context };
+        file.isolate = isolate;
+    }
+    file.enter();
     return env_once.?;
 }
 
@@ -56,6 +66,7 @@ fn countCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
 const children_key = "crane:test:children";
 
 test "a member only a weak handle holds survives its edge being drawn" {
+    defer file.leave();
     const e = try env();
 
     var collected_canaries: usize = 0;

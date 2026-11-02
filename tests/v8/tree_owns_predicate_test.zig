@@ -14,6 +14,7 @@
 //! answers false and is freed as it always was.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -26,35 +27,31 @@ const treeOwns = v8.wrapper_cache_mod.treeOwns;
 /// here (see engine_realm_operations_test.zig).
 var realm_once: ?runtime.Context = null;
 
-/// The process-wide pools Instances come from, made once for the file and,
-/// like V8 here, never torn down.
-var pools_ready = false;
-
-fn ensurePools() void {
-    if (pools_ready) return;
-    // A file-isolated executable has no earlier test to install Node's
-    // creation and tree hooks before DocumentFragment.init.
-    interfaces.process_hooks.startHooksForTest();
-    runtime.initializeRuntime(std.heap.page_allocator);
-    pools_ready = true;
-}
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
 
 fn realm() !runtime.Context {
-    ensurePools();
-    if (realm_once) |r| return r;
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    // Already initialized is fine: the manager is per thread, not per test.
-    v8.context_manager.init(std.heap.page_allocator) catch {};
-    const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-    realm_once = r;
-    return r;
+    test_process.start();
+    if (realm_once == null) {
+        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        // Already initialized is fine: the manager is per thread, not per test.
+        v8.context_manager.init(std.heap.page_allocator) catch {};
+        const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+        realm_once = r;
+        file.isolate = i;
+    }
+    file.enter();
+    return realm_once.?;
 }
 
 test "treeOwns: a node with a parent is its tree's; its detached root is not" {
+    defer file.leave();
     const r = try realm();
     const allocator = testing.allocator;
 
@@ -75,6 +72,7 @@ test "treeOwns: a node with a parent is its tree's; its detached root is not" {
 }
 
 test "treeOwns: a node removed from its parent is a root again" {
+    defer file.leave();
     const r = try realm();
     const allocator = testing.allocator;
 
@@ -90,6 +88,7 @@ test "treeOwns: a node removed from its parent is a root again" {
 }
 
 test "treeOwns: the default - anything that is not a node answers false" {
+    defer file.leave();
     const r = try realm();
     const headers = try interfaces.Headers.init(testing.allocator, r);
     defer interfaces.Headers.deinit(headers);

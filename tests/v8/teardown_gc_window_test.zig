@@ -18,6 +18,7 @@
 //! a full collection whose finalizers (the second pass) run before it returns.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -31,27 +32,34 @@ var isolate_once: ?*ffi.Isolate = null;
 var data_once: ?*runtime.ContextData = null;
 var cache_once: ?*WrapperCache = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 /// One isolate, context and wrapper cache for the file, never torn down (see
 /// engine_pending_activity_test.zig); the node hooks, as a host starts them.
 fn setup() !*runtime.ContextData {
-    if (data_once) |data| return data;
-    interfaces.process_hooks.startHooksForTest();
-    runtime.initializeRuntime(std.heap.page_allocator);
-    const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(isolate);
-    _ = ffi.v8_HandleScope_New(isolate);
-    const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    const data = try std.heap.page_allocator.create(runtime.ContextData);
-    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
-    data.agent = @ptrCast(isolate);
-    const cache = try std.heap.page_allocator.create(WrapperCache);
-    cache.* = try WrapperCache.init(std.heap.page_allocator, @ptrCast(context));
-    data.setV8WrapperCacheStorage(@ptrCast(cache));
-    isolate_once = isolate;
-    data_once = data;
-    cache_once = cache;
-    return data;
+    test_process.start();
+    if (data_once == null) {
+        const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(isolate);
+        defer ffi.v8_Isolate_Exit(isolate);
+        _ = ffi.v8_HandleScope_New(isolate);
+        const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        const data = try std.heap.page_allocator.create(runtime.ContextData);
+        data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
+        data.agent = @ptrCast(isolate);
+        const cache = try std.heap.page_allocator.create(WrapperCache);
+        cache.* = try WrapperCache.init(std.heap.page_allocator, @ptrCast(context));
+        data.setV8WrapperCacheStorage(@ptrCast(cache));
+        isolate_once = isolate;
+        data_once = data;
+        cache_once = cache;
+        file.isolate = isolate;
+    }
+    file.enter();
+    return data_once.?;
 }
 
 /// Wrap `instance` as the binding leaves an object script has seen and then
@@ -85,6 +93,7 @@ const collecting_vtable = blk: {
 };
 
 test "a collection inside a root's teardown does not tear it down again" {
+    defer file.leave();
     const ctx = try setup();
     deinit_runs = 0;
     wrapper_collected_in_window = false;
@@ -101,6 +110,7 @@ test "a collection inside a root's teardown does not tear it down again" {
 }
 
 test "a collection inside a child's teardown leaves the child to its tree" {
+    defer file.leave();
     const ctx = try setup();
     deinit_runs = 0;
     wrapper_collected_in_window = false;
@@ -118,6 +128,7 @@ test "a collection inside a child's teardown leaves the child to its tree" {
 }
 
 test "a node its tree tore down is not freed again by the parser's free" {
+    defer file.leave();
     const ctx = try setup();
     deinit_runs = 0;
 

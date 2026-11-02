@@ -14,6 +14,7 @@
 //! `(name, {})` ... (web-locks/acquire.https.any.js; binding3's follow-up 4).
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -33,14 +34,23 @@ const Env = struct {
 
 var env_once: ?Env = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 fn env() !Env {
-    if (env_once) |e| return e;
-    const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(isolate);
-    _ = ffi.v8_HandleScope_New(isolate);
-    const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    env_once = .{ .isolate = isolate, .context = context };
+    test_process.start();
+    if (env_once == null) {
+        const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(isolate);
+        defer ffi.v8_Isolate_Exit(isolate);
+        _ = ffi.v8_HandleScope_New(isolate);
+        const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        env_once = .{ .isolate = isolate, .context = context };
+        file.isolate = isolate;
+    }
+    file.enter();
     return env_once.?;
 }
 
@@ -74,12 +84,14 @@ fn bytesLeftByFailures(comptime T: type, code: []const u8, rounds: usize) !i64 {
 }
 
 test "a callback function argument that is not callable leaves no handle" {
+    defer file.leave();
     // 512 failures keeping their argument would be 8,192 bytes.
     try testing.expect(try bytesLeftByFailures(LockGrantedCallback, "123", 512) < 2048);
     try testing.expect(try bytesLeftByFailures(LockGrantedCallback, "({})", 512) < 2048);
 }
 
 test "a dictionary argument whose member fails to convert leaves no handle" {
+    defer file.leave();
     // `{mode: 'foo'}`: not a LockMode, a TypeError in the member's conversion.
     try testing.expect(try bytesLeftByFailures(LockOptions, "({ mode: 'foo' })", 512) < 2048);
 }

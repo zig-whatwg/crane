@@ -9,6 +9,7 @@
 //! objects are made. A secure realm - the default - is the control.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -19,25 +20,29 @@ const window_agent_hooks: protocol.HostHooks = .{};
 const interfaces = @import("interfaces");
 
 var isolate_once: ?*ffi.Isolate = null;
-var pools_ready = false;
+
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
 
 fn agent() !*ffi.Isolate {
-    if (isolate_once) |i| return i;
-    // An agent createAgent made: it keeps its Window realms on its record
-    // (protocol_realms.WindowRealms), which a bare isolate has none of.
-    const i: *ffi.Isolate = @ptrCast(@alignCast(try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &window_agent_hooks, .host = null })));
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    v8.context_manager.init(std.heap.page_allocator) catch {};
-    _ = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-    if (!pools_ready) {
-        runtime.initializeRuntime(std.heap.page_allocator);
-        pools_ready = true;
+    test_process.start();
+    if (isolate_once == null) {
+        // An agent createAgent made: it keeps its Window realms on its record
+        // (protocol_realms.WindowRealms), which a bare isolate has none of.
+        const i: *ffi.Isolate = @ptrCast(@alignCast(try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &window_agent_hooks, .host = null })));
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        v8.context_manager.init(std.heap.page_allocator) catch {};
+        _ = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+        isolate_once = i;
+        file.isolate = i;
     }
-    isolate_once = i;
-    return i;
+    file.enter();
+    return isolate_once.?;
 }
 
 const WindowHost = struct {
@@ -84,6 +89,7 @@ const probe =
 ;
 
 test "a realm that is not a secure context exposes no [SecureContext] interface or member" {
+    defer file.leave();
     const page = try windowRealm(false, null);
     defer protocol.destroyWindowRealm(page, .global_detached);
     try std.testing.expect(!page.secure_context);
@@ -91,6 +97,7 @@ test "a realm that is not a secure context exposes no [SecureContext] interface 
 }
 
 test "a secure realm exposes them - the default" {
+    defer file.leave();
     const page = try windowRealm(true, null);
     defer protocol.destroyWindowRealm(page, .global_detached);
     try std.testing.expect(page.secure_context);
@@ -98,6 +105,7 @@ test "a secure realm exposes them - the default" {
 }
 
 test "Window's own [SecureContext] members are not on a non-secure window" {
+    defer file.leave();
     const insecure = try windowRealm(false, null);
     defer protocol.destroyWindowRealm(insecure, .global_detached);
     const secure = try windowRealm(true, null);

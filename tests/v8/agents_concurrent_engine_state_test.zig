@@ -21,6 +21,7 @@
 //! wherever it runs.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const protocol = @import("engine");
@@ -228,9 +229,12 @@ test "two agents restored from the snapshot, on two threads: for-await, Intl, Sh
     defer std.heap.c_allocator.free(bytes);
     _ = try file.readPositionalAll(io, bytes, 0);
 
+    // The process first - it starts the engine with no snapshot - and
+    // then the engine's snapshot (test_process.zig).
+    test_process.start();
     try protocol.initializeEngine(.{ .snapshot = bytes });
     defer protocol.deinitializeEngine();
-    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.page_allocator);
+    test_process.start();
     interfaces.process_hooks.startHooksForTest();
     try runBoth(true);
 }
@@ -238,7 +242,7 @@ test "two agents restored from the snapshot, on two threads: for-await, Intl, Sh
 test "two fresh agents on two threads: for-await, Intl, JSON modules and ObservableArray 200 times at once" {
     if (first_in_process == null) first_in_process = !ffi.v8_Platform_IsInitialized();
     try protocol.initializeEngine(.{});
-    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.page_allocator);
+    test_process.start();
     interfaces.process_hooks.startHooksForTest();
     try runBoth(false);
 }

@@ -10,6 +10,7 @@
 //! (IndexedDB/bindings-inject-keys-bypass, codex-indexeddb Q39).
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -20,25 +21,29 @@ const window_agent_hooks: protocol.HostHooks = .{};
 const interfaces = @import("interfaces");
 
 var isolate_once: ?*ffi.Isolate = null;
-var pools_ready = false;
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
 
+/// The file's agent, made once and current while the calling test runs.
 fn agent() !*ffi.Isolate {
-    if (isolate_once) |i| return i;
-    // An agent createAgent made: it keeps its Window realms on its record
-    // (protocol_realms.WindowRealms), which a bare isolate has none of.
-    const i: *ffi.Isolate = @ptrCast(@alignCast(try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &window_agent_hooks, .host = null })));
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    v8.context_manager.init(std.heap.page_allocator) catch {};
-    _ = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-    if (!pools_ready) {
-        runtime.initializeRuntime(std.heap.page_allocator);
-        pools_ready = true;
+    test_process.start();
+    if (isolate_once == null) {
+        // An agent createAgent made: it keeps its Window realms on its record
+        // (protocol_realms.WindowRealms), which a bare isolate has none of.
+        const i: *ffi.Isolate = @ptrCast(@alignCast(try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &window_agent_hooks, .host = null })));
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        v8.context_manager.init(std.heap.page_allocator) catch {};
+        _ = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+        isolate_once = i;
+        file.isolate = i;
     }
-    isolate_once = i;
-    return i;
+    file.enter();
+    return isolate_once.?;
 }
 
 const WindowHost = struct {
@@ -87,6 +92,7 @@ const poison =
 const unpoison = "delete Array.prototype[0]; delete Array.prototype[1];";
 
 test "a sequence of values is an Array whose elements are its own data properties" {
+    defer file.leave();
     const page = try windowRealm();
     defer protocol.destroyWindowRealm(page, .global_detached);
     try run(page, poison);

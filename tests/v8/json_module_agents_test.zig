@@ -9,6 +9,7 @@
 //! isolate's modules. Two agents on two threads now each hold only their own.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const protocol = @import("engine");
@@ -120,7 +121,7 @@ const Side = struct {
 
 test "each agent's JSON modules wait in its own isolate, and another agent's end leaves them" {
     try protocol.initializeEngine(.{});
-    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.page_allocator);
+    test_process.start();
     interfaces.process_hooks.startHooksForTest();
 
     var other: Side = .{ .modules = 3 };

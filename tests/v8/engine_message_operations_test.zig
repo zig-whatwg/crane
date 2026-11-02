@@ -8,6 +8,7 @@
 //! objects handed across as engine-neutral data.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -20,22 +21,31 @@ var contexts: [2]*ffi.Context = undefined;
 var realms: [2]*runtime.ContextData = undefined;
 var ready = false;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 fn setup() !void {
-    if (ready) return;
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
-    _ = ffi.v8_HandleScope_New(i);
-    for (&contexts, &realms) |*context, *data| {
-        context.* = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-        const r = try runtime.Realm.init(std.heap.page_allocator, .{ .engine_realm = context.*, .agent = @ptrCast(i) });
-        const d = try std.heap.page_allocator.create(runtime.ContextData);
-        d.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context.*, .realm = r });
-        data.* = d;
+    test_process.start();
+    if (!ready) {
+        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
+        _ = ffi.v8_HandleScope_New(i);
+        for (&contexts, &realms) |*context, *data| {
+            context.* = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+            const r = try runtime.Realm.init(std.heap.page_allocator, .{ .engine_realm = context.*, .agent = @ptrCast(i) });
+            const d = try std.heap.page_allocator.create(runtime.ContextData);
+            d.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context.*, .realm = r });
+            data.* = d;
+        }
+        ffi.v8_Context_Enter(contexts[0]);
+        isolate_once = i;
+        ready = true;
+        file.isolate = i;
     }
-    ffi.v8_Context_Enter(contexts[0]);
-    isolate_once = i;
-    ready = true;
+    file.enter();
 }
 
 /// `code`'s completion value in realm `which`: an owned Global.
@@ -122,6 +132,7 @@ const List = struct {
 // ----------------------------------------------------------------------------
 
 test "a sequence of objects is each item's own handle, in order" {
+    defer file.leave();
     try setup();
     const list = try List.of("globalThis.o1 = {}; globalThis.o2 = []; [o1, o2]");
     defer list.deinit();
@@ -132,6 +143,7 @@ test "a sequence of objects is each item's own handle, in order" {
 }
 
 test "a non-object item or a non-iterable is a TypeError" {
+    defer file.leave();
     try setup();
     const mixed = try eval(0, "[{}, 1]");
     defer ffi.v8_Value_Dispose(mixed);
@@ -144,6 +156,7 @@ test "a non-object item or a non-iterable is a TypeError" {
 // ----------------------------------------------------------------------------
 
 test "a frozen array holds each platform object's wrapper, and is frozen" {
+    defer file.leave();
     try setup();
     try installPorts();
     // The mock instances have no wrapper cache: the array made of none is
@@ -162,6 +175,7 @@ test "a frozen array holds each platform object's wrapper, and is frozen" {
 // ----------------------------------------------------------------------------
 
 test "a value round-trips into a second realm, and its transferred buffer moves" {
+    defer file.leave();
     try setup();
     const value = try eval(0, "globalThis.buf = new Uint8Array([1, 2, 3]).buffer; ({ a: 1, s: 'x', buf })");
     defer ffi.v8_Value_Dispose(value);
@@ -187,6 +201,7 @@ test "a value round-trips into a second realm, and its transferred buffer moves"
 }
 
 test "primitives serialize too" {
+    defer file.leave();
     try setup();
     const empty: []const runtime.JSValue = &.{};
     var number = try v8.structured_serialization.structuredSerializeWithTransfer(realms[0], .{ .number = 42 }, empty, checkPorts, null, allocator);
@@ -198,6 +213,7 @@ test "primitives serialize too" {
 }
 
 test "a duplicate or detached buffer, and a non-transferable entry, are DataCloneErrors" {
+    defer file.leave();
     try setup();
     try installPorts();
     const value = try eval(0, "globalThis.d = new ArrayBuffer(4); globalThis.gone = new ArrayBuffer(4); gone.transfer(); 1");
@@ -219,6 +235,7 @@ test "a duplicate or detached buffer, and a non-transferable entry, are DataClon
 }
 
 test "a transferable platform object is handed back, asked about with the caller's data" {
+    defer file.leave();
     try setup();
     try installPorts();
     var marker: u8 = 0;
@@ -264,6 +281,7 @@ fn serializeArgument(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
 }
 
 test "what serialization throws - a getter, a DataCloneError DOMException - is pending for the script" {
+    defer file.leave();
     try setup();
     const context = contexts[0];
     const template = ffi.v8_FunctionTemplate_New(isolate_once.?, serializeArgument, null) orelse return error.TemplateFailed;
@@ -288,6 +306,7 @@ test "what serialization throws - a getter, a DataCloneError DOMException - is p
 }
 
 test "bytes that do not deserialize are a DataCloneError" {
+    defer file.leave();
     try setup();
     try std.testing.expectError(error.DataCloneError, v8.structured_serialization.structuredDeserializeWithTransfer(realms[1], "not serialized", &.{}, &.{}));
 }

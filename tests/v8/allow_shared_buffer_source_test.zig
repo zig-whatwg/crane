@@ -13,6 +13,7 @@
 //! slice this conversion used to make read as the freed backing store.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const engine = @import("engine");
@@ -26,20 +27,28 @@ var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
 var realm_once: ?runtime.Context = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 /// One isolate and realm for the file, registered with the context manager
 /// so that the engine's operations can enter it; V8 is never torn down here.
 fn setUp() !void {
-    if (context_once != null) return;
-    try engine.initializeEngine(.{});
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    v8.context_manager.init(std.heap.page_allocator) catch {};
-    realm_once = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-    isolate_once = i;
-    context_once = context;
+    test_process.start();
+    if (context_once == null) {
+        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        v8.context_manager.init(std.heap.page_allocator) catch {};
+        realm_once = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+        isolate_once = i;
+        context_once = context;
+        file.isolate = i;
+    }
+    file.enter();
 }
 
 /// The value `code` evaluates to: a Global the caller disposes, made the way
@@ -89,29 +98,35 @@ fn expectBytes(code: []const u8, expected: []const u8) !void {
 }
 
 test "an ArrayBuffer is a reference to it, and its bytes are its own" {
+    defer file.leave();
     try expectBytes("new Uint8Array([104, 105]).buffer", "hi");
 }
 
 test "a SharedArrayBuffer is a reference to it, and its bytes are its own" {
+    defer file.leave();
     try expectBytes("(() => { const s = new SharedArrayBuffer(3); new Uint8Array(s).set([1, 2, 3]); return s; })()", &.{ 1, 2, 3 });
 }
 
 test "a typed array's bytes are its own window of its buffer" {
+    defer file.leave();
     try expectBytes("new Uint8Array([1, 2, 3, 4, 5]).subarray(1, 4)", &.{ 2, 3, 4 });
     try expectBytes("new Uint16Array([0x0201, 0x0403, 0x0605]).subarray(1)", &.{ 3, 4, 5, 6 });
 }
 
 test "a DataView's bytes are its own window of its buffer, not its whole buffer" {
+    defer file.leave();
     try expectBytes("new DataView(new Uint8Array([1, 2, 3, 4, 5]).buffer, 1, 3)", &.{ 2, 3, 4 });
     try expectBytes("new DataView(new Uint8Array([7, 8]).buffer)", &.{ 7, 8 });
 }
 
 test "a view over a SharedArrayBuffer is allowed ([AllowShared])" {
+    defer file.leave();
     try expectBytes("(() => { const s = new SharedArrayBuffer(4); new Uint8Array(s).set([9, 8, 7, 6]); return new Uint8Array(s, 1, 2); })()", &.{ 8, 7 });
     try expectBytes("(() => { const s = new SharedArrayBuffer(4); new Uint8Array(s).set([9, 8, 7, 6]); return new DataView(s, 2); })()", &.{ 7, 6 });
 }
 
 test "a detached ArrayBuffer, and a view over one, hold no bytes" {
+    defer file.leave();
     try expectBytes("(() => { const b = new Uint8Array([1, 2]).buffer; b.transfer(); return b; })()", &.{});
     try expectBytes("(() => { const v = new Uint8Array([1, 2]); v.buffer.transfer(); return v; })()", &.{});
     try expectBytes("(() => { const v = new DataView(new Uint8Array([1, 2]).buffer); v.buffer.transfer(); return v; })()", &.{});
@@ -125,6 +140,7 @@ test "a detached ArrayBuffer, and a view over one, hold no bytes" {
 // before and after: the address it would have kept, and the object's own
 // answer once detached. The reference reads what the object holds now.
 test "a buffer detached after its conversion reads as empty, not as its freed store" {
+    defer file.leave();
     try setUp();
     const kinds = [_][]const u8{
         "globalThis.input = new Uint8Array(10000).fill(42)",
@@ -178,6 +194,7 @@ const InitWithData = struct {
 // dictionary), and the later member's getter detaches the buffer before the
 // operation's step reads it.
 test "a dictionary member a later member's getter detaches reads as empty" {
+    defer file.leave();
     try setUp();
     const init = try eval(
         \\(() => {
@@ -198,6 +215,7 @@ test "a dictionary member a later member's getter detaches reads as empty" {
 }
 
 test "null and undefined hold no bytes and no reference" {
+    defer file.leave();
     try setUp();
     for ([_][]const u8{ "null", "undefined" }) |code| {
         const handle = try eval(code);
@@ -243,6 +261,7 @@ fn expectBorrowed(code: []const u8, comptime expected: []const u8) !void {
 }
 
 test "borrowBufferSourceBytes reads an ArrayBuffer and a view's window in place" {
+    defer file.leave();
     try expectBorrowed("new Uint8Array([104, 105]).buffer", "hi");
     try expectBorrowed("new Uint8Array([1, 2, 3, 4, 5]).subarray(1, 4)", &.{ 2, 3, 4 });
     try expectBorrowed("new Uint16Array([0x0201, 0x0403, 0x0605]).subarray(1)", &.{ 3, 4, 5, 6 });
@@ -253,6 +272,7 @@ test "borrowBufferSourceBytes reads an ArrayBuffer and a view's window in place"
 }
 
 test "borrowBufferSourceBytes reads a detached buffer as empty" {
+    defer file.leave();
     try expectBorrowed("(() => { const b = new Uint8Array([1, 2]).buffer; b.transfer(); return b; })()", &.{});
     try expectBorrowed("(() => { const v = new Uint8Array([1, 2]); v.buffer.transfer(); return v; })()", &.{});
     try expectBorrowed("(() => { const v = new DataView(new Uint8Array([1, 2]).buffer); v.buffer.transfer(); return v; })()", &.{});
@@ -261,6 +281,7 @@ test "borrowBufferSourceBytes reads a detached buffer as empty" {
 // Shared memory is never borrowed: another agent can write it while it is
 // read. The copy still reads it.
 test "borrowBufferSourceBytes refuses a SharedArrayBuffer and a view over one; the copy takes them" {
+    defer file.leave();
     const shared = [_][]const u8{
         "(() => { const s = new SharedArrayBuffer(2); new Uint8Array(s).set([1, 2]); return s; })()",
         "(() => { const s = new SharedArrayBuffer(2); new Uint8Array(s).set([1, 2]); return new Uint8Array(s); })()",
@@ -279,6 +300,7 @@ test "borrowBufferSourceBytes refuses a SharedArrayBuffer and a view over one; t
 }
 
 test "borrowBufferSourceBytes answers null for anything that is not a buffer source" {
+    defer file.leave();
     try setUp();
     try std.testing.expectEqual(@as(?[]const u8, null), engine.borrowBufferSourceBytes(realm_once.?, .{ .number = 1 }));
     try std.testing.expectEqual(@as(?[]const u8, null), engine.borrowBufferSourceBytes(realm_once.?, runtime.JSValue.jsNull));
@@ -290,6 +312,7 @@ test "borrowBufferSourceBytes answers null for anything that is not a buffer sou
 // What decode() relies on: borrowed at its step, after a getter detached the
 // buffer, the bytes are none - never the freed store.
 test "a buffer detached after its conversion borrows as empty" {
+    defer file.leave();
     try withConverted("globalThis.input = new Uint8Array(10000).fill(42)", struct {
         fn check(source: AllowSharedBufferSource, _: *ffi.Value) !void {
             const detach = try eval("input.buffer.transfer(0), 0");
@@ -301,6 +324,7 @@ test "a buffer detached after its conversion borrows as empty" {
 }
 
 test "anything else is a TypeError" {
+    defer file.leave();
     try setUp();
     const cases = [_][]const u8{ "({ byteLength: 2 })", "'hi'", "4", "[1, 2]", "Symbol()" };
     for (cases) |code| {

@@ -9,6 +9,7 @@
 //! protocol's own copies (e0204d2ff).
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -18,16 +19,25 @@ const conv = v8.conversions;
 var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 fn setUp() !struct { isolate: *ffi.Isolate, context: *ffi.Context } {
-    if (isolate_once) |i| return .{ .isolate = i, .context = context_once.? };
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    isolate_once = i;
-    context_once = context;
-    return .{ .isolate = i, .context = context };
+    test_process.start();
+    if (isolate_once == null) {
+        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        isolate_once = i;
+        context_once = context;
+        file.isolate = i;
+    }
+    file.enter();
+    return .{ .isolate = isolate_once.?, .context = context_once.? };
 }
 
 /// Whether `value` is the string script writes as `literal`.
@@ -68,6 +78,7 @@ fn expectArrives(value: *ffi.Value, case: @TypeOf(cases[0]), path: []const u8) !
 }
 
 test "an `any` string an impl returns keeps its lone surrogates" {
+    defer file.leave();
     const env = try setUp();
     for (cases) |case| {
         const value = try conv.toV8Value(runtime.JSValue, env.isolate, env.context, runtime.JSValue.fromStringRef(case.wtf8));
@@ -77,6 +88,7 @@ test "an `any` string an impl returns keeps its lone surrogates" {
 }
 
 test "a DOMString an impl returns keeps its lone surrogates" {
+    defer file.leave();
     const env = try setUp();
     for (cases) |case| {
         const string = conv.toV8String(env.isolate, runtime.DOMString.initInterned(case.wtf8));
@@ -86,6 +98,7 @@ test "a DOMString an impl returns keeps its lone surrogates" {
 }
 
 test "a string slice an impl returns keeps its lone surrogates" {
+    defer file.leave();
     const env = try setUp();
     for (cases) |case| {
         const value = try conv.toV8Value([]const u8, env.isolate, env.context, case.wtf8);
@@ -95,6 +108,7 @@ test "a string slice an impl returns keeps its lone surrogates" {
 }
 
 test "the V8 adapter's own JSValue string keeps its lone surrogates" {
+    defer file.leave();
     const env = try setUp();
     for (cases) |case| {
         const value = conv.JSValue.fromStringRef(case.wtf8).toV8(env.isolate);
@@ -104,6 +118,7 @@ test "the V8 adapter's own JSValue string keeps its lone surrogates" {
 }
 
 test "creating a string value keeps its lone surrogates" {
+    defer file.leave();
     const env = try setUp();
     for (cases) |case| {
         const value = try conv.createV8String(env.isolate, case.wtf8);

@@ -26,6 +26,7 @@
 //! impostor element and records whether it landed in a slot a child had.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -38,20 +39,27 @@ const WrapperCache = v8.WrapperCache;
 var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 /// One isolate and context for the file, never torn down (as
 /// teardown_document_slot_reuse_test.zig); each sweep makes its own realm
 /// data and wrapper cache.
 fn engine() !void {
-    if (isolate_once != null) return;
-    interfaces.process_hooks.startHooksForTest();
-    runtime.initializeRuntime(std.heap.page_allocator);
-    const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(isolate);
-    _ = ffi.v8_HandleScope_New(isolate);
-    const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    isolate_once = isolate;
-    context_once = context;
+    test_process.start();
+    if (isolate_once == null) {
+        const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(isolate);
+        defer ffi.v8_Isolate_Exit(isolate);
+        _ = ffi.v8_HandleScope_New(isolate);
+        const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        isolate_once = isolate;
+        context_once = context;
+        file.isolate = isolate;
+    }
+    file.enter();
 }
 
 const Realm = struct {
@@ -199,6 +207,7 @@ fn sweepOnce(coordinator_allocator: std.mem.Allocator, expect_returned: bool) !b
 }
 
 test "a detached wrapped tree's nodes give their slots to the teardown, in either sweep order" {
+    defer file.leave();
     // Each sweep's hash order is its own; repeat until one put some children
     // before their roots and some roots after a handled child.
     var exercised = false;
@@ -208,6 +217,7 @@ test "a detached wrapped tree's nodes give their slots to the teardown, in eithe
 }
 
 test "a sweep that cannot record a slot keeps it, as before" {
+    defer file.leave();
     // The set-aside list allocates nothing (an entry's own link); only the
     // teardown's record of the slot can fail - then the slot stays with its
     // Browser, never freed twice or early.

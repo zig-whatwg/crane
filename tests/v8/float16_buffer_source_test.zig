@@ -12,6 +12,7 @@
 //! -Dtest-isolation=file runs them.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const engine = @import("engine");
@@ -26,22 +27,30 @@ var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
 var data_once: ?*runtime.ContextData = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 /// One isolate and realm for the file; V8 is never torn down here.
 fn realm() !runtime.Context {
-    if (data_once) |d| return d;
-    try engine.initializeEngine(.{});
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    const data = try std.heap.page_allocator.create(runtime.ContextData);
-    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
-    data.agent = @ptrCast(i);
-    isolate_once = i;
-    context_once = context;
-    data_once = data;
-    return data;
+    test_process.start();
+    if (data_once == null) {
+        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        const data = try std.heap.page_allocator.create(runtime.ContextData);
+        data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
+        data.agent = @ptrCast(i);
+        isolate_once = i;
+        context_once = context;
+        data_once = data;
+        file.isolate = i;
+    }
+    file.enter();
+    return data_once.?;
 }
 
 /// The value `code` evaluates to: a Global the caller disposes, made the way
@@ -76,6 +85,7 @@ const window_code = "new Float16Array([1, 2, -2, 0.5]).subarray(1, 3)";
 const window_bytes = [_]u8{ 0x00, 0x40, 0x00, 0xC0 };
 
 test "a Float16Array converts to a BufferSource that refers to it, and copies its own window" {
+    defer file.leave();
     const r = (try realmWithFloat16()) orelse return;
     const handle = try eval(window_code);
     defer ffi.v8_Value_Dispose(handle);
@@ -93,6 +103,7 @@ test "a Float16Array converts to a BufferSource that refers to it, and copies it
 }
 
 test "a Float16Array converts to an ArrayBufferView, and one over a SharedArrayBuffer is a TypeError" {
+    defer file.leave();
     _ = (try realmWithFloat16()) orelse return;
     const handle = try eval(window_code);
     defer ffi.v8_Value_Dispose(handle);
@@ -107,6 +118,7 @@ test "a Float16Array converts to an ArrayBufferView, and one over a SharedArrayB
 }
 
 test "describeArrayBufferView names a Float16Array, and the union arm match knows its [[TypedArrayName]]" {
+    defer file.leave();
     const r = (try realmWithFloat16()) orelse return;
     const handle = try eval(window_code);
     defer ffi.v8_Value_Dispose(handle);
@@ -120,6 +132,7 @@ test "describeArrayBufferView names a Float16Array, and the union arm match know
 }
 
 test "createArrayBufferView makes a Float16Array over a buffer" {
+    defer file.leave();
     const r = (try realmWithFloat16()) orelse return;
     const buffer = try eval("globalThis.f16buffer = new Uint8Array([0, 0, 0, 0x40, 0, 0xC0]).buffer; f16buffer");
     defer ffi.v8_Value_Dispose(buffer);
@@ -137,6 +150,7 @@ test "createArrayBufferView makes a Float16Array over a buffer" {
 }
 
 test "every other typed array kind still converts and is described as before" {
+    defer file.leave();
     const r = try realm();
     const cases = [_]struct { code: []const u8, view_type: engine.ViewType }{
         .{ .code = "new Int8Array(2)", .view_type = .int8_array },

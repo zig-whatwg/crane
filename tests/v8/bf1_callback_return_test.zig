@@ -1,5 +1,6 @@
 //! WebIDL invoke step 13 converts the result before either callback scope ends.
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const engine = @import("engine");
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -61,8 +62,10 @@ fn check(comptime site_only: bool) !void {
     defer ffi.v8_Isolate_Exit(isolate);
     const scope = ffi.v8_HandleScope_New(isolate) orelse return error.NoScope;
     defer ffi.v8_HandleScope_Dispose(scope);
-    runtime.initializeRuntime(std.testing.allocator);
-    defer runtime.deinitializeRuntime();
+    // A standalone runtime of this test's own, the process's given back
+    // after (test_process.OwnRuntime).
+    const own_runtime = test_process.OwnRuntime.begin(std.testing.allocator);
+    defer own_runtime.end();
     try v8.context_manager.init(std.testing.allocator);
     defer v8.context_manager.deinit();
 

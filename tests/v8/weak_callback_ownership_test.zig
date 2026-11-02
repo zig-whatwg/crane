@@ -34,6 +34,7 @@
 //! alive, so "returns to baseline" is the assertion.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -62,18 +63,28 @@ const Env = struct {
 
 var env_once: ?Env = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 fn env() !Env {
-    if (env_once) |e| return e;
-    const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(isolate);
-    _ = ffi.v8_HandleScope_New(isolate);
-    const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    env_once = .{ .isolate = isolate, .context = context };
+    test_process.start();
+    if (env_once == null) {
+        const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(isolate);
+        defer ffi.v8_Isolate_Exit(isolate);
+        _ = ffi.v8_HandleScope_New(isolate);
+        const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        env_once = .{ .isolate = isolate, .context = context };
+        file.isolate = isolate;
+    }
+    file.enter();
     return env_once.?;
 }
 
 test "disarming a handle frees the record V8 hands back" {
+    defer file.leave();
     const e = try env();
 
     const baseline = ffi.v8_Debug_LiveWeakCallbackData();
@@ -95,6 +106,7 @@ test "disarming a handle frees the record V8 hands back" {
 }
 
 test "disposing an armed handle ends the arm - the record cannot outlive the Global" {
+    defer file.leave();
     const e = try env();
 
     const baseline = ffi.v8_Debug_LiveWeakCallbackData();
@@ -113,6 +125,7 @@ test "disposing an armed handle ends the arm - the record cannot outlive the Glo
 }
 
 test "re-arming the same handle replaces the record rather than stacking one" {
+    defer file.leave();
     const e = try env();
 
     const baseline = ffi.v8_Debug_LiveWeakCallbackData();
@@ -131,6 +144,7 @@ test "re-arming the same handle replaces the record rather than stacking one" {
 }
 
 test "a handle that was never armed is unaffected by disarm and dispose" {
+    defer file.leave();
     const e = try env();
 
     const baseline = ffi.v8_Debug_LiveWeakCallbackData();
@@ -148,6 +162,7 @@ test "a handle that was never armed is unaffected by disarm and dispose" {
 }
 
 test "v8_Value_ToWeakGlobal arms the handle it returns, not a null one" {
+    defer file.leave();
     const e = try env();
 
     const baseline = ffi.v8_Debug_LiveWeakCallbackData();
@@ -211,6 +226,7 @@ fn pairFinalizer(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
 }
 
 test "disposing an isolate leaves another isolate's detached records alone" {
+    defer file.leave();
     const e = try env();
     const baseline = ffi.v8_Debug_LiveWeakCallbackData();
 
@@ -262,6 +278,7 @@ fn probeFinalize(_: ?*anyopaque, _: usize) callconv(.c) void {
 }
 
 test "a finalizer runs in V8's second pass, after its first-pass unlink, and its record goes with it" {
+    defer file.leave();
     const e = try env();
     const baseline = ffi.v8_Debug_LiveWeakCallbackData();
     pass_probe = .{};
@@ -286,6 +303,7 @@ test "a finalizer runs in V8's second pass, after its first-pass unlink, and its
 }
 
 test "disposing a handle before its second pass cancels the finalizer and frees its record" {
+    defer file.leave();
     const e = try env();
     const baseline = ffi.v8_Debug_LiveWeakCallbackData();
     pass_probe = .{};

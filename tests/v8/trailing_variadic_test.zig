@@ -9,6 +9,7 @@
 //! createHTML callback reports what it got.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const engine = @import("engine");
@@ -21,23 +22,29 @@ var context_once: ?*ffi.Context = null;
 var realm_once: ?runtime.Context = null;
 var policy_exposed = false;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 fn realm() !runtime.Context {
-    if (realm_once) |r| return r;
-    try engine.initializeEngine(.{});
-    interfaces.process_hooks.startHooksForTest();
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    v8.context_manager.init(std.heap.page_allocator) catch {};
-    const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-    runtime.initializeRuntime(std.heap.page_allocator);
-    v8.interface_bindings.registerAllInterfaces(i, context);
-    isolate_once = i;
-    context_once = context;
-    realm_once = r;
-    return r;
+    test_process.start();
+    if (realm_once == null) {
+        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        v8.context_manager.init(std.heap.page_allocator) catch {};
+        const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+        v8.interface_bindings.registerAllInterfaces(i, context);
+        isolate_once = i;
+        context_once = context;
+        realm_once = r;
+        file.isolate = i;
+    }
+    file.enter();
+    return realm_once.?;
 }
 
 fn eval(code: []const u8) !*ffi.Value {
@@ -80,6 +87,7 @@ fn policy() !void {
 }
 
 test "a trailing variadic takes no, one or several extra arguments" {
+    defer file.leave();
     try policy();
     try std.testing.expectEqual(@as(i32, 1), try evalInt("testPolicy.createHTML('x').toString() === 'x|0|' ? 1 : 0"));
     try std.testing.expectEqual(@as(i32, 1), try evalInt("testPolicy.createHTML('x', 'a').toString() === 'x|1|a' ? 1 : 0"));
@@ -115,6 +123,7 @@ fn oneHandleBytes() i64 {
 }
 
 test "the extra arguments' handles go when the call returns" {
+    defer file.leave();
     try policy();
     const control_left = try handleBytesLeftBy("testPolicy.createHTML('x');");
     const left = try handleBytesLeftBy("testPolicy.createHTML('x', {}, [], 'a');");

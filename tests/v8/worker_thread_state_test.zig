@@ -21,6 +21,7 @@
 //! worker thread here makes and ends its own agent, as a worker does.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const builtin = @import("builtin");
 /// Every worker realm has an event loop; this test drives none.
 const inline_task_loop = @import("inline_task_loop.zig");
@@ -146,7 +147,7 @@ test "worker threads that end leave no per-thread containers mapped" {
 }
 
 fn countWorkerThreadState() !void {
-    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.page_allocator);
+    test_process.start();
     @import("interfaces").process_hooks.startHooksForTest();
     try engine.initializeEngine(.{});
 

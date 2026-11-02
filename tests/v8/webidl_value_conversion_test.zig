@@ -6,6 +6,7 @@
 //! test binary, since every tests/v8 file is a full engine compile.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -22,14 +23,23 @@ const Env = struct {
 
 var env_once: ?Env = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 fn env() !Env {
-    if (env_once) |e| return e;
-    const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(isolate);
-    _ = ffi.v8_HandleScope_New(isolate);
-    const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    env_once = .{ .isolate = isolate, .context = context };
+    test_process.start();
+    if (env_once == null) {
+        const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(isolate);
+        defer ffi.v8_Isolate_Exit(isolate);
+        _ = ffi.v8_HandleScope_New(isolate);
+        const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        env_once = .{ .isolate = isolate, .context = context };
+        file.isolate = isolate;
+    }
+    file.enter();
     return env_once.?;
 }
 
@@ -80,6 +90,7 @@ fn expectString(value: *ffi.Value, expected: []const u8) !void {
 }
 
 test "a string converts to the value it spells, and only that one" {
+    defer file.leave();
     const e = try env();
     const exact = try str("back_forward");
     defer ffi.v8_Value_Dispose(exact);
@@ -102,6 +113,7 @@ test "a string converts to the value it spells, and only that one" {
 }
 
 test "a value converts to the string the IDL spells, through both output paths" {
+    defer file.leave();
     const e = try env();
     const back = try conv.toV8Value(Nav, e.isolate, e.context, ._back_forward_);
     defer ffi.v8_Value_Dispose(back);
@@ -168,6 +180,7 @@ fn stringify(value: *ffi.Value) ![]const u8 {
 }
 
 test "a default toJSON result defines a null attribute as null" {
+    defer file.leave();
     const e = try env();
     const object = try conv.toV8Value(TimingToJSON, e.isolate, e.context, .{ .start = 1.5, .notRestoredReasons = null, .label = null });
     defer ffi.v8_Value_Dispose(object);
@@ -177,6 +190,7 @@ test "a default toJSON result defines a null attribute as null" {
 }
 
 test "a dictionary leaves an absent member out" {
+    defer file.leave();
     const e = try env();
     const object = try conv.toV8Value(TimingDict, e.isolate, e.context, .{ .start = 1.5 });
     defer ffi.v8_Value_Dispose(object);
@@ -199,6 +213,7 @@ test "a dictionary leaves an absent member out" {
 // predicates must say so, or every call leaks the handle.
 // ===========================================================================
 test "a typed array arm is named for its type" {
+    defer file.leave();
     try testing.expectEqualStrings("Uint8ClampedArray", conv.typedArrayArmName("uint8clamped_array").?);
     try testing.expectEqualStrings("Float16Array", conv.typedArrayArmName("float16array").?);
     try testing.expectEqualStrings("Float32Array", conv.typedArrayArmName("float32array").?);
@@ -207,6 +222,7 @@ test "a typed array arm is named for its type" {
 }
 
 test "a Uint8ClampedArray converts to ImageDataArray's uint8clamped_array arm, as a reference" {
+    defer file.leave();
     const e = try env();
     const value = try eval("new Uint8ClampedArray(16)");
     defer ffi.v8_Value_Dispose(value);
@@ -217,6 +233,7 @@ test "a Uint8ClampedArray converts to ImageDataArray's uint8clamped_array arm, a
 }
 
 test "a typed array of another type matches no arm" {
+    defer file.leave();
     const e = try env();
     const value = try eval("new Int8Array(16)");
     defer ffi.v8_Value_Dispose(value);
@@ -224,6 +241,7 @@ test "a typed array of another type matches no arm" {
 }
 
 test "a Float32Array converts to Float32List's float32array arm" {
+    defer file.leave();
     const e = try env();
     const value = try eval("new Float32Array(4)");
     defer ffi.v8_Value_Dispose(value);
@@ -232,6 +250,7 @@ test "a Float32Array converts to Float32List's float32array arm" {
 }
 
 test "the binding releases a typed array arm's handle after the call" {
+    defer file.leave();
     // Pinned so a typed array argument neither leaks its handle (the
     // conservative answer) nor is released twice.
     try testing.expect(iface.anyHandleIsKeptOnlyAsHandle(ImageDataArray));
@@ -296,6 +315,7 @@ const Entry = struct {
 };
 
 test "a record converted to JavaScript releases its keys and values" {
+    defer file.leave();
     const e = try env();
     const entries = [_]Entry{
         .{ .key = runtime.DOMString.initInterned("alpha"), .value = runtime.DOMString.initInterned("one") },
@@ -307,6 +327,7 @@ test "a record converted to JavaScript releases its keys and values" {
 }
 
 test "a record's properties are defined, not assigned" {
+    defer file.leave();
     const e = try env();
     // A setter on Object.prototype must not run: CreateDataProperty.
     ffi.v8_Value_Dispose(try eval("var setterRan = 0; Object.defineProperty(Object.prototype, 'gamma', { set(v) { setterRan++; }, configurable: true }); 0"));
@@ -320,6 +341,7 @@ test "a record's properties are defined, not assigned" {
 }
 
 test "a sequence converted to JavaScript releases its elements" {
+    defer file.leave();
     const e = try env();
     const strings = [_]runtime.DOMString{ runtime.DOMString.initInterned("a"), runtime.DOMString.initInterned("b"), runtime.DOMString.initInterned("c") };
     const left = try handleBytesLeftByToV8([]const runtime.DOMString, &strings);
@@ -327,6 +349,7 @@ test "a sequence converted to JavaScript releases its elements" {
 }
 
 test "a sequence whose later element fails frees the elements before it" {
+    defer file.leave();
     const e = try env();
     const array = try eval("['a'.repeat(64), 'b'.repeat(64), Symbol()]");
     defer ffi.v8_Value_Dispose(array);
@@ -341,6 +364,7 @@ const WithRequired = struct {
 };
 
 test "a required dictionary member that is undefined is a TypeError" {
+    defer file.leave();
     const e = try env();
     // `label` converts first (lexicographic order), then `length` is missing.
     const missing = try eval("({ label: 'x'.repeat(64) })");
@@ -358,6 +382,7 @@ test "a required dictionary member that is undefined is a TypeError" {
 }
 
 test "a required dictionary member that is present converts" {
+    defer file.leave();
     const e = try env();
     const present = try eval("({ length: 7, label: 'y'.repeat(64) })");
     defer ffi.v8_Value_Dispose(present);

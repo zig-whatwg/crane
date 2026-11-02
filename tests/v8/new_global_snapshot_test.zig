@@ -28,6 +28,7 @@
 //! snapshot for these tests only and forgets it after (deinitializeEngine).
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const protocol = @import("engine");
 const interfaces = @import("interfaces");
@@ -58,8 +59,6 @@ const Reports = struct {
         return .{ .report = report, .host = self };
     }
 };
-
-var pools_ready = false;
 
 /// Whether V8 was not yet started in this process when this file first
 /// asked: decided once, by the first test here to open a page.
@@ -92,13 +91,11 @@ const SnapshotPage = struct {
         errdefer std.heap.c_allocator.free(bytes);
         _ = try file.readPositionalAll(io, bytes, 0);
 
+        // The process first - it starts the engine with no snapshot - and
+        // then the engine's snapshot, for this page alone.
+        test_process.start();
         try protocol.initializeEngine(.{ .snapshot = bytes });
         errdefer protocol.deinitializeEngine();
-        if (!pools_ready) {
-            interfaces.process_hooks.startHooksForTest();
-            runtime.initializeRuntime(std.heap.page_allocator);
-            pools_ready = true;
-        }
         const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = true, .hooks = &no_hooks, .host = null });
         errdefer protocol.destroyAgent(agent);
         // Restored, not made afresh: v8_Isolate_NewFromSnapshot keeps the

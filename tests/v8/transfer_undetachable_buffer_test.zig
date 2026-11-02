@@ -11,6 +11,7 @@
 //! a failed transfer leaves every buffer of the list attached.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -21,29 +22,38 @@ var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
 var realm_once: ?*runtime.ContextData = null;
 
-fn setup() !void {
-    if (realm_once != null) return;
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    const r = try runtime.Realm.init(std.heap.page_allocator, .{ .engine_realm = context, .agent = @ptrCast(i) });
-    const d = try std.heap.page_allocator.create(runtime.ContextData);
-    d.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context, .realm = r });
-    ffi.v8_Context_Enter(context);
-    isolate_once = i;
-    context_once = context;
-    realm_once = d;
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
 
-    // `serialize(value, list)`: StructuredSerializeWithTransfer of `value` with
-    // `list` as the transfer list, as MessagePort.postMessage runs it from
-    // script - a throw is left pending for the script; true on success.
-    const template = ffi.v8_FunctionTemplate_New(i, serializeCallback, null) orelse return error.TemplateFailed;
-    defer ffi.v8_FunctionTemplate_Dispose(template);
-    const function = ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return error.FunctionFailed;
-    defer ffi.v8_Function_Dispose(function);
-    try setGlobal("serialize", @ptrCast(function));
+fn setup() !void {
+    test_process.start();
+    if (realm_once == null) {
+        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        const r = try runtime.Realm.init(std.heap.page_allocator, .{ .engine_realm = context, .agent = @ptrCast(i) });
+        const d = try std.heap.page_allocator.create(runtime.ContextData);
+        d.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context, .realm = r });
+        ffi.v8_Context_Enter(context);
+        isolate_once = i;
+        context_once = context;
+        realm_once = d;
+
+        // `serialize(value, list)`: StructuredSerializeWithTransfer of `value` with
+        // `list` as the transfer list, as MessagePort.postMessage runs it from
+        // script - a throw is left pending for the script; true on success.
+        const template = ffi.v8_FunctionTemplate_New(i, serializeCallback, null) orelse return error.TemplateFailed;
+        defer ffi.v8_FunctionTemplate_Dispose(template);
+        const function = ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return error.FunctionFailed;
+        defer ffi.v8_Function_Dispose(function);
+        try setGlobal("serialize", @ptrCast(function));
+        file.isolate = i;
+    }
+    file.enter();
 }
 
 fn eval(code: []const u8) !*ffi.Value {
@@ -102,6 +112,7 @@ fn serializeCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
 }
 
 test "a WebAssembly.Memory's buffer in the transfer list is a TypeError, and it stays attached" {
+    defer file.leave();
     try setup();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
         \\(() => {
@@ -113,6 +124,7 @@ test "a WebAssembly.Memory's buffer in the transfer list is a TypeError, and it 
 }
 
 test "a failed transfer leaves every buffer of the list attached" {
+    defer file.leave();
     try setup();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
         \\(() => {
@@ -125,6 +137,7 @@ test "a failed transfer leaves every buffer of the list attached" {
 }
 
 test "a detachable buffer still transfers" {
+    defer file.leave();
     try setup();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
         \\(() => {

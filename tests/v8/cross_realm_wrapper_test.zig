@@ -16,6 +16,7 @@
 //! with the frame's parent), so the frame shares the page's access.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -26,26 +27,30 @@ const window_agent_hooks: protocol.HostHooks = .{};
 const interfaces = @import("interfaces");
 
 var isolate_once: ?*ffi.Isolate = null;
-var pools_ready = false;
+
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
 
 fn agent() !*ffi.Isolate {
-    if (isolate_once) |i| return i;
-    // An agent createAgent made: it keeps its Window realms on its record
-    // (protocol_realms.WindowRealms), which a bare isolate has none of.
-    const i: *ffi.Isolate = @ptrCast(@alignCast(try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &window_agent_hooks, .host = null })));
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    // Already initialized is fine: the manager is per thread, not per test.
-    v8.context_manager.init(std.heap.page_allocator) catch {};
-    _ = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-    if (!pools_ready) {
-        runtime.initializeRuntime(std.heap.page_allocator);
-        pools_ready = true;
+    test_process.start();
+    if (isolate_once == null) {
+        // An agent createAgent made: it keeps its Window realms on its record
+        // (protocol_realms.WindowRealms), which a bare isolate has none of.
+        const i: *ffi.Isolate = @ptrCast(@alignCast(try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &window_agent_hooks, .host = null })));
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        // Already initialized is fine: the manager is per thread, not per test.
+        v8.context_manager.init(std.heap.page_allocator) catch {};
+        _ = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+        isolate_once = i;
+        file.isolate = i;
     }
-    isolate_once = i;
-    return i;
+    file.enter();
+    return isolate_once.?;
 }
 
 const WindowHost = struct {
@@ -95,6 +100,7 @@ fn share(from: runtime.Context, source: []const u8, to: runtime.Context, name: [
 }
 
 test "an object a method borrowed from another realm returns is wrapped in its own realm" {
+    defer file.leave();
     const page = try windowRealmIn(null);
     defer protocol.destroyWindowRealm(page, .global_detached);
     const frame = try windowRealmIn(page);
@@ -107,6 +113,7 @@ test "an object a method borrowed from another realm returns is wrapped in its o
 }
 
 test "an object of another realm returned by this realm's method keeps its own realm's wrapper" {
+    defer file.leave();
     const page = try windowRealmIn(null);
     defer protocol.destroyWindowRealm(page, .global_detached);
     const frame = try windowRealmIn(page);
@@ -118,6 +125,7 @@ test "an object of another realm returned by this realm's method keeps its own r
 }
 
 test "an existing object a borrowed method returns is the one wrapper its realm has" {
+    defer file.leave();
     const page = try windowRealmIn(null);
     defer protocol.destroyWindowRealm(page, .global_detached);
     const frame = try windowRealmIn(page);

@@ -8,6 +8,7 @@
 //! an exception left pending for whatever script runs next.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -17,21 +18,30 @@ var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
 var data_once: ?*runtime.ContextData = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 fn realm() !runtime.Context {
-    if (data_once) |d| return d;
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    const data = try std.heap.page_allocator.create(runtime.ContextData);
-    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
-    data.agent = @ptrCast(i);
-    isolate_once = i;
-    context_once = context;
-    data_once = data;
-    return data;
+    test_process.start();
+    if (data_once == null) {
+        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        const data = try std.heap.page_allocator.create(runtime.ContextData);
+        data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
+        data.agent = @ptrCast(i);
+        isolate_once = i;
+        context_once = context;
+        data_once = data;
+        file.isolate = i;
+    }
+    file.enter();
+    return data_once.?;
 }
 
 fn eval(code: []const u8) !*ffi.Value {
@@ -73,12 +83,14 @@ fn returnsError(comptime err: protocol.Error) fn (?*anyopaque) protocol.Error!vo
 }
 
 test "a normal completion is null" {
+    defer file.leave();
     const ctx = try realm();
     var value: runtime.JSValue = .{ .number = 5 };
     try std.testing.expectEqual(@as(?protocol.Owned, null), try protocol.completionOf(ctx, convertSteps, &value));
 }
 
 test "a throw completion hands back the thrown value itself, owned" {
+    defer file.leave();
     const ctx = try realm();
     const boom = try eval("globalThis.boom = new Error('toString'); ({ toString() { throw boom; } })");
     defer ffi.v8_Value_Dispose(boom);
@@ -104,6 +116,7 @@ fn completesNormally(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
 }
 
 test "nothing is left pending for the calling script" {
+    defer file.leave();
     _ = try realm();
     const template = ffi.v8_FunctionTemplate_New(isolate_once.?, completesNormally, null) orelse return error.TemplateFailed;
     defer ffi.v8_FunctionTemplate_Dispose(template);
@@ -119,6 +132,7 @@ test "nothing is left pending for the calling script" {
 }
 
 test "a TypeError the steps return is a new TypeError of the realm" {
+    defer file.leave();
     const ctx = try realm();
     const thrown = (try protocol.completionOf(ctx, returnsError(error.TypeError), null)) orelse return error.NoCompletion;
     defer thrown.release();
@@ -127,6 +141,7 @@ test "a TypeError the steps return is a new TypeError of the realm" {
 }
 
 test "an engine failure is not a completion: it propagates" {
+    defer file.leave();
     const ctx = try realm();
     try std.testing.expectError(error.OutOfMemory, protocol.completionOf(ctx, returnsError(error.OutOfMemory), null));
     try std.testing.expectError(error.NotSupported, protocol.completionOf(ctx, returnsError(error.NotSupported), null));

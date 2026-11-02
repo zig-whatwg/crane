@@ -9,6 +9,7 @@
 //! its buffer, an object with no @@iterator in a union with a sequence.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -19,20 +20,29 @@ var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
 var data_once: ?*runtime.ContextData = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 fn realm() !runtime.Context {
-    if (data_once) |d| return d;
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    const data = try std.heap.page_allocator.create(runtime.ContextData);
-    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
-    data.agent = @ptrCast(i);
-    isolate_once = i;
-    context_once = context;
-    data_once = data;
-    return data;
+    test_process.start();
+    if (data_once == null) {
+        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        const data = try std.heap.page_allocator.create(runtime.ContextData);
+        data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
+        data.agent = @ptrCast(i);
+        isolate_once = i;
+        context_once = context;
+        data_once = data;
+        file.isolate = i;
+    }
+    file.enter();
+    return data_once.?;
 }
 
 fn eval(code: []const u8) !*ffi.Value {
@@ -82,6 +92,7 @@ const Made = struct {
 // ----------------------------------------------------------------------------
 
 test "ToString of objects, numbers and strings" {
+    defer file.leave();
     const ctx = try realm();
     const object = try Made.of("({ toString() { return 'custom'; } })");
     defer object.deinit();
@@ -99,6 +110,7 @@ test "ToString of objects, numbers and strings" {
 }
 
 test "a Symbol is a TypeError with nothing thrown" {
+    defer file.leave();
     const ctx = try realm();
     const symbol = try Made.of("Symbol('s')");
     defer symbol.deinit();
@@ -107,6 +119,7 @@ test "a Symbol is a TypeError with nothing thrown" {
 }
 
 test "a lone surrogate becomes U+FFFD in a USVString" {
+    defer file.leave();
     const ctx = try realm();
     const lone = try Made.of("'a\\uD800b'");
     defer lone.deinit();
@@ -146,6 +159,7 @@ fn installNative(name: []const u8, callback: ffi.FunctionCallback) !void {
 }
 
 test "a throwing toString propagates to the calling script" {
+    defer file.leave();
     _ = try realm();
     try installNative("stringLength", stringLength);
     try std.testing.expectEqual(@as(i32, 3), try evalInt("stringLength({ toString() { return 'abc'; } })"));
@@ -169,6 +183,7 @@ fn freeStrings(strings: [][]u8) void {
 }
 
 test "an iterable converts to its strings, each by ToString" {
+    defer file.leave();
     const ctx = try realm();
     const array = try Made.of("['a', 2, { toString() { return 'c'; } }]");
     defer array.deinit();
@@ -187,6 +202,7 @@ test "an iterable converts to its strings, each by ToString" {
 }
 
 test "an object with no @@iterator is not a sequence (null), and a non-object is a TypeError" {
+    defer file.leave();
     const ctx = try realm();
     const plain = try Made.of("({ length: 1, 0: 'a' })");
     defer plain.deinit();
@@ -209,6 +225,7 @@ fn freeRecord(entries: []runtime.StringRecordEntry) void {
 }
 
 test "a record is the object's own enumerable properties, in [[OwnPropertyKeys]] order" {
+    defer file.leave();
     const ctx = try realm();
     // The spec's own example: the prototype's and the non-enumerable
     // property are not in it; integer keys come first, ascending.
@@ -242,6 +259,7 @@ test "a record is the object's own enumerable properties, in [[OwnPropertyKeys]]
 }
 
 test "USVString keys that collide after U+FFFD replacement are one entry, set in place" {
+    defer file.leave();
     const ctx = try realm();
     const object = try Made.of("({ '\\uD83D': 'first', z: 'z', '\\uFFFD': 'second', v: 'a\\uD800b' })");
     defer object.deinit();
@@ -262,6 +280,7 @@ test "USVString keys that collide after U+FFFD replacement are one entry, set in
 }
 
 test "a non-object, and an enumerable Symbol-keyed property, are TypeErrors" {
+    defer file.leave();
     const ctx = try realm();
     try std.testing.expectError(error.TypeError, v8.webidl_conversions.convertToRecordOfStrings(ctx, .{ .number = 1 }, .usv_string, .usv_string, allocator));
     try std.testing.expectError(error.TypeError, v8.webidl_conversions.convertToRecordOfStrings(ctx, runtime.JSValue.fromStringRef("a=b"), .usv_string, .usv_string, allocator));
@@ -299,6 +318,7 @@ fn recordSize(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
 }
 
 test "a proxy sees ownKeys, then per key getOwnPropertyDescriptor and get - and only for enumerable keys" {
+    defer file.leave();
     _ = try realm();
     try installNative("recordSize", recordSize);
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
@@ -320,6 +340,7 @@ test "a proxy sees ownKeys, then per key getOwnPropertyDescriptor and get - and 
 }
 
 test "what a trap, a getter or a toString throws propagates to the calling script" {
+    defer file.leave();
     _ = try realm();
     try installNative("recordSize", recordSize);
     try std.testing.expectEqual(@as(i32, 3), try evalInt(
@@ -343,6 +364,7 @@ test "what a trap, a getter or a toString throws propagates to the calling scrip
 // ----------------------------------------------------------------------------
 
 test "an ArrayBuffer's bytes, and a view's own window of its buffer" {
+    defer file.leave();
     const ctx = try realm();
     const buffer = try Made.of("globalThis.b = new Uint8Array([1, 2, 3, 4, 5]).buffer; b");
     defer buffer.deinit();
@@ -364,6 +386,7 @@ test "an ArrayBuffer's bytes, and a view's own window of its buffer" {
 }
 
 test "a detached buffer holds no bytes, and neither does a view of one" {
+    defer file.leave();
     const ctx = try realm();
     const detached = try Made.of("globalThis.d = new ArrayBuffer(8); globalThis.dv = new Uint8Array(d); d.transfer(); d");
     defer detached.deinit();
@@ -378,6 +401,7 @@ test "a detached buffer holds no bytes, and neither does a view of one" {
 }
 
 test "a SharedArrayBuffer is not a BufferSource, and a view of one is a TypeError" {
+    defer file.leave();
     const ctx = try realm();
     const shared = try Made.of("globalThis.sab = new SharedArrayBuffer(4); sab");
     defer shared.deinit();
@@ -388,6 +412,7 @@ test "a SharedArrayBuffer is not a BufferSource, and a view of one is a TypeErro
 }
 
 test "anything else is not a BufferSource" {
+    defer file.leave();
     const ctx = try realm();
     const object = try Made.of("({})");
     defer object.deinit();
@@ -404,6 +429,7 @@ const mock_vtable = runtime.VTable{ .name = "MockBlob", .deinit = null, .methods
 var mock_blob: runtime.Instance = undefined;
 
 test "a platform object converts to its Instance; nothing else does" {
+    defer file.leave();
     const ctx = try realm();
     const template = ffi.v8_ObjectTemplate_New(isolate_once.?);
     defer ffi.v8_ObjectTemplate_Dispose(template);
@@ -425,6 +451,7 @@ test "a platform object converts to its Instance; nothing else does" {
 }
 
 test "a sequence of values becomes an Array of the realm" {
+    defer file.leave();
     const ctx = try realm();
     const object = try Made.of("globalThis.o = {}; o");
     defer object.deinit();
@@ -488,6 +515,7 @@ fn int32Of(owned: protocol.Owned) i32 {
 }
 
 test "protocol: Get reads a property, and what a getter throws is pending" {
+    defer file.leave();
     const ctx = try realm();
     const object = try Made.of("({ a: 1, get boom() { throw globalThis.boom = new Error('get'); } })");
     defer object.deinit();
@@ -518,6 +546,7 @@ test "protocol: Get reads a property, and what a getter throws is pending" {
 }
 
 test "protocol: Set and DefinePropertyOrThrow write, HasProperty reads, and a failed define is a TypeError" {
+    defer file.leave();
     const ctx = try realm();
     const object = try Made.of("globalThis.target = Object.create({ inherited: 1 })");
     defer object.deinit();
@@ -570,6 +599,7 @@ test "protocol: Set and DefinePropertyOrThrow write, HasProperty reads, and a fa
 }
 
 test "protocol: Type and SameValue" {
+    defer file.leave();
     const ctx = try realm();
     const cases = [_]struct { code: []const u8, type: protocol.ValueType }{
         .{ .code = "undefined", .type = .undefined },
@@ -614,6 +644,7 @@ test "protocol: Type and SameValue" {
 }
 
 test "protocol: JSON bytes parse to a value, a BOM is dropped, and a SyntaxError is pending" {
+    defer file.leave();
     const ctx = try realm();
     _ = try evalInt("globalThis.JSON = { parse() { return 42; } }; 1");
     const parsed = try protocol.parseJsonToValue(ctx, "\xEF\xBB\xBF{\"a\":[1,2]}");
@@ -663,6 +694,7 @@ const Serialized = struct {
 };
 
 test "protocol: a value serializes to JSON bytes through %JSON.stringify%, as UTF-8" {
+    defer file.leave();
     const ctx = try realm();
     // The intrinsic, whatever script did to the global JSON.
     _ = try evalInt("globalThis.JSON = { stringify() { return '\"replaced\"'; } }; 1");
@@ -692,6 +724,7 @@ test "protocol: a value serializes to JSON bytes through %JSON.stringify%, as UT
 }
 
 test "protocol: no JSON representation is a TypeError, and what the serializer throws is pending" {
+    defer file.leave();
     const ctx = try realm();
     // 2. JSON.stringify returned undefined: the caller throws a TypeError,
     //    nothing is thrown yet.
@@ -727,6 +760,7 @@ test "protocol: no JSON representation is a TypeError, and what the serializer t
 }
 
 test "protocol: serializing to JSON bytes leaves no Global behind" {
+    defer file.leave();
     const ctx = try realm();
     const object = try Made.of("({ a: [1, 2, { b: 'c' }] })");
     defer object.deinit();
@@ -756,6 +790,7 @@ const Reports = struct {
 };
 
 test "protocol: invoke a callback function - the value, a rethrown or a reported throw, and a non-callable" {
+    defer file.leave();
     const ctx = try realm();
     v8.context_manager.init(std.heap.page_allocator) catch {};
     const hosted = try v8.context_manager.getOrCreate(context_once.?, std.heap.page_allocator);
@@ -836,6 +871,7 @@ const Located = struct {
 };
 
 test "protocol: a reported exception is located where it was thrown, a thrown value that is not an Error too" {
+    defer file.leave();
     const ctx = try realm();
     const url = "https://crane.test/thrower.js";
     // HTML "extract error information" is the throw site's: a thrown string
@@ -882,6 +918,7 @@ test "protocol: a reported exception is located where it was thrown, a thrown va
 }
 
 test "protocol: call a user object's operation - a function, a handleEvent, a throwing getter, a non-callable" {
+    defer file.leave();
     const ctx = try realm();
     const args = [_]runtime.JSValue{runtime.JSValue.fromNumber(5)};
 
@@ -930,6 +967,7 @@ const Visited = struct {
 };
 
 test "protocol: iterate visits every item; no @@iterator is false; a throwing iterator is pending" {
+    defer file.leave();
     const ctx = try realm();
     const array = try Made.of("[1, 2, 3]");
     defer array.deinit();
@@ -961,6 +999,7 @@ test "protocol: iterate visits every item; no @@iterator is false; a throwing it
 }
 
 test "protocol: sequence<any> and a sequence of string pairs" {
+    defer file.leave();
     const ctx = try realm();
     const generator = try Made.of("(function* () { yield 'a'; yield 2; yield {}; })()");
     defer generator.deinit();
@@ -993,6 +1032,7 @@ test "protocol: sequence<any> and a sequence of string pairs" {
 }
 
 test "protocol: iterator records - next, the result, return, and an async iterator's promise" {
+    defer file.leave();
     const ctx = try realm();
     const generator = try Made.of("globalThis.returned = 0; (function* () { try { yield 1; yield 2; } finally { returned++; } })()");
     defer generator.deinit();
@@ -1050,6 +1090,7 @@ fn yieldedCodePoints(ctx: runtime.Context, record: *protocol.IteratorRecord, buf
 }
 
 test "protocol: GetIterator of a primitive is its object's iterator - a string's code points; undefined and null are TypeErrors" {
+    defer file.leave();
     const ctx = try realm();
     var buffer: [64]u8 = undefined;
     // GetMethod's GetV does ToObject: "a\u{1F600}b" iterates by code point
@@ -1083,6 +1124,7 @@ test "protocol: GetIterator of a primitive is its object's iterator - a string's
 }
 
 test "protocol: a frozen array" {
+    defer file.leave();
     const ctx = try realm();
     const values = [_]runtime.JSValue{ runtime.JSValue.fromNumber(1), runtime.JSValue.fromStringRef("two") };
     const array = try protocol.createFrozenArray(ctx, &values);
@@ -1091,6 +1133,7 @@ test "protocol: a frozen array" {
 }
 
 test "protocol: the values, callbacks and iteration operations leave no Global behind" {
+    defer file.leave();
     const ctx = try realm();
     const object = try Made.of("({ a: 1, handleEvent() { return 1; } })");
     defer object.deinit();
@@ -1161,6 +1204,7 @@ fn recordIncumbent(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
 }
 
 test "protocol: prepare to run a callback makes the callback context the incumbent" {
+    defer file.leave();
     const ctx = try realm();
     const here = try hostedRealm();
     const other = try otherRealm();
@@ -1203,6 +1247,7 @@ fn takeArgument(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
 }
 
 test "protocol: a taken callback function or interface records the incumbent realm as its context" {
+    defer file.leave();
     const ctx = try realm();
     const here = try hostedRealm();
     try installNative("takeArgument", takeArgument);
@@ -1273,6 +1318,7 @@ const Counter = struct {
 };
 
 test "protocol: an asynchronous iterator object - its own @@asyncIterator, queued next calls, end of iteration, return, and this" {
+    defer file.leave();
     const ctx = try realm();
     var counter: Counter = .{ .ctx = ctx };
     const iterator = try protocol.createAsyncIterator(ctx, &Counter.steps, &counter);
@@ -1317,6 +1363,7 @@ test "protocol: an asynchronous iterator object - its own @@asyncIterator, queue
 var finalized_counter: Counter = undefined;
 
 test "protocol: an asynchronous iterator's finalize runs when it is collected" {
+    defer file.leave();
     const ctx = try realm();
     finalized_counter = .{ .ctx = ctx };
     (try protocol.createAsyncIterator(ctx, &Counter.steps_finalized, &finalized_counter)).release();
@@ -1341,6 +1388,7 @@ fn settledResult(ctx: runtime.Context, promise: protocol.Owned) !protocol.Iterat
 }
 
 test "protocol: an async iterator over a sync iterable awaits each value, returns, and closes the iterator on a rejection" {
+    defer file.leave();
     const ctx = try realm();
     const values = try Made.of("[1, Promise.resolve(2)]");
     defer values.deinit();
@@ -1377,6 +1425,7 @@ test "protocol: an async iterator over a sync iterable awaits each value, return
 }
 
 test "protocol: callback contexts, asynchronous iterators and async-from-sync leave no Global behind" {
+    defer file.leave();
     const ctx = try realm();
     const other = try otherRealm();
     try installNative("recordIncumbent", recordIncumbent);
@@ -1423,10 +1472,11 @@ fn identityFunction() !Made {
 }
 
 test "protocol: a platform object converts to its wrapper in its relevant realm, whichever realm the operation entered" {
+    defer file.leave();
     const ctx = try realm();
     const here = try hostedRealm();
     const other = try otherRealm();
-    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.page_allocator);
+    test_process.start();
 
     // A platform object of `other` (its relevant realm), wrapped there: a
     // plain object of `other`'s, in `other`'s wrapper cache.

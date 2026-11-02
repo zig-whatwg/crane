@@ -11,6 +11,7 @@
 //! handles, primitives as inline JSValue tags.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -20,21 +21,30 @@ var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
 var data_once: ?*runtime.ContextData = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 fn realm() !runtime.Context {
-    if (data_once) |d| return d;
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    const data = try std.heap.page_allocator.create(runtime.ContextData);
-    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
-    data.agent = @ptrCast(i);
-    isolate_once = i;
-    context_once = context;
-    data_once = data;
-    return data;
+    test_process.start();
+    if (data_once == null) {
+        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        const data = try std.heap.page_allocator.create(runtime.ContextData);
+        data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
+        data.agent = @ptrCast(i);
+        isolate_once = i;
+        context_once = context;
+        data_once = data;
+        file.isolate = i;
+    }
+    file.enter();
+    return data_once.?;
 }
 
 fn evalIn(context: *ffi.Context, code: []const u8) !*ffi.Value {
@@ -83,6 +93,7 @@ fn resolveToGlobal(ctx: runtime.Context, value: runtime.JSValue) !void {
 }
 
 test "a promise of the realm's %Promise% is returned as it is" {
+    defer file.leave();
     const ctx = try realm();
     const p = try eval("globalThis.p = Promise.resolve(1); p");
     defer ffi.v8_Value_Dispose(p);
@@ -91,6 +102,7 @@ test "a promise of the realm's %Promise% is returned as it is" {
 }
 
 test "x.constructor is read once, and a promise whose constructor is another is wrapped" {
+    defer file.leave();
     const ctx = try realm();
     const p = try eval(
         \\globalThis.reads = 0;
@@ -105,6 +117,7 @@ test "x.constructor is read once, and a promise whose constructor is another is 
 }
 
 test "a subclass's promise is wrapped in a new promise of %Promise%" {
+    defer file.leave();
     const ctx = try realm();
     const p = try eval("class Sub extends Promise {}; globalThis.s = Sub.resolve(3); s");
     defer ffi.v8_Value_Dispose(p);
@@ -113,6 +126,7 @@ test "a subclass's promise is wrapped in a new promise of %Promise%" {
 }
 
 test "a promise of another realm is wrapped" {
+    defer file.leave();
     const ctx = try realm();
     const other = ffi.v8_Context_New(isolate_once.?) orelse return error.ContextCreationFailed;
     defer ffi.v8_Context_Dispose(other);
@@ -124,6 +138,7 @@ test "a promise of another realm is wrapped" {
 }
 
 test "an inline primitive becomes a new promise fulfilled with it" {
+    defer file.leave();
     const ctx = try realm();
     try resolveToGlobal(ctx, .{ .number = 5 });
     try std.testing.expectEqual(@as(i32, 1), try evalInt("globalThis.seen = 0; r.then(v => { seen = v; }); r instanceof Promise ? 1 : 0"));
@@ -134,6 +149,7 @@ test "an inline primitive becomes a new promise fulfilled with it" {
 }
 
 test "a thenable that is not a promise is adopted by a new promise" {
+    defer file.leave();
     const ctx = try realm();
     const t = try eval("globalThis.thenReads = 0; globalThis.t = { get then() { thenReads++; return (ok) => ok(6); } }; t");
     defer ffi.v8_Value_Dispose(t);
@@ -145,6 +161,7 @@ test "a thenable that is not a promise is adopted by a new promise" {
 }
 
 test "a throwing constructor getter is a throw completion with the thrown value" {
+    defer file.leave();
     const ctx = try realm();
     const p = try eval(
         \\globalThis.boom = new Error("constructor");
@@ -168,6 +185,7 @@ test "a throwing constructor getter is a throw completion with the thrown value"
 }
 
 test "the realm's %Promise% is found even when PromiseResolve resolves nothing with it" {
+    defer file.leave();
     // isPromiseConstructor reads %Promise.prototype% from a pending promise:
     // a constructor with a `then` getter is not touched by the comparison.
     const ctx = try realm();

@@ -12,6 +12,7 @@
 //! string arm - (Node or DOMString), append()'s argument, among them.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -20,18 +21,27 @@ const conv = v8.conversions;
 var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 /// A live isolate with an entered context, one for the whole file - V8 is
 /// never torn down here.
 fn isolate() !*ffi.Isolate {
-    if (isolate_once) |i| return i;
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    isolate_once = i;
-    context_once = context;
-    return i;
+    test_process.start();
+    if (isolate_once == null) {
+        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        isolate_once = i;
+        context_once = context;
+        file.isolate = i;
+    }
+    file.enter();
+    return isolate_once.?;
 }
 
 fn eval(code: []const u8) !*ffi.Value {
@@ -76,6 +86,7 @@ fn isInstanceOf(thrown: *ffi.Value, comptime name: []const u8) !bool {
 }
 
 test "an object whose toString throws: the exception propagates, not a TypeError" {
+    defer file.leave();
     const value = try eval("({ toString() { throw new RangeError('boom') } })");
     defer ffi.v8_Value_Dispose(value);
     const outcome = convertCatching(ScriptUrlOrString, value);
@@ -86,6 +97,7 @@ test "an object whose toString throws: the exception propagates, not a TypeError
 }
 
 test "an object with a toString takes the string arm" {
+    defer file.leave();
     const value = try eval("({ toString() { return 'https://example.test/w.js' } })");
     defer ffi.v8_Value_Dispose(value);
     const outcome = convertCatching(ScriptUrlOrString, value);
@@ -97,6 +109,7 @@ test "an object with a toString takes the string arm" {
 }
 
 test "(TrustedHTML or DOMString): a throwing toString propagates too" {
+    defer file.leave();
     const value = try eval("({ toString() { throw new TypeError('boom') } })");
     defer ffi.v8_Value_Dispose(value);
     const outcome = convertCatching(HtmlOrString, value);
@@ -107,6 +120,7 @@ test "(TrustedHTML or DOMString): a throwing toString propagates too" {
 }
 
 test "a plain string still takes the string arm" {
+    defer file.leave();
     const value = try eval("'plain'");
     defer ffi.v8_Value_Dispose(value);
     const outcome = convertCatching(HtmlOrString, value);

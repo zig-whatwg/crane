@@ -8,6 +8,7 @@
 //! [[Construct]], never a [[Call]] (a class constructor called throws).
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const engine = @import("engine");
@@ -18,23 +19,30 @@ var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
 var realm_once: ?runtime.Context = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 /// One isolate and realm for the file, registered with the context manager
 /// as a page's is; V8 is never torn down here.
 fn realm() !runtime.Context {
-    if (realm_once) |r| return r;
-    try engine.initializeEngine(.{});
-    interfaces.process_hooks.startHooksForTest();
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    v8.context_manager.init(std.heap.page_allocator) catch {};
-    const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-    isolate_once = i;
-    context_once = context;
-    realm_once = r;
-    return r;
+    test_process.start();
+    if (realm_once == null) {
+        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        v8.context_manager.init(std.heap.page_allocator) catch {};
+        const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+        isolate_once = i;
+        context_once = context;
+        realm_once = r;
+        file.isolate = i;
+    }
+    file.enter();
+    return realm_once.?;
 }
 
 fn eval(code: []const u8) !*ffi.Value {
@@ -76,6 +84,7 @@ fn holds(name: []const u8, owned: engine.Owned, check: []const u8) !bool {
 }
 
 test "constructs: a new object of the class, with the arguments and new.target" {
+    defer file.leave();
     const r = try realm();
     const point = try callbackOf(r,
         \\globalThis.Point = class Point {
@@ -91,6 +100,7 @@ test "constructs: a new object of the class, with the arguments and new.target" 
 }
 
 test "an object the constructor returns is the result" {
+    defer file.leave();
     const r = try realm();
     const returning = try callbackOf(r, "(function Returning() { return globalThis.returned = { other: true }; })");
     defer returning.release();
@@ -101,6 +111,7 @@ test "an object the constructor returns is the result" {
 }
 
 test "a throwing constructor is a throw completion of the thrown value, and nothing is left pending" {
+    defer file.leave();
     const r = try realm();
     const thrower = try callbackOf(r, "(class Thrower { constructor() { throw globalThis.ctorError = new Error('ctor'); } })");
     defer thrower.release();
@@ -113,6 +124,7 @@ test "a throwing constructor is a throw completion of the thrown value, and noth
 }
 
 test "a non-constructor is a throw completion of a TypeError, and is never called" {
+    defer file.leave();
     const r = try realm();
     const sources = [_][]const u8{
         // An arrow function and a method are callable but not constructors.
@@ -139,6 +151,7 @@ test "a non-constructor is a throw completion of a TypeError, and is never calle
 }
 
 test "a Proxy of a class is a constructor" {
+    defer file.leave();
     const r = try realm();
     const proxied = try callbackOf(r, "new Proxy(class Target { constructor() { this.viaProxy = true; } }, {})");
     defer proxied.release();
@@ -179,6 +192,7 @@ fn invokeRound(r: runtime.Context, callback: *const engine.CallbackFunction) any
 }
 
 test "constructing leaves no handle behind that invoking does not" {
+    defer file.leave();
     const r = try realm();
     // A function both callable and constructible.
     const counted = try callbackOf(r, "(function Counted(n) { if (new.target) this.n = n; return undefined; })");

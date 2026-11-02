@@ -20,6 +20,7 @@
 //! fails the test as a leak.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -34,14 +35,23 @@ const Env = struct {
 
 var env_once: ?Env = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 fn env() !Env {
-    if (env_once) |e| return e;
-    const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(isolate);
-    _ = ffi.v8_HandleScope_New(isolate);
-    const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    env_once = .{ .isolate = isolate, .context = context };
+    test_process.start();
+    if (env_once == null) {
+        const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(isolate);
+        defer ffi.v8_Isolate_Exit(isolate);
+        _ = ffi.v8_HandleScope_New(isolate);
+        const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        env_once = .{ .isolate = isolate, .context = context };
+        file.isolate = isolate;
+    }
+    file.enter();
     return env_once.?;
 }
 
@@ -141,6 +151,7 @@ fn Probe(comptime U: type, comptime overloads: []const Overload) type {
 }
 
 test "the value at the distinguishing index picks the constructor" {
+    defer file.leave();
     try install("imageData", Probe(ImageDataLike, image_data_overloads).callback);
     _ = try evalInt("imageData(new Uint8ClampedArray(16), 2); 0");
     try testing.expectEqual(@as(i32, 1), chosen);
@@ -151,6 +162,7 @@ test "the value at the distinguishing index picks the constructor" {
 }
 
 test "a constructor whose one argument is a dictionary converts that argument as the dictionary" {
+    defer file.leave();
     try install("offline", Probe(ContextLike, context_overloads).callback);
     _ = try evalInt("offline({ label: 'x'.repeat(64), length: 8 }); 0");
     try testing.expectEqual(@as(i32, 0), chosen);
@@ -160,6 +172,7 @@ test "a constructor whose one argument is a dictionary converts that argument as
 }
 
 test "a conversion that throws is the call's exception, and no other constructor is tried" {
+    defer file.leave();
     try install("text", Probe(TextLike, text_overloads).callback);
     // The number selects text_number; converting its text throws once.
     try testing.expectEqual(@as(i32, 1), try evalInt(
@@ -183,6 +196,7 @@ const picky_overloads = &[_]Overload{
 };
 
 test "no constructor takes the value at the distinguishing index: the arguments before it convert, then a TypeError" {
+    defer file.leave();
     try install("picky", Probe(PickyLike, picky_overloads).callback);
     // Step 11 converts the arguments before the distinguishing index; step
     // 12.20 throws for the Symbol at it.
@@ -201,6 +215,7 @@ test "no constructor takes the value at the distinguishing index: the arguments 
 }
 
 test "too few arguments for any constructor is a TypeError before any conversion" {
+    defer file.leave();
     try install("three", Probe(ContextLike, context_overloads).callback);
     try testing.expectEqual(@as(i32, 0), try evalInt(
         \\let got = 0;

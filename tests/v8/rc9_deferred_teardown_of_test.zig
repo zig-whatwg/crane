@@ -10,19 +10,16 @@
 //! The file shares tests/v8's process: it starts the engine as any file may
 //! (initializeEngine is idempotent) and makes its own agents.
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const protocol = @import("engine");
 const interfaces = @import("interfaces");
 
-var pools_ready = false;
-
+/// What every test here needs started: the engine, the process's hooks and
+/// the standalone runtime (test_process.zig).
 fn setup() !void {
-    try protocol.initializeEngine(.{});
-    if (pools_ready) return;
-    interfaces.process_hooks.startHooksForTest();
-    runtime.initializeRuntime(std.heap.page_allocator);
-    pools_ready = true;
+    test_process.start();
 }
 
 /// A host of the test's own type: not the html AgentHost.

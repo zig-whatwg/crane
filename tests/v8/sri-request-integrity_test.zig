@@ -1,5 +1,6 @@
 //! RequestInit.integrity replaces the cloned request's owned metadata.
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 
@@ -11,8 +12,10 @@ const Trial = struct {
     fn check() !void {
         const a = std.testing.allocator;
         interfaces.process_hooks.startHooksForTest();
-        runtime.initializeRuntime(a);
-        defer runtime.deinitializeRuntime();
+        // A standalone runtime of this test's own, the process's given back
+        // after (test_process.OwnRuntime).
+        const own_runtime = test_process.OwnRuntime.begin(a);
+        defer own_runtime.end();
         var context = try runtime.ContextData.init(a, .{});
         defer context.deinit();
         const Init = @typeInfo(@TypeOf(interfaces.Request.call_constructor)).@"fn".param_types[2].?;

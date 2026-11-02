@@ -20,6 +20,7 @@
 //! with the pending exception set aside (it reports its own exception).
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const engine = @import("engine");
@@ -36,26 +37,32 @@ var last_outcome: Outcome = .not_called;
 /// The reaction's exception, as the reporter was handed it (OWNED).
 var reported: ?engine.Owned = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 /// One isolate and realm for the file, registered with the context manager
 /// as a page's is, the probe installed as a global; V8 is never torn down.
 fn realm() !runtime.Context {
-    if (realm_once) |r| return r;
-    try engine.initializeEngine(.{});
-    interfaces.process_hooks.startHooksForTest();
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    v8.context_manager.init(std.heap.page_allocator) catch {};
-    const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-    r.agent = @ptrCast(i);
-    runtime.initializeRuntime(std.heap.page_allocator);
-    v8.V8Interface(Probe).registerGlobal(i, context, Probe.Meta.name);
-    isolate_once = i;
-    context_once = context;
-    realm_once = r;
-    return r;
+    test_process.start();
+    if (realm_once == null) {
+        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        v8.context_manager.init(std.heap.page_allocator) catch {};
+        const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+        r.agent = @ptrCast(i);
+        v8.V8Interface(Probe).registerGlobal(i, context, Probe.Meta.name);
+        isolate_once = i;
+        context_once = context;
+        realm_once = r;
+        file.isolate = i;
+    }
+    file.enter();
+    return realm_once.?;
 }
 
 fn eval(code: []const u8) !*ffi.Value {
@@ -221,6 +228,7 @@ const Probe = struct {
 };
 
 test "a member's throw survives its reactions: set aside, the reaction runs, the same value is pending again in the scope" {
+    defer file.leave();
     _ = try realm();
     defer clearKept();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
@@ -235,6 +243,7 @@ test "a member's throw survives its reactions: set aside, the reaction runs, the
 }
 
 test "a primitive thrown by the member comes back as itself" {
+    defer file.leave();
     _ = try realm();
     defer clearKept();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
@@ -247,6 +256,7 @@ test "a primitive thrown by the member comes back as itself" {
 }
 
 test "nothing pending: the reactions run and the member's result stands" {
+    defer file.leave();
     _ = try realm();
     defer clearKept();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
@@ -260,6 +270,7 @@ test "nothing pending: the reactions run and the member's result stands" {
 }
 
 test "a reaction's throw is reported, and the member's result stands" {
+    defer file.leave();
     _ = try realm();
     defer clearKept();
     try std.testing.expectEqual(@as(i32, 42), try evalInt(
@@ -273,6 +284,7 @@ test "a reaction's throw is reported, and the member's result stands" {
 }
 
 test "steps that leave an exception pending: it is cleared, never restored in the member's place" {
+    defer file.leave();
     _ = try realm();
     defer clearKept();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
@@ -291,6 +303,7 @@ test "steps that leave an exception pending: it is cleared, never restored in th
 }
 
 test "nested: a reaction's member that throws is set aside and rethrown at its own level, then reported" {
+    defer file.leave();
     _ = try realm();
     defer clearKept();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
@@ -314,6 +327,7 @@ test "nested: a reaction's member that throws is set aside and rethrown at its o
 }
 
 test "outside a binding catch scope a pending exception is NotSupported: the steps do not run, and it stays pending" {
+    defer file.leave();
     _ = try realm();
     defer clearKept();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
@@ -328,6 +342,7 @@ test "outside a binding catch scope a pending exception is NotSupported: the ste
 }
 
 test "outside a scope with nothing pending, the steps run" {
+    defer file.leave();
     _ = try realm();
     defer clearKept();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
@@ -340,6 +355,7 @@ test "outside a scope with nothing pending, the steps run" {
 }
 
 test "the binding finds a member's bracket in its interface's ce_reactions table" {
+    defer file.leave();
     const binding = v8.interface_mod;
     try std.testing.expect(binding.runsCEReactions(interfaces.Element, "set_id"));
     try std.testing.expect(!binding.runsCEReactions(interfaces.Element, "get_id"));

@@ -15,6 +15,7 @@
 //! generated union typedef maps to an interface.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const v8 = @import("v8");
 const runtime = @import("runtime");
 
@@ -25,6 +26,7 @@ fn nameOf(comptime arm: []const u8) ?[]const u8 {
 }
 
 test "arm names map back to the interfaces codegen derived them from" {
+    defer file.leave();
     try std.testing.expectEqualStrings("Request", nameOf("request").?);
     try std.testing.expectEqualStrings("Node", nameOf("node").?);
     try std.testing.expectEqualStrings("ReadableStream", nameOf("readable_stream").?);
@@ -38,11 +40,13 @@ test "arm names map back to the interfaces codegen derived them from" {
 }
 
 test "a typedef of an interface type maps to the interface" {
+    defer file.leave();
     // MessageEventSource's first arm is WindowProxy, a typedef for Window.
     try std.testing.expectEqualStrings("Window", nameOf("window_proxy").?);
 }
 
 test "an arm naming no interface maps to nothing, so it cannot be checked" {
+    defer file.leave();
     // The default: `implementsArm` accepts any platform object for such an
     // arm - what every arm did before the check existed. It must stay rare;
     // the next test is what keeps it so.
@@ -52,6 +56,7 @@ test "an arm naming no interface maps to nothing, so it cannot be checked" {
 }
 
 test "every interface arm of every generated union typedef maps to an interface" {
+    defer file.leave();
     @setEvalBranchQuota(10_000_000);
     const typedefs = conv.generated_typedefs;
     var checked: usize = 0;
@@ -74,6 +79,7 @@ test "every interface arm of every generated union typedef maps to an interface"
 }
 
 test "a union member of a union adds its interfaces to the outer union's" {
+    defer file.leave();
     // WebIDL 2.13.29: the flattened member types of CanvasImageSource
     // include HTMLOrSVGImageElement's members. Codegen keeps that member a
     // nested union; an img given to drawImage() was a TypeError while the
@@ -89,6 +95,7 @@ test "a union member of a union adds its interfaces to the outer union's" {
 }
 
 test "every interface arm of every nested interface union maps to an interface" {
+    defer file.leave();
     @setEvalBranchQuota(10_000_000);
     const typedefs = conv.generated_typedefs;
     var nested: usize = 0;
@@ -129,16 +136,25 @@ const ffi = v8.ffi;
 var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
 
+/// The file's isolate: current only while one of its tests runs
+/// (test_process.FileIsolate).
+var file: test_process.FileIsolate = .{};
+
 fn isolate() !*ffi.Isolate {
-    if (isolate_once) |i| return i;
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    isolate_once = i;
-    context_once = context;
-    return i;
+    test_process.start();
+    if (isolate_once == null) {
+        const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Enter(i);
+        defer ffi.v8_Isolate_Exit(i);
+        _ = ffi.v8_HandleScope_New(i);
+        const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
+        ffi.v8_Context_Enter(context);
+        isolate_once = i;
+        context_once = context;
+        file.isolate = i;
+    }
+    file.enter();
+    return isolate_once.?;
 }
 
 fn run(i: *ffi.Isolate, source: []const u8) !*ffi.Value {
@@ -150,6 +166,7 @@ fn run(i: *ffi.Isolate, source: []const u8) !*ffi.Value {
 }
 
 test "a function given to a union with no callback arm is the string it stringifies to" {
+    defer file.leave();
     const i = try isolate();
     const value = try run(i, "(function input() {})");
     defer ffi.v8_Value_Dispose(value);
@@ -161,6 +178,7 @@ test "a function given to a union with no callback arm is the string it stringif
 }
 
 test "a function given to a union with a callback arm is the callback" {
+    defer file.leave();
     const i = try isolate();
     const value = try run(i, "(function handler() {})");
     defer ffi.v8_Value_Dispose(value);
@@ -191,6 +209,7 @@ fn initTestingRealm(data: *runtime.ContextData) !void {
 }
 
 test "a Deferred's settled cell is allocated, settled and freed with the Deferred" {
+    defer file.leave();
     var data: runtime.ContextData = undefined;
     try initTestingRealm(&data);
     defer data.deinit();
@@ -209,6 +228,7 @@ test "a Deferred's settled cell is allocated, settled and freed with the Deferre
 }
 
 test "copies of a Deferred share its cell, and deinitResolverOnly frees it too" {
+    defer file.leave();
     var data: runtime.ContextData = undefined;
     try initTestingRealm(&data);
     defer data.deinit();
@@ -242,7 +262,7 @@ const protocol = @import("engine");
 /// once for the file and, like V8 here, never torn down; and the hooks a
 /// Blob installs (dom.blob_bytes), which installing again leaves as they are.
 fn ensurePools() void {
-    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.page_allocator);
+    test_process.start();
     interfaces.process_hooks.startHooksForTest();
 }
 
@@ -276,6 +296,7 @@ fn blobPartsOf(realm: runtime.Context, source: []const u8, endings: Endings) ![]
 }
 
 test "a BlobPart is a buffer source's bytes, or else the USVString it converts to" {
+    defer file.leave();
     var data: runtime.ContextData = undefined;
     try initTestingRealm(&data);
     defer data.deinit();
@@ -288,6 +309,7 @@ test "a BlobPart is a buffer source's bytes, or else the USVString it converts t
 }
 
 test "a sequence<BlobPart> is any iterable, and a value with no @@iterator is a TypeError" {
+    defer file.leave();
     var data: runtime.ContextData = undefined;
     try initTestingRealm(&data);
     defer data.deinit();
@@ -304,6 +326,7 @@ test "a sequence<BlobPart> is any iterable, and a value with no @@iterator is a 
 }
 
 test "endings: native converts a string part's line endings, and never a buffer's" {
+    defer file.leave();
     var data: runtime.ContextData = undefined;
     try initTestingRealm(&data);
     defer data.deinit();
@@ -322,6 +345,7 @@ fn fulfillmentOf(promise: runtime.JSValue) !*ffi.Value {
 }
 
 test "Blob.text() is the UTF-8 decode of its bytes: the BOM stripped, an invalid byte U+FFFD" {
+    defer file.leave();
     var data: runtime.ContextData = undefined;
     try initTestingRealm(&data);
     defer data.deinit();
@@ -336,6 +360,7 @@ test "Blob.text() is the UTF-8 decode of its bytes: the BOM stripped, an invalid
 }
 
 test "Blob.arrayBuffer() and bytes() are fulfilled with a copy of every byte" {
+    defer file.leave();
     var data: runtime.ContextData = undefined;
     try initTestingRealm(&data);
     defer data.deinit();
@@ -375,14 +400,17 @@ fn expectNoHandleLeft(comptime method: fn (*runtime.Instance) anyerror!runtime.J
 }
 
 test "Blob.text() leaves no engine handle behind" {
+    defer file.leave();
     try expectNoHandleLeft(interfaces.Blob.call_text);
 }
 
 test "Blob.arrayBuffer() leaves no engine handle behind" {
+    defer file.leave();
     try expectNoHandleLeft(interfaces.Blob.call_arrayBuffer);
 }
 
 test "Blob.bytes() leaves no engine handle behind" {
+    defer file.leave();
     try expectNoHandleLeft(interfaces.Blob.call_bytes);
 }
 
@@ -398,6 +426,7 @@ test "Blob.bytes() leaves no engine handle behind" {
 const Response = interfaces.Response;
 
 test "Response.arrayBuffer(), bytes() and text() leave no engine handle behind" {
+    defer file.leave();
     var data: runtime.ContextData = undefined;
     try initTestingRealm(&data);
     defer data.deinit();
@@ -419,6 +448,7 @@ test "Response.arrayBuffer(), bytes() and text() leave no engine handle behind" 
 }
 
 test "Response.arrayBuffer() of a null body is fulfilled with an empty ArrayBuffer" {
+    defer file.leave();
     var data: runtime.ContextData = undefined;
     try initTestingRealm(&data);
     defer data.deinit();
