@@ -11,7 +11,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
-const clock = @import("clock");
+const platform = @import("platform");
 const hr_time = @import("hr_time");
 const idle_periods = @import("dom").idle_periods;
 const IdleDeadline = interfaces.IdleDeadline;
@@ -33,6 +33,10 @@ pub const InternalState = struct {
     /// period's deadline only ever comes earlier - a timer that brought it
     /// forward and then ran must not move it back.
     earliest_ns: i64,
+    /// The clock its idle period was measured on: its Browser's, as the
+    /// event loop's (html.platform_state.clockOf; a virtual clock stands
+    /// still while the callback runs, as under Chromium's MOCK_TIME).
+    clock: platform.BrowserClock = .real,
 };
 
 /// The hooks this type owns (src/dom), installed once, at process start,
@@ -76,6 +80,7 @@ fn createDeadline(realm: runtime.Context, deadline: idle_periods.Deadline) anyer
             .period => |period| period.end_ns,
             .timed_out => |at| at,
         },
+        .clock = @import("html").platform_state.clockOf(realm),
     };
     instance.getState(State).own._internal = internal;
     return instance;
@@ -99,7 +104,7 @@ pub fn call_timeRemaining(instance: *runtime.Instance) anyerror!typedefs.DOMHigh
     const internal = getInternal(instance) orelse return 0;
     // 1. "Let now be a DOMHighResTimeStamp representing current high
     // resolution time in milliseconds."
-    const now: i64 = @intCast(clock.monotonicNanos());
+    const now: i64 = @intCast(internal.clock.monotonicNow().ns);
     // 2. "Let deadline be the result of calling IdleDeadline's get deadline
     // time algorithm." An idle period's is computeDeadline, asked again
     // now: a timer or an animation frame requested since brings it forward.
