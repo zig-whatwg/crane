@@ -173,6 +173,11 @@ const AgentRecord = struct {
     /// freed with the record (forgetAgent). Every Window realm ends before
     /// its agent, so it is empty by then.
     window_realms: protocol_realms.WindowRealms = .empty,
+    /// The agent's Window realms whose end is under way (protocol_realms.
+    /// endRealm's re-entrancy guard): a stack of nodes on the endRealm
+    /// frames' own stacks, innermost first. Read and written on the agent's
+    /// own thread only, its end included. It was a `threadlocal`.
+    ending_window_realms: ?*const protocol_realms.EndingRealm = null,
     /// [webassembly_streaming]: the compilations handed to the host's
     /// compilePotentialWebAssemblyResponse that it has not ended
     /// (protocol_webassembly.zig); the agent's end ends and frees them,
@@ -259,6 +264,17 @@ pub fn recordOf(isolate: *ffi.Isolate) ?*AgentRecord {
     defer std.Io.Threaded.mutexUnlock(&agents_lock);
     const record = agents.get(isolate) orelse return null;
     return if (record.ending) null else record;
+}
+
+/// The stack of the agent's Window realms whose end is under way
+/// (`AgentRecord.ending_window_realms`), until the agent's record goes -
+/// through its end too; null for an isolate createAgent did not make. Called
+/// on the agent's own thread only.
+pub fn endingWindowRealmsOf(isolate: *ffi.Isolate) ?*?*const protocol_realms.EndingRealm {
+    std.Io.Threaded.mutexLockUncancelable(&agents_lock);
+    defer std.Io.Threaded.mutexUnlock(&agents_lock);
+    const record = agents.get(isolate) orelse return null;
+    return &record.ending_window_realms;
 }
 
 /// The realms of the agent whose isolate this is (context_manager.Realms),

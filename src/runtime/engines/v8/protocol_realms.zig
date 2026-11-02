@@ -692,15 +692,25 @@ fn bindWindowToGlobal(
     }
 }
 
-/// A realm whose end is under way on this thread: a stack, one node per
-/// destroyWindowRealm frame, innermost first.
-const EndingRealm = struct {
+/// A Window realm whose end is under way: a stack, one node per `endRealm`
+/// frame, innermost first, kept on the realm's agent's record
+/// (protocol_agents.AgentRecord.ending_window_realms). It was a
+/// `threadlocal`; a realm's end, and any end it reaches again, runs on its
+/// agent's thread, in that agent.
+pub const EndingRealm = struct {
     realm: Context,
     next: ?*const EndingRealm,
 };
-threadlocal var ending_realms: ?*const EndingRealm = null;
 
-fn isEnding(realm: Context) bool {
+/// The stack of `realm`'s agent's Window realms whose end is under way - its
+/// agent's own, found while the agent ends too; null for a realm of no agent
+/// createAgent made, which is no Window realm.
+fn endingRealmsOf(realm: Context) ?*?*const EndingRealm {
+    const agent = realm.agent orelse return null;
+    return protocol_agents.endingWindowRealmsOf(@ptrCast(@alignCast(agent)));
+}
+
+fn isEnding(ending_realms: ?*const EndingRealm, realm: Context) bool {
     var node = ending_realms;
     while (node) |n| : (node = n.next) {
         if (n.realm == realm) return true;
@@ -775,10 +785,13 @@ fn hiddenGlobalOf(state: *const WindowRealmState, context: *ffi.Context) ?*ffi.V
 /// Its frames' navigables are destroyed with it: each is detached too, and
 /// stays in this realm's children, so whichever end comes first ends them.
 fn detach(realm: Context, state: *WindowRealmState) void {
-    if (isEnding(realm)) return;
-    const ending: EndingRealm = .{ .realm = realm, .next = ending_realms };
-    ending_realms = &ending;
-    defer ending_realms = ending.next;
+    const stack = endingRealmsOf(realm);
+    if (stack) |top| if (isEnding(top.*, realm)) return;
+    const ending: EndingRealm = .{ .realm = realm, .next = if (stack) |top| top.* else null };
+    if (stack) |top| top.* = &ending;
+    defer if (stack) |top| {
+        top.* = ending.next;
+    };
 
     // A child already detached - its iframe was removed before this realm's
     // document went - is left as it is: it ends when the collector takes it,
@@ -807,13 +820,13 @@ fn detach(realm: Context, state: *WindowRealmState) void {
     // What keeps the realm's objects from now on: its global object. Gone
     // already (a replaced realm's, collected), nothing reaches the realm.
     const global = hiddenGlobalOf(state, context) orelse {
-        ending_realms = ending.next;
+        if (stack) |top| top.* = ending.next;
         return endRealm(realm, end_now);
     };
     defer ffi.v8_Global_Dispose(global);
     const record = std.heap.c_allocator.create(Detached) catch {
         // No record to end it by later: end it now, as before.
-        ending_realms = ending.next;
+        if (stack) |top| top.* = ending.next;
         return endRealm(realm, end_now);
     };
     record.* = .{ .realm = realm, .context = context, .key = key };
@@ -890,10 +903,13 @@ fn endRealm(realm: Context, how: engine.WindowRealmEnd) void {
     // does nothing; the outer one finishes. Blink's
     // LocalWindowProxy::DisposeContext likewise returns unless its lifecycle
     // is still kContextIsInitialized.
-    if (isEnding(realm)) return;
-    const ending: EndingRealm = .{ .realm = realm, .next = ending_realms };
-    ending_realms = &ending;
-    defer ending_realms = ending.next;
+    const stack = endingRealmsOf(realm);
+    if (stack) |top| if (isEnding(top.*, realm)) return;
+    const ending: EndingRealm = .{ .realm = realm, .next = if (stack) |top| top.* else null };
+    if (stack) |top| top.* = &ending;
+    defer if (stack) |top| {
+        top.* = ending.next;
+    };
 
     // Its frames' realms that are still alive end first, the same way: a
     // removed frame's frames are destroyed navigables too.
