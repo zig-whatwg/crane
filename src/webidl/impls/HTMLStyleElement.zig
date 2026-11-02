@@ -157,7 +157,7 @@ fn updateStyleBlock(element: *runtime.Instance) void {
     // ends; an event already queued for it still fires.
     const previous_load = internal.load;
     internal.load = 0;
-    defer if (previous_load != 0) style_sheet_loading.abandon(previous_load);
+    defer if (previous_load != 0) style_sheet_loading.abandon(element, previous_load);
     removeSheet(element, internal);
     // 3. If element is not connected, then return.
     if (!(interfaces.Node.get_isConnected(element) catch false)) return;

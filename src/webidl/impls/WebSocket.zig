@@ -314,12 +314,12 @@ pub fn installHooks() void {
 /// cached, "websocket") FAIL/PASS/FAIL. Positions: mozilla/standards-
 /// positions#1390 (leaning positive), WebKit/standards-positions#648 (open).
 fn failForBfcache(realm: runtime.Context) void {
-    var i = live_sockets.items.len;
+    const sockets = realm.objects(.web_sockets);
+    var i = sockets.items.len;
     while (i > 0) {
         i -= 1;
-        if (i >= live_sockets.items.len) continue;
-        const socket = live_sockets.items[i];
-        if (socket.ctx != realm) continue;
+        if (i >= sockets.items.len) continue;
+        const socket: *runtime.Instance = @ptrCast(@alignCast(sockets.items[i]));
         const internal = getInternal(socket) orelse continue;
         if (internal.pump_done) continue;
         const connection = internal.connection orelse continue;
@@ -433,16 +433,16 @@ fn releasePendingActivity(instance: *runtime.Instance) void {
     engine.releasePlatformObject(instance);
 }
 
-/// Every WebSocket on this thread, from its constructor to its deinit: the
-/// sockets "make disappear" reaches (`makeDisappearIn`).
-threadlocal var live_sockets: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+// Every WebSocket is on its realm's list of sockets, from its constructor
+// to its deinit (runtime.ContextData objects(.web_sockets)): the sockets
+// "make disappear" reaches (`makeDisappearIn`) - "each WebSocket object
+// webSocket whose relevant global object is window", a realm's. It was one
+// list per thread, every realm's sockets in it, never given back.
 
+/// `instance` is gone from its realm's list; the list's memory goes with
+/// its last socket.
 fn forgetSocket(instance: *runtime.Instance) void {
-    for (live_sockets.items, 0..) |socket, i| {
-        if (socket != instance) continue;
-        _ = live_sockets.swapRemove(i);
-        return;
-    }
+    instance.ctx.forgetObject(.web_sockets, instance);
 }
 
 /// HTML "unloading document cleanup steps" step 2: "For each WebSocket object
@@ -461,12 +461,12 @@ fn forgetSocket(instance: *runtime.Instance) void {
 pub fn makeDisappearIn(realm: runtime.Context) void {
     var affected = false;
     // Backwards: nothing here frees a socket, but stay safe if it did.
-    var i = live_sockets.items.len;
+    const sockets = realm.objects(.web_sockets);
+    var i = sockets.items.len;
     while (i > 0) {
         i -= 1;
-        if (i >= live_sockets.items.len) continue;
-        const socket = live_sockets.items[i];
-        if (socket.ctx != realm) continue;
+        if (i >= sockets.items.len) continue;
+        const socket: *runtime.Instance = @ptrCast(@alignCast(sockets.items[i]));
         if (makeDisappear(socket)) affected = true;
     }
     if (affected) @import("dom").bfcache.makeUnsalvageableIn(realm, .websocket);
@@ -1104,8 +1104,9 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
     // worker.) Released by the close task, and by deinit.
     engine.keepPlatformObjectAlive(instance);
     internal.kept_alive = true;
-    live_sockets.append(std.heap.page_allocator, instance) catch {};
-    // Its document's end makes it disappear (`makeDisappearIn`).
+    // Its document's end makes it disappear (`makeDisappearIn`): its realm
+    // keeps it on its list of sockets.
+    instance.ctx.addObject(.web_sockets, instance) catch {};
 
     return instance;
 }
