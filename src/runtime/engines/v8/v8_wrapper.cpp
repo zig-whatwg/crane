@@ -11066,15 +11066,15 @@ extern "C" void v8_Context_GlobalHandle_Dispose(Global<Context>* handle) {
 /// Global<Context>* it may read during the call; returns a Global<Context>*
 /// of the new context, or null.
 typedef void* (*ShadowRealmContextDispatch)(void* initiator_context);
-// process-wide: the one Zig dispatcher (shadow_realm.shadowRealmContextCallback) every agent's isolate calls, finding the agent's ShadowRealm data by isolate; written once at process start (protocol_agents.initializeEngine, before any agent's thread exists), read-only after. It was a heap record every createAgent rewrote, on whatever thread made the agent.
-static ShadowRealmContextDispatch g_shadow_realm_dispatch = nullptr;
+// process-wide: the one Zig dispatcher (shadow_realm.shadowRealmContextCallback) every agent's isolate calls, finding the agent's ShadowRealm data by isolate; written at process start (protocol_agents.initializeEngine, before any agent's thread exists). It was a heap record every createAgent rewrote, on whatever thread made the agent. Atomic: a test starts the engine again on its own thread while another Browser's isolate reads it (ThreadSanitizer beside the many-Browsers variant's busy Browser, lane tsanfix1), storing the same function.
+static std::atomic<ShadowRealmContextDispatch> g_shadow_realm_dispatch{nullptr};
 
 /// V8 internal callback for ShadowRealm context creation
 /// This is called by V8 when JavaScript code executes `new ShadowRealm()`
 static MaybeLocal<Context> V8HostCreateShadowRealmContextCallback(Local<Context> initiator_context) {
     Isolate* isolate = initiator_context->GetIsolate();
     void* result = nullptr;
-    if (ShadowRealmContextDispatch dispatch = g_shadow_realm_dispatch) {
+    if (ShadowRealmContextDispatch dispatch = g_shadow_realm_dispatch.load(std::memory_order_acquire)) {
         // The initiator, for Zig to read during the call.
         Global<Context>* initiator_global = new Global<Context>(isolate, initiator_context);
         result = dispatch(initiator_global);
@@ -12073,7 +12073,7 @@ extern "C" {
 /// agent, which with agents on their own threads would be concurrent writes
 /// of one global.
 void v8_SetShadowRealmContextDispatcher(ShadowRealmContextDispatch dispatch) {
-    g_shadow_realm_dispatch = dispatch;
+    g_shadow_realm_dispatch.store(dispatch, std::memory_order_release);
 }
 
 /// Let `isolate` make ShadowRealms (HostCreateShadowRealmContextCallback,
@@ -14850,8 +14850,8 @@ struct CrossOriginDispatch {
 
 namespace {
 
-// process-wide: the adapter's one dispatch table (cross_origin.zig), the same for every agent; written once at process start (protocol_agents.initializeEngine, before any agent thread exists), read-only after.
-const CrossOriginDispatch* g_cross_origin = nullptr;
+// process-wide: the adapter's one dispatch table (cross_origin.zig), the same for every agent; written at process start (protocol_agents.initializeEngine, before any agent thread exists). Atomic, as g_shadow_realm_dispatch: a test starts the engine again on its own thread while another Browser reads it (lane tsanfix1).
+std::atomic<const CrossOriginDispatch*> g_cross_origin{nullptr};
 
 /// Which object an interceptor serves: its handler configuration's data.
 constexpr int32_t kCrossOriginWindow = 0;
@@ -14867,7 +14867,7 @@ int32_t CrossOriginKindOf(Local<Value> data) {
 }
 
 void ThrowCrossOriginSecurityError(Isolate* isolate) {
-    const CrossOriginDispatch* dispatch = g_cross_origin;
+    const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
     if (dispatch && dispatch->throw_security_error) {
         dispatch->throw_security_error(isolate);
         if (isolate->HasPendingException()) return;
@@ -14893,7 +14893,7 @@ bool CrossOriginAccessCheck(Local<Context> accessing_context, Local<Object> acce
     // context, but asks it on every access to a Location.
     Local<Context> creation;
     if (accessed_object->GetCreationContext(isolate).ToLocal(&creation) && creation == accessing_context) return true;
-    const CrossOriginDispatch* dispatch = g_cross_origin;
+    const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
     // No host to ask (an engine no host started): every realm reaches every
     // other, as before access checks existed.
     if (!dispatch || !dispatch->same_origin) return true;
@@ -14920,7 +14920,7 @@ void CrossOriginFailedAccessCheck(Local<Object> target, AccessType type, Local<V
 
 /// `kind`'s CrossOriginProperties entry named `name`, if any.
 const CrossOriginMember* FindCrossOriginMember(Isolate* isolate, int32_t kind, Local<Name> name, size_t* index_out) {
-    const CrossOriginDispatch* dispatch = g_cross_origin;
+    const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
     if (!dispatch || !name->IsString()) return nullptr;
     const CrossOriginMember* members = kind == kCrossOriginLocation ? dispatch->location_members : dispatch->window_members;
     size_t count = kind == kCrossOriginLocation ? dispatch->location_member_count : dispatch->window_member_count;
@@ -15036,7 +15036,7 @@ Local<Object> DataDescriptor(Isolate* isolate, Local<Context> context, Local<Val
 
 /// W's named child navigable `name` (7.2.3.5 step 6), as a WindowProxy.
 bool CrossOriginNamedChild(Isolate* isolate, Local<Object> holder, Local<Name> name, Local<Value>* out) {
-    const CrossOriginDispatch* dispatch = g_cross_origin;
+    const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
     if (!dispatch || !dispatch->child_named || !name->IsString()) return false;
     void* window = CrossOriginPlatformObject(isolate, holder);
     if (!window) return false;
@@ -15217,7 +15217,7 @@ Intercepted CrossOriginNamedDefiner(Local<Name> name, const PropertyDescriptor& 
 /// ([[HideFromKeys]]); the indices are the indexed enumerator's.
 void CrossOriginNamedEnumerator(const PropertyCallbackInfo<Array>& info) {
     Isolate* isolate = info.GetIsolate();
-    const CrossOriginDispatch* dispatch = g_cross_origin;
+    const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
     int32_t kind = CrossOriginKindOf(info.Data());
     std::vector<Local<Value>> keys;
     if (dispatch) {
@@ -15241,7 +15241,7 @@ void CrossOriginNamedEnumerator(const PropertyCallbackInfo<Array>& info) {
 /// child navigable's WindowProxy, else a SecurityError. A Location has no
 /// cross-origin indexed property.
 Intercepted CrossOriginIndexedGetter(uint32_t index, const PropertyCallbackInfo<Value>& info) {
-    const CrossOriginDispatch* dispatch = g_cross_origin;
+    const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
     if (CrossOriginKindOf(info.Data()) == kCrossOriginWindow && dispatch && dispatch->child_at) {
         if (dispatch->child_at(index, &info) == Intercepted::kYes) return Intercepted::kYes;
         if (info.GetIsolate()->HasPendingException()) return Intercepted::kYes;
@@ -15255,7 +15255,7 @@ Intercepted CrossOriginIndexedGetter(uint32_t index, const PropertyCallbackInfo<
 /// [[Configurable]]: true }, else a SecurityError.
 Intercepted CrossOriginIndexedDescriptor(uint32_t index, const PropertyCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
-    const CrossOriginDispatch* dispatch = g_cross_origin;
+    const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
     if (CrossOriginKindOf(info.Data()) == kCrossOriginWindow && dispatch && dispatch->child_at) {
         if (dispatch->child_at(index, &info) == Intercepted::kYes) {
             Local<Value> child = info.GetReturnValue().Get();
@@ -15270,7 +15270,7 @@ Intercepted CrossOriginIndexedDescriptor(uint32_t index, const PropertyCallbackI
 
 Intercepted CrossOriginIndexedQuery(uint32_t index, const PropertyCallbackInfo<Integer>& info) {
     Isolate* isolate = info.GetIsolate();
-    const CrossOriginDispatch* dispatch = g_cross_origin;
+    const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
     if (CrossOriginKindOf(info.Data()) == kCrossOriginWindow && dispatch && dispatch->child_count) {
         void* window = CrossOriginPlatformObject(isolate, info.HolderV2());
         if (window && index < dispatch->child_count(window)) {
@@ -15308,7 +15308,7 @@ Intercepted CrossOriginIndexedDefiner(uint32_t index, const PropertyDescriptor& 
 /// document-tree child navigables. A Location has none.
 void CrossOriginIndexedEnumerator(const PropertyCallbackInfo<Array>& info) {
     Isolate* isolate = info.GetIsolate();
-    const CrossOriginDispatch* dispatch = g_cross_origin;
+    const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
     uint32_t count = 0;
     if (CrossOriginKindOf(info.Data()) == kCrossOriginWindow && dispatch && dispatch->child_count) {
         if (void* window = CrossOriginPlatformObject(isolate, info.HolderV2())) count = dispatch->child_count(window);
@@ -15328,7 +15328,7 @@ extern "C" {
 /// The adapter's Zig half, once, at process start (engine.initializeEngine),
 /// before any agent's thread runs.
 void v8_SetCrossOriginDispatch(const CrossOriginDispatch* dispatch) {
-    g_cross_origin = dispatch;
+    g_cross_origin.store(dispatch, std::memory_order_release);
 }
 
 /// Give `tpl`'s instances the cross-origin access check and interceptors:
