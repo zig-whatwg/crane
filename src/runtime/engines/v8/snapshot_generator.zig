@@ -85,11 +85,11 @@ pub fn main(init: std.process.Init) !void {
     // - --hash-seed=0: Deterministic hash seed for rehashable snapshots
     // - --predictable: Forces deterministic behavior (disables random GC, etc.)
     //
-    // CRITICAL: These MUST be set BEFORE v8_Platform_Initialize() is called,
-    // and they MUST match the flags used in snapshot_loader.zig for loading.
+    // CRITICAL: These MUST be set BEFORE the platform starts, and they MUST
+    // match the flags used in snapshot_loader.zig for loading. One
+    // v8_Platform_Start sets them and starts it (initializePlatformForSnapshots).
     log(allocator, io, "Step 1: Initializing V8 platform...\\n", .{});
-    v8.ffi.v8_SetFlagsFromString(v8.snapshot_loader.SNAPSHOT_V8_FLAGS);
-    v8.ffi.v8_Platform_Initialize();
+    v8.snapshot_loader.initializePlatformForSnapshots();
     log(allocator, io, "  V8 platform initialized\n\n", .{});
 
     // Step 2: Register all external references and create SnapshotCreator

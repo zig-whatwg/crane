@@ -34,9 +34,20 @@
 //! test blocks.
 
 const std = @import("std");
+const engine = @import("engine");
 const v8 = @import("v8");
 const registry = v8.template_registry;
 const ffi = v8.ffi;
+
+/// The engine started as a process starts it (engine.initializeEngine, from
+/// crane.Process.init), before any isolate here. Each test does it: any one
+/// of them may be the first V8 user in its process (one test per process
+/// under the launcher), and none may count on an earlier file having done
+/// it. The two-thread test crashed alone without it, its threads racing to
+/// start V8 (tests/v8/platform_start_once_test.zig).
+fn startEngine() !void {
+    try engine.initializeEngine(.{});
+}
 
 /// Number of generated WebIDL interfaces, as of the Phase 5 exit criterion.
 ///
@@ -69,6 +80,8 @@ fn freeNames(allocator: std.mem.Allocator, names: [][]u8) void {
 }
 
 test "PHASE 5 EXIT: two isolates hold a full interface template set simultaneously" {
+    try startEngine();
+    defer engine.deinitializeEngine();
     const allocator = std.testing.allocator;
     const isolate_a = try newIsolate();
     defer endIsolate(isolate_a);
@@ -107,6 +120,8 @@ test "PHASE 5 EXIT: two isolates hold a full interface template set simultaneous
 test "a third isolate that registered nothing finds nothing" {
     // Without this, the test above would still pass if lookup quietly fell back to
     // "any template with this name" - which is the old bug wearing a different hat.
+    try startEngine();
+    defer engine.deinitializeEngine();
     const isolate_a = try newIsolate();
     defer endIsolate(isolate_a);
     const isolate_c = try newIsolate();
@@ -125,6 +140,8 @@ test "re-registering an interface replaces only that isolate's entry" {
     // The other half of per-(interface, isolate) keying. A genuine re-registration
     // must update in place: appending instead would grow the registry across a run
     // until it fills and starts dropping templates.
+    try startEngine();
+    defer engine.deinitializeEngine();
     const isolate_a = try newIsolate();
     defer endIsolate(isolate_a);
     const isolate_b = try newIsolate();
@@ -156,6 +173,8 @@ test "isolates alive at once each keep a full set, however many there are" {
     // XMLHttpRequestEventTarget.prototype's [[Prototype]] was not that realm's
     // EventTarget.prototype (xhr/idlharness.any.worker.html 151/160 after it,
     // 153/160 alone).
+    try startEngine();
+    defer engine.deinitializeEngine();
     const allocator = std.testing.allocator;
     const names = try interfaceNames(allocator);
     defer freeNames(allocator, names);
@@ -182,6 +201,8 @@ test "an isolate's registry ends with it" {
     // that makes and ends isolates one after another never fills anything.
     // `forgetIsolateForTest` is clearForIsolate without disposing the
     // synthetic templates.
+    try startEngine();
+    defer engine.deinitializeEngine();
     for (0..20) |k| {
         const isolate = try newIsolate();
         defer ffi.v8_Isolate_Dispose(isolate);
@@ -225,6 +246,10 @@ const Churn = struct {
 test "isolates made and ended on two threads at once keep their own sets" {
     // Every Browser and every worker runs its agents on a thread of its own:
     // isolates are made, read and ended concurrently, and no lock is shared.
+    // The process's own start comes first, as in a process: these threads
+    // make isolates, they do not start V8.
+    try startEngine();
+    defer engine.deinitializeEngine();
     var a: Churn = .{ .base = 0x10_0000_0000, .rounds = 100 };
     var b: Churn = .{ .base = 0x20_0000_0000, .rounds = 100 };
     const ta = try std.Thread.spawn(.{}, Churn.run, .{&a});
