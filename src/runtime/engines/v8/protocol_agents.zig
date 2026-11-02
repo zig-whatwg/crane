@@ -203,6 +203,12 @@ const AgentRecord = struct {
     /// end; its storage goes with the record (removeAgent). It was a
     /// `threadlocal`, every agent's on the thread in one set.
     callbacks: callback_registry.Live = .empty,
+    /// The agent's module records alive, by identity hash
+    /// (protocol_modules.Records), for the callbacks V8 hands a module - a
+    /// Link's referrer, import.meta. Read and written on the agent's own
+    /// thread only, through its end; its storage goes with the record. It
+    /// was a `threadlocal`, every agent's on the thread in one map.
+    modules: protocol_modules.Records = .empty,
     /// The agent is ending (`endAgent`): its hooks are forgotten, and
     /// `recordOf` no longer finds it - nothing reaches the host from here on,
     /// and nothing is made for the agent - while its realms end, which still
@@ -293,6 +299,17 @@ pub fn callbacksOf(isolate: *ffi.Isolate) ?*callback_registry.Live {
     defer std.Io.Threaded.mutexUnlock(&agents_lock);
     const record = agents.get(isolate) orelse return null;
     return &record.callbacks;
+}
+
+/// The module records of the agent whose isolate this is
+/// (protocol_modules.Records), until the agent's record goes - through its
+/// end; null for an isolate createAgent did not make. Called on the agent's
+/// own thread only.
+pub fn modulesOf(isolate: *ffi.Isolate) ?*protocol_modules.Records {
+    std.Io.Threaded.mutexLockUncancelable(&agents_lock);
+    defer std.Io.Threaded.mutexUnlock(&agents_lock);
+    const record = agents.get(isolate) orelse return null;
+    return &record.modules;
 }
 
 /// The realms of the agent whose isolate this is (context_manager.Realms),
@@ -695,6 +712,7 @@ fn removeAgent(isolate: *ffi.Isolate) void {
     };
     std.debug.assert(record.ending);
     callback_registry.endAgent(&record.callbacks);
+    protocol_modules.endAgent(&record.modules);
     std.heap.c_allocator.destroy(record);
 }
 

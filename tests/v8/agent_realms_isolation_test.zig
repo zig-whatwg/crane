@@ -264,3 +264,44 @@ fn callbacksAreTheAgentsOwn() !void {
 test "an agent tracks the callback wrappers of its realms, and no other agent's" {
     try runOnThread(callbacksAreTheAgentsOwn);
 }
+
+/// How many module records `agent` keeps (protocol_modules.Records, on its
+/// record): one per distinct identity hash, which is one per record here.
+fn modulesKeptBy(agent: *protocol.Agent) usize {
+    const records = v8.protocol_agents.modulesOf(@ptrCast(@alignCast(agent))) orelse return 0;
+    var count: usize = 0;
+    var lists = records.valueIterator();
+    while (lists.next()) |list| count += list.items.len;
+    return count;
+}
+
+/// A module record parsed in one agent's realm is kept by that agent, and
+/// by no other agent on the thread; releasing it takes it off.
+fn modulesAreTheAgentsOwn() !void {
+    const first = try newAgent();
+    defer protocol.destroyAgent(first);
+    const first_realm = try windowRealmIn(first);
+    defer protocol.destroyWindowRealm(first_realm, .global_detached);
+    const second = try newAgent();
+    defer protocol.destroyAgent(second);
+    const second_realm = try workerRealmIn(second);
+    defer protocol.destroyWorkerRealm(second_realm, null, null);
+
+    const before_first = modulesKeptBy(first);
+    const parsed = try protocol.parseModule(second_realm, "export const x = 1;", .{}, "https://example.test/m.js", null);
+    const record = switch (parsed) {
+        .record => |r| r,
+        .parse_error => |e| {
+            e.release();
+            return error.ParseFailed;
+        },
+    };
+    try std.testing.expectEqual(@as(usize, 1), modulesKeptBy(second));
+    try std.testing.expectEqual(before_first, modulesKeptBy(first));
+    protocol.releaseModuleRecord(record);
+    try std.testing.expectEqual(@as(usize, 0), modulesKeptBy(second));
+}
+
+test "an agent keeps the module records of its realms, and no other agent's" {
+    try runOnThread(modulesAreTheAgentsOwn);
+}
