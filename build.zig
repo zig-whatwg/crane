@@ -876,29 +876,10 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     .{ .name = "tests-html", .config = .{ .batch = 1, .slow = &html_slow } },
     .{ .name = "tests-service_worker", .config = .{ .batch = 1 } },
     .{ .name = "tests-websocket", .config = .{ .batch = 1 } },
-    // TEMPORARY: tests-v8 keeps the build runner's old shape - one process,
-    // index order - because its tests depend on order (lane tlaunch2,
-    // 2026-11-01; the bug list, every test with its seed and reason:
-    // docs/testing/tests-v8-order-findings-2026-11-01.tsv). Remove this row's batch and
-    // shuffle when `zig build test-launch -Dspec=v8 -Dlaunch-batch=1` passes:
-    // - a process per test (batch 1, seed 0x5eed11): 22 tests FAIL alone -
-    //   context_counter_test (16), page_realm_operations_test (4) and
-    //   refcount_wrapper_link_test (2) count handles or references and pass
-    //   only after an earlier test has made the engine's lazily created ones
-    //   (32 bytes of global handles in a fresh process) - and
-    //   template_registry_isolation_test crashes alone (its two threads race
-    //   ffi.v8_Isolate_New's lazy V8 platform initialization: the test skips
-    //   engine start-up, and v8_Platform_Initialize checks a plain bool);
-    // - the whole suite shuffled in one process (batch 0, seeds 0x5eed01-03):
-    //   52-60 ORDER-DEPENDENT a run, 162 tests over the three; 124 of the 221
-    //   non-passes panic "a platform object made in a realm no Browser owns, with no
-    //   standalone runtime" after another test of the same process
-    //   (urlpattern_*, page_realm_operations, callback_argument_borrowed,
-    //   per_call_handle, ...).
-    // Every other suite passed all four runs. Until these are fixed, any
-    // shuffled order fails some of them; -Dlaunch-batch=1 and
-    // -Dlaunch-shuffle=true still run it the other ways.
-    .{ .name = "tests-v8", .config = .{ .batch = 0, .shuffle = false } },
+    // tests-v8 ran as one index-order process until lane v8order1
+    // (2026-11-01) made its tests hermetic (tests/v8/test_process.zig; the
+    // order findings it fixed: docs/testing/tests-v8-order-findings-2026-11-01.tsv).
+    .{ .name = "tests-v8", .config = .{ .batch = 1 } },
     .{ .name = "src-browser", .config = .{ .batch = 1 } },
     .{ .name = "test-browser", .config = .{ .batch = 1 } },
     .{ .name = "lib-exports", .config = .{ .batch = 1 } },
