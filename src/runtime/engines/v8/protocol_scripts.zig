@@ -51,10 +51,6 @@ pub fn prepareToRunScript(realm: Context) Error!ScriptScope {
     const scope = try support.enter(realm);
     // 2. (The currently running task's script evaluation environment settings
     // object set is the host event loop's; Crane's records none.)
-    //
-    // The Window whose realm this is is the accessor the impls' cross-origin
-    // checks read while its script runs (context_manager's accessor stack).
-    if (context_manager.getWindowForContext(scope.context())) |window| context_manager.pushAccessorWindow(window);
     prepared_depth += 1;
     return scope;
 }
@@ -63,7 +59,6 @@ pub fn prepareToRunScript(realm: Context) Error!ScriptScope {
 /// prepared.
 pub fn cleanUpAfterRunningScript(scope: ScriptScope) void {
     // 1-2. Remove the realm execution context from the stack.
-    if (context_manager.getWindowForContext(scope.context()) != null) context_manager.popAccessorWindow();
     prepared_depth -|= 1;
     const isolate = scope.isolate;
     ffi.v8_Context_Exit(scope.scope.context);
@@ -88,15 +83,12 @@ pub fn cleanUpAfterRunningScript(scope: ScriptScope) void {
 /// state callback retiring its realm, parser_stable_activity_test's
 /// self-retirement case), and the realm's end disposes the realm's own
 /// handle (context_manager.retireEntry) - which the clean up after would
-/// otherwise exit through. Whether an accessor Window was pushed is
-/// recorded now, for the same reason: the clean up reads nothing of the
-/// realm.
+/// otherwise exit through. The clean up reads nothing of the realm.
 pub const JobScope = struct {
     isolate: *ffi.Isolate,
     /// OWNED: disposed by cleanUpAfterRunningJob.
     context: *ffi.Context,
     handle_scope: *ffi.HandleScope,
-    pushed_accessor: bool,
 };
 
 /// `prepareToRunScript` for the promise job running now, in its realm
@@ -110,10 +102,8 @@ pub fn prepareToRunJob(isolate: *ffi.Isolate) ?JobScope {
         return null;
     };
     ffi.v8_Context_Enter(context);
-    const window = context_manager.getWindowForContext(context);
-    if (window) |w| context_manager.pushAccessorWindow(w);
     prepared_depth += 1;
-    return .{ .isolate = isolate, .context = context, .handle_scope = handle_scope, .pushed_accessor = window != null };
+    return .{ .isolate = isolate, .context = context, .handle_scope = handle_scope };
 }
 
 /// "Clean up after running script" for a promise job: steps 1-2 only. The
@@ -122,7 +112,6 @@ pub fn prepareToRunJob(isolate: *ffi.Isolate) ?JobScope {
 /// is true, return") - and asking whether the stack is empty costs a stack
 /// walk per job. Reads nothing of the job's realm, which may have ended.
 pub fn cleanUpAfterRunningJob(scope: JobScope) void {
-    if (scope.pushed_accessor) context_manager.popAccessorWindow();
     prepared_depth -|= 1;
     ffi.v8_Context_Exit(scope.context);
     ffi.v8_HandleScope_Dispose(scope.handle_scope);
