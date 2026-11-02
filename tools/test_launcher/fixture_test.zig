@@ -40,3 +40,18 @@ test "needs a clean process" {
 test "skips" {
     return error.SkipZigTest;
 }
+
+// The environment the launcher fixes for every test child (child.zig,
+// `test_environment`): it passes only where the child sees exactly that.
+test "sees the fixed environment" {
+    const environ = std.testing.environ;
+    try std.testing.expectEqualStrings("America/Los_Angeles", environ.getPosix("TZ") orelse return error.NoTimeZone);
+    try std.testing.expectEqualStrings("en_US.UTF-8", environ.getPosix("LANG") orelse return error.NoLang);
+    try std.testing.expectEqualStrings("en_US.UTF-8", environ.getPosix("LC_ALL") orelse return error.NoLcAll);
+    for ([_][]const u8{ "http_proxy", "https_proxy", "all_proxy", "no_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY" }) |name| {
+        if (environ.getPosix(name)) |value| {
+            std.debug.print("{s}={s} reached the test\n", .{ name, value });
+            return error.ProxyNotCleared;
+        }
+    }
+}

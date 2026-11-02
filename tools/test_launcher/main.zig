@@ -374,6 +374,11 @@ pub fn main(init: std.process.Init) !void {
 
     var executor = try child_mod.Executor.init(gpa, io, &child_argv, @as(u64, args.timeout_s) * std.time.ns_per_s, jobs);
     defer executor.deinit();
+    // Every test child: the launcher's environment with the time zone and
+    // locale fixed and the proxies cleared (child.testEnvironment).
+    var test_environ = try child_mod.testEnvironment(gpa, init.environ_map);
+    defer test_environ.deinit();
+    executor.environ_map = &test_environ;
     executor.slow = slow;
     executor.slow_factor = args.slow_factor;
     // The build-wide process cap: the given directory, or in server mode one
