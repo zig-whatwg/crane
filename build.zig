@@ -892,17 +892,11 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     .{ .name = "src-browser", .config = .{ .batch = 1 } },
     .{ .name = "test-browser", .config = .{ .batch = 1 } },
     .{ .name = "lib-exports", .config = .{ .batch = 1 } },
-    .{ .name = "tests-css", .config = .{ .slow = &css_slow } },
     .{ .name = "tests-codegen", .config = .{ .slow = &codegen_slow } },
 };
 
 // Slow tests: over 45 s alone on chat.local in Debug (lane tlaunch2,
 // 2026-11-01, four at once); under a full build's load they took up to 3x.
-const css_slow = [_][]const u8{
-    // 95.1 s: an allocation-failure sweep over 128 composite levels. Lane
-    // tfix1 is splitting it.
-    "ci1_image_set_test.test.128 composite image levels parse compute and release at every allocation failure",
-};
 const codegen_slow = [_][]const u8{
     // 82.7 s: every committed interface and mixin module.
     "ce_reactions_emission_test.test.every committed interface and mixin module's table matches its brackets",
