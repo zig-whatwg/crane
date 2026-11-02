@@ -290,12 +290,17 @@ pub const Probe = if (builtin.is_test) struct {
     slots: u64 = 0,
 } else struct {};
 
-/// The monotonic clock every deadline here is read against, in one place:
-/// arming, polling, the next deadline and a suspension's remaining wait
-/// (`remainingMs`).
-fn nowNs() i128 {
-    return clock.monotonicNanos();
-}
+/// The clock a manager's deadlines are read against: the process's
+/// monotonic clock, unless the manager's owner gives it another - a
+/// Browser's (platform.BrowserClock), which the testing platform may make
+/// virtual: then a timer comes due when its owner's event loop moves that
+/// clock to it, not when real time reaches it (Chromium's MOCK_TIME).
+/// `monotonic_now` answers ns; `context` is BORROWED for the manager's life.
+pub const Clock = struct {
+    context: ?*anyopaque = null,
+    /// Null: the process's monotonic clock.
+    monotonic_now: ?*const fn (context: ?*anyopaque) callconv(.c) u64 = null,
+};
 
 pub const NativeTimerManager = struct {
     const Self = @This();
@@ -316,14 +321,23 @@ pub const NativeTimerManager = struct {
     /// (`reserveHeapSlot`).
     heap: std.ArrayListUnmanaged(*Entry) = .empty,
     probe: Probe = .{},
+    /// What every deadline is read against (`nowNs`): arming, polling, the
+    /// next deadline and a suspension's remaining wait (`remainingMs`).
+    clock: Clock = .{},
     next_id: TimerId,
     callback_invoked: bool,
     initialized: bool,
 
     pub fn init(allocator: Allocator) !*Self {
+        return initWithClock(allocator, .{});
+    }
+
+    /// `init`, its deadlines read against `timer_clock` (a Browser's).
+    pub fn initWithClock(allocator: Allocator, timer_clock: Clock) !*Self {
         const self = try allocator.create(Self);
         self.* = .{
             .allocator = allocator,
+            .clock = timer_clock,
             // Start at 1: 0 is the "invalid id" sentinel the API returns on failure.
             .next_id = 1,
             .callback_invoked = false,
@@ -378,7 +392,7 @@ pub const NativeTimerManager = struct {
             .user_data = user_data,
             .drop = drop,
             .id = id,
-            .deadline_ns = nowNs() + @as(i128, @intCast(ms)) * std.time.ns_per_ms,
+            .deadline_ns = self.nowNs() + @as(i128, @intCast(ms)) * std.time.ns_per_ms,
             .heap_index = undefined,
         };
         self.timers.putAssumeCapacityNoClobber(id, entry);
@@ -434,7 +448,7 @@ pub const NativeTimerManager = struct {
         // armed by a callback - its id is past `armed_before` - waits for
         // the next poll however short its timeout. Nothing due can sit
         // behind such a timer at the top: its deadline is at least `now`.
-        const now = nowNs();
+        const now = self.nowNs();
         const armed_before = self.next_id;
         var invoked = false;
 
@@ -527,7 +541,7 @@ pub const NativeTimerManager = struct {
         if (!self.initialized or id == 0) return null;
         // A fired timer left the map before its callback ran (`pollEach`).
         const entry = self.timers.get(id) orelse return null;
-        const now = nowNs();
+        const now = self.nowNs();
         if (entry.deadline_ns <= now) return 0;
         const left_ns: u128 = @intCast(entry.deadline_ns - now);
         return @intCast((left_ns + std.time.ns_per_ms - 1) / std.time.ns_per_ms);
@@ -559,9 +573,26 @@ pub const NativeTimerManager = struct {
         if (self.heap.items.len == 0) return null;
         const first = self.heap.items[0];
         self.noteSlots(1);
-        const now = nowNs();
+        const now = self.nowNs();
         const due_in_ns: i128 = if (first.deadline_ns <= now) 0 else first.deadline_ns - now;
         return @intCast(@divTrunc(due_in_ns, std.time.ns_per_ms));
+    }
+
+    /// When the next live timer is due, exactly: its deadline on the
+    /// manager's clock (ns), or null if none. What an event loop
+    /// fast-forwards a virtual clock to - `getNextTimerDeadline`'s whole
+    /// milliseconds, rounded down, would land short of it.
+    pub fn nextDeadlineNs(self: *Self) ?i128 {
+        if (!self.initialized) return null;
+        if (self.heap.items.len == 0) return null;
+        self.noteSlots(1);
+        return self.heap.items[0].deadline_ns;
+    }
+
+    /// The manager's clock now (ns): its owner's, or the process's.
+    pub fn nowNs(self: *const Self) i128 {
+        const now = self.clock.monotonic_now orelse return clock.monotonicNanos();
+        return now(self.clock.context);
     }
 
     /// -1 = wait forever (nothing scheduled), 0 = do not wait, else millisecond bound.
