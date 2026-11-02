@@ -75,7 +75,6 @@ fn realm() !void {
     const i = try test_agent.open(.{});
     if (test_isolate == null) {
         const context = test_agent.context.?;
-        v8.context_manager.init(std.heap.page_allocator) catch {};
         _ = try v8.context_manager.getOrCreate(context, realm_allocator.allocator());
         test_isolate = i;
         test_context = context;

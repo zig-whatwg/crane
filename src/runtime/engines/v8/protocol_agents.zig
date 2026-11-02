@@ -23,7 +23,6 @@ const isolate_allocator = @import("isolate_allocator.zig");
 const shadow_realm = @import("shadow_realm.zig");
 const intl_binding = @import("intl_binding.zig");
 const observable_array = @import("observable_array.zig");
-const isolate_templates = @import("isolate_templates.zig");
 const context_manager = @import("context_manager.zig");
 /// worker_realm.zig's agent operations.
 const worker_realm = @import("worker_realm.zig");
@@ -131,16 +130,11 @@ const AgentRecord = struct {
     host: ?*anyopaque,
     /// AgentOptions.allocator: the agent's own state.
     allocator: std.mem.Allocator,
-    /// The agent is its thread's host agent: the one whose end takes down
-    /// what the adapter keeps per thread as well as per isolate (`endAgent`).
-    /// Recorded when the agent is made - made with no isolate entered on the
-    /// thread, as a Browser makes its page agent; a worker's is made by its
-    /// owner's script, with the owner's isolate entered - and never
-    /// re-derived. Which isolate is entered when an agent ENDS depends on who
-    /// ends it: a Browser that ends its workers after its page realm has
-    /// exited the page isolate has none entered, and a worker's end read as
-    /// the host's took the thread's context manager and templates down under
-    /// the page.
+    /// DEAD: nothing reads it. It marked the thread's host agent, whose end
+    /// took down what the adapter kept per thread; the adapter keeps nothing
+    /// per thread now (`realms`), and every agent's end is the same. It goes
+    /// with createAgent's two lines that set it once lane detplat1 (which
+    /// holds createAgent) has merged.
     host_agent: bool,
     /// The isolate was restored from the engine's snapshot, whose bytes it
     /// reads in place for its whole life (v8_Isolate_NewFromSnapshot): the
@@ -189,6 +183,19 @@ const AgentRecord = struct {
     /// (wrapper_cache.TeardownHolds). Read and written on the agent's own
     /// thread only; its storage is freed with the record (forgetAgent).
     teardown_holds: @import("wrapper_cache.zig").TeardownHolds = .{},
+    /// The agent's realms (context_manager.Realms): the context manager's
+    /// record of every context it hosts for the agent, live and retired -
+    /// as Blink keeps an isolate's state on its V8PerIsolateData and WebKit
+    /// on its VM's client data. Read and written on the agent's own thread
+    /// only; ended by the agent's end (context_manager.endAgentRealms), which
+    /// frees this agent's realms and no other's. It was a threadlocal, which
+    /// the thread's host agent's end took down whole.
+    realms: context_manager.Realms = .{},
+    /// The agent is ending (`endAgent`): its hooks are forgotten, and
+    /// `recordOf` no longer finds it - nothing reaches the host from here on,
+    /// and nothing is made for the agent - while its realms end, which still
+    /// look their contexts up (`realmsOf`). Then `removeAgent` takes it out.
+    ending: bool = false,
 };
 
 /// The agent's teardown holds (engine.deferTeardowns); null for an isolate
@@ -245,11 +252,26 @@ pub fn liveSnapshotAgents() usize {
 }
 
 /// The hooks of the agent whose isolate this is; null for an isolate
-/// createAgent did not make (a test's own).
+/// createAgent did not make (a test's own), and for an agent whose end has
+/// begun (`AgentRecord.ending`).
 pub fn recordOf(isolate: *ffi.Isolate) ?*AgentRecord {
     std.Io.Threaded.mutexLockUncancelable(&agents_lock);
     defer std.Io.Threaded.mutexUnlock(&agents_lock);
-    return agents.get(isolate);
+    const record = agents.get(isolate) orelse return null;
+    return if (record.ending) null else record;
+}
+
+/// The realms of the agent whose isolate this is (context_manager.Realms),
+/// until the agent's record goes - through the agent's end, while its realms
+/// end; null for an isolate createAgent did not make. They allocate with the
+/// agent's allocator unless a test chose another (context_manager.
+/// useAllocator). Called on the agent's own thread only.
+pub fn realmsOf(isolate: *ffi.Isolate) ?*context_manager.Realms {
+    std.Io.Threaded.mutexLockUncancelable(&agents_lock);
+    defer std.Io.Threaded.mutexUnlock(&agents_lock);
+    const record = agents.get(isolate) orelse return null;
+    if (record.realms.allocator == null) record.realms.allocator = record.allocator;
+    return &record.realms;
 }
 
 /// HostHooks.agentClusterOf for `realm` of the agent whose isolate this is:
@@ -428,23 +450,23 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
 
 /// The end of an agent, before its isolate is disposed: its hooks are
 /// forgotten (no callback reaches the host from here on), what the adapter
-/// keeps for its isolate is released, and its garbage collected twice with a
-/// checkpoint between. The isolate is left not entered, as disposal requires.
+/// keeps for the agent is released - its realms (context_manager), templates
+/// and allocator among it, isolate_lifecycle's steps - and its garbage
+/// collected twice with a checkpoint between. The isolate is left not
+/// entered, as disposal requires.
 ///
-/// The adapter also keeps state per THREAD (the context manager, ShadowRealm
-/// support). The thread's host agent - made with no other isolate entered, as
-/// a Browser's page agent is (`AgentRecord.host_agent`) - takes that down too
-/// (isolate_lifecycle.cleanupAll). Any other agent - a worker's, a test's
-/// second one, one made inside another's script - releases only its own
-/// isolate's, whatever is entered when it ends. An isolate createAgent did not
-/// make is not the host's: the thread's state outlives it rather than going
-/// under whoever still uses it.
+/// Every agent's end is the same, and frees what is the agent's and nothing
+/// else. The adapter kept its context manager per THREAD, and the thread's
+/// host agent - the one made with no isolate entered, as a Browser's page
+/// agent is - took it down at its end, with every realm the thread's other
+/// agents had made (tests/v8/agent_realms_isolation_test.zig). The realms are
+/// the agent's own now (`AgentRecord.realms`), as Blink keeps an isolate's
+/// state on its V8PerIsolateData and WebKit on its VM's client data.
 pub fn endAgent(agent: *Agent) void {
     const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
     ffi.v8_Isolate_CloseForegroundTasks(isolate);
     const record = recordOf(isolate);
     const allocator = if (record) |r| r.allocator else std.heap.c_allocator;
-    const host_agent = if (record) |r| r.host_agent else false;
     const shadow_realms = if (record) |r| r.shadow_realms else null;
     const pattern_matcher = if (record) |r| r.pattern_matcher else null;
     const window_properties = if (record) |r| r.window_properties_template else null;
@@ -485,13 +507,11 @@ pub fn endAgent(agent: *Agent) void {
     // This agent's ShadowRealms, whichever kind of agent it is: they were
     // every agent's once, cleared by whichever host agent ended first.
     if (shadow_realms) |data| shadow_realm.deinitializeShadowRealmSupport(data);
-    if (host_agent) {
-        isolate_lifecycle.cleanupAll(isolate, allocator);
-    } else {
-        // cleanupAll's isolate-scoped steps, without the thread's.
-        isolate_templates.cleanupTemplateStorage(isolate, allocator);
-        isolate_allocator.deinitIsolateAllocator(isolate);
-    }
+    // Its realms - every one still on its record torn down, the retired
+    // ones freed - while the record is still found for them (`realmsOf`),
+    // then its templates and its allocator. Then the record goes.
+    isolate_lifecycle.cleanupAll(isolate, allocator);
+    removeAgent(isolate);
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
     ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
@@ -592,14 +612,19 @@ fn teardownsHeld(isolate: *ffi.Isolate) bool {
     return holds.count != 0;
 }
 
-/// Forget `agent`'s hooks, before its isolate is disposed.
+/// Forget `agent`'s hooks, before its isolate is disposed: from here on
+/// `recordOf` does not find it (`AgentRecord.ending`). The record itself stays
+/// for the agent's realms, which end after this (endAgent), and goes with
+/// `removeAgent`.
 pub fn forgetAgent(agent: *Agent) void {
     const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
     const record = blk: {
         std.Io.Threaded.mutexLockUncancelable(&agents_lock);
         defer std.Io.Threaded.mutexUnlock(&agents_lock);
-        const kv = agents.fetchRemove(isolate) orelse return;
-        break :blk kv.value;
+        const record = agents.get(isolate) orelse return;
+        if (record.ending) return;
+        record.ending = true;
+        break :blk record;
     };
     // This isolate's tracker alone: the dispatcher is every agent's.
     if (record.hooks.promiseRejectionTracker != null) ffi.v8_Isolate_ClearProtocolPromiseRejectCallback(isolate);
@@ -616,6 +641,25 @@ pub fn forgetAgent(agent: *Agent) void {
     if (record.teardown_holds.count != 0) log.err("the agent ended inside {d} teardown hold(s); a walk did not release its engine.holdTeardowns", .{record.teardown_holds.count});
     record.teardown_holds.forgetCaches();
     record.teardown_holds.deinit();
+}
+
+/// The end of `isolate`'s agent record, once its realms have ended
+/// (context_manager.endAgentRealms): taken out of the agents, and freed.
+fn removeAgent(isolate: *ffi.Isolate) void {
+    // endAgentRealms freed the lists and left them empty; a realm made in
+    // the agent after that - by a teardown step - ends here, not with the
+    // record's memory.
+    if (realmsOf(isolate)) |realms| if (realms.contexts.count() != 0 or realms.retired.items.len != 0) {
+        log.err("a realm was made in the agent while it ended; ending it now", .{});
+        context_manager.endAgentRealms(isolate);
+    };
+    const record = blk: {
+        std.Io.Threaded.mutexLockUncancelable(&agents_lock);
+        defer std.Io.Threaded.mutexUnlock(&agents_lock);
+        const kv = agents.fetchRemove(isolate) orelse return;
+        break :blk kv.value;
+    };
+    std.debug.assert(record.ending);
     std.heap.c_allocator.destroy(record);
 }
 

@@ -50,7 +50,6 @@ fn realm() !runtime.Context {
     const i = try test_agent.open(.{});
     if (test_realm == null) {
         const context = test_agent.context.?;
-        v8.context_manager.init(std.heap.page_allocator) catch {};
         const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
         v8.interface_bindings.registerAllInterfaces(i, context);
         test_isolate = i;

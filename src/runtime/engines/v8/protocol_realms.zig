@@ -334,9 +334,7 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     }
 
     // The runtime's realm for the context, recording the host's timers and
-    // event loop (never run here).
-    // (The manager is per thread; its only failure is having been made.)
-    context_manager.init(allocator) catch {};
+    // event loop (never run here), on the agent's record of its realms.
     const realm = context_manager.getOrCreateWithExternalEventLoop(context, options.timer, options.event_loop, allocator) catch
         return error.OperationFailed;
     registered = true;

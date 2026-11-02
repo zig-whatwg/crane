@@ -47,38 +47,32 @@ const Trial = struct {
     }
 
     fn check(self: *Trial) !void {
-        // A fresh thread gives each trial its own per-thread pools/manager.
+        // A fresh thread gives each trial its own agent, with nothing entered.
         // No V8 flags change, and no entered isolate escapes the test.
         test_process.start();
-        const isolate = ffi.v8_Isolate_New() orelse return error.NoIsolate;
-        defer ffi.v8_Isolate_Dispose(isolate);
-        ffi.v8_Isolate_Enter(isolate);
-        defer ffi.v8_Isolate_Exit(isolate);
-        const scope = ffi.v8_HandleScope_New(isolate);
-        defer if (scope) |s| ffi.v8_HandleScope_Dispose(s);
-        try v8.isolate_allocator.initIsolateAllocator(isolate, testing.allocator, false);
-        defer {
-            // Raw FFI isolate disposal does not perform the adapter's
-            // cleanup. Match destroyAgent's isolate-scoped order, so reused
-            // isolate addresses cannot find an earlier trial's templates.
-            v8.cleanupTemplateStorage(isolate, testing.allocator);
-            v8.template_registry.clearForIsolate(isolate);
-            v8.isolate_allocator.deinitIsolateAllocator(isolate);
-        }
-        const context = ffi.v8_Context_New(isolate) orelse return error.NoContext;
-        defer ffi.v8_Context_Dispose(context);
-        ffi.v8_Context_Enter(context);
-        defer ffi.v8_Context_Exit(context);
         interfaces.process_hooks.startHooksForTest();
         // A standalone runtime of this test's own, the process's given back
-        // after (test_process.OwnRuntime).
+        // after (test_process.OwnRuntime). It outlives the agent, whose end
+        // tears the realm's objects down.
         const own_runtime = test_process.OwnRuntime.begin(testing.allocator);
         defer own_runtime.end();
         var failing = testing.FailingAllocator.init(testing.allocator, .{});
         var counter: Counter = .{};
         {
-            try v8.context_manager.init(testing.allocator);
-            defer v8.context_manager.deinit();
+            // The agent's own state (its isolate's allocator, its realms'
+            // record) through the test's allocator; its end - the realm's
+            // teardown among it - at this block's end.
+            const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &test_process.no_hooks, .allocator = testing.allocator });
+            defer engine.destroyAgent(agent);
+            const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
+            ffi.v8_Isolate_Enter(isolate);
+            defer ffi.v8_Isolate_Exit(isolate);
+            const scope = ffi.v8_HandleScope_New(isolate);
+            defer if (scope) |s| ffi.v8_HandleScope_Dispose(s);
+            const context = ffi.v8_Context_New(isolate) orelse return error.NoContext;
+            defer ffi.v8_Context_Dispose(context);
+            ffi.v8_Context_Enter(context);
+            defer ffi.v8_Context_Exit(context);
             const ctx = try v8.context_manager.getOrCreate(context, failing.allocator());
             const realm = try Realm.ofContext(ctx);
             const initial = failing.alloc_index;

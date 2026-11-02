@@ -27,7 +27,8 @@
 //!
 //! ```
 //! Context Teardown Path:
-//!   context_manager.deinit()
+//!   context_manager.removeContextByKey() (a realm's end), or
+//!   context_manager.endAgentRealms() (its agent's end)
 //!     → CleanupCoordinator.beginContextCleanup()
 //!     → [ordered cleanup via coordinator]
 //!     → CleanupCoordinator.endContextCleanup()
@@ -239,7 +240,7 @@ pub const CleanupCoordinator = struct {
     /// Execute all cleanup phases in order
     ///
     /// Convenience method that runs all phases sequentially.
-    /// Used by context_manager.deinit().
+    /// (context_manager's teardowns run the phases one by one.)
     pub fn executeAllPhases(self: *Self) void {
         self.beginContextCleanup();
 

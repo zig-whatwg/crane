@@ -87,8 +87,6 @@ const WindowHost = struct {
 fn inPlatformRealm(source: []const u8, kind: PlatformKind, from_snapshot: bool) !void {
     test_process.start();
     interfaces.process_hooks.startHooksForTest();
-    try v8.context_manager.init(std.testing.allocator);
-    defer v8.context_manager.deinit();
     const no_hooks: engine.HostHooks = .{};
     const agent = try engine.createAgent(.{
         .can_block = kind == .worker,
@@ -1132,8 +1130,6 @@ const FirstWasmDelivery = struct {
     fn body(kind: Kind) !void {
         test_process.start();
         interfaces.process_hooks.startHooksForTest();
-        try v8.context_manager.init(std.testing.allocator);
-        defer v8.context_manager.deinit();
         var message = try makeMessage(kind);
         defer message.deinit(std.testing.allocator);
         // The sender is already destroyed. The message retains bytes/backing

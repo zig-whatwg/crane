@@ -39,9 +39,6 @@ fn realm() !runtime.Context {
     _ = try test_agent.open(.{});
     if (test_realm == null) {
         const context = test_agent.context.?;
-        // Already initialized is fine: the manager is per thread (the test's
-        // agent is its thread's host agent, whose end takes it down).
-        v8.context_manager.init(std.heap.page_allocator) catch {};
         const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
         test_realm = r;
     }

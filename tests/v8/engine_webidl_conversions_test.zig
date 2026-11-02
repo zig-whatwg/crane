@@ -791,7 +791,6 @@ const Reports = struct {
 test "protocol: invoke a callback function - the value, a rethrown or a reported throw, and a non-callable" {
     defer test_agent.close();
     const ctx = try realm();
-    v8.context_manager.init(std.heap.page_allocator) catch {};
     const hosted = try v8.context_manager.getOrCreate(test_context.?, std.heap.page_allocator);
 
     const adder = try Made.of("(function (a, b) { 'use strict'; return (this === globalThis ? 100 : 0) + a + b; })");
@@ -1182,7 +1181,6 @@ var other_context: ?*ffi.Context = null;
 /// The realm the context manager hosts for the test's context.
 fn hostedRealm() !runtime.Context {
     _ = try realm();
-    v8.context_manager.init(std.heap.page_allocator) catch {};
     return v8.context_manager.getOrCreate(test_context.?, std.heap.page_allocator);
 }
 

@@ -956,10 +956,8 @@ pub const WorkerHost = struct {
     /// A DEDICATED worker's host, made on the worker's own thread by its
     /// start step (`ThreadHost.start`): "run a worker" step 4, obtain a
     /// dedicated worker agent - [[CanBlock]] true - with this host's hooks.
-    /// It is made here with no isolate entered, so the engine records it as
-    /// this thread's host agent: its end takes down this thread's engine
-    /// state, which is the worker's alone (lesson: an agent's role is
-    /// recorded when it is made). The agent is published through the link -
+    /// Its end takes down what the engine keeps for it - its realms among
+    /// it - and nothing of another agent's. The agent is published through the link -
     /// from then on the owner can abort script in it - and is the thread's:
     /// WorkerThread destroys it after the realm's end, then this host is
     /// freed (`free`). `thread_host.host` is set before anything can fail,
@@ -1042,10 +1040,9 @@ pub const WorkerHost = struct {
     /// A SERVICE worker's host, made on its own thread by its start step
     /// (`ServiceThreadHost.startSteps`): Setup ServiceWorkerGlobalScope step
     /// 8, "obtain a service worker agent" - an agent of its own, [[CanBlock]]
-    /// false, in an agent cluster of its own - with this host's hooks, made
-    /// with no isolate entered (so recorded as the thread's host agent, as a
-    /// dedicated worker's is), published through the link, destroyed by
-    /// WorkerThread after the realm's end. Whether the worker still runs.
+    /// false, in an agent cluster of its own - with this host's hooks,
+    /// published through the link, destroyed by WorkerThread after the
+    /// realm's end. Whether the worker still runs.
     fn initServiceOnThread(allocator: Allocator, thread_host: *ServiceThreadHost, thread: *WorkerThread) !bool {
         const start = &thread_host.start;
         const self = try allocator.create(Self);
