@@ -111,7 +111,7 @@ const shrink_floor = 64;
 
 /// A map keyed by timer id that keeps itself fast and small while timers
 /// come and go: the manager's map of armed timers, a window's map of active
-/// timers (src/browser/Context.zig `timer_contexts`) and a worker global's
+/// timers (runtime.ContextData.active_timers, kept by src/browser/Context.zig) and a worker global's
 /// (WorkerHost.timers, src/html/worker_host.zig). Ids only grow, so every
 /// key is one the map never saw, and two things go wrong with a plain std map:
 /// - Its tombstones fill it. std never counts one against the load
