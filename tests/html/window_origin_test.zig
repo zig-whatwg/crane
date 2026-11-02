@@ -93,6 +93,21 @@ test "a same-origin frame stays reachable" {
     try expectAnswer(browser, "String(frames[0].origin)", "http://web-platform.test:8000");
 }
 
+/// Run the event loop until the page's `<object>` has fired its load event -
+/// its nested navigable made and its document there - never for a time
+/// budget: 200 ms of turns was not enough under ThreadSanitizer, and
+/// window.o read undefined (lane tsanfix1; a hang guard of turns only).
+fn awaitObjectLoad(browser: *Browser) !void {
+    var turns: usize = 0;
+    while (turns < 5000) : (turns += 1) {
+        const loaded = try answer(browser, "String(globalThis.objectLoaded === true)");
+        defer testing.allocator.free(loaded);
+        if (std.mem.eql(u8, loaded, "true")) return;
+        _ = try browser.runEventLoopBlocking(20);
+    }
+    return error.ObjectNeverLoaded;
+}
+
 test "an object's and an iframe's about:blank documents keep their container's origin" {
     const browser = try Browser.init(testing.allocator, .{});
     defer browser.deinit();
@@ -100,10 +115,10 @@ test "an object's and an iframe's about:blank documents keep their container's o
     const html =
         \\<!doctype html><body>
         \\<iframe id="f"></iframe>
-        \\<object name="o" type="text/html" data="about:blank"></object>
+        \\<object name="o" type="text/html" data="about:blank" onload="globalThis.objectLoaded = true"></object>
     ;
     try page.loadHTML(html, .{ .base_url = "http://web-platform.test:8000/a.html" });
-    _ = try browser.runEventLoopBlocking(200);
+    try awaitObjectLoad(browser);
     try expectAnswer(browser, "String(frames[0].origin)", "http://web-platform.test:8000");
     try expectAnswer(browser, "(function () { try { return String(window.o.origin); } catch (e) { return e.name; } })()", "http://web-platform.test:8000");
 }

@@ -39,8 +39,15 @@ const routes = [_]http.Route{
     .{ .path = "/b.html", .content_type = "text/html", .body = page("b", "") },
     .{ .path = "/c.html", .content_type = "text/html", .body = page("c", "") },
     .{ .path = "/d.html", .content_type = "text/html", .body = page("d", "") },
-    // A page whose script runs a timer it set before it was left.
-    .{ .path = "/timer.html", .content_type = "text/html", .body = page("timer", "var fired = 0; function arm(ms) { setTimeout(() => { fired = performance.now(); }, ms); }") },
+    // A page whose script runs a timer it set before it was left, and notes
+    // on its own clock when it was left and shown again from the cache.
+    .{ .path = "/timer.html", .content_type = "text/html", .body = page("timer", "var fired = 0, hidden = 0, shown = 0;" ++
+        "addEventListener('pagehide', e => { if (e.persisted) hidden = performance.now(); });" ++
+        "addEventListener('pageshow', e => { if (e.persisted) shown = performance.now(); });" ++
+        "function arm(ms) { setTimeout(() => { fired = performance.now(); }, ms); }") },
+    // A page whose response answers late: the navigation to it takes longer
+    // in real time than the timer page's wait.
+    .{ .path = "/b-slow.html", .content_type = "text/html", .body = page("b-slow", ""), .delay_ms = 400 },
     // A page that listens on a BroadcastChannel.
     .{ .path = "/channel.html", .content_type = "text/html", .body = page("channel", "var heard = 0; new BroadcastChannel('bfb').onmessage = () => { heard++; };") },
     // A page that holds a Web Lock until it is destroyed.
@@ -112,6 +119,14 @@ const Fixture = struct {
 
     fn turn(self: *Fixture, ms: u64) !void {
         _ = try self.browser.runEventLoopBlocking(ms);
+    }
+
+    /// Move a virtual-clock Browser's clock `ms` on (the testing platform's
+    /// advanceClock: nothing runs until the next turn).
+    fn advance(self: *Fixture, ms: u64) !void {
+        const state = self.browser.scope.existing(html.platform_state.PlatformState) orelse return error.NoPlatformState;
+        const browser_platform = state.browser orelse return error.NoPlatformState;
+        @import("platform").adapter.advanceClock(browser_platform, ms * std.time.ns_per_ms);
     }
 
     /// Open `path` in a noopener popup and wait for it to load: the
@@ -236,26 +251,47 @@ test "a noopener popup's page is kept when it navigates, and a traversal back sh
 }
 
 test "a kept page's timer waits while it is cached and runs after it is restored" {
-    const fixture = try Fixture.start(.{});
+    // The virtual clock is the testing platform's (tests/html builds with it).
+    if (comptime !std.mem.eql(u8, @import("platform").name, "testing")) return error.SkipZigTest;
+    try keptPageTimerWaits();
+}
+
+fn keptPageTimerWaits() !void {
+    // On the testing platform's virtual clock (BrowserConfig.platform): the
+    // page's time moves only when its event loop is idle and a timer is due,
+    // or when the test moves it - and never while a fetch is in flight
+    // (Blink's kDeterministicLoading). It ran in real time and bet that the
+    // navigation leaving the page took less than the timer's 300 ms; under
+    // ThreadSanitizer, and on a loaded host, it did not, and the timer fired
+    // before the page was cached (lane tsanfix1).
+    const fixture = try Fixture.start(.{ .platform = .{ .virtual_clock = true } });
     defer fixture.stop();
     const bc = try fixture.openPopup("/timer.html");
     const realm = activeRealm(bc).?;
-    const armed = try evaluateIn(realm, "arm(300); performance.now()");
+    const armed = try evaluateIn(realm, "globalThis.armedAt = performance.now(); arm(300); String(armedAt)");
     defer testing.allocator.free(armed);
-    try fixture.goTo(bc, "location.href = '/b.html'", "/b.html");
-    // Cached for longer than the timer's wait: it does not fire meanwhile.
-    try fixture.turn(500);
+    // Left by a navigation slower in real time than the timer's wait: the
+    // page is cached with its timer still waiting.
+    try fixture.goTo(bc, "location.href = '/b-slow.html'", "/b-slow.html");
+    try testing.expectEqual(@as(usize, 1), fixture.cached());
+    // Cached for 500 ms of its clock, longer than the timer's wait.
+    try fixture.advance(500);
+    try fixture.turn(20);
     try fixture.goTo(bc, "history.back()", "/timer.html");
-    try expectIn(realm, "fired", "0");
-    // It had most of its wait left: it fires once that has passed.
     var turns: usize = 0;
-    while (turns < 100) : (turns += 1) {
-        try fixture.turn(10);
-        const fired = try evaluateIn(realm, "fired > 0");
+    while (turns < 5000) : (turns += 1) {
+        const fired = try evaluateIn(realm, "String(fired > 0)");
         defer testing.allocator.free(fired);
         if (std.mem.eql(u8, fired, "true")) break;
+        try fixture.turn(10);
     }
-    try expectIn(realm, "fired > 0", "true");
+    // HTML's timer initialization steps: run once the document "has been
+    // fully active for a further [timeout] milliseconds (not necessarily
+    // consecutively)". The time it spent cached was longer than the wait,
+    // and does not count: the fully active time before it left and after it
+    // came back adds up to the 300 ms.
+    try expectIn(realm, "String(shown - hidden >= 500)", "true");
+    try expectIn(realm, "String((hidden - armedAt) + (fired - shown) >= 300)", "true");
 }
 
 test "the cache keeps at most its size, the oldest leaving first" {

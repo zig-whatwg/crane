@@ -53,6 +53,20 @@ fn settle(browser: *browser_mod.Browser) !void {
     }
 }
 
+/// Turn the event loop until the agent's deferred teardown queue - where the
+/// collections queued the retired realms' trees, freed a slice at a time
+/// between tasks - is empty: the collection's work is done. Never a time
+/// budget: under ThreadSanitizer the slices were still freeing when the
+/// page's `pending` cleared, and the count read 3 -> 6 (lane tsanfix1). A
+/// hang guard of turns only.
+fn drainTeardowns(browser: *browser_mod.Browser) !void {
+    var turns: usize = 0;
+    while (!browser.agent_host.deferred_teardown.isEmpty()) : (turns += 1) {
+        if (turns >= 5000) return error.TeardownsNeverDrained;
+        _ = try browser.runEventLoopBlocking(20);
+    }
+}
+
 fn check(browser: *browser_mod.Browser) !void {
     const page = browser.current_context orelse return error.NoPage;
     const failed = try page.evaluateScriptToString("String(globalThis.failed || '')", testing.allocator);
@@ -192,6 +206,7 @@ fn initialEmptyNavigated() !void {
         try settle(browser);
         try page.runScript("globalThis.pending = 1; TestUtils.gc(); TestUtils.gc(); setTimeout(() => { TestUtils.gc(); pending = 0; }, 0);");
         try settle(browser);
+        try drainTeardowns(browser);
         try check(browser);
         const now = count(browser, &document_parts);
         if (page_index == 0) {
