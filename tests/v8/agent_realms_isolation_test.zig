@@ -305,3 +305,30 @@ fn modulesAreTheAgentsOwn() !void {
 test "an agent keeps the module records of its realms, and no other agent's" {
     try runOnThread(modulesAreTheAgentsOwn);
 }
+
+/// How many worker realms `agent` keeps a record of (worker_realm.Records).
+fn workerRealmsKeptBy(agent: *protocol.Agent) usize {
+    const records = v8.protocol_agents.workerRealmsOf(@ptrCast(@alignCast(agent))) orelse return 0;
+    return records.items.len;
+}
+
+/// A worker realm is its agent's record, not its thread's: another agent on
+/// the thread keeps none of it, and its end takes it off.
+fn workerRealmsAreTheAgentsOwn() !void {
+    const first = try newAgent();
+    defer protocol.destroyAgent(first);
+    const first_realm = try workerRealmIn(first);
+    defer protocol.destroyWorkerRealm(first_realm, null, null);
+    const second = try newAgent();
+    defer protocol.destroyAgent(second);
+    const second_realm = try workerRealmIn(second);
+    try std.testing.expectEqual(@as(usize, 1), workerRealmsKeptBy(first));
+    try std.testing.expectEqual(@as(usize, 1), workerRealmsKeptBy(second));
+    protocol.destroyWorkerRealm(second_realm, null, null);
+    try std.testing.expectEqual(@as(usize, 0), workerRealmsKeptBy(second));
+    try std.testing.expectEqual(@as(usize, 1), workerRealmsKeptBy(first));
+}
+
+test "an agent keeps the records of its worker realms, and no other agent's" {
+    try runOnThread(workerRealmsAreTheAgentsOwn);
+}

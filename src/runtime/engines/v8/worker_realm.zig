@@ -121,20 +121,37 @@ const Record = struct {
     allocator: std.mem.Allocator,
 };
 
-/// Every worker realm made on this thread and not yet destroyed.
-threadlocal var records: std.ArrayListUnmanaged(Record) = .empty;
+/// One agent's worker realms made and not yet destroyed: a field of its
+/// record (protocol_agents.AgentRecord.worker_realms). It was a
+/// `threadlocal`, every agent's on the thread in one list.
+pub const Records = std.ArrayListUnmanaged(Record);
+
+/// The worker realms of the agent whose isolate this is; null for an isolate
+/// createAgent did not make, which makes no realm.
+fn recordsOf(isolate: *ffi.Isolate) ?*Records {
+    return @import("protocol_agents.zig").workerRealmsOf(isolate);
+}
 
 fn take(realm: runtime.Context) ?Record {
+    const agent = realm.agent orelse return null;
+    const records = recordsOf(@ptrCast(@alignCast(agent))) orelse return null;
     for (records.items, 0..) |record, i| {
         if (record.realm != realm) continue;
         const taken = records.swapRemove(i);
-        // The list's memory goes with its last record: a worker thread's
-        // realms all end before it does, and what a threadlocal still holds
-        // when its thread exits is never freed.
+        // The list's memory goes with its last record (and with the agent,
+        // `endAgent`).
         if (records.items.len == 0) records.clearAndFree(std.heap.page_allocator);
         return taken;
     }
     return null;
+}
+
+/// The agent's end (protocol_agents.removeAgent): the list's storage goes. A
+/// realm still on it was not destroyed before its agent; the context manager
+/// tore it down with the agent's realms.
+pub fn endAgent(records: *Records) void {
+    records.deinit(std.heap.page_allocator);
+    records.* = .empty;
 }
 
 /// What differs between the kinds of worker global scope
@@ -221,6 +238,11 @@ fn createWorkerRealmOf(comptime Kind: type, agent: *runtime.Agent, options: runt
     // points here - the global scope first. (An isolate createAgent did not
     // make has no such record, and makes no realm.)
     const realm = context_manager.getOrCreateWithExternalEventLoop(context, options.timer, options.event_loop, options.allocator) catch {
+        ffi.v8_Context_Dispose(context);
+        return EngineError.OperationFailed;
+    };
+    const records = recordsOf(isolate) orelse {
+        context_manager.removeContext(context);
         ffi.v8_Context_Dispose(context);
         return EngineError.OperationFailed;
     };
