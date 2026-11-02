@@ -848,6 +848,45 @@ const TestLaunch = struct {
     /// `suite_configs` row keeps index order), false runs every suite in index
     /// order; unset, each suite's row decides.
     shuffle: ?bool,
+    /// -Dsanitize-thread: every test executable `addSuiteRun` runs is built
+    /// with ThreadSanitizer - Crane's own modules only
+    /// (`instrumentForThreadSanitizer`) - and run with TSAN_OPTIONS that make
+    /// a race a crash blamed on its test (tools/test_launcher, child.zig).
+    sanitize_thread: bool,
+    /// -Dmany-browsers: the many-Browsers variant - every test runs beside a
+    /// second, busy Browser on another thread of its process
+    /// (tests/test_runner/neighbour.zig), so state two instances share shows
+    /// up as a failure, or under -Dsanitize-thread as a race.
+    many_browsers: bool,
+    /// The browser module, which the many-Browsers variant adds to every
+    /// test executable that links V8 and lacks it (`addTestRoot`).
+    browser_module: ?*std.Build.Module = null,
+    /// Every test executable `addSuiteRun` runs, for the instrumentation
+    /// pass at the end of `build` (`instrumentForThreadSanitizer`).
+    test_exes: *std.ArrayList(*std.Build.Step.Compile),
+    /// `zig build test-verify`: the changed test files and their step
+    /// (`TestVerify`).
+    verify: *TestVerify,
+};
+
+/// `zig build test-verify` (the approved test plan, section 6: Gecko's
+/// test-verify, Chromium's 20x, WebKit's 10x): every test of each named
+/// tests/<dir>/**/*_test.zig file, run by the launcher's verify mode from
+/// the file's directory executable - 10 times in one process and 5 times
+/// each alone; under -Dsanitize-thread, once - and any run that is not a
+/// pass fails the step. The files: -Dverify-files=<a,b,...> (repository-
+/// relative), or -Dverify-base=<git ref> for the *_test.zig files under
+/// tests/ that `git diff <ref>...HEAD` adds or changes - where there is a
+/// git checkout (a pool mirror has none: compute the list in the checkout
+/// and pass -Dverify-files).
+const TestVerify = struct {
+    step: *std.Build.Step,
+    files: []const []const u8 = &.{},
+    /// Which `files` a directory's executable took (the rest fail the step).
+    matched: []bool = &.{},
+    /// Whether the files were asked for at all (-Dverify-files or
+    /// -Dverify-base); without them the step fails, saying how to ask.
+    asked: bool = false,
 };
 
 /// One suite's launcher settings. Batch size per the measurements
@@ -868,7 +907,24 @@ const SuiteConfig = struct {
     /// by the field's name; `.report` only logs it, for a suite whose
     /// findings are not fixed yet - each such row is TEMPORARY and says why.
     state_checks: StateChecks = .fail,
+    /// The many-Browsers variant (-Dmany-browsers) for this suite: `.fail`
+    /// fails what fails beside the busy Browser; `.report` runs it and
+    /// reports every non-pass without failing the step (the launcher's
+    /// --report-only), for a suite whose findings are not fixed yet - each
+    /// such row is TEMPORARY and names its findings file. Suites with no
+    /// Browser to run (no V8) never start one.
+    many_browsers: VariantMode = .fail,
+    /// ThreadSanitizer (-Dsanitize-thread) for this suite, the same way: a
+    /// race, a TSAN-only failure, fails the step unless the row is a
+    /// TEMPORARY `.report` naming its findings file.
+    sanitize_thread: VariantMode = .fail,
 };
+
+/// What a test variant (-Dmany-browsers, -Dsanitize-thread) does with a
+/// suite's results: `.fail` as any run; `.report` prints and records every
+/// verdict and passes the step (lane tsan1: report first, fail once clean,
+/// as the state checks went - lane tstate1).
+const VariantMode = enum { report, fail };
 
 /// What the Crane test runner does with a change a test leaves in the
 /// process (tests/test_runner/state.zig). CRANE_TEST_STATE=fail|report|off
@@ -885,7 +941,17 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     .{ .name = "tests-intl_bench", .config = .{ .batch = 0, .jobs = 1, .shuffle = false } },
     // Suites that start V8 or a Browser: a process per test.
     .{ .name = "tests-dom", .config = .{ .batch = 1 } },
-    .{ .name = "tests-html", .config = .{ .batch = 1, .slow = &html_slow } },
+    // TEMPORARY: tests-html runs both test variants report-only (lane tsan1,
+    // 2026-11-02; docs/testing/test-variant-findings-2026-11-02.tsv). Under
+    // -Dsanitize-thread: two data races - g_protocol_promise_reject written by
+    // every agent's createAgent (F1, 8 two-Browser tests) and a worker realm's
+    // teardown reading a slab slot's generation the window thread reissues
+    // (F2) - and frame realms made from a snapshot in snapshotless Browsers
+    // (F3); beside the busy Browser, two tests that measure the process's
+    // live Global<Object> count (M2). Switch each to failing when
+    // its findings are fixed and `zig build test-launch -Dspec=html
+    // -Dsanitize-thread` (and -Dmany-browsers) passes.
+    .{ .name = "tests-html", .config = .{ .batch = 1, .slow = &html_slow, .sanitize_thread = .report, .many_browsers = .report } },
     .{ .name = "tests-service_worker", .config = .{ .batch = 1 } },
     .{ .name = "tests-websocket", .config = .{ .batch = 1 } },
     // tests-v8 ran as one index-order process until lane v8order1
@@ -901,7 +967,14 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     // worker_streams_test's deliberate --stress-compaction. Switch it to
     // failing when `CRANE_TEST_STATE=fail zig build test-launch -Dspec=v8
     // -Dlaunch-batch=1` passes.
-    .{ .name = "tests-v8", .config = .{ .batch = 1, .state_checks = .report } },
+    // TEMPORARY, the same way: tests-v8 runs beside the busy Browser report-
+    // only (lane tsan1; docs/testing/test-variant-findings-2026-11-02.tsv):
+    // an isolate restored from Crane's snapshot while a snapshotless one
+    // lives crashes V8 deserializing the string table (M1, 8 tests), and 15
+    // tests measure process-wide engine counters the busy Browser moves too
+    // (M2). Switch it when `zig build test-launch -Dspec=v8 -Dmany-browsers`
+    // passes.
+    .{ .name = "tests-v8", .config = .{ .batch = 1, .state_checks = .report, .many_browsers = .report } },
     .{ .name = "src-browser", .config = .{ .batch = 1 } },
     .{ .name = "test-browser", .config = .{ .batch = 1 } },
     .{ .name = "lib-exports", .config = .{ .batch = 1 } },
@@ -943,7 +1016,10 @@ fn suiteConfig(name: []const u8) SuiteConfig {
 /// reaches.
 fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.Step.Compile, name: []const u8, config_name: ?[]const u8) *std.Build.Step.Run {
     const config = suiteConfig(config_name orelse name);
-    useCraneTestRunner(b, test_exe, name, config.state_checks);
+    // Whether this executable can run the many-Browsers variant's busy
+    // Browser: -Dmany-browsers, and it links V8 and the browser module. The
+    // others run as usual under -Dmany-browsers, and say nothing about it.
+    const many_browsers = useCraneTestRunner(b, test_exe, name, config.state_checks, launch.many_browsers);
     const run = b.addRunArtifact(launch.launcher);
     run.setName(b.fmt("test {s}", .{name}));
     // The build runner speaks the test-runner protocol to the launcher.
@@ -956,8 +1032,40 @@ fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.St
     run.addArg(b.fmt("--timeout={d}", .{launch.timeout}));
     if (!(launch.shuffle orelse config.shuffle)) run.addArg("--no-shuffle");
     for (config.slow) |slow| run.addArg(b.fmt("--slow={s}", .{slow}));
-    // Relative to the repository root, where tests open their fixtures.
-    run.addArg(b.fmt("--out=tmp/test-launch/{s}.jsonl", .{name}));
+    if (launch.sanitize_thread) {
+        run.addArg("--sanitize-thread");
+        run.addPrefixedFileArg("--tsan-suppressions=", b.path("tools/test_launcher/tsan_suppressions.txt"));
+        // Line numbers in a race report: on macOS the debug information
+        // stays in the object files, and ThreadSanitizer's symbolizer (atos)
+        // reads a dSYM bundle beside the binary - without one a report names
+        // functions with `<null>` lines (lane tlaunch1; checked on
+        // chat.local, lane tsan1). The bundle lands beside the cached
+        // executable the launcher runs; cached like the executable.
+        if (test_exe.rootModuleTarget().os.tag.isDarwin() and b.graph.host.result.os.tag.isDarwin()) {
+            const dsym = b.addSystemCommand(&.{"dsymutil"});
+            dsym.setName(b.fmt("dsymutil {s}", .{name}));
+            dsym.addArtifactArg(test_exe);
+            dsym.expectExitCode(0);
+            // Its warnings about objects without debug information (the V8
+            // prebuilt) are not the build's diagnostics.
+            _ = dsym.captureStdErr(.{});
+            run.step.dependOn(&dsym.step);
+        }
+    }
+    if (many_browsers) run.addArg("--many-browsers");
+    // A variant's TEMPORARY report-only row: every verdict printed and
+    // recorded, the step passes (`VariantMode`).
+    if ((many_browsers and config.many_browsers == .report) or (launch.sanitize_thread and config.sanitize_thread == .report)) run.addArg("--report-only");
+    launch.test_exes.append(b.allocator, test_exe) catch @panic("OOM");
+    // Relative to the repository root, where tests open their fixtures. A
+    // variant's results beside the suite's own, never over them:
+    // tmp/test-launch/<name>[.tsan][.many-browsers].jsonl (the timings stay
+    // the plain run's).
+    const variant = b.fmt("{s}{s}", .{
+        if (launch.sanitize_thread) ".tsan" else "",
+        if (many_browsers) ".many-browsers" else "",
+    });
+    run.addArg(b.fmt("--out=tmp/test-launch/{s}{s}.jsonl", .{ name, variant }));
     run.addArg(b.fmt("--timings=tmp/test-launch/{s}.jsonl", .{name}));
     run.setCwd(b.path("."));
     // A fresh seed every run must run every time.
@@ -980,7 +1088,12 @@ fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.St
 /// the runner's `@import("dom")` is the executable's own dom. And
 /// tools/global_state_baseline.txt, lint-global-state's inventory, from which
 /// the runner makes its table of global variables.
-fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []const u8, checks: StateChecks) void {
+///
+/// `many_browsers` (-Dmany-browsers): the runner may run the busy Browser of
+/// the many-Browsers variant (tests/test_runner/neighbour.zig) - `browser`,
+/// where the executable imports the browser module and links V8. Returns
+/// whether it can.
+fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []const u8, checks: StateChecks, many_browsers: bool) bool {
     const root = test_exe.root_module;
     const wf = b.addWriteFiles();
     _ = wf.addCopyDirectory(b.path("tests/test_runner"), "", .{ .include_extensions = &.{".zig"} });
@@ -1032,11 +1145,14 @@ fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []
     w.print("pub const runtime: ?type = {s};\n", .{if (has_runtime) "@import(\"runtime\")" else "null"}) catch @panic("OOM");
     const has_engine = root.import_table.get("engine") != null and linksV8(root);
     w.print("/// The engine, where the executable links V8.\npub const engine: ?type = {s};\n", .{if (has_engine) "@import(\"engine\")" else "null"}) catch @panic("OOM");
+    const has_browser = many_browsers and root.import_table.get("browser") != null and linksV8(root);
+    w.print("/// The browser module, for the many-Browsers variant's busy Browser\n/// (-Dmany-browsers, where the executable links V8).\npub const browser: ?type = {s};\n", .{if (has_browser) "@import(\"browser\")" else "null"}) catch @panic("OOM");
     _ = wf.add("suite.zig", suite.written());
 
     const runner = wf.getDirectory().path(b, "runner.zig");
     test_exe.test_runner = .{ .path = runner.dupe(b.graph), .mode = .server };
     runner.addStepDependencies(&test_exe.step);
+    return has_browser;
 }
 
 /// Whether `module` links V8 itself (`linkV8`): its own C++ wrapper.
@@ -1080,6 +1196,122 @@ fn checkEveryTestRunsThroughTheLauncher(b: *std.Build, launch: *const TestLaunch
     }
 }
 
+/// The `test-verify` step and its files: -Dverify-files, else
+/// -Dverify-base's git diff.
+fn testVerifySelection(b: *std.Build) *TestVerify {
+    const v = b.allocator.create(TestVerify) catch @panic("OOM");
+    v.* = .{ .step = b.step("test-verify", "Verify new and changed tests: each test of the files -Dverify-files=<a,b> (or -Dverify-base=<ref>: git diff <ref>...HEAD) 10 times in one process and 5 times alone; with -Dsanitize-thread, once") };
+    const files_option = b.option([]const u8, "verify-files", "test-verify: comma-separated tests/<dir>/**/*_test.zig files (repository-relative)");
+    const base = b.option([]const u8, "verify-base", "test-verify: the git ref whose diff (<ref>...HEAD) names the changed test files, where there is a git checkout");
+    var files: std.ArrayList([]const u8) = .empty;
+    if (files_option) |list| {
+        v.asked = true;
+        var it = std.mem.tokenizeAny(u8, list, ", \n");
+        while (it.next()) |file| files.append(b.allocator, file) catch @panic("OOM");
+    } else if (base) |ref| {
+        v.asked = true;
+        // A configure-time read of the checkout the configure cache cannot
+        // track.
+        b.graph.poisonCache();
+        var code: u8 = 0;
+        const out = b.runAllowFail(&.{ "git", "diff", "--name-only", "--diff-filter=AMR", b.fmt("{s}...HEAD", .{ref}), "--", "tests/" }, &code, .inherit) catch |err| {
+            v.step.dependOn(&b.addFail(b.fmt("test-verify: git diff {s}...HEAD failed ({t}): no git checkout here? Pass -Dverify-files=<a,b,...> instead", .{ ref, err })).step);
+            return v;
+        };
+        var lines = std.mem.tokenizeScalar(u8, out, '\n');
+        while (lines.next()) |file| {
+            if (std.mem.endsWith(u8, file, "_test.zig") and !std.mem.startsWith(u8, file, "tests/wpt/")) files.append(b.allocator, file) catch @panic("OOM");
+        }
+    }
+    v.files = files.items;
+    v.matched = b.allocator.alloc(bool, files.items.len) catch @panic("OOM");
+    @memset(v.matched, false);
+    return v;
+}
+
+/// Adds the verify run of `test_exe`, the executable of the test directory
+/// `dir_path` made of `files` (relative to it), for the verify files in it.
+/// Test names start with the file's path in the directory, '/' as '.', no
+/// `.zig`: "navigation.nav2h_indexes_test.test.<name>".
+fn addTestVerify(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.Step.Compile, name: []const u8, dir_path: []const u8, files: []const []const u8) void {
+    const v = launch.verify;
+    var prefixes: std.ArrayList([]const u8) = .empty;
+    for (v.files, v.matched) |file, *matched| {
+        if (!std.mem.startsWith(u8, file, dir_path) or file.len <= dir_path.len + 1 or file[dir_path.len] != '/') continue;
+        const rel = file[dir_path.len + 1 ..];
+        for (files) |f| {
+            if (!std.mem.eql(u8, f, rel)) continue;
+            matched.* = true;
+            const stem = rel[0 .. rel.len - ".zig".len];
+            const dotted = b.allocator.dupe(u8, stem) catch @panic("OOM");
+            std.mem.replaceScalar(u8, dotted, '/', '.');
+            prefixes.append(b.allocator, b.fmt("{s}.test.", .{dotted})) catch @panic("OOM");
+        }
+    }
+    if (prefixes.items.len == 0) return;
+    const config = suiteConfig(name);
+    const run = b.addRunArtifact(launch.launcher);
+    run.setName(b.fmt("test-verify {s}", .{name}));
+    run.addArtifactArg(test_exe);
+    run.addArg(b.fmt("--name={s}", .{name}));
+    for (prefixes.items) |prefix| run.addArg(b.fmt("--verify={s}", .{prefix}));
+    if (launch.sanitize_thread) {
+        // "Once under -Dsanitize-thread": the instrumented build is the
+        // slow one, and a race needs no repetition to be seen.
+        run.addArgs(&.{ "--verify-batched=1", "--verify-alone=0", "--sanitize-thread" });
+        run.addPrefixedFileArg("--tsan-suppressions=", b.path("tools/test_launcher/tsan_suppressions.txt"));
+    }
+    if (launch.many_browsers) run.addArg("--many-browsers");
+    if (launch.jobs) |jobs| run.addArg(b.fmt("--jobs={d}", .{jobs}));
+    run.addArg(b.fmt("--timeout={d}", .{launch.timeout}));
+    for (config.slow) |slow| run.addArg(b.fmt("--slow={s}", .{slow}));
+    run.addArg(b.fmt("--out=tmp/test-launch/{s}.verify{s}.jsonl", .{ name, if (launch.sanitize_thread) ".tsan" else "" }));
+    run.setCwd(b.path("."));
+    // A verification is a run, never a cache hit.
+    run.has_side_effects = true;
+    run.stdio = .inherit;
+    v.step.dependOn(&run.step);
+}
+
+/// The verify files no directory executable took fail the step, by name.
+fn finishTestVerify(b: *std.Build, v: *TestVerify) void {
+    if (!v.asked) {
+        v.step.dependOn(&b.addFail("test-verify: name the test files: -Dverify-files=tests/<dir>/<file>_test.zig,... (or -Dverify-base=main where there is a git checkout)").step);
+        return;
+    }
+    if (v.files.len == 0) return; // nothing changed: nothing to verify
+    for (v.files, v.matched) |file, matched| {
+        if (!matched) v.step.dependOn(&b.addFail(b.fmt("test-verify: {s} is no test file of a suite this build makes (a tests/<dir>/**/*_test.zig file; select every suite: no -Dspec, or -Dspec=all)", .{file})).step);
+    }
+}
+
+/// -Dsanitize-thread: ThreadSanitizer on every module of every test
+/// executable `addSuiteRun` runs that is Crane's own - made by this build,
+/// so not a dependency package's (curl, mbedTLS, zlib: their option sets
+/// reject the option, and they stay uninstrumented, as do the C libraries
+/// this build links as separate artifacts - brotli, the image codecs,
+/// nghttp2 - which are not modules of the graph) - and never the V8
+/// prebuilt, which is an archive. The C++ of a Crane module
+/// (v8_wrapper.cpp) is instrumented with it. Run at the end of `build`,
+/// when every import is in place. A module the tests share with another
+/// artifact of the same build is instrumented there too.
+///
+/// What the uninstrumented code does is invisible to TSAN except through
+/// the calls it intercepts (pthread, malloc): a race inside V8 is not seen,
+/// and V8's own atomics can make a report a false positive - suppressed
+/// only when proven, in tools/test_launcher/tsan_suppressions.txt.
+fn instrumentForThreadSanitizer(b: *std.Build, launch: *const TestLaunch) void {
+    var seen: std.AutoHashMapUnmanaged(*std.Build.Module, void) = .empty;
+    var stack: std.ArrayList(*std.Build.Module) = .empty;
+    for (launch.test_exes.items) |exe| stack.append(b.allocator, exe.root_module) catch @panic("OOM");
+    while (stack.pop()) |module| {
+        if ((seen.getOrPut(b.allocator, module) catch @panic("OOM")).found_existing) continue;
+        if (module.owner != b) continue;
+        module.sanitize_thread = true;
+        for (module.import_table.values()) |imported| stack.append(b.allocator, imported) catch @panic("OOM");
+    }
+}
+
 /// Add the `*_test.zig` files under `dir_path` (recursively) to `step`, as ONE
 /// test executable per directory.
 ///
@@ -1120,7 +1352,7 @@ fn addTestFilesFromDir(
         if (!std.mem.startsWith(u8, file, dir_path) or file.len <= dir_path.len or file[dir_path.len] != '/') return;
         var dir_name: std.ArrayList(u8) = .empty;
         for (dir_path) |c| try dir_name.append(allocator, if (c == '/') '-' else c);
-        addTestRoot(builder, step, file, builder.fmt("{s}", .{std.fs.path.stem(file)}), dir_name.items, target, modules, link_v8, select.launch);
+        _ = addTestRoot(builder, step, file, builder.fmt("{s}", .{std.fs.path.stem(file)}), dir_name.items, target, modules, link_v8, select.launch);
         return;
     }
 
@@ -1171,7 +1403,8 @@ fn addTestFilesFromDir(
 
     var name: std.ArrayList(u8) = .empty;
     for (dir_path) |c| try name.append(allocator, if (c == '/') '-' else c);
-    addTestRoot(builder, step, root_path, name.items, null, target, modules, link_v8, select.launch);
+    const test_exe = addTestRoot(builder, step, root_path, name.items, null, target, modules, link_v8, select.launch);
+    addTestVerify(builder, select.launch, test_exe, name.items, dir_path, files.items);
 }
 
 fn addTestRoot(
@@ -1184,7 +1417,7 @@ fn addTestRoot(
     modules: []const std.Build.Module.Import,
     link_v8: bool,
     launch: *const TestLaunch,
-) void {
+) *std.Build.Step.Compile {
     const test_exe = builder.addTest(.{
         .name = name,
         .root_module = builder.createModule(.{
@@ -1206,6 +1439,13 @@ fn addTestRoot(
     // Link V8 libraries if requested (for V8 tests)
     if (link_v8) linkV8(builder, test_exe.root_module, target);
 
+    // The many-Browsers variant's busy Browser needs the browser module: a
+    // suite that links V8 without it (tests/dom, tests/v8) gets the testing
+    // graph's, the one its own modules belong to.
+    if (link_v8 and launch.many_browsers and test_exe.root_module.import_table.get("browser") == null) {
+        if (launch.browser_module) |browser_mod| test_exe.root_module.addImport("browser", browser_mod);
+    }
+
     // The engine, for the Crane test runner's live counters (agents, Global
     // handles): the executable's own, the one its runtime is bound to - this
     // root is the executable's alone, so the import reaches nothing else.
@@ -1216,6 +1456,7 @@ fn addTestRoot(
     }
 
     step.dependOn(&addSuiteRun(builder, launch, test_exe, name, config_name).step);
+    return test_exe;
 }
 
 /// An executable that is compiled and never linked - nothing asks for its
@@ -2197,6 +2438,7 @@ pub fn build(b: *std.Build) void {
     // `test-launch` runs the test executables alone, without the lints and
     // checks `test` adds; -Dspec and -Dtest-file select them for both.
     const launch: *const TestLaunch = launch: {
+        const many_browsers = b.option(bool, "many-browsers", "The many-Browsers variant: every test runs beside a second, busy Browser on another thread of its process (suites that link V8)") orelse false;
         const launcher_module = b.createModule(.{
             .root_source_file = b.path("tools/test_launcher/main.zig"),
             // Build-time tool: runs on the host, as codegen does.
@@ -2236,8 +2478,41 @@ pub fn build(b: *std.Build) void {
                 },
             }),
         });
-        useCraneTestRunner(b, state_fixture, "test_state_fixture", .fail);
+        _ = useCraneTestRunner(b, state_fixture, "test_state_fixture", .fail, false);
         launcher_fixture_options.addOptionPath("state_path", state_fixture.getEmittedBin());
+        // A test that races, built with ThreadSanitizer: child.zig's tests
+        // check that the launcher's TSAN_OPTIONS make the race a crash of
+        // its process, blamed on that test (-Dsanitize-thread's contract).
+        const tsan_fixture = b.addTest(.{
+            .name = "test_launcher_tsan_fixture",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("tools/test_launcher/tsan_fixture_test.zig"),
+                .target = b.graph.host,
+                .optimize = .Debug,
+                .sanitize_thread = true,
+            }),
+        });
+        launcher_fixture_options.addOptionPath("tsan_path", tsan_fixture.getEmittedBin());
+        // -Dmany-browsers: a test that assumes it is the only Browser of its
+        // process, and one that assumes nothing - child.zig's tests check that
+        // the variant's busy Browser runs beside them and works cleanly. It
+        // links V8, so it is built only in that build.
+        if (many_browsers) {
+            const many_fixture = b.addTest(.{
+                .name = "test_many_browsers_fixture",
+                .root_module = b.createModule(.{
+                    .root_source_file = b.path("tests/test_runner_fixture/many_browsers_fixture.zig"),
+                    .target = target,
+                    .imports = &.{
+                        .{ .name = "runtime", .module = testing_graph.runtime },
+                        .{ .name = "browser", .module = testing_graph.browser },
+                    },
+                }),
+            });
+            linkV8(b, many_fixture.root_module, target);
+            _ = useCraneTestRunner(b, many_fixture, "test_many_browsers_fixture", .fail, true);
+            launcher_fixture_options.addOptionPath("many_browsers_path", many_fixture.getEmittedBin());
+        }
         const launcher_test_module = b.createModule(.{
             .root_source_file = b.path("tools/test_launcher/main.zig"),
             .target = b.graph.host,
@@ -2259,10 +2534,37 @@ pub fn build(b: *std.Build) void {
             .seed = b.option([]const u8, "launch-seed", "The launcher's seed: digest (default: from each test executable's bytes, printed; unchanged suites stay cached), random (fresh every run, never cached), or a value") orelse "digest",
             .timeout = b.option(u32, "launch-timeout", "Per-test timeout in seconds (default 300; tests build.zig lists as slow get 4x)") orelse 300,
             .shuffle = b.option(bool, "launch-shuffle", "true: shuffle every suite's order and batches from the seed; false: index order everywhere (default: each suite's suite_configs row, mostly shuffled)"),
+            .sanitize_thread = b.option(bool, "sanitize-thread", "Build every test executable with ThreadSanitizer (Crane's own modules; not the C libraries or the V8 prebuilt) and run it so a race crashes its test (TSAN_OPTIONS=halt_on_error=1)") orelse false,
+            .many_browsers = many_browsers,
+            .browser_module = testing_graph.browser,
+            .test_exes = test_exes: {
+                const list = b.allocator.create(std.ArrayList(*std.Build.Step.Compile)) catch @panic("OOM");
+                list.* = .empty;
+                break :test_exes list;
+            },
+            .verify = testVerifySelection(b),
         };
         break :launch l;
     };
     test_selection.launch = launch;
+
+    // The Crane test runner's many-Browsers neighbour (tests/test_runner/
+    // neighbour.zig): its thread and handshake, std only, tested with a fake
+    // work function. Run through the launcher like any suite; part of
+    // `test` and of `test-launcher`.
+    {
+        const neighbour_tests = b.addTest(.{
+            .name = "test_runner-neighbour",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("tests/test_runner/neighbour.zig"),
+                .target = target,
+                .optimize = optimize,
+            }),
+        });
+        const run_neighbour_tests = addSuiteRun(b, launch, neighbour_tests, "test_runner-neighbour", null);
+        if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) test_step.dependOn(&run_neighbour_tests.step);
+        b.top_level_steps.get("test-launcher").?.step.dependOn(&run_neighbour_tests.step);
+    }
 
     // The V8 snapshot the tests/v8 snapshot tests restore: THIS build's,
     // made by a cached run of the snapshot generator (filled in where the
@@ -4188,7 +4490,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "cookiestore", .module = testing_graph.cookiestore },
             .{ .name = "permissions", .module = testing_graph.permissions },
         };
-        addTestRoot(b, test_step, command_lifetime_test, "ar3-command-lifetime", null, target, &command_test_imports, true, launch);
+        _ = addTestRoot(b, test_step, command_lifetime_test, "ar3-command-lifetime", null, target, &command_test_imports, true, launch);
     }
 
     // WPT Runner executable for running Web Platform Tests
@@ -5497,6 +5799,8 @@ pub fn build(b: *std.Build) void {
     // Every test executable runs through the launcher; and `test-launch` is
     // the launcher runs `test` makes. Both known here, once every step exists.
     checkEveryTestRunsThroughTheLauncher(b, launch, test_step);
+    if (launch.sanitize_thread) instrumentForThreadSanitizer(b, launch);
+    finishTestVerify(b, launch.verify);
 }
 
 /// Every Crane module, built for one platform (docs/platform-protocol.md 1.1).

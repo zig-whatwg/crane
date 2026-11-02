@@ -90,6 +90,12 @@ pub const Options = struct {
     /// `--load=K`: K threads of the supervisor spin for the whole repeat
     /// series - background CPU load, added on purpose.
     load_threads: u32 = 0,
+    /// `--verify` (with `--repeat=N`): the changed-test gate. The series
+    /// fails - exit status 1 - when any file, harness status or subtest had
+    /// a status that differed between its runs (repeat.zig, Tally.unstable);
+    /// a consistent failure does not fail it. Without `--repeat` it is a
+    /// usage error.
+    verify: bool = false,
     /// `--retry-failures`: after a supervised run, run every file that did not
     /// fully pass once more, in the same runner, and journal each one's second
     /// result beside its first (`journal.Record.retry`; flaky when they
@@ -361,6 +367,8 @@ pub fn parseArgsDiagnosed(allocator: std.mem.Allocator, args: []const []const u8
             options.repeat = std.fmt.parseInt(usize, arg["--repeat=".len..], 10) catch 0;
         } else if (std.mem.startsWith(u8, arg, "--repeat-with=")) {
             options.repeat_with = arg["--repeat-with=".len..];
+        } else if (std.mem.eql(u8, arg, "--verify")) {
+            options.verify = true;
         } else if (std.mem.startsWith(u8, arg, "--load=")) {
             options.load_threads = std.fmt.parseInt(u32, arg["--load=".len..], 10) catch 0;
         } else if (std.mem.eql(u8, arg, "--retry-failures")) {
@@ -381,6 +389,8 @@ pub fn parseArgsDiagnosed(allocator: std.mem.Allocator, args: []const []const u8
             }
         }
     }
+    // A verdict over runs that never happen would pass by doing nothing.
+    if (options.verify and options.repeat == 0) return error.VerifyWithoutRepeat;
 
     return options;
 }
@@ -404,6 +414,18 @@ test "parseArgs defaults" {
     try testing.expect(!options.supervise);
     try testing.expect(!options.isChild());
     try testing.expect(!options.allocator_self_check);
+}
+
+test "--verify needs --repeat: alone it is a usage error, not a no-op" {
+    const testing = std.testing;
+    var options = try parseArgs(testing.allocator, &.{ "--repeat=10", "--verify", "a/b.html" });
+    defer options.deinit();
+    try testing.expect(options.verify);
+    try testing.expectEqual(@as(usize, 10), options.repeat);
+    try testing.expectError(error.VerifyWithoutRepeat, parseArgs(testing.allocator, &.{ "--verify", "a/b.html" }));
+    var plain = try parseArgs(testing.allocator, &.{"a/b.html"});
+    defer plain.deinit();
+    try testing.expect(!plain.verify);
 }
 
 test "parseArgs rejects an option it does not know, and names it" {

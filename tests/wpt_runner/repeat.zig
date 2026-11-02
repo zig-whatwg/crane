@@ -107,13 +107,38 @@ pub const Layout = struct {
     }
 };
 
-/// One subtest's (or one test URL's harness status's) record over the
-/// series.
+/// The statuses `--verify` tells apart: WPT's subtest and harness statuses
+/// and the journal's file statuses; anything else is `other`.
+const SeenStatus = enum { OK, PASS, FAIL, ERROR, TIMEOUT, NOTRUN, PRECONDITION_FAILED, CRASH, other };
+
+fn seenStatus(text: []const u8) SeenStatus {
+    return std.meta.stringToEnum(SeenStatus, text) orelse .other;
+}
+
+/// One subtest's (or one test URL's harness status's, or one journal
+/// file's) record over the series.
 const Counts = struct {
     /// Runs in which it passed (a subtest) or was OK (a harness status).
     pass: [2]usize = .{ 0, 0 },
     /// The first failure seen, "STATUS: message", for the report.
     first_failure: ?[]u8 = null,
+    /// Runs that reported each status, per runner (`--verify`).
+    seen: [2][@typeInfo(SeenStatus).@"enum".field_names.len]usize = @splat(@splat(0)),
+
+    fn reported(c: Counts, s: usize) usize {
+        var n: usize = 0;
+        for (c.seen[s]) |k| n += k;
+        return n;
+    }
+
+    /// Whether its status differed between the runner's runs: two statuses,
+    /// or reported by some runs and not by others.
+    fn differs(c: Counts, s: usize, runs: usize) bool {
+        var kinds: usize = 0;
+        for (c.seen[s]) |k| kinds += @intFromBool(k != 0);
+        const n = c.reported(s);
+        return kinds > 1 or (n != 0 and n < runs);
+    }
 };
 
 /// The per-subtest failure rate over a repeat series.
@@ -127,13 +152,16 @@ pub const Tally = struct {
     subtests: std.StringArrayHashMapUnmanaged(Counts) = .empty,
     /// "<test URL>" -> harness OK counts.
     harness: std.StringArrayHashMapUnmanaged(Counts) = .empty,
+    /// "<journal path>[\t<context>]" -> the file's journal statuses
+    /// (`--verify`: a file whose status differs between runs).
+    files: std.StringArrayHashMapUnmanaged(Counts) = .empty,
 
     pub fn init(allocator: Allocator) Tally {
         return .{ .allocator = allocator };
     }
 
     pub fn deinit(self: *Tally) void {
-        inline for (.{ &self.subtests, &self.harness }) |map| {
+        inline for (.{ &self.subtests, &self.harness, &self.files }) |map| {
             for (map.keys(), map.values()) |k, v| {
                 self.allocator.free(k);
                 if (v.first_failure) |f| self.allocator.free(f);
@@ -177,7 +205,13 @@ pub const Tally = struct {
 
         var log = try journal.parseLines(self.allocator, journal_bytes);
         defer log.deinit();
-        for (log.records) |rec| self.statuses[s][@backingInt(rec.status)] += 1;
+        for (log.records) |rec| {
+            self.statuses[s][@backingInt(rec.status)] += 1;
+            var key_buf: [2048]u8 = undefined;
+            const key = if (rec.context.len == 0) rec.path else std.fmt.bufPrint(&key_buf, "{s}\t{s}", .{ rec.path, rec.context }) catch rec.path;
+            const f = try self.entry(&self.files, key);
+            f.seen[s][@backingInt(seenStatus(rec.status.toString()))] += 1;
+        }
 
         var lines = std.mem.splitScalar(u8, stream_bytes, '\n');
         while (lines.next()) |raw| {
@@ -193,12 +227,18 @@ pub const Tally = struct {
             const status = stringField(obj, "status") orelse continue;
 
             const h = try self.entry(&self.harness, url);
+            h.seen[s][@backingInt(seenStatus(status))] += 1;
             if (std.mem.eql(u8, status, "OK")) h.pass[s] += 1 else try self.noteFailure(h, status, stringField(obj, "message"));
 
             const subs = switch (obj.get("subtests") orelse continue) {
                 .array => |a| a,
                 else => continue,
             };
+            // A name a file reports twice in one run is two subtests: its
+            // second is "<name> #2", so two differently-ending subtests of
+            // one name are not one subtest whose status differs.
+            var occurrences: std.StringHashMapUnmanaged(u32) = .empty;
+            defer occurrences.deinit(self.allocator);
             for (subs.items) |sv| {
                 const so = switch (sv) {
                     .object => |o| o,
@@ -206,9 +246,15 @@ pub const Tally = struct {
                 };
                 const name = stringField(so, "name") orelse continue;
                 const sub_status = stringField(so, "status") orelse continue;
-                const key = try std.fmt.allocPrint(self.allocator, "{s}\t{s}", .{ url, name });
+                const seen_before = try occurrences.getOrPut(self.allocator, name);
+                seen_before.value_ptr.* = if (seen_before.found_existing) seen_before.value_ptr.* + 1 else 1;
+                const key = if (seen_before.value_ptr.* == 1)
+                    try std.fmt.allocPrint(self.allocator, "{s}\t{s}", .{ url, name })
+                else
+                    try std.fmt.allocPrint(self.allocator, "{s}\t{s} #{d}", .{ url, name, seen_before.value_ptr.* });
                 defer self.allocator.free(key);
                 const c = try self.entry(&self.subtests, key);
+                c.seen[s][@backingInt(seenStatus(sub_status))] += 1;
                 if (std.mem.eql(u8, sub_status, "PASS")) c.pass[s] += 1 else try self.noteFailure(c, sub_status, stringField(so, "message"));
             }
         }
@@ -219,7 +265,63 @@ pub const Tally = struct {
         this: []const u8,
         with: ?[]const u8,
         load_threads: u32 = 0,
+        /// `--verify`: end with the verdict and every unstable entry.
+        verify: bool = false,
     };
+
+    /// `--verify`: how many files, harness statuses and subtests had a
+    /// status that differed between `side`'s runs. A consistent failure is
+    /// not one; a status a run never reported is.
+    pub fn unstable(self: *const Tally, side: Side) usize {
+        const s = @backingInt(side);
+        var n: usize = 0;
+        inline for (.{ &self.files, &self.harness, &self.subtests }) |map| {
+            for (map.values()) |c| n += @intFromBool(c.differs(s, self.runs[s]));
+        }
+        return n;
+    }
+
+    /// `--verify`'s exit status: 1 when any status differed between runs.
+    pub fn verifyExitCode(self: *const Tally) u8 {
+        return if (self.unstable(.this) + self.unstable(.with) == 0) 0 else 1;
+    }
+
+    fn writeVerify(self: *const Tally, w: *std.Io.Writer, header: Header) !void {
+        const sides: []const Side = if (header.with != null) &.{ .this, .with } else &.{.this};
+        for (sides) |side| {
+            const s = @backingInt(side);
+            const label = if (header.with == null) "" else if (side == .this) " (this)" else " (with)";
+            const bad = self.unstable(side);
+            if (bad == 0) {
+                try w.print("verify{s}: STABLE over {d} runs (every file, harness status and subtest had one status in every run)\n", .{ label, self.runs[s] });
+                continue;
+            }
+            try w.print("verify{s}: UNSTABLE - {d} with a status that differs between the {d} runs:\n", .{ label, bad, self.runs[s] });
+            const kinds = [_]struct { name: []const u8, map: *const std.StringArrayHashMapUnmanaged(Counts) }{
+                .{ .name = "file", .map = &self.files },
+                .{ .name = "harness", .map = &self.harness },
+                .{ .name = "subtest", .map = &self.subtests },
+            };
+            for (kinds) |kind| {
+                for (kind.map.keys(), kind.map.values()) |key, c| {
+                    if (!c.differs(s, self.runs[s])) continue;
+                    try w.print("  {s} ", .{kind.name});
+                    if (std.mem.indexOfScalar(u8, key, '\t')) |tab| {
+                        try w.print("{s} | {s}: ", .{ key[0..tab], key[tab + 1 ..] });
+                    } else try w.print("{s}: ", .{key});
+                    var first = true;
+                    for (c.seen[s], 0..) |k, i| {
+                        if (k == 0) continue;
+                        try w.print("{s}{s} {d}", .{ if (first) "" else ", ", @typeInfo(SeenStatus).@"enum".field_names[i], k });
+                        first = false;
+                    }
+                    const missing = self.runs[s] -| c.reported(s);
+                    if (missing != 0) try w.print("{s}(not reported) {d}", .{ if (first) "" else ", ", missing });
+                    try w.writeByte('\n');
+                }
+            }
+        }
+    }
 
     fn failed(self: *const Tally, c: Counts) usize {
         return (self.runs[0] -| c.pass[0]) + (self.runs[1] -| c.pass[1]);
@@ -292,6 +394,7 @@ pub const Tally = struct {
         if (failing == 0) try w.writeAll("  none\n");
         const steady = self.subtests.count() - failing;
         try w.print("{d} subtest{s} passed in every run\n", .{ steady, if (steady == 1) "" else "s" });
+        if (header.verify) try self.writeVerify(w, header);
     }
 };
 
@@ -505,4 +608,92 @@ test "the report lists failing subtests worst first, with their rates and first 
     try testing.expect(std.mem.indexOf(u8, text, "| never") == null);
     try testing.expect(std.mem.indexOf(u8, text, "load: 2 busy threads") != null);
     try testing.expect(std.mem.indexOf(u8, text, "1 subtest passed in every run") != null);
+}
+
+// ---------------------------------------------------------------------------
+// --verify: the changed-test gate (AGENTS.md "Before every commit"). A file
+// or subtest whose status differs between the runs of a series fails it; a
+// consistent failure does not.
+
+fn subtestLine(comptime status: []const u8) []const u8 {
+    return "{\"test\": \"/a.html\", \"status\": \"OK\", \"message\": null, \"duration\": 1, \"subtests\": [{\"name\": \"x\", \"status\": \"" ++ status ++ "\", \"message\": null}]}\n";
+}
+
+test "verify: a subtest that fails in every run, the same way, is stable" {
+    var t = Tally.init(testing.allocator);
+    defer t.deinit();
+    for (0..10) |_| try t.addRun(.this, ok_record, subtestLine("FAIL"));
+    try testing.expectEqual(@as(usize, 0), t.unstable(.this));
+    try testing.expectEqual(@as(u8, 0), t.verifyExitCode());
+}
+
+test "verify: a subtest that passes in some runs and fails in others is unstable" {
+    var t = Tally.init(testing.allocator);
+    defer t.deinit();
+    for (0..9) |_| try t.addRun(.this, ok_record, subtestLine("PASS"));
+    try t.addRun(.this, ok_record, subtestLine("FAIL"));
+    try testing.expectEqual(@as(usize, 1), t.unstable(.this));
+    try testing.expectEqual(@as(u8, 1), t.verifyExitCode());
+}
+
+test "verify: a subtest that fails in every run but with different statuses is unstable" {
+    var t = Tally.init(testing.allocator);
+    defer t.deinit();
+    try t.addRun(.this, ok_record, subtestLine("FAIL"));
+    try t.addRun(.this, ok_record, subtestLine("TIMEOUT"));
+    try testing.expectEqual(@as(usize, 1), t.unstable(.this));
+}
+
+test "verify: a subtest a run never reported is unstable" {
+    var t = Tally.init(testing.allocator);
+    defer t.deinit();
+    try t.addRun(.this, ok_record, subtestLine("PASS"));
+    // The page ended before x reported, but the file's status is the same.
+    try t.addRun(.this, ok_record, "{\"test\": \"/a.html\", \"status\": \"OK\", \"message\": null, \"duration\": 1, \"subtests\": []}\n");
+    try testing.expectEqual(@as(usize, 1), t.unstable(.this));
+}
+
+test "verify: a file whose status differs between runs is unstable, even with no subtest to show it" {
+    var t = Tally.init(testing.allocator);
+    defer t.deinit();
+    try t.addRun(.this, ok_record, "");
+    try t.addRun(.this, "{\"index\":0,\"path\":\"a.html\",\"context\":\"\",\"status\":\"TIMEOUT\"}\n", "");
+    try testing.expectEqual(@as(usize, 1), t.unstable(.this));
+    // A file that crashes in every run is a consistent failure.
+    var c = Tally.init(testing.allocator);
+    defer c.deinit();
+    for (0..3) |_| try c.addRun(.this, "{\"index\":0,\"path\":\"a.html\",\"context\":\"\",\"status\":\"CRASH\"}\n", "");
+    try testing.expectEqual(@as(usize, 0), c.unstable(.this));
+}
+
+test "verify: two subtests of one name that end differently, the same in every run, are stable" {
+    var t = Tally.init(testing.allocator);
+    defer t.deinit();
+    const twice = "{\"test\": \"/a.html\", \"status\": \"OK\", \"message\": null, \"duration\": 1, \"subtests\": [{\"name\": \"x\", \"status\": \"PASS\", \"message\": null}, {\"name\": \"x\", \"status\": \"FAIL\", \"message\": null}]}\n";
+    for (0..3) |_| try t.addRun(.this, ok_record, twice);
+    try testing.expectEqual(@as(usize, 0), t.unstable(.this));
+    try testing.expectEqual([2]usize{ 3, 0 }, t.failures("/a.html", "x #2").?);
+}
+
+test "verify: the report names every unstable file and subtest with each status it had" {
+    var t = Tally.init(testing.allocator);
+    defer t.deinit();
+    try t.addRun(.this, ok_record, subtestLine("PASS"));
+    try t.addRun(.this, "{\"index\":0,\"path\":\"a.html\",\"context\":\"\",\"status\":\"TIMEOUT\"}\n", subtestLine("NOTRUN"));
+    var out: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    try t.write(&out.writer, .{ .this = "tip/wpt_runner", .with = null, .verify = true });
+    const text = out.written();
+    try testing.expect(std.mem.indexOf(u8, text, "verify: UNSTABLE") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "file a.html: OK 1, TIMEOUT 1") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "subtest /a.html | x: PASS 1, NOTRUN 1") != null);
+
+    var s = Tally.init(testing.allocator);
+    defer s.deinit();
+    try s.addRun(.this, ok_record, subtestLine("PASS"));
+    try s.addRun(.this, ok_record, subtestLine("PASS"));
+    var quiet: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer quiet.deinit();
+    try s.write(&quiet.writer, .{ .this = "tip/wpt_runner", .with = null, .verify = true });
+    try testing.expect(std.mem.indexOf(u8, quiet.written(), "verify: STABLE over 2 runs") != null);
 }
