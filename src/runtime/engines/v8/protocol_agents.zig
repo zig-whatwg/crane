@@ -24,6 +24,7 @@ const shadow_realm = @import("shadow_realm.zig");
 const intl_binding = @import("intl_binding.zig");
 const observable_array = @import("observable_array.zig");
 const context_manager = @import("context_manager.zig");
+const callback_registry = @import("callback_registry.zig");
 /// worker_realm.zig's agent operations.
 const worker_realm = @import("worker_realm.zig");
 const protocol_realms = @import("protocol_realms.zig");
@@ -196,6 +197,12 @@ const AgentRecord = struct {
     /// frees this agent's realms and no other's. It was a threadlocal, which
     /// the thread's host agent's end took down whole.
     realms: context_manager.Realms = .{},
+    /// The agent's callback wrappers not yet freed (callback_registry.Live),
+    /// so that a realm's end can release the handles its script's callbacks
+    /// hold. Read and written on the agent's own thread only, through its
+    /// end; its storage goes with the record (removeAgent). It was a
+    /// `threadlocal`, every agent's on the thread in one set.
+    callbacks: callback_registry.Live = .empty,
     /// The agent is ending (`endAgent`): its hooks are forgotten, and
     /// `recordOf` no longer finds it - nothing reaches the host from here on,
     /// and nothing is made for the agent - while its realms end, which still
@@ -275,6 +282,17 @@ pub fn endingWindowRealmsOf(isolate: *ffi.Isolate) ?*?*const protocol_realms.End
     defer std.Io.Threaded.mutexUnlock(&agents_lock);
     const record = agents.get(isolate) orelse return null;
     return &record.ending_window_realms;
+}
+
+/// The callback wrappers of the agent whose isolate this is
+/// (callback_registry.Live), until the agent's record goes - through its end,
+/// while its realms end; null for an isolate createAgent did not make.
+/// Called on the agent's own thread only.
+pub fn callbacksOf(isolate: *ffi.Isolate) ?*callback_registry.Live {
+    std.Io.Threaded.mutexLockUncancelable(&agents_lock);
+    defer std.Io.Threaded.mutexUnlock(&agents_lock);
+    const record = agents.get(isolate) orelse return null;
+    return &record.callbacks;
 }
 
 /// The realms of the agent whose isolate this is (context_manager.Realms),
@@ -676,6 +694,7 @@ fn removeAgent(isolate: *ffi.Isolate) void {
         break :blk kv.value;
     };
     std.debug.assert(record.ending);
+    callback_registry.endAgent(&record.callbacks);
     std.heap.c_allocator.destroy(record);
 }
 

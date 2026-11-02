@@ -197,3 +197,70 @@ fn secondEndsWithItsRealm() !void {
 test "an agent's end leaves the realms of the agent it was made in" {
     try runOnThread(secondEndsWithItsRealm);
 }
+
+/// How many callback wrappers `agent` tracks (callback_registry.Live, on its
+/// record).
+fn callbacksTrackedBy(agent: *protocol.Agent) usize {
+    const live = v8.protocol_agents.callbacksOf(@ptrCast(@alignCast(agent))) orelse return 0;
+    return live.count();
+}
+
+const CallbackWrapper = v8.callback_wrapper_mod.CallbackWrapper;
+
+/// A callback wrapper for a function made in `realm` of `agent`, as the
+/// binding makes one for a callback argument.
+fn wrapperIn(agent: *protocol.Agent, realm: runtime.Context) !*CallbackWrapper {
+    const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
+    ffi.v8_Isolate_Enter(isolate);
+    defer ffi.v8_Isolate_Exit(isolate);
+    const scope = ffi.v8_HandleScope_New(isolate) orelse return error.HandleScopeFailed;
+    defer ffi.v8_HandleScope_Dispose(scope);
+    const context: *ffi.Context = @ptrCast(@alignCast(realm.engine_ctx orelse return error.NoContext));
+    ffi.v8_Context_Enter(context);
+    defer ffi.v8_Context_Exit(context);
+    const code = "(() => 1)";
+    const text = ffi.v8_String_NewFromUtf8(isolate, code.ptr, code.len) orelse return error.StringFailed;
+    defer ffi.v8_String_Dispose(text);
+    const script = ffi.v8_Script_Compile(context, text) orelse return error.CompileFailed;
+    defer ffi.v8_Script_Dispose(script);
+    // The wrapper takes this handle over.
+    const function = ffi.v8_Script_Run(context, script) orelse return error.RunFailed;
+    errdefer ffi.v8_Value_Dispose(function);
+    return CallbackWrapper.initFunction(std.testing.allocator, isolate, context, @ptrCast(function));
+}
+
+/// A callback wrapper made in one agent's realm is tracked by that agent -
+/// not by the thread, not by the other agent on it - and its realm's end
+/// releases its handles.
+fn callbacksAreTheAgentsOwn() !void {
+    const first = try newAgent();
+    defer protocol.destroyAgent(first);
+    const first_realm = try windowRealmIn(first);
+    defer protocol.destroyWindowRealm(first_realm, .global_detached);
+    const second = try newAgent();
+    defer protocol.destroyAgent(second);
+    const second_realm = try workerRealmIn(second);
+
+    const before_first = callbacksTrackedBy(first);
+    const wrapper = try wrapperIn(second, second_realm);
+    // Freed by its owner whatever happens to its realm; with the agent
+    // current, as the binding frees one.
+    defer {
+        const isolate: *ffi.Isolate = @ptrCast(@alignCast(second));
+        ffi.v8_Isolate_Enter(isolate);
+        wrapper.deinit();
+        ffi.v8_Isolate_Exit(isolate);
+    }
+    try std.testing.expectEqual(@as(usize, 1), callbacksTrackedBy(second));
+    try std.testing.expectEqual(before_first, callbacksTrackedBy(first));
+
+    // The realm's end releases its handles and stops tracking it.
+    protocol.destroyWorkerRealm(second_realm, null, null);
+    try std.testing.expect(wrapper.isReleased());
+    try std.testing.expectEqual(@as(usize, 0), callbacksTrackedBy(second));
+    try std.testing.expectEqual(before_first, callbacksTrackedBy(first));
+}
+
+test "an agent tracks the callback wrappers of its realms, and no other agent's" {
+    try runOnThread(callbacksAreTheAgentsOwn);
+}
