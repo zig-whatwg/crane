@@ -96,15 +96,21 @@ test "every response but a 204 or 205 makes a document" {
 
 test "the termination nesting level nests, and never goes below zero" {
     const level = @import("html_core").navigation.termination_nesting;
-    try testing.expect(!level.active());
-    level.enter();
-    level.enter();
-    level.leave();
-    try testing.expect(level.active());
-    level.leave();
-    try testing.expect(!level.active());
-    level.leave();
-    try testing.expect(!level.active());
+    // The level is its agent's (on its host); a null host has none.
+    var agent_host = @import("html_core").agent_host.AgentHost.init(testing.allocator);
+    defer agent_host.deinit();
+    const host = &agent_host;
+    try testing.expect(!level.active(host));
+    level.enter(host);
+    level.enter(host);
+    level.leave(host);
+    try testing.expect(level.active(host));
+    level.leave(host);
+    try testing.expect(!level.active(host));
+    level.leave(host);
+    try testing.expect(!level.active(host));
+    level.enter(null);
+    try testing.expect(!level.active(null));
 }
 
 // HTML "can have its URL rewritten" (7.2.5): what pushState()/replaceState()

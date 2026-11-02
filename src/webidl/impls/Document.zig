@@ -4176,10 +4176,12 @@ fn fireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
     internal.unload_counter += 1;
     defer internal.unload_counter -= 1;
     // Steps 3 and 5: the event loop's termination nesting level, around the
-    // event - window.open() returns null inside it.
+    // event - window.open() returns null inside it. The event loop is the
+    // document's relevant agent's: the level is on its host.
     const termination_nesting = @import("html_core").navigation.termination_nesting;
-    termination_nesting.enter();
-    defer termination_nesting.leave();
+    const event_loop = @import("dom").agent_hosts.of(document.ctx);
+    termination_nesting.enter(event_loop);
+    defer termination_nesting.leave(event_loop);
 
     // Step 4: "Let eventFiringResult be the result of firing an event named
     // beforeunload at document's relevant global object, using
@@ -4228,11 +4230,13 @@ fn unloadSteps(data: ?*anyopaque) void {
     if (internal.unload_counter > 0) return;
 
     // Step 7: "Increase eventLoop's termination nesting level by 1"; step 14
-    // lowers it after the unload event.
+    // lowers it after the unload event. eventLoop is oldDocument's relevant
+    // agent's event loop: the level is on its host.
     const termination_nesting = @import("html_core").navigation.termination_nesting;
-    termination_nesting.enter();
+    const event_loop = @import("dom").agent_hosts.of(document.ctx);
+    termination_nesting.enter(event_loop);
     var terminating = true;
-    defer if (terminating) termination_nesting.leave();
+    defer if (terminating) termination_nesting.leave(event_loop);
     // Step 8: "Increase oldDocument's unload counter by 1." Step 21 lowers
     // it - document.open() is ignored in between (§8.4.1 step 5).
     internal.unload_counter += 1;
@@ -4257,7 +4261,7 @@ fn unloadSteps(data: ?*anyopaque) void {
     // target override flag set." The override is not modelled.
     if (!internal.salvageable) fireEvent(document, window, "unload", false);
     // Step 14.
-    termination_nesting.leave();
+    termination_nesting.leave(event_loop);
     terminating = false;
     // Steps 15-16: "Set oldDocument's suspension time to the current high
     // resolution time given document's relevant global object", and its
