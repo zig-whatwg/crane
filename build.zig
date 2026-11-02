@@ -992,7 +992,10 @@ fn suiteConfig(name: []const u8) SuiteConfig {
 /// reaches.
 fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.Step.Compile, name: []const u8, config_name: ?[]const u8) *std.Build.Step.Run {
     const config = suiteConfig(config_name orelse name);
-    useCraneTestRunner(b, test_exe, name, config.state_checks, launch.many_browsers);
+    // Whether this executable can run the many-Browsers variant's busy
+    // Browser: -Dmany-browsers, and it links V8 and the browser module. The
+    // others run as usual under -Dmany-browsers, and say nothing about it.
+    const many_browsers = useCraneTestRunner(b, test_exe, name, config.state_checks, launch.many_browsers);
     const run = b.addRunArtifact(launch.launcher);
     run.setName(b.fmt("test {s}", .{name}));
     // The build runner speaks the test-runner protocol to the launcher.
@@ -1025,7 +1028,7 @@ fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.St
             run.step.dependOn(&dsym.step);
         }
     }
-    if (launch.many_browsers) {
+    if (many_browsers) {
         run.addArg("--many-browsers");
         if (config.many_browsers == .report) run.addArg("--report-only");
     }
@@ -1036,7 +1039,7 @@ fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.St
     // the plain run's).
     const variant = b.fmt("{s}{s}", .{
         if (launch.sanitize_thread) ".tsan" else "",
-        if (launch.many_browsers) ".many-browsers" else "",
+        if (many_browsers) ".many-browsers" else "",
     });
     run.addArg(b.fmt("--out=tmp/test-launch/{s}{s}.jsonl", .{ name, variant }));
     run.addArg(b.fmt("--timings=tmp/test-launch/{s}.jsonl", .{name}));
@@ -1064,8 +1067,9 @@ fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.St
 ///
 /// `many_browsers` (-Dmany-browsers): the runner may run the busy Browser of
 /// the many-Browsers variant (tests/test_runner/neighbour.zig) - `browser`,
-/// where the executable imports the browser module and links V8.
-fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []const u8, checks: StateChecks, many_browsers: bool) void {
+/// where the executable imports the browser module and links V8. Returns
+/// whether it can.
+fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []const u8, checks: StateChecks, many_browsers: bool) bool {
     const root = test_exe.root_module;
     const wf = b.addWriteFiles();
     _ = wf.addCopyDirectory(b.path("tests/test_runner"), "", .{ .include_extensions = &.{".zig"} });
@@ -1124,6 +1128,7 @@ fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []
     const runner = wf.getDirectory().path(b, "runner.zig");
     test_exe.test_runner = .{ .path = runner.dupe(b.graph), .mode = .server };
     runner.addStepDependencies(&test_exe.step);
+    return has_browser;
 }
 
 /// Whether `module` links V8 itself (`linkV8`): its own C++ wrapper.
@@ -2440,7 +2445,7 @@ pub fn build(b: *std.Build) void {
                 },
             }),
         });
-        useCraneTestRunner(b, state_fixture, "test_state_fixture", .fail, false);
+        _ = useCraneTestRunner(b, state_fixture, "test_state_fixture", .fail, false);
         launcher_fixture_options.addOptionPath("state_path", state_fixture.getEmittedBin());
         // A test that races, built with ThreadSanitizer: child.zig's tests
         // check that the launcher's TSAN_OPTIONS make the race a crash of
@@ -2472,7 +2477,7 @@ pub fn build(b: *std.Build) void {
                 }),
             });
             linkV8(b, many_fixture.root_module, target);
-            useCraneTestRunner(b, many_fixture, "test_many_browsers_fixture", .fail, true);
+            _ = useCraneTestRunner(b, many_fixture, "test_many_browsers_fixture", .fail, true);
             launcher_fixture_options.addOptionPath("many_browsers_path", many_fixture.getEmittedBin());
         }
         const launcher_test_module = b.createModule(.{
