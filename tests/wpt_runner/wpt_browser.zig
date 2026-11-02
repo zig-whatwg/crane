@@ -318,15 +318,24 @@ pub const WptBrowser = struct {
         // Get the context
         const ctx = self.browser.current_context orelse return error.NoContext;
         const realm = ctx.realm orelse return error.NoContext;
+        const explicit_timeout = config.explicitTimeoutForMillis(timeout_ms);
+        // The harness loads where the page includes it, as in a browser
+        // (`HarnessLoad`); a page that includes none gets it first.
+        const harness_load = self.harnessLoadOf(test_path);
         // The harness can finish while parsing still waits on a sheet. The
         // run and the persistent parser hold independent context references.
         const loader_ctx = try self.allocator.create(ScriptLoaderContext);
-        loader_ctx.* = .{ .allocator = self.allocator, .wpt_browser = self, .realm = realm };
+        loader_ctx.* = .{ .allocator = self.allocator, .wpt_browser = self, .realm = realm, .harness_load = harness_load, .explicit_timeout = explicit_timeout };
         defer ScriptLoaderContext.release(loader_ctx);
 
-        // Load testharness.js BEFORE loading the page
-        // This ensures testharness globals are available when scripts in HTML execute
-        try self.loadTestHarness(ctx, config.explicitTimeoutForMillis(timeout_ms));
+        switch (harness_load) {
+            // The fresh realm holds nothing of the previous file's harness;
+            // the page's own includes load this one.
+            .at_include => try self.checkFreshRealm(ctx),
+            // No include to load it at: testharness.js BEFORE the page, so
+            // its globals are there when the page's scripts run.
+            .before_page => try self.loadTestHarness(ctx, explicit_timeout),
+        }
 
         const nav_ms = lapMs(&phase);
 
@@ -355,6 +364,17 @@ pub const WptBrowser = struct {
 
         const load_ms = lapMs(&phase);
 
+        // A page whose parse reached no testharnessreport.js include - one
+        // that names the harness without including it, or includes only
+        // testharness.js - has the runner's hook installed now, before the
+        // harness can complete (it completes after the load event, from a
+        // task).
+        if (harness_load == .at_include and !self.harnessHookInstalled(ctx)) {
+            self.installHarnessLate(ctx, explicit_timeout) catch |err| {
+                log.warn("runHTMLTest: could not install the harness after the page: {}", .{err});
+            };
+        }
+
         // Run event loop until test completes or timeout
         var result = try self.waitForCompletion(ctx, deadline, timeout_ms, test_path);
         result.nav_ms = nav_ms;
@@ -375,11 +395,41 @@ pub const WptBrowser = struct {
         return 0;
     }
 
+    /// Where a run's harness loads (`runHTMLTest`).
+    ///
+    /// `at_include`: where the page includes it, as in a browser. The page's
+    /// own `<script src="/resources/testharness.js">` runs the harness, and
+    /// its `<script src="/resources/testharnessreport.js">` runs the runner's
+    /// hooks (`runnerReportSource`) in place of the stock report - upstream
+    /// wptrunner's model: it serves its own testharnessreport.js at that path
+    /// (tools/wptrunner/wptrunner/environment.py `get_routes`, the
+    /// "/resources/testharnessreport.js" route over executors/message-queue.js
+    /// and wptrunner/testharnessreport.js, whose `setup(props)` and
+    /// `add_completion_callback` are what `runnerReportSource` does here) and
+    /// preloads nothing. So script before the include runs without the
+    /// harness, and what the harness reads of the document - `<meta
+    /// name=timeout>` - is there when it loads.
+    /// content-security-policy/generic/generic-0_8_1.sub.html calls
+    /// async_test() before its include: every browser throws a ReferenceError
+    /// there (wpt.fyi 2026-11-02, Chrome 156 / Firefox 159 / Safari 27.2: one
+    /// subtest, "Wildcard host matching works.", PASS), where a harness loaded
+    /// before the page ran the rest of that script and raced its async
+    /// script against the parser.
+    ///
+    /// `before_page`: a page whose source names no testharness.js - one the
+    /// runner still runs as a testharness test - gets the harness before the
+    /// page, as every page once did.
+    const HarnessLoad = test_harness.HarnessLoad;
+
     /// Script loader context for HTML parsing
     const ScriptLoaderContext = struct {
         allocator: std.mem.Allocator,
         wpt_browser: *WptBrowser,
         realm: runtime.Context,
+        /// Where this run's harness loads.
+        harness_load: HarnessLoad,
+        /// Whether the run's budget is the runner's (`runnerReportSource`).
+        explicit_timeout: bool,
         references: usize = 1,
 
         fn retain(context: ?*anyopaque) void {
@@ -394,10 +444,15 @@ pub const WptBrowser = struct {
         }
     };
 
-    /// The embedder's script loader for the parser: it answers only for
-    /// testharness.js and testharnessreport.js, which `loadTestHarness`
-    /// already ran before parsing began - running them again would make a new
-    /// Tests object and lose the runner's completion callback.
+    /// The embedder's script loader for the parser: it answers for
+    /// testharness.js and testharnessreport.js, and for testdriver's vendor
+    /// file.
+    ///
+    /// A run whose harness loads at the page's include (`HarnessLoad`) gets
+    /// the cached testharness.js at the first, and the runner's own report
+    /// at the second. A run whose harness `loadTestHarness` already ran
+    /// before the page gets empty scripts for both: running them again would
+    /// make a new Tests object and lose the runner's completion callback.
     ///
     /// Every other script returns null, so the engine fetches it with HTML's
     /// "fetch a classic script": a request with destination "script", the
@@ -413,13 +468,21 @@ pub const WptBrowser = struct {
         if (!loader_ctx.realm.hasEngine()) return null;
         const self = loader_ctx.wpt_browser;
 
-        if (std.mem.eql(u8, url, "/resources/testharness.js") or
-            std.mem.eql(u8, url, "/resources/testharnessreport.js"))
-        {
-            log.debug("scriptLoaderCallback: skipping {s} (already loaded)", .{url});
-            // An empty script, so the element still runs and fires load.
-            return self.allocator.dupe(u8, "// Already loaded by WPT runner") catch null;
-        }
+        const is_harness = std.mem.eql(u8, url, "/resources/testharness.js");
+        const is_report = std.mem.eql(u8, url, "/resources/testharnessreport.js");
+        if (is_harness or is_report) switch (loader_ctx.harness_load) {
+            .at_include => {
+                // The harness itself, as wpt serve would answer; a runner
+                // with none cached lets the engine fetch it.
+                if (is_harness) return self.allocator.dupe(u8, self.testharness_js orelse return null) catch null;
+                return runnerReportSource(self.allocator, loader_ctx.explicit_timeout) catch null;
+            },
+            .before_page => {
+                log.debug("scriptLoaderCallback: skipping {s} (already loaded)", .{url});
+                // An empty script, so the element still runs and fires load.
+                return self.allocator.dupe(u8, "// Already loaded by WPT runner") catch null;
+            },
+        };
         // testdriver.js's vendor hook: Crane's, with its natives defined on
         // the test realm first (test_driver.zig).
         if (std.mem.eql(u8, url, test_driver.vendor_path)) {
@@ -429,15 +492,153 @@ pub const WptBrowser = struct {
         return null;
     }
 
-    /// Load testharness.js and testharnessreport.js into the context
+    /// Where the harness loads for the test at `test_path`: from its file's
+    /// source (test_harness.harnessLoadFor).
+    fn harnessLoadOf(self: *WptBrowser, test_path: []const u8) HarnessLoad {
+        const path = test_harness.sourcePathOf(test_path);
+        if (std.mem.endsWith(u8, path, ".js")) return test_harness.harnessLoadFor(path, null);
+        const source = self.loadWptScript(path) catch return test_harness.harnessLoadFor(path, null);
+        defer self.allocator.free(source);
+        return test_harness.harnessLoadFor(path, source);
+    }
+
+    /// The report the runner serves at a page's testharnessreport.js
+    /// include (`HarnessLoad.at_include`): `runnerReportSource`, with the
+    /// runner's budget when it is the runner's. OWNED.
     ///
-    /// `explicit_timeout` is whether this file's budget is the runner's to
-    /// enforce rather than the harness's. It cannot be left to testharness.js:
-    /// that reads `<meta name="timeout">` out of the document, and this runs
-    /// before the document exists. See `config.Timeout.explicitTimeout`.
-    fn loadTestHarness(self: *WptBrowser, ctx: *Context, explicit_timeout: bool) !void {
-        // CRITICAL CHECK: Verify no state leaked from previous context
-        // If any of these exist, we have a state leak!
+    /// A realm with no harness (a page that included the report alone) gets
+    /// nothing: the hook is then installed after the page
+    /// (`installHarnessLate`).
+    fn runnerReportSource(allocator: std.mem.Allocator, explicit_timeout: bool) ![]u8 {
+        return std.mem.concat(allocator, u8, &.{
+            "if (typeof add_completion_callback === 'function') {\n",
+            disable_output_js,
+            if (explicit_timeout) explicit_timeout_js else "",
+            completion_hook_js,
+            "}\n",
+        });
+    }
+
+    /// Turn off the harness's human-facing reporting. It is pure waste in a
+    /// headless runner, and it is the single largest cost in the suite.
+    ///
+    /// One `setup({output: false})` disables two separate things, because
+    /// testharness.js keeps two flags and this sets both:
+    ///
+    ///   `output.enabled` gates the results table. On completion the harness
+    ///   renders one row per subtest into `#log` - a `<tr>`, three `<td>`, a
+    ///   `<pre>`, and, even for a test that ran no asserts, a `<details>`/
+    ///   `<summary>`/`<table>` plus two querySelector calls. A dozen-odd DOM
+    ///   operations each, every one crossing into Zig at roughly 75us.
+    ///   Measured on a page of trivial subtests: 2.16ms per subtest, against
+    ///   0.069ms to register and run one. 31x more time spent describing the
+    ///   results than producing them.
+    ///
+    ///   `tests.output` gates per-assertion bookkeeping in `expose_assert`,
+    ///   which wraps every `assert_*`. It pushes an AssertRecord, and in its
+    ///   `finally` calls `get_stack()` - `new Error().stack`, split into
+    ///   lines, matched against a RegExp built fresh each time - on *passing*
+    ///   assertions too, since a pass leaves `stack` null.
+    ///
+    /// Nothing reads either one. `asserts_run` is consumed only by
+    /// `Output.show_results`; results come back through `__wpt_results`,
+    /// built by the completion callback (`completion_hook_js`), whose
+    /// signature is `(tests, harness_status)` - it never even receives the
+    /// assert records. The context is destroyed immediately afterwards.
+    ///
+    /// Only the table is measured above; the assertion path is extra, and is
+    /// the likeliest reason real files run ~8.6ms/subtest where the trivial
+    /// fixtures run 2.16 - those fixtures have empty bodies and assert
+    /// nothing. Failure reporting is untouched: on a throw `expose_assert`
+    /// takes the stack from the exception, outside the flag.
+    ///
+    /// This is the mechanism upstream intends for exactly this - wptrunner
+    /// ships its own testharnessreport.js that does the same. The stock one
+    /// only reads `window.opener.testharness_properties`, and there is no
+    /// opener here, so the runner has to say it. `Output.prototype.setup`
+    /// ands its flag rather than assigning, so a test calling
+    /// `setup({output: true})` later cannot switch the table back on. (The
+    /// assertion flag *is* a plain assignment, so such a test would resume
+    /// paying for stacks - correct behaviour, and vanishingly rare.)
+    ///
+    /// Not fatal when it throws: the table is a waste of time, not a
+    /// correctness requirement, and a result is worth more than the
+    /// speed-up.
+    const disable_output_js =
+        \\  try { setup({ output: false }); } catch (e) { console.log('[wpt runner] could not disable harness output: ' + e); }
+        \\
+    ;
+
+    /// A budget that is the runner's, not the harness's.
+    ///
+    /// `WindowTestEnvironment.test_timeout()` walks the document's <meta>
+    /// elements for `name=timeout` when testharness.js runs: before the
+    /// document, for a harness loaded before the page, it sees nothing - and
+    /// every file, including the ones that declare `content="long"`, would
+    /// get the 10s default, which fires first and ends a 60s file at 10s;
+    /// at its include, it misses a meta that comes after. An explicit timeout
+    /// leaves the harness with no timer of its own: `waitForCompletion` calls
+    /// its `timeout()` at the runner's ceiling instead.
+    ///
+    /// Not `timeout_multiplier`: testharness scales `step_timeout` by it
+    /// too, so a `long` file's own waits ran six times longer - see
+    /// `config.Timeout.explicitTimeout`.
+    ///
+    /// Skipped for the harness default: `setup()` moves the harness into
+    /// its SETUP phase, and there is no reason to do that to the ~90% of
+    /// files whose budget is already the harness's own. Not fatal either: a
+    /// file running on the short budget is worth more than no result at all.
+    const explicit_timeout_js =
+        \\  try { setup({ explicit_timeout: true }); } catch (e) { console.log('[wpt runner] could not set an explicit timeout: ' + e); }
+        \\
+    ;
+
+    /// The completion callback that captures the results
+    /// (`collectResults`, `isComplete`).
+    const completion_hook_js =
+        \\(function() {
+        \\  // Register completion callback
+        \\  add_completion_callback(function(tests, harness_status) {
+        \\    try {
+        \\      window.__wpt_results = {
+        \\        status: harness_status ? harness_status.status : 0,
+        \\        message: harness_status ? (harness_status.message || null) : null,
+        \\        tests: (tests || []).map(function(t) {
+        \\          return {
+        \\            name: t.name,
+        \\            status: t.status,
+        \\            message: t.message || null
+        \\          };
+        \\        })
+        \\      };
+        \\    } catch (e) {
+        \\      window.__wpt_results = { status: 1, message: e.toString(), tests: [] };
+        \\    }
+        \\    window.__wpt_complete = true;
+        \\  });
+        \\  // Store test results for collection: there once the callback is
+        \\  // (`harnessHookInstalled`).
+        \\  window.__wpt_results = null;
+        \\  window.__wpt_complete = false;
+        \\})();
+        \\
+    ;
+
+    /// Verify testharness.js loaded correctly by checking for its globals.
+    /// This catches cases where testharness.js execution fails silently.
+    const verify_harness_js =
+        \\if (typeof test !== 'function' || typeof async_test !== 'function' ||
+        \\    typeof promise_test !== 'function' || typeof setup !== 'function') {
+        \\  throw new Error('testharness.js failed to load: globals not defined. ' +
+        \\    'test=' + typeof test + ', async_test=' + typeof async_test +
+        \\    ', promise_test=' + typeof promise_test + ', setup=' + typeof setup);
+        \\}
+        \\'GLOBALS_VERIFIED';
+    ;
+
+    /// No state of a previous file's harness in the fresh realm: a leak is
+    /// logged.
+    fn checkFreshRealm(self: *WptBrowser, ctx: *Context) !void {
         const leak_check =
             \\(function() {
             \\  var leaks = [];
@@ -461,6 +662,16 @@ pub const WptBrowser = struct {
         if (!std.mem.eql(u8, leak_str, "CLEAN")) {
             log.warn("loadTestHarness: state leak detected: {s}", .{leak_str});
         }
+    }
+
+    /// Load testharness.js and testharnessreport.js into the context, before
+    /// the page (`HarnessLoad.before_page`, and `runTest`'s scripts), with
+    /// the runner's hooks.
+    ///
+    /// `explicit_timeout` is whether this file's budget is the runner's to
+    /// enforce rather than the harness's (`explicit_timeout_js`).
+    fn loadTestHarness(self: *WptBrowser, ctx: *Context, explicit_timeout: bool) !void {
+        try self.checkFreshRealm(ctx);
 
         // Load testharness.js
         if (self.testharness_js) |js| {
@@ -474,126 +685,43 @@ pub const WptBrowser = struct {
             try ctx.runScript(js);
         }
 
-        // Turn off the harness's human-facing reporting. It is pure waste in a
-        // headless runner, and it is the single largest cost in the suite.
-        //
-        // One `setup({output: false})` disables two separate things, because
-        // testharness.js keeps two flags and this sets both:
-        //
-        //   `output.enabled` gates the results table. On completion the harness
-        //   renders one row per subtest into `#log` - a `<tr>`, three `<td>`, a
-        //   `<pre>`, and, even for a test that ran no asserts, a `<details>`/
-        //   `<summary>`/`<table>` plus two querySelector calls. A dozen-odd DOM
-        //   operations each, every one crossing into Zig at roughly 75us.
-        //   Measured on a page of trivial subtests: 2.16ms per subtest, against
-        //   0.069ms to register and run one. 31x more time spent describing the
-        //   results than producing them.
-        //
-        //   `tests.output` gates per-assertion bookkeeping in `expose_assert`,
-        //   which wraps every `assert_*`. It pushes an AssertRecord, and in its
-        //   `finally` calls `get_stack()` - `new Error().stack`, split into
-        //   lines, matched against a RegExp built fresh each time - on *passing*
-        //   assertions too, since a pass leaves `stack` null.
-        //
-        // Nothing reads either one. `asserts_run` is consumed only by
-        // `Output.show_results`; results come back through `__wpt_results`,
-        // built by the completion callback below, whose signature is
-        // `(tests, harness_status)` - it never even receives the assert records.
-        // The context is destroyed immediately afterwards.
-        //
-        // Only the table is measured above; the assertion path is extra, and is
-        // the likeliest reason real files run ~8.6ms/subtest where the trivial
-        // fixtures run 2.16 - those fixtures have empty bodies and assert
-        // nothing. Failure reporting is untouched: on a throw `expose_assert`
-        // takes the stack from the exception, outside the flag.
-        //
-        // This is the mechanism upstream intends for exactly this - wptrunner
-        // ships its own testharnessreport.js that does the same. The stock one
-        // only reads `window.opener.testharness_properties`, and there is no
-        // opener here, so the runner has to say it. `Output.prototype.setup`
-        // ands its flag rather than assigning, so a test calling
-        // `setup({output: true})` later cannot switch the table back on. (The
-        // assertion flag *is* a plain assignment, so such a test would resume
-        // paying for stacks - correct behaviour, and vanishingly rare.)
-        const disable_output =
-            \\setup({ output: false });
-        ;
-        ctx.runScript(disable_output) catch |err| {
-            // Not fatal: the table is a waste of time, not a correctness
-            // requirement, and a result is worth more than the speed-up.
-            log.warn("loadTestHarness: could not disable harness output: {}", .{err});
-        };
+        try self.installRunnerHooks(ctx, explicit_timeout);
+    }
 
-        // A budget the harness cannot read for itself is the runner's.
-        //
-        // `WindowTestEnvironment.test_timeout()` walks the document's <meta>
-        // elements for `name=timeout`, and this runs before the document has
-        // been fetched - so that walk sees nothing and every file, including
-        // the ones that declare `content="long"`, would get the 10s default,
-        // which fires first and ends a 60s file at 10s. An explicit timeout
-        // leaves the harness with no timer of its own: `waitForCompletion`
-        // calls its `timeout()` at the runner's ceiling instead.
-        //
-        // Not `timeout_multiplier`: testharness scales `step_timeout` by it
-        // too, so a `long` file's own waits ran six times longer - see
-        // `config.Timeout.explicitTimeout`.
-        //
-        // Skipped for the harness default: `setup()` moves the harness into
-        // its SETUP phase, and there is no reason to do that to the ~90% of
-        // files whose budget is already the harness's own.
-        if (explicit_timeout) {
-            ctx.runScript("setup({ explicit_timeout: true });") catch |err| {
-                // Same reasoning as the output flag: a file running on the
-                // short budget is worth more than no result at all.
-                log.warn("loadTestHarness: could not set an explicit timeout: {}", .{err});
-            };
-        }
-
-        // Verify testharness.js loaded correctly by checking for globals
-        // This catches cases where testharness.js execution fails silently
-        const verify_script =
-            \\if (typeof test !== 'function' || typeof async_test !== 'function' ||
-            \\    typeof promise_test !== 'function' || typeof setup !== 'function') {
-            \\  throw new Error('testharness.js failed to load: globals not defined. ' +
-            \\    'test=' + typeof test + ', async_test=' + typeof async_test +
-            \\    ', promise_test=' + typeof promise_test + ', setup=' + typeof setup);
-            \\}
-            \\'GLOBALS_VERIFIED';
-        ;
-        ctx.runScript(verify_script) catch |err| {
+    /// The runner's hooks in a realm whose harness has loaded: its output
+    /// off, its budget when it is the runner's, and the completion callback.
+    fn installRunnerHooks(self: *WptBrowser, ctx: *Context, explicit_timeout: bool) !void {
+        ctx.runScript(verify_harness_js) catch |err| {
             log.err("testharness.js verification failed: {}", .{err});
             return error.TestHarnessLoadFailed;
         };
+        const report = try runnerReportSource(self.allocator, explicit_timeout);
+        defer self.allocator.free(report);
+        try ctx.runScript(report);
+    }
 
-        // Set up completion callback to capture results
-        const setup_script =
-            \\(function() {
-            \\  // Store test results for collection
-            \\  window.__wpt_results = null;
-            \\  window.__wpt_complete = false;
-            \\
-            \\  // Register completion callback
-            \\  add_completion_callback(function(tests, harness_status) {
-            \\    try {
-            \\      window.__wpt_results = {
-            \\        status: harness_status ? harness_status.status : 0,
-            \\        message: harness_status ? (harness_status.message || null) : null,
-            \\        tests: (tests || []).map(function(t) {
-            \\          return {
-            \\            name: t.name,
-            \\            status: t.status,
-            \\            message: t.message || null
-            \\          };
-            \\        })
-            \\      };
-            \\    } catch (e) {
-            \\      window.__wpt_results = { status: 1, message: e.toString(), tests: [] };
-            \\    }
-            \\    window.__wpt_complete = true;
-            \\  });
-            \\})();
-        ;
-        try ctx.runScript(setup_script);
+    /// Whether the runner's completion hook is in the page's realm.
+    fn harnessHookInstalled(self: *WptBrowser, ctx: *Context) bool {
+        const answer = ctx.evaluateScriptToString("typeof window.__wpt_complete !== 'undefined'", self.allocator) catch return false;
+        defer self.allocator.free(answer);
+        return std.mem.eql(u8, answer, "true");
+    }
+
+    /// For a page whose include did not reach the runner's report
+    /// (`HarnessLoad.at_include`): the harness, if the page loaded none, and
+    /// then the runner's hooks - after the page, which is all the runner can
+    /// still do.
+    fn installHarnessLate(self: *WptBrowser, ctx: *Context, explicit_timeout: bool) !void {
+        const has_harness = blk: {
+            const answer = try ctx.evaluateScriptToString("typeof add_completion_callback === 'function'", self.allocator);
+            defer self.allocator.free(answer);
+            break :blk std.mem.eql(u8, answer, "true");
+        };
+        if (!has_harness) {
+            try ctx.runScript(self.testharness_js orelse return error.TestHarnessNotFound);
+            if (self.testharnessreport_js) |js| try ctx.runScript(js);
+        }
+        try self.installRunnerHooks(ctx, explicit_timeout);
     }
 
     /// script_deadline's abort: HTML "abort a running script" in the page's
