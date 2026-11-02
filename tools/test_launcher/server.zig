@@ -48,6 +48,12 @@ pub const Session = struct {
     known: []Io.Event,
     future: ?Io.Future(void) = null,
     run_error: ?anyerror = null,
+    /// `--report-only`: a suite whose findings in a variant are not fixed yet
+    /// (build.zig `suite_configs`, a TEMPORARY row). Every verdict is still
+    /// printed and written to the result file, but the build runner hears
+    /// `pass` for what failed - the variant's report mode, as the Crane test
+    /// runner's report-only state check logs without failing.
+    report_only: bool = false,
 
     pub fn init(gpa: Allocator, io: Io, names: []const []const u8, expects_panic: []const bool, selected: []const bool, run: *sched.Run, seed: u64) !Session {
         const known = try gpa.alloc(Io.Event, names.len);
@@ -115,6 +121,14 @@ pub fn statusOf(v: sched.Verdict) TestResults.Status {
     };
 }
 
+/// What the build runner hears for a verdict: `statusOf`, except that in
+/// report-only mode a failure is reported (printed, written) and answered
+/// `pass`.
+pub fn answerOf(v: sched.Verdict, report_only: bool) TestResults.Status {
+    const status = statusOf(v);
+    return if (report_only and status == .fail) .pass else status;
+}
+
 /// Answers the protocol on `in`/`out` until the build runner sends `exit`
 /// (or closes the pipe). `diag` is the launcher's stderr: a failing test's
 /// verdict block goes there, flushed, just before its `test_results`, so the
@@ -136,8 +150,10 @@ pub fn serve(s: *Session, gpa: Allocator, in: *Io.Reader, out: *Io.Writer, diag:
                 if (t >= s.names.len) return error.NoSuchTest;
                 try server.serveStringMessage(.test_started, &.{});
                 const verdict = try s.verdictOf(t);
+                const status = answerOf(verdict, s.report_only);
                 // A LAUNCHER-ERROR prints once for the run, not per test.
                 if (statusOf(verdict) == .fail) {
+                    if (s.report_only) try diag.writeAll("report-only: ");
                     try report.writeVerdictBlock(diag, s.names[t], &s.run.records[t], s.seed);
                     try diag.flush();
                     // The build runner reads stderr and the protocol as two
@@ -148,7 +164,7 @@ pub fn serve(s: *Session, gpa: Allocator, in: *Io.Reader, out: *Io.Writer, diag:
                     s.io.sleep(.fromMilliseconds(100), .awake) catch {};
                 }
                 try server.serveTestResults(.{ .index = t, .flags = .{
-                    .status = statusOf(verdict),
+                    .status = status,
                     .fuzz = false,
                     .log_err_count = 0,
                     .leak_count = 0,
@@ -278,6 +294,67 @@ test "serves the build runner: the list, then each test's verdict, failures with
     try testing.expect(one < two);
     try testing.expect(std.mem.indexOf(u8, text, "seed 0xabc") != null);
     try testing.expect(std.mem.indexOf(u8, text, "test 1 said no") != null);
+}
+
+test "report-only: every failure is printed, marked report-only, and answered pass; LAUNCHER-ERROR still skips" {
+    try testing.expectEqual(TestResults.Status.pass, answerOf(.fail, true));
+    try testing.expectEqual(TestResults.Status.pass, answerOf(.flaky, true));
+    try testing.expectEqual(TestResults.Status.pass, answerOf(.order_dependent, true));
+    try testing.expectEqual(TestResults.Status.skip, answerOf(.launcher_error, true));
+    try testing.expectEqual(TestResults.Status.skip, answerOf(.skip, true));
+    try testing.expectEqual(TestResults.Status.fail, answerOf(.fail, false));
+
+    const gpa = testing.allocator;
+    const io = testing.io;
+    const names = [_][]const u8{ "a.test.zero", "a.test.one", "a.test.two" };
+    const expects_panic = [_]bool{ false, false, false };
+    const selected = [_]bool{ true, true, true };
+    var plan = try plan_mod.make(gpa, &.{ 0, 1, 2 }, .{ .seed = 1, .shuffle = false, .batch_size = 0 });
+    defer plan.deinit(gpa);
+    var fake: Fake = .{};
+    var session: Session = undefined;
+    var run = try sched.Run.init(gpa, io, &plan, names.len, fake.executor(), .{
+        .jobs = 1,
+        .alone_runs = 2,
+        .on_verdict = Session.onVerdict,
+        .on_verdict_ctx = &session,
+    });
+    defer run.deinit();
+    session = try Session.init(gpa, io, &names, &expects_panic, &selected, &run, 0xabc);
+    session.report_only = true;
+    defer session.deinit(gpa);
+
+    var to_server: Io.Writer.Allocating = .init(gpa);
+    defer to_server.deinit();
+    var client: std.zig.Client = .{ .in = undefined, .out = &to_server.writer };
+    for ([_]u32{ 0, 1, 2 }) |t| try client.serveRunTest(t);
+    try client.serveBodylessMessage(.exit);
+    var in: Io.Reader = .fixed(to_server.written());
+    var out: Io.Writer.Allocating = .init(gpa);
+    defer out.deinit();
+    var diag: Io.Writer.Allocating = .init(gpa);
+    defer diag.deinit();
+    try serve(&session, gpa, &in, &out.writer, &diag.writer);
+    session.finish();
+
+    var r: Io.Reader = .fixed(out.written());
+    const Msg = std.zig.Server.Message;
+    var hdr = try r.takeStruct(Msg.Header, .little);
+    r.toss(hdr.bytes_len); // zig_version
+    for (0..3) |t| {
+        hdr = try r.takeStruct(Msg.Header, .little);
+        r.toss(hdr.bytes_len); // test_started
+        hdr = try r.takeStruct(Msg.Header, .little);
+        const res = try r.takeStruct(TestResults, .little);
+        try testing.expectEqual(@as(u32, @intCast(t)), res.index);
+        try testing.expectEqual(TestResults.Status.pass, res.flags.status);
+    }
+    // The verdicts stand, and are printed as report-only.
+    try testing.expectEqual(sched.Verdict.fail, run.records[1].verdict);
+    try testing.expectEqual(sched.Verdict.flaky, run.records[2].verdict);
+    const text = diag.written();
+    try testing.expect(std.mem.indexOf(u8, text, "report-only: FAIL a.test.one") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "report-only: FLAKY a.test.two") != null);
 }
 
 test "statusOf: only PASS passes; SKIP and LAUNCHER-ERROR skip" {
