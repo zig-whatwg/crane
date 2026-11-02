@@ -14,8 +14,8 @@
 //! ShadowRealm needs an agent restored from Crane's snapshot (shadow_realm.zig
 //! makes its context from the snapshot's), so the first test runs restored
 //! agents and skips - saying so - unless this file is the first in its process
-//! to start V8 and `zig build snapshot` has made zig-out/bin/whatwg_snapshot.bin
-//! (new_global_snapshot_test.zig's reason: restoring after other files had
+//! to start V8 (the snapshot is the one this build generates, its path passed
+//! as `test_snapshot.path`; new_global_snapshot_test.zig's reason: restoring after other files had
 //! started V8 crashed inside V8's deserialization). Run it with
 //! `-Dtest-file=`. The second test runs everything else in fresh agents,
 //! wherever it runs.
@@ -28,7 +28,9 @@ const interfaces = @import("interfaces");
 const ffi = @import("v8").ffi;
 
 const iterations = 200;
-const snapshot_path = "zig-out/bin/whatwg_snapshot.bin";
+/// The snapshot this build generated: build.zig passes its path and makes
+/// the test depend on the step that writes it.
+const snapshot_path = @import("test_snapshot").path;
 
 const WindowHost = struct {
     fn createGlobalObject(r: runtime.Context, global_this: runtime.JSValue, host: ?*anyopaque) ?*runtime.Instance {
@@ -218,10 +220,8 @@ test "two agents restored from the snapshot, on two threads: for-await, Intl, Sh
         return error.SkipZigTest;
     }
     const io = testing.io;
-    const file = std.Io.Dir.cwd().openFile(io, snapshot_path, .{}) catch |err| {
-        std.log.warn("skipping: no snapshot at {s} ({s}); `zig build snapshot` makes it", .{ snapshot_path, @errorName(err) });
-        return error.SkipZigTest;
-    };
+    // Missing is a failure: the build made it for this test.
+    const file = try std.Io.Dir.cwd().openFile(io, snapshot_path, .{});
     defer file.close(io);
     const size = (try file.stat(io)).size;
     const bytes = try std.heap.c_allocator.alloc(u8, size);

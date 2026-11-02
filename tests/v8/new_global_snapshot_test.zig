@@ -15,9 +15,9 @@
 //! v8_Context_NewWithMicrotaskQueue (no caller today, the same bare call) are
 //! pinned here too, in that agent.
 //!
-//! The snapshot is the one this build generates, zig-out/bin/whatwg_snapshot.bin
-//! (the `snapshot` step; `wpt-runner` depends on it). Without it the tests are
-//! skipped, as tests/v8/snapshot_test.zig's are.
+//! The snapshot is the one this build generates: a cached run of the
+//! snapshot generator that tests/v8 depends on, its path passed as
+//! `test_snapshot.path`. A missing snapshot fails the tests.
 //!
 //! They run only where this file is the first in its process to start V8, as
 //! pattern_attribute_snapshot_test.zig's do and for its reason: in tests/v8's
@@ -33,7 +33,9 @@ const protocol = @import("engine");
 const interfaces = @import("interfaces");
 const ffi = @import("v8").ffi;
 
-const snapshot_path = "zig-out/bin/whatwg_snapshot.bin";
+/// The snapshot this build generated: build.zig passes its path and makes
+/// the test depend on the step that writes it.
+const snapshot_path = @import("test_snapshot").path;
 
 const WindowHost = struct {
     fn createGlobalObject(r: runtime.Context, global_this: runtime.JSValue, host: ?*anyopaque) ?*runtime.Instance {
@@ -82,10 +84,8 @@ const SnapshotPage = struct {
             return null;
         }
         const io = std.testing.io;
-        const file = std.Io.Dir.cwd().openFile(io, snapshot_path, .{}) catch |err| {
-            std.log.warn("skipping: no snapshot at {s} ({s}); `zig build snapshot` makes it", .{ snapshot_path, @errorName(err) });
-            return null;
-        };
+        // Missing is a failure: the build made it for this test.
+        const file = try std.Io.Dir.cwd().openFile(io, snapshot_path, .{});
         defer file.close(io);
         const size = (try file.stat(io)).size;
         const bytes = try std.heap.c_allocator.alloc(u8, size);

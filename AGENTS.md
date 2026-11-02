@@ -224,13 +224,25 @@ WPT is the bar: `zig build wpt -- <path>`. Unit tests use
 `std.testing.allocator` always, so leaks fail the test. Realistic inputs, spec
 edge cases.
 
-**A test directory is one executable.** `zig build test` compiles each
-`tests/<dir>/` as ONE test binary, from a root build.zig generates
+**A test directory is one executable, and the launcher runs it.** `zig build test`
+compiles each `tests/<dir>/` as ONE test binary, from a root build.zig generates
 (`tests/<dir>/.all_tests.zig`, gitignored) - a new `*_test.zig` joins it with
-no list to edit. So a test file shares its process with its directory's other
-files: never assume yours is the first to start V8, initialise a per-thread
-manager, leave no isolate entered, or set a V8 flag (V8 freezes its flags when
-it starts; setting one after is a fatal CHECK). A test that needs a fresh
+no list to edit. Every test executable - those, the `src/` module roots, the
+tool and harness tests - runs through `tools/test_launcher` (`addSuiteRun` in
+build.zig; the configuration fails if a step runs one directly). The launcher
+runs a binary's tests in seeded, shuffled batches of child processes, several
+at once, with a per-test timeout (300 s; a test listed as slow in build.zig's
+`suite_configs` gets 4x), and re-runs every test that did not pass alone:
+**FAIL** (fails alone), **ORDER-DEPENDENT** (passes alone, fails again after
+the tests that ran before it in its process - a bug, named with its batch and
+seed), **FLAKY** (the runs disagree). None of the three is a pass; each prints
+as `error: '<test>' failed:` with the verdict. The batch size is per suite
+(`suite_configs`: 1, a process per test, for the suites that start V8 or a
+Browser; 10 for the rest; tests-v8, temporarily, one index-order process), so a
+test may share its process with any other tests of its binary, in any order:
+never assume yours is the first to start V8, initialise a per-thread manager,
+leave no isolate entered, or set a V8 flag (V8 freezes its flags when it
+starts; setting one after is a fatal CHECK). A test that needs a fresh
 per-thread state runs its body on a `std.Thread` of its own. A race test
 between Browsers on different threads gives each Browser its own leak-checking
 `std.heap.DebugAllocator(.{ .stack_trace_frames = 0 })` instead of the shared
@@ -238,13 +250,30 @@ between Browsers on different threads gives each Browser its own leak-checking
 make the threads take turns, so the race never happens - a liveclassic race
 that crashed 7/7 with per-Browser allocators passed 6/6 with the shared one
 ([lesson](docs/lessons/testing-a-shared-test-allocator-makes-two-browsers-take-turns.md)).
-One file alone,
-for a quick red/green:
+A test that needs this build's V8 snapshot imports `test_snapshot` (tests/v8),
+never a path under `zig-out/`.
+
+- **Seeds.** `zig build test` uses a seed hashed from each executable's bytes,
+  printed in that suite's summary line, so an unchanged suite keeps its plan
+  and Zig's cache skips it (the user, 2026-11-01). `-Dlaunch-seed=random`
+  shuffles afresh every run (never cached); `-Dlaunch-seed=<value>` replays
+  one. By hand: `test_launcher <exe> --seed=S --batch=B [--only-batch=K]`.
+- **Shapes.** `-Dlaunch-batch=1` runs every test in a process of its own,
+  `-Dlaunch-batch=0` each suite in one process, `-Dlaunch-shuffle=true`
+  shuffles even the suites kept in index order; `zig build test-launch` runs
+  the test executables alone, without the lints and checks `test` adds.
+  Results: `tmp/test-launch/<suite>.jsonl` (+ `.log`, the output of each
+  non-pass); they also order the next run, longest batches first.
+
+One file alone, for a quick red/green:
 `zig build test -Dspec=<dir> -Dtest-file=tests/<dir>/foo_test.zig -j2`.
 Once per merge round the integrator runs `zig build test -Dtest-isolation=file`
 (every file its own executable and process, about four times the CPU) to catch
 what sharing hides: a test that passes only because an earlier file started V8
-or installed a hook for it.
+or installed a hook for it. It retires when `zig build test-launch
+-Dlaunch-batch=1` is green: every suite but tests-v8 is (2026-11-01), and
+tests-v8 keeps one index-order process until its order-dependent tests are
+fixed (build.zig's `suite_configs` names them).
 
 Two kinds this codebase keeps needing:
 

@@ -38,7 +38,9 @@ const interfaces = @import("interfaces");
 const inline_task_loop = @import("inline_task_loop.zig");
 
 const loader = v8.snapshot_loader;
-const snapshot_path = "zig-out/bin/whatwg_snapshot.bin";
+/// The snapshot this build generated: build.zig passes its path and makes
+/// the test depend on the step that writes it.
+const snapshot_path = @import("test_snapshot").path;
 
 const WindowHost = struct {
     fn createGlobalObject(r: runtime.Context, global_this: runtime.JSValue, host: ?*anyopaque) ?*runtime.Instance {
@@ -157,10 +159,8 @@ test "snapshot realm: a Window realm restored from Crane's snapshot takes addres
         return error.SkipZigTest;
     }
     const io = std.testing.io;
-    const file = std.Io.Dir.cwd().openFile(io, snapshot_path, .{}) catch |err| {
-        std.log.warn("skipping: no snapshot at {s} ({s}); `zig build snapshot` makes it", .{ snapshot_path, @errorName(err) });
-        return error.SkipZigTest;
-    };
+    // Missing is a failure: the build made it for this test.
+    const file = try std.Io.Dir.cwd().openFile(io, snapshot_path, .{});
     defer file.close(io);
     const size = (try file.stat(io)).size;
     const bytes = try std.heap.c_allocator.alloc(u8, size);

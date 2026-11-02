@@ -809,22 +809,190 @@ const TestSelection = struct {
     file: ?[]const u8 = null,
     /// -Dtest-isolation: one executable per directory (the default) or per file.
     isolation: TestIsolation = .directory,
-    /// `zig build test-launch`: each test executable selected here is also run
-    /// through tools/test_launcher (see `TestLaunch`).
-    launch: ?TestLaunch = null,
+    /// How every test executable is run: tools/test_launcher (see
+    /// `TestLaunch` and `addSuiteRun`). Set where the launcher is built,
+    /// before the first test executable.
+    launch: *const TestLaunch = undefined,
 };
 
-/// `zig build test-launch -Dspec=<dir>`: runs the test executables that
-/// `zig build test` would run, unchanged, through tools/test_launcher -
-/// seeded batches in parallel child processes, a per-test timeout, and every
-/// failure re-run alone and classified (FAIL, ORDER-DEPENDENT, FLAKY).
-/// `zig build test` itself does not change.
+/// Every test executable runs through tools/test_launcher, in its server
+/// mode: the build runner speaks the Zig test-runner protocol to the
+/// launcher as it would to the executable, and the launcher runs the
+/// executable's tests as seeded batches in parallel child processes, with a
+/// per-test timeout, and re-runs every failure alone to classify it (FAIL,
+/// ORDER-DEPENDENT, FLAKY - none a pass). tmp/plans/test-launcher-design.md.
 const TestLaunch = struct {
+    /// `zig build test-launch`: the test executables alone, without the
+    /// lints and checks `test` also runs.
     step: *std.Build.Step,
     launcher: *std.Build.Step.Compile,
-    /// From -Dlaunch-*; `zig build test-launch -- <args>` appends more.
-    args: []const []const u8,
+    /// The launcher's own tests run by the build runner directly: they test
+    /// the launcher, so they cannot run through it. The one exception
+    /// `checkEveryTestRunsThroughTheLauncher` allows.
+    own_tests: *std.Build.Step.Compile,
+    /// -Dlaunch-batch: overrides every suite's batch size (`suite_configs`).
+    batch: ?u32,
+    /// -Dlaunch-jobs: test processes at once, for the whole build.
+    jobs: ?u32,
+    /// -Dlaunch-seed: "digest" (the default: a seed derived from the
+    /// executable's bytes, printed, so an unchanged suite keeps its plan and
+    /// the cache skips it), "random" (a fresh seed every run; the step is
+    /// then never cached), or a value.
+    seed: []const u8,
+    /// -Dlaunch-timeout: per-test seconds; a slow test gets 4x. Default 300:
+    /// Crane's tests run in Debug, and under a full build's load (compiles
+    /// beside a test process per core) tests took up to 3x their time alone -
+    /// at 60 s, tests that take 20-28 s alone timed out (lane tlaunch2). It
+    /// is there to catch hangs; the build runner had no timeout at all.
+    timeout: u32,
+    /// -Dlaunch-shuffle: true shuffles every suite (an explicit check, such
+    /// as the whole-suite runs with several seeds - even a suite whose
+    /// `suite_configs` row keeps index order), false runs every suite in index
+    /// order; unset, each suite's row decides.
+    shuffle: ?bool,
 };
+
+/// One suite's launcher settings. Batch size per the measurements
+/// (tmp/plans/test-launcher-design.md section 0, and this lane's merge
+/// report): a process per test where the suite starts a Browser or V8 and
+/// that costs little (Chromium: 1 for browser tests), 10 otherwise
+/// (Chromium's unit tests).
+const SuiteConfig = struct {
+    batch: u32 = 10,
+    /// Null: the build-wide default (-Dlaunch-jobs, else the CPU count).
+    jobs: ?u32 = null,
+    shuffle: bool = true,
+    /// Tests (full names) known to be slow: their timeout is 4x (Chromium's
+    /// and V8's SLOW). Each needs a reason, and a bug when it should not be.
+    slow: []const []const u8 = &.{},
+};
+
+/// The per-suite table, by the name `addSuiteRun` is given. A suite not
+/// listed gets `SuiteConfig{}`.
+const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
+    // Wall-clock measurements: one process, index order, nothing beside them.
+    .{ .name = "tests-benchmarks", .config = .{ .batch = 0, .jobs = 1, .shuffle = false } },
+    .{ .name = "tests-intl_bench", .config = .{ .batch = 0, .jobs = 1, .shuffle = false } },
+    // Suites that start V8 or a Browser: a process per test.
+    .{ .name = "tests-dom", .config = .{ .batch = 1 } },
+    .{ .name = "tests-html", .config = .{ .batch = 1, .slow = &html_slow } },
+    .{ .name = "tests-service_worker", .config = .{ .batch = 1 } },
+    .{ .name = "tests-websocket", .config = .{ .batch = 1 } },
+    // TEMPORARY: tests-v8 keeps the build runner's old shape - one process,
+    // index order - because its tests depend on order (lane tlaunch2,
+    // 2026-11-01; the bug list, every test with its seed and reason:
+    // docs/testing/tests-v8-order-findings-2026-11-01.tsv). Remove this row's batch and
+    // shuffle when `zig build test-launch -Dspec=v8 -Dlaunch-batch=1` passes:
+    // - a process per test (batch 1, seed 0x5eed11): 22 tests FAIL alone -
+    //   context_counter_test (16), page_realm_operations_test (4) and
+    //   refcount_wrapper_link_test (2) count handles or references and pass
+    //   only after an earlier test has made the engine's lazily created ones
+    //   (32 bytes of global handles in a fresh process) - and
+    //   template_registry_isolation_test crashes alone (its two threads race
+    //   ffi.v8_Isolate_New's lazy V8 platform initialization: the test skips
+    //   engine start-up, and v8_Platform_Initialize checks a plain bool);
+    // - the whole suite shuffled in one process (batch 0, seeds 0x5eed01-03):
+    //   52-60 ORDER-DEPENDENT a run, 162 tests over the three; 124 of the 221
+    //   non-passes panic "a platform object made in a realm no Browser owns, with no
+    //   standalone runtime" after another test of the same process
+    //   (urlpattern_*, page_realm_operations, callback_argument_borrowed,
+    //   per_call_handle, ...).
+    // Every other suite passed all four runs. Until these are fixed, any
+    // shuffled order fails some of them; -Dlaunch-batch=1 and
+    // -Dlaunch-shuffle=true still run it the other ways.
+    .{ .name = "tests-v8", .config = .{ .batch = 0, .shuffle = false } },
+    .{ .name = "src-browser", .config = .{ .batch = 1 } },
+    .{ .name = "test-browser", .config = .{ .batch = 1 } },
+    .{ .name = "lib-exports", .config = .{ .batch = 1 } },
+    .{ .name = "tests-codegen", .config = .{ .slow = &codegen_slow } },
+};
+
+// Slow tests: over 45 s alone on chat.local in Debug (lane tlaunch2,
+// 2026-11-01, four at once); under a full build's load they took up to 3x.
+const codegen_slow = [_][]const u8{
+    // 82.7 s: every committed interface and mixin module.
+    "ce_reactions_emission_test.test.every committed interface and mixin module's table matches its brackets",
+};
+const html_slow = [_][]const u8{
+    // 137.6 s.
+    "editing2_white_space_join_test.test.joining blocks keeps the moved line's white-space",
+    // 74.6, 78.9 and 50.4 s: 300,000 live ranges; two Browsers churning.
+    "rangeuaf_live_range_walk_test.test.removing a node after 300,000 ranges were made in it moves every live range it holds",
+    "rangeuaf_live_range_walk_test.test.splitting text after 300,000 ranges were made in it moves every live range it holds",
+    "rangeuaf_live_range_walk_test.test.two Browsers on two threads churn live ranges and walk their own lists at once",
+    // 77.2 s: 1,000 dropped lists, two collections each.
+    "nodeholds_cost_test.test.1,000 dropped querySelectorAll lists that rescued their trees retain nothing past two collections",
+    // 77.0 s.
+    "rc9_document_tasks_test.test.documents dropped inside one script stay bounded by the queue's high water, not by their number",
+};
+
+fn suiteConfig(name: []const u8) SuiteConfig {
+    for (suite_configs) |entry| if (std.mem.eql(u8, entry.name, name)) return entry.config;
+    return .{};
+}
+
+/// Runs the test executable `test_exe` - the ONE way build.zig runs a test
+/// executable. `name` names the suite: its result file
+/// tmp/test-launch/<name>.jsonl (the next run's timings, for the
+/// longest-first claim order), its row in `suite_configs` (`config_name`,
+/// when that differs: a -Dtest-file executable takes its directory's), and
+/// its step, "test <name>". The step is a `zig_test` Run of the launcher, so
+/// it caches like a test executable's own run (unless -Dlaunch-seed=random).
+/// The caller adds it to its own step; `test-launch` gets the ones `test`
+/// reaches.
+fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.Step.Compile, name: []const u8, config_name: ?[]const u8) *std.Build.Step.Run {
+    const config = suiteConfig(config_name orelse name);
+    const run = b.addRunArtifact(launch.launcher);
+    run.setName(b.fmt("test {s}", .{name}));
+    // The build runner speaks the test-runner protocol to the launcher.
+    run.stdio = .zig_test;
+    run.addArtifactArg(test_exe);
+    run.addArg(b.fmt("--name={s}", .{name}));
+    run.addArg(b.fmt("--batch={d}", .{launch.batch orelse config.batch}));
+    if (config.jobs orelse launch.jobs) |jobs| run.addArg(b.fmt("--jobs={d}", .{jobs}));
+    run.addArg(b.fmt("--launch-seed={s}", .{launch.seed}));
+    run.addArg(b.fmt("--timeout={d}", .{launch.timeout}));
+    if (!(launch.shuffle orelse config.shuffle)) run.addArg("--no-shuffle");
+    for (config.slow) |slow| run.addArg(b.fmt("--slow={s}", .{slow}));
+    // Relative to the repository root, where tests open their fixtures.
+    run.addArg(b.fmt("--out=tmp/test-launch/{s}.jsonl", .{name}));
+    run.addArg(b.fmt("--timings=tmp/test-launch/{s}.jsonl", .{name}));
+    run.setCwd(b.path("."));
+    // A fresh seed every run must run every time.
+    if (std.mem.eql(u8, launch.seed, "random")) run.has_side_effects = true;
+    return run;
+}
+
+/// Fails the configuration if any step runs a test executable other than
+/// through `addSuiteRun`: a test the build runner runs directly gets no
+/// timeout, no seeded order and no failure classification, and nothing
+/// would say so. Then makes `test-launch` the launcher runs `test` reaches.
+fn checkEveryTestRunsThroughTheLauncher(b: *std.Build, launch: *const TestLaunch, test_step: *std.Build.Step) void {
+    var seen: std.AutoHashMapUnmanaged(*std.Build.Step, void) = .empty;
+    var stack: std.ArrayList(*std.Build.Step) = .empty;
+    for (b.top_level_steps.values()) |tls| stack.append(b.allocator, &tls.step) catch @panic("OOM");
+    while (stack.pop()) |step| {
+        if ((seen.getOrPut(b.allocator, step) catch @panic("OOM")).found_existing) continue;
+        if (step.cast(std.Build.Step.Run)) |run| if (run.producer) |producer| {
+            if (producer.kind.isTest() and producer != launch.own_tests) std.debug.panic(
+                "build.zig: step '{s}' runs test executable '{s}' directly; run it with addSuiteRun (tools/test_launcher)",
+                .{ step.name, producer.name },
+            );
+        };
+        for (step.dependencies.items) |dep| stack.append(b.allocator, dep) catch @panic("OOM");
+    }
+
+    seen.clearRetainingCapacity();
+    stack.append(b.allocator, test_step) catch @panic("OOM");
+    while (stack.pop()) |step| {
+        if ((seen.getOrPut(b.allocator, step) catch @panic("OOM")).found_existing) continue;
+        if (step.cast(std.Build.Step.Run)) |run| if (run.producer == launch.launcher) {
+            launch.step.dependOn(step);
+            continue;
+        };
+        for (step.dependencies.items) |dep| stack.append(b.allocator, dep) catch @panic("OOM");
+    }
+}
 
 const TestIsolation = enum { directory, file };
 
@@ -866,7 +1034,9 @@ fn addTestFilesFromDir(
 
     if (select.file) |file| {
         if (!std.mem.startsWith(u8, file, dir_path) or file.len <= dir_path.len or file[dir_path.len] != '/') return;
-        addTestRoot(builder, step, file, builder.fmt("{s}", .{std.fs.path.stem(file)}), target, modules, link_v8, select.launch);
+        var dir_name: std.ArrayList(u8) = .empty;
+        for (dir_path) |c| try dir_name.append(allocator, if (c == '/') '-' else c);
+        addTestRoot(builder, step, file, builder.fmt("{s}", .{std.fs.path.stem(file)}), dir_name.items, target, modules, link_v8, select.launch);
         return;
     }
 
@@ -896,7 +1066,7 @@ fn addTestFilesFromDir(
         for (files.items) |file| {
             var name: std.ArrayList(u8) = .empty;
             for (builder.fmt("{s}/{s}", .{ dir_path, file[0 .. file.len - ".zig".len] })) |c| try name.append(allocator, if (c == '/') '-' else c);
-            addTestRoot(builder, step, builder.fmt("{s}/{s}", .{ dir_path, file }), name.items, target, modules, link_v8, select.launch);
+            addTestRoot(builder, step, builder.fmt("{s}/{s}", .{ dir_path, file }), name.items, null, target, modules, link_v8, select.launch);
         }
         return;
     }
@@ -926,7 +1096,7 @@ fn addTestFilesFromDir(
 
     var name: std.ArrayList(u8) = .empty;
     for (dir_path) |c| try name.append(allocator, if (c == '/') '-' else c);
-    addTestRoot(builder, step, root_path, name.items, target, modules, link_v8, select.launch);
+    addTestRoot(builder, step, root_path, name.items, null, target, modules, link_v8, select.launch);
 }
 
 fn addTestRoot(
@@ -934,10 +1104,11 @@ fn addTestRoot(
     step: *std.Build.Step,
     root_path: []const u8,
     name: []const u8,
+    config_name: ?[]const u8,
     target: std.Build.ResolvedTarget,
     modules: []const std.Build.Module.Import,
     link_v8: bool,
-    launch: ?TestLaunch,
+    launch: *const TestLaunch,
 ) void {
     const test_exe = builder.addTest(.{
         .name = name,
@@ -951,22 +1122,7 @@ fn addTestRoot(
     // Link V8 libraries if requested (for V8 tests)
     if (link_v8) linkV8(builder, test_exe.root_module, target);
 
-    const run_test = builder.addRunArtifact(test_exe);
-    step.dependOn(&run_test.step);
-
-    // The same executable, through the launcher (nothing new is compiled).
-    if (launch) |l| {
-        const run_launch = builder.addRunArtifact(l.launcher);
-        run_launch.addArtifactArg(test_exe);
-        run_launch.addArgs(l.args);
-        run_launch.addArg(builder.fmt("--out=tmp/test-launch/{s}.jsonl", .{name}));
-        // Tests open fixtures relative to the repository root, as under
-        // `zig build test`; the result file lands under it too.
-        run_launch.setCwd(builder.path("."));
-        run_launch.has_side_effects = true;
-        run_launch.addPassthruArgs();
-        l.step.dependOn(&run_launch.step);
-    }
+    step.dependOn(&addSuiteRun(builder, launch, test_exe, name, config_name).step);
 }
 
 /// An executable that is compiled and never linked - nothing asks for its
@@ -1946,12 +2102,13 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run WHATWG spec tests (use -Dspec=<name> to filter)");
 
-    // tools/test_launcher: runs a compiled test executable as seeded batches
-    // of child processes over the Zig test runner's protocol, and classifies
-    // every failure (tmp/plans/test-architecture-recommendation.md, step 2).
-    // `test-launch` runs the executables `test` would run, with -Dspec and
-    // -Dtest-file selecting them as for `test`; `test` itself is unchanged.
-    {
+    // tools/test_launcher runs EVERY test executable (addSuiteRun): seeded
+    // batches of child processes over the Zig test runner's protocol, a
+    // per-test timeout, and every failure re-run alone and classified
+    // (tmp/plans/test-architecture-recommendation.md, step 3).
+    // `test-launch` runs the test executables alone, without the lints and
+    // checks `test` adds; -Dspec and -Dtest-file select them for both.
+    const launch: *const TestLaunch = launch: {
         const launcher_module = b.createModule(.{
             .root_source_file = b.path("tools/test_launcher/main.zig"),
             // Build-time tool: runs on the host, as codegen does.
@@ -1959,24 +2116,13 @@ pub fn build(b: *std.Build) void {
             .optimize = .Debug,
         });
         const launcher = b.addExecutable(.{ .name = "test_launcher", .root_module = launcher_module });
-        const launch_step = b.step("test-launch", "Run the selected test executables through tools/test_launcher (-Dspec=<dir> -Dlaunch-batch=B -Dlaunch-jobs=N -Dlaunch-seed=S; -- <launcher args>)");
-        var launch_args: std.ArrayList([]const u8) = .empty;
-        const batch = b.option(u32, "launch-batch", "test-launch: tests per child process (default 10; 1 = per-test isolation; 0 = the whole suite in one process)") orelse 10;
-        launch_args.append(b.allocator, b.fmt("--batch={d}", .{batch})) catch @panic("OOM");
-        if (b.option(u32, "launch-jobs", "test-launch: child processes at once (default: the CPU count)")) |jobs|
-            launch_args.append(b.allocator, b.fmt("--jobs={d}", .{jobs})) catch @panic("OOM");
-        if (b.option([]const u8, "launch-seed", "test-launch: the run's seed, decimal or 0x hex (default: random, printed)")) |seed|
-            launch_args.append(b.allocator, b.fmt("--seed={s}", .{seed})) catch @panic("OOM");
-        if (b.option(u32, "launch-timeout", "test-launch: per-test timeout in seconds (default 60)")) |timeout|
-            launch_args.append(b.allocator, b.fmt("--timeout={d}", .{timeout})) catch @panic("OOM");
-        if (!(b.option(bool, "launch-shuffle", "test-launch: shuffle the order and the batches from the seed (default true)") orelse true))
-            launch_args.append(b.allocator, "--no-shuffle") catch @panic("OOM");
-        test_selection.launch = .{ .step = launch_step, .launcher = launcher, .args = launch_args.items };
+        const launch_step = b.step("test-launch", "Run the selected test executables through tools/test_launcher, without test's lints and checks (-Dspec=<dir> -Dlaunch-batch=B -Dlaunch-seed=S|random)");
 
         // The launcher's own tests (the scheduler, the seeded plan, the
-        // classification and the protocol, against fakes): part of `test`,
-        // and `test-launcher` alone.
-        // child.zig's real-process test runs a fixture test executable.
+        // classification, the server and the protocol, against fakes and a
+        // fixture executable): part of `test`, and `test-launcher` alone.
+        // They are the one test executable the build runner runs directly:
+        // a launcher cannot vouch for itself.
         const launcher_fixture = b.addTest(.{
             .name = "test_launcher_fixture",
             .root_module = b.createModule(.{
@@ -1993,10 +2139,34 @@ pub fn build(b: *std.Build) void {
             .optimize = .Debug,
             .imports = &.{.{ .name = "launcher_fixture", .module = launcher_fixture_options.createModule() }},
         });
-        const launcher_tests = b.addRunArtifact(b.addTest(.{ .root_module = launcher_test_module }));
+        const own_tests = b.addTest(.{ .name = "test_launcher", .root_module = launcher_test_module });
+        const launcher_tests = b.addRunArtifact(own_tests);
         test_step.dependOn(&launcher_tests.step);
         b.step("test-launcher", "Run tools/test_launcher's own tests").dependOn(&launcher_tests.step);
-    }
+
+        const l = b.allocator.create(TestLaunch) catch @panic("OOM");
+        l.* = .{
+            .step = launch_step,
+            .launcher = launcher,
+            .own_tests = own_tests,
+            .batch = b.option(u32, "launch-batch", "Tests per child process for every suite, overriding build.zig's suite_configs (1 = a process per test; 0 = the whole suite in one process)"),
+            .jobs = b.option(u32, "launch-jobs", "Test processes at once for the whole build (default: the CPU count)"),
+            .seed = b.option([]const u8, "launch-seed", "The launcher's seed: digest (default: from each test executable's bytes, printed; unchanged suites stay cached), random (fresh every run, never cached), or a value") orelse "digest",
+            .timeout = b.option(u32, "launch-timeout", "Per-test timeout in seconds (default 300; tests build.zig lists as slow get 4x)") orelse 300,
+            .shuffle = b.option(bool, "launch-shuffle", "true: shuffle every suite's order and batches from the seed; false: index order everywhere (default: each suite's suite_configs row, mostly shuffled)"),
+        };
+        break :launch l;
+    };
+    test_selection.launch = launch;
+
+    // The V8 snapshot the tests/v8 snapshot tests restore: THIS build's,
+    // made by a cached run of the snapshot generator (filled in where the
+    // generator is defined, below) and passed by path, so the tests depend on
+    // it. Never a file found from the current directory: a stale
+    // zig-out/bin/whatwg_snapshot.bin there made three of them fail and,
+    // where there was none, all of them skip (feature queue, 2026-11-01).
+    const test_snapshot_options = b.addOptions();
+    const test_snapshot_module = test_snapshot_options.createModule();
 
     // What -Dtarget can build without running anything there: the artifacts
     // that link no V8 are built (libwhatwg, the image codecs, the platform
@@ -2022,7 +2192,7 @@ pub fn build(b: *std.Build) void {
     eventsource_test_mod.addImport("infra", testing_graph.infra);
     eventsource_test_mod.addImport("fetch", testing_graph.fetch);
     const eventsource_tests = b.addTest(.{ .root_module = eventsource_test_mod });
-    const run_eventsource_tests = b.addRunArtifact(eventsource_tests);
+    const run_eventsource_tests = addSuiteRun(b, launch, eventsource_tests, "tests-eventsource", null);
     const eventsource_test_step = b.step("test-eventsource", "Run server-sent event parser and connection tests");
     eventsource_test_step.dependOn(&run_eventsource_tests.step);
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "eventsource")) {
@@ -2030,7 +2200,7 @@ pub fn build(b: *std.Build) void {
     }
 
     const webcrypto_tests = b.addTest(.{ .root_module = testing_graph.webcrypto });
-    const run_webcrypto_tests = b.addRunArtifact(webcrypto_tests);
+    const run_webcrypto_tests = addSuiteRun(b, launch, webcrypto_tests, "src-webcrypto", null);
     const webcrypto_test_step = b.step("test-webcrypto", "Run Web Cryptography API primitive tests");
     webcrypto_test_step.dependOn(&run_webcrypto_tests.step);
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) {
@@ -2049,7 +2219,7 @@ pub fn build(b: *std.Build) void {
         });
         deps_test_mod.linkLibrary(mbedtls_library);
         deps_test_mod.addImport("mbedtls_version_c", addCImport(b, "mbedtls_version_c", target, .{ .includes = &.{"mbedtls/version.h"}, .libs = &.{mbedtls_library}, .macros = &mbedtls_threading_macros }));
-        const run_deps_tests = b.addRunArtifact(b.addTest(.{ .root_module = deps_test_mod }));
+        const run_deps_tests = addSuiteRun(b, launch, b.addTest(.{ .root_module = deps_test_mod }), "tests-linked_libraries", null);
         b.step("test-deps", "Check the mbedTLS and zlib versions libcurl and WebCrypto link").dependOn(&run_deps_tests.step);
         if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) {
             test_step.dependOn(&run_deps_tests.step);
@@ -2074,13 +2244,13 @@ pub fn build(b: *std.Build) void {
 
     if (test_infra) {
         const infra_tests = b.addTest(.{ .root_module = testing_graph.infra });
-        const run_infra_tests = b.addRunArtifact(infra_tests);
+        const run_infra_tests = addSuiteRun(b, launch, infra_tests, "src-infra", null);
         test_step.dependOn(&run_infra_tests.step);
     }
 
     if (test_webidl) {
         const webidl_tests = b.addTest(.{ .root_module = testing_graph.webidl });
-        const run_webidl_tests = b.addRunArtifact(webidl_tests);
+        const run_webidl_tests = addSuiteRun(b, launch, webidl_tests, "src-webidl", null);
         test_step.dependOn(&run_webidl_tests.step);
 
         // Add dedicated test files from tests/webidl/
@@ -2100,7 +2270,7 @@ pub fn build(b: *std.Build) void {
 
     if (test_dom) {
         const dom_tests = b.addTest(.{ .root_module = testing_graph.dom });
-        const run_dom_tests = b.addRunArtifact(dom_tests);
+        const run_dom_tests = addSuiteRun(b, launch, dom_tests, "src-dom", null);
         test_step.dependOn(&run_dom_tests.step);
 
         // Add dedicated test files from tests/dom/
@@ -2131,7 +2301,7 @@ pub fn build(b: *std.Build) void {
 
     if (test_selector) {
         const selector_tests = b.addTest(.{ .root_module = testing_graph.selector });
-        const run_selector_tests = b.addRunArtifact(selector_tests);
+        const run_selector_tests = addSuiteRun(b, launch, selector_tests, "src-selector", null);
         test_step.dependOn(&run_selector_tests.step);
 
         // Add dedicated test files from tests/selector/
@@ -2149,7 +2319,7 @@ pub fn build(b: *std.Build) void {
 
     if (test_encoding) {
         const encoding_tests = b.addTest(.{ .root_module = testing_graph.encoding });
-        const run_encoding_tests = b.addRunArtifact(encoding_tests);
+        const run_encoding_tests = addSuiteRun(b, launch, encoding_tests, "src-encoding", null);
         test_step.dependOn(&run_encoding_tests.step);
 
         // Add dedicated test files from tests/encoding/
@@ -2167,7 +2337,7 @@ pub fn build(b: *std.Build) void {
 
     if (test_url) {
         const url_tests = b.addTest(.{ .root_module = testing_graph.url });
-        const run_url_tests = b.addRunArtifact(url_tests);
+        const run_url_tests = addSuiteRun(b, launch, url_tests, "src-url", null);
         test_step.dependOn(&run_url_tests.step);
 
         // Add dedicated test files from tests/url/
@@ -2186,7 +2356,7 @@ pub fn build(b: *std.Build) void {
 
     if (test_urlpattern) {
         const urlpattern_tests = b.addTest(.{ .root_module = testing_graph.urlpattern });
-        const run_urlpattern_tests = b.addRunArtifact(urlpattern_tests);
+        const run_urlpattern_tests = addSuiteRun(b, launch, urlpattern_tests, "src-urlpattern", null);
         test_step.dependOn(&run_urlpattern_tests.step);
 
         // Add dedicated test files from tests/urlpattern/
@@ -2203,7 +2373,7 @@ pub fn build(b: *std.Build) void {
 
     if (test_console) {
         const console_tests = b.addTest(.{ .root_module = testing_graph.console });
-        const run_console_tests = b.addRunArtifact(console_tests);
+        const run_console_tests = addSuiteRun(b, launch, console_tests, "src-console", null);
         test_step.dependOn(&run_console_tests.step);
 
         // Add dedicated test files from tests/console/
@@ -2253,7 +2423,7 @@ pub fn build(b: *std.Build) void {
 
     if (test_compression) {
         const compression_tests = b.addTest(.{ .root_module = testing_graph.compression });
-        test_step.dependOn(&b.addRunArtifact(compression_tests).step);
+        test_step.dependOn(&addSuiteRun(b, launch, compression_tests, "src-compression", null).step);
         const imports = [_]std.Build.Module.Import{
             .{ .name = "compression", .module = testing_graph.compression },
         };
@@ -2264,7 +2434,7 @@ pub fn build(b: *std.Build) void {
 
     if (test_mimesniff) {
         const mimesniff_tests = b.addTest(.{ .root_module = testing_graph.mimesniff });
-        const run_mimesniff_tests = b.addRunArtifact(mimesniff_tests);
+        const run_mimesniff_tests = addSuiteRun(b, launch, mimesniff_tests, "src-mimesniff", null);
         test_step.dependOn(&run_mimesniff_tests.step);
 
         // Add dedicated test files from tests/mimesniff/
@@ -2281,7 +2451,7 @@ pub fn build(b: *std.Build) void {
 
     if (test_xml) {
         const xml_tests = b.addTest(.{ .root_module = testing_graph.xml });
-        const run_xml_tests = b.addRunArtifact(xml_tests);
+        const run_xml_tests = addSuiteRun(b, launch, xml_tests, "src-xml", null);
         test_step.dependOn(&run_xml_tests.step);
 
         // Add dedicated test files from tests/xml/
@@ -2297,7 +2467,7 @@ pub fn build(b: *std.Build) void {
 
     if (test_quirks) {
         const quirks_tests = b.addTest(.{ .root_module = testing_graph.quirks });
-        const run_quirks_tests = b.addRunArtifact(quirks_tests);
+        const run_quirks_tests = addSuiteRun(b, launch, quirks_tests, "src-quirks", null);
         test_step.dependOn(&run_quirks_tests.step);
 
         // Add dedicated test files from tests/quirks/
@@ -2313,7 +2483,7 @@ pub fn build(b: *std.Build) void {
 
     if (test_css) {
         const css_tests = b.addTest(.{ .root_module = testing_graph.css });
-        const run_css_tests = b.addRunArtifact(css_tests);
+        const run_css_tests = addSuiteRun(b, launch, css_tests, "src-css", null);
         test_step.dependOn(&run_css_tests.step);
 
         // Add dedicated test files from tests/css/
@@ -2371,7 +2541,7 @@ pub fn build(b: *std.Build) void {
         //      V8-linked below, and treat `src/html/**` test blocks as
         //      pure-Zig-only. That is the convention `tests/dom/` follows.
         const html_tests = b.addTest(.{ .root_module = testing_graph.html });
-        const run_html_tests = b.addRunArtifact(html_tests);
+        const run_html_tests = addSuiteRun(b, launch, html_tests, "src-html", null);
         test_step.dependOn(&run_html_tests.step);
 
         // Add dedicated test files from tests/html/
@@ -2449,14 +2619,14 @@ pub fn build(b: *std.Build) void {
     // step. Register the directory here if one is ever added.
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "browser")) {
         const browser_tests = addModuleTestWithV8(b, testing_graph.browser, target);
-        const run_browser_tests = b.addRunArtifact(browser_tests);
+        const run_browser_tests = addSuiteRun(b, launch, browser_tests, "src-browser", null);
         test_step.dependOn(&run_browser_tests.step);
     }
 
     // File API tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "file")) {
         const file_tests = b.addTest(.{ .root_module = testing_graph.file });
-        const run_file_tests = b.addRunArtifact(file_tests);
+        const run_file_tests = addSuiteRun(b, launch, file_tests, "src-file", null);
         test_step.dependOn(&run_file_tests.step);
 
         // Add dedicated test files from tests/file/ when they exist
@@ -2473,13 +2643,13 @@ pub fn build(b: *std.Build) void {
     // Fetch API tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "fetch")) {
         const fetch_tests = b.addTest(.{ .root_module = testing_graph.fetch });
-        const run_fetch_tests = b.addRunArtifact(fetch_tests);
+        const run_fetch_tests = addSuiteRun(b, launch, fetch_tests, "src-fetch", null);
         test_step.dependOn(&run_fetch_tests.step);
 
         // Referrer Policy is a module of its own, so the fetch test binary,
         // though it imports it, never runs its test blocks.
         const referrer_policy_tests = b.addTest(.{ .root_module = testing_graph.referrer_policy });
-        test_step.dependOn(&b.addRunArtifact(referrer_policy_tests).step);
+        test_step.dependOn(&addSuiteRun(b, launch, referrer_policy_tests, "src-referrer_policy", null).step);
 
         // Add dedicated test files from tests/fetch/ when they exist
         const fetch_imports = [_]std.Build.Module.Import{
@@ -2503,7 +2673,7 @@ pub fn build(b: *std.Build) void {
     // that way: a gated test block is a test block that rots.
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "xhr")) {
         const xhr_tests = b.addTest(.{ .root_module = testing_graph.xhr });
-        const run_xhr_tests = b.addRunArtifact(xhr_tests);
+        const run_xhr_tests = addSuiteRun(b, launch, xhr_tests, "src-xhr", null);
         test_step.dependOn(&run_xhr_tests.step);
 
         // `testing_graph.xhr` already carries `fetch`, which is where the curl linkage
@@ -2539,7 +2709,7 @@ pub fn build(b: *std.Build) void {
     // that way: a gated test block is a test block that rots.
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "websocket")) {
         const websocket_tests = b.addTest(.{ .root_module = testing_graph.websocket });
-        const run_websocket_tests = b.addRunArtifact(websocket_tests);
+        const run_websocket_tests = addSuiteRun(b, launch, websocket_tests, "src-websocket", null);
         test_step.dependOn(&run_websocket_tests.step);
 
         // Add dedicated test files from tests/websocket/
@@ -2561,7 +2731,7 @@ pub fn build(b: *std.Build) void {
     // File System Access API tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "fs")) {
         const fs_tests = b.addTest(.{ .root_module = testing_graph.fs });
-        const run_fs_tests = b.addRunArtifact(fs_tests);
+        const run_fs_tests = addSuiteRun(b, launch, fs_tests, "src-fs", null);
         test_step.dependOn(&run_fs_tests.step);
 
         // Add dedicated test files from tests/fs/ when they exist
@@ -2578,7 +2748,7 @@ pub fn build(b: *std.Build) void {
     // Trusted Types tests (W3C Trusted Types)
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "trusted_types")) {
         const trusted_types_tests = b.addTest(.{ .root_module = testing_graph.trusted_types });
-        const run_trusted_types_tests = b.addRunArtifact(trusted_types_tests);
+        const run_trusted_types_tests = addSuiteRun(b, launch, trusted_types_tests, "src-trusted_types", null);
         test_step.dependOn(&run_trusted_types_tests.step);
 
         // Add dedicated test files from tests/trusted_types/ when they exist
@@ -2595,7 +2765,7 @@ pub fn build(b: *std.Build) void {
     // CSP tests (W3C Content Security Policy Level 3)
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "csp")) {
         const csp_tests = b.addTest(.{ .root_module = testing_graph.csp });
-        const run_csp_tests = b.addRunArtifact(csp_tests);
+        const run_csp_tests = addSuiteRun(b, launch, csp_tests, "src-csp", null);
         test_step.dependOn(&run_csp_tests.step);
 
         // Add dedicated test files from tests/csp/ when they exist
@@ -2612,7 +2782,7 @@ pub fn build(b: *std.Build) void {
     // Permissions tests (W3C Permissions API)
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "permissions")) {
         const permissions_tests = b.addTest(.{ .root_module = testing_graph.permissions });
-        const run_permissions_tests = b.addRunArtifact(permissions_tests);
+        const run_permissions_tests = addSuiteRun(b, launch, permissions_tests, "src-permissions", null);
         test_step.dependOn(&run_permissions_tests.step);
 
         // Add dedicated test files from tests/permissions/ when they exist
@@ -2629,7 +2799,7 @@ pub fn build(b: *std.Build) void {
     // Storage tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "storage")) {
         const storage_tests = b.addTest(.{ .root_module = testing_graph.storage });
-        const run_storage_tests = b.addRunArtifact(storage_tests);
+        const run_storage_tests = addSuiteRun(b, launch, storage_tests, "src-storage", null);
         test_step.dependOn(&run_storage_tests.step);
 
         // Add dedicated test files from tests/storage/
@@ -2648,7 +2818,7 @@ pub fn build(b: *std.Build) void {
     // CookieStore tests (WHATWG Cookie Store API)
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "cookiestore")) {
         const cookiestore_tests = b.addTest(.{ .root_module = testing_graph.cookiestore });
-        const run_cookiestore_tests = b.addRunArtifact(cookiestore_tests);
+        const run_cookiestore_tests = addSuiteRun(b, launch, cookiestore_tests, "src-cookiestore", null);
         test_step.dependOn(&run_cookiestore_tests.step);
 
         // Add dedicated test files from tests/cookiestore/
@@ -2709,7 +2879,7 @@ pub fn build(b: *std.Build) void {
                     },
                 }),
             });
-            test_step.dependOn(&b.addRunArtifact(conformance).step);
+            test_step.dependOn(&addSuiteRun(b, launch, conformance, conformance.name, null).step);
         }
         const runtime_imports = [_]std.Build.Module.Import{
             .{ .name = "clock", .module = testing_graph.clock },
@@ -2751,6 +2921,8 @@ pub fn build(b: *std.Build) void {
             // the engine (urlpattern_*_test.zig), and URL for its corpus.
             .{ .name = "urlpattern", .module = testing_graph.urlpattern },
             .{ .name = "url", .module = testing_graph.url },
+            // This build's snapshot (`test_snapshot_options`).
+            .{ .name = "test_snapshot", .module = test_snapshot_module },
         };
         addTestFilesFromDir(b, test_step, "tests/v8", target, &v8_test_imports, true, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add v8 test files: {}\n", .{err});
@@ -2774,7 +2946,7 @@ pub fn build(b: *std.Build) void {
     // Intl tests (ECMA-402 Internationalization APIs)
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "intl")) {
         const intl_tests = b.addTest(.{ .root_module = testing_graph.intl });
-        const run_intl_tests = b.addRunArtifact(intl_tests);
+        const run_intl_tests = addSuiteRun(b, launch, intl_tests, "src-intl", null);
         test_step.dependOn(&run_intl_tests.step);
 
         // Add dedicated test files from tests/intl/
@@ -2791,7 +2963,7 @@ pub fn build(b: *std.Build) void {
     // Platform tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "platform")) {
         const platform_tests = b.addTest(.{ .root_module = testing_graph.platform });
-        const run_platform_tests = b.addRunArtifact(platform_tests);
+        const run_platform_tests = addSuiteRun(b, launch, platform_tests, "src-platform", null);
         test_step.dependOn(&run_platform_tests.step);
 
         const platform_imports = [_]std.Build.Module.Import{
@@ -2835,7 +3007,7 @@ pub fn build(b: *std.Build) void {
                 .imports = &.{.{ .name = "platform_legacy", .module = old_platform }},
             }),
         });
-        test_step.dependOn(&b.addRunArtifact(retained_old_platform).step);
+        test_step.dependOn(&addSuiteRun(b, launch, retained_old_platform, "retained_old_platform", null).step);
 
         // The contract against every built-in platform (the directory's
         // executable above binds `testing`), and once with capabilities
@@ -2874,7 +3046,7 @@ pub fn build(b: *std.Build) void {
                     },
                 }),
             });
-            const run_conformance = b.addRunArtifact(conformance);
+            const run_conformance = addSuiteRun(b, launch, conformance, conformance.name, null);
             // The file tests write under tmp/, relative to the repo root.
             run_conformance.setCwd(b.path("."));
             test_step.dependOn(&run_conformance.step);
@@ -2889,7 +3061,7 @@ pub fn build(b: *std.Build) void {
                         .imports = &.{.{ .name = "platform", .module = bound.facade }},
                     }),
                 });
-                const run_font_adapters = b.addRunArtifact(font_adapters);
+                const run_font_adapters = addSuiteRun(b, launch, font_adapters, font_adapters.name, null);
                 // WPT's fonts, relative to the repo root.
                 run_font_adapters.setCwd(b.path("."));
                 test_step.dependOn(&run_font_adapters.step);
@@ -2900,7 +3072,7 @@ pub fn build(b: *std.Build) void {
             if (std.mem.eql(u8, binding.name, "darwin")) {
                 for ([_]*std.Build.Module{ bound.kit_sfnt, bound.kit_inflate }, [_][]const u8{ "kit_sfnt", "kit_inflate" }) |module, name| {
                     const kit_tests = b.addTest(.{ .name = name, .root_module = module });
-                    test_step.dependOn(&b.addRunArtifact(kit_tests).step);
+                    test_step.dependOn(&addSuiteRun(b, launch, kit_tests, name, null).step);
                 }
             }
             // Built, not run: the target need not be this machine.
@@ -2920,7 +3092,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "mimesniff", .module = testing_graph.mimesniff },
             },
         }) });
-        test_step.dependOn(&b.addRunArtifact(wav_backend_tests).step);
+        test_step.dependOn(&addSuiteRun(b, launch, wav_backend_tests, "wpt_runner-host_media", null).step);
     }
 
     // Benchmark tests (requires V8 + browser)
@@ -2998,7 +3170,7 @@ pub fn build(b: *std.Build) void {
     browser_test.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
     browser_test.root_module.link_libcpp = true; //
 
-    const run_browser_test = b.addRunArtifact(browser_test);
+    const run_browser_test = addSuiteRun(b, launch, browser_test, "test-browser", null);
     test_browser_step.dependOn(&run_browser_test.step);
 
     // ========================================================================
@@ -3156,7 +3328,7 @@ pub fn build(b: *std.Build) void {
     // std.testing.allocator - run with the browser tests: nothing else compiles
     // this module for the host.
     const lib_exports_test = b.addTest(.{ .root_module = lib_exports_mod });
-    test_browser_step.dependOn(&b.addRunArtifact(lib_exports_test).step);
+    test_browser_step.dependOn(&addSuiteRun(b, launch, lib_exports_test, "lib-exports", null).step);
 
     // Build step for the full browser runtime library
     const lib_full_step = b.step("lib-full", "Build the full browser runtime library with all WebIDL interfaces");
@@ -3664,6 +3836,12 @@ pub fn build(b: *std.Build) void {
     const snapshot_step = b.step("snapshot", "Generate V8 heap snapshot with WebIDL interfaces");
     snapshot_step.dependOn(&gen_snapshot.step);
 
+    // The tests' snapshot: the same generator, into the cache (an output
+    // file argument, so the run is cached on the generator's hash), passed
+    // to tests/v8 by path (`test_snapshot_options` above).
+    const gen_test_snapshot = b.addRunArtifact(snapshot_gen_exe);
+    test_snapshot_options.addOptionPath("path", gen_test_snapshot.addOutputFileArg("whatwg_snapshot.bin"));
+
     // ========================================================================
     // REPL TOOL
     // ========================================================================
@@ -3824,7 +4002,7 @@ pub fn build(b: *std.Build) void {
         .target = b.graph.host,
         .optimize = .Debug,
     }) });
-    test_step.dependOn(&b.addRunArtifact(gc_bench_options_tests).step);
+    test_step.dependOn(&addSuiteRun(b, launch, gc_bench_options_tests, "tools-gc_bench_options", null).step);
 
     // ========================================================================
     // WPT (Web Platform Tests) RUNNER
@@ -3875,7 +4053,7 @@ pub fn build(b: *std.Build) void {
                     },
                 }),
             });
-            const run_harness_tests = b.addRunArtifact(harness_tests);
+            const run_harness_tests = addSuiteRun(b, launch, harness_tests, b.fmt("wpt_runner-{s}", .{std.fs.path.stem(src)}), null);
             // manifest.zig has a regression test that reads the real
             // tests/wpt/MANIFEST.json by relative path (and skips itself when
             // the WPT checkout is absent), so it must run from the repo root.
@@ -3905,7 +4083,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "cookiestore", .module = testing_graph.cookiestore },
             .{ .name = "permissions", .module = testing_graph.permissions },
         };
-        addTestRoot(b, test_step, command_lifetime_test, "ar3-command-lifetime", target, &command_test_imports, true, test_selection.launch);
+        addTestRoot(b, test_step, command_lifetime_test, "ar3-command-lifetime", null, target, &command_test_imports, true, launch);
     }
 
     // WPT Runner executable for running Web Platform Tests
@@ -4129,7 +4307,7 @@ pub fn build(b: *std.Build) void {
     wpt_site_after_wpt.step.dependOn(&progress_report.step);
     wpt_step.dependOn(&wpt_site_after_wpt.step);
     const wpt_site_tests = b.addTest(.{ .root_module = wpt_site_module });
-    test_step.dependOn(&b.addRunArtifact(wpt_site_tests).step);
+    test_step.dependOn(&addSuiteRun(b, launch, wpt_site_tests, "tools-wpt_site", null).step);
 
     // ========================================================================
     // HTTP MOCK SERVER (for V8 fetch integration tests)
@@ -4337,7 +4515,7 @@ pub fn build(b: *std.Build) void {
         .root_module = interfaces_mod,
     });
 
-    const run_interfaces_check = b.addRunArtifact(interfaces_check);
+    const run_interfaces_check = addSuiteRun(b, launch, interfaces_check, "interfaces-check", null);
 
     const interfaces_step = b.step("interfaces", "Check that all interfaces compile");
     interfaces_step.dependOn(&run_interfaces_check.step);
@@ -4382,7 +4560,7 @@ pub fn build(b: *std.Build) void {
     lint_impls_check.setCwd(b.path("."));
     test_step.dependOn(&lint_impls_check.step);
     const lint_impls_tests = b.addTest(.{ .root_module = lint_impls_module });
-    test_step.dependOn(&b.addRunArtifact(lint_impls_tests).step);
+    test_step.dependOn(&addSuiteRun(b, launch, lint_impls_tests, "tools-lint_impls", null).step);
 
     // ========================================================================
     // LINT: the engine boundary, as a ratchet
@@ -4420,7 +4598,7 @@ pub fn build(b: *std.Build) void {
     lint_engine_check.setCwd(b.path("."));
     test_step.dependOn(&lint_engine_check.step);
     const lint_engine_tests = b.addTest(.{ .root_module = lint_engine_module });
-    test_step.dependOn(&b.addRunArtifact(lint_engine_tests).step);
+    test_step.dependOn(&addSuiteRun(b, launch, lint_engine_tests, "tools-lint_engine", null).step);
 
     // ========================================================================
     // LINT: the platform boundary, as a ratchet
@@ -4458,7 +4636,7 @@ pub fn build(b: *std.Build) void {
     lint_platform_check.setCwd(b.path("."));
     test_step.dependOn(&lint_platform_check.step);
     const lint_platform_tests = b.addTest(.{ .root_module = lint_platform_module });
-    test_step.dependOn(&b.addRunArtifact(lint_platform_tests).step);
+    test_step.dependOn(&addSuiteRun(b, launch, lint_platform_tests, "tools-lint_platform", null).step);
 
     // ========================================================================
     // LINT: global state, as a ratchet
@@ -4509,7 +4687,7 @@ pub fn build(b: *std.Build) void {
     idna_tables_run.has_side_effects = true;
     idna_tables_run.addPassthruArgs();
     b.step("idna-tables", "Regenerate the pinned Unicode IDNA tables from local inputs").dependOn(&idna_tables_run.step);
-    test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = idna_tables_module })).step);
+    test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = idna_tables_module }), "tools-idna_tables", null).step);
 
     // Explicit, hash-pinned Unicode casing generation; tests use local fixtures.
     const case_tables_module = b.createModule(.{
@@ -4523,7 +4701,7 @@ pub fn build(b: *std.Build) void {
     case_tables_run.has_side_effects = true;
     case_tables_run.addPassthruArgs();
     b.step("case-tables", "Regenerate pinned Unicode full case mappings from local inputs").dependOn(&case_tables_run.step);
-    test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = case_tables_module })).step);
+    test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = case_tables_module }), "tools-case_tables", null).step);
 
     const unicode_identifier_module = b.createModule(.{
         .root_source_file = b.path("tools/unicode/generate_identifier_tables.zig"),
@@ -4531,10 +4709,10 @@ pub fn build(b: *std.Build) void {
         .optimize = .Debug,
     });
     const unicode_identifier_tests = b.addTest(.{ .root_module = unicode_identifier_module });
-    test_step.dependOn(&b.addRunArtifact(unicode_identifier_tests).step);
+    test_step.dependOn(&addSuiteRun(b, launch, unicode_identifier_tests, "tools-unicode_identifier", null).step);
 
     const lint_global_state_tests = b.addTest(.{ .root_module = lint_global_state_module });
-    test_step.dependOn(&b.addRunArtifact(lint_global_state_tests).step);
+    test_step.dependOn(&addSuiteRun(b, launch, lint_global_state_tests, "tools-lint_global_state", null).step);
 
     // ========================================================================
     // LINT: reference counting's structural rules, as a ratchet
@@ -4570,7 +4748,7 @@ pub fn build(b: *std.Build) void {
     lint_refcount_check.setCwd(b.path("."));
     test_step.dependOn(&lint_refcount_check.step);
     const lint_refcount_tests = b.addTest(.{ .root_module = lint_refcount_module });
-    test_step.dependOn(&b.addRunArtifact(lint_refcount_tests).step);
+    test_step.dependOn(&addSuiteRun(b, launch, lint_refcount_tests, "tools-lint_refcount", null).step);
 
     // ========================================================================
     // LINT: long-lived hash maps that never clear their tombstones
@@ -4609,7 +4787,7 @@ pub fn build(b: *std.Build) void {
     lint_tombstones_check.setCwd(b.path("."));
     test_step.dependOn(&lint_tombstones_check.step);
     const lint_tombstones_tests = b.addTest(.{ .root_module = lint_tombstones_module });
-    test_step.dependOn(&b.addRunArtifact(lint_tombstones_tests).step);
+    test_step.dependOn(&addSuiteRun(b, launch, lint_tombstones_tests, "tools-lint_tombstones", null).step);
 
     // ========================================================================
     // WPT: the wpt.fyi upload package
@@ -4635,7 +4813,7 @@ pub fn build(b: *std.Build) void {
     wpt_upload_package_run.addPassthruArgs();
     wpt_upload_package_step.dependOn(&wpt_upload_package_run.step);
     const wpt_upload_package_tests = b.addTest(.{ .root_module = wpt_upload_package_module });
-    test_step.dependOn(&b.addRunArtifact(wpt_upload_package_tests).step);
+    test_step.dependOn(&addSuiteRun(b, launch, wpt_upload_package_tests, "tools-wpt_upload_package", null).step);
 
     // ========================================================================
     // HELP: Available JavaScript Engines
@@ -5210,6 +5388,10 @@ pub fn build(b: *std.Build) void {
     for ([_]*std.Build.Step.Compile{ crane_check, wpt_runner_check }) |check| {
         if (check.generated_bin != .none) std.debug.panic("build.zig: {s} is compile-only; nothing may ask for its binary (addCrossLibraryStubs)", .{check.name});
     }
+
+    // Every test executable runs through the launcher; and `test-launch` is
+    // the launcher runs `test` makes. Both known here, once every step exists.
+    checkEveryTestRunsThroughTheLauncher(b, launch, test_step);
 }
 
 /// Every Crane module, built for one platform (docs/platform-protocol.md 1.1).
