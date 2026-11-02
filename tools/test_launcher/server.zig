@@ -210,7 +210,7 @@ const Fake = struct {
     fn executor(f: *Fake) sched.Executor {
         return .{ .ptr = f, .vtable = &.{ .start = start, .run = run, .stop = stop } };
     }
-    fn start(_: *anyopaque, _: u32, _: *Io.Writer) anyerror!void {}
+    fn start(_: *anyopaque, _: u32, _: []const u32, _: *Io.Writer) anyerror!void {}
     fn stop(_: *anyopaque, _: u32) void {}
     fn run(ptr: *anyopaque, _: u32, t: u32) anyerror!sched.RunResult {
         const f: *Fake = @ptrCast(@alignCast(ptr));
@@ -374,7 +374,7 @@ const NoStart = struct {
     fn executor(n: *NoStart) sched.Executor {
         return .{ .ptr = n, .vtable = &.{ .start = start, .run = run, .stop = stop } };
     }
-    fn start(_: *anyopaque, _: u32, diag: *Io.Writer) anyerror!void {
+    fn start(_: *anyopaque, _: u32, _: []const u32, diag: *Io.Writer) anyerror!void {
         try diag.writeAll("no slot");
         return error.FileNotFound;
     }

@@ -918,7 +918,20 @@ const SuiteConfig = struct {
     /// race, a TSAN-only failure, fails the step unless the row is a
     /// TEMPORARY `.report` naming its findings file.
     sanitize_thread: VariantMode = .fail,
+    /// Tests that need their process to themselves, so the many-Browsers
+    /// variant runs each in a process of its own with no busy Browser
+    /// beside it (the launcher's --alone, which names each with its reason
+    /// when it runs): a test that makes its process's FIRST isolate, or
+    /// whose subject is a count the whole process shares. Declared, never a
+    /// silent skip; each entry gives a reason a reader can check. A test
+    /// that merely reads a process-wide counter as its instrument is
+    /// converted to a per-agent one instead (docs/lessons/testing-a-test-
+    /// that-measures-a-process-wide-counter-assumes-it-is-alone.md).
+    alone: []const Alone = &.{},
 };
+
+/// A test declared alone (`SuiteConfig.alone`): its full name, and why.
+const Alone = struct { name: []const u8, reason: []const u8 };
 
 /// What a test variant (-Dmany-browsers, -Dsanitize-thread) does with a
 /// suite's results: `.fail` as any run; `.report` prints and records every
@@ -1052,7 +1065,13 @@ fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.St
             run.step.dependOn(&dsym.step);
         }
     }
-    if (many_browsers) run.addArg("--many-browsers");
+    if (many_browsers) {
+        run.addArg("--many-browsers");
+        for (config.alone) |alone| {
+            run.addArg(b.fmt("--alone={s}", .{alone.name}));
+            run.addArg(b.fmt("--alone-reason={s}", .{alone.reason}));
+        }
+    }
     // A variant's TEMPORARY report-only row: every verdict printed and
     // recorded, the step passes (`VariantMode`).
     if ((many_browsers and config.many_browsers == .report) or (launch.sanitize_thread and config.sanitize_thread == .report)) run.addArg("--report-only");
@@ -1261,7 +1280,13 @@ fn addTestVerify(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.
         run.addArgs(&.{ "--verify-batched=1", "--verify-alone=0", "--sanitize-thread" });
         run.addPrefixedFileArg("--tsan-suppressions=", b.path("tools/test_launcher/tsan_suppressions.txt"));
     }
-    if (launch.many_browsers) run.addArg("--many-browsers");
+    if (launch.many_browsers) {
+        run.addArg("--many-browsers");
+        for (config.alone) |alone| {
+            run.addArg(b.fmt("--alone={s}", .{alone.name}));
+            run.addArg(b.fmt("--alone-reason={s}", .{alone.reason}));
+        }
+    }
     if (launch.jobs) |jobs| run.addArg(b.fmt("--jobs={d}", .{jobs}));
     run.addArg(b.fmt("--timeout={d}", .{launch.timeout}));
     for (config.slow) |slow| run.addArg(b.fmt("--slow={s}", .{slow}));

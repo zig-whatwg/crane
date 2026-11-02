@@ -108,6 +108,12 @@ pub const Executor = struct {
     /// The environment of every child: `testEnvironment` of the launcher's
     /// (main.zig). Null: the launcher's own, unchanged.
     environ_map: ?*const std.process.Environ.Map = null,
+    /// Tests declared alone (indexed by test index; shorter than the test
+    /// count means "not alone"), and the environment of a process that runs
+    /// any of them: `environ_map` without the many-Browsers variable, so no
+    /// busy Browser runs beside it (main.zig, `--alone`).
+    alone: []const bool = &.{},
+    alone_environ_map: ?*const std.process.Environ.Map = null,
 
     pub fn init(gpa: Allocator, io: Io, argv: []const []const u8, test_timeout_ns: u64, jobs: u32) !Executor {
         const procs = try gpa.alloc(?*Proc, @max(jobs, 1));
@@ -116,6 +122,15 @@ pub const Executor = struct {
         const held = try gpa.alloc(?Slots.Slot, procs.len);
         @memset(held, null);
         return .{ .gpa = gpa, .io = io, .argv = argv, .test_timeout_ns = test_timeout_ns, .procs = procs, .held = held };
+    }
+
+    /// The environment of a process that will run `tests`: without the busy
+    /// Browser when any of them is declared alone.
+    pub fn environFor(e: *const Executor, tests: []const u32) ?*const std.process.Environ.Map {
+        for (tests) |t| {
+            if (t < e.alone.len and e.alone[t]) return e.alone_environ_map;
+        }
+        return e.environ_map;
     }
 
     /// Test `t`'s timeout.
@@ -136,7 +151,7 @@ pub const Executor = struct {
         return .{ .ptr = e, .vtable = &.{ .start = start, .run = run, .stop = stop } };
     }
 
-    fn start(ptr: *anyopaque, w: u32, diag: *Io.Writer) anyerror!void {
+    fn start(ptr: *anyopaque, w: u32, tests: []const u32, diag: *Io.Writer) anyerror!void {
         const e: *Executor = @ptrCast(@alignCast(ptr));
         std.debug.assert(e.procs[w] == null);
         if (e.slots) |slots| {
@@ -155,7 +170,7 @@ pub const Executor = struct {
             .stdin = .pipe,
             .stdout = .pipe,
             .stderr = .pipe,
-            .environ_map = e.environ_map,
+            .environ_map = e.environFor(tests),
             .request_resource_usage_statistics = true,
         }) catch |err| {
             // Whether the executable is there now tells a path that was
@@ -484,6 +499,25 @@ test "parses the metadata std.zig.Server sends" {
     try testing.expectEqualStrings("alpha", md.names[0]);
     try testing.expectEqualStrings("sub.b_test.test.beta two", md.names[1]);
     try testing.expectEqualSlices(bool, &.{ false, true }, md.expects_panic);
+}
+
+test "a process that runs a test declared alone gets the environment without the busy Browser" {
+    var e = try Executor.init(testing.allocator, testing.io, &.{"x"}, 10, 1);
+    defer e.deinit();
+    var many: std.process.Environ.Map = .init(testing.allocator);
+    defer many.deinit();
+    var alone_env: std.process.Environ.Map = .init(testing.allocator);
+    defer alone_env.deinit();
+    e.environ_map = &many;
+    e.alone_environ_map = &alone_env;
+    const alone = [_]bool{ false, true, false };
+    e.alone = &alone;
+    try testing.expectEqual(@as(?*const std.process.Environ.Map, &many), e.environFor(&.{ 0, 2 }));
+    try testing.expectEqual(@as(?*const std.process.Environ.Map, &alone_env), e.environFor(&.{1}));
+    // A process that runs it among others has none either (verify's batched
+    // phase), and one past the list is not alone.
+    try testing.expectEqual(@as(?*const std.process.Environ.Map, &alone_env), e.environFor(&.{ 0, 1, 2 }));
+    try testing.expectEqual(@as(?*const std.process.Environ.Map, &many), e.environFor(&.{7}));
 }
 
 test "a test declared slow gets the slow factor times the timeout" {

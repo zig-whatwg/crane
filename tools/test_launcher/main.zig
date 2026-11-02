@@ -103,6 +103,12 @@ const Args = struct {
     tsan_suppressions: ?[]const u8 = null,
     /// The many-Browsers variant (-Dmany-browsers).
     many_browsers: bool = false,
+    /// Tests that need their process to themselves (`--alone=NAME`, each with
+    /// the `--alone-reason=` after it): under --many-browsers each runs in a
+    /// process of its own, with no busy Browser beside it, and the run names
+    /// each with its reason - declared, never a silent skip (build.zig
+    /// suite_configs `alone`).
+    alone: []const Alone = &.{},
     /// Report every non-pass without failing (server.Session.report_only).
     report_only: bool = false,
     /// Verify mode (verify.zig): the tests whose names start with any of
@@ -116,6 +122,7 @@ const Args = struct {
         var a: Args = .{};
         var slow: std.ArrayList([]const u8) = .empty;
         var verify: std.ArrayList([]const u8) = .empty;
+        var alone: std.ArrayList(Alone) = .empty;
         for (args) |arg| {
             if (value(arg, "--jobs=") orelse value(arg, "--parallel=")) |v| {
                 // --parallel= too: the pool's crane-measure.sh rewrites it to
@@ -159,6 +166,11 @@ const Args = struct {
                 a.tsan_suppressions = v;
             } else if (std.mem.eql(u8, arg, "--many-browsers")) {
                 a.many_browsers = true;
+            } else if (value(arg, "--alone=")) |v| {
+                try alone.append(arena, .{ .name = v });
+            } else if (value(arg, "--alone-reason=")) |v| {
+                if (alone.items.len == 0) return error.AloneReasonWithoutAlone;
+                alone.items[alone.items.len - 1].reason = v;
             } else if (std.mem.eql(u8, arg, "--report-only")) {
                 a.report_only = true;
             } else if (value(arg, "--verify=")) |v| {
@@ -179,6 +191,8 @@ const Args = struct {
         if (a.tsan_suppressions != null and !a.sanitize_thread) return error.SuppressionsWithoutSanitizeThread;
         a.slow = slow.items;
         a.verify = verify.items;
+        a.alone = alone.items;
+        for (a.alone) |declared| if (declared.reason.len == 0) return error.AloneWithoutReason;
         // Verify mode is a run of its own, with its own report: never the
         // build runner's protocol.
         if (a.verify.len != 0 and a.listen) return error.VerifyInServerMode;
@@ -205,6 +219,15 @@ const Args = struct {
     }
 };
 
+/// A test declared to need its process to itself (`--alone`).
+pub const Alone = struct {
+    /// The test's full name.
+    name: []const u8,
+    /// Why: what it measures or makes that a second Browser in its process
+    /// would change. Required.
+    reason: []const u8 = "",
+};
+
 const usage =
     \\usage: test_launcher <test-exe> [options]
     \\  --batch=B         tests per child process (default 10; 1 = per-test isolation; 0 = the whole suite)
@@ -228,6 +251,9 @@ const usage =
     \\  --tsan-suppressions=FILE  with --sanitize-thread: the suppression file (proven false positives only)
     \\  --many-browsers   the many-Browsers variant: every test runs beside a busy Browser on another
     \\                    thread (CRANE_TEST_MANY_BROWSERS=1; the Crane test runner starts it)
+    \\  --alone=NAME      with --many-browsers: a test (full name) that needs its process to itself runs in
+    \\                    one of its own with no busy Browser, and the run names it; each needs the
+    \\  --alone-reason=R  that follows it: why (printed with it)
     \\  --verify=PREFIX   verify mode: the tests whose names start with PREFIX (repeatable; build.zig's
     \\                    test-verify passes one per changed file, "<file>.test."), each run
     \\                    --verify-batched times in one process and --verify-alone times alone;
@@ -279,6 +305,19 @@ test "args: verify mode - prefixes, run counts, and never in server mode" {
     try std.testing.expectEqual(@as(u32, 1), v.verify_batched);
     try std.testing.expectEqual(@as(u32, 0), v.verify_alone);
     try std.testing.expectError(error.VerifyInServerMode, Args.parse(arena, &.{ "x", "--verify=a.", "--listen=-" }));
+}
+
+test "args: a test declared alone carries its reason, and one without a reason is refused" {
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const a = try Args.parse(arena, &.{ "x", "--many-browsers", "--alone=f.test.counts the process", "--alone-reason=reads a process-wide count", "--alone=g.test.first isolate", "--alone-reason=must make the first isolate" });
+    try std.testing.expectEqual(@as(usize, 2), a.alone.len);
+    try std.testing.expectEqualStrings("f.test.counts the process", a.alone[0].name);
+    try std.testing.expectEqualStrings("reads a process-wide count", a.alone[0].reason);
+    try std.testing.expectEqualStrings("must make the first isolate", a.alone[1].reason);
+    try std.testing.expectError(error.AloneWithoutReason, Args.parse(arena, &.{ "x", "--alone=f.test.t" }));
+    try std.testing.expectError(error.AloneReasonWithoutAlone, Args.parse(arena, &.{ "x", "--alone-reason=why" }));
 }
 
 test "args: server mode takes the digest seed and ignores the build runner's --seed" {
@@ -440,7 +479,24 @@ pub fn main(init: std.process.Init) !void {
         if (index_of.get(n)) |i| slow[i] = true else try out.print("test_launcher: {s}: --slow names no test of this executable: {s}\n", .{ name, n });
     }
 
-    var plan = try plan_mod.make(gpa, selected.items, .{ .seed = seed, .shuffle = args.shuffle, .batch_size = args.batch });
+    // Declared alone: only the many-Browsers variant has a second Browser to
+    // keep away. Each selected one is named with its reason - a test run
+    // without the variant is declared, never silent - and a name the
+    // executable lacks is reported, as for --slow.
+    const alone = try arena.alloc(bool, md.names.len);
+    @memset(alone, false);
+    if (args.many_browsers) {
+        for (args.alone) |declared| {
+            const i = index_of.get(declared.name) orelse {
+                try out.print("test_launcher: {s}: --alone names no test of this executable: {s}\n", .{ name, declared.name });
+                continue;
+            };
+            alone[i] = true;
+            if (is_selected[i]) try out.print("test_launcher: {s} [many Browsers]: runs ALONE, without the busy Browser: {s}: {s}\n", .{ name, declared.name, declared.reason });
+        }
+    }
+
+    var plan = try plan_mod.make(gpa, selected.items, .{ .seed = seed, .shuffle = args.shuffle, .batch_size = args.batch, .alone = if (args.many_browsers) alone else &.{} });
     defer plan.deinit(gpa);
 
     // Longest batches first, from an earlier run's durations.
@@ -464,6 +520,15 @@ pub fn main(init: std.process.Init) !void {
     });
     defer test_environ.deinit();
     executor.environ_map = &test_environ;
+    // A process that runs a test declared alone: the same, without the busy
+    // Browser.
+    var alone_environ = try child_mod.testEnvironment(gpa, init.environ_map, .{
+        .sanitize_thread = if (args.sanitize_thread) .{ .suppressions = args.tsan_suppressions } else null,
+        .many_browsers = false,
+    });
+    defer alone_environ.deinit();
+    executor.alone_environ_map = &alone_environ;
+    executor.alone = alone;
     executor.slow = slow;
     executor.slow_factor = args.slow_factor;
     // The build-wide process cap: the given directory, or in server mode one
