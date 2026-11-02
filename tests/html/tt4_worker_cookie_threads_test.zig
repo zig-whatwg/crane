@@ -4,6 +4,7 @@
 //! the other worker. All jar accesses use Fetch's locking cookie APIs.
 const std = @import("std");
 const Browser = @import("browser").Browser;
+const LoopbackListener = @import("loopback_listener").LoopbackListener;
 
 const worker_source =
     "async function ready(port) { await fetch('/setter'); port.postMessage('ready'); close(); }" ++
@@ -11,33 +12,32 @@ const worker_source =
 
 const Server = struct {
     allocator: std.mem.Allocator,
-    socket: std.Io.net.Server,
+    listener: LoopbackListener,
     thread: ?std.Thread = null,
-    stopping: std.atomic.Value(bool) = .init(false),
     id: u8,
 
     fn start(allocator: std.mem.Allocator, id: u8) !*Server {
         const self = try allocator.create(Server);
         errdefer allocator.destroy(self);
-        const address: std.Io.net.IpAddress = .{ .ip4 = std.Io.net.Ip4Address.loopback(0) };
-        var socket = try address.listen(std.testing.io, .{ .reuse_address = true });
-        errdefer socket.deinit(std.testing.io);
-        self.* = .{ .allocator = allocator, .socket = socket, .id = id };
-        self.thread = try std.Thread.spawn(.{}, serve, .{ self, socket });
+        self.* = .{ .allocator = allocator, .listener = try LoopbackListener.open(.{}), .id = id };
+        errdefer self.listener.close();
+        self.thread = try std.Thread.spawn(.{}, serve, .{self});
         return self;
     }
 
+    /// Stop the accept thread, then close the listener - in that order
+    /// (tests/support/loopback_listener.zig): closing the listener to
+    /// unblock accept(), as this did, raced the thread, and an accept()
+    /// begun after the close panics on EBADF (lane fixes1).
     fn stop(self: *Server) void {
-        self.stopping.store(true, .release);
-        self.socket.deinit(std.testing.io);
+        self.listener.stop();
         self.thread.?.join();
+        self.listener.close();
         self.allocator.destroy(self);
     }
 
-    fn serve(self: *Server, listener: std.Io.net.Server) void {
-        var socket = listener;
-        while (!self.stopping.load(.acquire)) {
-            const stream = socket.accept(std.testing.io) catch continue;
+    fn serve(self: *Server) void {
+        while (self.listener.accept()) |stream| {
             defer stream.close(std.testing.io);
             self.reply(stream) catch {};
         }
@@ -101,7 +101,7 @@ const Shared = struct {
         const server = try Server.start(allocator, id);
         defer server.stop();
         var proxy_buf: [128]u8 = undefined;
-        const proxy = try std.fmt.bufPrint(&proxy_buf, "http://127.0.0.1:{d}", .{server.socket.socket.address.getPort()});
+        const proxy = try std.fmt.bufPrint(&proxy_buf, "http://127.0.0.1:{d}", .{server.listener.port()});
         const browser = try Browser.init(allocator, .{
             .persist_storage = false,
             .snapshot_path = "",
@@ -166,7 +166,7 @@ fn rootCredentials() !void {
     const server = try Server.start(allocator, 'R');
     defer server.stop();
     var proxy_buf: [128]u8 = undefined;
-    const proxy = try std.fmt.bufPrint(&proxy_buf, "http://127.0.0.1:{d}", .{server.socket.socket.address.getPort()});
+    const proxy = try std.fmt.bufPrint(&proxy_buf, "http://127.0.0.1:{d}", .{server.listener.port()});
     const browser = try Browser.init(allocator, .{
         .persist_storage = false,
         .snapshot_path = "",

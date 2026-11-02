@@ -409,11 +409,14 @@ pub const LibcurlBackend = struct {
                 const value = std.mem.trim(u8, line[colon_pos + 1 ..], " \t");
 
                 if (name.len > 0) {
-                    const header = NetworkResponse.Header{
-                        .name = try ctx.allocator.dupe(u8, name),
-                        .value = try ctx.allocator.dupe(u8, value),
-                    };
-                    try ctx.response_headers.append(ctx.allocator, header);
+                    // The context's deinit frees the headers in its list; one
+                    // not yet there is freed here when its value, or its place
+                    // in the list, cannot be allocated.
+                    const owned_name = try ctx.allocator.dupe(u8, name);
+                    errdefer ctx.allocator.free(owned_name);
+                    const owned_value = try ctx.allocator.dupe(u8, value);
+                    errdefer ctx.allocator.free(owned_value);
+                    try ctx.response_headers.append(ctx.allocator, .{ .name = owned_name, .value = owned_value });
                 }
             }
         }
@@ -1348,6 +1351,26 @@ test "LibcurlBackend - CallbackContext accumulates data" {
     try ctx.raw_headers.appendSlice(allocator, "Content-Type: text/plain\r\n");
 
     try std.testing.expect(std.mem.startsWith(u8, ctx.raw_headers.items, "HTTP/1.1 200 OK"));
+}
+
+test "LibcurlBackend - parseHeaders frees the header it was making when an allocation fails" {
+    // `finish` maps a failed parse to OutOfMemory, and the transfer's end
+    // frees the headers the context holds - but not a name whose value, or
+    // whose place in the list, could not be allocated (lane fixes1: a
+    // tests-fetch run leaked a 12-byte header name this way).
+    const Parse = struct {
+        /// One parse of a two-header block with `allocator`, as `finish`
+        /// makes it: what it took is the context's, freed by its deinit.
+        fn with(allocator: std.mem.Allocator) !void {
+            var aborted = std.atomic.Value(bool).init(false);
+            var ctx = LibcurlBackend.CallbackContext.init(allocator, &aborted);
+            defer ctx.deinit();
+            try ctx.raw_headers.appendSlice(allocator, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nX-Second: two\r\n\r\n");
+            try LibcurlBackend.parseHeaders(&ctx);
+            try std.testing.expectEqual(@as(usize, 2), ctx.response_headers.items.len);
+        }
+    };
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, Parse.with, .{});
 }
 
 test "LibcurlBackend - supportsStreaming returns false" {

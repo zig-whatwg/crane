@@ -1,29 +1,34 @@
 //! One loopback WebSocket peer for lifetime tests. No external WPT server.
 const std = @import("std");
 const io = std.testing.io;
+const LoopbackListener = @import("loopback_listener").LoopbackListener;
 
 pub const Server = struct {
-    listener: std.Io.net.Server,
+    listener: LoopbackListener,
     thread: ?std.Thread = null,
     close_code: std.atomic.Value(u16) = .init(0),
     ended: std.atomic.Value(bool) = .init(false),
     failure: ?anyerror = null,
 
     pub fn start(self: *Server) !void {
-        const address: std.Io.net.IpAddress = .{ .ip4 = .loopback(0) };
-        self.* = .{ .listener = try address.listen(io, .{ .reuse_address = true }) };
-        errdefer self.listener.deinit(io);
+        self.* = .{ .listener = try LoopbackListener.open(.{}) };
+        errdefer self.listener.close();
         self.thread = try std.Thread.spawn(.{}, serve, .{self});
     }
 
     pub fn url(self: *const Server, buffer: []u8) ![]const u8 {
-        return std.fmt.bufPrint(buffer, "ws://127.0.0.1:{d}/echo", .{self.listener.socket.address.getPort()});
+        return std.fmt.bufPrint(buffer, "ws://127.0.0.1:{d}/echo", .{self.listener.port()});
     }
 
     /// The Browser must end first, closing any accepted socket.
+    /// Stop the accept thread, then close the listener - in that order
+    /// (tests/support/loopback_listener.zig): closing the listener to
+    /// unblock accept(), as this did, raced the thread, and an accept()
+    /// begun after the close panics on EBADF (lane fixes1).
     pub fn stop(self: *Server) void {
-        self.listener.deinit(io);
+        self.listener.stop();
         if (self.thread) |thread| thread.join();
+        self.listener.close();
     }
 
     fn serve(self: *Server) void {
@@ -34,9 +39,7 @@ pub const Server = struct {
     }
 
     fn answer(self: *Server) !void {
-        // stop closes the listener; accept reads its own copy.
-        var listener = self.listener;
-        const stream = try listener.accept(io);
+        const stream = self.listener.accept() orelse return error.Stopped;
         defer stream.close(io);
         var input: [8192]u8 = undefined;
         var reader = stream.reader(io, &input);

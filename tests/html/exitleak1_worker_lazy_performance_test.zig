@@ -22,37 +22,38 @@ const std = @import("std");
 const testing = std.testing;
 const Browser = @import("browser").Browser;
 const clock = @import("clock");
+const LoopbackListener = @import("loopback_listener").LoopbackListener;
 
 const Server = struct {
-    socket: std.Io.net.Server,
+    listener: LoopbackListener,
     thread: ?std.Thread = null,
-    stopping: std.atomic.Value(bool) = .init(false),
 
     fn start() !*Server {
         const self = try testing.allocator.create(Server);
         errdefer testing.allocator.destroy(self);
-        const address: std.Io.net.IpAddress = .{ .ip4 = std.Io.net.Ip4Address.loopback(0) };
-        var socket = try address.listen(testing.io, .{ .reuse_address = true });
-        errdefer socket.deinit(testing.io);
-        self.* = .{ .socket = socket };
-        self.thread = try std.Thread.spawn(.{}, serve, .{ self, socket });
+        self.* = .{ .listener = try LoopbackListener.open(.{}) };
+        errdefer self.listener.close();
+        self.thread = try std.Thread.spawn(.{}, serve, .{self});
         return self;
     }
 
+    /// Stop the accept thread, then close the listener - in that order
+    /// (tests/support/loopback_listener.zig): closing the listener to
+    /// unblock accept(), as this did, raced the thread, and an accept()
+    /// begun after the close panics on EBADF (lane fixes1).
     fn stop(self: *Server) void {
-        self.stopping.store(true, .release);
-        self.socket.deinit(testing.io);
+        self.listener.stop();
         self.thread.?.join();
+        self.listener.close();
         testing.allocator.destroy(self);
     }
 
     fn port(self: *const Server) u16 {
-        return self.socket.socket.address.getPort();
+        return self.listener.port();
     }
 
-    fn serve(self: *Server, listener: std.Io.net.Server) void {
-        var socket = listener;
-        const stream = socket.accept(testing.io) catch return;
+    fn serve(self: *Server) void {
+        const stream = self.listener.accept() orelse return;
         defer stream.close(testing.io);
         self.answer(stream) catch {};
     }
@@ -69,7 +70,7 @@ const Server = struct {
         const part = @as([16384]u8, @splat('a'));
         try writer.interface.writeAll(&part);
         try writer.interface.flush();
-        while (!self.stopping.load(.acquire)) clock.sleep(std.time.ns_per_ms);
+        while (!self.listener.isStopping()) clock.sleep(std.time.ns_per_ms);
     }
 };
 
