@@ -234,9 +234,14 @@ fn timerHeavyIsFast() !void {
     const virtual_rate = virtual.page_ms / virtual.real_ms;
     const real_rate = real.page_ms / real.real_ms;
     std.debug.print("detplat1: virtual time ran {d:.0} ms of timers in {d:.1} ms real ({d:.0}x); real time ran {d:.0} ms in {d:.1} ms ({d:.2}x)\n", .{ virtual.page_ms, virtual.real_ms, virtual_rate, real.page_ms, real.real_ms, real_rate });
-    // Far faster: at least 20 times real time (it is far more: the chain is
-    // bounded only by its callbacks).
-    try std.testing.expect(virtual.real_ms * 20 < virtual.page_ms);
+    // Far faster: the chain never waits in real time, so it is bounded only
+    // by its 2,000 callbacks - 83 times real time on a quiet host (240 ms for
+    // the 20 s), 12 times under the whole suite's load (1.6 s). The bound is
+    // a quarter of the page's time, so load cannot flip it: a speed the test
+    // races is not a pass (docs/lessons/testing-a-result-that-flips-with-
+    // speed-is-a-race-over-a-missing-check.md), while a loop that slept for
+    // its timers would take the full 20 s.
+    try std.testing.expect(virtual.real_ms * 4 < virtual.page_ms);
 }
 
 test "virtual clock: a timer-heavy page runs far faster than real time (measured)" {
