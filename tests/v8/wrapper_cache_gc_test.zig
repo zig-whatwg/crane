@@ -80,8 +80,16 @@ fn createMockWrapper(allocator: std.mem.Allocator) !*v8.Object {
     return @ptrCast(wrapper_storage);
 }
 
-/// Destroy mock V8 Object
+/// Destroy mock V8 Object, ending the weak arm the cache gave it first. The
+/// arm's record lives in the adapter's process-wide armed-handle map
+/// (v8_wrapper.cpp armedWeakData), and a mock handle is never collected, so
+/// no weak callback ever frees it: without the release every test of this
+/// file left one record per wrapper in the process - the Crane test runner's
+/// `engine.live_weak_callback_data` (0 -> 1000 for "no memory leaks with
+/// 100 cycles") - keyed by an address the next allocation may reuse. A
+/// wrapper never armed has no record, and the release does nothing.
 fn destroyMockWrapper(allocator: std.mem.Allocator, wrapper: *v8.Object) void {
+    v8.ffi.v8_Global_ClearWeak(@ptrCast(wrapper));
     const ptr: *MockWrapperStorage = @ptrCast(@alignCast(wrapper));
     allocator.destroy(ptr);
 }

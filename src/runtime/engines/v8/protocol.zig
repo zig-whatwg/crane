@@ -1037,6 +1037,12 @@ pub fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
 /// - `object_globals_from.<entry point>`: Global<Object> creations by the FFI
 ///   entry point that made them, cumulative - which of them a per-element
 ///   leak comes from;
+/// - `live_agents`: agents createAgent made that are not yet destroyed, each
+///   with its realms (protocol_agents.liveAgentCount);
+/// - `flag_writes`: how many times V8 flags were set outside the start
+///   (v8_SetFlagsFromString) - V8 cannot read its flags back, and they
+///   freeze when it starts, so a write before the start is the one way to
+///   change the flags of every later user of the process;
 /// and, where the Phase 5 instrument is compiled in, how many agent-ownership
 /// checks ran and how many failed (isolate_ownership.zig) - hosts read "not
 /// measured" when those are not reported.
@@ -1059,6 +1065,8 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
         .{ .name = "object_globals_from.GetGlobalPrototype", .value = ffi.v8_Debug_ObjSrc(3) },
         .{ .name = "object_globals_from.FunctionTemplate_GetPrototypeObject", .value = ffi.v8_Debug_ObjSrc(4) },
         .{ .name = "object_globals_from.ObjectTemplate_NewInstance", .value = ffi.v8_Debug_ObjSrc(5) },
+        .{ .name = "live_agents", .value = @intCast(protocol_agents.liveAgentCount()) },
+        .{ .name = "flag_writes", .value = ffi.v8_Platform_FlagWrites() },
     };
     const ownership = [_]engine.Counter{
         .{ .name = "ownership_checks", .value = @intCast(isolate_ownership.checks()) },

@@ -105,6 +105,10 @@ pub const Executor = struct {
     /// batch TEST_FAILURE_ON_EXIT).
     exit_failures: std.atomic.Value(u32) = .init(0),
 
+    /// The environment of every child: `testEnvironment` of the launcher's
+    /// (main.zig). Null: the launcher's own, unchanged.
+    environ_map: ?*const std.process.Environ.Map = null,
+
     pub fn init(gpa: Allocator, io: Io, argv: []const []const u8, test_timeout_ns: u64, jobs: u32) !Executor {
         const procs = try gpa.alloc(?*Proc, @max(jobs, 1));
         errdefer gpa.free(procs);
@@ -151,6 +155,7 @@ pub const Executor = struct {
             .stdin = .pipe,
             .stdout = .pipe,
             .stderr = .pipe,
+            .environ_map = e.environ_map,
             .request_resource_usage_statistics = true,
         }) catch |err| {
             // Whether the executable is there now tells a path that was
@@ -344,6 +349,36 @@ const FmtTerm = struct {
     }
 };
 
+/// The time zone and locale every test child runs in, whatever the shell
+/// that started the build had: WebKit's harness fixes them the same way
+/// (webkitpy port/base.py forces TZ=US/Pacific - "Some tests fail if the
+/// time zone is not set to US/Pacific", webkit.org/b/186612 - and copies
+/// only a whitelist of the environment to its drivers). Pinned here, not in
+/// the `testing` platform: WPT runs keep the host's environment.
+pub const fixed_environment = [_][2][]const u8{
+    .{ "TZ", "America/Los_Angeles" },
+    .{ "LANG", "en_US.UTF-8" },
+    .{ "LC_ALL", "en_US.UTF-8" },
+};
+
+/// The proxy settings no test child sees: a test that reaches the network
+/// reaches its own test servers directly, on every host.
+pub const cleared_environment = [_][]const u8{
+    "http_proxy", "https_proxy", "all_proxy", "no_proxy",
+    "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+};
+
+/// The environment of every test child: `base` (the launcher's), with
+/// `fixed_environment` set and `cleared_environment` removed. The caller
+/// owns the result; `base` is not changed.
+pub fn testEnvironment(gpa: Allocator, base: *const std.process.Environ.Map) Allocator.Error!std.process.Environ.Map {
+    var env = try base.clone(gpa);
+    errdefer env.deinit();
+    for (fixed_environment) |pair| try env.put(pair[0], pair[1]);
+    for (cleared_environment) |name| _ = env.swapRemove(name);
+    return env;
+}
+
 /// Lists the tests of `argv[0]` without running any.
 pub fn queryMetadata(gpa: Allocator, io: Io, argv: []const []const u8) !Metadata {
     var child = try std.process.spawn(io, .{ .argv = argv, .stdin = .pipe, .stdout = .pipe, .stderr = .inherit });
@@ -455,7 +490,9 @@ test "real processes: each kind of result, a crash and a timeout blamed and rest
     const md = try queryMetadata(gpa, io, &argv);
     defer md.deinit(gpa);
     const names = [_][]const u8{ "passes", "fails", "crashes", "hangs", "leaks", "poisons", "needs a clean process", "skips" };
-    try testing.expectEqual(names.len, md.names.len);
+    // The fixture's first eight tests; "sees the fixed environment" follows
+    // them and has a test of its own (below).
+    try testing.expectEqual(names.len + 1, md.names.len);
     var all: [names.len]u32 = undefined;
     for (names, 0..) |want, i| {
         try testing.expect(std.mem.endsWith(u8, md.names[i], want));
@@ -496,6 +533,112 @@ test "real processes: each kind of result, a crash and a timeout blamed and rest
     try testing.expectEqual(@as(u32, 4), run.records[6].process_start);
     try testing.expectEqual(@as(u32, 0), exec.exit_failures.load(.monotonic));
     try testing.expect(exec.cpu_ns.load(.monotonic) > 0);
+}
+
+test "the test environment: the launcher's own, with the time zone and locale fixed and the proxies cleared" {
+    const gpa = testing.allocator;
+    var base: std.process.Environ.Map = .init(gpa);
+    defer base.deinit();
+    try base.put("TZ", "UTC");
+    try base.put("LANG", "C");
+    try base.put("http_proxy", "http://proxy.invalid:3128");
+    try base.put("HTTPS_PROXY", "http://proxy.invalid:3128");
+    try base.put("PATH", "/usr/bin:/bin");
+    var env = try testEnvironment(gpa, &base);
+    defer env.deinit();
+    try testing.expectEqualStrings("America/Los_Angeles", env.get("TZ").?);
+    try testing.expectEqualStrings("en_US.UTF-8", env.get("LANG").?);
+    try testing.expectEqualStrings("en_US.UTF-8", env.get("LC_ALL").?);
+    try testing.expect(env.get("http_proxy") == null);
+    try testing.expect(env.get("HTTPS_PROXY") == null);
+    // Everything else is the launcher's.
+    try testing.expectEqualStrings("/usr/bin:/bin", env.get("PATH").?);
+    // The launcher's own map is not changed.
+    try testing.expectEqualStrings("UTC", base.get("TZ").?);
+}
+
+test "real processes: a test child sees the fixed environment whatever the launcher's was" {
+    const fixture = @import("launcher_fixture");
+    const gpa = testing.allocator;
+    const io = testing.io;
+    const argv = [_][]const u8{ fixture.path, "--listen=-", "--seed=0x1" };
+    const md = try queryMetadata(gpa, io, &argv);
+    defer md.deinit(gpa);
+    const index: u32 = @intCast(md.names.len - 1);
+    try testing.expect(std.mem.endsWith(u8, md.names[index], "sees the fixed environment"));
+
+    // A launcher environment unlike the fixed one, as a shell might have it.
+    var base: std.process.Environ.Map = .init(gpa);
+    defer base.deinit();
+    try base.put("TZ", "Asia/Tokyo");
+    try base.put("LANG", "de_DE.UTF-8");
+    try base.put("https_proxy", "http://proxy.invalid:3128");
+    var fixed = try testEnvironment(gpa, &base);
+    defer fixed.deinit();
+
+    // The fixture is sensitive: run with the launcher's environment as it
+    // is, it fails; with the fixed one, it passes.
+    for ([_]struct { env: *const std.process.Environ.Map, want: sched.Status }{
+        .{ .env = &base, .want = .fail },
+        .{ .env = &fixed, .want = .pass },
+    }) |case| {
+        var one = [_]u32{index};
+        var plan = try @import("plan.zig").make(gpa, &one, .{ .seed = 1, .shuffle = false, .batch_size = 0 });
+        defer plan.deinit(gpa);
+        var exec = try Executor.init(gpa, io, &argv, 30 * std.time.ns_per_s, 1);
+        defer exec.deinit();
+        exec.environ_map = case.env;
+        var run = try sched.Run.init(gpa, io, &plan, md.names.len, exec.executor(), .{ .jobs = 1, .alone_runs = 1 });
+        defer run.deinit();
+        try run.execute();
+        errdefer std.debug.print("{s}\n", .{run.records[index].output});
+        try testing.expectEqual(case.want, run.records[index].first);
+    }
+}
+
+test "real processes: the Crane test runner fails a test that leaves process state behind, by the field's name" {
+    // build.zig compiles tests/test_runner_fixture/state_fixture.zig with the
+    // Crane test runner (tests/test_runner/), its state check failing, and
+    // passes its path.
+    const fixture = @import("launcher_fixture");
+    const gpa = testing.allocator;
+    const io = testing.io;
+    const argv = [_][]const u8{ fixture.state_path, "--listen=-", "--seed=0x1" };
+    const md = try queryMetadata(gpa, io, &argv);
+    defer md.deinit(gpa);
+
+    // Each test, with what its first run must be and what its output must
+    // name: the field it left changed, its value before and after.
+    const cases = [_]struct { name: []const u8, first: sched.Status, says: ?[]const u8 }{
+        .{ .name = "leaves nothing", .first = .pass, .says = null },
+        .{ .name = "leaves a Browser alive", .first = .log_err, .says = "runtime.browsers: 0 -> 1" },
+        .{ .name = "installs a hook for itself, as startHooksForTest does", .first = .pass, .says = null },
+        .{ .name = "starts the process, installing a hook", .first = .pass, .says = null },
+        .{ .name = "leaves the process starting", .first = .log_err, .says = "process_start.phase: not_started -> starting" },
+        .{ .name = "ends the process", .first = .log_err, .says = "process_start.phase: not_started -> ended" },
+        .{ .name = "leaves the timer nesting level raised", .first = .log_err, .says = "global src/runtime/timer.zig nesting_level: 0 -> 1" },
+    };
+    try testing.expectEqual(cases.len, md.names.len);
+    var all: [cases.len]u32 = undefined;
+    for (cases, 0..) |c, i| {
+        try testing.expect(std.mem.endsWith(u8, md.names[i], c.name));
+        all[i] = @intCast(i);
+    }
+
+    // A process per test: each starts from a fresh process.
+    var plan = try @import("plan.zig").make(gpa, &all, .{ .seed = 1, .shuffle = false, .batch_size = 1 });
+    defer plan.deinit(gpa);
+    var exec = try Executor.init(gpa, io, &argv, 60 * std.time.ns_per_s, 1);
+    defer exec.deinit();
+    var run = try sched.Run.init(gpa, io, &plan, md.names.len, exec.executor(), .{ .jobs = 1, .alone_runs = 1 });
+    defer run.deinit();
+    try run.execute();
+    for (cases, 0..) |c, i| {
+        const rec = run.records[i];
+        errdefer std.debug.print("test {s}: first {t}\n{s}\n", .{ c.name, rec.first, rec.output });
+        try testing.expectEqual(c.first, rec.first);
+        if (c.says) |text| try testing.expect(std.mem.indexOf(u8, rec.output, text) != null);
+    }
 }
 
 test "a test executable that is not there: its tests are LAUNCHER-ERROR, with the path, the errno and whether it is there now" {

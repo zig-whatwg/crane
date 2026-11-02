@@ -755,6 +755,9 @@ pub extern fn v8_Platform_Dispose() void;
 /// part of the start, so no other thread's start can come between.
 /// Example: "--hash-seed=0" for deterministic hashing (helps with snapshots)
 pub extern fn v8_SetFlagsFromString(flags: [*:0]const u8) void;
+/// How many times v8_SetFlagsFromString has set flags in this process (a
+/// start's own flags are not counted). Diagnostics only.
+pub extern fn v8_Platform_FlagWrites() i64;
 
 // Isolate management
 

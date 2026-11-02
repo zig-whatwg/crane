@@ -76,6 +76,12 @@ struct PlatformStart {
     std::string flags;
     /// v8_Platform_Dispose ran: V8 cannot start again in this process.
     bool disposed = false;
+    /// How many times v8_SetFlagsFromString set flags outside the start
+    /// (diagnostics: v8_Platform_FlagWrites). V8 has no public API to read
+    /// its flags back; they freeze when it starts, so a write before the
+    /// start is the only way a test can change the flags every later test of
+    /// its process runs with.
+    int64_t flag_writes = 0;
 };
 static PlatformStart g_platform;
 
@@ -2046,8 +2052,17 @@ void v8_Snapshot_ClearGlobalHandles() {
 void v8_SetFlagsFromString(const char* flags) {
     if (flags) {
         std::lock_guard<std::mutex> guard(g_platform.mutex);
+        g_platform.flag_writes += 1;
         V8::SetFlagsFromString(flags);
     }
+}
+
+/// How many times v8_SetFlagsFromString has set flags, in this process: the
+/// flags of a start (v8_Platform_Start) are not counted. Diagnostics only
+/// (the adapter's `flag_writes` counter).
+int64_t v8_Platform_FlagWrites() {
+    std::lock_guard<std::mutex> guard(g_platform.mutex);
+    return g_platform.flag_writes;
 }
 
 // Foreground tasks retain their wake target, never their isolate. The platform
