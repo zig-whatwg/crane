@@ -152,13 +152,13 @@ fn frameEndsThroughItsOwnOperations() !void {
     });
     defer protocol.destroyWindowRealm(page, .global_detached);
     try protocol.installWindowOperations(page, &operations);
-    try std.testing.expect(page.window_operations == &operations);
+    try std.testing.expect(page.window_operations.? == &operations);
 
     var frame_realm: FrameRealm = .{ .agent = agent, .parent = page };
     const frame = try frame_realm.make();
     // The frame took its parent's operations, and its setTimeout is the
     // host's - in the frame's realm.
-    try std.testing.expect(frame.window_operations == &operations);
+    try std.testing.expect(frame.window_operations.? == &operations);
     try expectEval(frame, "String(setTimeout(() => {}, 1))", "1");
     try std.testing.expectEqual(frame, seen.timer_realm.?);
 
@@ -170,7 +170,7 @@ fn frameEndsThroughItsOwnOperations() !void {
     try std.testing.expect(seen.own_operations_at_destroy);
 
     // The parent's operations are its own and untouched by the frame's end.
-    try std.testing.expect(page.window_operations == &operations);
+    try std.testing.expect(page.window_operations.? == &operations);
     try expectEval(page, "String(setTimeout(() => {}, 1))", "2");
     try std.testing.expectEqual(page, seen.timer_realm.?);
 }

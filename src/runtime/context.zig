@@ -704,7 +704,7 @@ pub const RealmObjectKind = enum {
     style_sheet_loads,
 };
 /// How many kinds of object list a realm keeps.
-const object_kind_count = @typeInfo(RealmObjectKind).@"enum".fields.len;
+const object_kind_count = @typeInfo(RealmObjectKind).@"enum".field_names.len;
 
 pub const Context = *ContextData;
 
