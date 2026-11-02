@@ -50,6 +50,13 @@ realm-tag maps stay process-wide under their mutexes (`// process-wide:`): a rel
 handle. Dead legacy paths with globals of their own (the CallbackManager, the pre-protocol module,
 import.meta, dynamic import and promise-rejection callbacks, the C++ async iterator template)
 are deleted.
+Engine ownership (2026-11-02, lane engown1): the V8 adapter keeps no realm state per thread. The
+context manager's realm map and retired list (`context_manager.Realms`), the end-in-progress stack of
+Window realms, the live callback wrappers, the module records, the worker realm records and the live
+wrapper caches are each agent's, on its `AgentRecord`, found from the isolate (`realmsOf`, `recordOf`;
+Blink's V8PerIsolateData, WebKit's JSVMClientData). Every agent's end is the same - there is no host
+agent - and it ends each of its live realms through the path a realm's own end takes, so an agent's
+end frees only its own realms.
 The full design, with the inventory of every
 process-global and threadlocal variable in src/, was written by the instances lane; this note is
 the part every lane needs to know before it adds state.

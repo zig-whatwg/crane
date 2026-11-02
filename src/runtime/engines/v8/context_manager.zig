@@ -16,20 +16,23 @@
 //! - Engine Context (back-reference to V8)
 //! ```
 //!
-//! ## Thread Safety
+//! ## Per agent
 //!
-//! Each V8 isolate is single-threaded, so we use thread-local storage for the context map.
-//! This ensures that each thread has its own independent context mapping.
+//! The map is each agent's own (`Realms`, a field of the agent's record,
+//! protocol_agents.AgentRecord.realms): a context is looked up in the realms
+//! of the agent whose isolate is current, which is the context's own - V8
+//! reads a context with its isolate current. An agent's end ends its realms
+//! (`endAgentRealms`) and no other agent's. Each isolate is used by one
+//! thread at a time, so no lock.
 //!
 //! ## Usage
 //!
 //! ```zig
-//! const v8 = @import("v8.zig");
-//! const mgr = @import("v8/context_manager.zig");
+//! const mgr = @import("context_manager.zig");
 //!
-//! // In isolate setup:
-//! mgr.init(allocator);
-//! defer mgr.deinit();
+//! // A realm of the current agent, registered (engine.createWindowRealm and
+//! // createWorkerRealm do this):
+//! const realm = try mgr.getOrCreateWithExternalEventLoop(context, timer, loop, allocator);
 //!
 //! // In V8 callback:
 //! fn constructorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
@@ -52,6 +55,9 @@ const fetch = @import("fetch");
 const iface_bindings_mod = @import("interface_bindings.zig");
 const helpers = @import("webidl").helpers;
 const shadow_realm = @import("shadow_realm.zig");
+/// The agent records, where each agent's realms live (`Realms`).
+const protocol_agents = @import("protocol_agents.zig");
+const tombstones = @import("webidl").utils.tombstones;
 const host = @import("host");
 const node_document = @import("dom").node_document;
 
@@ -110,9 +116,6 @@ pub const ContextEntry = struct {
     /// so the flag stays readable for the manager's lifetime.
     destroying: bool = false,
 };
-
-/// Thread-local context manager state
-threadlocal var manager_state: ?ManagerState = null;
 
 /// Callback type for registering globals on child contexts (iframes)
 /// This is called by createChildContext after the context is created
@@ -210,21 +213,41 @@ pub fn clearChildWindowCleanupCallback() void {
     child_window_cleanup_callback = null;
 }
 
-/// Manager state (thread-local)
-const ManagerState = struct {
-    /// Allocator for internal structures
-    allocator: std.mem.Allocator,
+/// One agent's realms: the context manager's record of every context it
+/// hosts for the agent, live and retired.
+///
+/// It is the agent's (protocol_agents.AgentRecord.realms), found from the
+/// isolate - as Blink keeps an isolate's state on its V8PerIsolateData
+/// (`V8PerIsolateData::From(isolate)`, one per isolate, a worker thread's
+/// isolate its own) and WebKit on its VM's client data (JSVMClientData, which
+/// the VM owns and which its worlds join and leave) - and the agent's end
+/// ends it (`endAgentRealms`, isolate_lifecycle's first step): that agent's
+/// realms, and no other agent's. It was a `threadlocal`, and the thread's
+/// host agent - the one made with no isolate entered - took it down whole at
+/// its end, the realms other agents on the thread had made with it
+/// (tests/v8/agent_realms_isolation_test.zig; docs/instances.md: state has an
+/// owner, never a thread).
+///
+/// Read and written on the agent's own thread only - an isolate is used by
+/// one thread at a time - without a lock.
+pub const Realms = struct {
+    /// What the entries and both lists are allocated with: the agent's
+    /// (engine.AgentOptions.allocator), set when the record is first asked
+    /// for them (protocol_agents.realmsOf), or a test's (`useAllocator`).
+    allocator: ?std.mem.Allocator = null,
 
-    /// Map from V8 context pointer to runtime context
-    /// Key: usize (casted from *v8.Context)
-    /// Value: *ContextEntry (pointer to heap-allocated entry)
+    /// Map from the context's key (`keyOf`: its Crane id) to its entry.
     ///
     /// IMPORTANT: We store *ContextEntry (pointer) instead of ContextEntry (value)
     /// because HashMap moves values during rehash. If we stored values directly,
     /// any pointer into entry.runtime_ctx (like Window.ctx or Element.ctx)
     /// would become dangling after rehash. By heap-allocating entries and
     /// storing pointers, the entries themselves don't move when HashMap grows.
-    contexts: std.AutoHashMap(usize, *ContextEntry),
+    contexts: std.AutoHashMapUnmanaged(usize, *ContextEntry) = .empty,
+    /// Bounds `contexts`' tombstones: every realm an agent makes is put in
+    /// and taken out again at its end, page after page, for the agent's
+    /// life (infra.tombstones.TombstoneGuard).
+    guard: tombstones.TombstoneGuard = .{},
 
     /// Entries taken out of `contexts` but not yet freed.
     ///
@@ -237,277 +260,134 @@ const ManagerState = struct {
     /// back as 0xAAAA_AAAA_AAAA_AAAA: non-null, and not 8-aligned, so
     /// `markInstanceCleanedUp` panicked in its `@alignCast` instead of quietly
     /// returning a wrong answer. Retiring the entry keeps every stale `ctx`
-    /// pointing at a real, inert ContextData until `deinit` drains this list.
+    /// pointing at a real, inert ContextData until the agent's end
+    /// (`endAgentRealms`) drains this list.
     ///
     /// Costs one entry plus its ContextData's own buffers per destroyed context,
-    /// for the lifetime of the manager. That is retention, not a leak - the drain
+    /// for the lifetime of the agent. That is retention, not a leak - the drain
     /// frees all of it - and it buys away a class of use-after-free that no
     /// caller of `instance.ctx` can defend against on its own.
     retired: std.ArrayListUnmanaged(*ContextEntry) = .empty,
 
-    /// Default allocator to use for new contexts
-    default_allocator: std.mem.Allocator,
-
-    /// Flag indicating we're in the middle of full teardown (deinit)
-    /// When true, destroyChildContext should be a no-op since all contexts
-    /// are being torn down anyway
+    /// Set while the agent's end tears its realms down (`endAgentRealms`).
     is_tearing_down: bool = false,
+
+    fn alloc(self: *const Realms) std.mem.Allocator {
+        return self.allocator orelse std.heap.c_allocator;
+    }
 };
 
-/// Initialize the context manager for this thread
-///
-/// Must be called before using any context manager functions.
-/// Each thread must call init() independently.
-///
-/// Thread safety: Thread-local, no synchronization needed
-pub fn init(allocator: std.mem.Allocator) !void {
-    if (manager_state != null) {
-        return error.AlreadyInitialized;
-    }
-
-    manager_state = ManagerState{
-        .allocator = allocator,
-        .contexts = std.AutoHashMap(usize, *ContextEntry).init(allocator),
-        .default_allocator = allocator,
-    };
+/// The realms of the agent whose isolate is current: null with none current,
+/// or for an isolate createAgent did not make, which hosts no realm. Every
+/// lookup by context runs with the context's isolate current - reading a
+/// context's key (v8_Context_GetRawAddress) does too.
+fn currentRealms() ?*Realms {
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return null;
+    return protocol_agents.realmsOf(isolate);
 }
 
-/// Deinitialize the context manager and free all contexts
-///
-/// Cleans up all runtime contexts that were created by the manager.
-/// After calling deinit(), init() must be called again before use.
+/// The agent's realms (`Realms`) allocate with `allocator` rather than the
+/// agent's own: for a test that makes them run out of memory. Before the
+/// agent's first realm only - error.AlreadyInitialized once anything was
+/// allocated, error.NotAnAgent for an isolate createAgent did not make.
+pub fn useAllocator(isolate: *v8.Isolate, allocator: std.mem.Allocator) !void {
+    const realms = protocol_agents.realmsOf(isolate) orelse return error.NotAnAgent;
+    if (realms.contexts.capacity() != 0 or realms.retired.capacity != 0) return error.AlreadyInitialized;
+    realms.allocator = allocator;
+}
+
+/// The end of the agent whose isolate this is, for its realms: every realm
+/// still on its record torn down, every retired entry freed, both lists'
+/// storage freed - this agent's, and no other agent's on the thread. The
+/// first step of the agent's end (isolate_lifecycle.cleanupAll, from
+/// protocol_agents.endAgent), with the agent entered and its record still
+/// found by `realmsOf` (ending), so that what the teardown looks up by
+/// context is found as it ran. Nothing for an isolate createAgent did not
+/// make.
 ///
 /// Uses CleanupCoordinator to ensure proper ordering and prevent
 /// race conditions between context teardown and GC-driven cleanup.
-///
-/// Thread safety: Thread-local, no synchronization needed
-pub fn deinit() void {
-    log.debug("[context_manager.deinit] ENTERING DEINIT\n", .{});
-    if (manager_state) |*state| {
-        const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
-        const cleanup_coordinator = runtime.cleanup_coordinator;
+pub fn endAgentRealms(isolate: *v8.Isolate) void {
+    const state = protocol_agents.realmsOf(isolate) orelse return;
+    endRealms(state);
+}
 
-        // Create coordinator for this teardown
-        var coordinator = cleanup_coordinator.CleanupCoordinator.init(state.allocator);
-        defer coordinator.deinit();
+fn endRealms(state: *Realms) void {
+    // An agent that never hosted a realm has nothing to end.
+    if (state.contexts.capacity() == 0 and state.retired.capacity == 0) return;
+    log.debug("[context_manager.endRealms] {} live, {} retired", .{ state.contexts.count(), state.retired.items.len });
+    const cleanup_coordinator = runtime.cleanup_coordinator;
 
-        // Set coordinator as active so GC callbacks can check teardown state,
-        // and give the one it replaces back after (see removeContextByKey).
-        const previous_coordinator = cleanup_coordinator.getActiveCoordinator();
-        cleanup_coordinator.setActiveCoordinator(&coordinator);
-        defer cleanup_coordinator.setActiveCoordinator(previous_coordinator);
+    // Create coordinator for this teardown
+    var coordinator = cleanup_coordinator.CleanupCoordinator.init(state.alloc());
+    defer coordinator.deinit();
 
-        // Begin coordinated cleanup - signals GC callbacks to skip
-        coordinator.beginContextCleanup();
+    // Set coordinator as active so GC callbacks can check teardown state,
+    // and give the one it replaces back after (see removeContextByKey).
+    const previous_coordinator = cleanup_coordinator.getActiveCoordinator();
+    cleanup_coordinator.setActiveCoordinator(&coordinator);
+    defer cleanup_coordinator.setActiveCoordinator(previous_coordinator);
 
-        // Set legacy teardown flag for backwards compatibility
-        // When wrapper_cache.deinit() triggers onObjectFreed for iframes,
-        // the iframe cleanup will try to call destroyChildContext. We need
-        // to skip those calls since we're already tearing everything down.
-        state.is_tearing_down = true;
+    // Begin coordinated cleanup - signals GC callbacks to skip
+    coordinator.beginContextCleanup();
+    state.is_tearing_down = true;
 
-        // Phase: Static Registries (cleanup before context-specific resources)
-        // (The Intl objects' and ObservableArrays' states are the agent's:
-        // protocol_agents.endAgent frees them.)
-        coordinator.cleanupPhase(.static_registries);
+    // Phase: Static Registries (cleanup before context-specific resources)
+    // (The Intl objects' and ObservableArrays' states are the agent's:
+    // protocol_agents.endAgent frees them.)
+    coordinator.cleanupPhase(.static_registries);
 
-        // Deinit all owned runtime contexts
-        // Note: The order doesn't matter for cleanup because we skip onObjectFreed
-        // during teardown (is_tearing_down flag prevents nested calls).
-        log.debug("[context_manager.deinit] Starting context iteration, {} contexts in map\n", .{state.contexts.count()});
-        var it = state.contexts.valueIterator();
-        while (it.next()) |entry_ptr| {
-            const entry = entry_ptr.*; // Dereference the pointer to get *ContextEntry
-            log.debug("[context_manager.deinit] Processing context entry, owns_context={}, window_instance={?}\n", .{ entry.owns_context, entry.window_instance });
-            if (entry.owns_context) {
-                log.debug("[context_manager.deinit] Owns context - processing\n", .{});
-                // A pointer, not a copy. Every Instance created in this context
-                // holds `ctx == &entry.runtime_ctx`, so anything that clears a
-                // field has to land on the entry's own ContextData; on a copy it
-                // is a no-op and the entry goes on advertising resources this
-                // function has already freed.
-                const ctx_data = &entry.runtime_ctx;
-
-                // Phase: ShadowRealm cleanup
-                // Dispose any ShadowRealm contexts that were created by this context.
-                // This must happen BEFORE we destroy the wrapper cache and context data,
-                // as ShadowRealm cleanup may need to access V8 handles.
-                const raw_addr = v8.v8_Context_GetRawAddress(entry.v8_ctx);
-                if (raw_addr) |addr| {
-                    shadow_realm.disposeByInitiator(addr);
-                }
-
-                // Phase: Location cleanup
-                // Location may not be in the wrapper cache if never accessed from JS.
-                // Clean it up explicitly to prevent memory leaks.
-                // Strategy:
-                // 1. Remove Location from wrapper_cache FIRST (if present) - disposes V8 handle
-                // 2. Call gc.onObjectFreed to clean InternalState AND free Instance to slab
-                // 3. wrapper_cache.deinit won't find Location (already removed) - no double-free
-                if (entry.window_instance) |window_instance| {
-                    std.log.debug("[context_manager.deinit] Processing Window {*} for Location cleanup", .{window_instance});
-                    const WindowImpl = @import("impls").Window;
-                    if (WindowImpl.getInternal(window_instance)) |window_internal| {
-                        if (window_internal.location) |loc| {
-                            std.log.debug("[context_manager.deinit] Explicit Location cleanup for {*}", .{loc});
-                            // Step 1: Remove from wrapper cache if present
-                            if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
-                                const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
-                                _ = cache_ptr.remove(loc);
-                            }
-                            // Step 2: Clean up InternalState and free Instance
-                            runtime.gc.onObjectFreed(loc);
-                            window_internal.location = null; // Prevent double-free
-                        } else {
-                            std.log.debug("[context_manager.deinit] Window {*} has no Location", .{window_instance});
-                        }
-                    } else {
-                        std.log.debug("[context_manager.deinit] Window {*} has no internal state", .{window_instance});
-                    }
-                } else {
-                    std.log.debug("[context_manager.deinit] Context entry has no window_instance", .{});
-                }
-
-                // Phase: DOM Tree cleanup
-                // Clean up Window instance and its Document FIRST
-                // This cleans up the DOM tree, and each Node.deinit removes itself
-                // from the wrapper cache to prevent double-free.
-                // CRITICAL: We must call Window.deinit to trigger Document.deinit → Node.deinit
-                // which recursively cleans up all DOM nodes. Without this, DOM nodes
-                // (including HTMLScriptElement in iframes) would leak.
-                // To prevent double-free, we remove Window from wrapper cache FIRST.
-                coordinator.cleanupPhase(.dom_tree);
-
-                if (entry.window_instance) |window_instance| {
-                    log.debug("[context_manager.deinit] DOM Tree cleanup: Window.deinit for {*}", .{window_instance});
-
-                    // Remove Window from wrapper cache FIRST to prevent double-free
-                    if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
-                        const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
-                        _ = cache_ptr.remove(window_instance);
-                    }
-
-                    // Now call Window.deinit to clean up Document and DOM tree,
-                    // marked as removeContextByKey marks it.
-                    deinitWindow(window_instance);
-                    log.debug("[context_manager.deinit] DOM Tree cleanup: Window.deinit DONE", .{});
-                } else {
-                    log.debug("[context_manager.deinit] DOM Tree cleanup: NO window_instance for context", .{});
-                }
-
-                // Phase: Orphaned Iframe cleanup
-                // Clean up HTMLIFrameElements that were removed from the DOM (via iframe.remove())
-                // but never explicitly deinited. These are still in the wrapper cache and their
-                // BrowsingContext needs to be freed. We must do this before wrapper_cache.deinit()
-                // to ensure IFrameIntegration.deinit() → BrowsingContext.deinit() is called.
-                //
-                // We identify iframes by checking Node's local_name == "iframe".
-                log.debug("[context_manager.deinit] Starting orphaned iframe cleanup phase\n", .{});
-                if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
-                    log.debug("[context_manager.deinit] Got wrapper cache storage\n", .{});
-                    const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
-                    const NodeImpl = @import("impls").Node;
-                    const HTMLIFrameElementIface = @import("interfaces").HTMLIFrameElement;
-
-                    // Collect iframe instances first to avoid modifying cache while iterating
-                    var iframe_instances: [64]*runtime.Instance = undefined;
-                    var iframe_count: usize = 0;
-
-                    var iter = cache_ptr.cache.iterator();
-                    while (iter.next()) |kv| {
-                        const instance = kv.key_ptr.*;
-
-                        // Skip if already being cleaned up
-                        if (runtime.instance_lifecycle.isCleanupStarted(instance)) continue;
-
-                        // Check if this is an HTMLIFrameElement by checking local_name
-                        if (NodeImpl.getInternalState(instance)) |node_internal| {
-                            if (node_internal.local_name) |ln| {
-                                if (std.mem.eql(u8, ln.asSlice(), "iframe")) {
-                                    if (iframe_count < iframe_instances.len) {
-                                        iframe_instances[iframe_count] = instance;
-                                        iframe_count += 1;
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Now clean up the collected iframes
-                    log.debug("[context_manager.deinit] Cleaning up {} orphaned iframes\n", .{iframe_count});
-                    for (iframe_instances[0..iframe_count]) |iframe_instance| {
-                        log.debug("[context_manager.deinit] Calling deinit for iframe instance {*}\n", .{iframe_instance});
-                        HTMLIFrameElementIface.deinit(iframe_instance);
-                    }
-                } else {
-                    log.debug("[context_manager.deinit] No wrapper cache storage found\n", .{});
-                }
-
-                // Phase: Wrapper Cache cleanup
-                // Clean up V8 wrapper cache WITH callbacks
-                // Now safe to call deinit() because:
-                // 1. DOM nodes already removed themselves from cache via Node.deinit
-                // 2. Orphaned iframes already cleaned up explicitly above
-                // 3. Remaining entries are non-DOM objects (AbortController, etc.)
-                // 4. These need their deinit called to free InternalState
-                coordinator.cleanupPhase(.wrapper_cache);
-                if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
-                    const cache_ptr: *WrapperCache = @ptrCast(@alignCast(cache_storage));
-                    cache_ptr.deinit();
-                    ctx_data.getAllocator().destroy(cache_ptr);
-                    // The realm and context-data phases below still run, and both
-                    // can reach an Instance whose ctx is this one. Leave no pointer
-                    // to the cache we just freed.
-                    ctx_data.clearV8WrapperCacheStorage();
-                }
-
-                // Phase: Event Loop cleanup
-                // Clean up V8 event loop (must be done before context deinit)
-                coordinator.cleanupPhase(.event_loop);
-                if (entry.event_loop) |ev_loop| {
-                    ev_loop.deinit();
-                    ctx_data.getAllocator().destroy(ev_loop);
-                }
-
-                // Phase: Realm cleanup
-                coordinator.cleanupPhase(.realm);
-                if (entry.realm) |realm| {
-                    @import("realm_v8.zig").disposeIntrinsics(realm);
-                    realm.deinit();
-                }
-
-                // Clean up children list (entries themselves are in the map)
-                var children = entry.children;
-                children.deinit(entry.allocator);
-
-                // Phase: Context Data cleanup
-                coordinator.cleanupPhase(.context_data);
-                ctx_data.deinit();
-            }
-
-            entry.runtime_ctx.clearDocumentUrl();
-
-            // Free the heap-allocated entry itself
-            state.allocator.destroy(entry);
+    // Every realm still on the record - one its host never ended (a
+    // ShadowRealm's context, a context a constructor registered, a test's) -
+    // ends as a realm's own end ends it (`removeContextByKey`): its garbage
+    // and orphans drained, its finalizers run (pending promise reactions,
+    // live async iterators), the callbacks its script registered released,
+    // its Window and tree, wrapper cache, event loop and realm record torn
+    // down, and the entry retired - which disposes the entry's own context
+    // handle. This path had a teardown of its own (the host agent's
+    // context_manager.deinit) that skipped the drains, the finalizers and
+    // the callbacks, and never disposed the context handle: one leaked
+    // Global<Context> per realm, and the Globals those held (lane tstate1).
+    // One realm at a time, from a fresh walk: an end can end others (its
+    // frames) and takes its own entry out. A teardown that keeps making
+    // realms is cut off rather than followed for ever.
+    var budget = state.contexts.count() * 4 + 16;
+    while (state.contexts.count() != 0) : (budget -= 1) {
+        if (budget == 0) {
+            log.err("an agent's end left {d} realm(s): their teardown kept making realms", .{state.contexts.count()});
+            break;
         }
-
-        // Free the entries retired earlier by removeContext/destroyChildContext.
-        // Held until now because Instances created in those contexts still point
-        // at `entry.runtime_ctx`; by this point every Instance is going away with
-        // the slab, so the ContextData can go too.
-        for (state.retired.items) |entry| {
-            if (entry.owns_context) entry.runtime_ctx.deinit();
-            state.allocator.destroy(entry);
-        }
-        state.retired.deinit(state.allocator);
-
-        // Mark cleanup complete
-        coordinator.endContextCleanup();
-
-        // Free the hash map
-        state.contexts.deinit();
-        manager_state = null;
+        var it = state.contexts.iterator();
+        const kv = it.next().?;
+        const entry = kv.value_ptr.*;
+        // A context handle the entry does not own is its maker's, which may
+        // have let it go: the entry's Window is found without it.
+        removeContextByKey(kv.key_ptr.*, if (entry.owns_v8_ctx) entry.v8_ctx else null);
     }
+
+    // Free the entries retired by each realm's end, the ones above
+    // included. Held until the agent's end because Instances created in
+    // those contexts may still point at `entry.runtime_ctx`; once the agent
+    // has ended, none of its realms' Instances is read through one (a worker
+    // on a thread of its own freed its retired entries at its end before
+    // too, as that thread's host agent).
+    coordinator.cleanupPhase(.context_data);
+    for (state.retired.items) |entry| {
+        if (entry.owns_context) entry.runtime_ctx.deinit();
+        state.alloc().destroy(entry);
+    }
+
+    // Mark cleanup complete
+    coordinator.endContextCleanup();
+
+    // Free the lists' storage. The record goes right after this
+    // (protocol_agents.removeAgent); until then it reads as an agent
+    // with no realms. What a walk-out above left is freed unended.
+    var left = state.contexts.valueIterator();
+    while (left.next()) |entry| state.alloc().destroy(entry.*);
+    state.retired.deinit(state.alloc());
+    state.contexts.deinit(state.alloc());
+    state.* = .{ .allocator = state.allocator };
 }
 
 /// Get or create a runtime context for the given V8 context
@@ -517,9 +397,9 @@ pub fn deinit() void {
 ///
 /// The returned context is valid until:
 /// - removeContext() is called for this V8 context
-/// - deinit() is called
+/// - the agent ends (`endAgentRealms`)
 ///
-/// Thread safety: Thread-local, no synchronization needed
+/// On the agent's own thread (the current isolate's realms).
 ///
 /// Arguments:
 /// - v8_ctx: V8 context pointer
@@ -550,7 +430,7 @@ pub fn getOrCreateWithExternalEventLoop(
     event_loop: ?@import("event_loop").EventLoop,
     allocator: std.mem.Allocator,
 ) !runtime.Context {
-    const state = &(manager_state orelse return error.NotInitialized);
+    const state = currentRealms() orelse return error.NotInitialized;
 
     // Use the raw V8 internal address as the key
     const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return error.InvalidContext;
@@ -588,8 +468,8 @@ pub fn getOrCreateWithExternalEventLoop(
     ctx_data.agent = @ptrCast(v8.v8_Isolate_GetCurrent());
 
     // Heap-allocate the entry so it doesn't move when HashMap rehashes
-    const entry = try state.allocator.create(ContextEntry);
-    errdefer state.allocator.destroy(entry);
+    const entry = try state.alloc().create(ContextEntry);
+    errdefer state.alloc().destroy(entry);
 
     entry.* = ContextEntry{
         .v8_ctx = v8_ctx,
@@ -604,7 +484,8 @@ pub fn getOrCreateWithExternalEventLoop(
 
     // Store pointer in map - entry won't move even if HashMap rehashes
     try reserveRetirement(state);
-    try state.contexts.put(key, entry);
+    state.guard.beforeInsert(&state.contexts);
+    try state.contexts.put(state.alloc(), key, entry);
 
     return &entry.runtime_ctx;
 }
@@ -619,7 +500,7 @@ pub fn getOrCreateWithExternalEventLoop(
 ///
 /// Returns the created Window instance.
 pub fn bindWindowToContext(v8_ctx: *v8.Context, isolate: *v8.Isolate, allocator: std.mem.Allocator) !*runtime.Instance {
-    const state = &(manager_state orelse return error.NotInitialized);
+    const state = currentRealms() orelse return error.NotInitialized;
 
     // Get the raw V8 internal address as the key
     const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return error.InvalidContext;
@@ -674,9 +555,9 @@ pub fn bindWindowToContext(v8_ctx: *v8.Context, isolate: *v8.Isolate, allocator:
 ///
 /// The returned context is valid until:
 /// - removeContext() is called for this V8 context
-/// - deinit() is called
+/// - the agent ends (`endAgentRealms`)
 ///
-/// Thread safety: Thread-local, no synchronization needed
+/// On the agent's own thread (the current isolate's realms).
 ///
 /// Arguments:
 /// - v8_ctx: V8 context pointer
@@ -685,7 +566,7 @@ pub fn bindWindowToContext(v8_ctx: *v8.Context, isolate: *v8.Isolate, allocator:
 ///
 /// Returns: Runtime context pointer (borrowed, do not free)
 pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, allocator: std.mem.Allocator) !runtime.Context {
-    const state = &(manager_state orelse return error.NotInitialized);
+    const state = currentRealms() orelse return error.NotInitialized;
 
     // Use the raw V8 internal address as the key (stable across Global/Local conversions)
     const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return error.InvalidContext;
@@ -772,8 +653,8 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
     }
 
     // Heap-allocate the entry so it doesn't move when HashMap rehashes
-    const entry = try state.allocator.create(ContextEntry);
-    errdefer state.allocator.destroy(entry);
+    const entry = try state.alloc().create(ContextEntry);
+    errdefer state.alloc().destroy(entry);
 
     entry.* = ContextEntry{
         .v8_ctx = entry_ctx,
@@ -789,7 +670,8 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
 
     // Store pointer in map - entry won't move even if HashMap rehashes
     try reserveRetirement(state);
-    try state.contexts.put(key, entry);
+    state.guard.beforeInsert(&state.contexts);
+    try state.contexts.put(state.alloc(), key, entry);
 
     // Return pointer to context data - stable because entry is heap-allocated
     return &entry.runtime_ctx;
@@ -799,9 +681,9 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
 ///
 /// Returns null if no runtime context exists for this V8 context.
 ///
-/// Thread safety: Thread-local, no synchronization needed
+/// On the agent's own thread (the current isolate's realms).
 pub fn get(v8_ctx: *v8.Context) ?runtime.Context {
-    const state = &(manager_state orelse return null);
+    const state = currentRealms() orelse return null;
 
     // Use the raw V8 internal address as the key (stable across Global/Local conversions)
     const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return null;
@@ -818,7 +700,7 @@ pub fn get(v8_ctx: *v8.Context) ?runtime.Context {
 /// null. Reads no context: the cross-origin access check asks it with the
 /// id V8's current context carries (cross_origin.zig).
 pub fn getByKey(key: usize) ?runtime.Context {
-    const state = &(manager_state orelse return null);
+    const state = currentRealms() orelse return null;
     const entry = state.contexts.get(key) orelse return null;
     return &entry.runtime_ctx;
 }
@@ -834,7 +716,7 @@ pub fn getByKey(key: usize) ?runtime.Context {
 /// `v8_Context_GetRawAddress` while the context is still alive and pass that key
 /// here later.
 pub fn isContextAddressAlive(raw_addr: usize) bool {
-    const state = &(manager_state orelse return false);
+    const state = currentRealms() orelse return false;
     return state.contexts.contains(raw_addr);
 }
 
@@ -843,7 +725,7 @@ pub fn isContextAddressAlive(raw_addr: usize) bool {
 /// This function installs only the interfaces that are exposed in the given scope,
 /// using the exposure metadata from WebIDL [Exposed] attributes.
 ///
-/// Thread safety: Thread-local, no synchronization needed
+/// On the agent's own thread (the current isolate's realms).
 ///
 /// Arguments:
 /// - isolate: V8 isolate pointer
@@ -882,145 +764,6 @@ pub fn hydrateContextFromSnapshot(
     }
 }
 
-/// Create a new context for a specific global scope kind (BSCOPE-05)
-///
-/// This function creates a V8 context from the snapshot for the given scope,
-/// sets up the runtime context with proper wrapper cache isolation, and
-/// optionally links it to a parent context for iframe/worker hierarchies.
-///
-/// The created context will have:
-/// - Interfaces filtered by [Exposed] attribute for the scope
-/// - Its own isolated wrapper cache
-/// - Proper realm with context_type matching the scope
-/// - Parent-child relationship if parent is provided
-///
-/// Thread safety: Thread-local, no synchronization needed
-///
-/// Arguments:
-/// - isolate: V8 isolate pointer
-/// - scope_kind: The global scope kind to create context for
-/// - parent: Optional parent context entry for hierarchical contexts
-/// - allocator: Allocator for context resources
-///
-/// Returns: Pointer to the created ContextEntry, or error
-pub fn createContext(
-    isolate: *v8.Isolate,
-    scope_kind: runtime.realm.GlobalScopeKind,
-    parent: ?*ContextEntry,
-    allocator: std.mem.Allocator,
-) !*ContextEntry {
-    const state = &(manager_state orelse return error.NotInitialized);
-
-    // Create V8 context from snapshot for this scope
-    const snapshot_loader = @import("snapshot_loader.zig");
-    const v8_ctx = snapshot_loader.createContextForScope(isolate, scope_kind) orelse
-        return error.ContextCreationFailed;
-
-    // Get raw address for HashMap key (stable across Global/Local conversions)
-    const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse
-        return error.ContextCreationFailed;
-    const key = @intFromPtr(raw_addr);
-
-    // Create the context entry
-    const entry = try state.allocator.create(ContextEntry);
-    errdefer state.allocator.destroy(entry);
-
-    // Initialize runtime context
-    var ctx_data = runtime.Context{
-        .allocator = allocator,
-        .arena = null,
-        .v8_isolate = isolate,
-        .v8_ctx = v8_ctx,
-    };
-
-    // Create isolated wrapper cache for this context
-    const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
-    const wrapper_cache = try allocator.create(WrapperCache);
-    errdefer allocator.destroy(wrapper_cache);
-    wrapper_cache.* = WrapperCache.init(allocator);
-    ctx_data.setV8WrapperCacheStorage(wrapper_cache);
-
-    // Map scope_kind to context_type for realm
-    const context_type: runtime.realm.ContextType = switch (scope_kind) {
-        .window => .window,
-        .dedicated_worker => .dedicated_worker,
-        .shared_worker => .shared_worker,
-        .service_worker => .service_worker,
-        .audio_worklet, .paint_worklet, .animation_worklet, .layout_worklet, .shared_storage_worklet => .worklet,
-        .shadow_realm, .unknown => .unknown,
-    };
-
-    // Create realm with appropriate context type
-    const realm_instance = try allocator.create(runtime.Realm);
-    errdefer allocator.destroy(realm_instance);
-    realm_instance.* = runtime.Realm.init(allocator, context_type);
-
-    // Initialize entry
-    entry.* = ContextEntry{
-        .v8_ctx = v8_ctx,
-        .runtime_ctx = ctx_data,
-        .owns_context = true,
-        .event_loop = null, // Will be set up separately if needed
-        .realm = realm_instance,
-        .parent_entry = parent,
-        .children = .empty,
-        .allocator = state.allocator,
-    };
-
-    // Link to parent if provided
-    if (parent) |p| {
-        try p.children.append(state.allocator, entry);
-    }
-
-    // Store in contexts HashMap
-    try reserveRetirement(state);
-    try state.contexts.put(key, entry);
-
-    // Hydrate with scope-specific interfaces (already filtered by snapshot)
-    // Note: Snapshot already contains only exposed interfaces, but we call
-    // hydrateContextFromSnapshot for any additional runtime setup
-    const helper_scope = snapshot_loader.SnapshotContextIndex.forScopeKind(scope_kind).toHelperScope();
-    hydrateContextFromSnapshot(isolate, v8_ctx, helper_scope);
-
-    return entry;
-}
-
-/// Register an existing runtime context for a V8 context
-///
-/// Use this when you have an existing runtime context that you want to associate
-/// with a V8 context. The context manager will NOT own this context and will
-/// NOT call deinit() on it.
-///
-/// Thread safety: Thread-local, no synchronization needed
-///
-/// Arguments:
-/// - v8_ctx: V8 context pointer
-/// - ctx: Existing runtime context (borrowed, not owned)
-pub fn register(v8_ctx: *v8.Context, ctx: runtime.Context) !void {
-    const state = &(manager_state orelse return error.NotInitialized);
-
-    const key = @intFromPtr(v8_ctx);
-
-    // Heap-allocate the entry so it doesn't move when HashMap rehashes
-    const entry = try state.allocator.create(ContextEntry);
-    errdefer state.allocator.destroy(entry);
-
-    entry.* = ContextEntry{
-        .v8_ctx = v8_ctx,
-        .runtime_ctx = ctx.*, // Copy the context data
-        .owns_context = false, // Don't deinit this one
-        .event_loop = null, // Registered contexts don't have event loop
-        .realm = null,
-        .parent_entry = null,
-        .children = .empty,
-        .allocator = state.allocator,
-    };
-
-    // Store pointer in map - entry won't move even if HashMap rehashes
-    try reserveRetirement(state);
-    try state.contexts.put(key, entry);
-}
-
 /// Remove a runtime context for a V8 context
 ///
 /// If the context manager owns the runtime context, it will be deinitialized.
@@ -1029,7 +772,7 @@ pub fn register(v8_ctx: *v8.Context, ctx: runtime.Context) !void {
 /// This function uses the cleanup coordinator to prevent GC callbacks from
 /// firing during cleanup, which would cause crashes.
 ///
-/// Thread safety: Thread-local, no synchronization needed
+/// On the agent's own thread (the current isolate's realms).
 pub fn removeContext(v8_ctx: *v8.Context) void {
     // Use the raw V8 internal address as the key (must match getOrCreate*)
     const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return;
@@ -1061,7 +804,7 @@ fn deinitWindow(window: *runtime.Instance) void {
 /// the context only through `v8_ctx`, which may be null - a context the
 /// collector already took - when the entry knows its Window.
 pub fn removeContextByKey(key: usize, v8_ctx: ?*v8.Context) void {
-    const state = &(manager_state orelse return);
+    const state = currentRealms() orelse return;
     const raw_addr: ?*anyopaque = @ptrFromInt(key);
 
     // The garbage this realm's trees left - trees whose counts reached zero
@@ -1085,6 +828,7 @@ pub fn removeContextByKey(key: usize, v8_ctx: ?*v8.Context) void {
     }
 
     if (state.contexts.fetchRemove(key)) |kv| {
+        state.guard.noteRemoval(&state.contexts);
         const entry = kv.value; // This is now *ContextEntry
         // Retire rather than destroy: Instances created in this context are not
         // destroyed below (they go with the slab) and their `ctx` points into
@@ -1108,7 +852,7 @@ pub fn removeContextByKey(key: usize, v8_ctx: ?*v8.Context) void {
 
             // Create coordinator for this context teardown
             // This signals GC callbacks to skip, preventing crashes
-            var coordinator = cleanup_coordinator.CleanupCoordinator.init(state.allocator);
+            var coordinator = cleanup_coordinator.CleanupCoordinator.init(state.alloc());
             defer coordinator.deinit();
 
             // Set coordinator as active so GC callbacks can check teardown state,
@@ -1238,15 +982,6 @@ pub fn removeContextByKey(key: usize, v8_ctx: ?*v8.Context) void {
     }
 }
 
-/// Set the default allocator to use for new contexts
-///
-/// This allocator will be used when creating new runtime contexts via getOrCreate()
-/// if no specific allocator is provided.
-pub fn setDefaultAllocator(allocator: std.mem.Allocator) !void {
-    const state = &(manager_state orelse return error.NotInitialized);
-    state.default_allocator = allocator;
-}
-
 /// Clear all wrapper caches without destroying the contexts
 ///
 /// This is used for test isolation - clears cached V8 wrappers between tests
@@ -1259,9 +994,9 @@ pub fn setDefaultAllocator(allocator: std.mem.Allocator) !void {
 /// 3. V8 handles are disposed
 /// 4. CacheEntries are freed
 ///
-/// Thread safety: Thread-local, no synchronization needed
+/// On the agent's own thread (the current isolate's realms).
 pub fn clearWrapperCaches() void {
-    const state = &(manager_state orelse return);
+    const state = currentRealms() orelse return;
     const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
 
     var it = state.contexts.valueIterator();
@@ -1781,7 +1516,7 @@ fn isBuiltinWindowProperty(name: []const u8) bool {
 ///
 /// `engine` is left alone on purpose - it points at a static interface, and
 /// `ContextData.deinit` needs it to release `_engine_event_loop_storage`.
-fn retireEntry(state: *ManagerState, entry: *ContextEntry) void {
+fn retireEntry(state: *Realms, entry: *ContextEntry) void {
     // The entry's own handle was the last strong root of a destroyed frame:
     // everything else that held the page is released by now, so every frame
     // ever torn down kept its whole heap - context, global, wrappers - alive
@@ -1814,8 +1549,8 @@ fn retireEntry(state: *ManagerState, entry: *ContextEntry) void {
 /// when it is retired, so that retireEntry never allocates: capacity stays at
 /// least every retired entry plus every live one. Called before each insert;
 /// out of memory here fails the realm's creation, never its retirement.
-fn reserveRetirement(state: *ManagerState) error{OutOfMemory}!void {
-    try state.retired.ensureTotalCapacity(state.allocator, state.retired.items.len + state.contexts.count() + 1);
+fn reserveRetirement(state: *Realms) error{OutOfMemory}!void {
+    try state.retired.ensureTotalCapacity(state.alloc(), state.retired.items.len + state.contexts.count() + 1);
 }
 
 /// Get the realm for a V8 context
@@ -1823,9 +1558,9 @@ fn reserveRetirement(state: *ManagerState) error{OutOfMemory}!void {
 /// Returns the Realm associated with the given V8 context, or null
 /// if no realm is associated or the context is not registered.
 ///
-/// Thread safety: Thread-local, no synchronization needed
+/// On the agent's own thread (the current isolate's realms).
 pub fn getRealmForContext(v8_ctx: *v8.Context) ?*runtime.Realm {
-    const state = &(manager_state orelse return null);
+    const state = currentRealms() orelse return null;
 
     const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return null;
     const key = @intFromPtr(raw_addr);
@@ -1842,7 +1577,7 @@ pub fn getRealmForContext(v8_ctx: *v8.Context) ?*runtime.Realm {
 /// Returns the Realm for the currently entered V8 context, or null
 /// if no context is entered or no realm is associated.
 ///
-/// Thread safety: Thread-local, no synchronization needed
+/// On the agent's own thread (the current isolate's realms).
 pub fn getCurrentRealm() ?*runtime.Realm {
     const isolate = v8.v8_Isolate_GetCurrent() orelse return null;
     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return null;
@@ -1854,9 +1589,9 @@ pub fn getCurrentRealm() ?*runtime.Realm {
 /// Returns the full ContextEntry for the given V8 context, allowing
 /// access to parent/child relationships.
 ///
-/// Thread safety: Thread-local, no synchronization needed
+/// On the agent's own thread (the current isolate's realms).
 pub fn getEntry(v8_ctx: *v8.Context) ?*ContextEntry {
-    const state = &(manager_state orelse return null);
+    const state = currentRealms() orelse return null;
 
     const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return null;
     const key = @intFromPtr(raw_addr);
@@ -1874,10 +1609,10 @@ pub fn getEntry(v8_ctx: *v8.Context) ?*ContextEntry {
 /// falls back to getting the Window from the global object's internal field 0,
 /// following the Chromium pattern where Window is stored in the global's internal field.
 ///
-/// Thread safety: Thread-local, no synchronization needed
+/// On the agent's own thread (the current isolate's realms).
 pub fn getWindowForContext(v8_ctx: *v8.Context) ?*runtime.Instance {
     // First check contexts managed by context_manager
-    if (manager_state) |*state| {
+    if (currentRealms()) |state| {
         const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse {
             // Fallback to getting Window from global's internal field
             return getWindowFromGlobalInternalField(v8_ctx);
@@ -1919,9 +1654,9 @@ fn getWindowFromGlobalInternalField(v8_ctx: *v8.Context) ?*runtime.Instance {
 /// Returns the V8EventLoop associated with this context, if one was created.
 /// This is used by worker threads to poll libuv timers (setTimeout/setInterval).
 ///
-/// Thread safety: Thread-local, no synchronization needed
+/// On the agent's own thread (the current isolate's realms).
 pub fn getEventLoop(v8_ctx: *v8.Context) ?*V8EventLoop {
-    const state = &(manager_state orelse return null);
+    const state = currentRealms() orelse return null;
 
     const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return null;
     const key = @intFromPtr(raw_addr);
@@ -1937,9 +1672,9 @@ pub fn getEventLoop(v8_ctx: *v8.Context) ?*V8EventLoop {
 /// This is used when a context was created via getOrCreate but a realm
 /// needs to be associated with it later.
 ///
-/// Thread safety: Thread-local, no synchronization needed
+/// On the agent's own thread (the current isolate's realms).
 pub fn setRealmForContext(v8_ctx: *v8.Context, realm: *runtime.Realm) !void {
-    const state = &(manager_state orelse return error.NotInitialized);
+    const state = currentRealms() orelse return error.NotInitialized;
 
     const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return error.InvalidContext;
     const key = @intFromPtr(raw_addr);
@@ -1964,9 +1699,9 @@ pub fn setRealmForContext(v8_ctx: *v8.Context, realm: *runtime.Realm) !void {
 /// This is critical for iframe browsing context creation, where
 /// handleIframeInsertion needs to look up the parent Window.
 ///
-/// Thread safety: Thread-local, no synchronization needed
+/// On the agent's own thread (the current isolate's realms).
 pub fn setWindowForContext(v8_ctx: *v8.Context, window: *runtime.Instance) !void {
-    const state = &(manager_state orelse return error.NotInitialized);
+    const state = currentRealms() orelse return error.NotInitialized;
 
     const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return error.InvalidContext;
     const key = @intFromPtr(raw_addr);
@@ -1983,7 +1718,7 @@ pub fn setWindowForContext(v8_ctx: *v8.Context, window: *runtime.Instance) !void
 /// This should be called when navigating to a page to enable proper
 /// resolution of relative module specifiers in dynamic imports.
 pub fn setDocumentUrl(v8_ctx: *v8.Context, url: []const u8) !void {
-    const state = &(manager_state orelse return error.NotInitialized);
+    const state = currentRealms() orelse return error.NotInitialized;
 
     const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return error.InvalidContext;
     const key = @intFromPtr(raw_addr);
@@ -1999,7 +1734,7 @@ pub fn setDocumentUrl(v8_ctx: *v8.Context, url: []const u8) !void {
 
 /// Get the document URL for a context
 pub fn getDocumentUrl(v8_ctx: *v8.Context) ?[]const u8 {
-    const state = manager_state orelse return null;
+    const state = currentRealms() orelse return null;
 
     const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return null;
     const key = @intFromPtr(raw_addr);
@@ -2020,7 +1755,7 @@ pub fn getDocumentUrl(v8_ctx: *v8.Context) ?[]const u8 {
 /// We don't remove from cache or dispose V8 handles here because we might
 /// still be in JavaScript execution context. That happens in wrapper_cache.deinit().
 ///
-/// Thread safety: Thread-local, no synchronization needed
+/// On the agent's own thread (the current isolate's realms).
 pub fn markInstanceCleanedUp(instance: *runtime.Instance) void {
     // Get the context from the instance
     const ctx_data = instance.ctx;
@@ -2144,12 +1879,7 @@ pub fn hydrateWindowContext(comptime namespaces_module: type, options: Hydration
     const v8_ctx = options.context;
     const allocator = options.allocator;
 
-    // 1. Initialize context manager (if not already initialized)
-    init(allocator) catch |err| {
-        if (err != error.AlreadyInitialized) {
-            return err;
-        }
-    };
+    // 1. The context manager is the current agent's: nothing to make.
 
     // 2. Register context with context manager for wrapper caching
     const runtime_ctx = try getOrCreateWithExternalEventLoop(
@@ -2291,12 +2021,7 @@ pub fn hydrateWorkerContext(options: HydrationOptions) !WorkerHydrationResult {
 
     log.debug("[HYDRATE-WORKER] hydrateWorkerContext called, isolate={*}, context={*}\n", .{ isolate, v8_ctx });
 
-    // 1. Initialize context manager (if not already initialized)
-    init(allocator) catch |err| {
-        if (err != error.AlreadyInitialized) {
-            return err;
-        }
-    };
+    // 1. The context manager is the current agent's: nothing to make.
 
     // 2. Register context with context manager
     const runtime_ctx = try getOrCreate(v8_ctx, allocator);
@@ -2360,192 +2085,4 @@ pub fn isWorkerContext(isolate: *v8.Isolate, context: *v8.Context) bool {
     const has_doc = v8.v8_Object_Has(global, context, @ptrCast(doc_key));
 
     return has_self and !has_doc;
-}
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-const testing = std.testing;
-
-test "ContextManager - init and deinit" {
-    try init(testing.allocator);
-    defer deinit();
-
-    // Should be initialized
-    try testing.expect(manager_state != null);
-}
-
-test "ContextManager - double init fails" {
-    try init(testing.allocator);
-    defer deinit();
-
-    // Second init should fail
-    try testing.expectError(error.AlreadyInitialized, init(testing.allocator));
-}
-
-test "ContextManager - getOrCreate creates new context" {
-    try init(testing.allocator);
-    defer deinit();
-
-    // Create fake V8 context pointer (just for testing)
-    var dummy_v8_ctx: u64 = 0x1000;
-    const v8_ctx: *v8.Context = @ptrCast(&dummy_v8_ctx);
-
-    // Get or create should create new context
-    const ctx = try getOrCreate(v8_ctx, testing.allocator);
-    try testing.expect(ctx.getAllocator().ptr == testing.allocator.ptr);
-    try testing.expect(!ctx.hasEngine() or ctx.getEngineContext() != null);
-}
-
-test "ContextManager - getOrCreate returns same context" {
-    try init(testing.allocator);
-    defer deinit();
-
-    var dummy_v8_ctx: u64 = 0x1000;
-    const v8_ctx: *v8.Context = @ptrCast(&dummy_v8_ctx);
-
-    const ctx1 = try getOrCreate(v8_ctx, testing.allocator);
-    const ctx2 = try getOrCreate(v8_ctx, testing.allocator);
-
-    // Should return same context
-    try testing.expect(ctx1 == ctx2);
-}
-
-test "ContextManager - get returns null for non-existent context" {
-    try init(testing.allocator);
-    defer deinit();
-
-    var dummy_v8_ctx: u64 = 0x1000;
-    const v8_ctx: *v8.Context = @ptrCast(&dummy_v8_ctx);
-
-    // Should return null
-    try testing.expect(get(v8_ctx) == null);
-}
-
-test "ContextManager - get returns existing context" {
-    try init(testing.allocator);
-    defer deinit();
-
-    var dummy_v8_ctx: u64 = 0x1000;
-    const v8_ctx: *v8.Context = @ptrCast(&dummy_v8_ctx);
-
-    _ = try getOrCreate(v8_ctx, testing.allocator);
-
-    const ctx = get(v8_ctx);
-    try testing.expect(ctx != null);
-}
-
-test "ContextManager - register does not own context" {
-    try init(testing.allocator);
-    defer deinit();
-
-    var dummy_v8_ctx: u64 = 0x1000;
-    const v8_ctx: *v8.Context = @ptrCast(&dummy_v8_ctx);
-
-    // Create external context
-    var external_ctx = try runtime.ContextData.init(testing.allocator, .{});
-    defer external_ctx.deinit(); // We own this
-
-    // Register it
-    try register(v8_ctx, &external_ctx);
-
-    // Should be retrievable
-    const ctx = get(v8_ctx);
-    try testing.expect(ctx != null);
-
-    // deinit() should not crash (shouldn't try to deinit external context)
-}
-
-test "ContextManager - removeContext cleans up owned context" {
-    try init(testing.allocator);
-    defer deinit();
-
-    var dummy_v8_ctx: u64 = 0x1000;
-    const v8_ctx: *v8.Context = @ptrCast(&dummy_v8_ctx);
-
-    _ = try getOrCreate(v8_ctx, testing.allocator);
-
-    // Remove should clean up
-    removeContext(v8_ctx);
-
-    // Should no longer exist
-    try testing.expect(get(v8_ctx) == null);
-}
-
-test "ContextManager - multiple contexts" {
-    try init(testing.allocator);
-    defer deinit();
-
-    var dummy1: u64 = 0x1000;
-    var dummy2: u64 = 0x2000;
-    const ctx1_v8: *v8.Context = @ptrCast(&dummy1);
-    const ctx2_v8: *v8.Context = @ptrCast(&dummy2);
-
-    const ctx1 = try getOrCreate(ctx1_v8, testing.allocator);
-    const ctx2 = try getOrCreate(ctx2_v8, testing.allocator);
-
-    // Should be different contexts
-    try testing.expect(ctx1 != ctx2);
-}
-
-test "ContextManager - getEntry returns entry with parent/children" {
-    try init(testing.allocator);
-    defer deinit();
-
-    var dummy_v8_ctx: u64 = 0x1000;
-    const v8_ctx: *v8.Context = @ptrCast(&dummy_v8_ctx);
-
-    _ = try getOrCreate(v8_ctx, testing.allocator);
-
-    const entry = getEntry(v8_ctx);
-    try testing.expect(entry != null);
-
-    // Top-level context should have no parent
-    try testing.expect(entry.?.parent_entry == null);
-
-    // Top-level context should have empty children list
-    try testing.expectEqual(@as(usize, 0), entry.?.children.items.len);
-
-    // Top-level context created via getOrCreate should have no realm initially
-    try testing.expect(entry.?.realm == null);
-}
-
-test "ContextManager - getRealmForContext returns null for context without realm" {
-    try init(testing.allocator);
-    defer deinit();
-
-    var dummy_v8_ctx: u64 = 0x1000;
-    const v8_ctx: *v8.Context = @ptrCast(&dummy_v8_ctx);
-
-    _ = try getOrCreate(v8_ctx, testing.allocator);
-
-    // Contexts created via getOrCreate don't have realms initially
-    const realm = getRealmForContext(v8_ctx);
-    try testing.expect(realm == null);
-}
-
-test "ContextManager - setRealmForContext associates realm with context" {
-    try init(testing.allocator);
-    defer deinit();
-
-    var dummy_v8_ctx: u64 = 0x1000;
-    const v8_ctx: *v8.Context = @ptrCast(&dummy_v8_ctx);
-
-    _ = try getOrCreate(v8_ctx, testing.allocator);
-
-    // Create a realm
-    const realm = try runtime.Realm.init(testing.allocator, .{
-        .context_type = .window,
-    });
-    // Note: realm will be cleaned up by context manager
-
-    // Associate realm with context
-    try setRealmForContext(v8_ctx, realm);
-
-    // Should now be retrievable
-    const retrieved_realm = getRealmForContext(v8_ctx);
-    try testing.expect(retrieved_realm != null);
-    try testing.expect(retrieved_realm == realm);
-    try testing.expect(retrieved_realm.?.isWindow());
 }

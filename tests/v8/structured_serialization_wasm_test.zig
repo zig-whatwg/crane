@@ -313,8 +313,6 @@ const Receiver = struct {
     }
 
     fn receiveOnThisThread(self: *Receiver) !void {
-        // The context manager is per thread, as each worker thread's is.
-        v8.context_manager.init(std.heap.page_allocator) catch {};
         var host: Host = .{};
         const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &Host.hooks, .host = &host, .allocator = std.heap.page_allocator });
         defer protocol.destroyAgent(agent);

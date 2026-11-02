@@ -1,6 +1,9 @@
-//! V8 Isolate Lifecycle: what the adapter keeps per isolate (and, for a
-//! thread's host agent, per thread), and the order an agent's end releases it
-//! in (protocol_agents.endAgent).
+//! V8 Isolate Lifecycle: what the adapter keeps per isolate, and the order an
+//! agent's end releases it in (protocol_agents.endAgent). Every step is the
+//! agent's own: none frees what another agent on the thread made. (The
+//! context manager's step was per THREAD, run by the thread's host agent
+//! alone - the one made with no isolate entered - and it freed every realm on
+//! the thread; tests/v8/agent_realms_isolation_test.zig.)
 //!
 //! The steps are a constant table, known when the program is compiled (design
 //! 4.6 and B9: what is the same for every agent is never installed at run
@@ -38,9 +41,9 @@ pub const Handler = struct {
 };
 
 /// The steps, in the order they run: what depends on a thing ends before it.
-/// The thread's context manager (its realms' wrapper caches) first, then the
-/// isolate's templates - the registry's among them - then its allocator,
-/// which their storage was allocated with.
+/// The agent's realms (the context manager's: their wrapper caches) first,
+/// then the isolate's templates - the registry's among them - then its
+/// allocator, which their storage was allocated with.
 pub const handlers = [_]Handler{
     .{ .name = "context_manager", .cleanup = cleanupContextManager },
     .{ .name = "isolate_templates", .cleanup = cleanupIsolateTemplates, .validator = validateTemplateRegistry },
@@ -91,8 +94,9 @@ fn cleanupIsolateAllocator(isolate: *v8.Isolate, _: std.mem.Allocator) void {
     isolate_allocator.deinitIsolateAllocator(isolate);
 }
 
-/// The thread's context manager
-fn cleanupContextManager(_: *v8.Isolate, _: std.mem.Allocator) void {
+/// The agent's realms (context_manager.Realms, on its record): this
+/// isolate's, and no other's.
+fn cleanupContextManager(isolate: *v8.Isolate, _: std.mem.Allocator) void {
     const context_manager = @import("context_manager.zig");
-    context_manager.deinit();
+    context_manager.endAgentRealms(isolate);
 }

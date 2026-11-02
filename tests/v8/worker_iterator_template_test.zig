@@ -29,7 +29,6 @@ const ffi = v8.ffi;
 
 fn setup() void {
     test_process.start();
-    v8.context_manager.init(std.heap.page_allocator) catch {};
 }
 
 const Reports = struct {
@@ -129,8 +128,8 @@ fn iterateInNewRealm(agent: *runtime.Agent, kind: Kind) !void {
 test "worker realms that iterate pair iterables leave no iterator prototype template behind" {
     setup();
     inline for (.{ Kind.dedicated, Kind.shared, Kind.service }) |kind| {
-        const agent = try v8.worker_realm.createAgent();
-        defer v8.worker_realm.destroyAgent(agent);
+        const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &test_process.no_hooks });
+        defer protocol.destroyAgent(agent);
         const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
         const handle_bytes = oneHandleBytes(isolate);
         // The first realm makes what every later one reuses.
@@ -150,8 +149,8 @@ test "worker realms that iterate pair iterables leave no iterator prototype temp
 // isolate and every later iterator reuses it, so nothing grows per call.
 test "iterating pair iterables many times in one worker realm keeps global handles flat" {
     setup();
-    const agent = try v8.worker_realm.createAgent();
-    defer v8.worker_realm.destroyAgent(agent);
+    const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &test_process.no_hooks });
+    defer protocol.destroyAgent(agent);
     const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
     const handle_bytes = oneHandleBytes(isolate);
     const made = try workerRealm(agent, .dedicated);

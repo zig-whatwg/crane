@@ -14,35 +14,48 @@
 //! owner still frees it through `deinit`.
 
 const std = @import("std");
+const v8 = @import("ffi.zig");
 const callback_wrapper = @import("callback_wrapper.zig");
 const CallbackWrapper = callback_wrapper.CallbackWrapper;
+/// The agent records, where each agent's wrappers are tracked.
+const protocol_agents = @import("protocol_agents.zig");
 
-/// Wrappers on this thread not yet deinitialized. Each isolate is confined to
-/// one thread, and a wrapper belongs to its creating isolate.
-// tombstones: freed (clearAndFree) whenever its last wrapper goes, which each page's end brings (cleanupForContext): a 1,069-file runner sample found it empty at every sampled insert
-threadlocal var live: std.AutoHashMapUnmanaged(*CallbackWrapper, void) = .empty;
+/// One agent's wrappers not yet deinitialized: a field of its record
+/// (protocol_agents.AgentRecord.callbacks). A wrapper belongs to the agent of
+/// its isolate (`CallbackWrapper.isolate`), and is made and freed on that
+/// agent's thread. It was a `threadlocal`, every agent's on the thread in one
+/// set; its storage is page_allocator's, freed whenever its last wrapper goes
+/// (each page's end brings that, cleanupForContext) and at the agent's end
+/// (`endAgent`).
+// tombstones: freed (clearAndFree) whenever its last wrapper goes, which each page's end brings (cleanupForContext), and at its agent's end: a 1,069-file runner sample found it empty at every sampled insert
+pub const Live = std.AutoHashMapUnmanaged(*CallbackWrapper, void);
 
-/// Track `wrapper`. Idempotent. Called by the wrapper's constructors.
+/// Track `wrapper` on its agent. Idempotent. Called by the wrapper's
+/// constructors. A wrapper of an isolate createAgent did not make (a test's
+/// own) is not tracked: its handles live until its owner deinitializes it,
+/// as they did before tracking - and as an allocation failure here leaves
+/// any wrapper.
 pub fn register(wrapper: *CallbackWrapper) void {
-    // An allocation failure leaves the wrapper untracked: its handles then
-    // live until its owner deinitializes it, as they did before tracking.
+    const live = protocol_agents.callbacksOf(wrapper.isolate) orelse return;
     live.put(std.heap.page_allocator, wrapper, {}) catch {};
 }
 
 /// Stop tracking `wrapper`. Called by `CallbackWrapper.deinit`.
 pub fn unregister(wrapper: *CallbackWrapper) void {
+    const live = protocol_agents.callbacksOf(wrapper.isolate) orelse return;
     _ = live.remove(wrapper);
-    // The map's memory goes with its last wrapper: a worker thread's
-    // wrappers all go before it ends, and what a threadlocal still holds
-    // when its thread exits is never freed.
     if (live.count() == 0) live.clearAndFree(std.heap.page_allocator);
 }
 
-/// Release the handles of every wrapper created for the context whose raw V8
-/// address is `context_raw_addr`, and stop tracking them. Call while the
-/// isolate is alive, before the context's entry goes.
+/// Release the handles of every wrapper the current agent made for the
+/// context whose raw V8 address is `context_raw_addr`, and stop tracking
+/// them. Call while the isolate is alive and current - the context's realm
+/// ending (context_manager.removeContextByKey, protocol_realms.detach) - before
+/// the context's entry goes.
 pub fn cleanupForContext(context_raw_addr: ?*anyopaque) void {
     const addr = context_raw_addr orelse return;
+    const isolate = v8.v8_Isolate_GetCurrent() orelse return;
+    const live = protocol_agents.callbacksOf(isolate) orelse return;
     var matched: std.ArrayListUnmanaged(*CallbackWrapper) = .empty;
     defer matched.deinit(std.heap.page_allocator);
     var it = live.keyIterator();
@@ -58,7 +71,16 @@ pub fn cleanupForContext(context_raw_addr: ?*anyopaque) void {
     if (live.count() == 0) live.clearAndFree(std.heap.page_allocator);
 }
 
-/// How many wrappers are tracked - for tests.
-pub fn liveCount() usize {
+/// The agent's end, once its realms have ended (protocol_agents.removeAgent):
+/// the set's storage goes. A wrapper still in it outlived every realm of its
+/// agent untracked by them; its owner still frees it.
+pub fn endAgent(live: *Live) void {
+    live.deinit(std.heap.page_allocator);
+    live.* = .empty;
+}
+
+/// How many wrappers the agent whose isolate this is tracks - for tests.
+pub fn liveCount(isolate: *v8.Isolate) usize {
+    const live = protocol_agents.callbacksOf(isolate) orelse return 0;
     return live.count();
 }

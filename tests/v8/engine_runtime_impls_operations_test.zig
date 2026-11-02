@@ -220,8 +220,6 @@ test "the current realm is the one the context manager hosts for the entered con
     // A context no manager hosts is no realm the engine knows.
     try std.testing.expect(v8.current_realm.currentRealm() == null);
 
-    // Already initialized is as good: the manager is per thread.
-    v8.context_manager.init(std.heap.page_allocator) catch {};
     const hosted = try v8.context_manager.getOrCreate(test_context.?, std.heap.page_allocator);
     const current = v8.current_realm.currentRealm() orelse return error.NoCurrentRealm;
     try std.testing.expectEqual(hosted, current);
@@ -523,8 +521,6 @@ test "the protocol is bound to V8, with explicit native and emulated capabilitie
 test "protocol: currentRealm is the context manager's realm for the entered context, and holds no context" {
     defer test_agent.close();
     _ = try realm();
-    // Already initialized, and already hosted, are as good.
-    v8.context_manager.init(std.heap.page_allocator) catch {};
     const hosted = try v8.context_manager.getOrCreate(test_context.?, std.heap.page_allocator);
     const contexts_before = ffi.v8_Debug_LiveContextGlobals();
     try std.testing.expectEqual(hosted, protocol.currentRealm() orelse return error.NoCurrentRealm);

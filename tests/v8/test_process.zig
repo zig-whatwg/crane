@@ -22,8 +22,10 @@
 //!   (`TestAgent`);
 //! - a realm kept for the process: a file's realm, registered with the
 //!   thread's context manager, was freed under the file by the first later
-//!   test whose own agent was its thread's host agent - whose end takes the
-//!   thread's context manager down (`TestAgent`);
+//!   test whose own agent was its thread's host agent - whose end took the
+//!   thread's context manager down (`TestAgent`; the context manager is each
+//!   agent's own since lane engown1, so no agent's end frees another's
+//!   realms);
 //! - process hooks installed lazily: a test that swapped a hook before its
 //!   helper's first call had the helper's start-up overwrite the swap, and
 //!   then restored "no hooks" over the real ones (`start` first).
@@ -88,14 +90,13 @@ pub const no_hooks: engine.HostHooks = .{};
 /// call to `open`, ended by `close` through destroyAgent - the engine's own
 /// path, as a Browser makes and ends its page agent (Blink gives each test a
 /// fresh isolate: the approved test plan, tmp/plans/test-architecture-
-/// recommendation.md section 3). Nothing current when it is made, it is its
-/// thread's host agent, so its end also takes down what the adapter keeps for
-/// the thread (protocol_agents.endAgent): the context manager and every realm
-/// in it. So no realm outlives its test, and no test keeps one another
-/// test's agent would free - which a file's realm kept for the process was,
-/// the first time a later test's own agent ended (docs/lessons/
-/// testing-a-test-may-assume-only-what-the-process-start-makes.md, the
-/// fifth mechanism).
+/// recommendation.md section 3). Its end takes down what the adapter keeps
+/// for the agent (protocol_agents.endAgent): its realms among it. So no
+/// realm outlives its test - a file's realm kept for the process was freed
+/// under it the first time a later test's own agent ended, when the context
+/// manager was per thread and the thread's host agent's end took it down
+/// (docs/lessons/testing-a-test-may-assume-only-what-the-process-start-
+/// makes.md, the fifth mechanism).
 ///
 /// A file declares one, `var test_agent: test_process.TestAgent = .{ .reset
 /// = reset };`, its helper calls `open` (the isolate, current while the test
@@ -155,9 +156,9 @@ pub const TestAgent = struct {
             self.enter();
             return isolate;
         }
-        // Nothing current, or the agent would not be its thread's host
-        // agent, and its end would leave its realms in the thread's context
-        // manager: a test before this one left an isolate entered.
+        // Nothing current: a test before this one that left an isolate
+        // entered left the process changed (the third mechanism), and this
+        // test's would run under it.
         if (ffi.v8_Isolate_GetCurrent() != null) return error.IsolateLeftEntered;
         const made = try engine.createAgent(.{ .can_block = options.can_block, .from_snapshot = false, .hooks = options.hooks, .host = null, .allocator = options.allocator });
         const isolate: *ffi.Isolate = @ptrCast(@alignCast(made));
