@@ -126,6 +126,15 @@ pub const StubContext = struct {
     confirm_result: bool = true,
     prompt_result: ?[]const u8 = null,
 
+    // Media state: the last handle of each kind this context gave out, so
+    // that each context numbers its own from 1 (they were process-wide
+    // counters, which numbered every context's handles together).
+    media_source_counter: MediaSourceHandle = 0,
+    source_buffer_counter: SourceBufferHandle = 0,
+    media_keys_counter: MediaKeysHandle = 0,
+    media_key_session_counter: MediaKeySessionHandle = 0,
+    media_stream_counter: MediaStreamHandle = 0,
+
     pub fn init(allocator: Allocator) StubContext {
         return .{
             .allocator = allocator,
@@ -973,18 +982,18 @@ pub const stub_permissions_vtable = PermissionsVTable{
 // Covers MediaDevices, Media Source Extensions (MSE), and Encrypted Media (EME)
 // =============================================================================
 
-// Internal state for media stubs
-var stub_media_source_counter: MediaSourceHandle = 0;
-var stub_source_buffer_counter: SourceBufferHandle = 0;
-var stub_media_keys_counter: MediaKeysHandle = 0;
-var stub_media_key_session_counter: MediaKeySessionHandle = 0;
-var stub_media_stream_counter: MediaStreamHandle = 0;
+// The handles each StubContext gave out are its own (`StubContext.media_*_counter`).
+
+fn stubContextOf(user_context: OpaquePtr) *StubContext {
+    return @ptrCast(@alignCast(user_context));
+}
 
 // === MediaDevices API ===
 
-fn stubMediaGetUserMedia(_: OpaquePtr, _: bool, _: bool) callconv(.c) MediaStreamHandle {
-    stub_media_stream_counter += 1;
-    return stub_media_stream_counter;
+fn stubMediaGetUserMedia(user_context: OpaquePtr, _: bool, _: bool) callconv(.c) MediaStreamHandle {
+    const ctx = stubContextOf(user_context);
+    ctx.media_stream_counter += 1;
+    return ctx.media_stream_counter;
 }
 
 fn stubMediaStopStream(_: OpaquePtr, _: MediaStreamHandle) callconv(.c) void {
@@ -993,9 +1002,10 @@ fn stubMediaStopStream(_: OpaquePtr, _: MediaStreamHandle) callconv(.c) void {
 
 // === Media Source Extensions (MSE) ===
 
-fn stubMediaCreateMediaSource(_: OpaquePtr) callconv(.c) MediaSourceHandle {
-    stub_media_source_counter += 1;
-    return stub_media_source_counter;
+fn stubMediaCreateMediaSource(user_context: OpaquePtr) callconv(.c) MediaSourceHandle {
+    const ctx = stubContextOf(user_context);
+    ctx.media_source_counter += 1;
+    return ctx.media_source_counter;
 }
 
 fn stubMediaDestroyMediaSource(_: OpaquePtr, _: MediaSourceHandle) callconv(.c) void {
@@ -1015,13 +1025,14 @@ fn stubMediaGetDuration(_: OpaquePtr, _: MediaSourceHandle) callconv(.c) f64 {
 }
 
 fn stubMediaAddSourceBuffer(
-    _: OpaquePtr,
+    user_context: OpaquePtr,
     _: MediaSourceHandle,
     _: [*]const u8,
     _: usize,
 ) callconv(.c) SourceBufferHandle {
-    stub_source_buffer_counter += 1;
-    return stub_source_buffer_counter;
+    const ctx = stubContextOf(user_context);
+    ctx.source_buffer_counter += 1;
+    return ctx.source_buffer_counter;
 }
 
 fn stubMediaRemoveSourceBuffer(
@@ -1068,18 +1079,20 @@ fn stubMediaIsKeySystemSupported(_: OpaquePtr, _: [*]const u8, _: usize) callcon
     return true; // Stub: all key systems supported
 }
 
-fn stubMediaCreateMediaKeys(_: OpaquePtr, _: [*]const u8, _: usize) callconv(.c) MediaKeysHandle {
-    stub_media_keys_counter += 1;
-    return stub_media_keys_counter;
+fn stubMediaCreateMediaKeys(user_context: OpaquePtr, _: [*]const u8, _: usize) callconv(.c) MediaKeysHandle {
+    const ctx = stubContextOf(user_context);
+    ctx.media_keys_counter += 1;
+    return ctx.media_keys_counter;
 }
 
 fn stubMediaDestroyMediaKeys(_: OpaquePtr, _: MediaKeysHandle) callconv(.c) void {
     // Stub: no-op
 }
 
-fn stubMediaCreateSession(_: OpaquePtr, _: MediaKeysHandle, _: u8) callconv(.c) MediaKeySessionHandle {
-    stub_media_key_session_counter += 1;
-    return stub_media_key_session_counter;
+fn stubMediaCreateSession(user_context: OpaquePtr, _: MediaKeysHandle, _: u8) callconv(.c) MediaKeySessionHandle {
+    const ctx = stubContextOf(user_context);
+    ctx.media_key_session_counter += 1;
+    return ctx.media_key_session_counter;
 }
 
 fn stubMediaCloseSession(_: OpaquePtr, _: MediaKeySessionHandle) callconv(.c) MediaResult {
