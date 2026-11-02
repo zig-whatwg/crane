@@ -55,3 +55,12 @@ test "sees the fixed environment" {
         }
     }
 }
+
+// Verify mode's flake (verify.zig): passes alone, every time, and fails the
+// third time it runs in one process - what ten runs in one process catch.
+var runs_in_process: u32 = 0;
+
+test "fails on its third run in a process" {
+    runs_in_process += 1;
+    if (runs_in_process == 3) return error.ThirdRunInThisProcess;
+}
