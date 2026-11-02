@@ -48,6 +48,7 @@ const Logger = @import("logger.zig").Logger;
 const LoggerConfig = @import("logger.zig").LoggerConfig;
 const infra = @import("infra");
 const timer_mod = @import("timer.zig");
+const native_timer = @import("native_timer.zig");
 const BrowserScope = @import("browser_scope.zig").BrowserScope;
 const TaskSink = @import("task_sink.zig").TaskSink;
 
@@ -280,7 +281,67 @@ pub const ContextData = struct {
     /// reached them, which this realm's end frees (runtime.orphan_roots).
     orphan_roots: orphan_roots_mod.List = .{},
 
+    /// HTML "report an exception" step 6: whether this realm's global is in
+    /// error reporting mode (html.report_exception) - the global's own flag,
+    /// set while an error event fires at it. It was eight process-wide slots
+    /// shared by every Browser, and a global nested ninth went unguarded.
+    in_error_reporting_mode: bool = false,
+
+    /// The window operations this Window realm's timers and animation frames
+    /// run (engine.installWindowOperations: the host's steps behind
+    /// setTimeout and the rest), recorded by the engine adapter: a page's
+    /// realm installs them, and a frame's or a popup's takes its parent's
+    /// when it is made. BORROWED (the host's table, which outlives every
+    /// realm); null for any other realm, and from the realm's end on. It was
+    /// one per thread, ended by whichever realm installed it last.
+    window_operations: ?*const @import("engine_types.zig").WindowOperations = null,
+
+    /// HTML 8.6: this global's map of active timers, by the id script holds -
+    /// "each object that implements WindowOrWorkerGlobalScope has a map of
+    /// active timers". Its values are the host's timer records, typed by the
+    /// host that runs the global's timers (browser/Context.zig for a Window),
+    /// which frees each one and empties the map when the global's timers
+    /// are cleared; its storage is `allocator`'s and goes with the realm
+    /// (or sooner, when the host gives it back). It was one map per thread,
+    /// every Window's timers in it.
+    active_timers: native_timer.TimerIdMap(*anyopaque) = .empty,
+
+    /// The realm's own platform objects of each kind that something must
+    /// reach as a whole - HTML "destroy a document" step 5's MessagePorts,
+    /// "abort a document"'s fetches - each list kept by the object's owner
+    /// (`objects`), holding objects of this realm only, on its thread. Their
+    /// storage is `allocator`'s, given back when a list empties and at the
+    /// realm's end. They were one list per THREAD, filtered by realm.
+    object_lists: [object_kind_count]std.ArrayListUnmanaged(*anyopaque) = @splat(.empty),
+
     const Self = @This();
+
+    /// The kinds of a realm's own object lists (`object_lists`).
+    pub const ObjectKind = RealmObjectKind;
+
+    /// The realm's own list of objects of `kind`, OWNED by the realm: append
+    /// with `allocator` (`addObject`), and take out with `forgetObject`.
+    pub fn objects(self: *Self, kind: ObjectKind) *std.ArrayListUnmanaged(*anyopaque) {
+        return &self.object_lists[@backingInt(kind)];
+    }
+
+    /// Add `object` to the realm's list of `kind`.
+    pub fn addObject(self: *Self, kind: ObjectKind, object: *anyopaque) std.mem.Allocator.Error!void {
+        try self.objects(kind).append(self.allocator, object);
+    }
+
+    /// Take `object` out of the realm's list of `kind`, if it is there - the
+    /// list's order is not kept. The list's storage goes with its last
+    /// object, so a realm that ended holds none.
+    pub fn forgetObject(self: *Self, kind: ObjectKind, object: *anyopaque) void {
+        const list = self.objects(kind);
+        for (list.items, 0..) |item, i| {
+            if (item != object) continue;
+            _ = list.swapRemove(i);
+            break;
+        }
+        if (list.items.len == 0) list.clearAndFree(self.allocator);
+    }
 
     /// Context initialization options
     pub const Options = struct {
@@ -366,6 +427,10 @@ pub const ContextData = struct {
         self.console_state.deinit(self.allocator);
         self.logger.deinit();
         self.orphan_roots.deinit(self.allocator);
+        // Its timers' records and its objects are their owners', gone by now;
+        // what is left is the storage of the realm's own tables.
+        self.active_timers.deinit(self.allocator);
+        for (&self.object_lists) |*list| list.deinit(self.allocator);
     }
 
     /// The URL this realm records for its document (or worker script), if any.
@@ -621,6 +686,26 @@ pub const ContextData = struct {
 /// This is what gets passed to all namespace operations.
 /// By keeping it as a simple pointer, we maintain small size and
 /// compatibility with generated code.
+/// The kinds of a realm's own object lists (`ContextData.object_lists`), each
+/// its owner's.
+pub const RealmObjectKind = enum {
+    /// MessagePort (webidl impl): every port of the realm, from its creation
+    /// to its end - "destroy a document" disentangles them.
+    message_ports,
+    /// WebSocket (webidl impl): every socket of the realm not yet freed.
+    web_sockets,
+    /// fetch() (WindowOrWorkerGlobalScope impl): the calls in flight.
+    fetch_calls,
+    /// XMLHttpRequest (webidl impl): its send()s' fetches in flight.
+    xhr_fetches,
+    /// html.script_execution: classic script fetches not yet delivered.
+    classic_script_fetches,
+    /// html.style_sheet_loading: style sheet and font loads in flight.
+    style_sheet_loads,
+};
+/// How many kinds of object list a realm keeps.
+const object_kind_count = @typeInfo(RealmObjectKind).@"enum".fields.len;
+
 pub const Context = *ContextData;
 
 /// Null context helper for testing
