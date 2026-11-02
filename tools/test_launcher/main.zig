@@ -494,10 +494,11 @@ test "exit status: a launcher error fails the run in server mode too, where a te
 
 /// A failure of the launcher itself, outside any test (it could not list
 /// the tests, open the slot directory, write the results): printed with its
-/// cause, and the run fails - in server mode, the step, with no test blamed.
-/// `args` starts with the suite's name.
+/// cause as an `error: '<step>' failed:` line (the form gate scripts grep,
+/// as `report.writeLauncherErrors`), and the run fails - in server mode,
+/// the step, with no test blamed. `args` starts with the suite's name.
 fn launcherFailure(out: *Io.Writer, comptime what: []const u8, args: anytype) noreturn {
-    out.print("test_launcher: {s}: LAUNCHER-ERROR: " ++ what ++ "\n", args) catch {};
+    out.print("error: 'test {s}' failed: LAUNCHER-ERROR: " ++ what ++ "\n", args) catch {};
     out.flush() catch {};
     std.process.exit(1);
 }

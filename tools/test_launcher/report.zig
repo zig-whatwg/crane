@@ -71,20 +71,22 @@ pub fn writeVerdictBlock(w: *std.Io.Writer, name: []const u8, rec: *const sched.
 }
 
 /// The tests the launcher could not run, once per run, grouped by cause:
-/// what fails the run when a test process could not be started.
+/// what fails the run when a test process could not be started. Each cause
+/// is one line in the build runner's own form, `error: '<step>' failed:`,
+/// naming the suite's step (never a test: none failed), the path and the
+/// errno - the line gate scripts grep for (tmp/remote/gate-main.sh:
+/// `^error: '`), so a run whose skipped tests hide a launcher failure never
+/// reads green. The tests it hit follow, indented.
 ///
-///   test_launcher: tests-x: LAUNCHER-ERROR: 3 tests could not run - the launcher failed, not the tests:
-///     3 x launcher: could not start the test process: could not take a test-process slot, ...: FileNotFound (ENOENT)
-///         x.test.one
-///         ...
+///   error: 'test tests-x' failed: LAUNCHER-ERROR, 3 tests not run (the launcher failed, not them): launcher: could not start the test process: could not take a test-process slot, /c/test-launcher-slots/slot-0: FileNotFound (ENOENT)
+///       x.test.one
+///       ...
 pub fn writeLauncherErrors(w: *std.Io.Writer, gpa: std.mem.Allocator, suite: []const u8, names: []const []const u8, records: []const sched.TestRecord) !void {
     const Cause = struct { text: []const u8, count: u32 = 0, first: [max_named]u32 = undefined };
     var causes: std.ArrayList(Cause) = .empty;
     defer causes.deinit(gpa);
-    var total: u32 = 0;
     for (records, 0..) |*rec, t| {
         if (rec.verdict != .launcher_error) continue;
-        total += 1;
         const text = std.mem.trimEnd(u8, rec.cause, "\n");
         const c = for (causes.items) |*c| {
             if (std.mem.eql(u8, c.text, text)) break c;
@@ -95,12 +97,11 @@ pub fn writeLauncherErrors(w: *std.Io.Writer, gpa: std.mem.Allocator, suite: []c
         if (c.count < max_named) c.first[c.count] = @intCast(t);
         c.count += 1;
     }
-    if (total == 0) return;
-    try w.print("test_launcher: {s}: LAUNCHER-ERROR: {d} test{s} could not run - the launcher failed, not the test{s}:\n", .{
-        suite, total, if (total == 1) "" else "s", if (total == 1) "" else "s",
-    });
     for (causes.items) |c| {
-        try w.print("  {d} x {s}\n", .{ c.count, if (c.text.len != 0) c.text else "(no cause recorded)" });
+        try w.print("error: 'test {s}' failed: LAUNCHER-ERROR, {d} test{s} not run (the launcher failed, not {s}): {s}\n", .{
+            suite,                                                  c.count, if (c.count == 1) "" else "s", if (c.count == 1) "it" else "them",
+            if (c.text.len != 0) c.text else "(no cause recorded)",
+        });
         for (c.first[0..@min(c.count, max_named)]) |t| try w.print("      {s}\n", .{names[t]});
         if (c.count > max_named) try w.print("      and {d} more\n", .{c.count - max_named});
     }
@@ -200,13 +201,19 @@ test "the launcher errors of a run, once, grouped by cause, with the tests they 
     records[8] = .{ .first = .launcher_error, .verdict = .launcher_error, .cause = &spawn_cause };
     try writeLauncherErrors(&aw.writer, testing.allocator, "tests-s", &names, &records);
     try testing.expectEqualStrings(
-        "test_launcher: tests-s: LAUNCHER-ERROR: 8 tests could not run - the launcher failed, not the tests:\n" ++
-            "  7 x launcher: could not start the test process: could not take a test-process slot, /c/slot-0: FileNotFound (ENOENT)\n" ++
+        "error: 'test tests-s' failed: LAUNCHER-ERROR, 7 tests not run (the launcher failed, not them): launcher: could not start the test process: could not take a test-process slot, /c/slot-0: FileNotFound (ENOENT)\n" ++
             "      s.test.0\n      s.test.1\n      s.test.2\n      s.test.3\n      s.test.4\n      and 2 more\n" ++
-            "  1 x launcher: could not start the test process: could not spawn /x/t: FileBusy (ETXTBSY); it is there now\n" ++
+            "error: 'test tests-s' failed: LAUNCHER-ERROR, 1 test not run (the launcher failed, not it): launcher: could not start the test process: could not spawn /x/t: FileBusy (ETXTBSY); it is there now\n" ++
             "      s.test.8\n",
         aw.written(),
     );
+    // What the gate scripts grep finds every cause, and nothing else.
+    var it = std.mem.splitScalar(u8, aw.written(), '\n');
+    var gate_lines: u32 = 0;
+    while (it.next()) |line| {
+        if (std.mem.startsWith(u8, line, "error: '")) gate_lines += 1;
+    }
+    try testing.expectEqual(@as(u32, 2), gate_lines);
     // None: nothing printed.
     var clean: std.Io.Writer.Allocating = .init(testing.allocator);
     defer clean.deinit();
