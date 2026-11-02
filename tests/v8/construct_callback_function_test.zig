@@ -8,38 +8,45 @@
 //! [[Construct]], never a [[Call]] (a class constructor called throws).
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
 const ffi = v8.ffi;
 
-var isolate_once: ?*ffi.Isolate = null;
-var context_once: ?*ffi.Context = null;
-var realm_once: ?runtime.Context = null;
+var test_isolate: ?*ffi.Isolate = null;
+var test_context: ?*ffi.Context = null;
+var test_realm: ?runtime.Context = null;
 
-/// One isolate and realm for the file, registered with the context manager
-/// as a page's is; V8 is never torn down here.
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+    test_context = null;
+    test_realm = null;
+}
+
+/// The test's isolate and realm - its own agent's (test_agent), ended with
+/// the test - registered with the context manager as a page's is.
 fn realm() !runtime.Context {
-    if (realm_once) |r| return r;
-    try engine.initializeEngine(.{});
-    interfaces.process_hooks.startHooksForTest();
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    v8.context_manager.init(std.heap.page_allocator) catch {};
-    const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-    isolate_once = i;
-    context_once = context;
-    realm_once = r;
-    return r;
+    const i = try test_agent.open(.{});
+    if (test_realm == null) {
+        const context = test_agent.context.?;
+        v8.context_manager.init(std.heap.page_allocator) catch {};
+        const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+        test_isolate = i;
+        test_context = context;
+        test_realm = r;
+    }
+    return test_realm.?;
 }
 
 fn eval(code: []const u8) !*ffi.Value {
-    const context = context_once.?;
-    const text = ffi.v8_String_NewFromUtf8(isolate_once.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
+    const context = test_context.?;
+    const text = ffi.v8_String_NewFromUtf8(test_isolate.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(text);
     const script = ffi.v8_Script_Compile(context, text) orelse return error.CompileFailed;
     defer ffi.v8_Script_Dispose(script);
@@ -49,14 +56,14 @@ fn eval(code: []const u8) !*ffi.Value {
 fn evalInt(code: []const u8) !i32 {
     const value = try eval(code);
     defer ffi.v8_Value_Dispose(value);
-    return ffi.v8_Value_Int32Value(value, context_once.?);
+    return ffi.v8_Value_Int32Value(value, test_context.?);
 }
 
 fn setGlobal(name: []const u8, value: *anyopaque) !void {
-    const context = context_once.?;
+    const context = test_context.?;
     const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
     defer ffi.v8_Object_Dispose(global);
-    const key = ffi.v8_String_NewFromUtf8(isolate_once.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
+    const key = ffi.v8_String_NewFromUtf8(test_isolate.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(key);
     if (!ffi.v8_Object_Set(global, context, @ptrCast(key), @ptrCast(@alignCast(value)))) return error.SetFailed;
 }
@@ -76,6 +83,7 @@ fn holds(name: []const u8, owned: engine.Owned, check: []const u8) !bool {
 }
 
 test "constructs: a new object of the class, with the arguments and new.target" {
+    defer test_agent.close();
     const r = try realm();
     const point = try callbackOf(r,
         \\globalThis.Point = class Point {
@@ -91,6 +99,7 @@ test "constructs: a new object of the class, with the arguments and new.target" 
 }
 
 test "an object the constructor returns is the result" {
+    defer test_agent.close();
     const r = try realm();
     const returning = try callbackOf(r, "(function Returning() { return globalThis.returned = { other: true }; })");
     defer returning.release();
@@ -101,6 +110,7 @@ test "an object the constructor returns is the result" {
 }
 
 test "a throwing constructor is a throw completion of the thrown value, and nothing is left pending" {
+    defer test_agent.close();
     const r = try realm();
     const thrower = try callbackOf(r, "(class Thrower { constructor() { throw globalThis.ctorError = new Error('ctor'); } })");
     defer thrower.release();
@@ -113,6 +123,7 @@ test "a throwing constructor is a throw completion of the thrown value, and noth
 }
 
 test "a non-constructor is a throw completion of a TypeError, and is never called" {
+    defer test_agent.close();
     const r = try realm();
     const sources = [_][]const u8{
         // An arrow function and a method are callable but not constructors.
@@ -139,6 +150,7 @@ test "a non-constructor is a throw completion of a TypeError, and is never calle
 }
 
 test "a Proxy of a class is a constructor" {
+    defer test_agent.close();
     const r = try realm();
     const proxied = try callbackOf(r, "new Proxy(class Target { constructor() { this.viaProxy = true; } }, {})");
     defer proxied.release();
@@ -151,7 +163,7 @@ test "a Proxy of a class is a constructor" {
 /// V8's live global handle bytes left by 32 rounds of `round`, after a
 /// collection, past two warm-up rounds.
 fn handleBytesLeftBy(r: runtime.Context, callback: *const engine.CallbackFunction, comptime round: fn (runtime.Context, *const engine.CallbackFunction) anyerror!void) !i64 {
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     for (0..2) |_| try round(r, callback);
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
     const before: i64 = @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate));
@@ -179,6 +191,7 @@ fn invokeRound(r: runtime.Context, callback: *const engine.CallbackFunction) any
 }
 
 test "constructing leaves no handle behind that invoking does not" {
+    defer test_agent.close();
     const r = try realm();
     // A function both callable and constructible.
     const counted = try callbackOf(r, "(function Counted(n) { if (new.target) this.n = n; return undefined; })");

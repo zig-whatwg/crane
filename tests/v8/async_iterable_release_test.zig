@@ -11,6 +11,7 @@
 //! callback records grew by one per round, in every agent.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const protocol = @import("engine");
@@ -67,7 +68,7 @@ fn recordsLeftBy(agent: *protocol.Agent, realm: runtime.Context, source: []const
 
 test "an async iterator script drops is collected: values() and for await keep nothing per call" {
     try protocol.initializeEngine(.{});
-    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.page_allocator);
+    test_process.start();
     interfaces.process_hooks.startHooksForTest();
     var scope = runtime.BrowserScope.init(std.heap.page_allocator);
     defer scope.deinit();

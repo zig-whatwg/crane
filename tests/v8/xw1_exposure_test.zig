@@ -1,5 +1,6 @@
 //! Per-realm exposure is known before interfaces are installed.
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const engine = @import("engine");
@@ -107,11 +108,16 @@ fn verify(r: runtime.Context, scope: Scope, secure: bool) !void {
 }
 
 pub fn checkWithSnapshot(snapshot: ?[]const u8) !void {
+    // The process first - it starts the engine with no snapshot - and
+    // then the engine's snapshot (test_process.zig).
+    test_process.start();
     try engine.initializeEngine(.{ .snapshot = snapshot });
     defer if (snapshot != null) engine.deinitializeEngine();
     interfaces.process_hooks.startHooksForTest();
-    runtime.initializeRuntime(testing.allocator);
-    defer runtime.deinitializeRuntime();
+    // A standalone runtime of this test's own, the process's given back
+    // after (test_process.OwnRuntime).
+    const own_runtime = test_process.OwnRuntime.begin(testing.allocator);
+    defer own_runtime.end();
     var browser = runtime.BrowserScope.init(testing.allocator);
     defer browser.deinit();
     const hooks: engine.HostHooks = .{};

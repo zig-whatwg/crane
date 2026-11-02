@@ -14,36 +14,44 @@
 //! throwaway global is collected once nothing refers to it.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 const protocol = @import("engine");
 
-var isolate_once: ?*ffi.Isolate = null;
-var context_once: ?*ffi.Context = null;
-var data_once: ?*runtime.ContextData = null;
+var test_isolate: ?*ffi.Isolate = null;
+var test_context: ?*ffi.Context = null;
+var test_data: ?*runtime.ContextData = null;
 
-/// One isolate and realm for the file, as engine_webidl_conversions_test.zig
-/// makes it - V8 is never torn down here.
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+    test_context = null;
+    test_data = null;
+}
+
+/// The test's isolate and realm, as engine_webidl_conversions_test.zig makes
+/// them: its own agent's (test_agent), ended with the test.
 fn realm() !runtime.Context {
-    if (data_once) |d| return d;
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    const data = try std.heap.page_allocator.create(runtime.ContextData);
-    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
-    data.agent = @ptrCast(i);
-    isolate_once = i;
-    context_once = context;
-    data_once = data;
-    return data;
+    const i = try test_agent.open(.{});
+    if (test_data == null) {
+        const context = test_agent.context.?;
+        const data = try test_agent.contextData(std.heap.page_allocator, .{ .engine_ctx = context });
+        data.agent = @ptrCast(i);
+        test_isolate = i;
+        test_context = context;
+        test_data = data;
+    }
+    return test_data.?;
 }
 
 fn eval(code: []const u8) !*ffi.Value {
-    const context = context_once.?;
-    const text = ffi.v8_String_NewFromUtf8(isolate_once.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
+    const context = test_context.?;
+    const text = ffi.v8_String_NewFromUtf8(test_isolate.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(text);
     const script = ffi.v8_Script_Compile(context, text) orelse return error.CompileFailed;
     defer ffi.v8_Script_Dispose(script);
@@ -53,14 +61,14 @@ fn eval(code: []const u8) !*ffi.Value {
 fn evalInt(code: []const u8) !i32 {
     const value = try eval(code);
     defer ffi.v8_Value_Dispose(value);
-    return ffi.v8_Value_Int32Value(value, context_once.?);
+    return ffi.v8_Value_Int32Value(value, test_context.?);
 }
 
 fn setGlobal(name: []const u8, handle: *anyopaque) !void {
-    const context = context_once.?;
+    const context = test_context.?;
     const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
     defer ffi.v8_Object_Dispose(global);
-    const key = ffi.v8_String_NewFromUtf8(isolate_once.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
+    const key = ffi.v8_String_NewFromUtf8(test_isolate.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(key);
     _ = ffi.v8_Object_Set(global, context, @ptrCast(key), @ptrCast(@alignCast(handle)));
 }
@@ -81,23 +89,24 @@ fn thrownBy(body: anytype) ?*ffi.Value {
         }
     };
     var thrown: ?*ffi.Value = null;
-    _ = ffi.v8_RunCatching(isolate_once.?, Trampoline.call, body, &thrown);
+    _ = ffi.v8_RunCatching(test_isolate.?, Trampoline.call, body, &thrown);
     return thrown;
 }
 
 fn nativeContexts() usize {
     var count: usize = 0;
-    ffi.v8_Isolate_GetContextCounts(isolate_once.?, &count, null);
+    ffi.v8_Isolate_GetContextCounts(test_isolate.?, &count, null);
     return count;
 }
 
 /// Collections enough for a dropped context to go: V8 frees a native context
 /// once no object refers to it, which can take more than one full GC.
 fn collect() void {
-    for (0..4) |_| ffi.v8_Isolate_RequestGarbageCollection(isolate_once.?);
+    for (0..4) |_| ffi.v8_Isolate_RequestGarbageCollection(test_isolate.?);
 }
 
 test "the result's objects and arrays are the new global's, not the caller's" {
+    defer test_agent.close();
     const ctx = try realm();
     _ = try evalInt("Object.prototype.kty = 'oct'; Array.prototype.polluted = 1; 1");
     defer _ = evalInt("delete Object.prototype.kty; delete Array.prototype.polluted; 1") catch {};
@@ -116,6 +125,7 @@ test "the result's objects and arrays are the new global's, not the caller's" {
 }
 
 test "a replaced JSON.parse is not what parses, and a BOM is dropped" {
+    defer test_agent.close();
     const ctx = try realm();
     _ = try evalInt("globalThis.savedJSON = JSON; globalThis.JSON = { parse() { return 42; } }; 1");
     defer _ = evalInt("globalThis.JSON = savedJSON; 1") catch {};
@@ -125,6 +135,7 @@ test "a replaced JSON.parse is not what parses, and a BOM is dropped" {
 }
 
 test "a SyntaxError is thrown in the caller's realm, with the new global's message" {
+    defer test_agent.close();
     const ctx = try realm();
     var body: struct {
         ctx: runtime.Context,
@@ -144,8 +155,9 @@ test "a SyntaxError is thrown in the caller's realm, with the new global's messa
 }
 
 test "the new global is collected once the result is dropped, and no handle is left" {
+    defer test_agent.close();
     const ctx = try realm();
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     // One first, for what the first parse makes and later ones reuse.
     (try protocol.parseJsonInNewGlobal(ctx, "{}")).release();
     collect();
@@ -183,6 +195,7 @@ fn handleValue(handle: *ffi.Value) runtime.JSValue {
 }
 
 test "hasOwnProperty: own, not inherited, and a Proxy trap's throw surfaces" {
+    defer test_agent.close();
     const ctx = try realm();
     const object = try eval("({ own: 1, __proto__: { inherited: 2 } })");
     defer ffi.v8_Value_Dispose(object);
@@ -208,6 +221,7 @@ test "hasOwnProperty: own, not inherited, and a Proxy trap's throw surfaces" {
 }
 
 test "thisTimeValue: a Date's [[DateValue]], and null for anything without the slot" {
+    defer test_agent.close();
     const ctx = try realm();
     const date = try eval("new Date(5)");
     defer ffi.v8_Value_Dispose(date);
@@ -228,6 +242,7 @@ test "thisTimeValue: a Date's [[DateValue]], and null for anything without the s
 }
 
 test "isArrayExoticObject: an array, a subclass instance; not a Proxy of one" {
+    defer test_agent.close();
     const ctx = try realm();
     const cases = [_]struct { code: []const u8, is: bool }{
         .{ .code = "[]", .is = true },
@@ -245,6 +260,7 @@ test "isArrayExoticObject: an array, a subclass instance; not a Proxy of one" {
 }
 
 test "createDate: a Date of the realm, its time clipped" {
+    defer test_agent.close();
     const ctx = try realm();
     const date = try protocol.createDate(ctx, 1000);
     defer date.release();
@@ -256,6 +272,7 @@ test "createDate: a Date of the realm, its time clipped" {
 }
 
 test "agentHost: the host pointer the agent was made with, and null once it is destroyed" {
+    defer test_agent.close();
     _ = try realm();
     try protocol.initializeEngine(.{});
     const no_hooks: protocol.HostHooks = .{};
@@ -274,6 +291,7 @@ test "agentHost: the host pointer the agent was made with, and null once it is d
 // ---------------------------------------------------------------------------
 
 test "getCopyOfAllowSharedBufferSourceBytes takes a SharedArrayBuffer and a view over one; the BufferSource form still refuses both" {
+    defer test_agent.close();
     const ctx = try realm();
     const allocator = std.testing.allocator;
     const shared = try eval("globalThis.sharedBytes = new SharedArrayBuffer(4); new Uint8Array(sharedBytes).set([1, 2, 3, 4]); sharedBytes");
@@ -319,6 +337,7 @@ fn freeKeys(keys: [][]u8) void {
 }
 
 test "enumerableOwnPropertyKeys: own enumerable String keys in property order, nothing Got" {
+    defer test_agent.close();
     const ctx = try realm();
     _ = try evalInt("globalThis.keyGetterRan = 0; 1");
     const object = try eval(
@@ -341,6 +360,7 @@ test "enumerableOwnPropertyKeys: own enumerable String keys in property order, n
 }
 
 test "enumerableOwnPropertyKeys: a Proxy is asked ownKeys, then getOwnPropertyDescriptor for String keys only" {
+    defer test_agent.close();
     const ctx = try realm();
     const proxy = try eval(
         \\(() => {

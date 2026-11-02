@@ -1,6 +1,7 @@
 //! CSSOM 6.2 add/remove/enable-sheet semantics through public DOM properties.
 //! Q13/Q24: preferred addition order and actual disabled flags share one state.
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
@@ -29,8 +30,10 @@ const Host = struct {
 fn script(source: []const u8) !void {
     try engine.initializeEngine(.{});
     interfaces.process_hooks.startHooksForTest();
-    runtime.initializeRuntime(a);
-    defer runtime.deinitializeRuntime();
+    // A standalone runtime of this test's own, the process's given back
+    // after (test_process.OwnRuntime).
+    const own_runtime = test_process.OwnRuntime.begin(a);
+    defer own_runtime.end();
     var scope = runtime.BrowserScope.init(a);
     defer scope.deinit();
     const hooks: engine.HostHooks = .{};

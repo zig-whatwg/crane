@@ -9,31 +9,40 @@
 //! protocol's own copies (e0204d2ff).
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 const conv = v8.conversions;
 
-/// One isolate and context for the file; V8 is never torn down here.
-var isolate_once: ?*ffi.Isolate = null;
-var context_once: ?*ffi.Context = null;
+/// The test's isolate and context: its own agent's (test_agent), ended with
+/// the test.
+var test_isolate: ?*ffi.Isolate = null;
+var test_context: ?*ffi.Context = null;
+
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+    test_context = null;
+}
 
 fn setUp() !struct { isolate: *ffi.Isolate, context: *ffi.Context } {
-    if (isolate_once) |i| return .{ .isolate = i, .context = context_once.? };
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    isolate_once = i;
-    context_once = context;
-    return .{ .isolate = i, .context = context };
+    const i = try test_agent.open(.{});
+    if (test_isolate == null) {
+        const context = test_agent.context.?;
+        test_isolate = i;
+        test_context = context;
+    }
+    return .{ .isolate = test_isolate.?, .context = test_context.? };
 }
 
 /// Whether `value` is the string script writes as `literal`.
 fn isScriptString(value: *ffi.Value, literal: []const u8) !bool {
-    const i = isolate_once.?;
-    const context = context_once.?;
+    const i = test_isolate.?;
+    const context = test_context.?;
     const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
     defer ffi.v8_Object_Dispose(global);
     const key = ffi.v8_String_NewFromUtf8(i, "converted", 9) orelse return error.StringFailed;
@@ -68,6 +77,7 @@ fn expectArrives(value: *ffi.Value, case: @TypeOf(cases[0]), path: []const u8) !
 }
 
 test "an `any` string an impl returns keeps its lone surrogates" {
+    defer test_agent.close();
     const env = try setUp();
     for (cases) |case| {
         const value = try conv.toV8Value(runtime.JSValue, env.isolate, env.context, runtime.JSValue.fromStringRef(case.wtf8));
@@ -77,6 +87,7 @@ test "an `any` string an impl returns keeps its lone surrogates" {
 }
 
 test "a DOMString an impl returns keeps its lone surrogates" {
+    defer test_agent.close();
     const env = try setUp();
     for (cases) |case| {
         const string = conv.toV8String(env.isolate, runtime.DOMString.initInterned(case.wtf8));
@@ -86,6 +97,7 @@ test "a DOMString an impl returns keeps its lone surrogates" {
 }
 
 test "a string slice an impl returns keeps its lone surrogates" {
+    defer test_agent.close();
     const env = try setUp();
     for (cases) |case| {
         const value = try conv.toV8Value([]const u8, env.isolate, env.context, case.wtf8);
@@ -95,6 +107,7 @@ test "a string slice an impl returns keeps its lone surrogates" {
 }
 
 test "the V8 adapter's own JSValue string keeps its lone surrogates" {
+    defer test_agent.close();
     const env = try setUp();
     for (cases) |case| {
         const value = conv.JSValue.fromStringRef(case.wtf8).toV8(env.isolate);
@@ -104,6 +117,7 @@ test "the V8 adapter's own JSValue string keeps its lone surrogates" {
 }
 
 test "creating a string value keeps its lone surrogates" {
+    defer test_agent.close();
     const env = try setUp();
     for (cases) |case| {
         const value = try conv.createV8String(env.isolate, case.wtf8);

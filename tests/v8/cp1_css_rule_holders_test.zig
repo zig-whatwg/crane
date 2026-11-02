@@ -2,6 +2,7 @@
 //! Every body has its own thread and leak-checked Window realm, as the
 //! existing tests/v8 style_engine and bf1 engine-task tests do.
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
@@ -45,8 +46,10 @@ const Case = enum { nested_style, container_parent, scope_parent, conditions };
 
 fn exercise(comptime case: Case) !void {
     try engine.initializeEngine(.{});
-    runtime.initializeRuntime(std.testing.allocator);
-    defer runtime.deinitializeRuntime();
+    // A standalone runtime of this test's own, the process's given back
+    // after (test_process.OwnRuntime).
+    const own_runtime = test_process.OwnRuntime.begin(std.testing.allocator);
+    defer own_runtime.end();
     interfaces.process_hooks.startHooksForTest();
     const hooks: engine.HostHooks = .{};
     const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &hooks, .allocator = std.testing.allocator });

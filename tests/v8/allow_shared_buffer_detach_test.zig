@@ -19,43 +19,50 @@
 //! with 'Z' so that a stale read shows itself in the result.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
 const ffi = v8.ffi;
 
-var isolate_once: ?*ffi.Isolate = null;
-var context_once: ?*ffi.Context = null;
-var realm_once: ?runtime.Context = null;
+var test_isolate: ?*ffi.Isolate = null;
+var test_context: ?*ffi.Context = null;
+var test_realm: ?runtime.Context = null;
 
-/// One isolate and realm for the file, registered with the context manager
-/// as a page's is, every interface installed; V8 is never torn down here.
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+    test_context = null;
+    test_realm = null;
+}
+
+/// The test's isolate and realm - its own agent's (test_agent), ended with
+/// the test - registered with the context manager as a page's is, every
+/// interface installed.
 fn realm() !runtime.Context {
-    if (realm_once) |r| return r;
-    try engine.initializeEngine(.{});
-    interfaces.process_hooks.startHooksForTest();
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    v8.context_manager.init(std.heap.page_allocator) catch {};
-    const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-    runtime.initializeRuntime(std.heap.page_allocator);
-    v8.interface_bindings.registerAllInterfaces(i, context);
-    isolate_once = i;
-    context_once = context;
-    realm_once = r;
-    return r;
+    const i = try test_agent.open(.{});
+    if (test_realm == null) {
+        const context = test_agent.context.?;
+        v8.context_manager.init(std.heap.page_allocator) catch {};
+        const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+        v8.interface_bindings.registerAllInterfaces(i, context);
+        test_isolate = i;
+        test_context = context;
+        test_realm = r;
+    }
+    return test_realm.?;
 }
 
 /// The string `code` evaluates to, OWNED by the testing allocator; a
 /// thrown exception is error.Threw.
 fn evalString(code: []const u8) ![]u8 {
     _ = try realm();
-    const isolate = isolate_once.?;
-    const context = context_once.?;
+    const isolate = test_isolate.?;
+    const context = test_context.?;
     const text = ffi.v8_String_NewFromUtf8(isolate, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(text);
     const script = ffi.v8_Script_Compile(context, text) orelse return error.CompileFailed;
@@ -90,6 +97,7 @@ fn expectResult(what: []const u8, code: []const u8, expected: []const u8) !void 
 // buffer the same size and fills it with 'Z': a read of the freed store
 // tends to find that, rather than the input's '*'.
 test "decode() of a typed array its options getter detaches reads no bytes" {
+    defer test_agent.close();
     try expectResult("typed array detached by the options getter",
         \\(() => {
         \\  const decoder = new TextDecoder();
@@ -107,6 +115,7 @@ test "decode() of a typed array its options getter detaches reads no bytes" {
 }
 
 test "decode() of an ArrayBuffer its options getter detaches reads no bytes" {
+    defer test_agent.close();
     try expectResult("ArrayBuffer detached by the options getter",
         \\(() => {
         \\  const decoder = new TextDecoder();
@@ -118,6 +127,7 @@ test "decode() of an ArrayBuffer its options getter detaches reads no bytes" {
 }
 
 test "decode() of a DataView its options getter detaches reads no bytes" {
+    defer test_agent.close();
     try expectResult("DataView detached by the options getter",
         \\(() => {
         \\  const decoder = new TextDecoder();
@@ -131,6 +141,7 @@ test "decode() of a DataView its options getter detaches reads no bytes" {
 // A getter that writes into the input instead: step 3's copy is of the
 // bytes as they are then.
 test "decode() reads the input as the options getter left it" {
+    defer test_agent.close();
     try expectResult("input altered by the options getter",
         \\(() => {
         \\  const decoder = new TextDecoder();
@@ -144,6 +155,7 @@ test "decode() reads the input as the options getter left it" {
 // A transfer that MOVES the bytes elsewhere (transfer() with no length keeps
 // them in the new buffer): the input's own buffer is still detached.
 test "decode() of a buffer transferred away keeps none of its bytes" {
+    defer test_agent.close();
     try expectResult("buffer transferred away by the options getter",
         \\(() => {
         \\  const decoder = new TextDecoder();
@@ -157,6 +169,7 @@ test "decode() of a buffer transferred away keeps none of its bytes" {
 // The streaming path: a detached input pushes nothing, and what an earlier
 // call left pending is still decoded.
 test "a streaming decode() keeps its pending bytes when the next input is detached" {
+    defer test_agent.close();
     try expectResult("streaming input detached by the options getter",
         \\(() => {
         \\  const decoder = new TextDecoder();

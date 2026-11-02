@@ -3,34 +3,42 @@
 //! host installs its timers with, and checks a timer's handler with.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 
-var isolate_once: ?*ffi.Isolate = null;
-var context_once: ?*ffi.Context = null;
-var data_once: ?*runtime.ContextData = null;
+var test_isolate: ?*ffi.Isolate = null;
+var test_context: ?*ffi.Context = null;
+var test_data: ?*runtime.ContextData = null;
+
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+    test_context = null;
+    test_data = null;
+}
 
 fn realm() !runtime.Context {
-    if (data_once) |d| return d;
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    const data = try std.heap.page_allocator.create(runtime.ContextData);
-    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
-    data.agent = @ptrCast(i);
-    isolate_once = i;
-    context_once = context;
-    data_once = data;
-    return data;
+    const i = try test_agent.open(.{});
+    if (test_data == null) {
+        ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
+        const context = test_agent.context.?;
+        const data = try test_agent.contextData(std.heap.page_allocator, .{ .engine_ctx = context });
+        data.agent = @ptrCast(i);
+        test_isolate = i;
+        test_context = context;
+        test_data = data;
+    }
+    return test_data.?;
 }
 
 fn eval(code: []const u8) !*ffi.Value {
-    const context = context_once.?;
-    const text = ffi.v8_String_NewFromUtf8(isolate_once.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
+    const context = test_context.?;
+    const text = ffi.v8_String_NewFromUtf8(test_isolate.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(text);
     const script = ffi.v8_Script_Compile(context, text) orelse return error.CompileFailed;
     defer ffi.v8_Script_Dispose(script);
@@ -40,7 +48,7 @@ fn eval(code: []const u8) !*ffi.Value {
 fn evalInt(code: []const u8) !i32 {
     const value = try eval(code);
     defer ffi.v8_Value_Dispose(value);
-    return ffi.v8_Value_Int32Value(value, context_once.?);
+    return ffi.v8_Value_Int32Value(value, test_context.?);
 }
 
 fn asValue(handle: *ffi.Value) runtime.JSValue {
@@ -77,6 +85,7 @@ var recorder: Recorder = .{};
 var recorder_function: runtime.BuiltinFunction = .{ .steps = Recorder.steps, .data = &recorder };
 
 test "a built-in is an own property of the global, with its length, and sees its arguments" {
+    defer test_agent.close();
     const ctx = try realm();
     try v8.worker_realm.defineBuiltinFunction(ctx, "record", 2, &recorder_function);
     try std.testing.expectEqual(@as(i32, 1), try evalInt("Object.getOwnPropertyDescriptor(globalThis, 'record').writable && record.length === 2 ? 1 : 0"));
@@ -99,12 +108,14 @@ fn failing(_: ?*anyopaque, _: []const runtime.JSValue) runtime.EngineError!runti
 var failing_function: runtime.BuiltinFunction = .{ .steps = failing, .data = null };
 
 test "an error from a built-in's steps is thrown as WebIDL throws an impl's" {
+    defer test_agent.close();
     const ctx = try realm();
     try v8.worker_realm.defineBuiltinFunction(ctx, "fails", 0, &failing_function);
     try std.testing.expectEqual(@as(i32, 1), try evalInt("(() => { try { fails(); } catch (e) { return e instanceof TypeError ? 1 : 0; } return -1; })()"));
 }
 
 test "isCallable" {
+    defer test_agent.close();
     _ = try realm();
     const function = try eval("(() => 1)");
     defer ffi.v8_Value_Dispose(function);
@@ -116,15 +127,16 @@ test "isCallable" {
 }
 
 test "isCallable of an argument as the binding hands it over" {
+    defer test_agent.close();
     _ = try realm();
     // conversions.fromV8Value's runtime.JSValue branch: a borrowed `.handle`
     // whose pointer is the argument's Global<Value>.
     const function = try eval("(function () {})");
     defer ffi.v8_Value_Dispose(function);
-    const argument = try v8.conversions.fromV8Value(runtime.JSValue, std.testing.allocator, isolate_once.?, context_once.?, function);
+    const argument = try v8.conversions.fromV8Value(runtime.JSValue, std.testing.allocator, test_isolate.?, test_context.?, function);
     try std.testing.expect(v8.worker_realm.isCallable(argument));
     const object = try eval("({ notCallable: true })");
     defer ffi.v8_Value_Dispose(object);
-    const not_callable = try v8.conversions.fromV8Value(runtime.JSValue, std.testing.allocator, isolate_once.?, context_once.?, object);
+    const not_callable = try v8.conversions.fromV8Value(runtime.JSValue, std.testing.allocator, test_isolate.?, test_context.?, object);
     try std.testing.expect(!v8.worker_realm.isCallable(not_callable));
 }

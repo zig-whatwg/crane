@@ -9,6 +9,7 @@
 //! anything outside runtime.streams_graph, the list the wrapper cache also reads.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const interfaces = @import("interfaces");
@@ -23,14 +24,18 @@ test "the wrapper cache reads the runtime's streams graph" {
 }
 
 test "Realm.wrap refuses an AbortController - its wrapper is weak, so it is held with clone" {
+    test_process.start();
+    // The isolate is never disposed (its realm stays the context manager's),
+    // but it is the current isolate only while this test runs.
     const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
     ffi.v8_Isolate_Enter(isolate);
+    defer ffi.v8_Isolate_Exit(isolate);
     _ = ffi.v8_HandleScope_New(isolate);
     const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
     ffi.v8_Context_Enter(context);
+    defer ffi.v8_Context_Exit(context);
     v8.context_manager.init(std.heap.page_allocator) catch {};
     const realm_ctx = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-    runtime.initializeRuntime(std.heap.page_allocator);
 
     const controller = try interfaces.AbortController.call_constructor(realm_ctx);
     const realm = try js.Realm.of(controller);

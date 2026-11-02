@@ -8,40 +8,55 @@
 //! objects handed across as engine-neutral data.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 
 const allocator = std.testing.allocator;
 
-/// Two realms in one isolate - sender and receiver - for the whole file.
-var isolate_once: ?*ffi.Isolate = null;
+/// Two realms in one isolate - sender and receiver - for the test: its own
+/// agent's (test_agent), ended with it.
+var test_isolate: ?*ffi.Isolate = null;
 var contexts: [2]*ffi.Context = undefined;
 var realms: [2]*runtime.ContextData = undefined;
 var ready = false;
 
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+    ready = false;
+}
+
 fn setup() !void {
-    if (ready) return;
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
-    _ = ffi.v8_HandleScope_New(i);
-    for (&contexts, &realms) |*context, *data| {
-        context.* = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-        const r = try runtime.Realm.init(std.heap.page_allocator, .{ .engine_realm = context.*, .agent = @ptrCast(i) });
-        const d = try std.heap.page_allocator.create(runtime.ContextData);
-        d.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context.*, .realm = r });
-        data.* = d;
+    const i = try test_agent.open(.{ .context = false });
+    if (!ready) {
+        ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
+        for (&contexts, &realms) |*context, *data| {
+            context.* = try test_agent.newContext();
+            const r = try test_agent.realmRecord(std.heap.page_allocator, .{ .engine_realm = context.*, .agent = @ptrCast(i) });
+            data.* = try test_agent.contextData(std.heap.page_allocator, .{ .engine_ctx = context.*, .realm = r });
+        }
+        ffi.v8_Context_Enter(contexts[0]);
+        test_agent.endWith(.{ .call = .{ .call = exitFirst, .data = null } });
+        test_isolate = i;
+        ready = true;
     }
-    ffi.v8_Context_Enter(contexts[0]);
-    isolate_once = i;
-    ready = true;
+}
+
+/// The sender's context leaves the entered stack before the contexts are
+/// disposed.
+fn exitFirst(_: ?*anyopaque) void {
+    ffi.v8_Context_Exit(contexts[0]);
 }
 
 /// `code`'s completion value in realm `which`: an owned Global.
 fn eval(which: usize, code: []const u8) !*ffi.Value {
     const context = contexts[which];
-    const text = ffi.v8_String_NewFromUtf8(isolate_once.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
+    const text = ffi.v8_String_NewFromUtf8(test_isolate.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(text);
     const script = ffi.v8_Script_Compile(context, text) orelse return error.CompileFailed;
     defer ffi.v8_Script_Dispose(script);
@@ -58,7 +73,7 @@ fn setGlobal(which: usize, name: []const u8, handle: *anyopaque) !void {
     const context = contexts[which];
     const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
     defer ffi.v8_Object_Dispose(global);
-    const key = ffi.v8_String_NewFromUtf8(isolate_once.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
+    const key = ffi.v8_String_NewFromUtf8(test_isolate.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(key);
     _ = ffi.v8_Object_Set(global, context, @ptrCast(key), @ptrCast(@alignCast(handle)));
 }
@@ -75,7 +90,7 @@ var mock_ports: [2]runtime.Instance = undefined;
 
 fn installPorts() !void {
     const context = contexts[0];
-    const template = ffi.v8_ObjectTemplate_New(isolate_once.?);
+    const template = ffi.v8_ObjectTemplate_New(test_isolate.?);
     defer ffi.v8_ObjectTemplate_Dispose(template);
     ffi.v8_ObjectTemplate_SetInternalFieldCount(template, 2);
     for (&mock_ports, [_][]const u8{ "p", "q" }) |*instance, name| {
@@ -122,6 +137,7 @@ const List = struct {
 // ----------------------------------------------------------------------------
 
 test "a sequence of objects is each item's own handle, in order" {
+    defer test_agent.close();
     try setup();
     const list = try List.of("globalThis.o1 = {}; globalThis.o2 = []; [o1, o2]");
     defer list.deinit();
@@ -132,6 +148,7 @@ test "a sequence of objects is each item's own handle, in order" {
 }
 
 test "a non-object item or a non-iterable is a TypeError" {
+    defer test_agent.close();
     try setup();
     const mixed = try eval(0, "[{}, 1]");
     defer ffi.v8_Value_Dispose(mixed);
@@ -144,6 +161,7 @@ test "a non-object item or a non-iterable is a TypeError" {
 // ----------------------------------------------------------------------------
 
 test "a frozen array holds each platform object's wrapper, and is frozen" {
+    defer test_agent.close();
     try setup();
     try installPorts();
     // The mock instances have no wrapper cache: the array made of none is
@@ -162,6 +180,7 @@ test "a frozen array holds each platform object's wrapper, and is frozen" {
 // ----------------------------------------------------------------------------
 
 test "a value round-trips into a second realm, and its transferred buffer moves" {
+    defer test_agent.close();
     try setup();
     const value = try eval(0, "globalThis.buf = new Uint8Array([1, 2, 3]).buffer; ({ a: 1, s: 'x', buf })");
     defer ffi.v8_Value_Dispose(value);
@@ -187,6 +206,7 @@ test "a value round-trips into a second realm, and its transferred buffer moves"
 }
 
 test "primitives serialize too" {
+    defer test_agent.close();
     try setup();
     const empty: []const runtime.JSValue = &.{};
     var number = try v8.structured_serialization.structuredSerializeWithTransfer(realms[0], .{ .number = 42 }, empty, checkPorts, null, allocator);
@@ -198,6 +218,7 @@ test "primitives serialize too" {
 }
 
 test "a duplicate or detached buffer, and a non-transferable entry, are DataCloneErrors" {
+    defer test_agent.close();
     try setup();
     try installPorts();
     const value = try eval(0, "globalThis.d = new ArrayBuffer(4); globalThis.gone = new ArrayBuffer(4); gone.transfer(); 1");
@@ -219,6 +240,7 @@ test "a duplicate or detached buffer, and a non-transferable entry, are DataClon
 }
 
 test "a transferable platform object is handed back, asked about with the caller's data" {
+    defer test_agent.close();
     try setup();
     try installPorts();
     var marker: u8 = 0;
@@ -248,7 +270,7 @@ fn serializeArgument(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     const empty: []const runtime.JSValue = &.{};
     // As an impl gets it: the binding's form of the argument (an object is a
     // borrowed `.handle` whose pointer is the argument's Global).
-    var value = v8.conversions.fromV8Value(runtime.JSValue, allocator, isolate_once.?, contexts[0], argument) catch return;
+    var value = v8.conversions.fromV8Value(runtime.JSValue, allocator, test_isolate.?, contexts[0], argument) catch return;
     defer value.deinit(allocator);
     const result: f64 = if (v8.structured_serialization.structuredSerializeWithTransfer(realms[0], value, empty, checkPorts, null, allocator)) |r| blk: {
         var owned = r;
@@ -264,9 +286,10 @@ fn serializeArgument(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
 }
 
 test "what serialization throws - a getter, a DataCloneError DOMException - is pending for the script" {
+    defer test_agent.close();
     try setup();
     const context = contexts[0];
-    const template = ffi.v8_FunctionTemplate_New(isolate_once.?, serializeArgument, null) orelse return error.TemplateFailed;
+    const template = ffi.v8_FunctionTemplate_New(test_isolate.?, serializeArgument, null) orelse return error.TemplateFailed;
     defer ffi.v8_FunctionTemplate_Dispose(template);
     const function = ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return error.FunctionFailed;
     defer ffi.v8_Function_Dispose(function);
@@ -288,6 +311,7 @@ test "what serialization throws - a getter, a DataCloneError DOMException - is p
 }
 
 test "bytes that do not deserialize are a DataCloneError" {
+    defer test_agent.close();
     try setup();
     try std.testing.expectError(error.DataCloneError, v8.structured_serialization.structuredDeserializeWithTransfer(realms[1], "not serialized", &.{}, &.{}));
 }

@@ -19,6 +19,7 @@
 //! (docs/lessons/testing-a-counter-that-drifts-per-call-hides-a-leak-per-call.md).
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const engine = @import("engine");
@@ -32,12 +33,14 @@ const copied = v8.interface_mod.argHandleIsCopied;
 const OptionsShaped = struct { transfer: ?[]const runtime.JSValue = null };
 
 test "a dictionary whose member is a sequence of member-safe elements is copied" {
+    defer test_agent.close();
     try std.testing.expect(copied(OptionsShaped));
     try std.testing.expect(copied(webidl.Opt(OptionsShaped)));
     try std.testing.expect(copied(struct { names: ?[]const runtime.DOMString = null, objects: []const runtime.JSValue = &.{} }));
 }
 
 test "a dictionary with a sequence of itself is walked once: the rest of its members decide" {
+    defer test_agent.close();
     // AuctionAdConfig.componentAuctions, HIDCollectionInfo.children. Once a
     // sequence<any> member let the walk go on past the members before it, the
     // self-reference recursed forever (the bindings stopped compiling).
@@ -55,6 +58,7 @@ test "a dictionary with a sequence of itself is walked once: the rest of its mem
 }
 
 test "a sequence of unknown pointers still keeps the dictionary's handle" {
+    defer test_agent.close();
     // The default stays the safe one: an element type nothing names.
     try std.testing.expect(!copied(struct { items: ?[]const *anyopaque = null }));
     try std.testing.expect(!copied(struct { nested: ?[]const []const *anyopaque = null }));
@@ -62,35 +66,41 @@ test "a sequence of unknown pointers still keeps the dictionary's handle" {
     try std.testing.expect(!copied([]const runtime.JSValue));
 }
 
-var isolate_once: ?*ffi.Isolate = null;
-var context_once: ?*ffi.Context = null;
-var realm_once: ?runtime.Context = null;
+var test_isolate: ?*ffi.Isolate = null;
+var test_context: ?*ffi.Context = null;
+var test_realm: ?runtime.Context = null;
 
-/// One isolate and realm for the file, registered with the context manager
-/// as a page's is, every interface installed and the probe on the global.
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+    test_context = null;
+    test_realm = null;
+}
+
+/// The test's isolate and realm - its own agent's (test_agent), ended with
+/// the test - registered with the context manager as a page's is, every
+/// interface installed and the probe on the global.
 fn realm() !runtime.Context {
-    if (realm_once) |r| return r;
-    try engine.initializeEngine(.{});
-    interfaces.process_hooks.startHooksForTest();
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    v8.context_manager.init(std.heap.page_allocator) catch {};
-    const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-    runtime.initializeRuntime(std.heap.page_allocator);
-    v8.interface_bindings.registerAllInterfaces(i, context);
-    v8.V8Interface(Probe).registerGlobal(i, context, Probe.Meta.name);
-    isolate_once = i;
-    context_once = context;
-    realm_once = r;
-    return r;
+    const i = try test_agent.open(.{});
+    if (test_realm == null) {
+        const context = test_agent.context.?;
+        v8.context_manager.init(std.heap.page_allocator) catch {};
+        const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+        v8.interface_bindings.registerAllInterfaces(i, context);
+        v8.V8Interface(Probe).registerGlobal(i, context, Probe.Meta.name);
+        test_isolate = i;
+        test_context = context;
+        test_realm = r;
+    }
+    return test_realm.?;
 }
 
 fn eval(code: []const u8) !*ffi.Value {
-    const context = context_once.?;
-    const text = ffi.v8_String_NewFromUtf8(isolate_once.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
+    const context = test_context.?;
+    const text = ffi.v8_String_NewFromUtf8(test_isolate.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(text);
     const script = ffi.v8_Script_Compile(context, text) orelse return error.CompileFailed;
     defer ffi.v8_Script_Dispose(script);
@@ -100,12 +110,12 @@ fn eval(code: []const u8) !*ffi.Value {
 fn evalInt(code: []const u8) !i32 {
     const value = try eval(code);
     defer ffi.v8_Value_Dispose(value);
-    return ffi.v8_Value_Int32Value(value, context_once.?);
+    return ffi.v8_Value_Int32Value(value, test_context.?);
 }
 
 /// V8's global handle bytes left by 64 runs of `body`, after a collection.
 fn handleBytesLeftBy(comptime body: []const u8) !i64 {
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     _ = try evalInt("(() => { for (let i = 0; i < 2; i++) { " ++ body ++ " } return 0 })()");
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
     const before: i64 = @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate));
@@ -115,7 +125,7 @@ fn handleBytesLeftBy(comptime body: []const u8) !i64 {
 }
 
 fn oneHandleBytes() i64 {
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
     const one = ffi.v8_Number_New(isolate, 1);
     const with_one = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
@@ -174,11 +184,13 @@ const InterceptShaped = struct {
 };
 
 test "a dictionary whose members are callback functions is copied" {
+    defer test_agent.close();
     try std.testing.expect(copied(InterceptShaped));
     try std.testing.expect(copied(webidl.Opt(InterceptShaped)));
 }
 
 test "an operation's dictionary argument with callback members leaves no handle per call" {
+    defer test_agent.close();
     // NavigateEvent.intercept({handler}) kept two Globals per call (Codex
     // row 55, navigation-api/navigate-event/intercept-resolve.html): the
     // dictionary's own - its callback members made the dictionary rule
@@ -202,6 +214,7 @@ test "an operation's dictionary argument with callback members leaves no handle 
 }
 
 test "a dictionary argument with a sequence member leaves no handle per call" {
+    defer test_agent.close();
     _ = try realm();
     const control = try handleBytesLeftBy("BceDictionaryProbe.take('x');");
     const with_options = try handleBytesLeftBy("BceDictionaryProbe.take('x', {});");
@@ -213,6 +226,7 @@ test "a dictionary argument with a sequence member leaves no handle per call" {
 }
 
 test "MessagePort.postMessage(message, options) - its second overload, reached through overload resolution - leaves no handle per call" {
+    defer test_agent.close();
     _ = try realm();
     _ = try evalInt("globalThis.channel = new MessageChannel(); 0");
     const control = try handleBytesLeftBy("channel.port1.postMessage('x', []);");

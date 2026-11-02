@@ -17,42 +17,51 @@
 //! with arguments whose handles are copied out.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
 const ffi = v8.ffi;
 
-var isolate_once: ?*ffi.Isolate = null;
-var context_once: ?*ffi.Context = null;
-var realm_once: ?runtime.Context = null;
+var test_isolate: ?*ffi.Isolate = null;
+var test_context: ?*ffi.Context = null;
+var test_realm: ?runtime.Context = null;
 
-/// One isolate and realm for the file, registered with the context manager
-/// as a page's is, every interface installed; V8 is never torn down here.
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+    test_context = null;
+    test_realm = null;
+    crypto_exposed = false;
+    subtle_exposed = false;
+}
+
+/// The test's isolate and realm - its own agent's (test_agent), ended with
+/// the test - registered with the context manager as a page's is, every
+/// interface installed.
 fn realm() !runtime.Context {
-    if (realm_once) |r| return r;
-    try engine.initializeEngine(.{});
-    interfaces.process_hooks.startHooksForTest();
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    v8.context_manager.init(std.heap.page_allocator) catch {};
-    const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
-    runtime.initializeRuntime(std.heap.page_allocator);
-    v8.interface_bindings.registerAllInterfaces(i, context);
-    isolate_once = i;
-    context_once = context;
-    realm_once = r;
-    return r;
+    const i = try test_agent.open(.{});
+    if (test_realm == null) {
+        const context = test_agent.context.?;
+        v8.context_manager.init(std.heap.page_allocator) catch {};
+        const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+        v8.interface_bindings.registerAllInterfaces(i, context);
+        test_isolate = i;
+        test_context = context;
+        test_realm = r;
+    }
+    return test_realm.?;
 }
 
 /// The value `code` evaluates to: a Global the caller disposes, made the way
 /// the binding's `info.get(i)` makes an argument's.
 fn eval(code: []const u8) !*ffi.Value {
-    const context = context_once.?;
-    const text = ffi.v8_String_NewFromUtf8(isolate_once.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
+    const context = test_context.?;
+    const text = ffi.v8_String_NewFromUtf8(test_isolate.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(text);
     const script = ffi.v8_Script_Compile(context, text) orelse return error.CompileFailed;
     defer ffi.v8_Script_Dispose(script);
@@ -62,24 +71,24 @@ fn eval(code: []const u8) !*ffi.Value {
 fn evalInt(code: []const u8) !i32 {
     const value = try eval(code);
     defer ffi.v8_Value_Dispose(value);
-    return ffi.v8_Value_Int32Value(value, context_once.?);
+    return ffi.v8_Value_Int32Value(value, test_context.?);
 }
 
 fn setGlobal(name: []const u8, value: *ffi.Value) !void {
-    const context = context_once.?;
+    const context = test_context.?;
     const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
     defer ffi.v8_Object_Dispose(global);
-    const key = ffi.v8_String_NewFromUtf8(isolate_once.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
+    const key = ffi.v8_String_NewFromUtf8(test_isolate.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(key);
     if (!ffi.v8_Object_Set(global, context, @ptrCast(key), value)) return error.SetFailed;
 }
 
-/// A platform object of `Interface`, made in the file's realm and reachable
+/// A platform object of `Interface`, made in the test's realm and reachable
 /// from script as `globalThis[name]`. Its wrapper is the wrapper cache's.
 fn exposeInstance(comptime Interface: type, name: []const u8) !void {
     const r = try realm();
     const instance = try Interface.init(std.heap.page_allocator, r);
-    try setGlobal(name, v8.conversions.instanceToV8(isolate_once.?, instance));
+    try setGlobal(name, v8.conversions.instanceToV8(test_isolate.?, instance));
 }
 
 var crypto_exposed = false;
@@ -103,7 +112,7 @@ fn subtleObject() !void {
 /// Two runs first, so that what the first call makes and later ones reuse
 /// is not counted.
 fn handleBytesLeftBy(comptime body: []const u8) !i64 {
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     const loop = "(() => { for (let i = 0; i < {N}; i++) { " ++ body ++ " } return 0 })()";
     _ = try evalInt(comptime replaceN(loop, "2"));
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
@@ -120,7 +129,7 @@ fn replaceN(comptime loop: []const u8, comptime n: []const u8) []const u8 {
 
 /// What one Global costs in V8's count.
 fn oneHandleBytes() i64 {
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
     const one = ffi.v8_Number_New(isolate, 1);
     const with_one = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
@@ -145,6 +154,7 @@ fn expectNoMoreThanControl(comptime what: []const u8, comptime body: []const u8,
 // ---------------------------------------------------------------------------
 
 test "an ArrayBufferView argument leaves no handle once the call returns" {
+    defer test_agent.close();
     try cryptoObject();
     // Crypto.getRandomValues(ArrayBufferView): converted, the call made (the
     // impl's answer does not matter here), the argument released. The
@@ -157,6 +167,7 @@ test "an ArrayBufferView argument leaves no handle once the call returns" {
 }
 
 test "a BufferSource argument leaves no handle once the call returns" {
+    defer test_agent.close();
     try subtleObject();
     // SubtleCrypto.digest(AlgorithmIdentifier, BufferSource), a typed array
     // and an ArrayBuffer. The control rejects the same way, on arguments
@@ -174,6 +185,7 @@ test "a BufferSource argument leaves no handle once the call returns" {
 }
 
 test "an argument that is not a BufferSource leaves no handle either" {
+    defer test_agent.close();
     try subtleObject();
     // A failed conversion made nothing that refers to the argument.
     try expectNoMoreThanControl(
@@ -184,6 +196,7 @@ test "an argument that is not a BufferSource leaves no handle either" {
 }
 
 test "an AllowSharedBufferSource argument leaves no handle once the call returns" {
+    defer test_agent.close();
     _ = try realm();
     // TextDecoder.decode([AllowSharedBufferSource] input): the conversion is a
     // reference to the object - the argument's Global, kept in the value -
@@ -211,6 +224,7 @@ test "an AllowSharedBufferSource argument leaves no handle once the call returns
 }
 
 test "an object argument for (object or DOMString) leaves no handle once the call returns" {
+    defer test_agent.close();
     try subtleObject();
     try expectNoMoreThanControl(
         "testSubtle.digest({ name: 'SHA-256' }, new Uint8Array(4))",
@@ -231,7 +245,7 @@ const ArrayBufferView = iface.non_owning_arg_types.ArrayBufferView;
 const testing_allocator = std.testing.allocator;
 
 fn toBufferSource(handle: *ffi.Value) !BufferSource {
-    return conv.fromV8Value(BufferSource, testing_allocator, isolate_once.?, context_once.?, handle);
+    return conv.fromV8Value(BufferSource, testing_allocator, test_isolate.?, test_context.?, handle);
 }
 
 /// The bytes a spec copies at its own step, through the reference.
@@ -241,6 +255,7 @@ fn copyOf(source: BufferSource) ![]u8 {
 }
 
 test "a typed array converts to a reference to itself, and a copy taken later sees later bytes" {
+    defer test_agent.close();
     _ = try realm();
     const handle = try eval("globalThis.u8 = new Uint8Array([1, 2, 3, 4]); u8");
     defer ffi.v8_Value_Dispose(handle);
@@ -259,6 +274,7 @@ test "a typed array converts to a reference to itself, and a copy taken later se
 }
 
 test "an ArrayBuffer converts to a reference, and one transferred before the copy reads as empty" {
+    defer test_agent.close();
     _ = try realm();
     const handle = try eval("globalThis.ab = new Uint8Array([5, 6]).buffer; ab");
     defer ffi.v8_Value_Dispose(handle);
@@ -279,6 +295,7 @@ test "an ArrayBuffer converts to a reference, and one transferred before the cop
 }
 
 test "a DataView converts to a view of its own window" {
+    defer test_agent.close();
     _ = try realm();
     const handle = try eval("new DataView(new Uint8Array([1, 2, 3, 4]).buffer, 1, 2)");
     defer ffi.v8_Value_Dispose(handle);
@@ -291,6 +308,7 @@ test "a DataView converts to a view of its own window" {
 }
 
 test "a SharedArrayBuffer, a view over one, and anything not a buffer are TypeErrors" {
+    defer test_agent.close();
     _ = try realm();
     const cases = [_][]const u8{
         "new SharedArrayBuffer(4)",
@@ -314,20 +332,22 @@ test "a SharedArrayBuffer, a view over one, and anything not a buffer are TypeEr
 }
 
 test "an ArrayBufferView converts to a reference to itself, and an ArrayBuffer is no view" {
+    defer test_agent.close();
     _ = try realm();
     const handle = try eval("new Int16Array([1, 2, 3])");
     defer ffi.v8_Value_Dispose(handle);
-    const view = try conv.fromV8Value(ArrayBufferView, testing_allocator, isolate_once.?, context_once.?, handle);
+    const view = try conv.fromV8Value(ArrayBufferView, testing_allocator, test_isolate.?, test_context.?, handle);
     try std.testing.expect(view == .int16_array);
     try std.testing.expectEqual(@as(?*anyopaque, @ptrCast(handle)), view.jsHandle());
     try std.testing.expectEqual(@as(?usize, 3), view.getArrayLength());
 
     const buffer = try eval("new ArrayBuffer(4)");
     defer ffi.v8_Value_Dispose(buffer);
-    try std.testing.expectError(error.TypeError, conv.fromV8Value(ArrayBufferView, testing_allocator, isolate_once.?, context_once.?, buffer));
+    try std.testing.expectError(error.TypeError, conv.fromV8Value(ArrayBufferView, testing_allocator, test_isolate.?, test_context.?, buffer));
 }
 
 test "a view result can be pointed at a hold of its own" {
+    defer test_agent.close();
     var buffer = ArrayBufferViewBuffer{};
     const view = ArrayBufferView.fromEngine(1, 0, 4, @ptrCast(&buffer.a)).?;
     const moved = view.withJsHandle(@ptrCast(&buffer.b));
@@ -339,13 +359,14 @@ test "a view result can be pointed at a hold of its own" {
 const ArrayBufferViewBuffer = struct { a: u64 = 0, b: u64 = 0 };
 
 test "an (object or DOMString) union takes any Object as a reference, and everything else as a string" {
+    defer test_agent.close();
     _ = try realm();
     const AlgorithmIdentifier = typedefs.AlgorithmIdentifier;
     const objects = [_][]const u8{ "({ name: 'SHA-256' })", "[1]", "(function () {})", "new Uint8Array(1)", "new String('s')" };
     for (objects) |code| {
         const handle = try eval(code);
         defer ffi.v8_Value_Dispose(handle);
-        const value = try conv.fromV8Value(AlgorithmIdentifier, testing_allocator, isolate_once.?, context_once.?, handle);
+        const value = try conv.fromV8Value(AlgorithmIdentifier, testing_allocator, test_isolate.?, test_context.?, handle);
         try std.testing.expect(value == .object);
         try std.testing.expectEqual(@as(*anyopaque, @ptrCast(handle)), value.object.handle.ptr);
     }
@@ -357,7 +378,7 @@ test "an (object or DOMString) union takes any Object as a reference, and everyt
     for (strings) |case| {
         const handle = try eval(case.code);
         defer ffi.v8_Value_Dispose(handle);
-        var value = try conv.fromV8Value(AlgorithmIdentifier, testing_allocator, isolate_once.?, context_once.?, handle);
+        var value = try conv.fromV8Value(AlgorithmIdentifier, testing_allocator, test_isolate.?, test_context.?, handle);
         try std.testing.expect(value == .domstring);
         defer value.domstring.deinit(testing_allocator);
         try std.testing.expectEqualStrings(case.text, value.domstring.asSlice());
@@ -365,7 +386,7 @@ test "an (object or DOMString) union takes any Object as a reference, and everyt
     // A Symbol is no Object, and ToString throws for it.
     const symbol = try eval("Symbol('s')");
     defer ffi.v8_Value_Dispose(symbol);
-    try std.testing.expectError(error.TypeError, conv.fromV8Value(AlgorithmIdentifier, testing_allocator, isolate_once.?, context_once.?, symbol));
+    try std.testing.expectError(error.TypeError, conv.fromV8Value(AlgorithmIdentifier, testing_allocator, test_isolate.?, test_context.?, symbol));
 }
 
 // ---------------------------------------------------------------------------
@@ -373,6 +394,7 @@ test "an (object or DOMString) union takes any Object as a reference, and everyt
 // ---------------------------------------------------------------------------
 
 test "argumentHandleIsKeptInValue - buffer sources and object arms are decided by their value" {
+    defer test_agent.close();
     const webidl = @import("webidl");
     const kept = iface.argumentHandleIsKeptInValue;
     try std.testing.expect(kept(BufferSource));
@@ -389,6 +411,7 @@ test "argumentHandleIsKeptInValue - buffer sources and object arms are decided b
 }
 
 test "argumentHandleIsKeptInValue - an unknown type, or a JSValue arm not named object, defaults to NO" {
+    defer test_agent.close();
     const kept = iface.argumentHandleIsKeptInValue;
     try std.testing.expect(!kept(runtime.DOMString));
     try std.testing.expect(!kept([]const BufferSource));
@@ -403,6 +426,7 @@ test "argumentHandleIsKeptInValue - an unknown type, or a JSValue arm not named 
 }
 
 test "argHandleIsCopied - a buffer source is a reference, never copied" {
+    defer test_agent.close();
     // Copied would release the argument's handle at conversion, under the
     // reference the impl is about to read.
     try std.testing.expect(!iface.argHandleIsCopied(BufferSource));
@@ -411,6 +435,7 @@ test "argHandleIsCopied - a buffer source is a reference, never copied" {
 }
 
 test "keptArgumentHandle - the handle a value still refers to, or null" {
+    defer test_agent.close();
     const webidl = @import("webidl");
     var slot: u64 = 0;
     const handle: *anyopaque = @ptrCast(&slot);
@@ -425,8 +450,9 @@ test "keptArgumentHandle - the handle a value still refers to, or null" {
 }
 
 test "freeing a converted buffer source releases its reference and its struct" {
+    defer test_agent.close();
     _ = try realm();
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     // V8's live count, before and after 32 conversions freed the binding's
     // way; std.testing.allocator fails the test on an ArrayBuffer struct left.
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
@@ -448,6 +474,7 @@ test "freeing a converted buffer source releases its reference and its struct" {
 // ---------------------------------------------------------------------------
 
 test "a view a getter returns is released once it is the result, and stays the request's" {
+    defer test_agent.close();
     _ = try realm();
     // ReadableStreamBYOBRequest.view returns the request's [[view]]: over a
     // hold of the binding's own (the binding releases every view result), so
@@ -464,7 +491,7 @@ test "a view a getter returns is released once it is the result, and stays the r
         "void byobRequestObject.view.byteLength;",
         "void byobController.desiredSize;",
     );
-    ffi.v8_Isolate_RequestGarbageCollection(isolate_once.?);
+    ffi.v8_Isolate_RequestGarbageCollection(test_isolate.?);
     try std.testing.expectEqual(@as(i32, 1), try evalInt("byobRequestObject.view === byobRequestObject.view && byobRequestObject.view.byteLength === 8 ? 1 : 0"));
 }
 
@@ -473,6 +500,7 @@ test "a view a getter returns is released once it is the result, and stays the r
 // ---------------------------------------------------------------------------
 
 test "argumentHandleIsKeptInValue is false for every type argHandleIsCopied accepts, BodyInit among them" {
+    defer test_agent.close();
     const BodyInit = iface.copied_arg_types.BodyInit;
     // BodyInit's XMLHttpRequestBodyInit arm holds a BufferSource, but
     // convertBodyInit copies the bytes: the type is copied, and must not also
@@ -490,6 +518,7 @@ test "argumentHandleIsKeptInValue is false for every type argHandleIsCopied acce
 }
 
 test "a dictionary with a copied BodyInit member releases its handle once" {
+    defer test_agent.close();
     _ = try realm();
     // RequestInit's `body` (BodyInit, copied) and `signal` (an interface,
     // copied): each member's Get handle is released exactly once. Twice was a
@@ -511,6 +540,7 @@ test "a dictionary with a copied BodyInit member releases its handle once" {
 // ---------------------------------------------------------------------------
 
 test "an object `any` dictionary member is released once the call returns" {
+    defer test_agent.close();
     _ = try realm();
     // Each event takes a hold of its own on an object member, released when
     // the event is collected; the Get handle the conversion made for the
@@ -525,6 +555,7 @@ test "an object `any` dictionary member is released once the call returns" {
 }
 
 test "an event keeps an object member past the call through a hold of its own" {
+    defer test_agent.close();
     _ = try realm();
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
         \\globalThis.keptEvents = [];
@@ -535,10 +566,10 @@ test "an event keeps an object member past the call through a hold of its own" {
         \\}
         \\1
     ));
-    ffi.v8_Isolate_RequestGarbageCollection(isolate_once.?);
+    ffi.v8_Isolate_RequestGarbageCollection(test_isolate.?);
     // Allocate over whatever a freed handle's slot was.
     _ = try evalInt("globalThis.churn = []; for (let i = 0; i < 20000; i++) churn.push({ j: i }); churn = null; 1");
-    ffi.v8_Isolate_RequestGarbageCollection(isolate_once.?);
+    ffi.v8_Isolate_RequestGarbageCollection(test_isolate.?);
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
         \\keptEvents.every(([o, c, e, m, p]) => c.detail === o && e.error === o && m.data === o && p.state === o) ? 1 : 0
     ));
@@ -550,18 +581,19 @@ test "an event keeps an object member past the call through a hold of its own" {
 // ---------------------------------------------------------------------------
 
 test "an object no other arm takes converts to the string arm by ToString" {
+    defer test_agent.close();
     _ = try realm();
     const U = typedefs.CSSOMStringOrBufferSource;
     const object = try eval("({ toString() { return 'url(x)'; } })");
     defer ffi.v8_Value_Dispose(object);
-    var text = try conv.fromV8Value(U, testing_allocator, isolate_once.?, context_once.?, object);
+    var text = try conv.fromV8Value(U, testing_allocator, test_isolate.?, test_context.?, object);
     try std.testing.expect(text == .cssomstring);
     defer text.cssomstring.deinit(testing_allocator);
     try std.testing.expectEqualStrings("url(x)", text.cssomstring.asSlice());
     // A buffer still goes to the buffer source arm, before step 15.
     const buffer = try eval("new ArrayBuffer(2)");
     defer ffi.v8_Value_Dispose(buffer);
-    const source = try conv.fromV8Value(U, testing_allocator, isolate_once.?, context_once.?, buffer);
+    const source = try conv.fromV8Value(U, testing_allocator, test_isolate.?, test_context.?, buffer);
     try std.testing.expect(source == .buffer_source);
     testing_allocator.destroy(source.buffer_source.array_buffer);
 }
@@ -571,6 +603,7 @@ test "an object no other arm takes converts to the string arm by ToString" {
 // ---------------------------------------------------------------------------
 
 test "convertToIntAs [EnforceRange]: NaN, the infinities and out-of-range values are TypeErrors" {
+    defer test_agent.close();
     const enforce = conv.IntegerConversion.enforce_range;
     // unsigned long long: [0, 2^53 - 1], not the type's own range.
     try std.testing.expectError(error.TypeError, conv.convertToIntAs(u64, enforce, -1));
@@ -593,6 +626,7 @@ test "convertToIntAs [EnforceRange]: NaN, the infinities and out-of-range values
 }
 
 test "convertToIntAs [Clamp]: clamped to the range, rounded half to even, NaN is 0" {
+    defer test_agent.close();
     const clamp = conv.IntegerConversion.clamp;
     try std.testing.expectEqual(@as(u8, 255), try conv.convertToIntAs(u8, clamp, 300));
     try std.testing.expectEqual(@as(u8, 0), try conv.convertToIntAs(u8, clamp, -5));
@@ -609,28 +643,30 @@ test "convertToIntAs [Clamp]: clamped to the range, rounded half to even, NaN is
 }
 
 test "fromV8ValueInteger: an optional argument left out is not passed, never a TypeError" {
+    defer test_agent.close();
     _ = try realm();
     const webidl = @import("webidl");
     const Optional = webidl.Opt(u64);
     const undefined_value = try eval("undefined");
     defer ffi.v8_Value_Dispose(undefined_value);
-    const omitted = try conv.fromV8ValueInteger(Optional, .enforce_range, testing_allocator, isolate_once.?, context_once.?, undefined_value);
+    const omitted = try conv.fromV8ValueInteger(Optional, .enforce_range, testing_allocator, test_isolate.?, test_context.?, undefined_value);
     try std.testing.expect(!omitted.was_passed);
     const negative = try eval("-1");
     defer ffi.v8_Value_Dispose(negative);
     // u64 with a negative value: a TypeError, not a wrap and not a panic.
-    try std.testing.expectError(error.TypeError, conv.fromV8ValueInteger(Optional, .enforce_range, testing_allocator, isolate_once.?, context_once.?, negative));
-    try std.testing.expectError(error.TypeError, conv.fromV8ValueInteger(u64, .enforce_range, testing_allocator, isolate_once.?, context_once.?, negative));
+    try std.testing.expectError(error.TypeError, conv.fromV8ValueInteger(Optional, .enforce_range, testing_allocator, test_isolate.?, test_context.?, negative));
+    try std.testing.expectError(error.TypeError, conv.fromV8ValueInteger(u64, .enforce_range, testing_allocator, test_isolate.?, test_context.?, negative));
     const seven = try eval("7.9");
     defer ffi.v8_Value_Dispose(seven);
-    const passed = try conv.fromV8ValueInteger(Optional, .enforce_range, testing_allocator, isolate_once.?, context_once.?, seven);
+    const passed = try conv.fromV8ValueInteger(Optional, .enforce_range, testing_allocator, test_isolate.?, test_context.?, seven);
     try std.testing.expect(passed.was_passed);
     try std.testing.expectEqual(@as(u64, 7), passed.value);
-    const nullable = try conv.fromV8ValueInteger(?u32, .clamp, testing_allocator, isolate_once.?, context_once.?, undefined_value);
+    const nullable = try conv.fromV8ValueInteger(?u32, .clamp, testing_allocator, test_isolate.?, test_context.?, undefined_value);
     try std.testing.expectEqual(@as(?u32, null), nullable);
 }
 
 test "AbortSignal.timeout(-1) through the binding is a TypeError, not a panic" {
+    defer test_agent.close();
     _ = try realm();
     // A static operation with an [EnforceRange] unsigned long long argument:
     // the generated check read the wrapped value through an i64 cast that
@@ -650,12 +686,13 @@ test "AbortSignal.timeout(-1) through the binding is a TypeError, not a panic" {
 // ---------------------------------------------------------------------------
 
 test "a QuotaExceededError the engine makes is the derived interface" {
+    defer test_agent.close();
     _ = try realm();
     // createDOMException's path (newDOMExceptionFromContext) and the
     // binding's error.QuotaExceededError (throwDOMExceptionFromContext) both
     // make one through QuotaExceededError's constructor, whose base is
     // DOMException's (src/dom/dom_exceptions.zig): WebIDL 2.8.3.
-    const made = conv.newDOMExceptionFromContext(isolate_once.?, context_once.?, "QuotaExceededError", "over") orelse return error.NothingMade;
+    const made = conv.newDOMExceptionFromContext(test_isolate.?, test_context.?, "QuotaExceededError", "over") orelse return error.NothingMade;
     defer ffi.v8_Value_Dispose(made);
     try setGlobal("quotaError", made);
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
@@ -663,13 +700,14 @@ test "a QuotaExceededError the engine makes is the derived interface" {
         \\quotaError.name === 'QuotaExceededError' && quotaError.code === 22 && quotaError.message === 'over' &&
         \\quotaError.quota === null && quotaError.requested === null ? 1 : 0
     ));
-    const other = conv.newDOMExceptionFromContext(isolate_once.?, context_once.?, "AbortError", "stop") orelse return error.NothingMade;
+    const other = conv.newDOMExceptionFromContext(test_isolate.?, test_context.?, "AbortError", "stop") orelse return error.NothingMade;
     defer ffi.v8_Value_Dispose(other);
     try setGlobal("abortError", other);
     try std.testing.expectEqual(@as(i32, 1), try evalInt("abortError instanceof DOMException && !(abortError instanceof QuotaExceededError) && abortError.code === 20 ? 1 : 0"));
 }
 
 test "getRandomValues returns the very view it was given, over a hold of the binding's own" {
+    defer test_agent.close();
     try cryptoObject();
     // The argument's reference is released before the result is converted,
     // and the result is the binding's: the impl returns the view over its

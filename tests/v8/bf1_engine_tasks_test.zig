@@ -1,5 +1,6 @@
 //! A sleeping worker needs the next foreground deadline and a posted wake.
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
@@ -26,8 +27,10 @@ fn drain(sink: *runtime.TaskSink) !void {
 
 fn check() !void {
     try engine.initializeEngine(.{});
-    runtime.initializeRuntime(std.testing.allocator);
-    defer runtime.deinitializeRuntime();
+    // A standalone runtime of this test's own, the process's given back
+    // after (test_process.OwnRuntime).
+    const own_runtime = test_process.OwnRuntime.begin(std.testing.allocator);
+    defer own_runtime.end();
     interfaces.process_hooks.startHooksForTest();
     const sink = try runtime.TaskSink.create(std.testing.allocator);
     defer sink.release();
@@ -93,8 +96,10 @@ test "foreground delayed task supplies a wake and deadline, then releases its si
 fn raceTeardown(comptime can_block: bool) !void {
     if (comptime @hasDecl(ffi, "v8_test_ForegroundTaskRunner")) {
         try engine.initializeEngine(.{});
-        runtime.initializeRuntime(std.testing.allocator);
-        defer runtime.deinitializeRuntime();
+        // A standalone runtime of this test's own, the process's given back
+        // after (test_process.OwnRuntime).
+        const own_runtime = test_process.OwnRuntime.begin(std.testing.allocator);
+        defer own_runtime.end();
         const sink = try runtime.TaskSink.create(std.testing.allocator);
         defer sink.release();
         defer sink.close();

@@ -26,6 +26,7 @@
 //! (initializeEngine is idempotent) and makes its own agent.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -44,7 +45,7 @@ const WindowHost = struct {
 fn setup() !void {
     try protocol.initializeEngine(.{});
     interfaces.process_hooks.startHooksForTest();
-    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.page_allocator);
+    test_process.start();
 }
 
 const no_hooks: protocol.HostHooks = .{};

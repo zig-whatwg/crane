@@ -22,6 +22,7 @@
 //! (initializeEngine is idempotent) and makes its own agent.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const webidl = @import("webidl");
@@ -145,10 +146,7 @@ const Page = struct {
 
     fn open() !Page {
         try protocol.initializeEngine(.{});
-        if (runtime.BrowserScope.standalone() == null) {
-            interfaces.process_hooks.startHooksForTest();
-            runtime.initializeRuntime(std.heap.page_allocator);
-        }
+        test_process.start();
         const scope = try testing.allocator.create(runtime.BrowserScope);
         errdefer testing.allocator.destroy(scope);
         scope.* = runtime.BrowserScope.init(testing.allocator);

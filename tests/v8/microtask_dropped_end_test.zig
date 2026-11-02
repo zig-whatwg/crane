@@ -25,6 +25,7 @@
 //! is reported as leaked, a second free as a double free.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
@@ -66,8 +67,10 @@ fn inRealmEnding(comptime body: fn (*engine.Agent, runtime.Context) anyerror!voi
 
         fn check() !void {
             try engine.initializeEngine(.{});
-            runtime.initializeRuntime(std.testing.allocator);
-            defer runtime.deinitializeRuntime();
+            // A standalone runtime of this test's own, the process's given back
+            // after (test_process.OwnRuntime).
+            const own_runtime = test_process.OwnRuntime.begin(std.testing.allocator);
+            defer own_runtime.end();
             interfaces.process_hooks.startHooksForTest();
             // The thread's mutation observer agent, made on this thread's
             // first mutation with the realm's allocator.

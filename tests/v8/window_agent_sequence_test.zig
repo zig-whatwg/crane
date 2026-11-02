@@ -11,6 +11,7 @@
 //! here without one, and this keeps it so.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const protocol = @import("engine");
 const interfaces = @import("interfaces");
@@ -34,14 +35,6 @@ const Reports = struct {
         std.debug.print("reported: {s}\n", .{info.message});
     }
 };
-
-var pools_ready = false;
-
-fn ensurePools() void {
-    if (pools_ready) return;
-    runtime.initializeRuntime(std.heap.page_allocator);
-    pools_ready = true;
-}
 
 /// One agent's life: a Window realm made in it runs script that reaches the
 /// platform (a platform object made and read, an interface object's
@@ -75,8 +68,7 @@ fn oneAgent(from_snapshot: bool) !void {
 }
 
 test "a Window agent made after another has ended runs script in its realm" {
-    try protocol.initializeEngine(.{});
-    ensurePools();
+    test_process.start();
     try oneAgent(false);
     try oneAgent(false);
     try oneAgent(false);

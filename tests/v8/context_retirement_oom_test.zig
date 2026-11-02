@@ -11,6 +11,7 @@
 //! (codex-indexeddb Q23, 2026-10-03). Retirement must not allocate.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -31,6 +32,7 @@ test "a realm retired while its manager's allocator fails stays readable, hasEng
 }
 
 fn retireUnderFailingAllocator() !void {
+    test_process.start();
     const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
     ffi.v8_Isolate_Enter(i);
     defer ffi.v8_Isolate_Exit(i);
@@ -47,7 +49,6 @@ fn retireUnderFailingAllocator() !void {
     var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
     try v8.context_manager.init(failing.allocator());
     defer v8.context_manager.deinit();
-    runtime.initializeRuntime(std.heap.page_allocator);
 
     const realm = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
     try std.testing.expect(realm.hasEngine());

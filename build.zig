@@ -807,8 +807,6 @@ const test_root_name = ".all_tests.zig";
 const TestSelection = struct {
     /// -Dtest-file: only this file, as its own executable.
     file: ?[]const u8 = null,
-    /// -Dtest-isolation: one executable per directory (the default) or per file.
-    isolation: TestIsolation = .directory,
     /// How every test executable is run: tools/test_launcher (see
     /// `TestLaunch` and `addSuiteRun`). Set where the launcher is built,
     /// before the first test executable.
@@ -878,29 +876,10 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     .{ .name = "tests-html", .config = .{ .batch = 1, .slow = &html_slow } },
     .{ .name = "tests-service_worker", .config = .{ .batch = 1 } },
     .{ .name = "tests-websocket", .config = .{ .batch = 1 } },
-    // TEMPORARY: tests-v8 keeps the build runner's old shape - one process,
-    // index order - because its tests depend on order (lane tlaunch2,
-    // 2026-11-01; the bug list, every test with its seed and reason:
-    // docs/testing/tests-v8-order-findings-2026-11-01.tsv). Remove this row's batch and
-    // shuffle when `zig build test-launch -Dspec=v8 -Dlaunch-batch=1` passes:
-    // - a process per test (batch 1, seed 0x5eed11): 22 tests FAIL alone -
-    //   context_counter_test (16), page_realm_operations_test (4) and
-    //   refcount_wrapper_link_test (2) count handles or references and pass
-    //   only after an earlier test has made the engine's lazily created ones
-    //   (32 bytes of global handles in a fresh process) - and
-    //   template_registry_isolation_test crashes alone (its two threads race
-    //   ffi.v8_Isolate_New's lazy V8 platform initialization: the test skips
-    //   engine start-up, and v8_Platform_Initialize checks a plain bool);
-    // - the whole suite shuffled in one process (batch 0, seeds 0x5eed01-03):
-    //   52-60 ORDER-DEPENDENT a run, 162 tests over the three; 124 of the 221
-    //   non-passes panic "a platform object made in a realm no Browser owns, with no
-    //   standalone runtime" after another test of the same process
-    //   (urlpattern_*, page_realm_operations, callback_argument_borrowed,
-    //   per_call_handle, ...).
-    // Every other suite passed all four runs. Until these are fixed, any
-    // shuffled order fails some of them; -Dlaunch-batch=1 and
-    // -Dlaunch-shuffle=true still run it the other ways.
-    .{ .name = "tests-v8", .config = .{ .batch = 0, .shuffle = false } },
+    // tests-v8 ran as one index-order process until lane v8order1
+    // (2026-11-01) made its tests hermetic (tests/v8/test_process.zig; the
+    // order findings it fixed: docs/testing/tests-v8-order-findings-2026-11-01.tsv).
+    .{ .name = "tests-v8", .config = .{ .batch = 1 } },
     .{ .name = "src-browser", .config = .{ .batch = 1 } },
     .{ .name = "test-browser", .config = .{ .batch = 1 } },
     .{ .name = "lib-exports", .config = .{ .batch = 1 } },
@@ -994,8 +973,6 @@ fn checkEveryTestRunsThroughTheLauncher(b: *std.Build, launch: *const TestLaunch
     }
 }
 
-const TestIsolation = enum { directory, file };
-
 /// Add the `*_test.zig` files under `dir_path` (recursively) to `step`, as ONE
 /// test executable per directory.
 ///
@@ -1007,19 +984,19 @@ const TestIsolation = enum { directory, file };
 /// written here when its file list changes: a module's root file must sit in
 /// the directory its imports are resolved under, so it cannot live in the
 /// cache, and generating it means a new test file joins its directory's
-/// executable with no list to keep. The files share one process, as they
-/// share one binary: a test must not assume it is the first to start the
+/// executable with no list to keep. The launcher (addSuiteRun) decides at
+/// run time how the binary's tests share processes - a process per test, per
+/// batch of 10, or the whole suite in one (`suite_configs`, -Dlaunch-batch) -
+/// so a test must not assume it is the first, or the only one, to start the
 /// engine.
 ///
 /// `select.file`, a path such as `tests/v8/foo_test.zig` (-Dtest-file), builds
 /// that one file as its own executable and skips every directory that does
 /// not hold it - the quick red/green loop for a single test file.
 ///
-/// `select.isolation = .file` (-Dtest-isolation=file) builds every file as its
-/// own executable, as before the directories were joined: each test in a
-/// process of its own file's. It costs about four times the CPU and runs once
-/// per merge round, to catch what sharing a process hides - a test that passes
-/// only because an earlier file started the engine or installed a hook for it.
+/// Per-file executables (-Dtest-isolation=file, 1,592 of them, about four
+/// times the CPU) are retired: `-Dlaunch-batch=1` runs every test in a process
+/// of its own from these binaries (2026-11-01, lane tlaunch2).
 fn addTestFilesFromDir(
     builder: *std.Build,
     step: *std.Build.Step,
@@ -1061,15 +1038,6 @@ fn addTestFilesFromDir(
             return std.mem.lessThan(u8, a, b);
         }
     }.lessThan);
-
-    if (select.isolation == .file) {
-        for (files.items) |file| {
-            var name: std.ArrayList(u8) = .empty;
-            for (builder.fmt("{s}/{s}", .{ dir_path, file[0 .. file.len - ".zig".len] })) |c| try name.append(allocator, if (c == '/') '-' else c);
-            addTestRoot(builder, step, builder.fmt("{s}/{s}", .{ dir_path, file }), name.items, null, target, modules, link_v8, select.launch);
-        }
-        return;
-    }
 
     var root: std.Io.Writer.Allocating = .init(allocator);
     try root.writer.writeAll(
@@ -1803,11 +1771,6 @@ pub fn build(b: *std.Build) void {
             "test-file",
             "Build and run only this tests/**/*_test.zig file, as its own executable (with -Dspec=<its directory's spec>)",
         ),
-        .isolation = b.option(
-            TestIsolation,
-            "test-isolation",
-            "directory (default): one test executable per tests/<dir>/; file: one per test file, each in a process of its own (once per merge round)",
-        ) orelse .directory,
     };
 
     // WHATWG TestUtils Standard - Build-time gating

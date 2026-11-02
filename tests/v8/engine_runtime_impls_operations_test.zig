@@ -11,43 +11,51 @@
 //! (`@import("engine")`): the same adapter functions, statically dispatched.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 
-/// A live isolate with an entered context and a runtime realm over it, one for
-/// the whole file, as in engine_realm_operations_test.zig - V8 is never torn
-/// down here. Microtasks are explicit, as the browser runs them.
-var isolate_once: ?*ffi.Isolate = null;
-var context_once: ?*ffi.Context = null;
-var data_once: ?*runtime.ContextData = null;
+/// A live isolate with an entered context and a runtime realm over it: the
+/// test's own agent's (test_agent), ended with the test. Microtasks are
+/// explicit, as the browser runs them.
+var test_isolate: ?*ffi.Isolate = null;
+var test_context: ?*ffi.Context = null;
+var test_data: ?*runtime.ContextData = null;
+
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+    test_context = null;
+    test_data = null;
+}
 
 fn realm() !runtime.Context {
-    if (data_once) |d| return d;
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    const r = try runtime.Realm.init(std.heap.page_allocator, .{ .engine_realm = context, .agent = @ptrCast(i) });
-    const data = try std.heap.page_allocator.create(runtime.ContextData);
-    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{
-        .engine_ctx = context,
-        .realm = r,
-    });
-    // The realm's agent: the protocol's checkpoint is the agent's.
-    data.agent = @ptrCast(i);
-    isolate_once = i;
-    context_once = context;
-    data_once = data;
-    return data;
+    const i = try test_agent.open(.{});
+    if (test_data == null) {
+        ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
+        const context = test_agent.context.?;
+        const r = try test_agent.realmRecord(std.heap.page_allocator, .{ .engine_realm = context, .agent = @ptrCast(i) });
+        const data = try test_agent.contextData(std.heap.page_allocator, .{
+            .engine_ctx = context,
+            .realm = r,
+        });
+        // The realm's agent: the protocol's checkpoint is the agent's.
+        data.agent = @ptrCast(i);
+        test_isolate = i;
+        test_context = context;
+        test_data = data;
+    }
+    return test_data.?;
 }
 
 /// Script's answer to `expression`, as an integer.
 fn eval(expression: []const u8) !i32 {
-    const i = isolate_once.?;
-    const context = context_once.?;
+    const i = test_isolate.?;
+    const context = test_context.?;
     const code = ffi.v8_String_NewFromUtf8(i, expression.ptr, @intCast(expression.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(code);
     const script = ffi.v8_Script_Compile(context, code) orelse return error.CompileFailed;
@@ -59,15 +67,16 @@ fn eval(expression: []const u8) !i32 {
 
 /// Put `value` (a handle) where script can see it, as `globalThis[name]`.
 fn expose(name: []const u8, value: runtime.JSValue) !void {
-    const context = context_once.?;
+    const context = test_context.?;
     const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
     defer ffi.v8_Object_Dispose(global);
-    const key = ffi.v8_String_NewFromUtf8(isolate_once.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
+    const key = ffi.v8_String_NewFromUtf8(test_isolate.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(key);
     if (!ffi.v8_Object_Set(global, context, @ptrCast(key), @ptrCast(@alignCast(value.handle.ptr)))) return error.SetFailed;
 }
 
 test "a simple exception is the realm's own TypeError, RangeError or ReferenceError, and owned" {
+    defer test_agent.close();
     const ctx = try realm();
     const type_error = try v8.value_construction.createSimpleException(ctx, .TypeError, "bad argument");
     defer v8.engine.v8ReleaseValue(type_error);
@@ -99,6 +108,7 @@ test "a simple exception is the realm's own TypeError, RangeError or ReferenceEr
 }
 
 test "a dictionary is an ordinary object with its members in the order given" {
+    defer test_agent.close();
     const ctx = try realm();
     const members = [_]runtime.DictionaryMember{
         .{ .name = "name", .value = runtime.JSValue.fromStringRef("sid") },
@@ -131,6 +141,7 @@ test "a dictionary is an ordinary object with its members in the order given" {
 }
 
 test "a promise resolved with, and rejected with, a value" {
+    defer test_agent.close();
     const ctx = try realm();
     const resolved = try v8.value_construction.createResolvedPromise(ctx, runtime.JSValue.fromNumber(42));
     defer v8.engine.v8ReleaseValue(resolved);
@@ -138,7 +149,7 @@ test "a promise resolved with, and rejected with, a value" {
     try std.testing.expectEqual(@as(c_int, 1), ffi.v8_Promise_State(promise));
     const result = ffi.v8_Promise_Result(promise) orelse return error.NoResult;
     defer ffi.v8_Value_Dispose(result);
-    try std.testing.expectEqual(@as(i32, 42), ffi.v8_Value_Int32Value(result, context_once.?));
+    try std.testing.expectEqual(@as(i32, 42), ffi.v8_Value_Int32Value(result, test_context.?));
 
     const reason = try v8.value_construction.createSimpleException(ctx, .TypeError, "no");
     defer v8.engine.v8ReleaseValue(reason);
@@ -166,6 +177,7 @@ const Ran = struct {
 };
 
 test "a queued microtask runs at the next checkpoint, once, after those queued before it" {
+    defer test_agent.close();
     const ctx = try realm();
     var ran: Ran = .{};
     try std.testing.expectEqual(@as(i32, 1), try eval("globalThis.order = []; Promise.resolve().then(() => order.push('script')); 1"));
@@ -179,6 +191,7 @@ test "a queued microtask runs at the next checkpoint, once, after those queued b
 }
 
 test "an observable array is an Array to script, and the engine's to keep" {
+    defer test_agent.close();
     const ctx = try realm();
     const array = try v8.observable_array.createObservableArray(ctx, .{});
     // ENGINE-OWNED: never released here.
@@ -195,19 +208,21 @@ test "an observable array is an Array to script, and the engine's to keep" {
 }
 
 test "a realm without an engine reports it rather than making nothing" {
+    defer test_agent.close();
     var bare = try runtime.ContextData.init(std.testing.allocator, .{});
     defer bare.deinit();
     try std.testing.expectError(error.OperationFailed, v8.observable_array.createObservableArray(&bare, .{}));
 }
 
 test "the current realm is the one the context manager hosts for the entered context" {
+    defer test_agent.close();
     _ = try realm();
     // A context no manager hosts is no realm the engine knows.
     try std.testing.expect(v8.current_realm.currentRealm() == null);
 
     // Already initialized is as good: the manager is per thread.
     v8.context_manager.init(std.heap.page_allocator) catch {};
-    const hosted = try v8.context_manager.getOrCreate(context_once.?, std.heap.page_allocator);
+    const hosted = try v8.context_manager.getOrCreate(test_context.?, std.heap.page_allocator);
     const current = v8.current_realm.currentRealm() orelse return error.NoCurrentRealm;
     try std.testing.expectEqual(hosted, current);
 }
@@ -215,8 +230,8 @@ test "the current realm is the one the context manager hosts for the entered con
 /// A handle to what script's `expression` evaluates to. OWNED by the caller
 /// (a Global the FFI made): dispose it with v8_Value_Dispose.
 fn evalHandle(expression: []const u8) !*ffi.Value {
-    const i = isolate_once.?;
-    const context = context_once.?;
+    const i = test_isolate.?;
+    const context = test_context.?;
     const code = ffi.v8_String_NewFromUtf8(i, expression.ptr, @intCast(expression.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(code);
     const script = ffi.v8_Script_Compile(context, code) orelse return error.CompileFailed;
@@ -225,6 +240,7 @@ fn evalHandle(expression: []const u8) !*ffi.Value {
 }
 
 test "an ArrayBufferView is described by type, offset and length, and anything else is not one" {
+    defer test_agent.close();
     _ = try realm();
     const view = try evalHandle("globalThis.bytes = new Uint8Array(new ArrayBuffer(8), 2, 4); bytes");
     defer ffi.v8_Value_Dispose(view);
@@ -245,6 +261,7 @@ test "an ArrayBufferView is described by type, offset and length, and anything e
 }
 
 test "bytes are written into a view from its offset, and never past its end" {
+    defer test_agent.close();
     _ = try realm();
     const view = try evalHandle("globalThis.target = new Uint8Array(new ArrayBuffer(8), 2, 4); target");
     defer ffi.v8_Value_Dispose(view);
@@ -263,14 +280,14 @@ test "bytes are written into a view from its offset, and never past its end" {
 /// classified, an object as a borrowed handle (the argument's Global).
 /// A string argument is copied: free it with `JSValue.deinit`.
 fn argument(value: *ffi.Value) !runtime.JSValue {
-    return v8.conversions.fromV8Value(runtime.JSValue, std.testing.allocator, isolate_once.?, context_once.?, value);
+    return v8.conversions.fromV8Value(runtime.JSValue, std.testing.allocator, test_isolate.?, test_context.?, value);
 }
 
 /// Run `steps(data)` under a TryCatch: the exception it left in flight, if
 /// any (a Global the caller disposes), now caught.
 fn catching(steps: *const fn (?*anyopaque) callconv(.c) void, data: ?*anyopaque) !?*ffi.Value {
     var exception: ?*ffi.Value = null;
-    _ = ffi.v8_RunCatching(isolate_once.?, steps, data, &exception);
+    _ = ffi.v8_RunCatching(test_isolate.?, steps, data, &exception);
     return exception;
 }
 
@@ -280,7 +297,7 @@ const Call = struct {
 
     fn run(data: ?*anyopaque) callconv(.c) void {
         const self: *Call = @ptrCast(@alignCast(data.?));
-        self.result = v8.callback_interfaces.callUserObjectOperation(data_once.?, self.callback, "acceptNode", &.{runtime.JSValue.fromNumber(5)});
+        self.result = v8.callback_interfaces.callUserObjectOperation(test_data.?, self.callback, "acceptNode", &.{runtime.JSValue.fromNumber(5)});
     }
 };
 
@@ -289,7 +306,7 @@ const Call = struct {
 /// (`conversions.releaseCallbackWrapper`) releases it.
 fn callbackOf(expression: []const u8) !*runtime.CallbackWrapper {
     const value = try evalHandle(expression);
-    const made = (v8.createCallbackFromV8Value(std.testing.allocator, isolate_once.?, context_once.?, value, "acceptNode") catch return error.OutOfMemory) orelse {
+    const made = (v8.createCallbackFromV8Value(std.testing.allocator, test_isolate.?, test_context.?, value, "acceptNode") catch return error.OutOfMemory) orelse {
         ffi.v8_Value_Dispose(value);
         return error.NotCallable;
     };
@@ -297,6 +314,7 @@ fn callbackOf(expression: []const u8) !*runtime.CallbackWrapper {
 }
 
 test "a callback interface value is called as a function, or through its operation, and what it throws stays in flight" {
+    defer test_agent.close();
     const ctx = try realm();
 
     // A function: called with undefined as this and the arguments given.
@@ -365,11 +383,12 @@ const ToNumber = struct {
 
     fn run(data: ?*anyopaque) callconv(.c) void {
         const self: *ToNumber = @ptrCast(@alignCast(data.?));
-        self.result = v8.webidl_conversions_numeric.convertToUnrestrictedDouble(data_once.?, self.value);
+        self.result = v8.webidl_conversions_numeric.convertToUnrestrictedDouble(test_data.?, self.value);
     }
 };
 
 test "convert to unrestricted double is ToNumber, and what it throws stays in flight" {
+    defer test_agent.close();
     const ctx = try realm();
     try std.testing.expectEqual(@as(f64, 2.5), try v8.webidl_conversions_numeric.convertToUnrestrictedDouble(ctx, runtime.JSValue.fromNumber(2.5)));
     try std.testing.expectEqual(@as(f64, 1), try v8.webidl_conversions_numeric.convertToUnrestrictedDouble(ctx, runtime.JSValue.fromBoolean(true)));
@@ -393,6 +412,7 @@ test "convert to unrestricted double is ToNumber, and what it throws stays in fl
 }
 
 test "a taken callback-function argument is an owned hold of its own on the same function" {
+    defer test_agent.close();
     _ = try realm();
     // What the conversion hands an impl for a callback-function argument: a
     // Global it made (a `.global_handle` tag is ignored), BORROWED for the
@@ -422,6 +442,7 @@ test "a taken callback-function argument is an owned hold of its own on the same
 }
 
 test "a callback-function argument converts to a value its function-pointer type may hold" {
+    defer test_agent.close();
     _ = try realm();
     // Codegen types a callback function as a Zig function pointer
     // (callbacks.EventHandlerNonNull is this shape), and the conversion
@@ -433,13 +454,13 @@ test "a callback-function argument converts to a value its function-pointer type
     // EventTarget.innerInvoke) for every event handler it ran.
     const Callback = *const fn (event: *runtime.Instance) runtime.JSValue;
     const function = try evalHandle("globalThis.theHandler = function () { return 9; }; theHandler");
-    const converted = try v8.conversions.fromV8Value(Callback, std.testing.allocator, isolate_once.?, context_once.?, function);
+    const converted = try v8.conversions.fromV8Value(Callback, std.testing.allocator, test_isolate.?, test_context.?, function);
     try std.testing.expect(std.mem.isAligned(@intFromPtr(converted), @alignOf(@typeInfo(Callback).pointer.child)));
     // The argument's own Global, as before, now with nothing in its low bits.
     try std.testing.expectEqual(@intFromPtr(function), @intFromPtr(converted));
 
     // EventHandler is the nullable form: the same value.
-    const nullable = (try v8.conversions.fromV8Value(?Callback, std.testing.allocator, isolate_once.?, context_once.?, function)) orelse return error.NullHandler;
+    const nullable = (try v8.conversions.fromV8Value(?Callback, std.testing.allocator, test_isolate.?, test_context.?, function)) orelse return error.NullHandler;
     try std.testing.expectEqual(@intFromPtr(function), @intFromPtr(nullable));
 
     // takeCallbackFunction takes a hold of its own on the same function, the
@@ -475,6 +496,7 @@ fn evalOwned(expression: []const u8) !protocol.Owned {
 }
 
 test "every protocol operation's V8 function compiles" {
+    defer test_agent.close();
     // The facade compiles an engine adapter's functions only as they are
     // called (links_engine); this binary links V8, so it compiles them all -
     // a stub nothing calls yet still has to type-check.
@@ -490,6 +512,7 @@ test "every protocol operation's V8 function compiles" {
 }
 
 test "the protocol is bound to V8, with explicit native and emulated capabilities" {
+    defer test_agent.close();
     try std.testing.expectEqualStrings("V8", protocol.name);
     inline for (@typeInfo(protocol.Capabilities).@"struct".field_names) |field_name| {
         const expected: protocol.Support = if (std.mem.eql(u8, field_name, "cross_origin_objects")) .emulated else .native;
@@ -498,10 +521,11 @@ test "the protocol is bound to V8, with explicit native and emulated capabilitie
 }
 
 test "protocol: currentRealm is the context manager's realm for the entered context, and holds no context" {
+    defer test_agent.close();
     _ = try realm();
     // Already initialized, and already hosted, are as good.
     v8.context_manager.init(std.heap.page_allocator) catch {};
-    const hosted = try v8.context_manager.getOrCreate(context_once.?, std.heap.page_allocator);
+    const hosted = try v8.context_manager.getOrCreate(test_context.?, std.heap.page_allocator);
     const contexts_before = ffi.v8_Debug_LiveContextGlobals();
     try std.testing.expectEqual(hosted, protocol.currentRealm() orelse return error.NoCurrentRealm);
     try std.testing.expectEqual(protocol.currentRealm(), v8.current_realm.currentRealm());
@@ -510,6 +534,7 @@ test "protocol: currentRealm is the context manager's realm for the entered cont
 }
 
 test "protocol: isCallable is ECMAScript IsCallable" {
+    defer test_agent.close();
     const ctx = try realm();
     const function = try evalOwned("(function () {})");
     defer function.release();
@@ -522,6 +547,7 @@ test "protocol: isCallable is ECMAScript IsCallable" {
 }
 
 test "protocol: createResolvedPromise is an Owned promise of the realm, fulfilled with the value" {
+    defer test_agent.close();
     const ctx = try realm();
     const resolved = try protocol.createResolvedPromise(ctx, runtime.JSValue.fromNumber(42));
     defer resolved.release();
@@ -532,7 +558,7 @@ test "protocol: createResolvedPromise is an Owned promise of the realm, fulfille
     try std.testing.expectEqual(@as(c_int, 1), ffi.v8_Promise_State(promise));
     const result = ffi.v8_Promise_Result(promise) orelse return error.NoResult;
     defer ffi.v8_Value_Dispose(result);
-    try std.testing.expectEqual(@as(i32, 42), ffi.v8_Value_Int32Value(result, context_once.?));
+    try std.testing.expectEqual(@as(i32, 42), ffi.v8_Value_Int32Value(result, test_context.?));
 }
 
 fn setFromProtocolTask(data: ?*anyopaque) void {
@@ -542,6 +568,7 @@ fn setFromProtocolTask(data: ?*anyopaque) void {
 }
 
 test "protocol: runTaskInRealm runs the steps as a task inside the realm" {
+    defer test_agent.close();
     const ctx = try realm();
     var ran = false;
     try protocol.runTaskInRealm(ctx, setFromProtocolTask, &ran);
@@ -557,6 +584,7 @@ fn handledOrUnknown(ctx: runtime.Context, promise: runtime.JSValue) ?bool {
 }
 
 test "protocol: promiseIsHandled, gated on promise_rejection_tracking, is [[PromiseIsHandled]]" {
+    defer test_agent.close();
     const ctx = try realm();
     const promise = try protocol.createResolvedPromise(ctx, runtime.JSValue.jsUndefined);
     defer promise.release();
@@ -569,16 +597,17 @@ test "protocol: promiseIsHandled, gated on promise_rejection_tracking, is [[Prom
 }
 
 test "protocol: requestGarbageCollection collects the agent's heap" {
+    defer test_agent.close();
     _ = try realm();
     // A realm's agent is its isolate, as the context manager records it.
-    const agent: *protocol.Agent = @ptrCast(isolate_once.?);
+    const agent: *protocol.Agent = @ptrCast(test_isolate.?);
     try std.testing.expectEqual(@as(i32, 0), try eval("globalThis.collectable = new WeakRef({ big: new Array(1000).fill(1) }); 0"));
     var collected = false;
     for (0..5) |_| {
         // The target is kept alive until the job that made the WeakRef - or
         // last dereferenced it - ends (ECMAScript ClearKeptObjects, at the
         // microtask checkpoint).
-        ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate_once.?);
+        ffi.v8_Isolate_PerformMicrotaskCheckpoint(test_isolate.?);
         protocol.requestGarbageCollection(agent);
         if (try eval("globalThis.collectable.deref() === undefined ? 1 : 0") == 1) {
             collected = true;
@@ -589,6 +618,7 @@ test "protocol: requestGarbageCollection collects the agent's heap" {
 }
 
 test "protocol: a new promise is resolved with a primitive, a value or a platform object's wrapper, and released" {
+    defer test_agent.close();
     const ctx = try realm();
     var numeric = try protocol.createPromise(ctx);
     defer protocol.releasePromiseCapability(&numeric);
@@ -617,11 +647,12 @@ test "protocol: a new promise is resolved with a primitive, a value or a platfor
         \\rejected.catch(e => { if (e instanceof RangeError) settled |= 4; });
         \\1
     ));
-    ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate_once.?);
+    ffi.v8_Isolate_PerformMicrotaskCheckpoint(test_isolate.?);
     try std.testing.expectEqual(@as(i32, 7), try eval("globalThis.settled"));
 }
 
 test "protocol: a SyntaxError is the realm's own, and owned" {
+    defer test_agent.close();
     const ctx = try realm();
     const syntax_error = try protocol.createSimpleException(ctx, .SyntaxError, "bad module");
     defer syntax_error.release();
@@ -637,7 +668,7 @@ const Reacted = struct {
     fn onFulfilled(data: ?*anyopaque, value: runtime.JSValue) void {
         const self: *Reacted = @ptrCast(@alignCast(data.?));
         self.fulfilled += 1;
-        self.last = ffi.v8_Value_Int32Value(@ptrCast(@alignCast(value.handle.ptr)), context_once.?);
+        self.last = ffi.v8_Value_Int32Value(@ptrCast(@alignCast(value.handle.ptr)), test_context.?);
     }
 
     fn onRejected(data: ?*anyopaque, reason: runtime.JSValue) void {
@@ -651,6 +682,7 @@ const Reacted = struct {
 };
 
 test "protocol: react to a promise - upon fulfillment, upon rejection, and once" {
+    defer test_agent.close();
     const ctx = try realm();
     var reacted: Reacted = .{};
     const resolved = try protocol.createResolvedPromise(ctx, runtime.JSValue.fromNumber(5));
@@ -678,6 +710,7 @@ test "protocol: react to a promise - upon fulfillment, upon rejection, and once"
 }
 
 test "protocol: reactions and simple exceptions leave no Global behind" {
+    defer test_agent.close();
     const ctx = try realm();
     var reacted: Reacted = .{};
     const round = struct {
@@ -690,9 +723,9 @@ test "protocol: reactions and simple exceptions leave no Global behind" {
         }
     }.run;
     try round(ctx, &reacted);
-    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?);
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(test_isolate.?);
     for (0..32) |_| try round(ctx, &reacted);
-    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?) <= before);
+    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(test_isolate.?) <= before);
     try std.testing.expectEqual(@as(usize, 33), reacted.fulfilled);
 }
 
@@ -712,6 +745,7 @@ const Reported = struct {
 };
 
 test "protocol: runClassicScript reports what a UTF-8 script throws, with the realm it ran in" {
+    defer test_agent.close();
     const ctx = try realm();
     var reported: Reported = .{};
     try std.testing.expectError(error.ExceptionReported, protocol.runClassicScript(ctx, .{ .utf8 = "globalThis.ranClassic = 1;\nnull.x;" }, "https://example.test/a.js", null, .{ .report = Reported.report, .host = &reported }));
@@ -725,6 +759,7 @@ test "protocol: runClassicScript reports what a UTF-8 script throws, with the re
 }
 
 test "protocol: sequence<object> is a slice of Owned handles" {
+    defer test_agent.close();
     const ctx = try realm();
     const iterable = try evalOwned("[{ a: 1 }, { b: 2 }]");
     defer iterable.release();
@@ -739,6 +774,7 @@ test "protocol: sequence<object> is a slice of Owned handles" {
 }
 
 test "protocol: array buffers are allocated, viewed, borrowed and transferred" {
+    defer test_agent.close();
     const ctx = try realm();
     const buffer = try protocol.allocateArrayBuffer(ctx, 8);
     defer buffer.release();
@@ -771,8 +807,9 @@ test "protocol: array buffers are allocated, viewed, borrowed and transferred" {
 }
 
 test "protocol: the diagnostics tier reports the agent's heap and the adapter's counters" {
+    defer test_agent.close();
     _ = try realm();
-    const agent: *protocol.Agent = @ptrCast(isolate_once.?);
+    const agent: *protocol.Agent = @ptrCast(test_isolate.?);
     const statistics = protocol.heapStatistics(agent);
     try std.testing.expect(statistics.used > 0);
     try std.testing.expect(statistics.total >= statistics.used);
@@ -826,6 +863,7 @@ fn counterNamed(counters: []const protocol.Counter, name: []const u8) ?i64 {
 }
 
 test "protocol: a platform object in a realm that has wrapped nothing has no wrapper" {
+    defer test_agent.close();
     var bare = try runtime.ContextData.init(std.testing.allocator, .{});
     defer bare.deinit();
     // A realm with no wrapper cache has wrapped nothing.
@@ -835,6 +873,7 @@ test "protocol: a platform object in a realm that has wrapped nothing has no wra
 }
 
 test "protocol: retainValue holds a primitive by value and anything else as a handle of its own, and borrow lends it" {
+    defer test_agent.close();
     const ctx = try realm();
     // By value: no Global, nothing to release.
     const number = try protocol.retainValue(ctx, runtime.JSValue.fromNumber(4));
@@ -863,12 +902,13 @@ test "protocol: retainValue holds a primitive by value and anything else as a ha
         }
     }.run;
     try round(ctx, object.value);
-    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?);
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(test_isolate.?);
     for (0..32) |_| try round(ctx, object.value);
-    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?) <= before);
+    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(test_isolate.?) <= before);
 }
 
 test "protocol: a string's lone surrogates round-trip through retainValue unchanged" {
+    defer test_agent.close();
     const ctx = try realm();
     // A JSValue string is WTF-8: a lone surrogate is its three-byte form (ED
     // A0..BF xx), as conversions.fromV8Value writes it, and a pair is the
@@ -899,6 +939,7 @@ test "protocol: a string's lone surrogates round-trip through retainValue unchan
 }
 
 test "protocol: ToBoolean of engine values, and a boolean dictionary member read through it" {
+    defer test_agent.close();
     const ctx = try realm();
     const falsy = try evalOwned("[0n, '', NaN, -0, null, undefined, false]");
     defer falsy.release();

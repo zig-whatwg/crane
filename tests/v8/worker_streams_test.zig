@@ -13,27 +13,27 @@
 //! classes). This stays as a worker-realm streams check under pressure.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 /// Every worker realm has an event loop; this test drives none.
 const inline_task_loop = @import("inline_task_loop.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const protocol = @import("engine");
 
-var set_up = false;
-
 fn setup() void {
-    if (set_up) return;
-    set_up = true;
-    // Before V8 starts (the first createAgent starts it): every collection a
+    // Before V8 starts (test_process.start starts it): every collection a
     // full one, and a 1 MB young generation, so collections land inside the
     // short windows where a wrapper is only weakly held. A release V8 has no
     // --gc-interval (that needs V8_ENABLE_ALLOCATION_TIMEOUT), so this is
     // pressure, not a schedule. V8 freezes its flags when it starts (setting
-    // one after is a fatal CHECK), and tests/v8 shares one process, so the
-    // pressure applies only when this file is the first to start V8 - the
-    // -Dtest-file run of it alone.
+    // one after is a fatal CHECK), so the pressure applies only when this
+    // test is the first in its process to start V8 - as it is in a process of
+    // its own (tests-v8 runs a process per test; -Dtest-file=). In a process
+    // it shares, the tests after it run under the same pressure, which a
+    // correct engine passes.
     if (!v8.ffi.v8_Platform_IsInitialized()) v8.ffi.v8_SetFlagsFromString("--stress-compaction");
-    runtime.initializeRuntime(std.heap.page_allocator);
+    // Then the process, which starts V8 with the runtime's flags beside it.
+    test_process.start();
     v8.context_manager.init(std.heap.page_allocator) catch {};
 }
 

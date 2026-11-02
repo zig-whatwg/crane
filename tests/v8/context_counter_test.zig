@@ -12,17 +12,18 @@
 //! without its count turns them red.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 
-var isolate_once: ?*ffi.Isolate = null;
-var context_once: ?*ffi.Context = null;
+var test_isolate: ?*ffi.Isolate = null;
+var test_context: ?*ffi.Context = null;
 
 /// The page allocator, counting the bytes live through it: the realm's
 /// allocator, so that what an impl allocates for a result - a string a
-/// getter returns - and the binding never frees shows up as bytes left.
-/// `std.testing.allocator` does not see it: the realm outlives every test.
+/// getter returns - and the binding never frees shows up as bytes left
+/// while the test's realm lives.
 const CountingAllocator = struct {
     live: i64 = 0,
 
@@ -56,26 +57,49 @@ const CountingAllocator = struct {
 
 var realm_allocator: CountingAllocator = .{};
 
-/// One isolate and realm for the file, registered with the context manager
-/// as a page's is; V8 is never torn down here.
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+    test_context = null;
+    all_interfaces_installed = false;
+    second_context = null;
+}
+
+/// The test's isolate and realm, registered with the context manager as a
+/// page's is: its own agent's (test_agent), which takes the realm down when
+/// the test ends.
 fn realm() !void {
-    if (isolate_once != null) return;
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    v8.context_manager.init(std.heap.page_allocator) catch {};
-    _ = try v8.context_manager.getOrCreate(context, realm_allocator.allocator());
-    runtime.initializeRuntime(std.heap.page_allocator);
-    isolate_once = i;
-    context_once = context;
+    const i = try test_agent.open(.{});
+    if (test_isolate == null) {
+        const context = test_agent.context.?;
+        v8.context_manager.init(std.heap.page_allocator) catch {};
+        _ = try v8.context_manager.getOrCreate(context, realm_allocator.allocator());
+        test_isolate = i;
+        test_context = context;
+        try tierUpOnce();
+    }
+}
+
+/// V8 13.1 makes one persistent handle the first time an isolate's baseline
+/// (Sparkplug) batch compiler queues a function: the queue itself
+/// (src/baseline/baseline-batch-compiler.cc, EnsureQueueCapacity: a
+/// WeakFixedArray in a global handle), 32 bytes of global handles every
+/// later tier-up reuses. `leftBy`'s 64-run loop tiers up, so the first one in
+/// an isolate counted those 32 bytes as left behind - every test's, now that
+/// each test has an isolate of its own. The test's realm tiers up an
+/// unrelated loop when it is made, before its test measures (docs/lessons/
+/// measurement-v8-first-use-queues-affect-persistent-handle-probes.md).
+fn tierUpOnce() !void {
+    _ = try scriptInt("(() => { let n = 0; for (let k = 0; k < 64; k++) { n += k; } return 0 })()");
 }
 
 /// Script's value of `expression`, as an integer.
 fn scriptInt(expression: []const u8) !i32 {
-    const i = isolate_once.?;
-    const context = context_once.?;
+    const i = test_isolate.?;
+    const context = test_context.?;
     const code = ffi.v8_String_NewFromUtf8(i, expression.ptr, @intCast(expression.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(code);
     const script = ffi.v8_Script_Compile(context, code) orelse return error.CompileFailed;
@@ -85,12 +109,21 @@ fn scriptInt(expression: []const u8) !i32 {
     return ffi.v8_Value_Int32Value(value, context);
 }
 
-test "binding getter and method calls leave live_context_globals unchanged" {
+test "the test's realm has made V8's one-time tier-up handle before its test measures" {
+    defer test_agent.close();
     try realm();
-    const context = context_once.?;
+    // This is the isolate's first measured loop: it would count the batch
+    // compiler's queue (tierUpOnce) as left behind.
+    try expectNothingLeft("a loop that tiers up", try leftBy("globalThis.tierUpControl = 0;"));
+}
+
+test "binding getter and method calls leave live_context_globals unchanged" {
+    defer test_agent.close();
+    try realm();
+    const context = test_context.?;
     const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
     defer ffi.v8_Object_Dispose(global);
-    v8.interface_bindings.Event.registerGlobalFast(isolate_once.?, context, global, "Event");
+    v8.interface_bindings.Event.registerGlobalFast(test_isolate.?, context, global, "Event");
     // The first calls make what later ones reuse.
     try std.testing.expectEqual(@as(i32, 4), try scriptInt("globalThis.e = new Event('ping'); e.stopPropagation(); e.type.length"));
 
@@ -105,8 +138,9 @@ test "binding getter and method calls leave live_context_globals unchanged" {
 }
 
 test "a context made with a global constructor and disposed leaves live_context_globals unchanged" {
+    defer test_agent.close();
     try realm();
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     const template = ffi.v8_FunctionTemplate_New(isolate, null, null) orelse return error.TemplateFailed;
     defer ffi.v8_FunctionTemplate_Dispose(template);
 
@@ -137,11 +171,11 @@ test "a context made with a global constructor and disposed leaves live_context_
 
 var all_interfaces_installed = false;
 
-/// Every interface, installed once in the file's realm.
+/// Every interface, installed once in the test's realm.
 fn allInterfaces() !void {
     try realm();
     if (all_interfaces_installed) return;
-    v8.interface_bindings.registerAllInterfaces(isolate_once.?, context_once.?);
+    v8.interface_bindings.registerAllInterfaces(test_isolate.?, test_context.?);
     all_interfaces_installed = true;
 }
 
@@ -157,7 +191,7 @@ const Left = struct {
 /// runs first, so that what the first call makes and later ones reuse is not
 /// counted.
 fn leftBy(comptime body: []const u8) !Left {
-    const isolate = isolate_once.?;
+    const isolate = test_isolate.?;
     const loop = "(() => { for (let i = 0; i < {N}; i++) { " ++ body ++ " } return 0 })()";
     _ = try scriptInt(comptime replaceN(loop, "2"));
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
@@ -203,6 +237,7 @@ fn expectNoContextLeft(comptime what: []const u8, left: Left) !void {
 }
 
 test "a getter that throws releases the contexts it took" {
+    defer test_agent.close();
     try allInterfaces();
     // WritableStreamDefaultWriter.desiredSize step 1: a released writer's
     // stream is undefined - a TypeError, thrown from the getter's error path.
@@ -215,6 +250,7 @@ test "a getter that throws releases the contexts it took" {
 }
 
 test "the indexed property setter releases the current context" {
+    defer test_agent.close();
     // Production's start, as crane.Process does it with no Browser: the engine
     // (its tree hooks keep a parented node's wrapper strong), then the hooks.
     try engine.initializeEngine(.{});
@@ -231,6 +267,7 @@ test "the indexed property setter releases the current context" {
 }
 
 test "the indexed property definer releases the current context" {
+    defer test_agent.close();
     // Production's start, as crane.Process does it with no Browser: the engine
     // (its tree hooks keep a parented node's wrapper strong), then the hooks.
     try engine.initializeEngine(.{});
@@ -252,6 +289,7 @@ test "the indexed property definer releases the current context" {
 }
 
 test "the indexed property definer releases every handle it takes" {
+    defer test_agent.close();
     // Production's start, as crane.Process does it with no Browser: the engine
     // (its tree hooks keep a parented node's wrapper strong), then the hooks.
     try engine.initializeEngine(.{});
@@ -279,6 +317,7 @@ test "the indexed property definer releases every handle it takes" {
 }
 
 test "the named property setter releases the current context" {
+    defer test_agent.close();
     // Production's start, as crane.Process does it with no Browser: the engine
     // (its tree hooks keep a parented node's wrapper strong), then the hooks.
     try engine.initializeEngine(.{});
@@ -295,6 +334,7 @@ test "the named property setter releases the current context" {
 }
 
 test "values(options) on a ReadableStream releases the context and the handles it read the options with" {
+    defer test_agent.close();
     try allInterfaces();
     // The first call locks the stream; every later one throws a TypeError
     // after reading its options - the same path, run 64 times.
@@ -310,6 +350,7 @@ test "values(options) on a ReadableStream releases the context and the handles i
 // A getter's null result is the binding's; a wrapper it returns is not.
 
 test "a getter that answers null releases the null it made" {
+    defer test_agent.close();
     try allInterfaces();
     // Event.target before dispatch (?*runtime.Instance) and
     // MessageEvent.source (?MessageEventSource, a union of wrappers): each
@@ -324,6 +365,7 @@ test "a getter that answers null releases the null it made" {
 }
 
 test "a getter's wrapper result stays the wrapper cache's" {
+    defer test_agent.close();
     try allInterfaces();
     // A dispatched event keeps its target: the getter returns the target's
     // cached wrapper, which the binding must never release - the next read
@@ -336,7 +378,7 @@ test "a getter's wrapper result stays the wrapper cache's" {
         \\dispatched.target === kept ? 1 : 0
     ));
     try expectNothingLeft("dispatched.target", try leftBy("if (dispatched.target !== kept) throw new Error('not the same wrapper');"));
-    ffi.v8_Isolate_RequestGarbageCollection(isolate_once.?);
+    ffi.v8_Isolate_RequestGarbageCollection(test_isolate.?);
     try std.testing.expectEqual(@as(i32, 42), try scriptInt("dispatched.target === kept ? dispatched.target.marker : -1"));
 }
 
@@ -345,6 +387,7 @@ test "a getter's wrapper result stays the wrapper cache's" {
 // the impl allocated for it.
 
 test "a getter's non-null optional number is released" {
+    defer test_agent.close();
     try allInterfaces();
     // WritableStreamDefaultWriter.desiredSize is `unrestricted double?`
     // (?f64): non-null on a writable stream, a fresh Number each read.
@@ -356,6 +399,7 @@ test "a getter's non-null optional number is released" {
 }
 
 test "getterValueIsOwned: the non-null value of an optional primitive is made fresh" {
+    defer test_agent.close();
     // conv.toV8Value converts `?T` by converting its payload, so a non-null
     // `?f64`, `?bool` or `?u32` is a fresh Number or Boolean exactly as an
     // `f64`, `bool` or `u32` is. No impl returns a non-null `?bool` or `?u32`
@@ -380,6 +424,7 @@ test "getterValueIsOwned: the non-null value of an optional primitive is made fr
 }
 
 test "xhr.response frees the text it made" {
+    defer test_agent.close();
     try allInterfaces();
     // XMLHttpRequest response, step 1: for responseType "" the text
     // response - a string the getter makes on each read and hands over
@@ -394,6 +439,7 @@ test "xhr.response frees the text it made" {
 }
 
 test "a getter's kept string stays the object's: read twice, and 64 times, it is the same" {
+    defer test_agent.close();
     try allInterfaces();
     // MessageEvent.data and PopStateEvent.state keep a string they were
     // initialized with. The getter path frees a string result handed over
@@ -412,6 +458,7 @@ test "a getter's kept string stays the object's: read twice, and 64 times, it is
 }
 
 test "the indexed descriptor and query release what they make" {
+    defer test_agent.close();
     // Production's start, as crane.Process does it with no Browser: the engine
     // (its tree hooks keep a parented node's wrapper strong), then the hooks.
     try engine.initializeEngine(.{});
@@ -434,6 +481,7 @@ test "the indexed descriptor and query release what they make" {
 }
 
 test "an indexed getter frees the string it returns" {
+    defer test_agent.close();
     // Production's start, as crane.Process does it with no Browser: the engine
     // (its tree hooks keep a parented node's wrapper strong), then the hooks.
     try engine.initializeEngine(.{});
@@ -452,6 +500,7 @@ test "an indexed getter frees the string it returns" {
 }
 
 test "a named getter frees the string it returns" {
+    defer test_agent.close();
     // Production's start, as crane.Process does it with no Browser: the engine
     // (its tree hooks keep a parented node's wrapper strong), then the hooks.
     try engine.initializeEngine(.{});
@@ -472,6 +521,7 @@ test "a named getter frees the string it returns" {
 // document.all's legacy caller.
 
 test "document.all's legacy caller releases what it takes" {
+    defer test_agent.close();
     // Production's start, as crane.Process does it with no Browser: the engine
     // (its tree hooks keep a parented node's wrapper strong), then the hooks.
     try engine.initializeEngine(.{});
@@ -494,6 +544,7 @@ test "document.all's legacy caller releases what it takes" {
 }
 
 test "document.all() with no argument is null" {
+    defer test_agent.close();
     // Production's start, as crane.Process does it with no Browser: the engine
     // (its tree hooks keep a parented node's wrapper strong), then the hooks.
     try engine.initializeEngine(.{});
@@ -526,13 +577,13 @@ const clock = @import("clock");
 var second_context: ?*ffi.Context = null;
 
 /// A second realm of the agent with every interface, reachable from the
-/// file's realm as `otherRealm` (one security token for both).
+/// test's realm as `otherRealm` (one security token for both).
 fn secondRealm() !void {
     try allInterfaces();
     if (second_context != null) return;
-    const isolate = isolate_once.?;
-    const first = context_once.?;
-    const other = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
+    const isolate = test_isolate.?;
+    const first = test_context.?;
+    const other = try test_agent.newContext();
     _ = try v8.context_manager.getOrCreate(other, realm_allocator.allocator());
     ffi.v8_Context_Enter(other);
     v8.interface_bindings.registerAllInterfaces(isolate, other);
@@ -556,6 +607,7 @@ fn secondRealm() !void {
 }
 
 test "an attribute getter called on an illegal receiver throws the getter's realm's TypeError" {
+    defer test_agent.close();
     // Production's start, as crane.Process does it with no Browser: the engine
     // (its tree hooks keep a parented node's wrapper strong), then the hooks.
     try engine.initializeEngine(.{});
@@ -581,6 +633,7 @@ test "an attribute getter called on an illegal receiver throws the getter's real
 }
 
 test "an attribute getter whose impl throws throws in the getter's realm" {
+    defer test_agent.close();
     try secondRealm();
     // WritableStreamDefaultWriter.desiredSize step 1: a released writer has no
     // stream - the impl's TypeError, converted by the binding.
@@ -594,6 +647,7 @@ test "an attribute getter whose impl throws throws in the getter's realm" {
 }
 
 test "an indexed getter's and a length getter's success paths leave no handle" {
+    defer test_agent.close();
     // Production's start, as crane.Process does it with no Browser: the engine
     // (its tree hooks keep a parented node's wrapper strong), then the hooks.
     try engine.initializeEngine(.{});
@@ -628,7 +682,7 @@ const AbortAfter = struct {
 };
 
 fn abortedRound(comptime body: []const u8) !void {
-    const agent: *engine.Agent = @ptrCast(isolate_once.?);
+    const agent: *engine.Agent = @ptrCast(test_isolate.?);
     const aborter: AbortAfter = .{ .agent = agent, .after_ms = 20 };
     const thread = try std.Thread.spawn(.{}, AbortAfter.run, .{&aborter});
     const outcome = scriptInt(body);
@@ -638,6 +692,7 @@ fn abortedRound(comptime body: []const u8) !void {
 }
 
 test "an abort inside a listener the binding dispatched to leaves no handle and no realm bytes" {
+    defer test_agent.close();
     try allInterfaces();
     try std.testing.expectEqual(@as(i32, 1), try scriptInt(
         \\globalThis.abortTarget = new EventTarget();
@@ -645,10 +700,19 @@ test "an abort inside a listener the binding dispatched to leaves no handle and 
         \\1
     ));
     const body = "abortTarget.dispatchEvent(new Event('spin')); 1";
-    const isolate = isolate_once.?;
-    // Two rounds first: what the first makes and later ones reuse.
-    try abortedRound(body);
-    try abortedRound(body);
+    const isolate = test_isolate.?;
+    // A window of eight rounds and a collection first, the shape of the one
+    // measured, so that what the first window makes and later ones reuse is
+    // not counted: the realm's wrapper cache grows its map once to hold a
+    // window's eight Events until their collection, and a map never shrinks.
+    // Measured after two rounds, the first window left 136-408 bytes of the
+    // realm's allocator (alone and shuffled; in index order an earlier test
+    // had grown the map) - one 296-byte allocation, HashMap(*Instance,
+    // *CacheEntry).allocate, still live after a second collection - and every
+    // later window +0; forty rounds each followed by its own collection left
+    // 0 (lane v8order1's probe, 2026-11-02). A leak per aborted dispatch
+    // would grow with every round.
+    for (0..8) |_| try abortedRound(body);
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
     const contexts_before = ffi.v8_Debug_LiveContextGlobals();
     const bytes_before: i64 = @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate));

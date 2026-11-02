@@ -16,6 +16,7 @@
 //! (docs/lessons/testing-a-handle-leak-test-needs-v8-s-live-count.md).
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -48,7 +49,7 @@ const Reports = struct {
 fn setup() !void {
     try protocol.initializeEngine(.{});
     interfaces.process_hooks.startHooksForTest();
-    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.page_allocator);
+    test_process.start();
 }
 
 const no_hooks: protocol.HostHooks = .{};

@@ -9,35 +9,44 @@
 //! its buffer, an object with no @@iterator in a union with a sequence.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 
 const allocator = std.testing.allocator;
 
-var isolate_once: ?*ffi.Isolate = null;
-var context_once: ?*ffi.Context = null;
-var data_once: ?*runtime.ContextData = null;
+var test_isolate: ?*ffi.Isolate = null;
+var test_context: ?*ffi.Context = null;
+var test_data: ?*runtime.ContextData = null;
+
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+    test_context = null;
+    test_data = null;
+    other_context = null;
+}
 
 fn realm() !runtime.Context {
-    if (data_once) |d| return d;
-    const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(i);
-    _ = ffi.v8_HandleScope_New(i);
-    const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    const data = try std.heap.page_allocator.create(runtime.ContextData);
-    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
-    data.agent = @ptrCast(i);
-    isolate_once = i;
-    context_once = context;
-    data_once = data;
-    return data;
+    const i = try test_agent.open(.{});
+    if (test_data == null) {
+        const context = test_agent.context.?;
+        const data = try test_agent.contextData(std.heap.page_allocator, .{ .engine_ctx = context });
+        data.agent = @ptrCast(i);
+        test_isolate = i;
+        test_context = context;
+        test_data = data;
+    }
+    return test_data.?;
 }
 
 fn eval(code: []const u8) !*ffi.Value {
-    const context = context_once.?;
-    const text = ffi.v8_String_NewFromUtf8(isolate_once.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
+    const context = test_context.?;
+    const text = ffi.v8_String_NewFromUtf8(test_isolate.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(text);
     const script = ffi.v8_Script_Compile(context, text) orelse return error.CompileFailed;
     defer ffi.v8_Script_Dispose(script);
@@ -47,14 +56,14 @@ fn eval(code: []const u8) !*ffi.Value {
 fn evalInt(code: []const u8) !i32 {
     const value = try eval(code);
     defer ffi.v8_Value_Dispose(value);
-    return ffi.v8_Value_Int32Value(value, context_once.?);
+    return ffi.v8_Value_Int32Value(value, test_context.?);
 }
 
 fn setGlobal(name: []const u8, handle: *anyopaque) !void {
-    const context = context_once.?;
+    const context = test_context.?;
     const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
     defer ffi.v8_Object_Dispose(global);
-    const key = ffi.v8_String_NewFromUtf8(isolate_once.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
+    const key = ffi.v8_String_NewFromUtf8(test_isolate.?, name.ptr, @intCast(name.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(key);
     _ = ffi.v8_Object_Set(global, context, @ptrCast(key), @ptrCast(@alignCast(handle)));
 }
@@ -82,6 +91,7 @@ const Made = struct {
 // ----------------------------------------------------------------------------
 
 test "ToString of objects, numbers and strings" {
+    defer test_agent.close();
     const ctx = try realm();
     const object = try Made.of("({ toString() { return 'custom'; } })");
     defer object.deinit();
@@ -99,6 +109,7 @@ test "ToString of objects, numbers and strings" {
 }
 
 test "a Symbol is a TypeError with nothing thrown" {
+    defer test_agent.close();
     const ctx = try realm();
     const symbol = try Made.of("Symbol('s')");
     defer symbol.deinit();
@@ -107,6 +118,7 @@ test "a Symbol is a TypeError with nothing thrown" {
 }
 
 test "a lone surrogate becomes U+FFFD in a USVString" {
+    defer test_agent.close();
     const ctx = try realm();
     const lone = try Made.of("'a\\uD800b'");
     defer lone.deinit();
@@ -122,9 +134,9 @@ fn stringLength(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     defer ffi.v8_Global_Dispose(argument);
     // As an impl gets it: the binding's form of the argument (an object is a
     // borrowed `.handle` whose pointer is the argument's Global).
-    var value = v8.conversions.fromV8Value(runtime.JSValue, allocator, isolate_once.?, context_once.?, argument) catch return;
+    var value = v8.conversions.fromV8Value(runtime.JSValue, allocator, test_isolate.?, test_context.?, argument) catch return;
     defer value.deinit(allocator);
-    const result: f64 = if (v8.webidl_conversions.convertToDOMString(data_once.?, value, allocator)) |text| blk: {
+    const result: f64 = if (v8.webidl_conversions.convertToDOMString(test_data.?, value, allocator)) |text| blk: {
         defer allocator.free(text);
         break :blk @floatFromInt(text.len);
     } else |err| switch (err) {
@@ -137,8 +149,8 @@ fn stringLength(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
 }
 
 fn installNative(name: []const u8, callback: ffi.FunctionCallback) !void {
-    const context = context_once.?;
-    const template = ffi.v8_FunctionTemplate_New(isolate_once.?, callback, null) orelse return error.TemplateFailed;
+    const context = test_context.?;
+    const template = ffi.v8_FunctionTemplate_New(test_isolate.?, callback, null) orelse return error.TemplateFailed;
     defer ffi.v8_FunctionTemplate_Dispose(template);
     const function = ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return error.FunctionFailed;
     defer ffi.v8_Function_Dispose(function);
@@ -146,6 +158,7 @@ fn installNative(name: []const u8, callback: ffi.FunctionCallback) !void {
 }
 
 test "a throwing toString propagates to the calling script" {
+    defer test_agent.close();
     _ = try realm();
     try installNative("stringLength", stringLength);
     try std.testing.expectEqual(@as(i32, 3), try evalInt("stringLength({ toString() { return 'abc'; } })"));
@@ -169,6 +182,7 @@ fn freeStrings(strings: [][]u8) void {
 }
 
 test "an iterable converts to its strings, each by ToString" {
+    defer test_agent.close();
     const ctx = try realm();
     const array = try Made.of("['a', 2, { toString() { return 'c'; } }]");
     defer array.deinit();
@@ -187,6 +201,7 @@ test "an iterable converts to its strings, each by ToString" {
 }
 
 test "an object with no @@iterator is not a sequence (null), and a non-object is a TypeError" {
+    defer test_agent.close();
     const ctx = try realm();
     const plain = try Made.of("({ length: 1, 0: 'a' })");
     defer plain.deinit();
@@ -209,6 +224,7 @@ fn freeRecord(entries: []runtime.StringRecordEntry) void {
 }
 
 test "a record is the object's own enumerable properties, in [[OwnPropertyKeys]] order" {
+    defer test_agent.close();
     const ctx = try realm();
     // The spec's own example: the prototype's and the non-enumerable
     // property are not in it; integer keys come first, ascending.
@@ -242,6 +258,7 @@ test "a record is the object's own enumerable properties, in [[OwnPropertyKeys]]
 }
 
 test "USVString keys that collide after U+FFFD replacement are one entry, set in place" {
+    defer test_agent.close();
     const ctx = try realm();
     const object = try Made.of("({ '\\uD83D': 'first', z: 'z', '\\uFFFD': 'second', v: 'a\\uD800b' })");
     defer object.deinit();
@@ -262,6 +279,7 @@ test "USVString keys that collide after U+FFFD replacement are one entry, set in
 }
 
 test "a non-object, and an enumerable Symbol-keyed property, are TypeErrors" {
+    defer test_agent.close();
     const ctx = try realm();
     try std.testing.expectError(error.TypeError, v8.webidl_conversions.convertToRecordOfStrings(ctx, .{ .number = 1 }, .usv_string, .usv_string, allocator));
     try std.testing.expectError(error.TypeError, v8.webidl_conversions.convertToRecordOfStrings(ctx, runtime.JSValue.fromStringRef("a=b"), .usv_string, .usv_string, allocator));
@@ -284,9 +302,9 @@ test "a non-object, and an enumerable Symbol-keyed property, are TypeErrors" {
 fn recordSize(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     const argument = info.get(0);
     defer ffi.v8_Global_Dispose(argument);
-    var value = v8.conversions.fromV8Value(runtime.JSValue, allocator, isolate_once.?, context_once.?, argument) catch return;
+    var value = v8.conversions.fromV8Value(runtime.JSValue, allocator, test_isolate.?, test_context.?, argument) catch return;
     defer value.deinit(allocator);
-    const result: f64 = if (v8.webidl_conversions.convertToRecordOfStrings(data_once.?, value, .usv_string, .usv_string, allocator)) |record| blk: {
+    const result: f64 = if (v8.webidl_conversions.convertToRecordOfStrings(test_data.?, value, .usv_string, .usv_string, allocator)) |record| blk: {
         defer freeRecord(record);
         break :blk @floatFromInt(record.len);
     } else |err| switch (err) {
@@ -299,6 +317,7 @@ fn recordSize(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
 }
 
 test "a proxy sees ownKeys, then per key getOwnPropertyDescriptor and get - and only for enumerable keys" {
+    defer test_agent.close();
     _ = try realm();
     try installNative("recordSize", recordSize);
     try std.testing.expectEqual(@as(i32, 1), try evalInt(
@@ -320,6 +339,7 @@ test "a proxy sees ownKeys, then per key getOwnPropertyDescriptor and get - and 
 }
 
 test "what a trap, a getter or a toString throws propagates to the calling script" {
+    defer test_agent.close();
     _ = try realm();
     try installNative("recordSize", recordSize);
     try std.testing.expectEqual(@as(i32, 3), try evalInt(
@@ -343,6 +363,7 @@ test "what a trap, a getter or a toString throws propagates to the calling scrip
 // ----------------------------------------------------------------------------
 
 test "an ArrayBuffer's bytes, and a view's own window of its buffer" {
+    defer test_agent.close();
     const ctx = try realm();
     const buffer = try Made.of("globalThis.b = new Uint8Array([1, 2, 3, 4, 5]).buffer; b");
     defer buffer.deinit();
@@ -364,6 +385,7 @@ test "an ArrayBuffer's bytes, and a view's own window of its buffer" {
 }
 
 test "a detached buffer holds no bytes, and neither does a view of one" {
+    defer test_agent.close();
     const ctx = try realm();
     const detached = try Made.of("globalThis.d = new ArrayBuffer(8); globalThis.dv = new Uint8Array(d); d.transfer(); d");
     defer detached.deinit();
@@ -378,6 +400,7 @@ test "a detached buffer holds no bytes, and neither does a view of one" {
 }
 
 test "a SharedArrayBuffer is not a BufferSource, and a view of one is a TypeError" {
+    defer test_agent.close();
     const ctx = try realm();
     const shared = try Made.of("globalThis.sab = new SharedArrayBuffer(4); sab");
     defer shared.deinit();
@@ -388,6 +411,7 @@ test "a SharedArrayBuffer is not a BufferSource, and a view of one is a TypeErro
 }
 
 test "anything else is not a BufferSource" {
+    defer test_agent.close();
     const ctx = try realm();
     const object = try Made.of("({})");
     defer object.deinit();
@@ -404,12 +428,13 @@ const mock_vtable = runtime.VTable{ .name = "MockBlob", .deinit = null, .methods
 var mock_blob: runtime.Instance = undefined;
 
 test "a platform object converts to its Instance; nothing else does" {
+    defer test_agent.close();
     const ctx = try realm();
-    const template = ffi.v8_ObjectTemplate_New(isolate_once.?);
+    const template = ffi.v8_ObjectTemplate_New(test_isolate.?);
     defer ffi.v8_ObjectTemplate_Dispose(template);
     ffi.v8_ObjectTemplate_SetInternalFieldCount(template, 2);
     mock_blob = .{ .vtable = &mock_vtable, .state = undefined, .ctx = ctx };
-    const object = ffi.v8_ObjectTemplate_NewInstance(template, context_once.?) orelse return error.InstanceFailed;
+    const object = ffi.v8_ObjectTemplate_NewInstance(template, test_context.?) orelse return error.InstanceFailed;
     defer ffi.v8_Object_Dispose(object);
     ffi.v8_Object_SetAlignedPointerInInternalField(object, 0, @ptrCast(&mock_blob));
     ffi.v8_Object_SetAlignedPointerInInternalField(object, 1, null);
@@ -425,6 +450,7 @@ test "a platform object converts to its Instance; nothing else does" {
 }
 
 test "a sequence of values becomes an Array of the realm" {
+    defer test_agent.close();
     const ctx = try realm();
     const object = try Made.of("globalThis.o = {}; o");
     defer object.deinit();
@@ -448,7 +474,7 @@ const protocol = @import("engine");
 
 /// `handle` as the binding hands it to an impl. Call `deinit` on the result.
 fn bound(handle: *ffi.Value) !runtime.JSValue {
-    return v8.conversions.fromV8Value(runtime.JSValue, allocator, isolate_once.?, context_once.?, handle);
+    return v8.conversions.fromV8Value(runtime.JSValue, allocator, test_isolate.?, test_context.?, handle);
 }
 
 /// Run `body.run()` as script calling a binding would: under a TryCatch.
@@ -462,7 +488,7 @@ fn thrownBy(body: anytype) ?*ffi.Value {
         }
     };
     var thrown: ?*ffi.Value = null;
-    _ = ffi.v8_RunCatching(isolate_once.?, Trampoline.call, body, &thrown);
+    _ = ffi.v8_RunCatching(test_isolate.?, Trampoline.call, body, &thrown);
     return thrown;
 }
 
@@ -484,10 +510,11 @@ fn callbackInterface(value: runtime.JSValue, context: ?runtime.Context) protocol
 }
 
 fn int32Of(owned: protocol.Owned) i32 {
-    return ffi.v8_Value_Int32Value(@ptrCast(@alignCast(owned.value.handle.ptr)), context_once.?);
+    return ffi.v8_Value_Int32Value(@ptrCast(@alignCast(owned.value.handle.ptr)), test_context.?);
 }
 
 test "protocol: Get reads a property, and what a getter throws is pending" {
+    defer test_agent.close();
     const ctx = try realm();
     const object = try Made.of("({ a: 1, get boom() { throw globalThis.boom = new Error('get'); } })");
     defer object.deinit();
@@ -518,6 +545,7 @@ test "protocol: Get reads a property, and what a getter throws is pending" {
 }
 
 test "protocol: Set and DefinePropertyOrThrow write, HasProperty reads, and a failed define is a TypeError" {
+    defer test_agent.close();
     const ctx = try realm();
     const object = try Made.of("globalThis.target = Object.create({ inherited: 1 })");
     defer object.deinit();
@@ -570,6 +598,7 @@ test "protocol: Set and DefinePropertyOrThrow write, HasProperty reads, and a fa
 }
 
 test "protocol: Type and SameValue" {
+    defer test_agent.close();
     const ctx = try realm();
     const cases = [_]struct { code: []const u8, type: protocol.ValueType }{
         .{ .code = "undefined", .type = .undefined },
@@ -614,6 +643,7 @@ test "protocol: Type and SameValue" {
 }
 
 test "protocol: JSON bytes parse to a value, a BOM is dropped, and a SyntaxError is pending" {
+    defer test_agent.close();
     const ctx = try realm();
     _ = try evalInt("globalThis.JSON = { parse() { return 42; } }; 1");
     const parsed = try protocol.parseJsonToValue(ctx, "\xEF\xBB\xBF{\"a\":[1,2]}");
@@ -663,6 +693,7 @@ const Serialized = struct {
 };
 
 test "protocol: a value serializes to JSON bytes through %JSON.stringify%, as UTF-8" {
+    defer test_agent.close();
     const ctx = try realm();
     // The intrinsic, whatever script did to the global JSON.
     _ = try evalInt("globalThis.JSON = { stringify() { return '\"replaced\"'; } }; 1");
@@ -692,6 +723,7 @@ test "protocol: a value serializes to JSON bytes through %JSON.stringify%, as UT
 }
 
 test "protocol: no JSON representation is a TypeError, and what the serializer throws is pending" {
+    defer test_agent.close();
     const ctx = try realm();
     // 2. JSON.stringify returned undefined: the caller throws a TypeError,
     //    nothing is thrown yet.
@@ -727,6 +759,7 @@ test "protocol: no JSON representation is a TypeError, and what the serializer t
 }
 
 test "protocol: serializing to JSON bytes leaves no Global behind" {
+    defer test_agent.close();
     const ctx = try realm();
     const object = try Made.of("({ a: [1, 2, { b: 'c' }] })");
     defer object.deinit();
@@ -737,9 +770,9 @@ test "protocol: serializing to JSON bytes leaves no Global behind" {
         }
     }.run;
     try round(ctx, object.value());
-    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?);
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(test_isolate.?);
     for (0..32) |_| try round(ctx, object.value());
-    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?) <= before);
+    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(test_isolate.?) <= before);
 }
 
 const Reports = struct {
@@ -756,9 +789,10 @@ const Reports = struct {
 };
 
 test "protocol: invoke a callback function - the value, a rethrown or a reported throw, and a non-callable" {
+    defer test_agent.close();
     const ctx = try realm();
     v8.context_manager.init(std.heap.page_allocator) catch {};
-    const hosted = try v8.context_manager.getOrCreate(context_once.?, std.heap.page_allocator);
+    const hosted = try v8.context_manager.getOrCreate(test_context.?, std.heap.page_allocator);
 
     const adder = try Made.of("(function (a, b) { 'use strict'; return (this === globalThis ? 100 : 0) + a + b; })");
     defer adder.deinit();
@@ -799,10 +833,10 @@ test "protocol: invoke a callback function - the value, a rethrown or a reported
 /// A value made by `code` compiled as the script at `url`, and the Global to
 /// dispose.
 fn evalAt(code: []const u8, url: []const u8) !*ffi.Value {
-    const context = context_once.?;
-    const text = ffi.v8_String_NewFromUtf8(isolate_once.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
+    const context = test_context.?;
+    const text = ffi.v8_String_NewFromUtf8(test_isolate.?, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(text);
-    const name = ffi.v8_String_NewFromUtf8(isolate_once.?, url.ptr, @intCast(url.len)) orelse return error.StringFailed;
+    const name = ffi.v8_String_NewFromUtf8(test_isolate.?, url.ptr, @intCast(url.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(name);
     const script = ffi.v8_Script_CompileWithOrigin(context, text, name) orelse return error.CompileFailed;
     defer ffi.v8_Script_Dispose(script);
@@ -836,6 +870,7 @@ const Located = struct {
 };
 
 test "protocol: a reported exception is located where it was thrown, a thrown value that is not an Error too" {
+    defer test_agent.close();
     const ctx = try realm();
     const url = "https://crane.test/thrower.js";
     // HTML "extract error information" is the throw site's: a thrown string
@@ -876,12 +911,13 @@ test "protocol: a reported exception is located where it was thrown, a thrown va
         }
     }.run;
     try round(ctx, throwing, object);
-    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?);
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(test_isolate.?);
     for (0..32) |_| try round(ctx, throwing, object);
-    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?) <= before + 64);
+    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(test_isolate.?) <= before + 64);
 }
 
 test "protocol: call a user object's operation - a function, a handleEvent, a throwing getter, a non-callable" {
+    defer test_agent.close();
     const ctx = try realm();
     const args = [_]runtime.JSValue{runtime.JSValue.fromNumber(5)};
 
@@ -925,11 +961,12 @@ const Visited = struct {
     fn each(data: ?*anyopaque, item: runtime.JSValue) protocol.Error!void {
         const self: *Visited = @ptrCast(@alignCast(data.?));
         self.count += 1;
-        self.sum += ffi.v8_Value_Int32Value(@ptrCast(@alignCast(item.handle.ptr)), context_once.?);
+        self.sum += ffi.v8_Value_Int32Value(@ptrCast(@alignCast(item.handle.ptr)), test_context.?);
     }
 };
 
 test "protocol: iterate visits every item; no @@iterator is false; a throwing iterator is pending" {
+    defer test_agent.close();
     const ctx = try realm();
     const array = try Made.of("[1, 2, 3]");
     defer array.deinit();
@@ -961,6 +998,7 @@ test "protocol: iterate visits every item; no @@iterator is false; a throwing it
 }
 
 test "protocol: sequence<any> and a sequence of string pairs" {
+    defer test_agent.close();
     const ctx = try realm();
     const generator = try Made.of("(function* () { yield 'a'; yield 2; yield {}; })()");
     defer generator.deinit();
@@ -993,6 +1031,7 @@ test "protocol: sequence<any> and a sequence of string pairs" {
 }
 
 test "protocol: iterator records - next, the result, return, and an async iterator's promise" {
+    defer test_agent.close();
     const ctx = try realm();
     const generator = try Made.of("globalThis.returned = 0; (function* () { try { yield 1; yield 2; } finally { returned++; } })()");
     defer generator.deinit();
@@ -1050,6 +1089,7 @@ fn yieldedCodePoints(ctx: runtime.Context, record: *protocol.IteratorRecord, buf
 }
 
 test "protocol: GetIterator of a primitive is its object's iterator - a string's code points; undefined and null are TypeErrors" {
+    defer test_agent.close();
     const ctx = try realm();
     var buffer: [64]u8 = undefined;
     // GetMethod's GetV does ToObject: "a\u{1F600}b" iterates by code point
@@ -1083,6 +1123,7 @@ test "protocol: GetIterator of a primitive is its object's iterator - a string's
 }
 
 test "protocol: a frozen array" {
+    defer test_agent.close();
     const ctx = try realm();
     const values = [_]runtime.JSValue{ runtime.JSValue.fromNumber(1), runtime.JSValue.fromStringRef("two") };
     const array = try protocol.createFrozenArray(ctx, &values);
@@ -1091,6 +1132,7 @@ test "protocol: a frozen array" {
 }
 
 test "protocol: the values, callbacks and iteration operations leave no Global behind" {
+    defer test_agent.close();
     const ctx = try realm();
     const object = try Made.of("({ a: 1, handleEvent() { return 1; } })");
     defer object.deinit();
@@ -1121,14 +1163,14 @@ test "protocol: the values, callbacks and iteration operations leave no Global b
         }
     }.run;
     try round(ctx, object.value(), function.value(), iterable.value());
-    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?);
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(test_isolate.?);
     for (0..32) |_| try round(ctx, object.value(), function.value(), iterable.value());
     // A leak here is a node per call: 32 rounds of over a dozen calls, more
     // than 1 KB. Measured instead: every operation alone flat over 32 rounds,
     // and the whole round taking one 32-byte node once, at a different round
     // each run, then flat for 96 - V8's own, as script the round calls tiers
     // up. Two such nodes are allowed; a per-call leak is not.
-    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?) <= before + 64);
+    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(test_isolate.?) <= before + 64);
 }
 
 // ----------------------------------------------------------------------------
@@ -1137,17 +1179,17 @@ test "protocol: the values, callbacks and iteration operations leave no Global b
 
 var other_context: ?*ffi.Context = null;
 
-/// The realm the context manager hosts for this file's context.
+/// The realm the context manager hosts for the test's context.
 fn hostedRealm() !runtime.Context {
     _ = try realm();
     v8.context_manager.init(std.heap.page_allocator) catch {};
-    return v8.context_manager.getOrCreate(context_once.?, std.heap.page_allocator);
+    return v8.context_manager.getOrCreate(test_context.?, std.heap.page_allocator);
 }
 
 /// A second realm of the same agent, hosted.
 fn otherRealm() !runtime.Context {
     _ = try hostedRealm();
-    if (other_context == null) other_context = ffi.v8_Context_New(isolate_once.?) orelse return error.ContextCreationFailed;
+    if (other_context == null) other_context = try test_agent.newContext();
     return v8.context_manager.getOrCreate(other_context.?, std.heap.page_allocator);
 }
 
@@ -1161,6 +1203,7 @@ fn recordIncumbent(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
 }
 
 test "protocol: prepare to run a callback makes the callback context the incumbent" {
+    defer test_agent.close();
     const ctx = try realm();
     const here = try hostedRealm();
     const other = try otherRealm();
@@ -1203,6 +1246,7 @@ fn takeArgument(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
 }
 
 test "protocol: a taken callback function or interface records the incumbent realm as its context" {
+    defer test_agent.close();
     const ctx = try realm();
     const here = try hostedRealm();
     try installNative("takeArgument", takeArgument);
@@ -1222,7 +1266,7 @@ test "protocol: a taken callback function or interface records the incumbent rea
     // The conversion takes the Global it is given (the binding's argument
     // handle): hand it one of its own.
     const argument = ffi.v8_Global_Clone(listener.handle) orelse return error.CloneFailed;
-    const wrapper = try v8.conversions.fromV8Value(*runtime.CallbackWrapper, allocator, isolate_once.?, context_once.?, argument);
+    const wrapper = try v8.conversions.fromV8Value(*runtime.CallbackWrapper, allocator, test_isolate.?, test_context.?, argument);
     defer v8.conversions.releaseCallbackWrapper(wrapper);
     const interface = protocol.takeCallbackInterface(wrapper);
     defer interface.release();
@@ -1273,6 +1317,7 @@ const Counter = struct {
 };
 
 test "protocol: an asynchronous iterator object - its own @@asyncIterator, queued next calls, end of iteration, return, and this" {
+    defer test_agent.close();
     const ctx = try realm();
     var counter: Counter = .{ .ctx = ctx };
     const iterator = try protocol.createAsyncIterator(ctx, &Counter.steps, &counter);
@@ -1292,7 +1337,7 @@ test "protocol: an asynchronous iterator object - its own @@asyncIterator, queue
         \\})();
         \\1
     ));
-    ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate_once.?);
+    ffi.v8_Isolate_PerformMicrotaskCheckpoint(test_isolate.?);
     try std.testing.expectEqual(@as(i32, 1), try evalInt("out.join() === '1,2,false,false,true,,true,9,true' && checks === 2 ? 1 : 0"));
     // Finished before return: the host's return is not run.
     try std.testing.expectEqual(@as(usize, 0), counter.returned);
@@ -1306,7 +1351,7 @@ test "protocol: an asynchronous iterator object - its own @@asyncIterator, queue
         \\(async () => { for await (const v of earlyIt) { seen.push(v); break; } seen.push((await earlyIt.next()).done); })();
         \\1
     ));
-    ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate_once.?);
+    ffi.v8_Isolate_PerformMicrotaskCheckpoint(test_isolate.?);
     // for await's break calls return: the host's return runs, and then the
     // iterator is finished.
     try std.testing.expectEqual(@as(i32, 1), try evalInt("seen.join() === '1,true' ? 1 : 0"));
@@ -1317,12 +1362,13 @@ test "protocol: an asynchronous iterator object - its own @@asyncIterator, queue
 var finalized_counter: Counter = undefined;
 
 test "protocol: an asynchronous iterator's finalize runs when it is collected" {
+    defer test_agent.close();
     const ctx = try realm();
     finalized_counter = .{ .ctx = ctx };
     (try protocol.createAsyncIterator(ctx, &Counter.steps_finalized, &finalized_counter)).release();
     for (0..5) |_| {
-        ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate_once.?);
-        ffi.v8_Isolate_RequestGarbageCollection(isolate_once.?);
+        ffi.v8_Isolate_PerformMicrotaskCheckpoint(test_isolate.?);
+        ffi.v8_Isolate_RequestGarbageCollection(test_isolate.?);
         if (finalized_counter.finalized == 1) break;
     }
     try std.testing.expectEqual(@as(usize, 1), finalized_counter.finalized);
@@ -1332,7 +1378,7 @@ test "protocol: an asynchronous iterator's finalize runs when it is collected" {
 /// iterator result. Releases the promise.
 fn settledResult(ctx: runtime.Context, promise: protocol.Owned) !protocol.IteratorResult {
     defer promise.release();
-    ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate_once.?);
+    ffi.v8_Isolate_PerformMicrotaskCheckpoint(test_isolate.?);
     const handle: *ffi.Promise = @ptrCast(@alignCast(promise.value.handle.ptr));
     if (ffi.v8_Promise_State(handle) != 1) return error.NotFulfilled;
     const value = ffi.v8_Promise_Result(handle) orelse return error.NoResult;
@@ -1341,6 +1387,7 @@ fn settledResult(ctx: runtime.Context, promise: protocol.Owned) !protocol.Iterat
 }
 
 test "protocol: an async iterator over a sync iterable awaits each value, returns, and closes the iterator on a rejection" {
+    defer test_agent.close();
     const ctx = try realm();
     const values = try Made.of("[1, Promise.resolve(2)]");
     defer values.deinit();
@@ -1371,12 +1418,13 @@ test "protocol: an async iterator over a sync iterable awaits each value, return
     defer protocol.releaseIteratorRecord(rejecting);
     const pending = try protocol.iteratorNext(ctx, rejecting);
     defer pending.release();
-    ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate_once.?);
+    ffi.v8_Isolate_PerformMicrotaskCheckpoint(test_isolate.?);
     try std.testing.expectEqual(@as(c_int, 2), ffi.v8_Promise_State(@ptrCast(@alignCast(pending.value.handle.ptr))));
     try std.testing.expectEqual(@as(i32, 1), try evalInt("closed"));
 }
 
 test "protocol: callback contexts, asynchronous iterators and async-from-sync leave no Global behind" {
+    defer test_agent.close();
     const ctx = try realm();
     const other = try otherRealm();
     try installNative("recordIncumbent", recordIncumbent);
@@ -1401,10 +1449,10 @@ test "protocol: callback contexts, asynchronous iterators and async-from-sync le
         }
     }.run;
     try round(ctx, other, native.value(), values.value());
-    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?);
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(test_isolate.?);
     for (0..32) |_| try round(ctx, other, native.value(), values.value());
     // As the area-2 leak check: two one-time nodes allowed, never one per call.
-    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate_once.?) <= before + 64);
+    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(test_isolate.?) <= before + 64);
 }
 
 // ----------------------------------------------------------------------------
@@ -1423,10 +1471,11 @@ fn identityFunction() !Made {
 }
 
 test "protocol: a platform object converts to its wrapper in its relevant realm, whichever realm the operation entered" {
+    defer test_agent.close();
     const ctx = try realm();
     const here = try hostedRealm();
     const other = try otherRealm();
-    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.page_allocator);
+    test_process.start();
 
     // A platform object of `other` (its relevant realm), wrapped there: a
     // plain object of `other`'s, in `other`'s wrapper cache.
@@ -1434,13 +1483,13 @@ test "protocol: a platform object converts to its wrapper in its relevant realm,
     instance.state = @ptrCast(&relevant_state);
     instance.ctx = other;
     ffi.v8_Context_Enter(other_context.?);
-    const wrapper = ffi.v8_Object_New(isolate_once.?) orelse return error.ObjectFailed;
+    const wrapper = ffi.v8_Object_New(test_isolate.?) orelse return error.ObjectFailed;
     ffi.v8_Context_Exit(other_context.?);
     // The script's own handle keeps it alive; the cache's is weak.
     const ours = ffi.v8_Global_Clone(@ptrCast(wrapper)) orelse return error.CloneFailed;
     defer ffi.v8_Global_Dispose(ours);
     const cache: *v8.WrapperCache = @ptrCast(@alignCast(other.getV8WrapperCacheStorage().?));
-    try cache.set(instance, wrapper, isolate_once.?);
+    try cache.set(instance, wrapper, test_isolate.?);
     const expected = asValue(ours);
     const platform_object: runtime.JSValue = .{ .instance = instance };
 
@@ -1496,7 +1545,7 @@ test "protocol: a platform object converts to its wrapper in its relevant realm,
     var capability = try protocol.createPromise(here);
     defer protocol.releasePromiseCapability(&capability);
     try protocol.resolvePromise(&capability, platform_object);
-    ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate_once.?);
+    ffi.v8_Isolate_PerformMicrotaskCheckpoint(test_isolate.?);
     const promise: *ffi.Promise = @ptrCast(@alignCast(capability.promise.handle.ptr));
     try std.testing.expectEqual(@as(c_int, 1), ffi.v8_Promise_State(promise));
     const result = ffi.v8_Promise_Result(promise) orelse return error.NoResult;

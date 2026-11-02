@@ -10,6 +10,7 @@
 //! isolate entered that it entered.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -94,13 +95,10 @@ const Reports = struct {
     }
 };
 
-var pools_ready = false;
-
+/// What every test here needs started: the engine, the process's hooks and
+/// the standalone runtime (test_process.zig).
 fn setup() !void {
-    try protocol.initializeEngine(.{});
-    if (pools_ready) return;
-    runtime.initializeRuntime(std.heap.page_allocator);
-    pools_ready = true;
+    test_process.start();
 }
 
 fn windowRealm(agent: *protocol.Agent) !runtime.Context {

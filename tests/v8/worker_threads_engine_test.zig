@@ -17,6 +17,7 @@
 //! while the other is still running.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 /// Every worker realm has an event loop; this test drives none.
 const inline_task_loop = @import("inline_task_loop.zig");
 const runtime = @import("runtime");
@@ -154,7 +155,7 @@ test "two agents on two threads make worker realms and churn platform objects at
     // runs in one process: each is idempotent, and the runtime starts only if
     // no file before this one started it.
     try protocol.initializeEngine(.{});
-    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.page_allocator);
+    test_process.start();
     @import("interfaces").process_hooks.startHooksForTest();
 
     var agents = [_]Agent{ .{}, .{} };

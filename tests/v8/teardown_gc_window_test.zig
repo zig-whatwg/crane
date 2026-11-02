@@ -18,6 +18,7 @@
 //! a full collection whose finalizers (the second pass) run before it returns.
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 const runtime = @import("runtime");
 const v8 = @import("v8");
@@ -27,38 +28,55 @@ const dom = @import("dom");
 
 const WrapperCache = v8.WrapperCache;
 
-var isolate_once: ?*ffi.Isolate = null;
-var data_once: ?*runtime.ContextData = null;
-var cache_once: ?*WrapperCache = null;
+var test_isolate: ?*ffi.Isolate = null;
+var test_data: ?*runtime.ContextData = null;
+var test_cache: ?*WrapperCache = null;
 
-/// One isolate, context and wrapper cache for the file, never torn down (see
-/// engine_pending_activity_test.zig); the node hooks, as a host starts them.
+/// The test's own agent, ended with the test (test_process.TestAgent);
+/// `reset` clears what the file caches of it.
+var test_agent: test_process.TestAgent = .{ .reset = reset };
+
+fn reset() void {
+    test_isolate = null;
+    test_data = null;
+    test_cache = null;
+}
+
+/// The test's isolate, context and wrapper cache, its own agent's
+/// (test_agent), ended with the test (see engine_pending_activity_test.zig);
+/// the node hooks, as a host starts them.
 fn setup() !*runtime.ContextData {
-    if (data_once) |data| return data;
-    interfaces.process_hooks.startHooksForTest();
-    runtime.initializeRuntime(std.heap.page_allocator);
-    const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
-    ffi.v8_Isolate_Enter(isolate);
-    _ = ffi.v8_HandleScope_New(isolate);
-    const context = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
-    ffi.v8_Context_Enter(context);
-    const data = try std.heap.page_allocator.create(runtime.ContextData);
-    data.* = try runtime.ContextData.init(std.heap.page_allocator, .{ .engine_ctx = context });
-    data.agent = @ptrCast(isolate);
-    const cache = try std.heap.page_allocator.create(WrapperCache);
-    cache.* = try WrapperCache.init(std.heap.page_allocator, @ptrCast(context));
-    data.setV8WrapperCacheStorage(@ptrCast(cache));
-    isolate_once = isolate;
-    data_once = data;
-    cache_once = cache;
-    return data;
+    const isolate = try test_agent.open(.{});
+    if (test_data == null) {
+        const context = test_agent.context.?;
+        const data = try test_agent.contextData(std.heap.page_allocator, .{ .engine_ctx = context });
+        data.agent = @ptrCast(isolate);
+        const cache = try std.heap.page_allocator.create(WrapperCache);
+        cache.* = try WrapperCache.init(std.heap.page_allocator, @ptrCast(context));
+        data.setV8WrapperCacheStorage(@ptrCast(cache));
+        test_agent.endWith(.{ .call = .{ .call = endCache, .data = cache } });
+        test_isolate = isolate;
+        test_data = data;
+        test_cache = cache;
+    }
+    return test_data.?;
+}
+
+/// The test's wrapper cache ends before its realm's data and its agent, as a
+/// realm's end takes its cache down (context_manager): every wrapper's weak
+/// callback cleared, every instance torn down, and the cache out of the
+/// thread's live caches (`wrappedElsewhere` reads every one of them).
+fn endCache(cache: ?*anyopaque) void {
+    const self: *WrapperCache = @ptrCast(@alignCast(cache.?));
+    self.deinit();
+    std.heap.page_allocator.destroy(self);
 }
 
 /// Wrap `instance` as the binding leaves an object script has seen and then
 /// dropped: a real V8 object, held by the cache alone.
 fn wrap(instance: *runtime.Instance) !void {
-    const wrapper = ffi.v8_Object_New(isolate_once.?) orelse return error.ObjectFailed;
-    try cache_once.?.set(instance, @ptrCast(wrapper), @ptrCast(isolate_once.?));
+    const wrapper = ffi.v8_Object_New(test_isolate.?) orelse return error.ObjectFailed;
+    try test_cache.?.set(instance, @ptrCast(wrapper), @ptrCast(test_isolate.?));
 }
 
 /// How often `collectingDeinit` ran, and whether its collection took the
@@ -71,8 +89,8 @@ var wrapper_collected_in_window = false;
 fn collectingDeinit(instance: *runtime.Instance) void {
     deinit_runs += 1;
     if (deinit_runs == 1) {
-        ffi.v8_Isolate_RequestGarbageCollection(isolate_once.?);
-        wrapper_collected_in_window = cache_once.?.get(instance) == null;
+        ffi.v8_Isolate_RequestGarbageCollection(test_isolate.?);
+        wrapper_collected_in_window = test_cache.?.get(instance) == null;
     }
     interfaces.HTMLElement.deinit(instance);
 }
@@ -85,6 +103,7 @@ const collecting_vtable = blk: {
 };
 
 test "a collection inside a root's teardown does not tear it down again" {
+    defer test_agent.close();
     const ctx = try setup();
     deinit_runs = 0;
     wrapper_collected_in_window = false;
@@ -101,6 +120,7 @@ test "a collection inside a root's teardown does not tear it down again" {
 }
 
 test "a collection inside a child's teardown leaves the child to its tree" {
+    defer test_agent.close();
     const ctx = try setup();
     deinit_runs = 0;
     wrapper_collected_in_window = false;
@@ -118,6 +138,7 @@ test "a collection inside a child's teardown leaves the child to its tree" {
 }
 
 test "a node its tree tore down is not freed again by the parser's free" {
+    defer test_agent.close();
     const ctx = try setup();
     deinit_runs = 0;
 

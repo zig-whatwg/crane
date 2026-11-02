@@ -19,6 +19,7 @@
 //! realm (the iterator objects themselves hold no Global).
 
 const std = @import("std");
+const test_process = @import("test_process.zig");
 /// Every worker realm has an event loop; this test drives none.
 const inline_task_loop = @import("inline_task_loop.zig");
 const runtime = @import("runtime");
@@ -26,12 +27,8 @@ const v8 = @import("v8");
 const protocol = @import("engine");
 const ffi = v8.ffi;
 
-var set_up = false;
-
 fn setup() void {
-    if (set_up) return;
-    set_up = true;
-    runtime.initializeRuntime(std.heap.page_allocator);
+    test_process.start();
     v8.context_manager.init(std.heap.page_allocator) catch {};
 }
 
