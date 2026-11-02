@@ -878,16 +878,25 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     .{ .name = "tests-html", .config = .{ .batch = 1, .slow = &html_slow } },
     .{ .name = "tests-service_worker", .config = .{ .batch = 1 } },
     .{ .name = "tests-websocket", .config = .{ .batch = 1 } },
-    // Not yet a process per test: at batch 1 (lane tlaunch2, seed
-    // 0x53e719cc383a1086) 22 tests FAIL alone - context_counter_test (16),
-    // page_realm_operations_test (4) and refcount_wrapper_link_test (2) count
-    // handles or references and pass only after an earlier test has made the
-    // engine's lazily created ones (32 bytes of global handles in a fresh
-    // process) - and template_registry_isolation_test crashes alone (its two
-    // threads race V8's platform initialization). Any shuffled order puts
-    // some of them first, so until they are fixed the suite keeps the build
-    // runner's old shape: one process, index order. -Dlaunch-batch=1 still
-    // runs it a process per test.
+    // tests-v8 keeps the build runner's old shape - one process, index order
+    // - because its tests depend on order (lane tlaunch2, 2026-11-01; every
+    // test, seed and reason: tmp/analysis/tlaunch2-tests-v8-order.tsv):
+    // - a process per test (batch 1, seed 0x5eed11): 22 tests FAIL alone -
+    //   context_counter_test (16), page_realm_operations_test (4) and
+    //   refcount_wrapper_link_test (2) count handles or references and pass
+    //   only after an earlier test has made the engine's lazily created ones
+    //   (32 bytes of global handles in a fresh process) - and
+    //   template_registry_isolation_test crashes alone (its two threads race
+    //   V8's platform initialization);
+    // - the whole suite shuffled in one process (batch 0, seeds 0x5eed01-03):
+    //   52-60 ORDER-DEPENDENT a run, 162 tests over the three; 124 of them
+    //   panic "a platform object made in a realm no Browser owns, with no
+    //   standalone runtime" after another test of the same process
+    //   (urlpattern_*, page_realm_operations, callback_argument_borrowed,
+    //   per_call_handle, ...).
+    // Every other suite passed all four runs. Until these are fixed, any
+    // shuffled order fails some of them; -Dlaunch-batch=1 and
+    // -Dlaunch-shuffle=true still run it the other ways.
     .{ .name = "tests-v8", .config = .{ .batch = 0, .shuffle = false } },
     .{ .name = "src-browser", .config = .{ .batch = 1 } },
     .{ .name = "test-browser", .config = .{ .batch = 1 } },
