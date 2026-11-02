@@ -315,14 +315,18 @@ pub const CookieChangeObserver = struct {
 // Tests
 // ============================================================================
 
-var test_callback_called: bool = false;
-var test_callback_count: usize = 0;
+/// What a test's listener saw, handed to it as the listener's context: each
+/// test owns its own, so nothing a test records outlives it.
+const TestListener = struct {
+    called: bool = false,
+    count: usize = 0,
 
-fn testCallback(changes: []const CookieChange, context: ?*anyopaque) void {
-    _ = context;
-    test_callback_called = true;
-    test_callback_count = changes.len;
-}
+    fn callback(changes: []const CookieChange, context: ?*anyopaque) void {
+        const self: *TestListener = @ptrCast(@alignCast(context.?));
+        self.called = true;
+        self.count = changes.len;
+    }
+};
 
 test "CookieChange - init and deinit" {
     const allocator = std.testing.allocator;
@@ -343,12 +347,10 @@ test "CookieChangeObserver - addListener and recordChange" {
     var observer = CookieChangeObserver.init(allocator);
     defer observer.deinit();
 
-    // Reset test state
-    test_callback_called = false;
-    test_callback_count = 0;
+    var seen: TestListener = .{};
 
     // Add listener
-    try observer.addListener(testCallback, null, null, null, null);
+    try observer.addListener(TestListener.callback, &seen, null, null, null);
 
     // Record a change
     var cookie = try Cookie.init(allocator, "session", "abc");
@@ -360,8 +362,8 @@ test "CookieChangeObserver - addListener and recordChange" {
 
     // Flush
     observer.flush();
-    try std.testing.expect(test_callback_called);
-    try std.testing.expectEqual(@as(usize, 1), test_callback_count);
+    try std.testing.expect(seen.called);
+    try std.testing.expectEqual(@as(usize, 1), seen.count);
     try std.testing.expectEqual(@as(usize, 0), observer.pending_changes.items.len);
 }
 
@@ -387,11 +389,10 @@ test "CookieChangeObserver - name filter" {
     var observer = CookieChangeObserver.init(allocator);
     defer observer.deinit();
 
-    test_callback_called = false;
-    test_callback_count = 0;
+    var seen: TestListener = .{};
 
     // Add listener with name filter
-    try observer.addListener(testCallback, null, null, null, "target");
+    try observer.addListener(TestListener.callback, &seen, null, null, "target");
 
     // Record matching cookie
     var cookie1 = try Cookie.init(allocator, "target", "value1");
@@ -406,8 +407,8 @@ test "CookieChangeObserver - name filter" {
     observer.flush();
 
     // Only one should match
-    try std.testing.expect(test_callback_called);
-    try std.testing.expectEqual(@as(usize, 1), test_callback_count);
+    try std.testing.expect(seen.called);
+    try std.testing.expectEqual(@as(usize, 1), seen.count);
 }
 
 test "CookieChangeObserver - getObservableChanges" {
