@@ -138,7 +138,7 @@ pub const ReachableNodeSet = struct {
     count: usize = 0,
     /// The entry added last.
     last: ?*Entry = null,
-    index: std.AutoHashMapUnmanaged(*runtime.Instance, *Entry) = .empty,
+    index: infra.address_map.AddressHashMapUnmanaged(*runtime.Instance, *Entry) = .empty,
 
     pub const Entry = node_holds.ReachableHold;
     const block_len = 8;

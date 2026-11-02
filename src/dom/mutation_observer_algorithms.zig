@@ -50,7 +50,7 @@ pub const MutationObserverAgent = struct {
     /// appending to the set stays constant time however many slots one task
     /// signals (a page building a thousand components signals thousands
     /// before its first microtask checkpoint).
-    signal_slot_set: std.AutoHashMapUnmanaged(*runtime.Instance, u64) = .empty,
+    signal_slot_set: infra.address_map.AddressHashMapUnmanaged(*runtime.Instance, u64) = .empty,
 
     allocator: Allocator,
 
