@@ -42,13 +42,12 @@ var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by ShadowRoot's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    const installed = implementation.installing();
-    var combined = installed.* orelse Implementation{};
+    var combined = implementation.installing().* orelse Implementation{};
     if (impl.host_destroyed) |step| combined.host_destroyed = step;
     if (impl.root_for_host) |step| combined.root_for_host = step;
     if (impl.scope_serial) |step| combined.scope_serial = step;
     if (impl.next_scope_serial) |step| combined.next_scope_serial = step;
-    installed.* = combined;
+    implementation.install(combined);
 }
 
 /// `shadow`'s host is being torn down: `shadow` forgets it. Nothing to do

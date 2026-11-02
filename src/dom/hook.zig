@@ -56,6 +56,9 @@ pub fn Hook(comptime T: type) type {
         const Overrides = struct {
             /// Overrides of this slot not yet restored.
             depth: u32 = 0,
+            /// Writes `install` made: what pins that an install of the
+            /// value already installed writes nothing.
+            install_writes: u32 = 0,
             /// The installed value under them: what the outermost
             /// `restore()` puts back, and where the start's own installs
             /// land meanwhile. Meaningful only while `depth > 0`.
@@ -79,8 +82,26 @@ pub fn Hook(comptime T: type) type {
         }
 
         /// Install `value`: only while the process starts (`installing`).
+        /// Installing the value already installed writes nothing: a test
+        /// start re-installing every hook while another Browser's thread
+        /// reads them (the many-Browsers variant) is then a read beside a
+        /// read, not a data race (ThreadSanitizer reported exactly that
+        /// for refcount's and lifetime's hooks, lane tsanfix1). A table
+        /// several owners fill in parts is read, changed and installed
+        /// whole, so the same holds for it.
         pub fn install(self: *Self, value: T) void {
-            self.installing().* = value;
+            const slot = self.installing();
+            if (std.meta.eql(slot.*, value)) return;
+            slot.* = value;
+            if (builtin.is_test) self.overrides.install_writes += 1;
+        }
+
+        /// Install one field of the installed table - a table several
+        /// owners fill in parts - writing it only when it differs.
+        pub fn installField(self: *Self, comptime field: []const u8, value: @FieldType(T, field)) void {
+            const slot = self.installing();
+            if (std.meta.eql(@field(slot.*, field), value)) return;
+            @field(slot.*, field) = value;
         }
 
         /// The value to change in place while installing - a registry's
@@ -104,11 +125,14 @@ pub fn Hook(comptime T: type) type {
         /// slot - into its override.
         pub fn overrideForTest(self: *Self, value: T) Override {
             if (!builtin.is_test) @compileError("overrideForTest is for tests: a hook is installed once, by crane.Process");
+            // Counted first: the process's first override holds whatever
+            // else runs in it (the many-Browsers variant's busy Browser)
+            // before the slot changes under it.
+            process_start.overrideMade();
             const previous = self.value;
             if (self.overrides.depth == 0) self.overrides.installed = self.value;
             self.overrides.depth += 1;
             self.value = value;
-            process_start.overrideMade();
             return .{ .slot = self, .previous = previous, .depth = self.overrides.depth };
         }
 
@@ -134,6 +158,8 @@ pub fn Hook(comptime T: type) type {
                 overrides.depth -= 1;
                 self.slot.value = if (overrides.depth == 0) overrides.installed else self.previous;
                 if (overrides.depth == 0) overrides.installed = undefined;
+                // Counted last: the slot is back before the process's last
+                // restore lets anything else run again.
                 process_start.overrideRestored();
             }
         };
@@ -279,4 +305,55 @@ test "a registration list appends in order and reads in place" {
         try testing.expect(registry.read().contains(6));
         try testing.expect(!registry.read().contains(7));
     }
+}
+
+test "installing the value already installed writes nothing" {
+    const Slots = struct {
+        var slot: Hook(?TestTable) = .init(null);
+        fn install() void {
+            slot.install(.{ .step = &testSlotStep });
+        }
+        fn installOther() void {
+            slot.install(.{ .step = &otherSlotStep });
+        }
+    };
+    const before = Slots.slot.overrides.install_writes;
+    process_start.installForTest(Slots.install);
+    try testing.expectEqual(before + 1, Slots.slot.overrides.install_writes);
+    // A test start's re-install - every startHooksForTest() after the
+    // first - reads the slot and leaves it.
+    process_start.installForTest(Slots.install);
+    process_start.installForTest(Slots.install);
+    try testing.expectEqual(before + 1, Slots.slot.overrides.install_writes);
+    // Another value is a write.
+    process_start.installForTest(Slots.installOther);
+    try testing.expectEqual(before + 2, Slots.slot.overrides.install_writes);
+}
+
+test "the process's first override and its last restore tell the override observer, in that order around the writes" {
+    const Seen = struct {
+        var events: [8]u8 = undefined;
+        var len: usize = 0;
+        var slot: Hook(u32) = .init(1);
+        fn first(_: ?*anyopaque) void {
+            // Called before the slot changes.
+            events[len] = if (slot.get() == 1) 'h' else '?';
+            len += 1;
+        }
+        fn last(_: ?*anyopaque) void {
+            // Called after the slot is back.
+            events[len] = if (slot.get() == 1) 'r' else '?';
+            len += 1;
+        }
+    };
+    // Only when no override is outstanding (this test's process may be
+    // running another test's leftover - the digest would name that one).
+    if (process_start.outstandingOverrides() != 0) return error.SkipZigTest;
+    const previous = process_start.observeOverridesForTest(.{ .first_made = &Seen.first, .last_restored = &Seen.last });
+    defer _ = process_start.observeOverridesForTest(previous);
+    const outer = Seen.slot.overrideForTest(2);
+    const inner = Seen.slot.overrideForTest(3);
+    inner.restore();
+    outer.restore();
+    try testing.expectEqualSlices(u8, "hr", Seen.events[0..Seen.len]);
 }

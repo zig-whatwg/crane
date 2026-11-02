@@ -67,7 +67,8 @@ pub fn install(element: []const u8, steps: Steps) void {
     const tables = entries.installing();
     for (tables.elements.mutableSlice()) |*entry| {
         if (std.mem.eql(u8, entry.element, element)) {
-            entry.steps = steps;
+            // The same steps again write nothing (hook.zig, Hook.install).
+            if (entry.steps != steps) entry.steps = steps;
             return;
         }
     }
@@ -80,7 +81,7 @@ pub fn installForAttribute(namespace: []const u8, attribute_local_name: []const 
     const tables = entries.installing();
     for (tables.attributes.mutableSlice()) |*entry| {
         if (std.mem.eql(u8, entry.attribute, attribute_local_name) and std.mem.eql(u8, entry.element_namespace, namespace)) {
-            entry.steps = steps;
+            if (!std.meta.eql(entry.steps, steps)) entry.steps = steps;
             return;
         }
     }

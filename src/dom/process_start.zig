@@ -58,6 +58,9 @@ const Start = struct {
     word: std.atomic.Value(State) = .init(.{}),
     test_installing: std.atomic.Value(u32) = .init(0),
     test_overrides: std.atomic.Value(u32) = .init(0),
+    /// Set by the Crane test runner before its first test, read by the test
+    /// thread's overrides (`observeOverridesForTest`).
+    test_override_observer: ?OverrideObserver = null,
 };
 
 // process-wide: crane.Process's start-up phase; src/dom hooks are written only while it is .starting
@@ -168,15 +171,45 @@ pub fn outstandingOverrides() u32 {
     return state.test_overrides.load(.acquire);
 }
 
-/// hook.zig: an override was made.
+/// Told when the process's overrides go from none to one and back: the
+/// many-Browsers variant's test runner holds its busy Browser between two
+/// iterations from a test's first override to its last restore. An override
+/// is a statement about the whole process - every Browser in it reads the
+/// slot - so while one is outstanding nothing else runs there: the busy
+/// Browser neither reads a slot the test thread writes (a data race,
+/// ThreadSanitizer) nor runs on a test's fake hook. Its iteration holds
+/// nothing between iterations, so holding it there takes nothing from it.
+pub const OverrideObserver = struct {
+    ctx: ?*anyopaque = null,
+    /// Before the first outstanding override's write.
+    first_made: *const fn (ctx: ?*anyopaque) void,
+    /// After the last outstanding override's restore.
+    last_restored: *const fn (ctx: ?*anyopaque) void,
+};
+
+/// Install the override observer (null: none), returning the one there
+/// was. The Crane test runner's, once, before its first test.
+pub fn observeOverridesForTest(observer: ?OverrideObserver) ?OverrideObserver {
+    if (!builtin.is_test) @compileError("observeOverridesForTest is for the Crane test runner");
+    const previous = state.test_override_observer;
+    state.test_override_observer = observer;
+    return previous;
+}
+
+/// hook.zig: an override is about to be made.
 pub fn overrideMade() void {
-    _ = state.test_overrides.fetchAdd(1, .acq_rel);
+    if (state.test_overrides.fetchAdd(1, .acq_rel) == 0) {
+        if (state.test_override_observer) |observer| observer.first_made(observer.ctx);
+    }
 }
 
 /// hook.zig: an override was restored.
 pub fn overrideRestored() void {
     const before = state.test_overrides.fetchSub(1, .acq_rel);
     std.debug.assert(before > 0);
+    if (before == 1) {
+        if (state.test_override_observer) |observer| observer.last_restored(observer.ctx);
+    }
 }
 
 test "the state is one word and starts not started" {

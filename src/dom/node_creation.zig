@@ -78,17 +78,17 @@ var node_steps: Hook(Hooks) = .init(.{});
 
 /// Called by Element's installHooks, once, at process start (process_start.zig).
 pub fn installElement(steps: ElementSteps) void {
-    node_steps.installing().element = steps;
+    node_steps.installField("element", steps);
 }
 
 /// Called by DocumentType's installHooks, once, at process start (process_start.zig).
 pub fn installDocumentType(steps: DocumentTypeSteps) void {
-    node_steps.installing().document_type = steps;
+    node_steps.installField("document_type", steps);
 }
 
 /// Called by Node's installHooks, once, at process start (process_start.zig).
 pub fn installNode(steps: NodeSteps) void {
-    node_steps.installing().node = steps;
+    node_steps.installField("node", steps);
 }
 
 /// DOM "create an element": set `element`'s namespace and local name.

@@ -62,17 +62,18 @@ pub fn installLoadDelay(delay: LoadDelay) void {
 
 /// Called by the style element. Idempotent.
 pub fn installParserSteps(steps: ParserSteps) void {
-    const installed = parser_steps.installing();
-    const link_created = if (installed.*) |old| old.link_created else null;
-    installed.* = steps;
-    if (installed.*.?.link_created == null) installed.*.?.link_created = link_created;
+    var combined = steps;
+    if (combined.link_created == null) {
+        if (parser_steps.installing().*) |old| combined.link_created = old.link_created;
+    }
+    parser_steps.install(combined);
 }
 
 /// Called by the link element. Keeps the style element's parser hooks.
 pub fn installLinkParserSteps(created: *const fn (element: *runtime.Instance) void) void {
-    const installed = parser_steps.installing();
-    if (installed.* == null) installed.* = .{ .created = &ignoreCreatedStep, .popped = &ignoreParserStep };
-    installed.*.?.link_created = created;
+    var combined = parser_steps.installing().* orelse ParserSteps{ .created = &ignoreCreatedStep, .popped = &ignoreParserStep };
+    combined.link_created = created;
+    parser_steps.install(combined);
 }
 
 fn ignoreParserStep(element: *runtime.Instance) void {
