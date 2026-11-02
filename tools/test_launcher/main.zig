@@ -108,7 +108,16 @@ const Args = struct {
     /// process of its own, with no busy Browser beside it, and the run names
     /// each with its reason - declared, never a silent skip (build.zig
     /// suite_configs `alone`).
-    alone: []const Alone = &.{},
+    alone: []const Declared = &.{},
+    /// Tests excluded from the ThreadSanitizer variant (`--tsan-skip=NAME`,
+    /// each with the `--tsan-skip-reason=` after it): under
+    /// --sanitize-thread each is not run - reported as skipped - and the run
+    /// names it with its reason. Only a test whose subject is real time
+    /// itself, which the instrumentation's slowdown changes (V8's status
+    /// files SKIP such tests under tsan); a test that merely waits on a time
+    /// budget is fixed to wait on its condition instead (build.zig
+    /// suite_configs `tsan_skip`).
+    tsan_skip: []const Declared = &.{},
     /// Report every non-pass without failing (server.Session.report_only).
     report_only: bool = false,
     /// Verify mode (verify.zig): the tests whose names start with any of
@@ -122,7 +131,8 @@ const Args = struct {
         var a: Args = .{};
         var slow: std.ArrayList([]const u8) = .empty;
         var verify: std.ArrayList([]const u8) = .empty;
-        var alone: std.ArrayList(Alone) = .empty;
+        var alone: std.ArrayList(Declared) = .empty;
+        var tsan_skip: std.ArrayList(Declared) = .empty;
         for (args) |arg| {
             if (value(arg, "--jobs=") orelse value(arg, "--parallel=")) |v| {
                 // --parallel= too: the pool's crane-measure.sh rewrites it to
@@ -171,6 +181,11 @@ const Args = struct {
             } else if (value(arg, "--alone-reason=")) |v| {
                 if (alone.items.len == 0) return error.AloneReasonWithoutAlone;
                 alone.items[alone.items.len - 1].reason = v;
+            } else if (value(arg, "--tsan-skip=")) |v| {
+                try tsan_skip.append(arena, .{ .name = v });
+            } else if (value(arg, "--tsan-skip-reason=")) |v| {
+                if (tsan_skip.items.len == 0) return error.TsanSkipReasonWithoutTsanSkip;
+                tsan_skip.items[tsan_skip.items.len - 1].reason = v;
             } else if (std.mem.eql(u8, arg, "--report-only")) {
                 a.report_only = true;
             } else if (value(arg, "--verify=")) |v| {
@@ -193,6 +208,8 @@ const Args = struct {
         a.verify = verify.items;
         a.alone = alone.items;
         for (a.alone) |declared| if (declared.reason.len == 0) return error.AloneWithoutReason;
+        a.tsan_skip = tsan_skip.items;
+        for (a.tsan_skip) |declared| if (declared.reason.len == 0) return error.TsanSkipWithoutReason;
         // Verify mode is a run of its own, with its own report: never the
         // build runner's protocol.
         if (a.verify.len != 0 and a.listen) return error.VerifyInServerMode;
@@ -219,12 +236,14 @@ const Args = struct {
     }
 };
 
-/// A test declared to need its process to itself (`--alone`).
-pub const Alone = struct {
+/// A test declared by name with its reason: one that needs its process to
+/// itself (`--alone`), or one excluded from the ThreadSanitizer variant
+/// (`--tsan-skip`).
+pub const Declared = struct {
     /// The test's full name.
     name: []const u8,
-    /// Why: what it measures or makes that a second Browser in its process
-    /// would change. Required.
+    /// Why: what about it a second Browser, or the instrumentation's
+    /// slowdown, would change. Required.
     reason: []const u8 = "",
 };
 
@@ -254,6 +273,9 @@ const usage =
     \\  --alone=NAME      with --many-browsers: a test (full name) that needs its process to itself runs in
     \\                    one of its own with no busy Browser, and the run names it; each needs the
     \\  --alone-reason=R  that follows it: why (printed with it)
+    \\  --tsan-skip=NAME  with --sanitize-thread: a test (full name) whose subject is real time is not run, and
+    \\                    the run names it; each needs the
+    \\  --tsan-skip-reason=R  that follows it: why (printed with it)
     \\  --verify=PREFIX   verify mode: the tests whose names start with PREFIX (repeatable; build.zig's
     \\                    test-verify passes one per changed file, "<file>.test."), each run
     \\                    --verify-batched times in one process and --verify-alone times alone;
@@ -318,6 +340,11 @@ test "args: a test declared alone carries its reason, and one without a reason i
     try std.testing.expectEqualStrings("must make the first isolate", a.alone[1].reason);
     try std.testing.expectError(error.AloneWithoutReason, Args.parse(arena, &.{ "x", "--alone=f.test.t" }));
     try std.testing.expectError(error.AloneReasonWithoutAlone, Args.parse(arena, &.{ "x", "--alone-reason=why" }));
+    const t = try Args.parse(arena, &.{ "x", "--sanitize-thread", "--tsan-skip=f.test.measured", "--tsan-skip-reason=its subject is real time" });
+    try std.testing.expectEqual(@as(usize, 1), t.tsan_skip.len);
+    try std.testing.expectEqualStrings("its subject is real time", t.tsan_skip[0].reason);
+    try std.testing.expectError(error.TsanSkipWithoutReason, Args.parse(arena, &.{ "x", "--tsan-skip=f.test.t" }));
+    try std.testing.expectError(error.TsanSkipReasonWithoutTsanSkip, Args.parse(arena, &.{ "x", "--tsan-skip-reason=why" }));
 }
 
 test "args: server mode takes the digest seed and ignores the build runner's --seed" {
@@ -459,9 +486,30 @@ pub fn main(init: std.process.Init) !void {
     var selected: std.ArrayList(u32) = .empty;
     const is_selected = try arena.alloc(bool, md.names.len);
     @memset(is_selected, false);
+    // Excluded from the ThreadSanitizer variant: not run (a skip to the build
+    // runner), each named with its reason - declared, never silent - and a
+    // name the executable lacks reported, as for --slow.
+    const tsan_skipped = try arena.alloc(bool, md.names.len);
+    @memset(tsan_skipped, false);
+    if (args.sanitize_thread) {
+        for (args.tsan_skip) |declared| {
+            const i = index_of.get(declared.name) orelse {
+                try out.print("test_launcher: {s}: --tsan-skip names no test of this executable: {s}\n", .{ name, declared.name });
+                continue;
+            };
+            tsan_skipped[i] = true;
+        }
+    }
     for (md.names, md.expects_panic, 0..) |n, panics, i| {
         if (panics) continue;
         if (args.filter) |f| if (std.mem.indexOf(u8, n, f) == null) continue;
+        if (tsan_skipped[i]) {
+            for (args.tsan_skip) |declared| if (std.mem.eql(u8, declared.name, n)) {
+                try out.print("test_launcher: {s} [ThreadSanitizer]: SKIPPED, not run under ThreadSanitizer: {s}: {s}\n", .{ name, n, declared.reason });
+                break;
+            };
+            continue;
+        }
         try selected.append(arena, @intCast(i));
         is_selected[i] = true;
     }
@@ -644,6 +692,12 @@ pub fn main(init: std.process.Init) !void {
 /// Verify mode (verify.zig): the tests named by `args.verify`'s prefixes,
 /// batched and alone; the report, the result file, and the exit status - 1
 /// when any test's verification failed or no prefix named a test.
+/// The entry of `list` that declares the test `test_name`, if any.
+fn declaredIn(list: []const Declared, test_name: []const u8) ?Declared {
+    for (list) |declared| if (std.mem.eql(u8, declared.name, test_name)) return declared;
+    return null;
+}
+
 fn runVerify(gpa: std.mem.Allocator, io: Io, arena: std.mem.Allocator, out: *Io.Writer, name: []const u8, md: child_mod.Metadata, args: Args, executor: *child_mod.Executor, jobs: u32) !u8 {
     var tests: std.ArrayList(u32) = .empty;
     var unmatched: u32 = 0;
@@ -652,6 +706,12 @@ fn runVerify(gpa: std.mem.Allocator, io: Io, arena: std.mem.Allocator, out: *Io.
         for (md.names, md.expects_panic, 0..) |n, panics, i| {
             if (panics or !std.mem.startsWith(u8, n, prefix)) continue;
             matched = true;
+            // Excluded from the ThreadSanitizer variant (`--tsan-skip`): not
+            // verified under it either, and said so.
+            if (args.sanitize_thread) if (declaredIn(args.tsan_skip, n)) |declared| {
+                try out.print("test_launcher: {s} [ThreadSanitizer]: verify: SKIPPED, not run under ThreadSanitizer: {s}: {s}\n", .{ name, n, declared.reason });
+                continue;
+            };
             if (std.mem.indexOfScalar(u32, tests.items, @intCast(i)) == null) try tests.append(arena, @intCast(i));
         }
         if (!matched) {
