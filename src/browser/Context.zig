@@ -1160,9 +1160,6 @@ pub const Context = struct {
     /// OWNED; null for a worker page, or when no record could be made.
     traversable: ?*anyopaque = null,
 
-    // Debug counter for tracking context lifecycle
-    var context_id_counter: u32 = 0;
-
     /// Make the page's realm in `agent` and give it what a page's Window has.
     ///
     /// `agent` is the Browser's agent and `event_loop` its event loop (whose
@@ -1180,8 +1177,7 @@ pub const Context = struct {
         from_snapshot: bool,
         browser_scope: ?*runtime.BrowserScope,
     ) !*Context {
-        context_id_counter += 1;
-        log.debug("[Context.init] #{d}: {s}", .{ context_id_counter, url });
+        log.debug("[Context.init] {s}", .{url});
 
         const ctx = try allocator.create(Context);
         errdefer allocator.destroy(ctx);

@@ -269,45 +269,44 @@ test "FetchController.extractFullTimingInfo" {
     try std.testing.expectEqual(&timing, extracted);
 }
 
-var report_timing_called = false;
-
-fn testReportTimingSteps(_: *anyopaque, _: ?*anyopaque) void {
-    report_timing_called = true;
-}
-
 test "FetchController.reportTiming calls callback" {
     const allocator = std.testing.allocator;
+    // The test's steps: what they saw lives in the test, not in the product.
+    const Test = struct {
+        var called = false;
+        fn steps(_: *anyopaque, _: ?*anyopaque) void {
+            called = true;
+        }
+    };
 
     const controller = try FetchController.init(allocator);
     defer controller.deinit();
 
-    report_timing_called = false;
-    controller.report_timing_steps = testReportTimingSteps;
+    controller.report_timing_steps = Test.steps;
 
     var dummy_global: u8 = 0;
     controller.reportTiming(&dummy_global);
 
-    try std.testing.expect(report_timing_called);
-}
-
-var manual_redirect_called = false;
-
-fn testManualRedirectSteps() void {
-    manual_redirect_called = true;
+    try std.testing.expect(Test.called);
 }
 
 test "FetchController.processNextManualRedirect calls callback" {
     const allocator = std.testing.allocator;
+    const Test = struct {
+        var called = false;
+        fn steps() void {
+            called = true;
+        }
+    };
 
     const controller = try FetchController.init(allocator);
     defer controller.deinit();
 
-    manual_redirect_called = false;
-    controller.next_manual_redirect_steps = testManualRedirectSteps;
+    controller.next_manual_redirect_steps = Test.steps;
 
     controller.processNextManualRedirect();
 
-    try std.testing.expect(manual_redirect_called);
+    try std.testing.expect(Test.called);
 }
 
 test "deserializeAbortReason with reason" {

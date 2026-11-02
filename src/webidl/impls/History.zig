@@ -76,6 +76,13 @@ pub const InternalState = struct {
     state_entry: u64 = 0,
     has_state: bool = false,
 
+    /// How deeply this History's pushState()/replaceState() calls are
+    /// nested: a navigate event handler that calls them fires another
+    /// navigate event (`max_push_replace_depth`). The History's own, as each
+    /// navigable's rate limit is its own: a thread-local shared by every
+    /// History on the thread let one page's nesting refuse another's calls.
+    push_replace_depth: u32 = 0,
+
     pub fn deinit(self: *InternalState) void {
         _ = self;
     }
@@ -485,23 +492,21 @@ pub fn call_replaceState(instance: *runtime.Instance, data: runtime.JSValue, unu
     return sharedPushReplaceState(instance, data, url, .replace);
 }
 
-/// How deeply pushState()/replaceState() calls are nested on this thread: a
-/// navigate event handler that calls them fires another navigate event.
-threadlocal var push_replace_depth: u32 = 0;
-
-/// Step 3's "optionally, throw a SecurityError", taken for calls nested this
-/// deep - a navigate handler that pushes or replaces from inside the event
-/// its own call fired recurses without end otherwise, as browsers' rate
-/// limits also stop (navigate-event/replaceState-inside-back-handler-infinite).
+/// Step 3's "optionally, throw a SecurityError", taken for calls on one
+/// History nested this deep - a navigate handler that pushes or replaces
+/// from inside the event its own call fired recurses without end otherwise,
+/// as browsers' rate limits also stop
+/// (navigate-event/replaceState-inside-back-handler-infinite). Per History,
+/// as Blink's NavigationRateLimiter is per frame.
 const max_push_replace_depth = 16;
 
 /// HTML "shared history push/replace state steps".
 fn sharedPushReplaceState(instance: *runtime.Instance, data: runtime.JSValue, url: webidl.Opt(?runtime.USVString), handling: joint_history.HistoryHandling) !void {
-    // Step 3: "Optionally, throw a SecurityError DOMException."
-    if (push_replace_depth >= max_push_replace_depth) return error.SecurityError;
-    push_replace_depth += 1;
-    defer push_replace_depth -= 1;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // Step 3: "Optionally, throw a SecurityError DOMException."
+    if (internal.push_replace_depth >= max_push_replace_depth) return error.SecurityError;
+    internal.push_replace_depth += 1;
+    defer internal.push_replace_depth -= 1;
     // Step 1: "Let document be history's associated Document. If document is
     // not fully active, then throw a SecurityError DOMException."
     const navigable = activeNavigable(internal) orelse return error.SecurityError;

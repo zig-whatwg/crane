@@ -116,21 +116,29 @@ pub fn runAll(scope: *runtime.BrowserScope) void {
     }
 }
 
-var test_sweeps: usize = 0;
-fn testSweep(_: *runtime.BrowserScope) void {
-    test_sweeps += 1;
-}
-
 test "an installed sweep runs once per runAll, however often it was installed" {
-    const saved = count;
-    defer count = saved;
+    // The test's sweep: its count lives in the test, not in the product.
+    const Test = struct {
+        var runs: usize = 0;
+        fn sweep(_: *runtime.BrowserScope) void {
+            runs += 1;
+        }
+    };
+    // Give back the whole table: restoring only the counts would leave this
+    // test's sweep in the first slot of the process's own table.
+    const saved_sweeps = sweeps;
+    const saved_count = count;
+    defer {
+        sweeps = saved_sweeps;
+        count = saved_count;
+    }
     count = @splat(0);
     var scope = runtime.BrowserScope.init(std.testing.allocator);
     defer scope.deinit();
     runAll(&scope);
-    try std.testing.expectEqual(@as(usize, 0), test_sweeps);
-    install(.nodes, &testSweep);
-    install(.nodes, &testSweep);
+    try std.testing.expectEqual(@as(usize, 0), Test.runs);
+    install(.nodes, &Test.sweep);
+    install(.nodes, &Test.sweep);
     runAll(&scope);
-    try std.testing.expectEqual(@as(usize, 1), test_sweeps);
+    try std.testing.expectEqual(@as(usize, 1), Test.runs);
 }
