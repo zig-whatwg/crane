@@ -295,6 +295,31 @@ there). Both use the per-directory binaries; the per-file executables of
 `-Dtest-isolation=file` (1,592 of them, about four times the CPU) are retired
 (2026-11-01, lane v8order1, once tests-v8 passed both shapes).
 
+**Two variants, run every night** (tmp/remote/nightly-tests.sh; results in
+tmp/nightly/, `latest` and `index.tsv`), and by hand with `test` or
+`test-launch` (lane tsan1, 2026-11-02):
+
+- **`-Dsanitize-thread`**: every test executable built with ThreadSanitizer -
+  Crane's own modules, v8_wrapper.cpp among them; the C libraries and the V8
+  prebuilt stay uninstrumented - and run with `TSAN_OPTIONS=halt_on_error=1`,
+  so a race crashes its process and is blamed on the test that was running,
+  with line numbers (a dSYM beside each macOS executable). A race in Crane's
+  code is a bug with an owner; `tools/test_launcher/tsan_suppressions.txt` takes
+  only a proven false positive of the uninstrumented V8, with its proof.
+- **`-Dmany-browsers`**: every test of a suite that links V8 runs beside a
+  second, busy Browser on another thread of its process
+  (tests/test_runner/busy_browser.zig: page loads, timers, DOM churn, a Browser
+  per iteration) - V8's `--isolates` variant, WebKit's `--threaded`. The runner
+  holds it between iterations while it takes each state digest, and a failure
+  of the busy Browser fails the test it ran beside. A suite whose findings are
+  not fixed yet runs it report-only (`suite_configs` `.many_browsers =
+  .report`, TEMPORARY, naming its findings file): every verdict printed and
+  recorded in tmp/test-launch/<suite>.many-browsers.jsonl, the step passes.
+
+The two combine (`-Dsanitize-thread -Dmany-browsers`: races between two
+instances). A variant's results go beside the suite's own:
+tmp/test-launch/<suite>.tsan.jsonl, .many-browsers.jsonl.
+
 Two kinds this codebase keeps needing:
 
 1. **Memory.** `std.testing.allocator` does not see C++ allocations. For
@@ -362,6 +387,36 @@ boundary"), so it fails on any new reference into an impl from code that does
 not own it.
 
 `zig build test` also includes `crane-check` (crane compiled without linking); the integrator's merge check runs `zig build check-linux -j2` and the full `zig build crane -j2`.
+
+**A branch that adds or changes tests also passes verify mode, and its merge
+report quotes it** (the approved test plan, section 6: Gecko's test-verify runs
+a changed test 10 times in one browser and 5 times fresh; Chromium 20x; WebKit
+10x). A test that fails one run in fifteen is a flake on its first day: fix it
+before it lands, not after it has an owner-less bug.
+
+```bash
+# The changed test files, computed in the checkout (a pool mirror has no .git):
+files=$(git diff --name-only --diff-filter=AMR main...HEAD -- 'tests/*_test.zig' ':!tests/wpt' | paste -sd, -)
+crane-remote.sh <mirror> "zig build test-verify -j2 -Dverify-files=$files"                    # 10 in one process, 5 alone
+crane-remote.sh <mirror> "zig build test-verify -j2 -Dverify-files=$files -Dsanitize-thread"  # once under ThreadSanitizer
+```
+
+Every test of those files prints `VERIFY PASS <test>: batched 10/10 in one
+process, alone 5/5`; any other run (fail, crash, timeout, leak, logged error, a
+state check, a race) is `VERIFY FAIL` with its first bad run, and fails the step
+(`-Dverify-base=main` computes the list itself where there is a git checkout).
+
+The WPT side: every Crane test the branch adds or changes, and every file whose
+result its A/B changed (newly passing, newly failing, newly blocking), repeated
+10 times on the branch's ReleaseSafe runner, in one `crane-pool.sh wpt` job:
+
+```bash
+./zig-out/bin/wpt_runner --repeat=10 --verify --from-file=<list> --wpt-root=tests/wpt --output=<dir>
+```
+
+It exits 1, and its tally (`<dir>/repeat-tally.txt`) says `verify: UNSTABLE`,
+naming each file, harness status and subtest with the statuses it had, when any
+of them differed between the ten runs; a consistent failure is not a flake.
 
 **Local builds use `--cache-dir ~/Library/Caches/crane-z16-cache`, never a cache in `/tmp`.** macOS
 deletes `/tmp` files untouched for three days (`com.apple.tmp_cleaner`, nightly at 00:00), and Zig trusts a
