@@ -137,7 +137,7 @@ pub const Executor = struct {
         std.debug.assert(e.procs[w] == null);
         if (e.slots) |slots| {
             std.debug.assert(e.held[w] == null);
-            e.held[w] = try slots.acquire();
+            e.held[w] = try slots.acquire(null);
         }
         errdefer e.releaseSlot(w);
         const p = try e.gpa.create(Proc);
