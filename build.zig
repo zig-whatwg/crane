@@ -927,11 +927,19 @@ const SuiteConfig = struct {
     /// that merely reads a process-wide counter as its instrument is
     /// converted to a per-agent one instead (docs/lessons/testing-a-test-
     /// that-measures-a-process-wide-counter-assumes-it-is-alone.md).
-    alone: []const Alone = &.{},
+    alone: []const DeclaredTest = &.{},
+    /// Tests NOT run under ThreadSanitizer (-Dsanitize-thread; the
+    /// launcher's --tsan-skip, which names each with its reason): only a test
+    /// whose subject is real time itself, which the instrumentation's
+    /// slowdown changes - V8's status files SKIP such tests under tsan. A
+    /// test that merely waits on a time budget is fixed to wait on its
+    /// condition instead. Keep it to one or two.
+    tsan_skip: []const DeclaredTest = &.{},
 };
 
-/// A test declared alone (`SuiteConfig.alone`): its full name, and why.
-const Alone = struct { name: []const u8, reason: []const u8 };
+/// A test declared by its full name, with why (`SuiteConfig.alone`,
+/// `SuiteConfig.tsan_skip`).
+const DeclaredTest = struct { name: []const u8, reason: []const u8 };
 
 /// What a test variant (-Dmany-browsers, -Dsanitize-thread) does with a
 /// suite's results: `.fail` as any run; `.report` prints and records every
@@ -954,17 +962,9 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     .{ .name = "tests-intl_bench", .config = .{ .batch = 0, .jobs = 1, .shuffle = false } },
     // Suites that start V8 or a Browser: a process per test.
     .{ .name = "tests-dom", .config = .{ .batch = 1 } },
-    // TEMPORARY: tests-html runs both test variants report-only (lane tsan1,
-    // 2026-11-02; docs/testing/test-variant-findings-2026-11-02.tsv). Under
-    // -Dsanitize-thread: two data races - g_protocol_promise_reject written by
-    // every agent's createAgent (F1, 8 two-Browser tests) and a worker realm's
-    // teardown reading a slab slot's generation the window thread reissues
-    // (F2) - and frame realms made from a snapshot in snapshotless Browsers
-    // (F3); beside the busy Browser, two tests that measure the process's
-    // live Global<Object> count (M2). Switch each to failing when
-    // its findings are fixed and `zig build test-launch -Dspec=html
-    // -Dsanitize-thread` (and -Dmany-browsers) passes.
-    .{ .name = "tests-html", .config = .{ .batch = 1, .slow = &html_slow, .sanitize_thread = .report, .many_browsers = .report } },
+    // Both test variants fail (lane tsanfix1 fixed lane tsan1's findings,
+    // docs/testing/test-variant-findings-2026-11-02.tsv).
+    .{ .name = "tests-html", .config = .{ .batch = 1, .slow = &html_slow, .tsan_skip = &html_tsan_skip } },
     .{ .name = "tests-service_worker", .config = .{ .batch = 1 } },
     .{ .name = "tests-websocket", .config = .{ .batch = 1 } },
     // tests-v8 ran as one index-order process until lane v8order1
@@ -980,18 +980,75 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     // worker_streams_test's deliberate --stress-compaction. Switch it to
     // failing when `CRANE_TEST_STATE=fail zig build test-launch -Dspec=v8
     // -Dlaunch-batch=1` passes.
-    // TEMPORARY, the same way: tests-v8 runs beside the busy Browser report-
-    // only (lane tsan1; docs/testing/test-variant-findings-2026-11-02.tsv):
-    // an isolate restored from Crane's snapshot while a snapshotless one
-    // lives crashes V8 deserializing the string table (M1, 8 tests), and 15
-    // tests measure process-wide engine counters the busy Browser moves too
-    // (M2). Switch it when `zig build test-launch -Dspec=v8 -Dmany-browsers`
-    // passes.
-    .{ .name = "tests-v8", .config = .{ .batch = 1, .state_checks = .report, .many_browsers = .report } },
+    // Beside the busy Browser (-Dmany-browsers) it fails like any run (lane
+    // tsanfix1); the tests that need their process to themselves run alone,
+    // each with its reason (`v8_alone`).
+    .{ .name = "tests-v8", .config = .{ .batch = 1, .state_checks = .report, .alone = &v8_alone } },
     .{ .name = "src-browser", .config = .{ .batch = 1 } },
     .{ .name = "test-browser", .config = .{ .batch = 1 } },
     .{ .name = "lib-exports", .config = .{ .batch = 1 } },
     .{ .name = "tests-codegen", .config = .{ .slow = &codegen_slow } },
+};
+
+/// tests-v8's tests that need their process to themselves under the
+/// many-Browsers variant (`SuiteConfig.alone`; lane tsanfix1).
+const v8_alone = snapshot_first ++ [_]DeclaredTest{
+    // The subject is a count the whole process shares.
+    .{ .name = "diagnostic_live_counters_test.test.live_agents counts an agent from createAgent to destroyAgent", .reason = "the subject is engine.live_agents, the process's count of live agents, which the busy Browser's agent is in" },
+    .{ .name = "worker_thread_state_test.test.worker threads that end leave no per-thread containers mapped", .reason = "the subject is the process's mapped memory over 32 worker threads, which the busy Browser's allocations grow" },
+} ++ v8state1_pending;
+
+/// The many-Browsers variant's reason for a test that restores agents from
+/// Crane's snapshot.
+const snapshot_first_reason = "restores agents from Crane's snapshot, so it must make its process's first isolate: V8 keeps one read-only heap per process, made by the first live isolate (v8_wrapper.cpp g_read_only_heap), and beside the busy Browser's snapshotless isolate the restore is refused";
+
+/// Tests that restore agents from Crane's snapshot (each skips, saying so,
+/// when it does not make its process's first isolate).
+const snapshot_first = [_]DeclaredTest{
+    .{ .name = "agents_concurrent_engine_state_test.test.two agents restored from the snapshot, on two threads: for-await, Intl, ShadowRealm, JSON modules and ObservableArray 200 times at once", .reason = snapshot_first_reason },
+    .{ .name = "bf1_engine_task_initialization_test.test.snapshot initialization runner wakes a later sink and closes safely", .reason = snapshot_first_reason },
+    .{ .name = "new_global_snapshot_test.test.snapshot agent: parseJsonInNewGlobal parses in a new global, not the page's", .reason = snapshot_first_reason },
+    .{ .name = "new_global_snapshot_test.test.snapshot agent: parseJsonInNewGlobal, again and again, each in a global of its own", .reason = snapshot_first_reason },
+    .{ .name = "new_global_snapshot_test.test.snapshot agent: v8_Context_New and v8_Context_NewWithMicrotaskQueue make a plain global", .reason = snapshot_first_reason },
+    .{ .name = "pattern_attribute_snapshot_test.test.snapshot agent: a pattern matches the whole value, compiled standalone with the v flag", .reason = snapshot_first_reason },
+    .{ .name = "pattern_attribute_snapshot_test.test.snapshot agent: what the page did to RegExp does not matter", .reason = snapshot_first_reason },
+    .{ .name = "pattern_attribute_snapshot_test.test.snapshot agent: the page's legacy RegExp statics do not see the value", .reason = snapshot_first_reason },
+    .{ .name = "snapshot_blob_in_place_test.test.agents restored from the snapshot read the engine's blob in place, and all end before it does", .reason = snapshot_first_reason },
+    .{ .name = "tsanfix1_read_only_heap_test.test.an agent asked for the snapshot while a snapshotless isolate is the process's first is made without it, and works", .reason = snapshot_first_reason },
+    .{ .name = "tsanfix1_read_only_heap_test.test.a snapshotless agent made while a snapshot agent is the process's first: each is what it asked for", .reason = snapshot_first_reason },
+    .{ .name = "tsanfix1_read_only_heap_test.test.a dedicated worker's agent started while a snapshot window agent lives: both work, the window restored", .reason = snapshot_first_reason },
+    .{ .name = "tsanfix1_read_only_heap_test.test.a snapshot window agent made while a worker's agent is the process's first is made without the snapshot, and works", .reason = snapshot_first_reason },
+    .{ .name = "wh_wasm_address_descriptor_test.test.snapshot realm: a Window realm restored from Crane's snapshot takes address i64", .reason = snapshot_first_reason },
+    .{ .name = "wj1_wasm_constructor_test.test.snapshot Window worklet and ShadowRealm use their own wasm adapter intrinsics", .reason = snapshot_first_reason },
+    .{ .name = "xw1_exposure_snapshot_test.test.xw1 snapshot Window keeps its scope while workers install their own exposed members", .reason = snapshot_first_reason },
+};
+
+/// TEMPORARY (lane tsanfix1, 2026-11-02): tests that compare process-wide
+/// engine counts the busy Browser moves too (docs/testing/test-variant-
+/// findings-2026-11-02.tsv M2), in files lane v8state1 holds. Each goes when
+/// v8state1 merges and its test reads the isolate's own global handle bytes
+/// (ffi.v8_Isolate_GetGlobalHandleBytes) instead.
+const v8state1_pending_reason = "TEMPORARY until lane v8state1 merges: compares process-wide v8_Debug_Live* counts; to be converted to the isolate's global handle bytes";
+const v8state1_pending = [_]DeclaredTest{
+    .{ .name = "context_counter_test.test.a named getter frees the string it returns", .reason = v8state1_pending_reason },
+    .{ .name = "context_counter_test.test.an abort inside a listener the binding dispatched to leaves no handle and no realm bytes", .reason = v8state1_pending_reason },
+    .{ .name = "context_counter_test.test.the indexed descriptor and query release what they make", .reason = v8state1_pending_reason },
+    .{ .name = "context_counter_test.test.the indexed property definer releases every handle it takes", .reason = v8state1_pending_reason },
+    .{ .name = "context_counter_test.test.a getter that answers null releases the null it made", .reason = v8state1_pending_reason },
+    .{ .name = "context_counter_test.test.a getter that throws releases the contexts it took", .reason = v8state1_pending_reason },
+    .{ .name = "context_counter_test.test.a getter's kept string stays the object's: read twice, and 64 times, it is the same", .reason = v8state1_pending_reason },
+    .{ .name = "context_counter_test.test.a getter's wrapper result stays the wrapper cache's", .reason = v8state1_pending_reason },
+    .{ .name = "context_counter_test.test.the indexed property definer releases the current context", .reason = v8state1_pending_reason },
+    .{ .name = "context_counter_test.test.the indexed property setter releases the current context", .reason = v8state1_pending_reason },
+    .{ .name = "context_counter_test.test.the test's realm has made V8's one-time tier-up handle before its test measures", .reason = v8state1_pending_reason },
+    .{ .name = "context_counter_test.test.xhr.response frees the text it made", .reason = v8state1_pending_reason },
+    .{ .name = "indexed_property_semantics_test.test.an attribute read makes no handle for its receiver and leaves none", .reason = v8state1_pending_reason },
+    .{ .name = "indexed_property_semantics_test.test.an indexed read and an `in` check make no handle for the list", .reason = v8state1_pending_reason },
+    .{ .name = "constructor_error_receiver_test.test.a constructor whose impl fails releases its receiver", .reason = v8state1_pending_reason },
+    .{ .name = "realm_end_finalize_test.test.reactions settled, dropped by the realm's end or collected leave no global handle behind", .reason = v8state1_pending_reason },
+    .{ .name = "realm_microtask_test.test.run, dropped by the realm's end, or dropped with the queue: no global handle or weak record left", .reason = v8state1_pending_reason },
+    .{ .name = "refcount_wrapper_link_test.test.a node whose teardown begins under its live wrapper lets the wrapper's reference go once", .reason = v8state1_pending_reason },
+    .{ .name = "refcount_wrapper_link_test.test.every reference a wrapper takes is let go: collections, the realm's end", .reason = v8state1_pending_reason },
 };
 
 // Slow tests: over 45 s alone on chat.local in Debug (lane tlaunch2,
@@ -1000,6 +1057,13 @@ const codegen_slow = [_][]const u8{
     // 82.7 s: every committed interface and mixin module.
     "ce_reactions_emission_test.test.every committed interface and mixin module's table matches its brackets",
 };
+/// tests-html's tests whose subject is real time (`SuiteConfig.tsan_skip`;
+/// lane tsanfix1, with the integrator's ruling).
+const html_tsan_skip = [_]DeclaredTest{
+    .{ .name = "detplat1_virtual_time_test.test.virtual clock: a timer-heavy page runs far faster than real time (measured)", .reason = "the subject is real time: it measures how much faster than real time a virtual clock runs a timer-heavy page, and ThreadSanitizer's slowdown is that measurement" },
+    .{ .name = "fk2_idle_period_spin_test.test.every idle period that starts runs an idle callback (no empty periods spinning)", .reason = "the subject is real time: an idle period's callbacks run only before its real-time deadline, and under ThreadSanitizer's slowdown the task that runs them can start after it - an empty period the spec allows; its scenario needs a fetch in flight, which stops a virtual clock (event_loop.fastForwardToNextWakeUp)" },
+};
+
 const html_slow = [_][]const u8{
     // 137.6 s.
     "editing2_white_space_join_test.test.joining blocks keeps the moved line's white-space",
@@ -1048,6 +1112,10 @@ fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.St
     if (launch.sanitize_thread) {
         run.addArg("--sanitize-thread");
         run.addPrefixedFileArg("--tsan-suppressions=", b.path("tools/test_launcher/tsan_suppressions.txt"));
+        for (config.tsan_skip) |skip| {
+            run.addArg(b.fmt("--tsan-skip={s}", .{skip.name}));
+            run.addArg(b.fmt("--tsan-skip-reason={s}", .{skip.reason}));
+        }
         // Line numbers in a race report: on macOS the debug information
         // stays in the object files, and ThreadSanitizer's symbolizer (atos)
         // reads a dSYM bundle beside the binary - without one a report names
@@ -1279,6 +1347,10 @@ fn addTestVerify(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.
         // slow one, and a race needs no repetition to be seen.
         run.addArgs(&.{ "--verify-batched=1", "--verify-alone=0", "--sanitize-thread" });
         run.addPrefixedFileArg("--tsan-suppressions=", b.path("tools/test_launcher/tsan_suppressions.txt"));
+        for (config.tsan_skip) |skip| {
+            run.addArg(b.fmt("--tsan-skip={s}", .{skip.name}));
+            run.addArg(b.fmt("--tsan-skip-reason={s}", .{skip.reason}));
+        }
     }
     if (launch.many_browsers) {
         run.addArg("--many-browsers");
