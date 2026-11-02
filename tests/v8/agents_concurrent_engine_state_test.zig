@@ -13,7 +13,7 @@
 //!
 //! ShadowRealm needs an agent restored from Crane's snapshot (shadow_realm.zig
 //! makes its context from the snapshot's), so the first test runs restored
-//! agents and skips - saying so - unless this file is the first in its process
+//! agents and skips - saying so - unless it is the first test in its process
 //! to start V8 (the snapshot is the one this build generates, its path passed
 //! as `test_snapshot.path`; new_global_snapshot_test.zig's reason: restoring after other files had
 //! started V8 crashed inside V8's deserialization). Run it with
@@ -212,12 +212,11 @@ fn runBoth(from_snapshot: bool) !void {
     }
 }
 
-var first_in_process: ?bool = null;
-
 test "two agents restored from the snapshot, on two threads: for-await, Intl, ShadowRealm, JSON modules and ObservableArray 200 times at once" {
-    if (first_in_process == null) first_in_process = !ffi.v8_Platform_IsInitialized();
-    if (!first_in_process.?) {
-        std.log.warn("skipping: V8 was started in this process before this file; run it in a process of its own (tests-v8 runs at batch 1; -Dlaunch-batch=1 or -Dtest-file=)", .{});
+    // Read for each test, never cached (pattern_attribute_snapshot_test.zig
+    // says why).
+    if (ffi.v8_Platform_IsInitialized()) {
+        std.log.warn("skipping: V8 was started in this process before this test; run it in a process of its own (tests-v8 runs at batch 1; -Dlaunch-batch=1 or -Dtest-file=)", .{});
         return error.SkipZigTest;
     }
     const io = testing.io;
@@ -240,7 +239,6 @@ test "two agents restored from the snapshot, on two threads: for-await, Intl, Sh
 }
 
 test "two fresh agents on two threads: for-await, Intl, JSON modules and ObservableArray 200 times at once" {
-    if (first_in_process == null) first_in_process = !ffi.v8_Platform_IsInitialized();
     try protocol.initializeEngine(.{});
     test_process.start();
     interfaces.process_hooks.startHooksForTest();

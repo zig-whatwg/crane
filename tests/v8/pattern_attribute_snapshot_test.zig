@@ -17,7 +17,7 @@
 //! snapshot generator that tests/v8 depends on, its path passed as
 //! `test_snapshot.path`. A missing snapshot fails the tests.
 //!
-//! They run only where this file is the first in its process to start V8: a
+//! They run only where the test is the first in its process to start V8: a
 //! host gives the engine its snapshot when the process starts, before anything
 //! else touches V8. In tests/v8's shared executable, where many files started
 //! V8 earlier, restoring the snapshot crashed inside V8's isolate
@@ -60,10 +60,6 @@ const Reports = struct {
     }
 };
 
-/// Whether V8 was not yet started in this process when this file first
-/// asked: decided once, by the first test here to open a page.
-var first_in_process: ?bool = null;
-
 const no_hooks: protocol.HostHooks = .{};
 
 /// An agent restored from the snapshot, and a Window realm of it restored
@@ -75,11 +71,14 @@ const SnapshotPage = struct {
     realm: runtime.Context,
 
     /// Null (the test skips) when this build's snapshot has not been generated, or when V8
-    /// was started in this process before this file.
+    /// was started in this process before this test.
     fn open() !?SnapshotPage {
-        if (first_in_process == null) first_in_process = !ffi.v8_Platform_IsInitialized();
-        if (!first_in_process.?) {
-            std.log.warn("skipping: V8 was started in this process before this file; run it in a process of its own (tests-v8 runs at batch 1; -Dlaunch-batch=1 or -Dtest-file=)", .{});
+        // Read for each test, never cached: a test of the file that ran
+        // first in a shuffled process left a cached "first" to the file's
+        // later tests, which then restored the snapshot after other files'
+        // isolates and crashed there (lane v8order1, seed 0x47d641a3).
+        if (ffi.v8_Platform_IsInitialized()) {
+            std.log.warn("skipping: V8 was started in this process before this test; run it in a process of its own (tests-v8 runs at batch 1; -Dlaunch-batch=1 or -Dtest-file=)", .{});
             return null;
         }
         const io = std.testing.io;
