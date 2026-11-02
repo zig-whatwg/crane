@@ -913,11 +913,18 @@ const SuiteConfig = struct {
     /// --report-only), for a suite whose findings are not fixed yet - each
     /// such row is TEMPORARY and names its findings file. Suites with no
     /// Browser to run (no V8) never start one.
-    many_browsers: ManyBrowsers = .fail,
+    many_browsers: VariantMode = .fail,
+    /// ThreadSanitizer (-Dsanitize-thread) for this suite, the same way: a
+    /// race, a TSAN-only failure, fails the step unless the row is a
+    /// TEMPORARY `.report` naming its findings file.
+    sanitize_thread: VariantMode = .fail,
 };
 
-/// What the many-Browsers variant does with a suite's results.
-const ManyBrowsers = enum { report, fail };
+/// What a test variant (-Dmany-browsers, -Dsanitize-thread) does with a
+/// suite's results: `.fail` as any run; `.report` prints and records every
+/// verdict and passes the step (lane tsan1: report first, fail once clean,
+/// as the state checks went - lane tstate1).
+const VariantMode = enum { report, fail };
 
 /// What the Crane test runner does with a change a test leaves in the
 /// process (tests/test_runner/state.zig). CRANE_TEST_STATE=fail|report|off
@@ -934,7 +941,16 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     .{ .name = "tests-intl_bench", .config = .{ .batch = 0, .jobs = 1, .shuffle = false } },
     // Suites that start V8 or a Browser: a process per test.
     .{ .name = "tests-dom", .config = .{ .batch = 1 } },
-    .{ .name = "tests-html", .config = .{ .batch = 1, .slow = &html_slow } },
+    // TEMPORARY: tests-html runs both test variants report-only (lane tsan1,
+    // 2026-11-02; docs/testing/test-variant-findings-2026-11-02.tsv). Under
+    // -Dsanitize-thread: two data races - g_protocol_promise_reject written by
+    // every agent's createAgent (F1, 8 two-Browser tests) and a worker realm's
+    // teardown reading a slab slot's generation the window thread reissues
+    // (F2) - and frame realms made from a snapshot in snapshotless Browsers
+    // (F3); beside the busy Browser, F3 again. Switch each to failing when
+    // its findings are fixed and `zig build test-launch -Dspec=html
+    // -Dsanitize-thread` (and -Dmany-browsers) passes.
+    .{ .name = "tests-html", .config = .{ .batch = 1, .slow = &html_slow, .sanitize_thread = .report, .many_browsers = .report } },
     .{ .name = "tests-service_worker", .config = .{ .batch = 1 } },
     .{ .name = "tests-websocket", .config = .{ .batch = 1 } },
     // tests-v8 ran as one index-order process until lane v8order1
@@ -950,7 +966,14 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     // worker_streams_test's deliberate --stress-compaction. Switch it to
     // failing when `CRANE_TEST_STATE=fail zig build test-launch -Dspec=v8
     // -Dlaunch-batch=1` passes.
-    .{ .name = "tests-v8", .config = .{ .batch = 1, .state_checks = .report } },
+    // TEMPORARY, the same way: tests-v8 runs beside the busy Browser report-
+    // only (lane tsan1; docs/testing/test-variant-findings-2026-11-02.tsv):
+    // an isolate restored from Crane's snapshot while a snapshotless one
+    // lives crashes V8 deserializing the string table (M1, 8 tests), and 15
+    // tests measure process-wide engine counters the busy Browser moves too
+    // (M2). Switch it when `zig build test-launch -Dspec=v8 -Dmany-browsers`
+    // passes.
+    .{ .name = "tests-v8", .config = .{ .batch = 1, .state_checks = .report, .many_browsers = .report } },
     .{ .name = "src-browser", .config = .{ .batch = 1 } },
     .{ .name = "test-browser", .config = .{ .batch = 1 } },
     .{ .name = "lib-exports", .config = .{ .batch = 1 } },
@@ -1028,10 +1051,10 @@ fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.St
             run.step.dependOn(&dsym.step);
         }
     }
-    if (many_browsers) {
-        run.addArg("--many-browsers");
-        if (config.many_browsers == .report) run.addArg("--report-only");
-    }
+    if (many_browsers) run.addArg("--many-browsers");
+    // A variant's TEMPORARY report-only row: every verdict printed and
+    // recorded, the step passes (`VariantMode`).
+    if ((many_browsers and config.many_browsers == .report) or (launch.sanitize_thread and config.sanitize_thread == .report)) run.addArg("--report-only");
     launch.test_exes.append(b.allocator, test_exe) catch @panic("OOM");
     // Relative to the repository root, where tests open their fixtures. A
     // variant's results beside the suite's own, never over them:
