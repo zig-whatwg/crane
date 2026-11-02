@@ -9502,27 +9502,31 @@ Isolate* v8_Isolate_NewFromSnapshotWithOptions(
     return isolate;
 }
 
-/// Create a context from the snapshot's default context
-///
-/// This creates a new context based on the default context that was
-/// set in the snapshot. The context starts with all the state
-/// (including registered interfaces) from snapshot creation time.
+/// A context restored from the snapshot's context 0 - the Window context the
+/// generator added (AddContext), with its global proxy and every WebIDL
+/// interface - or null when it cannot be: an isolate made without the
+/// snapshot (it has no context 0), a null isolate, or a failed
+/// deserialization. Says nothing: the caller decides whether that matters and
+/// logs it (protocol_realms builds the realm afresh, at debug). It printed
+/// seven unguarded stderr lines per failure - every iframe and popup realm of
+/// a snapshotless Browser tried, and printed them (AGENTS.md: no unguarded
+/// fprintf in v8_wrapper.cpp; docs/testing/test-variant-findings-2026-11-02.tsv
+/// F3).
 ///
 /// @param isolate - Isolate created from v8_Isolate_NewFromSnapshot
-/// @return New context with snapshot state
+/// @return New context with snapshot state, or null
 Global<Context>* v8_Context_NewFromSnapshot(Isolate* isolate) {
-    if (!isolate) {
-        fprintf(stderr, "[v8_Context_NewFromSnapshot] ERROR: isolate is null\n");
-        return nullptr;
-    }
-    
+    if (!isolate) return nullptr;
+    // An isolate made afresh has no context 0 to restore.
+    IsolateData* record = isolateData(isolate);
+    if (record && !record->startup_data.data) return nullptr;
+
     // Enter the isolate before creating context
     Isolate::Scope isolate_scope(isolate);
     HandleScope handle_scope(isolate);
-    
-    // Add TryCatch to capture any exception
+    // A failed deserialization's exception stays here.
     TryCatch try_catch(isolate);
-    
+
     // Use Context::FromSnapshot(isolate, 0) to retrieve the context that was
     // added via AddContext() during snapshot creation. This preserves the
     // global proxy (unlike the default context from SetDefaultContext).
@@ -9530,31 +9534,10 @@ Global<Context>* v8_Context_NewFromSnapshot(Isolate* isolate) {
     MaybeLocal<Context> maybe_context = Context::FromSnapshot(
         isolate, 0,
         DeserializeInternalFieldsCallback(DeserializeInternalFields, nullptr));
-    
-    if (try_catch.HasCaught()) {
-        fprintf(stderr, "[v8_Context_NewFromSnapshot] Exception caught during FromSnapshot\n");
-        Local<Message> message = try_catch.Message();
-        if (!message.IsEmpty()) {
-            String::Utf8Value msg_str(isolate, message->Get());
-            fprintf(stderr, "[v8_Context_NewFromSnapshot] Exception: %s\n", *msg_str);
-        }
-    }
-    
+
     Local<Context> context;
-    if (!maybe_context.ToLocal(&context)) {
-        fprintf(stderr, "[v8_Context_NewFromSnapshot] ERROR: Context::FromSnapshot(0) failed\n");
-        fprintf(stderr, "[v8_Context_NewFromSnapshot] This usually means:\n");
-        fprintf(stderr, "  1. External references mismatch between snapshot creation and loading\n");
-        fprintf(stderr, "  2. No context was added at index 0 during snapshot creation\n");
-        fprintf(stderr, "  3. Snapshot data is corrupted or from incompatible V8 version\n");
-return nullptr;
-    }
-    
-    // Check global object internal fields
-    Local<Object> global = context->Global();
-    int internal_field_count = global->InternalFieldCount();
-    (void)internal_field_count; // Suppress unused variable warning
-    
+    if (!maybe_context.ToLocal(&context)) return nullptr;
+
     countContextGlobal();
     return trackHandle(new Global<Context>(isolate, context));
 }
