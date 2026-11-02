@@ -128,7 +128,11 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
     defer allocator.free(compliant_script_url);
 
     const instance = try init(allocator, State, &SharedWorker.vtable, ctx);
-    errdefer deinit(instance);
+    // Until it is returned, the construction is the object's only owner: a
+    // failed step frees it whole. Its own deinit is its destructor, not a
+    // free, and left its slot in the slab (tests/v8/constructor_error_receiver_test.zig;
+    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
+    errdefer runtime.gc.releaseOwned(instance);
 
     // 2. If options is a DOMString, it is a WorkerOptions whose name is
     // options; otherwise it is the dictionary.
