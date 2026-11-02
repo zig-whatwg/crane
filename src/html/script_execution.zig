@@ -99,11 +99,19 @@ pub const ScriptExecutionError = error{
 /// An embedder's loader for the external classic scripts a parser prepares:
 /// given the src attribute's value, their source (allocated with `allocator`),
 /// or null for a network error. The WPT runner has one, which serves
-/// testharness.js once. A parser sets it around its "prepare the script
-/// element" call (`withParserScriptLoader`), and prepare consults it at its
-/// fetch step - never before: prefetching at the end tag fetched scripts that
-/// prepare then declined to run (html/syntax/speculative-parsing/generated/
-/// document-write/script-src-unsupported-type).
+/// testharness.js once. A parser passes it to its "prepare the script
+/// element" call (`prepareScriptElementWithLoader`), and prepare consults it
+/// at its fetch step - never before: prefetching at the end tag fetched
+/// scripts that prepare then declined to run (html/syntax/speculative-parsing/
+/// generated/document-write/script-src-unsupported-type).
+///
+/// It serves only the script the parser is preparing. Preparing that script
+/// can run script - a parser-inserted inline script executes inside its
+/// prepare - which inserts and prepares other script elements, and those are
+/// fetched as any script-inserted script is: relative to the document base
+/// URL, data: URLs included. A parameter of that one prepare gives them
+/// nothing; a thread-local set around the call gave it to all of them
+/// (docs/lessons/architecture-state-set-around-a-call-is-seen-by-everything-it-runs.md).
 pub const ParserScriptLoader = struct {
     context: ?*anyopaque,
     load: *const fn (context: ?*anyopaque, src: []const u8) ?[]const u8,
@@ -112,18 +120,6 @@ pub const ParserScriptLoader = struct {
     can_suspend: bool = false,
 };
 
-/// The loader, and the one element it serves: the script the parser is
-/// preparing. Preparing that script can run script - a parser-inserted
-/// inline script executes inside its prepare - which inserts and prepares
-/// other script elements, and those are fetched as any script-inserted script
-/// is: relative to the document base URL, data: URLs included.
-const ScopedParserScriptLoader = struct {
-    element: *runtime.Instance,
-    loader: ParserScriptLoader,
-};
-
-threadlocal var parser_script_loader: ?ScopedParserScriptLoader = null;
-
 /// "Prepare the script element" for a parser whose embedder loads its
 /// external classic scripts with `loader`.
 pub fn prepareScriptElementWithLoader(
@@ -131,10 +127,7 @@ pub fn prepareScriptElementWithLoader(
     script_element: *runtime.Instance,
     loader: ?ParserScriptLoader,
 ) ScriptExecutionError!bool {
-    const saved = parser_script_loader;
-    parser_script_loader = if (loader) |l| .{ .element = script_element, .loader = l } else null;
-    defer parser_script_loader = saved;
-    return prepareScriptElement(allocator, script_element);
+    return prepareScriptElementFor(allocator, script_element, loader);
 }
 
 /// An external classic script's source, owned by `allocator`: the
@@ -157,15 +150,15 @@ const FetchedSource = struct {
     }
 };
 
-fn fetchClassicScriptSource(allocator: std.mem.Allocator, script_element: *runtime.Instance, document: ?*runtime.Instance, src: []const u8, url: []const u8, encoding: script_encodings.Encoding) FetchedSource {
-    if (embedderScriptSource(script_element, src)) |answered| return answered;
+fn fetchClassicScriptSource(allocator: std.mem.Allocator, loader: ?ParserScriptLoader, script_element: *runtime.Instance, document: ?*runtime.Instance, src: []const u8, url: []const u8, encoding: script_encodings.Encoding) FetchedSource {
+    if (embedderScriptSource(loader, src)) |answered| return answered;
     return networkClassicScriptSource(allocator, script_element, document, url, encoding);
 }
 
-/// The embedder's loader's answer for `src`, if the parser preparing
-/// `script_element` has one and it answers.
-fn embedderScriptSource(script_element: *runtime.Instance, src: []const u8) ?FetchedSource {
-    const loader = parserScriptLoaderFor(script_element) orelse return null;
+/// The answer for `src` of the embedder's loader of the parser preparing the
+/// script, when it has one and it answers.
+fn embedderScriptSource(loader_or_null: ?ParserScriptLoader, src: []const u8) ?FetchedSource {
+    const loader = loader_or_null orelse return null;
     const body = loader.load(loader.context, src) orelse return null;
     return .{ .body = body, .allocator = loader.allocator };
 }
@@ -182,14 +175,6 @@ fn networkClassicScriptSource(allocator: std.mem.Allocator, script_element: *run
     return .{ .body = body, .final_url = final_url, .allocator = allocator, .muted = fetch_result.muted };
 }
 
-/// The embedder's loader, if the parser is preparing `script_element` with
-/// one.
-fn parserScriptLoaderFor(script_element: *runtime.Instance) ?ParserScriptLoader {
-    const scoped = parser_script_loader orelse return null;
-    if (scoped.element != script_element) return null;
-    return scoped.loader;
-}
-
 /// Prepare the script element
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element
 ///
@@ -202,6 +187,16 @@ fn parserScriptLoaderFor(script_element: *runtime.Instance) ?ParserScriptLoader 
 pub fn prepareScriptElement(
     allocator: std.mem.Allocator,
     script_element: *runtime.Instance,
+) ScriptExecutionError!bool {
+    return prepareScriptElementFor(allocator, script_element, null);
+}
+
+/// "Prepare the script element", with `loader` the embedder's loader of the
+/// parser preparing it, if any (ParserScriptLoader).
+fn prepareScriptElementFor(
+    allocator: std.mem.Allocator,
+    script_element: *runtime.Instance,
+    loader: ?ParserScriptLoader,
 ) ScriptExecutionError!bool {
     // Only an HTML script element has the state this algorithm runs on; its
     // callers - the element's insertion, children changed and attribute
@@ -484,7 +479,7 @@ pub fn prepareScriptElement(
             // and lose the runner's completion callback. Without a loader (a
             // production embedder) or when it declines, a parser that can
             // suspend fetches asynchronously below.
-            const answered: ?FetchedSource = if (parser_blocking) embedderScriptSource(script_element, src) else null;
+            const answered: ?FetchedSource = if (parser_blocking) embedderScriptSource(loader, src) else null;
             if (answered == null) {
                 // onComplete - "mark as ready" - runs from the networking
                 // task that hands over the response (`ClassicScriptFetch`),
@@ -495,7 +490,7 @@ pub fn prepareScriptElement(
                 // resumeAfterBlockingScript). A temporary parser (fragment,
                 // XML) cannot survive a suspension, so its blocking scripts
                 // are still fetched here, synchronously.
-                const can_suspend = if (parserScriptLoaderFor(script_element)) |loader| loader.can_suspend else false;
+                const can_suspend = if (loader) |l| l.can_suspend else false;
                 if (!parser_blocking or can_suspend) {
                     if (node_document) |doc| {
                         if (startClassicScriptFetch(script_element, doc, script_url, credentials_mode, encoding)) {
@@ -507,7 +502,7 @@ pub fn prepareScriptElement(
             var fetched = answered orelse if (parser_blocking)
                 networkClassicScriptSource(allocator, script_element, node_document, script_url, encoding)
             else
-                fetchClassicScriptSource(allocator, script_element, node_document, src, script_url, encoding);
+                fetchClassicScriptSource(allocator, loader, script_element, node_document, src, script_url, encoding);
             defer fetched.deinit();
             // Fetch-classic step 5.6 uses the response URL after redirects.
             // Keep it through the element's existing owned URL, which is also
@@ -1676,7 +1671,7 @@ pub fn svgScriptInsertionOrChildrenChanged(allocator: std.mem.Allocator, element
     const state = svgScriptState(element) orelse return;
     if (state.parser_inserted or state.already_started) return;
     if (!isConnected(element)) return;
-    prepareSvgScriptElement(allocator, element, false);
+    prepareSvgScriptElement(allocator, element, false, null);
 }
 
 /// "Process the SVG script element according to the SVG rules" - the parser's
@@ -1697,10 +1692,7 @@ pub fn processSvgScriptElementWithLoader(
     element: *runtime.Instance,
     loader: ?ParserScriptLoader,
 ) void {
-    const saved = parser_script_loader;
-    parser_script_loader = if (loader) |l| .{ .element = element, .loader = l } else null;
-    defer parser_script_loader = saved;
-    prepareSvgScriptElement(allocator, element, true);
+    prepareSvgScriptElement(allocator, element, true, loader);
 }
 
 /// "Prepare the script element" for an SVG script.
@@ -1715,7 +1707,7 @@ pub fn processSvgScriptElementWithLoader(
 /// is.
 ///
 /// Deviation, stated: type="module" is not supported for SVG.
-fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Instance, from_parser_end_tag: bool) void {
+fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Instance, from_parser_end_tag: bool, loader: ?ParserScriptLoader) void {
     const state = svgScriptState(element) orelse return;
     // Step 1.
     if (state.already_started) return;
@@ -1777,7 +1769,7 @@ fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Insta
         const url = parseUrl(element, raw, base_url) orelse return queueErrorEventTask(element);
         defer element.ctx.allocator.free(url);
 
-        var fetched = fetchClassicScriptSource(allocator, element, document, raw, url, documentEncoding(document));
+        var fetched = fetchClassicScriptSource(allocator, loader, element, document, raw, url, documentEncoding(document));
         defer fetched.deinit();
         const response_url = fetched.final_url orelse url;
         if (from_parser_end_tag) {

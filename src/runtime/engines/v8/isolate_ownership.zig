@@ -133,9 +133,10 @@ pub const mode: Mode = switch (builtin.mode) {
 };
 
 /// How many violations have been seen, so a run can be summarised rather than
-/// read line by line. Not atomic: a violation means threads are already being
-/// mixed, and a precise count is not what the number is for.
-var violation_count: usize = 0;
+/// read line by line. Atomic: every agent's thread counts, and a violation
+/// means threads are being mixed - the moment a plain count loses updates.
+// process-wide: the instrument measures one invariant of the whole process - no isolate used on a thread that has not entered it - and a violation (two agents mixed on one thread) belongs to no single Browser; diagnostic only, read as per-file deltas by the WPT runner, which runs one Browser at a time.
+var violation_count: std.atomic.Value(usize) = .init(0);
 
 /// How many checks RAN.
 ///
@@ -147,20 +148,38 @@ var violation_count: usize = 0;
 ///
 /// Reporting checks alongside violations makes the distinction visible without
 /// anyone having to remember to inject a self-test: `0/0` is "measured nothing",
-/// `0/5183` is "measured clean".
-var check_count: usize = 0;
+/// `0/5183` is "measured clean". Atomic, as violation_count.
+// process-wide: the denominator of violation_count, counted on every agent's thread for the same process-wide invariant; diagnostic only, read as per-file deltas by the WPT runner.
+var check_count: std.atomic.Value(usize) = .init(0);
 
 pub fn violations() usize {
-    return violation_count;
+    return violation_count.load(.monotonic);
 }
 
 pub fn checks() usize {
-    return check_count;
+    return check_count.load(.monotonic);
 }
 
 pub fn resetViolations() void {
-    violation_count = 0;
-    check_count = 0;
+    violation_count.store(0, .monotonic);
+    check_count.store(0, .monotonic);
+}
+
+/// One check made, and whether it found a violation: counted by every
+/// agent's thread at once, so never with a plain read-modify-write. Public
+/// for tests/v8/gs2_isolate_ownership_counts_test.zig (test blocks in the
+/// adapter's files never run).
+pub fn countCheck(violated: bool) void {
+    _ = check_count.fetchAdd(1, .monotonic);
+    if (violated) _ = violation_count.fetchAdd(1, .monotonic);
+}
+
+/// Take back `checks` checks and `violations` violations a test counted with
+/// countCheck: the counters are the process's, and a test gives back what it
+/// took (docs/lessons/testing-a-test-may-assume-only-what-the-process-start-makes.md).
+pub fn uncountForTest(checks_taken: usize, violations_taken: usize) void {
+    _ = check_count.fetchSub(checks_taken, .monotonic);
+    _ = violation_count.fetchSub(violations_taken, .monotonic);
 }
 
 /// Assert that `isolate` is the one entered on this thread.
@@ -170,12 +189,9 @@ pub fn resetViolations() void {
 pub inline fn assertOwned(isolate: *ffi.Isolate, comptime site: []const u8) void {
     if (comptime mode == .off) return;
 
-    check_count += 1;
-
     const current = ffi.v8_Isolate_GetCurrent();
+    countCheck(current != isolate);
     if (current == isolate) return;
-
-    violation_count += 1;
 
     if (comptime mode == .panic) {
         std.debug.panic(

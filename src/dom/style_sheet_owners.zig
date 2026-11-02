@@ -131,8 +131,6 @@ test "without installed implementations nothing delays a load event, and the par
     poppedByParser(&node);
 }
 
-var test_popped: usize = 0;
-
 fn testDelays(document: *runtime.Instance) bool {
     _ = document;
     return true;
@@ -143,11 +141,6 @@ fn testCreated(element: *runtime.Instance, start: ?Position) void {
     _ = start;
 }
 
-fn testPopped(element: *runtime.Instance) void {
-    _ = element;
-    test_popped += 1;
-}
-
 test "the installed implementations answer" {
     const saved_delay = load_delay;
     const saved_steps = parser_steps;
@@ -155,12 +148,19 @@ test "the installed implementations answer" {
         load_delay = saved_delay;
         parser_steps = saved_steps;
     }
+    // The test's popped step: its count lives in the test, not in the product.
+    const Test = struct {
+        var popped: usize = 0;
+        fn pop(element: *runtime.Instance) void {
+            _ = element;
+            popped += 1;
+        }
+    };
     installLoadDelay(.{ .delays = &testDelays, .blocks_scripts = &testDelays });
-    installParserSteps(.{ .created = &testCreated, .popped = &testPopped });
+    installParserSteps(.{ .created = &testCreated, .popped = &Test.pop });
     var node: runtime.Instance = undefined;
     try @import("std").testing.expect(delaysLoadEvent(&node));
     try @import("std").testing.expect(blocksScripts(&node));
-    test_popped = 0;
     poppedByParser(&node);
-    try @import("std").testing.expectEqual(@as(usize, 1), test_popped);
+    try @import("std").testing.expectEqual(@as(usize, 1), Test.popped);
 }

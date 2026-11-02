@@ -148,7 +148,6 @@ pub const ReportSender = violations.ReportSender;
 pub const EventDispatcher = violations.EventDispatcher;
 pub const ReportingConfig = violations.ReportingConfig;
 pub const RateLimiter = violations.RateLimiter;
-pub const deinitThreadLocalRateLimiter = violations.deinitThreadLocalRateLimiter;
 
 // Trusted Types directives
 pub const directives = @import("directives/root.zig");
