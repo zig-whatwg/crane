@@ -79,6 +79,13 @@ pub const capabilities: engine.Capabilities = .{
     // (runtime.instance_lifecycle.markWrapped): until then a missing mark
     // proves nothing, and a realm's end keeps what it kept before.
     .wrap_tracking = .unsupported,
+    // The public C API has no clock hook: Date reads WTF's wall clock.
+    .host_clock = .unsupported,
+    // JSGlobalObject's weak random is seeded from cryptographicallyRandom-
+    // Number unless the private, process-wide forceWeakRandomSeed option is
+    // set (JSGlobalObject.cpp). Emulation is possible: replace Math.random
+    // in each global with a seeded JSObjectMakeFunctionWithCallback.
+    .seeded_random = .unsupported,
 };
 
 /// No engine is linked yet: every operation answers without one.

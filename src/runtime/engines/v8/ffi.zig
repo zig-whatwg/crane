@@ -767,7 +767,45 @@ pub extern fn v8_Platform_FlagWrites() i64;
 const isolate_entries = struct {
     extern fn v8_Isolate_New() ?*Isolate;
     extern fn v8_Isolate_NewFromSnapshot(snapshot_data: [*]const u8, snapshot_size: c_int, external_references: ?[*]const isize) ?*Isolate;
+    extern fn v8_Isolate_NewWithOptions(options: ?*const IsolateOptions) ?*Isolate;
+    extern fn v8_Isolate_NewFromSnapshotWithOptions(snapshot_data: [*]const u8, snapshot_size: c_int, external_references: ?[*]const isize, options: ?*const IsolateOptions) ?*Isolate;
 };
+
+/// What an agent asks of its isolate before it initializes (v8_wrapper.cpp
+/// CraneIsolateOptions): engine.AgentOptions.random_seed and .clock. The
+/// default - nothing seeded, no clock - is an isolate exactly as
+/// v8_Isolate_New makes one.
+pub const IsolateOptions = extern struct {
+    /// Whether `random_seed` seeds the isolate's random number generator,
+    /// and so each context's Math.random (craneEntropySource).
+    seeded: bool = false,
+    random_seed: u64 = 0,
+    /// The host's wall clock Date reads in this isolate (ns since the
+    /// epoch); null: V8's platform's. `clock_context` is BORROWED until the
+    /// isolate is disposed.
+    clock_context: ?*anyopaque = null,
+    clock_wall_now: ?*const fn (context: ?*anyopaque) callconv(.c) i64 = null,
+};
+
+/// v8_Isolate_New, with `options` applied before the isolate initializes.
+/// OWNED: v8_Isolate_Dispose.
+pub fn v8_Isolate_NewWithOptions(options: *const IsolateOptions) ?*Isolate {
+    if (!startForIsolate()) return null;
+    return isolate_entries.v8_Isolate_NewWithOptions(options);
+}
+
+/// v8_Isolate_NewFromSnapshot, with `options` applied before the isolate
+/// initializes. `snapshot_data` BORROWED until the isolate is disposed, as
+/// there. OWNED: v8_Isolate_Dispose.
+pub fn v8_Isolate_NewFromSnapshotWithOptions(
+    snapshot_data: [*]const u8,
+    snapshot_size: c_int,
+    external_references: ?[*]const isize,
+    options: *const IsolateOptions,
+) ?*Isolate {
+    if (!startForIsolate()) return null;
+    return isolate_entries.v8_Isolate_NewFromSnapshotWithOptions(snapshot_data, snapshot_size, external_references, options);
+}
 
 /// V8 started the way a process starts it - with the runtime flags,
 /// snapshot_loader.RUNTIME_V8_FLAGS, as engine.initializeEngine applies

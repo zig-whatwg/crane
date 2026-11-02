@@ -140,6 +140,12 @@ pub fn sleepThread(nanoseconds: u64) void {
     clock.sleep(nanoseconds);
 }
 
+/// Every Browser reads the OS clocks above: no clock of its own.
+pub fn browserClock(browser: *platform.BrowserPlatform) platform.BrowserClock {
+    _ = browser;
+    return .real;
+}
+
 // ---------------------------------------------------------------------------
 // 6.3 Randomness
 // ---------------------------------------------------------------------------
@@ -155,6 +161,13 @@ pub fn fillRandom(bytes: []u8) void {
         if (getentropy(rest.ptr, n) != 0) @panic("platform.fillRandom: the OS supplied no entropy");
         rest = rest[n..];
     }
+}
+
+/// No Browser has a random stream of its own: each consumer keeps its own
+/// entropy.
+pub fn fillBrowserRandom(browser: *platform.BrowserPlatform, bytes: []u8) bool {
+    _ = .{ browser, bytes };
+    return false;
 }
 
 // ---------------------------------------------------------------------------

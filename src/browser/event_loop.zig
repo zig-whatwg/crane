@@ -35,7 +35,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const clock = @import("clock");
+const platform = @import("platform");
 const engine = @import("engine");
 const runtime = @import("runtime");
 const dom = @import("dom");
@@ -138,15 +138,34 @@ pub const EventLoop = struct {
     /// rendering" (rendering.zig). Its timer is one of this loop's.
     frames: rendering.Frames,
 
+    /// The Browser's clock (platform.browserClock): what the loop's idle
+    /// periods, its frame clock and its timers measure time with. The
+    /// platform's own clocks, unless the Browser's is virtual (the testing
+    /// platform's opt-in, Chromium's MOCK_TIME): then the loop moves it to
+    /// its next wake-up whenever it is idle (`fastForwardToNextWakeUp`), and
+    /// never waits for a timer in real time. BORROWED from the Browser's
+    /// platform state, which outlives the loop.
+    browser_clock: platform.BrowserClock = .real,
+
     const Self = @This();
 
     /// Default maximum wait time when no explicit timeout is provided.
     /// This allows the event loop to block efficiently while still being responsive.
     const DEFAULT_MAX_WAIT_MS: u64 = 100;
 
-    /// A new event loop for `agent`, with its timers.
+    /// A new event loop for `agent`, with its timers, on the process's clocks.
     pub fn init(agent: *engine.Agent, allocator: Allocator) !Self {
-        const timer_mgr = try TimerManager.init(allocator);
+        return initWithClock(agent, allocator, .real);
+    }
+
+    /// `init`, measuring time with `browser_clock` - its Browser's
+    /// (platform.browserClock) - for its idle periods, its frame clock and
+    /// its timers.
+    pub fn initWithClock(agent: *engine.Agent, allocator: Allocator, browser_clock: platform.BrowserClock) !Self {
+        const timer_mgr = try TimerManager.initWithClock(allocator, .{
+            .context = browser_clock.context,
+            .monotonic_now = browser_clock.monotonic_now,
+        });
         errdefer timer_mgr.deinit();
         const sink = try runtime.TaskSink.create(allocator);
         errdefer sink.release();
@@ -161,7 +180,8 @@ pub const EventLoop = struct {
             .timer_manager = timer_mgr,
             .frozen = false,
             .owner_thread = std.Thread.getCurrentId(),
-            .frames = rendering.Frames.init(allocator, monotonicNs()),
+            .frames = rendering.Frames.initWithClock(allocator, browser_clock),
+            .browser_clock = browser_clock,
         };
     }
 
@@ -456,7 +476,7 @@ pub const EventLoop = struct {
         // Step 1: the microtasks pending from before the turn.
         self.checkpoint();
 
-        const work_start = monotonicNs();
+        const work_start = self.nowNs();
 
         // Step 2: the tasks queued before this turn began - with the ones
         // other threads posted, taken into the queue now.
@@ -480,7 +500,7 @@ pub const EventLoop = struct {
             if (fetches.pump()) did_work = true;
         }
 
-        const now = monotonicNs();
+        const now = self.nowNs();
         self.noteWork(work_start, now);
 
         // Step 2d (HTML 8.1.7.3 step 5): no runnable task, so an idle period
@@ -489,7 +509,7 @@ pub const EventLoop = struct {
         if (self.startIdlePeriod(now)) did_work = true;
 
         // Step 3: how long to wait - until the next timer or max_wait_ms.
-        const wait_time = blk: {
+        var wait_time = blk: {
             // A task left for the next turn is work waiting now: poll, but
             // do not block. So is one another thread posted meanwhile, and a
             // tree still waiting for its teardown.
@@ -503,6 +523,18 @@ pub const EventLoop = struct {
             break :blk wait;
         };
 
+        // Step 3a: on a Browser whose clock is virtual, a turn with nothing
+        // runnable waits for nothing - its clock moves to the loop's next
+        // wake-up, exactly, and step 4 runs what came due (Chromium's
+        // MOCK_TIME: "time advances to the soonest delay" when idle). Not
+        // only when the wait above is positive: a timer due in under a
+        // millisecond reads as a wait of 0 (whole milliseconds, rounded
+        // down), and on a clock that stands still it would never come due.
+        // A real clock never moves: the turn waits, as it always did.
+        if (!self.browser_clock.isReal() and
+            !(self.runnableQueued() or self.sink.hasPosted() or self.deferredPending()) and
+            self.fastForwardToNextWakeUp(now)) wait_time = 0;
+
         // Step 3b: what other threads - or this one's channels - posted while
         // this turn ran: a port's message posted by a task above runs before
         // the timers that task armed, as it did when a port's delivery was a
@@ -514,11 +546,11 @@ pub const EventLoop = struct {
         // Step 4: wait for a timer or I/O, and run the timer callbacks -
         // each a task, followed by a microtask checkpoint (HTML 8.1.7.3).
         if (self.timer_manager) |mgr| {
-            const poll_start = monotonicNs();
+            const poll_start = self.nowNs();
             if (mgr.pollBlockingEach(wait_time, .{ .context = self, .run = checkpointAfterTimer })) did_work = true;
             // The wait is at most a millisecond slice (native_timer.zig);
             // the rest is timer callbacks.
-            self.noteWork(poll_start + std.time.ns_per_ms, monotonicNs());
+            self.noteWork(poll_start + std.time.ns_per_ms, self.nowNs());
         }
 
         // Step 5: the microtasks the timer callbacks queued.
@@ -571,13 +603,15 @@ pub const EventLoop = struct {
         const DeferredTeardown = runtime.gc.DeferredTeardown;
         const queue = self.deferred_teardown orelse return false;
         if (queue.isEmpty()) return false;
-        const start = monotonicNs();
+        // A work budget, so real time even on a virtual clock - which
+        // stands still while the loop works.
+        const start = realMonotonicNs();
         while (true) {
             _ = queue.runSlice(DeferredTeardown.slice_budget);
             if (queue.isEmpty()) break;
             if (queue.pendingNodes() > DeferredTeardown.loop_low_water) continue;
             if (self.runnableQueued() or self.sink.hasPosted()) break;
-            if (monotonicNs() - start >= deferred_teardown_turn_ns) break;
+            if (realMonotonicNs() - start >= deferred_teardown_turn_ns) break;
         }
         return true;
     }
@@ -787,7 +821,7 @@ pub const EventLoop = struct {
     pub fn idleDeadline(self: *Self, period: idle_periods.Period) i64 {
         var deadline = period.end_ns;
         if (period.id == self.idle_period_id) deadline = @min(deadline, self.idle_period_end_ns);
-        if (self.nextTimerDueNs(monotonicNs())) |due| deadline = @min(deadline, due);
+        if (self.nextTimerDueNs(self.nowNs())) |due| deadline = @min(deadline, due);
         return deadline;
     }
 
@@ -907,6 +941,42 @@ pub const EventLoop = struct {
         return if (render) |r| @min(r, due) else due;
     }
 
+    /// The Browser's clock now (ns): the idle periods' time base, and the
+    /// frame clock's and the timers'.
+    pub fn nowNs(self: *const Self) i64 {
+        return @intCast(self.browser_clock.monotonicNow().ns);
+    }
+
+    /// Step 3a: when the turn would wait and the loop is idle - no fetch in
+    /// flight and no running worker, either of which may make work at any
+    /// moment of real time (Blink's virtual time does not advance while
+    /// fetches are pending: kDeterministicLoading) - and a wake-up is due,
+    /// a virtual clock moves to it (platform.BrowserClock.
+    /// maybeFastForwardToWakeUp) and the turn need not wait. A real clock
+    /// answers false. Whether the clock moved.
+    fn fastForwardToNextWakeUp(self: *Self, now: i64) bool {
+        if (self.browser_clock.isReal()) return false;
+        if (self.sink.sourceCount() > 0) return false;
+        if (self.fetches) |fetches| if (fetches.inFlight() > 0) return false;
+        const wake = self.nextWakeUpNs(now) orelse return false;
+        return self.browser_clock.maybeFastForwardToWakeUp(.{ .ns = @intCast(@max(wake, 0)) });
+    }
+
+    /// The loop's next wake-up (ns), exactly: the earliest timer's deadline
+    /// (the frame clock's timer is one of them) and, for a window waiting
+    /// for an idle period, the moment one may start (`idleWaitMs`, in ns).
+    fn nextWakeUpNs(self: *Self, now: i64) ?i64 {
+        var wake: ?i64 = null;
+        if (self.timer_manager) |mgr| {
+            if (mgr.nextDeadlineNs()) |deadline| wake = @intCast(deadline);
+        }
+        if (self.idleRequestsRunnable()) {
+            const at = @max(self.idle_blocked_until_ns, self.idle_period_end_ns);
+            if (at > now) wake = if (wake) |w| @min(w, at) else at;
+        }
+        return wake;
+    }
+
     /// dom.idle_periods' loop half: the browser layer installs it at process
     /// start (Context.installHooks).
     pub const idle_period_hooks: idle_periods.Loop = .{
@@ -974,9 +1044,10 @@ pub const EventLoop = struct {
     }
 };
 
-/// The monotonic clock, in nanoseconds (the idle periods' time base).
-fn monotonicNs() i64 {
-    return @intCast(clock.monotonicNanos());
+/// The process's monotonic clock, in nanoseconds: what bounds the loop's own
+/// work (`runDeferredTeardown`), whatever the Browser's clock.
+fn realMonotonicNs() i64 {
+    return @intCast(platform.monotonicNow().ns);
 }
 
 /// The tasks of a document the back/forward cache holds.
@@ -1117,7 +1188,7 @@ test "the next timer brings an idle period's deadline forward" {
     const id = mgr.setTimeout(20, &noop, null);
     defer _ = mgr.clearTimeout(id);
 
-    const now = monotonicNs();
+    const now = loop.nowNs();
     loop.requestIdlePeriod(&a.realm, &TestWindow.start);
     try testing.expect(loop.startIdlePeriod(now));
     const end = a.period.end_ns;
@@ -1128,7 +1199,7 @@ test "the next timer brings an idle period's deadline forward" {
     // A timer armed during the period, due sooner, brings it forward.
     const sooner = mgr.setTimeout(1, &noop, null);
     defer _ = mgr.clearTimeout(sooner);
-    try testing.expect(loop.idleDeadline(a.period) <= monotonicNs() + 1 * std.time.ns_per_ms);
+    try testing.expect(loop.idleDeadline(a.period) <= loop.nowNs() + 1 * std.time.ns_per_ms);
 }
 
 test "work a frame long keeps idle periods away for a frame" {

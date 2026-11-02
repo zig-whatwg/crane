@@ -79,20 +79,33 @@ pub fn initOwn(
     instance.getState(State).own._internal = internal;
 }
 
-/// The time origin of `ctx`'s global's settings object.
+/// The time origin of `ctx`'s global's settings object, on the clocks its
+/// Browser gives its window realms (`clockSourceOf`).
 fn timeOriginOf(ctx: runtime.Context) hr_time.TimeOrigin {
-    const global = globalOf(ctx) orelse return hr_time.TimeOrigin.init(false);
-    const settings = dom.global_settings.of(global) orelse return hr_time.TimeOrigin.init(false);
+    const source = clockSourceOf(ctx);
+    const global = globalOf(ctx) orelse return hr_time.TimeOrigin.initOn(source, false);
+    const settings = dom.global_settings.of(global) orelse return hr_time.TimeOrigin.initOn(source, false);
     const cross_origin_isolated = settings.cross_origin_isolated(global);
     const recorded = if (settings.time_origin) |time_origin| time_origin(global) else null;
-    const moment = recorded orelse return hr_time.TimeOrigin.init(cross_origin_isolated);
+    const moment = recorded orelse return hr_time.TimeOrigin.initOn(source, cross_origin_isolated);
     // The origin is the recorded moment, coarsened, measured from the
-    // process's estimated monotonic time of the Unix epoch.
-    return hr_time.TimeOrigin.initWithOrigin(
+    // estimated monotonic time of the Unix epoch - the process's, or on the
+    // Browser's own clocks.
+    var origin = hr_time.TimeOrigin.initWithOrigin(
         hr_time.coarsenTime(@as(hr_time.Nanoseconds, moment), cross_origin_isolated),
-        hr_time.time_origin.estimatedMonotonicTimeOfUnixEpoch(),
+        hr_time.time_origin.estimatedMonotonicTimeOfUnixEpochOn(source),
         cross_origin_isolated,
     );
+    origin.source = source;
+    return origin;
+}
+
+/// The clocks `ctx`'s HR-Time reads: its Browser's for a window realm
+/// (html.platform_state.clockOf: the testing platform's opt-in virtual clock,
+/// which the Browser's timers run on too), else the process's.
+fn clockSourceOf(ctx: runtime.Context) hr_time.clock.Source {
+    const browser_clock = @import("html").platform_state.clockOf(ctx);
+    return .{ .context = browser_clock.context, .monotonic_now = browser_clock.monotonic_now, .wall_now = browser_clock.wall_now };
 }
 
 /// `ctx`'s global object, as its realm records it.
@@ -158,6 +171,12 @@ fn nowOfRealm(realm: runtime.Context) ?f64 {
 fn setNavigationStartOfRealm(realm: runtime.Context, unsafe_ms: f64) void {
     const performance = performanceOfRealm(realm) orelse return;
     const internal = getInternal(performance) orelse return;
+    // The navigation's start time is its fetch's timing info, which reads
+    // the process's clock. A Browser with its own (a virtual clock) keeps
+    // the origin its Window recorded on that clock: a moment of the
+    // process's clock means nothing on it (the virtual clock's first batch,
+    // docs/platform-protocol.md section 9).
+    if (!internal.time_origin.source.isProcess()) return;
     const moment: hr_time.Nanoseconds = @intFromFloat(unsafe_ms * std.time.ns_per_ms);
     internal.time_origin.origin_moment = hr_time.coarsenTime(moment, internal.time_origin.cross_origin_isolated);
 }
