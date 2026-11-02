@@ -947,7 +947,8 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     // every agent's createAgent (F1, 8 two-Browser tests) and a worker realm's
     // teardown reading a slab slot's generation the window thread reissues
     // (F2) - and frame realms made from a snapshot in snapshotless Browsers
-    // (F3); beside the busy Browser, F3 again. Switch each to failing when
+    // (F3); beside the busy Browser, two tests that measure the process's
+    // live Global<Object> count (M2). Switch each to failing when
     // its findings are fixed and `zig build test-launch -Dspec=html
     // -Dsanitize-thread` (and -Dmany-browsers) passes.
     .{ .name = "tests-html", .config = .{ .batch = 1, .slow = &html_slow, .sanitize_thread = .report, .many_browsers = .report } },
