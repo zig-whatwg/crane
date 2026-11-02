@@ -141,8 +141,9 @@ pub const ModuleScript = struct {
     /// This script and everything under it has been loaded successfully.
     loaded: bool = false,
 
-    /// Marks a node already visited by the current `findByRecord` walk.
-    search_epoch: u32 = 0,
+    /// Marks a node the `findByRecord` walk in progress has visited; every
+    /// mark is cleared before the walk returns.
+    search_visited: bool = false,
 
     /// Links in `live_scripts`, while this script exists: the engine hands
     /// it back as a record's [[HostDefined]] (import.meta, an import()'s
@@ -1806,13 +1807,10 @@ fn failWith(env: *const Environment, kind: ErrorKind, message: []const u8) LoadF
 }
 
 /// The graph a Link resolves in, for the host's resolve: the root the walk
-/// starts from, and the epoch that marks the nodes one walk has visited.
+/// starts from.
 const Linking = struct {
     root: *ModuleScript,
 };
-/// The epoch of the latest walk. Atomic: each thread walks its own graphs,
-/// but every walk must get an epoch no earlier walk of its thread had.
-var search_epoch: std.atomic.Value(u32) = .init(0);
 
 /// Link(), with each request answered from the edges recorded while loading
 /// (HostLoadImportedModule, for a graph HTML has already fetched). The link
@@ -1839,20 +1837,34 @@ fn resolveRequest(data: ?*anyopaque, referrer: *engine.ModuleRecord, request: en
     return null;
 }
 
-/// The script in `root`'s graph whose record is `record`.
+/// The script in `root`'s graph whose record is `record`. The walk marks
+/// the scripts it visits, so a cycle or a shared child is walked once, and
+/// clears its marks before it returns: they are the walk's own. (An epoch
+/// counter told one walk's marks from the last's, and was a process global
+/// every Browser's walks shared.)
 fn findByRecord(root: *ModuleScript, record: *engine.ModuleRecord) ?*ModuleScript {
-    const epoch = search_epoch.fetchAdd(1, .monotonic) +% 1;
-    return findIn(root, record, epoch);
+    const found = findIn(root, record);
+    clearVisited(root);
+    return found;
 }
 
-fn findIn(script: *ModuleScript, record: *engine.ModuleRecord, epoch: u32) ?*ModuleScript {
-    if (script.search_epoch == epoch) return null;
-    script.search_epoch = epoch;
+fn findIn(script: *ModuleScript, record: *engine.ModuleRecord) ?*ModuleScript {
+    if (script.search_visited) return null;
+    script.search_visited = true;
     if (script.record == record) return script;
     for (script.children.items) |child| {
-        if (findIn(child.script, record, epoch)) |found| return found;
+        if (findIn(child.script, record)) |found| return found;
     }
     return null;
+}
+
+/// Clear the marks the walk from `script` left. The walk reached each script
+/// it marked through marked scripts, so following marked scripts from the
+/// root reaches every mark - including those under a child it never entered.
+fn clearVisited(script: *ModuleScript) void {
+    if (!script.search_visited) return;
+    script.search_visited = false;
+    for (script.children.items) |child| clearVisited(child.script);
 }
 
 // =============================================================================
@@ -2010,6 +2022,33 @@ test "canceling one module graph preserves a shared fetch until its last waiter 
     try std.testing.expect(second.loader == null);
     AsyncModuleLoader.SingleFetch.dropTask(single);
     AsyncModuleLoader.Graph.dropTask(second);
+}
+
+test "findByRecord finds every record of a cyclic graph with a shared child, walk after walk, and leaves no mark" {
+    // root -> a, root -> b, a -> c, b -> c, c -> root. Never dereferenced:
+    // the walk compares record addresses only.
+    const allocator = std.testing.allocator;
+    var scripts: [4]ModuleScript = undefined;
+    for (&scripts, 0..) |*script, i| script.* = .{
+        .allocator = allocator,
+        .record = @ptrFromInt(0x1000 * (i + 1)),
+        .base_url = "",
+    };
+    defer for (&scripts) |*script| script.children.deinit(allocator);
+    const edges = [_][2]usize{ .{ 0, 1 }, .{ 0, 2 }, .{ 1, 3 }, .{ 2, 3 }, .{ 3, 0 } };
+    for (edges) |edge| try scripts[edge[0]].children.append(allocator, .{
+        .specifier = "",
+        .module_type = .javascript,
+        .script = &scripts[edge[1]],
+    });
+    for (0..3) |_| {
+        for (&scripts) |*script| {
+            try std.testing.expectEqual(@as(?*ModuleScript, script), findByRecord(&scripts[0], script.record.?));
+            for (scripts) |after| try std.testing.expect(!after.search_visited);
+        }
+        try std.testing.expectEqual(@as(?*ModuleScript, null), findByRecord(&scripts[0], @ptrFromInt(0x9000)));
+        for (scripts) |after| try std.testing.expect(!after.search_visited);
+    }
 }
 
 test "mimeEssence strips parameters and case" {
