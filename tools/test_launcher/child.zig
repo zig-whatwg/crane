@@ -132,23 +132,36 @@ pub const Executor = struct {
         return .{ .ptr = e, .vtable = &.{ .start = start, .run = run, .stop = stop } };
     }
 
-    fn start(ptr: *anyopaque, w: u32) anyerror!void {
+    fn start(ptr: *anyopaque, w: u32, diag: *Io.Writer) anyerror!void {
         const e: *Executor = @ptrCast(@alignCast(ptr));
         std.debug.assert(e.procs[w] == null);
         if (e.slots) |slots| {
             std.debug.assert(e.held[w] == null);
-            e.held[w] = try slots.acquire();
+            var failed: u32 = 0;
+            e.held[w] = slots.acquire(&failed) catch |err| {
+                diag.print("could not take a test-process slot, {s}/slot-{d}: {f}", .{ slots.path, failed, FmtError{ .err = err } }) catch {};
+                return err;
+            };
         }
         errdefer e.releaseSlot(w);
         const p = try e.gpa.create(Proc);
         errdefer e.gpa.destroy(p);
-        p.child = try std.process.spawn(e.io, .{
+        p.child = std.process.spawn(e.io, .{
             .argv = e.argv,
             .stdin = .pipe,
             .stdout = .pipe,
             .stderr = .pipe,
             .request_resource_usage_statistics = true,
-        });
+        }) catch |err| {
+            // Whether the executable is there now tells a path that was
+            // never right from one replaced while the launcher ran.
+            const now: []const u8 = if (Io.Dir.cwd().statFile(e.io, e.argv[0], .{})) |_| "it is there now" else |stat_err| switch (stat_err) {
+                error.FileNotFound => "it is not there now",
+                else => "it cannot be read now",
+            };
+            diag.print("could not spawn {s}: {f}; {s}", .{ e.argv[0], FmtError{ .err = err }, now }) catch {};
+            return err;
+        };
         p.mr.init(e.gpa, e.io, p.mr_buf.toStreams(), &.{ p.child.stdout.?, p.child.stderr.? });
         p.stdin_writer = p.child.stdin.?.writerStreaming(e.io, &.{});
         p.client = .{ .in = p.mr.reader(0), .out = &p.stdin_writer.interface };
@@ -296,6 +309,32 @@ fn tvUs(tv: anytype) u64 {
 fn elapsed(io: Io, from: Io.Clock.Timestamp) u64 {
     return @intCast(@max(from.untilNow(io).raw.nanoseconds, 0));
 }
+
+/// An error by its name and, where it has one, the errno it stands for:
+/// "FileNotFound (ENOENT)".
+pub const FmtError = struct {
+    err: anyerror,
+
+    pub fn format(f: FmtError, w: *Io.Writer) Io.Writer.Error!void {
+        try w.writeAll(@errorName(f.err));
+        const errno: ?[]const u8 = switch (f.err) {
+            error.FileNotFound => "ENOENT",
+            error.AccessDenied => "EACCES",
+            error.PermissionDenied => "EPERM",
+            error.NotDir => "ENOTDIR",
+            error.IsDir => "EISDIR",
+            error.PathAlreadyExists => "EEXIST",
+            error.NameTooLong => "ENAMETOOLONG",
+            error.FileBusy => "ETXTBSY",
+            error.ProcessFdQuotaExceeded => "EMFILE",
+            error.SystemFdQuotaExceeded => "ENFILE",
+            error.NoSpaceLeft => "ENOSPC",
+            error.SymLinkLoop => "ELOOP",
+            else => null,
+        };
+        if (errno) |n| try w.print(" ({s})", .{n});
+    }
+};
 
 const FmtTerm = struct {
     term: ?std.process.Child.Term,
@@ -457,4 +496,64 @@ test "real processes: each kind of result, a crash and a timeout blamed and rest
     try testing.expectEqual(@as(u32, 4), run.records[6].process_start);
     try testing.expectEqual(@as(u32, 0), exec.exit_failures.load(.monotonic));
     try testing.expect(exec.cpu_ns.load(.monotonic) > 0);
+}
+
+test "a test executable that is not there: its tests are LAUNCHER-ERROR, with the path, the errno and whether it is there now" {
+    const gpa = testing.allocator;
+    const io = testing.io;
+    const argv = [_][]const u8{ "/nonexistent/crane-test-launcher/no-such-exe", "--listen=-", "--seed=0x1" };
+    var all = [_]u32{ 0, 1, 2 };
+    var plan = try @import("plan.zig").make(gpa, &all, .{ .seed = 1, .shuffle = false, .batch_size = 0 });
+    defer plan.deinit(gpa);
+    var exec = try Executor.init(gpa, io, &argv, 2 * std.time.ns_per_s, 1);
+    defer exec.deinit();
+    var run = try sched.Run.init(gpa, io, &plan, all.len, exec.executor(), .{ .jobs = 1, .alone_runs = 2 });
+    defer run.deinit();
+    try run.execute();
+    for (run.records) |rec| {
+        try testing.expectEqual(sched.Verdict.launcher_error, rec.verdict);
+        try testing.expectEqualStrings(
+            "launcher: could not start the test process: could not spawn /nonexistent/crane-test-launcher/no-such-exe: FileNotFound (ENOENT); it is not there now\n",
+            rec.cause,
+        );
+    }
+    // One failed start, and nothing re-run.
+    try testing.expectEqual(@as(u32, 1), run.processes.load(.monotonic));
+    try testing.expectEqual(@as(u32, 3), run.counts().launcher_error);
+}
+
+test "a slot directory removed under the launcher: LAUNCHER-ERROR, naming the slot file" {
+    const fixture = @import("launcher_fixture");
+    const gpa = testing.allocator;
+    const io = testing.io;
+    const argv = [_][]const u8{ fixture.path, "--listen=-", "--seed=0x1" };
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const path = try std.fmt.allocPrint(gpa, ".zig-cache/tmp/{s}/slots", .{tmp.sub_path});
+    defer gpa.free(path);
+    var slots = try Slots.open(io, path, 1);
+    defer slots.close();
+    try tmp.dir.deleteTree(io, "slots");
+
+    // Test 0 of the fixture: "passes".
+    var one = [_]u32{0};
+    var plan = try @import("plan.zig").make(gpa, &one, .{ .seed = 1, .shuffle = false, .batch_size = 0 });
+    defer plan.deinit(gpa);
+    var exec = try Executor.init(gpa, io, &argv, 2 * std.time.ns_per_s, 1);
+    defer exec.deinit();
+    exec.slots = &slots;
+    var run = try sched.Run.init(gpa, io, &plan, 8, exec.executor(), .{ .jobs = 1, .alone_runs = 2 });
+    defer run.deinit();
+    try run.execute();
+    const rec = run.records[0];
+    try testing.expectEqual(sched.Verdict.launcher_error, rec.verdict);
+    const want = try std.fmt.allocPrint(gpa, "launcher: could not start the test process: could not take a test-process slot, {s}/slot-0: FileNotFound (ENOENT)\n", .{path});
+    defer gpa.free(want);
+    try testing.expectEqualStrings(want, rec.cause);
+}
+
+test "an error prints with the errno it stands for, where it has one" {
+    var buf: [64]u8 = undefined;
+    try testing.expectEqualStrings("FileNotFound (ENOENT)", try std.fmt.bufPrint(&buf, "{f}", .{FmtError{ .err = error.FileNotFound }}));
+    try testing.expectEqualStrings("Unexpected", try std.fmt.bufPrint(&buf, "{f}", .{FmtError{ .err = error.Unexpected }}));
 }

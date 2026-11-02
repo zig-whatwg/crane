@@ -16,6 +16,14 @@
 //! has no side effects, so an unchanged executable is not run again.
 //! FAIL, ORDER-DEPENDENT and FLAKY are all reported as failures - none is a
 //! pass (Crane's one-flake-then-bug rule).
+//!
+//! LAUNCHER-ERROR is not the test's failure, so it is not reported as one:
+//! the test did not run, and the build runner hears `skip` for it. The
+//! launcher then fails the step itself - it exits non-zero after `exit`,
+//! having printed what could not be done (`report.writeLauncherErrors`) -
+//! so the build runner reports the step failed, with that text, and no test
+//! is blamed (lane tlfix1: a failed process start had come out as
+//! `error: '<test>' failed:` FLAKY for each test of its batch).
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -96,12 +104,13 @@ pub const Session = struct {
     }
 };
 
-/// The build runner's status for a verdict: only PASS passes and only SKIP
-/// skips.
+/// The build runner's status for a verdict: only PASS passes; SKIP and
+/// LAUNCHER-ERROR (the test did not run - the launcher fails the step for
+/// it instead, `main.exitStatus`) skip.
 pub fn statusOf(v: sched.Verdict) TestResults.Status {
     return switch (v) {
         .pass => .pass,
-        .skip => .skip,
+        .skip, .launcher_error => .skip,
         .fail, .order_dependent, .flaky, .not_run => .fail,
     };
 }
@@ -127,7 +136,8 @@ pub fn serve(s: *Session, gpa: Allocator, in: *Io.Reader, out: *Io.Writer, diag:
                 if (t >= s.names.len) return error.NoSuchTest;
                 try server.serveStringMessage(.test_started, &.{});
                 const verdict = try s.verdictOf(t);
-                if (!verdict.ok()) {
+                // A LAUNCHER-ERROR prints once for the run, not per test.
+                if (statusOf(verdict) == .fail) {
                     try report.writeVerdictBlock(diag, s.names[t], &s.run.records[t], s.seed);
                     try diag.flush();
                     // The build runner reads stderr and the protocol as two
@@ -184,7 +194,7 @@ const Fake = struct {
     fn executor(f: *Fake) sched.Executor {
         return .{ .ptr = f, .vtable = &.{ .start = start, .run = run, .stop = stop } };
     }
-    fn start(_: *anyopaque, _: u32) anyerror!void {}
+    fn start(_: *anyopaque, _: u32, _: *Io.Writer) anyerror!void {}
     fn stop(_: *anyopaque, _: u32) void {}
     fn run(ptr: *anyopaque, _: u32, t: u32) anyerror!sched.RunResult {
         const f: *Fake = @ptrCast(@alignCast(ptr));
@@ -270,11 +280,79 @@ test "serves the build runner: the list, then each test's verdict, failures with
     try testing.expect(std.mem.indexOf(u8, text, "test 1 said no") != null);
 }
 
-test "statusOf: only PASS passes, only SKIP skips" {
+test "statusOf: only PASS passes; SKIP and LAUNCHER-ERROR skip" {
     try testing.expectEqual(TestResults.Status.pass, statusOf(.pass));
     try testing.expectEqual(TestResults.Status.skip, statusOf(.skip));
     try testing.expectEqual(TestResults.Status.fail, statusOf(.fail));
     try testing.expectEqual(TestResults.Status.fail, statusOf(.order_dependent));
     try testing.expectEqual(TestResults.Status.fail, statusOf(.flaky));
     try testing.expectEqual(TestResults.Status.fail, statusOf(.not_run));
+    // Not the test's failure: the launcher fails the step for it.
+    try testing.expectEqual(TestResults.Status.skip, statusOf(.launcher_error));
+}
+
+/// An executor whose processes never start: the launcher failing, not the
+/// tests.
+const NoStart = struct {
+    fn executor(n: *NoStart) sched.Executor {
+        return .{ .ptr = n, .vtable = &.{ .start = start, .run = run, .stop = stop } };
+    }
+    fn start(_: *anyopaque, _: u32, diag: *Io.Writer) anyerror!void {
+        try diag.writeAll("no slot");
+        return error.FileNotFound;
+    }
+    fn run(_: *anyopaque, _: u32, _: u32) anyerror!sched.RunResult {
+        unreachable; // never started
+    }
+    fn stop(_: *anyopaque, _: u32) void {}
+};
+
+test "a test the launcher could not run is answered skip, with no failure block: no test is blamed" {
+    const gpa = testing.allocator;
+    const io = testing.io;
+    const names = [_][]const u8{ "a.test.zero", "a.test.one" };
+    const expects_panic = [_]bool{ false, false };
+    const selected = [_]bool{ true, true };
+    var plan = try plan_mod.make(gpa, &.{ 0, 1 }, .{ .seed = 1, .shuffle = false, .batch_size = 0 });
+    defer plan.deinit(gpa);
+    var no_start: NoStart = .{};
+    var session: Session = undefined;
+    var run = try sched.Run.init(gpa, io, &plan, names.len, no_start.executor(), .{
+        .jobs = 1,
+        .on_verdict = Session.onVerdict,
+        .on_verdict_ctx = &session,
+    });
+    defer run.deinit();
+    session = try Session.init(gpa, io, &names, &expects_panic, &selected, &run, 0x1);
+    defer session.deinit(gpa);
+
+    var to_server: Io.Writer.Allocating = .init(gpa);
+    defer to_server.deinit();
+    var client: std.zig.Client = .{ .in = undefined, .out = &to_server.writer };
+    for ([_]u32{ 0, 1 }) |t| try client.serveRunTest(t);
+    try client.serveBodylessMessage(.exit);
+    var in: Io.Reader = .fixed(to_server.written());
+    var out: Io.Writer.Allocating = .init(gpa);
+    defer out.deinit();
+    var diag: Io.Writer.Allocating = .init(gpa);
+    defer diag.deinit();
+    try serve(&session, gpa, &in, &out.writer, &diag.writer);
+    session.finish();
+
+    var r: Io.Reader = .fixed(out.written());
+    const Msg = std.zig.Server.Message;
+    var hdr = try r.takeStruct(Msg.Header, .little);
+    r.toss(hdr.bytes_len); // zig_version
+    for (0..2) |t| {
+        hdr = try r.takeStruct(Msg.Header, .little);
+        r.toss(hdr.bytes_len); // test_started
+        hdr = try r.takeStruct(Msg.Header, .little);
+        try testing.expectEqual(Msg.Tag.test_results, hdr.tag);
+        const res = try r.takeStruct(TestResults, .little);
+        try testing.expectEqual(@as(u32, @intCast(t)), res.index);
+        try testing.expectEqual(TestResults.Status.skip, res.flags.status);
+    }
+    try testing.expectEqual(@as(usize, 0), diag.written().len);
+    try testing.expectEqual(@as(u32, 2), run.counts().launcher_error);
+    try testing.expectEqualStrings("launcher: could not start the test process: no slot\n", run.records[0].cause);
 }

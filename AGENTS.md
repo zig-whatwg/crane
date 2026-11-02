@@ -236,7 +236,11 @@ at once, with a per-test timeout (300 s; a test listed as slow in build.zig's
 **FAIL** (fails alone), **ORDER-DEPENDENT** (passes alone, fails again after
 the tests that ran before it in its process - a bug, named with its batch and
 seed), **FLAKY** (the runs disagree). None of the three is a pass; each prints
-as `error: '<test>' failed:` with the verdict. The batch size is per suite
+as `error: '<test>' failed:` with the verdict. A test whose process the
+launcher itself could not start (no slot, no spawn) is **LAUNCHER-ERROR**, never
+charged to the test: it is not re-run, the suite's step fails, and each cause
+prints once as `error: 'test <suite>' failed: LAUNCHER-ERROR, N tests not run
+...: <step>, <path>: <error> (<errno>)`. The batch size is per suite
 (`suite_configs`: 1, a process per test, for the suites that start V8 or a
 Browser; 10 for the rest), so a test may share its process with any other
 tests of its binary, in any order: never assume yours is the first to start
