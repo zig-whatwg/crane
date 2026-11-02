@@ -56,6 +56,8 @@
 //! the same qualified map, and the counts are equal (`checkMove`).
 
 const std = @import("std");
+// stdout as a stream: Zig 0.17's positional File.writer overwrites a shared log.
+const stdout_stream = @import("stdout_stream.zig");
 const Ast = std.zig.Ast;
 
 const baseline_path = "tools/tombstones_baseline.txt";
@@ -734,7 +736,7 @@ pub fn main(init: std.process.Init) !void {
     std.mem.sort(Site, sites.items, {}, siteLessThan);
 
     var stdout_buf: [4096]u8 = undefined;
-    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buf);
+    var stdout_writer = stdout_stream.writer(io, &stdout_buf);
     const out = &stdout_writer.interface;
     defer out.flush() catch {};
 
@@ -1141,4 +1143,8 @@ test "exemptWhy: only a why, only in the comment block directly above" {
     try testing.expectEqualStrings("cleared at the page's end", exemptWhy(source, 5).?);
     try testing.expectEqual(@as(?[]const u8, null), exemptWhy(source, 7));
     try testing.expectEqual(@as(?[]const u8, null), exemptWhy(source, 3));
+}
+
+test {
+    _ = stdout_stream;
 }
