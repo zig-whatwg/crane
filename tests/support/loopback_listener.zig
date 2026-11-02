@@ -83,6 +83,11 @@ pub const LoopbackListener = struct {
         var attempt: u32 = 0;
         while (true) : (attempt += 1) {
             self.wake = address.connect(std.testing.io, .{ .mode = .stream }) catch |err| switch (err) {
+                // Delivered: the accept thread took the connection and reset
+                // it (accept, while stopping) before this thread came back
+                // from connect() - the kernel then reports the reset as the
+                // connect's error. Seen under gate load (lane fixes1).
+                error.ConnectionResetByPeer => return,
                 error.AddressUnavailable, error.SystemResources => {
                     if (attempt < wake_attempts) {
                         std.Io.sleep(std.testing.io, .fromMilliseconds(wake_retry_ms), .awake) catch {};
