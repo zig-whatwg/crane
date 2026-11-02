@@ -56,9 +56,30 @@ using namespace v8;
 // (docs/lessons/architecture-suppressmicrotaskexecutionscope-must-live-on-the.md).
 using NativeStepScope = Isolate::SuppressMicrotaskExecutionScope;
 
-// Platform singleton
+// Platform singleton: made by the start (v8_Platform_Start), under
+// g_platform_start.mutex, before v8_initialized is published.
 static std::unique_ptr<Platform> g_platform = nullptr;
-static bool v8_initialized = false;
+/// Whether V8 has started. Stored true (release) once, by the start, after
+/// V8::Initialize and after g_platform and g_platform_start.flags are
+/// written; stored false only by v8_Platform_Dispose. Read without the lock
+/// (acquire): true means those are written and stay so.
+static std::atomic<bool> v8_initialized = false;
+
+/// V8's start, once per process (v8_Platform_Start). V8 itself allows one:
+/// V8::InitializePlatform and V8::Initialize advance a process-wide state and
+/// FATAL on a second or concurrent start (13.1.203 src/init/v8.cc
+/// AdvanceStartupState), and its flags freeze when it starts (V8::Initialize,
+/// FlagList::FreezeFlags). So the start and the flags it applies are taken
+/// under one lock, by whichever thread asks first.
+struct PlatformStartState {
+    std::mutex mutex;
+    /// The flags the start applied ("" for none), written once by it.
+    std::string flags;
+    /// v8_Platform_Dispose ran: V8 cannot start again in this process.
+    bool disposed = false;
+};
+// process-wide: V8 starts once per process and never again once disposed (13.1.203 src/init/v8.cc), so the lock that orders its start and the flags it started with are the process's, shared by every Browser and worker thread that may be first to need it.
+static PlatformStartState g_platform_start;
 
 // ============================================================================
 // Snapshot Mode Global Handle Tracking
@@ -2017,9 +2038,16 @@ void v8_Snapshot_ClearGlobalHandles() {
 /// - "--hash-seed=0" - Use deterministic hash seed (may help with snapshots)
 /// - "--no-lazy" - Disable lazy compilation
 ///
+/// Prefer v8_Platform_Start(flags), which sets them as part of the start:
+/// set here, they are not the start's (v8_Platform_StartFlags does not
+/// name them), and after the start V8 refuses them fatally. Taken under the
+/// start's lock, so a write never overlaps another thread's start reading
+/// the flags.
+///
 /// @param flags - Null-terminated string of V8 command-line flags
 void v8_SetFlagsFromString(const char* flags) {
     if (flags) {
+        std::lock_guard<std::mutex> guard(g_platform_start.mutex);
         V8::SetFlagsFromString(flags);
     }
 }
@@ -2194,15 +2222,64 @@ static Platform* defaultPlatform() {
     return static_cast<CranePlatform*>(g_platform.get())->backend();
 }
 
-void v8_Platform_Initialize() {
-    if (!v8_initialized) {
-        V8::InitializeICUDefaultLocation("");
-        V8::InitializeExternalStartupData("");
-        g_platform = std::make_unique<CranePlatform>();
-        V8::InitializePlatform(g_platform.get());
-        V8::Initialize();
-        v8_initialized = true;
+/// v8_Platform_Start's answer (ffi.zig PlatformStart).
+enum PlatformStartResult : int {
+    /// v8_Platform_Dispose ran: V8 cannot start again in this process.
+    kPlatformDisposed = -2,
+    /// V8 had started with other flags than the caller's, which are NOT in
+    /// effect: V8's flags freeze when it starts. The caller reports it.
+    kPlatformStartedWithOtherFlags = -1,
+    /// V8 had started, with the caller's flags, or the caller named none.
+    kPlatformAlreadyStarted = 0,
+    /// This call started V8, with the caller's flags applied first.
+    kPlatformStartedNow = 1,
+};
+
+/// Start V8 - `flags` (null: none), then its platform - unless it has
+/// started: exactly once per process, from any thread, by whichever caller
+/// is first. A caller that comes while the start is under way waits for it,
+/// so every caller returns with V8 started; one whose `flags` are not the
+/// start's is told so (kPlatformStartedWithOtherFlags), never silently
+/// given the other set.
+///
+/// Chromium starts V8 this way - once, the flags set inside the start,
+/// before V8::InitializePlatform (gin/v8_initializer.cc
+/// V8Initializer::Initialize) - but from one thread, at process start,
+/// behind an unlocked bool, and every IsolateHolder CHECKs that start came
+/// first (gin/isolate_holder.cc). Crane's host starts it the same way
+/// (engine.initializeEngine, from crane.Process.init), but an isolate made
+/// before that - a test's, a tool's (v8_Isolate_New) - may be first, on any
+/// thread, so the start is taken under a lock. It was an unlocked bool here
+/// too: two threads making a process's first isolates at once both read it
+/// false and the second V8::InitializePlatform aborted ("Wrong
+/// initialization order": tests/v8/platform_start_once_test.zig).
+int v8_Platform_Start(const char* flags) {
+    if (!v8_initialized.load(std::memory_order_acquire)) {
+        std::lock_guard<std::mutex> guard(g_platform_start.mutex);
+        if (g_platform_start.disposed) return kPlatformDisposed;
+        if (!v8_initialized.load(std::memory_order_relaxed)) {
+            // Flags first: V8 reads them from InitializePlatform on and
+            // freezes them in Initialize (crbug.com/v8/11043).
+            if (flags && *flags) V8::SetFlagsFromString(flags);
+            V8::InitializeICUDefaultLocation("");
+            V8::InitializeExternalStartupData("");
+            g_platform = std::make_unique<CranePlatform>();
+            V8::InitializePlatform(g_platform.get());
+            V8::Initialize();
+            g_platform_start.flags = flags ? flags : "";
+            v8_initialized.store(true, std::memory_order_release);
+            return kPlatformStartedNow;
+        }
     }
+    if (!flags) return kPlatformAlreadyStarted;
+    // Written by the start before it published v8_initialized, never after.
+    return g_platform_start.flags == flags ? kPlatformAlreadyStarted : kPlatformStartedWithOtherFlags;
+}
+
+/// The flags V8's start applied ("" for none), or null before it started.
+/// Lives as long as the process.
+const char* v8_Platform_StartFlags() {
+    return v8_initialized.load(std::memory_order_acquire) ? g_platform_start.flags.c_str() : nullptr;
 }
 
 /// Write a V8 heap snapshot of |isolate| to |path| as JSON (the format
@@ -2251,16 +2328,20 @@ bool v8_Isolate_HasPendingBackgroundTasks(Isolate* isolate) {
 }
 
 bool v8_Platform_PumpMessageLoop(Isolate* isolate) {
-    if (!g_platform || !isolate) return false;
+    if (!v8_initialized.load(std::memory_order_acquire) || !isolate) return false;
     return platform::PumpMessageLoop(defaultPlatform(), isolate,
                                      platform::MessageLoopBehavior::kDoNotWait);
 }
 
+/// End V8 for the process: it cannot start again (v8_Platform_Start answers
+/// kPlatformDisposed). After every isolate is disposed, from one thread.
 void v8_Platform_Dispose() {
-    if (v8_initialized) {
+    std::lock_guard<std::mutex> guard(g_platform_start.mutex);
+    if (v8_initialized.load(std::memory_order_relaxed)) {
         V8::Dispose();
         V8::DisposePlatform();
-        v8_initialized = false;
+        v8_initialized.store(false, std::memory_order_release);
+        g_platform_start.disposed = true;
     }
 }
 
@@ -2408,10 +2489,10 @@ static void deleteSyntheticExport(SyntheticJsonExport* entry) {
 }
 
 Isolate* v8_Isolate_New() {
-    if (!v8_initialized) {
-        v8_Platform_Initialize();
-    }
-    
+    // Thread-safe, and a no-op once V8 has started. ffi.zig's v8_Isolate_New
+    // starts it first with the runtime flags; this is the net below it.
+    if (v8_Platform_Start(nullptr) == kPlatformDisposed) return nullptr;
+
     Isolate::CreateParams create_params;
     create_params.array_buffer_allocator_shared =
         std::shared_ptr<ArrayBuffer::Allocator>(ArrayBuffer::Allocator::NewDefaultAllocator());
@@ -2504,7 +2585,7 @@ void v8_Isolate_Dispose(Isolate* isolate) {
         // what V8 posted for it; without this a later isolate at the same
         // address inherits it and its stale tasks. d8 does this before every
         // Dispose (Worker::ExecuteInThread).
-        if (g_platform && v8_initialized) platform::NotifyIsolateShutdown(defaultPlatform(), isolate);
+        if (v8_initialized.load(std::memory_order_acquire)) platform::NotifyIsolateShutdown(defaultPlatform(), isolate);
 
         // Dispose the isolate first
         isolate->Dispose();
@@ -8775,10 +8856,10 @@ struct V8StartupData {
 ///                              at snapshot creation and loading time.
 /// @return Opaque pointer to SnapshotCreator (caller owns, must call Dispose)
 void* v8_SnapshotCreator_New(const intptr_t* external_references) {
-    if (!v8_initialized) {
-        v8_Platform_Initialize();
-    }
-    
+    // The snapshot generator starts V8 first, with its flags
+    // (snapshot_loader.initializePlatformForSnapshots); this is the net.
+    if (v8_Platform_Start(nullptr) == kPlatformDisposed) return nullptr;
+
     // Create isolate params with external references
     Isolate::CreateParams params;
     params.array_buffer_allocator = ArrayBuffer::Allocator::NewDefaultAllocator();
@@ -9064,10 +9145,9 @@ Isolate* v8_Isolate_NewFromSnapshot(
     int snapshot_size,
     const intptr_t* external_references
 ) {
-    if (!v8_initialized) {
-        v8_Platform_Initialize();
-    }
-    
+    // As v8_Isolate_New: the net below ffi.zig's start.
+    if (v8_Platform_Start(nullptr) == kPlatformDisposed) return nullptr;
+
     if (!snapshot_data || snapshot_size <= 0) {
         fprintf(stderr, "[v8_Isolate_NewFromSnapshot] ERROR: Invalid snapshot data\n");
         return nullptr;
@@ -12150,7 +12230,7 @@ int v8_Script_RunRethrowingErrors(
 /// set before it is (they are frozen after), and it cannot be initialized
 /// again once disposed.
 bool v8_Platform_IsInitialized() {
-    return v8_initialized;
+    return v8_initialized.load(std::memory_order_acquire);
 }
 
 /// The engine protocol's HostPromiseRejectionTracker dispatcher: one Zig

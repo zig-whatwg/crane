@@ -139,18 +139,20 @@ pub const RUNTIME_V8_FLAGS = "--harmony-shadow-realm --js-float16array --experim
 /// Initialize V8 platform with proper flags for snapshot support.
 /// This MUST be called instead of v8_Platform_Initialize() when using snapshots.
 ///
-/// The order is critical:
-/// 1. Set V8 flags (--hash-seed=0, --predictable)
-/// 2. Initialize V8 platform
+/// The order is critical - the flags (--hash-seed=0, --predictable), then the
+/// platform - so both are one v8_Platform_Start, under the start's lock: no
+/// other thread's start comes between them. A V8 already started with other
+/// flags keeps them (they freeze when it starts): that is said at err level,
+/// never passed over.
 ///
 /// Calling v8_Platform_Initialize() directly without setting flags first
 /// will cause snapshot loading to fail with "rehashability" assertion errors.
 pub fn initializePlatformForSnapshots() void {
-    // CRITICAL: Flags MUST be set BEFORE platform initialization
-    ffi.v8_SetFlagsFromString(SNAPSHOT_V8_FLAGS);
-
-    // Now initialize the platform
-    ffi.v8_Platform_Initialize();
+    switch (ffi.v8_Platform_Start(SNAPSHOT_V8_FLAGS)) {
+        .started_now, .already_started => {},
+        .started_with_other_flags => std.log.err("V8 started with the flags '{s}' before this start asked for '{s}': V8 freezes its flags when it starts, so these are not in effect", .{ std.mem.span(ffi.v8_Platform_StartFlags() orelse ""), SNAPSHOT_V8_FLAGS }),
+        .disposed => std.log.err("V8 was disposed: it cannot start again in this process", .{}),
+    }
 }
 
 /// Initialize the V8 platform for RUNNING, including loading a snapshot.
@@ -162,9 +164,17 @@ pub fn initializePlatformForSnapshots() void {
 /// If a snapshot ever turns out NOT to be rehashable, loading fails loudly with
 /// V8's rehashability assertion rather than misbehaving quietly - which is why
 /// this is safe to change: the failure mode is immediate and named.
+///
+/// The flags and the platform are one v8_Platform_Start, as for
+/// `initializePlatformForSnapshots`. An isolate made before this
+/// (ffi.v8_Isolate_New) starts V8 with these same flags; a V8 started with
+/// other flags keeps them, and that is said at err level.
 pub fn initializePlatformForRuntime() void {
-    ffi.v8_SetFlagsFromString(RUNTIME_V8_FLAGS);
-    ffi.v8_Platform_Initialize();
+    switch (ffi.v8_Platform_Start(RUNTIME_V8_FLAGS)) {
+        .started_now, .already_started => {},
+        .started_with_other_flags => std.log.err("V8 started with the flags '{s}' before this start asked for '{s}': V8 freezes its flags when it starts, so these are not in effect", .{ std.mem.span(ffi.v8_Platform_StartFlags() orelse ""), RUNTIME_V8_FLAGS }),
+        .disposed => std.log.err("V8 was disposed: it cannot start again in this process", .{}),
+    }
 }
 
 /// Result of V8 initialization

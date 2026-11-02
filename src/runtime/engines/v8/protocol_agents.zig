@@ -58,9 +58,12 @@ var engine_snapshot: ?[]const u8 = null;
 /// freezes its flags when the platform starts and cannot start again after
 /// it stops - and the snapshot agents may be made from.
 pub fn initializeEngine(options: engine.EngineOptions) Error!void {
-    // A host that already started the platform set the runtime flags then
-    // too.
-    if (!ffi.v8_Platform_IsInitialized()) snapshot_loader.initializePlatformForRuntime();
+    // The runtime flags, then the platform, in one start that any thread may
+    // be first to (v8_Platform_Start). Started already - by an isolate made
+    // before this (ffi.v8_Isolate_New starts V8 with these same flags), or by
+    // an earlier initializeEngine - it is a no-op; started with other flags,
+    // which then stay in effect, it says so at err level.
+    snapshot_loader.initializePlatformForRuntime();
     // [code_generation_checks]: the process's dispatchers, once, before any
     // agent's thread runs; each agent enables its isolate's callbacks.
     ffi.v8_SetProtocolCodeGenerationDispatchers(onCodeGenerationFromStrings, onWasmCodeGeneration);
