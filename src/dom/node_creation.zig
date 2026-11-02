@@ -22,7 +22,7 @@
 //! Spec: https://html.spec.whatwg.org/multipage/parsing.html#the-initial-insertion-mode
 //!
 //! lint-impls: hook for Node, Element, DocumentType
-const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 
@@ -74,42 +74,39 @@ const Hooks = struct {
     node: ?NodeSteps = null,
 };
 // process-wide: immutable creation algorithms installed before any Browser, with no instance state
-var node_steps: Hooks = .{};
+var node_steps: Hook(Hooks) = .init(.{});
 
 /// Called by Element's installHooks, once, at process start (process_start.zig).
 pub fn installElement(steps: ElementSteps) void {
-    process_start.assertInstalling();
-    node_steps.element = steps;
+    node_steps.installing().element = steps;
 }
 
 /// Called by DocumentType's installHooks, once, at process start (process_start.zig).
 pub fn installDocumentType(steps: DocumentTypeSteps) void {
-    process_start.assertInstalling();
-    node_steps.document_type = steps;
+    node_steps.installing().document_type = steps;
 }
 
 /// Called by Node's installHooks, once, at process start (process_start.zig).
 pub fn installNode(steps: NodeSteps) void {
-    process_start.assertInstalling();
-    node_steps.node = steps;
+    node_steps.installing().node = steps;
 }
 
 /// DOM "create an element": set `element`'s namespace and local name.
 pub fn setElementNames(element: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8) Error!void {
-    const steps = node_steps.element orelse return error.InvalidStateError;
+    const steps = node_steps.read().element orelse return error.InvalidStateError;
     return steps.set_names(element, namespace, local_name);
 }
 
 /// `element`'s names, borrowed (see `ElementNames`); null for a node that is
 /// not an element.
 pub fn elementNames(element: *runtime.Instance) ?ElementNames {
-    const steps = node_steps.element orelse return null;
+    const steps = node_steps.read().element orelse return null;
     const read = steps.names orelse return null;
     return read(element);
 }
 
 pub fn elementIsValue(element: *runtime.Instance) ?[]const u8 {
-    const steps = node_steps.element orelse return null;
+    const steps = node_steps.read().element orelse return null;
     const read = steps.is_value orelse return null;
     return read(element);
 }
@@ -117,14 +114,14 @@ pub fn elementIsValue(element: *runtime.Instance) ?[]const u8 {
 /// The parser's DOCTYPE token: set `doctype`'s name, public ID and system
 /// ID, each "" where the token had none.
 pub fn setDoctypeIds(doctype: *runtime.Instance, name: ?[]const u8, public_id: ?[]const u8, system_id: ?[]const u8) void {
-    const steps = node_steps.document_type orelse return;
+    const steps = node_steps.read().document_type orelse return;
     steps.set_ids(doctype, name, public_id, system_id);
 }
 
 /// Free `node` - created, never inserted, unreachable from script - and its
 /// subtree.
 pub fn destroyUninserted(node: *runtime.Instance) void {
-    const steps = node_steps.node orelse return;
+    const steps = node_steps.read().node orelse return;
     steps.destroy_uninserted(node);
 }
 
@@ -153,7 +150,7 @@ pub fn releaseIfUnwrapped(node: *runtime.Instance, generation: u64) void {
 /// realm teardown under way when none can, else at its wrapper's end. Unlike
 /// `destroyUninserted`'s nodes, script may have reached this one.
 pub fn destroyRoot(node: *runtime.Instance) void {
-    const steps = node_steps.node orelse return;
+    const steps = node_steps.read().node orelse return;
     steps.destroy_uninserted(node);
 }
 
@@ -164,7 +161,7 @@ pub fn destroyRoot(node: *runtime.Instance) void {
 /// step: a descendant reaches it here, not through Node's impl (AGENTS.md, the
 /// impls boundary).
 pub fn setNodeLocalName(node: *runtime.Instance, name: runtime.DOMString) Error!void {
-    const steps = node_steps.node orelse return error.InvalidStateError;
+    const steps = node_steps.read().node orelse return error.InvalidStateError;
     const set = steps.set_local_name orelse return error.InvalidStateError;
     return set(node, name);
 }
@@ -175,16 +172,15 @@ pub fn clone(node: *runtime.Instance, document: ?*runtime.Instance, subtree: boo
 }
 
 pub fn cloneWithRegistry(node: *runtime.Instance, document: ?*runtime.Instance, subtree: bool, parent: ?*runtime.Instance, fallback_registry: ?*runtime.Instance) !*runtime.Instance {
-    const steps = node_steps.node orelse return error.InvalidStateError;
+    const steps = node_steps.read().node orelse return error.InvalidStateError;
     const algorithm = steps.clone orelse return error.InvalidStateError;
     return algorithm(node, document, subtree, parent, fallback_registry);
 }
 
 test "without installed steps nothing is set or freed" {
     const std = @import("std");
-    const saved_node = node_steps;
-    defer node_steps = saved_node;
-    node_steps = .{};
+    const override = node_steps.overrideForTest(.{});
+    defer override.restore();
     // Never dereferenced: with no steps nothing reads it.
     var node: runtime.Instance = undefined;
     try std.testing.expectError(error.InvalidStateError, setElementNames(&node, null, "div"));

@@ -14,7 +14,7 @@
 //! lint-impls: hook for HTMLAnchorElement, HTMLAreaElement, HTMLButtonElement, HTMLDetailsElement, HTMLInputElement, HTMLLabelElement, SVGAElement
 
 const std = @import("std");
-const process_start = @import("process_start.zig");
+const hook = @import("hook.zig");
 const runtime = @import("runtime");
 
 /// One element type's activation behaviour.
@@ -30,8 +30,8 @@ pub const Behavior = struct {
 };
 
 const max_behaviors = 16;
-var behaviors: [max_behaviors]Behavior = undefined;
-var count: usize = 0;
+/// Process-wide, written once at start-up (hook.zig).
+var behaviors: hook.Hook(hook.List(Behavior, max_behaviors)) = .init(.empty);
 
 /// Install `behavior`. Idempotent: installing the same behaviour again adds
 /// nothing - and a behaviour is the same only if EVERY function it names is
@@ -46,18 +46,14 @@ var count: usize = 0;
 /// table holds what a Debug build's holds, less exact duplicates
 /// (docs/lessons/debugging-equal-constants-share-one-address-in-a-release-build.md).
 pub fn install(behavior: Behavior) void {
-    process_start.assertInstalling();
-    for (behaviors[0..count]) |existing| {
-        if (std.meta.eql(existing, behavior)) return;
-    }
-    if (count == max_behaviors) return;
-    behaviors[count] = behavior;
-    count += 1;
+    const installed = behaviors.installing();
+    if (installed.contains(behavior)) return;
+    installed.append(behavior);
 }
 
 /// The activation behaviour `target` has, or null.
 pub fn of(target: *runtime.Instance) ?Behavior {
-    for (behaviors[0..count]) |behavior| {
+    for (behaviors.read().slice()) |behavior| {
         if (behavior.has(target)) return behavior;
     }
     return null;
@@ -74,21 +70,16 @@ test "a target has the behaviour whose brand check accepts it, installed once" {
             runs += 1;
         }
     };
-    // Give back the whole table: restoring only the count would leave this
-    // test's always-true brand check in slot 0 for the process's later tests.
-    const saved_behaviors = behaviors;
-    const saved_count = count;
-    defer {
-        behaviors = saved_behaviors;
-        count = saved_count;
-    }
-    count = 0;
+    // The test's own empty table, given back whole at its end: this test's
+    // always-true brand check must not stay for the process's later tests.
+    const override = behaviors.overrideForTest(.empty);
+    defer override.restore();
     // Never dereferenced: nothing installed reads the target.
     var target: runtime.Instance = undefined;
     try std.testing.expect(of(&target) == null);
     install(.{ .has = &Test.has, .run = &Test.run });
     install(.{ .has = &Test.has, .run = &Test.run });
-    try std.testing.expectEqual(@as(usize, 1), count);
+    try std.testing.expectEqual(@as(usize, 1), behaviors.get().len);
     const behavior = of(&target) orelse return error.TestExpectedBehavior;
     behavior.run(&target, &target);
     try std.testing.expectEqual(@as(usize, 1), Test.runs);
@@ -98,12 +89,8 @@ test "behaviours that share a check stay two, and the first installed answers: a
     // Two owners whose `has` functions have the same body are ONE function in
     // a release build. The table and the answer must be Debug's: both
     // behaviours, the first one installed first.
-    const saved_behaviors = behaviors;
-    const saved_count = count;
-    defer {
-        behaviors = saved_behaviors;
-        count = saved_count;
-    }
+    const override = behaviors.overrideForTest(.empty);
+    defer override.restore();
     const Test = struct {
         var runs: usize = 0;
         fn has(_: *runtime.Instance) bool {
@@ -116,7 +103,6 @@ test "behaviours that share a check stay two, and the first installed answers: a
             runs += 10;
         }
     };
-    count = 0;
     var target: runtime.Instance = undefined;
     install(.{ .has = &Test.has, .run = &Test.run });
     install(.{ .has = &Test.has, .run = &Test.later });

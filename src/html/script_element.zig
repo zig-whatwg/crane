@@ -304,19 +304,18 @@ pub const Implementation = struct {
     state: *const fn (element: *runtime.Instance) ?*State,
 };
 
-/// Process-wide, written once at start-up (dom.process_start).
-var implementation: ?Implementation = null;
+/// Process-wide, written once at start-up (dom.Hook).
+var implementation: @import("dom").Hook(?Implementation) = .init(null);
 
 /// Called by HTMLScriptElement's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    @import("dom").process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// `element`'s script element state if it is an HTML script element, else
 /// null - also before any script element exists to install the hook.
 pub fn of(element: *runtime.Instance) ?*State {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.state(element);
 }
 
@@ -369,9 +368,8 @@ fn removeAll(list: *std.ArrayList(*runtime.Instance), element: *runtime.Instance
 }
 
 test "without an installed implementation no element has script element state" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with no implementation nothing reads it.
     var element: runtime.Instance = undefined;
     try std.testing.expect(of(&element) == null);

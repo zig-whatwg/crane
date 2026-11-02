@@ -23,6 +23,7 @@
 //!
 //! lint-impls: hook for ShadowRoot, Element, Document
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 const instance_bridge = @import("instance_bridge.zig");
 const refcount = @import("refcount.zig");
 
@@ -37,17 +38,17 @@ pub const Implementation = struct {
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by ShadowRoot's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    var combined = implementation orelse Implementation{};
+    const installed = implementation.installing();
+    var combined = installed.* orelse Implementation{};
     if (impl.host_destroyed) |step| combined.host_destroyed = step;
     if (impl.root_for_host) |step| combined.root_for_host = step;
     if (impl.scope_serial) |step| combined.scope_serial = step;
     if (impl.next_scope_serial) |step| combined.next_scope_serial = step;
-    implementation = combined;
+    installed.* = combined;
 }
 
 /// `shadow`'s host is being torn down: `shadow` forgets it. Nothing to do
@@ -56,7 +57,7 @@ pub fn hostDestroyed(shadow: *runtime.Instance) void {
     // A detached root of its document from here on (refcount: its holds
     // leave the dying host's chain and count in its document).
     if (instance_bridge.getNodeBase(shadow)) |root| refcount.hostGone(root);
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     const step = impl.host_destroyed orelse return;
     step(shadow);
 }
@@ -74,7 +75,7 @@ pub fn attached(host: *runtime.Instance, shadow: *runtime.Instance) void {
 /// An element's shadow root, including a closed root. The IDL shadowRoot
 /// getter intentionally hides closed roots; internal tree algorithms do not.
 pub fn rootForHost(host: *runtime.Instance) ?*runtime.Instance {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     const step = impl.root_for_host orelse return null;
     return step(host);
 }
@@ -83,9 +84,8 @@ const test_vtable_methods: u8 = 0;
 const test_vtable: runtime.VTable = .{ .name = "ShadowRoot", .deinit = null, .methods_ptr = &test_vtable_methods };
 
 test "hostDestroyed without an installed implementation does nothing" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // A slab's instance, as every Instance is (its Browser is read from its
     // address); never a node, so no NodeBase.
     var scope = runtime.BrowserScope.init(@import("std").testing.allocator);
@@ -96,8 +96,8 @@ test "hostDestroyed without an installed implementation does nothing" {
 
 test "hostDestroyed forwards to the installed implementation" {
     const std = @import("std");
-    const saved = implementation;
-    defer implementation = saved;
+    const override = implementation.overrideForTest(implementation.get());
+    defer override.restore();
 
     const Fake = struct {
         var seen: ?*runtime.Instance = null;
@@ -115,14 +115,14 @@ test "hostDestroyed forwards to the installed implementation" {
 
 /// CSS Scoping's tree identity, installed by ShadowRoot. Documents use zero.
 pub fn scopeSerial(root: *runtime.Instance) u64 {
-    const impl = implementation orelse return 0;
+    const impl = implementation.get() orelse return 0;
     const step = impl.scope_serial orelse return 0;
     return step(root);
 }
 
 /// Allocate a nonzero serial from this document, without retaining a node.
 pub fn nextScopeSerial(document: *runtime.Instance) u64 {
-    const impl = implementation orelse return 0;
+    const impl = implementation.get() orelse return 0;
     const step = impl.next_scope_serial orelse return 0;
     return step(document);
 }

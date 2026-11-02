@@ -23,6 +23,7 @@
 //!
 //! lint-impls: hook for HTMLLinkElement, HTMLStyleElement
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 
@@ -51,28 +52,27 @@ pub const ParserSteps = struct {
     link_created: ?*const fn (element: *runtime.Instance) void = null,
 };
 
-var load_delay: ?LoadDelay = null;
-var parser_steps: ?ParserSteps = null;
+var load_delay: Hook(?LoadDelay) = .init(null);
+var parser_steps: Hook(?ParserSteps) = .init(null);
 
 /// Called by the elements that load style sheets. Idempotent.
 pub fn installLoadDelay(delay: LoadDelay) void {
-    process_start.assertInstalling();
-    load_delay = delay;
+    load_delay.install(delay);
 }
 
 /// Called by the style element. Idempotent.
 pub fn installParserSteps(steps: ParserSteps) void {
-    process_start.assertInstalling();
-    const link_created = if (parser_steps) |old| old.link_created else null;
-    parser_steps = steps;
-    if (parser_steps.?.link_created == null) parser_steps.?.link_created = link_created;
+    const installed = parser_steps.installing();
+    const link_created = if (installed.*) |old| old.link_created else null;
+    installed.* = steps;
+    if (installed.*.?.link_created == null) installed.*.?.link_created = link_created;
 }
 
 /// Called by the link element. Keeps the style element's parser hooks.
 pub fn installLinkParserSteps(created: *const fn (element: *runtime.Instance) void) void {
-    process_start.assertInstalling();
-    if (parser_steps == null) parser_steps = .{ .created = &ignoreCreatedStep, .popped = &ignoreParserStep };
-    parser_steps.?.link_created = created;
+    const installed = parser_steps.installing();
+    if (installed.* == null) installed.* = .{ .created = &ignoreCreatedStep, .popped = &ignoreParserStep };
+    installed.*.?.link_created = created;
 }
 
 fn ignoreParserStep(element: *runtime.Instance) void {
@@ -87,14 +87,14 @@ fn ignoreCreatedStep(element: *runtime.Instance, start: ?Position) void {
 /// "The end" step 8: whether a style sheet an element in `document` loads
 /// still delays its load event.
 pub fn delaysLoadEvent(document: *runtime.Instance) bool {
-    const delay = load_delay orelse return false;
+    const delay = load_delay.get() orelse return false;
     return delay.delays(document);
 }
 
 /// Whether `document`'s own script-blocking style sheet set is nonempty.
 /// Document additionally checks its immediate container document's set.
 pub fn blocksScripts(document: *runtime.Instance) bool {
-    const delay = load_delay orelse return false;
+    const delay = load_delay.get() orelse return false;
     return delay.blocks_scripts(document);
 }
 
@@ -102,7 +102,7 @@ pub fn blocksScripts(document: *runtime.Instance) bool {
 /// namespace, and appended all token attributes before connection. `start`
 /// is the parser's position after its start tag (null: unknown).
 pub fn createdByParser(element: *runtime.Instance, start: ?Position) void {
-    const steps = parser_steps orelse return;
+    const steps = parser_steps.get() orelse return;
     steps.created(element, start);
     if (steps.link_created) |created| created(element);
 }
@@ -110,19 +110,15 @@ pub fn createdByParser(element: *runtime.Instance, start: ?Position) void {
 /// The HTML parser popped `element`, a style element it created, off its
 /// stack of open elements.
 pub fn poppedByParser(element: *runtime.Instance) void {
-    const steps = parser_steps orelse return;
+    const steps = parser_steps.get() orelse return;
     steps.popped(element);
 }
 
 test "without installed implementations nothing delays a load event, and the parser's calls do nothing" {
-    const saved_delay = load_delay;
-    const saved_steps = parser_steps;
-    defer {
-        load_delay = saved_delay;
-        parser_steps = saved_steps;
-    }
-    load_delay = null;
-    parser_steps = null;
+    const delay_override = load_delay.overrideForTest(null);
+    defer delay_override.restore();
+    const steps_override = parser_steps.overrideForTest(null);
+    defer steps_override.restore();
     // Never dereferenced: with no implementation nothing reads it.
     var node: runtime.Instance = undefined;
     try @import("std").testing.expect(!delaysLoadEvent(&node));
@@ -142,12 +138,10 @@ fn testCreated(element: *runtime.Instance, start: ?Position) void {
 }
 
 test "the installed implementations answer" {
-    const saved_delay = load_delay;
-    const saved_steps = parser_steps;
-    defer {
-        load_delay = saved_delay;
-        parser_steps = saved_steps;
-    }
+    const delay_override = load_delay.overrideForTest(null);
+    defer delay_override.restore();
+    const steps_override = parser_steps.overrideForTest(null);
+    defer steps_override.restore();
     // The test's popped step: its count lives in the test, not in the product.
     const Test = struct {
         var popped: usize = 0;

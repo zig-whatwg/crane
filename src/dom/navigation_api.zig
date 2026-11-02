@@ -27,6 +27,7 @@
 
 const std = @import("std");
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const fire_event = @import("fire_event.zig");
@@ -120,25 +121,24 @@ pub const Implementation = struct {
     add_handler: *const fn (event: *runtime.Instance, handler: *const anyopaque) anyerror!void,
 };
 
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Navigation's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// `window`'s navigable has made a same-document navigation of `kind`:
 /// its current session history entry is the destination. Nothing happens
 /// before any window has a navigation object.
 pub fn sameDocumentNavigation(window: *runtime.Instance, kind: Kind) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.same_document_navigation(window, kind);
 }
 
 /// Update the existing navigation focus flag without creating a Navigation.
 pub fn setFocusChanged(window: *runtime.Instance, changed: bool) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.set_focus_changed(window, changed);
 }
 
@@ -147,14 +147,14 @@ pub fn setFocusChanged(window: *runtime.Instance, changed: bool) void {
 /// object made yet - no script has asked for `window.navigation` - there is
 /// nobody to hear the event, and it continues.
 pub fn firePushReplaceReload(window: *runtime.Instance, args: PushReplaceReload) bool {
-    const impl = implementation orelse return true;
+    const impl = implementation.get() orelse return true;
     return impl.fire_push_replace_reload(window, &args);
 }
 
 /// HTML "fire a traverse navigate event" at `window`'s navigation API, for
 /// the session history entry `entry_id`: whether the traversal continues.
 pub fn fireTraverse(window: *runtime.Instance, entry_id: u64, user_involvement: UserInvolvement) bool {
-    const impl = implementation orelse return true;
+    const impl = implementation.get() orelse return true;
     return impl.fire_traverse(window, entry_id, user_involvement);
 }
 
@@ -164,7 +164,7 @@ pub fn fireTraverse(window: *runtime.Instance, entry_id: u64, user_involvement: 
 /// `filename` - asked for: whether the download goes on. URL and filename
 /// BORROWED for the call.
 pub fn fireDownloadRequest(window: *runtime.Instance, destination_url: []const u8, user_involvement: UserInvolvement, source_element: ?*runtime.Instance, filename: []const u8) bool {
-    const impl = implementation orelse return true;
+    const impl = implementation.get() orelse return true;
     return impl.fire_download_request(window, destination_url, user_involvement, source_element, filename);
 }
 
@@ -178,21 +178,21 @@ pub fn fireDownloadRequest(window: *runtime.Instance, destination_url: []const u
 /// DisposeEntriesForSessionHistoryRemoval, which the browser process asks
 /// of each frame whose entries a navigation removed). Script runs.
 pub fn entriesRemoved(top: *anyopaque) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.entries_removed(top);
 }
 
 /// HTML "inform the navigation API about aborting navigation" in `window`'s
 /// navigable.
 pub fn informAboutAbortingNavigation(window: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.inform_about_aborting_navigation(window);
 }
 
 /// HTML "inform the navigation API about child navigable destruction" for
 /// the navigable whose active window is `window`.
 pub fn informAboutChildNavigableDestruction(window: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.inform_about_child_navigable_destruction(window);
 }
 
@@ -210,7 +210,7 @@ pub fn firePageSwap(window: *runtime.Instance, swap: PageSwap) void {
     var activation: ?*runtime.Instance = null;
     if (swap.has_activation) {
         _ = interfaces.Window.get_navigation(window) catch null;
-        if (implementation) |impl| activation = impl.page_swap_activation(window, &swap);
+        if (implementation.get()) |impl| activation = impl.page_swap_activation(window, &swap);
     }
     const activation_generation: u64 = if (activation) |a| runtime.SlabAllocator.generationOf(a) else 0;
     // An activation no event came to hold goes now.
@@ -227,33 +227,32 @@ pub fn firePageSwap(window: *runtime.Instance, swap: PageSwap) void {
 /// NavigateEvent's intercept(options), steps 4-9, once the event has passed
 /// its own checks (1-3).
 pub fn intercept(event: *runtime.Instance, options: InterceptOptions) !void {
-    const impl = implementation orelse return error.InvalidStateError;
+    const impl = implementation.get() orelse return error.InvalidStateError;
     return impl.intercept(event, options);
 }
 
 /// NavigateEvent's scroll(), steps 2-3, once the event has passed shared
 /// checks.
 pub fn scroll(event: *runtime.Instance) !void {
-    const impl = implementation orelse return error.InvalidStateError;
+    const impl = implementation.get() orelse return error.InvalidStateError;
     return impl.scroll(event);
 }
 
 /// NavigationPrecommitController's redirect() for `event`, steps 3-12.
 pub fn redirect(event: *runtime.Instance, args: Redirect) !void {
-    const impl = implementation orelse return error.InvalidStateError;
+    const impl = implementation.get() orelse return error.InvalidStateError;
     return impl.redirect(event, &args);
 }
 
 /// NavigationPrecommitController's addHandler() for `event`, steps 3-4.
 pub fn addHandler(event: *runtime.Instance, handler: *const anyopaque) !void {
-    const impl = implementation orelse return error.InvalidStateError;
+    const impl = implementation.get() orelse return error.InvalidStateError;
     return impl.add_handler(event, handler);
 }
 
 test "without an installed implementation nothing is told, and navigations continue" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with no implementation nothing reads it.
     var window: runtime.Instance = undefined;
     sameDocumentNavigation(&window, .push);

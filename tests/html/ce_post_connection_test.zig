@@ -39,8 +39,8 @@ const Fixture = struct {
 };
 
 const Hook = struct {
-    // The shared executable keeps the installed callback; outside this test
-    // it does nothing. Zig runs tests serially, and this thread is joined.
+    // Registered only into the test's own copy of the registries (restored
+    // at its end). Zig runs tests serially, and this thread is joined.
     var current: ?*Fixture = null;
     fn run(node: *dom.NodeBase) void {
         const fixture = current orelse return;
@@ -56,6 +56,10 @@ const Hook = struct {
 
 fn exercise() !void {
     interfaces.process_hooks.startHooksForTest();
+    // The test's callback goes into its own copy of the registries, taken
+    // away at its end: never left registered for the process's later tests.
+    const registries = dom.mutation.overrideRegistriesForTest();
+    defer registries.restore();
     try dom.mutation.registerPostConnectionStepsCallback(Hook.run);
     runtime.initializeRuntime(testing.allocator);
     defer runtime.deinitializeRuntime();

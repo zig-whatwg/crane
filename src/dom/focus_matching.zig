@@ -10,6 +10,7 @@
 
 const std = @import("std");
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 const runtime = @import("runtime");
 
 /// What Document supplies.
@@ -23,37 +24,35 @@ pub const Implementation = struct {
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Document's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// Whether `element` matches :focus. With no Document made yet, nothing has
 /// the focus.
 pub fn matchesFocus(element: *runtime.Instance) bool {
-    const impl = implementation orelse return false;
+    const impl = implementation.get() orelse return false;
     return impl.matches_focus(element);
 }
 
 /// Whether `element` matches :focus-within.
 pub fn matchesFocusWithin(element: *runtime.Instance) bool {
-    const impl = implementation orelse return false;
+    const impl = implementation.get() orelse return false;
     return impl.matches_focus_within(element);
 }
 
 /// Whether `element` matches :focus-visible.
 pub fn matchesFocusVisible(element: *runtime.Instance) bool {
-    const impl = implementation orelse return false;
+    const impl = implementation.get() orelse return false;
     return impl.matches_focus_visible(element);
 }
 
 test "without an installed implementation nothing matches the focus pseudo-classes" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with no implementation nothing reads the element.
     var element: runtime.Instance = undefined;
     try std.testing.expect(!matchesFocus(&element));

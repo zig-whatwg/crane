@@ -17,6 +17,7 @@
 
 const std = @import("std");
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 const runtime = @import("runtime");
 
 /// HTML "user navigation involvement" of a submission.
@@ -65,50 +66,48 @@ pub const Implementation = struct {
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by HTMLFormElement's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// Cancel the planned navigations of `document`'s forms: see
 /// Implementation.cancel_planned_navigations.
 pub fn cancelPlannedNavigations(document: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.cancel_planned_navigations(document);
 }
 
 /// Submit `form` from `submitter`.
 pub fn submit(form: *runtime.Instance, submitter: *runtime.Instance, user_involvement: UserInvolvement) !void {
-    const impl = implementation orelse return error.NotSupported;
+    const impl = implementation.get() orelse return error.NotSupported;
     try impl.submit(form, submitter, user_involvement);
 }
 
 /// Reset `form`.
 pub fn reset(form: *runtime.Instance) !void {
-    const impl = implementation orelse return error.NotSupported;
+    const impl = implementation.get() orelse return error.NotSupported;
     try impl.reset(form);
 }
 
 /// Remove `form`'s past names whose element `change` gave another form
 /// owner; whether `form` still has some. None without an implementation.
 pub fn pastNamesOwnerChange(form: *runtime.Instance, change: OwnerChange) bool {
-    const impl = implementation orelse return false;
+    const impl = implementation.get() orelse return false;
     return impl.past_names_owner_change(form, change);
 }
 
 /// Construct `form`'s entry list with `submitter` into `form_data`.
 pub fn constructEntryList(form: *runtime.Instance, submitter: ?*runtime.Instance, form_data: *runtime.Instance) !void {
-    const impl = implementation orelse return error.NotSupported;
+    const impl = implementation.get() orelse return error.NotSupported;
     try impl.construct_entry_list(form, submitter, form_data);
 }
 
 test "without an installed implementation every algorithm reports NotSupported" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with no implementation the calls do not reach it.
     var object: runtime.Instance = undefined;
     try std.testing.expectError(error.NotSupported, submit(&object, &object, .none));

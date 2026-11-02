@@ -20,6 +20,7 @@
 //! lint-impls: hook for HTMLScriptElement, SVGScriptElement
 const std = @import("std");
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
@@ -83,26 +84,24 @@ pub const SvgImplementation = struct {
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
-var implementation: ?Implementation = null;
-var svg_implementation: ?SvgImplementation = null;
+var implementation: Hook(?Implementation) = .init(null);
+var svg_implementation: Hook(?SvgImplementation) = .init(null);
 
 /// Called by HTMLScriptElement's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// Called by SVGScriptElement's installHooks, once, at process start (process_start.zig).
 pub fn installSvg(impl: SvgImplementation) void {
-    process_start.assertInstalling();
-    svg_implementation = impl;
+    svg_implementation.install(impl);
 }
 
 /// Set `element`'s parser document to `parser_document`, and its force async
 /// to false - for an SVG script, mark it parser-inserted. A no-op for an
 /// element that is no script element.
 pub fn markParserInserted(element: *runtime.Instance, parser_document: *runtime.Instance) void {
-    if (implementation) |impl| impl.mark_parser_inserted(element, parser_document);
+    if (implementation.get()) |impl| impl.mark_parser_inserted(element, parser_document);
     if (svgFlags(element)) |flags| flags.parser_inserted = true;
 }
 
@@ -111,28 +110,28 @@ pub fn markParserInserted(element: *runtime.Instance, parser_document: *runtime.
 /// Fragment scripting mode). A no-op for an element that is no HTML script
 /// element: an SVG script has no force async.
 pub fn clearForceAsync(element: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     if (impl.clear_force_async) |clear| clear(element);
 }
 
 /// Set `element`'s already started to true. A no-op for an element that is
 /// no script element.
 pub fn markAlreadyStarted(element: *runtime.Instance) void {
-    if (implementation) |impl| impl.mark_already_started(element);
+    if (implementation.get()) |impl| impl.mark_already_started(element);
     if (svgFlags(element)) |flags| flags.already_started = true;
 }
 
 /// HTML "delaying the load event" on any prepared HTML script element,
 /// including elements removed from their document or executing off a queue.
 pub fn delaysLoadEvent(document: *runtime.Instance) bool {
-    const impl = implementation orelse return false;
+    const impl = implementation.get() orelse return false;
     return impl.delays_load_event(document);
 }
 
 /// `element`'s script text (Trusted Types 4.1.2.1), if it is an HTML or SVG
 /// script element.
 pub fn scriptTextOf(element: *runtime.Instance) ?*ScriptText {
-    if (implementation) |impl| {
+    if (implementation.get()) |impl| {
         if (impl.script_text) |of| {
             if (of(element)) |text| return text;
         }
@@ -170,17 +169,15 @@ pub fn setScriptTextToChildTextContent(allocator: std.mem.Allocator, element: *r
 /// `element`'s script element state if it is an SVG script element, else
 /// null.
 pub fn svgFlags(element: *runtime.Instance) ?*ScriptFlags {
-    const impl = svg_implementation orelse return null;
+    const impl = svg_implementation.get() orelse return null;
     return impl.flags(element);
 }
 
 test "without an installed implementation the steps do nothing" {
-    const saved = implementation;
-    const saved_svg = svg_implementation;
-    defer implementation = saved;
-    defer svg_implementation = saved_svg;
-    implementation = null;
-    svg_implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
+    const svg_override = svg_implementation.overrideForTest(null);
+    defer svg_override.restore();
     // Never dereferenced: with no implementation nothing reads them.
     var element: runtime.Instance = undefined;
     var document: runtime.Instance = undefined;

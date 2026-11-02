@@ -25,6 +25,7 @@
 //!
 //! lint-impls: hook for Element
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 
@@ -55,38 +56,37 @@ pub const Implementation = struct {
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Element's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// The attribute at `index` in `element`'s attribute list, in order; null
 /// past the end, or for a node that is not an element.
 pub fn at(element: *runtime.Instance, index: usize) ?Attribute {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.at(element, index);
 }
 
 /// The number of attributes in `element`'s list; 0 for a non-element.
 pub fn count(element: *runtime.Instance) usize {
-    const impl = implementation orelse return 0;
+    const impl = implementation.get() orelse return 0;
     return impl.count(element);
 }
 
 /// DOM "append an attribute": a new attribute with exactly these fields,
 /// appended to `element` - "handle attribute changes" and all.
 pub fn append(element: *runtime.Instance, attribute: Attribute) Error!void {
-    const impl = implementation orelse return error.InvalidStateError;
+    const impl = implementation.get() orelse return error.InvalidStateError;
     return impl.append(element, attribute);
 }
 
 /// DOM "change an attribute": the one with this namespace and local name,
 /// to `value` - "handle attribute changes" and all.
 pub fn change(element: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8, value: []const u8) Error!void {
-    const impl = implementation orelse return error.InvalidStateError;
+    const impl = implementation.get() orelse return error.InvalidStateError;
     return impl.change(element, namespace, local_name, value);
 }
 
@@ -106,7 +106,7 @@ pub const SetOptions = struct {
 ///
 /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-set-value
 pub fn set(element: *runtime.Instance, local_name: []const u8, value: []const u8, options: SetOptions) Error!void {
-    const impl = implementation orelse return error.InvalidStateError;
+    const impl = implementation.get() orelse return error.InvalidStateError;
     return impl.set(element, local_name, value, options.prefix, options.namespace);
 }
 
@@ -116,14 +116,14 @@ pub fn set(element: *runtime.Instance, local_name: []const u8, value: []const u8
 ///
 /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-remove-by-namespace
 pub fn remove(element: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.remove(element, namespace, local_name);
 }
 
 /// The Attr node for the attribute at `index` - the same node every time -
 /// or null past the end.
 pub fn nodeAt(element: *runtime.Instance, index: usize) Error!?*runtime.Instance {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.node_at(element, index);
 }
 
@@ -132,15 +132,14 @@ pub fn nodeAt(element: *runtime.Instance, index: usize) Error!?*runtime.Instance
 /// adopt steps set the node document of an element's Attr nodes through this,
 /// and adopting a tree must not make an Attr for every attribute in it.
 pub fn existingNodeAt(element: *runtime.Instance, index: usize) ?*runtime.Instance {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.existing_node_at(element, index);
 }
 
 test "without an installed implementation there is nothing to read or append to" {
     const std = @import("std");
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with no implementation the calls do not reach it.
     var element: runtime.Instance = undefined;
     try std.testing.expect(at(&element, 0) == null);

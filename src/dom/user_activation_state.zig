@@ -18,6 +18,7 @@
 
 const std = @import("std");
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 const runtime = @import("runtime");
 const clock = @import("clock");
 
@@ -44,31 +45,29 @@ pub const Implementation = struct {
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Window's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// `window`'s timestamps. Before any Window exists there is no Window to
 /// have been activated: the initial values.
 pub fn get(window: *runtime.Instance) Timestamps {
-    const impl = implementation orelse return .{};
+    const impl = implementation.get() orelse return .{};
     return impl.get(window) orelse .{};
 }
 
 /// Set `window`'s timestamps.
 pub fn set(window: *runtime.Instance, timestamps: Timestamps) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.set(window, timestamps);
 }
 
 test "without an installed implementation every window reads as never activated" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with no implementation nothing reads the window.
     var window: runtime.Instance = undefined;
     const timestamps = get(&window);
@@ -78,8 +77,8 @@ test "without an installed implementation every window reads as never activated"
 }
 
 test "get and set forward to the installed implementation" {
-    const saved = implementation;
-    defer implementation = saved;
+    const override = implementation.overrideForTest(implementation.get());
+    defer override.restore();
     const Fake = struct {
         var stored: Timestamps = .{};
         fn get(_: *runtime.Instance) ?Timestamps {

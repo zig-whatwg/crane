@@ -27,6 +27,7 @@
 
 const std = @import("std");
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
@@ -128,24 +129,23 @@ pub const Implementation = struct {
     process_frame_attributes: *const fn (element: *runtime.Instance, integration: *IFrameIntegration, initial_insertion: bool) void,
 };
 
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by the container's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// Whether the owner has installed its implementation: from process start on,
 /// unless a test cleared it.
 pub fn isInstalled() bool {
-    return implementation != null;
+    return implementation.get() != null;
 }
 
 /// Choose a navigable for `request.target` from `source_document`'s node
 /// navigable and navigate it to `request.url`, using `source_document`.
 pub fn navigateByTarget(source_document: *runtime.Instance, request: Request) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.navigate_by_target(source_document, request);
 }
 
@@ -153,7 +153,7 @@ pub fn navigateByTarget(source_document: *runtime.Instance, request: Request) vo
 /// element - with no hyperlink suffix, with `user_involvement` (the
 /// activating event's "user navigation involvement").
 pub fn followHyperlink(subject: *runtime.Instance, user_involvement: navigation_api.UserInvolvement) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.follow_hyperlink(subject, user_involvement);
 }
 
@@ -161,7 +161,7 @@ pub fn followHyperlink(subject: *runtime.Instance, user_involvement: navigation_
 /// element with a download attribute - with no hyperlink suffix, with
 /// `user_involvement`.
 pub fn downloadHyperlink(subject: *runtime.Instance, user_involvement: navigation_api.UserInvolvement) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.download_hyperlink(subject, user_involvement);
 }
 
@@ -184,7 +184,7 @@ pub fn downloadHyperlink(subject: *runtime.Instance, user_involvement: navigatio
 /// when none did (nothing to fetch, or a document shown again from the
 /// back/forward cache, which is done when this returns).
 pub fn traverseNavigable(browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64, waiter: ?TraversalWaiter) bool {
-    const impl = implementation orelse return false;
+    const impl = implementation.get() orelse return false;
     return impl.traverse_navigable(browsing_context, entry_id, url, resource, from_entry_id, waiter);
 }
 
@@ -194,7 +194,7 @@ pub fn traverseNavigable(browsing_context: *anyopaque, entry_id: u64, url: []con
 /// nothing started: the caller ends the wait. With `waiter` null the
 /// navigation ends uncommitted (its apply ended before its job ran).
 pub fn commitNavigation(browsing_context: *anyopaque, navigation_id: u64, waiter: ?TraversalWaiter) bool {
-    const impl = implementation orelse return false;
+    const impl = implementation.get() orelse return false;
     return impl.commit_navigation(browsing_context, navigation_id, waiter);
 }
 
@@ -210,14 +210,14 @@ pub const TraversalWaiter = struct {
 /// name is `name`, or null. (The page's popups are the window open steps'
 /// own to find.)
 pub fn findByName(current_document: *runtime.Instance, name: []const u8) ?*runtime.Instance {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.find_by_name(current_document, name);
 }
 
 /// The owning container's integration for an html_core.BrowsingContext.
 /// Borrowed for immediate use; the lookup neither retains it nor runs script.
 pub fn integrationOf(browsing_context: *anyopaque) ?*IFrameIntegration {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.integration_of(browsing_context);
 }
 
@@ -243,7 +243,7 @@ fn isContainerName(name: []const u8) bool {
 /// or - for a URL matching about:blank on its initial insertion - a load
 /// event fired at it.
 pub fn processFrameAttributes(element: *runtime.Instance, integration: *IFrameIntegration, initial_insertion: bool) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.process_frame_attributes(element, integration, initial_insertion);
 }
 
@@ -261,7 +261,7 @@ pub fn processFrameAttributes(element: *runtime.Instance, integration: *IFrameIn
 /// A container whose earlier navigable was destroyed (`state` discarded)
 /// retires that one's realm first (IFrameIntegration.retireRealmContext).
 pub fn createChildNavigable(container: *runtime.Instance, integration: *IFrameIntegration) bool {
-    const impl = implementation orelse return false;
+    const impl = implementation.get() orelse return false;
     if (!impl.create_browsing_context_and_document(container, integration)) return false;
     // Step 12: "Append the following session history traversal steps to
     // traversable: ... [insert historyEntry into the navigable's session
@@ -772,9 +772,8 @@ pub fn destroyContentNavigable(integration: *IFrameIntegration) void {
 }
 
 test "without an installed implementation nothing navigates" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with no implementation nothing reads it.
     var element: runtime.Instance = undefined;
     navigateByTarget(&element, .{ .target = "", .url = "about:blank" });
@@ -788,9 +787,8 @@ test "without an installed implementation nothing navigates" {
 }
 
 test "without an installed implementation no navigable integration is borrowed" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // The absent hook must return null without reading the context.
     var context: BrowsingContext = undefined;
     try std.testing.expect(integrationOf(@ptrCast(&context)) == null);
