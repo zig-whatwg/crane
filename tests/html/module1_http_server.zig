@@ -22,6 +22,13 @@ pub const Route = struct {
     echo_referrer: bool = false,
     /// Milliseconds to wait before answering, so that requests overlap.
     delay_ms: u32 = 0,
+    /// Count each request when it arrives, then answer it only once the
+    /// test calls `Server.release` for the route - or `Server.stop`, which
+    /// answers every held request, so that a test that never releases
+    /// cannot keep a connection or the process waiting. For a test that
+    /// needs a request to be at the server with its answer still to come,
+    /// without betting on how long a `delay_ms` lasts on a loaded host.
+    held: bool = false,
 };
 
 pub const max_routes = 16;
@@ -36,6 +43,10 @@ pub const Server = struct {
     active: std.atomic.Value(u32) = .init(0),
     routes: []const Route,
     counts: [max_routes]std.atomic.Value(u32) = @splat(.init(0)),
+    /// Per route: the requests it has answered, and whether a held route
+    /// was released.
+    answers: [max_routes]std.atomic.Value(u32) = @splat(.init(0)),
+    released: [max_routes]std.atomic.Value(bool) = @splat(.init(false)),
 
     pub fn start(allocator: std.mem.Allocator, routes: []const Route) !*Server {
         std.debug.assert(routes.len <= max_routes);
@@ -68,6 +79,23 @@ pub const Server = struct {
             if (std.mem.eql(u8, route.path, path)) return self.counts[i].load(.acquire);
         }
         return 0;
+    }
+
+    /// How many requests the route for `path` has answered (written its
+    /// response to, whether the client was still there or not).
+    pub fn answered(self: *const Server, path: []const u8) u32 {
+        for (self.routes, 0..) |route, i| {
+            if (std.mem.eql(u8, route.path, path)) return self.answers[i].load(.acquire);
+        }
+        return 0;
+    }
+
+    /// A held route answers the requests it holds, and every later one at
+    /// once.
+    pub fn release(self: *Server, path: []const u8) void {
+        for (self.routes, 0..) |route, i| {
+            if (std.mem.eql(u8, route.path, path)) self.released[i].store(true, .release);
+        }
     }
 
     fn serve(self: *Server, listener: std.Io.net.Server) void {
@@ -117,7 +145,13 @@ pub const Server = struct {
         for (self.routes, 0..) |route, i| {
             if (!std.mem.eql(u8, route.path, path)) continue;
             const n = self.counts[i].fetchAdd(1, .acq_rel);
+            defer _ = self.answers[i].fetchAdd(1, .acq_rel);
             if (route.delay_ms > 0) std.Io.sleep(std.testing.io, .fromMilliseconds(route.delay_ms), .awake) catch {};
+            if (route.held) {
+                while (!self.released[i].load(.acquire) and !self.stopping.load(.acquire)) {
+                    std.Io.sleep(std.testing.io, .fromMilliseconds(1), .awake) catch {};
+                }
+            }
             if (n < route.fail_first) return reply(&writer.interface, 404, "text/plain", "not yet");
             if (route.echo_referrer) {
                 var module_buf: [1024]u8 = undefined;
