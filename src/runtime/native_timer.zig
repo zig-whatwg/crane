@@ -713,12 +713,11 @@ pub const NativeTimerManager = struct {
 
 const testing = std.testing;
 
-var fired: usize = 0;
-var fired_ids: [8]u64 = undefined;
-
+/// Counts its runs in the `usize` its data points at (each test declares its
+/// own count, so no test reads another's); null data counts nowhere.
 fn countingCallback(data: ?*anyopaque) void {
-    _ = data;
-    fired += 1;
+    const fired: *usize = @ptrCast(@alignCast(data orelse return));
+    fired.* += 1;
 }
 
 test "setTimeout ids are non-zero and increasing; 0 is the failure sentinel" {
@@ -732,11 +731,11 @@ test "setTimeout ids are non-zero and increasing; 0 is the failure sentinel" {
 }
 
 test "a due timer fires exactly once and is then gone" {
-    fired = 0;
+    var fired: usize = 0;
     var mgr = try NativeTimerManager.init(testing.allocator);
     defer mgr.deinit();
 
-    _ = mgr.setTimeout(0, countingCallback, null);
+    _ = mgr.setTimeout(0, countingCallback, &fired);
     try testing.expectEqual(@as(usize, 1), mgr.getActiveTimerCount());
 
     try testing.expect(mgr.poll());
@@ -749,21 +748,21 @@ test "a due timer fires exactly once and is then gone" {
 }
 
 test "a not-yet-due timer does not fire" {
-    fired = 0;
+    var fired: usize = 0;
     var mgr = try NativeTimerManager.init(testing.allocator);
     defer mgr.deinit();
 
-    _ = mgr.setTimeout(60_000, countingCallback, null);
+    _ = mgr.setTimeout(60_000, countingCallback, &fired);
     try testing.expect(!mgr.poll());
     try testing.expectEqual(@as(usize, 0), fired);
 }
 
 test "clearTimeout reports whether it actually cancelled something" {
-    fired = 0;
+    var fired: usize = 0;
     var mgr = try NativeTimerManager.init(testing.allocator);
     defer mgr.deinit();
 
-    const id = mgr.setTimeout(60_000, countingCallback, null);
+    const id = mgr.setTimeout(60_000, countingCallback, &fired);
 
     // A live timer: true, and it must not fire afterwards.
     try testing.expect(mgr.clearTimeout(id));
