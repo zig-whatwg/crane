@@ -439,7 +439,9 @@ pub fn call_static_json(instance: *runtime.Instance, data: runtime.JSValue, init
     // 3. Let responseObject be the result of creating a Response object,
     //    given a new response, "response", and the current realm.
     const response_object = try init(allocator, State, &Response.vtable, realm);
-    errdefer deinit(response_object);
+    // Until it is returned, this step is its only owner: a failed step 4
+    // frees it whole (see call_constructor).
+    errdefer runtime.gc.releaseOwned(response_object);
 
     // 4. Perform initialize a response given responseObject, init, and
     //    (body, "application/json").
