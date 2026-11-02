@@ -265,6 +265,22 @@ test "a Response constructor that rejects its init frees what it made" {
     );
 }
 
+test "Response.json() whose init is rejected frees the response it made" {
+    const page = try Page.open();
+    defer page.close();
+    // Response.json's step 4 is "initialize a response", after step 3 made
+    // the response object.
+    try page.expectNoReceiverLeft(
+        \\(() => {
+        \\  let n = 0;
+        \\  for (let i = 0; i < 64; i++) {
+        \\    try { Response.json({ a: 1 }, { status: 99 }); } catch (e) { if (e instanceof RangeError) n++; }
+        \\  }
+        \\  return String(n);
+        \\})()
+    );
+}
+
 test "a constructor that succeeds still hands its receiver to the wrapper cache" {
     const page = try Page.open();
     defer page.close();
