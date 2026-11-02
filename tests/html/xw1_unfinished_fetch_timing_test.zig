@@ -4,34 +4,35 @@
 const std = @import("std");
 const Browser = @import("browser").Browser;
 const clock = @import("clock");
+const LoopbackListener = @import("loopback_listener").LoopbackListener;
 const testing = std.testing;
 
 const Server = struct {
-    socket: std.Io.net.Server,
+    listener: LoopbackListener,
     thread: ?std.Thread = null,
-    stopping: std.atomic.Value(bool) = .init(false),
 
     fn start() !*Server {
         const self = try testing.allocator.create(Server);
         errdefer testing.allocator.destroy(self);
-        const address: std.Io.net.IpAddress = .{ .ip4 = std.Io.net.Ip4Address.loopback(0) };
-        var socket = try address.listen(testing.io, .{ .reuse_address = true });
-        errdefer socket.deinit(testing.io);
-        self.* = .{ .socket = socket };
-        self.thread = try std.Thread.spawn(.{}, serve, .{ self, socket });
+        self.* = .{ .listener = try LoopbackListener.open(.{}) };
+        errdefer self.listener.close();
+        self.thread = try std.Thread.spawn(.{}, serve, .{self});
         return self;
     }
 
+    /// Stop the accept thread, then close the listener - in that order
+    /// (tests/support/loopback_listener.zig): closing the listener to
+    /// unblock accept(), as this did, raced the thread, and an accept()
+    /// begun after the close panics on EBADF (lane fixes1).
     fn stop(self: *Server) void {
-        self.stopping.store(true, .release);
-        self.socket.deinit(testing.io);
+        self.listener.stop();
         self.thread.?.join();
+        self.listener.close();
         testing.allocator.destroy(self);
     }
 
-    fn serve(self: *Server, listener: std.Io.net.Server) void {
-        var socket = listener;
-        const stream = socket.accept(testing.io) catch return;
+    fn serve(self: *Server) void {
+        const stream = self.listener.accept() orelse return;
         defer stream.close(testing.io);
         self.reply(stream) catch {};
     }
@@ -48,7 +49,7 @@ const Server = struct {
         try writer.interface.flush();
         // The advertised body never completes. Teardown must cancel it;
         // this server remains alive until the Browser has fully ended.
-        while (!self.stopping.load(.acquire)) clock.sleep(std.time.ns_per_ms);
+        while (!self.listener.isStopping()) clock.sleep(std.time.ns_per_ms);
     }
 };
 
@@ -58,7 +59,7 @@ fn round(kind: Kind) !void {
     const server = try Server.start();
     defer server.stop();
     var base_buf: [128]u8 = undefined;
-    const base = try std.fmt.bufPrint(&base_buf, "http://127.0.0.1:{d}/", .{server.socket.socket.address.getPort()});
+    const base = try std.fmt.bufPrint(&base_buf, "http://127.0.0.1:{d}/", .{server.listener.port()});
     const browser = try Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigateWithOptions(base, .window, .{ .skip_load = true });

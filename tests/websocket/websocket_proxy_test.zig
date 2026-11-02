@@ -13,6 +13,7 @@ const testing = std.testing;
 const websocket = @import("websocket");
 const fetch = @import("fetch");
 const net = std.Io.net;
+const LoopbackListener = @import("loopback_listener").LoopbackListener;
 
 const Connection = websocket.connection.WebSocketConnection;
 
@@ -20,7 +21,7 @@ const Connection = websocket.connection.WebSocketConnection;
 /// first request, answers 502 and closes.
 const RecordingProxy = struct {
     io: std.Io,
-    server: net.Server,
+    listener: LoopbackListener,
     port: u16,
     thread: ?std.Thread = null,
     seen: [4096]u8 = undefined,
@@ -29,20 +30,25 @@ const RecordingProxy = struct {
 
     fn start(self: *RecordingProxy) !void {
         const io = testing.io;
-        const address: net.IpAddress = .{ .ip4 = net.Ip4Address.loopback(0) };
-        const server = try address.listen(io, .{ .reuse_address = true });
-        self.* = .{ .io = io, .server = server, .port = server.socket.address.getPort() };
+        const listener = try LoopbackListener.open(.{});
+        self.* = .{ .io = io, .listener = listener, .port = listener.port() };
+        errdefer self.listener.close();
         self.thread = try std.Thread.spawn(.{}, serve, .{self});
     }
 
+    /// Stop the accept thread, then close the listener - in that order
+    /// (tests/support/loopback_listener.zig): closing the listener to
+    /// unblock accept(), as this did, raced the thread, and an accept()
+    /// begun after the close panics on EBADF (lane fixes1).
     fn stop(self: *RecordingProxy) void {
-        self.server.deinit(self.io);
+        self.listener.stop();
         if (self.thread) |thread| thread.join();
+        self.listener.close();
     }
 
     fn serve(self: *RecordingProxy) void {
         defer self.done.store(true, .release);
-        const stream = self.server.accept(self.io) catch return;
+        const stream = self.listener.accept() orelse return;
         defer stream.close(self.io);
         var buffer: [4096]u8 = undefined;
         var reader = stream.reader(self.io, &buffer);

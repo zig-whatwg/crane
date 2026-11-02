@@ -1194,6 +1194,15 @@ fn addTestRoot(
         }),
     });
 
+    // tests/support: fixtures every test directory shares - each its own
+    // module, since a test root cannot import a file outside its directory.
+    // loopback_listener: an accept loop a fixture stops without closing the
+    // listener under it (lane fixes1).
+    test_exe.root_module.addImport("loopback_listener", builder.createModule(.{
+        .root_source_file = builder.path("tests/support/loopback_listener.zig"),
+        .target = target,
+    }));
+
     // Link V8 libraries if requested (for V8 tests)
     if (link_v8) linkV8(builder, test_exe.root_module, target);
 
