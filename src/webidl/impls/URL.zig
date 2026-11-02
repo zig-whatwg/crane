@@ -133,7 +133,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, base: webidl.Opt(runtime.USVString)) !*runtime.Instance {
     // Create instance
     const instance = try init(ctx.allocator, State, &URL.vtable, ctx);
-    errdefer deinit(instance);
+    // Until it is returned, the construction is the object's only owner: a
+    // failed step frees it whole. Its own deinit is its destructor, not a
+    // free, and left its slot in the slab (tests/v8/constructor_error_receiver_test.zig;
+    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
+    errdefer runtime.gc.releaseOwned(instance);
 
     const state = instance.getState(State);
 
@@ -170,7 +174,7 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, base: webi
         .allocator = ctx.allocator,
     };
 
-    // Transfer ownership to instance - from here, errdefer deinit(instance) handles cleanup
+    // Transfer ownership to instance - from here, the instance's errdefer frees it
     state.own._internal = internal;
     url_owned = false; // Ownership transferred - don't double-free
 
@@ -183,7 +187,8 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, base: webi
         ctx,
         webidl.Opt(runtime.JSValue).notPassed(),
     );
-    errdefer URLSearchParamsInterface.deinit(query_params_instance);
+    // Freed whole if a later step fails (its deinit alone is a destructor).
+    errdefer runtime.gc.releaseOwned(query_params_instance);
 
     // Get URLSearchParams internal state and initialize it with query string
     const URLSearchParamsState = interfaces.URLSearchParams.State;
@@ -803,7 +808,9 @@ pub fn call_static_parse(instance: *runtime.Instance, url: runtime.USVString, ba
 
     // Step 3: Create URL instance
     const new_instance = try init(allocator, State, &URL.vtable, ctx);
-    errdefer deinit(new_instance);
+    // Until it is returned, this step is its only owner: a failed step frees
+    // it whole (see call_constructor).
+    errdefer runtime.gc.releaseOwned(new_instance);
 
     const state = new_instance.getState(State);
 
@@ -830,7 +837,8 @@ pub fn call_static_parse(instance: *runtime.Instance, url: runtime.USVString, ba
         ctx,
         webidl.Opt(runtime.JSValue).notPassed(),
     );
-    errdefer URLSearchParamsInterface.deinit(query_params_instance);
+    // Freed whole if a later step fails (its deinit alone is a destructor).
+    errdefer runtime.gc.releaseOwned(query_params_instance);
 
     // Get URLSearchParams internal state and initialize it with query string
     const URLSearchParamsState = interfaces.URLSearchParams.State;

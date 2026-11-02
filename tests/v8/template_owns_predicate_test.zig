@@ -143,7 +143,7 @@ test "templateOwns: the default - an ordinary fragment, a shadow root and a non-
     try testing.expect(!templateOwns(try page.instance("new DocumentFragment()")));
     try testing.expect(!templateOwns(try page.instance("new Document().createElementNS('" ++ xhtml ++ "', 'div').attachShadow({ mode: 'open' })")));
     const headers = try interfaces.Headers.init(testing.allocator, page.realm);
-    defer interfaces.Headers.deinit(headers);
+    defer runtime.Instance.deinit(headers);
     try testing.expect(!templateOwns(headers));
 }
 

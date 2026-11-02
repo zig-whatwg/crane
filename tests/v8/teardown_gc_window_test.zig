@@ -130,8 +130,12 @@ test "a collection inside a child's teardown leaves the child to its tree" {
     _ = try interfaces.Node.call_appendChild(parent, child);
     try wrap(child);
     // The parent's teardown walks the child: the parent's child list holds it
-    // until the child's teardown is done.
-    interfaces.HTMLDivElement.deinit(parent);
+    // until the child's teardown is done. The parent is freed as a native
+    // creator frees a root it never inserted (the parser's adapter):
+    // interfaces.HTMLDivElement.deinit alone is its destructor, which left
+    // the parent's slot in the slab (docs/lessons/architecture-an-
+    // interfaces-deinit-is-a-destructor-not-a-free.md).
+    dom.node_creation.destroyUninserted(parent);
 
     try testing.expectEqual(@as(usize, 1), deinit_runs);
     try testing.expect(runtime.instance_lifecycle.isCleanedUp(child));
@@ -145,7 +149,7 @@ test "a node its tree tore down is not freed again by the parser's free" {
     const parent = try interfaces.HTMLDivElement.init(testing.allocator, ctx);
     const child = try interfaces.HTMLElement.initWithState(testing.allocator, interfaces.HTMLElement.State, &collecting_vtable, ctx);
     _ = try interfaces.Node.call_appendChild(parent, child);
-    interfaces.HTMLDivElement.deinit(parent);
+    dom.node_creation.destroyUninserted(parent);
     try testing.expectEqual(@as(usize, 1), deinit_runs);
     // The record of the teardown outlives it until the slot is reissued.
     dom.node_creation.destroyUninserted(child);
