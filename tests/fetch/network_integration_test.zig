@@ -376,6 +376,34 @@ test "LibcurlBackend - DNS resolution failure" {
     try testing.expectError(NetworkError.DnsResolutionFailed, result);
 }
 
+/// A loopback port nothing listens on when the request is made: the first
+/// one from 20000 up that this test can bind - so no socket was bound to it,
+/// listening or not, a moment before - closed again before the request.
+/// It lies below every ephemeral range (macOS hands out 49152-65535, Linux
+/// 32768-60999), so no other process's port-0 listener can land on it, and
+/// no connection's own source port can be it (a TCP self-connect): only a
+/// process asking for that very port could take it in between. The fixed
+/// port this test used, 127.0.0.1:59999, is inside macOS's ephemeral range:
+/// in a launcher run at batch 1 (lane tstate1's survey, 2026-11-02)
+/// something answered on it, and a listener there fails the test every time
+/// ("expected error.ConnectionRefused, found" a 404 response). It is not
+/// held while the request is made: on macOS a SYN to a port whose socket is
+/// bound but not listening is dropped, not refused, and the connect times
+/// out (error.RequestTimeout, lane fixes1).
+fn refusingPort() !u16 {
+    var port: u16 = 20000;
+    while (port < 30000) : (port += 1) {
+        const address: std.Io.net.IpAddress = .{ .ip4 = std.Io.net.Ip4Address.loopback(port) };
+        const socket = address.bind(testing.io, .{ .mode = .stream, .protocol = .tcp }) catch |err| switch (err) {
+            error.AddressInUse => continue,
+            else => return err,
+        };
+        socket.close(testing.io);
+        return port;
+    }
+    return error.NoFreeLoopbackPort;
+}
+
 test "LibcurlBackend - connection refused" {
     const allocator = testing.allocator;
 
@@ -385,9 +413,11 @@ test "LibcurlBackend - connection refused" {
     const backend = try LibcurlBackend.init(allocator);
     defer backend.deinit();
 
-    // Use a port that's almost certainly not listening
+    var url_buf: [64]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}/test", .{try refusingPort()});
+
     const request = NetworkRequest{
-        .url = "http://127.0.0.1:59999/test",
+        .url = url,
         .method = "GET",
         .headers = &.{},
         .body = null,

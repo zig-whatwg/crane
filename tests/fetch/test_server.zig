@@ -47,6 +47,7 @@ const host = @import("host");
 /// every socket operation now takes an `Io`. The alias is kept so the rest of
 /// this file still reads `net.Stream` / `net.Server`.
 const net = std.Io.net;
+const LoopbackListener = @import("loopback_listener").LoopbackListener;
 const Io = std.Io;
 const Thread = std.Thread;
 const Allocator = std.mem.Allocator;
@@ -59,7 +60,9 @@ pub const TestServer = struct {
     /// copyable; holding it here keeps `start(allocator)` unchanged for callers
     /// while the handlers below take it as an ordinary parameter.
     io: Io,
-    server: net.Server,
+    /// Stopped without a race (tests/support/loopback_listener.zig): an
+    /// accept() can never run on a closed listener.
+    listener: LoopbackListener,
     thread: ?Thread = null,
     should_stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
     port: u16,
@@ -103,17 +106,15 @@ pub const TestServer = struct {
         const io = std.testing.io;
 
         // Bind to localhost on a random available port
-        const address: net.IpAddress = .{ .ip4 = net.Ip4Address.loopback(0) };
-        const server = try address.listen(io, .{ .reuse_address = true });
+        const listener = try LoopbackListener.open(.{});
 
-        // 0.16 `Server` has no `listen_address`; `listen` runs getsockname and
-        // hands the kernel-assigned ephemeral port back on the socket's address.
         self.* = .{
             .allocator = allocator,
             .io = io,
-            .server = server,
-            .port = server.socket.address.getPort(),
+            .listener = listener,
+            .port = listener.port(),
         };
+        errdefer self.listener.close();
 
         // Start server thread
         self.thread = try Thread.spawn(.{}, serverLoop, .{self});
@@ -121,13 +122,16 @@ pub const TestServer = struct {
         return self;
     }
 
+    /// Stop the server thread, then close its listener - in that order
+    /// (LoopbackListener): closing the listener to unblock accept(), as this
+    /// did, raced the thread, and an accept() begun after the close panicked
+    /// on EBADF (tests-fetch "TestServer - WebSocket URL", FLAKY in lane
+    /// tstate1's gates, 2026-11-02).
     pub fn stop(self: *TestServer) void {
         self.should_stop.store(true, .release);
-        // Close server socket to unblock accept()
-        self.server.deinit(self.io);
-        if (self.thread) |thread| {
-            thread.join();
-        }
+        self.listener.stop();
+        if (self.thread) |thread| thread.join();
+        self.listener.close();
         self.allocator.destroy(self);
     }
 
@@ -141,14 +145,9 @@ pub const TestServer = struct {
 
     fn serverLoop(self: *TestServer) void {
         const io = self.io;
-        while (!self.should_stop.load(.acquire)) {
-            // 0.16 `accept` hands back a `Stream` directly; `Server.Connection`
-            // no longer exists, so there is no `.stream` to reach through.
-            const stream = self.server.accept(io) catch |err| {
-                if (err == error.SocketNotListening) break;
-                continue;
-            };
-
+        // Null once stop() began: its own wake-up connection, or a client's
+        // that came as the server stops, is closed unanswered.
+        while (self.listener.accept()) |stream| {
             // Handle connection in the same thread for simplicity
             // (for production, spawn a thread per connection)
             handleConnection(self.allocator, io, stream, &self.should_stop, &self.split_head) catch |err| {

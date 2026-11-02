@@ -571,11 +571,14 @@ fn parseHeaders(ctx: *ConnectionPool.RequestContext) !void {
             const value = std.mem.trim(u8, line[colon_pos + 1 ..], " \t");
 
             if (name.len > 0) {
-                const header = NetworkResponse.Header{
-                    .name = try ctx.allocator.dupe(u8, name),
-                    .value = try ctx.allocator.dupe(u8, value),
-                };
-                try ctx.response_headers.append(ctx.allocator, header);
+                // The context's deinit frees the headers in its list; one
+                // not yet there is freed here when its value, or its place
+                // in the list, cannot be allocated.
+                const owned_name = try ctx.allocator.dupe(u8, name);
+                errdefer ctx.allocator.free(owned_name);
+                const owned_value = try ctx.allocator.dupe(u8, value);
+                errdefer ctx.allocator.free(owned_value);
+                try ctx.response_headers.append(ctx.allocator, .{ .name = owned_name, .value = owned_value });
             }
         }
     }
@@ -683,4 +686,29 @@ test "ConnectionPool - RequestContext init and deinit" {
     try std.testing.expectEqual(@as(usize, 0), ctx.response_body.items.len);
     try std.testing.expect(!ctx.completed.load(.seq_cst));
     try std.testing.expect(!ctx.aborted.load(.seq_cst));
+}
+
+test "ConnectionPool - parseHeaders frees the header it was making when an allocation fails" {
+    // A failed parse leaves the headers it made to the context's deinit -
+    // but not a name whose value, or whose place in the list, could not be
+    // allocated (lane fixes1; LibcurlBackend.parseHeaders had the same leak).
+    const Parse = struct {
+        /// One parse of a two-header block with `allocator`, which the
+        /// context frees whatever happens.
+        fn with(allocator: Allocator, easy_handle: *curl.CURL) !void {
+            var ctx = ConnectionPool.RequestContext.init(allocator, easy_handle);
+            defer ctx.deinit();
+            try ctx.raw_headers.appendSlice(allocator, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nX-Second: two\r\n\r\n");
+            try parseHeaders(&ctx);
+            try std.testing.expectEqual(@as(usize, 2), ctx.response_headers.items.len);
+        }
+    };
+    const curl_backend = @import("curl_backend.zig");
+    try curl_backend.globalInit();
+    defer curl_backend.globalCleanup();
+
+    const easy_handle = curl.easy_init() orelse return error.InitFailed;
+    defer curl.easy_cleanup(easy_handle);
+
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, Parse.with, .{easy_handle});
 }

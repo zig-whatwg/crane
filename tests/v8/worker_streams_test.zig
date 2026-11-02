@@ -5,12 +5,12 @@
 //! its TransformStream's writable side, and setUpController wrapped the
 //! controller's AbortController, let the wrapper go, and only then cloned it
 //! - a collection in between freed it. This makes the same streams in a
-//! worker realm under GC pressure and uses them. It did NOT reproduce the
-//! crash: a release V8 has no --gc-interval (it needs
-//! V8_ENABLE_ALLOCATION_TIMEOUT), so no schedule puts a collection in that
-//! window. The red is the WPT file, run serially; the gap itself is closed
-//! and pinned in tests/v8/streams_wrap_test.zig (Realm.wrap refuses weak
-//! classes). This stays as a worker-realm streams check under pressure.
+//! worker realm, collects, and uses them. It did NOT reproduce the crash: a
+//! release V8 has no --gc-interval (it needs V8_ENABLE_ALLOCATION_TIMEOUT),
+//! so no schedule puts a collection in that window. The red is the WPT
+//! file, run serially; the gap itself is closed and pinned in
+//! tests/v8/streams_wrap_test.zig (Realm.wrap refuses weak classes). This
+//! stays as a worker-realm streams check across collections.
 
 const std = @import("std");
 const test_process = @import("test_process.zig");
@@ -21,18 +21,14 @@ const v8 = @import("v8");
 const protocol = @import("engine");
 
 fn setup() void {
-    // Before V8 starts (test_process.start starts it): every collection a
-    // full one, and a 1 MB young generation, so collections land inside the
-    // short windows where a wrapper is only weakly held. A release V8 has no
-    // --gc-interval (that needs V8_ENABLE_ALLOCATION_TIMEOUT), so this is
-    // pressure, not a schedule. V8 freezes its flags when it starts (setting
-    // one after is a fatal CHECK), so the pressure applies only when this
-    // test is the first in its process to start V8 - as it is in a process of
-    // its own (tests-v8 runs a process per test; -Dtest-file=). In a process
-    // it shares, the tests after it run under the same pressure, which a
-    // correct engine passes.
-    if (!v8.ffi.v8_Platform_IsInitialized()) v8.ffi.v8_SetFlagsFromString("--stress-compaction");
-    // Then the process, which starts V8 with the runtime's flags beside it.
+    // The process, which starts V8 with the runtime's flags. This set
+    // --stress-compaction first when it was the first test to start V8: a
+    // V8 flag write that every later test in the same process inherited
+    // (lane tstate1's survey, 2026-11-02). The integrator's ruling: V8
+    // stress variants belong in a nightly stress job, not in a unit test
+    // (tmp/plans/test-architecture-recommendation.md section 5). The
+    // collections this test asks for itself (requestGarbageCollection)
+    // stay.
     test_process.start();
 }
 

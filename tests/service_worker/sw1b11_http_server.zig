@@ -6,6 +6,7 @@
 //! fixed body and `Cache-Control: no-store`. (After tests/html's
 //! hc1_http_server.zig, which a test directory of its own cannot import.)
 const std = @import("std");
+const LoopbackListener = @import("loopback_listener").LoopbackListener;
 
 pub const Route = struct {
     path: []const u8,
@@ -15,40 +16,39 @@ pub const Route = struct {
 
 pub const Server = struct {
     allocator: std.mem.Allocator,
-    server: std.Io.net.Server,
+    listener: LoopbackListener,
     thread: ?std.Thread = null,
-    stopping: std.atomic.Value(bool) = .init(false),
     active: std.atomic.Value(u32) = .init(0),
     routes: []const Route,
 
     pub fn start(allocator: std.mem.Allocator, routes: []const Route) !*Server {
         const self = try allocator.create(Server);
         errdefer allocator.destroy(self);
-        const address: std.Io.net.IpAddress = .{ .ip4 = std.Io.net.Ip4Address.loopback(0) };
-        var server = try address.listen(std.testing.io, .{ .reuse_address = true });
-        errdefer server.deinit(std.testing.io);
-        self.* = .{ .allocator = allocator, .server = server, .routes = routes };
-        self.thread = try std.Thread.spawn(.{}, serve, .{ self, server });
+        self.* = .{ .allocator = allocator, .listener = try LoopbackListener.open(.{}), .routes = routes };
+        errdefer self.listener.close();
+        self.thread = try std.Thread.spawn(.{}, serve, .{self});
         return self;
     }
 
+    /// Stop the accept thread, then close the listener - in that order
+    /// (tests/support/loopback_listener.zig): closing the listener to
+    /// unblock accept(), as this did, raced the thread, and an accept()
+    /// begun after the close panics on EBADF (lane fixes1).
     pub fn stop(self: *Server) void {
-        self.stopping.store(true, .release);
-        self.server.deinit(std.testing.io);
+        self.listener.stop();
         self.thread.?.join();
+        self.listener.close();
         while (self.active.load(.acquire) != 0) std.Thread.yield() catch {};
         self.allocator.destroy(self);
     }
 
     /// "http://127.0.0.1:<port>", the Browser's proxy. Written into `buffer`.
     pub fn proxyUrl(self: *const Server, buffer: []u8) ![]const u8 {
-        return std.fmt.bufPrint(buffer, "http://127.0.0.1:{d}", .{self.server.socket.address.getPort()});
+        return std.fmt.bufPrint(buffer, "http://127.0.0.1:{d}", .{self.listener.port()});
     }
 
-    fn serve(self: *Server, listener: std.Io.net.Server) void {
-        var server = listener;
-        while (!self.stopping.load(.acquire)) {
-            const stream = server.accept(std.testing.io) catch continue;
+    fn serve(self: *Server) void {
+        while (self.listener.accept()) |stream| {
             _ = self.active.fetchAdd(1, .acq_rel);
             const thread = std.Thread.spawn(.{}, answerAndClose, .{ self, stream }) catch {
                 _ = self.active.fetchSub(1, .acq_rel);

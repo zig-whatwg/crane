@@ -11,6 +11,7 @@ const engine = @import("engine");
 const browser_mod = @import("browser");
 
 const net = std.Io.net;
+const LoopbackListener = @import("loopback_listener").LoopbackListener;
 const Io = std.Io;
 
 /// A one-route HTTP server: GET /frame answers an HTML document in two
@@ -18,17 +19,16 @@ const Io = std.Io;
 /// test, not the clock, decides when the rest of the body arrives.
 const ChunkServer = struct {
     io: Io,
-    server: net.Server,
+    listener: LoopbackListener,
     thread: ?std.Thread = null,
     port: u16,
-    stop_flag: std.atomic.Value(bool) = .init(false),
     released: std.atomic.Value(bool) = .init(false),
 
     fn start(self: *ChunkServer) !void {
         const io = testing.io;
-        const address: net.IpAddress = .{ .ip4 = net.Ip4Address.loopback(0) };
-        const server = try address.listen(io, .{ .reuse_address = true });
-        self.* = .{ .io = io, .server = server, .port = server.socket.address.getPort() };
+        const listener = try LoopbackListener.open(.{});
+        self.* = .{ .io = io, .listener = listener, .port = listener.port() };
+        errdefer self.listener.close();
         self.thread = try std.Thread.spawn(.{}, loop, .{self});
     }
 
@@ -36,19 +36,19 @@ const ChunkServer = struct {
         self.released.store(true, .release);
     }
 
+    /// Stop the accept thread, then close the listener - in that order
+    /// (tests/support/loopback_listener.zig): closing the listener to
+    /// unblock accept(), as this did, raced the thread, and an accept()
+    /// begun after the close panics on EBADF (lane fixes1).
     fn stop(self: *ChunkServer) void {
         self.release();
-        self.stop_flag.store(true, .release);
-        self.server.deinit(self.io);
+        self.listener.stop();
         if (self.thread) |thread| thread.join();
+        self.listener.close();
     }
 
     fn loop(self: *ChunkServer) void {
-        while (!self.stop_flag.load(.acquire)) {
-            const stream = self.server.accept(self.io) catch |err| {
-                if (err == error.SocketNotListening) break;
-                continue;
-            };
+        while (self.listener.accept()) |stream| {
             self.serve(stream) catch {};
             stream.close(self.io);
         }
