@@ -1007,8 +1007,15 @@ fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.St
         if (config.many_browsers == .report) run.addArg("--report-only");
     }
     launch.test_exes.append(b.allocator, test_exe) catch @panic("OOM");
-    // Relative to the repository root, where tests open their fixtures.
-    run.addArg(b.fmt("--out=tmp/test-launch/{s}.jsonl", .{name}));
+    // Relative to the repository root, where tests open their fixtures. A
+    // variant's results beside the suite's own, never over them:
+    // tmp/test-launch/<name>[.tsan][.many-browsers].jsonl (the timings stay
+    // the plain run's).
+    const variant = b.fmt("{s}{s}", .{
+        if (launch.sanitize_thread) ".tsan" else "",
+        if (launch.many_browsers) ".many-browsers" else "",
+    });
+    run.addArg(b.fmt("--out=tmp/test-launch/{s}{s}.jsonl", .{ name, variant }));
     run.addArg(b.fmt("--timings=tmp/test-launch/{s}.jsonl", .{name}));
     run.setCwd(b.path("."));
     // A fresh seed every run must run every time.
