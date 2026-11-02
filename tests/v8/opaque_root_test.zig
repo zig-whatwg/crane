@@ -266,6 +266,10 @@ test "keepOpaqueRoot: a tree with no wrapper has nothing to keep, and the slot i
     const owner = try page.instance("owner");
     const document = try page.instance("d");
     const member = try interfaces.Document.call_createElementNS(document, runtime.DOMString.initInterned(xhtml), runtime.DOMString.initInterned("i"), .{ .was_passed = false, .value = undefined });
+    // Script never saw it: the test frees it, as a native creator frees a
+    // node it is done with.
+    const member_generation = runtime.SlabAllocator.generationOf(member);
+    defer dom.node_creation.releaseIfUnwrapped(member, member_generation);
     // A member kept earlier is replaced by the new one's (nothing).
     protocol.keepOpaqueRoot(owner, try page.instance("w"), kept_slot);
     protocol.keepOpaqueRoot(owner, member, kept_slot);

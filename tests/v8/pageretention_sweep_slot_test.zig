@@ -201,6 +201,16 @@ fn sweepOnce(coordinator_allocator: std.mem.Allocator, expect_returned: bool) !b
             try testing.expectEqual(generation, runtime.SlabAllocator.generationOf(child));
     }
     for (roots, root_generations) |root, generation| try testing.expect(runtime.SlabAllocator.generationOf(root) != generation);
+    // A slot kept stays with its Browser until the Browser ends; the process's
+    // standalone runtime never does, so the test gives back what it kept -
+    // each child torn down, its slot still its own - and leaves the slab as it
+    // found it.
+    if (!expect_returned) {
+        for (seen.children, seen.child_generations) |child, generation| {
+            if (runtime.SlabAllocator.generationOf(child) == generation and runtime.instance_lifecycle.isCleanedUp(child))
+                runtime.gc.releaseStorage(child);
+        }
+    }
     return seen.child_first > 0 and seen.child_first < tree_count and seen.roots_after_handled_child > 0;
 }
 
