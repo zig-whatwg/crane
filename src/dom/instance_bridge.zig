@@ -27,6 +27,7 @@ const NodeBase = @import("node_base.zig").NodeBase;
 const refcount_audit = @import("refcount_audit.zig");
 const runtime = @import("runtime");
 const tombstones = @import("webidl").utils.tombstones;
+const address_map = @import("infra").address_map;
 
 /// Placeholder type for the bridge context
 /// This will be populated when Node.zig InternalState is updated
@@ -50,7 +51,7 @@ pub const Bridge = struct {
     /// Protects `map`, `guard` and `cache`; held for one map operation, never
     /// across a call out of this file.
     mutex: std.Io.Mutex = .init,
-    map: std.AutoHashMap(*anyopaque, *NodeBase),
+    map: address_map.AddressHashMap(*anyopaque, *NodeBase),
     /// A direct-mapped cache in front of `map`, for getNodeBase - which
     /// wrapping asks once per object handed to script: every `list[i]`
     /// (template_registry.wrapInstanceAsV8Object). A map lookup hashes the
@@ -75,7 +76,7 @@ pub const Bridge = struct {
     guard: tombstones.TombstoneGuard = .{},
 
     pub fn init(allocator: std.mem.Allocator) Bridge {
-        return .{ .map = std.AutoHashMap(*anyopaque, *NodeBase).init(allocator) };
+        return .{ .map = address_map.AddressHashMap(*anyopaque, *NodeBase).init(allocator) };
     }
 
     pub fn deinit(self: *Bridge) void {

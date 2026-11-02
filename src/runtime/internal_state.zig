@@ -47,6 +47,7 @@
 const std = @import("std");
 const Instance = @import("instance.zig").Instance;
 const BrowserScope = @import("browser_scope.zig").BrowserScope;
+const address_map = @import("infra").address_map;
 
 /// Type-erased internal state storage: instance address -> internal state
 /// pointer (the actual InternalState type is known by the caller). One per
@@ -61,7 +62,7 @@ pub const Registry = struct {
     /// Protects `map`; held for one map operation, never across a call out of
     /// this file.
     mutex: std.Io.Mutex = .init,
-    map: std.AutoHashMapUnmanaged(usize, *anyopaque) = .empty,
+    map: address_map.AddressHashMapUnmanaged(usize, *anyopaque) = .empty,
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) Registry {

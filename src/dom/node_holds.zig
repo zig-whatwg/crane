@@ -66,6 +66,7 @@ const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const log = std.log.scoped(.node_holds);
 const runtime = @import("runtime");
+const address_map = @import("infra").address_map;
 const interfaces = @import("interfaces");
 const engine = @import("engine");
 const NodeBase = @import("node_base.zig").NodeBase;
@@ -948,7 +949,7 @@ const single_index = std.math.maxInt(usize);
 pub const Rescues = struct {
     entries: std.ArrayListUnmanaged(Entry) = .empty,
     /// Membership, once there are enough entries for a scan to cost.
-    index: std.AutoHashMapUnmanaged(*runtime.Instance, u64) = .empty,
+    index: address_map.AddressHashMapUnmanaged(*runtime.Instance, u64) = .empty,
     single_taken: bool = false,
     next_index: usize = 0,
 

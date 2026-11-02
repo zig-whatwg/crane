@@ -99,7 +99,7 @@ pub const DomTreeAdapter = struct {
 
     /// Reverse map from DOM Instance to TreeNode pointer
     /// This allows O(1) lookup of the TreeNode for a given DOM node
-    reverse_map: std.AutoHashMap(*runtime.Instance, *TreeNode),
+    reverse_map: infra.address_map.AddressHashMap(*runtime.Instance, *TreeNode),
 
     /// Whether to automatically execute scripts when script elements are created
     /// Set to false during fragment parsing
@@ -116,7 +116,7 @@ pub const DomTreeAdapter = struct {
             .ctx = ctx,
             .document = document,
             .node_map = std.AutoHashMap(*TreeNode, *runtime.Instance).init(allocator),
-            .reverse_map = std.AutoHashMap(*runtime.Instance, *TreeNode).init(allocator),
+            .reverse_map = infra.address_map.AddressHashMap(*runtime.Instance, *TreeNode).init(allocator),
             .execute_scripts = true,
         };
     }

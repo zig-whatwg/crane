@@ -69,6 +69,10 @@ const runtime = @import("runtime");
 const engine = @import("engine");
 const realm_finalizers = @import("realm_finalizers.zig");
 const tombstones = @import("webidl").utils.tombstones;
+/// Every map keyed by an instance hashes it under a seed of its own
+/// (infra.address_map): this cache's end frees objects by walking `cache`,
+/// and the slab issues their slots again in that order.
+const address_map = @import("infra").address_map;
 
 const log = std.log.scoped(.wrapper_cache);
 
@@ -1101,7 +1105,7 @@ pub const WrapperCache = struct {
     /// allocation, so a `*CacheEntry` read out of the map stays valid however
     /// the map moves its slots; only a key or value POINTER into the map
     /// (getPtr, getEntry, an iterator) is invalidated by an insert.
-    cache: std.AutoHashMap(*runtime.Instance, *CacheEntry),
+    cache: address_map.AddressHashMap(*runtime.Instance, *CacheEntry),
 
     /// Bounds the tombstones `cache`'s removals leave
     /// (webidl.utils.tombstones). Every collected wrapper takes its entry out
@@ -1142,7 +1146,7 @@ pub const WrapperCache = struct {
     /// Pending-activity holds placed before the instance was wrapped
     /// (`holdForPendingActivity`), by slab generation so a reissued address
     /// does not inherit one. `set` moves a hold onto the new wrapper's entry.
-    pending_before_wrap: std.AutoHashMapUnmanaged(*runtime.Instance, PendingBeforeWrap) = .empty,
+    pending_before_wrap: address_map.AddressHashMapUnmanaged(*runtime.Instance, PendingBeforeWrap) = .empty,
     /// Bounds `pending_before_wrap`'s tombstones: every object kept before
     /// script sees it is a key the map never saw, removed when its wrapper
     /// is made, so the map never grew (a 1,069-file runner sample: starved
@@ -1160,7 +1164,7 @@ pub const WrapperCache = struct {
     /// the owner's wrapper is made - `set` draws the edges on it - or this
     /// realm ends. By slab generation, so an owner freed unwrapped and its
     /// address reissued leaves nothing to a newcomer.
-    edges_before_wrap: std.AutoHashMapUnmanaged(*runtime.Instance, DeferredEdges) = .empty,
+    edges_before_wrap: address_map.AddressHashMapUnmanaged(*runtime.Instance, DeferredEdges) = .empty,
     /// Bounds `edges_before_wrap`'s tombstones: every owner that traces a
     /// child before script sees it is a key the map never saw, removed when
     /// its wrapper is made or its edges are pruned (a 1,069-file runner
@@ -1559,7 +1563,7 @@ pub const WrapperCache = struct {
     /// Initialized WrapperCache
     pub fn init(allocator: std.mem.Allocator, context: *v8.Context) !Self {
         return .{
-            .cache = std.AutoHashMap(*runtime.Instance, *CacheEntry).init(allocator),
+            .cache = address_map.AddressHashMap(*runtime.Instance, *CacheEntry).init(allocator),
             .allocator = allocator,
             .context = context,
         };

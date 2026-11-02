@@ -289,7 +289,7 @@ pub const Registry = struct {
     /// Protects `map` and `guard`; held for one map operation or one sweep
     /// of the map, never across a call that can reach the engine or script.
     mutex: std.Io.Mutex = .init,
-    map: ?std.AutoHashMap(usize, *InternalState) = null,
+    map: ?infra.address_map.AddressHashMap(usize, *InternalState) = null,
     allocator: std.mem.Allocator,
     /// Every EventTarget - every node - a page makes enters the registry and
     /// leaves it; the guard rehashes before an insert once the tombstones
@@ -320,8 +320,8 @@ pub const Registry = struct {
     }
 
     /// The map, made on first use. Called with `mutex` held.
-    fn ensure(self: *Registry) *std.AutoHashMap(usize, *InternalState) {
-        if (self.map == null) self.map = std.AutoHashMap(usize, *InternalState).init(self.allocator);
+    fn ensure(self: *Registry) *infra.address_map.AddressHashMap(usize, *InternalState) {
+        if (self.map == null) self.map = infra.address_map.AddressHashMap(usize, *InternalState).init(self.allocator);
         return &self.map.?;
     }
 
@@ -336,7 +336,7 @@ pub const Registry = struct {
 
     /// The whole map, taken out for a final sweep. Called with `mutex` held,
     /// or by the table's own end.
-    fn takeAll(self: *Registry) ?std.AutoHashMap(usize, *InternalState) {
+    fn takeAll(self: *Registry) ?infra.address_map.AddressHashMap(usize, *InternalState) {
         const map = self.map orelse return null;
         self.map = null;
         self.guard.reset();

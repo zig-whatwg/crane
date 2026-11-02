@@ -32,6 +32,9 @@ const Instance = @import("instance.zig").Instance;
 const BrowserScope = @import("browser_scope.zig").BrowserScope;
 const ArenaAllocator = @import("arena_allocator.zig").ArenaAllocator;
 const TombstoneGuard = @import("webidl").utils.tombstones.TombstoneGuard;
+/// Keyed by the instance's address, under a seed of the table's own
+/// (infra.address_map).
+const address_map = @import("infra").address_map;
 
 const log = std.log.scoped(.instance_registry);
 
@@ -53,7 +56,7 @@ pub fn InstanceRegistry(comptime tag: BrowserScope.Table, comptime T: type) type
 
         /// One Browser's table of `T`.
         pub const Table = struct {
-            map: std.AutoHashMap(usize, Slot),
+            map: address_map.AddressHashMap(usize, Slot),
             /// Every node a page makes is registered here and removed when
             /// the page ends, so the map sees a page's worth of removals per
             /// page and its tombstones would take every free slot: the guard
@@ -61,7 +64,7 @@ pub fn InstanceRegistry(comptime tag: BrowserScope.Table, comptime T: type) type
             guard: TombstoneGuard = .{},
 
             pub fn init(allocator: std.mem.Allocator) Table {
-                return .{ .map = std.AutoHashMap(usize, Slot).init(allocator) };
+                return .{ .map = address_map.AddressHashMap(usize, Slot).init(allocator) };
             }
 
             /// With its Browser: the entries go. Their blocks are in the
@@ -204,7 +207,7 @@ pub fn InstanceRegistry(comptime tag: BrowserScope.Table, comptime T: type) type
 
         /// Iterator for one Browser's entries.
         pub const Iterator = struct {
-            inner: std.AutoHashMap(usize, Slot).Iterator,
+            inner: address_map.AddressHashMap(usize, Slot).Iterator,
 
             pub fn next(self: *Iterator) ?Entry {
                 const kv = self.inner.next() orelse return null;

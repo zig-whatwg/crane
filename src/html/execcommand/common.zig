@@ -17,6 +17,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const address_map = @import("infra").address_map;
 const interfaces = @import("interfaces");
 const dom = @import("dom");
 const engine = @import("engine");
@@ -174,7 +175,7 @@ pub const Edit = struct {
         // against a freed range's slot reused by a new range between the
         // walks - a teardown net, not a proof of liveness: liveness is the
         // list's.
-        var adjusted: std.AutoHashMapUnmanaged(*Instance, AdjustedRange) = .empty;
+        var adjusted: address_map.AddressHashMapUnmanaged(*Instance, AdjustedRange) = .empty;
         defer adjusted.deinit(self.allocator);
         const ranges = dom.document_internals.liveRanges(self.document);
         const live = dom.range_boundaries.liveRange();

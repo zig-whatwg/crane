@@ -81,7 +81,7 @@ pub const InternalState = struct {
 /// and installs a sweep (dom.teardown_sweeps) that frees what is left in it.
 /// Keyed by address: the entry goes in the PI's deinit, before the slab can
 /// reissue the address.
-threadlocal var live: ?std.AutoHashMap(*runtime.Instance, void) = null;
+threadlocal var live: ?@import("infra").address_map.AddressHashMap(*runtime.Instance, void) = null;
 threadlocal var live_guard: @import("webidl").utils.tombstones.TombstoneGuard = .{};
 
 fn trackLive(instance: *runtime.Instance) void {
