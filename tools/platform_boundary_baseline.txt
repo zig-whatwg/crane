@@ -7,8 +7,6 @@ src/browser/Browser.zig clock.@import 1
 src/browser/Browser.zig clock.monotonicMillis 2
 src/browser/Browser.zig host.@import 1
 src/browser/Browser.zig platform.media_backend 3
-src/browser/event_loop.zig clock.@import 1
-src/browser/event_loop.zig clock.monotonicNanos 1
 src/browser/navigation.zig host.@import 1
 src/browser/navigation.zig host.io 1
 src/browser/navigation.zig std.Io.Dir 1
@@ -740,8 +738,6 @@ src/webidl/impls/HTMLMediaElement.zig clock.monotonicNanos 2
 src/webidl/impls/HTMLMediaElement.zig platform.media_backend 9
 src/webidl/impls/HashChangeEvent.zig clock.@import 1
 src/webidl/impls/HashChangeEvent.zig clock.monotonicMillis 1
-src/webidl/impls/IdleDeadline.zig clock.@import 1
-src/webidl/impls/IdleDeadline.zig clock.monotonicNanos 1
 src/webidl/impls/IntersectionObserver.zig clock.@import 1
 src/webidl/impls/IntersectionObserver.zig clock.monotonicMillis 1
 src/webidl/impls/NavigateEvent.zig clock.@import 1
@@ -759,7 +755,6 @@ src/webidl/impls/PageTransitionEvent.zig clock.monotonicMillis 1
 src/webidl/impls/PopStateEvent.zig clock.@import 1
 src/webidl/impls/PopStateEvent.zig clock.monotonicMillis 1
 src/webidl/impls/SubtleCrypto.zig host.@import 1
-src/webidl/impls/Window.zig clock.@import 1
 src/webidl/impls/XMLHttpRequest.zig clock.@import 1
 src/webidl/impls/XMLHttpRequest.zig clock.monotonicMillis 2
 src/webidl/impls/console.zig clock.@import 1

@@ -94,6 +94,15 @@ pub const capabilities: engine.Capabilities = .{
     // and upgrade), and the Window and worker global bindings
     // (tests/v8/wrap_tracking_test.zig).
     .wrap_tracking = .native,
+    // AgentOptions.clock: CranePlatform's CurrentClockTimeMilli* read the
+    // current isolate's clock (v8_wrapper.cpp IsolateData), which Date reads
+    // (JSDate::CurrentTimeValue).
+    .host_clock = .native,
+    // AgentOptions.random_seed: the isolate's own random number generator,
+    // which seeds Math.random per context (math-random.cc), is seeded from
+    // the agent's seed through V8::SetEntropySource (v8_wrapper.cpp
+    // craneEntropySource), not the process-wide --random-seed.
+    .seeded_random = .native,
 };
 
 /// Every operation is V8 code: a test binary that compiles them all links V8.

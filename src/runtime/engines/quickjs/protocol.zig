@@ -50,6 +50,10 @@ pub const capabilities: engine.Capabilities = .{
     .webassembly_streaming = .unsupported,
     // Not until this adapter marks every object it binds an instance to.
     .wrap_tracking = .unsupported,
+    // QuickJS reads gettimeofday for Date and seeds Math.random from the
+    // time (js_random_init): no hook for either.
+    .host_clock = .unsupported,
+    .seeded_random = .unsupported,
 };
 
 /// No engine is linked yet: every operation answers without one.

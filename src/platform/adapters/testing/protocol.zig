@@ -24,6 +24,8 @@ const crypto = @import("kit_crypto");
 const browser_state = @import("kit_browser_state");
 const memory_clipboard = @import("kit_memory_clipboard");
 const environment_variables = @import("environment_variables.zig");
+const VirtualClock = @import("virtual_clock.zig").VirtualClock;
+const SeededRandom = @import("seeded_random.zig").SeededRandom;
 const image_decoding = if (for (platform_options.platform_without) |capability| {
     if (std.mem.eql(u8, capability, "image_decoding")) break true;
 } else false) headless else @import("image_decoding.zig");
@@ -37,10 +39,18 @@ const fonts = if (for (platform_options.platform_without) |capability| {
 const Extra = struct {
     clipboard: memory_clipboard.Clipboard,
     environment: environment_variables.Values,
+    /// The Browser's virtual clock, when it asked for one (virtual_clock.zig).
+    clock: VirtualClock,
+    /// The Browser's random stream, when it has a seed (seeded_random.zig).
+    random: SeededRandom,
 
     pub fn init(allocator: std.mem.Allocator, options: *const platform.BrowserOptions) error{OutOfMemory}!Extra {
-        _ = options;
-        return .{ .clipboard = .init(allocator), .environment = .init(allocator) };
+        return .{
+            .clipboard = .init(allocator),
+            .environment = .init(allocator),
+            .clock = .init(&options.platform),
+            .random = .init(options.platform.random_seed),
+        };
     }
 
     pub fn deinit(self: *Extra) void {
@@ -70,6 +80,21 @@ pub const protocol = struct {
         /// Decision 9: an unscripted prompt grants camera and microphone (the
         /// fake devices) and denies everything else.
         grant_capture_prompts: bool = true,
+        /// Opt-in deterministic execution (the approved test plan, section
+        /// 5): the Browser's clock is virtual (virtual_clock.zig) - it stands
+        /// still while the Browser works and moves only when its event loop
+        /// is idle and a timer is due, or when a test calls `advanceClock`
+        /// (Chromium's MOCK_TIME). Off, the default: real time, as every WPT
+        /// run keeps (all three browsers run WPT in real time).
+        virtual_clock: bool = false,
+        /// The virtual clock's wall time when it starts, ms since the Unix
+        /// epoch: 2026-01-01T00:00:00Z by default, so Date.now() replays too.
+        virtual_clock_wall_start_ms: i64 = 1_767_225_600_000,
+        /// The seed of the Browser's random stream (fillBrowserRandom), which
+        /// seeds its agent's Math.random, so a run replays from it. 0, the
+        /// default: no stream - the engine's and the OS's entropy, as V8's
+        /// --random-seed=0.
+        random_seed: u64 = 0,
     };
 
     pub const identity: platform.Identity = posix.identity;
@@ -121,6 +146,23 @@ pub const protocol = struct {
     pub const wallNow = posix.wallNow;
     pub const sleepThread = posix.sleepThread;
     pub const fillRandom = posix.fillRandom;
+
+    /// The Browser's virtual clock when it asked for one, else the OS's.
+    pub fn browserClock(browser: *platform.BrowserPlatform) platform.BrowserClock {
+        return State.of(browser).extra.clock.browserClock();
+    }
+
+    /// Test control: move a virtual-clock Browser's clock `nanoseconds` on
+    /// (Chromium's FastForwardBy, without running what came due: the test
+    /// turns the Browser's event loop next). Nothing for a real-clock one.
+    pub fn advanceClock(browser: *platform.BrowserPlatform, nanoseconds: u64) void {
+        State.of(browser).extra.clock.advance(nanoseconds);
+    }
+
+    /// The seeded Browser's stream, else none.
+    pub fn fillBrowserRandom(browser: *platform.BrowserPlatform, bytes: []u8) bool {
+        return State.of(browser).extra.random.fill(bytes);
+    }
     pub const spawnThread = posix.spawnThread;
     pub const joinThread = posix.joinThread;
     pub const makeDirectoryPath = posix.makeDirectoryPath;

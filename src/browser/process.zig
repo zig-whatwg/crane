@@ -44,6 +44,9 @@ pub const Error = error{
     ProcessAlreadyStarted,
     /// `deinit` ran: V8 cannot start its platform twice in one process.
     ProcessEnded,
+    /// The platform's process-wide start failed
+    /// (platform.initializePlatform).
+    PlatformStartFailed,
     /// The engine would not start.
     EngineStartFailed,
     /// curl's global initialization failed.
@@ -78,6 +81,12 @@ pub const Process = struct {
         if (!process_start.begin()) {
             return if (process_start.get().phase == .ended) error.ProcessEnded else error.ProcessAlreadyStarted;
         }
+        // The platform's process-wide start first (docs/platform-protocol.md
+        // 6.1: "once, before any Browser; crane.Process calls it").
+        @import("platform").initializePlatform(&.{}) catch {
+            process_start.end();
+            return error.PlatformStartFailed;
+        };
         var start: EngineStart = .{};
         startEngine(&start, options.snapshot_path);
         if (start.snapshot == null) engine.initializeEngine(.{}) catch {
