@@ -4,6 +4,8 @@
 
 **Lesson**: A test that constructs platform objects must initialize the hooks it uses, even when the directory-wide suite already passes.
 
+**Status** (2026-11-01): `-Dtest-isolation=file` is retired; the check it made is now the launcher's batch-1 run, `zig build test-launch -Dlaunch-batch=1` (every test in a process of its own, from the per-directory binaries; tools/test_launcher, lane tlaunch2).
+
 **Why**: Crane's normal `zig build test` runs all files in a directory in one executable. An earlier file can install process-wide Node hooks, making a later file pass without its own setup. File isolation removes that accidental order dependency.
 
 **What Happened**: The merge-round isolated suite found two failures in `tree_owns_predicate_test.zig`. `DocumentFragment.init` reached `node_creation.setType` with `node_steps.node` unset and returned `InvalidStateError`. The ordinary V8 directory suite had passed because another file installed the hooks first.

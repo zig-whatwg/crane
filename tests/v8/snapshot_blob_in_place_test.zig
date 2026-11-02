@@ -18,8 +18,8 @@
 //! snapshot generator that tests/v8 depends on, its path passed as
 //! `test_snapshot.path`. A missing snapshot fails the test. It runs only where this file is the first in its process to start
 //! V8, for pattern_attribute_snapshot_test.zig's reason: in tests/v8's shared
-//! executable it skips, saying so; it runs under `-Dtest-file=` and
-//! `-Dtest-isolation=file`.
+//! executable it skips, saying so; it runs in a process of its own (tests-v8
+//! runs at batch 1; `-Dtest-file=`).
 
 const std = @import("std");
 const test_process = @import("test_process.zig");
@@ -68,7 +68,7 @@ fn holds(realm: runtime.Context, source: []const u8) !bool {
 
 test "agents restored from the snapshot read the engine's blob in place, and all end before it does" {
     if (ffi.v8_Platform_IsInitialized()) {
-        std.log.warn("skipping: V8 was started in this process before this file; run it with -Dtest-file= or -Dtest-isolation=file", .{});
+        std.log.warn("skipping: V8 was started in this process before this file; run it in a process of its own (tests-v8 runs at batch 1; -Dlaunch-batch=1 or -Dtest-file=)", .{});
         return error.SkipZigTest;
     }
     const io = std.testing.io;

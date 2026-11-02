@@ -6,10 +6,11 @@
 //! [[TypedArrayName]] and engine.createArrayBufferView.
 //!
 //! Float16Array exists only when V8 started with --js-float16array
-//! (snapshot_loader.RUNTIME_V8_FLAGS, which engine.initializeEngine sets). In
-//! the shared tests/v8 executable another file may have started V8 first
-//! without it; these tests then skip, and -Dtest-file= or
-//! -Dtest-isolation=file runs them.
+//! (snapshot_loader.RUNTIME_V8_FLAGS, which engine.initializeEngine sets).
+//! Every tests/v8 test starts V8 through test_process.start, with those
+//! flags; should a test of this process have started it without them, these
+//! tests skip, saying so, and a process of their own runs them (tests-v8 runs
+//! at batch 1; -Dlaunch-batch=1 or -Dtest-file=).
 
 const std = @import("std");
 const test_process = @import("test_process.zig");
@@ -74,7 +75,7 @@ fn evalInt(code: []const u8) !i32 {
 fn realmWithFloat16() !?runtime.Context {
     const r = try realm();
     if (try evalInt("typeof Float16Array === 'function' ? 1 : 0") == 1) return r;
-    std.log.warn("skipping: V8 was started in this process without --js-float16array; run this file with -Dtest-file= or -Dtest-isolation=file", .{});
+    std.log.warn("skipping: V8 was started in this process without --js-float16array; run it in a process of its own (tests-v8 runs at batch 1; -Dlaunch-batch=1 or -Dtest-file=)", .{});
     return null;
 }
 

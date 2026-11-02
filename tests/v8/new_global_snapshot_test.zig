@@ -24,7 +24,7 @@
 //! shared executable, restoring the snapshot after other files had started V8
 //! crashed inside V8's isolate deserialization, before any code of the
 //! operation ran. So there they skip, saying so; they run under
-//! `-Dtest-file=` and `-Dtest-isolation=file`. The engine is given the
+//! a process of their own (tests-v8 runs at batch 1; `-Dtest-file=`). The engine is given the
 //! snapshot for these tests only and forgets it after (deinitializeEngine).
 
 const std = @import("std");
@@ -79,7 +79,7 @@ const SnapshotPage = struct {
     fn open() !?SnapshotPage {
         if (first_in_process == null) first_in_process = !ffi.v8_Platform_IsInitialized();
         if (!first_in_process.?) {
-            std.log.warn("skipping: V8 was started in this process before this file; run it with -Dtest-file= or -Dtest-isolation=file", .{});
+            std.log.warn("skipping: V8 was started in this process before this file; run it in a process of its own (tests-v8 runs at batch 1; -Dlaunch-batch=1 or -Dtest-file=)", .{});
             return null;
         }
         const io = std.testing.io;

@@ -172,7 +172,7 @@ whether two fn types match, unit-tested on a matching, a mistyped and a missing 
 error cannot be a test's expected outcome); `-Dplatform-without=camera` makes
 `platform.capabilities.camera == .unsupported`. The lint's std.testing blocks: each key family, each
 exemption (tools/, tests/, test declarations, src/webdriver/), a swap, src/url's `@import("host")`
-(the URL host module, not the bridge). Once: `zig build test -Dtest-isolation=file`.
+(the URL host module, not the bridge). Once: `zig build test-launch -Dlaunch-batch=1` (every test in a process of its own).
 
 **Done when**: `zig build test` passes with lint-platform on the recorded baseline (about 1,510
 references in about 123 files), `zig build wpt-runner -Dplatform=testing` builds, an `aarch64-ios`

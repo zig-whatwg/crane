@@ -23,9 +23,8 @@
 //! V8 earlier, restoring the snapshot crashed inside V8's isolate
 //! deserialization (StringTable::InsertForIsolateDeserialization), before any
 //! pattern code ran - the cause is not established. So in that executable
-//! they skip, saying so. They run under `-Dtest-file=` and under
-//! `-Dtest-isolation=file` (every file its own process; the integrator's run
-//! each merge round). The engine is given the snapshot for these tests only and
+//! they skip, saying so. They run in a process of their own: tests-v8 runs at
+//! batch 1 (a process per test), and `-Dtest-file=`. The engine is given the snapshot for these tests only and
 //! forgets it after (deinitializeEngine).
 
 const std = @import("std");
@@ -80,7 +79,7 @@ const SnapshotPage = struct {
     fn open() !?SnapshotPage {
         if (first_in_process == null) first_in_process = !ffi.v8_Platform_IsInitialized();
         if (!first_in_process.?) {
-            std.log.warn("skipping: V8 was started in this process before this file; run it with -Dtest-file= or -Dtest-isolation=file", .{});
+            std.log.warn("skipping: V8 was started in this process before this file; run it in a process of its own (tests-v8 runs at batch 1; -Dlaunch-batch=1 or -Dtest-file=)", .{});
             return null;
         }
         const io = std.testing.io;

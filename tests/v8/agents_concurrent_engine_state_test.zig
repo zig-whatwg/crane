@@ -217,7 +217,7 @@ var first_in_process: ?bool = null;
 test "two agents restored from the snapshot, on two threads: for-await, Intl, ShadowRealm, JSON modules and ObservableArray 200 times at once" {
     if (first_in_process == null) first_in_process = !ffi.v8_Platform_IsInitialized();
     if (!first_in_process.?) {
-        std.log.warn("skipping: V8 was started in this process before this file; run it with -Dtest-file= or -Dtest-isolation=file", .{});
+        std.log.warn("skipping: V8 was started in this process before this file; run it in a process of its own (tests-v8 runs at batch 1; -Dlaunch-batch=1 or -Dtest-file=)", .{});
         return error.SkipZigTest;
     }
     const io = testing.io;

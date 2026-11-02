@@ -24,8 +24,8 @@
 //! isolate entered that it entered. The i64 MODULE case needs
 //! --experimental-wasm-memory64 (RUNTIME_V8_FLAGS), which V8 honours only
 //! when the process started it with those flags - as a host does, and as
-//! this file does when it is the first to start V8 (-Dtest-file=,
-//! -Dtest-isolation=file). The snapshot case runs only then too
+//! this file does when it is the first to start V8 (a process of its own:
+//! tests-v8 runs at batch 1; -Dtest-file=). The snapshot case runs only then too
 //! (pattern_attribute_snapshot_test.zig says why).
 
 const std = @import("std");
@@ -147,7 +147,7 @@ test "flags: WebAssembly's exnref exception handling is enabled where V8 runs an
 test "snapshot realm: a Window realm restored from Crane's snapshot takes address i64" {
     noteFirst();
     if (!first_in_process.?) {
-        std.log.warn("skipping: V8 was started in this process before this file; run it with -Dtest-file= or -Dtest-isolation=file", .{});
+        std.log.warn("skipping: V8 was started in this process before this file; run it in a process of its own (tests-v8 runs at batch 1; -Dlaunch-batch=1 or -Dtest-file=)", .{});
         return error.SkipZigTest;
     }
     const io = std.testing.io;
@@ -320,7 +320,7 @@ test "frame and worker realms: Table and Memory take address i64" {
 test "window realm: a module declaring an i64 memory or table compiles" {
     try setup();
     if (!first_in_process.?) {
-        std.log.warn("skipping: V8 was started in this process before this file, with flags this file did not choose; run it with -Dtest-file= or -Dtest-isolation=file", .{});
+        std.log.warn("skipping: V8 was started in this process before this file, with flags this file did not choose; run it in a process of its own (tests-v8 runs at batch 1; -Dlaunch-batch=1 or -Dtest-file=)", .{});
         return error.SkipZigTest;
     }
     const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks });

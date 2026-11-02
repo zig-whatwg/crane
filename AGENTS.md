@@ -238,12 +238,20 @@ the tests that ran before it in its process - a bug, named with its batch and
 seed), **FLAKY** (the runs disagree). None of the three is a pass; each prints
 as `error: '<test>' failed:` with the verdict. The batch size is per suite
 (`suite_configs`: 1, a process per test, for the suites that start V8 or a
-Browser; 10 for the rest; tests-v8, temporarily, one index-order process), so a
-test may share its process with any other tests of its binary, in any order:
-never assume yours is the first to start V8, initialise a per-thread manager,
-leave no isolate entered, or set a V8 flag (V8 freezes its flags when it
-starts; setting one after is a fatal CHECK). A test that needs a fresh
-per-thread state runs its body on a `std.Thread` of its own. A race test
+Browser; 10 for the rest), so a test may share its process with any other
+tests of its binary, in any order: never assume yours is the first to start
+V8, initialise a per-thread manager, leave no isolate entered, or set a V8
+flag (V8 freezes its flags when it starts; setting one after is a fatal
+CHECK). A test may assume only what the process start makes, and leaves the
+process as it found it: in tests/v8 every helper goes through
+`tests/v8/test_process.zig` - `start()` starts the engine with the runtime's
+flags, the hooks and the standalone runtime once, `OwnRuntime` gives a test a
+standalone runtime of its own and the process's back, and a test that needs a
+realm gets its own `TestAgent`, made by `engine.createAgent` and ended with the
+test through `engine.destroyAgent` - no realm outlives its test
+([lesson](docs/lessons/testing-a-test-may-assume-only-what-the-process-start-makes.md)).
+A test that needs a fresh per-thread state runs its body on a `std.Thread` of
+its own. A race test
 between Browsers on different threads gives each Browser its own leak-checking
 `std.heap.DebugAllocator(.{ .stack_trace_frames = 0 })` instead of the shared
 `std.testing.allocator`: the shared one's lock and per-allocation stack capture
@@ -267,13 +275,16 @@ never a path under `zig-out/`.
 
 One file alone, for a quick red/green:
 `zig build test -Dspec=<dir> -Dtest-file=tests/<dir>/foo_test.zig -j2`.
-Once per merge round the integrator runs `zig build test -Dtest-isolation=file`
-(every file its own executable and process, about four times the CPU) to catch
-what sharing hides: a test that passes only because an earlier file started V8
-or installed a hook for it. It retires when `zig build test-launch
--Dlaunch-batch=1` is green: every suite but tests-v8 is (2026-11-01), and
-tests-v8 keeps one index-order process until its order-dependent tests are
-fixed (build.zig's `suite_configs` names them).
+Once per merge round the integrator runs the launcher in the two shapes that
+show what sharing a process hides: every suite at batch 1 (`zig build
+test-launch -Dlaunch-batch=1`, every test in a process of its own - a test that
+passes only because an earlier one started V8 or installed a hook for it fails
+there), and every suite as one shuffled process with fresh seeds (`zig build
+test-launch -Dlaunch-batch=0 -Dlaunch-shuffle=true -Dlaunch-seed=random`, three
+runs - a test that fails after another left state behind is ORDER-DEPENDENT
+there). Both use the per-directory binaries; the per-file executables of
+`-Dtest-isolation=file` (1,592 of them, about four times the CPU) are retired
+(2026-11-01, lane v8order1, once tests-v8 passed both shapes).
 
 Two kinds this codebase keeps needing:
 
