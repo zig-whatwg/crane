@@ -1420,3 +1420,35 @@ test "createStubBackend - has media capability" {
     try std.testing.expect(backend.hasCapability(.media));
     try std.testing.expect(backend.media != null);
 }
+
+test "each stub context numbers its own media handles from 1" {
+    // The handle counters are each context's (StubContext.media_*_counter):
+    // as process-wide counters they numbered every context's handles
+    // together, and tests running in one process saw each other's counts
+    // (lane gstate3; first written as tests/platform/gs3_stub_media_handles_test.zig,
+    // which named the platform facade's transitional stub from tests/).
+    const media = stub_media_vtable;
+    var first = StubContext.init(std.testing.allocator);
+    defer first.deinit();
+    var second = StubContext.init(std.testing.allocator);
+    defer second.deinit();
+
+    try std.testing.expectEqual(@as(MediaSourceHandle, 1), media.createMediaSource(&first));
+    try std.testing.expectEqual(@as(MediaSourceHandle, 2), media.createMediaSource(&first));
+    // Another context's numbering is untouched by the first's.
+    try std.testing.expectEqual(@as(MediaSourceHandle, 1), media.createMediaSource(&second));
+
+    const mime = "video/webm";
+    try std.testing.expectEqual(@as(SourceBufferHandle, 1), media.addSourceBuffer(&first, 1, mime.ptr, mime.len));
+    try std.testing.expectEqual(@as(SourceBufferHandle, 1), media.addSourceBuffer(&second, 1, mime.ptr, mime.len));
+
+    const key_system = "org.w3.clearkey";
+    const keys = media.createMediaKeys(&first, key_system.ptr, key_system.len);
+    try std.testing.expectEqual(@as(MediaKeysHandle, 1), keys);
+    try std.testing.expectEqual(@as(MediaKeysHandle, 1), media.createMediaKeys(&second, key_system.ptr, key_system.len));
+    try std.testing.expectEqual(@as(MediaKeySessionHandle, 1), media.createSession(&first, keys, 0));
+    try std.testing.expectEqual(@as(MediaKeySessionHandle, 1), media.createSession(&second, keys, 0));
+
+    try std.testing.expectEqual(@as(MediaStreamHandle, 1), media.call_getUserMedia(&first, true, false));
+    try std.testing.expectEqual(@as(MediaStreamHandle, 1), media.call_getUserMedia(&second, true, false));
+}
