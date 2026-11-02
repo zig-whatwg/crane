@@ -1,8 +1,73 @@
 //! Explicit document cancellation stops transport and delivers XHR errors in a
 //! document-associated task. Browser teardown must drop that task's owner.
+//!
+//! Every request goes to a loopback port that takes connections and never
+//! answers (`Unanswered`), so it stays in flight until the document's abort
+//! or navigation ends it; and every wait turns the event loop until it has
+//! nothing left to do (`settle`), never for a fixed budget.
 const std = @import("std");
 const browser_mod = @import("browser");
 const document_fetches = @import("dom").document_fetches;
+const clock = @import("clock");
+
+/// A loopback port that takes connections and never answers: a listener
+/// whose connections wait in the kernel's backlog, never accepted. A request
+/// to it stays in flight until something in the test ends it, however long
+/// the host takes. The fixed port these tests used (127.0.0.1:65533) did
+/// neither: it refused, and the scheduler's connection retries ended the
+/// request with a network error some 300 ms in (curl_backend's
+/// retryBackoffNs: 100 ms, then 200 ms) - a deadline the test raced - and
+/// it lies in the ephemeral range, where any other process may listen.
+const Unanswered = struct {
+    server: std.Io.net.Server,
+    origin_buf: [32]u8 = undefined,
+
+    fn open(self: *Unanswered) !void {
+        const address: std.Io.net.IpAddress = .{ .ip4 = std.Io.net.Ip4Address.loopback(0) };
+        self.* = .{ .server = try address.listen(std.testing.io, .{}) };
+    }
+
+    /// Ends every connection still waiting: after the Browser, whose
+    /// fetches end with it.
+    fn close(self: *Unanswered) void {
+        self.server.deinit(std.testing.io);
+    }
+
+    /// "http://127.0.0.1:<port>", the page's origin.
+    fn origin(self: *Unanswered) ![]const u8 {
+        return std.fmt.bufPrint(&self.origin_buf, "http://127.0.0.1:{d}", .{self.server.socket.address.getPort()});
+    }
+
+    /// Loads the page from the port, and names its origin `server` for the
+    /// page's scripts.
+    fn loadPage(self: *Unanswered, page: anytype) !void {
+        const allocator = std.testing.allocator;
+        const base_url = try std.fmt.allocPrint(allocator, "{s}/start", .{try self.origin()});
+        defer allocator.free(base_url);
+        try page.loadHTML("<!doctype html><body></body>", .{ .base_url = base_url });
+        const script = try std.fmt.allocPrint(allocator, "globalThis.server = '{s}';", .{try self.origin()});
+        defer allocator.free(script);
+        try page.runScript(script);
+    }
+};
+
+/// The most a test waits for its Browser's event loop to settle. A bound on
+/// a test that would never settle, not a budget the work must fit in.
+const settle_limit_ms = 30 * std.time.ms_per_s;
+
+/// Turn the event loop until it has nothing left to do - every task the
+/// steps before queued has run, and no fetch is in flight - and only then
+/// look at what happened. A fixed 10 ms of turns (runEventLoopBlocking(10))
+/// failed under host load in lane hashclust1's gate (2026-11-02, "expected
+/// 0, found 1": the frame's navigation had not committed yet).
+fn settle(browser: *browser_mod.Browser) !void {
+    const loop = browser.event_loop orelse return error.TestUnexpectedResult;
+    const deadline = clock.monotonicMillis() + settle_limit_ms;
+    while (loop.hasPendingWork()) {
+        if (clock.monotonicMillis() >= deadline) return error.TestEventLoopNeverSettled;
+        _ = try browser.runEventLoopBlocking(20);
+    }
+}
 
 const Scenario = enum { replacement, discarded, removed_during_state, removed_during_abort };
 
@@ -19,11 +84,14 @@ fn check(scenario: Scenario) !void {
 
         fn body(self: *@This()) !void {
             const allocator = std.testing.allocator;
+            var unanswered: Unanswered = undefined;
+            try unanswered.open();
+            defer unanswered.close();
             var browser = try browser_mod.Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
             defer browser.deinit();
             try browser.navigate("about:blank", .window);
             const page = browser.current_context orelse return error.TestUnexpectedResult;
-            try page.loadHTML("<!doctype html><body></body>", .{ .base_url = "http://127.0.0.1:65533/start" });
+            try unanswered.loadPage(page);
             // The window agent's fetches and their scheduler.
             const fetches = &browser.agent_host.fetches;
             const scheduler = &fetches.scheduler;
@@ -33,7 +101,7 @@ fn check(scenario: Scenario) !void {
                 \\globalThis.abortEvents = [];
                 \\globalThis.frame = document.body.appendChild(document.createElement('iframe'));
                 \\globalThis.request = new frame.contentWindow.XMLHttpRequest();
-                \\request.open('GET', 'http://127.0.0.1:65533/pending');
+                \\request.open('GET', server + '/pending');
                 \\request.onreadystatechange = () => abortEvents.push('state:' + request.readyState);
                 \\request.onabort = () => abortEvents.push('abort');
                 \\request.onloadend = () => abortEvents.push('loadend');
@@ -50,8 +118,8 @@ fn check(scenario: Scenario) !void {
             try std.testing.expectEqual(transfers_before, scheduler.inFlight());
             switch (self.scenario) {
                 .replacement => {
-                    try page.runScript("request.open('GET', 'http://127.0.0.1:65533/replacement')");
-                    _ = try browser.runEventLoopBlocking(10);
+                    try page.runScript("request.open('GET', server + '/replacement')");
+                    try settle(browser);
                     try page.runScript("if (request.readyState !== 1 || abortEvents.length !== 0) throw new Error('old abort reached replacement')");
                 },
                 // Keep the queued task for Browser.deinit's drop path.
@@ -61,7 +129,7 @@ fn check(scenario: Scenario) !void {
                     const script = try std.fmt.allocPrint(allocator, "request.{s} = () => {{ frame.remove(); TestUtils.gc(); }}", .{handler});
                     defer allocator.free(script);
                     try page.runScript(script);
-                    _ = try browser.runEventLoopBlocking(10);
+                    try settle(browser);
                     try page.runScript("if (frame.isConnected) throw new Error('queued abort did not remove frame')");
                 },
             }
@@ -104,12 +172,15 @@ fn checkNavigation(scenario: NavigationScenario) !void {
 
         fn body(self: *@This()) !void {
             const allocator = std.testing.allocator;
+            var unanswered: Unanswered = undefined;
+            try unanswered.open();
+            defer unanswered.close();
             var browser = try browser_mod.Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
             var browser_ended = false;
             defer if (!browser_ended) browser.deinit();
             try browser.navigate("about:blank", .window);
             const page = browser.current_context orelse return error.TestUnexpectedResult;
-            try page.loadHTML("<!doctype html><body></body>", .{ .base_url = "http://127.0.0.1:65533/start" });
+            try unanswered.loadPage(page);
             const document = page.document_instance orelse return error.TestUnexpectedResult;
             // The window agent's fetches and their scheduler.
             const fetches = &browser.agent_host.fetches;
@@ -119,7 +190,7 @@ fn checkNavigation(scenario: NavigationScenario) !void {
             try page.runScript(
                 \\globalThis.abortEvents = [];
                 \\globalThis.request = new XMLHttpRequest();
-                \\request.open('POST', 'http://127.0.0.1:65533/pending');
+                \\request.open('POST', server + '/pending');
                 \\request.onreadystatechange = () => abortEvents.push('state:' + request.readyState);
                 \\request.onabort = () => abortEvents.push('abort');
                 \\request.onloadend = () => abortEvents.push('loadend');
@@ -135,7 +206,7 @@ fn checkNavigation(scenario: NavigationScenario) !void {
                 try std.testing.expectEqual(before, fetches.inFlight());
             }
             if (self.scenario == .replacement_before_abort) {
-                try page.runScript("request.open('POST', 'http://127.0.0.1:65533/replacement'); request.send('replacement upload'); abortEvents.length = 0");
+                try page.runScript("request.open('POST', server + '/replacement'); request.send('replacement upload'); abortEvents.length = 0");
                 try std.testing.expectEqual(before + 1, fetches.inFlight());
             }
             // Provisional navigation preserves every XHR.
@@ -167,7 +238,7 @@ fn checkNavigation(scenario: NavigationScenario) !void {
             try std.testing.expectEqual(before, fetches.inFlight());
             try std.testing.expectEqual(transfers_before, scheduler.inFlight());
             try page.runScript("if (request.readyState !== 1 || abortEvents.length !== 0) throw new Error('navigation delivered inline')");
-            _ = try browser.runEventLoopBlocking(10);
+            try settle(browser);
             if (self.scenario == .replacement_before_abort or self.scenario == .open_after_navigation_abort or self.scenario == .queued_stop) {
                 try page.runScript("if (request.readyState !== 4 || abortEvents.join(',') !== 'state:4,upload.abort,upload.loadend,abort,loadend') throw new Error('replacement inherited navigation suppression')");
             } else {
@@ -216,12 +287,15 @@ fn checkFrameNavigation(scenario: FrameNavigationScenario) !void {
 
         fn body(self: *@This()) !void {
             const allocator = std.testing.allocator;
+            var unanswered: Unanswered = undefined;
+            try unanswered.open();
+            defer unanswered.close();
             var browser = try browser_mod.Browser.init(allocator, .{ .persist_storage = false, .snapshot_path = "" });
             var browser_ended = false;
             defer if (!browser_ended) browser.deinit();
             try browser.navigate("about:blank", .window);
             const page = browser.current_context orelse return error.TestUnexpectedResult;
-            try page.loadHTML("<!doctype html><body></body>", .{ .base_url = "http://127.0.0.1:65533/start" });
+            try unanswered.loadPage(page);
             // The window agent's fetches and their scheduler.
             const fetches = &browser.agent_host.fetches;
             const scheduler = &fetches.scheduler;
@@ -231,7 +305,7 @@ fn checkFrameNavigation(scenario: FrameNavigationScenario) !void {
                 \\globalThis.abortEvents = [];
                 \\globalThis.frame = document.body.appendChild(document.createElement('iframe'));
                 \\globalThis.request = new frame.contentWindow.XMLHttpRequest();
-                \\request.open('GET', 'http://127.0.0.1:65533/pending');
+                \\request.open('GET', server + '/pending');
                 \\request.onreadystatechange = () => abortEvents.push('state:' + request.readyState);
                 \\request.onabort = () => abortEvents.push('abort:' + request.readyState);
                 \\request.onloadend = () => abortEvents.push('loadend:' + request.readyState);
@@ -240,12 +314,12 @@ fn checkFrameNavigation(scenario: FrameNavigationScenario) !void {
             );
             if (self.scenario == .parent_abort) try page.runScript(
                 \\globalThis.parentRequest = new XMLHttpRequest();
-                \\parentRequest.open('GET', 'http://127.0.0.1:65533/parent');
+                \\parentRequest.open('GET', server + '/parent');
                 \\parentRequest.onabort = () => frame.contentWindow.stop();
                 \\parentRequest.send();
             );
             if (self.scenario == .open) try page.runScript(
-                \\frame.contentWindow.location.href = 'http://127.0.0.1:65533/navigation';
+                \\frame.contentWindow.location.href = server + '/navigation';
                 \\frame.contentDocument.open();
                 \\if (request.readyState !== 1 || abortEvents.length !== 0)
                 \\  throw new Error('document open delivered inline');
@@ -281,7 +355,7 @@ fn checkFrameNavigation(scenario: FrameNavigationScenario) !void {
                 browser_ended = true;
                 return;
             }
-            _ = try browser.runEventLoopBlocking(10);
+            try settle(browser);
             try std.testing.expectEqual(before, fetches.inFlight());
             try std.testing.expectEqual(transfers_before, scheduler.inFlight());
             if (self.scenario == .open or self.scenario == .parent_abort) {
