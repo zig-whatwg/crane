@@ -10,6 +10,8 @@
 //! Reference: https://v8.github.io/api/head/
 
 const std = @import("std");
+/// RUNTIME_V8_FLAGS: the flags v8_Isolate_New starts V8 with (startForIsolate).
+const snapshot_loader = @import("snapshot_loader.zig");
 
 /// V8 Isolate - Represents an isolated instance of the V8 JavaScript engine
 pub const Isolate = opaque {};
@@ -716,17 +718,72 @@ pub extern fn v8_LegacyPlatformObject_NamedPropertyState(info: *const anyopaque,
 // ============================================================================
 
 // Platform initialization
-pub extern fn v8_Platform_Initialize() void;
+
+/// v8_Platform_Start's answer.
+pub const PlatformStart = enum(c_int) {
+    /// v8_Platform_Dispose ran: V8 cannot start again in this process.
+    disposed = -2,
+    /// V8 had started with other flags, which stay in effect: the caller's
+    /// are NOT, since V8's flags freeze when it starts. The caller reports it.
+    started_with_other_flags = -1,
+    /// V8 had started, with the caller's flags, or the caller named none.
+    already_started = 0,
+    /// This call started V8, with the caller's flags applied first.
+    started_now = 1,
+};
+
+/// Start V8 - `flags` (null: none), then its platform - unless it has
+/// started: exactly once per process, from any thread, by whichever caller
+/// is first. A caller that comes while the start is under way waits for it,
+/// so every caller returns with V8 started. V8 itself FATALs on a second or
+/// concurrent start (13.1.203 src/init/v8.cc AdvanceStartupState).
+pub extern fn v8_Platform_Start(flags: ?[*:0]const u8) PlatformStart;
+/// The flags V8's start applied ("" for none), or null before it started.
+/// Lives as long as the process.
+pub extern fn v8_Platform_StartFlags() ?[*:0]const u8;
+/// V8 started the way a process starts it, unless something has started it
+/// (startForIsolate, below).
+pub fn v8_Platform_Initialize() void {
+    _ = startForIsolate();
+}
 pub extern fn v8_Platform_Dispose() void;
 
 /// Set V8 command-line flags from a string
 ///
-/// Must be called BEFORE v8_Platform_Initialize() for flags to take effect.
+/// Must be called BEFORE V8 starts for flags to take effect; after, V8
+/// refuses them fatally. Prefer v8_Platform_Start(flags), which sets them as
+/// part of the start, so no other thread's start can come between.
 /// Example: "--hash-seed=0" for deterministic hashing (helps with snapshots)
 pub extern fn v8_SetFlagsFromString(flags: [*:0]const u8) void;
 
 // Isolate management
-pub extern fn v8_Isolate_New() ?*Isolate;
+
+/// The C entries that make an isolate. Every caller reaches them through
+/// v8_Isolate_New and v8_Isolate_NewFromSnapshot below, which start V8
+/// first.
+const isolate_entries = struct {
+    extern fn v8_Isolate_New() ?*Isolate;
+    extern fn v8_Isolate_NewFromSnapshot(snapshot_data: [*]const u8, snapshot_size: c_int, external_references: ?[*]const isize) ?*Isolate;
+};
+
+/// V8 started the way a process starts it - with the runtime flags,
+/// snapshot_loader.RUNTIME_V8_FLAGS, as engine.initializeEngine applies
+/// them - for a caller that makes an isolate before anything started V8: a
+/// test, a tool. A later initializeEngine then finds the flags it asks for,
+/// and which flags a test runs with does not depend on which test made its
+/// process's first isolate. When V8 has started, with whatever flags,
+/// nothing is done: this caller needs an isolate, not particular flags.
+/// False only once V8 was disposed.
+fn startForIsolate() bool {
+    return v8_Platform_Start(snapshot_loader.RUNTIME_V8_FLAGS) != .disposed;
+}
+
+/// A new isolate, V8 started first if nothing has started it
+/// (startForIsolate). OWNED: v8_Isolate_Dispose.
+pub fn v8_Isolate_New() ?*Isolate {
+    if (!startForIsolate()) return null;
+    return isolate_entries.v8_Isolate_New();
+}
 pub extern fn v8_Isolate_Dispose(isolate: *Isolate) void;
 /// Whether `isolate` was restored from a snapshot (v8_Isolate_NewFromSnapshot).
 pub extern fn v8_Isolate_IsFromSnapshot(isolate: *Isolate) bool;
@@ -2748,12 +2805,17 @@ pub extern fn v8_Snapshot_ClearGlobalHandles() void;
 /// @param snapshot_size - Size of snapshot blob in bytes
 /// @param external_references - Null-terminated array of external references
 ///                              (must match snapshot creation order exactly)
+/// V8 is started first if nothing has started it, as for v8_Isolate_New.
+///
 /// @return New isolate with snapshot state, or null on failure
-pub extern fn v8_Isolate_NewFromSnapshot(
+pub fn v8_Isolate_NewFromSnapshot(
     snapshot_data: [*]const u8,
     snapshot_size: c_int,
     external_references: ?[*]const isize,
-) ?*Isolate;
+) ?*Isolate {
+    if (!startForIsolate()) return null;
+    return isolate_entries.v8_Isolate_NewFromSnapshot(snapshot_data, snapshot_size, external_references);
+}
 
 /// Create a context from the snapshot's default context
 ///
