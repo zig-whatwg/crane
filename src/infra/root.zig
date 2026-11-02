@@ -30,6 +30,10 @@ pub const ancestor_bloom_filter = @import("ancestor_bloom_filter.zig");
 /// and go (TombstoneGuard). Here so every module that keeps such a map -
 /// fetch, file and storage among them, which do not import webidl - can.
 pub const tombstones = @import("tombstones.zig");
+/// Not Infra's: the hash map every table keyed by an object's address uses,
+/// each table with a seed of its own (AddressHashMap), so that a teardown
+/// walking one table cannot line up the next table's keys.
+pub const address_map = @import("address_map.zig");
 
 pub const String = string.String;
 pub const CodePoint = code_point.CodePoint;

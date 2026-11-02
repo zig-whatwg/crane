@@ -5,6 +5,7 @@
 //! code is copied. Nothing is retained between computations.
 const std = @import("std");
 const runtime = @import("runtime");
+const address_map = @import("infra").address_map;
 const engine = @import("engine");
 const interfaces = @import("interfaces");
 const data = @import("element_data.zig");
@@ -356,12 +357,12 @@ const Name = struct {
     allocator: Allocator,
     root: *Instance,
     options: Options,
-    seen: std.AutoHashMapUnmanaged(*Instance, void) = .empty,
-    self_labels: std.AutoHashMapUnmanaged(*Instance, void) = .empty,
+    seen: address_map.AddressHashMapUnmanaged(*Instance, void) = .empty,
+    self_labels: address_map.AddressHashMapUnmanaged(*Instance, void) = .empty,
     /// ARIA 6.8 aria-owns / 7.3: one accessibility parent, in DOM order.
     /// Like Blink AXRelationCache's child-to-owner map, but arena-only and
     /// rebuilt for this computation; no node survives a task through it.
-    owners: std.AutoHashMapUnmanaged(*Instance, *Instance) = .empty,
+    owners: address_map.AddressHashMapUnmanaged(*Instance, *Instance) = .empty,
 
     fn accessibilityParent(self: *const Name, node: *Instance) ?*Instance {
         return self.owners.get(node) orelse parent(node);

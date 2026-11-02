@@ -805,7 +805,7 @@ const Evaluation = struct {
             entered: u32 = 0,
             child: ?*Node = null,
         };
-        var marks: std.AutoHashMapUnmanaged(*Node, Mark) = .empty;
+        var marks: infra.address_map.AddressHashMapUnmanaged(*Node, Mark) = .empty;
         var members: std.ArrayListUnmanaged(*Node) = .empty;
         var roots: std.ArrayListUnmanaged(*Node) = .empty;
         for (nodes) |node| {
@@ -1212,7 +1212,7 @@ fn descendants(allocator: Allocator, node: *Node, result: *std.ArrayListUnmanage
 /// HashSet beside the vector; review M2).
 const NodeSetBuilder = struct {
     list: std.ArrayListUnmanaged(*Node) = .empty,
-    seen: std.AutoHashMapUnmanaged(*Node, void) = .empty,
+    seen: infra.address_map.AddressHashMapUnmanaged(*Node, void) = .empty,
     dedup: bool = true,
 
     fn add(builder: *NodeSetBuilder, allocator: Allocator, node: *Node) !void {

@@ -2,6 +2,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
+const address_map = @import("infra").address_map;
 const ce = @import("dom").custom_elements;
 const driver = @import("custom_elements/driver.zig");
 
@@ -126,9 +127,9 @@ pub const ReactionsStack = struct {
 /// It is never shared implicitly with another agent or another test.
 pub const ElementReactionQueues = struct {
     allocator: Allocator,
-    queues: std.AutoHashMap(*runtime.Instance, ReactionQueue),
+    queues: address_map.AddressHashMap(*runtime.Instance, ReactionQueue),
     pub fn init(allocator: Allocator) ElementReactionQueues {
-        return .{ .allocator = allocator, .queues = std.AutoHashMap(*runtime.Instance, ReactionQueue).init(allocator) };
+        return .{ .allocator = allocator, .queues = address_map.AddressHashMap(*runtime.Instance, ReactionQueue).init(allocator) };
     }
     pub fn deinit(self: *ElementReactionQueues) void {
         var iterator = self.queues.valueIterator();
