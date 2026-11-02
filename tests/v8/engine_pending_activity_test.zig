@@ -73,10 +73,21 @@ fn setup() !void {
         const cache = try std.heap.page_allocator.create(WrapperCache);
         cache.* = try WrapperCache.init(std.heap.page_allocator, @ptrCast(context));
         data.setV8WrapperCacheStorage(@ptrCast(cache));
+        test_agent.endWith(.{ .call = .{ .call = endCache, .data = cache } });
         test_isolate = isolate;
         test_data = data;
         test_cache = cache;
     }
+}
+
+/// The test's wrapper cache ends before its realm's data and its agent, as a
+/// realm's end takes its cache down (context_manager): every wrapper's weak
+/// callback cleared, every instance torn down, and the cache out of the
+/// thread's live caches (`wrappedElsewhere` reads every one of them).
+fn endCache(cache: ?*anyopaque) void {
+    const self: *WrapperCache = @ptrCast(@alignCast(cache.?));
+    self.deinit();
+    std.heap.page_allocator.destroy(self);
 }
 
 /// A new instance of the realm, wrapped: a real V8 object, owned by the
