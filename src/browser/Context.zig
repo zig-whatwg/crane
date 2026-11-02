@@ -2428,20 +2428,19 @@ pub const Context = struct {
         log.warn("a host script threw: {s} ({s}:{d}:{d})", .{ info.message, info.filename, info.lineno, info.colno });
     }
 
-    /// The end of the page: its threadlocal state, its timers, then its realm
+    /// The end of the page: its agent's mutation observer state, its timers,
+    /// then its realm
     /// (engine.destroyWindowRealm, which follows Blink's
     /// LocalWindowProxy::DisposeContext).
     pub fn deinit(self: *Context) void {
         log.debug("[Context.deinit] {s}", .{self.url});
 
-        // Clean up threadlocal state that accumulates across context navigations.
-        // These must be cleaned up to prevent state accumulation that causes
-        // timeouts in sequential test execution.
-
-        // Clean up custom elements threadlocal state (reactions_stack, element_reaction_queues)
-
-        // Clean up mutation observer threadlocal state (global_agent)
-        mutation_observer_algorithms.resetAgent();
+        // The page's agent's pending mutation observers and signal slots go
+        // while their nodes live - the page is every window of the Browser's
+        // agent - so that nothing accumulates across navigations. The agent's
+        // only (AgentHost.mutation_observers): another Browser's on the thread
+        // is its own.
+        if (self.realm) |realm| mutation_observer_algorithms.resetAgent(realm);
 
         // (Instance lifecycle flags live in each instance's slab slot and go
         // with it: nothing of the page's to clear here.)

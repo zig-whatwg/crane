@@ -37,7 +37,6 @@ const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
-const dom = @import("dom");
 const v8 = @import("v8");
 
 fn createGlobal(realm: runtime.Context, _: runtime.JSValue, _: ?*anyopaque) ?*runtime.Instance {
@@ -68,7 +67,6 @@ fn inRealm(comptime body: fn (runtime.Context) anyerror!void) !void {
             const own_runtime = test_process.OwnRuntime.begin(std.testing.allocator);
             defer own_runtime.end();
             interfaces.process_hooks.startHooksForTest();
-            defer dom.mutation_observer_algorithms.resetAgent();
             const hooks: engine.HostHooks = .{};
             const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &hooks, .allocator = std.testing.allocator });
             defer engine.destroyAgent(agent);

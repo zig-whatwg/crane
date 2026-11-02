@@ -51,6 +51,25 @@ pub const AgentHost = struct {
     /// their elements another form owner. Read and written only on the
     /// agent's thread.
     form_past_names: dom.form_past_names.Registry,
+    /// DOM 4.3: the agent's mutation observer microtask queued flag, its
+    /// pending mutation observers and its signal slots
+    /// (dom.mutation_observer_algorithms, found from a realm with `agentOf`).
+    /// Read and written on the agent's thread only; emptied by its page's end
+    /// (`resetAgent`). It was one per thread.
+    mutation_observers: dom.mutation_observer_algorithms.MutationObserverAgent,
+    /// HTML timer initialization steps, step 3: the nesting level of the task
+    /// the agent's event loop is running, when it is a timer's (its "timer
+    /// nesting level"; steps 8.3-8.5 run the timer's task at it), and 0
+    /// otherwise. The window's timers (browser Context.zig) and a worker's
+    /// (html.worker_host) set it around a timer's callback. It was one per
+    /// thread. Read and written on the agent's thread only.
+    timer_nesting_level: u32 = 0,
+    /// HTML: the agent's event loop's "termination nesting level", raised
+    /// while beforeunload, pagehide, visibilitychange or unload handlers run
+    /// ("unload" steps 7 and 14, the steps to fire beforeunload 3 and 5),
+    /// read by the window open steps (html.navigation.termination_nesting).
+    /// It was one per thread. Read and written on the agent's thread only.
+    termination_nesting_level: u32 = 0,
 
     pub fn init(allocator: std.mem.Allocator) AgentHost {
         return .{
@@ -64,6 +83,7 @@ pub const AgentHost = struct {
             .deferred_teardown = dom.tree_teardown.DeferredTeardown.init(allocator),
             .refcount_audit = dom.refcount_audit.Audit.init(allocator),
             .form_past_names = dom.form_past_names.Registry.init(allocator),
+            .mutation_observers = dom.mutation_observer_algorithms.MutationObserverAgent.init(allocator),
         };
     }
     /// After the agent's end, which emptied and closed the queue.
@@ -72,6 +92,8 @@ pub const AgentHost = struct {
         std.debug.assert(self.rejections.items.len == 0);
         self.classic_scripts.deinit();
         self.form_past_names.deinit();
+        // After the agent and its DOM: what is still listed is not touched.
+        self.mutation_observers.deinitAfterAgent();
         self.deferred_teardown.deinit();
         self.refcount_audit.deinit();
         self.indexeddb_cleanup.deinit();

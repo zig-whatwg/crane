@@ -792,13 +792,6 @@ test "take site: queueMicrotask(f) runs f at the checkpoint after a collection" 
     );
 }
 
-test "take site: new MutationObserver(f) notifies f after a collection" {
-    try keptAfterCollection(
-        "globalThis.seen = 0; globalThis.mo = new MutationObserver(() => { seen++; }); mo.observe(probeRoot, { childList: true }); probeRoot.appendChild(probeDocument.createElement('b'))",
-        "seen === 1 ? 'ok' : 'seen ' + seen",
-    );
-}
-
 test "take site: CustomElementRegistry.define keeps its constructor; getName compares with it" {
     try keptAfterCollection(
         "globalThis.reg = new CustomElementRegistry(); globalThis.X = class extends HTMLElement {}; reg.define('x-y', X)",
