@@ -254,7 +254,7 @@ src/runtime/engines/v8/v8_wrapper.cpp g_live_string_globals 1 C++G D decl:6bbee0
 src/runtime/engines/v8/v8_wrapper.cpp g_live_weak_callback_data 1 C++G D decl:c98787b630a24b36
 src/runtime/engines/v8/v8_wrapper.cpp g_next_context_id 1 C++G P-const decl:0803d1d05cc3a079
 src/runtime/engines/v8/v8_wrapper.cpp g_obj_src 1 C++G D decl:a77999f16fffafe4
-src/runtime/engines/v8/v8_wrapper.cpp g_platform 1 C++G P-res decl:04332a53a4ac320c
+src/runtime/engines/v8/v8_wrapper.cpp g_platform 1 C++G P-res decl:17840a833cd5aa24
 src/runtime/engines/v8/v8_wrapper.cpp g_protocol_code_generation 1 C++G P-res decl:c54965ebf81c39d6
 src/runtime/engines/v8/v8_wrapper.cpp g_protocol_dynamic_import 1 C++G H decl:d2b81a848e9fb100
 src/runtime/engines/v8/v8_wrapper.cpp g_protocol_import_meta_resolve 1 C++G H decl:c9afcd8df74f9f36
@@ -272,7 +272,6 @@ src/runtime/engines/v8/v8_wrapper.cpp realmTagCount.count 1 C++G P-res decl:574b
 src/runtime/engines/v8/v8_wrapper.cpp realmTagLock.lock 1 C++G P-res decl:563f7b01234ab878
 src/runtime/engines/v8/v8_wrapper.cpp realmTaggedHandles.map 1 C++G I/engine decl:2aab0d876a6579e1
 src/runtime/engines/v8/v8_wrapper.cpp t_protocol_resolver 1 C++TL C decl:e2dc91ee6bfc953e
-src/runtime/engines/v8/v8_wrapper.cpp v8_initialized 1 C++G P-res decl:352ad78f4487ca19
 src/runtime/engines/v8/v8_wrapper.cpp weakDataLock.lock 1 C++G P-res decl:e4340cacbab94ffb
 src/runtime/engines/v8/worker_realm.zig records 1 TL I/engine decl:07a3f05d79fd67cb
 src/runtime/engines/v8/wrapper_cache.zig live_caches 1 TL I/engine decl:647404af22eb8c78
