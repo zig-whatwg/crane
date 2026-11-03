@@ -1,1 +1,66 @@
-{}
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "zig run --cache-dir \"$HOME/Library/Caches/crane-guard-cache\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/crane_guard.zig\" -- pretooluse",
+            "timeout": 120,
+            "statusMessage": "crane_guard"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "TZ=America/New_York date '+Current time: %a %b %-d %Y, %-I:%M %p %Z' && date -u '+(%H:%M UTC)'"
+          }
+        ]
+      }
+    ]
+  },
+  "skillOverrides": {
+    "ab-test-setup": "off",
+    "ad-creative": "off",
+    "ai-seo": "off",
+    "analytics-tracking": "off",
+    "churn-prevention": "off",
+    "cold-email": "off",
+    "competitor-alternatives": "off",
+    "content-strategy": "off",
+    "copy-editing": "off",
+    "copywriting": "off",
+    "email-sequence": "off",
+    "form-cro": "off",
+    "free-tool-strategy": "off",
+    "launch-strategy": "off",
+    "marketing-ideas": "off",
+    "marketing-psychology": "off",
+    "mcp-builder": "off",
+    "onboarding-cro": "off",
+    "page-cro": "off",
+    "paid-ads": "off",
+    "paywall-upgrade-cro": "off",
+    "popup-cro": "off",
+    "pricing-strategy": "off",
+    "product-marketing-context": "off",
+    "programmatic-seo": "off",
+    "referral-program": "off",
+    "revops": "off",
+    "sales-enablement": "off",
+    "schema-markup": "off",
+    "seo-audit": "off",
+    "signup-flow-cro": "off",
+    "site-architecture": "off",
+    "social-content": "off",
+    "unreal-engine-cpp-pro": "off"
+  },
+  "enabledPlugins": {
+    "stripe@claude-plugins-official": false
+  }
+}
