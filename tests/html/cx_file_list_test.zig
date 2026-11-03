@@ -221,6 +221,28 @@ fn counter(name: []const u8) !i64 {
     return error.NoSuchCounter;
 }
 
+/// The global handles of THIS Browser's agent: the engine's
+/// `global_handle_bytes`, V8's used global handle bytes of the isolate
+/// current on this thread - the Browser's, whose top-level realm keeps it
+/// entered here. Not the process's live Global<Object> count, which every
+/// Browser of the process moves (beside the many-Browsers variant's busy
+/// Browser it moved by 76: lane tsanfix1; docs/lessons/testing-a-test-that-
+/// measures-a-process-wide-counter-assumes-it-is-alone.md).
+fn browserHandleBytes() !i64 {
+    return counter("global_handle_bytes");
+}
+
+/// That the bytes are the Browser's, shown rather than assumed: a value of
+/// `realm` held raises them, and its release lowers them back.
+fn expectReadsTheBrowsersIsolate(realm: runtime.Context, instance: *runtime.Instance) !void {
+    const before = try browserHandleBytes();
+    const held = try engine.retainValue(realm, .{ .instance = instance });
+    const holding = try browserHandleBytes();
+    held.release();
+    try testing.expect(holding > before);
+    try testing.expectEqual(before, try browserHandleBytes());
+}
+
 fn platformObject(browser: *browser_mod.Browser, source: []const u8) !*runtime.Instance {
     const realm = browser.getRealm() orelse return error.NoRealm;
     const held = try browser.evaluateScript(source);
@@ -254,7 +276,8 @@ fn unwrappedListLetsItsHoldsGo() !void {
     // Files script made and still holds: wrapped before the list exists.
     const a = try platformObject(browser, "globalThis.fa = new File(['a'], 'a.txt'); fa");
     const b = try platformObject(browser, "globalThis.fb = new File(['b'], 'b.txt'); fb");
-    const before = try counter("live_object_globals");
+    try expectReadsTheBrowsersIsolate(realm, a);
+    const before = try browserHandleBytes();
     for (0..8) |_| {
         const list = try interfaces.FileList.init(testing.allocator, realm);
         try dom.file_lists.append(list, a);
@@ -264,8 +287,8 @@ fn unwrappedListLetsItsHoldsGo() !void {
         try testing.expect(!engine.hasWrapper(list));
         list.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(list));
     }
-    const after = try counter("live_object_globals");
-    if (after != before) std.debug.print("live object globals {d} -> {d} after 8 unwrapped lists\n", .{ before, after });
+    const after = try browserHandleBytes();
+    if (after != before) std.debug.print("the Browser's global handle bytes {d} -> {d} after 8 unwrapped lists\n", .{ before, after });
     try testing.expectEqual(before, after);
     try testing.expect(try holds(browser, "fa.name === 'a.txt' && fb.name === 'b.txt'"));
 }

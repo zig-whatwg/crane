@@ -162,7 +162,9 @@ test "the new global is collected once the result is dropped, and no handle is l
     (try protocol.parseJsonInNewGlobal(ctx, "{}")).release();
     collect();
     const contexts_before = nativeContexts();
-    const globals_before = ffi.v8_Debug_LiveContextGlobals();
+    // The isolate's own global handles - every Global<Context> among them -
+    // not the process's live context count, which any other Browser of the
+    // process moves (docs/testing/test-variant-findings-2026-11-02.tsv M2).
     const handles_before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
     for (0..16) |_| {
         const parsed = try protocol.parseJsonInNewGlobal(ctx, "{\"kty\":\"oct\",\"k\":\"AAAA\"}");
@@ -181,7 +183,6 @@ test "the new global is collected once the result is dropped, and no handle is l
         std.debug.print("native contexts {d} -> {d} after 17 parses dropped\n", .{ contexts_before, contexts_after });
         return error.ContextsLeaked;
     }
-    try std.testing.expectEqual(globals_before, ffi.v8_Debug_LiveContextGlobals());
     try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate) <= handles_before);
 }
 

@@ -110,6 +110,11 @@ pub fn createAgent(_: engine.AgentOptions) Error!*Agent {
     return error.NotSupported;
 }
 pub fn destroyAgent(_: *Agent) void {}
+/// No agent is made here (createAgent is NotSupported), and JavaScriptCore
+/// restores nothing from a snapshot (`restores_snapshots` unsupported).
+pub fn agentRestoredFromSnapshot(_: *Agent) bool {
+    return false;
+}
 /// No agent is made here (createAgent is NotSupported): no host to hand
 /// back. When agents are made, the adapter keeps AgentOptions.host to call
 /// the hooks with, and answers it.

@@ -19,6 +19,11 @@ pub const Options = struct {
     shuffle: bool = true,
     /// Tests per child process; 0 puts every selected test in one batch.
     batch_size: u32 = 10,
+    /// Tests that need their process to themselves (indexed by test index;
+    /// shorter than the test count means "not alone"): each goes in a batch
+    /// of its own, after the others, in the shuffled order. Empty: the plan
+    /// is exactly what it was without it.
+    alone: []const bool = &.{},
 };
 
 pub const Batch = struct {
@@ -50,12 +55,41 @@ pub fn make(gpa: std.mem.Allocator, selected: []const u32, options: Options) !Pl
     errdefer gpa.free(order);
     if (options.shuffle) shuffle(order, options.seed);
 
-    const size: usize = if (options.batch_size == 0) @max(order.len, 1) else options.batch_size;
-    const count = (order.len + size - 1) / size;
+    // The alone tests to the end, each order kept (a stable partition).
+    var shared: usize = order.len;
+    if (options.alone.len != 0) {
+        const isAlone = struct {
+            fn f(alone: []const bool, t: u32) bool {
+                return t < alone.len and alone[t];
+            }
+        }.f;
+        const moved = try gpa.alloc(u32, order.len);
+        defer gpa.free(moved);
+        var n: usize = 0;
+        for (order) |t| if (!isAlone(options.alone, t)) {
+            moved[n] = t;
+            n += 1;
+        };
+        shared = n;
+        for (order) |t| if (isAlone(options.alone, t)) {
+            moved[n] = t;
+            n += 1;
+        };
+        @memcpy(order, moved);
+    }
+
+    const size: usize = if (options.batch_size == 0) @max(shared, 1) else options.batch_size;
+    const count = (shared + size - 1) / size + (order.len - shared);
     const batches = try gpa.alloc(Batch, count);
     for (batches, 0..) |*b, i| {
         const start = i * size;
-        b.* = .{ .start = @intCast(start), .len = @intCast(@min(size, order.len - start)) };
+        if (start < shared) {
+            b.* = .{ .start = @intCast(start), .len = @intCast(@min(size, shared - start)) };
+        } else {
+            // One alone test per batch.
+            const shared_batches = (shared + size - 1) / size;
+            b.* = .{ .start = @intCast(shared + (i - shared_batches)), .len = 1 };
+        }
     }
     return .{ .order = order, .batches = batches };
 }
@@ -167,6 +201,42 @@ test "batch size 1 is per-test isolation; 0 is the whole suite in one process" {
     defer whole.deinit(testing.allocator);
     try testing.expectEqual(@as(usize, 1), whole.batches.len);
     try testing.expectEqual(@as(u32, 5), whole.batches[0].len);
+}
+
+test "alone tests each get a batch of their own, after the others; none declared changes nothing" {
+    var buf: [10]u32 = undefined;
+    const all = iota(&buf);
+    var alone: [10]bool = @splat(false);
+    alone[3] = true;
+    alone[7] = true;
+    const p = try make(testing.allocator, all, .{ .seed = 5, .batch_size = 0, .alone = &alone });
+    defer p.deinit(testing.allocator);
+    // The eight others in one process, then 3 and 7 in one each.
+    try testing.expectEqual(@as(usize, 3), p.batches.len);
+    try testing.expectEqual(@as(u32, 8), p.batches[0].len);
+    for (p.batchTests(0)) |t| try testing.expect(!alone[t]);
+    try testing.expectEqual(@as(u32, 1), p.batches[1].len);
+    try testing.expectEqual(@as(u32, 1), p.batches[2].len);
+    try testing.expect(alone[p.batchTests(1)[0]] and alone[p.batchTests(2)[0]]);
+    // Every test exactly once.
+    var seen: [10]bool = @splat(false);
+    for (0..p.batches.len) |i| for (p.batchTests(i)) |t| {
+        try testing.expect(!seen[t]);
+        seen[t] = true;
+    };
+    for (seen) |s| try testing.expect(s);
+    // Batches of 4: 8 others make 2, the alone two 1 each.
+    const q = try make(testing.allocator, all, .{ .seed = 5, .batch_size = 4, .alone = &alone });
+    defer q.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 4), q.batches.len);
+    // Nothing declared: the plan the seed made before `alone` existed.
+    const none: [10]bool = @splat(false);
+    const r = try make(testing.allocator, all, .{ .seed = 5, .batch_size = 4, .alone = &none });
+    defer r.deinit(testing.allocator);
+    const s = try make(testing.allocator, all, .{ .seed = 5, .batch_size = 4 });
+    defer s.deinit(testing.allocator);
+    try testing.expectEqualSlices(u32, s.order, r.order);
+    try testing.expectEqual(s.batches.len, r.batches.len);
 }
 
 test "an empty selection makes an empty plan" {

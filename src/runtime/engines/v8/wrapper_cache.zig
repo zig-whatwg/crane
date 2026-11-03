@@ -215,17 +215,6 @@ fn shouldBeStrong(entry: *const CacheEntry) bool {
     return engineHoldsWrapper(entry.instance);
 }
 
-/// Dispose an entry's V8 handle, first dropping any alias to it.
-///
-/// `NodeBase.bound_v8_wrapper` (set by template_registry.wrapInstanceAsV8Object)
-/// stores the SAME `Global<Object>*` handle that the cache entry owns, so that
-/// DOM nodes keep JavaScript `===` identity across contexts. Disposing the
-/// handle without clearing that alias leaves a dangling pointer which the next
-/// wrapInstanceAsV8Object call would happily return.
-///
-/// The pointer-equality guard matters: instance addresses are recycled by the
-/// SlabAllocator, so the NodeBase reachable from `entry.instance` may already
-/// belong to a different object. Only an exact match is ours to clear.
 /// The realm is ending and `entry`'s instance is freed (or already was, or
 /// its slot went to another object): clear the wrapper's internal fields
 /// first - what severWindow does for a Window's global, for every wrapper.
@@ -260,16 +249,52 @@ fn clearFields(object: *v8.Object) void {
     if (count >= 2) v8.v8_Object_SetAlignedPointerInInternalField(object, 1, null);
 }
 
-fn disposeEntryWrapper(entry: *CacheEntry) void {
-    const instance_bridge = @import("dom").instance_bridge;
+/// What a path that ends an entry did to the entry's instance, for
+/// `disposeEntryWrapper`.
+const EntryInstance = enum {
+    /// Not freed here: the instance may still be the entry's, and its node,
+    /// if it is one, lets go of the wrapper (`unbindNode`).
+    kept,
+    /// Freed here (gc.onObjectFreed, gc.releaseStorage), or not the entry's
+    /// any more: nothing of it is read. Its node, if it was one, went with it.
+    freed,
+};
 
-    if (instance_bridge.getNodeBase(@ptrCast(entry.instance))) |nodebase| {
-        if (nodebase.bound_v8_wrapper == entry.wrapper) {
-            nodebase.bound_v8_wrapper = null;
-        }
-    }
-
+/// Dispose an entry's V8 handle, first dropping any alias to it - only while
+/// its instance is still the entry's (`instance`, `unbindNode`).
+///
+/// `NodeBase.bound_v8_wrapper` (set by template_registry.wrapInstanceAsV8Object)
+/// stores the SAME `Global<Object>*` handle that the cache entry owns, so that
+/// DOM nodes keep JavaScript `===` identity across contexts. Disposing the
+/// handle without clearing that alias leaves a dangling pointer which the next
+/// wrapInstanceAsV8Object call would happily return.
+///
+/// A path that freed the instance says so (`.freed`), and then its slot is not
+/// read at all: the slab is the Browser's, shared by its window thread and its
+/// workers' threads, and its free list is LIFO, so the next allocation on ANY
+/// thread takes the slot just freed. A worker's realm ending read the slot of
+/// an instance it had just freed (getNodeBase -> SlabAllocator.generationOf)
+/// while the window thread issued it to a MessageEvent (lane tsanfix1,
+/// ThreadSanitizer; docs/testing/test-variant-findings-2026-11-02.tsv F2) - a
+/// slot reissued to a node would even have answered that thread's NodeBase.
+fn disposeEntryWrapper(entry: *CacheEntry, instance: EntryInstance) void {
+    if (instance == .kept) unbindNode(entry);
     v8.v8_Object_Dispose(@ptrCast(entry.wrapper));
+}
+
+/// `entry.instance`'s node lets go of `entry`'s wrapper, if it is bound to
+/// it - only while the slot is still the entry's: the stamp is read first
+/// (`slotReissued`), and nothing else of a slot that is no longer the entry's.
+///
+/// The pointer-equality guard matters too: the NodeBase reachable from a live
+/// `entry.instance` may hold a newer wrapper of the same node. Only an exact
+/// match is ours to clear.
+fn unbindNode(entry: *CacheEntry) void {
+    if (slotReissued(entry)) return;
+    const instance_bridge = @import("dom").instance_bridge;
+    if (instance_bridge.getNodeBase(@ptrCast(entry.instance))) |nodebase| {
+        if (nodebase.bound_v8_wrapper == entry.wrapper) nodebase.bound_v8_wrapper = null;
+    }
 }
 
 /// True when the slab slot behind `entry.instance` no longer holds the
@@ -279,10 +304,15 @@ fn disposeEntryWrapper(entry: *CacheEntry) void {
 /// the same address - the case in which a stale callback's `Registry.remove`
 /// evicted a live document's entry (AGENTS.md, "A stale weak callback's
 /// `Registry.remove` evicts the LIVE entry at a recycled address").
+///
+/// The stamp is read first, and alone: a slot that is no longer the entry's
+/// may be another thread's object by now (the slab is the Browser's), so
+/// nothing else of it - its vtable, its state - is read unless the stamp is
+/// still the entry's generation.
 fn slotReissued(entry: *const CacheEntry) bool {
+    if (runtime.SlabAllocator.generationOf(entry.instance) != entry.original_generation) return true;
     return entry.instance.vtable != entry.original_vtable or
-        entry.instance.state != entry.original_state or
-        runtime.SlabAllocator.generationOf(entry.instance) != entry.original_generation;
+        entry.instance.state != entry.original_state;
 }
 
 /// True while something other than V8 holds `instance`: a node with a parent
@@ -802,10 +832,8 @@ fn unlinkCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
     // frees it).
     if (entry.is_orphaned) return;
 
-    const instance_bridge = @import("dom").instance_bridge;
-    if (instance_bridge.getNodeBase(@ptrCast(entry.instance))) |nodebase| {
-        if (nodebase.bound_v8_wrapper == entry.wrapper) nodebase.bound_v8_wrapper = null;
-    }
+    // Its node, if the slot is still its instance's.
+    unbindNode(entry);
 
     // Due to memory reuse (SlabAllocator/ArenaAllocator), the same instance
     // address can be used for different objects over time: take out only
@@ -968,7 +996,7 @@ fn finalizeEntry(entry: *CacheEntry) void {
     // outlives its caches' entries.
     if (entry.is_orphaned) {
         log.debug("[finalizeEntry] ORPHANED: instance={*} - cache was destroyed, skipping cleanup", .{entry.instance});
-        disposeEntryWrapper(entry);
+        disposeEntryWrapper(entry, .freed);
         entry.cache.allocator.destroy(entry);
         return;
     }
@@ -985,7 +1013,7 @@ fn finalizeEntry(entry: *CacheEntry) void {
     // Replaced or removed before it was collected: nothing of the instance
     // is this entry's.
     if (entry.stale) {
-        disposeEntryWrapper(entry);
+        disposeEntryWrapper(entry, .kept);
         entry.cache.allocator.destroy(entry);
         return;
     }
@@ -996,7 +1024,7 @@ fn finalizeEntry(entry: *CacheEntry) void {
     log.debug("[finalizeEntry] VTABLE_CHECK: instance={*} orig_vtable={*} curr_vtable={*} orig_state={*} curr_state={*}", .{ entry.instance, entry.original_vtable, entry.instance.vtable, entry.original_state, entry.instance.state });
     if (slotReissued(entry)) {
         log.debug("[finalizeEntry] INSTANCE REUSED: instance={*} - vtable/state/generation mismatch, skipping cleanup", .{entry.instance});
-        disposeEntryWrapper(entry);
+        disposeEntryWrapper(entry, .freed);
         entry.cache.allocator.destroy(entry);
         return;
     }
@@ -1007,7 +1035,7 @@ fn finalizeEntry(entry: *CacheEntry) void {
     // wrapper's reference for the same reason.
     if (entry.cache.cache.get(entry.instance)) |current| {
         if (current.original_generation == entry.original_generation and current.original_vtable == entry.original_vtable) {
-            disposeEntryWrapper(entry);
+            disposeEntryWrapper(entry, .kept);
             entry.cache.allocator.destroy(entry);
             return;
         }
@@ -1035,8 +1063,10 @@ fn finalizeEntry(entry: *CacheEntry) void {
     if (runtime.cleanup_coordinator.isContextTearingDown()) {
         const started = runtime.instance_lifecycle.isCleanupStarted(entry.instance);
         const elsewhere = wrappedElsewhere(entry.instance, entry.cache);
+        var instance: EntryInstance = .kept;
         if (!started and !elsewhere and !treeOwns(entry.instance)) {
             runtime.gc.onObjectFreed(entry.instance);
+            instance = .freed;
         } else if (!elsewhere and !isRealmWindow(entry.instance)) {
             if (!started) {
                 runtime.instance_lifecycle.markWrapperGone(entry.instance);
@@ -1044,7 +1074,7 @@ fn finalizeEntry(entry: *CacheEntry) void {
                 runtime.cleanup_coordinator.deferStorageRelease(entry.instance, entry.original_generation);
             }
         }
-        disposeEntryWrapper(entry);
+        disposeEntryWrapper(entry, instance);
         entry.cache.allocator.destroy(entry);
         return;
     }
@@ -1052,8 +1082,12 @@ fn finalizeEntry(entry: *CacheEntry) void {
     // Already being cleaned up (Node.deinit ran): free the storage a
     // completed cleanup left.
     if (runtime.instance_lifecycle.isCleanupStarted(entry.instance)) {
-        if (runtime.instance_lifecycle.isCleanedUp(entry.instance)) runtime.gc.releaseStorage(entry.instance);
-        disposeEntryWrapper(entry);
+        if (runtime.instance_lifecycle.isCleanedUp(entry.instance)) {
+            runtime.gc.releaseStorage(entry.instance);
+            disposeEntryWrapper(entry, .freed);
+        } else {
+            disposeEntryWrapper(entry, .kept);
+        }
         entry.cache.allocator.destroy(entry);
         return;
     }
@@ -1070,7 +1104,7 @@ fn finalizeEntry(entry: *CacheEntry) void {
     if (counted and entry.cache.deferredQueue() != null) {
         if (!wrappedElsewhere(entry.instance, entry.cache))
             runtime.instance_lifecycle.markWrapperGone(entry.instance);
-        disposeEntryWrapper(entry);
+        disposeEntryWrapper(entry, .kept);
         entry.cache.allocator.destroy(entry);
         return;
     }
@@ -1101,7 +1135,7 @@ fn finalizeEntry(entry: *CacheEntry) void {
         // the wrapper (JSDOMWrapper::m_wrapped), leaving the node its tree's.
         if (!isRealmWindow(entry.instance) and !wrappedElsewhere(entry.instance, entry.cache))
             runtime.instance_lifecycle.markWrapperGone(entry.instance);
-        disposeEntryWrapper(entry);
+        disposeEntryWrapper(entry, .kept);
         entry.cache.allocator.destroy(entry);
         return;
     }
@@ -1109,7 +1143,7 @@ fn finalizeEntry(entry: *CacheEntry) void {
     // Another realm's cache still wraps this instance: only this realm's
     // wrapper goes. See `Caches`.
     if (wrappedElsewhere(entry.instance, entry.cache)) {
-        disposeEntryWrapper(entry);
+        disposeEntryWrapper(entry, .kept);
         entry.cache.allocator.destroy(entry);
         return;
     }
@@ -1118,7 +1152,7 @@ fn finalizeEntry(entry: *CacheEntry) void {
     // list), which returns the Instance to the SlabAllocator - engine calls
     // allowed: it may release the values it holds.
     runtime.gc.onObjectFreed(entry.instance);
-    disposeEntryWrapper(entry);
+    disposeEntryWrapper(entry, .freed);
     entry.cache.allocator.destroy(entry);
 }
 
@@ -1405,7 +1439,7 @@ pub const WrapperCache = struct {
                 if (self.holds) |holds| holds.forget(entry) else entry.teardown_deferred = false;
             }
             self.unlinkPending(entry);
-            disposeEntryWrapper(entry);
+            disposeEntryWrapper(entry, .kept);
             self.allocator.destroy(entry);
         }
     }
@@ -1642,30 +1676,12 @@ pub const WrapperCache = struct {
         }
 
         // PHASE 2: Now safe to clean up all entries (no weak callbacks can fire)
+        // (No dump of the entries' nodes here: an entry's slot may be another
+        // thread's object by now - the slab is the Browser's - and nothing of
+        // it but its stamp is read until `slotReissued` says it is still the
+        // entry's. The dump read every entry's node state first, through an
+        // impl.)
         log.debug("[wrapper_cache.deinit] cache={*} PHASE 2: Processing {} entries", .{ self, self.cache.count() });
-
-        // Debug: dump all entries at deinit time
-        {
-            var debug_iter = self.cache.iterator();
-            while (debug_iter.next()) |kv| {
-                const inst = kv.key_ptr.*;
-                const ent = kv.value_ptr.*;
-                const NodeImpl = @import("impls").Node;
-                var is_iframe_str: []const u8 = "no";
-                var local_name_str: []const u8 = "null";
-                if (NodeImpl.getInternalState(inst)) |node_internal| {
-                    if (node_internal.local_name) |ln| {
-                        local_name_str = ln.asSlice();
-                        if (std.mem.eql(u8, ln.asSlice(), "iframe")) {
-                            is_iframe_str = "YES";
-                        }
-                    }
-                } else {
-                    local_name_str = "no_internal";
-                }
-                log.debug("[wrapper_cache.deinit] ENTRY: instance={*} entry={*} local_name={s} is_iframe={s} vtable={*} state={*}", .{ inst, ent, local_name_str, is_iframe_str, inst.vtable, inst.state });
-            }
-        }
         // Each entry leaves the map before anything of it is torn down, so
         // the map holds only the entries still to come - never one destroyed
         // below. A teardown here runs a type's own steps, and they can reach
@@ -1689,24 +1705,14 @@ pub const WrapperCache = struct {
         var processed: usize = 0;
         var skipped_cleaned: usize = 0;
         var skipped_started: usize = 0;
-        var iframe_count: usize = 0;
         while (iter.next()) |kv| {
             const entry = kv.value_ptr.*;
             self.cache.removeByPtr(kv.key_ptr);
             self.guard.noteRemoval(&self.cache);
             processed += 1;
-
-            // Count iframes in cache
-            const NodeImpl = @import("impls").Node;
-            var is_iframe = false;
-            if (NodeImpl.getInternalState(entry.instance)) |node_internal| {
-                if (node_internal.local_name) |ln| {
-                    if (std.mem.eql(u8, ln.asSlice(), "iframe")) {
-                        iframe_count += 1;
-                        is_iframe = true;
-                    }
-                }
-            }
+            // Whether this pass frees the instance: then nothing of its slot
+            // is read after (`disposeEntryWrapper`).
+            var instance: EntryInstance = .kept;
 
             // Only call deinit if not already cleaned up externally
             // Check both:
@@ -1739,14 +1745,8 @@ pub const WrapperCache = struct {
                 if (!is_reused and runtime.instance_lifecycle.isCleanedUp(entry.instance) and
                     !wrappedElsewhere(entry.instance, self))
                     runtime.cleanup_coordinator.deferStorageRelease(entry.instance, entry.original_generation);
-                if (is_iframe) {
-                    log.debug("[wrapper_cache.deinit] SKIP_CLEANED iframe instance={*}", .{entry.instance});
-                }
             } else if (is_started) {
                 skipped_started += 1;
-                if (is_iframe) {
-                    log.debug("[wrapper_cache.deinit] SKIP_STARTED iframe instance={*}", .{entry.instance});
-                }
                 // Its tree tore it down and left the storage: free that, and
                 // only that - deinit has run. Inside a coordinated teardown,
                 // after its last phase (the coordinator), as for an entry
@@ -1756,15 +1756,18 @@ pub const WrapperCache = struct {
                 // still read it (lane pageretention1; unwrapped1's rule).
                 if (!is_reused and runtime.instance_lifecycle.isCleanedUp(entry.instance)) {
                     severWrapper(entry);
-                    if (runtime.cleanup_coordinator.isContextTearingDown())
-                        runtime.cleanup_coordinator.deferStorageRelease(entry.instance, entry.original_generation)
-                    else
+                    if (runtime.cleanup_coordinator.isContextTearingDown()) {
+                        runtime.cleanup_coordinator.deferStorageRelease(entry.instance, entry.original_generation);
+                    } else {
                         runtime.gc.releaseStorage(entry.instance);
+                        instance = .freed;
+                    }
                 }
             } else if (is_reused) {
                 // Its slot holds another object now: the wrapper must not
                 // reach it.
                 severWrapper(entry);
+                instance = .freed;
                 // Instance was reused for a different object - don't call onObjectFreed
                 // This can happen when:
                 // 1. Old instance X was cached
@@ -1811,19 +1814,18 @@ pub const WrapperCache = struct {
             } else if (wrappedElsewhere(entry.instance, self)) {
                 // Another realm's cache still wraps it; that one frees it.
             } else {
-                if (is_iframe) {
-                    log.debug("[wrapper_cache.deinit] DEINIT iframe instance={*}", .{entry.instance});
-                }
                 // The wrapper may outlive this realm (script elsewhere holds
                 // it): it must not reach the instance freed next.
                 severWrapper(entry);
                 // Call GC integration to invoke type-specific deinit
                 // This is essential for cleanup since weak callbacks may not fire during shutdown
                 runtime.gc.onObjectFreed(entry.instance);
+                instance = .freed;
             }
 
-            // Dispose the Global<Object>* handle
-            disposeEntryWrapper(entry);
+            // Dispose the Global<Object>* handle - reading nothing of an
+            // instance this pass freed.
+            disposeEntryWrapper(entry, instance);
 
             // Free the CacheEntry
             self.allocator.destroy(entry);
@@ -1844,11 +1846,11 @@ pub const WrapperCache = struct {
                 severWrapper(entry);
                 runtime.cleanup_coordinator.deferStorageRelease(entry.instance, entry.original_generation);
             }
-            disposeEntryWrapper(entry);
+            disposeEntryWrapper(entry, .kept);
             self.allocator.destroy(entry);
         }
 
-        log.debug("[wrapper_cache.deinit] Summary: processed={}, iframes={}, skipped_cleaned={}, skipped_started={}", .{ processed, iframe_count, skipped_cleaned, skipped_started });
+        log.debug("[wrapper_cache.deinit] Summary: processed={}, skipped_cleaned={}, skipped_started={}", .{ processed, skipped_cleaned, skipped_started });
         self.unregister();
         self.cache.deinit();
         self.pending_before_wrap.deinit(self.allocator);
@@ -1925,8 +1927,9 @@ pub const WrapperCache = struct {
             var iter = self.cache.valueIterator();
             while (iter.next()) |entry_ptr| {
                 const entry = entry_ptr.*;
-                // Dispose the Global<Object>* handle
-                disposeEntryWrapper(entry);
+                // Dispose the Global<Object>* handle (its instance goes with
+                // the batch free, after this).
+                disposeEntryWrapper(entry, .kept);
                 // Free the CacheEntry
                 self.allocator.destroy(entry);
             }
@@ -2067,7 +2070,7 @@ pub const WrapperCache = struct {
             );
             v8.v8_Global_ClearWeak(@ptrCast(old_entry.wrapper));
             releaseCounted(old_entry);
-            disposeEntryWrapper(old_entry);
+            disposeEntryWrapper(old_entry, .kept);
             self.allocator.destroy(old_entry);
         }
         // Rehash first if the tombstones could take half the unused slots -
@@ -2146,10 +2149,15 @@ pub const WrapperCache = struct {
 
             // Call GC integration to invoke type-specific deinit
             // This is essential for cleanup since weak callbacks were disabled
-            if (!wrappedElsewhere(entry.instance, self)) runtime.gc.onObjectFreed(entry.instance);
+            var instance: EntryInstance = .kept;
+            if (!wrappedElsewhere(entry.instance, self)) {
+                runtime.gc.onObjectFreed(entry.instance);
+                instance = .freed;
+            }
 
-            // Dispose the Global<Object>* handle
-            disposeEntryWrapper(entry);
+            // Dispose the Global<Object>* handle - reading nothing of an
+            // instance freed above.
+            disposeEntryWrapper(entry, instance);
 
             // Free the CacheEntry
             self.allocator.destroy(entry);
@@ -2243,7 +2251,7 @@ pub const WrapperCache = struct {
             releaseCounted(entry);
 
             // Dispose the Global<Object>* handle
-            disposeEntryWrapper(entry);
+            disposeEntryWrapper(entry, .kept);
 
             // Free the CacheEntry
             self.allocator.destroy(entry);
