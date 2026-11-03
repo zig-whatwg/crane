@@ -992,6 +992,7 @@ const v8_alone = snapshot_first ++ [_]DeclaredTest{
     // The subject is a count the whole process shares.
     .{ .name = "diagnostic_live_counters_test.test.live_agents counts an agent from createAgent to destroyAgent", .reason = "the subject is engine.live_agents, the process's count of live agents, which the busy Browser's agent is in" },
     .{ .name = "worker_thread_state_test.test.worker threads that end leave no per-thread containers mapped", .reason = "the subject is the process's mapped memory over 32 worker threads, which the busy Browser's allocations grow" },
+    .{ .name = "async_iterable_release_test.test.an async iterator script drops is collected: values() and for await keep nothing per call", .reason = "TEMPORARY: it compares the process's live weak callback records; measured in its own isolate (global handle bytes against a control round with no iterator) it reads 4 handles left per values() call and 2 per for await, a possible leak queued in lane tsanfix1's handoff - converted once that is settled" },
     .{ .name = "test_process_test.test.a test's agent takes its realms down with it, their context handles too", .reason = "the subject is the process's live Global<Context> count after the agent's end - its isolate is gone, so nothing per isolate is left to read - which the busy Browser's realms move" },
 } ++ ledger_tests ++ v8state1_pending;
 
