@@ -1018,7 +1018,7 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     // each with its reason (`v8_alone`).
     .{ .name = "tests-v8", .config = .{ .batch = 1, .alone = &v8_alone } },
     .{ .name = "src-browser", .config = .{ .batch = 1 } },
-    .{ .name = "test-browser", .config = .{ .batch = 1 } },
+    .{ .name = "tests-browser", .config = .{ .batch = 1 } },
     .{ .name = "lib-exports", .config = .{ .batch = 1 } },
     .{ .name = "tests-codegen", .config = .{ .slow = &codegen_slow } },
 };
@@ -3173,9 +3173,8 @@ pub fn build(b: *std.Build) void {
     // and `addModuleTestWithV8` can clone it without two modules claiming
     // `src/browser/root.zig`.
     //
-    // There is no `tests/browser/` directory; the one file at
-    // `tests/browser_document_test.zig` hangs off the separate `test-browser`
-    // step. Register the directory here if one is ever added.
+    // tests/browser/ is a directory suite of its own, run by the separate
+    // `test-browser` step (below), not by `test`.
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "browser")) {
         const browser_tests = addModuleTestWithV8(b, testing_graph.browser, target);
         const run_browser_tests = addSuiteRun(b, launch, browser_tests, "src-browser", null);
@@ -3700,37 +3699,17 @@ pub fn build(b: *std.Build) void {
     // BROWSER TEST - Standalone browser initialization test
     // ========================================================================
 
-    const test_browser_step = b.step("test-browser", "Run browser initialization tests");
-    const browser_test = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("tests/browser_document_test.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "browser", .module = testing_graph.browser },
-            },
-        }),
-    });
-
-    // Link V8 and libuv for browser tests
-    browser_test.root_module.addCSourceFile(.{
-        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = &.{
-            "-std=c++20",
-            "-fno-exceptions",
-            "-fno-rtti",
-            "-DV8_COMPRESS_POINTERS",
-            "-DV8_ENABLE_SANDBOX",
-        },
-    });
-    browser_test.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
-    browser_test.root_module.addObjectFile(.{ .cwd_relative = v8_monolith_path });
-    browser_test.root_module.addObjectFile(.{ .cwd_relative = v8_libplatform_path });
-    browser_test.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
-    browser_test.root_module.link_libcpp = true; //
-
-    const run_browser_test = addSuiteRun(b, launch, browser_test, "test-browser", null);
-    test_browser_step.dependOn(&run_browser_test.step);
+    // tests/browser/: a directory suite like any (a new file there joins it),
+    // run by its own step rather than by `test` - one more root compile of
+    // the whole engine with V8 linked. Its directory is recorded whatever
+    // -Dspec selects (addTestFilesFromDir), so the configure check counts it.
+    const test_browser_step = b.step("test-browser", "Run browser initialization tests (tests/browser/)");
+    const browser_test_imports = [_]std.Build.Module.Import{
+        .{ .name = "browser", .module = testing_graph.browser },
+    };
+    addTestFilesFromDir(b, test_browser_step, "tests/browser", target, &browser_test_imports, true, test_selection) catch |err| {
+        std.debug.print("Warning: Failed to add browser test files: {}\n", .{err});
+    };
 
     // ========================================================================
     // EXECUTABLE (optional CLI tool)
