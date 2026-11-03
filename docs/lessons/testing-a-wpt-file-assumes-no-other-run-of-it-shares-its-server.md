@@ -1,0 +1,12 @@
+# Testing: A WPT file assumes no other run of it shares its server
+
+**Date**: 2026-11-02
+**Lesson**: wptrunner never runs one test file twice at once against one server, and tests rely on it: a fixed stash key is shared by two simultaneous runs of the file, and the run that reads first takes the other's state.
+
+**Why**: Every runner on a pool host talks to that host's one `wpt serve` (wpt_server.zig adopts whatever answers its port). Both sides of an A/B run the same list at once, and lanes' runs overlap, so the same file can run twice within a second on one server - which upstream never does. Server-side state a test names with a fixed key (a stash key, a recorded header, a cookie) is then shared between the two runs.
+
+**What Happened**: fetch/metadata/report.https.sub.html was ERROR once on lane fixes1's A/B base side ("Unhandled rejection: assert_not_equals: got disallowed value 'No header has been recorded'", passed 0, three async tests timed out at 10 s) and OK 15 in every rerun. The file records its three CSP reports under `record-header.py?file=report-same-origin`, `-same-site` and `-cross-site` and reads them back a second later with `stash.take`, which removes them. RED on main's runner: alone 4/4 OK 15; the file twice at once (the second 0.3 s after the first) 6/6 pairs with the first OK 15 and the second ERROR, 0 passed, 10 s, "No header has been recorded" - fixes1's record exactly. Eleven more fetch/metadata files use fixed keys the same way (preload, style, worker, sharedworker, object, embed, track, unload, text, audio-worklet, paint-worklet); report's one-second window made it the one that showed.
+
+**Fix**: tests/wpt_runner/file_lock.zig: each run of a file holds an exclusive flock(2) on the test file itself (`<wpt root>/<path>`), so a second runner on the host waits until the first is done with it - wptrunner's invariant, restored. No lock file: the lock belongs to the descriptor, so a runner that dies releases it; mirrors share each host's tree, so they lock one inode. The wait is bounded (the run's ceiling + 30 s) and beats both watchdogs; past the bound the file is journalled ERROR naming the holder, from a note (pid, since when) the holder keeps in /tmp/crane-wpt-file-locks while it holds the lock. Tests pin two processes contending, the bound, and the release when the holder dies (SIGKILL).
+
+**Takeaway**: **A test's server is part of its fixture: when two runs share one server, run each file once at a time, as wptrunner does - a flake that only an A/B ever shows may be the A/B.**

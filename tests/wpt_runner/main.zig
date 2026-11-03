@@ -108,6 +108,7 @@ const options_mod = @import("options.zig");
 const discovery_mod = @import("discovery.zig");
 const output = @import("output.zig");
 const stall_watchdog = @import("stall_watchdog.zig");
+const file_lock = @import("file_lock.zig");
 const runner_allocator = @import("runner_allocator.zig");
 const wpt_options = @import("wpt_options");
 const clock = @import("clock");
@@ -809,6 +810,16 @@ pub fn executeTests(
         null;
     defer if (result_stream) |*s| s.deinit();
 
+    // A test file never runs twice at once against one server (file_lock.zig):
+    // its lock is on the file under the WPT root, and its holders name
+    // themselves in the host's temporary directory. Without either, runs go
+    // unlocked, as they always did.
+    const io = host.io();
+    const wpt_root_dir: ?std.Io.Dir = host.cwd().openDir(io, options.wpt_root, .{}) catch null;
+    defer if (wpt_root_dir) |d| d.close(io);
+    const lock_notes: ?std.Io.Dir = openLockNotes(io);
+    defer if (lock_notes) |d| d.close(io);
+
     for (discovery.test_files.items, 0..) |test_file, file_offset| {
         var tally: FileTally = FileTally.start();
         tally.index = discovery.base_index + file_offset;
@@ -896,6 +907,42 @@ pub fn executeTests(
                     variant,
                 );
                 defer if (context_name) |n| allocator.free(n);
+
+                // Wait while another runner on this host runs this file -
+                // beating, so neither watchdog takes the wait for a hang - and
+                // give up once it has held the file longer than a run lasts.
+                var waiting: WaitingForFile = .{ .heartbeat = &heartbeat, .deadline = deadline, .index = tally.index, .path = test_file.path };
+                const bound_ms = parsed.metadata.timeout.toMillis() + file_lock_margin_ms;
+                const run_lock: ?file_lock.FileLock = if (wpt_root_dir) |root| file_lock.FileLock.acquire(io, root, test_file.path, .{
+                    .bound_ms = bound_ms,
+                    .waiting = .{ .context = &waiting, .beat = WaitingForFile.beat },
+                    .notes = lock_notes,
+                }) catch |err| switch (err) {
+                    error.HeldTooLong => {
+                        var holder_buf: [128]u8 = undefined;
+                        const holder = file_lock.describeHolder(io, root, test_file.path, lock_notes, &holder_buf);
+                        var error_result = try test_harness.TestResult.initWithContext(allocator, test_file.path, context_name);
+                        error_result.status = .@"error";
+                        error_result.message = try std.fmt.allocPrint(allocator, "Not run: another runner on this host held the file for over {d} s ({s}); a test file never runs twice at once against one server (file_lock.zig)", .{ bound_ms / 1000, holder });
+                        print("wpt_runner: {s}: {s}\n", .{ test_file.path, error_result.message.? });
+                        if (expected_results) |*exp| {
+                            progress.recordResultWithExpected(test_file.path, error_result, exp);
+                        } else {
+                            progress.recordResult(test_file.path, error_result);
+                        }
+                        progress.printProgressWithContext(test_file.path, context_name);
+                        try report.addResult(error_result);
+                        tally.add(error_result);
+                        error_result.deinit(allocator);
+                        continue;
+                    },
+                    // The file cannot be opened or locked here: run it unlocked.
+                    else => null,
+                } else null;
+                defer if (run_lock) |held| held.release(io);
+                if (run_lock) |held| if (held.waited_ms >= 100) {
+                    print("wpt_runner: {s}: waited {d} ms while another runner on this host ran it (file_lock.zig)\n", .{ test_file.path, held.waited_ms });
+                };
 
                 // Execute test in this context
                 const test_result = executeTestFileInContext(
@@ -1245,6 +1292,39 @@ fn heapGcRequested() bool {
 /// only once and there is nothing to tell apart); `variant` goes into the URL,
 /// not into `test_path`, which stays the bare source path everything else keys
 /// off.
+/// How long past a run's ceiling (config.Timeout) another runner may hold a
+/// file before the waiter gives up (file_lock.zig): the holder's run, its
+/// script-deadline slack, its harness report and its page's teardown, under
+/// load.
+const file_lock_margin_ms: u64 = 30_000;
+
+/// What a run does while it waits for another runner to finish its file: a
+/// heartbeat and a deadline mark every second, so neither the supervisor's
+/// watchdog nor this process's takes the wait for a hang.
+const WaitingForFile = struct {
+    heartbeat: *const stall_watchdog.Heartbeat,
+    deadline: *stall_watchdog.SelfWatchdog,
+    index: usize,
+    path: []const u8,
+    beats: u64 = 0,
+
+    fn beat(context: ?*anyopaque, waited_ms: u64) void {
+        const self: *WaitingForFile = @ptrCast(@alignCast(context.?));
+        if (waited_ms / 1000 < self.beats) return;
+        self.beats += 1;
+        self.heartbeat.beat();
+        self.deadline.mark(self.index, self.path);
+    }
+};
+
+/// The host's directory for file_lock's holder notes, made if missing; null
+/// when it cannot be (the lock works without notes).
+fn openLockNotes(io: std.Io) ?std.Io.Dir {
+    const path = "/tmp/crane-wpt-file-locks";
+    host.cwd().createDirPath(io, path) catch return null;
+    return host.cwd().openDir(io, path, .{}) catch null;
+}
+
 fn executeTestFileInContext(
     allocator: std.mem.Allocator,
     test_file: TestFile,
