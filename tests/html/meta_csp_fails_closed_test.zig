@@ -88,16 +88,34 @@ const function_constructor =
     \\(() => { try { return String(new Function("return 3")()); } catch (e) { return e.constructor.name; } })()
 ;
 
-fn fetchResult(browser: anytype, page: anytype) ![]u8 {
-    try page.runScript("window.fetched = 'pending'; fetch('data:text/plain,hi').then(() => window.fetched = 'fetched', (e) => window.fetched = e.name);");
-    _ = try browser.runEventLoopBlocking(50);
-    return page.evaluateScriptToString("window.fetched", testing.allocator);
+/// `late_ms`: how long after the fetch ends its result is recorded - 0 but
+/// in the case that checks the probe waits for it.
+fn fetchResult(browser: anytype, page: anytype, comptime late_ms: u32) ![]u8 {
+    try page.runScript(std.fmt.comptimePrint("window.fetched = 'pending'; fetch('data:text/plain,hi').then(() => new Promise((r) => setTimeout(r, {d}))).then(() => window.fetched = 'fetched', (e) => window.fetched = e.name);", .{late_ms}));
+    return settled(browser, page, "window.fetched", "pending");
 }
 
 fn javascriptUrlResult(browser: anytype, page: anytype) ![]u8 {
     try page.runScript("window.jsran = 0; location.href = 'javascript:window.jsran = 1';");
-    _ = try browser.runEventLoopBlocking(50);
-    return page.evaluateScriptToString("String(window.jsran)", testing.allocator);
+    return settled(browser, page, "String(window.jsran)", "0");
+}
+
+/// `expression`'s answer once it is no longer `unsettled`, or once the
+/// page's loop has nothing left to run (a fetch in flight and a queued
+/// navigation are work: EventLoop.hasPendingWork) - a blocked javascript:
+/// URL leaves `jsran` at its first value for good. Capped at 10 s. Each
+/// probe used to wait a fixed 50 ms: on a loaded host the fetch had not
+/// ended by then and read 'pending' (FLAKY under zig build test on
+/// chat.local at load ~19, lane crashes7).
+fn settled(browser: anytype, page: anytype, expression: []const u8, unsettled: []const u8) ![]u8 {
+    var waited: u64 = 0;
+    while (true) : (waited += 50) {
+        _ = try browser.runEventLoopBlocking(50);
+        const got = try page.evaluateScriptToString(expression, testing.allocator);
+        const idle = !browser.event_loop.?.hasPendingWork();
+        if (!std.mem.eql(u8, got, unsettled) or idle or waited >= 10_000) return got;
+        testing.allocator.free(got);
+    }
 }
 
 fn exercise() !void {
@@ -121,7 +139,7 @@ fn exercise() !void {
     try expectScript(page, eval_script, "2");
     try expectScript(page, function_constructor, "3");
     {
-        const got = try fetchResult(browser, page);
+        const got = try fetchResult(browser, page, 0);
         defer allocator.free(got);
         try testing.expectEqualStrings("fetched", got);
     }
@@ -144,7 +162,7 @@ fn exercise() !void {
     try expectScript(page, function_constructor, "EvalError");
     // Fetch (csp.request_check, through fetch's csp_check).
     {
-        const got = try fetchResult(browser, page);
+        const got = try fetchResult(browser, page, 0);
         defer allocator.free(got);
         try testing.expectEqualStrings("TypeError", got);
     }
@@ -163,6 +181,33 @@ test "a document whose meta CSP could not be recorded blocks script, eval, fetch
     const Run = struct {
         fn run(failure: *?anyerror) void {
             exercise() catch |err| {
+                failure.* = err;
+            };
+        }
+    };
+    var failure: ?anyerror = null;
+    const thread = try std.Thread.spawn(.{}, Run.run, .{&failure});
+    thread.join();
+    if (failure) |err| return err;
+}
+
+fn lateFetch() !void {
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    const page = browser.current_context orelse return error.NoPage;
+    try page.loadHTML("<!doctype html><head></head><body></body>", .{ .base_url = "https://example.test/page.html" });
+    // A result recorded 300 ms after the fetch ends: what a loaded host
+    // looks like to a probe that waits a fixed 50 ms.
+    const got = try fetchResult(browser, page, 300);
+    defer testing.allocator.free(got);
+    try testing.expectEqualStrings("fetched", got);
+}
+
+test "the fetch probe waits for the fetch's result, not a fixed time: a result recorded 300 ms late is read" {
+    const Run = struct {
+        fn run(failure: *?anyerror) void {
+            lateFetch() catch |err| {
                 failure.* = err;
             };
         }
