@@ -15,3 +15,5 @@ zig test -lc --dep clock --dep host -Mroot=tests/wpt_runner/journal.zig \
 ```
 
 **Takeaway**: **Before trusting a test block, name the build target that runs it. See it fail once - a red test you have never seen go red is not a test.**
+
+**Update (2026-11-02, lane flakes2)**: a whole directory can be the file nobody collects. `zig build test` compiles a tests/<dir>/ only when build.zig names it (`addTestFilesFromDir`, or a hand-made root), and tests/infra/font_case_folding_test.zig sat in a directory build.zig never named from its commit (633a1e91df4) on. Now the configuration fails on such a directory (build.zig `checkEveryTestDirectoryIsASuite`, over tools/test_suites.zig). Its kin was a step that compiled and passed while running nothing: `zig build test-v8` ran each tests/v8/*.js through a repl that reads only stdin and was given none, counting every file passed with 0 assertions for 10.5 months - removed. A gate you have never seen go red is no gate.
