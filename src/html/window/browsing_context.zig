@@ -116,6 +116,14 @@ pub const Navigables = struct {
     /// past its Browser, and the next Browser on the thread read the freed
     /// block (lane gstate4).
     integrations: std.ArrayListUnmanaged(*IFrameIntegration) = .empty,
+    /// Every navigation in flight of the Browser's navigables, by its ID
+    /// (HTMLIFrameElement's records, opaque here: a navigation's record is
+    /// its navigable's, and each ends with its integration). Whoever keeps
+    /// only an ID - an event-loop task, a fetch's client, a streamed body's
+    /// holder - keeps this list with it, and a navigation ended meanwhile is
+    /// simply not found. It was one map per thread (lane gstate4).
+    navigations: std.AutoHashMapUnmanaged(u64, *anyopaque) = .empty,
+    navigations_guard: infra.tombstones.TombstoneGuard = .{},
 
     pub fn init(allocator: Allocator) Navigables {
         return .{ .allocator = allocator };
@@ -130,31 +138,60 @@ pub const Navigables = struct {
         for (self.live.items) |ctx| ctx.navigables = null;
         self.live.deinit(self.allocator);
         // An integration still listed outlived its Browser: it leaves no list
-        // when it ends.
+        // when it ends. (One that left is not reached any more: its block
+        // and its Browser's end together.)
         for (self.integrations.items) |integration| integration.navigables = null;
         self.integrations.deinit(self.allocator);
+        // A navigation ends with its integration, before its Browser does.
+        self.navigations.deinit(self.allocator);
         self.* = .{ .allocator = self.allocator };
     }
 
     /// `integration` joins this list (once) - the list of its browsing
-    /// context's Browser.
+    /// context's Browser. It names the list from now on, through its
+    /// navigations' end.
     pub fn joinIntegration(self: *Navigables, integration: *IFrameIntegration) Allocator.Error!void {
-        if (integration.navigables == self) return;
-        if (integration.navigables != null) leaveIntegration(integration);
+        if (self.listsIntegration(integration)) return;
+        if (integration.navigables) |other| if (other != self) leaveIntegration(integration);
         try self.integrations.append(self.allocator, integration);
         integration.navigables = self;
     }
 
-    /// `integration` leaves the list it is on, if any.
+    /// `integration` leaves the list it is on, if any - it no longer lives.
+    /// It still names the list: its navigations in flight end after it
+    /// leaves (IFrameIntegration.deinit runs `deinit_callback`, then
+    /// `abandon_navigations_callback`).
     pub fn leaveIntegration(integration: *IFrameIntegration) void {
         const self = integration.navigables orelse return;
-        integration.navigables = null;
         for (self.integrations.items, 0..) |existing, i| {
             if (existing == integration) {
                 _ = self.integrations.swapRemove(i);
                 return;
             }
         }
+    }
+
+    /// Record navigation `id` in flight.
+    pub fn putNavigation(self: *Navigables, id: u64, record: *anyopaque) Allocator.Error!void {
+        self.navigations_guard.beforeInsert(&self.navigations);
+        try self.navigations.put(self.allocator, id, record);
+    }
+
+    /// Navigation `id`'s record, while it is in flight.
+    pub fn navigation(self: *const Navigables, id: u64) ?*anyopaque {
+        return self.navigations.get(id);
+    }
+
+    /// Navigation `id`'s record, taken out of the list.
+    pub fn takeNavigation(self: *Navigables, id: u64) ?*anyopaque {
+        const kv = self.navigations.fetchRemove(id) orelse return null;
+        self.navigations_guard.noteRemoval(&self.navigations);
+        return kv.value;
+    }
+
+    /// The navigations in flight. A walk must not add or take one.
+    pub fn navigationIterator(self: *const Navigables) std.AutoHashMapUnmanaged(u64, *anyopaque).Iterator {
+        return self.navigations.iterator();
     }
 
     /// Whether `integration` is on this list - its navigable lives. Compares
