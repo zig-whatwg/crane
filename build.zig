@@ -1938,40 +1938,12 @@ fn linkV8(builder: *std.Build, module: *std.Build.Module, target: std.Build.Reso
 
     // Add custom-built V8 static libraries
     module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
-    // -Dv8-test-link=shared (lane onebin1's measurement): the monolith as a
-    // shared library (`v8TestDylib`), named once per build.
-    if (builder.named_lazy_paths.get(v8_test_dylib_name)) |dylib| {
-        module.addObjectFile(dylib);
-        module.addRPath(dylib.dirname());
-        module.link_libcpp = true;
-        return;
-    }
     module.addObjectFile(.{ .cwd_relative = v8_monolith_path });
     module.addObjectFile(.{ .cwd_relative = v8_libplatform_path });
     module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
 
     // Add libuv
     module.link_libcpp = true; //
-}
-
-/// The named lazy path of the shared V8 the test executables link under
-/// -Dv8-test-link=shared (`v8TestDylib`).
-const v8_test_dylib_name = "onebin1-v8-test-dylib";
-
-/// -Dv8-test-link=shared (lane onebin1, phase 1 - a measurement of the link,
-/// nothing adopted): the prebuilt monolith, unchanged, linked whole into a
-/// shared library by the host's clang (it holds libplatform and libbase
-/// too), which every test executable that links V8 (`linkV8`) then links
-/// instead of the three archives - Lightpanda's dev_fast builds link V8
-/// shared. The production artifacts stay static. macOS only.
-fn v8TestDylib(b: *std.Build) void {
-    const cmd = b.addSystemCommand(&.{ "clang++", "-dynamiclib", "-o" });
-    cmd.setName("v8 test dylib");
-    const out = cmd.addOutputFileArg("libv8_crane_test.dylib");
-    cmd.addArgs(&.{ "-install_name", "@rpath/libv8_crane_test.dylib", "-Wl,-all_load" });
-    cmd.addFileArg(b.path("jsengines/v8/out/static/obj/libv8_monolith.a"));
-    cmd.addArgs(&.{ "-lc++", "-framework", "CoreFoundation" });
-    b.addNamedLazyPath(v8_test_dylib_name, out);
 }
 
 /// A `zig test` artifact for an existing module's own test tree, with V8 linked.
@@ -2734,28 +2706,11 @@ pub fn build(b: *std.Build) void {
     const brotli_enabled = for (platform_without) |name| {
         if (std.mem.eql(u8, name, "brotli")) break false;
     } else true;
-    // -Dc-libraries-optimize (lane onebin1, phase 1 - a measurement, nothing
-    // adopted): the mode of the C libraries every graph links. A safe mode
-    // other than -Doptimize's builds them as the WPT runner's own are (the C
-    // sanitizer `.full`, tests/wpt_runner/build_mode.zig), and a runner whose
-    // C libraries would be that mode links these instead of building its own:
-    // one set for the Debug tests and the ReleaseSafe runner (Lightpanda
-    // builds its C dependencies `.fast` whatever -Doptimize says).
-    const c_libraries_optimize = b.option(std.builtin.OptimizeMode, "c-libraries-optimize", "Optimize mode of the C libraries every graph links (default: -Doptimize's; lane onebin1's measurement)") orelse optimize;
-    const c_libraries_sanitize: ?std.zig.SanitizeC = if (c_libraries_optimize == optimize) null else switch (c_libraries_optimize) {
-        .Debug, .ReleaseSafe => .full,
-        .ReleaseFast, .ReleaseSmall => null,
-    };
-    const brotli = buildBrotli(b, target, c_libraries_optimize, c_libraries_sanitize);
-    const image_codecs = buildImageCodecs(b, target, c_libraries_optimize, c_libraries_sanitize);
+    const brotli = buildBrotli(b, target, optimize, null);
+    const image_codecs = buildImageCodecs(b, target, optimize, null);
     const image_codecs_step = b.step("platform-image-codecs", "Build the testing JPEG/SVG libraries (also for cross targets)");
     if (image_codecs) |codecs| image_codecs_step.dependOn(&b.addInstallArtifact(codecs, .{}).step);
-    const static_libcurl: ?StaticLibcurl = if (use_system_curl) null else buildStaticLibcurl(b, target, c_libraries_optimize, enable_http2, c_libraries_sanitize, if (brotli_enabled) brotli else null);
-    // The C libraries alone, for measuring their build (lane onebin1).
-    const c_libraries_step = b.step("c-libraries", "Build the C libraries every graph links (libcurl, mbedTLS, zlib, nghttp2, Brotli, the image codecs) in -Dc-libraries-optimize's mode");
-    if (static_libcurl) |libs| c_libraries_step.dependOn(&libs.libcurl.step);
-    if (brotli) |libs| for ([_]*std.Build.Step.Compile{ libs.common, libs.decoder, libs.encoder }) |lib| c_libraries_step.dependOn(&lib.step);
-    if (image_codecs) |codecs| c_libraries_step.dependOn(&codecs.step);
+    const static_libcurl: ?StaticLibcurl = if (use_system_curl) null else buildStaticLibcurl(b, target, optimize, enable_http2, null, if (brotli_enabled) brotli else null);
     // A system libcurl may lack WebSockets. Say so now rather than leaving it to
     // a runtime CURLE_UNSUPPORTED_PROTOCOL.
     if (use_system_curl) warnIfSystemCurlLacksWebSockets(b);
@@ -2812,10 +2767,7 @@ pub fn build(b: *std.Build) void {
         optimize,
         b.user_input_options.contains("optimize") or b.graph.release_mode != .off,
     );
-    // The runner links the shared C libraries when they are its mode
-    // (`c_libraries_optimize`; by default they are -Doptimize's, and this is
-    // `!ownCLibraries()`).
-    const runner_graph = if (runner_modes.c_libraries == c_libraries_optimize or use_system_curl) testing_graph else runner_graph: {
+    const runner_graph = if (!runner_modes.ownCLibraries() or use_system_curl) testing_graph else runner_graph: {
         var runner_config = module_config;
         runner_config.brotli = buildBrotli(b, target, runner_modes.c_libraries, runner_modes.sanitize_c);
         runner_config.image_codecs = buildImageCodecs(b, target, runner_modes.c_libraries, runner_modes.sanitize_c);
@@ -2983,7 +2935,6 @@ pub fn build(b: *std.Build) void {
         break :launch l;
     };
     test_selection.launch = launch;
-    if (b.option(enum { static, shared }, "v8-test-link", "How test executables link V8: static (the archives, the default) or shared (the monolith as a dylib; macOS; lane onebin1's measurement)") == .shared) v8TestDylib(b);
     const test_binaries = b.option(TestBinaries, "test-binaries", "How `test` compiles tests/<dir>/: dirs (an executable each, the default), one (ONE executable for every directory whose imports agree) or v8 (one for those that link V8)") orelse .dirs;
     if (test_binaries != .dirs and test_selection.file == null) {
         const one = b.allocator.create(OneBinary) catch @panic("OOM");
