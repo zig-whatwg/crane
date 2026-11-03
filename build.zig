@@ -1092,6 +1092,13 @@ const context_count_reason = "the subject is the adapter's process-wide live_con
 /// entry point (object_globals_from.*) sees one (lane testfix2).
 const receiver_creation_reason = "the subject is that the path makes no Global for its receiver - a handle made and disposed leaves the isolate's global handle bytes as they were, so only the adapter's process-wide creation count object_globals_from.* sees it, which the busy Browser's bindings move too";
 
+/// weak_callback_ownership_test: the subject of each is the adapter's
+/// process-wide ledger of live weak callback records itself - "returns to
+/// baseline" is the assertion, and a record freed late or never is invisible
+/// to the isolate's global handle bytes once its handle is reset (lane
+/// testfix2, with the integrator's ruling).
+const weak_record_reason = "the process-wide weak-record ledger is the subject: v8_Debug_LiveWeakCallbackData returning to its baseline is the assertion, and the busy Browser's wrappers arm and free records too";
+
 /// The tests of lane tsanfix1's whole-file entries (2026-11-02) whose
 /// subject is a count the whole process shares; their files' other tests
 /// read their own isolate's global handle bytes (lane testfix2).
@@ -1100,6 +1107,14 @@ const process_count_subjects = [_]DeclaredTest{
     .{ .name = "context_counter_test.test.a context made with a global constructor and disposed leaves live_context_globals unchanged", .reason = context_count_reason },
     .{ .name = "indexed_property_semantics_test.test.an indexed read and an `in` check make no handle for the list", .reason = receiver_creation_reason },
     .{ .name = "indexed_property_semantics_test.test.an attribute read makes no handle for its receiver and leaves none", .reason = receiver_creation_reason },
+    .{ .name = "weak_callback_ownership_test.test.disarming a handle frees the record V8 hands back", .reason = weak_record_reason },
+    .{ .name = "weak_callback_ownership_test.test.disposing an armed handle ends the arm - the record cannot outlive the Global", .reason = weak_record_reason },
+    .{ .name = "weak_callback_ownership_test.test.re-arming the same handle replaces the record rather than stacking one", .reason = weak_record_reason },
+    .{ .name = "weak_callback_ownership_test.test.a handle that was never armed is unaffected by disarm and dispose", .reason = weak_record_reason },
+    .{ .name = "weak_callback_ownership_test.test.v8_Value_ToWeakGlobal arms the handle it returns, not a null one", .reason = weak_record_reason },
+    .{ .name = "weak_callback_ownership_test.test.disposing an isolate leaves another isolate's detached records alone", .reason = weak_record_reason },
+    .{ .name = "weak_callback_ownership_test.test.a finalizer runs in V8's second pass, after its first-pass unlink, and its record goes with it", .reason = weak_record_reason },
+    .{ .name = "weak_callback_ownership_test.test.disposing a handle before its second pass cancels the finalizer and frees its record", .reason = weak_record_reason },
     // TEMPORARY until lane hookfreeze2 merges: its Tally counts every wrapper
     // reference of the process through runtime.lifetime's swapped hooks.
     .{ .name = "refcount_wrapper_link_test.test.", .reason = "TEMPORARY: its Tally counts every wrapper reference the process takes and lets go through runtime.lifetime's hooks, which it swaps - the busy Browser's wrappers' too; lane hookfreeze2's overrideHooksForTest is a Hook override, which holds the busy Browser while it lasts, and this entry goes when that merges" },
