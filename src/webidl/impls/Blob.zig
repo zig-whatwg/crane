@@ -182,7 +182,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 pub fn call_constructor(ctx: runtime.Context, blobParts: webidl.Opt(runtime.JSValue), options: webidl.Opt(dictionaries.BlobPropertyBag)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(ctx.allocator, State, &Blob.vtable, ctx);
-    errdefer deinit(instance);
+    // Until it is returned, the construction is the object's only owner: a
+    // failed step frees it whole. Its own deinit is its destructor, not a
+    // free, and left its slot in the slab (tests/v8/constructor_error_receiver_test.zig;
+    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
+    errdefer runtime.gc.releaseOwned(instance);
 
     // Determine if we have blob parts and what endings mode to use
     const endings_mode: file.algorithms.Endings = blk: {
@@ -239,7 +243,11 @@ pub fn setBlobData(instance: *runtime.Instance, allocator: std.mem.Allocator, bl
 /// directly from bytes without going through the WebIDL constructor.
 pub fn createFromBytes(allocator: std.mem.Allocator, ctx: runtime.Context, bytes: []const u8, mime_type: []const u8) !*runtime.Instance {
     const instance = try init(allocator, State, &Blob.vtable, ctx);
-    errdefer deinit(instance);
+    // Until it is returned, the construction is the object's only owner: a
+    // failed step frees it whole. Its own deinit is its destructor, not a
+    // free, and left its slot in the slab (tests/v8/constructor_error_receiver_test.zig;
+    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
+    errdefer runtime.gc.releaseOwned(instance);
 
     const blob_data = try file.BlobData.init(allocator, bytes, mime_type);
     errdefer blob_data.deinit();
@@ -253,7 +261,11 @@ pub fn createFromBytes(allocator: std.mem.Allocator, ctx: runtime.Context, bytes
 /// Takes ownership of the BlobData - caller should NOT deinit it.
 pub fn createFromBlobData(allocator: std.mem.Allocator, ctx: runtime.Context, blob_data: *file.BlobData) !*runtime.Instance {
     const instance = try init(allocator, State, &Blob.vtable, ctx);
-    errdefer deinit(instance);
+    // Until it is returned, the construction is the object's only owner: a
+    // failed step frees it whole. Its own deinit is its destructor, not a
+    // free, and left its slot in the slab (tests/v8/constructor_error_receiver_test.zig;
+    // docs/lessons/architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
+    errdefer runtime.gc.releaseOwned(instance);
 
     try setBlobData(instance, allocator, blob_data);
 

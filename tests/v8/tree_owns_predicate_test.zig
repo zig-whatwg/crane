@@ -20,6 +20,7 @@ const runtime = @import("runtime");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 const interfaces = @import("interfaces");
+const dom = @import("dom");
 
 const treeOwns = v8.wrapper_cache_mod.treeOwns;
 
@@ -51,8 +52,12 @@ test "treeOwns: a node with a parent is its tree's; its detached root is not" {
     const allocator = testing.allocator;
 
     const fragment = try interfaces.DocumentFragment.init(allocator, r);
-    // The fragment's teardown walks its subtree and frees the child too.
-    defer interfaces.DocumentFragment.deinit(fragment);
+    // Freed whole, as a native creator frees a root it never inserted
+    // (dom.node_creation.destroyUninserted): its teardown walks its subtree
+    // and frees the child too. interfaces.DocumentFragment.deinit alone is
+    // its destructor, and left its slot in the slab (docs/lessons/
+    // architecture-an-interfaces-deinit-is-a-destructor-not-a-free.md).
+    defer dom.node_creation.destroyUninserted(fragment);
     const child = try interfaces.Text.init(allocator, r);
 
     // Both are roots before the append: neither is held by a tree.
@@ -72,9 +77,10 @@ test "treeOwns: a node removed from its parent is a root again" {
     const allocator = testing.allocator;
 
     const fragment = try interfaces.DocumentFragment.init(allocator, r);
-    defer interfaces.DocumentFragment.deinit(fragment);
+    defer dom.node_creation.destroyUninserted(fragment);
     const child = try interfaces.Text.init(allocator, r);
-    defer interfaces.Text.deinit(child);
+    // A root again once removed: its own free.
+    defer dom.node_creation.destroyUninserted(child);
 
     _ = try interfaces.Node.call_appendChild(fragment, child);
     try testing.expect(treeOwns(child));
@@ -86,6 +92,6 @@ test "treeOwns: the default - anything that is not a node answers false" {
     defer test_agent.close();
     const r = try realm();
     const headers = try interfaces.Headers.init(testing.allocator, r);
-    defer interfaces.Headers.deinit(headers);
+    defer runtime.Instance.deinit(headers);
     try testing.expect(!treeOwns(headers));
 }

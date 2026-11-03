@@ -970,20 +970,15 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     // tests-v8 ran as one index-order process until lane v8order1
     // (2026-11-01) made its tests hermetic (tests/v8/test_process.zig; the
     // order findings it fixed: docs/testing/tests-v8-order-findings-2026-11-01.tsv).
-    // TEMPORARY: tests-v8's process-state check only reports (lane tstate1,
-    // 2026-11-02). At batch 1 its tests leave, every one listed with its
-    // field and values in docs/testing/test-state-findings-2026-11-02.tsv:
-    // one Global<Context> per realm a host agent's end tears down (the V8
-    // adapter's context_manager.deinit never disposes an entry's own handle,
-    // as retireEntry does - a product bug, reported), platform objects left
-    // in the standalone runtime's slab, Global<Object> handles, and
-    // worker_streams_test's deliberate --stress-compaction. Switch it to
-    // failing when `CRANE_TEST_STATE=fail zig build test-launch -Dspec=v8
-    // -Dlaunch-batch=1` passes.
+    // Its process-state checks fail a test that leaves state behind, as
+    // every suite's do: the findings that kept them report-only (lane
+    // tstate1) are classified and fixed, each with its commit, in
+    // docs/testing/test-state-findings-2026-11-02.tsv (lanes engown1,
+    // fixes1, v8state1).
     // Beside the busy Browser (-Dmany-browsers) it fails like any run (lane
     // tsanfix1); the tests that need their process to themselves run alone,
     // each with its reason (`v8_alone`).
-    .{ .name = "tests-v8", .config = .{ .batch = 1, .state_checks = .report, .alone = &v8_alone } },
+    .{ .name = "tests-v8", .config = .{ .batch = 1, .alone = &v8_alone } },
     .{ .name = "src-browser", .config = .{ .batch = 1 } },
     .{ .name = "test-browser", .config = .{ .batch = 1 } },
     .{ .name = "lib-exports", .config = .{ .batch = 1 } },

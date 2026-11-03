@@ -150,6 +150,10 @@ test "a wrap whose cache insert fails still marks the instance: the mark precede
     const page = try Page.open();
     defer page.close();
     const div = try nativeDiv(page);
+    // The conservative answer keeps the storage, so the realm's end does too:
+    // the test, which knows the discarded wrapper was the only one, frees the
+    // element it made (its slot stayed in the process's standalone slab).
+    defer dom.node_creation.destroyUninserted(div);
     const cache: *v8.wrapper_cache_mod.WrapperCache = @ptrCast(@alignCast(page.realm.getV8WrapperCacheStorage().?));
 
     var failing = std.testing.FailingAllocator.init(cache.allocator, .{ .fail_index = 0 });

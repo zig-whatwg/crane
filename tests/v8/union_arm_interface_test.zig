@@ -288,7 +288,7 @@ fn blobPartsOf(realm: runtime.Context, source: []const u8, endings: Endings) ![]
         .native => ._native_,
     } });
     const blob = try interfaces.Blob.call_constructor(realm, BlobPartsArgument.passed(parts.value), options);
-    defer interfaces.Blob.deinit(blob);
+    defer runtime.Instance.deinit(blob);
     const bytes = blob_bytes.bytesOf(blob) orelse return error.NotABlob;
     if (bytes.len == 0) return "";
     return realm.allocator.dupe(u8, bytes);
@@ -350,7 +350,7 @@ test "Blob.text() is the UTF-8 decode of its bytes: the BOM stripped, an invalid
     defer data.deinit();
     ensurePools();
     const blob = try blob_bytes.create(&data, "\xef\xbb\xbfa\xffb", "");
-    defer interfaces.Blob.deinit(blob);
+    defer runtime.Instance.deinit(blob);
     const text = try fulfillmentOf(try interfaces.Blob.call_text(blob));
     defer ffi.v8_Value_Dispose(text);
     const decoded = try protocol.convertToDOMString(&data, runtime.JSValue.fromHandle(@ptrCast(text)), std.testing.allocator);
@@ -365,7 +365,7 @@ test "Blob.arrayBuffer() and bytes() are fulfilled with a copy of every byte" {
     defer data.deinit();
     ensurePools();
     const blob = try blob_bytes.create(&data, "\x00\x01\xff", "");
-    defer interfaces.Blob.deinit(blob);
+    defer runtime.Instance.deinit(blob);
 
     const buffer = try fulfillmentOf(try interfaces.Blob.call_arrayBuffer(blob));
     defer ffi.v8_Value_Dispose(buffer);
@@ -391,7 +391,7 @@ fn expectNoHandleLeft(comptime method: fn (*runtime.Instance) anyerror!runtime.J
     defer data.deinit();
     ensurePools();
     const blob = try blob_bytes.create(&data, "abc", "");
-    defer interfaces.Blob.deinit(blob);
+    defer runtime.Instance.deinit(blob);
     protocol.releaseValue(.{ .value = try method(blob) });
     const before = ffi.v8_Isolate_GetGlobalHandleBytes(test_isolate.?);
     for (0..32) |_| protocol.releaseValue(.{ .value = try method(blob) });
@@ -432,7 +432,7 @@ test "Response.arrayBuffer(), bytes() and text() leave no engine handle behind" 
     const params = zig017ParamsOf(@typeInfo(@TypeOf(Response.call_constructor)).@"fn");
     ensurePools();
     const response = try Response.call_constructor(&data, params[1].type.?.notPassed(), params[2].type.?.notPassed());
-    defer Response.deinit(response);
+    defer runtime.Instance.deinit(response);
     const round = struct {
         fn run(r: *runtime.Instance) !void {
             protocol.releaseValue(.{ .value = try Response.call_arrayBuffer(r) });
@@ -454,7 +454,7 @@ test "Response.arrayBuffer() of a null body is fulfilled with an empty ArrayBuff
     const params = zig017ParamsOf(@typeInfo(@TypeOf(Response.call_constructor)).@"fn");
     ensurePools();
     const response = try Response.call_constructor(&data, params[1].type.?.notPassed(), params[2].type.?.notPassed());
-    defer Response.deinit(response);
+    defer runtime.Instance.deinit(response);
     const buffer = try fulfillmentOf(try Response.call_arrayBuffer(response));
     defer ffi.v8_Value_Dispose(buffer);
     try std.testing.expect(ffi.v8_Value_IsArrayBuffer(buffer));
