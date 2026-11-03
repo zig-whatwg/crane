@@ -222,6 +222,14 @@ const AgentRecord = struct {
     /// thread only, through its end; its storage goes with the record. It was
     /// a `threadlocal`.
     caches: @import("wrapper_cache.zig").Caches = .empty,
+    /// How many "prepare to run script"s are open on the agent without their
+    /// "clean up" (protocol_scripts.zig): each a realm execution context on
+    /// the agent's JavaScript execution context stack - an agent's own
+    /// (ECMAScript 9.4 "an agent ... has its own execution context stack"),
+    /// whether or not a JavaScript frame runs above it. Read and written on
+    /// the agent's own thread only. It was a `threadlocal`: one agent's open
+    /// prepare made another agent on the thread skip its checkpoint.
+    prepared_scripts: u32 = 0,
     /// The agent is ending (`endAgent`): its hooks are forgotten, and
     /// `recordOf` no longer finds it - nothing reaches the host from here on,
     /// and nothing is made for the agent - while its realms end, which still
@@ -311,6 +319,17 @@ pub fn endingWindowRealmsOf(isolate: *ffi.Isolate) ?*?*const protocol_realms.End
     defer std.Io.Threaded.mutexUnlock(&agents_lock);
     const record = agents.get(isolate) orelse return null;
     return &record.ending_window_realms;
+}
+
+/// The count of the agent's open "prepare to run script"s
+/// (`AgentRecord.prepared_scripts`), until the agent's record goes - through
+/// its end too; null for an isolate createAgent did not make. Called on the
+/// agent's own thread only.
+pub fn preparedScriptsOf(isolate: *ffi.Isolate) ?*u32 {
+    std.Io.Threaded.mutexLockUncancelable(&agents_lock);
+    defer std.Io.Threaded.mutexUnlock(&agents_lock);
+    const record = agents.get(isolate) orelse return null;
+    return &record.prepared_scripts;
 }
 
 /// The callback wrappers of the agent whose isolate this is

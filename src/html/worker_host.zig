@@ -682,12 +682,14 @@ fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
 fn runWorkerTimerCallback(ctx: *WorkerTimerContext) void {
     const wctx = ctx.worker_host;
 
-    // HTML §8.6: while this callback runs, the nesting level IS this timer's level,
-    // so a setTimeout called from inside it nests one deeper. Restored afterwards
-    // because the same thread goes on to run other tasks.
-    const saved_nesting = runtime.timer.nesting_level;
-    runtime.timer.nesting_level = ctx.nesting_level;
-    defer runtime.timer.nesting_level = saved_nesting;
+    // HTML §8.6: while this callback runs, the worker agent's timer nesting
+    // level (its host's, AgentHost.timer_nesting_level) IS this timer's level,
+    // so a setTimeout called from inside it nests one deeper. Restored
+    // afterwards because the same loop goes on to run other tasks.
+    const level = &wctx.agent_host.timer_nesting_level;
+    const saved_nesting = level.*;
+    level.* = ctx.nesting_level;
+    defer level.* = saved_nesting;
 
     // The built-ins (postMessage, the timers) find their worker here.
 
@@ -2001,7 +2003,7 @@ pub const WorkerHost = struct {
             .current_timer_id = 0, // Updated after scheduling
             .is_interval = repeat,
             .interval_delay_ms = 0,
-            .nesting_level = runtime.timer.nesting_level +| 1,
+            .nesting_level = self.agent_host.timer_nesting_level +| 1,
             .allocator = self.allocator,
             .cancelled = false,
             .worker_host = self,
@@ -2039,7 +2041,7 @@ pub const WorkerHost = struct {
         // against the CURRENT nesting level: the spec reads it in step 4,
         // clamps in step 6, and only then increments for the timer it is
         // creating (steps 11-12).
-        const clamped_ms = runtime.timer.clampTimeout(@max(timeout, 0), runtime.timer.nesting_level);
+        const clamped_ms = runtime.timer.clampTimeout(@max(timeout, 0), self.agent_host.timer_nesting_level);
         const delay_u64: u64 = if (clamped_ms >= 0) @intCast(clamped_ms) else 0;
         timer_ctx.interval_delay_ms = delay_u64;
 

@@ -22,47 +22,13 @@ const dictionaries = @import("dictionaries");
 
 const log = std.log.scoped(.report_exception);
 
-/// The globals currently "in error reporting mode" (step 6.1). An `onerror`
-/// that throws must not re-enter reporting for the same global, which would
-/// recurse without end. The set is tiny - reporting only nests across
-/// globals, and not deeply - so a fixed array is enough; a global that finds
-/// the array full is simply not guarded (the spec's flag cannot overflow, but
-/// neither can a real page nest reports eight globals deep).
-///
-/// Every thread that runs script reports here - a Browser's and each of its
-/// workers' (docs/instances.md) - so the slots are reached only under
-/// `mutex`. A global is one thread's, so its check-then-enter cannot race.
-const Reporting = struct {
-    /// Protects `slots`; held for one scan or one store.
-    mutex: std.Io.Mutex = .init,
-    slots: [8]?*runtime.Instance = @splat(null),
-};
-var reporting: Reporting = .{};
-
-fn inErrorReportingMode(global: *runtime.Instance) bool {
-    std.Io.Threaded.mutexLockUncancelable(&reporting.mutex);
-    defer std.Io.Threaded.mutexUnlock(&reporting.mutex);
-    for (reporting.slots) |g| if (g == global) return true;
-    return false;
-}
-
-fn enterErrorReportingMode(global: *runtime.Instance) ?usize {
-    std.Io.Threaded.mutexLockUncancelable(&reporting.mutex);
-    defer std.Io.Threaded.mutexUnlock(&reporting.mutex);
-    for (&reporting.slots, 0..) |*slot, i| {
-        if (slot.* == null) {
-            slot.* = global;
-            return i;
-        }
-    }
-    return null;
-}
-
-fn leaveErrorReportingMode(slot: usize) void {
-    std.Io.Threaded.mutexLockUncancelable(&reporting.mutex);
-    defer std.Io.Threaded.mutexUnlock(&reporting.mutex);
-    reporting.slots[slot] = null;
-}
+// "In error reporting mode" (step 6.1) is the global's own flag: its realm's
+// (`runtime.ContextData.in_error_reporting_mode`, a global being its realm's).
+// An `onerror` that throws must not re-enter reporting for the same global,
+// which would recurse without end; reporting nests across globals as deep as
+// handlers make it. It was eight process-wide slots shared by every Browser on
+// every thread, and a global that found them full was not guarded
+// (tests/html/gs3_error_reporting_mode_test.zig).
 
 /// Muting and omitError, for `reportErrorInfo`.
 pub const ReportOptions = struct {
@@ -131,11 +97,11 @@ fn reportExtracted(
     }
 
     // Step 6: If global is not in error reporting mode, then:
-    if (!inErrorReportingMode(global)) {
+    if (!global.ctx.in_error_reporting_mode) {
         // 6.1: Set global's in error reporting mode to true.
-        const slot = enterErrorReportingMode(global);
+        global.ctx.in_error_reporting_mode = true;
         // 6.3: ...and back to false.
-        defer if (slot) |s| leaveErrorReportingMode(s);
+        defer global.ctx.in_error_reporting_mode = false;
 
         // 6.2: Set notHandled to the result of firing an event named error
         // at global, using ErrorEvent, cancelable, with errorInfo.

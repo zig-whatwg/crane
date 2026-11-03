@@ -159,27 +159,22 @@ fn initWithEnd(
         .generation = runtime.SlabAllocator.generationOf(instance),
         .hooks = &port_hooks,
     });
-    live_ports.append(std.heap.page_allocator, instance) catch {};
-    // Its document's destruction disentangles it (`disentangleIn`).
+    // Its document's destruction disentangles it (`disentangleIn`): its
+    // realm keeps it on its list of ports.
+    ctx.addObject(.message_ports, instance) catch {};
     return instance;
 }
 
-/// Every MessagePort on this thread, from init to deinit: the ports "destroy
-/// a document" reaches (`disentangleIn`).
-threadlocal var live_ports: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+// Every MessagePort is on its realm's list of ports, from init to deinit
+// (runtime.ContextData objects(.message_ports)): the ports "destroy a
+// document" reaches (`disentangleIn`) - "MessagePorts whose relevant global
+// object's associated Document is document", a realm's. It was one list per
+// thread, every realm's ports in it, filtered by realm at each walk.
 
-/// `instance` is gone from this thread's list. The list's memory goes with
-/// its last port: a dedicated worker's thread loses every port with its
-/// realm and then ends, and the capacity a threadlocal list still holds
-/// when its thread exits is never freed (page_allocator, invisible to
-/// `leaks`: one page per worker thread that made a port).
+/// `instance` is gone from its realm's list. The list's memory goes with its
+/// last port.
 fn forgetPort(instance: *runtime.Instance) void {
-    for (live_ports.items, 0..) |port, i| {
-        if (port != instance) continue;
-        _ = live_ports.swapRemove(i);
-        break;
-    }
-    if (live_ports.items.len == 0) live_ports.clearAndFree(std.heap.page_allocator);
+    instance.ctx.forgetObject(.message_ports, instance);
 }
 
 /// HTML "destroy a document" steps 4-5: "Let ports be the list of
@@ -201,12 +196,12 @@ fn forgetPort(instance: *runtime.Instance) void {
 pub fn disentangleIn(realm: runtime.Context) void {
     // Backwards: disentangling posts the peer's close event and frees
     // nothing here, but stay safe if it did.
-    var i = live_ports.items.len;
+    const ports = realm.objects(.message_ports);
+    var i = ports.items.len;
     while (i > 0) {
         i -= 1;
-        if (i >= live_ports.items.len) continue;
-        const port = live_ports.items[i];
-        if (port.ctx != realm) continue;
+        if (i >= ports.items.len) continue;
+        const port: *runtime.Instance = @ptrCast(@alignCast(ports.items[i]));
         disentangle(port);
         const internal = getInternal(port) orelse continue;
         if (internal.end) |end| end.unbind();

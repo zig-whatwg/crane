@@ -773,6 +773,5 @@ tests/platform/platform_backend_test.zig platform.platform_backend 4
 tests/platform/platform_backend_test.zig platform.stub_platform_backend 2
 tests/platform/platform_backend_test.zig platform.vtables 3
 tests/wpt_runner/host_media.zig platform.media_backend 9
-tests/wpt_runner/main.zig platform.timer_backend 1
 tests/wpt_runner/wav_backend.zig platform.media_backend 13
 tests/wpt_runner/webm_backend.zig platform.media_backend 19

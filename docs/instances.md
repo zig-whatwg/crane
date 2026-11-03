@@ -57,6 +57,14 @@ wrapper caches are each agent's, on its `AgentRecord`, found from the isolate (`
 Blink's V8PerIsolateData, WebKit's JSVMClientData). Every agent's end is the same - there is no host
 agent - and it ends each of its live realms through the path a realm's own end takes, so an agent's
 end frees only its own realms.
+Agent, realm and tab state (2026-11-03, lane gstate3): the agent's mutation observer state, timer
+nesting level and termination nesting level are AgentHost's (`dom.agent_hosts.of(realm)`), and its
+open "prepare to run script" count is the V8 AgentRecord's; a realm's error-reporting mode, window
+operations (a frame takes its parent's), map of active timers and lists of live MessagePorts,
+WebSockets, fetch() calls, XHR fetches, classic-script fetches and style loads are its
+`runtime.ContextData`'s (a script or style fetch is listed under its element's realm); a tab's input
+modality and pending user edits are its top-level BrowsingContext's. No class A, R, T or X state is
+left in lint-global-state's baseline.
 The full design, with the inventory of every
 process-global and threadlocal variable in src/, was written by the instances lane; this note is
 the part every lane needs to know before it adds state.

@@ -70,28 +70,6 @@ test "a negative delay becomes zero before clamping" {
     try std.testing.expectEqual(@as(i64, 4), timer.clampTimeout(-1, timer.nesting_threshold + 1));
 }
 
-test "the nesting level is thread-local" {
-    // A worker runs its callbacks on its own thread and must not observe the
-    // window's depth. If this were a plain global, a deeply nested window timer
-    // would start clamping a worker's first-level timers.
-    const before = timer.nesting_level;
-    defer timer.nesting_level = before;
-
-    timer.nesting_level = 9;
-
-    const Checker = struct {
-        fn run(out: *u32) void {
-            out.* = timer.nesting_level;
-        }
-    };
-    var seen_on_other_thread: u32 = 0xFFFF_FFFF;
-    var t = try std.Thread.spawn(.{}, Checker.run, .{&seen_on_other_thread});
-    t.join();
-
-    try std.testing.expectEqual(@as(u32, 0), seen_on_other_thread);
-    try std.testing.expectEqual(@as(u32, 9), timer.nesting_level);
-}
-
 test "a zero-delay interval reaches the clamp by its sixth repeat" {
     // The repeat case, which is where an unclamped timer actually hurts:
     // `setInterval(f, 0)` reschedules itself, so without the level rising per
