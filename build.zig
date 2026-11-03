@@ -926,7 +926,8 @@ const SuiteConfig = struct {
     /// silent skip; each entry gives a reason a reader can check. A test
     /// that merely reads a process-wide counter as its instrument is
     /// converted to a per-agent one instead (docs/lessons/testing-a-test-
-    /// that-measures-a-process-wide-counter-assumes-it-is-alone.md).
+    /// that-measures-a-process-wide-counter-assumes-it-is-alone.md). A name
+    /// ending in ".test." declares every test of that file.
     alone: []const DeclaredTest = &.{},
     /// Tests NOT run under ThreadSanitizer (-Dsanitize-thread; the
     /// launcher's --tsan-skip, which names each with its reason): only a test
@@ -1030,32 +1031,22 @@ const snapshot_first = [_]DeclaredTest{
     .{ .name = "xw1_exposure_snapshot_test.test.xw1 snapshot Window keeps its scope while workers install their own exposed members", .reason = snapshot_first_reason },
 };
 
-/// TEMPORARY (lane tsanfix1, 2026-11-02): tests that compare process-wide
-/// engine counts the busy Browser moves too (docs/testing/test-variant-
-/// findings-2026-11-02.tsv M2), in files lane v8state1 holds. Each goes when
-/// v8state1 merges and its test reads the isolate's own global handle bytes
-/// (ffi.v8_Isolate_GetGlobalHandleBytes) instead.
-const v8state1_pending_reason = "TEMPORARY until lane v8state1 merges: compares process-wide v8_Debug_Live* counts; to be converted to the isolate's global handle bytes";
+/// TEMPORARY (lane tsanfix1, 2026-11-02): the files whose tests compare
+/// process-wide engine counts the busy Browser moves too
+/// (docs/testing/test-variant-findings-2026-11-02.tsv M2; lane tsanfix1's
+/// -Dmany-browsers run of tests-v8 found more of their tests than tsan1's list
+/// named) - whole files ("<file>.test.", every test of it). Each goes when its
+/// tests read their own isolate's global handle bytes
+/// (ffi.v8_Isolate_GetGlobalHandleBytes) instead, or name the ones whose
+/// subject is the process count itself (queued: lane tsanfix1's handoff).
+const v8state1_pending_reason = "TEMPORARY: its tests compare process-wide v8_Debug_Live* and diagnostic counts; to be converted to the isolate's global handle bytes (lane tsanfix1's handoff)";
 const v8state1_pending = [_]DeclaredTest{
-    .{ .name = "context_counter_test.test.a named getter frees the string it returns", .reason = v8state1_pending_reason },
-    .{ .name = "context_counter_test.test.an abort inside a listener the binding dispatched to leaves no handle and no realm bytes", .reason = v8state1_pending_reason },
-    .{ .name = "context_counter_test.test.the indexed descriptor and query release what they make", .reason = v8state1_pending_reason },
-    .{ .name = "context_counter_test.test.the indexed property definer releases every handle it takes", .reason = v8state1_pending_reason },
-    .{ .name = "context_counter_test.test.a getter that answers null releases the null it made", .reason = v8state1_pending_reason },
-    .{ .name = "context_counter_test.test.a getter that throws releases the contexts it took", .reason = v8state1_pending_reason },
-    .{ .name = "context_counter_test.test.a getter's kept string stays the object's: read twice, and 64 times, it is the same", .reason = v8state1_pending_reason },
-    .{ .name = "context_counter_test.test.a getter's wrapper result stays the wrapper cache's", .reason = v8state1_pending_reason },
-    .{ .name = "context_counter_test.test.the indexed property definer releases the current context", .reason = v8state1_pending_reason },
-    .{ .name = "context_counter_test.test.the indexed property setter releases the current context", .reason = v8state1_pending_reason },
-    .{ .name = "context_counter_test.test.the test's realm has made V8's one-time tier-up handle before its test measures", .reason = v8state1_pending_reason },
-    .{ .name = "context_counter_test.test.xhr.response frees the text it made", .reason = v8state1_pending_reason },
-    .{ .name = "indexed_property_semantics_test.test.an attribute read makes no handle for its receiver and leaves none", .reason = v8state1_pending_reason },
-    .{ .name = "indexed_property_semantics_test.test.an indexed read and an `in` check make no handle for the list", .reason = v8state1_pending_reason },
-    .{ .name = "constructor_error_receiver_test.test.a constructor whose impl fails releases its receiver", .reason = v8state1_pending_reason },
-    .{ .name = "realm_end_finalize_test.test.reactions settled, dropped by the realm's end or collected leave no global handle behind", .reason = v8state1_pending_reason },
-    .{ .name = "realm_microtask_test.test.run, dropped by the realm's end, or dropped with the queue: no global handle or weak record left", .reason = v8state1_pending_reason },
-    .{ .name = "refcount_wrapper_link_test.test.a node whose teardown begins under its live wrapper lets the wrapper's reference go once", .reason = v8state1_pending_reason },
-    .{ .name = "refcount_wrapper_link_test.test.every reference a wrapper takes is let go: collections, the realm's end", .reason = v8state1_pending_reason },
+    .{ .name = "context_counter_test.test.", .reason = v8state1_pending_reason },
+    .{ .name = "indexed_property_semantics_test.test.", .reason = v8state1_pending_reason },
+    .{ .name = "constructor_error_receiver_test.test.", .reason = v8state1_pending_reason },
+    .{ .name = "realm_end_finalize_test.test.", .reason = v8state1_pending_reason },
+    .{ .name = "realm_microtask_test.test.", .reason = v8state1_pending_reason },
+    .{ .name = "refcount_wrapper_link_test.test.", .reason = v8state1_pending_reason },
 };
 
 // Slow tests: over 45 s alone on chat.local in Debug (lane tlaunch2,

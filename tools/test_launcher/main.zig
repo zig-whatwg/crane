@@ -535,6 +535,18 @@ pub fn main(init: std.process.Init) !void {
     @memset(alone, false);
     if (args.many_browsers) {
         for (args.alone) |declared| {
+            // A name ending in ".test." declares every test of that file.
+            if (isFilePrefix(declared.name)) {
+                var matched: usize = 0;
+                for (md.names, 0..) |n, i| {
+                    if (!std.mem.startsWith(u8, n, declared.name)) continue;
+                    alone[i] = true;
+                    matched += 1;
+                }
+                if (matched == 0) try out.print("test_launcher: {s}: --alone names no test of this executable: {s}\n", .{ name, declared.name });
+                try out.print("test_launcher: {s} [many Browsers]: runs ALONE, without the busy Browser: every test of {s} ({d}): {s}\n", .{ name, declared.name, matched, declared.reason });
+                continue;
+            }
             const i = index_of.get(declared.name) orelse {
                 try out.print("test_launcher: {s}: --alone names no test of this executable: {s}\n", .{ name, declared.name });
                 continue;
@@ -692,6 +704,17 @@ pub fn main(init: std.process.Init) !void {
 /// Verify mode (verify.zig): the tests named by `args.verify`'s prefixes,
 /// batched and alone; the report, the result file, and the exit status - 1
 /// when any test's verification failed or no prefix named a test.
+/// Whether a declared `--alone` name is a whole file's prefix, "<file>.test.":
+/// every test of the file (test names are "<path>.test.<name>").
+fn isFilePrefix(declared: []const u8) bool {
+    return std.mem.endsWith(u8, declared, ".test.");
+}
+
+test "a declared name ending in .test. is a whole file's tests" {
+    try std.testing.expect(isFilePrefix("context_counter_test.test."));
+    try std.testing.expect(!isFilePrefix("context_counter_test.test.a named getter frees the string it returns"));
+}
+
 /// The entry of `list` that declares the test `test_name`, if any.
 fn declaredIn(list: []const Declared, test_name: []const u8) ?Declared {
     for (list) |declared| if (std.mem.eql(u8, declared.name, test_name)) return declared;
