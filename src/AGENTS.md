@@ -37,10 +37,9 @@ read it before adding state.
    not a debt list: a reviewed variable new to it fails until `-- --update` records it (the
    integrator reviews each at merge), and `-- --update` refuses unmarked and misplaced ones.
    `-- --rename '<old>' '<new>'` records a same-file rename with the same kind, declaration and
-   count. Never edit the file by hand. Until lane hookfreeze2 has converted the last registration
-   lists, keys the inventory already records may stay unmarked (`recorded_debt_allowed` in the
-   tool; the integrator turns it off). Report the total and the tool's `by rule:` line beside the
-   engine-boundary total.
+   count. Never edit the file by hand. Since lane hookfreeze2 (2026-11-03) no recorded key may stay
+   unmarked: `recorded_debt_allowed` is false in the tool and a test pins it. Report the total and
+   the tool's `by rule:` line beside the engine-boundary total.
 
 ## DOM lifetime: reference counting
 
