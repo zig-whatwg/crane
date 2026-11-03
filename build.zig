@@ -6631,6 +6631,12 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     console_mod.addImport("webidl", webidl_mod);
     console_mod.addImport("interfaces", interfaces_mod);
     console_mod.addImport("namespaces", namespaces_mod);
+    // The Console Standard's printer (src/console/printer.zig) reads values
+    // through the engine protocol.
+    console_mod.addImport("engine", engine_mod);
+    console_mod.addImport("runtime", runtime_mod);
+    // The console namespace's impl prints through it.
+    impls_mod.addImport("console", console_mod);
 
     // Streams internal modules (used by both root.zig and generated interfaces)
     // All internal files need to import each other via modules to avoid circular file ownership
