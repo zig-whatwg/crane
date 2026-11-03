@@ -1003,12 +1003,6 @@ pub fn newController(ctx: runtime.Context, stream_instance: *runtime.Instance, s
 pub fn setUpController(realm: Realm, stream_instance: *runtime.Instance, controller_instance: *runtime.Instance) js.Error!void {
     const stream = streamSlots(stream_instance);
     const controller = controllerSlots(controller_instance);
-    // Nothing reaches the new stream yet: the setup holds its controller (and
-    // through its edge the stream), and the start reaction from the end of
-    // the setup until start's promise settles - a microtask at the soonest,
-    // so its maker has it by then.
-    const setup_hold = js.Hold.take(controller_instance);
-    defer setup_hold.give();
     // Steps 3-4: link stream and controller - each keeps the other. The
     // controller's wrapper, made here, is what start() receives.
     stream.controller = controller_instance;
@@ -1016,6 +1010,14 @@ pub fn setUpController(realm: Realm, stream_instance: *runtime.Instance, control
         stream.controller = null;
         return err;
     };
+    // Unwrapped until here, so nothing could collect them; from here the
+    // setup holds the controller (and through its edge the stream), and the
+    // start reaction holds it from the setup's end until start's promise
+    // settles - a microtask at the soonest, so the new stream's maker has it
+    // by then. Taken on the wrapper's own entry: a keep before the wrapper
+    // existed would need an insert, which can fail.
+    const setup_hold = js.Hold.take(controller_instance);
+    defer setup_hold.give();
     controller.size_algorithm.trace(controller_instance);
     // Step 5: Perform ! ResetQueue(controller).
     resetQueue(controller);

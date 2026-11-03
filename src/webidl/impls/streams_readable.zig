@@ -1172,12 +1172,6 @@ pub fn defaultCanCloseOrEnqueue(c: *const DefaultController) bool {
 pub fn setUpDefaultController(realm: Realm, stream_instance: *runtime.Instance, controller_instance: *runtime.Instance) js.Error!void {
     const stream = streamSlots(stream_instance);
     const c = defaultControllerOf(controller_instance).?;
-    // Nothing reaches the new stream yet: the setup holds its controller
-    // (and through its edge the stream), and the start reaction holds it
-    // from the end of the setup until start's promise settles - a microtask
-    // at the soonest, so its maker has it by then.
-    const setup_hold = js.Hold.take(controller_instance);
-    defer setup_hold.give();
     // Steps 2-7: queue empty, flags false; strategy and algorithms in place.
     defaultResetQueue(c);
     // Step 8: Set stream.[[controller]] to controller - the two keep each
@@ -1189,6 +1183,14 @@ pub fn setUpDefaultController(realm: Realm, stream_instance: *runtime.Instance, 
         stream.controller = null;
         return err;
     };
+    // Unwrapped until here, so nothing could collect them; from here the
+    // setup holds the controller (and through its edge the stream), and the
+    // start reaction holds it from the setup's end until start's promise
+    // settles - a microtask at the soonest, so the new stream's maker has it
+    // by then. Taken on the wrapper's own entry: a keep before the wrapper
+    // existed would need an insert, which can fail.
+    const setup_hold = js.Hold.take(controller_instance);
+    defer setup_hold.give();
     c.size_algorithm.trace(controller_instance);
     // Step 9: Let startResult be the result of performing startAlgorithm.
     const s = c.source.?;
@@ -1256,10 +1258,6 @@ pub fn newByteController(ctx: runtime.Context, stream_instance: *runtime.Instanc
 pub fn setUpByteController(realm: Realm, stream_instance: *runtime.Instance, controller_instance: *runtime.Instance) js.Error!void {
     const stream = streamSlots(stream_instance);
     const c = byteControllerOf(controller_instance).?;
-    // Held through the setup, then by the start reaction, as
-    // setUpDefaultController's.
-    const setup_hold = js.Hold.take(controller_instance);
-    defer setup_hold.give();
     // Steps 3-12: flags false, no BYOB request, empty queue and pull-intos.
     byteResetQueue(c);
     // Step 13: Set stream.[[controller]] to controller; the two keep each
@@ -1269,6 +1267,14 @@ pub fn setUpByteController(realm: Realm, stream_instance: *runtime.Instance, con
         stream.controller = null;
         return err;
     };
+    // Unwrapped until here, so nothing could collect them; from here the
+    // setup holds the controller (and through its edge the stream), and the
+    // start reaction holds it from the setup's end until start's promise
+    // settles - a microtask at the soonest, so the new stream's maker has it
+    // by then. Taken on the wrapper's own entry: a keep before the wrapper
+    // existed would need an insert, which can fail.
+    const setup_hold = js.Hold.take(controller_instance);
+    defer setup_hold.give();
     // Step 14: Let startResult be the result of performing startAlgorithm.
     const s = c.source.?;
     const start_value = switch (try s.vtable.start(s.ctx, realm, controller_instance)) {
