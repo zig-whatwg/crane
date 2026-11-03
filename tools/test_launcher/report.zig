@@ -66,8 +66,75 @@ pub fn writeVerdictBlock(w: *std.Io.Writer, name: []const u8, rec: *const sched.
     if (rec.replay) |s| try w.print("; after the tests before it in its process (from position {d}): {t}", .{ rec.process_start, s });
     try w.writeAll(")\n");
     if (rec.cause.len != 0) try w.print("{s}\n", .{std.mem.trimEnd(u8, rec.cause, "\n")});
-    const tail = lastLines(rec.output, 40);
-    if (tail.len != 0) try w.print("{s}\n", .{tail});
+    try writeOutputExcerpt(w, rec.output);
+}
+
+/// Lines of a test's output a verdict block shows: its last `tail_lines`,
+/// and, when a crash report starts above them, that report's first
+/// `crash_head_lines`.
+const tail_lines = 40;
+const crash_head_lines = 20;
+
+/// What a verdict block shows of a test's output: its end, and the start of
+/// the crash report that ended it when that is above the end - the panic
+/// message or the signal, and the frames nearest it, which name the cause.
+/// The end alone lost them: a panic 44 lines above the end of a shuffled
+/// tests-v8 process's output kept only its frames from gc.onObjectFreed
+/// down, and a test's own hook panicking on `current.?` was read as a
+/// crash in the wrapper cache (lane crashes7: workerteardown1_global_last_test).
+fn writeOutputExcerpt(w: *std.Io.Writer, output: []const u8) std.Io.Writer.Error!void {
+    const tail = lastLines(output, tail_lines);
+    if (tail.len == 0) return;
+    const tail_at = @intFromPtr(tail.ptr) - @intFromPtr(output.ptr);
+    if (lastCrashStart(output[0..tail_at])) |at| {
+        const head = firstLines(output[at..tail_at], crash_head_lines);
+        try w.print("{s}\n", .{std.mem.trimEnd(u8, head, "\n")});
+        // Lines between the two are left out, and the block says so.
+        if (at + head.len < tail_at) try w.writeAll("...\n");
+    }
+    try w.print("{s}\n", .{tail});
+}
+
+/// Where the last crash report in `s` begins: a line Zig's panic or signal
+/// handler starts one with (`thread N panic: `, `Segmentation fault at
+/// address`, ...), or ThreadSanitizer's. The last one, since a process
+/// ends at its crash and earlier tests of its batch may print panics they
+/// expect.
+fn lastCrashStart(s: []const u8) ?usize {
+    var found: ?usize = null;
+    var start: usize = 0;
+    while (start < s.len) {
+        const end = std.mem.indexOfScalarPos(u8, s, start, '\n') orelse s.len;
+        if (startsCrash(s[start..end])) found = start;
+        start = end + 1;
+    }
+    return found;
+}
+
+fn startsCrash(line: []const u8) bool {
+    if (std.mem.startsWith(u8, line, "WARNING: ThreadSanitizer:")) return true;
+    var rest = line;
+    // Zig names the thread first: "thread 136140834 panic: ...".
+    if (std.mem.startsWith(u8, rest, "thread ")) {
+        var i: usize = "thread ".len;
+        while (i < rest.len and std.ascii.isDigit(rest[i])) i += 1;
+        if (i == "thread ".len or i == rest.len or rest[i] != ' ') return false;
+        rest = rest[i + 1 ..];
+    }
+    const starts = [_][]const u8{ "panic: ", "Segmentation fault at address", "Bus error at address", "Illegal instruction at address" };
+    for (starts) |prefix| if (std.mem.startsWith(u8, rest, prefix)) return true;
+    return false;
+}
+
+/// The first `n` lines of `s`, each with its newline.
+fn firstLines(s: []const u8, n: usize) []const u8 {
+    var count: usize = 0;
+    for (s, 0..) |c, i| {
+        if (c != '\n') continue;
+        count += 1;
+        if (count == n) return s[0 .. i + 1];
+    }
+    return s;
 }
 
 /// The tests the launcher could not run, once per run, grouped by cause:
@@ -110,7 +177,7 @@ pub fn writeLauncherErrors(w: *std.Io.Writer, gpa: std.mem.Allocator, suite: []c
 /// Tests named per cause in `writeLauncherErrors`.
 const max_named = 5;
 
-/// The last `n` lines of `s` (the end of a crash report is the useful part).
+/// The last `n` lines of `s`: the end of a test's output (`writeOutputExcerpt`).
 pub fn lastLines(s: []const u8, n: usize) []const u8 {
     const trimmed = std.mem.trimEnd(u8, s, "\n");
     var count: usize = 0;
@@ -159,6 +226,106 @@ test "a verdict block names the verdict, the runs, the batch, the seed and the o
     rec.output = &output;
     try writeVerdictBlock(&aw.writer, "x.test.boom", &rec, 0x2a);
     try testing.expectEqualStrings("FAIL x.test.boom (first run: crash, batch 2 position 1, seed 0x2a; alone: crash)\npanic: here\n", aw.written());
+}
+
+/// A panic's trace of `frames` frames under its message, as Zig prints one:
+/// three lines a frame (where, the source line, the caret).
+fn panicTrace(buf: []u8, frames: usize) []const u8 {
+    var w: std.Io.Writer = .fixed(buf);
+    w.writeAll("thread 1 panic: attempt to use null value\n") catch unreachable;
+    for (0..frames) |i| w.print("/src/f{d}.zig:1:1: 0x1 in f{d} (t)\n    f{d}();\n    ^\n", .{ i, i, i }) catch unreachable;
+    return w.buffered();
+}
+
+test "a crash whose trace is longer than the tail: its block keeps the panic and the frames nearest it" {
+    // Lane crashes7: workerteardown1's hook panicked on `current.?` 44 lines
+    // above the end of its process's output, so a block of the last 40 lines
+    // began at the third frame - gc.onObjectFreed - and the panic and the
+    // hook that raised it were read as a crash in the wrapper cache.
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    var buf: [4096]u8 = undefined;
+    const trace = panicTrace(&buf, 15);
+    var output: [4096]u8 = undefined;
+    const prefix = "an earlier test's line\n";
+    @memcpy(output[0..prefix.len], prefix);
+    @memcpy(output[prefix.len..][0..trace.len], trace);
+    var rec: sched.TestRecord = .{ .batch = 0, .position = 1118, .first = .crash, .ran = true, .verdict = .flaky, .output = output[0 .. prefix.len + trace.len] };
+    rec.alone[0] = .pass;
+    rec.alone_len = 1;
+    try writeVerdictBlock(&aw.writer, "x.test.hooked", &rec, 0x171a);
+    const block = aw.written();
+    // The panic and the frame that raised it, then the rest of the trace -
+    // every line of it once, none lost between the two.
+    try testing.expect(std.mem.indexOf(u8, block, "thread 1 panic: attempt to use null value\n/src/f0.zig:1:1: 0x1 in f0 (t)\n") != null);
+    try testing.expect(std.mem.indexOf(u8, block, "f14();\n    ^\n") != null);
+    try testing.expectEqual(@as(usize, 1), std.mem.count(u8, block, "in f1 (t)"));
+    try testing.expect(std.mem.indexOf(u8, block, "\n...\n") == null);
+    // What came before the crash is not the crash's.
+    try testing.expect(std.mem.indexOf(u8, block, "an earlier test's line") == null);
+}
+
+test "a crash far above the end of the output: its first lines, a gap, then the end" {
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    var buf: [16384]u8 = undefined;
+    const trace = panicTrace(&buf, 60);
+    var rec: sched.TestRecord = .{ .batch = 0, .position = 3, .first = .crash, .ran = true, .verdict = .fail, .output = @constCast(trace) };
+    rec.alone[0] = .crash;
+    rec.alone_len = 1;
+    try writeVerdictBlock(&aw.writer, "x.test.deep", &rec, 0x3);
+    const block = aw.written();
+    try testing.expect(std.mem.indexOf(u8, block, "thread 1 panic: attempt to use null value\n/src/f0.zig") != null);
+    try testing.expect(std.mem.indexOf(u8, block, "\n...\n") != null);
+    try testing.expect(std.mem.indexOf(u8, block, "in f30 (t)") == null);
+    try testing.expect(std.mem.indexOf(u8, block, "f59();\n    ^\n") != null);
+}
+
+test "the crash that ends the output is the one shown: a signal, or a sanitizer's report" {
+    inline for (.{ "Segmentation fault at address 0x10", "Bus error at address 0x8", "Illegal instruction at address 0x4", "WARNING: ThreadSanitizer: data race (pid=1)" }) |first| {
+        var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+        defer aw.deinit();
+        var output: [8192]u8 = undefined;
+        var w: std.Io.Writer = .fixed(&output);
+        // An earlier test's expected panic, long before the crash.
+        try w.writeAll("thread 2 panic: an expected one\n");
+        for (0..50) |i| try w.print("line {d}\n", .{i});
+        try w.print("{s}\n", .{first});
+        for (0..60) |i| try w.print("frame {d}\n", .{i});
+        var rec: sched.TestRecord = .{ .batch = 0, .position = 9, .first = .crash, .ran = true, .verdict = .fail, .output = w.buffered() };
+        rec.alone[0] = .crash;
+        rec.alone_len = 1;
+        try writeVerdictBlock(&aw.writer, "x.test.signal", &rec, 0x9);
+        const block = aw.written();
+        try testing.expect(std.mem.indexOf(u8, block, first ++ "\nframe 0\n") != null);
+        try testing.expect(std.mem.indexOf(u8, block, "an expected one") == null);
+        try testing.expect(std.mem.indexOf(u8, block, "frame 59") != null);
+    }
+}
+
+test "output with no crash in it, or one inside the end: the end alone, as before" {
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    var output: [4096]u8 = undefined;
+    var w: std.Io.Writer = .fixed(&output);
+    for (0..100) |i| try w.print("line {d}\n", .{i});
+    var rec: sched.TestRecord = .{ .batch = 0, .position = 0, .first = .fail, .ran = true, .verdict = .fail, .output = w.buffered() };
+    try writeVerdictBlock(&aw.writer, "x.test.plain", &rec, 0x1);
+    const expected = try std.fmt.allocPrint(testing.allocator, "FAIL x.test.plain (first run: fail, batch 0 position 0, seed 0x1; alone:)\n{s}\n", .{lastLines(w.buffered(), 40)});
+    defer testing.allocator.free(expected);
+    try testing.expectEqualStrings(expected, aw.written());
+
+    // A crash inside the last 40 lines is shown by the end alone.
+    aw.clearRetainingCapacity();
+    w = .fixed(&output);
+    for (0..100) |i| try w.print("line {d}\n", .{i});
+    try w.writeAll("thread 1 panic: near the end\n");
+    for (0..10) |i| try w.print("frame {d}\n", .{i});
+    rec.output = w.buffered();
+    try writeVerdictBlock(&aw.writer, "x.test.plain", &rec, 0x1);
+    const expected_near = try std.fmt.allocPrint(testing.allocator, "FAIL x.test.plain (first run: fail, batch 0 position 0, seed 0x1; alone:)\n{s}\n", .{lastLines(w.buffered(), 40)});
+    defer testing.allocator.free(expected_near);
+    try testing.expectEqualStrings(expected_near, aw.written());
 }
 
 test "a test the launcher could not start: its block says it did not run, and why" {

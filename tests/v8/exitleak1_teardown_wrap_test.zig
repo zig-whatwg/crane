@@ -147,7 +147,9 @@ const Spawner = struct {
     }
 
     fn hookedDeinit(instance: *runtime.Instance) void {
-        const self = current.?;
+        // No Spawner: the test that made this object has returned, and only
+        // its teardown is left (`expectMadeObjectFreed` ends its page first).
+        const self = current orelse return interfaces.TextEncoder.vtable.deinit.?(instance);
         self.original_deinit(instance);
         if (self.torn_down < self.freed.len) self.freed[self.torn_down] = @intFromPtr(instance);
         self.torn_down += 1;
@@ -157,7 +159,7 @@ const Spawner = struct {
     }
 
     fn countingDeinit(instance: *runtime.Instance) void {
-        const self = current.?;
+        const self = current orelse return interfaces.TextEncoder.vtable.deinit.?(instance);
         self.made_freed += 1;
         self.original_deinit(instance);
     }
@@ -208,11 +210,19 @@ fn expectMadeObjectFreed(kind: Page.Kind, how: Spawner.How) !void {
     spawner.init(how, page.realm);
     Spawner.current = &spawner;
     defer Spawner.current = null;
+    // Every way out ends the page while the hooks still find `current`: a
+    // defer declared after `current`'s runs before it. Left to the agent's
+    // end after a failed step, the realm's teardown ran the hooks with no
+    // Spawner, and the failure was a crash (lane crashes7: the same shape
+    // in workerteardown1_global_last_test).
+    var ended = false;
+    defer if (!ended) page.end();
     try spawner.hooked("a");
     try spawner.hooked("b");
     try spawner.hooked("c");
 
     page.end();
+    ended = true;
 
     try testing.expect(spawner.torn_down >= 2);
     try testing.expect(spawner.made != null);
