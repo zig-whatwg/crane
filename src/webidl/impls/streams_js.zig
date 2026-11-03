@@ -510,14 +510,30 @@ pub const Completion = union(enum) {
 /// [[PromiseState]] has no engine operation (JavaScriptCore has none): a
 /// Deferred's promise is settled only through the Deferred, so the Deferred
 /// records it, in a cell of its own that its copies share.
+///
+/// The capability lives in that cell too, and only until the promise is
+/// settled: a settled Deferred never settles again, so its resolver and the
+/// capability's promise - two of the three handles a pending Deferred holds -
+/// are released then, and a settled one keeps its own hold on the promise
+/// alone. Streams objects keep their promises for their realm's life (a
+/// reader's [[closedPromise]], a writer's [[readyPromise]];
+/// wrapper_cache.isStreamsGraphObject), so the two counted per settled
+/// promise per stream (tests/v8/streams_settled_promise_handles_test.zig).
 pub const Deferred = struct {
-    capability: engine.PromiseCapability,
     /// Owned: the Deferred's own hold on the promise, which outlives the
     /// capability (`deinitResolverOnly` keeps it for the caller).
     promise: Value,
-    /// Whether resolve or reject has run. Allocated with `allocator`.
-    settled: *bool,
+    /// What every copy shares. Allocated with `allocator`.
+    cell: *Cell,
     allocator: std.mem.Allocator,
+
+    const Cell = struct {
+        /// Whether resolve or reject has run.
+        settled: bool = false,
+        /// The capability to settle the promise: null once it is settled
+        /// (released then) or the Deferred is released.
+        capability: ?engine.PromiseCapability,
+    };
 
     pub fn init(realm: Realm) Error!Deferred {
         var capability = engine.createPromise(realm.ctx) catch |err| return fromEngineError(err);
@@ -525,12 +541,11 @@ pub const Deferred = struct {
         const promise = engine.retainValue(realm.ctx, capability.promise) catch |err| return fromEngineError(err);
         errdefer promise.release();
         const allocator = realm.ctx.allocator;
-        const settled = try allocator.create(bool);
-        settled.* = false;
+        const cell = try allocator.create(Cell);
+        cell.* = .{ .capability = capability };
         return .{
-            .capability = capability,
             .promise = adopt(realm.ctx, promise),
-            .settled = settled,
+            .cell = cell,
             .allocator = allocator,
         };
     }
@@ -552,10 +567,7 @@ pub const Deferred = struct {
     /// Settling an already-settled promise is a no-op, as in the spec.
     pub fn resolve(self: Deferred, realm: Realm, value: Value) void {
         _ = realm;
-        if (self.settled.*) return;
-        var capability = self.capability;
-        engine.resolvePromise(&capability, value.value) catch return;
-        self.settled.* = true;
+        self.settle(.resolve, value);
     }
 
     pub fn resolveUndefined(self: Deferred, realm: Realm) void {
@@ -564,15 +576,37 @@ pub const Deferred = struct {
 
     pub fn reject(self: Deferred, realm: Realm, reason: Value) void {
         _ = realm;
-        if (self.settled.*) return;
-        var capability = self.capability;
-        engine.rejectPromise(&capability, reason.value) catch return;
-        self.settled.* = true;
+        self.settle(.reject, reason);
+    }
+
+    /// Resolve or reject the promise once, then release the capability.
+    /// Settled is recorded BEFORE the engine settles it, as the resolving
+    /// functions set alreadyResolved before anything else (ECMAScript
+    /// CreateResolvingFunctions, 27.2.1.3): resolving with an object reads its
+    /// `then`, which runs script, and a settle that script reaches is a
+    /// no-op - never a second settle of a promise already resolved with a
+    /// thenable, nor a second release of the capability. An engine failure
+    /// (a terminating agent) leaves the promise pending and settleable.
+    fn settle(self: Deferred, how: enum { resolve, reject }, value: Value) void {
+        const cell = self.cell;
+        if (cell.settled) return;
+        var capability = cell.capability orelse return;
+        cell.settled = true;
+        const settled = switch (how) {
+            .resolve => engine.resolvePromise(&capability, value.value),
+            .reject => engine.rejectPromise(&capability, value.value),
+        };
+        settled catch {
+            cell.settled = false;
+            return;
+        };
+        cell.capability = null;
+        engine.releasePromiseCapability(&capability);
     }
 
     /// [[PromiseState]] is "pending".
     pub fn isPending(self: Deferred) bool {
-        return !self.settled.*;
+        return !self.cell.settled;
     }
 
     /// Set [[PromiseIsHandled]] to true.
@@ -593,11 +627,14 @@ pub const Deferred = struct {
         dispose(self.promise);
     }
 
-    /// Release the capability, keeping `promise` for the caller.
+    /// Release the capability, if the promise is still pending, and the
+    /// cell, keeping `promise` for the caller.
     pub fn deinitResolverOnly(self: Deferred) void {
-        var capability = self.capability;
-        engine.releasePromiseCapability(&capability);
-        self.allocator.destroy(self.settled);
+        if (self.cell.capability) |held| {
+            var capability = held;
+            engine.releasePromiseCapability(&capability);
+        }
+        self.allocator.destroy(self.cell);
     }
 };
 
