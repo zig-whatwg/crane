@@ -1945,6 +1945,11 @@ test "protocol: forgetTracedChild ends an edge that waits for its owner's wrappe
     defer protocol.destroyWindowRealm(w, .global_detached);
 
     const owner = Watched.of(try unwrappedHeaders(w));
+    // Script never saw the owner: the test frees it, its edges ended first.
+    defer {
+        protocol.forgetTracedChild(owner.instance, .{ .name = "other" });
+        runtime.Instance.releaseIfUnwrapped(owner.instance, owner.generation);
+    }
     const first = Watched.of(try platformObjectIn(w, "new Headers()"));
     const second = Watched.of(try platformObjectIn(w, "new Headers()"));
     const other = Watched.of(try platformObjectIn(w, "new Headers()"));
@@ -2014,6 +2019,9 @@ test "protocol: edges waiting for an owner's wrapper leave no global handle behi
         break :blk with_one - start;
     };
     const owner = try unwrappedHeaders(w);
+    // Script never saw the owner: the test frees it (no edge is left on it).
+    const owner_generation = runtime.SlabAllocator.generationOf(owner);
+    defer runtime.Instance.releaseIfUnwrapped(owner, owner_generation);
     const child = try platformObjectIn(w, "globalThis.child = new Headers()");
     // The first round makes what every later one reuses.
     protocol.traceChild(owner, child, .{ .name = "child" });
@@ -2320,6 +2328,9 @@ test "protocol: traceValue and tracedValue leave no global handle behind" {
     const window = try platformObjectIn(w, "globalThis");
     const owner = try platformObjectIn(w, "globalThis.owner = new Headers()");
     const unwrapped = try unwrappedHeaders(w);
+    // Script never saw it: the test frees it (each round forgets its edges).
+    const unwrapped_generation = runtime.SlabAllocator.generationOf(unwrapped);
+    defer runtime.Instance.releaseIfUnwrapped(unwrapped, unwrapped_generation);
     const value = try evalOwned(w, "globalThis.value = { v: 1 }");
     defer value.release();
     const round = struct {

@@ -957,16 +957,11 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     // tests-v8 ran as one index-order process until lane v8order1
     // (2026-11-01) made its tests hermetic (tests/v8/test_process.zig; the
     // order findings it fixed: docs/testing/tests-v8-order-findings-2026-11-01.tsv).
-    // TEMPORARY: tests-v8's process-state check only reports (lane tstate1,
-    // 2026-11-02). At batch 1 its tests leave, every one listed with its
-    // field and values in docs/testing/test-state-findings-2026-11-02.tsv:
-    // one Global<Context> per realm a host agent's end tears down (the V8
-    // adapter's context_manager.deinit never disposes an entry's own handle,
-    // as retireEntry does - a product bug, reported), platform objects left
-    // in the standalone runtime's slab, Global<Object> handles, and
-    // worker_streams_test's deliberate --stress-compaction. Switch it to
-    // failing when `CRANE_TEST_STATE=fail zig build test-launch -Dspec=v8
-    // -Dlaunch-batch=1` passes.
+    // Its process-state checks fail a test that leaves state behind, as
+    // every suite's do: the findings that kept them report-only (lane
+    // tstate1) are classified and fixed, each with its commit, in
+    // docs/testing/test-state-findings-2026-11-02.tsv (lanes engown1,
+    // fixes1, v8state1).
     // TEMPORARY, the same way: tests-v8 runs beside the busy Browser report-
     // only (lane tsan1; docs/testing/test-variant-findings-2026-11-02.tsv):
     // an isolate restored from Crane's snapshot while a snapshotless one
@@ -974,7 +969,7 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     // tests measure process-wide engine counters the busy Browser moves too
     // (M2). Switch it when `zig build test-launch -Dspec=v8 -Dmany-browsers`
     // passes.
-    .{ .name = "tests-v8", .config = .{ .batch = 1, .state_checks = .report, .many_browsers = .report } },
+    .{ .name = "tests-v8", .config = .{ .batch = 1, .many_browsers = .report } },
     .{ .name = "src-browser", .config = .{ .batch = 1 } },
     .{ .name = "test-browser", .config = .{ .batch = 1 } },
     .{ .name = "lib-exports", .config = .{ .batch = 1 } },

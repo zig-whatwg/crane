@@ -77,31 +77,46 @@ pub fn initWithPoints(
     p4_init: ?dictionaries.DOMPointInit,
 ) !*runtime.Instance {
     const instance = try init(allocator, State, &DOMQuad.vtable, ctx);
-    errdefer deinit(instance);
+    // Until it is returned, this is the quad's only owner: a failed step
+    // frees it whole, and with it (deinit) every point made so far - the
+    // ones not made yet are still zero.
+    errdefer runtime.gc.releaseOwned(instance);
 
     const state = getState(instance);
 
     // Create the four DOMPoint instances
     state.own.p1 = try createDOMPoint(ctx, p1_init);
-    errdefer DOMPoint.deinit(state.own.p1);
-
     state.own.p2 = try createDOMPoint(ctx, p2_init);
-    errdefer DOMPoint.deinit(state.own.p2);
-
     state.own.p3 = try createDOMPoint(ctx, p3_init);
-    errdefer DOMPoint.deinit(state.own.p3);
-
     state.own.p4 = try createDOMPoint(ctx, p4_init);
 
     return instance;
 }
 
 /// Deinitialize instance
+///
+/// The quad owns its four points (WebKit's DOMQuad holds them by Ref,
+/// Source/WebCore/css/DOMQuad.h). A point script read through its
+/// [SameObject] getter was handed out: the generated getter cached it
+/// (`cached_pN`) and traced it from the quad's wrapper
+/// (dom.same_object_cache.made), so its wrapper owns it and frees it when
+/// script lets go of it - which may be after the quad. A point script never
+/// read was the quad's alone, and goes whole with the quad
+/// (runtime.gc.releaseOwned) - it used to stay in the slab until the
+/// Browser ended (tests/v8/domquad_points_lifetime_test.zig). A point not
+/// made yet (a construction or a deserialization that failed before it) is
+/// still the zero the state started as. Makes no engine call: this runs in
+/// the collector's finalizers too.
 pub fn deinit(instance: *runtime.Instance) void {
-    // Note: GC handles cleanup. The DOMPoint instances stored in p1-p4
-    // will be collected by the garbage collector. We don't manually deinit
-    // them here because they may still be referenced by JavaScript.
-    _ = instance;
+    const state = getState(instance);
+    inline for (.{ "p1", "p2", "p3", "p4" }) |name| {
+        if (@field(state.own, "cached_" ++ name) == null) {
+            // Read as an address: a `*Instance` field the state was zeroed
+            // into is not a value Zig lets a pointer have.
+            const address: *const usize = @ptrCast(&@field(state.own, name));
+            if (address.* != 0) runtime.gc.releaseOwned(@field(state.own, name));
+        }
+    }
 }
 
 /// Constructor implementation
