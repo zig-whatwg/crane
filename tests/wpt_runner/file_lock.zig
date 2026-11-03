@@ -190,36 +190,63 @@ const Beats = struct {
     }
 };
 
-/// A second PROCESS holding `path` (under `dir_path`) until it is killed: it
-/// locks the file, then says so on a pipe, then sleeps. Only async-signal-safe
-/// calls after the fork.
+/// A second PROCESS holding `path` until it is killed: it locks the file, says
+/// so on a pipe, then waits on a second pipe whose write end only the test
+/// holds - so it exits when the test closes that end or dies, and a test that
+/// fails half-way (or a test process the launcher kills) leaves no holder
+/// behind. Only async-signal-safe calls after the fork.
 const Holder = struct {
     pid: std.c.pid_t,
+    /// The test's end of the pipe the holder waits on.
+    stay: std.c.fd_t,
+    reaped: bool = false,
 
     fn start(path: [*:0]const u8) !Holder {
-        var fds: [2]std.c.fd_t = undefined;
-        if (std.c.pipe(&fds) != 0) return error.PipeFailed;
+        var ready: [2]std.c.fd_t = undefined;
+        if (std.c.pipe(&ready) != 0) return error.PipeFailed;
+        var stay: [2]std.c.fd_t = undefined;
+        if (std.c.pipe(&stay) != 0) {
+            _ = std.c.close(ready[0]);
+            _ = std.c.close(ready[1]);
+            return error.PipeFailed;
+        }
         const pid = std.c.fork();
-        if (pid < 0) return error.ForkFailed;
         if (pid == 0) {
+            _ = std.c.close(stay[1]);
+            _ = std.c.close(ready[0]);
             const fd = std.c.open(path, .{ .ACCMODE = .RDONLY });
             if (fd < 0 or std.c.flock(fd, std.c.LOCK.EX) != 0) std.c._exit(2);
-            _ = std.c.write(fds[1], "L", 1);
-            const second: std.c.timespec = .{ .sec = 1, .nsec = 0 };
-            while (true) _ = std.c.nanosleep(&second, null);
+            _ = std.c.write(ready[1], "L", 1);
+            // Returns at end of file: the test is done with it, or gone.
+            var byte: [1]u8 = undefined;
+            _ = std.c.read(stay[0], &byte, 1);
+            std.c._exit(0);
         }
-        _ = std.c.close(fds[1]);
-        defer _ = std.c.close(fds[0]);
+        _ = std.c.close(ready[1]);
+        _ = std.c.close(stay[0]);
+        defer _ = std.c.close(ready[0]);
+        var holder: Holder = .{ .pid = pid, .stay = stay[1] };
+        if (pid < 0) {
+            _ = std.c.close(stay[1]);
+            return error.ForkFailed;
+        }
         var byte: [1]u8 = undefined;
-        if (std.c.read(fds[0], &byte, 1) != 1) return error.HolderDidNotLock;
-        return .{ .pid = pid };
+        if (std.c.read(ready[0], &byte, 1) != 1) {
+            holder.kill();
+            return error.HolderDidNotLock;
+        }
+        return holder;
     }
 
-    /// Dies without releasing anything itself.
-    fn kill(self: Holder) void {
+    /// Dies without releasing anything itself (SIGKILL), and is reaped. Safe
+    /// to call twice: a test kills it on purpose and defers this as well.
+    fn kill(self: *Holder) void {
+        if (self.reaped) return;
         _ = std.c.kill(self.pid, .KILL);
         var status: c_int = 0;
         _ = std.c.waitpid(self.pid, &status, 0);
+        _ = std.c.close(self.stay);
+        self.reaped = true;
     }
 };
 
@@ -234,7 +261,7 @@ test "two processes: a second runner waits while another process holds the file,
     defer tmp.cleanup();
     try makeFile(tmp.dir, "report.https.sub.html");
     var path_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
-    const holder = try Holder.start(try absolutePath(tmp.dir, "report.https.sub.html", &path_buf));
+    var holder = try Holder.start(try absolutePath(tmp.dir, "report.https.sub.html", &path_buf));
     defer holder.kill();
     var beats: Beats = .{};
     const bound_ms: u64 = 300;
@@ -253,7 +280,8 @@ test "two processes: the lock is released when its holder dies" {
     defer tmp.cleanup();
     try makeFile(tmp.dir, "report.https.sub.html");
     var path_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
-    const holder = try Holder.start(try absolutePath(tmp.dir, "report.https.sub.html", &path_buf));
+    var holder = try Holder.start(try absolutePath(tmp.dir, "report.https.sub.html", &path_buf));
+    defer holder.kill();
     // Held: refused at once.
     try testing.expectError(error.HeldTooLong, FileLock.acquire(testing.io, tmp.dir, "report.https.sub.html", .{ .bound_ms = 0 }));
     holder.kill();
@@ -312,7 +340,7 @@ test "a note left by a runner that died names a pid that is gone" {
     defer notes.close(testing.io);
     // A pid that has exited: a child we reaped.
     var path_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
-    const dead = try Holder.start(try absolutePath(tmp.dir, "a.html", &path_buf));
+    var dead = try Holder.start(try absolutePath(tmp.dir, "a.html", &path_buf));
     dead.kill();
     const file = try tmp.dir.openFile(testing.io, "a.html", .{});
     var name_buf: [note_name_max]u8 = undefined;
