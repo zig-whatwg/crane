@@ -138,15 +138,17 @@ pub const Executor = struct {
     vtable: *const VTable,
 
     pub const VTable = struct {
-        /// Starts the worker's process. On an error it writes what failed
-        /// to `diag` - the step and the path - for the report.
-        start: *const fn (ptr: *anyopaque, worker: u32, diag: *Io.Writer) anyerror!void,
+        /// Starts the worker's process for `tests`, the tests it will run in
+        /// order (it may stop early: a crash or timeout ends it). On an error
+        /// it writes what failed to `diag` - the step and the path - for the
+        /// report.
+        start: *const fn (ptr: *anyopaque, worker: u32, tests: []const u32, diag: *Io.Writer) anyerror!void,
         run: *const fn (ptr: *anyopaque, worker: u32, test_index: u32) anyerror!RunResult,
         stop: *const fn (ptr: *anyopaque, worker: u32) void,
     };
 
-    fn start(e: Executor, w: u32, diag: *Io.Writer) anyerror!void {
-        return e.vtable.start(e.ptr, w, diag);
+    fn start(e: Executor, w: u32, tests: []const u32, diag: *Io.Writer) anyerror!void {
+        return e.vtable.start(e.ptr, w, tests, diag);
     }
     fn run(e: Executor, w: u32, t: u32) anyerror!RunResult {
         return e.vtable.run(e.ptr, w, t);
@@ -314,9 +316,9 @@ pub const Run = struct {
         cb(r.options.on_verdict_ctx, t, &r.records[t]);
     }
 
-    fn startProcess(r: *Run, w: u32, diag: *Io.Writer) !void {
+    fn startProcess(r: *Run, w: u32, tests: []const u32, diag: *Io.Writer) !void {
         _ = r.processes.fetchAdd(1, .monotonic);
-        try r.exec.start(w, diag);
+        try r.exec.start(w, tests, diag);
     }
 
     /// Runs `tests` in order in fresh processes, restarting after a crash or
@@ -330,7 +332,7 @@ pub const Run = struct {
             const started_at: u32 = @intCast(i);
             var why: Io.Writer.Allocating = .init(r.gpa);
             defer why.deinit();
-            r.startProcess(w, &why.writer) catch |err| {
+            r.startProcess(w, tests[i..], &why.writer) catch |err| {
                 while (i < tests.len) : (i += 1) {
                     const msg: []u8 = std.fmt.allocPrint(r.gpa, "launcher: could not start the test process: {s}\n", .{
                         if (why.written().len != 0) why.written() else @errorName(err),
@@ -522,7 +524,7 @@ const Fake = struct {
         for (&f.history) |*h| h.deinit(f.gpa);
         f.log.deinit(f.gpa);
     }
-    fn start(ptr: *anyopaque, w: u32, diag: *Io.Writer) anyerror!void {
+    fn start(ptr: *anyopaque, w: u32, _: []const u32, diag: *Io.Writer) anyerror!void {
         const f: *Fake = @ptrCast(@alignCast(ptr));
         std.debug.assert(!f.alive[w]);
         const n = f.start_attempts.fetchAdd(1, .monotonic);

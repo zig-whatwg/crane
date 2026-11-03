@@ -53,6 +53,17 @@ fn settle(browser: *browser_mod.Browser) !void {
     }
 }
 
+/// Turn the event loop until the agent's deferred teardown queue - where the
+/// collections queued the retired realms' trees, freed a slice at a time
+/// between tasks - is empty. A hang guard of turns only.
+fn drainTeardowns(browser: *browser_mod.Browser) !void {
+    var turns: usize = 0;
+    while (!browser.agent_host.deferred_teardown.isEmpty()) : (turns += 1) {
+        if (turns >= 5000) return error.TeardownsNeverDrained;
+        _ = try browser.runEventLoopBlocking(20);
+    }
+}
+
 fn check(browser: *browser_mod.Browser) !void {
     const page = browser.current_context orelse return error.NoPage;
     const failed = try page.evaluateScriptToString("String(globalThis.failed || '')", testing.allocator);
@@ -180,6 +191,32 @@ const navigate_from_initial_empty =
     \\f.src = 'about:blank?1';
 ;
 
+/// Collect until the retired realms have ended and their documents are
+/// freed: each round collects (twice, and again from a task), lets the page's
+/// tasks run and drains the deferred teardown queue, then counts the
+/// documents' parts. It stops once the count is `goal` - or, with none (the
+/// first page, which sets the goal), once two rounds count the same - and
+/// after 20 rounds at most: a document still held then is the retention this
+/// test catches. Never one round on a bet: a retired realm ends a task after
+/// the collection that takes it, and under ThreadSanitizer's slowdown that
+/// came a round later than on an idle host ("page 2: 3 -> 6", lane tsanfix1).
+fn collectUntilSettled(browser: *browser_mod.Browser, goal: ?usize) !usize {
+    const page = browser.current_context orelse return error.NoPage;
+    var last: ?usize = null;
+    var now: usize = 0;
+    for (0..20) |_| {
+        try page.runScript("globalThis.pending = 1; TestUtils.gc(); TestUtils.gc(); setTimeout(() => { TestUtils.gc(); pending = 0; }, 0);");
+        try settle(browser);
+        try drainTeardowns(browser);
+        now = count(browser, &document_parts);
+        if (goal) |wanted| {
+            if (now == wanted) return now;
+        } else if (last != null and last.? == now) return now;
+        last = now;
+    }
+    return now;
+}
+
 fn initialEmptyNavigated() !void {
     var browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
     defer browser.deinit();
@@ -190,10 +227,8 @@ fn initialEmptyNavigated() !void {
         try page.loadHTML("<!doctype html><body></body>", .{ .base_url = "about:blank" });
         try page.runScript(navigate_from_initial_empty);
         try settle(browser);
-        try page.runScript("globalThis.pending = 1; TestUtils.gc(); TestUtils.gc(); setTimeout(() => { TestUtils.gc(); pending = 0; }, 0);");
-        try settle(browser);
+        const now = try collectUntilSettled(browser, if (page_index == 0) null else first);
         try check(browser);
-        const now = count(browser, &document_parts);
         if (page_index == 0) {
             first = now;
         } else if (now != first) {

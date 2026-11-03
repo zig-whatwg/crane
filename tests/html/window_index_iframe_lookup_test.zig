@@ -24,12 +24,29 @@ fn counterValue(name: []const u8) !i64 {
     return error.NoCounter;
 }
 
-fn liveObjectGlobals() !i64 {
-    return counterValue("live_object_globals");
+/// The global handles of THIS Browser's agent: the engine's
+/// `global_handle_bytes`, V8's used global handle bytes of the isolate
+/// current on this thread - the Browser's, whose top-level realm keeps it
+/// entered here. Not the process's live Global counts, which every Browser
+/// of the process moves (beside the many-Browsers variant's busy Browser
+/// they moved by hundreds: docs/testing/test-variant-findings-2026-11-02.tsv
+/// M2; docs/lessons/testing-a-test-that-measures-a-process-wide-counter-
+/// assumes-it-is-alone.md).
+fn browserHandleBytes() !i64 {
+    return counterValue("global_handle_bytes");
 }
 
-fn liveContextGlobals() !i64 {
-    return counterValue("live_context_globals");
+/// One global handle's bytes in the Browser's isolate - and that the bytes
+/// are the Browser's, shown rather than assumed: a value of its page held
+/// raises them by one handle, and its release lowers them back.
+fn handleBytes(page: h.Page) !i64 {
+    const before = try browserHandleBytes();
+    const held = try page.browser.evaluateScript("document");
+    const holding = try browserHandleBytes();
+    held.release();
+    try testing.expect(holding > before);
+    try testing.expectEqual(before, try browserHandleBytes());
+    return holding - before;
 }
 
 /// Live object Globals after 20 iframes are added, each looked up as
@@ -50,7 +67,7 @@ fn globalsAfterFrames(page: h.Page, control: bool) !i64 {
         \\}
     ;
     try page.run(if (control) after_content_window else by_lookup);
-    return liveObjectGlobals();
+    return browserHandleBytes();
 }
 
 fn lookupLetsItsListGo() !void {
@@ -59,14 +76,15 @@ fn lookupLetsItsListGo() !void {
     try page.run("globalThis.doc = document;");
     const document = try page.node("doc");
     const before = h.dom.refcount.count(document);
-    const start = try liveObjectGlobals();
+    const handle = try handleBytes(page);
+    const start = try browserHandleBytes();
     const after_control = try globalsAfterFrames(page, true);
     const after_lookup = try globalsAfterFrames(page, false);
     try h.expectCount(before, document, "the document, after 40 indexed lookups");
     const control = after_control - start;
     const lookup = after_lookup - after_control;
-    if (lookup - control > 2) {
-        std.debug.print("live object Globals: +{d} for 20 frames looked up after contentWindow, +{d} for 20 found by the lookup\n", .{ control, lookup });
+    if (lookup - control > 2 * handle) {
+        std.debug.print("the Browser's global handle bytes: +{d} for 20 frames looked up after contentWindow, +{d} for 20 found by the lookup ({d} a handle)\n", .{ control, lookup, handle });
         return error.LeakedGlobals;
     }
 }
@@ -79,13 +97,14 @@ fn indexedReadsLeaveNoGlobal() !void {
     const page = try h.Page.open();
     defer page.close();
     try page.run("globalThis.frame = document.body.appendChild(document.createElement('iframe')); void window[0];");
-    const before = try liveObjectGlobals() + try liveContextGlobals();
+    const handle = try handleBytes(page);
+    const before = try browserHandleBytes();
     try page.run("for (let i = 0; i < 500; i++) { void window[0]; void window[1]; }");
-    const after = try liveObjectGlobals() + try liveContextGlobals();
+    const after = try browserHandleBytes();
     // 1,000 indexed reads: the getter's context and global handles are its
     // own and released, so the count does not grow with the reads.
-    if (after - before > 20) {
-        std.debug.print("live object and context Globals: {d} -> {d} over 1,000 indexed reads\n", .{ before, after });
+    if (after - before > 20 * handle) {
+        std.debug.print("the Browser's global handle bytes: {d} -> {d} over 1,000 indexed reads ({d} a handle)\n", .{ before, after, handle });
         return error.LeakedGlobals;
     }
 }

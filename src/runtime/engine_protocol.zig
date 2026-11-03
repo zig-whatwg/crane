@@ -1022,6 +1022,18 @@ pub inline fn destroyAgent(agent: *Agent) void {
     impl.destroyAgent(agent);
 }
 
+/// Whether `agent` was restored from the engine's snapshot (createAgent with
+/// `from_snapshot`, and the restore succeeded) - only then can its Window
+/// realms be restored from it (WindowRealmOptions.from_snapshot). False on an
+/// engine without `restores_snapshots`. An engine concern, no spec term: a
+/// restore the adapter refused - V8 keeps one read-only heap per process,
+/// and an agent asked for the snapshot while isolates made without it live
+/// is made without it - is answered here, so the host makes its realms afresh
+/// instead of asking for a restore that cannot happen.
+pub inline fn agentRestoredFromSnapshot(agent: *Agent) bool {
+    return impl.agentRestoredFromSnapshot(agent);
+}
+
 /// The `host` pointer `agent` was created with (AgentOptions.host): the
 /// embedder's own pointer handed back, no engine handle. Null when none was
 /// given, once the agent is destroyed, or for an agent the adapter did not

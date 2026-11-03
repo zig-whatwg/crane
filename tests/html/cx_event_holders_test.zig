@@ -22,6 +22,29 @@ fn counter(name: []const u8) !i64 {
     return error.NoSuchCounter;
 }
 
+/// The global handles of THIS Browser's agent: the engine's
+/// `global_handle_bytes`, V8's used global handle bytes of the isolate
+/// current on this thread - the Browser's, whose top-level realm keeps it
+/// entered here. Not the process's live Global<Object> count, which every
+/// Browser of the process moves (beside the many-Browsers variant's busy
+/// Browser it moved by 30: docs/testing/test-variant-findings-2026-11-02.tsv
+/// M2; docs/lessons/testing-a-test-that-measures-a-process-wide-counter-
+/// assumes-it-is-alone.md).
+fn browserHandleBytes() !i64 {
+    return counter("global_handle_bytes");
+}
+
+/// That the bytes are the Browser's, shown rather than assumed: a value of
+/// `realm` held raises them, and its release lowers them back.
+fn expectReadsTheBrowsersIsolate(realm: runtime.Context, instance: *runtime.Instance) !void {
+    const before = try browserHandleBytes();
+    const held = try engine.retainValue(realm, .{ .instance = instance });
+    const holding = try browserHandleBytes();
+    held.release();
+    try testing.expect(holding > before);
+    try testing.expectEqual(before, try browserHandleBytes());
+}
+
 const Kind = enum { focus, toggle };
 
 fn makeEvent(kind: Kind, realm: runtime.Context, target: *runtime.Instance) !*runtime.Instance {
@@ -55,16 +78,17 @@ fn exercise(kind: Kind) !void {
     // adds is only its own hold.
     (try engine.retainValue(realm, .{ .instance = button })).release();
     try testing.expect(engine.hasWrapper(button));
+    try expectReadsTheBrowsersIsolate(realm, button);
 
-    const before = try counter("live_object_globals");
+    const before = try browserHandleBytes();
     for (0..8) |_| {
         const event = try makeEvent(kind, realm, button);
         try testing.expect(!engine.hasWrapper(event));
         try testing.expectEqual(button, (try heldTarget(kind, event)).?);
         event.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(event));
     }
-    const after = try counter("live_object_globals");
-    if (after != before) std.debug.print("{s}: live object globals {d} -> {d} after 8 unwrapped events\n", .{ @tagName(kind), before, after });
+    const after = try browserHandleBytes();
+    if (after != before) std.debug.print("{s}: the Browser's global handle bytes {d} -> {d} after 8 unwrapped events\n", .{ @tagName(kind), before, after });
     try testing.expectEqual(before, after);
     // The event never frees what it was given.
     try testing.expectEqual(generation, runtime.SlabAllocator.generationOf(button));

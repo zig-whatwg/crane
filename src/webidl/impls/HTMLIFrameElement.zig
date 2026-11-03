@@ -5731,7 +5731,11 @@ fn attachRealm(
     const realm = engine.createWindowRealm(&.{
         .agent = agent,
         .allocator = allocator,
-        .from_snapshot = true,
+        // Restored from the engine's snapshot when the agent was: a
+        // snapshotless Browser's frames tried a restore that could not
+        // happen, every time (docs/testing/test-variant-findings-2026-11-02.tsv
+        // F3).
+        .from_snapshot = engine.agentRestoredFromSnapshot(agent),
         .timer = parent.timer,
         .event_loop = parent.event_loop,
         .origin = origin,
