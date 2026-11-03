@@ -224,7 +224,10 @@ const Sheet = struct {
 fn loadsIn(realm: runtime.Context) []const *Load {
     return @ptrCast(realm.objects(.style_sheet_loads).items);
 }
-threadlocal var next_id: u64 = 1;
+/// The next load's id: a load is looked up by id only in its own realm's
+/// list (`loadsIn`), so an id needs no owner - only uniqueness.
+// process-wide: an id counter whose only property is uniqueness in the process (a load is found by id only in its realm's list); written with an atomic fetch-add from every thread that loads a style sheet, it carries no state of any instance.
+var next_id: std.atomic.Value(u64) = .init(1);
 
 // ============================================================================
 // The owners' interface
@@ -779,7 +782,7 @@ fn newLoad(element: *runtime.Instance, kind: Kind) ?*Load {
     const allocator = element.ctx.allocator;
     const load = allocator.create(Load) catch return null;
     load.* = .{
-        .id = next_id,
+        .id = next_id.fetchAdd(1, .monotonic),
         .kind = kind,
         .allocator = allocator,
         .element = element,
@@ -793,7 +796,6 @@ fn newLoad(element: *runtime.Instance, kind: Kind) ?*Load {
         allocator.destroy(load);
         return null;
     };
-    next_id += 1;
     return load;
 }
 

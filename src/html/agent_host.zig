@@ -46,6 +46,12 @@ pub const AgentHost = struct {
     /// referrer is looked up in before it is read. Linked and unlinked only
     /// on the agent's thread.
     classic_scripts: ClassicScripts = .{},
+    /// The agent's module scripts (html.module_script `ModuleScript`, each
+    /// owned by its document's or worker's module map): the set a module
+    /// record's [[HostDefined]] - import.meta, an import()'s referrer - is
+    /// looked up in before it is read. Linked and unlinked only on the
+    /// agent's thread. It was one process-wide list under a mutex.
+    module_scripts: ScriptRecords = .{},
     /// The agent's forms whose past names map has entries
     /// (dom.form_past_names): told of every change that can give one of
     /// their elements another form owner. Read and written only on the
@@ -91,6 +97,7 @@ pub const AgentHost = struct {
         // Released while the agent lived: its promises were its handles.
         std.debug.assert(self.rejections.items.len == 0);
         self.classic_scripts.deinit();
+        self.module_scripts.deinit();
         self.form_past_names.deinit();
         // After the agent and its DOM: what is still listed is not touched.
         self.mutation_observers.deinitAfterAgent();
@@ -126,10 +133,11 @@ pub const ScriptDrain = struct {
     depth: usize = 0,
 };
 
-/// The [[HostDefined]] records of one agent's classic scripts
-/// (html.script_execution `ClassicScriptRecord`, which embeds a `Link`).
-/// A document's module map owns each record and frees it with the document;
-/// this only links them, so that a [[HostDefined]] the engine hands back - an
+/// The [[HostDefined]] records of one agent's scripts: its classic scripts
+/// (html.script_execution `ClassicScriptRecord`) or its module scripts
+/// (html.module_script `ModuleScript`), each embedding a `Link`. A document's
+/// (or worker's) module map owns each record and frees it; this only links
+/// them, so that a [[HostDefined]] the engine hands back - import.meta, an
 /// import()'s referrer - is read only while its record exists.
 ///
 /// The agent's, because only the agent's own realms run its scripts'
@@ -142,7 +150,7 @@ pub const ScriptDrain = struct {
 /// list, linked and unlinked from every Browser's thread with no lock, and
 /// two Browsers running classic scripts at once dropped each other's records
 /// from it (tests/html/instances_classic_scripts_test.zig).
-pub const ClassicScripts = struct {
+pub const ScriptRecords = struct {
     records: std.DoublyLinkedList = .{},
 
     /// What a record embeds to be in a list.
@@ -150,7 +158,7 @@ pub const ClassicScripts = struct {
         node: std.DoublyLinkedList.Node = .{},
         /// The list the record is in; null when it is in none - not linked
         /// yet, unlinked, or outlived by its agent's host.
-        list: ?*ClassicScripts = null,
+        list: ?*ScriptRecords = null,
 
         /// The next record in its list, for a walk from `first`.
         pub fn next(self: *const Link) ?*Link {
@@ -159,7 +167,7 @@ pub const ClassicScripts = struct {
         }
     };
 
-    pub fn add(self: *ClassicScripts, link: *Link) void {
+    pub fn add(self: *ScriptRecords, link: *Link) void {
         std.debug.assert(link.list == null);
         self.records.prepend(&link.node);
         link.list = self;
@@ -173,7 +181,7 @@ pub const ClassicScripts = struct {
     }
 
     /// The most recently added record, or null.
-    pub fn first(self: *const ClassicScripts) ?*Link {
+    pub fn first(self: *const ScriptRecords) ?*Link {
         const node = self.records.first orelse return null;
         return @fieldParentPtr("node", node);
     }
@@ -181,13 +189,16 @@ pub const ClassicScripts = struct {
     /// At the end of the agent's host: every record still linked - its
     /// document not yet freed - forgets the list, so freeing it later
     /// unlinks it from nothing.
-    fn deinit(self: *ClassicScripts) void {
+    fn deinit(self: *ScriptRecords) void {
         while (self.records.popFirst()) |node| {
             const link: *Link = @fieldParentPtr("node", node);
             link.list = null;
         }
     }
 };
+
+/// The agent's classic script records (`AgentHost.classic_scripts`).
+pub const ClassicScripts = ScriptRecords;
 
 test "a classic script record is in its agent's list from add until remove, and the host's end orphans the rest" {
     var list: ClassicScripts = .{};

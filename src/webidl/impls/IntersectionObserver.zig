@@ -18,6 +18,7 @@ const engine = @import("engine");
 const IntersectionObserver = interfaces.IntersectionObserver;
 const same_object = @import("same_object.zig");
 const clock = @import("clock");
+const browser_object_lists = @import("dom").browser_object_lists;
 
 pub const State = IntersectionObserver.State;
 
@@ -427,31 +428,29 @@ fn holdWhileObserving(instance: *runtime.Instance, internal: *InternalState) voi
     }
 }
 
-/// The observers on this thread that observe something - what
-/// dom.intersection_targets asks when a node is torn down.
-threadlocal var observing: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
-
+/// The observers that observe something are their Browser's list
+/// (dom.browser_object_lists `.intersection_observers`) - what
+/// dom.intersection_targets asks when a node is torn down. Found from the
+/// observer's and the node's address: one Browser's, whatever realm each is
+/// in. It was one list per thread, every Browser's observers in it.
 fn joinObserving(instance: *runtime.Instance) void {
-    for (observing.items) |o| if (o == instance) return;
-    observing.append(std.heap.c_allocator, instance) catch {};
+    const observing = browser_object_lists.of(instance, .intersection_observers) catch return;
+    observing.add(instance) catch {};
 }
 
 fn leaveObserving(instance: *runtime.Instance) void {
-    for (observing.items, 0..) |o, i| {
-        if (o == instance) {
-            _ = observing.swapRemove(i);
-            return;
-        }
-    }
+    const observing = browser_object_lists.existing(instance, .intersection_observers) orelse return;
+    observing.remove(instance);
 }
 
 /// dom.intersection_targets: `node` is being torn down - it is observed by
 /// nothing from now on, and an observer whose last target it was lets its
 /// hold go.
 fn targetDestroyed(node: *runtime.Instance) void {
+    const observing = browser_object_lists.existing(node, .intersection_observers) orelse return;
     var i: usize = 0;
-    while (i < observing.items.len) {
-        const observer = observing.items[i];
+    while (i < observing.slice().len) {
+        const observer = observing.slice()[i];
         const internal = getInternal(observer);
         var j: usize = 0;
         var forgot = false;
@@ -462,9 +461,9 @@ fn targetDestroyed(node: *runtime.Instance) void {
             } else j += 1;
         }
         // holdWhileObserving may take the observer out of the list.
-        const before = observing.items.len;
+        const before = observing.slice().len;
         if (forgot) holdWhileObserving(observer, internal);
-        if (observing.items.len == before) i += 1;
+        if (observing.slice().len == before) i += 1;
     }
 }
 

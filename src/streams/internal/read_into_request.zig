@@ -197,9 +197,6 @@ pub const ReadIntoRequest = struct {
     /// KEEP: anyopaque required - VTable with type-erased callback function pointers
     vtable: *const VTable,
 
-    /// Whether the vtable was heap-allocated (for initLegacy)
-    vtable_allocated: bool = false,
-
     /// KEEP: anyopaque required - VTable struct for callback dispatch
     pub const VTable = struct {
         chunk_steps: *const fn (*anyopaque, ArrayBufferView) void,
@@ -207,19 +204,11 @@ pub const ReadIntoRequest = struct {
         error_steps: *const fn (*anyopaque, Value) void,
     };
 
-    /// Deinitialize the ReadIntoRequest, freeing any allocated resources
+    /// Deinitialize the ReadIntoRequest: it owns nothing (its vtable is
+    /// static and its context the caller's).
     pub fn deinit(self: *const ReadIntoRequest) void {
-        if (self.vtable_allocated) {
-            // vtable was heap-allocated by initLegacy, free it
-            self.allocator.destroy(@constCast(self.vtable));
-        }
+        _ = self;
     }
-
-    /// Legacy callback function types for backward compatibility
-    /// DEPRECATED: Use TypedReadIntoRequest for new code
-    pub const ChunkStepsFn = *const fn (ctx: ?*anyopaque, chunk: ArrayBufferView) void;
-    pub const CloseStepsFn = *const fn (ctx: ?*anyopaque) void;
-    pub const ErrorStepsFn = *const fn (ctx: ?*anyopaque, e: Value) void;
 
     /// Initialize a type-erased read-into request directly
     ///
@@ -233,69 +222,8 @@ pub const ReadIntoRequest = struct {
             .allocator = allocator,
             .context = context,
             .vtable = vtable,
-            .vtable_allocated = false,
         };
     }
-
-    /// Legacy init for backward compatibility
-    ///
-    /// DEPRECATED: Use TypedReadIntoRequest for new code.
-    /// This provides compatibility with existing code that uses ?*anyopaque context.
-    fn initLegacyGeneric(
-        comptime chunk_steps: ChunkStepsFn,
-        comptime close_steps: CloseStepsFn,
-        comptime error_steps: ErrorStepsFn,
-    ) *const VTable {
-        // Use comptime to create a static VTable
-        return &VTable{
-            .chunk_steps = @ptrCast(chunk_steps),
-            .close_steps = @ptrCast(close_steps),
-            .error_steps = @ptrCast(error_steps),
-        };
-    }
-
-    pub fn initLegacy(
-        allocator: std.mem.Allocator,
-        chunk_steps: ChunkStepsFn,
-        close_steps: CloseStepsFn,
-        error_steps: ErrorStepsFn,
-        context: ?*anyopaque,
-    ) ReadIntoRequest {
-        // Allocate VTable on the heap since we can't make it static with runtime values
-        const vtable = allocator.create(VTable) catch {
-            // If allocation fails, return a stub VTable that logs errors
-            // This shouldn't happen in practice but provides safety
-            return .{
-                .allocator = allocator,
-                .context = context orelse undefined_ptr,
-                .vtable = &stub_vtable,
-                .vtable_allocated = false, // stub_vtable is static, not allocated
-            };
-        };
-        vtable.* = .{
-            .chunk_steps = @ptrCast(chunk_steps),
-            .close_steps = @ptrCast(close_steps),
-            .error_steps = @ptrCast(error_steps),
-        };
-
-        return .{
-            .allocator = allocator,
-            .context = context orelse undefined_ptr,
-            .vtable = vtable,
-            .vtable_allocated = true,
-        };
-    }
-
-    /// Stub VTable for error cases
-    const stub_vtable = VTable{
-        .chunk_steps = stubChunkSteps,
-        .close_steps = stubCloseSteps,
-        .error_steps = stubErrorSteps,
-    };
-
-    fn stubChunkSteps(_: *anyopaque, _: ArrayBufferView) void {}
-    fn stubCloseSteps(_: *anyopaque) void {}
-    fn stubErrorSteps(_: *anyopaque, _: Value) void {}
 
     /// Execute chunk steps with ArrayBufferView
     pub fn executeChunkSteps(self: *const ReadIntoRequest, chunk: ArrayBufferView) void {
@@ -312,12 +240,6 @@ pub const ReadIntoRequest = struct {
         self.vtable.error_steps(self.context, e);
     }
 };
-
-/// Sentinel pointer for null context in legacy init.
-/// Uses a static variable instead of @ptrFromInt to avoid undefined behavior.
-/// The address of this variable serves as a unique sentinel value.
-var sentinel_storage: u8 align(8) = 0;
-const undefined_ptr: *anyopaque = @ptrCast(&sentinel_storage);
 
 // ============================================================================
 // Tests

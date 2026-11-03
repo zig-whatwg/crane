@@ -185,6 +185,13 @@ pub const ContextData = struct {
     /// realm, whose global object reports its own.
     report_exception: ?*const fn (realm: *ContextData, info: *const @import("engine_types.zig").ErrorInfo) void = null,
 
+    /// The worker host that runs this realm (html.worker_host's WorkerHost),
+    /// for its hooks above and its own lookups by realm: set as the host
+    /// records the realm, cleared as the realm's end begins. Null for any
+    /// other realm - a Window's, a ShadowRealm's. It was a per-thread list
+    /// of the thread's worker hosts, searched by realm.
+    worker_host: ?*anyopaque = null,
+
     /// The Browser this realm belongs to: its scope, where the Browser's state
     /// lives as supplements (docs/instances.md, rule 2) - its live workers
     /// (html.WorkerRegistry). Set by the host that makes the realm: the

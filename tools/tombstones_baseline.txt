@@ -70,6 +70,5 @@ src/webidl/codegen/ir.zig IR.namespaces 1
 src/webidl/codegen/ir.zig IR.typedefs 1
 src/webidl/codegen/ir.zig IR.unresolved 1
 src/webidl/impls/CustomElementRegistry.zig InternalState.when_defined 1
-src/webidl/impls/HTMLIFrameElement.zig navigations 1
 src/webidl/impls/Navigation.zig InternalState.handed 1
 src/webidl/impls/XSLTProcessor.zig InternalState.parameters 1

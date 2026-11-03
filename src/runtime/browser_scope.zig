@@ -122,6 +122,12 @@ pub const BrowserScope = struct {
         svg_use_element,
         font_face,
         font_face_set,
+        /// dom.browser_object_lists: the Browser's IntersectionObservers
+        /// that observe something, its Navigation objects, and its
+        /// ProcessingInstructions not yet deinit'd.
+        intersection_observers,
+        navigations,
+        processing_instructions,
     };
     const table_count = @typeInfo(Table).@"enum".field_names.len;
 
