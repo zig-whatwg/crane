@@ -723,6 +723,15 @@ test "real processes: each kind of result, a crash and a timeout blamed and rest
     defer plan.deinit(gpa);
     var exec = try Executor.init(gpa, io, &argv, 2 * std.time.ns_per_s, 1);
     defer exec.deinit();
+    // Only "hangs" may time out: 2 s for it, 120 s for the others, which the
+    // launcher's `slow` gives (slow_factor times the timeout). With 2 s for
+    // all, under background QoS (taskpolicy -b, 4 runs at once) "fails" or
+    // "leaks" took over 2 s to answer in 14 runs of 200 and was blamed as a
+    // timeout (lane testfix2).
+    var slow: [names.len]bool = undefined;
+    for (&slow, names) |*s, name| s.* = !std.mem.eql(u8, name, "hangs");
+    exec.slow = &slow;
+    exec.slow_factor = 60;
     var run = try sched.Run.init(gpa, io, &plan, md.names.len, exec.executor(), .{ .jobs = 1, .alone_runs = 1 });
     defer run.deinit();
     try run.execute();
