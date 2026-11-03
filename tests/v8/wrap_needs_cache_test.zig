@@ -40,11 +40,15 @@ test "a wrap in a context no realm was made for makes no wrapper and leaves no h
     const headers = try interfaces.Headers.init(testing.allocator, data);
     defer runtime.Instance.deinit(headers);
 
-    const before = ffi.v8_Debug_LiveObjectGlobals();
+    // The agent's own isolate's global handles, every Global<Object> among
+    // them - not the process's live_object_globals, which any other Browser
+    // of the process moves (beside the many-Browsers variant's busy Browser it
+    // read 0 -> 1 with no wrapper of this test's: lane tsanfix1).
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
     if (protocol.retainValue(data, .{ .instance = headers })) |held| held.release() else |_| {}
-    const after = ffi.v8_Debug_LiveObjectGlobals();
+    const after = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
     if (after != before) {
-        std.debug.print("live_object_globals {d} -> {d}: a wrapper no cache owns\n", .{ before, after });
+        std.debug.print("the agent's global handle bytes {d} -> {d}: a wrapper no cache owns\n", .{ before, after });
         return error.WrapperLeaked;
     }
     // Nothing reached it, so its maker may free it whole.
