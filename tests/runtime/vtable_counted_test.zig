@@ -103,6 +103,11 @@ test "lifetime: a counted type's acquire and release reach the owner's hooks wit
             node.rc -= 2;
         }
     };
+    // Its counters are the test's statics: a second run in the same process
+    // (verify mode runs it ten times in one) starts them from zero again.
+    Observer.target = .{};
+    Observer.acquired = 0;
+    Observer.released = 0;
     const override = runtime.lifetime.overrideHooksForTest(.{ .acquire = Observer.acquire, .release = Observer.release });
     defer override.restore();
 
