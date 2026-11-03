@@ -27,9 +27,11 @@ pub const Verdict = ?[]const u8;
 /// Checks one Bash command. `agent_type` is the hook input's `agent_type`:
 /// null in the main conversation, the subagent's type (e.g. "lane-xhigh")
 /// inside a subagent.
-pub fn checkBash(command: []const u8, agent_type: ?[]const u8) Verdict {
-    if (std.mem.indexOf(u8, command, "TYPESAFE_API_KEY") != null)
+pub fn checkBash(raw_command: []const u8, agent_type: ?[]const u8) Verdict {
+    if (std.mem.indexOf(u8, raw_command, "TYPESAFE_API_KEY") != null)
         return "never print or reference TYPESAFE_API_KEY in a command (the user's rule); jev.py loads it through `zsh -ic` without naming it";
+    var buf: [64 * 1024]u8 = undefined;
+    const command = blankHeredocData(raw_command, &buf);
     if (checkXcode(command)) |v| return v;
     if (checkSharedWptTree(command)) |v| return v;
     if (checkZigBuild(command, agent_type)) |v| return v;
@@ -38,6 +40,50 @@ pub fn checkBash(command: []const u8, agent_type: ?[]const u8) Verdict {
     if (checkBroadKill(command)) |v| return v;
     if (checkProtectedWrites(command)) |v| return v;
     return null;
+}
+
+/// A heredoc that `cat` or `tee` writes to a file is data, not commands
+/// (2026-11-03: a lane writing a pool script was refused as a local build):
+/// a copy of the command with each such body blanked - its bytes spaces, its
+/// newlines kept - so the checks see only what the shell runs. A heredoc fed
+/// to anything else (`bash`, `ssh`, `sh -s`) stays: its body runs. A command
+/// longer than `buf` is checked as it is.
+fn blankHeredocData(command: []const u8, buf: []u8) []const u8 {
+    if (command.len > buf.len or std.mem.indexOf(u8, command, "<<") == null) return command;
+    const out = buf[0..command.len];
+    @memcpy(out, command);
+    var i: usize = 0;
+    while (std.mem.indexOfPos(u8, command, i, "<<")) |at| {
+        i = at + 2;
+        if (i < command.len and command[i] == '<') { // a here-string, <<<
+            i += 1;
+            continue;
+        }
+        var j = i;
+        if (j < command.len and command[j] == '-') j += 1;
+        while (j < command.len and command[j] == ' ') j += 1;
+        if (j < command.len and isQuote(command[j])) j += 1;
+        const word_start = j;
+        while (j < command.len and (std.ascii.isAlphanumeric(command[j]) or command[j] == '_')) j += 1;
+        const word = command[word_start..j];
+        if (word.len == 0) continue;
+        const first = basename(firstWordOfSegment(command, at));
+        if (!(std.mem.eql(u8, first, "cat") or std.mem.eql(u8, first, "tee"))) continue;
+        // The body: the lines after this one, up to the line that is the word.
+        const nl = std.mem.indexOfScalarPos(u8, command, j, '\n') orelse return out;
+        var line_start = nl + 1;
+        while (line_start < command.len) {
+            const line_end = std.mem.indexOfScalarPos(u8, command, line_start, '\n') orelse command.len;
+            if (std.mem.eql(u8, std.mem.trimStart(u8, command[line_start..line_end], "\t"), word)) {
+                i = line_end;
+                break;
+            }
+            @memset(out[line_start..line_end], ' ');
+            i = line_end;
+            line_start = line_end + 1;
+        }
+    }
+    return out;
 }
 
 const removal_verbs = [_][]const u8{ "rm", "rmdir", "trash", "unlink", "mv" };
@@ -53,6 +99,12 @@ fn checkXcode(command: []const u8) Verdict {
         const rest = command[i..];
         if (!(std.mem.startsWith(u8, rest, ".xcodeproj") or std.mem.startsWith(u8, rest, ".xcworkspace"))) continue;
         const path = pathAround(command, i);
+        // Only an argument of the removal or move itself counts.
+        const first = basename(firstWordOfSegment(command, i));
+        const segment_moves = isRemovalCommand(command, i) or std.mem.eql(u8, first, "mv") or
+            std.mem.eql(u8, first, "unlink") or
+            (std.mem.eql(u8, first, "git") and hasWordAny(segmentAround(command, i), &.{ "rm", "mv" }));
+        if (!segment_moves) continue;
         if (std.mem.indexOf(u8, path, ".claude/worktrees/") != null) continue;
         if (std.mem.indexOf(u8, path, "crane-work/") != null) continue;
         return "never delete, move or untrack an Xcode project or workspace (*.xcodeproj, *.xcworkspace) unless the user asks for it in that message (global CLAUDE.md)";
@@ -76,6 +128,9 @@ fn checkSharedWptTree(command: []const u8) Verdict {
             "/main/tests",     "/main/tests/",     "/main/tests/*",
             "/main/tests/wpt", "/main/tests/wpt/", "/main/tests/wpt/*",
         };
+        // Only an argument of an rm in its own command segment removes it: a
+        // WPT root named elsewhere in a command that also runs rm does not.
+        if (!isRemovalCommand(command, at)) continue;
         for (forbidden) |f| {
             if (std.mem.eql(u8, suffix, f))
                 return "never remove ~/crane-work/main (or ~/crane-work itself) on any host: its tests/wpt is the SHARED WPT tree every mirror links to and wpt serve runs in (2026-11-03). Remove a lane's mirror by its own name";
@@ -222,7 +277,7 @@ fn checkProtectedWrites(command: []const u8) Verdict {
         var toks = Tokens.init(command);
         while (toks.next()) |t| {
             const path = std.mem.trimStart(u8, t.text, ">");
-            if (hasWord(command, "rm") and isWptTreeRoot(path))
+            if (isRemovalCommand(command, t.start) and isWptTreeRoot(path))
                 return "never remove a tests/wpt tree's contents: a mirror's tests/wpt links to the pool's SHARED tree (2026-11-03). Remove the mirror by its own name";
             if (isUpstreamWptPath(path) and (in_place or isWriteTarget(command, t)) and
                 !std.mem.startsWith(u8, basename(firstWordOfSegment(command, t.start)), "rsync"))
@@ -445,6 +500,22 @@ fn precededBy(command: []const u8, pos: usize, word: []const u8) bool {
     return false;
 }
 
+/// The command segment containing `pos`: from the last `;` `&` `|` `(`
+/// newline or quote before it to the next segment end after it.
+fn segmentAround(command: []const u8, pos: usize) []const u8 {
+    var s = pos;
+    while (s > 0 and !isSegmentEnd(command[s - 1]) and !isQuote(command[s - 1]) and command[s - 1] != '(') s -= 1;
+    var e = pos;
+    while (e < command.len and !isSegmentEnd(command[e])) e += 1;
+    return command[s..e];
+}
+
+/// Whether the command segment containing `pos` is an rm, rmdir or trash.
+fn isRemovalCommand(command: []const u8, pos: usize) bool {
+    const first = basename(firstWordOfSegment(command, pos));
+    return std.mem.eql(u8, first, "rm") or std.mem.eql(u8, first, "rmdir") or std.mem.eql(u8, first, "trash");
+}
+
 fn firstWordOfSegment(command: []const u8, pos: usize) []const u8 {
     var s = pos;
     while (s > 0 and !isSegmentEnd(command[s - 1]) and !isQuote(command[s - 1])) s -= 1;
@@ -626,6 +697,8 @@ test "xcode projects: deleting, moving or untracking one is refused; a disposabl
     try expectAllowed("git worktree remove .claude/worktrees/x", null);
     try expectAllowed("ls bindings/swift/.swiftpm/xcode/package.xcworkspace", null);
     try expectAllowed("xcodegen generate && open ios/App.xcodeproj", null);
+    try expectAllowed("rm -f /tmp/x.log && open ios/App.xcodeproj", null);
+    try expectAllowed("git log -- ios/App.xcodeproj && rm -rf tmp/scratch", null);
 }
 
 test "the pool's shared WPT tree: removing crane-work/main is refused; a lane's mirror or main's cache may go" {
@@ -639,6 +712,11 @@ test "the pool's shared WPT tree: removing crane-work/main is refused; a lane's 
     try expectAllowed("ssh chat.local 'rm -rf ~/crane-work/crashes7 ~/crane-work/crashes7-bins'", null);
     try expectAllowed("rsync -a --delete tests/wpt/ host:crane-work/main/tests/wpt/", null);
     try expectAllowed("ls ~/crane-work/main/tests/wpt", null);
+    // 2026-11-03 (streamslife1): the shared tree named as a WPT root in a
+    // heredoc, with an unrelated rm elsewhere in the command, is not a removal.
+    try expectAllowed("cat > prof.sh <<'EOF'\nW=$HOME/crane-work/main/tests/wpt\n./wpt_runner --wpt-root=$W x.html\nEOF\ntmp/remote/crane-pool.sh wpt sl1 --pair p \"bash prof.sh; rm -f /tmp/sl1-prof.sh\"", null);
+    try expectAllowed("rm -f /tmp/x.log && ./zig-out/bin/wpt_runner --wpt-root=$HOME/crane-work/main/tests/wpt a.html", null);
+    try expectDenied("cd ~ && rm -rf crane-work/main", null);
 }
 
 test "zig build: bare, without -j, or with a /tmp cache is refused" {
@@ -672,6 +750,16 @@ test "zig build: a lane builds in the pool, never on the Mac; the main conversat
     try expectAllowed("zig build test -Dspec=dom -j2", null);
     try expectAllowed("zig build test -Dspec=dom -j2", "Explore");
     try expectAllowed("zig fmt src/", "lane-xhigh");
+}
+
+test "a heredoc that cat or tee writes to a file is data, not commands; one fed to a shell is commands" {
+    // 2026-11-03 (streamslife1): a lane writing a pool script with a heredoc
+    // was refused as a local build.
+    try expectAllowed("cat > tmp/x.sh <<'EOF'\ncd ~/m && zig build test -Dspec=dom -j2\nEOF\ntmp/remote/crane-remote.sh m 'bash tmp/x.sh'", "lane-xhigh");
+    try expectAllowed("cat <<EOF > notes.txt\nrm -rf ~/crane-work/main\nEOF", null);
+    try expectAllowed("tee tmp/y.sh <<-'END' >/dev/null\n\tzig build\n\tEND", null);
+    try expectDenied("bash <<'EOF'\nzig build test -j2\nEOF", "lane-xhigh");
+    try expectDenied("cat <<EOF > f\nhi\nEOF\nrm -rf ~/crane-work/main", null);
 }
 
 test "git stash is refused, except list and show" {
