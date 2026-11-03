@@ -266,10 +266,13 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return state.own._internal;
 }
 
-/// The Navigation objects alive on this thread. A window whose `navigation`
-/// script never asked for has none - nothing can listen to its navigate
-/// events or hold its promises - and its navigations are not tracked.
-threadlocal var live: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+/// The Navigation objects alive are their Browser's list
+/// (dom.browser_object_lists `.navigations`), found from a Window's address
+/// or a Navigation's. A window whose `navigation` script never asked for has
+/// none - nothing can listen to its navigate events or hold its promises -
+/// and its navigations are not tracked. It was one list per thread, every
+/// Browser's Navigation objects in it.
+const browser_object_lists = dom.browser_object_lists;
 
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
@@ -300,7 +303,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     const internal = try allocator.create(InternalState);
     internal.* = .{ .allocator = allocator, .navigation = instance };
     instance.getState(State).own._internal = internal;
-    try live.append(std.heap.c_allocator, instance);
+    try (try browser_object_lists.of(instance, .navigations)).add(instance);
     // "Initialize the navigation API entries for a new document": the current
     // entry, handed out now, is the "from" of the first currententrychange.
     _ = currentEntryObject(instance, internal) catch null;
@@ -313,12 +316,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
 /// Navigation's own teardown: the generated chain runs EventTarget's after it.
 /// Deinitialize Navigation instance
 pub fn deinitOwn(instance: *runtime.Instance) void {
-    for (live.items, 0..) |navigation, i| {
-        if (navigation == instance) {
-            _ = live.swapRemove(i);
-            break;
-        }
-    }
+    if (browser_object_lists.existing(instance, .navigations)) |live| live.remove(instance);
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();
@@ -1312,7 +1310,8 @@ const Target = struct {
 };
 
 fn targetOf(window: *runtime.Instance) ?Target {
-    for (live.items) |instance| {
+    const live = browser_object_lists.existing(window, .navigations) orelse return null;
+    for (live.slice()) |instance| {
         const internal = getInternal(instance) orelse continue;
         if (windowOf(instance, internal) == window) return .{ .instance = instance, .internal = internal };
     }
@@ -2602,7 +2601,12 @@ fn entriesRemovedHook(top_ptr: *anyopaque) void {
     const Other = struct { instance: *runtime.Instance, generation: u64 };
     var others: std.ArrayListUnmanaged(Other) = .empty;
     defer others.deinit(std.heap.c_allocator);
-    for (live.items) |navigation| {
+    // The traversable's Browser's Navigation objects, found from its active
+    // Window's address: a traversable with no Window has no frame whose
+    // Navigation could hear of it.
+    const top_window: *runtime.Instance = @ptrCast(@alignCast(top.getActiveWindow() orelse return));
+    const live = browser_object_lists.existing(top_window, .navigations) orelse return;
+    for (live.slice()) |navigation| {
         const internal = getInternal(navigation) orelse continue;
         const s = scopeOf(navigation, internal) orelse continue;
         if (s.navigable.getTop() != top) continue;

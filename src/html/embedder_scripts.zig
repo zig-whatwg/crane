@@ -6,8 +6,9 @@
 //! iframes and window.open popups are parsed by the engine
 //! (`HTMLIFrameElement.parseHtmlForIframe`), which has no embedder to ask.
 //! An embedder that must answer for those documents too registers a
-//! `Loader` here, once, before any page loads; the frame parse path asks
-//! `forRealm` for a script loader bound to the frame's realm.
+//! `Loader` on its Browser, once, before any page loads; the frame parse
+//! path asks `forRealm` for a script loader bound to the frame's realm,
+//! which finds the loader of the realm's Browser.
 //!
 //! Test-only today: the WPT runner registers one, answering
 //! /resources/testdriver-vendor.js in every document the tests drive (the
@@ -31,27 +32,52 @@ const scripted_parser = @import("scripted_parser.zig");
 /// null to fetch it as usual.
 pub const Loader = *const fn (realm: runtime.Context, src: []const u8) ?[]const u8;
 
-/// The registered loader, per thread: a thread's pages are parsed on it.
-threadlocal var registered: ?Loader = null;
+/// A Browser's registered loader: a supplement of its scope
+/// (runtime.BrowserScope), made by `register`. The loader is an embedder's
+/// answer for its own Browser - another Browser in the process, with its
+/// own embedder, registers its own or none. It was one per thread, so two
+/// Browsers on one thread shared it and two Browsers on two threads each
+/// needed the registration made on their own thread (lane gstate4).
+///
+/// Written by `register`/`unregister` and read by the frame parse path, both
+/// on the Browser's window thread (frames and popups are parsed there; a
+/// worker parses no document).
+pub const Registration = struct {
+    loader: ?Loader = null,
+
+    pub fn init(_: std.mem.Allocator) Registration {
+        return .{};
+    }
+
+    pub fn deinit(_: *Registration) void {}
+};
 
 /// The embedder's hook, test-only today: register `loader` for every frame
-/// and popup document parsed on this thread from now on. Call it once, at
-/// startup, before any page loads - never lazily, or a frame parsed before
-/// the registration gets no loader and the result depends on what ran first.
-pub fn register(loader: Loader) void {
-    registered = loader;
+/// and popup document of the Browser whose scope is `scope`, from now on.
+/// Call it once, at startup, before any page loads - never lazily, or a
+/// frame parsed before the registration gets no loader and the result
+/// depends on what ran first.
+pub fn register(scope: *runtime.BrowserScope, loader: Loader) std.mem.Allocator.Error!void {
+    (try scope.of(Registration)).loader = loader;
 }
 
-/// Forget the registered loader (the embedder's shutdown).
-pub fn unregister() void {
-    registered = null;
+/// Forget the Browser's registered loader (the embedder's shutdown).
+pub fn unregister(scope: *runtime.BrowserScope) void {
+    if (scope.existing(Registration)) |registration| registration.loader = null;
+}
+
+/// The loader registered on `realm`'s Browser, if any.
+fn loaderOf(realm: runtime.Context) ?Loader {
+    const scope = realm.browserScope() orelse return null;
+    const registration = scope.existing(Registration) orelse return null;
+    return registration.loader;
 }
 
 /// The script loader for the parser of a frame or popup document in
 /// `realm`: null when no embedder registered one, which is today's
 /// behaviour for every build but the WPT runner's.
 pub fn forRealm(realm: runtime.Context) ?scripted_parser.ScriptLoader {
-    if (registered == null) return null;
+    if (loaderOf(realm) == null) return null;
     return .{ .context = @ptrCast(realm), .loadScript = &load, .retain = &retainRealm, .release = &releaseRealm };
 }
 
@@ -63,27 +89,31 @@ pub fn forRealm(realm: runtime.Context) ?scripted_parser.ScriptLoader {
 fn retainRealm(_: ?*anyopaque) void {}
 fn releaseRealm(_: ?*anyopaque) void {}
 
-/// `ScriptLoader.loadScript`: the registered loader, given the realm the
-/// loader was made for.
+/// `ScriptLoader.loadScript`: the loader registered on the Browser of the
+/// realm the loader was made for, given that realm.
 fn load(context: ?*anyopaque, src: []const u8) ?[]const u8 {
-    const loader = registered orelse return null;
     const realm: runtime.Context = @ptrCast(@alignCast(context orelse return null));
+    const loader = loaderOf(realm) orelse return null;
     return loader(realm, src);
 }
 
+/// A realm of a Browser whose scope is `scope` (no engine: never run).
+fn testRealm(scope: *runtime.BrowserScope) !runtime.ContextData {
+    var realm = try runtime.ContextData.init(std.testing.allocator, .{});
+    realm.browser_scope = scope;
+    return realm;
+}
+
 test "unregistered, a frame document's parser gets no loader" {
-    const saved = registered;
-    defer registered = saved;
-    registered = null;
-    // Never dereferenced: with nothing registered the realm is not read.
-    const realm: runtime.Context = @ptrFromInt(0x10000);
-    try std.testing.expect(forRealm(realm) == null);
-    try std.testing.expect(load(@ptrCast(realm), "/resources/testdriver-vendor.js") == null);
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    var realm = try testRealm(&scope);
+    defer realm.deinit();
+    try std.testing.expect(forRealm(&realm) == null);
+    try std.testing.expect(load(@ptrCast(&realm), "/resources/testdriver-vendor.js") == null);
 }
 
 test "registered, the loader is asked with the frame's realm and may decline" {
-    const saved = registered;
-    defer registered = saved;
     const Fake = struct {
         var seen_realm: ?runtime.Context = null;
         fn loader(realm: runtime.Context, src: []const u8) ?[]const u8 {
@@ -92,12 +122,36 @@ test "registered, the loader is asked with the frame's realm and may decline" {
             return null;
         }
     };
-    register(&Fake.loader);
-    const realm: runtime.Context = @ptrFromInt(0x10000);
-    const script_loader = forRealm(realm) orelse return error.TestExpectedLoader;
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    var realm = try testRealm(&scope);
+    defer realm.deinit();
+    try register(&scope, &Fake.loader);
+    const script_loader = forRealm(&realm) orelse return error.TestExpectedLoader;
     try std.testing.expectEqualStrings("answered", script_loader.loadScript(script_loader.context, "/answered.js").?);
-    try std.testing.expectEqual(@as(?runtime.Context, realm), Fake.seen_realm);
+    try std.testing.expectEqual(@as(?runtime.Context, &realm), Fake.seen_realm);
     try std.testing.expect(script_loader.loadScript(script_loader.context, "/other.js") == null);
-    unregister();
-    try std.testing.expect(forRealm(realm) == null);
+    unregister(&scope);
+    try std.testing.expect(forRealm(&realm) == null);
+}
+
+test "a loader registered on one Browser answers for its realms only" {
+    const Fake = struct {
+        fn loader(_: runtime.Context, _: []const u8) ?[]const u8 {
+            return "answered";
+        }
+    };
+    var a = runtime.BrowserScope.init(std.testing.allocator);
+    defer a.deinit();
+    var b = runtime.BrowserScope.init(std.testing.allocator);
+    defer b.deinit();
+    var realm_a = try testRealm(&a);
+    defer realm_a.deinit();
+    var realm_b = try testRealm(&b);
+    defer realm_b.deinit();
+    try register(&a, &Fake.loader);
+    try std.testing.expect(forRealm(&realm_a) != null);
+    // B's embedder registered none: its frames get no loader.
+    try std.testing.expect(forRealm(&realm_b) == null);
+    try std.testing.expect(load(@ptrCast(&realm_b), "/x.js") == null);
 }

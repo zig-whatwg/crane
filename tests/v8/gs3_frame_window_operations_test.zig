@@ -47,7 +47,9 @@ fn initializeTimer(r: runtime.Context, handler: runtime.WindowTimerHandler, time
         .function, .string => |h| protocol.releaseValue(.{ .value = h }),
     }
     for (arguments) |argument| protocol.releaseValue(.{ .value = argument });
-    const seen = current.?;
+    // No record: its test has returned (every test ends its realms first,
+    // its `current` defer declared before theirs). Nothing to count.
+    const seen = current orelse return 1;
     seen.timers += 1;
     seen.timer_realm = r;
     return @intCast(seen.timers);
@@ -63,7 +65,7 @@ fn requestAnimationFrame(_: runtime.Context, callback: runtime.JSValue) u32 {
 fn cancelAnimationFrame(_: runtime.Context, _: u32) void {}
 
 fn windowDestroyed(r: runtime.Context) void {
-    const seen = current.?;
+    const seen = current orelse return;
     if (seen.destroyed_count < seen.destroyed.len) seen.destroyed[seen.destroyed_count] = r;
     seen.destroyed_count += 1;
     seen.own_operations_at_destroy = r.window_operations != null;
@@ -200,6 +202,10 @@ fn twoAgentsKeepTheirOwnOperations() !void {
     // A second agent's page installs its operations after the first's, and
     // ends.
     const second = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &no_hooks, .host = null });
+    // Every way out ends the second agent too, while `current` is set (this
+    // defer runs before `current`'s): a failed step used to leave it alive.
+    var second_ended = false;
+    defer if (!second_ended) protocol.destroyAgent(second);
     const second_page = try protocol.createWindowRealm(&.{
         .agent = second,
         .allocator = std.heap.c_allocator,
@@ -208,9 +214,13 @@ fn twoAgentsKeepTheirOwnOperations() !void {
         .origin = "https://example.test",
         .create_global_object = WindowHost.createGlobalObject,
     });
+    var second_page_ended = false;
+    defer if (!second_page_ended) protocol.destroyWindowRealm(second_page, .global_detached);
     try protocol.installWindowOperations(second_page, &operations);
     protocol.destroyWindowRealm(second_page, .global_detached);
+    second_page_ended = true;
     protocol.destroyAgent(second);
+    second_ended = true;
 
     // The first page's setTimeout is still the host's.
     try expectEval(first_page, "String(setTimeout(() => {}, 1))", "1");

@@ -379,7 +379,11 @@ pub fn getElementSizeForType(name: TypedArrayName) u8 {
 /// Spec: https://webidl.spec.whatwg.org/#ArrayBufferView
 /// The `buffer` of an ArrayBufferView converted from JavaScript: an empty
 /// placeholder. Such a view's bytes live in the engine; use `jsHandle()`.
-pub var engine_buffer = ArrayBuffer{ .data = &[_]u8{}, .detached = false };
+/// A constant: every view converted on every thread names it, so nothing may
+/// write it - its bytes are empty and its `detached` means nothing (the
+/// engine's buffer is the one that detaches). Read-only memory, so a write
+/// faults instead of racing.
+pub const engine_buffer = ArrayBuffer{ .data = &.{}, .detached = false };
 
 pub const ArrayBufferView = union(enum) {
     int8_array: TypedArray(i8),
@@ -444,7 +448,9 @@ pub const ArrayBufferView = union(enum) {
     /// uint16, int32, uint32, float32, float64, bigint64, biguint64, data_view,
     /// float16 (appended).
     pub fn fromEngine(kind: u8, byte_offset: usize, length: usize, js: *anyopaque) ?ArrayBufferView {
-        const b = &engine_buffer;
+        // The views' `buffer` field is a `*ArrayBuffer` for the views Zig
+        // makes; this one is never written through (see `engine_buffer`).
+        const b = @constCast(&engine_buffer);
         return switch (kind) {
             0 => .{ .int8_array = .{ .buffer = b, .byte_offset = byte_offset, .length = length, .js = js } },
             1 => .{ .uint8_array = .{ .buffer = b, .byte_offset = byte_offset, .length = length, .js = js } },

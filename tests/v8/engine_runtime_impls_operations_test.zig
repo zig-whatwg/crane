@@ -522,11 +522,16 @@ test "protocol: currentRealm is the context manager's realm for the entered cont
     defer test_agent.close();
     _ = try realm();
     const hosted = try v8.context_manager.getOrCreate(test_context.?, std.heap.page_allocator);
-    const contexts_before = ffi.v8_Debug_LiveContextGlobals();
+    // The agent's own global handles, where a kept Global<Context> is one -
+    // not the process's live_context_globals, which every Browser of the
+    // process moves (docs/lessons/testing-a-test-that-measures-a-process-
+    // wide-counter-assumes-it-is-alone.md).
+    const isolate = test_isolate.?;
+    const bytes_before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
     try std.testing.expectEqual(hosted, protocol.currentRealm() orelse return error.NoCurrentRealm);
     try std.testing.expectEqual(protocol.currentRealm(), v8.current_realm.currentRealm());
     // Each call disposes the Global<Context> GetCurrentContext made.
-    try std.testing.expectEqual(contexts_before, ffi.v8_Debug_LiveContextGlobals());
+    try std.testing.expectEqual(bytes_before, ffi.v8_Isolate_GetGlobalHandleBytes(isolate));
 }
 
 test "protocol: isCallable is ECMAScript IsCallable" {

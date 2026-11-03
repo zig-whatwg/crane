@@ -159,12 +159,6 @@ pub const ReadRequest = struct {
         error_steps: *const fn (*anyopaque, Value) void,
     };
 
-    /// Legacy callback function types for backward compatibility
-    /// DEPRECATED: Use TypedReadRequest for new code
-    pub const ChunkStepsFn = *const fn (ctx: ?*anyopaque, chunk: Value) void;
-    pub const CloseStepsFn = *const fn (ctx: ?*anyopaque) void;
-    pub const ErrorStepsFn = *const fn (ctx: ?*anyopaque, e: Value) void;
-
     /// Initialize a type-erased read request directly
     ///
     /// Prefer using `TypedReadRequest(Context).erase()` for better type safety.
@@ -176,31 +170,6 @@ pub const ReadRequest = struct {
         return .{
             .allocator = allocator,
             .context = context,
-            .vtable = vtable,
-        };
-    }
-
-    /// Legacy init for backward compatibility
-    ///
-    /// DEPRECATED: Use TypedReadRequest for new code.
-    /// This provides compatibility with existing code that uses ?*anyopaque context.
-    pub fn initLegacy(
-        allocator: std.mem.Allocator,
-        chunk_steps: ChunkStepsFn,
-        close_steps: CloseStepsFn,
-        error_steps: ErrorStepsFn,
-        context: ?*anyopaque,
-    ) ReadRequest {
-        // Wrap legacy callbacks in VTable format
-        const vtable = &VTable{
-            .chunk_steps = @ptrCast(chunk_steps),
-            .close_steps = @ptrCast(close_steps),
-            .error_steps = @ptrCast(error_steps),
-        };
-
-        return .{
-            .allocator = allocator,
-            .context = context orelse undefined_ptr,
             .vtable = vtable,
         };
     }
@@ -220,12 +189,6 @@ pub const ReadRequest = struct {
         self.vtable.error_steps(self.context, e);
     }
 };
-
-/// Sentinel pointer for null context in legacy init.
-/// Uses a static variable instead of @ptrFromInt to avoid undefined behavior.
-/// The address of this variable serves as a unique sentinel value.
-var sentinel_storage: u8 align(8) = 0;
-const undefined_ptr: *anyopaque = @ptrCast(&sentinel_storage);
 
 // ============================================================================
 // Tests

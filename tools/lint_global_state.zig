@@ -93,9 +93,14 @@ pub const Variable = struct {
     /// Qualified by its enclosing containers and functions.
     name: []const u8,
     kind: Kind,
-    /// The why of a `// process-wide: <why>` line directly above the
-    /// declaration, if it has one (see `processWideWhy`).
+    /// The why of a reviewed marker line - `// process-wide: <why>` or
+    /// `// per-thread: <why>` - directly above the declaration, if it has
+    /// one (`markAbove`), and which marker it is.
     why: ?[]const u8 = null,
+    marker: ?Marker = null,
+    /// Whether the declaration is a hook slot (`Hook(..)`, by its type), and
+    /// what is wrong with it if so. Zig only.
+    hook: HookCheck = .none,
     /// `declHash` of the declaration with its name taken out: its type and
     /// initialiser. A rename keeps it (`checkRename`).
     decl_hash: u64 = 0,
@@ -128,21 +133,241 @@ fn nodeText(tree: *const std.zig.Ast, node: std.zig.Ast.Node.OptionalIndex) []co
 /// baseline lacks only when every declaration under it carries one.
 const process_wide_marker = "// process-wide:";
 
-/// The non-empty why of a `// process-wide: <why>` line directly above line
-/// `line` (1-based) of `source`, or null. A blank line, a doc comment or any
-/// other line in between breaks it.
-pub fn processWideWhy(source: []const u8, line: u32) ?[]const u8 {
+/// The marker state that genuinely is one per THREAD carries instead: a
+/// Zig `threadlocal` or C++ `thread_local` whose owner is the thread - a
+/// call-stack extent (what is running on this thread's stack), an engine's
+/// own thread-local, or the like. The why says what makes the thread the
+/// right scope. Valid only on threadlocals, as `// process-wide:` is valid
+/// only on container-level variables and C++ globals (the integrator,
+/// 2026-11-02: a reviewer must be able to list per-thread state on its own,
+/// and "process-wide" on per-thread state is false documentation).
+const per_thread_marker = "// per-thread:";
+
+/// The two reviewed markers.
+pub const Marker = enum {
+    process_wide,
+    per_thread,
+
+    pub fn text(marker: Marker) []const u8 {
+        return switch (marker) {
+            .process_wide => process_wide_marker,
+            .per_thread => per_thread_marker,
+        };
+    }
+
+    /// The marker a declaration of `kind` must carry when it is not a hook
+    /// slot.
+    pub fn of(kind: Kind) Marker {
+        return switch (kind) {
+            .zig_global, .cpp_static => .process_wide,
+            .zig_threadlocal, .cpp_thread_local => .per_thread,
+        };
+    }
+};
+
+pub const Mark = struct { marker: Marker, why: []const u8 };
+
+/// The reviewed marker line - `// process-wide: <why>` or `// per-thread:
+/// <why>` with a non-empty why - directly above line `line` (1-based) of
+/// `source`, or null. A blank line, a doc comment or any other line in
+/// between breaks it.
+pub fn markAbove(source: []const u8, line: u32) ?Mark {
     if (line < 2) return null;
     var lines = std.mem.splitScalar(u8, source, '\n');
     var at: u32 = 1;
     while (lines.next()) |text| : (at += 1) {
         if (at != line - 1) continue;
         const trimmed = std.mem.trim(u8, text, " \t\r");
-        if (!std.mem.startsWith(u8, trimmed, process_wide_marker)) return null;
-        const why = std.mem.trim(u8, trimmed[process_wide_marker.len..], " \t");
-        return if (why.len == 0) null else why;
+        inline for (.{ Marker.process_wide, Marker.per_thread }) |marker| {
+            if (std.mem.startsWith(u8, trimmed, comptime marker.text())) {
+                const why = std.mem.trim(u8, trimmed[comptime marker.text().len..], " \t");
+                return if (why.len == 0) null else .{ .marker = marker, .why = why };
+            }
+        }
+        return null;
     }
     return null;
+}
+
+/// The why of a `// process-wide: <why>` line directly above line `line`.
+pub fn processWideWhy(source: []const u8, line: u32) ?[]const u8 {
+    const mark = markAbove(source, line) orelse return null;
+    return if (mark.marker == .process_wide) mark.why else null;
+}
+
+// ============================================================================
+// Hook slots: the frozen-after-start slot type, recognised by its type
+// ============================================================================
+
+/// A hook slot is a container-level `var` whose type is a call of `Hook`
+/// from the hook module (src/dom/hook.zig, re-exporting the `process`
+/// module's), initialised with `.init(<expr>)` (lane hookfreeze1's proposal,
+/// tmp/plans/hookfreeze-design.md "Lint"): its type freezes it after the
+/// process start, so it is not debt and needs no marker - it is class H by
+/// type. What a hook slot still must not be:
+pub const HookCheck = enum {
+    /// Not a hook slot.
+    none,
+    /// A hook slot, as the rule asks.
+    slot,
+    /// A `threadlocal` Hook: a hook is process-wide.
+    threadlocal_hook,
+    /// A Hook in src/webidl/impls/: a hook lives in its src/dom (or
+    /// subsystem) module, which the owning impl installs into.
+    in_impls,
+    /// Its `value` or `overrides` assigned or taken by address in its file
+    /// - the bypass of install()/installing()/overrideForTest().
+    written_directly,
+    /// Of the Hook type, but not initialised with `.init(<expr>)`.
+    not_initialised,
+};
+
+/// A name an expression resolves to: an `@import`'s string, then fields.
+const ImportPath = struct {
+    import: []const u8,
+    fields: [3][]const u8 = undefined,
+    len: usize = 0,
+
+    fn push(self: *ImportPath, field: []const u8) bool {
+        if (self.len == self.fields.len) return false;
+        self.fields[self.len] = field;
+        self.len += 1;
+        return true;
+    }
+
+    fn is(self: ImportPath, import: []const u8, fields: []const []const u8) bool {
+        if (!std.mem.eql(u8, self.import, import) or self.len != fields.len) return false;
+        for (self.fields[0..self.len], fields) |a, b| if (!std.mem.eql(u8, a, b)) return false;
+        return true;
+    }
+};
+
+const Aliases = std.StringHashMapUnmanaged(std.zig.Ast.Node.Index);
+
+/// What `node` names, through the file's top-level `const` aliases: an
+/// `@import("x")` and the fields reached from it. Null for anything else.
+fn resolveImportPath(tree: *const std.zig.Ast, aliases: *const Aliases, node: std.zig.Ast.Node.Index, depth: u32) ?ImportPath {
+    if (depth > 8) return null;
+    switch (tree.nodeTag(node)) {
+        .identifier => {
+            const target = aliases.get(tree.tokenSlice(tree.nodeMainToken(node))) orelse return null;
+            return resolveImportPath(tree, aliases, target, depth + 1);
+        },
+        .field_access => {
+            const lhs, const field = tree.nodeData(node).node_and_token;
+            var path = resolveImportPath(tree, aliases, lhs, depth + 1) orelse return null;
+            if (!path.push(tree.tokenSlice(field))) return null;
+            return path;
+        },
+        .builtin_call_two, .builtin_call_two_comma => {
+            if (!std.mem.eql(u8, tree.tokenSlice(tree.nodeMainToken(node)), "@import")) return null;
+            var buf: [2]std.zig.Ast.Node.Index = undefined;
+            const params = tree.builtinCallParams(&buf, node) orelse return null;
+            if (params.len != 1 or tree.nodeTag(params[0]) != .string_literal) return null;
+            const literal = tree.tokenSlice(tree.nodeMainToken(params[0]));
+            if (literal.len < 2) return null;
+            return .{ .import = literal[1 .. literal.len - 1] };
+        },
+        else => return null,
+    }
+}
+
+/// Whether `path`, named in the file at `file`, is the Hook type: `Hook` of
+/// the `dom` module (`@import("dom").Hook`), of the `process` module
+/// (`@import("process").Hook` or `.hook.Hook`), or of `hook.zig` imported
+/// from a file of src/dom or src/process - the hook module's own directory.
+pub fn isHookPath(file: []const u8, path: ImportPath) bool {
+    if (path.is("dom", &.{"Hook"})) return true;
+    if (path.is("process", &.{"Hook"}) or path.is("process", &.{ "hook", "Hook" })) return true;
+    if (path.is("hook.zig", &.{"Hook"})) {
+        return std.mem.startsWith(u8, file, "src/dom/") or std.mem.startsWith(u8, file, "src/process/");
+    }
+    return false;
+}
+
+/// The file's top-level `const` declarations: alias name -> initialiser.
+fn topLevelAliases(gpa: std.mem.Allocator, tree: *const std.zig.Ast) !Aliases {
+    var aliases: Aliases = .empty;
+    errdefer aliases.deinit(gpa);
+    for (tree.rootDecls()) |decl| {
+        const vd = tree.fullVarDecl(decl) orelse continue;
+        if (!std.mem.eql(u8, tree.tokenSlice(vd.ast.mut_token), "const")) continue;
+        const init_node = vd.ast.init_node.unwrap() orelse continue;
+        try aliases.put(gpa, tree.tokenSlice(vd.ast.mut_token + 1), init_node);
+    }
+    return aliases;
+}
+
+/// What a container-level `var` declaration is, as a hook slot.
+fn hookCheckOf(tree: *const std.zig.Ast, aliases: *const Aliases, file: []const u8, vd: std.zig.Ast.full.VarDecl) HookCheck {
+    const type_node = vd.ast.type_node.unwrap() orelse return .none;
+    var buf: [1]std.zig.Ast.Node.Index = undefined;
+    const call = tree.fullCall(&buf, type_node) orelse return .none;
+    const path = resolveImportPath(tree, aliases, call.ast.fn_expr, 0) orelse return .none;
+    if (!isHookPath(file, path)) return .none;
+    if (vd.threadlocal_token != null) return .threadlocal_hook;
+    if (std.mem.startsWith(u8, file, "src/webidl/impls/")) return .in_impls;
+    const init_node = vd.ast.init_node.unwrap() orelse return .not_initialised;
+    var init_buf: [1]std.zig.Ast.Node.Index = undefined;
+    const init_call = tree.fullCall(&init_buf, init_node) orelse return .not_initialised;
+    const callee = init_call.ast.fn_expr;
+    if (tree.nodeTag(callee) != .enum_literal or !std.mem.eql(u8, tree.tokenSlice(tree.nodeMainToken(callee)), "init")) return .not_initialised;
+    return .slot;
+}
+
+/// The last name of an access chain: `a` for `a`, `b` for `a.b`.
+fn lastName(tree: *const std.zig.Ast, node: std.zig.Ast.Node.Index) ?[]const u8 {
+    return switch (tree.nodeTag(node)) {
+        .identifier => tree.tokenSlice(tree.nodeMainToken(node)),
+        .field_access => tree.tokenSlice(tree.nodeData(node).node_and_token[1]),
+        else => null,
+    };
+}
+
+/// The slot whose `value` or `overrides` the place `node` names - an
+/// assignment's left side, an `&`'s operand - reaches through, if any
+/// (`slot.value = x`, `slot.value.field = x`, `&slot.overrides`,
+/// `Outer.slot.value = x`): the slot's last name, one of `slots`.
+fn slotFieldWritten(tree: *const std.zig.Ast, node: std.zig.Ast.Node.Index, slots: []const []const u8) ?[]const u8 {
+    var at = node;
+    while (true) {
+        switch (tree.nodeTag(at)) {
+            .field_access => {
+                const lhs, const field = tree.nodeData(at).node_and_token;
+                const name = tree.tokenSlice(field);
+                if (std.mem.eql(u8, name, "value") or std.mem.eql(u8, name, "overrides")) {
+                    if (lastName(tree, lhs)) |slot| {
+                        for (slots) |s| if (std.mem.eql(u8, s, slot)) return s;
+                    }
+                }
+                at = lhs;
+            },
+            .unwrap_optional => at = tree.nodeData(at).node_and_token[0],
+            .array_access => at = tree.nodeData(at).node_and_node[0],
+            .deref => at = tree.nodeData(at).node,
+            else => return null,
+        }
+    }
+}
+
+/// The last names of the slots of `slots` whose `value`/`overrides` the
+/// file writes or takes by address.
+fn slotsWrittenDirectly(gpa: std.mem.Allocator, tree: *const std.zig.Ast, slots: []const []const u8) !std.ArrayList([]const u8) {
+    var out: std.ArrayList([]const u8) = .empty;
+    errdefer out.deinit(gpa);
+    if (slots.len == 0) return out;
+    var i: u32 = 0;
+    while (i < tree.nodes.len) : (i += 1) {
+        const node: std.zig.Ast.Node.Index = @fromBackingInt(@intCast(i));
+        const tag = tree.nodeTag(node);
+        const place: std.zig.Ast.Node.Index = switch (tag) {
+            .address_of => tree.nodeData(node).node,
+            .assign_destructure => continue,
+            else => if (std.mem.startsWith(u8, @tagName(tag), "assign")) tree.nodeData(node).node_and_node[0] else continue,
+        };
+        if (slotFieldWritten(tree, place, slots)) |slot| try out.append(gpa, slot);
+    }
+    return out;
 }
 
 // ============================================================================
@@ -156,9 +381,17 @@ const Named = struct { first: u32, last: u32, name: []const u8 };
 /// source order. Names are allocated with `gpa`. A file that does not parse is
 /// an error: a file the ratchet cannot read must not pass silently.
 pub fn zigVariables(gpa: std.mem.Allocator, source: [:0]const u8) !std.ArrayList(Variable) {
+    return zigVariablesIn(gpa, "src/file.zig", source);
+}
+
+/// `zigVariables` for the file at `file` (repo-relative): where a hook slot
+/// may live and what its relative imports name depend on it.
+pub fn zigVariablesIn(gpa: std.mem.Allocator, file: []const u8, source: [:0]const u8) !std.ArrayList(Variable) {
     var tree = try std.zig.Ast.parse(gpa, source, .{ .mode = .zig });
     defer tree.deinit(gpa);
     if (tree.errors.len > 0) return error.ParseError;
+    var aliases = try topLevelAliases(gpa, &tree);
+    defer aliases.deinit(gpa);
 
     var named: std.ArrayList(Named) = .empty;
     defer named.deinit(gpa);
@@ -214,9 +447,12 @@ pub fn zigVariables(gpa: std.mem.Allocator, source: [:0]const u8) !std.ArrayList
             const name = try qualify(gpa, named.items, first, tree.lastToken(member), tree.tokenSlice(vd.ast.mut_token + 1));
             errdefer gpa.free(name);
             const line: u32 = @intCast(tree.tokenLocation(0, first).line + 1);
+            const mark = markAbove(source, line);
             try out.append(gpa, .{
                 .line = line,
-                .why = processWideWhy(source, line),
+                .why = if (mark) |m| m.why else null,
+                .marker = if (mark) |m| m.marker else null,
+                .hook = hookCheckOf(&tree, &aliases, file, vd),
                 .decl_hash = declHash(&.{ nodeText(&tree, vd.ast.type_node), nodeText(&tree, vd.ast.init_node) }),
                 .name = name,
                 .kind = if (vd.threadlocal_token != null) .zig_threadlocal else .zig_global,
@@ -224,6 +460,23 @@ pub fn zigVariables(gpa: std.mem.Allocator, source: [:0]const u8) !std.ArrayList
         }
     }
     std.mem.sort(Variable, out.items, {}, variableLessThan);
+
+    // 3. A slot whose fields the file writes is no slot: install() is the
+    // only writer.
+    var slot_names: std.ArrayList([]const u8) = .empty;
+    defer slot_names.deinit(gpa);
+    for (out.items) |v| {
+        if (v.hook == .slot) try slot_names.append(gpa, v.name[if (std.mem.lastIndexOfScalar(u8, v.name, '.')) |dot| dot + 1 else 0..]);
+    }
+    var written = try slotsWrittenDirectly(gpa, &tree, slot_names.items);
+    defer written.deinit(gpa);
+    for (out.items) |*v| {
+        if (v.hook != .slot) continue;
+        const last = v.name[if (std.mem.lastIndexOfScalar(u8, v.name, '.')) |dot| dot + 1 else 0..];
+        for (written.items) |w| {
+            if (std.mem.eql(u8, w, last)) v.hook = .written_directly;
+        }
+    }
     return out;
 }
 
@@ -700,7 +953,8 @@ pub fn cppVariables(gpa: std.mem.Allocator, text: []const u8) !std.ArrayList(Var
                 var first = stmt_start;
                 while (first < i and std.ascii.isWhitespace(code[first])) first += 1;
                 const line: u32 = @intCast(std.mem.count(u8, text[0..first], "\n") + 1);
-                try out.append(gpa, .{ .line = line, .name = owned, .kind = found.kind, .why = processWideWhy(text, line), .decl_hash = decl_hash });
+                const mark = markAbove(text, line);
+                try out.append(gpa, .{ .line = line, .name = owned, .kind = found.kind, .why = if (mark) |m| m.why else null, .marker = if (mark) |m| m.marker else null, .decl_hash = decl_hash });
             },
             else => {},
         }
@@ -723,14 +977,86 @@ fn innermostCode(scopes: []const Scope) ScopeKind {
 // The baseline
 // ============================================================================
 
+/// What the hard rule finds wrong with one declaration, if anything.
+pub const Problem = enum {
+    /// Neither a hook slot nor marked: debt.
+    unmarked,
+    /// `// process-wide:` on a threadlocal (Zig) or thread_local (C++).
+    process_wide_on_threadlocal,
+    /// `// per-thread:` on a container-level `var` or a C++ global.
+    per_thread_on_global,
+    /// A `threadlocal` Hook slot.
+    threadlocal_hook,
+    /// A Hook slot in src/webidl/impls/.
+    hook_in_impls,
+    /// A Hook slot whose `value`/`overrides` its file writes or takes by
+    /// address.
+    hook_written_directly,
+    /// A Hook slot not initialised with `.init(<expr>)`.
+    hook_not_initialised,
+
+    pub fn describe(problem: Problem) []const u8 {
+        return switch (problem) {
+            .unmarked => "no hook type and no reviewed marker",
+            .process_wide_on_threadlocal => "`// process-wide:` on a threadlocal - per-thread state says `// per-thread: <why>`",
+            .per_thread_on_global => "`// per-thread:` on a process variable - process state says `// process-wide: <why>`",
+            .threadlocal_hook => "a threadlocal Hook slot - a hook is process-wide: `var`, not `threadlocal var`",
+            .hook_in_impls => "a Hook slot in src/webidl/impls/ - a hook lives in its src/dom (or subsystem) module",
+            .hook_written_directly => "the slot's `value`/`overrides` written or taken by address - write through install(), installing() or overrideForTest()",
+            .hook_not_initialised => "a Hook slot not initialised with `.init(<expr>)`",
+        };
+    }
+};
+
+/// The hard rule for one declaration: a hook slot, or a declaration marked
+/// with its kind's marker (`Marker.of`), passes; anything else is a problem.
+pub fn problemOf(v: Variable) ?Problem {
+    switch (v.hook) {
+        .slot => return null,
+        .threadlocal_hook => return .threadlocal_hook,
+        .in_impls => return .hook_in_impls,
+        .written_directly => return .hook_written_directly,
+        .not_initialised => return .hook_not_initialised,
+        .none => {},
+    }
+    const marker = v.marker orelse return .unmarked;
+    if (marker == Marker.of(v.kind)) return null;
+    return switch (marker) {
+        .process_wide => .process_wide_on_threadlocal,
+        .per_thread => .per_thread_on_global,
+    };
+}
+
 /// What the current tree holds under one key.
 pub const Found = struct {
     count: u32,
     kind: Kind,
-    /// Declarations under the key without a `// process-wide: <why>` line.
+    /// Hook slots: class H by their type.
+    hooks: u32 = 0,
+    /// Declarations with neither a hook type nor a reviewed marker (debt).
     unmarked: u32 = 0,
+    /// Declarations the hard rule rejects whatever the baseline says: a
+    /// marker of the wrong kind, a hook slot breaking the slot's rules.
+    misplaced: u32 = 0,
+    /// Declarations marked `// per-thread:` (reviewed per-thread state).
+    per_thread: u32 = 0,
     /// The declarations' `declHash`es, combined (order does not matter).
     decl: u64 = 0,
+
+    /// Count `variable` under this key.
+    pub fn add(self: *Found, variable: Variable) void {
+        self.count += 1;
+        self.decl +%= variable.decl_hash;
+        if (variable.hook == .slot) {
+            self.hooks += 1;
+            return;
+        }
+        const problem = problemOf(variable) orelse {
+            if (variable.marker == .per_thread) self.per_thread += 1;
+            return;
+        };
+        if (problem == .unmarked) self.unmarked += 1 else self.misplaced += 1;
+    }
 };
 
 /// Current counts per "path name" key.
@@ -747,24 +1073,63 @@ pub const Entry = struct {
 
 pub const Baseline = std.StringHashMapUnmanaged(Entry);
 
-/// A key the current tree has more of than the baseline allows.
-pub const Violation = struct { key: []const u8, allowed: u32, found: u32 };
+/// Why a key fails.
+pub const Reason = enum {
+    /// A declaration the hard rule rejects outright (`Found.misplaced`).
+    misplaced,
+    /// A declaration with neither a hook type nor a marker.
+    unmarked,
+    /// More reviewed declarations than the inventory records - a new key
+    /// included: `--update` records them (the integrator reviews each).
+    above_baseline,
+};
+
+/// A key that fails, and why.
+pub const Violation = struct { key: []const u8, allowed: u32, found: u32, reason: Reason = .above_baseline };
+
+/// How strictly `violations` reads the tree.
+pub const Options = struct {
+    /// The ratchet the hard rule replaces: a key the baseline records may
+    /// keep unmarked declarations, up to its count. True only until every
+    /// key is a hook slot or reviewed (`recorded_debt_allowed`).
+    allow_recorded_debt: bool = false,
+};
+
+/// Whether the hard rule is still transitional: true while the tree still
+/// holds recorded unmarked keys (classes H and P-res not yet Hook slots,
+/// the V8 adapter's C++ statics). Lane gstate4 prepared the rule; it turns
+/// false - every container-level `var` and threadlocal a hook slot or
+/// reviewed - once lane hookfreeze2 has converted the last registration
+/// lists (the integrator says when).
+pub const recorded_debt_allowed = true;
 
 fn violationLessThan(_: void, a: Violation, b: Violation) bool {
     return std.mem.lessThan(u8, a.key, b.key);
 }
 
-/// Every key in `current` above its baseline count - a key absent from the
-/// baseline is allowed zero - sorted by key.
-pub fn violations(gpa: std.mem.Allocator, current: *const Counts, baseline: *const Baseline) !std.ArrayList(Violation) {
+/// Every key in `current` that fails, sorted by key, with the first reason:
+/// a misplaced declaration; an unmarked one (unless `options` allows
+/// recorded debt and the baseline records the key at least that many
+/// times); more declarations than the baseline records (a key absent from
+/// it is allowed zero) - except hook slots, which the type alone admits.
+pub fn violations(gpa: std.mem.Allocator, current: *const Counts, baseline: *const Baseline, options: Options) !std.ArrayList(Violation) {
     var out: std.ArrayList(Violation) = .empty;
     errdefer out.deinit(gpa);
     var it = current.iterator();
     while (it.next()) |entry| {
-        const allowed = if (baseline.get(entry.key_ptr.*)) |b| b.count else 0;
-        if (entry.value_ptr.count > allowed) {
-            try out.append(gpa, .{ .key = entry.key_ptr.*, .allowed = allowed, .found = entry.value_ptr.count });
-        }
+        const found = entry.value_ptr.*;
+        const recorded = baseline.get(entry.key_ptr.*);
+        const allowed = if (recorded) |b| b.count else 0;
+        const debt_allowed = options.allow_recorded_debt and recorded != null and found.count <= allowed;
+        const reason: ?Reason = if (found.misplaced > 0)
+            .misplaced
+        else if (found.unmarked > 0 and !debt_allowed)
+            .unmarked
+        else if (found.count > allowed and found.hooks < found.count)
+            .above_baseline
+        else
+            null;
+        if (reason) |r| try out.append(gpa, .{ .key = entry.key_ptr.*, .allowed = allowed, .found = found.count, .reason = r });
     }
     std.mem.sort(Violation, out.items, {}, violationLessThan);
     return out;
@@ -776,17 +1141,17 @@ pub fn mayRecord(update: bool, above_baseline: usize) bool {
     return update and above_baseline == 0;
 }
 
-/// The violations `--update` refuses: all of them, except a key the baseline
-/// lacks whose every declaration carries a `// process-wide: <why>` line. An
-/// increase for a key the baseline has is refused, marked or not. (The check
-/// without --update fails on every violation, so a process-wide variable
-/// enters the baseline only through a recorded update.)
-pub fn refusedByUpdate(gpa: std.mem.Allocator, found: []const Violation, current: *const Counts, baseline: *const Baseline) !std.ArrayList(Violation) {
+/// The violations `--update` refuses: every misplaced or unmarked
+/// declaration. It records reviewed declarations above the inventory - a
+/// new key whose every declaration is a hook slot or carries its kind's
+/// marker. (The check without --update fails on those too, so a reviewed
+/// variable enters the inventory only through a recorded update, which the
+/// integrator reviews.)
+pub fn refusedByUpdate(gpa: std.mem.Allocator, found: []const Violation) !std.ArrayList(Violation) {
     var out: std.ArrayList(Violation) = .empty;
     errdefer out.deinit(gpa);
     for (found) |v| {
-        const marked = if (current.get(v.key)) |f| f.unmarked == 0 else false;
-        if (!baseline.contains(v.key) and marked) continue;
+        if (v.reason == .above_baseline) continue;
         try out.append(gpa, v);
     }
     return out;
@@ -907,10 +1272,22 @@ pub fn formatBaseline(gpa: std.mem.Allocator, current: *const Counts, previous: 
     try out.appendSlice(gpa, header);
     for (keys.items) |key| {
         const found = current.get(key).?;
-        // A key new to the baseline was recorded through its process-wide
-        // marker: a process resource until someone classifies it further.
-        const new_class = if (found.unmarked == 0) "P-res" else "?";
-        const class = if (previous) |p| (if (p.get(key)) |e| e.class else new_class) else "?";
+        // A hook slot is class H by its type. A key new to the inventory was
+        // recorded through its markers: per-thread state is set around a
+        // call (C) until someone classifies it further, process state a
+        // process resource (P-res).
+        const reviewed = found.unmarked == 0 and found.misplaced == 0;
+        const new_class = if (found.hooks == found.count)
+            "H"
+        else if (reviewed and found.per_thread + found.hooks == found.count)
+            "C"
+        else if (reviewed)
+            "P-res"
+        else
+            "?";
+        const class = if (found.hooks == found.count and found.count > 0)
+            "H"
+        else if (previous) |p| (if (p.get(key)) |e| e.class else new_class) else new_class;
         try out.print(gpa, "{s} {d} {s} {s} decl:{x:0>16}\n", .{ key, found.count, found.kind.label(), class, found.decl });
     }
     return out.toOwnedSlice(gpa);
@@ -939,7 +1316,7 @@ fn scan(
         const language = languageOf(path) orelse continue;
         const text = try std.Io.Dir.cwd().readFileAllocOptions(io, path, arena, .limited(64 << 20), .of(u8), 0);
         const found = switch (language) {
-            .zig => zigVariables(arena, text) catch |err| switch (err) {
+            .zig => zigVariablesIn(arena, path, text) catch |err| switch (err) {
                 error.ParseError => {
                     std.debug.print("global state: {s} does not parse; fix it so it can be counted.\n", .{path});
                     return err;
@@ -952,9 +1329,7 @@ fn scan(
             const key = try std.fmt.allocPrint(arena, "{s} {s}", .{ path, variable.name });
             const gop = try current.getOrPut(arena, key);
             if (!gop.found_existing) gop.value_ptr.* = .{ .count = 0, .kind = variable.kind };
-            gop.value_ptr.count += 1;
-            if (variable.why == null) gop.value_ptr.unmarked += 1;
-            gop.value_ptr.decl +%= variable.decl_hash;
+            gop.value_ptr.add(variable);
             const site = try sites.getOrPut(arena, key);
             if (!site.found_existing) site.value_ptr.* = .empty;
             try site.value_ptr.append(arena, .{ .path = path, .variable = variable });
@@ -983,7 +1358,22 @@ fn printTotals(out: *std.Io.Writer, arena: std.mem.Allocator, current: *const Co
     const classes = try arena.dupe([]const u8, per_class.keys());
     std.mem.sort([]const u8, classes, {}, lessThan);
     for (classes) |class| try out.print(" {s} {d}", .{ class, per_class.get(class).? });
-    try out.print("\n", .{});
+    var hooks: u32 = 0;
+    var per_thread: u32 = 0;
+    var unmarked: u32 = 0;
+    var misplaced: u32 = 0;
+    var total: u32 = 0;
+    var values = current.valueIterator();
+    while (values.next()) |found| {
+        hooks += found.hooks;
+        per_thread += found.per_thread;
+        unmarked += found.unmarked;
+        misplaced += found.misplaced;
+        total += found.count;
+    }
+    const process_wide = total - hooks - per_thread - unmarked - misplaced;
+    const debt_note = if (recorded_debt_allowed) " (recorded debt, transitional)" else "";
+    try out.print("\n  by rule: H by type {d}, process-wide {d}, per-thread {d}, unmarked {d}{s}, misplaced {d}\n", .{ hooks, process_wide, per_thread, unmarked, debt_note, misplaced });
 }
 
 fn totalOf(current: *const Counts) usize {
@@ -1062,16 +1452,22 @@ pub fn main(init: std.process.Init) !void {
     var base_values = baseline.valueIterator();
     while (base_values.next()) |value| baseline_total += value.count;
 
-    const found = try violations(arena, &current, &baseline);
-    // Without --update every violation fails; --update records new keys
-    // whose declarations all say why they are process-wide, and nothing else.
-    const blocking = if (update) try refusedByUpdate(arena, found.items, &current, &baseline) else found;
+    const found = try violations(arena, &current, &baseline, .{ .allow_recorded_debt = recorded_debt_allowed });
+    // Without --update every violation fails; --update records reviewed
+    // declarations - hook slots and correctly marked ones - and nothing else.
+    const blocking = if (update) try refusedByUpdate(arena, found.items) else found;
     if (blocking.items.len > 0) {
-        try out.print("global state: {d} key(s) above the baseline ({d} variables, baseline {d}).\n\n", .{ blocking.items.len, total, baseline_total });
+        try out.print("global state: {d} key(s) fail ({d} variables, inventory {d}).\n\n", .{ blocking.items.len, total, baseline_total });
         for (blocking.items) |v| {
-            try out.print("  {s}: allowed {d}, found {d}\n", .{ v.key, v.allowed, v.found });
+            switch (v.reason) {
+                .above_baseline => try out.print("  {s}: reviewed, not in the inventory (recorded {d}, found {d}) - `-- --update` records it\n", .{ v.key, v.allowed, v.found }),
+                .unmarked, .misplaced => try out.print("  {s}:\n", .{v.key}),
+            }
             if (sites.get(v.key)) |list| {
-                for (list.items) |site| try out.print("      {s}:{d} ({s})\n", .{ site.path, site.variable.line, site.variable.kind.label() });
+                for (list.items) |site| {
+                    const problem = problemOf(site.variable);
+                    try out.print("      {s}:{d} ({s}){s}{s}\n", .{ site.path, site.variable.line, site.variable.kind.label(), if (problem != null) ": " else "", if (problem) |p| p.describe() else "" });
+                }
             }
         }
         try out.print(
@@ -1079,13 +1475,17 @@ pub fn main(init: std.process.Init) !void {
             \\A container-level `var` or `threadlocal` is shared by every instance, or
             \\by every page on a thread (docs/instances.md, "Rules for new state"). Put
             \\the state on its owner - the Browser, the Tab, the agent, the realm - and
-            \\reach it through the realm the code runs in. A hook is written once at
-            \\process start. A variable that genuinely belongs to the process says so
-            \\on a `// process-wide: <why>` line directly above its declaration, and
-            \\enters the baseline through `zig build lint-global-state -- --update`
-            \\(the integrator reviews it). Nothing else raises the baseline.
+            \\reach it through the realm the code runs in. A hook is a `Hook(T)` slot
+            \\(src/dom/hook.zig), written once at process start: its type is the rule.
+            \\Anything else must say why it is not owned: `// process-wide: <why>` directly
+            \\above a container-level `var` or C++ global that genuinely is one per process,
+            \\`// per-thread: <why>` directly above a threadlocal or C++ thread_local whose
+            \\owner is the thread (a call-stack extent, an engine's own thread-local). Writes
+            \\from several threads name their safety: atomic, lock or init-once. A reviewed
+            \\variable enters the inventory through `zig build lint-global-state -- --update`
+            \\(the integrator reviews it).
             \\{s}
-        , .{if (update) "--update refuses to record an increase.\n" else ""});
+        , .{if (update) "--update records only hook slots and reviewed declarations.\n" else ""});
         try out.flush();
         std.process.exit(1);
     }
@@ -1099,7 +1499,10 @@ pub fn main(init: std.process.Init) !void {
     if (mayRecord(update, blocking.items.len)) {
         for (found.items) |v| {
             const list = sites.get(v.key) orelse continue;
-            for (list.items) |site| try out.print("global state: recorded process-wide {s} ({s}:{d}): {s}\n", .{ v.key, site.path, site.variable.line, site.variable.why orelse "" });
+            for (list.items) |site| {
+                const what = if (site.variable.hook == .slot) "hook slot" else if (site.variable.marker) |m| m.text() else "";
+                try out.print("global state: recorded {s} {s} ({s}:{d}): {s}\n", .{ what, v.key, site.path, site.variable.line, site.variable.why orelse "" });
+            }
         }
         try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = baseline_path, .data = try formatBaseline(arena, &current, &baseline) });
         try out.print("global state: baseline recorded - {d} variables (was {d}), {d} keys.\n", .{ total, baseline_total, current.count() });
@@ -1365,41 +1768,49 @@ test "a `// process-wide: <why>` line directly above a declaration marks it; an 
     try testing.expect(cpp.items[1].why == null);
 }
 
-test "--update records a new key only when every declaration is marked process-wide; an increase is refused" {
+test "--update records reviewed keys - new or grown - and refuses unmarked and misplaced ones" {
     var current: Counts = .empty;
     defer current.deinit(testing.allocator);
     // New and marked: recordable.
-    try current.put(testing.allocator, "src/dom/process_phase.zig phase", .{ .count = 1, .kind = .zig_global, .unmarked = 0 });
+    try current.put(testing.allocator, "src/dom/process_phase.zig phase", .{ .count = 1, .kind = .zig_global });
     // New, without a marker (or with an empty why, which leaves it unmarked).
     try current.put(testing.allocator, "src/dom/x.zig cache", .{ .count = 1, .kind = .zig_global, .unmarked = 1 });
-    // An existing key grown - marked or not, an increase.
-    try current.put(testing.allocator, "src/a.zig counter", .{ .count = 2, .kind = .zig_global, .unmarked = 0 });
+    // An existing key grown by a reviewed declaration: recordable.
+    try current.put(testing.allocator, "src/a.zig counter", .{ .count = 2, .kind = .zig_global });
+    // A marker of the wrong kind: refused, recorded or not.
+    try current.put(testing.allocator, "src/b.zig depth", .{ .count = 1, .kind = .zig_threadlocal, .misplaced = 1 });
     var baseline: Baseline = .empty;
     defer baseline.deinit(testing.allocator);
     try baseline.put(testing.allocator, "src/a.zig counter", .{ .count = 1, .kind = "G", .class = "D" });
+    try baseline.put(testing.allocator, "src/b.zig depth", .{ .count = 1, .kind = "TL", .class = "C" });
 
-    var found = try violations(testing.allocator, &current, &baseline);
+    var found = try violations(testing.allocator, &current, &baseline, .{});
     defer found.deinit(testing.allocator);
-    try testing.expectEqual(@as(usize, 3), found.items.len);
+    try testing.expectEqual(@as(usize, 4), found.items.len);
 
-    var refused = try refusedByUpdate(testing.allocator, found.items, &current, &baseline);
+    var refused = try refusedByUpdate(testing.allocator, found.items);
     defer refused.deinit(testing.allocator);
     try testing.expectEqual(@as(usize, 2), refused.items.len);
-    try testing.expectEqualStrings("src/a.zig counter", refused.items[0].key);
+    try testing.expectEqualStrings("src/b.zig depth", refused.items[0].key);
+    try testing.expectEqual(Reason.misplaced, refused.items[0].reason);
     try testing.expectEqualStrings("src/dom/x.zig cache", refused.items[1].key);
+    try testing.expectEqual(Reason.unmarked, refused.items[1].reason);
     try testing.expect(!mayRecord(true, refused.items.len));
 
-    // With only the marked key new, --update records it - as a process resource.
+    // With the unmarked and misplaced keys gone, --update records the rest -
+    // a new process-wide key as a process resource.
     _ = current.remove("src/dom/x.zig cache");
-    current.getPtr("src/a.zig counter").?.count = 1;
-    var found2 = try violations(testing.allocator, &current, &baseline);
+    _ = current.remove("src/b.zig depth");
+    var found2 = try violations(testing.allocator, &current, &baseline, .{});
     defer found2.deinit(testing.allocator);
-    var refused2 = try refusedByUpdate(testing.allocator, found2.items, &current, &baseline);
+    try testing.expectEqual(@as(usize, 2), found2.items.len);
+    var refused2 = try refusedByUpdate(testing.allocator, found2.items);
     defer refused2.deinit(testing.allocator);
     try testing.expect(mayRecord(true, refused2.items.len));
     const text = try formatBaseline(testing.allocator, &current, &baseline);
     defer testing.allocator.free(text);
     try testing.expect(std.mem.indexOf(u8, text, "src/dom/process_phase.zig phase 1 G P-res decl:") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "src/a.zig counter 2 G D decl:") != null);
 }
 
 test "a rename is recorded only for the same variable: same file, kind, declaration and count" {
@@ -1501,7 +1912,7 @@ test "a swap (one variable removed, another added) and an increase are violation
     });
     defer baseline.deinit(testing.allocator);
 
-    var found = try violations(testing.allocator, &current, &baseline);
+    var found = try violations(testing.allocator, &current, &baseline, .{});
     defer found.deinit(testing.allocator);
     try testing.expectEqual(@as(usize, 2), found.items.len);
     try testing.expectEqualStrings("src/a.zig new_hook", found.items[0].key);
@@ -1517,7 +1928,7 @@ test "the kind is not part of the key: a threadlocal turned process variable is 
     var baseline: Baseline = .empty;
     defer baseline.deinit(testing.allocator);
     try baseline.put(testing.allocator, "src/dom/hook.zig implementation", .{ .count = 1, .kind = "TL", .class = "H" });
-    var found = try violations(testing.allocator, &current, &baseline);
+    var found = try violations(testing.allocator, &current, &baseline, .{});
     defer found.deinit(testing.allocator);
     try testing.expectEqual(@as(usize, 0), found.items.len);
 }
@@ -1563,6 +1974,234 @@ test "the baseline round-trips, sorted, keeps each key's class and ignores comme
 test "a malformed or duplicated baseline line is an error" {
     try testing.expectError(error.MalformedBaseline, parseBaseline(testing.allocator, "src/a.zig x notanumber G H\n"));
     try testing.expectError(error.MalformedBaseline, parseBaseline(testing.allocator, "src/a.zig x 1 G H\nsrc/a.zig x 1 G H\n"));
+}
+
+// ============================================================================
+// Tests - the hard rule: a hook slot by type, or a reviewed marker of the
+// declaration's kind
+// ============================================================================
+
+/// The problem of each variable `file` declares, in source order, as
+/// "name:problem" ("name:ok" for none, "name:hook" for a hook slot).
+fn expectRule(file: []const u8, source: [:0]const u8, expected: []const []const u8) !void {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const vars = switch (languageOf(file).?) {
+        .zig => try zigVariablesIn(arena.allocator(), file, source),
+        .cpp => try cppVariables(arena.allocator(), source),
+    };
+    var got: std.ArrayList(u8) = .empty;
+    for (vars.items) |v| {
+        const verdict = if (v.hook == .slot) "hook" else if (problemOf(v)) |p| @tagName(p) else "ok";
+        try got.print(arena.allocator(), "{s}:{s}\n", .{ v.name, verdict });
+    }
+    var want: std.ArrayList(u8) = .empty;
+    for (expected) |e| try want.print(arena.allocator(), "{s}\n", .{e});
+    try testing.expectEqualStrings(want.items, got.items);
+}
+
+test "rule: a plain var or threadlocal fails; each passes with its own kind's marker, and fails with the other's" {
+    try expectRule("src/html/x.zig",
+        \\var plain: u32 = 0;
+        \\threadlocal var plain_tl: u32 = 0;
+        \\// process-wide: an id counter whose only property is uniqueness; atomic
+        \\var counter: std.atomic.Value(u64) = .init(1);
+        \\// per-thread: a call-stack extent - the teardown running on this thread's stack
+        \\threadlocal var active: ?*u8 = null;
+        \\// per-thread: wrong kind - a process variable is not per thread
+        \\var wrong_global: u32 = 0;
+        \\// process-wide: wrong kind - a threadlocal is not process-wide
+        \\threadlocal var wrong_tl: u32 = 0;
+        \\// per-thread:
+        \\threadlocal var empty_why: u32 = 0;
+    , &.{
+        "plain:unmarked",
+        "plain_tl:unmarked",
+        "counter:ok",
+        "active:ok",
+        "wrong_global:per_thread_on_global",
+        "wrong_tl:process_wide_on_threadlocal",
+        "empty_why:unmarked",
+    });
+}
+
+test "rule: a C++ global needs `// process-wide:`, a thread_local `// per-thread:`" {
+    try expectRule("src/runtime/engines/v8/v8_wrapper.cpp",
+        \\static std::atomic<int64_t> g_plain{0};
+        \\// process-wide: the V8 platform, one per process, made at the engine's start
+        \\static std::unique_ptr<Platform> g_platform = nullptr;
+        \\static thread_local bool t_plain = false;
+        \\// per-thread: V8's own current-isolate scope - set around Context::New on this thread
+        \\static thread_local bool g_in_context_new = false;
+        \\// per-thread: wrong kind
+        \\static bool g_wrong = false;
+        \\// process-wide: wrong kind
+        \\static thread_local int t_wrong = 0;
+    , &.{
+        "g_plain:unmarked",
+        "g_platform:ok",
+        "t_plain:unmarked",
+        "g_in_context_new:ok",
+        "g_wrong:per_thread_on_global",
+        "t_wrong:process_wide_on_threadlocal",
+    });
+}
+
+test "rule: a Hook slot passes by its type, in every spelling of the hook module's Hook" {
+    // src/dom: the relative hook module, bare or through a namespace alias.
+    try expectRule("src/dom/intersection_targets.zig",
+        \\const Hook = @import("hook.zig").Hook;
+        \\const hook = @import("hook.zig");
+        \\var implementation: Hook(?Implementation) = .init(null);
+        \\var steps: hook.Hook(hook.List(Step, 8)) = .init(.empty);
+    , &.{ "implementation:hook", "steps:hook" });
+    // Anywhere: the dom module's.
+    try expectRule("src/html/script_element.zig",
+        \\const Hook = @import("dom").Hook;
+        \\var implementation: Hook(?Implementation) = .init(null);
+        \\var inline_spelling: @import("dom").Hook(u8) = .init(0);
+    , &.{ "implementation:hook", "inline_spelling:hook" });
+    // Below dom: the process module's, bare, through its `hook`, inline.
+    try expectRule("src/fetch/algorithms/scheme_fetch.zig",
+        \\const Hook = @import("process").Hook;
+        \\const hook = @import("process").hook;
+        \\const process = @import("process");
+        \\var blob_resolver: Hook(?Resolver) = .init(null);
+        \\var lists: hook.Hook(hook.List(Step, 4)) = .init(.empty);
+        \\var through_module: process.hook.Hook(u8) = .init(0);
+        \\var inline_spelling: @import("process").hook.Hook(u8) = .init(0);
+    , &.{ "blob_resolver:hook", "lists:hook", "through_module:hook", "inline_spelling:hook" });
+    // src/process itself.
+    try expectRule("src/process/start.zig",
+        \\const Hook = @import("hook.zig").Hook;
+        \\var observer: Hook(?Observer) = .init(null);
+    , &.{"observer:hook"});
+}
+
+test "rule: a Hook of anything but the hook module is no hook slot" {
+    try expectRule("src/html/x.zig",
+        \\const Hook = @import("other.zig").Hook;
+        \\const LocalHook = @import("hook.zig").Hook;
+        \\fn Generic(comptime T: type) type { return T; }
+        \\var other: Hook(u8) = .init(0);
+        \\var relative_outside_dom: LocalHook(u8) = .init(0);
+        \\var generic: Generic(u8) = .init(0);
+        \\var dom_namespace_other: @import("dom").Other(u8) = .init(0);
+    , &.{
+        "other:unmarked",
+        "relative_outside_dom:unmarked",
+        "generic:unmarked",
+        "dom_namespace_other:unmarked",
+    });
+}
+
+test "rule: a threadlocal Hook, a Hook in an impl, one not made with .init and one written directly fail" {
+    try expectRule("src/dom/x.zig",
+        \\const Hook = @import("hook.zig").Hook;
+        \\threadlocal var per_thread_hook: Hook(u8) = .init(0);
+        \\// process-wide: a marker does not excuse a slot's own rules
+        \\var not_init: Hook(u8) = undefined;
+        \\var written: Hook(u8) = .init(0);
+        \\var addressed: Hook(u8) = .init(0);
+        \\var nested_write: Hook(Table) = .init(.{});
+        \\const Outer = struct {
+        \\    var qualified: Hook(u8) = .init(0);
+        \\};
+        \\var only_read: Hook(u8) = .init(0);
+        \\fn bypass() void {
+        \\    written.value = 1;
+        \\    const p = &addressed.overrides;
+        \\    _ = p;
+        \\    nested_write.value.step = null;
+        \\    Outer.qualified.value += 1;
+        \\    const x = only_read.value;
+        \\    _ = x;
+        \\    only_read.install(2);
+        \\}
+    , &.{
+        "per_thread_hook:threadlocal_hook",
+        "not_init:hook_not_initialised",
+        "written:hook_written_directly",
+        "addressed:hook_written_directly",
+        "nested_write:hook_written_directly",
+        "Outer.qualified:hook_written_directly",
+        "only_read:hook",
+    });
+    try expectRule("src/webidl/impls/IntersectionObserver.zig",
+        \\const Hook = @import("dom").Hook;
+        \\var implementation: Hook(?Implementation) = .init(null);
+    , &.{"implementation:hook_in_impls"});
+}
+
+test "rule: hook slots need no inventory entry; recorded debt passes only while the rule is transitional" {
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var current: Counts = .empty;
+    // A new hook slot: admitted by its type.
+    try current.put(arena, "src/dom/a.zig implementation", .{ .count = 1, .kind = .zig_global, .hooks = 1 });
+    // Recorded debt: an unmarked key the inventory records.
+    try current.put(arena, "src/dom/b.zig registry", .{ .count = 1, .kind = .zig_global, .unmarked = 1 });
+    // Misplaced, though recorded.
+    try current.put(arena, "src/dom/c.zig depth", .{ .count = 1, .kind = .zig_threadlocal, .misplaced = 1 });
+    var baseline: Baseline = .empty;
+    try baseline.put(arena, "src/dom/b.zig registry", .{ .count = 1, .kind = "G", .class = "P-res" });
+    try baseline.put(arena, "src/dom/c.zig depth", .{ .count = 1, .kind = "TL", .class = "C" });
+
+    const transitional = try violations(arena, &current, &baseline, .{ .allow_recorded_debt = true });
+    try testing.expectEqual(@as(usize, 1), transitional.items.len);
+    try testing.expectEqualStrings("src/dom/c.zig depth", transitional.items[0].key);
+
+    const hard = try violations(arena, &current, &baseline, .{});
+    try testing.expectEqual(@as(usize, 2), hard.items.len);
+    try testing.expectEqualStrings("src/dom/b.zig registry", hard.items[0].key);
+    try testing.expectEqual(Reason.unmarked, hard.items[0].reason);
+    try testing.expectEqualStrings("src/dom/c.zig depth", hard.items[1].key);
+    try testing.expectEqual(Reason.misplaced, hard.items[1].reason);
+
+    // Recorded debt that grew is never allowed.
+    current.getPtr("src/dom/b.zig registry").?.count = 2;
+    current.getPtr("src/dom/b.zig registry").?.unmarked = 2;
+    const grown = try violations(arena, &current, &baseline, .{ .allow_recorded_debt = true });
+    try testing.expectEqual(@as(usize, 2), grown.items.len);
+    try testing.expectEqual(Reason.unmarked, grown.items[0].reason);
+}
+
+test "rule: the inventory keeps every variable, with its class - hook slots as H, new per-thread state as C" {
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var current: Counts = .empty;
+    try current.put(arena, "src/dom/a.zig implementation", .{ .count = 1, .kind = .zig_global, .hooks = 1 });
+    try current.put(arena, "src/html/b.zig depth", .{ .count = 1, .kind = .zig_threadlocal, .per_thread = 1 });
+    try current.put(arena, "src/html/c.zig next_id", .{ .count = 1, .kind = .zig_global });
+    // The Crane test runner's digest (tests/test_runner/globals.zig) reads
+    // the inventory at compile time and compares a class C variable after
+    // every test: a reviewed per-thread variable keeps its entry and class.
+    try current.put(arena, "src/runtime/cleanup_coordinator.zig active_coordinator", .{ .count = 1, .kind = .zig_threadlocal, .per_thread = 1 });
+    var previous: Baseline = .empty;
+    // A slot that was recorded under another class is H by its type now.
+    try previous.put(arena, "src/dom/a.zig implementation", .{ .count = 1, .kind = "G", .class = "P-res" });
+    try previous.put(arena, "src/runtime/cleanup_coordinator.zig active_coordinator", .{ .count = 1, .kind = "TL", .class = "C" });
+    const text = try formatBaseline(arena, &current, &previous);
+    try testing.expect(std.mem.indexOf(u8, text, "src/dom/a.zig implementation 1 G H decl:") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "src/html/b.zig depth 1 TL C decl:") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "src/html/c.zig next_id 1 G P-res decl:") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "src/runtime/cleanup_coordinator.zig active_coordinator 1 TL C decl:") != null);
+}
+
+test "rule: a found key counts its hook slots, reviewed, unmarked and misplaced declarations" {
+    var found: Found = .{ .count = 0, .kind = .zig_global };
+    found.add(.{ .line = 1, .name = "a", .kind = .zig_global, .hook = .slot });
+    found.add(.{ .line = 2, .name = "a", .kind = .zig_global, .marker = .process_wide, .why = "x" });
+    found.add(.{ .line = 3, .name = "a", .kind = .zig_threadlocal, .marker = .per_thread, .why = "y" });
+    found.add(.{ .line = 4, .name = "a", .kind = .zig_global });
+    found.add(.{ .line = 5, .name = "a", .kind = .zig_threadlocal, .marker = .process_wide, .why = "z" });
+    try testing.expectEqual(@as(u32, 5), found.count);
+    try testing.expectEqual(@as(u32, 1), found.hooks);
+    try testing.expectEqual(@as(u32, 1), found.per_thread);
+    try testing.expectEqual(@as(u32, 1), found.unmarked);
+    try testing.expectEqual(@as(u32, 1), found.misplaced);
 }
 
 test {

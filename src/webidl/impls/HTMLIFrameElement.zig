@@ -866,6 +866,9 @@ const TraversalWait = struct {
 const Navigation = struct {
     id: u64,
     integration: *IFrameIntegration,
+    /// The Browser's navigations this record is on (`Navigables.navigations`,
+    /// its integration's list), from `navigate` until it ends.
+    navigables: *Navigables,
     allocator: std.mem.Allocator,
     url: []u8,
     srcdoc: ?[]u8 = null,
@@ -1029,8 +1032,9 @@ const Navigation = struct {
             integration.ongoing_navigation = .none;
             integration.traversal_navigation = 0;
         }
-        // Terminating a fetch runs neither `done` nor `gone`.
-        if (self.fetch) |f| f.terminate();
+        // Terminating a fetch runs neither `done` nor `gone`: its client's
+        // ticket goes here (terminateFetch).
+        if (self.fetch) |f| terminateFetch(f);
         dom_module.service_worker_clients.release(self.reserved_client);
         if (self.reserved_url) |u| self.allocator.free(u);
         if (self.response) |*r| r.deinit();
@@ -1057,9 +1061,17 @@ const Navigation = struct {
     }
 };
 
-/// Every navigable this engine made - iframes' and popups' - while it lives:
-/// joined when its context is attached, left as its integration is deinited.
-threadlocal var live_navigables: std.ArrayListUnmanaged(*IFrameIntegration) = .empty;
+/// Every navigable this engine made - iframes', popups' and the host page's
+/// - while it lives is on its Browser's list (`Navigables.integrations`):
+/// joined when its context is attached, left as its integration is
+/// destroyed or deinit'd. It was one list per thread.
+const Navigables = html_core.window.Navigables;
+
+/// The live navigables of the Browser `object` (any of its platform objects)
+/// belongs to.
+fn navigablesOfObject(object: *const runtime.Instance) ?*Navigables {
+    return dom_module.browser_state.existingNavigablesIn(runtime.BrowserScope.ofInstance(object));
+}
 
 /// "Create and initialize a Document object": the about base URL
 /// `document`'s navigable was given for it - an about:blank or about:srcdoc
@@ -1132,17 +1144,18 @@ fn takeNextLastModified(browsing_context: *html_core.BrowsingContext) ?@import("
 
 /// The live navigable whose browsing context is `browsing_context`.
 fn integrationOfBrowsingContext(browsing_context: *html_core.BrowsingContext) ?*IFrameIntegration {
-    for (live_navigables.items) |integration| {
+    const list = browsing_context.navigables orelse return null;
+    for (list.integrations.items) |integration| {
         if (integration.browsing_context == browsing_context) return integration;
     }
     return null;
 }
 
+/// `integration` joins its browsing context's Browser's live navigables.
 fn joinLiveNavigables(integration: *IFrameIntegration) void {
-    for (live_navigables.items) |existing| {
-        if (existing == integration) return;
-    }
-    live_navigables.append(std.heap.page_allocator, integration) catch {};
+    const bc = integration.browsing_context orelse return;
+    const list = bc.navigables orelse return;
+    list.joinIntegration(integration) catch {};
 }
 
 /// IFrameIntegration's `deinit_callback`.
@@ -1151,38 +1164,104 @@ fn leaveLiveNavigables(integration: *IFrameIntegration) void {
     // (Normally gone already: its page's end evicted them while its realm
     // and loop lived - Browser.navigate, Browser.deinit.)
     evictCachedPagesOf(integration);
-    for (live_navigables.items, 0..) |existing, i| {
-        if (existing == integration) {
-            _ = live_navigables.swapRemove(i);
-            return;
-        }
-    }
+    Navigables.leaveIntegration(integration);
 }
 
 /// The navigable whose active document is `document`, if this engine made
 /// it: HTML "node navigable" of a document.
 fn navigableOfDocument(document: *runtime.Instance) ?*IFrameIntegration {
-    for (live_navigables.items) |integration| {
+    const list = navigablesOfObject(document) orelse return null;
+    for (list.integrations.items) |integration| {
         if (activeDocumentOf(integration) == document) return integration;
     }
     return null;
 }
 
-/// Source of navigation IDs: never reused, never zero.
-threadlocal var next_navigation_id: u64 = 1;
+/// Source of navigation IDs: never reused, never zero. An id is looked up
+/// only in its navigable's Browser's navigations.
+// process-wide: an id counter whose only property is uniqueness in the process (an id is looked up only in its Browser's navigations); every Browser's window thread draws from it with an atomic fetch-add, and it carries no state of any instance.
+var next_navigation_id: std.atomic.Value(u64) = .init(1);
 
-/// Every navigation in flight, by ID. A task holds only the ID, so a
-/// navigation ended while its task waited is simply not found.
-threadlocal var navigations: std.AutoHashMapUnmanaged(u64, *Navigation) = .empty;
-
-fn navigationById(id: u64) ?*Navigation {
-    return navigations.get(id);
+/// Every navigation in flight is its Browser's, by ID (`Navigables.navigations`;
+/// a navigable's integration names the list, `IFrameIntegration.navigables`,
+/// and a record the one it is on). Whoever keeps only an ID keeps it in a
+/// `Ticket`, with the list: a navigation ended while its task waited is
+/// simply not found. It was one map per thread (lane gstate4).
+fn navigationById(list: ?*const Navigables, id: u64) ?*Navigation {
+    const navigations = list orelse return null;
+    return @ptrCast(@alignCast(navigations.navigation(id) orelse return null));
 }
 
 /// End navigation `id`: aborted, superseded, or its navigable gone.
-fn endNavigation(id: u64) void {
-    const kv = navigations.fetchRemove(id) orelse return;
-    kv.value.destroy();
+fn endNavigation(list: ?*Navigables, id: u64) void {
+    const navigations = list orelse return;
+    const record: *Navigation = @ptrCast(@alignCast(navigations.takeNavigation(id) orelse return));
+    record.destroy();
+}
+
+/// A navigation's handle for a holder that keeps only its ID - an event-loop
+/// task, the navigation fetch's client, a streamed body's holder: the
+/// Browser's navigations and the ID, looked up there each time, so a
+/// navigation that ended is simply not found (Chromium's WeakPtr shape: a
+/// task holds a handle, not the object). One ticket per holder, freed
+/// exactly once, by that holder's end: a task's run (`redeem`) or drop
+/// (`dropTask`); the fetch client's `gone` or `finished`, or the record's
+/// terminating the fetch, or a streamed body adopting it (`terminateFetch`,
+/// `releaseFetchClient`); a streamed body's release (`StreamedHold`).
+const Ticket = struct {
+    allocator: std.mem.Allocator,
+    navigables: *Navigables,
+    id: u64,
+
+    fn create(navigables: *Navigables, id: u64) ?*Ticket {
+        const self = navigables.allocator.create(Ticket) catch return null;
+        self.* = .{ .allocator = navigables.allocator, .navigables = navigables, .id = id };
+        return self;
+    }
+
+    fn destroy(self: *Ticket) void {
+        self.allocator.destroy(self);
+    }
+
+    fn of(context: *anyopaque) *Ticket {
+        return @ptrCast(@alignCast(context));
+    }
+
+    /// What a ticket names.
+    const Named = struct { navigables: *Navigables, id: u64 };
+
+    /// A task's ticket, freed as the task runs: what it named.
+    fn redeem(context: ?*anyopaque) ?Named {
+        const self = of(context orelse return null);
+        const named: Named = .{ .navigables = self.navigables, .id = self.id };
+        self.destroy();
+        return named;
+    }
+
+    /// A task's `drop`: its loop ended with the task still queued.
+    fn dropTask(context: ?*anyopaque) void {
+        _ = redeem(context);
+    }
+};
+
+/// Terminate the navigation fetch `f`: it calls its client nothing more, so
+/// the client's ticket goes now.
+fn terminateFetch(f: *fetch_mod.algorithms.AsyncFetch) void {
+    const ticket = clientTicketOf(f);
+    f.terminate();
+    if (ticket) |t| t.destroy();
+}
+
+/// `f` is about to take another client (a streamed body adopts it): the
+/// navigation's client's ticket goes.
+fn releaseFetchClient(f: *fetch_mod.algorithms.AsyncFetch) void {
+    if (clientTicketOf(f)) |t| t.destroy();
+}
+
+/// The ticket of `f`'s client while that client is a navigation's.
+fn clientTicketOf(f: *const fetch_mod.algorithms.AsyncFetch) ?*Ticket {
+    if (f.client.done != &fetchDone) return null;
+    return Ticket.of(f.client.context);
 }
 
 /// HTML "set the ongoing navigation" (§7.4.2.5). The navigation it replaces
@@ -1202,7 +1281,7 @@ fn setOngoingNavigation(integration: *IFrameIntegration, value: navigate_steps.O
             // navigation that replaces it as ongoing (runJavascriptNavigation
             // says why): its record stays for its task.
             const queued_javascript = integration.host_realms != null and
-                (if (navigationById(old)) |record| navigate_steps.isJavascript(record.url) else false);
+                (if (navigationById(integration.navigables, old)) |record| navigate_steps.isJavascript(record.url) else false);
             // A navigation whose finalize is queued (lane nav2 F1) is mature:
             // it commits all the same, as the spec's queued "finalize a
             // cross-document navigation" never asks whether its navigation is
@@ -1214,12 +1293,12 @@ fn setOngoingNavigation(integration: *IFrameIntegration, value: navigate_steps.O
             // swaps the document in at the response, leaving no such gap.
             // Its commit's "deactivate a document" step 5.2 then ends the
             // navigation that replaced it (commitAfterFinalize).
-            const committing = if (navigationById(old)) |record| record.committing else false;
-            if (!queued_javascript and !committing) endNavigation(old);
+            const committing = if (navigationById(integration.navigables, old)) |record| record.committing else false;
+            if (!queued_javascript and !committing) endNavigation(integration.navigables, old);
         },
         // A traversal's population (its navigable going, or "stop" - which
         // only a navigation ID's reaches).
-        .traversal => if (integration.traversal_navigation != 0) endNavigation(integration.traversal_navigation),
+        .traversal => if (integration.traversal_navigation != 0) endNavigation(integration.navigables, integration.traversal_navigation),
         .none => {},
     }
     integration.traversal_navigation = 0;
@@ -1238,18 +1317,20 @@ fn abandonNavigationsOf(integration: *IFrameIntegration) void {
 /// end with their navigable: their apply's job then finds nothing, and ends
 /// its wait. (A record never outlives its integration.)
 fn endCommittingNavigationsOf(integration: *IFrameIntegration) void {
+    const list = integration.navigables orelse return;
     var ids: [8]u64 = undefined;
     while (true) {
         var count: usize = 0;
-        var it = navigations.iterator();
+        var it = list.navigationIterator();
         while (it.next()) |kv| {
-            if (!kv.value_ptr.*.committing or kv.value_ptr.*.integration != integration) continue;
+            const record: *const Navigation = @ptrCast(@alignCast(kv.value_ptr.*));
+            if (!record.committing or record.integration != integration) continue;
             ids[count] = kv.key_ptr.*;
             count += 1;
             if (count == ids.len) break;
         }
         if (count == 0) return;
-        for (ids[0..count]) |id| endNavigation(id);
+        for (ids[0..count]) |id| endNavigation(list, id);
     }
 }
 
@@ -1261,8 +1342,8 @@ fn endCommittingNavigationsOf(integration: *IFrameIntegration) void {
 fn endOngoingNavigationOf(integration: *IFrameIntegration) void {
     switch (integration.ongoing_navigation) {
         // A queued commit is mature (see setOngoingNavigation).
-        .id => |old| if (if (navigationById(old)) |record| !record.committing else true) endNavigation(old),
-        .traversal => if (integration.traversal_navigation != 0) endNavigation(integration.traversal_navigation),
+        .id => |old| if (if (navigationById(integration.navigables, old)) |record| !record.committing else true) endNavigation(integration.navigables, old),
+        .traversal => if (integration.traversal_navigation != 0) endNavigation(integration.navigables, integration.traversal_navigation),
         .none => {},
     }
     integration.traversal_navigation = 0;
@@ -1421,8 +1502,7 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
 
     // Step 7's navigation ID, and step 19: set the ongoing navigation - which
     // ends any earlier one.
-    const id = next_navigation_id;
-    next_navigation_id += 1;
+    const id = next_navigation_id.fetchAdd(1, .monotonic);
     if (options.traversal_entry != 0) {
         // A traversal's (or reload's) navigation: "apply the history step"
         // sets the navigable's ongoing navigation itself - not through "set
@@ -1441,10 +1521,13 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         } else integration.ongoing_navigation = .{ .id = id };
     } else setOngoingNavigation(integration, .{ .id = id });
 
+    // The Browser's navigations the record joins: its navigable's.
+    const list = integration.navigables orelse return;
     const record = allocator.create(Navigation) catch return;
     record.* = .{
         .id = id,
         .integration = integration,
+        .navigables = list,
         .allocator = allocator,
         .url = allocator.dupe(u8, url) catch {
             allocator.destroy(record);
@@ -1595,7 +1678,7 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // The same snapshot, serialized, for the navigation's request (its
     // origin, startFetch).
     if (options.source_document) |source| record.request_origin = documentOriginOf(source, allocator);
-    navigations.put(std.heap.page_allocator, id, record) catch {
+    list.putNavigation(id, record) catch {
         record.destroy();
         return;
     };
@@ -1637,13 +1720,13 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
                 // intercepted one is still settling, which informing about
                 // aborting navigation would abort.
                 if (isOngoing(integration, id)) integration.ongoing_navigation = .none;
-                endNavigation(id);
+                endNavigation(list, id);
                 endLoadDelay(integration);
                 return;
             }
             // The event's handlers ran script: a later navigation replaces
             // this one, and a navigable taken away ends it.
-            if (navigationById(id) == null or !isOngoing(integration, id)) return;
+            if (navigationById(list, id) == null or !isOngoing(integration, id)) return;
         }
     }
     // Step 24: "In parallel": beforeunload, then the fetch. Deviation,
@@ -1672,15 +1755,15 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         if (active != null) {
             if (!std.mem.eql(u8, navigate_steps.schemeOf(active_url), "file")) {
                 if (isOngoing(integration, id)) integration.ongoing_navigation = .none;
-                endNavigation(id);
+                endNavigation(list, id);
                 endLoadDelay(integration);
                 if (integration.browsing_context.?.getActiveWindow()) |window| dom_module.navigation_api.informAboutAbortingNavigation(@ptrCast(@alignCast(window)));
                 return;
             }
         }
     }
-    if (options.traversal_entry != 0) return startFetch(navigationById(id) orelse return);
-    runBeforeUnload(@ptrFromInt(id));
+    if (options.traversal_entry != 0) return startFetch(navigationById(list, id) orelse return);
+    runBeforeUnload(list, id);
 }
 
 /// Fetch "determine request's referrer" step 2 for a request whose
@@ -1710,15 +1793,16 @@ fn requestReferrerOf(source: *runtime.Instance, allocator: std.mem.Allocator) ?[
 /// Queue `callback` for navigation `id` on the navigable's event loop - a
 /// global task on the navigation and traversal task source. With no loop (a
 /// context built for tests) it runs now.
+/// Queue `callback` as a task for navigation `id` of `integration`'s
+/// navigable: its context a `Ticket`, which the callback redeems
+/// (`Ticket.redeem`) and the loop frees if it drops the task.
 fn queueNavigationTask(integration: *IFrameIntegration, id: u64, callback: *const fn (?*anyopaque) void) void {
-    const context: ?*anyopaque = @ptrFromInt(id);
+    const list = integration.navigables orelse return;
+    const ticket = Ticket.create(list, id) orelse return;
+    const context: ?*anyopaque = ticket;
     const runtime_ctx: runtime.Context = @ptrCast(@alignCast(integration.runtime_context orelse return callback(context)));
     const loop = runtime_ctx.getOptionalEventLoop() orelse return callback(context);
-    loop.queueTask(.{ .callback = callback, .context = context });
-}
-
-fn idOf(context: ?*anyopaque) u64 {
-    return @intFromPtr(context);
+    loop.queueTask(.{ .callback = callback, .context = context, .drop = &Ticket.dropTask });
 }
 
 /// Whether navigation `id` is still `integration`'s ongoing navigation.
@@ -1771,11 +1855,10 @@ fn blobURLStoreOf(integration: *IFrameIntegration) ?*anyopaque {
 /// inclusive descendant navigables - beforeunload at each, parents first.
 /// Step 24.2: canceled, or navigated again meanwhile, and this navigation
 /// ends. Step 24.3 aborts the active document before the replacement fetch.
-fn runBeforeUnload(context: ?*anyopaque) void {
-    const id = idOf(context);
-    const record = navigationById(id) orelse return;
+fn runBeforeUnload(list: *Navigables, id: u64) void {
+    const record = navigationById(list, id) orelse return;
     const integration = record.integration;
-    if (!isOngoing(integration, id)) return endNavigation(id);
+    if (!isOngoing(integration, id)) return endNavigation(list, id);
 
     if (activeDocumentOf(integration)) |document| {
         var canceled = false;
@@ -1787,7 +1870,7 @@ fn runBeforeUnload(context: ?*anyopaque) void {
         }
         // The handlers ran script: a later navigation replaces this one -
         // and ends its record - and a navigable taken away ends it too.
-        const again = navigationById(id) orelse return;
+        const again = navigationById(list, id) orelse return;
         if (canceled) {
             setOngoingNavigation(again.integration, .none);
             endLoadDelay(again.integration);
@@ -1806,7 +1889,7 @@ fn runBeforeUnload(context: ?*anyopaque) void {
             document_lifecycle.abortForNavigation(entry.document);
         }
     }
-    startFetch(navigationById(id) orelse return);
+    startFetch(navigationById(list, id) orelse return);
 }
 
 /// Step 23.9: "attempt to populate the history entry's document" - its fetch.
@@ -1820,24 +1903,24 @@ fn startFetch(record: *Navigation) void {
     // initiator's navigation policy before the first fetch, including forms
     // targeting another frame or a popup. javascript: has its separate path.
     if (navigationBlockedByCSP(record, url, 0)) {
-        record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+        record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
         return queueNavigationTask(record.integration, record.id, &runCommit);
     }
 
     if (record.srcdoc) |html| {
         // At about:srcdoc - or, for a traversal to a fragment entry of one,
         // at that entry's URL (about:srcdoc#yo).
-        record.response = htmlResponse(allocator, url, html) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+        record.response = htmlResponse(allocator, url, html) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
         return queueNavigationTask(record.integration, record.id, &runCommit);
     }
     if (record.markup) |html| {
         // The embedder's markup for the entry's URL, which it never served:
         // the document is re-created from it.
-        record.response = htmlResponse(allocator, url, html) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+        record.response = htmlResponse(allocator, url, html) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
         return queueNavigationTask(record.integration, record.id, &runCommit);
     }
     if (navigate_steps.matchesAboutBlank(url)) {
-        record.response = htmlResponse(allocator, url, "") catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+        record.response = htmlResponse(allocator, url, "") catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
         return queueNavigationTask(record.integration, record.id, &runCommit);
     }
 
@@ -1917,13 +2000,13 @@ fn startFetch(record: *Navigation) void {
             .referrer_policy = record.referrer_policy,
             .policy_container = if (record.initiator_policy_container) |*container| container else null,
         }) catch {
-            record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+            record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);
         };
         // CSPEE §2.4 item 7: set the request header from the target snapshot.
         if (record.required_csp) |required| request.header_list.set("Sec-Required-CSP", required) catch {
             request.deinit();
-            record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+            record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);
         };
         // Main fetch steps 4 and 7 report the request's CSP violations to its
@@ -1943,7 +2026,7 @@ fn startFetch(record: *Navigation) void {
         // "client".
         if (record.request_origin) |origin| request.setOrigin(origin) catch {
             request.deinit();
-            record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+            record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);
         };
         // "Create navigation params by fetching" steps 7-8: a traversal to the
@@ -2000,7 +2083,7 @@ fn startFetch(record: *Navigation) void {
             if (record.post_content_type) |content_type| {
                 request.header_list.set("Content-Type", content_type) catch {
                     request.deinit();
-                    record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+                    record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
                     return queueNavigationTask(record.integration, record.id, &runCommit);
                 };
             }
@@ -2014,11 +2097,20 @@ fn startFetch(record: *Navigation) void {
         }
         request.reserved_client = record.reserved_client;
         request.service_worker = dom_module.service_worker_clients.routeOfReserved(record.reserved_client);
+        // The client's ticket is the fetch's from here: its `gone` or
+        // `finished` frees it, or whoever terminates the fetch or gives it
+        // another client (terminateFetch, releaseFetchClient).
+        const ticket = Ticket.create(record.navigables, record.id) orelse {
+            request.deinit();
+            record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
+            return queueNavigationTask(record.integration, record.id, &runCommit);
+        };
         const client: fetch_mod.algorithms.AsyncFetch.Client = .{
-            .context = @ptrFromInt(record.id),
+            .context = ticket,
             .done = &fetchDone,
             .alive = &fetchAlive,
             .gone = &fetchGone,
+            .finished = &fetchFinished,
         };
         // The request's final referrer comes back with the result, for the
         // new document's referrer (fetchDone frees it with the result).
@@ -2026,8 +2118,10 @@ fn startFetch(record: *Navigation) void {
         // The response comes at its headers, its body still arriving (HTML
         // 7.5.1: the document is parsed as the bytes come - fetchDone).
         record.fetch = fetch_mod.algorithms.AsyncFetch.startStreaming(allocator, request, .{ .report_referrer = true, .follows_manual_redirects = true }, agentFetchesOf(record.integration), client) catch {
-            // The fetch owned the request, and freed it.
-            record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+            // The fetch owned the request, and freed it; never started, it
+            // owns no ticket.
+            ticket.destroy();
+            record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);
         };
         // Never paused for a reader behind: a response committed whole is
@@ -2061,7 +2155,7 @@ fn startFetch(record: *Navigation) void {
         // storage key (`reservedBlobStorageKey`); a top-level navigation's
         // is not checked.
         const blob_storage_key = if (destination == .document) null else reservedBlobStorageKey(allocator, record.integration, url) catch {
-            record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+            record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);
         };
         defer if (blob_storage_key) |key| allocator.free(key);
@@ -2076,11 +2170,11 @@ fn startFetch(record: *Navigation) void {
             .referrer_policy = record.referrer_policy,
             .policy_container = if (record.initiator_policy_container) |*container| container else null,
         }) catch {
-            record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+            record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);
         };
         if (record.csp_reporter) |*reporter| request.csp_violation_reporter = reporter.reporter();
-        record.response = navigation_fetch.fetchRequestNow(allocator, url, request, .{}) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+        record.response = navigation_fetch.fetchRequestNow(allocator, url, request, .{}) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
         return queueNavigationTask(record.integration, record.id, &runCommit);
     }
     // data:/file: bypass main fetch. Run its steps 4 and 7 here:
@@ -2093,14 +2187,14 @@ fn startFetch(record: *Navigation) void {
                     .mode = .navigate,
                     .policy_container = container,
                 }) catch {
-                    record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+                    record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
                     return queueNavigationTask(record.integration, record.id, &runCommit);
                 };
                 defer request.deinit();
                 if (record.csp_reporter) |*reporter| request.csp_violation_reporter = reporter.reporter();
                 fetch_mod.algorithms.csp_check.reportViolationsForRequest(request);
                 if (fetch_mod.algorithms.csp_check.shouldRequestBeBlocked(request)) {
-                    record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+                    record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
                     return queueNavigationTask(record.integration, record.id, &runCommit);
                 }
             }
@@ -2110,7 +2204,7 @@ fn startFetch(record: *Navigation) void {
         .destination = destination,
         .mode = .navigate,
         .redirect = .follow,
-    }) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+    }) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
     queueNavigationTask(record.integration, record.id, &runCommit);
 }
 
@@ -2147,7 +2241,7 @@ fn cancelSelfReferential(record: *Navigation) void {
     const integration = record.integration;
     log.debug("[navigation] canceled a self-referential frame navigation to {s}", .{record.url});
     if (isOngoing(integration, record.id)) integration.ongoing_navigation = .none;
-    endNavigation(record.id);
+    endNavigation(record.navigables, record.id);
     endLoadDelay(integration);
 }
 
@@ -2169,7 +2263,8 @@ fn htmlResponse(allocator: std.mem.Allocator, url: []const u8, html: []const u8)
 /// fetch in flight retires its contexts, and Fetch's "terminate a fetch
 /// group" ends the fetch at the next sweep.
 fn fetchAlive(context: *anyopaque) bool {
-    const record = navigationById(@intFromPtr(context)) orelse return false;
+    const ticket = Ticket.of(context);
+    const record = navigationById(ticket.navigables, ticket.id) orelse return false;
     const ctx = navigableContext(record.integration) orelse return false;
     return ctx.engine_ctx != null;
 }
@@ -2177,10 +2272,21 @@ fn fetchAlive(context: *anyopaque) bool {
 /// The fetch was terminated because its navigation's realm went: the
 /// navigation ends with it.
 fn fetchGone(context: *anyopaque) void {
-    const id = @intFromPtr(context);
-    const record = navigationById(id) orelse return;
+    // The fetch's last word: its ticket goes.
+    const ticket = Ticket.of(context);
+    const list = ticket.navigables;
+    const id = ticket.id;
+    ticket.destroy();
+    const record = navigationById(list, id) orelse return;
     record.fetch = null;
-    endNavigation(id);
+    endNavigation(list, id);
+}
+
+/// After `fetchDone`, the fetch is entirely over (AsyncFetch.Client
+/// `finished`, its last word): its ticket goes. The navigation heard all it
+/// needed at `done`.
+fn fetchFinished(context: *anyopaque) void {
+    Ticket.of(context).destroy();
 }
 
 /// The navigation fetch answered (from the event loop's network step), at
@@ -2190,10 +2296,12 @@ fn fetchGone(context: *anyopaque) void {
 /// HTML document"); every other response is committed whole, once its body
 /// has arrived (`bodyArrived`), as before.
 fn fetchDone(context: *anyopaque, outcome: fetch_mod.algorithms.FetchError!fetch_mod.algorithms.FetchResult) void {
-    const id = @intFromPtr(context);
+    // The ticket stays the fetch's: its `gone` or `finished` comes later.
+    const ticket = Ticket.of(context);
+    const id = ticket.id;
     var result = outcome catch null;
     defer if (result) |*r| r.deinit();
-    const record = navigationById(id) orelse return;
+    const record = navigationById(ticket.navigables, id) orelse return;
     // "Create navigation params by fetching" step 21: a redirect the
     // navigation follows by hand goes on to its next hop. Its response goes
     // first: its body may still be arriving through its pipe, and letting the
@@ -2229,7 +2337,7 @@ fn fetchDone(context: *anyopaque, outcome: fetch_mod.algorithms.FetchError!fetch
         if (!streamsIntoDocument(record.integration, r.response)) {
             // Committed whole: the result waits for its body.
             var waiting = navigation_fetch.NavigationFetchResult.init(record.allocator);
-            waiting.arriving = navigation_fetch.ArrivingResponse.create(record.allocator, r.*, current_url, .{ .context = @ptrFromInt(id), .notify = &bodyProgress }) catch null;
+            waiting.arriving = navigation_fetch.ArrivingResponse.create(record.allocator, r.*, current_url, .{ .context = record, .notify = &bodyProgress }) catch null;
             if (waiting.arriving != null) {
                 result = null;
                 record.response = waiting;
@@ -2291,7 +2399,7 @@ fn respond(record: *Navigation, result: ?*fetch_mod.algorithms.FetchResult, curr
         if (streamBody(record, response, r, f)) |_| {} else |_| {}
     };
     if (record.response == null) {
-        record.response = navigation_fetch.networkErrorResult(record.allocator, record.url) catch return endNavigation(id);
+        record.response = navigation_fetch.networkErrorResult(record.allocator, record.url) catch return endNavigation(record.navigables, id);
     }
     queueNavigationTask(record.integration, id, &runCommit);
 }
@@ -2300,10 +2408,17 @@ fn respond(record: *Navigation, result: ?*fetch_mod.algorithms.FetchResult, curr
 fn streamBody(record: *Navigation, response: *navigation_fetch.NavigationFetchResult, result: *fetch_mod.algorithms.FetchResult, f: *fetch_mod.algorithms.AsyncFetch) !void {
     const body = result.response.body orelse return;
     const pipe = body.pipe orelse return;
-    const streamed = try navigation_fetch.StreamedBody.create(record.allocator, pipe, .{ .context = @ptrFromInt(record.id), .alive = &fetchAlive });
+    // The body's holder until the parser takes it: a ticket the body keeps
+    // (`StreamedHold`, its `kept`) and lets go when it is released.
+    const hold = try StreamedHold.create(record.allocator, record.navigables, record.id);
+    const streamed = navigation_fetch.StreamedBody.create(record.allocator, pipe, .{ .context = &hold.ticket, .alive = &fetchAlive }) catch |err| {
+        hold.release();
+        return err;
+    };
     const handoff = navigation_fetch.BodyHandoff.create(record.allocator, streamed) catch |err| {
         // The pipe stays the response's: freeing it stops the transfer.
         record.allocator.destroy(streamed);
+        hold.release();
         return err;
     };
     // The fetch now outlives this record, whose reporters its request
@@ -2317,19 +2432,54 @@ fn streamBody(record: *Navigation, response: *navigation_fetch.NavigationFetchRe
         const kept = KeptTimingReporter.create(record.allocator, reporter) catch |err| {
             handoff.destroyEmpty();
             record.allocator.destroy(streamed);
+            hold.release();
             return err;
         };
         request.timing_reporter = kept.reporter.reporter();
-        streamed.kept = .{ .context = kept, .release = &KeptTimingReporter.release };
+        hold.timing = kept;
     }
+    // Released with the body - once no fetch can reach it any more: the
+    // timing reporter, and the holder's ticket.
+    streamed.kept = .{ .context = hold, .release = &StreamedHold.releaseKept };
     // The response's body no longer reads it: its deinit leaves it.
     body.pipe = null;
+    // The fetch takes the body as its client: the navigation's client, and
+    // its ticket, go.
+    releaseFetchClient(f);
     streamed.adopt(f);
     response.body_stream = handoff;
 }
 
+/// What a navigation's streamed body keeps until it is released
+/// (`StreamedBody.kept`, released once no fetch can reach the body): the
+/// ticket its holder's `alive` reads (`fetchAlive`) - the navigation's, until
+/// the document's parser takes the body (`handTo`) - and the timing
+/// reporter the fetch reports the body's end with, if the navigation had
+/// one.
+const StreamedHold = struct {
+    allocator: std.mem.Allocator,
+    ticket: Ticket,
+    timing: ?*KeptTimingReporter = null,
+
+    fn create(allocator: std.mem.Allocator, navigables: *Navigables, id: u64) !*StreamedHold {
+        const self = try allocator.create(StreamedHold);
+        self.* = .{ .allocator = allocator, .ticket = .{ .allocator = allocator, .navigables = navigables, .id = id } };
+        return self;
+    }
+
+    fn release(self: *StreamedHold) void {
+        if (self.timing) |kept| KeptTimingReporter.release(kept);
+        self.allocator.destroy(self);
+    }
+
+    fn releaseKept(context: *anyopaque) void {
+        const self: *StreamedHold = @ptrCast(@alignCast(context));
+        self.release();
+    }
+};
+
 /// A navigation's timing reporter, kept by its streamed body for as long as
-/// the fetch may report the body's end (`StreamedBody.kept`).
+/// the fetch may report the body's end (`StreamedHold`).
 const KeptTimingReporter = struct {
     allocator: std.mem.Allocator,
     reporter: dom_module.performance_timeline.GuardedTimingReporter,
@@ -2372,8 +2522,10 @@ fn streamsIntoDocument(integration: *IFrameIntegration, response: *fetch_mod.int
 /// turn of the loop, inside the body's producer: nothing is released here).
 /// Once the body has arrived, the task that goes on with it is queued.
 fn bodyProgress(context: *anyopaque) void {
-    const id = @intFromPtr(context);
-    const record = navigationById(id) orelse return;
+    // The record itself: its arriving response is its own (record.response),
+    // whose take and destroy clear this consumer before the record goes.
+    const record: *Navigation = @ptrCast(@alignCast(context));
+    const id = record.id;
     const response = if (record.response) |*r| r else return;
     const arriving = response.arriving orelse return;
     if (arriving.queued or !arriving.arrived()) return;
@@ -2385,8 +2537,9 @@ fn bodyProgress(context: *anyopaque) void {
 /// as it did when the fetch handed over its response with all of its body
 /// (`AsyncFetch.start`).
 fn bodyArrived(context: ?*anyopaque) void {
-    const id = idOf(context);
-    const record = navigationById(id) orelse return;
+    const task = Ticket.redeem(context) orelse return;
+    const id = task.id;
+    const record = navigationById(task.navigables, id) orelse return;
     const waiting = if (record.response) |*r| r else return;
     const arriving = waiting.arriving orelse return;
     waiting.arriving = null;
@@ -2435,8 +2588,8 @@ fn followManualRedirect(record: *Navigation, f: *fetch_mod.algorithms.AsyncFetch
             // fetchDone owns the delivered response separately. Do not read
             // f or location (borrowed from it) after terminate.
             record.fetch = null;
-            f.terminate();
-            record.response = navigation_fetch.networkErrorResult(record.allocator, record.url) catch return endNavigation(record.id);
+            terminateFetch(f);
+            record.response = navigation_fetch.networkErrorResult(record.allocator, record.url) catch return endNavigation(record.navigables, record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);
         }
         const scheme = navigate_steps.schemeOf(location);
@@ -2476,14 +2629,13 @@ fn followManualRedirect(record: *Navigation, f: *fetch_mod.algorithms.AsyncFetch
 /// active document and its descendants, then create the new document, make
 /// it active, and load it.
 fn runCommit(context: ?*anyopaque) void {
-    const id = idOf(context);
-    const kv = navigations.fetchRemove(id) orelse return;
-    const record = kv.value;
+    const task = Ticket.redeem(context) orelse return;
+    const record: *Navigation = @ptrCast(@alignCast(task.navigables.takeNavigation(task.id) orelse return));
     // Handed to the traversal queue below, it is the queue's job's to end.
     var handed_over = false;
     defer if (!handed_over) record.destroy();
     const integration = record.integration;
-    if (!isOngoing(integration, id)) return;
+    if (!isOngoing(integration, record.id)) return;
     const response = if (record.response) |*r| r else return;
 
     // HTML "navigate" step 23's process the navigation response: "if should
@@ -2593,14 +2745,14 @@ fn runCommit(context: ?*anyopaque) void {
     // the apply running now ("apply the history step" 12.8), which waits for
     // it - it commits here, as it always did.
     if (record.traversal_entry == 0) if (integration.browsing_context) |bc| {
-        if (navigations.put(std.heap.page_allocator, record.id, record)) |_| {
+        if (record.navigables.putNavigation(record.id, record)) |_| {
             record.committing = true;
             if (html_core.navigation.apply_history_step.finalizeCrossDocument(bc, integration.allocator, record.id)) {
                 handed_over = true;
                 return;
             }
             record.committing = false;
-            _ = navigations.remove(record.id);
+            _ = record.navigables.takeNavigation(record.id);
         } else |_| {}
     };
     // A population, or no queue to append to (no memory): the commit goes on
@@ -2616,12 +2768,14 @@ fn runCommit(context: ?*anyopaque) void {
 /// its wait. Otherwise the record reports the wait's end - at its new
 /// document's activation (recordInHistory), or when it is destroyed.
 fn commitQueuedNavigation(browsing_context_ptr: *anyopaque, navigation_id: u64, waiter: ?dom_module.navigables.TraversalWaiter) bool {
-    const record = navigationById(navigation_id) orelse return false;
+    const committed: *html_core.BrowsingContext = @ptrCast(@alignCast(browsing_context_ptr));
+    const list = committed.navigables orelse return false;
+    const record = navigationById(list, navigation_id) orelse return false;
     if (!record.committing) return false;
     const integration = record.integration;
     const bc = integration.browsing_context orelse return false;
     if (@as(*anyopaque, @ptrCast(bc)) != browsing_context_ptr) return false;
-    _ = navigations.remove(navigation_id);
+    _ = list.takeNavigation(navigation_id);
     record.committing = false;
     // Its apply ended before its job ran (the job could not be queued, or
     // was dropped): the navigation ends here, uncommitted, and stops
@@ -2677,8 +2831,8 @@ fn commitAfterFinalize(integration: *IFrameIntegration, record: *Navigation, wai
     // this one: that commits next, as the spec's would.
     switch (integration.ongoing_navigation) {
         .id => |other| if (other != record.id) {
-            const mature = if (navigationById(other)) |later| later.committing else false;
-            if (!mature) endNavigation(other);
+            const mature = if (navigationById(record.navigables, other)) |later| later.committing else false;
+            if (!mature) endNavigation(record.navigables, other);
         },
         else => {},
     }
@@ -4005,7 +4159,11 @@ fn jointHandling(handling: navigate_steps.HistoryHandling) html_core.navigation.
 /// resource, when that is a srcdoc document's markup. The top-level page
 /// cannot be replaced, so only a frame or popup can.
 fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64, waiter: ?dom_module.navigables.TraversalWaiter) bool {
-    for (live_navigables.items) |integration| {
+    const traversed: *html_core.BrowsingContext = @ptrCast(@alignCast(browsing_context_ptr));
+    // The Browser's list outlives the navigation: what traversalInFlight
+    // checks the integration against once the navigation may have ended it.
+    const list = traversed.navigables orelse return false;
+    for (list.integrations.items) |integration| {
         const bc = integration.browsing_context orelse continue;
         if (@as(*anyopaque, @ptrCast(bc)) != browsing_context_ptr) continue;
         // The entry's document is kept in the back/forward cache: shown
@@ -4019,14 +4177,14 @@ fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []con
         // embedder's markup: re-created from it at the entry's URL.
         if (integration.host_realms != null) {
             navigate(integration, url, .{ .history_behavior = .replace, .traversal_entry = entry_id, .traversal_from = from_entry_id, .markup = resource, .traversal_waiter = waiter });
-            return traversalInFlight(integration, waiter);
+            return traversalInFlight(list, integration, waiter);
         }
         const source: ?*runtime.Instance = if (resource != null) blk: {
             const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse break :blk null));
             break :blk @import("Node.zig").getOwnerDocument(element);
         } else null;
         navigate(integration, url, .{ .source_document = source, .history_behavior = .replace, .traversal_entry = entry_id, .traversal_from = from_entry_id, .srcdoc = resource, .traversal_waiter = waiter });
-        return traversalInFlight(integration, waiter);
+        return traversalInFlight(list, integration, waiter);
     }
     return false;
 }
@@ -4035,15 +4193,15 @@ fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []con
 /// waits for, still in flight: it will report its end when its record goes.
 /// `integration` is checked to be live first - the navigation may have
 /// ended its navigable.
-fn traversalInFlight(integration: *IFrameIntegration, waiter: ?dom_module.navigables.TraversalWaiter) bool {
+fn traversalInFlight(list: *const Navigables, integration: *IFrameIntegration, waiter: ?dom_module.navigables.TraversalWaiter) bool {
     const w = waiter orelse return false;
-    if (std.mem.indexOfScalar(*IFrameIntegration, live_navigables.items, integration) == null) return false;
+    if (!list.listsIntegration(integration)) return false;
     const id = switch (integration.ongoing_navigation) {
         .id => |id| id,
         .traversal => integration.traversal_navigation,
         .none => return false,
     };
-    const record = navigationById(id) orelse return false;
+    const record = navigationById(list, id) orelse return false;
     const wait = record.traversal_wait orelse return false;
     return wait.token == w.token and wait.traversable_id == w.traversable_id;
 }
@@ -4400,9 +4558,9 @@ fn fireHashChange(data: ?*anyopaque) void {
 /// container's, not the initiator's - the same when, as in every case this
 /// engine reaches, the page navigates its own frame.
 fn runJavascriptNavigation(context: ?*anyopaque) void {
-    const id = idOf(context);
-    const kv = navigations.fetchRemove(id) orelse return;
-    const record = kv.value;
+    const task = Ticket.redeem(context) orelse return;
+    const id = task.id;
+    const record: *Navigation = @ptrCast(@alignCast(task.navigables.takeNavigation(id) orelse return));
     defer record.destroy();
     const integration = record.integration;
     if (!isOngoing(integration, id)) {
@@ -4735,7 +4893,8 @@ fn contentNavigableLoadEventSteps(container: *runtime.Instance) bool {
 
 /// The live content navigable whose container is `container`.
 fn integrationOfContainer(container: *runtime.Instance) ?*IFrameIntegration {
-    for (live_navigables.items) |integration| {
+    const list = navigablesOfObject(container) orelse return null;
+    for (list.integrations.items) |integration| {
         if (integration.iframe_element == @as(?*anyopaque, @ptrCast(container))) return integration;
     }
     return null;

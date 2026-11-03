@@ -511,7 +511,11 @@ fn callbackEquals(realm: runtime.Context, a: ?engine.CallbackInterface, b: ?engi
     return engine.sameValue(realm, x.object.value, y.object.value);
 }
 
-threadlocal var next_listener_id: u64 = 1;
+/// The next listener's id: a listener is found by id only in its own
+/// target's list (a signal's removal steps, dispatch's re-check), so an id
+/// needs no owner - only uniqueness.
+// process-wide: an id counter whose only property is uniqueness in the process (a listener is found by id only in its target's list); written with an atomic fetch-add from every thread that runs script, it carries no state of any instance.
+var next_listener_id: std.atomic.Value(u64) = .init(1);
 
 /// Free what a listener record owns - its type string and its callback -
 /// for a record that was never stored, or has just left the list.
@@ -607,8 +611,7 @@ fn addAnEventListener(internal: *InternalState, instance: *runtime.Instance, lis
         return;
     }
 
-    updated_listener.id = next_listener_id;
-    next_listener_id += 1;
+    updated_listener.id = next_listener_id.fetchAdd(1, .monotonic);
     list.append(updated_listener) catch |err| {
         releaseRecord(internal, updated_listener);
         return err;
@@ -700,6 +703,7 @@ fn swapCurrentEvent(window: *runtime.Instance, event: ?*runtime.Instance) ?*runt
 
 /// The next event handler's serial. Atomic: event handlers are set on every
 /// thread that runs script - a Browser's and each worker's.
+// process-wide: a serial counter whose only property is uniqueness in the process (a handler's listener is matched by serial only in its target's list); written with an atomic fetch-add from every thread that runs script, it carries no state of any instance.
 var next_handler_serial: std.atomic.Value(u32) = .init(1);
 
 /// HTML "activate an event handler", steps 3-7.

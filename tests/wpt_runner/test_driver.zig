@@ -1309,15 +1309,16 @@ fn parseAction(realm: runtime.Context, object: JSValue, source_type: SourceType,
 /// The driver whose natives the frame loader defines.
 threadlocal var frame_driver: ?*TestDriver = null;
 
-/// Register `driver` as the answer for frame and popup documents
-/// (src/html/embedder_scripts.zig): called once, at startup.
-pub fn registerForFrames(driver: *TestDriver) void {
+/// Register `driver` as the answer for the frame and popup documents of the
+/// Browser whose scope is `scope` (src/html/embedder_scripts.zig): called
+/// once, at startup.
+pub fn registerForFrames(driver: *TestDriver, scope: *runtime.BrowserScope) !void {
     frame_driver = driver;
-    html.embedder_scripts.register(&frameLoader);
+    try html.embedder_scripts.register(scope, &frameLoader);
 }
 
-pub fn unregisterForFrames() void {
-    html.embedder_scripts.unregister();
+pub fn unregisterForFrames(scope: *runtime.BrowserScope) void {
+    html.embedder_scripts.unregister(scope);
     frame_driver = null;
 }
 

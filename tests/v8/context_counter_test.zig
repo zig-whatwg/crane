@@ -165,8 +165,14 @@ test "a context made with a global constructor and disposed leaves live_context_
 // keeps it pins that realm - every object in it - for the isolate's life, one
 // Global per call (docs/lessons/architecture-an-api-callback-s-current-context-
 // is-the-callee-s-realm.md). Each test below runs one callback 64 times and
-// reads the live Context Global count before and after; V8's own global handle
-// bytes cross-check it.
+// reads its agent's global handles before and after - V8's used global handle
+// bytes of the test's isolate, where every Global<Context> the binding keeps is
+// one handle. Not the live Context Global count: that is the process's, which
+// every Browser of the process moves (beside the many-Browsers variant's busy
+// Browser it moved while these measured: docs/lessons/testing-a-test-that-
+// measures-a-process-wide-counter-assumes-it-is-alone.md). Only the two tests
+// above, whose subject is that count's balance, read it - alone in their
+// process (build.zig v8_alone).
 
 var all_interfaces_installed = false;
 
@@ -179,14 +185,14 @@ fn allInterfaces() !void {
 }
 
 const Left = struct {
-    context_globals: i64,
+    /// V8's used global handle bytes of the test's isolate.
     handle_bytes: i64,
     /// Bytes still live through the realm's allocator.
     realm_bytes: i64 = 0,
 };
 
-/// What 64 runs of `body` leave behind: live Context Globals, V8's global
-/// handle bytes after a collection, and bytes of the realm's allocator. Two
+/// What 64 runs of `body` leave behind: V8's global handle bytes of the
+/// test's isolate after a collection, and bytes of the realm's allocator. Two
 /// runs first, so that what the first call makes and later ones reuse is not
 /// counted.
 fn leftBy(comptime body: []const u8) !Left {
@@ -194,13 +200,11 @@ fn leftBy(comptime body: []const u8) !Left {
     const loop = "(() => { for (let i = 0; i < {N}; i++) { " ++ body ++ " } return 0 })()";
     _ = try scriptInt(comptime replaceN(loop, "2"));
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
-    const contexts_before = ffi.v8_Debug_LiveContextGlobals();
     const bytes_before: i64 = @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate));
     const realm_before = realm_allocator.live;
     _ = try scriptInt(comptime replaceN(loop, "64"));
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
     return .{
-        .context_globals = ffi.v8_Debug_LiveContextGlobals() - contexts_before,
         .handle_bytes = @as(i64, @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate))) - bytes_before,
         .realm_bytes = realm_allocator.live - realm_before,
     };
@@ -212,25 +216,17 @@ fn replaceN(comptime loop: []const u8, comptime n: []const u8) []const u8 {
 }
 
 fn expectNothingLeft(comptime what: []const u8, left: Left) !void {
-    if (left.context_globals != 0 or left.handle_bytes > 0) {
-        std.debug.print("64 runs of {s} left {d} Context Globals and {d} bytes of global handles\n", .{ what, left.context_globals, left.handle_bytes });
+    if (left.handle_bytes > 0) {
+        std.debug.print("64 runs of {s} left {d} bytes of global handles\n", .{ what, left.handle_bytes });
         return error.HandlesLeaked;
     }
 }
 
-/// Nothing left at all: no Context Global, no global handle bytes, and no
-/// bytes of the realm's allocator - what an impl allocated for a result is
-/// the binding's to free.
+/// Nothing left at all: no global handle bytes, and no bytes of the realm's
+/// allocator - what an impl allocated for a result is the binding's to free.
 fn expectNothingLeftAnywhere(comptime what: []const u8, left: Left) !void {
-    if (left.context_globals != 0 or left.handle_bytes > 0 or left.realm_bytes > 0) {
-        std.debug.print("64 runs of {s} left {d} Context Globals, {d} bytes of global handles and {d} bytes of the realm's allocator\n", .{ what, left.context_globals, left.handle_bytes, left.realm_bytes });
-        return error.HandlesLeaked;
-    }
-}
-
-fn expectNoContextLeft(comptime what: []const u8, left: Left) !void {
-    if (left.context_globals != 0) {
-        std.debug.print("64 runs of {s} left {d} Context Globals\n", .{ what, left.context_globals });
+    if (left.handle_bytes > 0 or left.realm_bytes > 0) {
+        std.debug.print("64 runs of {s} left {d} bytes of global handles and {d} bytes of the realm's allocator\n", .{ what, left.handle_bytes, left.realm_bytes });
         return error.HandlesLeaked;
     }
 }
@@ -283,8 +279,8 @@ test "the indexed property definer releases the current context" {
         \\Object.defineProperty(definedSelect, '0', { value: definedOption, configurable: true, enumerable: true, writable: true });
         \\definedSelect.length
     ));
-    try expectNoContextLeft("Object.defineProperty(select, '0', ...)", try leftBy("Object.defineProperty(definedSelect, '0', { value: definedOption, configurable: true, enumerable: true, writable: true });"));
-    try expectNoContextLeft("Object.defineProperty(nodeList, '0', ...)", try leftBy("try { Object.defineProperty(children, '0', { value: 1 }) } catch (e) {}"));
+    try expectNothingLeft("Object.defineProperty(select, '0', ...)", try leftBy("Object.defineProperty(definedSelect, '0', { value: definedOption, configurable: true, enumerable: true, writable: true });"));
+    try expectNothingLeft("Object.defineProperty(nodeList, '0', ...)", try leftBy("try { Object.defineProperty(children, '0', { value: 1 }) } catch (e) {}"));
 }
 
 test "the indexed property definer releases every handle it takes" {
@@ -713,13 +709,11 @@ test "an abort inside a listener the binding dispatched to leaves no handle and 
     // would grow with every round.
     for (0..8) |_| try abortedRound(body);
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
-    const contexts_before = ffi.v8_Debug_LiveContextGlobals();
     const bytes_before: i64 = @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate));
     const realm_before = realm_allocator.live;
     for (0..8) |_| try abortedRound(body);
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
     const left: Left = .{
-        .context_globals = ffi.v8_Debug_LiveContextGlobals() - contexts_before,
         .handle_bytes = @as(i64, @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate))) - bytes_before,
         .realm_bytes = realm_allocator.live - realm_before,
     };

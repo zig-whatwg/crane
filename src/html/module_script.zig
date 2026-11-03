@@ -145,12 +145,11 @@ pub const ModuleScript = struct {
     /// mark is cleared before the walk returns.
     search_visited: bool = false,
 
-    /// Links in `live_scripts`, while this script exists: the engine hands
-    /// it back as a record's [[HostDefined]] (import.meta, an import()'s
-    /// referrer), and only a script still in the list is read.
-    live_prev: ?*ModuleScript = null,
-    live_next: ?*ModuleScript = null,
-    live: bool = false,
+    /// Its place in its agent's module scripts (`AgentHost.module_scripts`),
+    /// while it exists: the engine hands it back as a record's
+    /// [[HostDefined]] (import.meta, an import()'s referrer), and only a
+    /// script still in its agent's list is read.
+    live: ScriptRecords.Link = .{},
 
     pub const Child = struct {
         /// Owned copy of the request's specifier.
@@ -160,8 +159,10 @@ pub const ModuleScript = struct {
         script: *ModuleScript,
     };
 
-    /// A module script with `base_url`, fetched (or inline) with `options`.
-    fn create(allocator: std.mem.Allocator, base_url: []const u8, options: FetchOptions) !*ModuleScript {
+    /// A module script with `base_url`, fetched (or inline) with `options`,
+    /// in the module scripts of the agent of `realm` (where its record is
+    /// made).
+    fn create(allocator: std.mem.Allocator, realm: runtime.Context, base_url: []const u8, options: FetchOptions) !*ModuleScript {
         const self = try allocator.create(ModuleScript);
         errdefer allocator.destroy(self);
         const owned_base_url = try allocator.dupe(u8, base_url);
@@ -174,7 +175,7 @@ pub const ModuleScript = struct {
             .credentials_mode = options.credentials_mode,
             .render_blocking = options.render_blocking,
         };
-        track(self);
+        if (scriptsOfRealm(realm)) |scripts| scripts.add(&self.live);
         return self;
     }
 
@@ -189,7 +190,7 @@ pub const ModuleScript = struct {
     /// Release the script, its record and values, and its edge list.
     /// Children are not freed - the module map owns them.
     pub fn destroy(self: *ModuleScript) void {
-        untrack(self);
+        ScriptRecords.remove(&self.live);
         if (supported) {
             if (self.record) |record| engine.releaseModuleRecord(record);
         }
@@ -351,7 +352,7 @@ pub fn createJavaScriptModuleScript(
     base_url: []const u8,
 ) !*ModuleScript {
     if (!supported) return error.NotSupported;
-    const script = try ModuleScript.create(env.allocator, base_url, env.fetch_options);
+    const script = try ModuleScript.create(env.allocator, env.realm(), base_url, env.fetch_options);
     errdefer script.destroy();
 
     switch (try engine.parseModule(env.realm(), source, start, base_url, script)) {
@@ -365,52 +366,48 @@ pub fn createJavaScriptModuleScript(
 // import.meta, and the scripts a record names
 // =============================================================================
 
-/// Every module script alive: the page's, its frames' and its workers'. A
-/// module map owns each; this only links them, so that a [[HostDefined]]
-/// the engine hands back is read only while its script exists. Workers run
-/// on threads of their own (docs/instances.md), so the list is reached only
-/// under its `mutex`.
-const LiveScripts = struct {
-    /// Protects `head` and every script's `live_prev`/`live_next`/`live`;
-    /// held for one link, unlink or walk, never across a call out of this
-    /// file.
-    mutex: std.Io.Mutex = .init,
-    head: ?*ModuleScript = null,
-};
-var live_scripts: LiveScripts = .{};
+/// The [[HostDefined]] records of one agent's scripts (html AgentHost): a
+/// document's module map owns each module script; its agent's list only
+/// links them, so that a [[HostDefined]] the engine hands back is read only
+/// while its script exists.
+const ScriptRecords = @import("html_core").agent_host.ScriptRecords;
 
-fn track(script: *ModuleScript) void {
-    std.Io.Threaded.mutexLockUncancelable(&live_scripts.mutex);
-    defer std.Io.Threaded.mutexUnlock(&live_scripts.mutex);
-    script.live_prev = null;
-    script.live_next = live_scripts.head;
-    if (live_scripts.head) |head| head.live_prev = script;
-    live_scripts.head = script;
-    script.live = true;
+/// The module scripts of `realm`'s agent - a ShadowRealm's, its principal
+/// realm's agent's; null for an agent with no host (an engine-less test's).
+fn scriptsOfRealm(realm: runtime.Context) ?*ScriptRecords {
+    const host = @import("dom").agent_hosts.of(realm) orelse return null;
+    return &host.module_scripts;
 }
 
-fn untrack(script: *ModuleScript) void {
-    std.Io.Threaded.mutexLockUncancelable(&live_scripts.mutex);
-    defer std.Io.Threaded.mutexUnlock(&live_scripts.mutex);
-    if (!script.live) return;
-    if (script.live_prev) |prev| prev.live_next = script.live_next else live_scripts.head = script.live_next;
-    if (script.live_next) |next| next.live_prev = script.live_prev;
-    script.live = false;
+/// The module scripts of the agent whose host is `host` (the engine's
+/// `AgentOptions.host`, an html AgentHost).
+fn scriptsOfHost(host: ?*anyopaque) ?*ScriptRecords {
+    const agent_host: *@import("html_core").agent_host.AgentHost = @ptrCast(@alignCast(host orelse return null));
+    return &agent_host.module_scripts;
 }
 
-/// The module script a record's [[HostDefined]] names, while it exists.
-/// (A freed script's address reused by a new one is read as the new one: a
-/// wrong base URL, never freed memory.) The engine hands back only a
-/// [[HostDefined]] of the calling thread's own realms, so the script found
-/// is this thread's, and stays while its realm does.
-pub fn scriptOf(host_defined: *anyopaque) ?*ModuleScript {
-    std.Io.Threaded.mutexLockUncancelable(&live_scripts.mutex);
-    defer std.Io.Threaded.mutexUnlock(&live_scripts.mutex);
-    var it = live_scripts.head;
-    while (it) |script| : (it = script.live_next) {
+/// The module script a record's [[HostDefined]] names, while it exists,
+/// among `scripts` - the module scripts of the agent the engine handed it
+/// back on. (A freed script's address reused by a new one is read as the
+/// new one: a wrong base URL, never freed memory.) Only the agent's own
+/// realms run its modules' code, so only they can hand one of its records
+/// back: the list is linked, unlinked and walked on the agent's thread
+/// alone. It was one process-wide list under a mutex, every Browser's and
+/// every worker's scripts in it, walked on every import.meta and import().
+fn scriptIn(scripts: ?*ScriptRecords, host_defined: *anyopaque) ?*ModuleScript {
+    const list = scripts orelse return null;
+    var it = list.first();
+    while (it) |entry| : (it = entry.next()) {
+        const script: *ModuleScript = @fieldParentPtr("live", entry);
         if (@as(*anyopaque, @ptrCast(script)) == host_defined) return script;
     }
     return null;
+}
+
+/// The module script a [[HostDefined]] handed back in `realm` names, while
+/// it exists (`scriptIn`, among the module scripts of `realm`'s agent).
+pub fn scriptOf(realm: runtime.Context, host_defined: *anyopaque) ?*ModuleScript {
+    return scriptIn(scriptsOfRealm(realm), host_defined);
 }
 
 /// A classic script's [[HostDefined]]: what the host hands runClassicScript
@@ -451,8 +448,7 @@ pub fn classicScriptBaseUrl(host_defined: *anyopaque) []const u8 {
 /// - the response URL for a fetched script, the document's base URL for an
 /// inline one. BORROWED while the script lives.
 pub fn importMetaUrl(host: ?*anyopaque, module_host_defined: *anyopaque) []const u8 {
-    _ = host;
-    const script = scriptOf(module_host_defined) orelse return "";
+    const script = scriptIn(scriptsOfHost(host), module_host_defined) orelse return "";
     return script.base_url;
 }
 
@@ -462,7 +458,7 @@ pub fn importMetaUrl(host: ?*anyopaque, module_host_defined: *anyopaque) []const
 /// Step 5: ParseJSONModule - a SyntaxError becomes the parse error.
 fn createJsonModuleScript(env: *const Environment, source: []const u8, url: []const u8) !*ModuleScript {
     if (!supported) return error.NotSupported;
-    const script = try ModuleScript.create(env.allocator, url, env.fetch_options);
+    const script = try ModuleScript.create(env.allocator, env.realm(), url, env.fetch_options);
     errdefer script.destroy();
 
     switch (try engine.parseJSONModule(env.realm(), source, url, script)) {
@@ -492,7 +488,7 @@ fn createJsonModuleScript(env: *const Environment, source: []const u8, url: []co
 /// module scripts - at wpt.fyi stable, df642c4142).
 fn createCssModuleScript(env: *const Environment, source: []const u8, url: []const u8) !*ModuleScript {
     if (!supported) return error.NotSupported;
-    const script = try ModuleScript.create(env.allocator, url, env.fetch_options);
+    const script = try ModuleScript.create(env.allocator, env.realm(), url, env.fetch_options);
     errdefer script.destroy();
     const realm = env.realm();
 
@@ -528,7 +524,7 @@ fn createCssModuleScript(env: *const Environment, source: []const u8, url: []con
 /// text module imports nothing.
 fn createTextModuleScript(env: *const Environment, text: []const u8, url: []const u8) !*ModuleScript {
     if (!supported) return error.NotSupported;
-    const script = try ModuleScript.create(env.allocator, url, env.fetch_options);
+    const script = try ModuleScript.create(env.allocator, env.realm(), url, env.fetch_options);
     errdefer script.destroy();
     script.record = try engine.createDefaultExportSyntheticModule(env.realm(), runtime.JSValue.fromStringRef(text), url, script);
     return script;

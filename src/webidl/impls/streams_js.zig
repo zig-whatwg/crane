@@ -510,12 +510,28 @@ pub const Completion = union(enum) {
 /// [[PromiseState]] has no engine operation (JavaScriptCore has none): a
 /// Deferred's promise is settled only through the Deferred, so the Deferred
 /// records it, in a cell of its own that its copies share.
+///
+/// Settling also releases the capability: a settled Deferred never settles
+/// again, so its resolver and the capability's promise - two of the three
+/// handles a pending Deferred holds - are released then, and a settled one
+/// keeps its own hold on the promise alone. Every copy carries the same
+/// capability and reads the shared cell before touching it: settled means
+/// released (resolve, reject and deinit leave it alone). The cell stays one
+/// byte: a capability in it put every Deferred in a larger size class of the
+/// allocator, whose buckets the streams' churn mapped and unmapped (lane
+/// leakcheck1's gc_bench: +17-23% instructions per Response.text()). Streams objects keep their promises for their realm's life (a
+/// reader's [[closedPromise]], a writer's [[readyPromise]];
+/// wrapper_cache.isStreamsGraphObject), so the two counted per settled
+/// promise per stream (tests/v8/streams_settled_promise_handles_test.zig).
 pub const Deferred = struct {
+    /// OWNED while the promise is pending; released by the settle that
+    /// sets `settled` (or by deinit, if none did).
     capability: engine.PromiseCapability,
     /// Owned: the Deferred's own hold on the promise, which outlives the
     /// capability (`deinitResolverOnly` keeps it for the caller).
     promise: Value,
-    /// Whether resolve or reject has run. Allocated with `allocator`.
+    /// Whether resolve or reject has run - and so released the capability.
+    /// Allocated with `allocator`.
     settled: *bool,
     allocator: std.mem.Allocator,
 
@@ -552,10 +568,7 @@ pub const Deferred = struct {
     /// Settling an already-settled promise is a no-op, as in the spec.
     pub fn resolve(self: Deferred, realm: Realm, value: Value) void {
         _ = realm;
-        if (self.settled.*) return;
-        var capability = self.capability;
-        engine.resolvePromise(&capability, value.value) catch return;
-        self.settled.* = true;
+        self.settle(.resolve, value);
     }
 
     pub fn resolveUndefined(self: Deferred, realm: Realm) void {
@@ -564,10 +577,30 @@ pub const Deferred = struct {
 
     pub fn reject(self: Deferred, realm: Realm, reason: Value) void {
         _ = realm;
+        self.settle(.reject, reason);
+    }
+
+    /// Resolve or reject the promise once, then release the capability.
+    /// Settled is recorded BEFORE the engine settles it, as the resolving
+    /// functions set alreadyResolved before anything else (ECMAScript
+    /// CreateResolvingFunctions, 27.2.1.3): resolving with an object reads its
+    /// `then`, which runs script, and a settle that script reaches is a
+    /// no-op - never a second settle of a promise already resolved with a
+    /// thenable, nor a second release of the capability. An engine failure
+    /// (a terminating agent) leaves the promise pending and settleable.
+    fn settle(self: Deferred, how: enum { resolve, reject }, value: Value) void {
         if (self.settled.*) return;
-        var capability = self.capability;
-        engine.rejectPromise(&capability, reason.value) catch return;
         self.settled.* = true;
+        var capability = self.capability;
+        const done = switch (how) {
+            .resolve => engine.resolvePromise(&capability, value.value),
+            .reject => engine.rejectPromise(&capability, value.value),
+        };
+        done catch {
+            self.settled.* = false;
+            return;
+        };
+        engine.releasePromiseCapability(&capability);
     }
 
     /// [[PromiseState]] is "pending".
@@ -593,10 +626,13 @@ pub const Deferred = struct {
         dispose(self.promise);
     }
 
-    /// Release the capability, keeping `promise` for the caller.
+    /// Release the capability, if the promise is still pending, and the
+    /// cell, keeping `promise` for the caller.
     pub fn deinitResolverOnly(self: Deferred) void {
-        var capability = self.capability;
-        engine.releasePromiseCapability(&capability);
+        if (!self.settled.*) {
+            var capability = self.capability;
+            engine.releasePromiseCapability(&capability);
+        }
         self.allocator.destroy(self.settled);
     }
 };

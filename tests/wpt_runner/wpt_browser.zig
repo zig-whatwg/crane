@@ -138,8 +138,8 @@ pub const WptBrowser = struct {
 
         // Frame and popup documents get the testdriver vendor file too - the
         // embedder's hook, registered once here, before any page loads.
-        test_driver.registerForFrames(self.test_driver);
-        errdefer test_driver.unregisterForFrames();
+        try test_driver.registerForFrames(self.test_driver, browser_instance.scope);
+        errdefer test_driver.unregisterForFrames(browser_instance.scope);
 
         // Pre-load testharness.js for efficiency
         self.testharness_js = self.loadWptScript("resources/testharness.js") catch null;
@@ -173,7 +173,7 @@ pub const WptBrowser = struct {
 
         // Pending testdriver commands give their promises back while the
         // engine is still up.
-        test_driver.unregisterForFrames();
+        test_driver.unregisterForFrames(self.browser.scope);
         self.test_driver.destroy();
 
         if (self.testharness_js) |js| {

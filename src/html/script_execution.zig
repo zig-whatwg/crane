@@ -2136,7 +2136,7 @@ fn loadImportedModule(
     // [[HostDefined]], whose base URL the specifier resolves against. An event
     // handler's, eval's or a timer string's [[ScriptOrModule]] is null.
     const base: ImportBase = switch (referrer) {
-        .module => |host_defined| if (module_script.scriptOf(host_defined)) |script| .{ .url = script.base_url } else .document,
+        .module => |host_defined| if (module_script.scriptOf(realm, host_defined)) |script| .{ .url = script.base_url } else .document,
         .script => |host_defined| if (liveClassicScript(realm, host_defined)) |record| .{ .url = record.script.base_url } else .document,
         .realm => .document,
     };
@@ -2145,7 +2145,7 @@ fn loadImportedModule(
     // fetch options (its nonce and referrer policy: a nonce'd script's
     // import() passes a nonce-based script-src).
     const options: module_script.FetchOptions = switch (referrer) {
-        .module => |host_defined| if (module_script.scriptOf(host_defined)) |script| script.descendantFetchOptions() else .{},
+        .module => |host_defined| if (module_script.scriptOf(realm, host_defined)) |script| script.descendantFetchOptions() else .{},
         .script => |host_defined| if (liveClassicScript(realm, host_defined)) |record| record.script.descendantFetchOptions() else .{},
         .realm => .{},
     };

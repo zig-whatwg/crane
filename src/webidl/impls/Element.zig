@@ -39,11 +39,6 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
-/// Static sentinel for representing "undefined" return values.
-/// Used instead of @ptrFromInt(1) to provide a valid pointer that represents
-/// undefined/empty results from operations that return *const anyopaque.
-var undefined_sentinel: u8 = 0;
-
 /// Custom element state per HTML spec
 /// Spec: https://html.spec.whatwg.org/#custom-element-state
 pub const CustomElementState = dom.custom_elements.State;

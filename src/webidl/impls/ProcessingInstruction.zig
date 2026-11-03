@@ -80,38 +80,34 @@ pub const InternalState = struct {
 /// down). So the PI keeps its own list, taken on init and given up on deinit,
 /// and installs a sweep (dom.teardown_sweeps) that frees what is left in it.
 /// Keyed by address: the entry goes in the PI's deinit, before the slab can
-/// reissue the address.
-threadlocal var live: ?@import("infra").address_map.AddressHashMap(*runtime.Instance, void) = null;
-threadlocal var live_guard: @import("webidl").utils.tombstones.TombstoneGuard = .{};
+/// reissue the address. The set is the PI's Browser's
+/// (dom.browser_object_lists `.processing_instructions`), found from the
+/// PI's address. It was one set per thread, shared by every Browser the
+/// thread ran, and one Browser's end swept it away under another's.
+const browser_object_lists = dom.browser_object_lists;
 
 fn trackLive(instance: *runtime.Instance) void {
-    if (live == null) live = .init(std.heap.c_allocator);
-    const map = &live.?;
-    live_guard.beforeInsert(map);
-    map.put(instance, {}) catch {};
+    const set = browser_object_lists.of(instance, .processing_instructions) catch return;
+    set.add(instance) catch {};
 }
 
 fn untrackLive(instance: *runtime.Instance) void {
-    const map = if (live) |*m| m else return;
-    if (map.remove(instance)) live_guard.noteRemoval(map);
+    const set = browser_object_lists.existing(instance, .processing_instructions) orelse return;
+    set.remove(instance);
 }
 
 /// dom.teardown_sweeps: free the state of every PI of `scope`'s Browser
-/// still alive (the thread's set holds only its Browser's: a Browser's PIs
-/// are made on its window thread).
+/// still alive - its set holds its own PIs only.
 fn sweepLive(scope: *runtime.BrowserScope) void {
-    const map = if (live) |*m| m else return;
-    var it = map.keyIterator();
+    const set = browser_object_lists.existingIn(scope, .processing_instructions) orelse return;
+    var it = set.iterator();
     while (it.next()) |instance| {
-        if (runtime.BrowserScope.ofInstance(instance.*) != scope) continue;
         if (getInternal(instance.*)) |internal| {
             internal.deinit(instance.*);
             internal.target = "";
         }
     }
-    map.deinit();
-    live = null;
-    live_guard.reset();
+    set.clear();
 }
 
 /// Get internal state from instance using shared accessor

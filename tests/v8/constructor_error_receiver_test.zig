@@ -12,8 +12,13 @@
 //! constructorCallback -> v8_FunctionCallbackInfo_This; gc_bench read 1.00
 //! live_object_globals per failed `new Event(...)`).
 //!
-//! Each test runs one failing construction 64 times and reads the live
-//! Global<Object> count (v8_Debug_LiveObjectGlobals) before and after.
+//! Each test runs one failing construction 64 times and reads its agent's
+//! global handles (V8's used global handle bytes of its isolate) before and
+//! after - not the adapter's live Global<Object> count, which every Browser
+//! of the process moves (beside the many-Browsers variant's busy Browser it
+//! moved while the test measured: docs/lessons/testing-a-test-that-measures-
+//! a-process-wide-counter-assumes-it-is-alone.md). A leaked receiver is one
+//! of those handles.
 //!
 //! The file shares tests/v8's process: it starts the engine as any file may
 //! (initializeEngine is idempotent) and makes its own agents.
@@ -92,6 +97,12 @@ const Page = struct {
         try std.testing.expectEqualStrings(expected, got);
     }
 
+    /// The agent's global handles: V8's used global handle bytes of its
+    /// isolate, which only this test's agent moves.
+    fn handleBytes(self: Page) usize {
+        return ffi.v8_Isolate_GetGlobalHandleBytes(@ptrCast(@alignCast(self.agent)));
+    }
+
     /// A full collection, twice: what script let go of is finalized.
     fn collect(self: Page) !void {
         const Collect = struct {
@@ -106,7 +117,7 @@ const Page = struct {
     /// Runs `source` - which answers "64" when each of its 64 constructions
     /// failed as it should - once to warm up (the first call makes what
     /// later ones reuse), then again, and fails when the second run left
-    /// live Global<Object> handles behind, or platform objects in the slab
+    /// global handles of the agent behind, or platform objects in the slab
     /// the realm's objects come from (the standalone runtime's: the page has
     /// no Browser). A construction that failed returned no object to the
     /// binding, so nothing else can ever free the one it made: its failure
@@ -118,14 +129,14 @@ const Page = struct {
     fn expectNoReceiverLeft(self: Page, source: []const u8) !void {
         try self.expect(source, "64");
         try self.collect();
-        const before = ffi.v8_Debug_LiveObjectGlobals();
+        const before = self.handleBytes();
         const objects_before = liveObjects();
         try self.expect(source, "64");
         try self.collect();
-        const after = ffi.v8_Debug_LiveObjectGlobals();
+        const after = self.handleBytes();
         const objects_after = liveObjects();
-        if (after != before) {
-            std.debug.print("live_object_globals {d} -> {d} over 64 failed constructions\n", .{ before, after });
+        if (after > before) {
+            std.debug.print("the agent's global handle bytes {d} -> {d} over 64 failed constructions\n", .{ before, after });
             return error.ReceiverLeaked;
         }
         if (objects_after != objects_before) {
