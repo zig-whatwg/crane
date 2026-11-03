@@ -86,9 +86,9 @@ pair the baseline lacks - which catches a swap. The baseline only goes down;
 when it reaches zero, "v8" leaves the non-adapter modules' imports in build.zig
 and the module graph enforces the rule. Report the baseline's total in every
 summary, beside blocking files and passing subtests. Why this rule exists:
-[Crane's JavaScript engine is an adapter](docs/lessons/architecture-the-javascript-engine-is-an-adapter.md);
+[Crane's JavaScript engine is an adapter](../docs/lessons/architecture-the-javascript-engine-is-an-adapter.md);
 why the seam is a protocol designed whole:
-[Design the protocol before migrating](docs/lessons/architecture-design-the-protocol-before-migrating.md).
+[Design the protocol before migrating](../docs/lessons/architecture-design-the-protocol-before-migrating.md).
 
 ## The other lints
 

@@ -9,8 +9,8 @@ OS services (clocks, randomness, network, files, threads), page capabilities (pe
 pickers, media decoding, camera, clipboard...), the storage engine, crypto primitives and layout.
 It is bound at build time like the engine (`-Dplatform=darwin|linux|testing`,
 `-Dplatform-module=<path>` for a third-party platform, `-Dplatform-without=<capability>` to compile
-one out). The contract is [docs/platform-protocol.md](docs/platform-protocol.md); the migration
-steps are [docs/platform-protocol-recipes.md](docs/platform-protocol-recipes.md); the user's
+one out). The contract is [docs/platform-protocol.md](../../docs/platform-protocol.md); the migration
+steps are [docs/platform-protocol-recipes.md](../../docs/platform-protocol-recipes.md); the user's
 decisions are in tmp/plans/platform-decisions.md.
 
 - No new OS access outside `src/platform/` (std.fs, std.time clock reads, std.process, curl,

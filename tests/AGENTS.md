@@ -48,7 +48,7 @@ flags, the hooks and the standalone runtime once, `OwnRuntime` gives a test a
 standalone runtime of its own and the process's back, and a test that needs a
 realm gets its own `TestAgent`, made by `engine.createAgent` and ended with the
 test through `engine.destroyAgent` - no realm outlives its test
-([lesson](docs/lessons/testing-a-test-may-assume-only-what-the-process-start-makes.md)).
+([lesson](../docs/lessons/testing-a-test-may-assume-only-what-the-process-start-makes.md)).
 The Crane test runner (`tests/test_runner/`) checks this after every test: a
 test that leaves a Browser, agent, Global handle or standalone object alive, or
 leaves the start unfinished, fails naming the field and its before and after
@@ -61,7 +61,7 @@ between Browsers on different threads gives each Browser its own leak-checking
 `std.testing.allocator`: the shared one's lock and per-allocation stack capture
 make the threads take turns, so the race never happens - a liveclassic race
 that crashed 7/7 with per-Browser allocators passed 6/6 with the shared one
-([lesson](docs/lessons/testing-a-shared-test-allocator-makes-two-browsers-take-turns.md)).
+([lesson](../docs/lessons/testing-a-shared-test-allocator-makes-two-browsers-take-turns.md)).
 A test that needs this build's V8 snapshot imports `test_snapshot` (tests/v8),
 never a path under `zig-out/`.
 
@@ -122,7 +122,7 @@ Two kinds this codebase keeps needing:
    and name leaks with `leaks --atExit -- <cmd>`. Run the WPT runner under it
    in-process: no `--parallel` (not even `=1`) and no `--supervise`, which make
    it a supervisor of child processes that `leaks` never inspects
-   ([lesson](docs/lessons/testing-leaks-at-exit-sees-only-the-supervisor-not-its-child-runners.md)).
+   ([lesson](../docs/lessons/testing-leaks-at-exit-sees-only-the-supervisor-not-its-child-runners.md)).
 2. **Comptime predicates** that gate handle ownership (`typeRetainsContext`,
    `argHandleIsCopied`) must have a test pinning their **default**, not just
    their known cases. See `tests/v8/retention_predicate_test.zig` — two

@@ -27,7 +27,7 @@ A lesson is two things, committed with the work that taught it:
    **Takeaway**: **Bold key insight** for future work.
    ```
 
-2. **One line in [docs/lessons/README.md](docs/lessons/README.md)**, under its category:
+2. **One line in [docs/lessons/README.md](README.md)**, under its category:
    `- [Title](<file>.md) - <the takeaway>` (the README's links are relative).
 
 Categories: Architecture, Spec Compliance, Codegen, Testing, Debugging, Workflow.

@@ -6,7 +6,7 @@ Moved verbatim from AGENTS.md (2026-11-03). The core keeps each rule as one line
 
 **Crane runs isolated instances (Browsers) and every worker on their own threads, so state has an
 owner: the process, a Browser, a Tab, an agent or a realm** - never a thread, never "whoever got
-here first". The model and the rules for new state are in [docs/instances.md](docs/instances.md);
+here first". The model and the rules for new state are in [docs/instances.md](../docs/instances.md);
 read it before adding state.
 
 1. **No new `threadlocal` and no new container-level `var`** (function statics included). Put the

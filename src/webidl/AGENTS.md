@@ -92,7 +92,7 @@ else:
 - **A public one the generated file never calls is a map entry pointing
   nowhere**: a stale copy, a member that belongs to another type - or a
   broken map. Find out which before deleting it - see
-  [An API name nothing binds is a bug report](docs/lessons/codegen-an-api-name-nothing-binds-is-a-bug-report-not.md).
+  [An API name nothing binds is a bug report](../../docs/lessons/codegen-an-api-name-nothing-binds-is-a-bug-report-not.md).
 - **Mixin members are inherited.** WebIDL `includes` makes a mixin's members
   the includer's own: on its prototype, under its brand check, with its
   instance as `this`. So the includer's generated interface takes each one
@@ -160,7 +160,7 @@ An impl writes only its own part (or none), never an ancestor's init or deinit;
 a fact given at construction is listed in `pub const construction_args` and
 passed with `interfaces.X.initWith(.., .{ .name = value })`. An impl still
 defining `init`/`deinit` chains by hand, and the chain honours it
-([lesson](docs/lessons/codegen-the-generated-interface-is-the-class.md)).
+([lesson](../../docs/lessons/codegen-the-generated-interface-is-the-class.md)).
 
 **Existing references are debt, not precedent.** About 200 files outside the
 generated layers still reference impls (most of them impls reaching ancestors,

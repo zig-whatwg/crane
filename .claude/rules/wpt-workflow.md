@@ -70,7 +70,7 @@ After every feature commit:
    which the report never reads: it takes the newest result per file, so a
    branch's run replaces main's - on 2026-10-04 a lane's full A/B, on a branch
    without main's IndexedDB merge, made a generation 25,000 subtests lower than
-   main's own sweep ([lesson](docs/lessons/workflow-a-branchs-wpt-run-replaces-mains-in-the-report.md)).
+   main's own sweep ([lesson](../../docs/lessons/workflow-a-branchs-wpt-run-replaces-mains-in-the-report.md)).
    **A sweep brings its result streams too:** concatenate its
    `full/chunks/*/journal*.wptreport.jsonl` into `journal.wptreport.jsonl` beside its
    `journal.jsonl`. The site's file pages list each subtest's status and failure message only from
@@ -130,4 +130,4 @@ gc_bench.
   and nothing else once the release-only defects it exposed were fixed. The
   bars ran 2-5x faster. A release build folds identical functions and merges
   equal constants: an identity built on either is Debug-only
-  ([lesson](docs/lessons/debugging-equal-constants-share-one-address-in-a-release-build.md)).
+  ([lesson](../../docs/lessons/debugging-equal-constants-share-one-address-in-a-release-build.md)).

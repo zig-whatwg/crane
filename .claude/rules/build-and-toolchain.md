@@ -16,7 +16,7 @@ Moved verbatim from AGENTS.md (2026-11-03), section "Before every commit". The c
 deletes `/tmp` files untouched for three days (`com.apple.tmp_cleaner`, nightly at 00:00), and Zig trusts a
 cache hit without re-checking its output, so a half-pruned cache entry stays a "hit" with files missing: on
 2026-10-02 it made the iOS build fail with `'mbedtls/version.h' file not found` and looked like a build.zig
-regression ([lesson](docs/lessons/workflow-a-zig-cache-in-tmp-is-pruned-by-macos-and-zig-still-trusts-it.md)).
+regression ([lesson](../../docs/lessons/workflow-a-zig-cache-in-tmp-is-pruned-by-macos-and-zig-still-trusts-it.md)).
 **Codegen is the exception: `zig build codegen` and `codegen-check` run with a cache of your own**
 (`--cache-dir ~/Library/Caches/crane-<lane>-codegen`, deleted when you are done). The shared cache serves
 whichever worktree last built the codegen binary, so a regeneration can silently use another lane's

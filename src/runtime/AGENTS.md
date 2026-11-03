@@ -15,8 +15,8 @@ signatures and doc comments are the contract; build.zig binds it, as
 `engine_impl`, to the adapter `-Dengine=v8|jsc|quickjs` selects, so dispatch is
 static. Whether an adapter links its engine statically (V8) or dynamically
 (JavaScriptCore on iOS) is the adapter's business; the protocol does not change.
-What it is: [docs/engine-protocol.md](docs/engine-protocol.md). How to move code
-onto it: [docs/engine-protocol-recipes.md](docs/engine-protocol-recipes.md), a
+What it is: [docs/engine-protocol.md](../../docs/engine-protocol.md). How to move code
+onto it: [docs/engine-protocol-recipes.md](../../docs/engine-protocol-recipes.md), a
 recipe per intent.
 
 ```
