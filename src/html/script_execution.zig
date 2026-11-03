@@ -1157,8 +1157,8 @@ fn discardScheduledScript(script: *runtime.Instance) void {
     // Its parser is no longer watching for this response. Drop transport
     // work too; a task already queued retains its owner until callback/drop.
     var index: usize = 0;
-    while (index < script_fetches.items.len) {
-        const owner = script_fetches.items[index];
+    while (index < fetchesIn(script.ctx).len) {
+        const owner = fetchesIn(script.ctx)[index];
         if (owner.element != script or !owner.elementIsLive()) {
             index += 1;
             continue;
@@ -3518,12 +3518,24 @@ const ClassicScriptFetch = struct {
     }
 };
 
-/// Every script fetch on this thread whose result has not been delivered.
-threadlocal var script_fetches: std.ArrayListUnmanaged(*ClassicScriptFetch) = .empty;
+// Every classic script fetch whose result has not been delivered is on the
+// list of its element's realm (runtime.ContextData
+// objects(.classic_script_fetches); `ClassicScriptFetch.realm`). It was one
+// list per thread, every realm's fetches in it. "Abort a document" walks
+// the document's realm's list: an element adopted from another realm before
+// it was prepared keeps its fetch on its own realm's list, which that
+// realm's end discards, and whose delivery its preparation-time document's
+// end refuses.
+
+/// The script fetches of `realm` not yet delivered (BORROWED: one that ends
+/// leaves it, so a walk that can end one re-reads it).
+fn fetchesIn(realm: runtime.Context) []const *ClassicScriptFetch {
+    return @ptrCast(realm.objects(.classic_script_fetches).items);
+}
 
 /// Whether `element`'s result is still being fetched.
 fn isFetching(element: *runtime.Instance) bool {
-    for (script_fetches.items) |f| {
+    for (fetchesIn(element.ctx)) |f| {
         if (f.element == element and f.elementIsLive()) return true;
     }
     return false;
@@ -3548,7 +3560,7 @@ fn startClassicScriptFetch(element: *runtime.Instance, document: *runtime.Instan
         .credentials_mode = credentials_mode,
         .encoding = encoding,
     };
-    script_fetches.append(std.heap.smp_allocator, self) catch {
+    self.realm.addObject(.classic_script_fetches, self) catch {
         allocator.destroy(self);
         return false;
     };
@@ -3582,12 +3594,7 @@ fn abandonStart(self: *ClassicScriptFetch) bool {
 }
 
 fn forgetFetch(self: *ClassicScriptFetch) void {
-    for (script_fetches.items, 0..) |f, i| {
-        if (f == self) {
-            _ = script_fetches.swapRemove(i);
-            return;
-        }
-    }
+    self.realm.forgetObject(.classic_script_fetches, self);
 }
 
 fn fetchAlive(context: *anyopaque) bool {
@@ -3685,7 +3692,7 @@ fn prepareAbortFetches(document: *runtime.Instance) bool {
     }
     const generation = runtime.SlabAllocator.generationOf(document);
     var marked = false;
-    for (script_fetches.items) |owner| {
+    for (fetchesIn(document.ctx)) |owner| {
         if (owner.document != document or owner.document_generation != generation) continue;
         owner.cancel_requested = true;
         marked = true;
@@ -3696,8 +3703,8 @@ fn prepareAbortFetches(document: *runtime.Instance) bool {
 fn abortPreparedFetches(document: *runtime.Instance) void {
     const generation = runtime.SlabAllocator.generationOf(document);
     var index: usize = 0;
-    while (index < script_fetches.items.len) {
-        const owner = script_fetches.items[index];
+    while (index < fetchesIn(document.ctx).len) {
+        const owner = fetchesIn(document.ctx)[index];
         if (!owner.cancel_requested or owner.document != document or owner.document_generation != generation) {
             index += 1;
             continue;
@@ -3740,8 +3747,8 @@ fn discardMarkedScriptList(list: *std.ArrayList(*runtime.Instance)) void {
 
 fn discardRealmFetches(realm: runtime.Context) void {
     var index: usize = 0;
-    while (index < script_fetches.items.len) {
-        const owner = script_fetches.items[index];
+    while (index < fetchesIn(realm).len) {
+        const owner = fetchesIn(realm)[index];
         if (owner.realm != realm) {
             index += 1;
             continue;
@@ -3751,9 +3758,9 @@ fn discardRealmFetches(realm: runtime.Context) void {
             // Discarding the queues can cancel and destroy this owner. Only
             // compare its address afterward; never dereference it again.
             discardDocumentScripts(owner.document);
-            if (index >= script_fetches.items.len or script_fetches.items[index] != owner) continue;
+            if (index >= fetchesIn(realm).len or fetchesIn(realm)[index] != owner) continue;
         }
-        cancelFetch(script_fetches.items[index]);
+        cancelFetch(fetchesIn(realm)[index]);
     }
 }
 
@@ -5110,7 +5117,7 @@ pub const delivery_drop_test_cases = if (@import("builtin").is_test) struct {
                 .url = "https://example.test/script.js",
                 .task_queued = true,
             };
-            try script_fetches.append(std.heap.smp_allocator, owner);
+            try fixture.ctx.addObject(.classic_script_fetches, owner);
             dropFetchedTask(owner);
             try fixture.expectDiscarded();
             try std.testing.expect(!isFetching(fixture.element));

@@ -179,7 +179,7 @@ fn fetchAndProcess(element: *runtime.Instance) void {
     // can resume a parser script, which must see the new sheet's membership.
     const previous_load = internal.load;
     internal.load = 0;
-    defer if (previous_load != 0) style_sheet_loading.cancel(previous_load);
+    defer if (previous_load != 0) style_sheet_loading.cancel(element, previous_load);
     // A link that no longer creates a stylesheet link loses its sheet; one
     // that fetches again keeps it until the new one arrives (the stylesheet
     // link type's "process the linked resource" step 3).
@@ -531,7 +531,7 @@ fn removingSteps(node: *NodeBase, old_parent: ?*NodeBase) void {
     if (internal.load == 0) return;
     const load = internal.load;
     internal.load = 0;
-    style_sheet_loading.cancel(load);
+    style_sheet_loading.cancel(instance, load);
 }
 
 /// Whether the element creates a stylesheet link that contributes to the

@@ -1688,10 +1688,6 @@ fn run(init: std.process.Init) !u8 {
     // Execute tests (prints progress and summary)
     try executeTests(allocator, discovery, options, &report, server, &deadline);
 
-    // Clean up timer backend
-    const platform_mod = @import("platform");
-    platform_mod.timer_backend.deinitDefault();
-
     // Finish and write report
     report.finish();
 

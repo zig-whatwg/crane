@@ -38,6 +38,31 @@ const Origin = @import("window_proxy.zig").Origin;
 /// Consumers that need to use the instance should cast it appropriately.
 pub const InstancePtr = *anyopaque;
 
+/// A top-level traversable's last user interaction (`BrowsingContext.
+/// input_modality`): the document it happened in - an identity, never read
+/// through, with its slab generation (a later page is a new document) - and
+/// whether it was a pointer press.
+pub const InputModality = struct {
+    document: InstancePtr,
+    generation: u64,
+    pointer: bool,
+};
+
+/// A top-level traversable's text controls with an uncommitted user edit
+/// (`BrowsingContext.pending_edits`), oldest first: each control - an
+/// identity, with its slab generation, so one that was freed is never matched
+/// again - and its value's hash when the edit began. html.focus keeps it.
+pub const PendingEdits = struct {
+    pub const capacity = 16;
+    pub const Edit = struct {
+        element: InstancePtr,
+        generation: u64,
+        original_hash: u64,
+    };
+    items: [capacity]Edit = undefined,
+    count: usize = 0,
+};
+
 const joint_history = @import("../navigation/joint_history.zig");
 const JointHistory = joint_history.JointHistory;
 const traversal_queue = @import("../navigation/traversal_queue.zig");
@@ -338,6 +363,22 @@ pub const BrowsingContext = struct {
     /// it has counted (see `allowedToNavigateOrUpdateHistory`).
     navigation_rate_window_start: u64 = 0,
     navigation_rate_count: u32 = 0,
+
+    /// The input modality of the last user interaction in this top-level
+    /// traversable (html.focus, for :focus-visible): a pointer press or a key
+    /// press, in which of its documents. A top-level context's, beside its
+    /// session history; null until the first interaction. It was one per
+    /// thread, so another tab's key press decided this tab's :focus-visible.
+    input_modality: ?InputModality = null,
+
+    /// The text controls in this top-level traversable whose value the user
+    /// changed and has not committed (html.focus, the focus update steps'
+    /// step 2.1). A top-level context's; holds no heap memory. It was one
+    /// table per thread, and another tab's edits pushed this tab's out.
+    pending_edits: PendingEdits = .{},
+
+    /// The type of `pending_edits`, for html.focus.
+    pub const PendingEditsTable = PendingEdits;
 
     /// How many navigations and history updates a navigable may perform in
     /// one window of `navigation_rate_window` - Blink's NavigationRateLimiter

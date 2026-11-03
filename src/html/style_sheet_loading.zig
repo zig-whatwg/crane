@@ -209,9 +209,21 @@ const Sheet = struct {
     }
 };
 
-/// Every load on this thread whose event has not yet fired. Never freed:
-/// it lives as long as the thread, as the fetches' own list does.
-threadlocal var loads: std.ArrayListUnmanaged(*Load) = .empty;
+// Every load whose event has not yet fired is on the list of its element's
+// realm (runtime.ContextData objects(.style_sheet_loads); `Load.realm`): the
+// element's style sheet load, found through its element - by the element's
+// owner (cancel, abandon), its end (elementGone) and its modulepreload's
+// fetch - and through its node document's realm by "abort a document" and
+// the load event's delay. It was one list per thread, every realm's loads in
+// it, never given back. An element adopted from another realm before its load
+// began keeps the load on its own realm's list, which its realm's end
+// discards.
+
+/// The loads of `realm` whose event has not yet fired (BORROWED: one that
+/// ends leaves it, so a walk that can end one re-reads it).
+fn loadsIn(realm: runtime.Context) []const *Load {
+    return @ptrCast(realm.objects(.style_sheet_loads).items);
+}
 threadlocal var next_id: u64 = 1;
 
 // ============================================================================
@@ -221,7 +233,7 @@ threadlocal var next_id: u64 = 1;
 /// `dom.style_sheet_owners`: whether a load for an element in `document`
 /// has not yet fired its event.
 pub fn delaysLoadEvent(document: *runtime.Instance) bool {
-    for (loads.items) |load| {
+    for (loadsIn(document.ctx)) |load| {
         // "A user agent must not delay the load event for this link type"
         // - preload and modulepreload. Prefetch also does not block in
         // browsers, despite HTML 4.2.4.3's default delay rule: Gecko fetches
@@ -242,7 +254,7 @@ pub fn delaysLoadEvent(document: *runtime.Instance) bool {
 /// stays in the set through its load/error event, including critical imports.
 /// Superseded or abandoned sheets count as given up, and no longer block.
 pub fn blocksScripts(document: *runtime.Instance) bool {
-    for (loads.items) |load| {
+    for (loadsIn(document.ctx)) |load| {
         if (!load.blocks_scripts or load.superseded or load.document != document or !load.documentIsLive() or !load.elementIsLive()) continue;
         if (connectedToDocument(load.element, document) and mediaMatches(load.element)) return true;
     }
@@ -382,7 +394,7 @@ pub fn installDocumentAbort() void {
 }
 fn prepareDocumentAbort(document: *runtime.Instance) bool {
     var canceled = false;
-    for (loads.items) |load| {
+    for (loadsIn(document.ctx)) |load| {
         if (load.superseded or load.document != document or !load.documentIsLive()) continue;
         if (load.in_flight == 0 and !load.event_queued) continue;
         load.document_abort_pending = true;
@@ -393,7 +405,7 @@ fn prepareDocumentAbort(document: *runtime.Instance) bool {
 fn abortDocument(document: *runtime.Instance) void {
     while (true) {
         const load: *Load = blk: {
-            for (loads.items) |candidate| {
+            for (loadsIn(document.ctx)) |candidate| {
                 if (candidate.document_abort_pending and candidate.document == document and candidate.documentIsLive()) break :blk candidate;
             }
             return;
@@ -408,8 +420,8 @@ fn abortDocument(document: *runtime.Instance) void {
 }
 fn discardRealm(realm: runtime.Context) void {
     var index: usize = 0;
-    while (index < loads.items.len) {
-        const load = loads.items[index];
+    while (index < loadsIn(realm).len) {
+        const load = loadsIn(realm)[index];
         if (load.realm != realm) {
             index += 1;
             continue;
@@ -432,7 +444,7 @@ pub fn startLink(element: *runtime.Instance, options: LinkOptions, parser_sheet_
     // "Create a link request", step 1: "Assert: options's href is not the
     // empty string" - the caller returns before an empty one.
     const id = startLinkFetch(element, .stylesheet, options, .style) orelse return null;
-    const load = find(id) orelse return null;
+    const load = find(element.ctx, id) orelse return null;
     load.blocks_scripts = parser_sheet_enabled;
     // The stylesheet link type's linked resource fetch setup steps, step 4:
     // "If el is potentially render-blocking, then block rendering on el" -
@@ -576,7 +588,7 @@ pub fn startModulePreload(element: *runtime.Instance, options: LinkOptions, dest
         complete(load);
         return id;
     };
-    preload.* = .{ .load_id = id };
+    preload.* = .{ .load_id = id, .realm = element.ctx };
     // The fetch counts as in flight from here: its client can run at once
     // (a task dropped by an ending loop).
     load.module_in_flight = true;
@@ -598,6 +610,9 @@ pub fn startModulePreload(element: *runtime.Instance, options: LinkOptions, dest
 /// loader's client the same way; Blink's ModuleMap keeps the fetch).
 const ModulePreload = struct {
     load_id: u64,
+    /// The load's realm, whose list it is on (`Load.realm`): it outlives
+    /// the load's element, which may be gone by the time the fetch ends.
+    realm: runtime.Context,
 
     fn client(self: *ModulePreload) module_script.AsyncModuleLoader.Client {
         return .{ .context = self, .done = done, .gone = gone };
@@ -607,8 +622,9 @@ const ModulePreload = struct {
     fn take(context: *anyopaque) ?*Load {
         const self: *ModulePreload = @ptrCast(@alignCast(context));
         const id = self.load_id;
+        const realm = self.realm;
         std.heap.c_allocator.destroy(self);
-        const load = find(id) orelse return null;
+        const load = find(realm, id) orelse return null;
         if (!load.module_in_flight) return null;
         load.module_in_flight = false;
         load.in_flight -= 1;
@@ -708,8 +724,8 @@ pub fn startBlockedStyle(element: *runtime.Instance) ?u64 {
 /// external resource link that contributes to the styling processing model,
 /// or if, since the resource in question was fetched, it has become
 /// appropriate to fetch it again".
-pub fn cancel(id: u64) void {
-    const load = find(id) orelse return;
+pub fn cancel(element: *runtime.Instance, id: u64) void {
+    const load = find(element.ctx, id) orelse return;
     terminateFetches(load);
     if (load.event_queued) {
         load.superseded = true;
@@ -723,8 +739,8 @@ pub fn cancel(id: u64) void {
 /// load still fetching the sheet's critical subresources ends with no event,
 /// as the sheet has no element to fire it at any more. One whose event is
 /// already queued still fires it: the task is in the queue.
-pub fn abandon(id: u64) void {
-    const load = find(id) orelse return;
+pub fn abandon(element: *runtime.Instance, id: u64) void {
+    const load = find(element.ctx, id) orelse return;
     if (load.event_queued) {
         load.blocks_scripts = false;
         if (load.documentIsLive()) queueBlockingMayHaveEnded(load.document);
@@ -737,8 +753,8 @@ pub fn abandon(id: u64) void {
 /// `element` is being destroyed: every load it has ends.
 pub fn elementGone(element: *runtime.Instance) void {
     var i: usize = 0;
-    while (i < loads.items.len) {
-        const load = loads.items[i];
+    while (i < loadsIn(element.ctx).len) {
+        const load = loadsIn(element.ctx)[i];
         if (load.element != element or !load.elementIsLive()) {
             i += 1;
             continue;
@@ -773,7 +789,7 @@ fn newLoad(element: *runtime.Instance, kind: Kind) ?*Load {
         .realm = element.ctx,
         .quirks = std.mem.eql(u8, mode.asSlice(), "BackCompat"),
     };
-    loads.append(std.heap.smp_allocator, load) catch {
+    element.ctx.addObject(.style_sheet_loads, load) catch {
         allocator.destroy(load);
         return null;
     };
@@ -781,8 +797,10 @@ fn newLoad(element: *runtime.Instance, kind: Kind) ?*Load {
     return load;
 }
 
-fn find(id: u64) ?*Load {
-    for (loads.items) |load| {
+/// The load `id` of an element of `realm`, if it has not ended: on the
+/// realm's list.
+fn find(realm: runtime.Context, id: u64) ?*Load {
+    for (loadsIn(realm)) |load| {
         if (load.id == id) return load;
     }
     return null;
@@ -821,12 +839,7 @@ const Ending = enum {
 /// its document is told.
 fn release(load: *Load, ending: Ending) void {
     unblockRenderingFor(load);
-    for (loads.items, 0..) |l, i| {
-        if (l == load) {
-            _ = loads.swapRemove(i);
-            break;
-        }
-    }
+    load.realm.forgetObject(.style_sheet_loads, load);
     terminateFetches(load);
     for (load.sheets.items) |sheet| {
         load.allocator.free(sheet.url);
@@ -873,7 +886,7 @@ fn complete(load: *Load) void {
 
 /// Whether another load of `load`'s element has its event task queued.
 fn otherEventQueued(load: *const Load) bool {
-    for (loads.items) |other| {
+    for (loadsIn(load.realm)) |other| {
         if (other != load and other.element == load.element and other.event_queued and other.elementIsLive()) return true;
     }
     return false;

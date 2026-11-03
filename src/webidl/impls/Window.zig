@@ -3424,8 +3424,9 @@ pub fn call_resizeBy(instance: *runtime.Instance, x: i32, y: i32) anyerror!void 
 pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), target: webidl.Opt(runtime.DOMString), features: webidl.Opt(runtime.DOMString)) anyerror!?typedefs.WindowProxy {
     if ((getInternal(this) orelse return error.InvalidStateError).closed) return null;
     // Step 1: "If the event loop's termination nesting level is nonzero,
-    // return null" - no popups from beforeunload, pagehide or unload.
-    if (html_core.navigation.termination_nesting.active()) return null;
+    // return null" - no popups from beforeunload, pagehide or unload. The
+    // event loop is this Window's agent's: the level is on its host.
+    if (html_core.navigation.termination_nesting.active(@import("dom").agent_hosts.of(this.ctx))) return null;
 
     // The entry global supplies the source Document, URL/referrer, and
     // creator for a new popup. Existing-target selection starts from this

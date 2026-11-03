@@ -29,7 +29,6 @@ const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
-const dom = @import("dom");
 
 fn createGlobal(realm: runtime.Context, _: runtime.JSValue, _: ?*anyopaque) ?*runtime.Instance {
     return interfaces.Window.init(realm.allocator, realm) catch null;
@@ -72,9 +71,6 @@ fn inRealmEnding(comptime body: fn (*engine.Agent, runtime.Context) anyerror!voi
             const own_runtime = test_process.OwnRuntime.begin(std.testing.allocator);
             defer own_runtime.end();
             interfaces.process_hooks.startHooksForTest();
-            // The thread's mutation observer agent, made on this thread's
-            // first mutation with the realm's allocator.
-            defer dom.mutation_observer_algorithms.resetAgent();
             const hooks: engine.HostHooks = .{};
             const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &hooks, .allocator = std.testing.allocator });
             defer engine.destroyAgent(agent);
@@ -239,27 +235,14 @@ test "a byte tee's chunk for a BYOB reader queued when the checkpoint was aborte
 }
 
 // =============================================================================
-// queueMicrotask() and the mutation observer microtask
+// queueMicrotask() (the mutation observer microtask's case is in
+// tests/html/gs3_mutation_observer_agent_test.zig: its state is the agent host's)
 // =============================================================================
 
 test "a queueMicrotask() callback discarded with an aborted checkpoint is freed" {
     try inRealm(struct {
         fn body(agent: *engine.Agent, realm: runtime.Context) !void {
             try runThenAbortCheckpoint(agent, realm, "queueMicrotask(() => {});");
-        }
-    }.body);
-}
-
-test "a mutation observer microtask discarded with an aborted checkpoint leaves nothing behind" {
-    try inRealm(struct {
-        fn body(agent: *engine.Agent, realm: runtime.Context) !void {
-            try run(realm,
-                \\globalThis.d = new Document();
-                \\globalThis.n = d.createTextNode('a');
-                \\globalThis.mo = new MutationObserver(() => {});
-                \\mo.observe(n, { characterData: true });
-            );
-            try runThenAbortCheckpoint(agent, realm, "n.data = 'b';");
         }
     }.body);
 }

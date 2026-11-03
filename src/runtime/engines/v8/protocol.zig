@@ -109,7 +109,7 @@ pub const capabilities: engine.Capabilities = .{
 pub const links_engine = true;
 
 /// HTML "prepare to run script" entered `realm`: undone by "clean up".
-pub const ScriptScope = realm_entry.Entered;
+pub const ScriptScope = protocol_scripts.ScriptScope;
 
 // ============================================================================
 // Helpers
@@ -206,7 +206,7 @@ pub fn deferredTeardownOf(agent: *Agent) ?*engine.DeferredTeardown {
 /// perform a microtask checkpoint" step of the HTML parser.
 pub fn hasRunningScript(agent: *Agent) bool {
     if (!worker_realm.hasRunningScript(agent)) return false;
-    return protocol_scripts.hasPreparedScript() or ffi.v8_Isolate_HasJavaScriptOnStack(isolateOf(agent));
+    return protocol_scripts.hasPreparedScript(isolateOf(agent)) or ffi.v8_Isolate_HasJavaScriptOnStack(isolateOf(agent));
 }
 
 pub fn hasPendingEngineWork(agent: *Agent) bool {

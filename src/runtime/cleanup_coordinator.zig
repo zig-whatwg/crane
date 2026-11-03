@@ -311,7 +311,10 @@ pub const CleanupStats = struct {
 
 /// Thread-local storage for the active cleanup coordinator
 /// Each thread (V8 isolate) has its own coordinator
-threadlocal var active_coordinator: ?*CleanupCoordinator = null;
+/// `pub` only so the Crane test runner's fixture (tests/test_runner_fixture)
+/// can leave it changed; nothing else may name it. It moves when the
+/// coordinator becomes per agent (lane engown1's queue).
+pub threadlocal var active_coordinator: ?*CleanupCoordinator = null;
 
 /// Set the active coordinator for this thread
 pub fn setActiveCoordinator(coordinator: ?*CleanupCoordinator) void {
