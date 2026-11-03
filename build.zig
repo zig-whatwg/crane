@@ -2,6 +2,9 @@ const std = @import("std");
 /// The WPT runner's optimize modes (root, Crane's modules, C libraries),
 /// std-only and pinned by `zig build test`.
 const runner_build_mode = @import("tests/wpt_runner/build_mode.zig");
+/// Which tests/<dir>/ directories hold tests no suite runs, std-only and
+/// pinned by `zig build test` (`checkEveryTestDirectoryIsASuite`).
+const test_suites = @import("tools/test_suites.zig");
 
 // Crane builds with a Zig from the 0.17.x branch pinned at 77c319a0f00a
 // (0.17.1-dev+77c319a0f0) until 0.17.1 ships. Zig 0.17.0 itself cannot build
@@ -811,7 +814,41 @@ const TestSelection = struct {
     /// `TestLaunch` and `addSuiteRun`). Set where the launcher is built,
     /// before the first test executable.
     launch: *const TestLaunch = undefined,
+    /// Every tests/<dir>/ build.zig makes a suite: `addTestFilesFromDir`
+    /// records its directory, and a directory wired by hand is recorded
+    /// beside its wiring (`recordSuiteDir`), whether or not -Dspec selects
+    /// it. `checkEveryTestDirectoryIsASuite` reads it.
+    suite_dirs: *std.ArrayList([]const u8) = undefined,
 };
+
+/// Record `dir`, a tests/<dir>/ whose tests a hand-made root runs, as a
+/// suite (`TestSelection.suite_dirs`).
+fn recordSuiteDir(b: *std.Build, select: TestSelection, dir: []const u8) void {
+    select.suite_dirs.append(b.allocator, dir) catch @panic("OOM");
+}
+
+/// Fail the configuration when a tests/<dir>/ holds `*_test.zig` files and no
+/// suite runs them: build.zig compiles a directory's tests only when it names
+/// the directory, so a directory it does not name is silently never compiled
+/// (tests/infra, from 633a1e91df4 to lane flakes2). Run when the whole tree is
+/// configured - no -Dspec, no -Dtest-file - since a selection skips suites.
+fn checkEveryTestDirectoryIsASuite(b: *std.Build, suite_dirs: []const []const u8) void {
+    // A configure-time read of the checkout the configure cache cannot track.
+    b.graph.poisonCache();
+    const io = b.graph.io;
+    var tests_dir = b.root.root_dir.handle.openDir(io, "tests", .{ .iterate = true }) catch |err|
+        std.debug.panic("build.zig: cannot open tests/ to check its suites: {s}", .{@errorName(err)});
+    defer tests_dir.close(io);
+    const with_tests = test_suites.dirsWithTests(b.allocator, io, tests_dir, "tests") catch |err|
+        std.debug.panic("build.zig: cannot scan tests/ for test files: {s}", .{@errorName(err)});
+    const missing = test_suites.missing(b.allocator, with_tests, suite_dirs) catch @panic("OOM");
+    if (missing.len == 0) return;
+    for (missing) |dir| std.debug.print("build.zig: {s}/ holds *_test.zig files that no suite runs\n", .{dir});
+    std.debug.panic(
+        "build.zig: {d} tests/ director{s} with test files never compiled (listed above): make each a suite with addTestFilesFromDir, or record its hand-made root with recordSuiteDir",
+        .{ missing.len, if (missing.len == 1) "y" else "ies" },
+    );
+}
 
 /// Every test executable runs through tools/test_launcher, in its server
 /// mode: the build runner speaks the Zig test-runner protocol to the
@@ -1342,6 +1379,7 @@ fn addTestFilesFromDir(
 ) !void {
     const allocator = builder.allocator;
     const io = builder.graph.io;
+    recordSuiteDir(builder, select, dir_path);
 
     if (select.file) |file| {
         if (!std.mem.startsWith(u8, file, dir_path) or file.len <= dir_path.len or file[dir_path.len] != '/') return;
@@ -2542,6 +2580,11 @@ pub fn build(b: *std.Build) void {
         break :launch l;
     };
     test_selection.launch = launch;
+    test_selection.suite_dirs = suite_dirs: {
+        const list = b.allocator.create(std.ArrayList([]const u8)) catch @panic("OOM");
+        list.* = .empty;
+        break :suite_dirs list;
+    };
 
     // The Crane test runner's many-Browsers neighbour (tests/test_runner/
     // neighbour.zig): its thread and handshake, std only, tested with a fake
@@ -2594,6 +2637,8 @@ pub fn build(b: *std.Build) void {
     eventsource_test_mod.addImport("infra", testing_graph.infra);
     eventsource_test_mod.addImport("fetch", testing_graph.fetch);
     const eventsource_tests = b.addTest(.{ .root_module = eventsource_test_mod });
+    // parser_test.zig imports the directory's other test files.
+    recordSuiteDir(b, test_selection, "tests/eventsource");
     const run_eventsource_tests = addSuiteRun(b, launch, eventsource_tests, "tests-eventsource", null);
     const eventsource_test_step = b.step("test-eventsource", "Run server-sent event parser and connection tests");
     eventsource_test_step.dependOn(&run_eventsource_tests.step);
@@ -2613,6 +2658,7 @@ pub fn build(b: *std.Build) void {
     // (tests/linked_libraries/versions_test.zig). Built against the same mbedTLS
     // artifact, headers and threading macros as libcurl and WebCrypto. Not under
     // -Dsystem-curl: there is no mbedTLS artifact, and the versions are the system's.
+    recordSuiteDir(b, test_selection, "tests/linked_libraries");
     if (linked_mbedtls) |mbedtls_library| {
         const deps_test_mod = b.createModule(.{
             .root_source_file = b.path("tests/linked_libraries/versions_test.zig"),
@@ -2648,6 +2694,15 @@ pub fn build(b: *std.Build) void {
         const infra_tests = b.addTest(.{ .root_module = testing_graph.infra });
         const run_infra_tests = addSuiteRun(b, launch, infra_tests, "src-infra", null);
         test_step.dependOn(&run_infra_tests.step);
+
+        // tests/infra/: never compiled until lane flakes2 (2026-11-02) - no
+        // suite named the directory (checkEveryTestDirectoryIsASuite).
+        const infra_imports = [_]std.Build.Module.Import{
+            .{ .name = "infra", .module = testing_graph.infra },
+        };
+        addTestFilesFromDir(b, test_step, "tests/infra", target, &infra_imports, false, test_selection) catch |err| {
+            std.debug.print("Warning: Failed to add infra test files: {}\n", .{err});
+        };
     }
 
     if (test_webidl) {
@@ -4467,6 +4522,8 @@ pub fn build(b: *std.Build) void {
     // Real testdriver commands need the Browser graph; keep this one Debug
     // native lifetime test separate from the std-only harness modules above.
     const command_lifetime_test = "tests/wpt_runner/ar3_command_lifetime_test.zig";
+    // The directory's std-only modules (harness_sources, above) and this test.
+    recordSuiteDir(b, test_selection, "tests/wpt_runner");
     if ((spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "wpt_runner")) and
         (test_selection.file == null or std.mem.eql(u8, test_selection.file.?, command_lifetime_test)))
     {
@@ -4710,6 +4767,15 @@ pub fn build(b: *std.Build) void {
     wpt_step.dependOn(&wpt_site_after_wpt.step);
     const wpt_site_tests = b.addTest(.{ .root_module = wpt_site_module });
     test_step.dependOn(&addSuiteRun(b, launch, wpt_site_tests, "tools-wpt_site", null).step);
+
+    // tools/test_suites.zig: the configure-time check that every tests/<dir>/
+    // with test files is a suite (checkEveryTestDirectoryIsASuite), std-only.
+    const test_suites_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("tools/test_suites.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    }) });
+    test_step.dependOn(&addSuiteRun(b, launch, test_suites_tests, "tools-test_suites", null).step);
 
     // ========================================================================
     // COMPREHENSIVE BUILD TEST
@@ -5631,6 +5697,11 @@ pub fn build(b: *std.Build) void {
     // Every test executable runs through the launcher; and `test-launch` is
     // the launcher runs `test` makes. Both known here, once every step exists.
     checkEveryTestRunsThroughTheLauncher(b, launch, test_step);
+    // Every tests/<dir>/ with test files is a suite: known here, once every
+    // suite has been added - when no -Dspec or -Dtest-file skipped some.
+    if ((spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) and test_selection.file == null) {
+        checkEveryTestDirectoryIsASuite(b, test_selection.suite_dirs.items);
+    }
     if (launch.sanitize_thread) instrumentForThreadSanitizer(b, launch);
     finishTestVerify(b, launch.verify);
 }
