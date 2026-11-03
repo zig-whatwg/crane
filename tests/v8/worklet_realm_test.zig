@@ -178,16 +178,16 @@ test "a worklet realm's end leaves its owner working and no handle of its own" {
         try expect(warm.realm, "typeof registerPaint", "function");
         protocol.destroyWorkletRealm(warm.realm);
     }
-    // V8's own count of global handles in use (used_global_handles_size) is
-    // the measure. The adapter's ledger counters drift downwards on main
-    // already (they read negative before this test makes anything): a
-    // v8_Object_New handle - the console namespace object a realm gets - is
-    // not counted when made but is when disposed (v8_wrapper.cpp). So they
-    // may only not grow.
+    // The measure is the agent's own: V8's count of global handles in use
+    // in its isolate (used_global_handles_size; `global_handle_bytes` reads
+    // the isolate current on this thread), which counts a Global<Context>,
+    // <Object> or <String> the realm left alike, and its realms' wrapper
+    // caches. Not the adapter's live_*_globals ledgers: they are the
+    // process's, which every Browser of the process moves (beside the
+    // many-Browsers variant's busy Browser, live_context_globals moved while
+    // this measured: docs/lessons/testing-a-test-that-measures-a-process-
+    // wide-counter-assumes-it-is-alone.md).
     const bytes_before = try counter("global_handle_bytes");
-    const contexts_before = try counter("live_context_globals");
-    const objects_before = try counter("live_object_globals");
-    const strings_before = try counter("live_string_globals");
     const cache_before = try counter("wrapper_cache_entries");
 
     const made = try page.worklet(.paint);
@@ -199,10 +199,7 @@ test "a worklet realm's end leaves its owner working and no handle of its own" {
     protocol.destroyWorkletRealm(made.realm);
 
     try testing.expectEqual(bytes_before, try counter("global_handle_bytes"));
-    try testing.expectEqual(contexts_before, try counter("live_context_globals"));
     try testing.expectEqual(cache_before, try counter("wrapper_cache_entries"));
-    try testing.expect(try counter("live_object_globals") <= objects_before);
-    try testing.expect(try counter("live_string_globals") <= strings_before);
 
     // The page's realm and its templates go on.
     try expect(page.realm, "[typeof Window, 1 + 1].join()", "function,2");
