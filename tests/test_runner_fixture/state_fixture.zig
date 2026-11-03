@@ -74,5 +74,5 @@ test "leaves the active cleanup coordinator set" {
         var coordinator: runtime.CleanupCoordinator = undefined;
     };
     Left.coordinator = runtime.CleanupCoordinator.init(std.heap.page_allocator);
-    runtime.cleanup_coordinator.active_coordinator = &Left.coordinator;
+    runtime.cleanup_coordinator.setActiveCoordinator(&Left.coordinator);
 }
