@@ -826,6 +826,32 @@ pub fn v8_Isolate_New() ?*Isolate {
     return isolate_entries.v8_Isolate_New();
 }
 pub extern fn v8_Isolate_Dispose(isolate: *Isolate) void;
+
+/// What the process's live isolates' read-only heap came from, as seen by an
+/// isolate that would restore `blob` (null: V8's built-in snapshot). V8 keeps
+/// ONE read-only heap per process, made by the first live isolate from its
+/// snapshot (v8_wrapper.cpp, g_read_only_heap): a restore from a blob that did
+/// not make it is refused (v8_Isolate_NewFromSnapshot answers null).
+pub const ReadOnlyHeapOrigin = enum(c_int) {
+    /// No isolate is alive: the next one makes the heap.
+    none = 0,
+    /// From the same snapshot.
+    same = 1,
+    /// From V8's built-in snapshot, and `blob` is Crane's.
+    builtin = 2,
+    /// From another blob than `blob` (Crane's, when `blob` is null).
+    other_blob = 3,
+    _,
+};
+extern fn v8_Process_ReadOnlyHeapOrigin(blob: ?[*]const u8, blob_size: c_int) c_int;
+/// The origin of the live isolates' read-only heap for `blob`: for a
+/// message, and for tests - another thread may change it at once.
+pub fn readOnlyHeapOrigin(blob: ?[]const u8) ReadOnlyHeapOrigin {
+    return @fromBackingInt(@intCast(v8_Process_ReadOnlyHeapOrigin(if (blob) |b| b.ptr else null, if (blob) |b| @intCast(b.len) else 0)));
+}
+/// How many isolates made through these entries are alive in the process,
+/// for tests that must make the process's first isolate.
+pub extern fn v8_Process_LiveIsolates() usize;
 /// Whether `isolate` was restored from a snapshot (v8_Isolate_NewFromSnapshot).
 pub extern fn v8_Isolate_IsFromSnapshot(isolate: *Isolate) bool;
 /// The bytes V8 restores `isolate` from (its StartupData's data) and their
@@ -3256,14 +3282,19 @@ pub extern fn v8_Script_RunRethrowingErrors(context: *Context, source: *String, 
 /// Whether V8's platform is initialized in this process.
 pub extern fn v8_Platform_IsInitialized() bool;
 
-/// Install HostPromiseRejectionTracker on `isolate`, dispatched to
-/// `dispatch(isolate, event, promise, reason)`: `event` a PromiseRejectEvent,
+/// The protocol's HostPromiseRejectionTracker dispatcher:
+/// `dispatch(isolate, event, promise, reason)`, `event` a PromiseRejectEvent,
 /// the promise and the reason (null when V8 gives none) Globals the
 /// dispatcher OWNS.
-pub extern fn v8_Isolate_SetProtocolPromiseRejectCallback(
-    isolate: *Isolate,
-    dispatch: *const fn (isolate: *Isolate, event: c_int, promise: *Value, reason: ?*Value) callconv(.c) void,
-) void;
+pub const ProtocolPromiseRejectDispatch = *const fn (isolate: *Isolate, event: c_int, promise: *Value, reason: ?*Value) callconv(.c) void;
+
+/// The process's HostPromiseRejectionTracker dispatcher: once, while the
+/// process starts (protocol_agents.initializeEngine), never per agent.
+pub extern fn v8_SetProtocolPromiseRejectDispatcher(dispatch: ?ProtocolPromiseRejectDispatch) void;
+
+/// Install HostPromiseRejectionTracker on `isolate` alone, dispatched to the
+/// process's dispatcher.
+pub extern fn v8_Isolate_SetProtocolPromiseRejectCallback(isolate: *Isolate) void;
 
 /// Remove HostPromiseRejectionTracker from `isolate` alone.
 pub extern fn v8_Isolate_ClearProtocolPromiseRejectCallback(isolate: *Isolate) void;
@@ -3314,10 +3345,17 @@ pub const ProtocolDynamicImportDispatch = *const fn (
 /// the call, or null. `module` is BORROWED.
 pub const ProtocolImportMetaUrlDispatch = *const fn (isolate: *Isolate, module: *Module, identity_hash: c_int, len: *usize) callconv(.c) ?[*]const u8;
 
-/// Install the protocol's import() and import.meta hooks on `isolate`, each
-/// only when given.
+/// The protocol's import.meta.resolve dispatcher (HostGetImportMetaProperties
+/// step 4.2): the serialized URL (malloc'd, the caller frees it) or null.
 pub const ProtocolImportMetaResolveDispatch = *const fn (isolate: *Isolate, context: *Context, base_url: [*]const u8, base_url_len: usize, specifier: [*]const u8, specifier_len: usize, len: *usize) callconv(.c) ?[*]u8;
-pub extern fn v8_Isolate_SetProtocolModuleHooks(isolate: *Isolate, dynamic_import: ?ProtocolDynamicImportDispatch, import_meta_url: ?ProtocolImportMetaUrlDispatch, import_meta_resolve: ?ProtocolImportMetaResolveDispatch) void;
+
+/// The process's import() and import.meta dispatchers: once, while the process
+/// starts (protocol_agents.initializeEngine), never per agent.
+pub extern fn v8_SetProtocolModuleDispatchers(dynamic_import: ?ProtocolDynamicImportDispatch, import_meta_url: ?ProtocolImportMetaUrlDispatch, import_meta_resolve: ?ProtocolImportMetaResolveDispatch) void;
+
+/// Install the protocol's import() and import.meta hooks on `isolate` alone,
+/// each only when asked (import.meta.resolve only beside import.meta.url).
+pub extern fn v8_Isolate_SetProtocolModuleHooks(isolate: *Isolate, dynamic_import: bool, import_meta_url: bool, import_meta_resolve: bool) void;
 
 // ---- end lane: page-realm ----
 // ---- lane: runtime-impls ----

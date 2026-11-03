@@ -74,6 +74,15 @@ pub const Bridge = struct {
     /// removals leave could take half the free slots
     /// (webidl.utils.tombstones).
     guard: tombstones.TombstoneGuard = .{},
+    /// How many `getNodeBase` calls asked about a slot that was freed: a
+    /// caller that still holds a pointer to an instance gone from the slab.
+    /// The slab is the Browser's, shared by its window thread and its
+    /// workers', and its free list is LIFO, so such a read races the next
+    /// allocation on any thread (lane tsanfix1, F2: a worker's wrapper cache
+    /// read the slot of an instance it had just freed while the window thread
+    /// reissued it). Single-threaded the read answers null and is invisible,
+    /// so tests count it (`deadSlotLookups`).
+    dead_slot_lookups: usize = 0,
 
     pub fn init(allocator: std.mem.Allocator) Bridge {
         return .{ .map = address_map.AddressHashMap(*anyopaque, *NodeBase).init(allocator) };
@@ -118,6 +127,16 @@ fn scopeOf(instance: *anyopaque) *runtime.BrowserScope {
 /// `instance`'s Browser's bridge, if it has one.
 fn bridgeOf(instance: *anyopaque) ?*Bridge {
     return scopeOf(instance).existingTable(.node_bases, Bridge);
+}
+
+/// How many times `getNodeBase` was asked about a freed slot of `scope`'s
+/// Browser (`Bridge.dead_slot_lookups`), for tests: every such call is a read
+/// after the free.
+pub fn deadSlotLookups(scope: *runtime.BrowserScope) usize {
+    const bridge = scope.existingTable(.node_bases, Bridge) orelse return 0;
+    bridge.lock();
+    defer bridge.unlock();
+    return bridge.dead_slot_lookups;
 }
 
 /// How many (instance -> NodeBase) entries `scope`'s Browser has.
@@ -209,6 +228,7 @@ pub fn getNodeBaseUnaudited(instance: *anyopaque) ?*NodeBase {
     defer bridge.unlock();
     // The cache's answer is the map's (Bridge.cache says why).
     const generation = generationOf(instance);
+    if (generation == runtime.SlabAllocator.dead_generation) bridge.dead_slot_lookups += 1;
     const entry = bridge.cacheEntry(instance);
     if (entry.instance == instance and entry.generation == generation and generation != runtime.SlabAllocator.dead_generation) {
         return entry.node_base;

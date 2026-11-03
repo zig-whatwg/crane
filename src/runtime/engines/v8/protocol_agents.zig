@@ -67,6 +67,14 @@ pub fn initializeEngine(options: engine.EngineOptions) Error!void {
     // [code_generation_checks]: the process's dispatchers, once, before any
     // agent's thread runs; each agent enables its isolate's callbacks.
     ffi.v8_SetProtocolCodeGenerationDispatchers(onCodeGenerationFromStrings, onWasmCodeGeneration);
+    // HostPromiseRejectionTracker's and [module_scripts]' (import(),
+    // import.meta.url and .resolve), the same way. Every createAgent used to
+    // set these - one process global written on each agent's own thread, a
+    // data race between Browsers (ThreadSanitizer, lane tsanfix1;
+    // docs/testing/test-variant-findings-2026-11-02.tsv F1); AGENTS.md
+    // "Global state" rule 2: installed once, at process start.
+    ffi.v8_SetProtocolPromiseRejectDispatcher(onPromiseReject);
+    ffi.v8_SetProtocolModuleDispatchers(protocol_modules.onDynamicImport, protocol_modules.onImportMetaUrl, protocol_modules.onImportMetaResolve);
     // HostCreateShadowRealmContextCallback's, the same way.
     shadow_realm.installDispatcher();
     // [webassembly_streaming]: the WasmStreamingCallback's, the same way.
@@ -451,6 +459,30 @@ fn releaseEngineSink(data: ?*anyopaque) callconv(.c) void {
     sink.release();
 }
 
+/// A restore from `blob` was refused or failed, and the agent is made without
+/// the snapshot: said at warn, with why. V8 keeps ONE read-only heap per
+/// process, made by the first live isolate from ITS snapshot (v8_wrapper.cpp
+/// g_read_only_heap; V8 13.1 ReadOnlyHeap::SetUp): while isolates made from
+/// another snapshot live, Crane's blob cannot be restored - it crashed V8
+/// (docs/testing/test-variant-findings-2026-11-02.tsv M1). Normal use never
+/// gets here: a Browser's window agent is its process's first isolate, and
+/// its workers come after it.
+fn warnSnapshotRefused(blob: []const u8) void {
+    switch (ffi.readOnlyHeapOrigin(blob)) {
+        .builtin => log.warn("an agent asked for the engine's snapshot ({d} bytes at {*}) is made without it: the process's first live isolate was made from V8's built-in snapshot, and V8 keeps one read-only heap per process (a Browser with snapshot_path \"\", or a bare isolate, made before any snapshot agent)", .{ blob.len, blob.ptr }),
+        .other_blob => log.warn("an agent asked for the engine's snapshot ({d} bytes at {*}) is made without it: the process's first live isolate was made from another snapshot blob, and V8 keeps one read-only heap per process", .{ blob.len, blob.ptr }),
+        .none, .same, _ => log.warn("V8 could not make an isolate from the engine's snapshot ({d} bytes at {*}); making one without it", .{ blob.len, blob.ptr }),
+    }
+}
+
+/// Whether `agent` was restored from the engine's snapshot
+/// (engine.agentRestoredFromSnapshot): only then can its Window realms be
+/// restored from it.
+pub fn restoredFromSnapshot(agent: *Agent) bool {
+    const record = recordOf(@ptrCast(@alignCast(agent))) orelse return false;
+    return record.from_snapshot;
+}
+
 /// HTML "obtain an agent" (a similar-origin window agent or a worker's): a
 /// new isolate - restored from the engine's snapshot when asked for and one
 /// was given - with [[CanBlock]] as the options say and the host's hooks
@@ -469,7 +501,7 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
         if (options.from_snapshot) {
             if (engine_snapshot) |blob| {
                 if (ffi.v8_Isolate_NewFromSnapshotWithOptions(blob.ptr, @intCast(blob.len), external_references.getRuntimeExternalReferencesPtr(), &isolate_options)) |i| break :blk i;
-                log.warn("V8 could not make an isolate from the snapshot; making one without it", .{});
+                warnSnapshotRefused(blob);
             }
         }
         // The engine is started by initializeEngine; a host that has not
@@ -508,7 +540,8 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     // The hooks the host supplied, and only those: a hook left null is the
     // host's choice to have no such behaviour.
     if (options.hooks.promiseRejectionTracker != null) {
-        ffi.v8_Isolate_SetProtocolPromiseRejectCallback(isolate, onPromiseReject);
+        // The dispatcher is the process's (initializeEngine).
+        ffi.v8_Isolate_SetProtocolPromiseRejectCallback(isolate);
     }
     if (options.hooks.afterMicrotaskCheckpoint != null) {
         ffi.v8_Isolate_AddMicrotasksCompletedCallback(isolate, onMicrotasksCompleted, record);
@@ -529,16 +562,9 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     // instantiateStreaming, in every realm made from here on - V8 installs
     // them per context only on an isolate with the callback.
     if (options.hooks.compilePotentialWebAssemblyResponse != null) ffi.v8_Isolate_SetProtocolWasmStreaming(isolate);
-    if (load or meta) {
-        ffi.v8_Isolate_SetProtocolModuleHooks(
-            isolate,
-            if (load) protocol_modules.onDynamicImport else null,
-            if (meta) protocol_modules.onImportMetaUrl else null,
-            // import.meta.resolve is made beside import.meta.url, so only
-            // with it.
-            if (meta and resolve) protocol_modules.onImportMetaResolve else null,
-        );
-    }
+    // The dispatchers are the process's (initializeEngine); import.meta.resolve
+    // is made beside import.meta.url, so only with it.
+    if (load or meta) ffi.v8_Isolate_SetProtocolModuleHooks(isolate, load, meta, meta and resolve);
 
     // What every agent's isolate has before a realm is made in it: the
     // isolate's allocator (the templates it caches), and ShadowRealm support

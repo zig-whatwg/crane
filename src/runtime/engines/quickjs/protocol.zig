@@ -79,6 +79,11 @@ pub fn createAgent(_: engine.AgentOptions) Error!*Agent {
     return error.NotSupported;
 }
 pub fn destroyAgent(_: *Agent) void {}
+/// No agent is made here (createAgent is NotSupported), and nothing is
+/// restored from a snapshot.
+pub fn agentRestoredFromSnapshot(_: *Agent) bool {
+    return false;
+}
 /// No agent is made here (createAgent is NotSupported): none has a host.
 pub fn agentHost(_: *Agent) ?*anyopaque {
     return null;

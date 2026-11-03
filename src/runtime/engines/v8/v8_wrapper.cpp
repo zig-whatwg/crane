@@ -2444,6 +2444,14 @@ struct IsolateData {
     /// BORROWED until the isolate is disposed.
     int64_t (*clock_wall_now)(void*) = nullptr;
     void* clock_context = nullptr;
+    /// Whether the isolate counts in the process's read-only heap record
+    /// (g_read_only_heap): made by v8_Isolate_NewWithOptions or
+    /// v8_Isolate_NewFromSnapshotWithOptions, given back by v8_Isolate_Dispose.
+    bool holds_read_only_heap = false;
+    /// [module_scripts] import.meta.resolve, only for an agent whose host
+    /// resolves (engine.HostHooks.importMetaResolve): the dispatcher is the
+    /// process's, so whether the builtin is made is the isolate's.
+    bool import_meta_resolve = false;
 
 
     /// Take out the entry whose module is `module`, if any.
@@ -2613,6 +2621,133 @@ static void applyIsolateOptions(IsolateData* record, const CraneIsolateOptions* 
     record->clock_context = options->clock_context;
 }
 
+// ---- one read-only heap per process (lane tsanfix1, M1) ----
+//
+// With pointer compression in one shared cage (Crane's V8:
+// V8_COMPRESS_POINTERS with V8_ENABLE_SANDBOX) every isolate of the process is
+// in ONE isolate group, and the group keeps ONE read-only heap: the first live
+// isolate makes it from its snapshot's read-only part, every later one reuses
+// it, and it goes when the group's last isolate ends (V8 13.1
+// src/heap/read-only-heap.cc, ReadOnlyHeap::SetUp and ReadOnlyHeap::TearDown).
+// An isolate restored from Crane's blob while that heap came from V8's built-in
+// snapshot reads objects the heap does not have: Isolate::Initialize crashed in
+// SharedHeapDeserializer::DeserializeStringTable (SIGSEGV 0x10488,
+// docs/testing/test-variant-findings-2026-11-02.tsv M1) - a snapshot Browser
+// made while a snapshot_path "" Browser's isolate was the process's first.
+// V8's DEBUG build CHECKs that every isolate of a group restores the same
+// read-only snapshot (src/heap/read-only-spaces.cc:76-104,
+// ReadOnlyArtifacts::VerifyChecksum); the release build Crane links does not.
+//
+// So the adapter records which snapshot the live isolates' read-only heap came
+// from, and refuses a restore from a blob that is not it: the caller makes the
+// isolate without the blob (protocol_agents.createAgent says so at warn).
+//
+// The other direction - an isolate from V8's built-in snapshot while the heap
+// came from Crane's blob, which is how every worker of a snapshot process is
+// made today - is allowed, and rests on two facts of the linked V8 and nothing
+// else:
+//  - v8_enable_extensible_ro_snapshot = true (13.1 BUILD.gn:436): a
+//    SnapshotCreator starts from V8's built-in snapshot and EXTENDS its
+//    read-only space, never rearranges it, so Crane's read-only heap keeps
+//    every object of the built-in one where the built-in startup data expects
+//    it;
+//  - VerifyChecksum's CHECK is compiled only #ifdef DEBUG
+//    (read-only-spaces.cc:76-104): a DEBUG V8 aborts on it.
+// Neither is a contract. The queued follow-up removes the dependency: every
+// isolate of a process made from one blob, workers included, as Chromium's gin
+// does - after the snapshot's default context is made plain, since Genesis
+// copies the default global's properties onto every fresh context
+// (bootstrapper.cc:7056-7062) and Crane's default global is a Window's.
+
+/// What the live isolates' read-only heap came from, as seen by an isolate
+/// that would restore `blob` (null: V8's built-in snapshot).
+enum CraneReadOnlyOrigin : int {
+    /// No isolate is alive: the next one makes the heap.
+    kReadOnlyNone = 0,
+    /// From the same snapshot.
+    kReadOnlySame = 1,
+    /// From V8's built-in snapshot, and `blob` is Crane's.
+    kReadOnlyBuiltin = 2,
+    /// From another blob than `blob` (Crane's, when `blob` is null).
+    kReadOnlyOtherBlob = 3,
+};
+
+struct ReadOnlyHeapRecord {
+    std::mutex lock;
+    /// Isolates made here and not yet disposed.
+    size_t live = 0;
+    /// The blob the heap came from; null for V8's built-in snapshot (while
+    /// `live` > 0).
+    const char* blob = nullptr;
+    int blob_size = 0;
+};
+
+// process-wide: V8's isolate group - one per process with Crane's single pointer-compression cage - keeps ONE read-only heap for every isolate of every Browser and thread; this records which snapshot made it, under its own lock, for every thread that makes or ends an isolate.
+static ReadOnlyHeapRecord g_read_only_heap;
+
+/// Whether two blobs are one snapshot: the same bytes, or equal ones.
+static bool sameSnapshot(const char* a, int a_size, const char* b, int b_size) {
+    if (a == b && a_size == b_size) return true;
+    return a && b && a_size == b_size && std::memcmp(a, b, static_cast<size_t>(a_size)) == 0;
+}
+
+/// The origin of the live isolates' read-only heap for `blob`; the lock held.
+static CraneReadOnlyOrigin readOnlyOriginLocked(const char* blob, int blob_size) {
+    if (g_read_only_heap.live == 0) return kReadOnlyNone;
+    if (!g_read_only_heap.blob) return blob ? kReadOnlyBuiltin : kReadOnlySame;
+    if (!blob) return kReadOnlyOtherBlob;
+    return sameSnapshot(g_read_only_heap.blob, g_read_only_heap.blob_size, blob, blob_size) ? kReadOnlySame : kReadOnlyOtherBlob;
+}
+
+/// Count an isolate about to be made from `blob` (null: V8's built-in
+/// snapshot) in the read-only heap record - or refuse it: false when the live
+/// isolates' heap came from another snapshot and `blob` is Crane's (the
+/// comment above says why the built-in direction is let through).
+static bool claimReadOnlyHeap(const char* blob, int blob_size) {
+    std::lock_guard<std::mutex> guard(g_read_only_heap.lock);
+    switch (readOnlyOriginLocked(blob, blob_size)) {
+        case kReadOnlyNone:
+            g_read_only_heap.blob = blob;
+            g_read_only_heap.blob_size = blob ? blob_size : 0;
+            break;
+        case kReadOnlySame:
+            break;
+        case kReadOnlyOtherBlob:
+            if (blob) return false;
+            break;
+        case kReadOnlyBuiltin:
+            return false;
+    }
+    g_read_only_heap.live += 1;
+    return true;
+}
+
+/// An isolate counted by claimReadOnlyHeap has ended (or was never made).
+static void releaseReadOnlyHeap() {
+    std::lock_guard<std::mutex> guard(g_read_only_heap.lock);
+    if (g_read_only_heap.live == 0) return;
+    g_read_only_heap.live -= 1;
+    if (g_read_only_heap.live == 0) {
+        g_read_only_heap.blob = nullptr;
+        g_read_only_heap.blob_size = 0;
+    }
+}
+
+/// What the live isolates' read-only heap came from, for an isolate that
+/// would restore `blob` (null: V8's built-in snapshot): a CraneReadOnlyOrigin.
+/// For a caller's message and for tests; another thread may change it at once.
+int v8_Process_ReadOnlyHeapOrigin(const char* blob, int blob_size) {
+    std::lock_guard<std::mutex> guard(g_read_only_heap.lock);
+    return readOnlyOriginLocked(blob, blob_size);
+}
+
+/// How many isolates made by this file are alive in the process, for tests
+/// that must make the process's first isolate.
+size_t v8_Process_LiveIsolates() {
+    std::lock_guard<std::mutex> guard(g_read_only_heap.lock);
+    return g_read_only_heap.live;
+}
+
 Isolate* v8_Isolate_NewWithOptions(const CraneIsolateOptions* options);
 
 Isolate* v8_Isolate_New() {
@@ -2629,10 +2764,16 @@ Isolate* v8_Isolate_NewWithOptions(const CraneIsolateOptions* options) {
         std::shared_ptr<ArrayBuffer::Allocator>(ArrayBuffer::Allocator::NewDefaultAllocator());
     auto record = std::make_unique<IsolateData>();
     applyIsolateOptions(record.get(), options);
+    // V8's built-in snapshot: always allowed (g_read_only_heap says why).
+    (void)claimReadOnlyHeap(nullptr, 0);
+    record->holds_read_only_heap = true;
     // Isolate::New is exactly Allocate + Initialize (13.1 api.cc:9935).
     // Only GetData/SetData are allowed between them (v8-isolate.h:591).
     Isolate* isolate = Isolate::Allocate();
-    if (!isolate) return nullptr;
+    if (!isolate) {
+        releaseReadOnlyHeap();
+        return nullptr;
+    }
     isolate->SetData(kIsolateDataSlot, record.release());
     Isolate::Initialize(isolate, create_params);
     return isolate;
@@ -2739,6 +2880,10 @@ void v8_Isolate_Dispose(Isolate* isolate) {
                 }
             }
         }
+
+        // The isolate has left the group's count (ReadOnlyHeap::TearDown ran
+        // inside Dispose): so does the adapter's record of its read-only heap.
+        if (record && record->holds_read_only_heap) releaseReadOnlyHeap();
 
         // The record last: a snapshot isolate's StartupData is in it, and V8
         // held a pointer to that until Dispose returned ("The embedder owns
@@ -9327,6 +9472,14 @@ Isolate* v8_Isolate_NewFromSnapshotWithOptions(
         delete isolate_data;
         return nullptr;
     }
+
+    // One read-only heap per process (g_read_only_heap): not from this blob
+    // while the live isolates' heap came from another snapshot.
+    if (!claimReadOnlyHeap(snapshot_data, snapshot_size)) {
+        delete isolate_data;
+        return nullptr;
+    }
+    isolate_data->holds_read_only_heap = true;
     
     // Create isolate params with snapshot and external references. The
     // ArrayBuffer allocator is V8's to free once the isolate and every
@@ -9339,6 +9492,7 @@ Isolate* v8_Isolate_NewFromSnapshotWithOptions(
     
     Isolate* isolate = Isolate::Allocate();
     if (!isolate) {
+        releaseReadOnlyHeap();
         delete isolate_data;
         return nullptr;
     }
@@ -9348,27 +9502,31 @@ Isolate* v8_Isolate_NewFromSnapshotWithOptions(
     return isolate;
 }
 
-/// Create a context from the snapshot's default context
-///
-/// This creates a new context based on the default context that was
-/// set in the snapshot. The context starts with all the state
-/// (including registered interfaces) from snapshot creation time.
+/// A context restored from the snapshot's context 0 - the Window context the
+/// generator added (AddContext), with its global proxy and every WebIDL
+/// interface - or null when it cannot be: an isolate made without the
+/// snapshot (it has no context 0), a null isolate, or a failed
+/// deserialization. Says nothing: the caller decides whether that matters and
+/// logs it (protocol_realms builds the realm afresh, at debug). It printed
+/// seven unguarded stderr lines per failure - every iframe and popup realm of
+/// a snapshotless Browser tried, and printed them (AGENTS.md: no unguarded
+/// fprintf in v8_wrapper.cpp; docs/testing/test-variant-findings-2026-11-02.tsv
+/// F3).
 ///
 /// @param isolate - Isolate created from v8_Isolate_NewFromSnapshot
-/// @return New context with snapshot state
+/// @return New context with snapshot state, or null
 Global<Context>* v8_Context_NewFromSnapshot(Isolate* isolate) {
-    if (!isolate) {
-        fprintf(stderr, "[v8_Context_NewFromSnapshot] ERROR: isolate is null\n");
-        return nullptr;
-    }
-    
+    if (!isolate) return nullptr;
+    // An isolate made afresh has no context 0 to restore.
+    IsolateData* record = isolateData(isolate);
+    if (record && !record->startup_data.data) return nullptr;
+
     // Enter the isolate before creating context
     Isolate::Scope isolate_scope(isolate);
     HandleScope handle_scope(isolate);
-    
-    // Add TryCatch to capture any exception
+    // A failed deserialization's exception stays here.
     TryCatch try_catch(isolate);
-    
+
     // Use Context::FromSnapshot(isolate, 0) to retrieve the context that was
     // added via AddContext() during snapshot creation. This preserves the
     // global proxy (unlike the default context from SetDefaultContext).
@@ -9376,31 +9534,10 @@ Global<Context>* v8_Context_NewFromSnapshot(Isolate* isolate) {
     MaybeLocal<Context> maybe_context = Context::FromSnapshot(
         isolate, 0,
         DeserializeInternalFieldsCallback(DeserializeInternalFields, nullptr));
-    
-    if (try_catch.HasCaught()) {
-        fprintf(stderr, "[v8_Context_NewFromSnapshot] Exception caught during FromSnapshot\n");
-        Local<Message> message = try_catch.Message();
-        if (!message.IsEmpty()) {
-            String::Utf8Value msg_str(isolate, message->Get());
-            fprintf(stderr, "[v8_Context_NewFromSnapshot] Exception: %s\n", *msg_str);
-        }
-    }
-    
+
     Local<Context> context;
-    if (!maybe_context.ToLocal(&context)) {
-        fprintf(stderr, "[v8_Context_NewFromSnapshot] ERROR: Context::FromSnapshot(0) failed\n");
-        fprintf(stderr, "[v8_Context_NewFromSnapshot] This usually means:\n");
-        fprintf(stderr, "  1. External references mismatch between snapshot creation and loading\n");
-        fprintf(stderr, "  2. No context was added at index 0 during snapshot creation\n");
-        fprintf(stderr, "  3. Snapshot data is corrupted or from incompatible V8 version\n");
-return nullptr;
-    }
-    
-    // Check global object internal fields
-    Local<Object> global = context->Global();
-    int internal_field_count = global->InternalFieldCount();
-    (void)internal_field_count; // Suppress unused variable warning
-    
+    if (!maybe_context.ToLocal(&context)) return nullptr;
+
     countContextGlobal();
     return trackHandle(new Global<Context>(isolate, context));
 }
@@ -10929,15 +11066,15 @@ extern "C" void v8_Context_GlobalHandle_Dispose(Global<Context>* handle) {
 /// Global<Context>* it may read during the call; returns a Global<Context>*
 /// of the new context, or null.
 typedef void* (*ShadowRealmContextDispatch)(void* initiator_context);
-// process-wide: the one Zig dispatcher (shadow_realm.shadowRealmContextCallback) every agent's isolate calls, finding the agent's ShadowRealm data by isolate; written once at process start (protocol_agents.initializeEngine, before any agent's thread exists), read-only after. It was a heap record every createAgent rewrote, on whatever thread made the agent.
-static ShadowRealmContextDispatch g_shadow_realm_dispatch = nullptr;
+// process-wide: the one Zig dispatcher (shadow_realm.shadowRealmContextCallback) every agent's isolate calls, finding the agent's ShadowRealm data by isolate; written at process start (protocol_agents.initializeEngine, before any agent's thread exists). It was a heap record every createAgent rewrote, on whatever thread made the agent. Atomic: a test starts the engine again on its own thread while another Browser's isolate reads it (ThreadSanitizer beside the many-Browsers variant's busy Browser, lane tsanfix1), storing the same function.
+static std::atomic<ShadowRealmContextDispatch> g_shadow_realm_dispatch{nullptr};
 
 /// V8 internal callback for ShadowRealm context creation
 /// This is called by V8 when JavaScript code executes `new ShadowRealm()`
 static MaybeLocal<Context> V8HostCreateShadowRealmContextCallback(Local<Context> initiator_context) {
     Isolate* isolate = initiator_context->GetIsolate();
     void* result = nullptr;
-    if (ShadowRealmContextDispatch dispatch = g_shadow_realm_dispatch) {
+    if (ShadowRealmContextDispatch dispatch = g_shadow_realm_dispatch.load(std::memory_order_acquire)) {
         // The initiator, for Zig to read during the call.
         Global<Context>* initiator_global = new Global<Context>(isolate, initiator_context);
         result = dispatch(initiator_global);
@@ -11936,7 +12073,7 @@ extern "C" {
 /// agent, which with agents on their own threads would be concurrent writes
 /// of one global.
 void v8_SetShadowRealmContextDispatcher(ShadowRealmContextDispatch dispatch) {
-    g_shadow_realm_dispatch = dispatch;
+    g_shadow_realm_dispatch.store(dispatch, std::memory_order_release);
 }
 
 /// Let `isolate` make ShadowRealms (HostCreateShadowRealmContextCallback,
@@ -12385,13 +12522,15 @@ bool v8_Platform_IsInitialized() {
 }
 
 /// The engine protocol's HostPromiseRejectionTracker dispatcher: one Zig
-/// function for every agent, which finds the agent's hooks by its isolate.
-/// Set to the same function by every agent that installs the callback, so
-/// agents on other threads never see another value.
-static void (*g_protocol_promise_reject)(Isolate*, int, Global<Value>*, Global<Value>*) = nullptr;
+/// function for every agent (protocol_agents.onPromiseReject), which finds the
+/// agent's hooks by its isolate.
+typedef void (*ProtocolPromiseRejectDispatch)(Isolate*, int, Global<Value>*, Global<Value>*);
+
+// process-wide: the one Zig dispatcher every agent's isolate calls, finding its agent by isolate; set at process start (protocol_agents.initializeEngine), never per agent - every createAgent used to write it on its own thread, a data race between Browsers (ThreadSanitizer, docs/testing/test-variant-findings-2026-11-02.tsv F1). Atomic: a test may start the engine again on another thread, storing the same function.
+static std::atomic<ProtocolPromiseRejectDispatch> g_protocol_promise_reject{nullptr};
 
 static void ProtocolPromiseRejectCallback(PromiseRejectMessage message) {
-    auto dispatch = g_protocol_promise_reject;
+    auto dispatch = g_protocol_promise_reject.load(std::memory_order_acquire);
     if (!dispatch) return;
     // The callback runs on the isolate's own thread, synchronously.
     Isolate* isolate = Isolate::GetCurrent();
@@ -12407,12 +12546,18 @@ static void ProtocolPromiseRejectCallback(PromiseRejectMessage message) {
     );
 }
 
-/// Install HostPromiseRejectionTracker on `isolate`, dispatched to
+/// The process's HostPromiseRejectionTracker dispatcher: once, while the
+/// process starts (engine.initializeEngine), before any agent's thread runs.
 /// `dispatch(isolate, event, promise, reason)` - `event` a
 /// v8::PromiseRejectEvent, `promise` and `reason` (null when V8 gives none)
 /// Globals the dispatcher owns.
-void v8_Isolate_SetProtocolPromiseRejectCallback(Isolate* isolate, void (*dispatch)(Isolate*, int, Global<Value>*, Global<Value>*)) {
-    g_protocol_promise_reject = dispatch;
+void v8_SetProtocolPromiseRejectDispatcher(ProtocolPromiseRejectDispatch dispatch) {
+    g_protocol_promise_reject.store(dispatch, std::memory_order_release);
+}
+
+/// Install HostPromiseRejectionTracker on `isolate` alone, dispatched to the
+/// process's dispatcher.
+void v8_Isolate_SetProtocolPromiseRejectCallback(Isolate* isolate) {
     isolate->SetPromiseRejectCallback(ProtocolPromiseRejectCallback);
 }
 
@@ -12714,9 +12859,12 @@ typedef const char* (*ProtocolImportMetaUrlDispatch)(Isolate* isolate, Global<Mo
 /// the caller frees it) or null for failure.
 typedef char* (*ProtocolImportMetaResolveDispatch)(Isolate* isolate, Global<Context>* context, const char* base_url, size_t base_url_len, const char* specifier, size_t specifier_len, size_t* len);
 
-static ProtocolDynamicImportDispatch g_protocol_dynamic_import = nullptr;
-static ProtocolImportMetaUrlDispatch g_protocol_import_meta_url = nullptr;
-static ProtocolImportMetaResolveDispatch g_protocol_import_meta_resolve = nullptr;
+// process-wide: the one Zig dispatcher (protocol_modules.onDynamicImport) every agent's isolate calls, finding its agent by isolate; set at process start (protocol_agents.initializeEngine), never per agent (createAgent wrote it on each agent's thread: tsanfix1, F1). Atomic, as g_protocol_promise_reject.
+static std::atomic<ProtocolDynamicImportDispatch> g_protocol_dynamic_import{nullptr};
+// process-wide: the one Zig dispatcher (protocol_modules.onImportMetaUrl) every agent's isolate calls; set at process start beside g_protocol_dynamic_import, for the same reasons.
+static std::atomic<ProtocolImportMetaUrlDispatch> g_protocol_import_meta_url{nullptr};
+// process-wide: the one Zig dispatcher (protocol_modules.onImportMetaResolve) every agent's isolate calls; set at process start beside g_protocol_dynamic_import. Whether an isolate's import.meta has resolve is the isolate's (IsolateData::import_meta_resolve).
+static std::atomic<ProtocolImportMetaResolveDispatch> g_protocol_import_meta_resolve{nullptr};
 
 /// HostLoadImportedModule for an import(): the referrer from the host-defined
 /// options the protocol compiled the script or module with, the realm from
@@ -12736,7 +12884,7 @@ static MaybeLocal<Promise> ProtocolHostImportModuleDynamically(
     Local<Promise::Resolver> resolver;
     if (!Promise::Resolver::New(context).ToLocal(&resolver)) return MaybeLocal<Promise>();
 
-    auto dispatch = g_protocol_dynamic_import;
+    auto dispatch = g_protocol_dynamic_import.load(std::memory_order_acquire);
     if (!dispatch) {
         (void)resolver->Reject(context, Exception::TypeError(String::NewFromUtf8Literal(isolate, "import() is not supported here")));
         return handle_scope.Escape(resolver->GetPromise());
@@ -12789,7 +12937,7 @@ static void ProtocolImportMetaResolve(const FunctionCallbackInfo<Value>& info) {
     Local<String> specifier;
     if (!argument->ToString(context).ToLocal(&specifier)) return;
     // Step 4.2: resolve a module specifier given moduleScript and specifier.
-    auto dispatch = g_protocol_import_meta_resolve;
+    auto dispatch = g_protocol_import_meta_resolve.load(std::memory_order_acquire);
     String::Utf8Value base_utf8(isolate, info.Data());
     String::Utf8Value specifier_utf8(isolate, specifier);
     Global<Context> realm(isolate, context);
@@ -12812,7 +12960,7 @@ static void ProtocolImportMetaResolve(const FunctionCallbackInfo<Value>& info) {
 /// script (found by its record on the Zig side), and - step 5 -
 /// CreateBuiltinFunction(steps, 1, "resolve", « »), when the host resolves.
 static void ProtocolInitializeImportMeta(Local<Context> context, Local<Module> module, Local<Object> meta) {
-    auto dispatch = g_protocol_import_meta_url;
+    auto dispatch = g_protocol_import_meta_url.load(std::memory_order_acquire);
     if (!dispatch) return;
     Isolate* isolate = context->GetIsolate();
     Global<Module> handle(isolate, module);
@@ -12822,23 +12970,30 @@ static void ProtocolInitializeImportMeta(Local<Context> context, Local<Module> m
     Local<String> value;
     if (!String::NewFromUtf8(isolate, url, NewStringType::kNormal, static_cast<int>(len)).ToLocal(&value)) return;
     (void)meta->CreateDataProperty(context, String::NewFromUtf8Literal(isolate, "url"), value).FromMaybe(false);
-    if (!g_protocol_import_meta_resolve) return;
+    // Only for an agent whose host resolves (the isolate's flag).
+    const IsolateData* record = isolateData(isolate);
+    if (!record || !record->import_meta_resolve || !g_protocol_import_meta_resolve.load(std::memory_order_acquire)) return;
     Local<Function> resolve;
     if (!Function::New(context, ProtocolImportMetaResolve, value, 1, ConstructorBehavior::kThrow).ToLocal(&resolve)) return;
     resolve->SetName(String::NewFromUtf8Literal(isolate, "resolve"));
     (void)meta->CreateDataProperty(context, String::NewFromUtf8Literal(isolate, "resolve"), resolve).FromMaybe(false);
 }
 
-/// Install the protocol's import() and import.meta hooks on `isolate`, each
-/// only when given.
-void v8_Isolate_SetProtocolModuleHooks(Isolate* isolate, ProtocolDynamicImportDispatch dynamic_import, ProtocolImportMetaUrlDispatch import_meta_url, ProtocolImportMetaResolveDispatch import_meta_resolve) {
-    if (dynamic_import) {
-        g_protocol_dynamic_import = dynamic_import;
-        isolate->SetHostImportModuleDynamicallyCallback(ProtocolHostImportModuleDynamically);
-    }
+/// The process's import() and import.meta dispatchers: once, while the
+/// process starts (engine.initializeEngine), before any agent's thread runs.
+void v8_SetProtocolModuleDispatchers(ProtocolDynamicImportDispatch dynamic_import, ProtocolImportMetaUrlDispatch import_meta_url, ProtocolImportMetaResolveDispatch import_meta_resolve) {
+    g_protocol_dynamic_import.store(dynamic_import, std::memory_order_release);
+    g_protocol_import_meta_url.store(import_meta_url, std::memory_order_release);
+    g_protocol_import_meta_resolve.store(import_meta_resolve, std::memory_order_release);
+}
+
+/// Install the protocol's import() and import.meta hooks on `isolate` alone,
+/// each only when asked; import.meta.resolve only beside import.meta.url. The
+/// dispatchers they reach are the process's.
+void v8_Isolate_SetProtocolModuleHooks(Isolate* isolate, bool dynamic_import, bool import_meta_url, bool import_meta_resolve) {
+    if (dynamic_import) isolate->SetHostImportModuleDynamicallyCallback(ProtocolHostImportModuleDynamically);
     if (import_meta_url) {
-        g_protocol_import_meta_url = import_meta_url;
-        if (import_meta_resolve) g_protocol_import_meta_resolve = import_meta_resolve;
+        if (IsolateData* record = isolateData(isolate)) record->import_meta_resolve = import_meta_resolve;
         isolate->SetHostInitializeImportMetaObjectCallback(ProtocolInitializeImportMeta);
     }
 }
@@ -13627,10 +13782,10 @@ typedef int (*ProtocolCodeGenerationDispatch)(
 );
 typedef bool (*ProtocolWasmCodeGenerationDispatch)(Isolate* isolate, Global<Context>* context);
 
-// process-wide: the one Zig dispatcher (protocol_agents.onCodeGenerationFromStrings) every hooked agent's isolate calls, finding its agent by isolate; written once at process start (protocol_agents.initializeEngine, before any agent thread exists), read-only after.
-static ProtocolCodeGenerationDispatch g_protocol_code_generation = nullptr;
-// process-wide: the one Zig dispatcher (protocol_agents.onWasmCodeGeneration) every hooked agent's isolate calls, finding its agent by isolate; written once at process start (protocol_agents.initializeEngine, before any agent thread exists), read-only after.
-static ProtocolWasmCodeGenerationDispatch g_protocol_wasm_code_generation = nullptr;
+// process-wide: the one Zig dispatcher (protocol_agents.onCodeGenerationFromStrings) every hooked agent's isolate calls, finding its agent by isolate; written at process start (protocol_agents.initializeEngine, before any agent thread exists). Atomic: a test may start the engine again on another thread, storing the same function (tsanfix1).
+static std::atomic<ProtocolCodeGenerationDispatch> g_protocol_code_generation{nullptr};
+// process-wide: the one Zig dispatcher (protocol_agents.onWasmCodeGeneration) every hooked agent's isolate calls, finding its agent by isolate; written at process start (protocol_agents.initializeEngine, before any agent thread exists). Atomic, as g_protocol_code_generation.
+static std::atomic<ProtocolWasmCodeGenerationDispatch> g_protocol_wasm_code_generation{nullptr};
 
 /// V8 calls this from eval (direct and indirect) and CreateDynamicFunction,
 /// inside their own HandleScope: the modified source made here lives in it.
@@ -13641,7 +13796,7 @@ static ModifyCodeGenerationFromStringsResult ProtocolModifyCodeGenerationFromStr
 ) {
     ModifyCodeGenerationFromStringsResult result;
     result.codegen_allowed = true;
-    auto dispatch = g_protocol_code_generation;
+    auto dispatch = g_protocol_code_generation.load(std::memory_order_acquire);
     if (!dispatch) return result;
     Isolate* isolate = context->GetIsolate();
     Global<Context> realm(isolate, context);
@@ -13677,7 +13832,7 @@ static ModifyCodeGenerationFromStringsResult ProtocolModifyCodeGenerationFromStr
 
 static bool ProtocolAllowWasmCodeGeneration(Local<Context> context, Local<String> source) {
     (void)source;  // V8 passes the empty string (wasm-module.cc IsWasmCodegenAllowed).
-    auto dispatch = g_protocol_wasm_code_generation;
+    auto dispatch = g_protocol_wasm_code_generation.load(std::memory_order_acquire);
     if (!dispatch) return true;
     Isolate* isolate = context->GetIsolate();
     Global<Context> realm(isolate, context);
@@ -13690,8 +13845,8 @@ static bool ProtocolAllowWasmCodeGeneration(Local<Context> context, Local<String
 /// per agent, which with agents on their own threads would be concurrent
 /// writes of one global.
 void v8_SetProtocolCodeGenerationDispatchers(ProtocolCodeGenerationDispatch strings, ProtocolWasmCodeGenerationDispatch wasm) {
-    g_protocol_code_generation = strings;
-    g_protocol_wasm_code_generation = wasm;
+    g_protocol_code_generation.store(strings, std::memory_order_release);
+    g_protocol_wasm_code_generation.store(wasm, std::memory_order_release);
 }
 
 /// Install the protocol's code generation checks on `isolate`, each only
@@ -14695,8 +14850,8 @@ struct CrossOriginDispatch {
 
 namespace {
 
-// process-wide: the adapter's one dispatch table (cross_origin.zig), the same for every agent; written once at process start (protocol_agents.initializeEngine, before any agent thread exists), read-only after.
-const CrossOriginDispatch* g_cross_origin = nullptr;
+// process-wide: the adapter's one dispatch table (cross_origin.zig), the same for every agent; written at process start (protocol_agents.initializeEngine, before any agent thread exists). Atomic, as g_shadow_realm_dispatch: a test starts the engine again on its own thread while another Browser reads it (lane tsanfix1).
+std::atomic<const CrossOriginDispatch*> g_cross_origin{nullptr};
 
 /// Which object an interceptor serves: its handler configuration's data.
 constexpr int32_t kCrossOriginWindow = 0;
@@ -14712,7 +14867,7 @@ int32_t CrossOriginKindOf(Local<Value> data) {
 }
 
 void ThrowCrossOriginSecurityError(Isolate* isolate) {
-    const CrossOriginDispatch* dispatch = g_cross_origin;
+    const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
     if (dispatch && dispatch->throw_security_error) {
         dispatch->throw_security_error(isolate);
         if (isolate->HasPendingException()) return;
@@ -14738,7 +14893,7 @@ bool CrossOriginAccessCheck(Local<Context> accessing_context, Local<Object> acce
     // context, but asks it on every access to a Location.
     Local<Context> creation;
     if (accessed_object->GetCreationContext(isolate).ToLocal(&creation) && creation == accessing_context) return true;
-    const CrossOriginDispatch* dispatch = g_cross_origin;
+    const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
     // No host to ask (an engine no host started): every realm reaches every
     // other, as before access checks existed.
     if (!dispatch || !dispatch->same_origin) return true;
@@ -14765,7 +14920,7 @@ void CrossOriginFailedAccessCheck(Local<Object> target, AccessType type, Local<V
 
 /// `kind`'s CrossOriginProperties entry named `name`, if any.
 const CrossOriginMember* FindCrossOriginMember(Isolate* isolate, int32_t kind, Local<Name> name, size_t* index_out) {
-    const CrossOriginDispatch* dispatch = g_cross_origin;
+    const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
     if (!dispatch || !name->IsString()) return nullptr;
     const CrossOriginMember* members = kind == kCrossOriginLocation ? dispatch->location_members : dispatch->window_members;
     size_t count = kind == kCrossOriginLocation ? dispatch->location_member_count : dispatch->window_member_count;
@@ -14881,7 +15036,7 @@ Local<Object> DataDescriptor(Isolate* isolate, Local<Context> context, Local<Val
 
 /// W's named child navigable `name` (7.2.3.5 step 6), as a WindowProxy.
 bool CrossOriginNamedChild(Isolate* isolate, Local<Object> holder, Local<Name> name, Local<Value>* out) {
-    const CrossOriginDispatch* dispatch = g_cross_origin;
+    const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
     if (!dispatch || !dispatch->child_named || !name->IsString()) return false;
     void* window = CrossOriginPlatformObject(isolate, holder);
     if (!window) return false;
@@ -15062,7 +15217,7 @@ Intercepted CrossOriginNamedDefiner(Local<Name> name, const PropertyDescriptor& 
 /// ([[HideFromKeys]]); the indices are the indexed enumerator's.
 void CrossOriginNamedEnumerator(const PropertyCallbackInfo<Array>& info) {
     Isolate* isolate = info.GetIsolate();
-    const CrossOriginDispatch* dispatch = g_cross_origin;
+    const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
     int32_t kind = CrossOriginKindOf(info.Data());
     std::vector<Local<Value>> keys;
     if (dispatch) {
@@ -15086,7 +15241,7 @@ void CrossOriginNamedEnumerator(const PropertyCallbackInfo<Array>& info) {
 /// child navigable's WindowProxy, else a SecurityError. A Location has no
 /// cross-origin indexed property.
 Intercepted CrossOriginIndexedGetter(uint32_t index, const PropertyCallbackInfo<Value>& info) {
-    const CrossOriginDispatch* dispatch = g_cross_origin;
+    const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
     if (CrossOriginKindOf(info.Data()) == kCrossOriginWindow && dispatch && dispatch->child_at) {
         if (dispatch->child_at(index, &info) == Intercepted::kYes) return Intercepted::kYes;
         if (info.GetIsolate()->HasPendingException()) return Intercepted::kYes;
@@ -15100,7 +15255,7 @@ Intercepted CrossOriginIndexedGetter(uint32_t index, const PropertyCallbackInfo<
 /// [[Configurable]]: true }, else a SecurityError.
 Intercepted CrossOriginIndexedDescriptor(uint32_t index, const PropertyCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
-    const CrossOriginDispatch* dispatch = g_cross_origin;
+    const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
     if (CrossOriginKindOf(info.Data()) == kCrossOriginWindow && dispatch && dispatch->child_at) {
         if (dispatch->child_at(index, &info) == Intercepted::kYes) {
             Local<Value> child = info.GetReturnValue().Get();
@@ -15115,7 +15270,7 @@ Intercepted CrossOriginIndexedDescriptor(uint32_t index, const PropertyCallbackI
 
 Intercepted CrossOriginIndexedQuery(uint32_t index, const PropertyCallbackInfo<Integer>& info) {
     Isolate* isolate = info.GetIsolate();
-    const CrossOriginDispatch* dispatch = g_cross_origin;
+    const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
     if (CrossOriginKindOf(info.Data()) == kCrossOriginWindow && dispatch && dispatch->child_count) {
         void* window = CrossOriginPlatformObject(isolate, info.HolderV2());
         if (window && index < dispatch->child_count(window)) {
@@ -15153,7 +15308,7 @@ Intercepted CrossOriginIndexedDefiner(uint32_t index, const PropertyDescriptor& 
 /// document-tree child navigables. A Location has none.
 void CrossOriginIndexedEnumerator(const PropertyCallbackInfo<Array>& info) {
     Isolate* isolate = info.GetIsolate();
-    const CrossOriginDispatch* dispatch = g_cross_origin;
+    const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
     uint32_t count = 0;
     if (CrossOriginKindOf(info.Data()) == kCrossOriginWindow && dispatch && dispatch->child_count) {
         if (void* window = CrossOriginPlatformObject(isolate, info.HolderV2())) count = dispatch->child_count(window);
@@ -15173,7 +15328,7 @@ extern "C" {
 /// The adapter's Zig half, once, at process start (engine.initializeEngine),
 /// before any agent's thread runs.
 void v8_SetCrossOriginDispatch(const CrossOriginDispatch* dispatch) {
-    g_cross_origin = dispatch;
+    g_cross_origin.store(dispatch, std::memory_order_release);
 }
 
 /// Give `tpl`'s instances the cross-origin access check and interceptors:
@@ -15554,8 +15709,8 @@ struct CraneWasmResponseCompilation {
 /// compilation is still the caller's.
 typedef bool (*ProtocolWasmStreamingDispatch)(Isolate* isolate, Global<Context>* context, Global<Value>* source, CraneWasmResponseCompilation* compilation);
 
-// process-wide: the one dispatcher (a Zig function finding the agent's hooks by isolate), set once by engine.initializeEngine before any agent's thread runs, beside g_protocol_code_generation; every agent's isolate reads the same function.
-static ProtocolWasmStreamingDispatch g_protocol_wasm_streaming = nullptr;
+// process-wide: the one dispatcher (a Zig function finding the agent's hooks by isolate), set by engine.initializeEngine before any agent's thread runs, beside g_protocol_code_generation; every agent's isolate reads the same function. Atomic, as g_protocol_code_generation.
+static std::atomic<ProtocolWasmStreamingDispatch> g_protocol_wasm_streaming{nullptr};
 
 /// Reject a compilation no host took with a TypeError of the current
 /// context, and delete it.
@@ -15575,7 +15730,7 @@ static void ProtocolWasmStreamingCallback(const FunctionCallbackInfo<Value>& inf
     HandleScope scope(isolate);
     auto* compilation = new CraneWasmResponseCompilation{isolate, WasmStreaming::Unpack(isolate, info.Data())};
     Local<Context> context = isolate->GetCurrentContext();
-    auto dispatch = g_protocol_wasm_streaming;
+    auto dispatch = g_protocol_wasm_streaming.load(std::memory_order_acquire);
     if (!dispatch || context.IsEmpty()) {
         RefuseWasmStreaming(isolate, compilation, "WebAssembly streaming compilation is not available here");
         return;
@@ -15591,7 +15746,7 @@ extern "C" {
 
 /// The process's dispatcher: once, at process start (initializeEngine).
 void v8_SetProtocolWasmStreamingDispatcher(ProtocolWasmStreamingDispatch dispatch) {
-    g_protocol_wasm_streaming = dispatch;
+    g_protocol_wasm_streaming.store(dispatch, std::memory_order_release);
 }
 
 /// Isolate::SetWasmStreamingCallback: every context made in `isolate` from
