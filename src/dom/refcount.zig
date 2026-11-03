@@ -46,7 +46,7 @@ const runtime = @import("runtime");
 const NodeBase = @import("node_base.zig").NodeBase;
 const interfaces = @import("interfaces");
 const instance_bridge = @import("instance_bridge.zig");
-const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 const shadow_hosts = @import("shadow_hosts.zig");
 const template_contents = @import("template_contents.zig");
 const refcount_audit = @import("refcount_audit.zig");
@@ -511,7 +511,7 @@ pub fn treeVersion(document: *runtime.Instance) ?u64 {
 /// An attribute of `element` was set, changed or removed (DOM "handle
 /// attribute changes"): its node document's tree version moves.
 pub fn attributeChanged(element: *runtime.Instance) void {
-    const accessor = hooks.node_document_counts orelse return;
+    const accessor = hooks.read().node_document_counts orelse return;
     if (accessor(element)) |counts| bumpTreeVersion(counts, .{ .instance = element });
 }
 
@@ -521,7 +521,7 @@ pub fn attributeChanged(element: *runtime.Instance) void {
 /// CharacterData::notifyParentAfterChange move theirs. A live collection of
 /// elements does not read data, but an XPath iterator's nodes may.
 pub fn characterDataChanged(node: *runtime.Instance) void {
-    const accessor = hooks.node_document_counts orelse return;
+    const accessor = hooks.read().node_document_counts orelse return;
     if (accessor(node)) |counts| bumpTreeVersion(counts, .{ .instance = node });
 }
 
@@ -535,7 +535,7 @@ pub fn characterDataChanged(node: *runtime.Instance) void {
 /// tree again. Blink's HTMLFormElement::Associate and Disassociate invalidate
 /// the form's listed elements and collections the same way.
 pub fn formAssociationChanged(element: *runtime.Instance) void {
-    const accessor = hooks.node_document_counts orelse return;
+    const accessor = hooks.read().node_document_counts orelse return;
     if (accessor(element)) |counts| bumpTreeVersion(counts, .{ .instance = element });
 }
 
@@ -551,21 +551,22 @@ pub const Hooks = struct {
 };
 
 // process-wide: the Document and Node impls' accessors for the counts - the same functions for every Browser, installed only at process start (process_start.zig)
-var hooks: Hooks = .{};
+var hooks: Hook(Hooks) = .init(.{});
 
 /// Called by Document's and Node's installHooks, once each, at process
 /// start; each installs only its own entry. The wrapper link's two hooks
 /// (runtime.lifetime) are this module's own and go in with them.
 ///
-/// Installing what is installed writes nothing (`merged`): a test start's
-/// re-install while another Browser's thread reads the hooks is then no data
-/// race (ThreadSanitizer, the many-Browsers variant: lane tsanfix1's
-/// instances_isolation, parser_stable_activity, rf_url_accessors,
-/// script_delivery_drop and parser_loader_ownership). The full move onto
-/// dom.Hook (hook.zig) is the P-res batch's.
+/// Installing what is installed writes nothing (`merged`, and Hook.install
+/// compares): a test start's re-install while another Browser's thread
+/// reads the hooks is then no data race (ThreadSanitizer, the many-Browsers
+/// variant: lane tsanfix1's instances_isolation, parser_stable_activity,
+/// rf_url_accessors, script_delivery_drop and parser_loader_ownership).
 pub fn install(owned: Hooks) void {
-    process_start.assertInstalling();
-    if (merged(hooks, owned)) |next| hooks = next;
+    const current = hooks.get();
+    // Through install even when nothing changes: the slot refuses a write
+    // outside the process start either way.
+    hooks.install(merged(current, owned) orelse current);
     runtime.lifetime.install(.{ .acquire = wrapperAcquire, .release = wrapperRelease });
 }
 
@@ -889,14 +890,14 @@ pub fn nextInTree(tree_root: *NodeBase, node: *NodeBase) ?*NodeBase {
 /// section 3, "node -> childNodes list -> node"), so no cycle - and must not
 /// outlive the list: the next read makes a new one.
 pub fn childNodesFreed(node: *runtime.Instance, list: *runtime.Instance) void {
-    const accessor = hooks.child_nodes_freed orelse return;
+    const accessor = hooks.read().child_nodes_freed orelse return;
     accessor(node, list);
 }
 
 /// `document`'s counts, or null for an instance that is not a live Document
 /// (or before the Document impl installed its hook).
 pub fn documentCounts(document: *runtime.Instance) ?*DocumentCounts {
-    const accessor = hooks.document_counts orelse return null;
+    const accessor = hooks.read().document_counts orelse return null;
     return accessor(document);
 }
 
@@ -913,7 +914,7 @@ fn countsOfDocumentNode(document: *NodeBase) ?*DocumentCounts {
 fn countsOfNodeDocument(node: *NodeBase) ?*DocumentCounts {
     if (node.node_type == NodeBase.DOCUMENT_NODE) return countsOfDocumentNode(node);
     const raw = node.owner_instance orelse return null;
-    const accessor = hooks.node_document_counts orelse return null;
+    const accessor = hooks.read().node_document_counts orelse return null;
     return accessor(@ptrCast(@alignCast(raw)));
 }
 

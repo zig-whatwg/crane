@@ -13,6 +13,7 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const Mode = @import("registry.zig").Mode;
+const Hook = @import("dom").Hook;
 
 /// What Lock supplies.
 pub const Implementation = struct {
@@ -22,25 +23,23 @@ pub const Implementation = struct {
 };
 
 // process-wide: function pointers Lock installs once at process start (crane.Process), the same for every instance
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Lock's installHooks, once, at process start (dom.process_start).
 pub fn install(impl: Implementation) void {
-    @import("dom").process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// A new Lock in `realm` for the lock `name`/`mode`. NotSupported before
 /// Lock installed the hook (a context built for tests without one).
 pub fn create(realm: runtime.Context, name: []const u8, mode: Mode) anyerror!*runtime.Instance {
-    const impl = implementation orelse return error.NotSupported;
+    const impl = implementation.get() orelse return error.NotSupported;
     return impl.create(realm, name, mode);
 }
 
 test "without an installed implementation no Lock can be made" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with no implementation nothing reads it.
     var realm: runtime.ContextData = undefined;
     try std.testing.expectError(error.NotSupported, create(&realm, "name", .exclusive));

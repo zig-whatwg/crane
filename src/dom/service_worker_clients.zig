@@ -19,9 +19,9 @@
 //! lint-impls: hook for ServiceWorkerContainer
 
 const std = @import("std");
-const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 const fetch = @import("fetch");
+const Hook = @import("hook.zig").Hook;
 
 /// What kind of client a realm is.
 pub const ClientKind = enum { window, dedicated_worker, shared_worker };
@@ -74,58 +74,56 @@ pub const Implementation = struct {
 };
 
 // process-wide: one function table the ServiceWorkerContainer impl installs once at process start (crane.Process), the same for every Browser and thread; the clients themselves are each Browser's (its service worker manager)
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by ServiceWorkerContainer's installHooks, once, at process start.
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// A reserved client for a fetch from `creator`'s thread; null when there
 /// is no owner.
 pub fn reserve(creator: runtime.Context, kind: ClientKind, url: []const u8) ?*anyopaque {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.reserve(creator, kind, url);
 }
 
 /// The route a request for the reserved client `reserved` takes.
 pub fn routeOfReserved(reserved: ?*anyopaque) ?fetch.internal.ServiceWorkerRoute {
     const handle = reserved orelse return null;
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.route_of_reserved(handle);
 }
 
 /// `realm` is a client from now on. Takes `init.reserved`.
 pub fn created(realm: runtime.Context, init: ClientInit) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.created(realm, init);
 }
 
 /// Let go of a reserved client never handed to `created`.
 pub fn release(reserved: ?*anyopaque) void {
     const handle = reserved orelse return;
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.release(handle);
 }
 
 /// How many service worker registrations the Browser whose scope is `scope`
 /// holds; 0 with nothing installed.
 pub fn registrationCount(scope: *runtime.BrowserScope) usize {
-    const impl = implementation orelse return 0;
+    const impl = implementation.get() orelse return 0;
     return impl.registration_count(scope);
 }
 
 /// The route `global`'s requests take, while a service worker controls it.
 pub fn routeForGlobal(global: *runtime.Instance) ?fetch.internal.ServiceWorkerRoute {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.route_for_global(global);
 }
 
 test "with nothing installed, no client is reserved and no request is routed" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     var realm: runtime.ContextData = undefined;
     try std.testing.expect(reserve(&realm, .window, "https://a.test/") == null);
     try std.testing.expect(routeOfReserved(null) == null);

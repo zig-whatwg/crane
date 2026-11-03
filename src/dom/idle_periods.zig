@@ -21,9 +21,9 @@
 //!
 //! lint-impls: hook for Context, IdleDeadline
 const std = @import("std");
-const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
+const Hook = @import("hook.zig").Hook;
 
 /// An idle period, as its event loop started it.
 pub const Period = struct {
@@ -73,46 +73,43 @@ pub const Deadlines = struct {
 };
 
 // process-wide: function pointers the browser layer installs once at process start (crane.Process), the same for every instance
-var loop: ?Loop = null;
+var loop: Hook(?Loop) = .init(null);
 // process-wide: function pointers IdleDeadline installs once at process start (crane.Process), the same for every instance
-var deadlines: ?Deadlines = null;
+var deadlines: Hook(?Deadlines) = .init(null);
 
 /// Called by the browser layer, once, at process start (process_start.zig).
 pub fn installLoop(impl: Loop) void {
-    process_start.assertInstalling();
-    loop = impl;
+    loop.install(impl);
 }
 
 /// Called by IdleDeadline's installHooks, once, at process start.
 pub fn installDeadlines(impl: Deadlines) void {
-    process_start.assertInstalling();
-    deadlines = impl;
+    deadlines.install(impl);
 }
 
 /// Ask `realm`'s event loop for an idle period. Without an installed loop -
 /// a context built for tests - none ever starts, and idle callbacks wait.
 pub fn requestIdlePeriod(realm: runtime.Context, start: StartIdlePeriod) void {
-    const impl = loop orelse return;
+    const impl = loop.get() orelse return;
     impl.request(realm, start);
 }
 
 /// `period`'s deadline now (ns): its end, brought forward by the loop's next
 /// timer or rendering opportunity. Without an installed loop, its end.
 pub fn deadline(realm: runtime.Context, period: Period) i64 {
-    const impl = loop orelse return period.end_ns;
+    const impl = loop.get() orelse return period.end_ns;
     return impl.deadline(realm, period);
 }
 
 /// A new IdleDeadline in `realm` (see Deadlines.create).
 pub fn createDeadline(realm: runtime.Context, value: Deadline) !*runtime.Instance {
-    const impl = deadlines orelse return error.NotSupported;
+    const impl = deadlines.get() orelse return error.NotSupported;
     return impl.create(realm, value);
 }
 
 test "without an installed loop no idle period is asked for, and a period's deadline is its end" {
-    const saved = loop;
-    defer loop = saved;
-    loop = null;
+    const override = loop.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: without an implementation nothing reads it.
     var realm: runtime.ContextData = undefined;
     const Never = struct {
@@ -125,9 +122,8 @@ test "without an installed loop no idle period is asked for, and a period's dead
 }
 
 test "without IdleDeadline installed no deadline object is made" {
-    const saved = deadlines;
-    defer deadlines = saved;
-    deadlines = null;
+    const override = deadlines.overrideForTest(null);
+    defer override.restore();
     var realm: runtime.ContextData = undefined;
     try std.testing.expectError(error.NotSupported, createDeadline(&realm, .{ .timed_out = 0 }));
 }

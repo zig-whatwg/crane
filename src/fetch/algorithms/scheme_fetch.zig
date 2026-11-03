@@ -14,6 +14,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const Hook = @import("process").Hook;
 const data_url = @import("data_url.zig");
 const DataUrlResult = data_url.DataUrlResult;
 const internal_response = @import("../internal/response.zig");
@@ -166,12 +167,20 @@ pub const BlobAccess = union(enum) {
 pub const BlobResolver = *const fn (store: *anyopaque, allocator: Allocator, url: []const u8, access: BlobAccess) error{OutOfMemory}!?ResolvedBlob;
 
 /// How a blob URL store is read: the same for every Browser, so installed
-/// once for the process; the store it reads is the request's.
-var blob_resolver: ?BlobResolver = null;
+/// once for the process, while it starts (a Hook slot: the process module -
+/// fetch sits below dom); the store it reads is the request's.
+var blob_resolver: Hook(?BlobResolver) = .init(null);
 
-/// Install the resolver scheme fetch "blob" asks. Idempotent.
+/// Install the resolver scheme fetch "blob" asks, at process start
+/// (fetch_body's installHooks). Idempotent: the same resolver again writes
+/// nothing.
 pub fn installBlobResolver(resolver: BlobResolver) void {
-    blob_resolver = resolver;
+    blob_resolver.install(resolver);
+}
+
+/// Tests: `resolver` until the returned guard's `restore()`.
+pub fn overrideBlobResolverForTest(resolver: ?BlobResolver) Hook(?BlobResolver).Override {
+    return blob_resolver.overrideForTest(resolver);
 }
 
 /// Scheme fetch for `request`: "blob" with the request it needs, and every
@@ -224,7 +233,7 @@ fn blobFetchRequest(allocator: Allocator, request: *const InternalRequest) error
     } else legacy: {
         // Navigation retains its existing lookup until streamnav carries
         // captured entries (row 115 Q18). A failed capture never falls back.
-        const resolver = blob_resolver orelse return .{ .network_error = "no blob URL store" };
+        const resolver = blob_resolver.get() orelse return .{ .network_error = "no blob URL store" };
         const store = request.blob_url_store orelse return .{ .network_error = "no blob URL store" };
         break :legacy (try resolver(store, allocator, request.currentUrl(), access)) orelse return .{ .network_error = "no blob for this URL" };
     };
@@ -529,8 +538,8 @@ fn testResolver(store: *anyopaque, allocator: Allocator, url: []const u8, access
 
 test "scheme fetch blob: the whole blob, or a range of it" {
     const allocator = std.testing.allocator;
-    installBlobResolver(&testResolver);
-    defer blob_resolver = null;
+    const override = overrideBlobResolverForTest(&testResolver);
+    defer override.restore();
 
     var store: TestStore = .{ .url = "blob:http://a.test/1" };
     const request = try InternalRequest.init(allocator, "blob:http://a.test/1");

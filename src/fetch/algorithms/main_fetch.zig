@@ -1098,8 +1098,7 @@ test "main fetch step 14: a service worker's filtered response keeps its type; i
 const PinnedBlobStore = struct {
     const store: u8 = 0;
 
-    /// Answers for its own store only: left installed, it resolves nothing
-    /// another test's store holds.
+    /// Answers for its own store only.
     fn resolve(in: *anyopaque, allocator: std.mem.Allocator, _: []const u8, _: scheme_fetch.BlobAccess) error{OutOfMemory}!?scheme_fetch.ResolvedBlob {
         if (in != @as(*anyopaque, @constCast(&store))) return null;
         return .{ .bytes = try allocator.dupe(u8, "b"), .content_type = try allocator.dupe(u8, "text/plain") };
@@ -1111,7 +1110,8 @@ test "main fetch step 12's fetches hand step 14 unfiltered responses: data:, abo
     // worker's, or an opaque redirect): every other way a response reaches
     // it must be "default", or it would go out unfiltered.
     const allocator = std.testing.allocator;
-    scheme_fetch.installBlobResolver(&PinnedBlobStore.resolve);
+    const override = scheme_fetch.overrideBlobResolverForTest(&PinnedBlobStore.resolve);
+    defer override.restore();
     for ([_][]const u8{ "data:,x", "about:blank", "blob:http://a.test/1" }) |url| {
         const request = try InternalRequest.init(allocator, url);
         defer request.deinit();

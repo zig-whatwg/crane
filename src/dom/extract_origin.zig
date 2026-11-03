@@ -5,7 +5,7 @@
 //! lint-impls: hook for Origin, URL, HTMLHyperlinkElementUtils, SVGAElement, WindowOrWorkerGlobalScope, MessageEvent, ExtendableMessageEvent
 const std = @import("std");
 const runtime = @import("runtime");
-const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 const OriginRecord = @import("origin_record.zig").OriginRecord;
 const api_parser = @import("api_parser");
 const origins = @import("fetch").internal.origins;
@@ -17,16 +17,18 @@ pub const Implementation = struct {
 };
 
 // process-wide: immutable extraction function pointers installed at process start, identical for every Browser and thread
-var implementations: [@typeInfo(Owner).@"enum".field_names.len]?Implementation = @splat(null);
+var implementations: Hook([@typeInfo(Owner).@"enum".field_names.len]?Implementation) = .init(@splat(null));
 
 pub fn install(owner: Owner, steps: Implementation) void {
-    process_start.assertInstalling();
-    implementations[@backingInt(owner)] = steps;
+    const table = implementations.installing();
+    const slot = &table[@backingInt(owner)];
+    // The same steps again write nothing (hook.zig, Hook.install).
+    if (!std.meta.eql(slot.*, @as(?Implementation, steps))) slot.* = steps;
 }
 
 /// A platform object without extraction steps returns null (HTML's default).
 pub fn extract(instance: *runtime.Instance) !?*OriginRecord {
-    for (implementations) |entry| {
+    for (implementations.read()) |entry| {
         const steps = entry orelse continue;
         if (steps.owns(instance)) return steps.extract(instance);
     }

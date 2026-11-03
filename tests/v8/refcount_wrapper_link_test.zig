@@ -145,15 +145,15 @@ const Tally = struct {
         forgotten += 1;
     }
 
-    /// The process starts first: its start installs dom.refcount's hooks,
-    /// which would replace these - and `saved` would then be "no hooks",
-    /// put back over the real ones when the test ends.
-    fn begin() runtime.lifetime.Hooks {
+    /// The process starts first, so the override covers dom.refcount's
+    /// installed hooks and its restore brings them back (a start inside the
+    /// override would install under it - hook.zig).
+    fn begin() runtime.lifetime.HooksOverride {
         test_process.start();
         acquired = 0;
         released = 0;
         forgotten = 0;
-        return runtime.lifetime.swapHooksForTest(.{ .acquire = acquire, .release = release, .forget = forget });
+        return runtime.lifetime.overrideHooksForTest(.{ .acquire = acquire, .release = release, .forget = forget });
     }
 };
 
@@ -199,8 +199,8 @@ test "a node's first wrapper adopts the reference its creator offers, and takes 
 }
 
 test "a node whose teardown begins under its live wrapper lets the wrapper's reference go once" {
-    const saved = Tally.begin();
-    defer _ = runtime.lifetime.swapHooksForTest(saved);
+    const override = Tally.begin();
+    defer override.restore();
     const page = try Page.open();
     defer page.close();
     const nodes = try chain(page);
@@ -245,8 +245,8 @@ test "removing a wrapper from the cache lets its reference go" {
 }
 
 test "every reference a wrapper takes is let go: collections, the realm's end" {
-    const saved = Tally.begin();
-    defer _ = runtime.lifetime.swapHooksForTest(saved);
+    const override = Tally.begin();
+    defer override.restore();
     {
         const page = try Page.open();
         defer page.close();

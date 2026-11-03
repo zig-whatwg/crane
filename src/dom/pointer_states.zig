@@ -24,11 +24,11 @@
 //!
 //! lint-impls: hook for Document
 const std = @import("std");
-const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const NodeBase = @import("node_base.zig").NodeBase;
 const instance_bridge = @import("instance_bridge.zig");
+const Hook = @import("hook.zig").Hook;
 
 pub const State = enum {
     /// Designated by a pointing device (:hover).
@@ -51,18 +51,17 @@ pub const Implementation = struct {
 };
 
 // process-wide: immutable function pointers Document installs once at process start (crane.Process); they read only the document they are given, so one serves every Browser and thread
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Document's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// `document`'s element for `state`, while it is still in `document`
 /// (connected, with `document` its node document).
 pub fn get(document: *runtime.Instance, state: State) ?*runtime.Instance {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     const element = impl.get(document, state) orelse return null;
     const node = instance_bridge.getNodeBase(element) orelse return null;
     if (!node.is_connected) return null;
@@ -72,7 +71,7 @@ pub fn get(document: *runtime.Instance, state: State) ?*runtime.Instance {
 
 /// Designate `element` (null: nothing) for `state` in `document`.
 pub fn set(document: *runtime.Instance, state: State, element: ?*runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.set(document, state, element);
 }
 
@@ -86,7 +85,7 @@ pub fn removingSteps(node: *NodeBase, old_parent: ?*NodeBase) void {
     if (node.parent_node != null or node.node_type != NodeBase.ELEMENT_NODE) return;
     const parent = old_parent orelse return;
     if (!parent.is_connected and parent.node_type != NodeBase.DOCUMENT_NODE) return;
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     const parent_instance: *runtime.Instance = @ptrCast(@alignCast(parent.owner_instance orelse return));
     const document = if (parent.node_type == NodeBase.DOCUMENT_NODE)
         parent_instance
@@ -131,9 +130,8 @@ fn isShadowIncludingInclusiveDescendant(node: *NodeBase, ancestor: *NodeBase) bo
 }
 
 test "without an installed implementation nothing is hovered or active" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with no implementation nothing reads the document.
     var document: runtime.Instance = undefined;
     try std.testing.expect(get(&document, .hovered) == null);
@@ -143,8 +141,6 @@ test "without an installed implementation nothing is hovered or active" {
 }
 
 test "set forwards to the installed implementation" {
-    const saved = implementation;
-    defer implementation = saved;
     const Record = struct {
         var last_state: ?State = null;
         var last_element: ?*runtime.Instance = null;
@@ -159,7 +155,8 @@ test "set forwards to the installed implementation" {
             return .{ null, null, null };
         }
     };
-    implementation = .{ .get = &Record.get, .set = &Record.set, .get_all = &Record.getAll };
+    const override = implementation.overrideForTest(.{ .get = &Record.get, .set = &Record.set, .get_all = &Record.getAll });
+    defer override.restore();
     var document: runtime.Instance = undefined;
     set(&document, .pointed, null);
     try std.testing.expect(Record.last_state.? == .pointed);

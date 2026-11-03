@@ -113,10 +113,12 @@ pub const StorageManager = struct {
 
     /// Request persistent storage
     /// Spec: persist()
-    /// Returns true if persistence was granted
-    pub fn persist(self: *Self) StorageManagerError!bool {
+    /// Returns true if persistence was granted. `permission` is step 5.1's
+    /// request to use "persistent-storage" - the caller's, from its realm's
+    /// Browser (BackendStorageManager.PermissionRequest).
+    pub fn persist(self: *Self, permission: BackendStorageManager.PermissionRequest) StorageManagerError!bool {
         if (self.backend) |*backend| {
-            return backend.persist() catch return false;
+            return backend.persist(permission) catch return false;
         }
         // No origin set - deny
         return false;
@@ -168,7 +170,7 @@ test "StorageManager - persist without origin" {
     defer storage_mgr.deinit();
 
     // No origin set - denies persistence
-    const result = try storage_mgr.persist();
+    const result = try storage_mgr.persist(.denied);
     try std.testing.expect(!result);
 }
 

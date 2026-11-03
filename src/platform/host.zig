@@ -40,8 +40,11 @@
 
 const std = @import("std");
 
+// process-wide: the one Io.Threaded a process may have - it installs process-wide SIGIO/SIGPIPE handlers (see "Hazard: signals"), so a second per Browser would fight the first; written only under init_mutex, by init (once, at the entry point, before any Browser) and deinit (at process end)
 var threaded: ?std.Io.Threaded = null;
+// process-wide: the process's std.Io (adopted from std.start, or `threaded`'s), the same for every Browser and thread until per-agent Io lands; written only under init_mutex, by init/adopt once at the entry point before any other thread exists and by deinit at process end - io()'s unlocked fast-path read relies on that order
 var cached_io: ?std.Io = null;
+// process-wide: the lock over `threaded` and `cached_io`'s writes (init, adopt, deinit and io()'s lazy init)
 var init_mutex: std.Io.Mutex = .init;
 
 /// Initialise the process Io. Call once, early, from `main` (or from

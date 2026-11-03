@@ -1114,9 +1114,6 @@ const process_count_subjects = [_]DeclaredTest{
     .{ .name = "weak_callback_ownership_test.test.disposing an isolate leaves another isolate's detached records alone", .reason = weak_record_reason },
     .{ .name = "weak_callback_ownership_test.test.a finalizer runs in V8's second pass, after its first-pass unlink, and its record goes with it", .reason = weak_record_reason },
     .{ .name = "weak_callback_ownership_test.test.disposing a handle before its second pass cancels the finalizer and frees its record", .reason = weak_record_reason },
-    // TEMPORARY until lane hookfreeze2 merges: its Tally counts every wrapper
-    // reference of the process through runtime.lifetime's swapped hooks.
-    .{ .name = "refcount_wrapper_link_test.test.", .reason = "TEMPORARY: its Tally counts every wrapper reference the process takes and lets go through runtime.lifetime's hooks, which it swaps - the busy Browser's wrappers' too; lane hookfreeze2's overrideHooksForTest is a Hook override, which holds the busy Browser while it lasts, and this entry goes when that merges" },
 };
 
 // Slow tests: over 45 s alone on chat.local in Debug (lane tlaunch2,
@@ -2421,6 +2418,7 @@ pub fn build(b: *std.Build) void {
     // named 25 of the 28 specs, the message 24, and no two agreed.
     const valid_specs = [_][]const u8{
         "all",
+        "process",
         "infra",
         "webidl",
         "dom",
@@ -2805,6 +2803,7 @@ pub fn build(b: *std.Build) void {
 
     const test_all = spec_filter == null or std.mem.eql(u8, spec_filter.?, "all");
     const test_infra = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "infra"));
+    const test_process = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "process"));
     const test_webidl = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "webidl"));
     const test_dom = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "dom"));
     const test_selector = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "selector"));
@@ -2818,6 +2817,14 @@ pub fn build(b: *std.Build) void {
     const test_quirks = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "quirks"));
     const test_css = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "css"));
     const test_xml = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "xml"));
+
+    if (test_process) {
+        // src/process: the start-up phase and Hook(T) (moved from src/dom by
+        // lane hookfreeze2; their tests ran in src-dom until then).
+        const process_tests = b.addTest(.{ .root_module = testing_graph.process });
+        const run_process_tests = addSuiteRun(b, launch, process_tests, "src-process", null);
+        test_step.dependOn(&run_process_tests.step);
+    }
 
     if (test_infra) {
         const infra_tests = b.addTest(.{ .root_module = testing_graph.infra });
@@ -5832,6 +5839,7 @@ const CraneModules = struct {
     clock: *std.Build.Module,
     host: *std.Build.Module,
     memory: *std.Build.Module,
+    process: *std.Build.Module,
     infra: *std.Build.Module,
     webidl: *std.Build.Module,
     storage: *std.Build.Module,
@@ -5949,6 +5957,18 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     });
     memory_mod.link_libc = true;
 
+    // The process's start-up phase and its hook slots (src/process: start.zig,
+    // hook.zig's Hook(T) and List(T, capacity)), written while the process
+    // starts and frozen after. ZERO dependencies for the same reason as
+    // clock_mod: every layer declares hook slots - src/dom, but also the
+    // runtime tier, the V8 adapter, fetch and hr_time below it - and a leaf
+    // module cannot form a cycle. dom re-exports it (dom.Hook,
+    // dom.process_start).
+    const process_mod = graphModule(b, public, "process", .{
+        .root_source_file = b.path("src/process/root.zig"),
+        .target = target,
+    });
+
     const infra_mod = graphModule(b, public, "infra", .{
         .root_source_file = b.path("src/infra/root.zig"),
         .target = target,
@@ -5996,6 +6016,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .target = target,
     });
     runtime_mod.addImport("clock", clock_mod);
+    runtime_mod.addImport("process", process_mod);
     runtime_mod.addImport("host", host_mod);
     runtime_mod.addImport("webidl", webidl_mod);
     runtime_mod.addImport("infra", infra_mod);
@@ -6011,6 +6032,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // Phase 8 (DCE): interface_bindings consults build_options.interface_allowlist.
     v8_mod.addOptions("build_options", build_options);
     v8_mod.addImport("clock", clock_mod);
+    v8_mod.addImport("process", process_mod);
     v8_mod.addImport("infra", infra_mod);
     v8_mod.addImport("host", host_mod);
     v8_mod.addImport("runtime", runtime_mod);
@@ -6219,6 +6241,8 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // The refcount audit's comptime switch (dom_options.refcount_audit).
     dom_mod.addOptions("dom_options", config.dom_options);
     dom_mod.addImport("clock", clock_mod);
+    // hook.zig and process_start.zig re-export the process module.
+    dom_mod.addImport("process", process_mod);
     dom_mod.addImport("host", host_mod);
     dom_mod.addImport("infra", infra_mod);
     // The user agent's cookie jar, which a settings object hands out.
@@ -6892,6 +6916,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .target = target,
     });
     fetch_mod.addImport("clock", clock_mod);
+    fetch_mod.addImport("process", process_mod);
     fetch_mod.addImport("host", host_mod);
     fetch_mod.addImport("referrer_policy", referrer_policy_mod);
     // A request's policy container holds its client's CSP list, which main
@@ -7007,6 +7032,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .target = target,
     });
     hr_time_mod.addImport("clock", clock_mod);
+    hr_time_mod.addImport("process", process_mod);
     hr_time_mod.addImport("host", host_mod);
 
     // Add hr_time to impls for Performance implementation
@@ -7324,6 +7350,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .clock = clock_mod,
         .host = host_mod,
         .memory = memory_mod,
+        .process = process_mod,
         .infra = infra_mod,
         .webidl = webidl_mod,
         .storage = storage_mod,

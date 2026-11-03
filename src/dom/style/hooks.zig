@@ -16,6 +16,7 @@ const engine_mod = @import("engine.zig");
 const element_style = @import("element_style.zig");
 const sheet = @import("sheet.zig");
 const adopted = @import("adopted.zig");
+const Hook = @import("../hook.zig").Hook;
 
 pub const Hooks = struct {
     /// Document: its engine (its state embeds it).
@@ -71,120 +72,129 @@ pub const Hooks = struct {
 };
 
 // process-wide: immutable function pointers that Document, Element, HTMLStyleElement and HTMLLinkElement install once at process start (crane.Process); each reads only the object it is given, so one serves every Browser and thread
-var hooks: Hooks = .{};
+var hooks: Hook(Hooks) = .init(.{});
 
 /// Called by each owner's installHooks, once, at process start; each
 /// installs only its own members.
 pub fn install(owned: Hooks) void {
-    process_start.assertInstalling();
+    // Read, change, install: an install of what is there writes nothing.
+    var next = hooks.get();
     inline for (@typeInfo(Hooks).@"struct".field_names) |field_name| {
-        if (@field(owned, field_name)) |f| @field(hooks, field_name) = f;
+        if (@field(owned, field_name)) |f| @field(next, field_name) = f;
     }
+    hooks.install(next);
+}
+
+/// Tests: the hooks as installed, overridden until the returned guard's
+/// `restore()`; meanwhile a test installs into its override (`install`, or
+/// an owner's installHooks) and the restore takes that away.
+pub fn overrideForTest() Hook(Hooks).Override {
+    return hooks.overrideForTest(hooks.get());
 }
 
 pub fn engineOf(document: *runtime.Instance) ?*engine_mod.StyleEngine {
-    const f = hooks.engine_of orelse return null;
+    const f = hooks.read().engine_of orelse return null;
     return f(document);
 }
 
 pub fn mediaValues(document: *runtime.Instance) css.media_queries.MediaValues {
-    const f = hooks.media_values orelse return .{};
+    const f = hooks.read().media_values orelse return .{};
     return f(document);
 }
 
 /// The document's environment revision (0: no provider).
 pub fn environmentRevision(document: *runtime.Instance) u64 {
-    const f = hooks.environment_revision orelse return 0;
+    const f = hooks.read().environment_revision orelse return 0;
     return f(document);
 }
 
 pub fn environmentProvider() ?@import("environment_variables.zig").Hooks {
-    return hooks.environment_provider;
+    return hooks.read().environment_provider;
 }
 
 pub fn elementStyleSlot(element: *runtime.Instance) ?*?*element_style.ElementStyle {
-    const f = hooks.element_style_slot orelse return null;
+    const f = hooks.read().element_style_slot orelse return null;
     return f(element);
 }
 
 /// Called only after the first successful ElementStyle allocation.
 pub fn controlStyleStateCreated(element: *runtime.Instance) void {
-    if (hooks.input_style_state_created) |f| f(element);
-    if (hooks.textarea_style_state_created) |f| f(element);
+    if (hooks.read().input_style_state_created) |f| f(element);
+    if (hooks.read().textarea_style_state_created) |f| f(element);
 }
 
 /// The CSS style sheet `owner` - a style or a link element - is associated
 /// with, if any.
 pub fn sheetOf(owner: *runtime.Instance) ?*sheet.SheetRecord {
-    if (hooks.style_sheet_of) |f| if (f(owner)) |record| return record;
-    if (hooks.link_sheet_of) |f| if (f(owner)) |record| return record;
-    if (hooks.pi_sheet_of) |f| if (f(owner)) |record| return record;
+    if (hooks.read().style_sheet_of) |f| if (f(owner)) |record| return record;
+    if (hooks.read().link_sheet_of) |f| if (f(owner)) |record| return record;
+    if (hooks.read().pi_sheet_of) |f| if (f(owner)) |record| return record;
     return null;
 }
 
 pub fn linkSheetArrived(element: *runtime.Instance, text: []const u8, url: []const u8, origin_clean: bool) void {
-    if (hooks.link_sheet_arrived) |f| f(element, text, url, origin_clean);
-    if (hooks.pi_sheet_arrived) |f| f(element, text, url, origin_clean);
+    if (hooks.read().link_sheet_arrived) |f| f(element, text, url, origin_clean);
+    if (hooks.read().pi_sheet_arrived) |f| f(element, text, url, origin_clean);
 }
 
 /// The CSS style sheet the StyleSheet object `object` is over; null for an
 /// object that is not one.
 pub fn sheetRecordOf(object: *runtime.Instance) ?*sheet.SheetRecord {
-    const f = hooks.sheet_record_of orelse return null;
+    const f = hooks.read().sheet_record_of orelse return null;
     return f(object);
 }
 
 /// The CSS rule the CSSRule object `object` is over.
 pub fn cssRuleOf(object: *runtime.Instance) ?*sheet.Rule {
-    const f = hooks.css_rule_of orelse return null;
+    const f = hooks.read().css_rule_of orelse return null;
     return f(object);
 }
 
 /// The native CSS representation owned by this CSSStyleValue, if any.
 pub fn styleValueOf(object: *runtime.Instance) ?*@import("typed_om.zig").NativeValue {
-    const f = hooks.style_value_of orelse return null;
+    const f = hooks.read().style_value_of orelse return null;
     return f(object);
 }
 
 /// The live source owned by this StylePropertyMapReadOnly.
 pub fn propertyMapOf(object: *runtime.Instance) ?*@import("typed_om.zig").PropertyMap {
-    const f = hooks.property_map_of orelse return null;
+    const f = hooks.read().property_map_of orelse return null;
     return f(object);
 }
 
 /// The adopted style sheets of `scope`, a Document or a ShadowRoot.
 pub fn adoptedSheetsOf(scope: *runtime.Instance) ?*adopted.AdoptedSheets {
-    if (hooks.document_adopted_sheets) |f| if (f(scope)) |a| return a;
-    if (hooks.shadow_root_adopted_sheets) |f| if (f(scope)) |a| return a;
+    if (hooks.read().document_adopted_sheets) |f| if (f(scope)) |a| return a;
+    if (hooks.read().shadow_root_adopted_sheets) |f| if (f(scope)) |a| return a;
     return null;
 }
 
 pub fn reportMediaQueryList(list: *runtime.Instance) void {
-    const f = hooks.report_media_query_list orelse return;
+    const f = hooks.read().report_media_query_list orelse return;
     f(list);
 }
 
 pub fn svgImageResourceChanged(element: *runtime.Instance) void {
-    const f = hooks.svg_image_resource_changed orelse return;
+    const f = hooks.read().svg_image_resource_changed orelse return;
     f(element);
 }
 
 pub fn svgUseResourceChanged(element: *runtime.Instance) void {
-    const f = hooks.svg_use_resource_changed orelse return;
+    const f = hooks.read().svg_use_resource_changed orelse return;
     f(element);
 }
 
 pub fn svgParseResourceDocument(document: *runtime.Instance, bytes: []const u8, content_type: []const u8) !bool {
-    const f = hooks.svg_parse_resource_document orelse return error.InvalidState;
+    const f = hooks.read().svg_parse_resource_document orelse return error.InvalidState;
     return try f(document, bytes, content_type);
 }
 
 pub fn fontFaceOf(face: *runtime.Instance) ?*@import("font_loading.zig").Face {
-    const f = hooks.font_face_of orelse return null;
+    const f = hooks.read().font_face_of orelse return null;
     return f(face);
 }
 
 pub fn fontSetOf(set: *runtime.Instance) ?*@import("font_loading.zig").Set {
-    const f = hooks.font_set_of orelse return null;
+    const f = hooks.read().font_set_of orelse return null;
     return f(set);
 }

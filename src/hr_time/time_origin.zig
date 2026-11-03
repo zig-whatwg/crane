@@ -25,6 +25,7 @@
 const std = @import("std");
 const clock = @import("clock.zig");
 const coarsen = @import("coarsen.zig");
+const Hook = @import("process").Hook;
 
 /// Time Origin for an environment settings object
 ///
@@ -166,7 +167,7 @@ pub const TimeOrigin = struct {
 /// mCreationEpochTime pair that every window and worker timeOrigin is
 /// computed from).
 pub fn estimatedMonotonicTimeOfUnixEpoch() clock.Nanoseconds {
-    return process_estimated_epoch orelse estimateEpoch();
+    return process_estimated_epoch.get() orelse estimateEpoch();
 }
 
 /// The estimated monotonic time of the Unix epoch on `source`: the
@@ -183,9 +184,10 @@ pub fn estimatedMonotonicTimeOfUnixEpochOn(source: clock.Source) clock.Nanosecon
 /// Estimate the process's estimated monotonic time of the Unix epoch. Once
 /// per process, while it starts, before any Browser or worker thread exists
 /// (Performance.installHooks, through crane.Process); a second call keeps
-/// the first estimate.
+/// the first estimate. A Hook slot: the first estimate is written only while
+/// the process starts (a unit test: through process_start.installForTest).
 pub fn estimateAtProcessStart() void {
-    if (process_estimated_epoch == null) process_estimated_epoch = estimateEpoch();
+    if (process_estimated_epoch.get() == null) process_estimated_epoch.install(estimateEpoch());
 }
 
 /// The steps that initialize the estimated monotonic time of the Unix epoch
@@ -206,7 +208,7 @@ fn estimateEpoch() clock.Nanoseconds {
 // Null until the process starts; a process that never started it (a bare unit test with no
 // crane.Process) reads a fresh estimate per call (estimatedMonotonicTimeOfUnixEpoch), stored nowhere.
 // process-wide: HR-Time's one estimated monotonic time of the Unix epoch per group of settings objects that can communicate (the process is a superset of every group, and its Browsers on many threads share one monotonic and one wall clock; Gecko keeps one PerformanceService per process); written once while the process starts (Performance.installHooks), before any Browser or worker thread, and only read after.
-var process_estimated_epoch: ?clock.Nanoseconds = null;
+var process_estimated_epoch: Hook(?clock.Nanoseconds) = .init(null);
 
 /// Get the current coarsened wall time (global, no context)
 ///

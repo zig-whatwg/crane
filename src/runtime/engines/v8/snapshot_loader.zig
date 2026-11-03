@@ -51,7 +51,9 @@ const clock = @import("clock");
 /// Tracked snapshot data for cleanup
 /// V8 requires snapshot data to remain valid for the isolate's lifetime,
 /// so we track it here and free it when the runtime is deinitialized.
+// process-wide: the snapshot bytes V8 deserializes lazily for the life of the platform, one per process like V8's platform itself; written by initializeV8's file path on the thread that starts the engine, before any agent, and freed by cleanupSnapshotData after V8 ends (neither has a caller left - queued for deletion with the pre-protocol start path, lane hookfreeze2)
 var tracked_snapshot_data: ?[]u8 = null;
+// process-wide: the allocator of tracked_snapshot_data, written and cleared with it
 var tracked_snapshot_allocator: ?std.mem.Allocator = null;
 
 /// Standard V8 flags for deterministic snapshot creation and loading.

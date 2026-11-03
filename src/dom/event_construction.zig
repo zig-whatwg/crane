@@ -15,7 +15,6 @@
 //! lint-impls: hook for Event, UIEvent, MouseEvent
 
 const std = @import("std");
-const process_start = @import("process_start.zig");
 const Hook = @import("hook.zig").Hook;
 const runtime = @import("runtime");
 
@@ -82,7 +81,7 @@ pub const MouseEventSteps = struct {
 var event_steps: Hook(?EventSteps) = .init(null);
 var ui_event_steps: Hook(?UIEventSteps) = .init(null);
 // process-wide: an immutable function pointer installed once at process start, before Browsers start; each call acts only on the event it is given.
-var mouse_event_steps: ?MouseEventSteps = null;
+var mouse_event_steps: Hook(?MouseEventSteps) = .init(null);
 
 /// Called by Event's installHooks, once, at process start (process_start.zig).
 pub fn installEvent(steps: EventSteps) void {
@@ -96,14 +95,13 @@ pub fn installUIEvent(steps: UIEventSteps) void {
 
 /// Called by MouseEvent's installHooks, once, at process start (process_start.zig).
 pub fn installMouseEvent(steps: MouseEventSteps) void {
-    process_start.assertInstalling();
-    mouse_event_steps = steps;
+    mouse_event_steps.install(steps);
 }
 
 /// Set a MouseEvent's (or a subclass's) relatedTarget from its init
 /// dictionary, kept by the event for as long as it lives.
 pub fn setMouseRelatedTarget(event: *runtime.Instance, target: ?*runtime.Instance) error{ NotSupported, OutOfMemory }!void {
-    const steps = mouse_event_steps orelse return error.NotSupported;
+    const steps = mouse_event_steps.get() orelse return error.NotSupported;
     try steps.set_related_target(event, target);
 }
 

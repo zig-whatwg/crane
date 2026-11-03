@@ -17,11 +17,12 @@
 //! Spec: https://html.spec.whatwg.org/multipage/document-sequences.html#concept-document-bfcache-blocking-details
 //!
 //! lint-impls: hook for Document
-const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const not_restored_reasons = @import("html_core").navigation.not_restored_reasons;
+const hook = @import("hook.zig");
+const Hook = hook.Hook;
 
 pub const Reason = not_restored_reasons.Reason;
 
@@ -59,18 +60,17 @@ fn neverKeep(_: *runtime.Instance) bool {
 fn noIntent(_: *runtime.Instance) void {}
 
 // process-wide: function pointers Document installs once at process start (crane.Process), the same for every instance
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Document's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// HTML "make document unsalvageable" given `document` and `reason`.
 /// Nothing without an installed implementation (a context built for tests).
 pub fn makeUnsalvageable(document: *runtime.Instance, reason: Reason) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.make_unsalvageable(document, reason);
 }
 
@@ -93,7 +93,7 @@ pub fn makeUnsalvageableIn(environment: runtime.Context, reason: Reason) void {
 /// `document`'s bfcache blocking details (BORROWED, see Implementation).
 /// None without an installed implementation.
 pub fn blockingDetails(document: *runtime.Instance) []const Reason {
-    const impl = implementation orelse return &.{};
+    const impl = implementation.get() orelse return &.{};
     return impl.blocking_details(document);
 }
 
@@ -157,64 +157,60 @@ pub const StoreStep = *const fn (environment: runtime.Context) void;
 /// destroyed.
 pub const RestoreStep = *const fn (environment: runtime.Context) void;
 
-const max_owner_steps = 8;
+pub const max_owner_steps = 8;
 
 /// The owners' queries and steps, installed at process start.
-const OwnerSteps = struct {
-    blockers: [max_owner_steps]BlockerQuery = undefined,
-    blocker_count: usize = 0,
-    store_steps: [max_owner_steps]StoreStep = undefined,
-    store_step_count: usize = 0,
-    restore_steps: [max_owner_steps]RestoreStep = undefined,
-    restore_step_count: usize = 0,
+/// An install past a list's bound panics, naming it (hook.List).
+pub const OwnerSteps = struct {
+    blockers: hook.List(BlockerQuery, max_owner_steps) = .empty,
+    store_steps: hook.List(StoreStep, max_owner_steps) = .empty,
+    restore_steps: hook.List(RestoreStep, max_owner_steps) = .empty,
 };
 
 // process-wide: function pointers the feature owners (LockManager, Worker, SharedWorker, WebSocket) install once at process start (crane.Process), the same for every Browser and thread
-var owner_steps: OwnerSteps = .{};
+var owner_steps: Hook(OwnerSteps) = .init(.{});
 
-/// Install `query` (once, at process start). Idempotent.
+/// Install `query` (once, at process start). Idempotent: the same query
+/// again writes nothing.
 pub fn installBlocker(query: BlockerQuery) void {
-    process_start.assertInstalling();
-    for (owner_steps.blockers[0..owner_steps.blocker_count]) |existing| {
-        if (existing == query) return;
-    }
-    std.debug.assert(owner_steps.blocker_count < max_owner_steps);
-    if (owner_steps.blocker_count == max_owner_steps) return;
-    owner_steps.blockers[owner_steps.blocker_count] = query;
-    owner_steps.blocker_count += 1;
+    const steps = owner_steps.installing();
+    if (steps.blockers.contains(query)) return;
+    steps.blockers.append(query);
 }
 
 /// Install `step` (once, at process start). Idempotent.
 pub fn installStoreStep(step: StoreStep) void {
-    process_start.assertInstalling();
-    for (owner_steps.store_steps[0..owner_steps.store_step_count]) |existing| {
-        if (existing == step) return;
-    }
-    std.debug.assert(owner_steps.store_step_count < max_owner_steps);
-    if (owner_steps.store_step_count == max_owner_steps) return;
-    owner_steps.store_steps[owner_steps.store_step_count] = step;
-    owner_steps.store_step_count += 1;
+    const steps = owner_steps.installing();
+    if (steps.store_steps.contains(step)) return;
+    steps.store_steps.append(step);
 }
 
 /// Install `step` (once, at process start). Idempotent.
 pub fn installRestoreStep(step: RestoreStep) void {
-    process_start.assertInstalling();
-    for (owner_steps.restore_steps[0..owner_steps.restore_step_count]) |existing| {
-        if (existing == step) return;
-    }
-    std.debug.assert(owner_steps.restore_step_count < max_owner_steps);
-    if (owner_steps.restore_step_count == max_owner_steps) return;
-    owner_steps.restore_steps[owner_steps.restore_step_count] = step;
-    owner_steps.restore_step_count += 1;
+    const steps = owner_steps.installing();
+    if (steps.restore_steps.contains(step)) return;
+    steps.restore_steps.append(step);
+}
+
+/// The owners' steps the process start installed (the start-fits test).
+pub fn installedOwnerSteps() *const OwnerSteps {
+    return owner_steps.read();
+}
+
+/// Tests: an override of the owners' steps that starts as the installed
+/// ones, for a test to install a step of its own into (`installStoreStep`,
+/// `installRestoreStep`, `installBlocker`) until it restores them.
+pub fn overrideOwnerStepsForTest() Hook(OwnerSteps).Override {
+    return owner_steps.overrideForTest(owner_steps.get());
 }
 
 /// Parts 2 and 3 for `document`, the active document of a navigable whose
 /// own part said yes: every blocker's reason recorded ("make document
 /// unsalvageable"), then whether the document may still be kept.
 pub fn mayKeep(document: *runtime.Instance) bool {
-    const impl = implementation orelse return false;
+    const impl = implementation.get() orelse return false;
     var declined = false;
-    for (owner_steps.blockers[0..owner_steps.blocker_count]) |query| {
+    for (owner_steps.read().blockers.slice()) |query| {
         const blocked = query(document.ctx) orelse continue;
         switch (blocked) {
             .reason => |reason| impl.make_unsalvageable(document, reason),
@@ -227,24 +223,24 @@ pub fn mayKeep(document: *runtime.Instance) bool {
 /// Unload step 5: the user agent intends to keep `document`. Its next
 /// unload keeps it if it is still salvageable and loaded then.
 pub fn intendToKeep(document: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.intend_to_keep(document);
 }
 
 /// Whether `document`'s last unload kept it (see Implementation.is_kept).
 pub fn isKept(document: *runtime.Instance) bool {
-    const impl = implementation orelse return false;
+    const impl = implementation.get() orelse return false;
     return impl.is_kept(document);
 }
 
 /// Unload step 18 for a kept document: the store steps, for its realm.
 pub fn runStoreSteps(environment: runtime.Context) void {
-    for (owner_steps.store_steps[0..owner_steps.store_step_count]) |step| step(environment);
+    for (owner_steps.read().store_steps.slice()) |step| step(environment);
 }
 
 /// The restore steps, for a kept document's realm shown again.
 fn runRestoreSteps(environment: runtime.Context) void {
-    for (owner_steps.restore_steps[0..owner_steps.restore_step_count]) |step| step(environment);
+    for (owner_steps.read().restore_steps.slice()) |step| step(environment);
 }
 
 // ============================================================================
@@ -330,49 +326,48 @@ pub const Cache = struct {
 };
 
 // process-wide: function pointers the browser layer installs once at process start (crane.Process), the same for every Browser; each Browser's cache is its own (a supplement of its scope)
-var cache: ?Cache = null;
+var cache: Hook(?Cache) = .init(null);
 
 /// Called by the browser layer's installHooks, once, at process start.
 pub fn installCache(impl: Cache) void {
-    process_start.assertInstalling();
-    cache = impl;
+    cache.install(impl);
 }
 
 /// Whether `realm`'s Browser keeps pages. False with no cache installed.
 pub fn cacheEnabled(realm: runtime.Context) bool {
-    const impl = cache orelse return false;
+    const impl = cache.get() orelse return false;
     return impl.enabled(realm);
 }
 
 /// Keep `page` (see Cache.store).
 pub fn store(page: KeptPage) bool {
-    const impl = cache orelse return false;
+    const impl = cache.get() orelse return false;
     return impl.store(page);
 }
 
 /// Take the page of `traversable` showing `document` out of the cache.
 pub fn take(traversable: *anyopaque, document: *const anyopaque) ?KeptPage {
-    const impl = cache orelse return null;
+    const impl = cache.get() orelse return null;
     return impl.take(traversable, document);
 }
 
 /// A taken page is active again (see Cache.resume_page), the owners'
 /// restore steps run for its realm, then HTML "reactivate" for its document.
 pub fn reactivate(page: *const KeptPage) void {
-    if (cache) |impl| impl.resume_page(page);
+    if (cache.get()) |impl| impl.resume_page(page);
     runRestoreSteps(page.realm);
-    if (implementation) |impl| impl.reactivate(page.document);
+    if (implementation.get()) |impl| impl.reactivate(page.document);
 }
 
 /// Evict a page `take` handed out that will not be shown.
 pub fn evictTaken(page: *const KeptPage) void {
-    const impl = cache orelse return page.steps.evict(page);
+    const impl = cache.get() orelse return page.steps.evict(page);
     impl.evict_taken(page);
 }
 
 /// Whether `object` (a Window or a Document) belongs to a kept page.
 pub fn holds(object: *const anyopaque) bool {
-    const impl = cache orelse return false;
+    const impl = cache.get() orelse return false;
     return impl.holds(object);
 }
 
@@ -400,20 +395,20 @@ pub fn assertNotCached(realm: runtime.Context) void {
 /// being delivered to it (Blink kIgnoreEventAndEvict). Nothing when no page
 /// holds it.
 pub fn evict(object: *const anyopaque, reason: ?Reason) void {
-    const impl = cache orelse return;
+    const impl = cache.get() orelse return;
     impl.evict(object, reason);
 }
 
 /// Evict every page `traversable` keeps, now. `realm` names the Browser.
 pub fn evictTraversable(realm: runtime.Context, traversable: *anyopaque) void {
-    const impl = cache orelse return;
+    const impl = cache.get() orelse return;
     impl.evict_traversable(realm, traversable);
 }
 
 /// Evict every page `traversable` keeps whose document state `has_state`
 /// no longer finds, now (see Cache.prune).
 pub fn prune(realm: runtime.Context, traversable: *anyopaque, context: *anyopaque, has_state: *const fn (context: *anyopaque, document_state: u64) bool) void {
-    const impl = cache orelse return;
+    const impl = cache.get() orelse return;
     impl.prune(realm, traversable, context, has_state);
 }
 

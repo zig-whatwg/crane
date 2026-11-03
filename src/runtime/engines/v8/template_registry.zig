@@ -77,16 +77,15 @@ const isolate_templates = @import("isolate_templates.zig");
 /// the global object. The template caches are Zig-side caching - not needed for snapshot creation.
 /// By only creating Local handles (not Global), V8 has nothing to complain about.
 ///
-/// ## Usage
+/// ## No writer is left
 ///
-/// ```zig
-/// // In snapshot generator:
-/// template_registry.snapshot_mode = true;
-/// interface_bindings.initializeBindings(isolate, context);
-/// // ... create snapshot ...
-/// template_registry.snapshot_mode = false; // reset for normal operation
-/// ```
-pub var snapshot_mode: bool = false;
+/// The snapshot generator once set it around `initializeBindings`; nothing
+/// sets it now (lane hookfreeze2, 2026-11-03: no assignment anywhere in src/
+/// or tests/), so it is a constant: a process-wide `var` that nothing writes
+/// was a mutable global for no reason. A snapshot mode that comes back is a
+/// process start-up choice - a `Hook(bool)` the generator installs while the
+/// process starts (src/process/hook.zig).
+pub const snapshot_mode = false;
 
 /// Dispose and remove `isolate`'s templates, before it is disposed, on its
 /// thread: its template storage ends (isolate_templates.cleanupTemplateStorage).

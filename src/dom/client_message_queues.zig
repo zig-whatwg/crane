@@ -14,33 +14,31 @@
 //! lint-impls: hook for ServiceWorkerContainer
 
 const std = @import("std");
-const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
+const Hook = @import("hook.zig").Hook;
 
 /// Enable the client message queue of the container whose service worker
 /// client is `realm`'s settings object, if there is one.
 pub const Step = *const fn (realm: runtime.Context) void;
 
 // process-wide: one function pointer the ServiceWorkerContainer impl installs once at process start (crane.Process), the same for every Browser and thread
-var enable_step: ?Step = null;
+var enable_step: Hook(?Step) = .init(null);
 
 /// Called by ServiceWorkerContainer's installHooks, once, at process start.
 pub fn install(step: Step) void {
-    process_start.assertInstalling();
-    enable_step = step;
+    enable_step.install(step);
 }
 
 /// "The end" step 6.4, for the document whose realm is `realm`: DOMContentLoaded
 /// has been fired at it.
 pub fn domContentLoaded(realm: runtime.Context) void {
-    const step = enable_step orelse return;
+    const step = enable_step.get() orelse return;
     step(realm);
 }
 
 test "with nothing installed, DOMContentLoaded enables nothing" {
-    const saved = enable_step;
-    defer enable_step = saved;
-    enable_step = null;
+    const override = enable_step.overrideForTest(null);
+    defer override.restore();
     var realm: runtime.ContextData = undefined;
     domContentLoaded(&realm);
 }

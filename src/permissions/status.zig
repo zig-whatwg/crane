@@ -32,6 +32,7 @@ pub const PermissionStatus = struct {
     id: u64,
 
     /// Static counter for unique IDs
+    // process-wide: ids unique across every Browser in the process (a per-Browser counter would hand two Browsers' statuses the same id); every write is one atomic fetch-add (@atomicRmw, seq_cst), so Browsers on many threads never race it
     var next_id: u64 = 0;
 
     const Self = @This();

@@ -7,6 +7,7 @@
 //! for about 1 pair in 5.
 const std = @import("std");
 const hr_time = @import("hr_time");
+const dom = @import("dom");
 
 const testing = std.testing;
 const Ns = hr_time.Nanoseconds;
@@ -121,9 +122,11 @@ test "a Web Animations round trip on the grid is exact: (t - end) + end == t" {
 }
 
 test "the process's estimated monotonic time of the Unix epoch is one value once estimated" {
-    hr_time.time_origin.estimateAtProcessStart();
+    // The estimate is a hook slot, written only by a start: here the
+    // sanctioned test start (process_start.installForTest).
+    dom.process_start.installForTest(hr_time.time_origin.estimateAtProcessStart);
     const first = hr_time.time_origin.estimatedMonotonicTimeOfUnixEpoch();
-    hr_time.time_origin.estimateAtProcessStart(); // a second call keeps the first estimate
+    dom.process_start.installForTest(hr_time.time_origin.estimateAtProcessStart); // a second call keeps the first estimate
     var i: usize = 0;
     while (i < 1000) : (i += 1) {
         try testing.expectEqual(first, hr_time.time_origin.estimatedMonotonicTimeOfUnixEpoch());

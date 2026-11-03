@@ -18,7 +18,7 @@
 //! const is_persisted = try manager.persisted();
 //!
 //! // Request persistent storage (requires user permission)
-//! const granted = try manager.persist();
+//! const granted = try manager.persist(request); // the Browser's permission request (PermissionRequest)
 //!
 //! // Get storage estimate
 //! if (try manager.estimate()) |est| {
@@ -45,24 +45,27 @@ pub const StorageManager = struct {
     /// Owned copy of origin string
     origin_owned: bool,
 
-    /// Permission request callback type
-    /// Returns true if user grants persistent storage permission
-    pub const PermissionCallback = *const fn (origin: []const u8) bool;
+    /// Storage persist() step 5.1, "requesting permission to use"
+    /// "persistent-storage" (Permissions): the CALLER's, per call. In Crane
+    /// that answer is the requesting realm's Browser's - its permission store
+    /// (src/permissions/browser_store.zig, through BrowserScope) and the
+    /// platform protocol's os_permissions `requestPermission` - so it is not
+    /// this module's to hold. (It held a process-wide callback that no
+    /// embedder ever set, and that answered every Browser alike - lane
+    /// hookfreeze2 removed it.)
+    pub const PermissionRequest = struct {
+        context: ?*anyopaque = null,
+        /// Request the permission for `origin`: true when the result is
+        /// "granted".
+        request: *const fn (context: ?*anyopaque, origin: []const u8) bool,
 
-    /// Default permission callback (always denies)
-    fn defaultPermissionCallback(_: []const u8) bool {
-        return false;
-    }
+        /// No permission request is wired to this caller yet: "denied".
+        pub const denied: PermissionRequest = .{ .request = &deny };
 
-    /// Callback for requesting persistent storage permission
-    /// This should be set by the embedder to show a permission prompt
-    var permission_callback: PermissionCallback = defaultPermissionCallback;
-
-    /// Set the permission callback for persist() requests
-    /// The embedder should set this to integrate with their permission system
-    pub fn setPermissionCallback(callback: PermissionCallback) void {
-        permission_callback = callback;
-    }
+        fn deny(_: ?*anyopaque, _: []const u8) bool {
+            return false;
+        }
+    };
 
     /// Initialize a StorageManager for the given origin, in
     /// `user_agent_storage` (its Browser's).
@@ -130,45 +133,47 @@ pub const StorageManager = struct {
     /// - Prompt the user for permission
     /// - Deny the request based on origin characteristics
     ///
-    /// Algorithm:
-    /// 1. Let shelf be the result of obtaining a local storage shelf for origin
-    /// 2. If shelf is failure, return false
-    /// 3. Let bucket be shelf's bucket map["default"]
-    /// 4. If bucket's mode is "persistent", return true
-    /// 5. Let permission be the result of requesting permission
-    /// 6. If permission is "granted":
-    ///    a. Set bucket's mode to "persistent"
-    ///    b. Return true
-    /// 7. Return false
-    pub fn persist(self: *Self) !bool {
+    /// Algorithm (Storage, the persist() method steps; the promise is the
+    /// binding's):
+    /// 3. Let shelf be the result of obtaining a local storage shelf.
+    /// 4. If shelf is failure, the promise rejects (here: false).
+    /// 5.1. Let permission be the result of requesting permission to use
+    ///      "persistent-storage" (`permission`, the caller's).
+    /// 5.2. Let bucket be shelf's bucket map["default"].
+    /// 5.3. Let persisted be true if bucket's mode is "persistent".
+    /// 5.4. If persisted is false and permission is "granted": set bucket's
+    ///      mode to "persistent" and persisted to true.
+    /// 5.5. Resolve with persisted.
+    /// Permission is requested before the mode is read - also for a bucket
+    /// already persistent (the code returned before asking until lane
+    /// hookfreeze2).
+    pub fn persist(self: *Self, permission: PermissionRequest) !bool {
         // The shelf is read and written under the shed's lock (as persisted).
-        // The permission callback runs under it too: it is the embedder's
+        // The permission request runs under it too: it is the caller's
         // answer, and must not reach the shed again.
         self.user_agent_storage.lock();
         defer self.user_agent_storage.unlock();
-        // Step 1: Obtain the local storage shelf
+        // Step 3: obtain a local storage shelf. Step 4: failure.
         const shelf = try self.user_agent_storage.obtainShelfLocked(self.origin) orelse return false;
 
-        // Step 2-3: Get the default bucket
+        // Step 5.1: request permission to use "persistent-storage".
+        const granted = permission.request(permission.context, self.origin);
+
+        // Step 5.2: the default bucket. Its absence is an internal error:
+        // persisted is false (5.3's note).
         const bucket = shelf.getDefaultBucket() orelse return false;
 
-        // Step 4: Already persistent
-        if (bucket.mode == .persistent) {
-            return true;
-        }
+        // Step 5.3 ("persisted"; named for the step, not the method).
+        var is_persisted = bucket.mode == .persistent;
 
-        // Step 5: Request permission from user
-        // The permission callback should be set by the embedder
-        const granted = permission_callback(self.origin);
-
-        // Step 6: If granted, update mode
-        if (granted) {
+        // Step 5.4.
+        if (!is_persisted and granted) {
             bucket.mode = .persistent;
-            return true;
+            is_persisted = true;
         }
 
-        // Step 7: Permission denied
-        return false;
+        // Step 5.5 (the binding resolves its promise with it).
+        return is_persisted;
     }
 
     /// Get storage estimate for this origin
@@ -260,8 +265,8 @@ test "StorageManager - persist without permission returns false" {
     var manager = try StorageManager.init(allocator, &user_agent_storage, "https://example.com");
     defer manager.deinit();
 
-    // Default permission callback denies
-    const granted = try manager.persist();
+    // No permission request wired: denied.
+    const granted = try manager.persist(.denied);
     try std.testing.expect(!granted);
 }
 
@@ -271,26 +276,52 @@ test "StorageManager - persist with permission grants persistent storage" {
     var user_agent_storage = standard.UserAgentStorage.init(allocator);
     defer user_agent_storage.deinit();
 
-    // Set up a permission callback that grants
-    const old_callback = StorageManager.permission_callback;
-    defer StorageManager.setPermissionCallback(old_callback);
-
-    StorageManager.setPermissionCallback(struct {
-        fn grant(_: []const u8) bool {
+    // A permission request that grants.
+    const Grant = struct {
+        fn grant(_: ?*anyopaque, _: []const u8) bool {
             return true;
         }
-    }.grant);
+    };
 
     var manager = try StorageManager.init(allocator, &user_agent_storage, "https://example.com");
     defer manager.deinit();
 
-    // With granting callback, persist should succeed
-    const granted = try manager.persist();
+    // Granted: persist succeeds.
+    const granted = try manager.persist(.{ .request = &Grant.grant });
     try std.testing.expect(granted);
 
     // Now persisted should return true
     const is_persisted = try manager.persisted();
     try std.testing.expect(is_persisted);
+}
+
+test "StorageManager - persist requests permission first, even for a bucket already persistent (Storage persist() step 5.1)" {
+    const allocator = std.testing.allocator;
+
+    var user_agent_storage = standard.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
+
+    const Asked = struct {
+        fn grant(context: ?*anyopaque, _: []const u8) bool {
+            const count: *usize = @ptrCast(@alignCast(context.?));
+            count.* += 1;
+            return true;
+        }
+    };
+    var asked: usize = 0;
+    const request: StorageManager.PermissionRequest = .{ .context = &asked, .request = &Asked.grant };
+
+    var manager = try StorageManager.init(allocator, &user_agent_storage, "https://example.com");
+    defer manager.deinit();
+
+    try std.testing.expect(try manager.persist(request));
+    try std.testing.expectEqual(@as(usize, 1), asked);
+    // Already persistent: step 5.1 still requests permission before step
+    // 5.3 reads the bucket's mode, and persisted stays true.
+    try std.testing.expect(try manager.persist(request));
+    try std.testing.expectEqual(@as(usize, 2), asked);
+    // A denial does not take persistence away (5.4 only ever sets it).
+    try std.testing.expect(try manager.persist(.denied));
 }
 
 test "StorageManager - estimate returns usage and quota" {

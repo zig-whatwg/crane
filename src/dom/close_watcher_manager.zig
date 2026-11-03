@@ -35,8 +35,8 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
-const process_start = @import("process_start.zig");
 const node_holds = @import("node_holds.zig");
+const Hook = @import("hook.zig").Hook;
 
 /// Whose close watcher it is: what `find` tells apart on one owner (an
 /// element can be both a popover and a dialog).
@@ -197,17 +197,16 @@ pub const Implementation = struct {
 };
 
 // process-wide: Window installs one immutable accessor at process start (process_start.zig); each Manager it returns is that Window's own state, of its own Browser
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Window's installHooks, once, at process start.
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// `window`'s close watcher manager; null when it has none (not a Window,
 /// its state torn down, or no Window impl installed - a test realm).
 pub fn of(window: *runtime.Instance) ?*Manager {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.of(window);
 }

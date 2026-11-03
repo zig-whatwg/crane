@@ -1,16 +1,15 @@
 //! The selectedcontent element's stored HTML disabled flag.
 //! lint-impls: hook for HTMLSelectedContentElement
 const runtime = @import("runtime");
-const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 // process-wide: immutable selectedcontent disabledness reader installed at process start, identical for every Browser and thread
-var read_disabled: ?*const fn (*runtime.Instance) bool = null;
+var read_disabled: Hook(?*const fn (*runtime.Instance) bool) = .init(null);
 
 pub fn install(reader: *const fn (*runtime.Instance) bool) void {
-    process_start.assertInstalling();
-    read_disabled = reader;
+    read_disabled.install(reader);
 }
 
 pub fn isDisabled(element: *runtime.Instance) bool {
-    return (read_disabled orelse return true)(element);
+    return (read_disabled.get() orelse return true)(element);
 }

@@ -36,12 +36,14 @@ const value_operations = @import("value_operations.zig");
 const protocol_engine = @import("engine");
 const protocol_support = @import("protocol_support.zig");
 const protocol_conversions = @import("protocol_conversions.zig");
+const Hook = @import("process").Hook;
 
 /// What a callback-interface argument's wrapper is allocated from: a
 /// general-purpose allocator, since the binding makes and frees one per call
-/// (the page allocator it used spent a whole page on each). A test swaps in
+/// (the page allocator it used spent a whole page on each). The same for
+/// every Browser and never written in production; a test overrides it with
 /// `std.testing.allocator` to see that none outlives its call.
-pub var callback_allocator: std.mem.Allocator = std.heap.c_allocator;
+pub var callback_allocator: Hook(std.mem.Allocator) = .init(std.heap.c_allocator);
 
 /// Release a callback interface argument (`*runtime.CallbackWrapper`) the
 /// binding converted, once the call it was converted for has returned: the
@@ -2901,7 +2903,7 @@ fn convertValueAs(
     // CallbackInterface of its own (takeCallbackInterface).
     if (T == *runtime.CallbackWrapper) {
         const wrapper = callback_wrapper.createFromV8Value(
-            callback_allocator,
+            callback_allocator.get(),
             isolate,
             context,
             value,
@@ -2915,7 +2917,7 @@ fn convertValueAs(
             return null;
         }
         const wrapper = callback_wrapper.createFromV8Value(
-            callback_allocator,
+            callback_allocator.get(),
             isolate,
             context,
             value,
