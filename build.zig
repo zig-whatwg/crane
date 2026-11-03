@@ -830,8 +830,10 @@ fn recordSuiteDir(b: *std.Build, select: TestSelection, dir: []const u8) void {
 /// Fail the configuration when a tests/<dir>/ holds `*_test.zig` files and no
 /// suite runs them: build.zig compiles a directory's tests only when it names
 /// the directory, so a directory it does not name is silently never compiled
-/// (tests/infra, from 633a1e91df4 to lane flakes2). Run when the whole tree is
-/// configured - no -Dspec, no -Dtest-file - since a selection skips suites.
+/// (tests/infra, from 633a1e91df4 to lane flakes2). And when a `*_test.zig`
+/// sits directly in tests/, where no suite looks (lane testfix2). Run when
+/// the whole tree is configured - no -Dspec, no -Dtest-file - since a
+/// selection skips suites.
 fn checkEveryTestDirectoryIsASuite(b: *std.Build, suite_dirs: []const []const u8) void {
     // A configure-time read of the checkout the configure cache cannot track.
     b.graph.poisonCache();
@@ -842,8 +844,17 @@ fn checkEveryTestDirectoryIsASuite(b: *std.Build, suite_dirs: []const []const u8
     const with_tests = test_suites.dirsWithTests(b.allocator, io, tests_dir, "tests") catch |err|
         std.debug.panic("build.zig: cannot scan tests/ for test files: {s}", .{@errorName(err)});
     const missing = test_suites.missing(b.allocator, with_tests, suite_dirs) catch @panic("OOM");
-    if (missing.len == 0) return;
+    // A test file directly in tests/ is in no directory, so no suite collects
+    // it (lane testfix2: sixteen sat there, compiled by nothing).
+    const top_level = test_suites.topLevelTestFiles(b.allocator, io, tests_dir, "tests") catch |err|
+        std.debug.panic("build.zig: cannot scan tests/ for top-level test files: {s}", .{@errorName(err)});
+    if (missing.len == 0 and top_level.len == 0) return;
     for (missing) |dir| std.debug.print("build.zig: {s}/ holds *_test.zig files that no suite runs\n", .{dir});
+    for (top_level) |file| std.debug.print("build.zig: {s} is directly in tests/, where no suite collects it\n", .{file});
+    if (top_level.len != 0) std.debug.panic(
+        "build.zig: {d} test file{s} directly in tests/ never compiled (listed above): move each into the tests/<dir>/ of its suite",
+        .{ top_level.len, if (top_level.len == 1) "" else "s" },
+    );
     std.debug.panic(
         "build.zig: {d} tests/ director{s} with test files never compiled (listed above): make each a suite with addTestFilesFromDir, or record its hand-made root with recordSuiteDir",
         .{ missing.len, if (missing.len == 1) "y" else "ies" },
