@@ -2390,6 +2390,7 @@ pub fn build(b: *std.Build) void {
     // named 25 of the 28 specs, the message 24, and no two agreed.
     const valid_specs = [_][]const u8{
         "all",
+        "process",
         "infra",
         "webidl",
         "dom",
