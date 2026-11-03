@@ -53,6 +53,12 @@ fn checkXcode(command: []const u8) Verdict {
         const rest = command[i..];
         if (!(std.mem.startsWith(u8, rest, ".xcodeproj") or std.mem.startsWith(u8, rest, ".xcworkspace"))) continue;
         const path = pathAround(command, i);
+        // Only an argument of the removal or move itself counts.
+        const first = basename(firstWordOfSegment(command, i));
+        const segment_moves = isRemovalCommand(command, i) or std.mem.eql(u8, first, "mv") or
+            std.mem.eql(u8, first, "unlink") or
+            (std.mem.eql(u8, first, "git") and hasWordAny(segmentAround(command, i), &.{ "rm", "mv" }));
+        if (!segment_moves) continue;
         if (std.mem.indexOf(u8, path, ".claude/worktrees/") != null) continue;
         if (std.mem.indexOf(u8, path, "crane-work/") != null) continue;
         return "never delete, move or untrack an Xcode project or workspace (*.xcodeproj, *.xcworkspace) unless the user asks for it in that message (global CLAUDE.md)";
@@ -76,6 +82,9 @@ fn checkSharedWptTree(command: []const u8) Verdict {
             "/main/tests",     "/main/tests/",     "/main/tests/*",
             "/main/tests/wpt", "/main/tests/wpt/", "/main/tests/wpt/*",
         };
+        // Only an argument of an rm in its own command segment removes it: a
+        // WPT root named elsewhere in a command that also runs rm does not.
+        if (!isRemovalCommand(command, at)) continue;
         for (forbidden) |f| {
             if (std.mem.eql(u8, suffix, f))
                 return "never remove ~/crane-work/main (or ~/crane-work itself) on any host: its tests/wpt is the SHARED WPT tree every mirror links to and wpt serve runs in (2026-11-03). Remove a lane's mirror by its own name";
@@ -222,7 +231,7 @@ fn checkProtectedWrites(command: []const u8) Verdict {
         var toks = Tokens.init(command);
         while (toks.next()) |t| {
             const path = std.mem.trimStart(u8, t.text, ">");
-            if (hasWord(command, "rm") and isWptTreeRoot(path))
+            if (isRemovalCommand(command, t.start) and isWptTreeRoot(path))
                 return "never remove a tests/wpt tree's contents: a mirror's tests/wpt links to the pool's SHARED tree (2026-11-03). Remove the mirror by its own name";
             if (isUpstreamWptPath(path) and (in_place or isWriteTarget(command, t)) and
                 !std.mem.startsWith(u8, basename(firstWordOfSegment(command, t.start)), "rsync"))
@@ -445,6 +454,22 @@ fn precededBy(command: []const u8, pos: usize, word: []const u8) bool {
     return false;
 }
 
+/// The command segment containing `pos`: from the last `;` `&` `|` `(`
+/// newline or quote before it to the next segment end after it.
+fn segmentAround(command: []const u8, pos: usize) []const u8 {
+    var s = pos;
+    while (s > 0 and !isSegmentEnd(command[s - 1]) and !isQuote(command[s - 1]) and command[s - 1] != '(') s -= 1;
+    var e = pos;
+    while (e < command.len and !isSegmentEnd(command[e])) e += 1;
+    return command[s..e];
+}
+
+/// Whether the command segment containing `pos` is an rm, rmdir or trash.
+fn isRemovalCommand(command: []const u8, pos: usize) bool {
+    const first = basename(firstWordOfSegment(command, pos));
+    return std.mem.eql(u8, first, "rm") or std.mem.eql(u8, first, "rmdir") or std.mem.eql(u8, first, "trash");
+}
+
 fn firstWordOfSegment(command: []const u8, pos: usize) []const u8 {
     var s = pos;
     while (s > 0 and !isSegmentEnd(command[s - 1]) and !isQuote(command[s - 1])) s -= 1;
@@ -626,6 +651,8 @@ test "xcode projects: deleting, moving or untracking one is refused; a disposabl
     try expectAllowed("git worktree remove .claude/worktrees/x", null);
     try expectAllowed("ls bindings/swift/.swiftpm/xcode/package.xcworkspace", null);
     try expectAllowed("xcodegen generate && open ios/App.xcodeproj", null);
+    try expectAllowed("rm -f /tmp/x.log && open ios/App.xcodeproj", null);
+    try expectAllowed("git log -- ios/App.xcodeproj && rm -rf tmp/scratch", null);
 }
 
 test "the pool's shared WPT tree: removing crane-work/main is refused; a lane's mirror or main's cache may go" {
@@ -639,6 +666,11 @@ test "the pool's shared WPT tree: removing crane-work/main is refused; a lane's 
     try expectAllowed("ssh chat.local 'rm -rf ~/crane-work/crashes7 ~/crane-work/crashes7-bins'", null);
     try expectAllowed("rsync -a --delete tests/wpt/ host:crane-work/main/tests/wpt/", null);
     try expectAllowed("ls ~/crane-work/main/tests/wpt", null);
+    // 2026-11-03 (streamslife1): the shared tree named as a WPT root in a
+    // heredoc, with an unrelated rm elsewhere in the command, is not a removal.
+    try expectAllowed("cat > prof.sh <<'EOF'\nW=$HOME/crane-work/main/tests/wpt\n./wpt_runner --wpt-root=$W x.html\nEOF\ntmp/remote/crane-pool.sh wpt sl1 --pair p \"bash prof.sh; rm -f /tmp/sl1-prof.sh\"", null);
+    try expectAllowed("rm -f /tmp/x.log && ./zig-out/bin/wpt_runner --wpt-root=$HOME/crane-work/main/tests/wpt a.html", null);
+    try expectDenied("cd ~ && rm -rf crane-work/main", null);
 }
 
 test "zig build: bare, without -j, or with a /tmp cache is refused" {
