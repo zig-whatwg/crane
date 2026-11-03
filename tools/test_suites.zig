@@ -203,6 +203,34 @@ pub fn agrees(table: *const std.StringArrayHashMapUnmanaged(usize), imports: []c
     return true;
 }
 
+/// `inner_root`'s path from the directory of `outer_root`, when it lies in
+/// that directory or below it (both repository-relative, '/'-separated):
+/// the path `outer_root` would `@import` it by as a file. Null otherwise.
+pub fn pathFrom(outer_root: []const u8, inner_root: []const u8) ?[]const u8 {
+    const dir = std.fs.path.dirnamePosix(outer_root) orelse return null;
+    if (!std.mem.startsWith(u8, inner_root, dir) or inner_root.len <= dir.len + 1 or inner_root[dir.len] != '/') return null;
+    if (std.mem.eql(u8, inner_root, outer_root)) return null;
+    return inner_root[dir.len + 1 ..];
+}
+
+/// Whether `source`, a module's root file, imports `rel` as a file
+/// (`@import("rel")`). A file belongs to one module per compile, so when a
+/// module's root imports another module's root file, the two cannot meet in
+/// one executable once anything reaches that declaration: src/webidl/
+/// root.zig's `pub const codegen = @import("codegen/root.zig")` against the
+/// `codegen` module tests/codegen imports ("file exists in modules 'codegen'
+/// and 'webidl'", lane onebin1's first one-binary build).
+pub fn importsAsFile(source: []const u8, rel: []const u8) bool {
+    var rest = source;
+    const open = "@import(\"";
+    while (std.mem.indexOf(u8, rest, open)) |at| {
+        const after = rest[at + open.len ..];
+        if (std.mem.startsWith(u8, after, rel) and after.len > rel.len and after[rel.len] == '"') return true;
+        rest = after;
+    }
+    return false;
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -375,4 +403,29 @@ test "importTable frees what it made when an allocation fails" {
             table.deinit(allocator);
         }
     }.run, .{@as([]const []const Import, &.{ &a, &b })});
+}
+
+test "a module root's path from another's directory: below it or beside it, never itself or outside" {
+    try testing.expectEqualStrings("codegen/root.zig", pathFrom("src/webidl/root.zig", "src/webidl/codegen/root.zig").?);
+    try testing.expectEqualStrings("core.zig", pathFrom("src/html/full.zig", "src/html/core.zig").?);
+    try testing.expectEqual(@as(?[]const u8, null), pathFrom("src/webidl/root.zig", "src/webidl/root.zig"));
+    try testing.expectEqual(@as(?[]const u8, null), pathFrom("src/webidl/root.zig", "src/dom/root.zig"));
+    // A directory whose name starts with the other's is not inside it.
+    try testing.expectEqual(@as(?[]const u8, null), pathFrom("src/web/root.zig", "src/webidl/root.zig"));
+    try testing.expectEqual(@as(?[]const u8, null), pathFrom("root.zig", "src/x.zig"));
+}
+
+test "a root that imports another module's root as a file is found; a module import or a longer path is not" {
+    const webidl_root =
+        \\pub const Opt = wrappers.Opt;
+        \\/// WebIDL codegen API
+        \\pub const codegen = @import("codegen/root.zig");
+        \\const dom = @import("dom");
+    ;
+    try testing.expect(importsAsFile(webidl_root, "codegen/root.zig"));
+    try testing.expect(!importsAsFile(webidl_root, "root.zig"));
+    try testing.expect(!importsAsFile(webidl_root, "codegen/root"));
+    try testing.expect(!importsAsFile(webidl_root, "odegen/root.zig"));
+    try testing.expect(!importsAsFile("const c = @import(\"codegen/root.zig.bak\");", "codegen/root.zig"));
+    try testing.expect(!importsAsFile("", "codegen/root.zig"));
 }

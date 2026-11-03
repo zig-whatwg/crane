@@ -847,9 +847,12 @@ const TestBinaries = enum {
 /// What joins: a directory whose imports agree with the others' (each name
 /// to the module most members give it) and whose row needs nothing the one
 /// executable cannot give per member - a process count of its own (`jobs`),
-/// index order, a state-check or variant mode other than `.fail`. Any other
-/// keeps an executable of its own, as before (tests/runtime: its `runtime`
-/// and `engine` are the engine-less tier's). src/ module roots cannot join:
+/// index order, a state-check or variant mode other than `.fail` - and that
+/// imports no module whose root file another member's module imports as a
+/// file (tests/codegen: `codegen`, which src/webidl/root.zig imports as
+/// codegen/root.zig). Any other keeps an executable of its own, as before
+/// (tests/runtime: its `runtime` and `engine` are the engine-less tier's).
+/// src/ module roots cannot join:
 /// Zig collects test blocks from the root module only, and each such root is
 /// the module itself (or a clone of one other modules import).
 const OneBinary = struct {
@@ -1688,13 +1691,45 @@ fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !v
     }
     const table = try test_suites.importTable(allocator, keyed);
 
+    // A module whose root file another table module's root imports as a file
+    // (test_suites.importsAsFile: src/webidl/root.zig's `codegen/root.zig`,
+    // the `codegen` module's root) cannot share a compile with it once
+    // anything reaches that declaration - "file exists in modules", measured
+    // on the first one-binary build. The members that import such a module
+    // keep their own executables.
+    var claimed: std.AutoHashMapUnmanaged(usize, void) = .empty;
+    {
+        // A configure-time read of the checkout the configure cache cannot track.
+        b.graph.poisonCache();
+        var roots: std.ArrayList(struct { key: usize, path: []const u8 }) = .empty;
+        for (members) |m| for (m.imports) |imp| {
+            const source = imp.module.root_source_file orelse continue;
+            if (source != .src_path or source.src_path.owner != b) continue;
+            const key = @intFromPtr(imp.module);
+            for (roots.items) |r| {
+                if (r.key == key) break;
+            } else try roots.append(allocator, .{ .key = key, .path = source.src_path.sub_path });
+        };
+        for (roots.items) |outer| {
+            var text: ?[]const u8 = null;
+            for (roots.items) |inner| {
+                const rel = test_suites.pathFrom(outer.path, inner.path) orelse continue;
+                if (text == null) text = b.root.root_dir.handle.readFileAlloc(b.graph.io, outer.path, allocator, .limited(16 << 20)) catch "";
+                if (test_suites.importsAsFile(text.?, rel)) try claimed.put(allocator, inner.key, {});
+            }
+        }
+    }
+
     var joined: std.ArrayList(OneBinary.Member) = .empty;
     var joined_dirs: std.ArrayList([]const u8) = .empty;
     for (members, keyed) |m, imports| {
         const config = suiteConfig(m.name);
-        const fits = config.jobs == null and config.shuffle and config.state_checks == .fail and
+        var fits = config.jobs == null and config.shuffle and config.state_checks == .fail and
             config.many_browsers == .fail and config.sanitize_thread == .fail and
             m.target.result.cpu.arch == members[0].target.result.cpu.arch and m.target.result.os.tag == members[0].target.result.os.tag;
+        for (imports) |imp| {
+            if (claimed.contains(imp.key)) fits = false;
+        }
         if (fits and test_suites.agrees(&table, imports)) {
             try joined.append(allocator, m);
             try joined_dirs.append(allocator, m.dir_path);

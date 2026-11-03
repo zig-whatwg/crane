@@ -52,6 +52,10 @@ const exempt_files = [_][]const u8{"tools/lint_engine_boundary.zig"};
 /// Whether `path` (repo-relative, `/`-separated) is held to the boundary.
 pub fn inScope(path: []const u8) bool {
     if (!std.mem.endsWith(u8, path, ".zig")) return false;
+    // Generated per build (addTestFilesFromDir, finishOneBinary) and
+    // gitignored: a directory's root, and tests/.all_tests.zig, the one test
+    // executable's, which imports tests/v8's root among the others.
+    if (std.mem.eql(u8, std.fs.path.basenamePosix(path), ".all_tests.zig")) return false;
     for (exempt_prefixes) |prefix| if (std.mem.startsWith(u8, path, prefix)) return false;
     for (exempt_files) |file| if (std.mem.eql(u8, path, file)) return false;
     return true;
@@ -476,6 +480,23 @@ test "the adapter, its tests and the WPT checkout are exempt; everything else is
     try testing.expect(inScope("tests/wpt_runner/main.zig"));
     try testing.expect(inScope("tools/snapshot_generator.zig"));
     try testing.expect(!inScope("src/runtime/engines/v8/v8_wrapper.cpp"));
+}
+
+test "a build-generated test root is not held to the boundary; a hand-written file beside it is" {
+    // tests/.all_tests.zig, the one test executable's root (build.zig
+    // -Dtest-binaries=one), imports each directory's root - tests/v8's too.
+    try testing.expect(!inScope("tests/.all_tests.zig"));
+    try testing.expect(!inScope("tests/html/.all_tests.zig"));
+    try expectRefs(
+        \\test {
+        \\    _ = @import("dom/.all_tests.zig");
+        \\    _ = @import("v8/.all_tests.zig");
+        \\}
+    , &.{"3:@import(\"v8/.all_tests.zig\")"});
+    // Only the generated root's own name is skipped.
+    try testing.expect(inScope("tests/all_tests.zig"));
+    try testing.expect(inScope("tests/html/v8_user_test.zig"));
+    try testing.expect(inScope("tests/.all_tests_helper.zig"));
 }
 
 test "imports that name V8 are counted, inline ones with the member they reach" {
