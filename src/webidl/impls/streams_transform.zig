@@ -102,10 +102,14 @@ fn streamSlots(instance: *runtime.Instance) *Stream {
 /// callbacks' "callback this value".
 ///
 /// Owned values until the controller takes the algorithms over (`attach`,
-/// setUpController); then values traced from it (js.slot), read for each
-/// call and let go by ClearAlgorithms - as an UnderlyingSource's: a
+/// setUpController); then transform, flush and cancel - and `this`, when one
+/// of them is present - are values traced from it (js.slot), read for each
+/// call and let go by ClearAlgorithms, as an UnderlyingSource's: a
 /// transformer whose closure keeps its controller kept the whole transform
-/// stream for the realm's life through a strong handle.
+/// stream for the realm's life through a strong handle. `start` runs once,
+/// after the setup (the constructor's steps 12-13, `callStart`), with the
+/// values as they are, and is never traced: `attach` leaves it and `this`
+/// owned for it, and `callStart` lets them go.
 pub const JsTransformer = struct {
     this: ?Value = null,
     start: ?Value = null,
@@ -114,10 +118,16 @@ pub const JsTransformer = struct {
     cancel: ?Value = null,
     /// The controller that traces the values, once attached.
     controller: ?*runtime.Instance = null,
+    /// Which members are traced from `controller` (bit per Member).
+    traced: u8 = 0,
 
     const members = [_]Member{ .this, .start, .transform, .flush, .cancel };
 
-    const Member = enum { this, start, transform, flush, cancel };
+    const Member = enum(u8) { this, start, transform, flush, cancel };
+
+    fn bit(member: Member) u8 {
+        return @as(u8, 1) << @backingInt(member);
+    }
 
     fn slotOf(member: Member) engine.TracedSlot {
         return switch (member) {
@@ -141,28 +151,43 @@ pub const JsTransformer = struct {
 
     /// `member`, owned for one call (dispose it); null when absent.
     fn get(self: *JsTransformer, realm: Realm, member: Member) ?Value {
-        if (self.controller) |controller| return js.readTraced(realm, controller, slotOf(member));
+        if (self.traced & bit(member) != 0) return js.readTraced(realm, self.controller.?, slotOf(member));
         const value = self.field(member).* orelse return null;
         return js.clone(value) catch null;
     }
 
     fn release(self: *JsTransformer) void {
         for (members) |member| {
-            if (self.controller) |controller| js.forgetTraced(controller, slotOf(member)) else js.disposeOptional(self.field(member));
+            if (self.traced & bit(member) != 0) js.forgetTraced(self.controller.?, slotOf(member)) else js.disposeOptional(self.field(member));
         }
+        self.traced = 0;
         self.controller = null;
+    }
+
+    fn usesThis(self: *const JsTransformer) bool {
+        return self.transform != null or self.flush != null or self.cancel != null or self.traced & (bit(.transform) | bit(.flush) | bit(.cancel)) != 0;
     }
 
     fn attachErased(ctx: ?*anyopaque, controller: *runtime.Instance) void {
         const self: *JsTransformer = @ptrCast(@alignCast(ctx.?));
-        for (members) |member| {
-            if (self.field(member).*) |value| {
-                js.keepTraced(controller, slotOf(member), value);
-                js.dispose(value);
-                self.field(member).* = null;
-            }
-        }
         self.controller = controller;
+        for ([_]Member{ .transform, .flush, .cancel }) |member| self.traceMember(member);
+        // `this` for the calls that use it; owned a little longer when start
+        // still has to run with it (`callStart`).
+        if (self.start == null) self.settleThis();
+    }
+
+    fn traceMember(self: *JsTransformer, member: Member) void {
+        const value = self.field(member).* orelse return;
+        js.keepTraced(self.controller.?, slotOf(member), value);
+        js.dispose(value);
+        self.field(member).* = null;
+        self.traced |= bit(member);
+    }
+
+    /// `this` traced if a traced algorithm calls with it, else let go.
+    fn settleThis(self: *JsTransformer) void {
+        if (self.usesThis()) self.traceMember(.this) else js.disposeOptional(&self.this);
     }
 
     fn deinitErased(ctx: ?*anyopaque, allocator: std.mem.Allocator) void {
@@ -173,14 +198,23 @@ pub const JsTransformer = struct {
 
     /// The constructor's steps 12-13: invoke transformer.start with
     /// « controller » - null when there is none. It runs once, so the
-    /// controller lets it go here.
+    /// controller lets it go here, and settles `this`.
     pub fn callStart(self: *JsTransformer, realm: Realm, controller: *runtime.Instance) js.Error!?js.Completion {
-        const start_fn = self.get(realm, .start) orelse return null;
+        const start_fn = self.start orelse return null;
+        // Taken out first: the call may clear the algorithms (release),
+        // which must find nothing of start or `this` left to let go.
+        self.start = null;
         defer js.dispose(start_fn);
-        if (self.controller) |c| js.forgetTraced(c, js.slot.start);
-        const this = self.get(realm, .this);
+        const this = self.this;
+        self.this = null;
         defer if (this) |t| js.dispose(t);
-        return try realm.call(start_fn, this, &.{realm.instanceValue(controller)});
+        const completion = try realm.call(start_fn, this, &.{realm.instanceValue(controller)});
+        // Not cleared by the call: `this` stays for the calls that use it.
+        if (self.controller != null and this != null and self.usesThis()) {
+            js.keepTraced(self.controller.?, js.slot.this, this.?);
+            self.traced |= bit(.this);
+        }
+        return completion;
     }
 
     fn transformErased(ctx: ?*anyopaque, realm: Realm, controller: *runtime.Instance, chunk: Value) js.Error!Value {
@@ -294,10 +328,11 @@ pub fn initialize(
 ) !void {
     const stream = streamSlots(stream_instance);
     stream.start_promise = start_promise;
-    // Nothing reaches the new stream yet: it is held until its maker has it.
-    // Both sides keep it (their controllers trace it, `attachSides`), and it
-    // keeps both.
-    js.holdForTheTurn(stream_instance);
+    // Both sides keep this stream (their controllers trace it, `attachSide`)
+    // and it keeps both: each side's start reaction holds its controller
+    // until a microtask at the soonest, so the new stream is its maker's by
+    // then (until the first side's setup traces it, it has no wrapper to be
+    // collected with).
     // Steps 1-5: the writable side, whose sink is this stream.
     stream.writable = try sw.createWritableStream(realm, stream_instance.ctx, .{ .ctx = stream_instance, .vtable = &sink_vtable }, writable_hwm, writable_size);
     engine.traceChild(stream_instance, stream.writable.?, js.slot.writable);

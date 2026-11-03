@@ -31,7 +31,9 @@
 //!   controller to what its algorithms close over; peers die together;
 //! - a `Hold` (below): pending work - a reaction, a pipe, a tee, an iterator,
 //!   a network source - keeps what it will touch until it ends, given back
-//!   in exactly one of its ends.
+//!   in exactly one of its ends. A new stream is held by its setup, then by
+//!   its start reaction until start's promise settles (a microtask at the
+//!   soonest), so whoever made it has it by then.
 //! The JavaScript values a controller runs (an underlying source's
 //! callbacks and `this`, a size function) are traced from it too
 //! (`TracedAlgorithms`): a strong handle on a closure that reaches the
@@ -465,31 +467,6 @@ pub const Hold = struct {
         if (self.alive()) engine.releasePlatformObject(self.instance);
     }
 };
-
-/// Hold `object` until the current turn's microtasks run: for a streams
-/// object a native path has just made (a stream and its controller, a
-/// transform stream and its two sides), which nothing reaches yet - between
-/// its wrapper's making and the binding's handle on it, or its native owner's
-/// edge to it, any allocation could collect it. Script that runs while the
-/// object is made (an underlying source's start()) runs inside the turn too.
-/// The realm's end gives it back if the microtask never runs.
-pub fn holdForTheTurn(object: *runtime.Instance) void {
-    const realm = Realm.ofContext(object.ctx) catch return;
-    const Turn = struct {
-        hold: Hold,
-        allocator: std.mem.Allocator,
-
-        fn end(turn: *@This()) void {
-            const hold = turn.hold;
-            turn.allocator.destroy(turn);
-            hold.give();
-        }
-    };
-    const allocator = object.ctx.allocator;
-    const turn = allocator.create(Turn) catch return;
-    turn.* = .{ .hold = Hold.take(object), .allocator = allocator };
-    queueMicrotask(realm, Turn, turn, Turn.end, Turn.end);
-}
 
 /// Keep `value` - a JavaScript value a streams object runs or hands to
 /// script, such as an underlying source's pull() - as a value traced from

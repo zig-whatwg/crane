@@ -214,7 +214,7 @@ pub fn call_tee(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = srd.streamOf(instance) orelse return error.TypeError;
     const realm = try js.Realm.of(instance);
     const branches = try srd.tee(realm, instance, false);
-    // Both branches are kept by this stream (and held for the turn).
+    // Both branches are kept by this stream (and by their start reactions).
     return sw.give(try js.arrayFrom(realm, &.{ realm.instanceValue(branches[0]), realm.instanceValue(branches[1]) }));
 }
 

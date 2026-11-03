@@ -137,12 +137,12 @@ pub const DefaultController = struct {
     source: ?Source,
     size_algorithm: sw.SizeAlgorithm = .one,
     strategy_hwm: f64,
-    /// The holds of the pending start and pull reactions (js.ReactionHold):
-    /// given back by ClearAlgorithms if still pending - their steps do
-    /// nothing a closed, errored or canceled stream shows, and a pull may
-    /// wait on a promise that never settles (a TransformStream's readable
-    /// side pulls on its backpressure promise).
-    start_reaction: ?*js.ReactionHold = null,
+    /// The hold of the pending pull reaction (js.ReactionHold): given back
+    /// by ClearAlgorithms if still pending - its steps do nothing a closed,
+    /// errored or canceled stream shows, and a pull may wait on a promise
+    /// that never settles (a TransformStream's readable side pulls on its
+    /// backpressure promise). The start reaction keeps its hold to the end:
+    /// it is what keeps a new stream for its maker (setup).
     pull_reaction: ?*js.ReactionHold = null,
     queue: std.ArrayList(QueueItem) = .empty,
     queue_total_size: f64 = 0,
@@ -193,7 +193,6 @@ pub const ByteController = struct {
     source: ?Source,
     strategy_hwm: f64,
     /// As DefaultController's.
-    start_reaction: ?*js.ReactionHold = null,
     pull_reaction: ?*js.ReactionHold = null,
     queue: std.ArrayList(ByteEntry) = .empty,
     queue_total_size: usize = 0,
@@ -276,11 +275,14 @@ fn readerSlots(instance: *runtime.Instance) *Reader {
 /// itself as the callbacks' "callback this value".
 ///
 /// Owned values until a controller takes the algorithms over (`attach`, in
-/// SetUp*Controller before start runs); from then on values traced from that
-/// controller (js.slot.this, .start, .pull, .cancel), read for each call and
-/// let go by ClearAlgorithms. A source whose closure keeps its controller is
-/// the usual shape (`start(c) { this.c = c }`), and a strong handle on it
-/// kept the closure - and through it the stream - for the realm's life.
+/// SetUp*Controller once start has run); from then on pull and cancel - and
+/// `this`, when either is present - are values traced from that controller
+/// (js.slot), read for each call and let go by ClearAlgorithms. A source
+/// whose closure keeps its controller is the usual shape
+/// (`start(c) { this.c = c }`), and a strong handle on it kept the closure -
+/// and through it the stream - for the realm's life. `start` runs once,
+/// before the controller takes the rest, with the values as they are: it is
+/// never traced.
 pub const UnderlyingSource = struct {
     this: ?Value = null,
     start: ?Value = null,
@@ -291,10 +293,16 @@ pub const UnderlyingSource = struct {
     auto_allocate_chunk_size: ?u64 = null,
     /// The controller that traces the values, once attached.
     controller: ?*runtime.Instance = null,
+    /// Which members are traced from `controller` (bit per Member).
+    traced: u8 = 0,
 
     const members = [_]Member{ .this, .start, .pull, .cancel };
 
-    const Member = enum { this, start, pull, cancel };
+    const Member = enum(u8) { this, start, pull, cancel };
+
+    fn bit(member: Member) u8 {
+        return @as(u8, 1) << @backingInt(member);
+    }
 
     fn slotOf(member: Member) engine.TracedSlot {
         return switch (member) {
@@ -316,28 +324,34 @@ pub const UnderlyingSource = struct {
 
     /// `member`, owned for one call (dispose it); null when absent.
     fn get(self: *UnderlyingSource, realm: Realm, member: Member) ?Value {
-        if (self.controller) |controller| return js.readTraced(realm, controller, slotOf(member));
+        if (self.traced & bit(member) != 0) return js.readTraced(realm, self.controller.?, slotOf(member));
         const value = self.field(member).* orelse return null;
         return js.clone(value) catch null;
     }
 
     fn release(self: *UnderlyingSource) void {
         for (members) |member| {
-            if (self.controller) |controller| js.forgetTraced(controller, slotOf(member)) else js.disposeOptional(self.field(member));
+            if (self.traced & bit(member) != 0) js.forgetTraced(self.controller.?, slotOf(member)) else js.disposeOptional(self.field(member));
         }
+        self.traced = 0;
         self.controller = null;
     }
 
     fn attachErased(ctx: ?*anyopaque, controller: *runtime.Instance) void {
         const self: *UnderlyingSource = @ptrCast(@alignCast(ctx.?));
+        self.controller = controller;
+        // start has run: nothing keeps it.
+        js.disposeOptional(&self.start);
+        // `this` only for the calls that use it.
+        if (self.pull == null and self.cancel == null) js.disposeOptional(&self.this);
         for (members) |member| {
             if (self.field(member).*) |value| {
                 js.keepTraced(controller, slotOf(member), value);
                 js.dispose(value);
                 self.field(member).* = null;
+                self.traced |= bit(member);
             }
         }
-        self.controller = controller;
     }
 
     fn deinitErased(ctx: ?*anyopaque, allocator: std.mem.Allocator) void {
@@ -346,17 +360,13 @@ pub const UnderlyingSource = struct {
         allocator.destroy(self);
     }
 
+    /// Runs before `attach`: the dictionary's own values, borrowed.
     fn startErased(ctx: ?*anyopaque, realm: Realm, controller: *runtime.Instance) js.Error!js.Completion {
         const self: *UnderlyingSource = @ptrCast(@alignCast(ctx.?));
         // An algorithm that returns undefined, unless start exists: invoke it
         // with « controller » and callback this value underlyingSource.
-        const start_fn = self.get(realm, .start) orelse return .{ .normal = try realm.undefinedValue() };
-        defer js.dispose(start_fn);
-        // Run once: the controller need not keep it past this call.
-        if (self.controller) |c| js.forgetTraced(c, js.slot.start);
-        const this = self.get(realm, .this);
-        defer if (this) |t| js.dispose(t);
-        return realm.call(start_fn, this, &.{realm.instanceValue(controller)});
+        const start_fn = self.start orelse return .{ .normal = try realm.undefinedValue() };
+        return realm.call(start_fn, self.this, &.{realm.instanceValue(controller)});
     }
 
     fn pullErased(ctx: ?*anyopaque, realm: Realm, controller: *runtime.Instance) js.Error!Value {
@@ -525,7 +535,7 @@ pub fn createReadableStream(realm: Realm, ctx: runtime.Context, source: Source, 
     const stream_generation = runtime.SlabAllocator.generationOf(stream_instance);
     errdefer stream_instance.releaseIfUnwrapped(stream_generation);
     // Steps 6-7: a new controller, set up with the given algorithms (which
-    // wraps the stream, held for the turn).
+    // wraps the stream; its start reaction holds it for its maker).
     const controller = try newDefaultController(ctx, stream_instance, source, hwm, size);
     owns_algorithms = false;
     const controller_generation = runtime.SlabAllocator.generationOf(controller);
@@ -1022,8 +1032,7 @@ fn defaultShouldCallPull(c: *DefaultController) bool {
 
 /// ReadableStreamDefaultControllerClearAlgorithms(controller)
 fn defaultClearAlgorithms(c: *DefaultController) void {
-    // The pending start and pull reactions keep the controller no longer.
-    js.ReactionHold.giveEarly(&c.start_reaction);
+    // A pending pull reaction keeps the controller no longer.
     js.ReactionHold.giveEarly(&c.pull_reaction);
     // Steps 1-2: drop the pull and cancel algorithms.
     if (c.source) |s| s.vtable.deinit(s.ctx, c.allocator);
@@ -1163,8 +1172,12 @@ pub fn defaultCanCloseOrEnqueue(c: *const DefaultController) bool {
 pub fn setUpDefaultController(realm: Realm, stream_instance: *runtime.Instance, controller_instance: *runtime.Instance) js.Error!void {
     const stream = streamSlots(stream_instance);
     const c = defaultControllerOf(controller_instance).?;
-    // Nothing reaches the new stream yet: it is held until its maker has it.
-    js.holdForTheTurn(stream_instance);
+    // Nothing reaches the new stream yet: the setup holds its controller
+    // (and through its edge the stream), and the start reaction holds it
+    // from the end of the setup until start's promise settles - a microtask
+    // at the soonest, so its maker has it by then.
+    const setup_hold = js.Hold.take(controller_instance);
+    defer setup_hold.give();
     // Steps 2-7: queue empty, flags false; strategy and algorithms in place.
     defaultResetQueue(c);
     // Step 8: Set stream.[[controller]] to controller - the two keep each
@@ -1176,7 +1189,6 @@ pub fn setUpDefaultController(realm: Realm, stream_instance: *runtime.Instance, 
         stream.controller = null;
         return err;
     };
-    takeAlgorithms(c.source, controller_instance);
     c.size_algorithm.trace(controller_instance);
     // Step 9: Let startResult be the result of performing startAlgorithm.
     const s = c.source.?;
@@ -1188,11 +1200,14 @@ pub fn setUpDefaultController(realm: Realm, stream_instance: *runtime.Instance, 
         },
     };
     defer js.dispose(start_value);
+    // The controller takes the other algorithms over once start has run
+    // (start may have cleared them: c.source is null then).
+    takeAlgorithms(c.source, controller_instance);
     // Step 10: Let startPromise be a promise resolved with startResult.
     const start_promise = try realm.promiseResolvedWith(start_value);
     defer js.dispose(start_promise);
     // Steps 11-12, holding the controller until start's promise settles.
-    try realm.reactHolding(start_promise, controller_instance, &c.start_reaction, onDefaultStartFulfilled, onDefaultStartRejected);
+    try realm.reactHolding(start_promise, controller_instance, null, onDefaultStartFulfilled, onDefaultStartRejected);
 }
 
 /// The controller takes `source`'s algorithms over (Source.attach).
@@ -1241,8 +1256,10 @@ pub fn newByteController(ctx: runtime.Context, stream_instance: *runtime.Instanc
 pub fn setUpByteController(realm: Realm, stream_instance: *runtime.Instance, controller_instance: *runtime.Instance) js.Error!void {
     const stream = streamSlots(stream_instance);
     const c = byteControllerOf(controller_instance).?;
-    // Held until its maker has it, as setUpDefaultController's.
-    js.holdForTheTurn(stream_instance);
+    // Held through the setup, then by the start reaction, as
+    // setUpDefaultController's.
+    const setup_hold = js.Hold.take(controller_instance);
+    defer setup_hold.give();
     // Steps 3-12: flags false, no BYOB request, empty queue and pull-intos.
     byteResetQueue(c);
     // Step 13: Set stream.[[controller]] to controller; the two keep each
@@ -1252,7 +1269,6 @@ pub fn setUpByteController(realm: Realm, stream_instance: *runtime.Instance, con
         stream.controller = null;
         return err;
     };
-    takeAlgorithms(c.source, controller_instance);
     // Step 14: Let startResult be the result of performing startAlgorithm.
     const s = c.source.?;
     const start_value = switch (try s.vtable.start(s.ctx, realm, controller_instance)) {
@@ -1263,11 +1279,13 @@ pub fn setUpByteController(realm: Realm, stream_instance: *runtime.Instance, con
         },
     };
     defer js.dispose(start_value);
+    // The controller takes the other algorithms over once start has run.
+    takeAlgorithms(c.source, controller_instance);
     // Step 15: Let startPromise be a promise resolved with startResult.
     const start_promise = try realm.promiseResolvedWith(start_value);
     defer js.dispose(start_promise);
     // Steps 16-17, holding the controller until start's promise settles.
-    try realm.reactHolding(start_promise, controller_instance, &c.start_reaction, onByteStartFulfilled, onByteStartRejected);
+    try realm.reactHolding(start_promise, controller_instance, null, onByteStartFulfilled, onByteStartRejected);
 }
 
 fn onByteStartFulfilled(controller_instance: *runtime.Instance, _: Value) void {
@@ -1326,8 +1344,7 @@ fn onBytePullRejected(controller_instance: *runtime.Instance, e: Value) void {
 
 /// ReadableByteStreamControllerClearAlgorithms(controller)
 fn byteClearAlgorithms(c: *ByteController) void {
-    // The pending start and pull reactions keep the controller no longer.
-    js.ReactionHold.giveEarly(&c.start_reaction);
+    // A pending pull reaction keeps the controller no longer.
     js.ReactionHold.giveEarly(&c.pull_reaction);
     if (c.source) |s| s.vtable.deinit(s.ctx, c.allocator);
     c.source = null;
