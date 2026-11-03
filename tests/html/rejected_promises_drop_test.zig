@@ -19,12 +19,18 @@ const html = @import("html");
 
 const allocator = std.heap.page_allocator;
 
-/// The process-wide pieces a worker realm's platform objects need, unless a
-/// file before this one started them.
+/// What a worker realm's platform objects need: the hooks and the engine -
+/// the process's, started by whichever test asks first - and a standalone
+/// runtime of the test's own, which the test ends (`defer
+/// runtime.deinitializeRuntime()`). tests/html leaves none running between
+/// tests: each test makes and ends its own, and the Crane test runner fails
+/// one that leaves it (build.zig StandaloneRuntime). This helper used to
+/// start one only when none ran and never end it, and every later test that
+/// made and ended its own replaced it and ended with none (lane testfix3).
 fn startProcess() !void {
-    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(allocator);
     @import("interfaces").process_hooks.startHooksForTest();
     try engine.initializeEngine(.{});
+    runtime.initializeRuntime(allocator);
 }
 
 /// An event loop that only collects the tasks queued on it: none runs.
@@ -144,6 +150,7 @@ fn run(outcome: *Outcome) !void {
 
 test "a notification of rejected promises queued on a loop carries a drop that releases its promises" {
     try startProcess();
+    defer runtime.deinitializeRuntime();
     var outcome: Outcome = .{};
     const thread = try std.Thread.spawn(.{ .stack_size = 16 * 1024 * 1024 }, body, .{&outcome});
     thread.join();
@@ -233,6 +240,7 @@ const TwoAgents = struct {
 
 test "a rejection is tracked on its agent's host, and another agent's end releases none of it" {
     try startProcess();
+    defer runtime.deinitializeRuntime();
     var two: TwoAgents = .{};
     const a = try std.Thread.spawn(.{ .stack_size = 16 * 1024 * 1024 }, TwoAgents.agentA, .{&two});
     const b = try std.Thread.spawn(.{ .stack_size = 16 * 1024 * 1024 }, TwoAgents.agentB, .{&two});
