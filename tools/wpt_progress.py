@@ -99,7 +99,8 @@ def gate_status(rec, path=None):
     return st
 
 
-# The gate's exemptions (the user, 2026-10-17; AGENTS.md "The 0.1 gate"): worklist
+# The gate's exemptions (the user, 2026-10-17; AGENTS.md "The 0.1 gate", in full in
+# .claude/rules/wpt-workflow.md): worklist
 # files omitted from the blocking count because ALL THREE of Chrome, Firefox and
 # Safari intentionally deviate from the spec they test, each listed with that
 # evidence in tools/wpt_gate_exemptions.txt (its header is the format; the public

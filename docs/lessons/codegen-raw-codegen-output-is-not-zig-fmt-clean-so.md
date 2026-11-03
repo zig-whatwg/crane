@@ -13,7 +13,7 @@ output is not. The diff is almost entirely whitespace:
 
 **What Happened**: this buried a real 75-file callbacks change inside 1,419
 files of noise, and made "did codegen change anything?" unanswerable by
-inspection. It also makes AGENTS.md's advice to delete the generated dirs and
+inspection. It also makes src/webidl/AGENTS.md's advice to delete the generated dirs and
 regenerate from scratch read as catastrophic when it is harmless.
 
 **Fix**: `zig fmt src/webidl/` immediately after any `zig build codegen`, before

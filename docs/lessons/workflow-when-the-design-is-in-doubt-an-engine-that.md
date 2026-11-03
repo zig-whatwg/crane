@@ -28,7 +28,7 @@ safety net behind it, not the design. The two theories and three rounds of
 instrumentation spent on the crash before that were spent on WHAT was
 happening; none of them could have said what the right behaviour was.
 
-**Fix**: the "Stuck on HOW" rule and its table, above.
+**Fix**: the "Stuck on HOW" rule and its table (docs/agents/working-on-crane.md; one line in AGENTS.md, "What Crane is").
 
 **Takeaway**: **When you are naming a mechanism yourself, stop and check
 whether Blink or WebKit already has a name for it. They usually do, and the

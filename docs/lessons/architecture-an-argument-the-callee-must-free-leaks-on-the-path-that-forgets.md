@@ -8,7 +8,7 @@
 **What Happened**: Every `addEventListener` and `removeEventListener` call leaked one page for the runtime struct. gc_bench measured it with `--body=globalThis.f ??= () => {}; document.addEventListener('x', f); document.removeEventListener('x', f);`: 34,692 resident bytes per cycle before, two pages a cycle (669.4 MB over 20,000 cycles), and 1,930 after (44.3 MB). Nothing reported it. `std.testing.allocator` never saw a page_allocator allocation, and the V8 live-handle counters were flat because the V8 half was freed.
 
 **Fix**:
-1. `runtime.CallbackWrapper` is opaque (the adapter's own object) and BORROWED for the call, like every argument (AGENTS.md "The engine boundary", rule 3). The binding releases it in `freeConvertedArg` (`conversions.releaseCallbackWrapper`), so `CallbackOperations` and `v8_engine_interface` are gone.
+1. `runtime.CallbackWrapper` is opaque (the adapter's own object) and BORROWED for the call, like every argument (src/runtime/AGENTS.md, "The engine boundary", rule 3). The binding releases it in `freeConvertedArg` (`conversions.releaseCallbackWrapper`), so `CallbackOperations` and `v8_engine_interface` are gone.
 2. An impl that keeps the callback takes its own value with `engine.takeCallbackInterface` (EventTarget, node_filter).
 3. An attribute that gives the callback back (NodeIterator.filter, TreeWalker.filter) returns the callback's object: codegen types a callback interface attribute as `runtime.JSValue`.
 4. The wrapper comes from `conversions.callback_allocator` (c_allocator). A test swaps in `std.testing.allocator`, and listeners added and removed in a loop then fail the test if any wrapper survives its call.

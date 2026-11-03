@@ -271,7 +271,7 @@ title = "The JavaScript engine is an adapter"
 why = """V8 is statically linked on desktop and server; iOS will dynamically link \
 the system JavaScriptCore. A second adapter can only replace V8 at a seam the \
 rest of the engine respects, and every direct V8 call outside the adapter is \
-work it must undo first (AGENTS.md, "The engine boundary")."""
+work it must undo first (src/runtime/AGENTS.md, "The engine boundary")."""
 done_when = """tools/engine_boundary_baseline.txt is empty, the runtime Engine table \
 is deleted, "v8" is gone from the non-adapter modules' imports in build.zig, and a \
 non-V8 build fails only on explicit NotSupported entries."""
@@ -683,7 +683,7 @@ lane's claim before merging, and rejects a change outside it."""
 [[parallel]]
 name = "Shared files have one owner, the integrator"
 status = "done"
-how = """AGENTS.md, docs/roadmap.toml, the lint baselines, wpt-results/, build.zig, \
+how = """AGENTS.md and the files its index names, docs/roadmap.toml, the lint baselines, wpt-results/, build.zig, \
 interface.zig, conversions.zig, v8_wrapper.cpp and context_manager.zig. A lane \
 that needs one changed asks, and reports its lessons instead of writing them."""
 
