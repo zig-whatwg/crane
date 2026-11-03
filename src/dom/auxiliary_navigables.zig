@@ -17,6 +17,7 @@
 
 const std = @import("std");
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 const runtime = @import("runtime");
 const SandboxingFlagSet = @import("sandboxing.zig").SandboxingFlagSet;
 
@@ -38,18 +39,17 @@ pub const Implementation = struct {
     definitely_close: *const fn (window: *runtime.Instance) bool,
 };
 
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by HTMLIFrameElement's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// Whether the owner has installed its implementation: from process start on,
 /// unless a test cleared it.
 pub fn isInstalled() bool {
-    return implementation != null;
+    return implementation.get() != null;
 }
 
 /// The navigable "the rules for choosing a navigable" chose among the
@@ -105,7 +105,7 @@ pub fn chooseTopLevel(current_window: *runtime.Instance, target: []const u8, noo
 /// dom.sandboxing.popupSandboxingFlags) - the creation sandboxing flags of
 /// that document and of every navigation in it. Null when none can be made.
 pub fn create(allocator: std.mem.Allocator, opener_browsing_context: *anyopaque, opener_origin: []const u8, is_popup: bool, popup_sandboxing_flags: SandboxingFlagSet) ?Created {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.create(allocator, opener_browsing_context, opener_origin, is_popup, popup_sandboxing_flags);
 }
 
@@ -116,14 +116,13 @@ pub fn create(allocator: std.mem.Allocator, opener_browsing_context: *anyopaque,
 /// False when `window` is not a top-level traversable's or nothing is
 /// installed.
 pub fn definitelyClose(window: *runtime.Instance) bool {
-    const impl = implementation orelse return false;
+    const impl = implementation.get() orelse return false;
     return impl.definitely_close(window);
 }
 
 test "without an installed implementation no navigable is made or closed" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     try std.testing.expect(!isInstalled());
     // Never dereferenced: with no implementation nothing reads it.
     var opener: u8 = 0;

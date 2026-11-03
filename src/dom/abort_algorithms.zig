@@ -16,6 +16,7 @@
 //! lint-impls: hook for AbortSignal
 
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 const runtime = @import("runtime");
 
 /// An abort algorithm: `run(ctx)` once, when the signal is aborted. `ctx`
@@ -40,18 +41,17 @@ pub const Implementation = struct {
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by AbortSignal's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// "Add an algorithm to an AbortSignal": does nothing if the signal is
 /// already aborted (step 1), otherwise appends it (step 2).
 pub fn add(signal: *runtime.Instance, algorithm: Algorithm) !void {
-    const impl = implementation orelse return error.NotSupported;
+    const impl = implementation.get() orelse return error.NotSupported;
     return impl.add(signal, algorithm);
 }
 
@@ -59,29 +59,28 @@ pub fn add(signal: *runtime.Instance, algorithm: Algorithm) !void {
 /// AbortSignal, in `ctx`'s realm - as Fetch's Request constructor and
 /// clone() do.
 pub fn createDependent(ctx: runtime.Context, signals: []const *runtime.Instance) !*runtime.Instance {
-    const impl = implementation orelse return error.NotSupported;
+    const impl = implementation.get() orelse return error.NotSupported;
     return impl.create_dependent(ctx, signals);
 }
 
 /// DOM § 3.3 "signal abort" given `signal` and `reason` (borrowed; undefined
 /// when not given): AbortController's abort() runs it on its signal.
 pub fn signalAbort(signal: *runtime.Instance, reason: runtime.JSValue) !void {
-    const impl = implementation orelse return error.NotSupported;
+    const impl = implementation.get() orelse return error.NotSupported;
     return impl.signal_abort(signal, reason);
 }
 
 /// "Remove an algorithm from an AbortSignal": every algorithm whose `ctx`
 /// is `ctx`.
 pub fn remove(signal: *runtime.Instance, ctx: *anyopaque) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.remove(signal, ctx);
 }
 
 test "add without an installed implementation reports NotSupported, remove is a no-op" {
     const std = @import("std");
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with no implementation neither call reaches it.
     var signal: runtime.Instance = undefined;
     var ctx: u8 = 0;

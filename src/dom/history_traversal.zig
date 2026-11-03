@@ -10,6 +10,7 @@
 //! lint-impls: hook for History
 const std = @import("std");
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 const html_core = @import("html_core");
@@ -99,24 +100,23 @@ pub const Implementation = struct {
     document_info: *const fn (document: *anyopaque, allocator: std.mem.Allocator) anyerror!joint_history.DocumentInfo,
 };
 
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by History's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// Whether the owner has installed its implementation: from process start on,
 /// unless a test cleared it.
 pub fn isInstalled() bool {
-    return implementation != null;
+    return implementation.get() != null;
 }
 
 /// Queue a traversal of `window`'s traversable to its session history step
 /// `step`.
 pub fn traverseToStep(window: *runtime.Instance, step: u32, api: ?ApiTraversal) void {
-    const impl = implementation orelse {
+    const impl = implementation.get() orelse {
         if (api) |a| a.drop(a.context);
         return;
     };
@@ -125,7 +125,7 @@ pub fn traverseToStep(window: *runtime.Instance, step: u32, api: ?ApiTraversal) 
 
 /// Reload `window`'s navigable.
 pub fn reload(window: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.reload(window);
 }
 
@@ -133,7 +133,7 @@ pub fn reload(window: *runtime.Instance) void {
 /// (Implementation.reload_for_declarative_refresh); a plain reload when the
 /// owner has no such step.
 pub fn reloadForDeclarativeRefresh(window: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     if (impl.reload_for_declarative_refresh) |reload_for_refresh| {
         reload_for_refresh(window);
     } else {
@@ -144,7 +144,7 @@ pub fn reloadForDeclarativeRefresh(window: *runtime.Instance) void {
 /// Reload with the navigation API state supplied by navigation.reload().
 /// The reload implementation clones the borrowed state before running script.
 pub fn reloadWithNavigationApiState(window: *runtime.Instance, state: joint_history.SerializedState) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     if (impl.reload_with_navigation_api_state) |reload_with_state| {
         reload_with_state(window, state);
     } else {
@@ -154,34 +154,34 @@ pub fn reloadWithNavigationApiState(window: *runtime.Instance, state: joint_hist
 
 /// The URL and history update steps for `window`'s associated Document.
 pub fn urlAndHistoryUpdate(window: *runtime.Instance, url: []const u8, serialized: ?joint_history.SerializedState, handling: joint_history.HistoryHandling) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.url_and_history_update(window, url, serialized, handling);
 }
 
 /// Resume a traversal of `window`'s traversable to `step` whose navigate
 /// event has been fired.
 pub fn resumeTraversal(window: *runtime.Instance, step: u32) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.resume_traversal(window, step);
 }
 
 /// Queue `task` on `navigable`'s active window's loop (Implementation
 /// .queue_task). False with no implementation or no loop.
 pub fn queueTask(navigables: *Navigables, navigable: *BrowsingContext, task: Task) bool {
-    const impl = implementation orelse return false;
+    const impl = implementation.get() orelse return false;
     return impl.queue_task(navigables, navigable, task);
 }
 
 /// Beforeunload at the active documents of `contexts`: whether one was
 /// canceled. Nothing is canceled with no implementation.
 pub fn beforeUnloadCanceled(contexts: []const *BrowsingContext, allocator: std.mem.Allocator) bool {
-    const impl = implementation orelse return false;
+    const impl = implementation.get() orelse return false;
     return impl.before_unload_canceled(contexts, allocator);
 }
 
 /// See Implementation.abort_for_navigation.
 pub fn abortForNavigation(navigable: *BrowsingContext, allocator: std.mem.Allocator) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     const abort = impl.abort_for_navigation orelse return;
     abort(navigable, allocator);
 }
@@ -189,21 +189,20 @@ pub fn abortForNavigation(navigable: *BrowsingContext, allocator: std.mem.Alloca
 /// "Update document for history step application" for a same-document
 /// entry of `navigable`.
 pub fn updateSameDocument(navigable: *BrowsingContext, old_url: []const u8, entry: *joint_history.Entry) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.update_same_document(navigable, old_url, entry);
 }
 
 /// The document info ensureHistoryEntries records; with no implementation,
 /// none (error.NotInstalled).
 pub fn documentInfo(document: *anyopaque, allocator: std.mem.Allocator) anyerror!joint_history.DocumentInfo {
-    const impl = implementation orelse return error.NotInstalled;
+    const impl = implementation.get() orelse return error.NotInstalled;
     return impl.document_info(document, allocator);
 }
 
 test "without an installed implementation nothing traverses" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     var window: runtime.Instance = undefined;
     traverseToStep(&window, 1, null);
     reload(&window);

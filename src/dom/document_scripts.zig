@@ -32,6 +32,7 @@
 
 const std = @import("std");
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 const runtime = @import("runtime");
 const SandboxingFlagSet = @import("sandboxing.zig").SandboxingFlagSet;
 
@@ -165,23 +166,22 @@ pub const Implementation = struct {
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Document's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// `document`'s scripts; null for an object that is no Document.
 pub fn of(document: *runtime.Instance) ?*Scripts {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.scripts(document);
 }
 
 /// Whether scripting is enabled for `document`.
 pub fn scriptingEnabled(document: *runtime.Instance) bool {
-    const impl = implementation orelse return false;
+    const impl = implementation.get() orelse return false;
     return impl.scripting_enabled(document);
 }
 
@@ -190,7 +190,7 @@ pub fn scriptingEnabled(document: *runtime.Instance) bool {
 /// (nothing restricted) for a document Document never made, or with no
 /// implementation installed.
 pub fn activeSandboxingFlags(document: *runtime.Instance) SandboxingFlagSet {
-    const impl = implementation orelse return .empty;
+    const impl = implementation.get() orelse return .empty;
     return impl.sandboxing_flags(document);
 }
 
@@ -203,7 +203,7 @@ pub fn scriptsSandboxed(document: *runtime.Instance) bool {
 
 /// Whether `document` has a style sheet that is blocking scripts.
 pub fn hasStyleSheetBlockingScripts(document: *runtime.Instance) bool {
-    const impl = implementation orelse return false;
+    const impl = implementation.get() orelse return false;
     return impl.has_style_sheet_blocking_scripts(document);
 }
 
@@ -211,27 +211,26 @@ pub fn hasStyleSheetBlockingScripts(document: *runtime.Instance) bool {
 /// `source` to run (CSP §4.2.3, type "script"), its violations reported.
 /// Allowed with no document state to ask.
 pub fn inlineScriptAllowedByCsp(document: *runtime.Instance, element: *runtime.Instance, source: []const u8, nonce: ?[]const u8, parser_inserted: bool) bool {
-    const impl = implementation orelse return true;
+    const impl = implementation.get() orelse return true;
     return impl.inline_script_allowed_by_csp(document, element, source, nonce, parser_inserted);
 }
 
 /// Record a prefetch hint for `url` on `document`, the more eager one
 /// winning.
 pub fn addPrefetchHint(document: *runtime.Instance, url: []const u8, eagerness: SpeculationEagerness) error{ InvalidStateError, OutOfMemory }!void {
-    const impl = implementation orelse return error.InvalidStateError;
+    const impl = implementation.get() orelse return error.InvalidStateError;
     return impl.add_prefetch_hint(document, url, eagerness);
 }
 
 /// `document`'s URL as its state records it; "" when none was set.
 pub fn urlOf(document: *runtime.Instance) []const u8 {
-    const impl = implementation orelse return "";
+    const impl = implementation.get() orelse return "";
     return impl.url(document);
 }
 
 test "without an installed implementation a document has no scripts and allows every script" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with no implementation nothing reads it.
     var document: runtime.Instance = undefined;
     try std.testing.expect(of(&document) == null);

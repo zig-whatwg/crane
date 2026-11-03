@@ -8,6 +8,7 @@
 //!
 //! lint-impls: hook for HTMLIFrameElement
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 
@@ -19,17 +20,16 @@ pub const Implementation = struct {
     window: *const fn (browsing_context: *anyopaque) ?*runtime.Instance,
 };
 
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by HTMLIFrameElement's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// The Window of `browsing_context`'s navigable, made by its container if
 /// need be; null without one, or without an installed implementation.
 pub fn window(browsing_context: *anyopaque) ?*runtime.Instance {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.window(browsing_context);
 }

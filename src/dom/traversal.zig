@@ -9,6 +9,7 @@
 //!
 //! lint-impls: hook for NodeIterator, TreeWalker
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 
@@ -38,19 +39,17 @@ pub const NodeIteratorSteps = struct {
 };
 
 // process-wide: immutable NodeIterator algorithms installed by installNodeIterator at process start, with no instance state
-var node_iterator: ?NodeIteratorSteps = null;
-var tree_walker: ?TreeWalkerSetUp = null;
+var node_iterator: Hook(?NodeIteratorSteps) = .init(null);
+var tree_walker: Hook(?TreeWalkerSetUp) = .init(null);
 
 /// Called by NodeIterator's installHooks, once, at process start (process_start.zig).
 pub fn installNodeIterator(steps: NodeIteratorSteps) void {
-    process_start.assertInstalling();
-    node_iterator = steps;
+    node_iterator.install(steps);
 }
 
 /// Called by TreeWalker's installHooks, once, at process start (process_start.zig).
 pub fn installTreeWalker(set_up: TreeWalkerSetUp) void {
-    process_start.assertInstalling();
-    tree_walker = set_up;
+    tree_walker.install(set_up);
 }
 
 /// Set up a NodeIterator the caller has just created. The iterator owns
@@ -62,13 +61,13 @@ pub fn setUpNodeIterator(
     filter: ?*runtime.CallbackWrapper,
     document: *runtime.Instance,
 ) !void {
-    const steps = node_iterator orelse return error.NotSupported;
+    const steps = node_iterator.get() orelse return error.NotSupported;
     return steps.set_up(iterator, root, what_to_show, filter, document);
 }
 
 /// DOM removal invokes the iterator owner's pre-removing steps.
 pub fn preRemoveNodeIterator(iterator: *runtime.Instance, removed: *runtime.Instance) void {
-    const steps = node_iterator orelse return;
+    const steps = node_iterator.get() orelse return;
     steps.pre_remove(iterator, removed);
 }
 
@@ -80,18 +79,16 @@ pub fn setUpTreeWalker(
     what_to_show: u32,
     filter: ?*runtime.CallbackWrapper,
 ) !void {
-    const set_up = tree_walker orelse return error.NotSupported;
+    const set_up = tree_walker.get() orelse return error.NotSupported;
     return set_up(walker, root, what_to_show, filter);
 }
 
 test "set-up without an installed implementation reports NotSupported" {
     const std = @import("std");
-    const saved_iterator = node_iterator;
-    const saved_walker = tree_walker;
-    defer node_iterator = saved_iterator;
-    defer tree_walker = saved_walker;
-    node_iterator = null;
-    tree_walker = null;
+    const iterator_override = node_iterator.overrideForTest(null);
+    defer iterator_override.restore();
+    const walker_override = tree_walker.overrideForTest(null);
+    defer walker_override.restore();
     // Never dereferenced: with nothing installed the calls do not reach them.
     var object: runtime.Instance = undefined;
     try std.testing.expectError(error.NotSupported, setUpNodeIterator(&object, &object, 0, null, &object));

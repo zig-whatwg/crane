@@ -1,0 +1,12 @@
+# Spec Compliance: A strict order between two coarse marks of back-to-back steps is a bet on time
+
+**Date**: 2026-11-02
+**Lesson**: When the spec records one timestamp and the next step reads another with nothing between them, both coarsened, "equal" is a correct answer; an assertion that the second is greater bets that a coarse tick passes between two steps the spec runs back to back.
+
+**Why**: HR-Time's coarsen time floors every exposed time onto a grid of at least 100 us (Crane: 125 us; Firefox and Safari: 1 ms). Service Workers' "Create Fetch Event and Dispatch" sets the fetch event dispatch time - Navigation Timing's fetchStart under a service worker - at step 17.4.12 and dispatches the event at 17.4.13, so the handler's first `performance.now()` is microseconds later. On one thread that is almost always the same tick. Chrome records the time in its browser process and dispatches over IPC, which is why such a test can pass there.
+
+**What Happened**: service-workers/service-worker/navigation-timing-extended.https.html failed both ways in two A/Bs ("fetchStart should be marked before the Fetch event handler is called: expected a number greater than X but got X"). Crane records both marks where the specs say. Measured on main's runner (chat2): the file failed 7 of 20 runs; a probe of 180 navigations to an active worker found handleFetchEvent == fetchStart in 163 (0 ticks apart), 1 tick in 17, never 2; and of 36 navigations that waited for activation, fetchStart == activateWorkerEnd in 4 (the file's second assertion, equally strict). No browser passes the file: Chrome 156 fails the first assertion, Firefox 159 the third (its fetchStart 3 ms after the handler), Safari 27.2 the second.
+
+**Fix**: None in product code: making the two marks differ would mean waiting, or rounding one mark differently from the clock it is compared with. Crane's order is pinned by a deterministic Crane test, crane/flakes2-sw-navigation-timing-order.https.html, with the specs' non-strict orders (and strict only where the spec puts a wait between the marks: workerStart before the activation's end). An upstream fix (assert_greater_than_equal) needs the user's OK to file.
+
+**Takeaway**: **Before chasing an "equal, expected greater" between two coarse timestamps, count what the spec puts between the two marks: if it is nothing, equal is the spec's answer, and the test - not the order - is what to report.**

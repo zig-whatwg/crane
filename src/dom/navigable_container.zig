@@ -10,6 +10,7 @@
 //!
 //! lint-impls: hook for Window
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 
@@ -18,24 +19,22 @@ pub const Implementation = struct {
     of: *const fn (window: *runtime.Instance) ?*runtime.Instance,
 };
 
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Window's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// The container of `window`'s navigable, or null when it has none.
 pub fn of(window: *runtime.Instance) ?*runtime.Instance {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.of(window);
 }
 
 test "without an installed implementation no window has a container" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with no implementation nothing reads it.
     var window: runtime.Instance = undefined;
     try @import("std").testing.expectEqual(@as(?*runtime.Instance, null), of(&window));

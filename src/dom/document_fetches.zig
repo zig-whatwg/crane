@@ -24,7 +24,7 @@
 //!
 //! lint-impls: hook for XMLHttpRequest, WindowOrWorkerGlobalScope, EventSource, HTMLScriptElement, HTMLImageElement, HTMLTrackElement, HTMLMediaElement, HTMLLinkElement, HTMLObjectElement, HTMLAnchorElement, HTMLInputElement, SVGImageElement, SVGUseElement, FontFace, FontFaceSet
 const std = @import("std");
-const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 
@@ -98,12 +98,12 @@ pub const Owner = struct {
 const slot_count = 20;
 pub const OwnerSlots = [slot_count]?Owner;
 // process-wide: owners install the same immutable hooks before Browsers or worker threads start
-var cancelers: OwnerSlots = @splat(null);
+var cancelers: Hook(OwnerSlots) = .init(@splat(null));
 
 /// Read-only startup capacity check for the native integration tests.
 pub fn ownerCount() usize {
     var filled: usize = 0;
-    for (cancelers) |owner| if (owner != null) {
+    for (cancelers.read()) |owner| if (owner != null) {
         filled += 1;
     };
     return filled;
@@ -111,8 +111,7 @@ pub fn ownerCount() usize {
 
 /// Called by each owner's installHooks, once, at process start (process_start.zig).
 pub fn install(owner: Owner) void {
-    process_start.assertInstalling();
-    tryInstall(&cancelers, owner) catch @panic("document fetch owner table is full");
+    tryInstall(cancelers.installing(), owner) catch @panic("document fetch owner table is full");
 }
 
 /// Fill an explicit table so startup overflow cannot silently leave one
@@ -139,7 +138,7 @@ pub fn tryInstall(slots: *OwnerSlots, owner: Owner) error{OwnerSlotsFull}!void {
 /// "Destroy a document": discard every request and its queued delivery in
 /// `realm`, firing nothing. Kept separate from the live document's abort.
 pub fn abortAll(realm: runtime.Context) void {
-    for (cancelers) |slot| {
+    for (cancelers.read()) |slot| {
         const owner = slot orelse return;
         owner.discard(realm);
     }
@@ -161,7 +160,7 @@ pub fn abortForNavigation(document: *runtime.Instance) bool {
 
 fn abortDocument(document: *runtime.Instance, for_navigation: bool) bool {
     var canceled = false;
-    for (cancelers) |slot| {
+    for (cancelers.read()) |slot| {
         const owner = slot orelse break;
         const prepare = if (for_navigation)
             owner.prepare_navigation_document_abort orelse owner.prepare_abort orelse continue
@@ -172,7 +171,7 @@ fn abortDocument(document: *runtime.Instance, for_navigation: bool) bool {
     // Snapshot all owners before callbacks can start a request of any kind.
     // Blink loader cancellation clears the old loader before dispatch; new
     // work created by an abort listener is independent of that old loader.
-    for (cancelers) |slot| {
+    for (cancelers.read()) |slot| {
         const owner = slot orelse break;
         const abort_owner = owner.abort orelse continue;
         abort_owner(document);
@@ -181,9 +180,8 @@ fn abortDocument(document: *runtime.Instance, for_navigation: bool) bool {
 }
 
 test "document abort prepares every owner before callbacks and destruction stays silent" {
-    const saved = cancelers;
-    defer cancelers = saved;
-    cancelers = @splat(null);
+    const override = cancelers.overrideForTest(@splat(null));
+    defer override.restore();
 
     const TestState = struct {
         first_marked: bool = false,
@@ -257,9 +255,8 @@ test "owners that share a discard step are both installed: a release build can m
     // Two kinds of fetch owner whose `discard` steps have the same body share
     // one function in a release build. Each owner's abort steps still run,
     // as they do in Debug.
-    const saved = cancelers;
-    defer cancelers = saved;
-    cancelers = @splat(null);
+    const override = cancelers.overrideForTest(@splat(null));
+    defer override.restore();
     const Owners = struct {
         fn aborted(document: *runtime.Instance) *usize {
             return @ptrCast(@alignCast(document.state));
@@ -289,8 +286,6 @@ test "full owner table rejects a new owner and accepts an already installed owne
         try std.testing.expect(false);
         return;
     } else {
-        const saved = cancelers;
-        defer cancelers = saved;
         const Callbacks = struct {
             fn first(_: runtime.Context) void {}
             fn second(context: runtime.Context) void {
@@ -298,9 +293,10 @@ test "full owner table rejects a new owner and accepts an already installed owne
             }
         };
         const owner: Owner = .{ .discard = Callbacks.first };
-        cancelers = @splat(owner);
-        try tryInstall(&cancelers, owner);
-        try std.testing.expectError(error.OwnerSlotsFull, tryInstall(&cancelers, .{ .discard = Callbacks.second }));
+        // A table of the test's own: tryInstall fills the table it is given.
+        var slots: OwnerSlots = @splat(owner);
+        try tryInstall(&slots, owner);
+        try std.testing.expectError(error.OwnerSlotsFull, tryInstall(&slots, .{ .discard = Callbacks.second }));
     }
 }
 

@@ -764,6 +764,8 @@ test "real processes: the Crane test runner fails a test that leaves process sta
         .{ .name = "leaves a Browser alive", .first = .log_err, .says = "runtime.browsers: 0 -> 1" },
         .{ .name = "installs a hook for itself, as startHooksForTest does", .first = .pass, .says = null },
         .{ .name = "starts the process, installing a hook", .first = .pass, .says = null },
+        .{ .name = "overrides a hook and gives it back", .first = .pass, .says = null },
+        .{ .name = "leaves a hook overridden", .first = .log_err, .says = "process_start.outstanding_overrides: 0 -> 1" },
         .{ .name = "leaves the process starting", .first = .log_err, .says = "process_start.phase: not_started -> starting" },
         .{ .name = "ends the process", .first = .log_err, .says = "process_start.phase: not_started -> ended" },
         .{ .name = "leaves the active cleanup coordinator set", .first = .log_err, .says = "global src/runtime/cleanup_coordinator.zig active_coordinator: " },

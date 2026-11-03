@@ -18,6 +18,7 @@
 //!
 //! lint-impls: hook for MutationObserver
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const std = @import("std");
 const infra = @import("infra");
@@ -247,18 +248,17 @@ pub const ReachableNodeSet = struct {
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by MutationObserver's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// `node` is going away: tell every observer registered on it, then free its
 /// registered observer list.
 pub fn releaseList(node: *runtime.Instance, list: *infra.List(RegisteredObserver)) void {
-    if (implementation) |impl| {
+    if (implementation.get()) |impl| {
         for (list.items()) |registered| {
             const observer_opaque = handles.mutationObserverToAnyopaque(registered.observer) orelse continue;
             const observer: *runtime.Instance = @ptrCast(@alignCast(observer_opaque));
@@ -271,27 +271,27 @@ pub fn releaseList(node: *runtime.Instance, list: *infra.List(RegisteredObserver
 /// "remove" step 15: a transient registered observer of `observer` now sits
 /// in `node`'s registered observer list.
 pub fn transientAdded(observer: *runtime.Instance, generation: u64, node: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.transient_added(observer, generation, node);
 }
 
 /// "Notify mutation observers" step 6.3: remove all transient registered
 /// observers whose observer is `observer`.
 pub fn removeTransients(observer: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.remove_transients(observer);
 }
 
 /// `observer`'s record queue; null before MutationObserver has installed its
 /// steps, when no observer can exist.
 pub fn recordQueueOf(observer: *runtime.Instance) ?*RecordQueue {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.record_queue(observer);
 }
 
 /// "Notify mutation observers" step 6.4 for `observer`: see
 /// `Implementation.invoke_callback`.
 pub fn invokeCallback(observer: *runtime.Instance, records: []const *runtime.Instance) !void {
-    const impl = implementation orelse return error.NotSupported;
+    const impl = implementation.get() orelse return error.NotSupported;
     return impl.invoke_callback(observer, records);
 }

@@ -23,6 +23,7 @@
 
 const std = @import("std");
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 const runtime = @import("runtime");
 const engine = @import("engine");
 const infra = @import("infra");
@@ -386,26 +387,25 @@ pub const Implementation = struct {
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Event's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// `event`'s dispatch state, or null when it has none (see
 /// `Implementation.state`). Taken once per dispatch: the pointer is good for
 /// as long as the event is.
 pub fn of(event: *runtime.Instance) ?*EventState {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.state(event);
 }
 
 /// `event`'s type attribute value becomes `event_type`; the previous value is
 /// returned, to be swapped back. Null when `event` is not an Event.
 pub fn swapType(event: *runtime.Instance, event_type: runtime.DOMString) ?runtime.DOMString {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.swap_type(event, event_type);
 }
 
@@ -459,9 +459,8 @@ test "set the canceled flag honours cancelable and the in passive listener flag"
 }
 
 test "without an installed implementation an event has no state" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with nothing installed nothing reads it.
     var event: runtime.Instance = undefined;
     try std.testing.expect(of(&event) == null);

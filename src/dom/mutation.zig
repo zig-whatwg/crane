@@ -9,7 +9,7 @@
 //! DOM tree structure. WebIDL impls delegate all tree operations here.
 
 const std = @import("std");
-const process_start = @import("process_start.zig");
+const hook = @import("hook.zig");
 const infra = @import("infra");
 const runtime = @import("runtime");
 
@@ -76,20 +76,21 @@ pub const ChildrenChange = enum { inserted, removed, replaced_data };
 pub const ChildrenChangedCallback = *const fn (parent: *NodeBase, change: ChildrenChange) void;
 
 /// Global registry for children changed steps callbacks
-/// This allows specifications (like HTML) to register their hooks
-/// Uses page_allocator since this lives for the program lifetime and is never freed
-var children_changed_callbacks: ?infra.List(ChildrenChangedCallback) = null;
+/// This allows specifications (like HTML) to register their hooks.
+/// Process-wide, written once at start-up (hook.zig); the capacity bounds
+/// what start-up installs, with room to spare.
+var children_changed_callbacks: hook.Hook(hook.List(ChildrenChangedCallback, max_callbacks)) = .init(.empty);
+
+/// Room per registry: the most-registered (removing steps) has 22 owners.
+const max_callbacks = 48;
 
 /// Register a callback to be invoked when children change
 /// This should be called during initialization by specifications that need to hook into mutations
-pub fn registerChildrenChangedCallback(callback: ChildrenChangedCallback) !void {
-    process_start.assertInstalling();
-    if (children_changed_callbacks == null) {
-        children_changed_callbacks = infra.List(ChildrenChangedCallback).init(std.heap.page_allocator);
-    }
+pub fn registerChildrenChangedCallback(callback: ChildrenChangedCallback) error{OutOfMemory}!void {
+    const callbacks = children_changed_callbacks.installing();
     // Once per function: a repeated install (a test that installs again) adds nothing.
-    if (children_changed_callbacks.?.contains(callback)) return;
-    try children_changed_callbacks.?.append(callback);
+    if (callbacks.contains(callback)) return;
+    callbacks.append(callback);
 }
 
 /// Run the children changed steps for a parent node
@@ -104,10 +105,8 @@ pub fn runChildrenChangedSteps(parent: anytype, change: ChildrenChange) void {
     const parent_node: *NodeBase = @ptrCast(parent);
 
     // Call all registered callbacks
-    if (children_changed_callbacks) |*callbacks| {
-        for (callbacks.items()) |callback| {
-            callback(parent_node, change);
-        }
+    for (children_changed_callbacks.read().slice()) |callback| {
+        callback(parent_node, change);
     }
 
     // Note: If no callbacks are registered, this is a no-op
@@ -150,75 +149,92 @@ pub const PostConnectionStepsCallback = *const fn (node: *NodeBase) void;
 ///   - HTML: element relocation handling
 pub const MovingStepsCallback = *const fn (node: *NodeBase, old_parent: ?*NodeBase) void;
 
-/// Global registry for insertion steps callbacks
-/// Uses page_allocator since this lives for the program lifetime and is never freed
-var insertion_steps_callbacks: ?infra.List(InsertionStepsCallback) = null;
+/// Global registry for insertion steps callbacks.
+/// Process-wide, written once at start-up (hook.zig).
+var insertion_steps_callbacks: hook.Hook(hook.List(InsertionStepsCallback, max_callbacks)) = .init(.empty);
 
-/// Global registry for removing steps callbacks
-/// Uses page_allocator since this lives for the program lifetime and is never freed
-var removing_steps_callbacks: ?infra.List(RemovingStepsCallback) = null;
+/// Global registry for removing steps callbacks.
+/// Process-wide, written once at start-up (hook.zig).
+var removing_steps_callbacks: hook.Hook(hook.List(RemovingStepsCallback, max_callbacks)) = .init(.empty);
 
-/// Global registry for post-connection steps callbacks
-/// Uses page_allocator since this lives for the program lifetime and is never freed
-var post_connection_steps_callbacks: ?infra.List(PostConnectionStepsCallback) = null;
+/// Global registry for post-connection steps callbacks.
+/// Process-wide, written once at start-up (hook.zig).
+var post_connection_steps_callbacks: hook.Hook(hook.List(PostConnectionStepsCallback, max_callbacks)) = .init(.empty);
 
-/// Global registry for moving steps callbacks
-/// Uses page_allocator since this lives for the program lifetime and is never freed
-var moving_steps_callbacks: ?infra.List(MovingStepsCallback) = null;
+/// Global registry for moving steps callbacks.
+/// Process-wide, written once at start-up (hook.zig).
+var moving_steps_callbacks: hook.Hook(hook.List(MovingStepsCallback, max_callbacks)) = .init(.empty);
+
+/// A test's own copies of the five registries, which the callbacks the test
+/// registers go into, until `restore()` takes them away again - so a test's
+/// callback never stays registered for the process's later tests.
+pub const RegistriesOverride = struct {
+    children_changed: @TypeOf(children_changed_callbacks).Override,
+    insertion: @TypeOf(insertion_steps_callbacks).Override,
+    removing: @TypeOf(removing_steps_callbacks).Override,
+    post_connection: @TypeOf(post_connection_steps_callbacks).Override,
+    moving: @TypeOf(moving_steps_callbacks).Override,
+
+    pub fn restore(self: RegistriesOverride) void {
+        self.moving.restore();
+        self.post_connection.restore();
+        self.removing.restore();
+        self.insertion.restore();
+        self.children_changed.restore();
+    }
+};
+
+pub fn overrideRegistriesForTest() RegistriesOverride {
+    return .{
+        .children_changed = children_changed_callbacks.overrideForTest(children_changed_callbacks.get()),
+        .insertion = insertion_steps_callbacks.overrideForTest(insertion_steps_callbacks.get()),
+        .removing = removing_steps_callbacks.overrideForTest(removing_steps_callbacks.get()),
+        .post_connection = post_connection_steps_callbacks.overrideForTest(post_connection_steps_callbacks.get()),
+        .moving = moving_steps_callbacks.overrideForTest(moving_steps_callbacks.get()),
+    };
+}
 
 /// Register a callback for insertion steps
-pub fn registerInsertionStepsCallback(callback: InsertionStepsCallback) !void {
-    process_start.assertInstalling();
-    if (insertion_steps_callbacks == null) {
-        insertion_steps_callbacks = infra.List(InsertionStepsCallback).init(std.heap.page_allocator);
-    }
+pub fn registerInsertionStepsCallback(callback: InsertionStepsCallback) error{OutOfMemory}!void {
+    const callbacks = insertion_steps_callbacks.installing();
     // Once per function: a repeated install (a test that installs again) adds nothing.
-    if (insertion_steps_callbacks.?.contains(callback)) return;
-    try insertion_steps_callbacks.?.append(callback);
+    if (callbacks.contains(callback)) return;
+    callbacks.append(callback);
 }
 
 /// Register a callback for removing steps
-pub fn registerRemovingStepsCallback(callback: RemovingStepsCallback) !void {
-    process_start.assertInstalling();
-    if (removing_steps_callbacks == null) {
-        removing_steps_callbacks = infra.List(RemovingStepsCallback).init(std.heap.page_allocator);
-    }
+pub fn registerRemovingStepsCallback(callback: RemovingStepsCallback) error{OutOfMemory}!void {
+    const callbacks = removing_steps_callbacks.installing();
     // Once per function: a repeated install (a test that installs again) adds nothing.
-    if (removing_steps_callbacks.?.contains(callback)) return;
-    try removing_steps_callbacks.?.append(callback);
+    if (callbacks.contains(callback)) return;
+    callbacks.append(callback);
 }
 
 /// Register a callback for post-connection steps
-pub fn registerPostConnectionStepsCallback(callback: PostConnectionStepsCallback) !void {
-    process_start.assertInstalling();
-    if (post_connection_steps_callbacks == null) {
-        post_connection_steps_callbacks = infra.List(PostConnectionStepsCallback).init(std.heap.page_allocator);
-    }
+pub fn registerPostConnectionStepsCallback(callback: PostConnectionStepsCallback) error{OutOfMemory}!void {
+    const callbacks = post_connection_steps_callbacks.installing();
     // Once per function: a repeated install (a test that installs again) adds nothing.
-    if (post_connection_steps_callbacks.?.contains(callback)) return;
-    try post_connection_steps_callbacks.?.append(callback);
+    if (callbacks.contains(callback)) return;
+    callbacks.append(callback);
 }
 
 /// Register a callback for moving steps
-pub fn registerMovingStepsCallback(callback: MovingStepsCallback) !void {
-    process_start.assertInstalling();
-    if (moving_steps_callbacks == null) {
-        moving_steps_callbacks = infra.List(MovingStepsCallback).init(std.heap.page_allocator);
-    }
+pub fn registerMovingStepsCallback(callback: MovingStepsCallback) error{OutOfMemory}!void {
+    const callbacks = moving_steps_callbacks.installing();
     // Once per function: a repeated install (a test that installs again) adds nothing.
-    if (moving_steps_callbacks.?.contains(callback)) return;
-    try moving_steps_callbacks.?.append(callback);
+    if (callbacks.contains(callback)) return;
+    callbacks.append(callback);
 }
 
 /// Run the insertion steps for a node
 /// Called during the insert algorithm for each shadow-including descendant
 fn runInsertionSteps(node: anytype) void {
     // Fast path: if no callbacks are registered, skip entirely
-    const callbacks = insertion_steps_callbacks orelse return;
-    if (callbacks.size() == 0) return;
+    const callbacks = insertion_steps_callbacks.read().slice();
+    if (callbacks.len == 0) return;
 
     const node_ptr: *NodeBase = @ptrCast(node);
-    for (callbacks.items()) |callback| {
+    for (callbacks) |callback| {
         callback(node_ptr);
     }
 }
@@ -226,8 +242,7 @@ fn runInsertionSteps(node: anytype) void {
 /// Check if there are any insertion steps callbacks registered
 /// Used to skip expensive descendant traversal when no callbacks exist
 pub fn hasInsertionStepsCallbacks() bool {
-    const callbacks = insertion_steps_callbacks orelse return false;
-    return callbacks.size() > 0;
+    return insertion_steps_callbacks.read().len > 0;
 }
 
 /// Run the removing steps for a node
@@ -242,10 +257,8 @@ fn runRemovingSteps(node: anytype, old_parent: anytype) void {
     else
         @ptrCast(old_parent);
 
-    if (removing_steps_callbacks) |*callbacks| {
-        for (callbacks.items()) |callback| {
-            callback(node_ptr, old_parent_ptr);
-        }
+    for (removing_steps_callbacks.read().slice()) |callback| {
+        callback(node_ptr, old_parent_ptr);
     }
 }
 
@@ -253,11 +266,11 @@ fn runRemovingSteps(node: anytype, old_parent: anytype) void {
 /// Called after a batch of insertions complete
 fn runPostConnectionSteps(node: anytype) void {
     // Fast path: if no callbacks are registered, skip entirely
-    const callbacks = post_connection_steps_callbacks orelse return;
-    if (callbacks.size() == 0) return;
+    const callbacks = post_connection_steps_callbacks.read().slice();
+    if (callbacks.len == 0) return;
 
     const node_ptr: *NodeBase = @ptrCast(node);
-    for (callbacks.items()) |callback| {
+    for (callbacks) |callback| {
         callback(node_ptr);
     }
 }
@@ -265,8 +278,7 @@ fn runPostConnectionSteps(node: anytype) void {
 /// Check if there are any post-connection steps callbacks registered
 /// Used to skip expensive descendant traversal when no callbacks exist
 pub fn hasPostConnectionStepsCallbacks() bool {
-    const callbacks = post_connection_steps_callbacks orelse return false;
-    return callbacks.size() > 0;
+    return post_connection_steps_callbacks.read().len > 0;
 }
 
 /// Recursively run insertion steps for a node and all its descendants
@@ -2797,10 +2809,8 @@ fn enqueueCustomElementCallback(node: anytype, kind: custom_elements.CallbackTyp
 /// Spec: Moving steps are defined by specifications
 /// Called during the move algorithm for each shadow-including descendant
 fn runMovingSteps(node: *NodeBase, old_parent: ?*NodeBase) void {
-    if (moving_steps_callbacks) |*callbacks| {
-        for (callbacks.items()) |callback| {
-            callback(node, old_parent);
-        }
+    for (moving_steps_callbacks.read().slice()) |callback| {
+        callback(node, old_parent);
     }
 }
 
@@ -2997,10 +3007,8 @@ test "a callback registered twice runs once" {
             calls += 1;
         }
     };
-    const saved = children_changed_callbacks;
-    defer children_changed_callbacks = saved;
-    children_changed_callbacks = null;
-    defer if (children_changed_callbacks) |*list| list.deinit();
+    const override = children_changed_callbacks.overrideForTest(.empty);
+    defer override.restore();
 
     try registerChildrenChangedCallback(&Counter.childrenChanged);
     try registerChildrenChangedCallback(&Counter.childrenChanged);

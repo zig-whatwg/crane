@@ -12,6 +12,7 @@
 //!
 //! lint-impls: hook for Range, StaticRange
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 
@@ -29,12 +30,11 @@ pub const Provider = *const fn (range: *runtime.Instance) ?Boundaries;
 
 /// One slot per kind of range - Range and StaticRange - with room to spare.
 /// Process-wide, written once at start-up (process_start.zig).
-var providers: [4]?Provider = .{ null, null, null, null };
+var providers: Hook([4]?Provider) = .init(.{ null, null, null, null });
 
 /// Called by each range impl when it creates a range. Idempotent.
 pub fn install(provider: Provider) void {
-    process_start.assertInstalling();
-    for (&providers) |*slot| {
+    for (providers.installing()) |*slot| {
         if (slot.*) |existing| {
             if (existing == provider) return;
             continue;
@@ -46,7 +46,7 @@ pub fn install(provider: Provider) void {
 
 /// `range`'s start and end, from whichever kind of range it is.
 pub fn of(range: *runtime.Instance) ?Boundaries {
-    for (providers) |slot| {
+    for (providers.read()) |slot| {
         const provider = slot orelse return null;
         if (provider(range)) |b| return b;
     }
@@ -97,24 +97,23 @@ pub const LiveRange = struct {
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
-var live_range: ?LiveRange = null;
+var live_range: Hook(?LiveRange) = .init(null);
 
 /// Called by Range's installHooks, once, at process start (process_start.zig).
 pub fn installLiveRange(impl: LiveRange) void {
-    process_start.assertInstalling();
-    live_range = impl;
+    live_range.install(impl);
 }
 
 /// Collapse a just-created live `range` at (node, offset) and register it.
 pub fn collapseLive(range: *runtime.Instance, node: *runtime.Instance, offset: u32) !void {
-    const impl = live_range orelse return error.NotSupported;
+    const impl = live_range.get() orelse return error.NotSupported;
     return impl.collapse(range, node, offset);
 }
 
 /// A tree moved to another document: `range`, one of the old document's
 /// live ranges, follows its start node if that moved with the tree.
 pub fn updateOwnerDocument(range: *runtime.Instance) !void {
-    const impl = live_range orelse return;
+    const impl = live_range.get() orelse return;
     return impl.update_owner_document(range);
 }
 
@@ -122,15 +121,15 @@ pub fn updateOwnerDocument(range: *runtime.Instance) !void {
 /// asked once per range. Null before Range has installed it, when no
 /// document can have a live range.
 pub fn liveRange() ?*const LiveRange {
-    if (live_range) |*impl| return impl;
+    // In place: the caller keeps the pointer for the mutation.
+    if (live_range.read().*) |*impl| return impl;
     return null;
 }
 
 test "install is idempotent and `of` asks each provider in turn" {
     const std = @import("std");
-    const saved = providers;
-    defer providers = saved;
-    providers = .{ null, null, null, null };
+    const override = providers.overrideForTest(.{ null, null, null, null });
+    defer override.restore();
 
     var a: runtime.Instance = undefined;
     var b: runtime.Instance = undefined;
@@ -150,7 +149,7 @@ test "install is idempotent and `of` asks each provider in turn" {
     install(&Fake.never);
     install(&Fake.only);
     install(&Fake.never);
-    try std.testing.expect(providers[2] == null);
+    try std.testing.expect(providers.get()[2] == null);
 
     const got = of(&a) orelse return error.TestUnexpectedResult;
     try std.testing.expectEqual(@as(u32, 1), got.start_offset);

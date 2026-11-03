@@ -10,6 +10,7 @@
 //!
 //! lint-impls: hook for IntersectionObserver
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 
@@ -17,16 +18,15 @@ pub const Implementation = struct {
     target_destroyed: *const fn (node: *runtime.Instance) void,
 };
 
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by IntersectionObserver's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// `node` is being torn down. Nothing happens before any observer exists.
 pub fn targetDestroyed(node: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.target_destroyed(node);
 }

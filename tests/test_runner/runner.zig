@@ -116,6 +116,18 @@ fn configureNeighbour(environ: std.process.Environ) void {
 fn startNeighbourOnce() void {
     if (!neighbour_wanted or neighbour.running()) return;
     neighbour.start() catch |err| panic("the many-Browsers variant could not start its busy Browser's thread: {t}", .{err});
+    // A test's hook override is a statement about the whole process: from its
+    // first override to its last restore the busy Browser waits between two
+    // iterations, so it neither races the slot's write nor runs on the
+    // test's fake (src/dom/hook.zig; Chromium's ScopedFeatureList holds its
+    // process-wide override for its scope).
+    if (suite.dom) |dom| {
+        _ = dom.process_start.observeOverridesForTest(.{
+            .ctx = &neighbour,
+            .first_made = &neighbour_mod.Neighbour.holdFor,
+            .last_restored = &neighbour_mod.Neighbour.releaseFor,
+        });
+    }
 }
 
 /// Ends the busy Browser before the process exits: an exit with the thread

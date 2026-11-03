@@ -17,6 +17,7 @@
 //!
 //! lint-impls: hook for Blob
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
@@ -42,25 +43,24 @@ pub const Steps = struct {
     data_of: *const fn (blob: *runtime.Instance) ?*file.BlobData,
 };
 
-var steps: ?Steps = null;
+var steps: Hook(?Steps) = .init(null);
 
 /// Called by Blob's installHooks, once, at process start (process_start.zig).
 pub fn install(s: Steps) void {
-    process_start.assertInstalling();
-    steps = s;
+    steps.install(s);
 }
 
 /// `blob`'s bytes, borrowed: copy what you keep. Null when Blob has
 /// installed nothing, or `blob` is no Blob.
 pub fn bytesOf(blob: *runtime.Instance) ?[]const u8 {
-    const s = steps orelse return null;
+    const s = steps.get() orelse return null;
     return s.bytes_of(blob);
 }
 
 /// `blob`'s data, shared with it (see `Steps.data_of`): a blob URL entry
 /// keeps it. Null when Blob has installed nothing, or `blob` is no Blob.
 pub fn dataOf(blob: *runtime.Instance) ?*file.BlobData {
-    const s = steps orelse return null;
+    const s = steps.get() orelse return null;
     return s.data_of(blob);
 }
 
@@ -68,7 +68,7 @@ pub fn dataOf(blob: *runtime.Instance) ?*file.BlobData {
 /// its Blob part this way), with no bytes yet - a copy of `bytes` and
 /// `mime_type` as its type, as the File API's constructors take one.
 pub fn setBytes(blob: *runtime.Instance, bytes: []const u8, mime_type: []const u8) !void {
-    const s = steps orelse return error.NotSupported;
+    const s = steps.get() orelse return error.NotSupported;
     try s.set_bytes(blob, bytes, mime_type);
 }
 
@@ -80,7 +80,7 @@ pub fn create(ctx: runtime.Context, bytes: []const u8, mime_type: []const u8) !*
     const blob = try interfaces.Blob.init(ctx.allocator, ctx);
     const generation = runtime.SlabAllocator.generationOf(blob);
     errdefer blob.releaseIfUnwrapped(generation);
-    const s = steps orelse return error.NotSupported;
+    const s = steps.get() orelse return error.NotSupported;
     try s.set_bytes(blob, bytes, mime_type);
     return blob;
 }
@@ -91,7 +91,7 @@ pub fn createWithType(ctx: runtime.Context, bytes: []const u8, mime_type: []cons
     const blob = try interfaces.Blob.init(ctx.allocator, ctx);
     const generation = runtime.SlabAllocator.generationOf(blob);
     errdefer blob.releaseIfUnwrapped(generation);
-    const s = steps orelse return error.NotSupported;
+    const s = steps.get() orelse return error.NotSupported;
     try s.set_bytes_exact_type(blob, bytes, mime_type);
     return blob;
 }
@@ -99,6 +99,6 @@ pub fn createWithType(ctx: runtime.Context, bytes: []const u8, mime_type: []cons
 /// HTML create-an-entry: preserve the source type on a fresh, unwrapped File
 /// whose constructor copied its bytes. Never use this on exposed/shared data.
 pub fn setExactType(blob: *runtime.Instance, serialized_type: []const u8) !void {
-    const s = steps orelse return error.NotSupported;
+    const s = steps.get() orelse return error.NotSupported;
     try s.set_exact_type(blob, serialized_type);
 }

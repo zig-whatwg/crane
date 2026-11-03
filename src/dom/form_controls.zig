@@ -13,7 +13,7 @@
 //! lint-impls: hook for HTMLInputElement, HTMLTextAreaElement, HTMLSelectElement, HTMLOptionElement, HTMLButtonElement, HTMLOutputElement, HTMLFieldSetElement, HTMLObjectElement
 
 const std = @import("std");
-const process_start = @import("process_start.zig");
+const hook = @import("hook.zig");
 const runtime = @import("runtime");
 pub const ValidityFlags = @import("dictionaries").ValidityStateFlags;
 
@@ -53,8 +53,8 @@ pub const Control = struct {
 };
 
 const max_controls = 16;
-var controls: [max_controls]Control = undefined;
-var count: usize = 0;
+/// Process-wide, written once at start-up (hook.zig).
+var controls: hook.Hook(hook.List(Control, max_controls)) = .init(.empty);
 
 /// Install `control`. Idempotent: installing the same control again adds
 /// nothing - and a control is the same only if EVERY function it names is the
@@ -73,18 +73,14 @@ var count: usize = 0;
 /// table holds what a Debug build's holds, less exact duplicates
 /// (docs/lessons/debugging-equal-constants-share-one-address-in-a-release-build.md).
 pub fn install(control: Control) void {
-    process_start.assertInstalling();
-    for (controls[0..count]) |existing| {
-        if (std.meta.eql(existing, control)) return;
-    }
-    if (count == max_controls) return;
-    controls[count] = control;
-    count += 1;
+    const installed = controls.installing();
+    if (installed.contains(control)) return;
+    installed.append(control);
 }
 
 /// Run `element`'s reset algorithm, if its type has one installed.
 pub fn reset(element: *runtime.Instance) void {
-    for (controls[0..count]) |control| {
+    for (controls.read().slice()) |control| {
         if (control.reset) |run| if (control.is(element)) return run(element);
     }
 }
@@ -92,7 +88,7 @@ pub fn reset(element: *runtime.Instance) void {
 /// Read the flags from the first matching type that supplies them. A type
 /// can register its reset and validity algorithms in separate entries.
 pub fn validityFlags(element: *runtime.Instance) ValidityFlags {
-    for (controls[0..count]) |control| {
+    for (controls.read().slice()) |control| {
         if (control.validity_flags) |flags| if (control.is(element)) return flags(element);
     }
     return .{};
@@ -100,14 +96,14 @@ pub fn validityFlags(element: *runtime.Instance) ValidityFlags {
 
 /// HTML 4.10.18.1: initially false; unsupported element types have no flag.
 pub fn userValidity(element: *runtime.Instance) bool {
-    for (controls[0..count]) |control| {
+    for (controls.read().slice()) |control| {
         if (control.user_validity) |read| if (control.is(element)) return read(element);
     }
     return false;
 }
 
 pub fn setUserValidity(element: *runtime.Instance, value: bool) !void {
-    for (controls[0..count]) |control| {
+    for (controls.read().slice()) |control| {
         if (control.set_user_validity) |set| if (control.is(element)) return set(element, value);
     }
 }
@@ -115,7 +111,7 @@ pub fn setUserValidity(element: *runtime.Instance, value: bool) !void {
 /// A non-IDL step: script's value/setRangeText writes have different
 /// constraint effects. False asks the host to use its existing fallback.
 pub fn userEdit(element: *runtime.Instance, edit: UserEdit) anyerror!bool {
-    for (controls[0..count]) |control| {
+    for (controls.read().slice()) |control| {
         if (control.user_edit) |run| if (control.is(element)) {
             try run(element, edit);
             return true;
@@ -127,7 +123,7 @@ pub fn userEdit(element: *runtime.Instance, edit: UserEdit) anyerror!bool {
 /// An owned snapshot: a beforeinput listener or the following edit can
 /// replace the control's buffer. A missing handler asks the host to fall back.
 pub fn editorText(element: *runtime.Instance) anyerror!?runtime.DOMString {
-    for (controls[0..count]) |control| {
+    for (controls.read().slice()) |control| {
         if (control.editor_text) |read| if (control.is(element)) return try read(element);
     }
     return null;
@@ -135,49 +131,49 @@ pub fn editorText(element: *runtime.Instance) anyerror!?runtime.DOMString {
 
 /// HTML: whether the owner defines a minimum or maximum for this control.
 pub fn hasRangeLimitations(element: *runtime.Instance) bool {
-    for (controls[0..count]) |control| {
+    for (controls.read().slice()) |control| {
         if (control.has_range_limitations) |read| if (control.is(element)) return read(element);
     }
     return false;
 }
 
 pub fn selectedIndex(select: *runtime.Instance) anyerror!?usize {
-    for (controls[0..count]) |control| {
+    for (controls.read().slice()) |control| {
         if (control.selected_index) |read| if (control.is(select)) return read(select);
     }
     return error.NotSupported;
 }
 
 pub fn setSelectedIndex(select: *runtime.Instance, index: ?usize) anyerror!void {
-    for (controls[0..count]) |control| {
+    for (controls.read().slice()) |control| {
         if (control.set_selected_index) |set| if (control.is(select)) return set(select, index);
     }
     return error.NotSupported;
 }
 
 pub fn pickerOpen(select: *runtime.Instance) bool {
-    for (controls[0..count]) |control| {
+    for (controls.read().slice()) |control| {
         if (control.picker_open) |read| if (control.is(select)) return read(select);
     }
     return false;
 }
 
 pub fn setPickerOpen(select: *runtime.Instance, open: bool) !void {
-    for (controls[0..count]) |control| {
+    for (controls.read().slice()) |control| {
         if (control.set_picker_open) |set| if (control.is(select)) return set(select, open);
     }
     return error.NotSupported;
 }
 
 pub fn selectedcontentInterest(select: *runtime.Instance) bool {
-    for (controls[0..count]) |control| {
+    for (controls.read().slice()) |control| {
         if (control.selectedcontent_interest) |read| if (control.is(select)) return read(select);
     }
     return false;
 }
 
 pub fn setSelectedcontentInterest(select: *runtime.Instance, present: bool) !void {
-    for (controls[0..count]) |control| {
+    for (controls.read().slice()) |control| {
         if (control.set_selectedcontent_interest) |set| if (control.is(select)) return set(select, present);
     }
     return error.NotSupported;
@@ -194,20 +190,15 @@ test "an element runs the reset algorithm whose brand check accepts it, installe
             resets += 1;
         }
     };
-    const saved = count;
-    const saved_controls = controls;
-    defer {
-        count = saved;
-        controls = saved_controls;
-    }
-    count = 0;
+    const override = controls.overrideForTest(.empty);
+    defer override.restore();
     // Never dereferenced: nothing installed reads the element.
     var element: runtime.Instance = undefined;
     reset(&element);
     try std.testing.expectEqual(@as(usize, 0), Test.resets);
     install(.{ .is = &Test.is, .reset = &Test.reset });
     install(.{ .is = &Test.is, .reset = &Test.reset });
-    try std.testing.expectEqual(@as(usize, 1), count);
+    try std.testing.expectEqual(@as(usize, 1), controls.get().len);
     reset(&element);
     try std.testing.expectEqual(@as(usize, 1), Test.resets);
 }
@@ -228,12 +219,8 @@ test "installs that share a brand check keep their algorithms: a release build m
             resets += 1;
         }
     };
-    const saved_controls = controls;
-    const saved_count = count;
-    defer {
-        controls = saved_controls;
-        count = saved_count;
-    }
+    const override = controls.overrideForTest(.empty);
+    defer override.restore();
     const Select = struct {
         fn flags(_: *runtime.Instance) ValidityFlags {
             return .{ .valueMissing = true };
@@ -243,7 +230,6 @@ test "installs that share a brand check keep their algorithms: a release build m
         }
     };
     var element: runtime.Instance = undefined;
-    count = 0;
     install(.{ .is = &Test.is, .validity_flags = &Select.flags });
     install(.{ .is = &Test.is, .reset = &Test.reset, .selected_index = &Select.selected });
     try std.testing.expect(validityFlags(&element).valueMissing orelse false);
@@ -262,12 +248,6 @@ test "control dispatch skips matching entries without its callback, in either or
             resets += 1;
         }
     };
-    const saved_controls = controls;
-    const saved_count = count;
-    defer {
-        controls = saved_controls;
-        count = saved_count;
-    }
     const ValidityOnly = struct {
         fn is(_: *runtime.Instance) bool {
             return true;
@@ -288,7 +268,9 @@ test "control dispatch skips matching entries without its callback, in either or
     };
     var element: runtime.Instance = undefined;
     for ([_]bool{ false, true }) |validity_first| {
-        count = 0;
+        // Each order on an empty table of the test's own.
+        const override = controls.overrideForTest(.empty);
+        defer override.restore();
         Test.resets = 0;
         try std.testing.expectEqual(null, try editorText(&element));
         try std.testing.expectError(error.NotSupported, selectedIndex(&element));
@@ -312,14 +294,14 @@ test "control dispatch skips matching entries without its callback, in either or
 
 /// Select-owned summary of the options' stored selectedness, not a node cache.
 pub fn hasSelectedOption(select: *runtime.Instance) bool {
-    for (controls[0..count]) |control| {
+    for (controls.read().slice()) |control| {
         if (control.has_selected_option) |read| if (control.is(select)) return read(select);
     }
     return false;
 }
 
 pub fn setHasSelectedOption(select: *runtime.Instance, value: bool) !void {
-    for (controls[0..count]) |control| {
+    for (controls.read().slice()) |control| {
         if (control.set_has_selected_option) |write| if (control.is(select)) return write(select, value);
     }
     return error.NotSupported;
@@ -327,7 +309,7 @@ pub fn setHasSelectedOption(select: *runtime.Instance, value: bool) !void {
 
 /// The select owns the scalar insertion stamp; the option owns its bits.
 pub fn optionOwnerUnchanged(select: *runtime.Instance) bool {
-    for (controls[0..count]) |control| {
+    for (controls.read().slice()) |control| {
         if (control.option_owner_unchanged) |read| if (control.is(select)) return read(select);
     }
     return false;
@@ -337,7 +319,7 @@ pub fn optionOwnerUnchanged(select: *runtime.Instance) bool {
 /// putting the scan in a production write path would make insertion quadratic.
 pub fn selectionInvariant(select: *runtime.Instance) bool {
     var found = false;
-    for (controls[0..count]) |control| {
+    for (controls.read().slice()) |control| {
         if (control.selection_invariant) |check| if (control.is(select)) {
             found = true;
             if (!check(select)) return false;
@@ -349,14 +331,14 @@ pub fn selectionInvariant(select: *runtime.Instance) bool {
 /// Borrowed until the next typeahead call for this select; no script runs
 /// while the caller compares it with option labels.
 pub fn selectTypeahead(select: *runtime.Instance, text: []const u8) ![]const u8 {
-    for (controls[0..count]) |control| {
+    for (controls.read().slice()) |control| {
         if (control.select_typeahead) |run| if (control.is(select)) return run(select, text);
     }
     return error.NotSupported;
 }
 
 pub fn pickOption(select: *runtime.Instance, option: *runtime.Instance, toggle: bool) !void {
-    for (controls[0..count]) |control| {
+    for (controls.read().slice()) |control| {
         if (control.pick_option) |run| if (control.is(select)) return run(select, option, toggle);
     }
     return error.NotSupported;
