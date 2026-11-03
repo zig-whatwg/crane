@@ -72,29 +72,50 @@ const Start = struct {
     /// sheets) never wait on a test thread, a test start only installs, and
     /// a waiter holds nothing either needs (it blocks before it takes
     /// anything; a test's override, which holds the busy Browser, is never
-    /// made inside a test start).
+    /// made inside a test start). The thread that holds it may take it
+    /// again (`installs_holder`): tests/v8's test_process.start() claims the
+    /// start (`begin`) and then runs startHooksForTest() - a test start - on
+    /// the same thread, which a plain lock would make wait on itself forever
+    /// (lane hookfreeze2's first gate hung every tests-v8 process that way).
     installs: std.Io.Mutex = .init,
+    /// The thread holding `installs` (0: none) - only ever compared with
+    /// the caller's own id, so a stale read is never this thread's.
+    installs_holder: std.atomic.Value(std.Thread.Id) = .init(0),
     test_installing: std.atomic.Value(u32) = .init(0),
-    /// The thread inside `installForTest` (0: none): a nested test start
-    /// would wait on its own lock, so it panics instead.
-    test_install_thread: std.atomic.Value(std.Thread.Id) = .init(0),
     test_overrides: std.atomic.Value(u32) = .init(0),
     /// Set by the Crane test runner before its first test, read by the test
     /// thread's overrides (`observeOverridesForTest`).
     test_override_observer: ?OverrideObserver = null,
 
+    /// Take the install lock - or nothing, when this thread holds it
+    /// already: true when this call took it (and its caller gives it back).
+    fn lockInstalls(self: *Start) bool {
+        const me = std.Thread.getCurrentId();
+        if (self.installs_holder.load(.acquire) == me) return false;
+        std.Io.Threaded.mutexLockUncancelable(&self.installs);
+        self.installs_holder.store(me, .release);
+        return true;
+    }
+
+    fn unlockInstalls(self: *Start) void {
+        self.installs_holder.store(0, .release);
+        std.Io.Threaded.mutexUnlock(&self.installs);
+    }
+
     fn begin(self: *Start) bool {
         if (self.word.cmpxchgStrong(.{}, .{ .phase = .starting }, .acq_rel, .acquire) != null) return false;
-        // A test start installing now finishes first; none starts until
-        // `finish` (or a failed start's `end`).
-        std.Io.Threaded.mutexLockUncancelable(&self.installs);
+        // A test start installing now on another thread finishes first;
+        // none starts until `finish` (or a failed start's `end`). A start
+        // claimed inside this thread's own test start would give the lock
+        // back at `finish` while that test start still installs.
+        if (!self.lockInstalls()) std.debug.panic("the process start was begun inside a test start (installForTest) on the same thread", .{});
         return true;
     }
 
     fn finish(self: *Start, has_snapshot: bool) void {
         std.debug.assert(self.word.load(.acquire).phase == .starting);
         self.word.store(.{ .phase = .running, .has_snapshot = has_snapshot }, .release);
-        std.Io.Threaded.mutexUnlock(&self.installs);
+        self.unlockInstalls();
     }
 
     fn end(self: *Start) void {
@@ -102,16 +123,14 @@ const Start = struct {
         // A start that failed mid-install (crane.Process.init's error paths
         // end it from .starting) gives the lock back; a finished one gave it
         // back in `finish`.
-        if (endReleasesInstalls(before.phase)) std.Io.Threaded.mutexUnlock(&self.installs);
+        if (endReleasesInstalls(before.phase)) self.unlockInstalls();
     }
 
     fn installForTest(self: *Start, comptime install: fn () void) void {
-        const me = std.Thread.getCurrentId();
-        if (self.test_install_thread.load(.acquire) == me) std.debug.panic("installForTest inside installForTest: a test start never nests (it would wait on its own install lock)", .{});
-        std.Io.Threaded.mutexLockUncancelable(&self.installs);
-        defer std.Io.Threaded.mutexUnlock(&self.installs);
-        self.test_install_thread.store(me, .release);
-        defer self.test_install_thread.store(0, .release);
+        // Inside this thread's own process start (tests/v8 test_process.start)
+        // or test start, the lock is already this thread's.
+        const took = self.lockInstalls();
+        defer if (took) self.unlockInstalls();
         _ = self.test_installing.fetchAdd(1, .acq_rel);
         defer _ = self.test_installing.fetchSub(1, .acq_rel);
         install();
@@ -326,6 +345,65 @@ test "a start that fails mid-install gives the install lock back; a finished one
     finished.end(); // Process.deinit: nothing to give back
     try std.testing.expect(finished.installs.tryLock());
     std.Io.Threaded.mutexUnlock(&finished.installs);
+}
+
+test "the process start's own test start, on its thread, does not wait on itself (tests/v8 test_process.start: begin, then startHooksForTest)" {
+    // tests/v8/test_process.zig's start() claims the start (begin) and then
+    // runs startHooksForTest() - installForTest - on the same thread: the
+    // install lock it already holds. Run on a thread of its own, so a wait
+    // on itself shows as a bounded timeout, not a hung test.
+    const Own = struct {
+        var start: Start = .{};
+        var installed: std.atomic.Value(bool) = .init(false);
+        var done: std.atomic.Value(bool) = .init(false);
+        fn install() void {
+            installed.store(true, .release);
+        }
+        fn run() void {
+            if (!start.begin()) return;
+            start.installForTest(install);
+            start.finish(false);
+            done.store(true, .release);
+        }
+    };
+    const thread = try std.Thread.spawn(.{}, Own.run, .{});
+    var spins: u32 = 0;
+    while (!Own.done.load(.acquire) and spins < 2_000_000) : (spins += 1) std.Thread.yield() catch {};
+    if (!Own.done.load(.acquire)) {
+        // Left blocked on its own lock: the process's exit ends it.
+        thread.detach();
+        return error.TestStartWaitedOnItsOwnProcessStart;
+    }
+    thread.join();
+    try std.testing.expect(Own.installed.load(.acquire));
+    // And the lock is free after the start finished.
+    try std.testing.expect(Own.start.installs.tryLock());
+    std.Io.Threaded.mutexUnlock(&Own.start.installs);
+}
+
+test "ending the process leaves the install lock free from every phase" {
+    // Not started: nothing to give back.
+    var never: Start = .{};
+    never.end();
+    try std.testing.expect(never.installs.tryLock());
+    std.Io.Threaded.mutexUnlock(&never.installs);
+    // Starting: a start that failed mid-install gives it back.
+    var failed: Start = .{};
+    try std.testing.expect(failed.begin());
+    failed.end();
+    try std.testing.expect(failed.installs.tryLock());
+    std.Io.Threaded.mutexUnlock(&failed.installs);
+    // Running: finish gave it back; end gives nothing back twice.
+    var running: Start = .{};
+    try std.testing.expect(running.begin());
+    running.finish(false);
+    running.end();
+    try std.testing.expect(running.installs.tryLock());
+    std.Io.Threaded.mutexUnlock(&running.installs);
+    // Ended: ending again gives nothing back.
+    running.end();
+    try std.testing.expect(running.installs.tryLock());
+    std.Io.Threaded.mutexUnlock(&running.installs);
 }
 
 test "a test start waits for a process start under way, holding nothing it needs, and then goes in" {
