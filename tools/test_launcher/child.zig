@@ -237,6 +237,11 @@ pub const Executor = struct {
                     const res = try parseResults(body);
                     if (res.index != t) return error.ProtocolMismatch;
                     const ns = elapsed(io, began);
+                    // Everything the test printed came before its result,
+                    // but may still be in the pipe (`readReady`): read it
+                    // now, so that it is this test's output - and, when the
+                    // test passed, not the next one's.
+                    readReady(&p.mr);
                     const stderr = p.mr.reader(1);
                     const out: []u8 = if (res.status.ok()) &.{} else try e.gpa.dupe(u8, stderr.buffered());
                     stderr.tossBuffered();
@@ -325,6 +330,33 @@ pub const Executor = struct {
 fn tvUs(tv: anytype) u64 {
     return @as(u64, @intCast(tv.sec)) * std.time.us_per_s + @as(u64, @intCast(tv.usec));
 }
+
+/// Reads into `mr`'s buffers whatever its pipes hold now, without waiting.
+///
+/// A test process prints a failing test's text on stderr and THEN sends its
+/// test_results on stdout, but that order does not reach the launcher's
+/// buffers: the multi-reader polls both pipes and reads those poll found
+/// ready. When poll finds only stdout ready - the test_started message - and
+/// the launcher's thread is preempted before the read (a loaded host), the
+/// process can print its text and send its result in the meantime; the read
+/// then takes both messages, and the text stays in the stderr pipe, unread.
+/// The result was read with an empty output (tools/test_launcher's own
+/// fixture test, under v8state1's gate load, 2026-11-02), and the text would
+/// have been read with the NEXT test's. Everything written to stderr before
+/// the result is in the pipe by the time the result is read, so a poll that
+/// does not wait finds it; read until the pipes have nothing ready. Bounded
+/// for a process that never stops printing (a busy Browser's thread): what
+/// it prints later belongs to no test in particular.
+fn readReady(mr: *Io.File.MultiReader) void {
+    const now: Io.Timeout = .{ .duration = .{ .clock = .awake, .raw = .zero } };
+    for (0..max_ready_reads) |_| {
+        // Timeout: nothing ready; EndOfStream: every pipe closed.
+        mr.fill(64, now) catch return;
+    }
+}
+
+/// `readReady`'s bound: reads of what the pipes hold at once.
+const max_ready_reads = 1024;
 
 fn elapsed(io: Io, from: Io.Clock.Timestamp) u64 {
     return @intCast(@max(from.untilNow(io).raw.nanoseconds, 0));
@@ -554,6 +586,117 @@ test "parses test results: status, and a pass that leaked or logged errors fails
         try testing.expectEqual(@as(u32, @intCast(i)), res.index);
         try testing.expectEqual(c.want, res.status);
     }
+}
+
+/// A worker's process faked with three pipes, for `Executor.run`: the
+/// launcher's ends are the Proc's, as `start` sets them up; the test writes
+/// the child's side. `run`'s success path never touches `child`.
+const PipedProc = struct {
+    p: *Proc,
+    stdin: [2]std.posix.fd_t,
+    stdout: [2]std.posix.fd_t,
+    stderr: [2]std.posix.fd_t,
+
+    fn file(fd: std.posix.fd_t) Io.File {
+        return .{ .handle = fd, .flags = .{ .nonblocking = false } };
+    }
+
+    fn open(e: *Executor, w: u32) !PipedProc {
+        const gpa = e.gpa;
+        const io = e.io;
+        var pp: PipedProc = .{ .p = try gpa.create(Proc), .stdin = undefined, .stdout = undefined, .stderr = undefined };
+        errdefer gpa.destroy(pp.p);
+        pp.stdin = try Io.Threaded.pipe2(.{ .CLOEXEC = true });
+        pp.stdout = try Io.Threaded.pipe2(.{ .CLOEXEC = true });
+        pp.stderr = try Io.Threaded.pipe2(.{ .CLOEXEC = true });
+        const p = pp.p;
+        p.child = undefined;
+        p.mr.init(gpa, io, p.mr_buf.toStreams(), &.{ file(pp.stdout[0]), file(pp.stderr[0]) });
+        p.stdin_writer = file(pp.stdin[1]).writerStreaming(io, &.{});
+        p.client = .{ .in = p.mr.reader(0), .out = &p.stdin_writer.interface };
+        e.procs[w] = p;
+        return pp;
+    }
+
+    fn close(pp: PipedProc, e: *Executor, w: u32) void {
+        e.procs[w] = null;
+        pp.p.mr.deinit();
+        for ([_][2]std.posix.fd_t{ pp.stdin, pp.stdout, pp.stderr }) |fds| {
+            for (fds) |fd| file(fd).close(e.io);
+        }
+        e.gpa.destroy(pp.p);
+    }
+
+    /// The child's side of one test, as the test runner sends it:
+    /// test_started, then test_results.
+    fn sendResult(pp: PipedProc, io: Io, index: u32, flags: InMessage.TestResults.Flags) !void {
+        var buffer: [64]u8 = undefined;
+        var out = file(pp.stdout[1]).writerStreaming(io, &buffer);
+        var server: std.zig.Server = .{ .in = undefined, .out = &out.interface };
+        try server.serveStringMessage(.test_started, &.{});
+        try server.serveTestResults(.{ .index = index, .flags = flags });
+    }
+
+    /// Waits until the launcher's side has read one test's two messages
+    /// (and nothing else).
+    fn readResult(pp: PipedProc) !void {
+        const both = 2 * @sizeOf(InMessage.Header) + @sizeOf(InMessage.TestResults);
+        while (pp.p.mr.reader(0).bufferedLen() < both) try pp.p.mr.fill(64, .none);
+    }
+
+    fn print(pp: PipedProc, io: Io, text: []const u8) !void {
+        try file(pp.stderr[1]).writeStreamingAll(io, text);
+    }
+};
+
+const logged_an_error: InMessage.TestResults.Flags = .{ .status = .pass, .fuzz = false, .log_err_count = 1, .leak_count = 0 };
+const passed: InMessage.TestResults.Flags = .{ .status = .pass, .fuzz = false, .log_err_count = 0, .leak_count = 0 };
+
+test "a failed test's output is what it printed before its result, though the launcher read the result first" {
+    // The state the race in `readReady` leaves: the result already read, the
+    // text the process printed before it still in the stderr pipe. (The
+    // fixture test "the Crane test runner fails a test that leaves process
+    // state behind" came back log_err with an empty output this way.)
+    const gpa = testing.allocator;
+    const io = testing.io;
+    var e = try Executor.init(gpa, io, &.{"x"}, 10 * std.time.ns_per_s, 1);
+    defer e.deinit();
+    const pp = try PipedProc.open(&e, 0);
+    defer pp.close(&e, 0);
+
+    try pp.sendResult(io, 0, logged_an_error);
+    try pp.readResult();
+    try pp.print(io, "error: runtime.browsers: 0 -> 1\n");
+
+    const res = try Executor.run(&e, 0, 0);
+    defer gpa.free(res.output);
+    try testing.expectEqual(sched.Status.log_err, res.status);
+    try testing.expectEqualStrings("error: runtime.browsers: 0 -> 1\n", res.output);
+}
+
+test "what a passing test printed is not the next test's output" {
+    // Two tests in one process: the first passes, its text still in the pipe
+    // when its result is read; the second fails with text of its own.
+    const gpa = testing.allocator;
+    const io = testing.io;
+    var e = try Executor.init(gpa, io, &.{"x"}, 10 * std.time.ns_per_s, 1);
+    defer e.deinit();
+    const pp = try PipedProc.open(&e, 0);
+    defer pp.close(&e, 0);
+
+    try pp.sendResult(io, 0, passed);
+    try pp.readResult();
+    try pp.print(io, "the first test's line\n");
+    const first = try Executor.run(&e, 0, 0);
+    try testing.expectEqual(sched.Status.pass, first.status);
+    try testing.expectEqual(@as(usize, 0), first.output.len);
+
+    try pp.print(io, "error: the second test's line\n");
+    try pp.sendResult(io, 1, logged_an_error);
+    const second = try Executor.run(&e, 0, 1);
+    defer gpa.free(second.output);
+    try testing.expectEqual(sched.Status.log_err, second.status);
+    try testing.expectEqualStrings("error: the second test's line\n", second.output);
 }
 
 test "real processes: each kind of result, a crash and a timeout blamed and restarted, an order dependence classified" {
