@@ -200,8 +200,8 @@ pub fn processWideWhy(source: []const u8, line: u32) ?[]const u8 {
 // ============================================================================
 
 /// A hook slot is a container-level `var` whose type is a call of `Hook`
-/// from the hook module (src/dom/hook.zig, re-exporting the `process`
-/// module's), initialised with `.init(<expr>)` (lane hookfreeze1's proposal,
+/// from the hook module (src/process/hook.zig, the `process` module's,
+/// which src/dom/hook.zig re-exports), initialised with `.init(<expr>)` (lane hookfreeze1's proposal,
 /// tmp/plans/hookfreeze-design.md "Lint"): its type freezes it after the
 /// process start, so it is not debt and needs no marker - it is class H by
 /// type. What a hook slot still must not be:
@@ -1096,12 +1096,13 @@ pub const Options = struct {
 };
 
 /// Whether the hard rule is still transitional: true while the tree still
-/// holds recorded unmarked keys (classes H and P-res not yet Hook slots,
-/// the V8 adapter's C++ statics). Lane gstate4 prepared the rule; it turns
-/// false - every container-level `var` and threadlocal a hook slot or
-/// reviewed - once lane hookfreeze2 has converted the last registration
-/// lists (the integrator says when).
-pub const recorded_debt_allowed = true;
+/// held recorded unmarked keys (classes H and P-res not yet Hook slots, the
+/// V8 adapter's C++ statics). Lane gstate4 prepared the rule; lane
+/// hookfreeze2 converted the last hook slots and registration lists and
+/// gave the process resources left their reviewed lines, leaving 0
+/// unmarked, and turned it off (2026-11-03): every container-level `var`
+/// and threadlocal is a hook slot or reviewed.
+pub const recorded_debt_allowed = false;
 
 fn violationLessThan(_: void, a: Violation, b: Violation) bool {
     return std.mem.lessThan(u8, a.key, b.key);
@@ -1476,7 +1477,7 @@ pub fn main(init: std.process.Init) !void {
             \\by every page on a thread (docs/instances.md, "Rules for new state"). Put
             \\the state on its owner - the Browser, the Tab, the agent, the realm - and
             \\reach it through the realm the code runs in. A hook is a `Hook(T)` slot
-            \\(src/dom/hook.zig), written once at process start: its type is the rule.
+            \\(src/process/hook.zig), written once at process start: its type is the rule.
             \\Anything else must say why it is not owned: `// process-wide: <why>` directly
             \\above a container-level `var` or C++ global that genuinely is one per process,
             \\`// per-thread: <why>` directly above a threadlocal or C++ thread_local whose
@@ -1540,6 +1541,19 @@ fn expectCpp(source: []const u8, expected: []const []const u8) !void {
     var want: std.ArrayList(u8) = .empty;
     for (expected) |e| try want.print(arena.allocator(), "{s}\n", .{e});
     try testing.expectEqualStrings(want.items, got.items);
+}
+
+test "the hard rule allows no recorded debt: an unmarked variable fails even where the inventory records it" {
+    try testing.expect(!recorded_debt_allowed);
+    var current: Counts = .empty;
+    defer current.deinit(testing.allocator);
+    var baseline: Baseline = .empty;
+    defer baseline.deinit(testing.allocator);
+    try current.put(testing.allocator, "src/dom/example.zig slot", .{ .count = 1, .kind = .zig_global, .unmarked = 1 });
+    try baseline.put(testing.allocator, "src/dom/example.zig slot", .{ .count = 1, .kind = "G", .class = "P-res" });
+    var found = try violations(testing.allocator, &current, &baseline, .{ .allow_recorded_debt = recorded_debt_allowed });
+    defer found.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 1), found.items.len);
 }
 
 test "src/ .zig, .cpp and .h are scanned; impls_tmp and caches are not" {
