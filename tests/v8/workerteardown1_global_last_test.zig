@@ -20,8 +20,19 @@
 //! The readers here are TextEncoders whose vtable is a copy with a hook in
 //! its deinit that reads the realm's global as a timing report does. The
 //! walk's order is the map's, which the test cannot choose; it reads that
-//! order instead, and makes readers until at least one comes after the
-//! global - so the case is there on every run.
+//! order instead, and draws it again until at least two readers come after
+//! the global - so the case is there on every run.
+//!
+//! The test used to make readers until two came after the global and give
+//! up at 256: in about 1 arrangement in 1,000 (3 of 3,000 measured, lane
+//! crashes7) the global sat so near the end of the map that none did. The
+//! give-up returned before the realm's end, the agent's end ended it after
+//! `current` was cleared, and the hook's `current.?` crashed the process -
+//! a crash in wrapper_cache.deinit -> gc.onObjectFreed, 1 run in 8 of a
+//! shuffled tests-v8 process, whose last 40 lines of output had lost the
+//! panic and the hook. Now every way out ends the realm while `current` is
+//! set (`runRealm`), the hook falls through without it, and the order is
+//! drawn again (the map's `rehash`, under a new seed) instead of waited for.
 
 const std = @import("std");
 const test_process = @import("test_process.zig");
@@ -87,7 +98,10 @@ const Readers = struct {
     }
 
     fn hookedDeinit(instance: *runtime.Instance) void {
-        const self = current.?;
+        // No Readers: the test that made this reader has returned, and only
+        // its teardown is left. `runRealm` ends its realm before it returns,
+        // so this is a bug in the test - one its counts then report.
+        const self = current orelse return interfaces.TextEncoder.vtable.deinit.?(instance);
         self.torn_down += 1;
         // What a fetch's timing report reads in this teardown: the realm's
         // global object, through the realm (Performance.globalOf).
@@ -106,13 +120,38 @@ const Readers = struct {
         self.original_deinit(instance);
     }
 
+    /// The realm's wrapper cache.
+    fn cache(self: *const Readers) *v8.wrapper_cache_mod.WrapperCache {
+        return @ptrCast(@alignCast(self.realm.getV8WrapperCacheStorage().?));
+    }
+
+    /// Readers until the walk will reach at least two after the global
+    /// scope: the order a freed global was read in. The order is the map's,
+    /// under a seed of its own (infra.address_map); while it puts too few
+    /// readers after the global, the map draws it again (`rehash`: a new
+    /// seed, every entry placed again), as its tombstone guard does. Each
+    /// draw misses with about 2 chances in `readers_per_run` + 1, so
+    /// `max_draws` of them never all miss.
+    fn arrange(self: *Readers) !void {
+        var name_buf: [16]u8 = undefined;
+        while (self.made < readers_per_run) try self.make(try std.fmt.bufPrint(&name_buf, "r{d}", .{self.made}));
+        var draws: usize = 0;
+        while (self.readersAfterGlobal() < 2) : (draws += 1) {
+            if (draws == max_draws) return error.WalkOrderNeverPutTwoReadersAfterTheGlobal;
+            self.cache().cache.rehash();
+        }
+    }
+
+    const readers_per_run = 8;
+    const max_draws = 64;
+
     /// How many readers the realm's end will tear down after its global, in
     /// the order the walk visits the cache's entries (its map's).
     fn readersAfterGlobal(self: *const Readers) usize {
-        const cache: *v8.wrapper_cache_mod.WrapperCache = @ptrCast(@alignCast(self.realm.getV8WrapperCacheStorage().?));
+        const wrapper_cache = self.cache();
         var seen_global = false;
         var after: usize = 0;
-        var it = cache.cache.keyIterator();
+        var it = wrapper_cache.cache.keyIterator();
         while (it.next()) |key| {
             const instance = key.*;
             if (instance == self.global) {
@@ -125,11 +164,15 @@ const Readers = struct {
     }
 };
 
-test "a worker realm's end frees its global scope last: every teardown that reads the realm's global finds it alive" {
-    try setup();
-    const no_hooks: protocol.HostHooks = .{};
-    const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &no_hooks, .host = null });
-    defer protocol.destroyAgent(agent);
+/// How a run of the realm below goes: to its end, or failing once its
+/// readers exist - what the arrangement's old bound did, about 1 run in
+/// 1,000.
+const Run = enum { to_the_end, fail_after_readers };
+
+/// A worker realm of `agent` with `readers` in it, arranged and ended. The
+/// realm ends before this returns, on every path: its readers' teardowns
+/// count into `readers` while it is `current`.
+fn runRealm(readers: *Readers, agent: *protocol.Agent, run: Run) !void {
     const made = try protocol.createWorkerRealm(agent, &.{
         .url = "https://example.test/worker.js",
         .timer = null,
@@ -137,20 +180,34 @@ test "a worker realm's end frees its global scope last: every teardown that read
         .allocator = std.heap.page_allocator,
     });
 
-    var readers: Readers = undefined;
     readers.init(made.realm, made.global_scope);
-    Readers.current = &readers;
+    Readers.current = readers;
     defer Readers.current = null;
+    // Declared after `current`'s defer, so it runs first: a failed step ends
+    // the realm here, while the hook can still count, not in the agent's end.
+    var ended = false;
+    defer if (!ended) protocol.destroyWorkerRealm(made.realm, null, null);
 
-    // Readers until the walk will reach one after the global scope: the
-    // order a freed global was read in.
-    var name_buf: [16]u8 = undefined;
-    while (readers.readersAfterGlobal() < 2) {
-        if (readers.made == 256) return error.WalkOrderNeverPutAReaderAfterTheGlobal;
-        try readers.make(try std.fmt.bufPrint(&name_buf, "r{d}", .{readers.made}));
+    if (run == .fail_after_readers) {
+        var name_buf: [16]u8 = undefined;
+        while (readers.made < 3) try readers.make(try std.fmt.bufPrint(&name_buf, "r{d}", .{readers.made}));
+        return error.ArrangementFailed;
     }
 
+    try readers.arrange();
+
     protocol.destroyWorkerRealm(made.realm, null, null);
+    ended = true;
+}
+
+test "a worker realm's end frees its global scope last: every teardown that reads the realm's global finds it alive" {
+    try setup();
+    const no_hooks: protocol.HostHooks = .{};
+    const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &no_hooks, .host = null });
+    defer protocol.destroyAgent(agent);
+
+    var readers: Readers = undefined;
+    try runRealm(&readers, agent, .to_the_end);
 
     // Every reader was torn down by the realm's end...
     try testing.expectEqual(readers.made, readers.torn_down);
@@ -158,5 +215,20 @@ test "a worker realm's end frees its global scope last: every teardown that read
     try testing.expectEqual(@as(usize, 0), readers.saw_freed_global);
     try testing.expectEqual(readers.made, readers.saw_live_global);
     // The global scope was freed with the realm all the same.
-    try testing.expect(runtime.SlabAllocator.generationOf(made.global_scope) != readers.global_generation);
+    try testing.expect(runtime.SlabAllocator.generationOf(readers.global) != readers.global_generation);
+}
+
+test "a run that fails once its readers exist ends its realm before it returns: the test fails by name, its process does not crash" {
+    try setup();
+    const no_hooks: protocol.HostHooks = .{};
+    const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &no_hooks, .host = null });
+    defer protocol.destroyAgent(agent);
+
+    var readers: Readers = undefined;
+    try testing.expectError(error.ArrangementFailed, runRealm(&readers, agent, .fail_after_readers));
+    // The realm ended on the way out, while the readers' hook could still
+    // count them - not later, in the agent's end, with `current` gone.
+    try testing.expectEqual(@as(usize, 3), readers.made);
+    try testing.expectEqual(readers.made, readers.torn_down);
+    try testing.expectEqual(@as(usize, 0), readers.saw_freed_global);
 }
