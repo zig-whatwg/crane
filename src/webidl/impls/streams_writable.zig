@@ -245,7 +245,7 @@ pub const UnderlyingSink = struct {
 
     const members = [_]Member{ .this, .start, .write, .close, .abort };
 
-    const Member = enum(u8) { this, start, write, close, abort };
+    const Member = enum(u3) { this, start, write, close, abort };
 
     fn bit(member: Member) u8 {
         return @as(u8, 1) << @backingInt(member);

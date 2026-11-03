@@ -123,7 +123,7 @@ pub const JsTransformer = struct {
 
     const members = [_]Member{ .this, .start, .transform, .flush, .cancel };
 
-    const Member = enum(u8) { this, start, transform, flush, cancel };
+    const Member = enum(u3) { this, start, transform, flush, cancel };
 
     fn bit(member: Member) u8 {
         return @as(u8, 1) << @backingInt(member);
