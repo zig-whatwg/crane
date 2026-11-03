@@ -14,7 +14,7 @@
 //! lint-impls: hook for Document
 
 const std = @import("std");
-const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 /// Free an editor state `allocator` (its document's) made.
 pub const Free = *const fn (state: *anyopaque, allocator: std.mem.Allocator) void;
@@ -22,17 +22,16 @@ pub const Free = *const fn (state: *anyopaque, allocator: std.mem.Allocator) voi
 // Written once at process start (process_start.zig) and only read
 // afterwards, as every hook module's implementation is.
 // process-wide: one step frees every Document's editor state, in every Browser on every thread.
-var free_step: ?Free = null;
+var free_step: Hook(?Free) = .init(null);
 
 /// Called by the editing subsystem's installHooks, once, at process start.
 pub fn install(step: Free) void {
-    process_start.assertInstalling();
-    free_step = step;
+    free_step.install(step);
 }
 
 /// Free a Document's editor state, as its teardown does. With nothing
 /// installed no editor state can have been made.
 pub fn free(state: *anyopaque, allocator: std.mem.Allocator) void {
-    const step = free_step orelse return;
+    const step = free_step.get() orelse return;
     step(state, allocator);
 }

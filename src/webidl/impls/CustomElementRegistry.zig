@@ -148,7 +148,6 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// Immutable owner hooks, installed before any Browser or worker starts.
 pub fn installHooks() void {
     const html = @import("html");
-    dom.process_start.assertInstalling();
     runtime.CEReactions.install(.{ .begin = html.custom_elements.begin, .end = html.custom_elements.end });
     dom.custom_elements.installOwner(.{
         .has_definitions = html.custom_elements.hasDefinitions,

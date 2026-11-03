@@ -14,7 +14,6 @@
 //! lint-impls: hook for Document
 
 const std = @import("std");
-const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 const fetch = @import("fetch");
 
@@ -30,18 +29,17 @@ pub const Implementation = struct {
 };
 
 // process-wide: hook table written once at process start by Document.installHooks (B0); comptime in B9
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Document's installHooks.
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// `document`'s policy container, or null - not a Document, or no
 /// implementation installed.
 pub fn of(document: *runtime.Instance) ?*PolicyContainer {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.of(document);
 }
 
@@ -63,9 +61,8 @@ fn testOf(document: *runtime.Instance) ?*PolicyContainer {
 }
 
 test "a document's container is reached, and replaced, through the hook" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = .{ .of = &testOf };
+    const override = implementation.overrideForTest(.{ .of = &testOf });
+    defer override.restore();
     var container = PolicyContainer.init(std.testing.allocator);
     defer container.deinit();
     const document: *runtime.Instance = @ptrCast(@alignCast(&container));
@@ -76,9 +73,8 @@ test "a document's container is reached, and replaced, through the hook" {
 }
 
 test "without an installed implementation there is no container, and one handed over is released" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     var container = PolicyContainer.init(std.testing.allocator);
     defer container.deinit();
     const document: *runtime.Instance = @ptrCast(@alignCast(&container));
@@ -91,10 +87,11 @@ pub const Policies = permissions_policy.Policies;
 const interfaces = @import("interfaces");
 const origins = @import("origin_record.zig");
 const document_origin = @import("document_origin.zig");
+const Hook = @import("hook.zig").Hook;
 
 /// A Document's owned policies, BORROWED while that Document lives.
 pub fn permissionsOf(document: *runtime.Instance) ?*Policies {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     const get = impl.permissions orelse return null;
     return get(document);
 }

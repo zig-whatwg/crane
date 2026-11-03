@@ -25,7 +25,7 @@
 //! lint-impls: hook for HTMLObjectElement
 
 const std = @import("std");
-const process_start = @import("process_start.zig");
+const hook = @import("hook.zig");
 const runtime = @import("runtime");
 
 /// The steps of one element type.
@@ -47,35 +47,38 @@ const Entry = struct {
 };
 
 /// Few element types have steps, so a short list beats a map: the parser
-/// asks it for every element it creates and pops.
-const max_entries = 8;
-
-const Table = struct {
-    entries: [max_entries]Entry = undefined,
-    count: usize = 0,
-};
+/// asks it for every element it creates and pops. An install past the bound
+/// panics, naming it (hook.List).
+pub const max_entries = 8;
 
 // process-wide: a hook table, written once by crane.Process while it starts (process_start.zig) and read-only after; every element type's steps are the same for every instance and thread
-var table: Table = .{};
+var table: hook.Hook(hook.List(Entry, max_entries)) = .init(.empty);
 
 /// Install `steps` for HTML elements whose local name is `local_name` (a
 /// string that lives for the program), from the owner's installHooks.
 /// Installing again replaces the steps.
 pub fn install(local_name: []const u8, steps: Steps) void {
-    process_start.assertInstalling();
-    for (table.entries[0..table.count]) |*entry| {
+    const list = table.installing();
+    for (list.mutableSlice()) |*entry| {
         if (std.mem.eql(u8, entry.local_name, local_name)) {
-            entry.steps = steps;
+            // The same steps again write nothing (hook.zig, Hook.install).
+            if (!std.meta.eql(entry.steps, steps)) entry.steps = steps;
             return;
         }
     }
-    if (table.count == max_entries) return;
-    table.entries[table.count] = .{ .local_name = local_name, .steps = steps };
-    table.count += 1;
+    list.append(.{ .local_name = local_name, .steps = steps });
+}
+
+/// How many element types' steps the process start installed (the
+/// start-fits test).
+pub fn installedCount() usize {
+    return table.read().len;
 }
 
 fn find(local_name: []const u8) ?*const Steps {
-    for (table.entries[0..table.count]) |*entry| {
+    // Borrowed from the slot (read()): the pointer returned outlives this
+    // call.
+    for (table.read().slice()) |*entry| {
         if (entry.local_name.len == local_name.len and std.mem.eql(u8, entry.local_name, local_name)) return &entry.steps;
     }
     return null;
@@ -105,9 +108,8 @@ pub fn finishedParsingChildren(element: *runtime.Instance, local_name: []const u
 const testing = std.testing;
 
 test "steps run only for the element type that installed them, once however often installed" {
-    const saved = table;
-    defer table = saved;
-    table = .{};
+    const override = table.overrideForTest(.empty);
+    defer override.restore();
     // Declared in the test: no container-level state outlives it.
     const C = struct {
         var created: usize = 0;
@@ -121,7 +123,7 @@ test "steps run only for the element type that installed them, once however ofte
     };
     install("x-test", .{ .created = &C.onCreated, .finished = &C.onFinished });
     install("x-test", .{ .created = &C.onCreated, .finished = &C.onFinished });
-    try testing.expectEqual(@as(usize, 1), table.count);
+    try testing.expectEqual(@as(usize, 1), table.read().len);
     try testing.expect(hasSteps("x-test"));
     try testing.expect(!hasSteps("x-tes"));
     try testing.expect(!hasSteps("div"));
@@ -137,9 +139,8 @@ test "steps run only for the element type that installed them, once however ofte
 }
 
 test "a type with no created steps hears only the pop" {
-    const saved = table;
-    defer table = saved;
-    table = .{};
+    const override = table.overrideForTest(.empty);
+    defer override.restore();
     const C = struct {
         var created: usize = 0;
         var finished: usize = 0;

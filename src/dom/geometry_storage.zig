@@ -17,7 +17,7 @@
 
 const runtime = @import("runtime");
 const geometry = @import("css").geometry;
-const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 pub const Point = geometry.Point;
 pub const Rect = geometry.Rect;
@@ -34,35 +34,32 @@ pub const SetRect = *const fn (rect: *runtime.Instance, value: Rect) void;
 pub const SetMatrix = *const fn (matrix: *runtime.Instance, value: Matrix) void;
 
 // process-wide: hook written once at process start by DOMPointReadOnly.installHooks (B0); comptime in B9
-var set_point: ?SetPoint = null;
+var set_point: Hook(?SetPoint) = .init(null);
 // process-wide: hook written once at process start by DOMRectReadOnly.installHooks (B0); comptime in B9
-var set_rect: ?SetRect = null;
+var set_rect: Hook(?SetRect) = .init(null);
 // process-wide: hook written once at process start by DOMMatrixReadOnly.installHooks (B0); comptime in B9
-var set_matrix: ?SetMatrix = null;
+var set_matrix: Hook(?SetMatrix) = .init(null);
 
 pub fn installPoint(step: SetPoint) void {
-    process_start.assertInstalling();
-    set_point = step;
+    set_point.install(step);
 }
 
 pub fn installRect(step: SetRect) void {
-    process_start.assertInstalling();
-    set_rect = step;
+    set_rect.install(step);
 }
 
 pub fn installMatrix(step: SetMatrix) void {
-    process_start.assertInstalling();
-    set_matrix = step;
+    set_matrix.install(step);
 }
 
 pub fn setPoint(point: *runtime.Instance, value: Point) error{NotSupportedError}!void {
-    (set_point orelse return error.NotSupportedError)(point, value);
+    (set_point.get() orelse return error.NotSupportedError)(point, value);
 }
 
 pub fn setRect(rect: *runtime.Instance, value: Rect) error{NotSupportedError}!void {
-    (set_rect orelse return error.NotSupportedError)(rect, value);
+    (set_rect.get() orelse return error.NotSupportedError)(rect, value);
 }
 
 pub fn setMatrix(matrix: *runtime.Instance, value: Matrix) error{NotSupportedError}!void {
-    (set_matrix orelse return error.NotSupportedError)(matrix, value);
+    (set_matrix.get() orelse return error.NotSupportedError)(matrix, value);
 }

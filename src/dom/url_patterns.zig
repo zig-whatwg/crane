@@ -13,23 +13,22 @@
 //!
 //! lint-impls: hook for URLPattern
 const runtime = @import("runtime");
-const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 /// `instance`'s associated URL pattern, or null when it is no URLPattern.
 pub const PatternOf = *const fn (instance: *runtime.Instance) ?*const anyopaque;
 
 // process-wide: a function pointer URLPattern's installHooks writes once at process start, the same for every Browser
-var implementation: ?PatternOf = null;
+var implementation: Hook(?PatternOf) = .init(null);
 
 /// Install the owner's step before any Browser exists.
 pub fn install(step: PatternOf) void {
-    process_start.assertInstalling();
-    implementation = step;
+    implementation.install(step);
 }
 
 /// `instance`'s associated URL pattern (a `*const urlpattern.URLPattern`),
 /// or null when it is not a URLPattern object.
 pub fn patternOf(instance: *runtime.Instance) ?*const anyopaque {
-    const step = implementation orelse return null;
+    const step = implementation.get() orelse return null;
     return step(instance);
 }

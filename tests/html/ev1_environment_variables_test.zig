@@ -56,8 +56,10 @@ const Trial = struct {
         runtime.initializeRuntime(testing.allocator);
         defer runtime.deinitializeRuntime();
         interfaces.process_hooks.startHooksForTest();
-        const saved_provider = dom.style.hooks.environmentProvider();
-        defer env.install(saved_provider orelse .{});
+        // The provider is a hook (dom.style.hooks): the test installs its
+        // own into an override, which the restore takes away.
+        const override = dom.style.hooks.overrideForTest();
+        defer override.restore();
         if (self.scenario == .uninstalled) env.install(.{}) else html.platform_state.installHooks();
         var scope = runtime.BrowserScope.init(testing.allocator);
         defer scope.deinit();
@@ -144,8 +146,8 @@ fn invalidation() !void {
     const realm = context.realm.?;
     const document = context.document_instance.?;
     const browser = html.platform_state.of(realm) orelse return error.NoPlatform;
-    const saved_provider = dom.style.hooks.environmentProvider();
-    defer env.install(saved_provider orelse .{});
+    const override = dom.style.hooks.overrideForTest();
+    defer override.restore();
     html.platform_state.installHooks();
     try expectScript(realm,
         \\globalThis.d = document;

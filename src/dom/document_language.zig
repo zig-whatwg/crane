@@ -4,7 +4,7 @@
 //!
 //! lint-impls: hook for Document
 const runtime = @import("runtime");
-const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 pub const Error = error{ InvalidStateError, OutOfMemory };
 pub const Implementation = struct {
@@ -14,19 +14,18 @@ pub const Implementation = struct {
 };
 
 // process-wide: stateless functions installed once by Document at process start; language strings belong to Documents
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 pub fn get(document: *runtime.Instance) ?[]const u8 {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.get(document);
 }
 
 pub fn set(document: *runtime.Instance, language: []const u8) Error!void {
-    const impl = implementation orelse return error.InvalidStateError;
+    const impl = implementation.get() orelse return error.InvalidStateError;
     return impl.set(document, language);
 }

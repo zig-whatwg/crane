@@ -8,8 +8,8 @@ const interfaces = @import("interfaces");
 const engine = @import("engine");
 const MemberHold = @import("node_holds.zig").MemberHold;
 const controls = @import("form_controls.zig");
-const process_start = @import("process_start.zig");
 const KeptInstance = @import("custom_elements.zig").KeptInstance;
+const Hook = @import("hook.zig").Hook;
 
 pub const Mode = enum { auto, hint, manual };
 
@@ -311,15 +311,14 @@ pub const Access = struct {
     get: *const fn (document: *runtime.Instance, create: bool) anyerror!?*State,
 };
 // process-wide: Document installs one immutable accessor at process startup; each returned State belongs to that Document and its Browser
-var access: ?Access = null;
+var access: Hook(?Access) = .init(null);
 
 pub fn install(implementation: Access) void {
-    process_start.assertInstalling();
-    access = implementation;
+    access.install(implementation);
 }
 
 pub fn ofDocument(document: *runtime.Instance, create: bool) !?*State {
-    return (access orelse return error.NotSupported).get(document, create);
+    return (access.get() orelse return error.NotSupported).get(document, create);
 }
 
 /// Read without allocating the Document's optional top-layer state.

@@ -3354,9 +3354,8 @@ test "protocol: listeners added and removed in a loop leave no callback wrapper 
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w, .global_detached);
-    const saved = v8.conversions.callback_allocator;
-    v8.conversions.callback_allocator = std.testing.allocator;
-    defer v8.conversions.callback_allocator = saved;
+    const override = v8.conversions.callback_allocator.overrideForTest(std.testing.allocator);
+    defer override.restore();
     try expectEval(w,
         \\const f = () => {};
         \\const o = { handleEvent() {} };

@@ -19,7 +19,7 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const document_lifecycle = @import("document_lifecycle.zig");
 const element_data = @import("element_data.zig");
-const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 /// Implementation policy: render blocking expires 30 seconds after the
 /// relevant global's time origin. It never changes membership or execution.
@@ -113,12 +113,11 @@ pub const InternalResourceLinks = struct {
 };
 
 // process-wide: a hook table the link element (HTMLLinkElement.installHooks) writes once while crane.Process starts (process_start.zig) and only reads after; the algorithm is the same for every Browser and thread, and all its state is the processed link's and its Document's
-var internal_resource_links: ?InternalResourceLinks = null;
+var internal_resource_links: Hook(?InternalResourceLinks) = .init(null);
 
 /// Called by HTMLLinkElement's installHooks, once, at process start.
 pub fn installInternalResourceLinks(links: InternalResourceLinks) void {
-    process_start.assertInstalling();
-    internal_resource_links = links;
+    internal_resource_links.install(links);
 }
 
 pub fn contains(document: *runtime.Instance, element: *runtime.Instance) bool {
@@ -205,7 +204,7 @@ pub fn onParserStack(document: *runtime.Instance, element: *runtime.Instance) bo
 /// (HTMLLinkElement::processInternalResourceLink), Blink keys its pending
 /// links by ID (RenderBlockingResourceManager::RemovePendingParsingElement).
 pub fn processInternalResourceLinks(document: *runtime.Instance, candidate: ?*runtime.Instance) void {
-    const links = internal_resource_links orelse return;
+    const links = internal_resource_links.get() orelse return;
     const impl = document_lifecycle.renderingImplementation() orelse return;
     const set = impl.of(document) orelse return;
     if (!set.hasExpectLinks()) return;

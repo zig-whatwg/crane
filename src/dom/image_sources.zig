@@ -17,7 +17,7 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const platform = @import("platform");
-const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 /// Pixels a context can draw: `width` x `height`, RGBA8, rows top down.
 /// BORROWED for the call that asked: the source's owner keeps them.
@@ -103,29 +103,28 @@ pub const Implementation = struct {
 };
 
 // process-wide: hook table written only by its owners at process start (B0); immutable while Browsers run, comptime in B9
-var implementation: Implementation = .{};
+var implementation: Hook(Implementation) = .init(.{});
 
 pub fn installImageElement(
     usability: *const fn (*runtime.Instance) Usability,
     replaced_facts: *const fn (*runtime.Instance) ?platform.ReplacedElementFacts,
     update_image_data: *const fn (*runtime.Instance) void,
 ) void {
-    process_start.assertInstalling();
-    implementation.image_usability = usability;
-    implementation.replaced_facts = replaced_facts;
-    implementation.update_image_data = update_image_data;
+    implementation.installField("image_usability", usability);
+    implementation.installField("replaced_facts", replaced_facts);
+    implementation.installField("update_image_data", update_image_data);
 }
 
 /// HTML relevant mutations: the source element notifies following img
 /// siblings through the image owner's installed step.
 pub fn updateImageData(image: *runtime.Instance) void {
-    const steps = implementation.update_image_data orelse return;
+    const steps = implementation.read().update_image_data orelse return;
     steps(image);
 }
 
 /// `element`'s facts as a replaced element, when it is one (an img).
 pub fn replacedFacts(element: *runtime.Instance) ?platform.ReplacedElementFacts {
-    const steps = implementation.replaced_facts orelse return null;
+    const steps = implementation.read().replaced_facts orelse return null;
     return steps(element);
 }
 
@@ -137,8 +136,7 @@ pub fn layoutNode(node: ?*runtime.Instance) platform.LayoutNode {
 }
 
 pub fn installCanvasElement(usability: *const fn (*runtime.Instance) Usability) void {
-    process_start.assertInstalling();
-    implementation.canvas_usability = usability;
+    implementation.installField("canvas_usability", usability);
 }
 
 pub fn installContext2D(
@@ -146,37 +144,36 @@ pub fn installContext2D(
     attach_context: *const fn (*runtime.Instance, *runtime.Instance, u32, u32) anyerror!void,
     set_bitmap_dimensions: *const fn (*runtime.Instance, u32, u32) anyerror!void,
 ) void {
-    process_start.assertInstalling();
-    implementation.output_bitmap = output_bitmap;
-    implementation.attach_context = attach_context;
-    implementation.set_bitmap_dimensions = set_bitmap_dimensions;
+    implementation.installField("output_bitmap", output_bitmap);
+    implementation.installField("attach_context", attach_context);
+    implementation.installField("set_bitmap_dimensions", set_bitmap_dimensions);
 }
 
 /// An img element's usability; `bad` when no owner installed one.
 pub fn imageUsability(image: *runtime.Instance) Usability {
-    const steps = implementation.image_usability orelse return .bad;
+    const steps = implementation.read().image_usability orelse return .bad;
     return steps(image);
 }
 
 /// A canvas element's usability; `bad` when no owner installed one.
 pub fn canvasUsability(canvas: *runtime.Instance) Usability {
-    const steps = implementation.canvas_usability orelse return .bad;
+    const steps = implementation.read().canvas_usability orelse return .bad;
     return steps(canvas);
 }
 
 /// `context`'s output bitmap, if it has one.
 pub fn outputBitmap(context: *runtime.Instance) ?*OutputBitmap {
-    const steps = implementation.output_bitmap orelse return null;
+    const steps = implementation.read().output_bitmap orelse return null;
     return steps(context);
 }
 
 pub fn attachContext(context: *runtime.Instance, canvas: *runtime.Instance, width: u32, height: u32) !void {
-    const steps = implementation.attach_context orelse return error.NotSupported;
+    const steps = implementation.read().attach_context orelse return error.NotSupported;
     return steps(context, canvas, width, height);
 }
 
 pub fn setBitmapDimensions(context: *runtime.Instance, width: u32, height: u32) !void {
-    const steps = implementation.set_bitmap_dimensions orelse return error.NotSupported;
+    const steps = implementation.read().set_bitmap_dimensions orelse return error.NotSupported;
     return steps(context, width, height);
 }
 

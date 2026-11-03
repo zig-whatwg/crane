@@ -29,9 +29,9 @@
 //!
 //! lint-impls: hook for Element
 const std = @import("std");
-const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
+const Hook = @import("hook.zig").Hook;
 
 /// Attributes kept in the element's own block before the list spills to the
 /// heap: most elements have 0-3.
@@ -350,18 +350,17 @@ pub const Implementation = struct {
 };
 
 // process-wide: an immutable function pointer Element installs once at process start (crane.Process); it reads only the element it is given, so one serves every Browser and thread
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Element's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// `element`'s data, read-only: write through `dom.element_attributes`. Null
 /// when `element` is no element (or Element installed nothing).
 pub fn of(element: *runtime.Instance) ?*const ElementData {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.of(element);
 }
 
@@ -426,9 +425,8 @@ test "attributes are named by namespace and local name, and found by qualified n
 }
 
 test "without an installed implementation no node has element data" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with no implementation the call does not reach it.
     var element: runtime.Instance = undefined;
     try std.testing.expect(of(&element) == null);

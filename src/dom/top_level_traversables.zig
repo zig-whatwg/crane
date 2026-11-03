@@ -17,10 +17,10 @@
 //!
 //! lint-impls: hook for HTMLIFrameElement
 const std = @import("std");
-const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 const Origin = @import("html_core").Origin;
+const Hook = @import("hook.zig").Hook;
 
 /// What the host supplies to the record it owns.
 pub const Host = struct {
@@ -85,67 +85,66 @@ pub const Implementation = struct {
 };
 
 // process-wide: immutable function pointers HTMLIFrameElement installs once at process start (process_start.zig), identical for every Browser and thread; all mutable state is on the records they make, each owned by one Context of one Browser on that Browser's thread
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by HTMLIFrameElement's installHooks, once, at process start
 /// (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// Whether the owner has installed its implementation: from process start on,
 /// unless a test cleared it.
 pub fn isInstalled() bool {
-    return implementation != null;
+    return implementation.get() != null;
 }
 
 /// See Implementation.create. Null when no owner is installed or the record
 /// could not be made: the host then keeps its page, and the browsing
 /// context, without one.
 pub fn create(allocator: std.mem.Allocator, window: *runtime.Instance, browsing_context: *anyopaque, host: Host) ?*anyopaque {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.create(allocator, window, browsing_context, host);
 }
 
 /// See Implementation.attach_realm.
 pub fn attachRealm(record: *anyopaque, realm: runtime.Context) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.attach_realm(record, realm);
 }
 
 /// See Implementation.unload_active_document.
 pub fn unloadActiveDocument(record: *anyopaque, fire_events: bool) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.unload_active_document(record, fire_events);
 }
 
 /// See Implementation.set_active_origin.
 pub fn setActiveOrigin(record: *anyopaque, origin: []const u8) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.set_active_origin(record, origin);
 }
 
 /// See Implementation.navigate.
 pub fn navigate(record: *anyopaque, url: []const u8) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.navigate(record, url);
 }
 
 /// See Implementation.prepare_history.
 pub fn prepareHistory(record: *anyopaque) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.prepare_history(record);
 }
 
 /// See Implementation.record_load.
 pub fn recordLoad(record: *anyopaque, document: *anyopaque, url: []const u8, origin: []const u8, markup: ?[]const u8, replace: bool) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.record_load(record, document, url, origin, markup, replace);
 }
 
 /// See Implementation.destroy.
 pub fn destroy(record: *anyopaque) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.destroy(record);
 }

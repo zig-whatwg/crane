@@ -7,9 +7,9 @@
 //! and never names the impl (AGENTS.md "The impls boundary").
 //!
 //! lint-impls: hook for Animation, AnimationEffect, AnimationTimeline
-const process_start = @import("../process_start.zig");
 const runtime = @import("runtime");
 const model = @import("model.zig");
+const Hook = @import("../hook.zig").Hook;
 
 /// What the owners install. Each answers null for an instance that is not
 /// of its type, or whose model is gone.
@@ -23,37 +23,34 @@ pub const Hooks = struct {
 };
 
 // process-wide: function pointers the Web Animations impls install once at process start (crane.Process), the same for every Browser and thread; the models are their instances'
-var hooks: Hooks = .{};
+var hooks: Hook(Hooks) = .init(.{});
 
 /// Called by Animation's installHooks (process_start.zig).
 pub fn installAnimation(animation_of: *const fn (instance: *runtime.Instance) ?*model.Animation) void {
-    process_start.assertInstalling();
-    hooks.animation_of = animation_of;
+    hooks.installField("animation_of", animation_of);
 }
 
 /// Called by AnimationEffect's installHooks (process_start.zig).
 pub fn installEffect(effect_of: *const fn (instance: *runtime.Instance) ?*model.Effect) void {
-    process_start.assertInstalling();
-    hooks.effect_of = effect_of;
+    hooks.installField("effect_of", effect_of);
 }
 
 /// Called by AnimationTimeline's installHooks (process_start.zig).
 pub fn installTimeline(timeline_of: *const fn (instance: *runtime.Instance) ?*model.Timeline) void {
-    process_start.assertInstalling();
-    hooks.timeline_of = timeline_of;
+    hooks.installField("timeline_of", timeline_of);
 }
 
 pub fn animationOf(instance: *runtime.Instance) ?*model.Animation {
-    const get = hooks.animation_of orelse return null;
+    const get = hooks.read().animation_of orelse return null;
     return get(instance);
 }
 
 pub fn effectOf(instance: *runtime.Instance) ?*model.Effect {
-    const get = hooks.effect_of orelse return null;
+    const get = hooks.read().effect_of orelse return null;
     return get(instance);
 }
 
 pub fn timelineOf(instance: *runtime.Instance) ?*model.Timeline {
-    const get = hooks.timeline_of orelse return null;
+    const get = hooks.read().timeline_of orelse return null;
     return get(instance);
 }

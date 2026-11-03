@@ -78,8 +78,8 @@ test "lifetime: a type that is not counted has no target, and nothing is told" {
         }
     };
     Observer.calls = &observed;
-    const saved = runtime.lifetime.swapHooksForTest(.{ .acquire = Observer.acquire, .release = Observer.release });
-    defer _ = runtime.lifetime.swapHooksForTest(saved);
+    const override = runtime.lifetime.overrideHooksForTest(.{ .acquire = Observer.acquire, .release = Observer.release });
+    defer override.restore();
 
     const headers = comptime runtime.buildVTable(&delegates, "Headers", HeadersState);
     var instance: Instance = .{ .vtable = &headers, .state = undefined, .ctx = undefined };
@@ -103,8 +103,8 @@ test "lifetime: a counted type's acquire and release reach the owner's hooks wit
             node.rc -= 2;
         }
     };
-    const saved = runtime.lifetime.swapHooksForTest(.{ .acquire = Observer.acquire, .release = Observer.release });
-    defer _ = runtime.lifetime.swapHooksForTest(saved);
+    const override = runtime.lifetime.overrideHooksForTest(.{ .acquire = Observer.acquire, .release = Observer.release });
+    defer override.restore();
 
     const div = comptime runtime.buildVTable(&delegates, "HTMLDivElement", DivState);
     var instance: Instance = .{ .vtable = &div, .state = undefined, .ctx = undefined };
@@ -118,8 +118,8 @@ test "lifetime: a counted type's acquire and release reach the owner's hooks wit
 }
 
 test "lifetime: with no owner installed, a counted type takes no reference" {
-    const saved = runtime.lifetime.swapHooksForTest(.{});
-    defer _ = runtime.lifetime.swapHooksForTest(saved);
+    const override = runtime.lifetime.overrideHooksForTest(.{});
+    defer override.restore();
     const div = comptime runtime.buildVTable(&delegates, "HTMLDivElement", DivState);
     var instance: Instance = .{ .vtable = &div, .state = undefined, .ctx = undefined };
     try testing.expect(runtime.lifetime.wrapperAcquired(&instance) == null);

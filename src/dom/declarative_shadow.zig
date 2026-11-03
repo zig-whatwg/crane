@@ -13,8 +13,8 @@
 //! lint-impls: hook for ShadowRoot
 const runtime = @import("runtime");
 const dictionaries = @import("dictionaries");
-const process_start = @import("process_start.zig");
 const custom_elements = @import("custom_elements.zig");
+const Hook = @import("hook.zig").Hook;
 
 pub const Implementation = struct {
     /// The parser's step 7.11.4-7.11.7 flags on a root it just attached.
@@ -24,12 +24,11 @@ pub const Implementation = struct {
 };
 
 // process-wide: immutable function pointers installed once at process start by the ShadowRoot impl; the flags they set live on each shadow root
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by ShadowRoot's installHooks, once, at process start.
 pub fn install(steps: Implementation) void {
-    process_start.assertInstalling();
-    implementation = steps;
+    implementation.install(steps);
 }
 
 /// What a declarative shadow root's template start tag asks for (steps
@@ -51,7 +50,7 @@ pub const Request = struct {
 /// document's registry. An error is the "if an exception is thrown" branch -
 /// the caller inserts the template instead.
 pub fn attach(host: *runtime.Instance, request: Request, registry: ?*runtime.Instance) !*runtime.Instance {
-    const steps = implementation orelse return error.InvalidStateError;
+    const steps = implementation.get() orelse return error.InvalidStateError;
     const init: dictionaries.ShadowRootInit = .{
         .mode = request.mode,
         .delegatesFocus = request.delegates_focus,
@@ -67,21 +66,20 @@ pub fn attach(host: *runtime.Instance, request: Request, registry: ?*runtime.Ins
 
 /// DOM attach-a-shadow-root step 4.2: whether `shadow` is declarative.
 pub fn isDeclarative(shadow: *runtime.Instance) bool {
-    const steps = implementation orelse return false;
+    const steps = implementation.get() orelse return false;
     return steps.is_declarative(shadow);
 }
 
 /// DOM attach-a-shadow-root step 4.4: set `shadow`'s declarative to `value`.
 pub fn setDeclarative(shadow: *runtime.Instance, value: bool) void {
-    const steps = implementation orelse return;
+    const steps = implementation.get() orelse return;
     steps.set_declarative(shadow, value);
 }
 
 test "with no implementation installed, nothing is declarative and attach fails" {
     const std = @import("std");
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     var node: runtime.Instance = undefined;
     try std.testing.expect(!isDeclarative(&node));
     try std.testing.expectError(error.InvalidStateError, attach(&node, .{ .mode = ._open_ }, null));
