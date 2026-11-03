@@ -834,6 +834,10 @@ const TestBinaries = enum {
     /// that reaches the engine is a full analysis and V8 link of its own, so
     /// one executable does that work once.
     one,
+    /// The same, for the directories that link V8 only: the ones whose own
+    /// executables each analyse the engine. The rest keep theirs - cheap
+    /// compiles, and a change there rebuilds and reruns only them.
+    v8,
 };
 
 /// -Dtest-binaries=one: the tests/<dir>/ suites `test` runs, compiled as ONE
@@ -859,6 +863,8 @@ const OneBinary = struct {
     /// The step whose directories join (`test`): one added to another step
     /// (test-browser, bench, test-eventsource) keeps its own executable.
     step: *std.Build.Step,
+    /// -Dtest-binaries=v8: only the members that link V8 join.
+    v8_only: bool = false,
     members: std.ArrayList(Member) = .empty,
 
     const Member = struct {
@@ -1724,7 +1730,7 @@ fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !v
     var joined_dirs: std.ArrayList([]const u8) = .empty;
     for (members, keyed) |m, imports| {
         const config = suiteConfig(m.name);
-        var fits = config.jobs == null and config.shuffle and config.state_checks == .fail and
+        var fits = (!one.v8_only or m.link_v8) and config.jobs == null and config.shuffle and config.state_checks == .fail and
             config.many_browsers == .fail and config.sanitize_thread == .fail and
             m.target.result.cpu.arch == members[0].target.result.cpu.arch and m.target.result.os.tag == members[0].target.result.os.tag;
         for (imports) |imp| {
@@ -2978,10 +2984,10 @@ pub fn build(b: *std.Build) void {
     };
     test_selection.launch = launch;
     if (b.option(enum { static, shared }, "v8-test-link", "How test executables link V8: static (the archives, the default) or shared (the monolith as a dylib; macOS; lane onebin1's measurement)") == .shared) v8TestDylib(b);
-    const test_binaries = b.option(TestBinaries, "test-binaries", "How `test` compiles tests/<dir>/: dirs (an executable each, the default) or one (ONE executable for every directory whose imports agree)") orelse .dirs;
-    if (test_binaries == .one and test_selection.file == null) {
+    const test_binaries = b.option(TestBinaries, "test-binaries", "How `test` compiles tests/<dir>/: dirs (an executable each, the default), one (ONE executable for every directory whose imports agree) or v8 (one for those that link V8)") orelse .dirs;
+    if (test_binaries != .dirs and test_selection.file == null) {
         const one = b.allocator.create(OneBinary) catch @panic("OOM");
-        one.* = .{ .step = test_step };
+        one.* = .{ .step = test_step, .v8_only = test_binaries == .v8 };
         test_selection.one = one;
     }
     test_selection.suite_dirs = suite_dirs: {
