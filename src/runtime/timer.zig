@@ -211,13 +211,11 @@ pub const nested_min_delay_ms: i64 = 4;
 /// Nesting depth beyond which `nested_min_delay_ms` applies. HTML §8.6 step 5.
 pub const nesting_threshold: u32 = 5;
 
-/// The "current timer nesting level".
-///
-/// Zero on the event loop's own turn; while a timer callback runs it is that
-/// timer's recorded level, so a timer created inside the callback nests one deeper.
-/// Thread-local because a worker runs its callbacks on its own thread and must not
-/// see the window's depth.
-pub threadlocal var nesting_level: u32 = 0;
+// The "current timer nesting level" itself - 0 on the event loop's own turn,
+// the running timer's level while its callback runs - is the agent's: its event
+// loop's running task's (html AgentHost.timer_nesting_level, set by the
+// window's timers in browser/Context.zig and a worker's in html.worker_host).
+// It was a threadlocal here, which two agents on one thread shared.
 
 /// Apply the clamping half of the timer initialisation steps.
 pub fn clampTimeout(requested_ms: i64, nesting: u32) i64 {

@@ -31,6 +31,10 @@ test "Realm.wrap refuses an AbortController - its wrapper is weak, so it is held
     const realm_ctx = try v8.context_manager.getOrCreate(test_agent.context.?, std.heap.page_allocator);
 
     const controller = try interfaces.AbortController.call_constructor(realm_ctx);
+    // The test's to free, whole (its signal with it): wrap refused, nothing
+    // else ever held it.
+    defer runtime.Instance.deinit(controller);
     const realm = try js.Realm.of(controller);
     try std.testing.expectError(error.NotAStreamsGraphObject, realm.wrap(controller));
+    try std.testing.expect(!@import("engine").hasWrapper(controller));
 }

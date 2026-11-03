@@ -24,6 +24,7 @@ const runtime = @import("runtime");
 const v8 = @import("v8");
 const protocol = @import("engine");
 const interfaces = @import("interfaces");
+const dom = @import("dom");
 
 const treeOwns = v8.wrapper_cache_mod.treeOwns;
 
@@ -122,6 +123,14 @@ const Chain = struct {
         return chain;
     }
 
+    /// Frees the chain the test made and script never saw: its root, with
+    /// its subtree, as a native creator frees a node it is done with
+    /// (dom.node_creation.releaseIfUnwrapped); a wrapped root is its
+    /// wrapper's, and a root already freed is left alone.
+    fn release(self: Chain) void {
+        dom.node_creation.releaseIfUnwrapped(self.root, self.generations[0]);
+    }
+
     fn alive(self: Chain, which: usize) bool {
         const node = switch (which) {
             0 => self.root,
@@ -136,12 +145,13 @@ test "L1: treeOwns keeps a parented node and, by default, not a parentless one" 
     const page = try Page.open();
     defer page.close();
     const chain = try Chain.make(page);
+    defer chain.release();
     try testing.expect(treeOwns(chain.middle));
     try testing.expect(treeOwns(chain.leaf));
     try testing.expect(!treeOwns(chain.root));
     // A non-node is never a tree's.
     const headers = try interfaces.Headers.init(testing.allocator, page.realm);
-    defer interfaces.Headers.deinit(headers);
+    defer runtime.Instance.deinit(headers);
     try testing.expect(!treeOwns(headers));
 }
 

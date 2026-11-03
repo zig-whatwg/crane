@@ -744,20 +744,24 @@ const FetchCall = struct {
         self.allocator.destroy(self);
     }
 
-    /// Every call on this thread whose fetch is under way, for "abort a
-    /// document" (`abortIn`).
-    threadlocal var live: std.ArrayListUnmanaged(*Self) = .empty;
+    // Every call whose fetch is under way is on its realm's list of fetch
+    // calls (runtime.ContextData objects(.fetch_calls)), for "abort a
+    // document" (`abortIn`): "the fetch algorithm in the context of
+    // document", its realm's. It was one list per thread, every realm's calls
+    // in it, never given back.
+
+    /// The calls of `realm` under way (BORROWED: one that ends leaves it, so a
+    /// walk that can end one re-reads it).
+    fn liveIn(realm: runtime.Context) []const *Self {
+        return @ptrCast(realm.objects(.fetch_calls).items);
+    }
 
     fn track(self: *Self) void {
-        live.append(std.heap.page_allocator, self) catch {};
+        self.ctx.addObject(.fetch_calls, self) catch {};
     }
 
     fn untrack(self: *Self) void {
-        for (live.items, 0..) |c, i| {
-            if (c != self) continue;
-            _ = live.swapRemove(i);
-            return;
-        }
+        self.ctx.forgetObject(.fetch_calls, self);
     }
 
     /// HTML "abort a document" step 2, for the fetches fetch() started in
@@ -769,11 +773,11 @@ const FetchCall = struct {
     fn abortIn(realm: runtime.Context) void {
         // Backwards: a cancel frees its call, which swapRemove replaces
         // with one already visited.
-        var i = live.items.len;
+        var i = liveIn(realm).len;
         while (i > 0) {
             i -= 1;
-            if (i >= live.items.len) continue;
-            const call = live.items[i];
+            if (i >= liveIn(realm).len) continue;
+            const call = liveIn(realm)[i];
             if (call.ctx != realm or call.document_aborted) continue;
             // Fetch "when a fetch group is terminated", step 1: a record
             // whose request's keepalive is true is not terminated - it is
@@ -787,7 +791,7 @@ const FetchCall = struct {
     /// Mark all fetch() calls before XHR/script-owner abort callbacks run.
     fn prepareDocumentAbort(document: *runtime.Instance) bool {
         var marked = false;
-        for (live.items) |call| {
+        for (liveIn(document.ctx)) |call| {
             if (call.document_aborted) continue;
             const owner = call.document orelse continue;
             if (owner.instance != document or !owner.isLive()) continue;
@@ -800,7 +804,7 @@ const FetchCall = struct {
     fn abortDocument(document: *runtime.Instance) void {
         while (true) {
             const next: ?*Self = blk: {
-                for (live.items) |call| {
+                for (liveIn(document.ctx)) |call| {
                     if (!call.document_abort_pending or call.document_aborted) continue;
                     const owner = call.document orelse continue;
                     if (owner.instance == document and owner.isLive()) break :blk call;
@@ -882,7 +886,7 @@ const FetchCall = struct {
 
 /// The hooks this mixin owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated mixin module (docs/instances.md):
-/// "abort a document" reaches fetch()'s calls through `FetchCall.live`.
+/// "abort a document" reaches fetch()'s calls through their realm's list (`FetchCall.liveIn`).
 pub fn installHooks() void {
     @import("dom").extract_origin.install(.global, .{ .owns = &ownsOriginExtraction, .extract = &extractOrigin });
     @import("dom").document_fetches.install(.{

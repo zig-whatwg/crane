@@ -273,6 +273,25 @@ pub fn wrapInstanceAsV8Object(
     // CACHE MISS: Create new wrapper
     // ========================================
 
+    // Only where a wrapper cache will own it. Every caller BORROWS the
+    // wrapper this answers - the cache's handle, freed with the instance -
+    // so a context the context manager does not know has nowhere to put
+    // one: a realm whose end took it out of the manager while its realm
+    // finalizers drain (a body read dropped there made its stream's and its
+    // controller's), or a context no realm was made for. The wrapper made
+    // there anyway was a Global<Object> nobody disposed, its instance marked
+    // wrapped for good (so the conservative paths kept its slot) and, for a
+    // node, bound to a NodeBase no cache would clear (tests-v8's state
+    // survey, lane v8state1; tests/v8/wrap_needs_cache_test.zig). No wrapper
+    // then: conversions.instanceToV8Checked answers undefined, which the
+    // realm's end already expects of a wrap there. Blink, likewise, makes a
+    // wrapper only in a world with a DOMDataStore to hold it
+    // (DOMDataStore::SetWrapper).
+    {
+        const runtime_ctx = ctx_mgr.get(context) orelse return error.NoWrapperCache;
+        if (runtime_ctx.getV8WrapperCacheStorage() == null) return error.NoWrapperCache;
+    }
+
     // Look up the FunctionTemplate for this interface
     // First try the template registry (for templates already registered for this isolate)
     // Then fall back to on-demand creation for interfaces not yet registered

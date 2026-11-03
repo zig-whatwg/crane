@@ -69,6 +69,10 @@ test "ends the process" {
     dom.process_start.end();
 }
 
-test "leaves the timer nesting level raised" {
-    runtime.timer.nesting_level += 1;
+test "leaves the active cleanup coordinator set" {
+    const Left = struct {
+        var coordinator: runtime.CleanupCoordinator = undefined;
+    };
+    Left.coordinator = runtime.CleanupCoordinator.init(std.heap.page_allocator);
+    runtime.cleanup_coordinator.active_coordinator = &Left.coordinator;
 }

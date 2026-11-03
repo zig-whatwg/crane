@@ -92,21 +92,55 @@ const Page = struct {
         try std.testing.expectEqualStrings(expected, got);
     }
 
+    /// A full collection, twice: what script let go of is finalized.
+    fn collect(self: Page) !void {
+        const Collect = struct {
+            fn steps(data: ?*anyopaque) void {
+                protocol.requestGarbageCollection(@ptrCast(@alignCast(data.?)));
+            }
+        };
+        try protocol.runInRealm(self.realm, Collect.steps, self.agent);
+        try protocol.runInRealm(self.realm, Collect.steps, self.agent);
+    }
+
     /// Runs `source` - which answers "64" when each of its 64 constructions
     /// failed as it should - once to warm up (the first call makes what
     /// later ones reuse), then again, and fails when the second run left
-    /// live Global<Object> handles behind.
+    /// live Global<Object> handles behind, or platform objects in the slab
+    /// the realm's objects come from (the standalone runtime's: the page has
+    /// no Browser). A construction that failed returned no object to the
+    /// binding, so nothing else can ever free the one it made: its failure
+    /// path frees it whole (docs/lessons/architecture-an-interfaces-deinit-
+    /// is-a-destructor-not-a-free.md). Both counts are read after a full
+    /// collection: an error the binding throws as a DOMException is itself
+    /// a platform object, its wrapper the cache's until script lets go of it
+    /// and the collector takes it - a leaked handle or object outlives that.
     fn expectNoReceiverLeft(self: Page, source: []const u8) !void {
         try self.expect(source, "64");
+        try self.collect();
         const before = ffi.v8_Debug_LiveObjectGlobals();
+        const objects_before = liveObjects();
         try self.expect(source, "64");
+        try self.collect();
         const after = ffi.v8_Debug_LiveObjectGlobals();
+        const objects_after = liveObjects();
         if (after != before) {
             std.debug.print("live_object_globals {d} -> {d} over 64 failed constructions\n", .{ before, after });
             return error.ReceiverLeaked;
         }
+        if (objects_after != objects_before) {
+            std.debug.print("platform objects {d} -> {d} over 64 failed constructions\n", .{ objects_before, objects_after });
+            return error.InstanceLeaked;
+        }
     }
 };
+
+/// The platform objects live in the standalone runtime's slab, which the
+/// test's realm (no Browser) makes its objects in.
+fn liveObjects() usize {
+    const scope = runtime.BrowserScope.standalone() orelse return 0;
+    return scope.slab.stats().currently_allocated;
+}
 
 test "a constructor whose argument conversion throws releases its receiver" {
     const page = try Page.open();
@@ -134,6 +168,129 @@ test "a constructor whose impl fails releases its receiver" {
         \\  let n = 0;
         \\  for (let i = 0; i < 64; i++) {
         \\    try { new URL('not a url'); } catch (e) { if (e instanceof TypeError) n++; }
+        \\  }
+        \\  return String(n);
+        \\})()
+    );
+}
+
+// Constructor steps that fail after the impl made its object: the object
+// never reached the binding, so the failure path is its only owner. Each of
+// these used to run the impl's own deinit - a destructor, not a free - and
+// leave the object's slot and state block in the slab until the Browser
+// ended (tests-v8's state survey, lane v8state1: 128 objects a run of the
+// URL test above).
+
+test "a URL constructor whose base fails to parse frees what it made" {
+    const page = try Page.open();
+    defer page.close();
+    try page.expectNoReceiverLeft(
+        \\(() => {
+        \\  let n = 0;
+        \\  for (let i = 0; i < 64; i++) {
+        \\    try { new URL('a', 'not a base'); } catch (e) { if (e instanceof TypeError) n++; }
+        \\  }
+        \\  return String(n);
+        \\})()
+    );
+}
+
+test "an ImageData constructor that throws an IndexSizeError frees what it made" {
+    const page = try Page.open();
+    defer page.close();
+    // Zero width (constructor 1, step 1), and a data length that is no
+    // multiple of the width (constructor 2, step 5).
+    try page.expectNoReceiverLeft(
+        \\(() => {
+        \\  let n = 0;
+        \\  for (let i = 0; i < 32; i++) {
+        \\    try { new ImageData(0, 1); } catch (e) { if (e.name === 'IndexSizeError') n++; }
+        \\    try { new ImageData(new Uint8ClampedArray(8), 3); } catch (e) { if (e.name === 'IndexSizeError') n++; }
+        \\  }
+        \\  return String(n);
+        \\})()
+    );
+}
+
+test "a URLPattern constructor whose pattern does not compile frees what it made" {
+    const page = try Page.open();
+    defer page.close();
+    // An unbalanced group is a TypeError of the constructor string's parse;
+    // a dictionary with a separate base, one of the create steps.
+    try page.expectNoReceiverLeft(
+        \\(() => {
+        \\  let n = 0;
+        \\  for (let i = 0; i < 32; i++) {
+        \\    try { new URLPattern('(', 'https://example.test'); } catch (e) { if (e instanceof TypeError) n++; }
+        \\    try { new URLPattern({}, 'https://example.test'); } catch (e) { if (e instanceof TypeError) n++; }
+        \\  }
+        \\  return String(n);
+        \\})()
+    );
+}
+
+test "a Blob constructor whose parts are no sequence frees what it made" {
+    const page = try Page.open();
+    defer page.close();
+    // The sequence<BlobPart> conversion runs in the constructor steps (FileAPI
+    // "process blob parts" takes the converted value): not an Object is a
+    // TypeError (WebIDL 3.2.21 step 1), and so is no @@iterator (step 3).
+    try page.expectNoReceiverLeft(
+        \\(() => {
+        \\  let n = 0;
+        \\  for (let i = 0; i < 32; i++) {
+        \\    try { new Blob('abc'); } catch (e) { if (e instanceof TypeError) n++; }
+        \\    try { new Blob({ length: 1, 0: 'a' }); } catch (e) { if (e instanceof TypeError) n++; }
+        \\  }
+        \\  return String(n);
+        \\})()
+    );
+}
+
+test "a Worker or SharedWorker constructor whose script URL does not parse frees what it made" {
+    const page = try Page.open();
+    defer page.close();
+    // HTML's Worker constructor step 4 and SharedWorker's step 5: a URL that
+    // fails to encoding-parse is a "SyntaxError" DOMException.
+    try page.expectNoReceiverLeft(
+        \\(() => {
+        \\  let n = 0;
+        \\  for (let i = 0; i < 32; i++) {
+        \\    try { new Worker('https://['); } catch (e) { if (e.name === 'SyntaxError') n++; }
+        \\    try { new SharedWorker('https://['); } catch (e) { if (e.name === 'SyntaxError') n++; }
+        \\  }
+        \\  return String(n);
+        \\})()
+    );
+}
+
+test "a Response constructor that rejects its init frees what it made" {
+    const page = try Page.open();
+    defer page.close();
+    // Fetch "initialize a response": a status outside 200-599 is a
+    // RangeError (step 1), a body for a null body status a TypeError (step 6).
+    try page.expectNoReceiverLeft(
+        \\(() => {
+        \\  let n = 0;
+        \\  for (let i = 0; i < 32; i++) {
+        \\    try { new Response('', { status: 99 }); } catch (e) { if (e instanceof RangeError) n++; }
+        \\    try { new Response('body', { status: 204 }); } catch (e) { if (e instanceof TypeError) n++; }
+        \\  }
+        \\  return String(n);
+        \\})()
+    );
+}
+
+test "Response.json() whose init is rejected frees the response it made" {
+    const page = try Page.open();
+    defer page.close();
+    // Response.json's step 4 is "initialize a response", after step 3 made
+    // the response object.
+    try page.expectNoReceiverLeft(
+        \\(() => {
+        \\  let n = 0;
+        \\  for (let i = 0; i < 64; i++) {
+        \\    try { Response.json({ a: 1 }, { status: 99 }); } catch (e) { if (e instanceof RangeError) n++; }
         \\  }
         \\  return String(n);
         \\})()

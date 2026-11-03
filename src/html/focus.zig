@@ -884,17 +884,32 @@ pub fn matchesFocusWithin(element: *Instance) bool {
     return false;
 }
 
-/// The input modality of the last user interaction, for :focus-visible: a
-/// pointer press or a key press, in the top-level document it happened in
-/// (held with its generation: a later page is a new document).
-const Modality = struct { document: *Instance, generation: u64, pointer: bool };
-threadlocal var last_modality: ?Modality = null;
+/// The top-level traversable `document` is in: the browsing context of the
+/// active window of its top-level document, which keeps the traversable's
+/// focus state beside its session history (`BrowsingContext.input_modality`,
+/// `pending_edits` - a tab's, as Selectors 4 :focus-visible and HTML's user
+/// edits are per top-level traversable). Null for a document with no
+/// browsing context.
+fn traversableOf(document: *Instance) ?*dom.browser_state.BrowsingContext {
+    const top = topLevelDocumentOf(document);
+    const window = windowOf(top) orelse return null;
+    var context = dom.browser_state.browsingContextOf(window) orelse return null;
+    var depth: usize = 0;
+    while (context.parent) |parent| : (depth += 1) {
+        if (depth == 64) break;
+        context = parent;
+    }
+    return context;
+}
 
 /// user_input: the user pressed a pointer button (`pointer`) or a key in the
-/// top-level traversable `document` is in.
+/// top-level traversable `document` is in - the input modality of its last
+/// user interaction, for :focus-visible, held with the top-level document it
+/// happened in and its generation (a later page is a new document).
 pub fn noteInputModality(document: *Instance, pointer: bool) void {
     const top = topLevelDocumentOf(document);
-    last_modality = .{ .document = top, .generation = runtime.SlabAllocator.generationOf(top), .pointer = pointer };
+    const traversable = traversableOf(top) orelse return;
+    traversable.input_modality = .{ .document = top, .generation = runtime.SlabAllocator.generationOf(top), .pointer = pointer };
 }
 
 /// Whether `element` takes text input: a text control or an editing host.
@@ -917,10 +932,11 @@ fn takesTextInput(element: *Instance) bool {
 pub fn matchesFocusVisible(element: *Instance) bool {
     if (!matchesFocus(element)) return false;
     if (takesTextInput(element)) return true;
-    const modality = last_modality orelse return true;
     const document = nodeDocument(element) orelse return true;
     const top = topLevelDocumentOf(document);
-    if (modality.document != top or runtime.SlabAllocator.generationOf(top) != modality.generation) return true;
+    const traversable = traversableOf(top) orelse return true;
+    const modality = traversable.input_modality orelse return true;
+    if (@as(*Instance, @ptrCast(@alignCast(modality.document))) != top or runtime.SlabAllocator.generationOf(top) != modality.generation) return true;
     return !modality.pointer;
 }
 
@@ -993,17 +1009,20 @@ pub fn navigateSequentially(document: *Instance, direction: Direction) void {
 
 /// The text controls whose value the user changed since they were focused
 /// or last committed, with the value's hash when the first uncommitted edit
-/// began. A control is removed when its change is committed; the table
-/// holds no heap memory, and an entry whose element was freed is never
-/// matched again (its generation).
-const PendingEdit = struct {
-    element: *Instance,
-    generation: u64,
-    original_hash: u64,
-};
-const max_pending_edits = 16;
-threadlocal var pending_edits: [max_pending_edits]PendingEdit = undefined;
-threadlocal var pending_edit_count: usize = 0;
+/// began: the table of the top-level traversable the control is in
+/// (`BrowsingContext.pending_edits`, a tab's - it was one per thread, and
+/// another tab's edits pushed this tab's out). A control is removed when its
+/// change is committed; the table holds no heap memory, and an entry whose
+/// element was freed is never matched again (its generation).
+const PendingEdits = dom.browser_state.BrowsingContext.PendingEditsTable;
+
+/// The pending edits of the top-level traversable `element` is in; null for
+/// an element in no browsing context, whose edits are not tracked.
+fn pendingEditsOf(element: *Instance) ?*PendingEdits {
+    const document = nodeDocument(element) orelse return null;
+    const traversable = traversableOf(document) orelse return null;
+    return &traversable.pending_edits;
+}
 
 fn valueHash(element: *Instance) ?u64 {
     var value = if (form_associated.isInput(element))
@@ -1019,29 +1038,31 @@ fn valueHash(element: *Instance) ?u64 {
 /// The user is about to change `element`'s value: remember what it was, if
 /// no uncommitted edit is pending for it already.
 pub fn willEditByUser(element: *Instance) void {
+    const table = pendingEditsOf(element) orelse return;
     const generation = runtime.SlabAllocator.generationOf(element);
-    for (pending_edits[0..pending_edit_count]) |edit| {
-        if (edit.element == element and edit.generation == generation) return;
+    for (table.items[0..table.count]) |edit| {
+        if (edit.element == @as(*anyopaque, element) and edit.generation == generation) return;
     }
     const hash = valueHash(element) orelse return;
-    const entry: PendingEdit = .{ .element = element, .generation = generation, .original_hash = hash };
-    if (pending_edit_count == max_pending_edits) {
+    const entry: PendingEdits.Edit = .{ .element = element, .generation = generation, .original_hash = hash };
+    if (table.count == PendingEdits.capacity) {
         // The oldest goes: its control lost the change it would have fired.
-        std.mem.copyForwards(PendingEdit, pending_edits[0 .. max_pending_edits - 1], pending_edits[1..max_pending_edits]);
-        pending_edit_count -= 1;
+        std.mem.copyForwards(PendingEdits.Edit, table.items[0 .. PendingEdits.capacity - 1], table.items[1..PendingEdits.capacity]);
+        table.count -= 1;
     }
-    pending_edits[pending_edit_count] = entry;
-    pending_edit_count += 1;
+    table.items[table.count] = entry;
+    table.count += 1;
 }
 
 /// Take `element`'s pending edit: whether the user changed its value (it
 /// now differs from what it was when the edit began).
 fn takePendingEdit(element: *Instance) bool {
+    const table = pendingEditsOf(element) orelse return false;
     const generation = runtime.SlabAllocator.generationOf(element);
-    for (pending_edits[0..pending_edit_count], 0..) |edit, index| {
-        if (edit.element != element or edit.generation != generation) continue;
-        std.mem.copyForwards(PendingEdit, pending_edits[index .. pending_edit_count - 1], pending_edits[index + 1 .. pending_edit_count]);
-        pending_edit_count -= 1;
+    for (table.items[0..table.count], 0..) |edit, index| {
+        if (edit.element != @as(*anyopaque, element) or edit.generation != generation) continue;
+        std.mem.copyForwards(PendingEdits.Edit, table.items[index .. table.count - 1], table.items[index + 1 .. table.count]);
+        table.count -= 1;
         const now = valueHash(element) orelse return false;
         return now != edit.original_hash;
     }

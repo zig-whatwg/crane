@@ -224,13 +224,24 @@ test "a node whose teardown begins under its live wrapper lets the wrapper's ref
 
 test "removing a wrapper from the cache lets its reference go" {
     const page = try Page.open();
-    defer page.close();
+    var page_open = true;
+    defer if (page_open) page.close();
     const nodes = try chain(page);
     const leaf = try protocol.retainValue(page.realm, .{ .instance = nodes[2] });
     leaf.release();
     try testing.expectEqual(@as(u32, 2), dom.refcount.count(nodeBase(nodes[2])));
     try testing.expect(page.cache().remove(nodes[2]));
     try testing.expectEqual(@as(u32, 1), dom.refcount.count(nodeBase(nodes[2])));
+    // The test took the leaf's wrapper out of the cache itself (production
+    // removes only a Window's), and a node a wrapper reached keeps its slot
+    // for that wrapper's end: when the realm's end tears the tree down, the
+    // leaf's storage has no one left to return it. The test returns it, so
+    // the process's standalone slab is as the test found it.
+    const leaf_generation = runtime.SlabAllocator.generationOf(nodes[2]);
+    page_open = false;
+    page.close();
+    try testing.expect(runtime.instance_lifecycle.isCleanedUp(nodes[2]));
+    if (runtime.SlabAllocator.generationOf(nodes[2]) == leaf_generation) runtime.gc.releaseStorage(nodes[2]);
 }
 
 test "every reference a wrapper takes is let go: collections, the realm's end" {

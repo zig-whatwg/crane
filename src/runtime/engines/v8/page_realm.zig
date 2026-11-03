@@ -177,14 +177,13 @@ fn reportThrown(context: *ffi.Context, exception: *ffi.Value, report: runtime.Re
 // installWindowOperations: the window's native timers and animation frames
 // ============================================================================
 
-/// The host's steps for every Window realm of this agent (one agent per
-/// thread). Set by installWindowOperations; a frame's realm, created later by
-/// context_manager, reads it through the child-window hooks below.
-threadlocal var window_operations: ?*const runtime.WindowOperations = null;
-
-/// The realm whose installWindowOperations set `window_operations`: its end
-/// ends them (`endWindowOperations`).
-threadlocal var operations_realm: ?runtime.Context = null;
+// The host's steps a Window realm's timers and animation frames run are the
+// realm's own (`runtime.ContextData.window_operations`): set by
+// installWindowOperations for a page's realm, taken from its parent by a
+// frame's or a popup's when it is made (`defineOnFrame`), and ended with each
+// realm (`endWindowOperations`). They were one per THREAD, ended by whichever
+// realm installed them last: one Browser's page end took them from every other
+// Browser's windows on the thread (tests/html/gs3_agent_state_one_thread_test.zig).
 
 const NativeOperation = struct {
     name: []const u8,
@@ -224,25 +223,19 @@ pub fn installWindowOperations(realm: runtime.Context, operations: *const runtim
     // Owned, and a handle to the global keeps the page alive.
     defer ffi.v8_Object_Dispose(global);
 
-    window_operations = operations;
-    operations_realm = realm;
+    // The realm's own; every window created under it - an iframe's, a popup's
+    // - takes them from it (defineOnFrame), and gives up its timers when its
+    // realm ends (`windowDestroyed`).
+    realm.window_operations = operations;
     try defineNatives(scope.isolate, context, global, &window_operation_natives);
-
-    // Every window created under this one - an iframe's, a popup's - gets the
-    // same operations, and gives up its timers when its document goes.
-    context_manager.setChildContextGlobalsCallback(defineOnChildWindow);
-    context_manager.setChildWindowCleanupCallback(childWindowDestroyed);
 }
 
-/// The end of `realm` (destroyWindowRealm): when it installed the window
-/// operations, no frame made from now on gets them, and a frame's end no
-/// longer reaches its steps.
+/// The end of `realm`'s window operations (destroyWindowRealm): a frame
+/// made from it from now on gets none, and nothing reaches its steps through
+/// it again. Only `realm`'s: its frames' - and every other window's - are
+/// their own. After `windowDestroyed`, which runs them one last time.
 pub fn endWindowOperations(realm: runtime.Context) void {
-    if (operations_realm != realm) return;
-    operations_realm = null;
-    window_operations = null;
-    context_manager.clearChildContextGlobalsCallback();
-    context_manager.clearChildWindowCleanupCallback();
+    realm.window_operations = null;
 }
 
 /// Define each of `natives` on `global`, as functions of `context`'s realm:
@@ -275,38 +268,29 @@ fn defineNatives(isolate: *ffi.Isolate, context: *ffi.Context, global: *ffi.Obje
     }
 }
 
-/// context_manager's child-context hook: a frame's or a popup's window gets
-/// the operations the top-level window has. Without it every frame ran the
-/// WebIDL stubs - setTimeout threw NotSupportedError in every iframe.
-fn defineOnChildWindow(isolate: *ffi.Isolate, context: *ffi.Context, global: *ffi.Object) void {
-    if (window_operations == null) return;
+/// A frame's or a popup's window, `realm`, made by engine.createWindowRealm
+/// with `parent`: it takes the window operations its parent's window has -
+/// the page's, through every level of frames - and defines them on its
+/// global. Without them every frame ran the WebIDL stubs - setTimeout threw
+/// NotSupportedError in every iframe. `context` is `realm`'s, entered.
+pub fn defineOnFrame(isolate: *ffi.Isolate, context: *ffi.Context, realm: runtime.Context, parent: runtime.Context) void {
+    const operations = parent.window_operations orelse return;
+    realm.window_operations = operations;
+    const global = ffi.v8_Context_Global(context) orelse return;
+    // Owned, and a handle to the global keeps the frame alive.
+    defer ffi.v8_Object_Dispose(global);
     defineNatives(isolate, context, global, &window_operation_natives) catch |err| {
         log.warn("a frame's window operations were not defined: {}", .{err});
     };
 }
 
-/// A frame's window made by engine.createWindowRealm with a parent: it gets
-/// the operations the top-level window has, as defineOnChildWindow gives a
-/// context manager child. `context` is entered.
-pub fn defineOnFrame(isolate: *ffi.Isolate, context: *ffi.Context) void {
-    const global = ffi.v8_Context_Global(context) orelse return;
-    // Owned, and a handle to the global keeps the frame alive.
-    defer ffi.v8_Object_Dispose(global);
-    defineOnChildWindow(isolate, context, global);
-}
-
-/// A frame's window realm ends (engine.destroyWindowRealm): its timers and
-/// animation frames go with it (WindowOperations.windowDestroyed).
+/// `realm`'s window ends (engine.destroyWindowRealm): its timers and
+/// animation frames go with it, through its own window operations
+/// (WindowOperations.windowDestroyed) - before `endWindowOperations` ends
+/// them. A realm with none (ended already, or never given any) has nothing
+/// to run.
 pub fn frameWindowDestroyed(realm: runtime.Context) void {
-    const operations = window_operations orelse return;
-    operations.windowDestroyed(realm);
-}
-
-/// context_manager's child-window cleanup hook, called while the frame's
-/// context is still registered.
-fn childWindowDestroyed(context: *ffi.Context) void {
-    const operations = window_operations orelse return;
-    const realm = context_manager.get(context) orelse return;
+    const operations = realm.window_operations orelse return;
     operations.windowDestroyed(realm);
 }
 
@@ -396,8 +380,10 @@ fn timerInitializationFromCall(info: *const ffi.FunctionCallbackInfo, repeat: bo
             !ffi.v8_Value_ToInt32(timeout_value, context, &timeout)) return;
     }
 
-    const operations = window_operations orelse return setIntegerReturn(info, isolate, 0);
+    // The function's realm - the window whose method this is - and its own
+    // window operations.
     const realm = context_manager.get(context) orelse return setIntegerReturn(info, isolate, 0);
+    const operations = realm.window_operations orelse return setIntegerReturn(info, isolate, 0);
 
     // `any... arguments`, for every run of a Function handler. Each is an
     // owned Global handed to the host; the slice is only lent for the call.
@@ -427,9 +413,9 @@ fn clearTimeoutCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void
     var id: i32 = 0;
     if (!ffi.v8_Value_ToInt32(id_value, context, &id)) return;
 
-    const operations = window_operations orelse return;
     // The function's realm: an id names a timer in THIS window's map only.
     const realm = context_manager.get(context) orelse return;
+    const operations = realm.window_operations orelse return;
     operations.clearTimer(realm, id);
 }
 
@@ -448,12 +434,12 @@ fn requestAnimationFrameCallback(info: *const ffi.FunctionCallbackInfo) callconv
         ffi.v8_Global_Dispose(callback_value);
         return setIntegerReturn(info, isolate, 0);
     }
-    const operations = window_operations orelse {
+    // The function's realm: this window's map of animation frame callbacks.
+    const realm = callingRealm(isolate) orelse {
         ffi.v8_Global_Dispose(callback_value);
         return setIntegerReturn(info, isolate, 0);
     };
-    // The function's realm: this window's map of animation frame callbacks.
-    const realm = callingRealm(isolate) orelse {
+    const operations = realm.window_operations orelse {
         ffi.v8_Global_Dispose(callback_value);
         return setIntegerReturn(info, isolate, 0);
     };
@@ -466,7 +452,6 @@ fn requestAnimationFrameCallback(info: *const ffi.FunctionCallbackInfo) callconv
 fn cancelAnimationFrameCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     const isolate = info.getIsolate();
     if (info.length() < 1) return;
-    const operations = window_operations orelse return;
 
     const handle_value = info.get(0);
     defer ffi.v8_Global_Dispose(handle_value);
@@ -477,5 +462,6 @@ fn cancelAnimationFrameCallback(info: *const ffi.FunctionCallbackInfo) callconv(
     if (std.math.isNan(as_f64) or as_f64 < 1 or as_f64 > @as(f64, @floatFromInt(std.math.maxInt(u32)))) return;
 
     const realm = context_manager.get(context) orelse return;
+    const operations = realm.window_operations orelse return;
     operations.cancelAnimationFrame(realm, @intFromFloat(as_f64));
 }

@@ -148,6 +148,7 @@ pub const browser_state = @import("browser_state.zig");
 pub const blob_partition = @import("blob_partition.zig");
 /// The fetches of a realm's agent, which its event loop pumps.
 pub const agent_fetches = @import("agent_fetches.zig");
+pub const agent_hosts = @import("agent_hosts.zig");
 /// The CookieStores that hear their Browser's cookie jar, on any thread.
 pub const cookie_change_listeners = @import("cookie_change_listeners.zig");
 /// The Performance Timeline: each global's entry buffers and registered

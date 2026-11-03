@@ -124,7 +124,7 @@ pub const InternalState = struct {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
-    // "Abort a document" reaches a send()'s fetches through `live_pending`.
+    // "Abort a document" reaches a send()'s fetches through its realm's list.
     document_fetches.install(.{
         .discard = &abortFetchesIn,
         .prepare_abort = &prepareDocumentAbort,
@@ -1153,16 +1153,25 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
     if (pending.body != null) body_taken = true;
     internal.pending_fetch = pending;
     pending.keep_alive.hold(instance);
-    // "Abort a document" reaches it through `live_pending`.
-    live_pending.append(std.heap.c_allocator, pending) catch {};
+    // "Abort a document" reaches it through its realm's list of XHR
+    // fetches (`abortFetchesIn`).
+    pending.context.addObject(.xhr_fetches, pending) catch {};
 
     // Step 11.11: If this's timeout is not 0, end the fetch once it has run
     // that long.
     pending.armTimeout(xhr_state.timeout);
 }
 
-/// Every PendingFetch on this thread not yet freed, for `abortFetchesIn`.
-threadlocal var live_pending: std.ArrayListUnmanaged(*PendingFetch) = .empty;
+// Every PendingFetch not yet freed is on its realm's list of XHR fetches
+// (runtime.ContextData objects(.xhr_fetches)), for `abortFetchesIn` and the
+// document abort: "every XMLHttpRequest whose relevant realm is" the
+// realm's. It was one list per thread, every realm's fetches in it.
+
+/// The PendingFetches of `realm` not yet freed (BORROWED: a freed one leaves
+/// it, so a walk that can free re-reads it).
+fn pendingIn(realm: runtime.Context) []const *PendingFetch {
+    return @ptrCast(realm.objects(.xhr_fetches).items);
+}
 
 /// HTML "abort a document" step 2, for this interface: the request of every
 /// XMLHttpRequest whose relevant realm is `realm` - a document of it is being
@@ -1183,11 +1192,11 @@ threadlocal var live_pending: std.ArrayListUnmanaged(*PendingFetch) = .empty;
 fn abortFetchesIn(realm: runtime.Context) void {
     // Backwards: a cancel may free its entry, which swapRemove replaces with
     // one already visited.
-    var i = live_pending.items.len;
+    var i = pendingIn(realm).len;
     while (i > 0) {
         i -= 1;
-        if (i >= live_pending.items.len) continue;
-        const pending = live_pending.items[i];
+        if (i >= pendingIn(realm).len) continue;
+        const pending = pendingIn(realm)[i];
         if (pending.context != realm or (pending.cancelled and !pending.abort_delivery_pending)) continue;
         // Discard runs no script. A retired or engine-less realm can still
         // own a native XHR whose pending link must be cleared before free.
@@ -1205,7 +1214,7 @@ fn abortFetchesIn(realm: runtime.Context) void {
 /// part of the old request's cancellation.
 fn prepareDocumentAbort(document: *runtime.Instance) bool {
     var marked = false;
-    for (live_pending.items) |pending| {
+    for (pendingIn(document.ctx)) |pending| {
         const owner = pending.document orelse continue;
         if (owner.instance != document or !owner.isLive()) continue;
         if (pending.cancelled or pending.complete) continue;
@@ -1246,7 +1255,7 @@ fn abortDocumentFetches(document: *runtime.Instance) void {
     // live entries, or start new work. Only the prepared requests are ended.
     while (true) {
         const next: ?*PendingFetch = blk: {
-            for (live_pending.items) |pending| {
+            for (pendingIn(document.ctx)) |pending| {
                 if (!pending.document_abort_pending or pending.cancelled) continue;
                 const owner = pending.document orelse continue;
                 if (owner.instance == document and owner.isLive()) break :blk pending;
@@ -1704,13 +1713,8 @@ const PendingFetch = struct {
     fn maybeFree(self: *PendingFetch) void {
         if (self.fetch_holds or self.task_queued or self.abort_task_queued or self.running) return;
         if (!self.cancelled and !self.complete) return;
-        for (live_pending.items, 0..) |p, i| {
-            if (p != self) continue;
-            _ = live_pending.swapRemove(i);
-            break;
-        }
-        // Its capacity goes with its last entry: a worker thread that ends leaves none of it.
-        if (live_pending.items.len == 0) live_pending.clearAndFree(std.heap.c_allocator);
+        // Off its realm's list; the list's capacity goes with its last entry.
+        self.context.forgetObject(.xhr_fetches, self);
         self.releasePipe();
         self.keep_alive.release();
         self.disarmTimeout();
