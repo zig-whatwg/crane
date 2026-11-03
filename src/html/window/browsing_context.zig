@@ -76,8 +76,11 @@ const TraversalQueue = traversal_queue.TraversalQueue;
 /// Spec: https://html.spec.whatwg.org/multipage/document-sequences.html#cross-origin-isolation-mode
 pub const CrossOriginIsolationMode = enum { none, logical, concrete };
 
-/// Unique ID generator for browsing contexts
+/// Unique ID generators for browsing contexts and browsing context groups:
+/// an id names one context (or group) among every Browser's in the process.
+// process-wide: an id counter whose only property is uniqueness in the process; every Browser's thread draws from it with an atomic fetch-add, and it carries no state of any instance.
 var next_context_id: u64 = 1;
+// process-wide: an id counter whose only property is uniqueness in the process; every Browser's thread draws from it with an atomic fetch-add, and it carries no state of any instance.
 var next_group_id: u64 = 1;
 
 // ============================================================================

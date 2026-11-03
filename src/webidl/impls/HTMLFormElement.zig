@@ -1721,8 +1721,10 @@ const PlannedNavigation = struct {
     }
 };
 
-/// Source of planned-navigation tokens: never reused, never zero.
-threadlocal var next_navigation_token: u64 = 1;
+/// Source of planned-navigation tokens: never reused, never zero. A token
+/// is compared only with its form's own pending navigations.
+// process-wide: a token counter whose only property is uniqueness in the process (a token is compared only with its form's pending navigations); written with an atomic fetch-add from every Browser's window thread, it carries no state of any instance.
+var next_navigation_token: std.atomic.Value(u64) = .init(1);
 
 /// "Plan to navigate" to `url`. Takes ownership of `url` and `target`.
 fn planNavigation(form: *runtime.Instance, submitter: *runtime.Instance, url: []const u8, target: []const u8, policy: forms.TargetPolicy, user_involvement: @import("dom").form_submission.UserInvolvement) void {
@@ -1750,7 +1752,7 @@ fn planNavigationWith(form: *runtime.Instance, submitter: *runtime.Instance, url
     const document = interfaces.Node.get_ownerDocument(form) catch null;
     const not_loaded = if (document) |d| !@import("dom").document_lifecycle.isCompletelyLoaded(d) else false;
     task.* = .{
-        .token = next_navigation_token,
+        .token = next_navigation_token.fetchAdd(1, .monotonic),
         .url = url,
         .target = target,
         .noopener = policy.noopener,
@@ -1769,7 +1771,6 @@ fn planNavigationWith(form: *runtime.Instance, submitter: *runtime.Instance, url
     task.submitter.take(submitter);
     if (document) |d| task.form_document.take(d);
     if (form_data) |fd| task.form_data_pin.hold(fd);
-    next_navigation_token += 1;
 
     const internal = Registry.get(form) orelse return task.destroy();
     const event_loop = form.ctx.getOptionalEventLoop() orelse return task.destroy();
