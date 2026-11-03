@@ -152,9 +152,10 @@ tree links for `aarch64-ios` as well as macOS.
 
 ## Contributing
 
-[`AGENTS.md`](AGENTS.md) is the rulebook, for people and agents alike: spec algorithms step by step
-with numbered comments, a failing test first, WPT as the bar, no memory leaks, never a hand-edited
-generated file, and the impls and engine boundaries that `zig build test` enforces. What past work
+[`AGENTS.md`](AGENTS.md) is the rulebook, for people and agents alike (its index names the files that
+hold each area's details): spec algorithms step by step with numbered comments, a failing test first,
+WPT as the bar, no memory leaks, never a hand-edited generated file, and the impls and engine
+boundaries that `zig build test` enforces. What past work
 taught is indexed in [`docs/lessons/README.md`](docs/lessons/README.md). See also
 [`CONTRIBUTING.md`](CONTRIBUTING.md).
 

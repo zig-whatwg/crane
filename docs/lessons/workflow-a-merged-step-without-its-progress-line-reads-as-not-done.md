@@ -9,7 +9,7 @@
 
 **Fix**:
 1. Starting a step: `git log --merges --grep <lane>` and `git log --grep "<plan> step N"` on main, and read the lane's handoff in tmp/plans/ if one exists. If the step is there, stop and tell the integrator before reading further.
-2. Merging a lane that moves a roadmap item: add its progress line in the merge round (AGENTS.md "Keep the roadmap current" step 4), naming the merge and its main commits.
+2. Merging a lane that moves a roadmap item: add its progress line in the merge round (.claude/rules/wpt-workflow.md, "Keep the roadmap current", step 4), naming the merge and its main commits.
 3. A merge commit's message names what the lane did, not only its branch: a later `git log --grep` finds the words, not the branch name.
 
 **Takeaway**: **The roadmap is a plan only if every merge writes itself into it - check the merge log before re-doing a step, and write the progress line at merge time, not later.**

@@ -3,7 +3,7 @@
 **Date**: 2026-10-12
 **Lesson**: Moving an impl-helper call onto the generated interface is free only when the getter runs the helper's steps; a string getter copies, so the tree's own reads of strings need a borrowing hook, and a construction-time setter needs a construction argument.
 
-**Why**: The impls boundary (AGENTS.md) sends every IDL read through `interfaces.X.member`. For node links the
+**Why**: The impls boundary (src/webidl/AGENTS.md) sends every IDL read through `interfaces.X.member`. For node links the
 generated getter and the impl helper run the same steps (`get_nextSibling` and `getNextSibling`: registry
 lookup, NodeBase link, instance bridge) and differ only in the error union, which `catch null` folds back -
 design 3.1 a2. That equivalence does not hold for everything the design filed under a2. An IDL getter
