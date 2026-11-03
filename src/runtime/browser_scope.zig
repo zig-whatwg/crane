@@ -34,12 +34,12 @@ const Instance = @import("instance.zig").Instance;
 /// The scope of objects made with no Browser - unit tests, and a host that
 /// starts the runtime itself (runtime.initializeRuntime). A Browser never
 /// uses it: every realm a Browser makes carries the Browser's own scope.
-// process-wide: the one scope of objects made outside any Browser (unit tests and runtime-only hosts), set by runtime.initializeRuntime before any such object and cleared by its end; no Browser reads it.
+// process-wide: the one scope of objects made outside any Browser (unit tests and runtime-only hosts), set by runtime.initializeRuntime before any such object and cleared by its end, both on the host's own thread (init-once per runtime start, no concurrent writer); no Browser reads it.
 var standalone_scope: ?*BrowserScope = null;
 
 /// How many scopes are alive - every Browser's and the standalone one -
 /// from `init` to `deinit`, for diagnostics (`liveCount`).
-// process-wide: a diagnostics count over every Browser in the process (Blink's leak detector's instance counters); the test runner reads it after each test to find a Browser the test left alive
+// process-wide: a diagnostics count over every Browser in the process (Blink's leak detector's instance counters); every write is an atomic add or sub (std.atomic.Value), so Browsers starting and ending on many threads never race it; the test runner reads it after each test to find a Browser the test left alive
 var live_scopes: std.atomic.Value(usize) = .init(0);
 
 pub const BrowserScope = struct {

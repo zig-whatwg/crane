@@ -101,6 +101,7 @@ pub fn main(init: std.process.Init) !void {
 
     // Set up signal handler for graceful shutdown
     const handler = struct {
+        // process-wide: a signal handler takes no context argument, so the one server this WebDriver executable runs is reached through it; set once by main before the handler can run, on main's thread, and only read after
         var server_ptr: *Server = undefined;
 
         fn handle(_: c_int) callconv(.C) void {
