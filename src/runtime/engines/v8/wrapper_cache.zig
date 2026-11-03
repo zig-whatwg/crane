@@ -289,8 +289,13 @@ fn disposeEntryWrapper(entry: *CacheEntry, instance: EntryInstance) void {
 /// The pointer-equality guard matters too: the NodeBase reachable from a live
 /// `entry.instance` may hold a newer wrapper of the same node. Only an exact
 /// match is ours to clear.
+///
+/// Only a node has one, which its type says (`treeOwns`): an entry of any
+/// other type - every entry of a worker realm's cache - asks the Browser's
+/// node bridge nothing.
 fn unbindNode(entry: *CacheEntry) void {
     if (slotReissued(entry)) return;
+    if (entry.instance.vtable.counted == null) return;
     const instance_bridge = @import("dom").instance_bridge;
     if (instance_bridge.getNodeBase(@ptrCast(entry.instance))) |nodebase| {
         if (nodebase.bound_v8_wrapper == entry.wrapper) nodebase.bound_v8_wrapper = null;
@@ -349,6 +354,10 @@ pub fn templateOwns(instance: *runtime.Instance) bool {
 fn engineHoldsWrapper(instance: *runtime.Instance) bool {
     if (isStreamsGraphObject(instance.vtable.name)) return true;
     if (isWindowOwned(instance)) return true;
+    // A Document is a node: any other type - every object a worker realm
+    // wraps, on the worker's thread - asks the window thread's unlocked
+    // Document table nothing (`treeOwns` says why).
+    if (instance.vtable.counted == null) return false;
     const DocumentImpl = @import("impls").Document;
     if (DocumentImpl.getInternalState(instance)) |doc_internal| {
         if (doc_internal.default_view != null) return true;
@@ -361,11 +370,6 @@ fn isRealmWindow(instance: *runtime.Instance) bool {
     return std.mem.eql(u8, instance.vtable.name, "Window");
 }
 
-/// True for a node with a parent: its tree holds it - the parent's child list
-/// points at it - and only the tree's teardown may free it (Node.deinit walks a
-/// root's subtree). WebKit asserts the same in Node::~Node: a node is never
-/// destroyed while it has a parent. Anything that is not a node, and a node
-/// that is a root, answers false and is freed as before.
 /// Push `entry` - a live entry the deinit walk took out of its map, so on
 /// no pending list - onto `list`, through its pending link (unused while it
 /// is live): a list that needs no allocation, so it cannot fail.
@@ -375,10 +379,29 @@ fn setAside(list: *?*CacheEntry, entry: *CacheEntry) void {
     list.* = entry;
 }
 
+/// True for a node with a parent: its tree holds it - the parent's child list
+/// points at it - and only the tree's teardown may free it (Node.deinit walks a
+/// root's subtree). WebKit asserts the same in Node::~Node: a node is never
+/// destroyed while it has a parent. Anything that is not a node, and a node
+/// that is a root, answers false and is freed as before.
+///
+/// Whether the instance is a node at all is its TYPE's answer, read from its
+/// vtable (`VTable.counted`: `&lifetime.node` for every type whose state
+/// keeps a NodeBase, pinned by tests/runtime/vtable_counted_test.zig) -
+/// never from a table of its Browser. A worker realm's cache asks this of
+/// each of its own objects, none of them a node, on the worker's thread (its
+/// end's sweep, its finalizers), and the Browser's node table is the window
+/// thread's, with no lock (runtime.InstanceRegistry): looking an instance up
+/// there raced the page's node teardown - ThreadSanitizer, a worker realm's
+/// end beside a navigation (tests/html/page_retention_test.zig, a port
+/// transferred to a worker; lanes gstate4, crashes7). Blink asks the type
+/// too: a wrapper's WrapperTypeInfo carries `wrapper_class_id`, kNodeClassId
+/// for a node (platform/bindings/wrapper_type_info.h), with no lookup. A
+/// node's NodeBase then comes from the node bridge, which locks
+/// (dom.instance_bridge), not from Node's impl.
 pub fn treeOwns(instance: *runtime.Instance) bool {
-    const NodeImpl = @import("impls").Node;
-    const node_internal = NodeImpl.getInternalState(instance) orelse return false;
-    const node_base = node_internal.node_base orelse return false;
+    if (instance.vtable.counted == null) return false;
+    const node_base = @import("dom").instance_bridge.getNodeBase(@ptrCast(instance)) orelse return false;
     return node_base.parent_node != null;
 }
 
