@@ -342,21 +342,6 @@ const AnimationFrames = struct {
     }
 };
 
-/// Every worker on this thread whose realm is still there, for
-/// `scopeSettings` and the realm hooks: a worker's thread has its one. Freed
-/// when it empties, so a worker thread that ends leaves nothing of it.
-threadlocal var live_contexts: std.ArrayListUnmanaged(*WorkerHost) = .empty;
-
-fn removeLive(wctx: *WorkerHost) void {
-    for (live_contexts.items, 0..) |live, i| {
-        if (live == wctx) {
-            _ = live_contexts.swapRemove(i);
-            break;
-        }
-    }
-    if (live_contexts.items.len == 0) live_contexts.clearAndFree(std.heap.page_allocator);
-}
-
 /// What a worker's global scope takes from the worker that runs it: "run a
 /// worker" steps 7-9 set the global scope's type, URL and name before its
 /// script runs. The slices are the worker's, valid while its realm is.
@@ -596,28 +581,16 @@ pub fn runImportedScript(ctx: runtime.Context, script: *const ImportedScript) an
     };
 }
 
+/// The worker host that runs the realm `ctx`, for `scopeSettings`, the
+/// realm hooks and every lookup by realm: the realm's own record of it
+/// (`ContextData.worker_host`), from the host's recording of the realm
+/// (`recordRealm`) until the realm's end begins (`forgetRealm`). Null for
+/// any other realm. Found from the realm on any thread - a nested worker's
+/// owner asks on its own. It was a per-thread list of the thread's hosts,
+/// searched by realm, empty on every thread but the worker's.
 fn forScope(ctx: runtime.Context) ?*WorkerHost {
-    for (live_contexts.items) |live| {
-        if (live.realm == ctx) return live;
-    }
-    return null;
-}
-
-/// Every worker host on this thread whose memory has not gone (`free`): a
-/// worker's thread has its one, until the thread's last step. What a module
-/// evaluation's settling reaction checks its host against
-/// (`PendingModuleEvaluation`). Freed when it empties.
-threadlocal var hosts: std.ArrayListUnmanaged(*WorkerHost) = .empty;
-
-fn removeHost(wctx: *WorkerHost) void {
-    for (hosts.items, 0..) |host, i| {
-        if (host == wctx) {
-            _ = hosts.swapRemove(i);
-            break;
-        }
-    }
-    // A worker thread's one host is gone: nothing of the list outlives it.
-    if (hosts.items.len == 0) hosts.clearAndFree(std.heap.page_allocator);
+    const host: *WorkerHost = @ptrCast(@alignCast(ctx.worker_host orelse return null));
+    return if (host.realm == ctx) host else null;
 }
 
 /// Timer callback trampoline - invoked by the timer manager
@@ -1006,7 +979,6 @@ pub const WorkerHost = struct {
         // (html.agent_clusters.agentClusterOf).
         self.agent_host.agent_cluster = start.agent_cluster;
         thread_host.host = self;
-        hosts.append(std.heap.page_allocator, self) catch {};
         const agent = try engine.createAgent(.{
             .can_block = true,
             .from_snapshot = false,
@@ -1035,7 +1007,6 @@ pub const WorkerHost = struct {
             self.setPolicyContainer(container);
             start.policy_container = null;
         }
-        live_contexts.append(std.heap.page_allocator, self) catch {};
         return runs;
     }
 
@@ -1097,7 +1068,6 @@ pub const WorkerHost = struct {
             .has_cross_site_ancestor = start.has_cross_site_ancestor,
         };
         thread_host.host = self;
-        hosts.append(std.heap.page_allocator, self) catch {};
         const agent = try engine.createAgent(.{
             .can_block = false,
             .from_snapshot = false,
@@ -1119,7 +1089,6 @@ pub const WorkerHost = struct {
             self.setPolicyContainer(container);
             start.policy_container = null;
         }
-        live_contexts.append(std.heap.page_allocator, self) catch {};
         return runs;
     }
 
@@ -1346,7 +1315,7 @@ pub const WorkerHost = struct {
         // the tasks they queue at once, inside the failure
         // (AgentFetches.stopReporting).
         self.agent_host.fetches.stopReporting();
-        removeLive(self);
+        self.forgetRealm();
         cancelWorkerTimers(self);
         self.discardAnimationFrames();
         // "Run a worker" step 17: disentangle the worker's ports - its
@@ -1396,8 +1365,6 @@ pub const WorkerHost = struct {
     /// after its realm's end and its agent's - so nothing here may reach the
     /// engine: the realm's end left no timer, import or module behind.
     fn free(self: *Self) void {
-        removeLive(self);
-        removeHost(self);
         std.debug.assert(self.timers.count() == 0);
         self.timers.deinit(self.allocator);
         std.debug.assert(self.animation_frame_callbacks.items.len == 0);
@@ -1534,7 +1501,16 @@ pub const WorkerHost = struct {
         self.realm = realm;
         realm.browser_scope = self.browser_scope;
         realm.task_sink = self.task_sink;
+        realm.worker_host = self;
         installRealmHooks(realm);
+    }
+
+    /// The realm's end has begun: from here on no lookup by realm finds this
+    /// host (`forScope`) - its hooks, scopeSettings and the module
+    /// evaluation's reaction see a realm no worker runs any more.
+    fn forgetRealm(self: *Self) void {
+        const realm = self.realm orelse return;
+        if (realm.worker_host == @as(?*anyopaque, self)) realm.worker_host = null;
     }
 
     /// Run one of the host's own setup scripts in the realm. It is no
@@ -2928,9 +2904,9 @@ const worker_hooks: engine.HostHooks = .{
     .compilePotentialWebAssemblyResponse = if (webassembly_streaming.supported) webassembly_streaming.compilePotentialWebAssemblyResponse else null,
 };
 
-/// A worker's module evaluation promise, waiting to settle. Its host
-/// is read only while it is still on this thread's `hosts` list, and its
-/// realm is the same one.
+/// A worker's module evaluation promise, waiting to settle. Its host is
+/// read only while it still runs the realm (`forScope`): its reactions run in
+/// the realm, which its host outlives.
 const PendingModuleEvaluation = struct {
     host: *WorkerHost,
     realm: runtime.Context,
@@ -2942,10 +2918,8 @@ const PendingModuleEvaluation = struct {
     };
 
     fn liveHost(self: *const PendingModuleEvaluation) ?*WorkerHost {
-        for (hosts.items) |host| {
-            if (host == self.host and host.realm == self.realm and host.runsTasks()) return host;
-        }
-        return null;
+        const host = forScope(self.realm) orelse return null;
+        return if (host == self.host and host.runsTasks()) host else null;
     }
 
     fn settled(data: ?*anyopaque, _: runtime.JSValue) void {
@@ -4184,8 +4158,8 @@ pub const worker_origin_oom_test_cases = if (@import("builtin").is_test) struct 
                     .top_level_origin = origin,
                 };
                 defer host.policy_container.deinit();
-                try live_contexts.append(std.heap.page_allocator, &host);
-                defer removeLive(&host);
+                realm.worker_host = &host;
+                defer realm.worker_host = null;
                 try std.testing.checkAllAllocationFailures(allocator, allocationScenario, .{&realm});
             }
         };
@@ -4219,8 +4193,9 @@ pub const scope_lookup_test_cases = if (@import("builtin").is_test) struct {
             .owner_is_secure_context = true,
         };
         defer host.policy_container.deinit();
-        try live_contexts.append(std.heap.page_allocator, &host);
-        defer removeLive(&host);
+        // How the host records its realm (recordRealm).
+        realm.worker_host = &host;
+        defer realm.worker_host = null;
         const Other = struct {
             fn ask(r: runtime.Context, url: *?[]const u8) void {
                 url.* = if (scopeSettings(r)) |settings| settings.url else null;
