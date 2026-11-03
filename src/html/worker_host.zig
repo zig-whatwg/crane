@@ -3036,7 +3036,7 @@ fn loadImportedModule(
     // (an event handler, eval, a setup script) it is the settings object's
     // API base URL: for a worker, its global scope's URL - its script's.
     const base_url: []const u8 = switch (referrer) {
-        .module => |host_defined| if (module_script.scriptOf(host_defined)) |script| script.base_url else self.script_url,
+        .module => |host_defined| if (module_script.scriptOf(realm, host_defined)) |script| script.base_url else self.script_url,
         .script => |host_defined| module_script.classicScriptBaseUrl(host_defined),
         .realm => self.script_url,
     };
@@ -3045,7 +3045,7 @@ fn loadImportedModule(
     // step 14's referrer is referencingScript's base URL, "client" without
     // one.
     const referencing: ?struct { options: module_script.FetchOptions, url: []const u8 } = switch (referrer) {
-        .module => |host_defined| if (module_script.scriptOf(host_defined)) |script| .{ .options = script.descendantFetchOptions(), .url = script.base_url } else null,
+        .module => |host_defined| if (module_script.scriptOf(realm, host_defined)) |script| .{ .options = script.descendantFetchOptions(), .url = script.base_url } else null,
         .script => |host_defined| .{ .options = module_script.classicScriptOf(host_defined).descendantFetchOptions(), .url = base_url },
         .realm => null,
     };
