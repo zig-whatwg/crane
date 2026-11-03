@@ -1,262 +1,166 @@
-//! JavaScript REPL - Headless Browser
+//! The browser console: a Browser showing a page, and the console that
+//! evaluates in it - what Chrome DevTools' console is to a tab.
 //!
-//! Interactive Read-Eval-Print Loop using the Browser API.
-//! This ensures the REPL has identical behavior to a browser environment:
-//! - Full browser globals (window, document, navigator, etc.)
-//! - Correct prototype chains (Window.prototype → WindowProperties → EventTarget.prototype)
-//! - Timer support (setTimeout, setInterval)
-//! - Console API
-//! - Tab completion
-//! - Multi-line input support
-//! - History support
+//! Run it:
+//!
+//!     zig build repl-exe -j2 -Doptimize=ReleaseSafe --cache-dir ~/Library/Caches/crane-z16-cache
+//!     ./zig-out/bin/repl
+//!
+//! (`zig build repl-exe` builds this binary and its snapshot, nothing else;
+//! `zig build repl` builds it and runs it.) Type JavaScript; Enter evaluates
+//! once the input is complete, Tab completes a name, the arrows walk the
+//! history, Ctrl+D exits.
+//!
+//! What the console gets from the engine and the Browser, and nothing else:
+//!
+//! - REPL mode (engine.evaluateReplScript, [repl_mode]): input is evaluated
+//!   as Chrome's console evaluates it - top-level `await`, and a `let`,
+//!   `const` or `class` declared again replacing the earlier one. Input that
+//!   ends too soon (an open block, argument list or template literal) asks
+//!   for another line (`...`), as Node's and Chrome's consoles do: the
+//!   engine says so, from its own parser.
+//! - The page keeps running while an input waits: the console spins the
+//!   Browser's event loop (Browser.spinEventLoopUntil, HTML "spin the event
+//!   loop") - tasks, timers, the network - until the evaluation completes,
+//!   or `deadline_ms` (30 s) passes, when it prints the input as still
+//!   pending and stops waiting for it.
+//! - Results print through the Console Standard's printer
+//!   (src/console/printer.zig) - the one `console.log` uses - and what the
+//!   input throws prints as an uncaught exception does ("Uncaught ...").
+//! - Nothing of the console is put on the page: no globals, no wrapper
+//!   source around the input. Tab completion reads properties along a dotted
+//!   name (getters run) and never evaluates the input.
+//!
+//! On an engine without REPL mode (JavaScriptCore, QuickJS:
+//! engine.capabilities.repl_mode is `.unsupported`) each input is evaluated
+//! as a classic script of its own (engine.evaluateClassicScript): no
+//! top-level await, a re-declaration is a SyntaxError, and every line is a
+//! whole input. The console says so when it starts.
 
 const std = @import("std");
 const engine = @import("engine");
-const runtime = @import("runtime");
-
-// Import Browser from the browser module
 const Browser = @import("browser").Browser;
-const Context = @import("browser").Context;
+const printer = @import("console").printer;
 
-/// REPL state - wraps Browser with REPL-specific UI features
-const Repl = struct {
+/// No debug log lines in a Debug build of the console: the console's output
+/// is what the user reads (tools/gc_bench.zig does the same).
+pub const std_options: std.Options = .{ .log_level = .warn };
+
+/// The console core: lines of input in, evaluation and printing out. The
+/// terminal (`LineEditor`, `main`) is a thin shell around it; a test feeds it
+/// lines and reads what it printed.
+pub const Console = struct {
     allocator: std.mem.Allocator,
-    /// The process `std.Io`. Zig 0.16 moved stdio, tty queries and sleeping onto
-    /// `Io`, so the REPL carries one rather than reaching for a global.
-    io: std.Io,
     browser: *Browser,
-    input_buffer: std.ArrayListUnmanaged(u8),
-    history: std.ArrayListUnmanaged([]const u8),
+    /// Where results go (flushed after each).
+    out: *std.Io.Writer,
+    /// How long an evaluation is waited for, in milliseconds of real time.
+    deadline_ms: u64 = default_deadline_ms,
+    /// The lines of an input that is not complete yet.
+    input: std.ArrayListUnmanaged(u8) = .empty,
 
-    const Self = @This();
+    pub const default_deadline_ms: u64 = 30_000;
 
-    pub fn init(allocator: std.mem.Allocator, io: std.Io) !Self {
-        // Create browser with default config
-        const browser = try Browser.init(allocator, .{});
-        errdefer browser.deinit();
+    /// Which prompt the next line answers.
+    pub const Prompt = enum {
+        /// A new input.
+        ready,
+        /// More of the input so far, which ended too soon.
+        more,
+    };
 
-        // Navigate to a blank page to create a window context
-        try browser.navigate("about:blank", .window);
+    pub fn init(allocator: std.mem.Allocator, browser: *Browser, out: *std.Io.Writer) Console {
+        return .{ .allocator = allocator, .browser = browser, .out = out };
+    }
 
-        return Self{
-            .allocator = allocator,
-            .io = io,
-            .browser = browser,
-            // 0.16: ArrayList has no default field values; `.empty` replaces `.{}`.
-            .input_buffer = .empty,
-            .history = .empty,
+    pub fn deinit(self: *Console) void {
+        self.input.deinit(self.allocator);
+    }
+
+    /// What the console says when it starts.
+    pub fn banner(self: *Console) !void {
+        try self.out.print("Crane browser console ({s}). Tab completes, Ctrl+D exits.\n", .{engine.name});
+        if (comptime engine.capabilities.repl_mode == .unsupported) {
+            try self.out.print("{s} has no REPL mode: each input is a classic script of its own - no top-level await, no re-declaration.\n", .{engine.name});
+        }
+        try self.out.flush();
+    }
+
+    /// One line of input. Once the input is complete it is evaluated, and
+    /// its result printed; input that ends too soon waits for more.
+    pub fn feedLine(self: *Console, line: []const u8) !Prompt {
+        if (self.input.items.len > 0) try self.input.append(self.allocator, '\n');
+        try self.input.appendSlice(self.allocator, line);
+        if (std.mem.trim(u8, self.input.items, &std.ascii.whitespace).len == 0) {
+            self.input.clearRetainingCapacity();
+            return .ready;
+        }
+        const evaluated = try self.evaluate(self.input.items);
+        if (evaluated == .incomplete) return .more;
+        self.input.clearRetainingCapacity();
+        return .ready;
+    }
+
+    const Evaluated = enum { done, incomplete };
+
+    /// Evaluate `source` in the page, wait for it, print what it came to.
+    fn evaluate(self: *Console, source: []const u8) !Evaluated {
+        defer self.out.flush() catch {};
+        const realm = self.browser.getRealm() orelse {
+            try self.out.writeAll("(no page to evaluate in)\n");
+            return .done;
         };
-    }
+        if (comptime engine.capabilities.repl_mode == .unsupported) return self.evaluateClassic(realm, source);
 
-    pub fn deinit(self: *Self) void {
-        // Cleanup history
-        for (self.history.items) |item| {
-            self.allocator.free(item);
+        const evaluation = try Evaluation.create(self.allocator, realm);
+        const started = engine.evaluateReplScript(realm, source, &Evaluation.steps, evaluation) catch |err| {
+            evaluation.destroy();
+            try self.out.print("(the console could not evaluate: {s})\n", .{@errorName(err)});
+            return .done;
+        };
+        if (started == .incomplete) {
+            evaluation.destroy();
+            return .incomplete;
         }
-        self.history.deinit(self.allocator);
-        self.input_buffer.deinit(self.allocator);
-
-        // Browser handles all V8 and runtime cleanup - including destroying itself
-        // (Browser.zig:352). Destroying it here as well was a double free; it never
-        // fired only because the REPL exits the process before this path runs.
-        self.browser.deinit();
-    }
-
-    /// The page's realm: the browser's current context's.
-    fn getRealm(self: *Self) runtime.Context {
-        return self.browser.current_context.?.realm.?;
-    }
-
-    /// The page's global object, as a value.
-    fn getGlobal(self: *Self) runtime.JSValue {
-        return .{ .instance = self.browser.current_context.?.window_instance.? };
-    }
-
-    /// Execute JavaScript code and return result
-    /// Supports top-level await by wrapping code in an async IIFE
-    pub fn eval(self: *Self, code: []const u8) ![]const u8 {
-        const realm = self.getRealm();
-
-        // Check if code contains 'await' - if so, wrap in async IIFE
-        const needs_async_wrap = std.mem.indexOf(u8, code, "await") != null;
-
-        var wrapped_code: []u8 = undefined;
-        var source_to_use: []const u8 = undefined;
-
-        if (needs_async_wrap) {
-            // Wrap in async IIFE: (async () => { ... })()
-            // Handle variable declarations specially to persist to global scope
-            const trimmed = std.mem.trim(u8, code, &std.ascii.whitespace);
-
-            // Check for variable declarations with await - these need special handling
-            // to persist the variable to the global scope
-            const is_const_decl = std.mem.startsWith(u8, trimmed, "const ");
-            const is_let_decl = std.mem.startsWith(u8, trimmed, "let ");
-            const is_var_decl = std.mem.startsWith(u8, trimmed, "var ");
-
-            if (is_const_decl or is_let_decl or is_var_decl) {
-                // Transform: "const x = await ..." -> "globalThis.x = await ...; x"
-                // Find the variable name (after const/let/var and before =)
-                const decl_len: usize = if (is_const_decl) 6 else if (is_let_decl) 4 else 4;
-                const after_keyword = std.mem.trim(u8, trimmed[decl_len..], &std.ascii.whitespace);
-
-                // Find the = sign
-                if (std.mem.indexOf(u8, after_keyword, "=")) |eq_pos| {
-                    const var_name = std.mem.trim(u8, after_keyword[0..eq_pos], &std.ascii.whitespace);
-                    const value_expr = std.mem.trim(u8, after_keyword[eq_pos + 1 ..], &std.ascii.whitespace);
-
-                    // Remove trailing semicolon from value if present
-                    const clean_value = if (std.mem.endsWith(u8, value_expr, ";"))
-                        value_expr[0 .. value_expr.len - 1]
-                    else
-                        value_expr;
-
-                    wrapped_code = try std.fmt.allocPrint(
-                        self.allocator,
-                        "(async () => {{ globalThis.{s} = {s}; return {s}; }})()",
-                        .{ var_name, clean_value, var_name },
-                    );
-                } else {
-                    // No = sign, just wrap as statement
-                    wrapped_code = try std.fmt.allocPrint(self.allocator, "(async () => {{ {s} }})()", .{code});
-                }
-            } else if (!std.mem.startsWith(u8, trimmed, "function ") and
-                !std.mem.startsWith(u8, trimmed, "class ") and
-                !std.mem.startsWith(u8, trimmed, "if ") and
-                !std.mem.startsWith(u8, trimmed, "for ") and
-                !std.mem.startsWith(u8, trimmed, "while ") and
-                !std.mem.startsWith(u8, trimmed, "switch ") and
-                !std.mem.startsWith(u8, trimmed, "try ") and
-                !std.mem.startsWith(u8, trimmed, "{"))
-            {
-                // Expression - wrap with return
-                wrapped_code = try std.fmt.allocPrint(self.allocator, "(async () => {{ return {s}; }})()", .{code});
-            } else {
-                // Statement(s) - wrap without return
-                wrapped_code = try std.fmt.allocPrint(self.allocator, "(async () => {{ {s} }})()", .{code});
-            }
-            source_to_use = wrapped_code;
-        } else {
-            source_to_use = code;
+        const outcome = self.browser.spinEventLoopUntil(.{ .context = evaluation, .met = Evaluation.settled }, self.deadline_ms) catch |err| {
+            evaluation.abandon();
+            try self.out.print("(the console could not wait: {s})\n", .{@errorName(err)});
+            return .done;
+        };
+        if (outcome == .timed_out) {
+            evaluation.abandon();
+            try self.out.print("Promise {{<pending>}} (still pending after {d} ms: the console stopped waiting)\n", .{self.deadline_ms});
+            return .done;
         }
-        defer if (needs_async_wrap) self.allocator.free(wrapped_code);
+        defer evaluation.destroy();
+        try evaluation.print(self.out);
+        return .done;
+    }
 
-        // Evaluate it. What it throws is the answer: its message, as the
-        // console would print it.
-        var thrown = Thrown{ .allocator = self.allocator };
+    /// The declared fallback without REPL mode: `source` as a classic script
+    /// of its own, its completion value printed, or what it threw.
+    fn evaluateClassic(self: *Console, realm: engine.Context, source: []const u8) !Evaluated {
+        var thrown: Thrown = .{ .realm = realm };
         defer thrown.deinit();
-        const completion = engine.evaluateClassicScript(realm, .{ .utf8 = source_to_use }, "", null, thrown.reporter()) catch |err| switch (err) {
-            error.ExceptionReported => return thrown.take() orelse try self.allocator.dupe(u8, "Uncaught exception"),
-            else => return err,
-        };
-        defer completion.release();
-
-        // The value, where the formatter reads it.
-        try engine.setProperty(realm, self.getGlobal(), "__repl_value__", completion.value);
-        defer self.runQuietly("delete globalThis.__repl_value__; delete globalThis.__repl_state__;");
-
-        // A promise - an async IIFE's - is waited for: its settled value, or
-        // the reason it was rejected, is what is shown.
-        if (self.evaluatesTo("globalThis.__repl_value__ instanceof Promise", "true")) {
-            self.runQuietly(
-                \\globalThis.__repl_state__ = 'pending';
-                \\globalThis.__repl_value__.then(
-                \\  (v) => { globalThis.__repl_value__ = v; globalThis.__repl_state__ = 'fulfilled'; },
-                \\  (e) => { globalThis.__repl_value__ = e; globalThis.__repl_state__ = 'rejected'; });
-            );
-            var iterations: u32 = 0;
-            const max_iterations: u32 = 10000; // Prevent infinite loops
-            while (self.evaluatesTo("globalThis.__repl_state__", "pending") and iterations < max_iterations) : (iterations += 1) {
-                if (realm.agent) |agent| engine.performMicrotaskCheckpoint(agent) catch {};
-                // Small delay to prevent busy-waiting
-                if (iterations > 100) {
-                    // Swallow cancellation so the poll loop stays infallible.
-                    self.io.sleep(.fromNanoseconds(1_000_000), .awake) catch {}; // 1ms
+        const value = engine.evaluateClassicScript(realm, .{ .utf8 = source }, "", null, thrown.reporter()) catch |err| {
+            if (err == error.ExceptionReported) {
+                if (thrown.value) |v| {
+                    try printer.printUncaught(self.allocator, realm, v.value, self.out);
+                    return .done;
                 }
             }
-            if (self.evaluatesTo("globalThis.__repl_state__", "pending")) {
-                return try self.allocator.dupe(u8, "Promise { <pending> } (timeout)");
-            }
-            if (self.evaluatesTo("globalThis.__repl_state__", "rejected")) {
-                return self.evaluateToString("String(globalThis.__repl_value__)") catch try self.allocator.dupe(u8, "Promise rejected");
-            }
-        }
-
-        // Format the result for display
-        return self.evaluateToString(format_code) catch try self.allocator.dupe(u8, "[object]");
+            try self.out.print("(the console could not evaluate: {s})\n", .{@errorName(err)});
+            return .done;
+        };
+        defer value.release();
+        try printer.printResult(self.allocator, realm, value.value, self.out);
+        return .done;
     }
 
-    /// The REPL's view of a value (like Chrome DevTools): a string quoted, a
-    /// function its source, an array its first elements, an Error its name
-    /// and message, an object its constructor and first properties.
-    const format_code =
-        \\(function() {
-        \\  const obj = globalThis.__repl_value__;
-        \\  if (obj === null) return 'null';
-        \\  if (obj === undefined) return 'undefined';
-        \\  if (typeof obj === 'string') return "'" + obj + "'";
-        \\  if (typeof obj !== 'object') return String(obj);
-        \\
-        \\  let name = '';
-        \\  if (obj.constructor && obj.constructor.name) {
-        \\    name = obj.constructor.name;
-        \\  } else if (Object.prototype.toString.call(obj) === '[object Object]') {
-        \\    name = 'Object';
-        \\  }
-        \\
-        \\  if (Array.isArray(obj)) {
-        \\    if (obj.length === 0) return '[]';
-        \\    if (obj.length > 5) {
-        \\      return '[' + obj.slice(0,5).map(v => typeof v === 'string' ? JSON.stringify(v) : String(v)).join(', ') + ', ...]';
-        \\    }
-        \\    return '[' + obj.map(v => typeof v === 'string' ? JSON.stringify(v) : String(v)).join(', ') + ']';
-        \\  }
-        \\
-        \\  if (obj instanceof Error) {
-        \\    return obj.name + ': ' + obj.message;
-        \\  }
-        \\
-        \\  if (obj instanceof Promise) {
-        \\    return 'Promise { <pending> }';
-        \\  }
-        \\
-        \\  const props = [];
-        \\  const keys = Object.keys(obj);
-        \\  const maxProps = 5;
-        \\
-        \\  for (let i = 0; i < Math.min(keys.length, maxProps); i++) {
-        \\    const key = keys[i];
-        \\    try {
-        \\      const val = obj[key];
-        \\      let valStr;
-        \\      if (val === null) valStr = 'null';
-        \\      else if (val === undefined) valStr = 'undefined';
-        \\      else if (typeof val === 'string') valStr = JSON.stringify(val);
-        \\      else if (typeof val === 'function') valStr = '[Function]';
-        \\      else if (typeof val === 'object') valStr = val.constructor ? val.constructor.name : '[object]';
-        \\      else valStr = String(val);
-        \\      props.push(key + ': ' + valStr);
-        \\    } catch(e) {
-        \\      props.push(key + ': [error]');
-        \\    }
-        \\  }
-        \\
-        \\  if (keys.length > maxProps) {
-        \\    props.push('...');
-        \\  }
-        \\
-        \\  if (props.length === 0) {
-        \\    return name + ' {}';
-        \\  }
-        \\
-        \\  return name + ' {' + props.join(', ') + '}';
-        \\})()
-    ;
-
-    /// What a script threw, as the engine reported it: its message, copied.
+    /// What a classic script threw, kept from its report.
     const Thrown = struct {
-        allocator: std.mem.Allocator,
-        message: ?[]u8 = null,
+        realm: engine.Context,
+        value: ?engine.Owned = null,
 
         fn reporter(self: *Thrown) engine.Reporter {
             return .{ .report = report, .host = self };
@@ -264,518 +168,442 @@ const Repl = struct {
 
         fn report(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
             const self: *Thrown = @ptrCast(@alignCast(host.?));
-            if (self.message != null) return;
-            self.message = self.allocator.dupe(u8, info.message) catch null;
-        }
-
-        fn take(self: *Thrown) ?[]u8 {
-            const message = self.message;
-            self.message = null;
-            return message;
+            if (self.value != null) return;
+            self.value = engine.retainValue(self.realm, info.error_value) catch null;
         }
 
         fn deinit(self: *Thrown) void {
-            if (self.message) |m| self.allocator.free(m);
+            if (self.value) |v| v.release();
         }
     };
 
-    /// Run the REPL's own script for its effects; what it throws is dropped.
-    fn runQuietly(self: *Self, source: []const u8) void {
-        var thrown = Thrown{ .allocator = self.allocator };
-        defer thrown.deinit();
-        engine.runClassicScript(self.getRealm(), .{ .utf8 = source }, "", null, thrown.reporter()) catch {};
-    }
+    /// Tab completion's answer: the names that complete the input's last
+    /// word, sorted, and that word's length.
+    pub const Completions = struct {
+        names: [][]u8,
+        prefix_len: usize,
 
-    /// The REPL's own script's completion value, ToString'd.
-    fn evaluateToString(self: *Self, source: []const u8) ![]u8 {
-        var thrown = Thrown{ .allocator = self.allocator };
-        defer thrown.deinit();
-        return engine.evaluateClassicScriptToString(self.getRealm(), .{ .utf8 = source }, "", null, self.allocator, thrown.reporter());
-    }
+        pub fn deinit(self: *Completions, allocator: std.mem.Allocator) void {
+            for (self.names) |name| allocator.free(name);
+            allocator.free(self.names);
+        }
 
-    /// Whether the REPL's own `source` evaluates to the string `expected`.
-    fn evaluatesTo(self: *Self, source: []const u8, expected: []const u8) bool {
-        const got = self.evaluateToString(source) catch return false;
-        defer self.allocator.free(got);
-        return std.mem.eql(u8, got, expected);
-    }
+        pub fn contains(self: *const Completions, name: []const u8) bool {
+            for (self.names) |n| if (std.mem.eql(u8, n, name)) return true;
+            return false;
+        }
+    };
 
-    /// Get completions for tab completion
-    pub fn getCompletions(self: *Self, input: []const u8) !struct { completions: [][]const u8, prefix_len: usize } {
-        var completions = std.ArrayList([]const u8).empty;
+    /// The names that complete `text`'s last word: the enumerable property
+    /// names of the object its dotted name before the word reaches (the
+    /// global object's, for a word with no dot), along its prototype chain -
+    /// what `for (k in o)` lists. The input is never evaluated: only a chain
+    /// of identifiers is followed, property by property (a getter on the way
+    /// runs), and anything else completes nothing.
+    pub fn complete(self: *Console, allocator: std.mem.Allocator, text: []const u8) !Completions {
+        var names: std.ArrayListUnmanaged([]u8) = .empty;
         errdefer {
-            for (completions.items) |item| {
-                self.allocator.free(item);
+            for (names.items) |n| allocator.free(n);
+            names.deinit(allocator);
+        }
+        // The trailing `a.b.c` of the input.
+        var start = text.len;
+        while (start > 0 and (isIdentifierChar(text[start - 1]) or text[start - 1] == '.')) start -= 1;
+        const chain = text[start..];
+        const dot = std.mem.lastIndexOfScalar(u8, chain, '.');
+        const prefix = if (dot) |d| chain[d + 1 ..] else chain;
+        const path = if (dot) |d| chain[0..d] else "";
+        if (chain.len == 0) return nothing(allocator, 0);
+        if (dot != null and !validPath(path)) return nothing(allocator, prefix.len);
+        if (dot == null and std.ascii.isDigit(chain[0])) return nothing(allocator, prefix.len);
+
+        const realm = self.browser.getRealm() orelse return nothing(allocator, prefix.len);
+        const window = (self.browser.current_context orelse return nothing(allocator, prefix.len)).window_instance orelse return nothing(allocator, prefix.len);
+        var object = engine.retainValue(realm, .{ .instance = window }) catch return nothing(allocator, prefix.len);
+        defer object.release();
+        if (path.len > 0) {
+            var segments = std.mem.splitScalar(u8, path, '.');
+            while (segments.next()) |segment| {
+                const next = get(realm, object.value, segment) orelse return nothing(allocator, prefix.len);
+                object.release();
+                object = next;
+                if (engine.typeOf(realm, object.value) != .object) return nothing(allocator, prefix.len);
             }
-            completions.deinit(self.allocator);
         }
 
-        // Complete on an object's properties after a dot, else on the globals.
-        const dot = std.mem.lastIndexOfScalar(u8, input, '.');
-        const object_expression = if (dot) |d| input[0..d] else "globalThis";
-        const prefix = if (dot) |d| input[d + 1 ..] else input;
-        if (object_expression.len > 0) try self.getPropertyNames(object_expression, prefix, &completions);
-
-        return .{ .completions = try completions.toOwnedSlice(self.allocator), .prefix_len = prefix.len };
-    }
-
-    /// The enumerable property names of `object_expression`'s value, along its
-    /// prototype chain, that start with `prefix`.
-    fn getPropertyNames(self: *Self, object_expression: []const u8, prefix: []const u8, completions: *std.ArrayList([]const u8)) !void {
-        const source = try std.fmt.allocPrint(self.allocator,
-            \\(() => {{
-            \\  const o = ({s});
-            \\  if (o === null || (typeof o !== 'object' && typeof o !== 'function')) return '';
-            \\  const names = [];
-            \\  for (const k in o) names.push(k);
-            \\  return names.join('\n');
-            \\}})()
-        , .{object_expression});
-        defer self.allocator.free(source);
-        const names = self.evaluateToString(source) catch return;
-        defer self.allocator.free(names);
-
-        var it = std.mem.splitScalar(u8, names, '\n');
-        while (it.next()) |name| {
-            if (name.len == 0) continue;
-            if (prefix.len == 0 or std.mem.startsWith(u8, name, prefix)) {
-                try completions.append(self.allocator, try self.allocator.dupe(u8, name));
+        var seen: std.StringHashMapUnmanaged(void) = .empty;
+        defer seen.deinit(allocator);
+        var link = try engine.retainValue(realm, object.value);
+        defer link.release();
+        var levels: usize = 0;
+        while (levels < 64 and engine.typeOf(realm, link.value) == .object) : (levels += 1) {
+            const keys = keysOf(realm, link.value, allocator) orelse break;
+            defer {
+                for (keys) |k| allocator.free(k);
+                allocator.free(keys);
             }
+            for (keys) |key| {
+                if (!std.mem.startsWith(u8, key, prefix) or seen.contains(key)) continue;
+                const name = try allocator.dupe(u8, key);
+                errdefer allocator.free(name);
+                try names.append(allocator, name);
+                try seen.put(allocator, name, {});
+            }
+            const parent = get(realm, link.value, "__proto__") orelse break;
+            link.release();
+            link = parent;
         }
+        std.mem.sort([]u8, names.items, {}, struct {
+            fn lessThan(_: void, a: []u8, b: []u8) bool {
+                return std.mem.lessThan(u8, a, b);
+            }
+        }.lessThan);
+        return .{ .names = try names.toOwnedSlice(allocator), .prefix_len = prefix.len };
     }
 
-    /// Add line to history
-    fn addHistory(self: *Self, line: []const u8) !void {
-        // Don't add empty lines or duplicates of the last entry
-        if (line.len == 0) return;
-        if (self.history.items.len > 0 and std.mem.eql(u8, self.history.items[self.history.items.len - 1], line)) return;
-
-        const dup = try self.allocator.dupe(u8, line);
-        try self.history.append(self.allocator, dup);
+    fn nothing(allocator: std.mem.Allocator, prefix_len: usize) !Completions {
+        return .{ .names = try allocator.alloc([]u8, 0), .prefix_len = prefix_len };
     }
 
-    /// Check if JavaScript code is syntactically complete
-    fn isCompleteCode(_: *Self, code: []const u8) bool {
-        if (code.len == 0) return true;
-
-        var brace_count: i32 = 0;
-        var bracket_count: i32 = 0;
-        var paren_count: i32 = 0;
-
-        var in_string: u8 = 0;
-        var in_template: bool = false;
-        var in_line_comment: bool = false;
-        var in_block_comment: bool = false;
-        var escape_next: bool = false;
-        var prev_char: u8 = 0;
-
-        for (code) |c| {
-            if (c == '\n') {
-                in_line_comment = false;
-                prev_char = c;
-                continue;
+    /// Get(object, name), what it throws caught: null for a throw.
+    fn get(realm: engine.Context, object: engine.JSValue, name: []const u8) ?engine.Owned {
+        const Call = struct {
+            realm: engine.Context,
+            object: engine.JSValue,
+            name: []const u8,
+            result: ?engine.Owned = null,
+            fn run(data: ?*anyopaque) engine.Error!void {
+                const call: *@This() = @ptrCast(@alignCast(data.?));
+                call.result = try engine.getProperty(call.realm, call.object, call.name);
             }
-
-            if (in_line_comment) {
-                prev_char = c;
-                continue;
-            }
-
-            if (in_block_comment) {
-                if (prev_char == '*' and c == '/') {
-                    in_block_comment = false;
-                }
-                prev_char = c;
-                continue;
-            }
-
-            if (escape_next) {
-                escape_next = false;
-                prev_char = c;
-                continue;
-            }
-
-            if (c == '\\' and (in_string != 0 or in_template)) {
-                escape_next = true;
-                prev_char = c;
-                continue;
-            }
-
-            if (in_string != 0) {
-                if (c == in_string) {
-                    in_string = 0;
-                }
-                prev_char = c;
-                continue;
-            }
-
-            if (in_template) {
-                if (c == '`') {
-                    in_template = false;
-                }
-                prev_char = c;
-                continue;
-            }
-
-            if (prev_char == '/') {
-                if (c == '/') {
-                    in_line_comment = true;
-                    prev_char = c;
-                    continue;
-                } else if (c == '*') {
-                    in_block_comment = true;
-                    prev_char = c;
-                    continue;
-                }
-            }
-
-            if (c == '"' or c == '\'') {
-                in_string = c;
-                prev_char = c;
-                continue;
-            }
-            if (c == '`') {
-                in_template = true;
-                prev_char = c;
-                continue;
-            }
-
-            if (c != '/') {
-                switch (c) {
-                    '{' => brace_count += 1,
-                    '}' => brace_count -= 1,
-                    '[' => bracket_count += 1,
-                    ']' => bracket_count -= 1,
-                    '(' => paren_count += 1,
-                    ')' => paren_count -= 1,
-                    else => {},
-                }
-            }
-
-            prev_char = c;
+        };
+        var call: Call = .{ .realm = realm, .object = object, .name = name };
+        const thrown = engine.completionOf(realm, Call.run, &call) catch return null;
+        if (thrown) |t| {
+            t.release();
+            if (call.result) |r| r.release();
+            return null;
         }
+        return call.result;
+    }
 
-        if (in_string != 0 or in_template) return false;
-        if (in_block_comment) return false;
-        if (brace_count > 0 or bracket_count > 0 or paren_count > 0) return false;
+    /// EnumerableOwnProperties(object, key), what it throws caught: null
+    /// for a throw. OWNED by `allocator`.
+    fn keysOf(realm: engine.Context, object: engine.JSValue, allocator: std.mem.Allocator) ?[][]u8 {
+        const Call = struct {
+            realm: engine.Context,
+            object: engine.JSValue,
+            allocator: std.mem.Allocator,
+            result: ?[][]u8 = null,
+            fn run(data: ?*anyopaque) engine.Error!void {
+                const call: *@This() = @ptrCast(@alignCast(data.?));
+                call.result = try engine.enumerableOwnPropertyKeys(call.realm, call.object, call.allocator);
+            }
+        };
+        var call: Call = .{ .realm = realm, .object = object, .allocator = allocator };
+        const thrown = engine.completionOf(realm, Call.run, &call) catch null;
+        if (thrown) |t| {
+            t.release();
+            return null;
+        }
+        return call.result;
+    }
 
+    fn isIdentifierChar(c: u8) bool {
+        return std.ascii.isAlphanumeric(c) or c == '_' or c == '$';
+    }
+
+    /// Whether `path` is identifiers joined by single dots.
+    fn validPath(path: []const u8) bool {
+        if (path.len == 0) return false;
+        var segments = std.mem.splitScalar(u8, path, '.');
+        while (segments.next()) |segment| {
+            if (segment.len == 0 or std.ascii.isDigit(segment[0])) return false;
+        }
         return true;
     }
+};
 
-    /// Read a single byte from stdin
-    fn readByte(io: std.Io, stdin: std.Io.File) !u8 {
-        var buf: [1]u8 = undefined;
-        // 0.16: File.read became File.readStreaming, which takes an Io and a
-        // vector of buffers. End-of-stream is now error.EndOfStream, which `try`
-        // propagates - the same error the 0 case returned before.
-        const n = try stdin.readStreaming(io, &.{&buf});
+/// One input's evaluation, until it completes and is printed - or, when the
+/// console stops waiting for it, until the engine ends it (exactly one of
+/// its steps runs: engine.evaluateReplScript).
+const Evaluation = struct {
+    allocator: std.mem.Allocator,
+    realm: engine.Context,
+    state: State = .waiting,
+    /// The completion value, or what was thrown. OWNED.
+    value: ?engine.Owned = null,
+    /// The console stopped waiting: whichever step ends the evaluation frees
+    /// it.
+    abandoned: bool = false,
+
+    const State = enum { waiting, completed, threw, dropped };
+
+    const steps: engine.PromiseReactionSteps = .{ .fulfilled = completed, .rejected = threw, .dropped = dropped };
+
+    fn create(allocator: std.mem.Allocator, realm: engine.Context) !*Evaluation {
+        const self = try allocator.create(Evaluation);
+        self.* = .{ .allocator = allocator, .realm = realm };
+        return self;
+    }
+
+    fn destroy(self: *Evaluation) void {
+        if (self.value) |v| v.release();
+        self.allocator.destroy(self);
+    }
+
+    /// The console stops waiting: free it now if it has ended, else when it
+    /// does.
+    fn abandon(self: *Evaluation) void {
+        if (self.state == .waiting) self.abandoned = true else self.destroy();
+    }
+
+    fn settled(context: *anyopaque) bool {
+        const self: *Evaluation = @ptrCast(@alignCast(context));
+        return self.state != .waiting;
+    }
+
+    fn end(data: ?*anyopaque, state: State, value: ?engine.JSValue) void {
+        const self: *Evaluation = @ptrCast(@alignCast(data.?));
+        if (self.abandoned) return self.destroy();
+        if (value) |v| self.value = engine.retainValue(self.realm, v) catch null;
+        self.state = state;
+    }
+
+    fn completed(data: ?*anyopaque, value: engine.JSValue) void {
+        end(data, .completed, value);
+    }
+
+    fn threw(data: ?*anyopaque, value: engine.JSValue) void {
+        end(data, .threw, value);
+    }
+
+    fn dropped(data: ?*anyopaque) void {
+        end(data, .dropped, null);
+    }
+
+    fn print(self: *Evaluation, out: *std.Io.Writer) !void {
+        switch (self.state) {
+            .waiting => unreachable,
+            .completed => if (self.value) |v| try printer.printResult(self.allocator, self.realm, v.value, out) else try out.writeAll("(the result could not be kept)\n"),
+            .threw => if (self.value) |v| try printer.printUncaught(self.allocator, self.realm, v.value, out) else try out.writeAll("Uncaught (the exception could not be kept)\n"),
+            .dropped => try out.writeAll("(no result: the page went away)\n"),
+        }
+    }
+};
+
+/// The terminal's line editor: raw-mode input with cursor movement, history
+/// and tab completion (the console's), echoing to stdout. Without a terminal
+/// (input piped in) it reads lines as they come.
+const LineEditor = struct {
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    console: *Console,
+    stdin: std.Io.File,
+    stdout: std.Io.File,
+    buffer: std.ArrayListUnmanaged(u8) = .empty,
+    history: std.ArrayListUnmanaged([]u8) = .empty,
+
+    fn init(allocator: std.mem.Allocator, io: std.Io, console: *Console) LineEditor {
+        return .{ .allocator = allocator, .io = io, .console = console, .stdin = std.Io.File.stdin(), .stdout = std.Io.File.stdout() };
+    }
+
+    fn deinit(self: *LineEditor) void {
+        for (self.history.items) |item| self.allocator.free(item);
+        self.history.deinit(self.allocator);
+        self.buffer.deinit(self.allocator);
+    }
+
+    fn write(self: *LineEditor, bytes: []const u8) !void {
+        try self.stdout.writeStreamingAll(self.io, bytes);
+    }
+
+    fn print(self: *LineEditor, comptime format: []const u8, args: anytype) !void {
+        var buffer: [64]u8 = undefined;
+        try self.write(try std.fmt.bufPrint(&buffer, format, args));
+    }
+
+    fn readByte(self: *LineEditor) !u8 {
+        var byte: [1]u8 = undefined;
+        const n = try self.stdin.readStreaming(self.io, &.{&byte});
         if (n == 0) return error.EndOfStream;
-        return buf[0];
+        return byte[0];
     }
 
-    /// Write a single byte to file
-    fn writeByte(io: std.Io, file: std.Io.File, byte: u8) !void {
-        const buf = [_]u8{byte};
-        try file.writeStreamingAll(io, &buf);
+    fn addHistory(self: *LineEditor, line: []const u8) !void {
+        if (line.len == 0) return;
+        if (self.history.items.len > 0 and std.mem.eql(u8, self.history.items[self.history.items.len - 1], line)) return;
+        try self.history.append(self.allocator, try self.allocator.dupe(u8, line));
     }
 
-    /// Print formatted output to file
-    fn print(allocator: std.mem.Allocator, io: std.Io, file: std.Io.File, comptime format: []const u8, args: anytype) !void {
-        const str = try std.fmt.allocPrint(allocator, format, args);
-        defer allocator.free(str);
-        try file.writeStreamingAll(io, str);
+    /// Replace the line being edited with `content`, the cursor at its end.
+    fn replaceLine(self: *LineEditor, content: []const u8, cursor: *usize) !void {
+        if (cursor.* > 0) try self.print("\x1b[{d}D", .{cursor.*});
+        try self.write("\x1b[K");
+        self.buffer.clearRetainingCapacity();
+        try self.buffer.appendSlice(self.allocator, content);
+        try self.write(content);
+        cursor.* = content.len;
     }
 
-    /// Clear current line and redraw with new content, cursor at end
-    fn clearAndRedraw(self: *Self, stdout: std.Io.File, new_content: []const u8, cursor_pos: *usize) !void {
-        const current_len = self.input_buffer.items.len;
-        // Move cursor to start of input
-        if (cursor_pos.* > 0) {
-            try print(self.allocator, self.io, stdout, "\x1b[{d}D", .{cursor_pos.*});
-        }
-        // Clear from cursor to end of line
-        try stdout.writeStreamingAll(self.io, "\x1b[K");
-        // Update buffer
-        self.input_buffer.clearRetainingCapacity();
-        try self.input_buffer.appendSlice(self.allocator, new_content);
-        // Write new content
-        try stdout.writeStreamingAll(self.io, new_content);
-        // Set cursor to end
-        cursor_pos.* = new_content.len;
-        _ = current_len;
+    /// Redraw from `cursor` to the end of the line, the cursor kept.
+    fn redrawFrom(self: *LineEditor, cursor: usize) !void {
+        const rest = self.buffer.items[cursor..];
+        try self.write(rest);
+        try self.write(" ");
+        try self.print("\x1b[{d}D", .{rest.len + 1});
     }
 
-    /// Redraw the line from cursor position to end, then restore cursor
-    fn redrawFromCursor(self: *Self, stdout: std.Io.File, cursor_pos: usize) !void {
-        // Save cursor, clear to end, write rest of buffer, restore cursor
-        const rest = self.input_buffer.items[cursor_pos..];
-        try stdout.writeStreamingAll(self.io, rest);
-        try stdout.writeStreamingAll(self.io, " "); // Clear any leftover character
-        // Move back to cursor position
-        const move_back = rest.len + 1;
-        if (move_back > 0) {
-            try print(self.allocator, self.io, stdout, "\x1b[{d}D", .{move_back});
-        }
-    }
-
-    /// Read line with tab completion, history navigation, and cursor movement
-    pub fn readLine(self: *Self) !?[]const u8 {
-        const stdout = std.Io.File.stdout();
-        const stdin = std.Io.File.stdin();
-
-        var original_termios: std.posix.termios = undefined;
-        // std.posix.isatty was removed in 0.16; File.isTty(io) replaces it.
-        const is_tty = try stdin.isTty(self.io);
+    /// One line, after `prompt`: null at the end of input (Ctrl+D). OWNED.
+    fn readLine(self: *LineEditor, prompt: []const u8) !?[]u8 {
+        try self.write(prompt);
+        const is_tty = try self.stdin.isTty(self.io);
+        var original: std.posix.termios = undefined;
         if (is_tty) {
-            original_termios = try std.posix.tcgetattr(stdin.handle);
-            var raw = original_termios;
+            original = try std.posix.tcgetattr(self.stdin.handle);
+            var raw = original;
             raw.lflag.ICANON = false;
             raw.lflag.ECHO = false;
             raw.cc[@backingInt(std.posix.V.MIN)] = 1;
             raw.cc[@backingInt(std.posix.V.TIME)] = 0;
-            try std.posix.tcsetattr(stdin.handle, .FLUSH, raw);
+            try std.posix.tcsetattr(self.stdin.handle, .FLUSH, raw);
         }
-        defer if (is_tty) {
-            std.posix.tcsetattr(stdin.handle, .FLUSH, original_termios) catch {};
-        };
+        defer if (is_tty) std.posix.tcsetattr(self.stdin.handle, .FLUSH, original) catch {};
 
-        self.input_buffer.clearRetainingCapacity();
-
-        var cursor_pos: usize = 0;
-        var history_index: usize = self.history.items.len;
-        var saved_input: ?[]u8 = null;
-        defer if (saved_input) |s| self.allocator.free(s);
+        self.buffer.clearRetainingCapacity();
+        var cursor: usize = 0;
+        var history_index = self.history.items.len;
+        var saved: ?[]u8 = null;
+        defer if (saved) |s| self.allocator.free(s);
 
         while (true) {
-            const byte = readByte(self.io, stdin) catch |err| {
-                if (err == error.EndOfStream) return null;
-                return err;
+            const byte = self.readByte() catch |err| switch (err) {
+                error.EndOfStream => return if (self.buffer.items.len > 0) try self.allocator.dupe(u8, self.buffer.items) else null,
+                else => return err,
             };
-
             switch (byte) {
-                '\n' => {
-                    try writeByte(self.io, stdout, '\n');
-                    const result = try self.allocator.dupe(u8, self.input_buffer.items);
-                    return result;
+                '\n', '\r' => {
+                    try self.write("\n");
+                    const line = try self.allocator.dupe(u8, self.buffer.items);
+                    try self.addHistory(line);
+                    return line;
                 },
-                4 => return null, // Ctrl+D
-                127, 8 => { // Backspace
-                    if (cursor_pos > 0) {
-                        // Remove character before cursor
-                        _ = self.input_buffer.orderedRemove(cursor_pos - 1);
-                        cursor_pos -= 1;
-                        // Move cursor back
-                        try stdout.writeStreamingAll(self.io, "\x08");
-                        // Redraw from cursor position
-                        try self.redrawFromCursor(stdout, cursor_pos);
-                    }
+                4 => if (self.buffer.items.len == 0) return null, // Ctrl+D on an empty line
+                127, 8 => if (cursor > 0) { // Backspace
+                    _ = self.buffer.orderedRemove(cursor - 1);
+                    cursor -= 1;
+                    try self.write("\x08");
+                    try self.redrawFrom(cursor);
                 },
-                1 => { // Ctrl+A - move to beginning
-                    if (cursor_pos > 0) {
-                        try print(self.allocator, self.io, stdout, "\x1b[{d}D", .{cursor_pos});
-                        cursor_pos = 0;
-                    }
+                1 => if (cursor > 0) { // Ctrl+A
+                    try self.print("\x1b[{d}D", .{cursor});
+                    cursor = 0;
                 },
-                5 => { // Ctrl+E - move to end
-                    if (cursor_pos < self.input_buffer.items.len) {
-                        const move = self.input_buffer.items.len - cursor_pos;
-                        try print(self.allocator, self.io, stdout, "\x1b[{d}C", .{move});
-                        cursor_pos = self.input_buffer.items.len;
-                    }
+                5 => if (cursor < self.buffer.items.len) { // Ctrl+E
+                    try self.print("\x1b[{d}C", .{self.buffer.items.len - cursor});
+                    cursor = self.buffer.items.len;
                 },
-                21 => { // Ctrl+U - clear line
-                    if (self.input_buffer.items.len > 0) {
-                        // Move to start
-                        if (cursor_pos > 0) {
-                            try print(self.allocator, self.io, stdout, "\x1b[{d}D", .{cursor_pos});
-                        }
-                        // Clear line
-                        try stdout.writeStreamingAll(self.io, "\x1b[K");
-                        self.input_buffer.clearRetainingCapacity();
-                        cursor_pos = 0;
-                    }
+                21 => try self.replaceLine("", &cursor), // Ctrl+U
+                11 => if (cursor < self.buffer.items.len) { // Ctrl+K
+                    self.buffer.shrinkRetainingCapacity(cursor);
+                    try self.write("\x1b[K");
                 },
-                11 => { // Ctrl+K - clear from cursor to end
-                    if (cursor_pos < self.input_buffer.items.len) {
-                        self.input_buffer.shrinkRetainingCapacity(cursor_pos);
-                        try stdout.writeStreamingAll(self.io, "\x1b[K");
-                    }
-                },
-                '\t' => { // Tab - trigger completion
-                    if (self.input_buffer.items.len > 0) {
-                        const result = try self.getCompletions(self.input_buffer.items);
-                        defer {
-                            for (result.completions) |c| self.allocator.free(c);
-                            self.allocator.free(result.completions);
-                        }
-
-                        if (result.completions.len == 1) {
-                            // Single match - complete it
-                            const completion = result.completions[0];
-                            const suffix = completion[result.prefix_len..];
-                            try self.input_buffer.appendSlice(self.allocator, suffix);
-                            try stdout.writeStreamingAll(self.io, suffix);
-                            cursor_pos = self.input_buffer.items.len;
-                        } else if (result.completions.len > 1) {
-                            // Multiple matches - show them
-                            try stdout.writeStreamingAll(self.io, "\n");
-                            for (result.completions) |c| {
-                                try print(self.allocator, self.io, stdout, "{s}  ", .{c});
-                            }
-                            try stdout.writeStreamingAll(self.io, "\n>>> ");
-                            try stdout.writeStreamingAll(self.io, self.input_buffer.items);
-                            cursor_pos = self.input_buffer.items.len;
-                        }
-                    }
-                },
-                27 => { // Escape sequence
-                    const next1 = readByte(self.io, stdin) catch continue;
-                    if (next1 != '[') continue;
-                    const next2 = readByte(self.io, stdin) catch continue;
-
-                    switch (next2) {
-                        'A' => { // Up arrow - history previous
-                            if (history_index > 0) {
-                                if (history_index == self.history.items.len) {
-                                    if (saved_input) |s| self.allocator.free(s);
-                                    saved_input = try self.allocator.dupe(u8, self.input_buffer.items);
-                                }
-                                history_index -= 1;
-                                try self.clearAndRedraw(stdout, self.history.items[history_index], &cursor_pos);
-                            }
-                        },
-                        'B' => { // Down arrow - history next
-                            if (history_index < self.history.items.len) {
-                                history_index += 1;
-                                if (history_index == self.history.items.len) {
-                                    try self.clearAndRedraw(stdout, saved_input orelse "", &cursor_pos);
-                                } else {
-                                    try self.clearAndRedraw(stdout, self.history.items[history_index], &cursor_pos);
-                                }
-                            }
-                        },
-                        'C' => { // Right arrow - move cursor right
-                            if (cursor_pos < self.input_buffer.items.len) {
-                                cursor_pos += 1;
-                                try stdout.writeStreamingAll(self.io, "\x1b[C");
-                            }
-                        },
-                        'D' => { // Left arrow - move cursor left
-                            if (cursor_pos > 0) {
-                                cursor_pos -= 1;
-                                try stdout.writeStreamingAll(self.io, "\x1b[D");
-                            }
-                        },
-                        'H' => { // Home key
-                            if (cursor_pos > 0) {
-                                try print(self.allocator, self.io, stdout, "\x1b[{d}D", .{cursor_pos});
-                                cursor_pos = 0;
-                            }
-                        },
-                        'F' => { // End key
-                            if (cursor_pos < self.input_buffer.items.len) {
-                                const move = self.input_buffer.items.len - cursor_pos;
-                                try print(self.allocator, self.io, stdout, "\x1b[{d}C", .{move});
-                                cursor_pos = self.input_buffer.items.len;
-                            }
-                        },
-                        '3' => { // Delete key (ESC [ 3 ~)
-                            const next3 = readByte(self.io, stdin) catch continue;
-                            if (next3 == '~') {
-                                if (cursor_pos < self.input_buffer.items.len) {
-                                    _ = self.input_buffer.orderedRemove(cursor_pos);
-                                    try self.redrawFromCursor(stdout, cursor_pos);
-                                }
-                            }
-                        },
-                        else => {},
-                    }
-                },
-                else => {
-                    if (byte >= 32 and byte < 127) {
-                        // Insert character at cursor position
-                        if (cursor_pos == self.input_buffer.items.len) {
-                            // Append at end (common case)
-                            try self.input_buffer.append(self.allocator, byte);
-                            try writeByte(self.io, stdout, byte);
-                        } else {
-                            // Insert in middle
-                            try self.input_buffer.insert(self.allocator, cursor_pos, byte);
-                            try writeByte(self.io, stdout, byte);
-                            try self.redrawFromCursor(stdout, cursor_pos + 1);
-                        }
-                        cursor_pos += 1;
-                    }
+                '\t' => try self.completeAt(prompt, &cursor),
+                27 => try self.escape(&cursor, &history_index, &saved),
+                else => if (byte >= 32 and byte != 127) {
+                    try self.buffer.insert(self.allocator, cursor, byte);
+                    try self.write(&.{byte});
+                    cursor += 1;
+                    if (cursor < self.buffer.items.len) try self.redrawFrom(cursor);
                 },
             }
         }
     }
 
-    /// Run the REPL loop
-    pub fn run(self: *Self) !void {
-        const stdout = std.Io.File.stdout();
-
-        try stdout.writeStreamingAll(self.io, "JavaScript REPL - Headless Browser\n");
-        try stdout.writeStreamingAll(self.io, "Same environment as WPT tests (window, document, etc.)\n");
-        try stdout.writeStreamingAll(self.io, "Type JavaScript code and press Enter\n");
-        try stdout.writeStreamingAll(self.io, "Press Tab for completions, Ctrl+D to exit\n\n");
-
-        var multiline_buffer: std.ArrayListUnmanaged(u8) = .empty;
-        defer multiline_buffer.deinit(self.allocator);
-
-        while (true) {
-            if (multiline_buffer.items.len == 0) {
-                try stdout.writeStreamingAll(self.io, ">>> ");
-            } else {
-                try stdout.writeStreamingAll(self.io, "... ");
+    /// Tab: one completion is filled in; several are listed.
+    fn completeAt(self: *LineEditor, prompt: []const u8, cursor: *usize) !void {
+        if (cursor.* != self.buffer.items.len) return;
+        var completions = try self.console.complete(self.allocator, self.buffer.items);
+        defer completions.deinit(self.allocator);
+        if (completions.names.len == 1) {
+            const suffix = completions.names[0][completions.prefix_len..];
+            try self.buffer.appendSlice(self.allocator, suffix);
+            try self.write(suffix);
+            cursor.* = self.buffer.items.len;
+        } else if (completions.names.len > 1) {
+            try self.write("\n");
+            for (completions.names) |name| {
+                try self.write(name);
+                try self.write("  ");
             }
-
-            const line = try self.readLine() orelse break;
-            defer self.allocator.free(line);
-
-            if (line.len == 0) {
-                if (multiline_buffer.items.len == 0) continue;
-            } else {
-                if (multiline_buffer.items.len > 0) {
-                    try multiline_buffer.append(self.allocator, '\n');
-                }
-                try multiline_buffer.appendSlice(self.allocator, line);
-            }
-
-            if (!self.isCompleteCode(multiline_buffer.items)) continue;
-
-            const code = try self.allocator.dupe(u8, multiline_buffer.items);
-            defer self.allocator.free(code);
-
-            multiline_buffer.clearRetainingCapacity();
-
-            const trimmed = std.mem.trim(u8, code, &std.ascii.whitespace);
-            if (trimmed.len == 0) continue;
-
-            try self.addHistory(code);
-
-            const result = self.eval(code) catch |err| {
-                try print(self.allocator, self.io, stdout, "Error: {}\n", .{err});
-                continue;
-            };
-            defer self.allocator.free(result);
-
-            try print(self.allocator, self.io, stdout, "{s}\n", .{result});
+            try self.write("\n");
+            try self.write(prompt);
+            try self.write(self.buffer.items);
+            cursor.* = self.buffer.items.len;
         }
+    }
 
-        try stdout.writeStreamingAll(self.io, "\nGoodbye!\n");
+    /// An escape sequence: the arrows, Home, End, Delete.
+    fn escape(self: *LineEditor, cursor: *usize, history_index: *usize, saved: *?[]u8) !void {
+        if ((self.readByte() catch return) != '[') return;
+        switch (self.readByte() catch return) {
+            'A' => if (history_index.* > 0) { // Up: the history's previous line
+                if (history_index.* == self.history.items.len) {
+                    if (saved.*) |s| self.allocator.free(s);
+                    saved.* = try self.allocator.dupe(u8, self.buffer.items);
+                }
+                history_index.* -= 1;
+                try self.replaceLine(self.history.items[history_index.*], cursor);
+            },
+            'B' => if (history_index.* < self.history.items.len) { // Down
+                history_index.* += 1;
+                const line = if (history_index.* == self.history.items.len) saved.* orelse "" else self.history.items[history_index.*];
+                try self.replaceLine(line, cursor);
+            },
+            'C' => if (cursor.* < self.buffer.items.len) { // Right
+                cursor.* += 1;
+                try self.write("\x1b[C");
+            },
+            'D' => if (cursor.* > 0) { // Left
+                cursor.* -= 1;
+                try self.write("\x1b[D");
+            },
+            'H' => if (cursor.* > 0) { // Home
+                try self.print("\x1b[{d}D", .{cursor.*});
+                cursor.* = 0;
+            },
+            'F' => if (cursor.* < self.buffer.items.len) { // End
+                try self.print("\x1b[{d}C", .{self.buffer.items.len - cursor.*});
+                cursor.* = self.buffer.items.len;
+            },
+            '3' => if ((self.readByte() catch return) == '~' and cursor.* < self.buffer.items.len) { // Delete
+                _ = self.buffer.orderedRemove(cursor.*);
+                try self.redrawFrom(cursor.*);
+            },
+            else => {},
+        }
     }
 };
 
-// Zig 0.16 moved stdio and sleeping onto std.Io; std.process.Init supplies the
-// process Io along with a gpa.
 pub fn main(init: std.process.Init) !void {
     const allocator = init.gpa;
+    const io = init.io;
+    const browser = try Browser.init(allocator, .{});
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
 
-    var repl = try Repl.init(allocator, init.io);
-    errdefer repl.deinit();
+    var out_buffer: [4096]u8 = undefined;
+    var stdout = std.Io.File.stdout().writerStreaming(io, &out_buffer);
+    var console = Console.init(allocator, browser, &stdout.interface);
+    defer console.deinit();
+    try console.banner();
 
-    try repl.run();
-
-    repl.deinit();
+    var editor = LineEditor.init(allocator, io, &console);
+    defer editor.deinit();
+    var prompt: Console.Prompt = .ready;
+    while (try editor.readLine(if (prompt == .ready) "> " else "... ")) |line| {
+        defer allocator.free(line);
+        prompt = try console.feedLine(line);
+    }
+    try editor.write("\n");
 }
