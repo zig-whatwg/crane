@@ -56,7 +56,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
-const process_start = @import("process_start.zig");
+const hook = @import("hook.zig");
 
 /// Frees every entry of one type's side table in `scope` - one Browser's.
 pub const Sweep = *const fn (scope: *runtime.BrowserScope) void;
@@ -93,26 +93,21 @@ const phase_count = @typeInfo(Phase).@"enum".field_names.len;
 /// Room per phase: `.element_types` holds a sweep per node type whose state
 /// has one (dom.orphan_states), eighteen since lane orphanleak.
 const max_sweeps = 32;
-var sweeps: [phase_count][max_sweeps]Sweep = undefined;
-var count: [phase_count]usize = @splat(0);
+/// Process-wide, written once at start-up (hook.zig): a list per phase.
+var sweeps: hook.Hook([phase_count]hook.List(Sweep, max_sweeps)) = .init(@splat(.empty));
 
 /// Install `sweep` in `phase`. Idempotent: the same function installs once.
 pub fn install(phase: Phase, sweep: Sweep) void {
-    process_start.assertInstalling();
-    const p = @backingInt(phase);
-    for (sweeps[p][0..count[p]]) |existing| {
-        if (existing == sweep) return;
-    }
-    if (count[p] == max_sweeps) @panic("dom.teardown_sweeps: a phase has room for 32 sweeps");
-    sweeps[p][count[p]] = sweep;
-    count[p] += 1;
+    const list = &sweeps.installing()[@backingInt(phase)];
+    if (list.contains(sweep)) return;
+    list.append(sweep);
 }
 
 /// Run every installed sweep over `scope`, phase by phase, each phase's in
 /// installation order: `scope`'s Browser ends. Before its agent ends.
 pub fn runAll(scope: *runtime.BrowserScope) void {
-    for (0..phase_count) |p| {
-        for (sweeps[p][0..count[p]]) |sweep| sweep(scope);
+    for (sweeps.read()) |*phase| {
+        for (phase.slice()) |sweep| sweep(scope);
     }
 }
 
@@ -124,15 +119,10 @@ test "an installed sweep runs once per runAll, however often it was installed" {
             runs += 1;
         }
     };
-    // Give back the whole table: restoring only the counts would leave this
-    // test's sweep in the first slot of the process's own table.
-    const saved_sweeps = sweeps;
-    const saved_count = count;
-    defer {
-        sweeps = saved_sweeps;
-        count = saved_count;
-    }
-    count = @splat(0);
+    // The test's own empty table, given back whole at its end: this test's
+    // sweep must not stay in the process's own table.
+    const override = sweeps.overrideForTest(@splat(.empty));
+    defer override.restore();
     var scope = runtime.BrowserScope.init(std.testing.allocator);
     defer scope.deinit();
     runAll(&scope);

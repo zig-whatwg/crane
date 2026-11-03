@@ -13,6 +13,7 @@
 //!
 //! lint-impls: hook for Node
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 const engine = @import("engine");
@@ -50,27 +51,25 @@ pub const Implementation = struct {
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Node's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// Set `node`'s node document to `document`.
 pub fn set(node: *runtime.Instance, document: ?*runtime.Instance) Error!void {
     // Refcount step 6: a node step 7 would have freed is given a document.
     if (refcount_audit.on()) if (instance_bridge.getNodeBaseUnaudited(node)) |base| refcount_audit.checkRead(base, .node_document, @returnAddress());
-    const impl = implementation orelse return error.InvalidStateError;
+    const impl = implementation.get() orelse return error.InvalidStateError;
     return impl.set(node, document);
 }
 
 test "set without an installed implementation reports InvalidStateError" {
     const std = @import("std");
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with no implementation the call does not reach it.
     var node: runtime.Instance = undefined;
     try std.testing.expectError(error.InvalidStateError, set(&node, null));
@@ -78,8 +77,8 @@ test "set without an installed implementation reports InvalidStateError" {
 
 test "set forwards to the installed implementation" {
     const std = @import("std");
-    const saved = implementation;
-    defer implementation = saved;
+    const override = implementation.overrideForTest(implementation.get());
+    defer override.restore();
 
     const Fake = struct {
         var seen_node: ?*runtime.Instance = null;

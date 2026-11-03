@@ -33,7 +33,11 @@ const fake_entries: dom.navigation_history_entries.Implementation = .{ .create =
 test "installs a hook for itself, as startHooksForTest does" {
     // A unit test with no Browser starts the hooks it needs itself: the
     // process start's to make, so not a change it left.
-    dom.navigation_history_entries.install(fake_entries);
+    dom.process_start.installForTest(struct {
+        fn installFake() void {
+            dom.navigation_history_entries.install(fake_entries);
+        }
+    }.installFake);
 }
 
 test "starts the process, installing a hook" {
@@ -42,6 +46,17 @@ test "starts the process, installing a hook" {
     try std.testing.expect(dom.process_start.begin());
     dom.navigation_history_entries.install(fake_entries);
     dom.process_start.finish(false);
+}
+
+test "overrides a hook and gives it back" {
+    const override = dom.global_settings.overrideForTest();
+    override.restore();
+}
+
+test "leaves a hook overridden" {
+    // A swap the test never gives back: dom.Hook's override without its
+    // restore().
+    _ = dom.global_settings.overrideForTest();
 }
 
 test "leaves the process starting" {

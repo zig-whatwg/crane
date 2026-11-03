@@ -13,6 +13,7 @@
 //!
 //! lint-impls: hook for Attr
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 
@@ -26,17 +27,16 @@ pub const Implementation = struct {
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Attr's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// Give a just-made Attr node its namespace, namespace prefix and local name.
 pub fn name(attr: *runtime.Instance, namespace: ?[]const u8, prefix: ?[]const u8, local_name: []const u8) Error!void {
-    const impl = implementation orelse return error.InvalidStateError;
+    const impl = implementation.get() orelse return error.InvalidStateError;
     return impl.name(attr, namespace, prefix, local_name);
 }
 
@@ -44,13 +44,13 @@ pub fn name(attr: *runtime.Instance, namespace: ?[]const u8, prefix: ?[]const u8
 /// `element`, its node document `element`'s, and its value is read from
 /// `element`'s attribute list.
 pub fn attach(attr: *runtime.Instance, element: *runtime.Instance) Error!void {
-    const impl = implementation orelse return error.InvalidStateError;
+    const impl = implementation.get() orelse return error.InvalidStateError;
     return impl.attach(attr, element);
 }
 
 /// The attribute `attr` stood for was removed or replaced: `attr` keeps
 /// `value` and has no element.
 pub fn detach(attr: *runtime.Instance, value: []const u8) Error!void {
-    const impl = implementation orelse return error.InvalidStateError;
+    const impl = implementation.get() orelse return error.InvalidStateError;
     return impl.detach(attr, value);
 }

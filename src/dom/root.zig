@@ -122,6 +122,9 @@ pub const document_autofocus = @import("document_autofocus.zig");
 /// bfcache blocking details, and building not restored reasons.
 pub const bfcache = @import("bfcache.zig");
 pub const process_start = @import("process_start.zig");
+/// A hook slot: installed while the process starts, frozen after (hook.zig).
+pub const hook = @import("hook.zig");
+pub const Hook = hook.Hook;
 pub const event_construction = @import("event_construction.zig");
 pub const navigables = @import("navigables.zig");
 pub const navigation_api = @import("navigation_api.zig");

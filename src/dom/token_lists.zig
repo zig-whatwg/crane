@@ -13,6 +13,7 @@
 //!
 //! lint-impls: hook for DOMTokenList
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 
@@ -25,27 +26,25 @@ pub const Implementation = struct {
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by DOMTokenList's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// Make `list` - a DOMTokenList just created through its interface, which
 /// installed the implementation - `element`'s list for `local_name`. The
 /// name is copied.
 pub fn associate(list: *runtime.Instance, element: *runtime.Instance, local_name: []const u8) !void {
-    const impl = implementation orelse return error.NotSupported;
+    const impl = implementation.get() orelse return error.NotSupported;
     try impl.associate(list, element, local_name);
 }
 
 test "associate without an installed implementation reports NotSupported" {
     const std = @import("std");
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with no implementation the call does not reach it.
     var object: runtime.Instance = undefined;
     try std.testing.expectError(error.NotSupported, associate(&object, &object, "rel"));

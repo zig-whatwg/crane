@@ -13,6 +13,7 @@
 //!
 //! lint-impls: hook for Document
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 
@@ -69,38 +70,37 @@ pub const BeforeUnloadResult = struct {
     prompt_requested: bool = false,
 };
 
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Document's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// The rendering seam shares this process-start table without mutable state
 /// of its own; all returned state still belongs to the queried Document.
 pub fn renderingImplementation() ?@import("document_rendering.zig").Implementation {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.rendering;
 }
 
 /// HTML 6.6.7 state, owned by the queried Document.
 pub fn autofocusState(document: *runtime.Instance, create: bool) ?*@import("document_autofocus.zig").State {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.autofocus(document, create);
 }
 
 /// Document acquires a parser reference independently of the initiating
 /// caller's reference, which stays alive through every parsing callback.
 pub fn associateParser(document: *runtime.Instance, parser: *anyopaque) bool {
-    const impl = implementation orelse return false;
+    const impl = implementation.get() orelse return false;
     return impl.associate_parser(document, parser);
 }
 
 /// Cancel the current parser, or only `expected` when supplied. This never
 /// runs normal EOF or loading completion, and cannot discard a replacement.
 pub fn discardParser(document: *runtime.Instance, expected: ?*anyopaque) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.discard_parser(document, expected);
 }
 
@@ -109,28 +109,28 @@ pub fn discardParser(document: *runtime.Instance, expected: ?*anyopaque) void {
 /// pending lifecycle tasks would fire are unobservable - the tasks are dropped
 /// and their counted holds released. A listener keeps them.
 pub fn dropUnobservedLifecycleTasks(document: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.drop_unobserved_lifecycle_tasks(document);
 }
 
 /// Actual EOF, once, with a pump reference held. Document detaches before
 /// running its guarded readiness and deferred script steps.
 pub fn parserFinished(document: *runtime.Instance, parser: *anyopaque) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.parser_finished(document, parser);
 }
 
 /// Finish a received document for which navigation has no parser. This
 /// uses the same guarded "the end" steps, and cannot finish an active parser.
 pub fn finishWithoutParser(document: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.finish_without_parser(document);
 }
 
 /// "The end" step 3: the parser has stopped, and readiness becomes
 /// "interactive" - before the deferred scripts, which see it.
 pub fn parsingStopped(document: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.parsing_stopped(document);
 }
 
@@ -139,14 +139,14 @@ pub fn parsingStopped(document: *runtime.Instance) void {
 /// window, pageshow, and "completely finish loading", which fires load at the
 /// document's container.
 pub fn finishLoading(document: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.finish_loading(document);
 }
 
 /// Something that delayed `document`'s load event may have stopped: if "the
 /// end" is waiting at step 8 and nothing delays it now, it goes on.
 pub fn loadDelayMayHaveEnded(document: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.load_delay_may_have_ended(document);
 }
 
@@ -155,7 +155,7 @@ pub fn loadDelayMayHaveEnded(document: *runtime.Instance) void {
 /// was removed. Task.drop may call this during allocation failure: this
 /// never runs script or lifecycle events synchronously, even without a loop.
 pub fn scriptDeliveryDiscarded(document: *runtime.Instance, removed_parser_blocker: bool) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.script_delivery_discarded(document, removed_parser_blocker);
 }
 
@@ -163,60 +163,60 @@ pub fn scriptDeliveryDiscarded(document: *runtime.Instance, removed_parser_block
 /// A container asks this about its active document even when that document
 /// was opened after it became ready for post-load tasks.
 pub fn delaysLoadEvent(document: *runtime.Instance) bool {
-    const impl = implementation orelse return false;
+    const impl = implementation.get() orelse return false;
     return impl.delays_load_event(document);
 }
 
 /// HTML "ready for post-load tasks", independent of current readiness and
 /// completely-loaded time. Document.open does not reset this state.
 pub fn isReadyForPostLoadTasks(document: *runtime.Instance) bool {
-    const impl = implementation orelse return true;
+    const impl = implementation.get() orelse return true;
     return impl.is_ready_for_post_load_tasks(document);
 }
 
 /// DOMImplementation-created documents are ready immediately (HTML §3.1).
 pub fn markReadyForPostLoadTasks(document: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.mark_ready_for_post_load_tasks(document);
 }
 
 /// Whether `document` is "completely loaded": "completely finish loading" has
 /// run for it.
 pub fn isCompletelyLoaded(document: *runtime.Instance) bool {
-    const impl = implementation orelse return true;
+    const impl = implementation.get() orelse return true;
     return impl.is_completely_loaded(document);
 }
 
 /// A document's "is initial about:blank".
 pub fn isInitialAboutBlank(document: *runtime.Instance) bool {
-    const impl = implementation orelse return false;
+    const impl = implementation.get() orelse return false;
     return impl.is_initial_about_blank(document);
 }
 
 /// "Create a new browsing context and document" step 15's document is the
 /// initial about:blank one: its creator says so.
 pub fn markInitialAboutBlank(document: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.mark_initial_about_blank(document);
 }
 
 /// Whether `document`'s unload counter is above zero - it is firing
 /// beforeunload, pagehide or unload - which "navigate" step 9 refuses.
 pub fn isUnloading(document: *runtime.Instance) bool {
-    const impl = implementation orelse return false;
+    const impl = implementation.get() orelse return false;
     return impl.is_unloading(document);
 }
 
 /// The "steps to fire beforeunload" given `document`.
 pub fn fireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
-    const impl = implementation orelse return .{};
+    const impl = implementation.get() orelse return .{};
     return impl.fire_beforeunload(document);
 }
 
 /// "Unload" `document`: pagehide, visibilitychange and unload, with its
 /// unload counter raised throughout.
 pub fn unload(document: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.unload(document);
 }
 
@@ -225,14 +225,14 @@ pub fn unload(document: *runtime.Instance) void {
 /// document never fires DOMContentLoaded or load (or load at its container)
 /// and is no longer salvageable.
 pub fn abort(document: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.abort(document);
 }
 
 /// Navigation's abort uses the same parser steps, while fetch owners can
 /// distinguish provisional loading from an explicit stop/document.open.
 pub fn abortForNavigation(document: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.abort_for_navigation(document);
 }
 
@@ -240,7 +240,7 @@ pub fn abortForNavigation(document: *runtime.Instance) void {
 /// salvageable state is false, parent's becomes false as well. Neither
 /// document's activity changes merely because it cannot enter the bfcache.
 pub fn propagateAbort(parent: *runtime.Instance, child: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.propagate_abort(parent, child);
 }
 
@@ -249,7 +249,7 @@ pub fn propagateAbort(parent: *runtime.Instance, child: *runtime.Instance) void 
 /// on. What "destroy a child navigable" does to the documents of a removed
 /// frame, and what "unload" ends with for a document nothing keeps.
 pub fn destroy(document: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.destroy(document);
 }
 
@@ -260,7 +260,7 @@ pub fn destroy(document: *runtime.Instance) void {
 /// Copied. Called by the navigable as it makes the document, before any of
 /// its script runs.
 pub fn setAboutBaseUrl(document: *runtime.Instance, url: ?[]const u8) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.set_about_base_url(document, url);
 }
 
@@ -269,7 +269,7 @@ pub fn setAboutBaseUrl(document: *runtime.Instance, url: ?[]const u8) void {
 /// otherwise null, and the fallback base URL is the document's URL (step 3).
 /// Borrowed from the document.
 pub fn aboutFallbackBaseUrl(document: *runtime.Instance) ?[]const u8 {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.about_fallback_base_url(document);
 }
 
@@ -279,7 +279,7 @@ pub fn aboutFallbackBaseUrl(document: *runtime.Instance) ?[]const u8 {
 /// `document`'s node navigable is navigated. "Will declaratively refresh"
 /// is the document's, so only its first refresh counts.
 pub fn declarativeRefresh(document: *runtime.Instance, input: []const u8, meta: ?*runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.declarative_refresh(document, input, meta);
 }
 
@@ -288,14 +288,14 @@ pub fn declarativeRefresh(document: *runtime.Instance, input: []const u8, meta: 
 /// after. A document opened meanwhile is muted (the document open steps,
 /// step 14).
 pub fn setIframeLoadInProgress(document: *runtime.Instance, in_progress: bool) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.set_iframe_load_in_progress(document, in_progress);
 }
 
 /// Whether `document` has its "mute iframe load" flag set: the iframe load
 /// event steps fire no load at its iframe (step 3).
 pub fn isIframeLoadMuted(document: *runtime.Instance) bool {
-    const impl = implementation orelse return false;
+    const impl = implementation.get() orelse return false;
     return impl.is_iframe_load_muted(document);
 }
 
@@ -308,22 +308,21 @@ pub fn isIframeLoadMuted(document: *runtime.Instance) bool {
 /// never loads; a holder keeps the document and its slab generation, and
 /// skips the undelay of a document that is gone.
 pub fn delayLoadEvent(document: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.delay_load_event(document);
 }
 
 /// The end of one `delayLoadEvent`: if nothing else delays `document`'s load
 /// event, "the end" goes on (Blink's DecrementLoadEventDelayCount).
 pub fn undelayLoadEvent(document: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.undelay_load_event(document);
 }
 
 test "without an installed implementation nothing is asked of a document" {
     const std = @import("std");
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with no implementation nothing reads it.
     var document: runtime.Instance = undefined;
     try std.testing.expect(!associateParser(&document, &document));

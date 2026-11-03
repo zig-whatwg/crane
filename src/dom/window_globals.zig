@@ -8,6 +8,7 @@
 //!
 //! lint-impls: hook for Window
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 
@@ -43,54 +44,53 @@ pub const Implementation = struct {
     move_auxiliary_navigables: *const fn (from: *runtime.Instance, to: *runtime.Instance) void,
 };
 
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Window's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// Bind `window` to the global object the engine made for its realm.
 pub fn bind(window: *runtime.Instance, global: *anyopaque) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.bind(window, global);
 }
 
 pub fn setDocument(window: *runtime.Instance, document: *runtime.Instance) void {
-    (implementation orelse return).set_document(window, document);
+    (implementation.get() orelse return).set_document(window, document);
 }
 
 /// The global object `window` is bound to (`bind`), or null: torn down, not
 /// bound yet, or no Window installed. The engine adapter's opaque handle,
 /// BORROWED for the call; read only by that adapter.
 pub fn boundGlobal(window: *runtime.Instance) ?*anyopaque {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.bound_global(window);
 }
 
 /// `window`'s own top-level browsing context, handed to the caller: see
 /// Implementation.release_browsing_context.
 pub fn releaseBrowsingContext(window: *runtime.Instance) ?*anyopaque {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.release_browsing_context(window);
 }
 
 /// Make `window` show `browsing_context`: see
 /// Implementation.adopt_browsing_context.
 pub fn adoptBrowsingContext(window: *runtime.Instance, browsing_context: *anyopaque) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.adopt_browsing_context(window, browsing_context);
 }
 
 /// Set `window`'s origin: see Implementation.set_origin.
 pub fn setOrigin(window: *runtime.Instance, origin: []const u8) !void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     try impl.set_origin(window, origin);
 }
 
 /// See Implementation.move_auxiliary_navigables.
 pub fn moveAuxiliaryNavigables(from: *runtime.Instance, to: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.move_auxiliary_navigables(from, to);
 }

@@ -116,8 +116,13 @@ impl fills so code that may not name the impl can reach a step. Since B0:
 - The generated interface (or mixin module) exposes it, and the generated root's
   `process_hooks.install()` calls each one. `crane.Process.init` calls that once, before any
   Browser exists; the browser layer's own hooks (Context.installHooks) follow.
-- The hook module's variable is a plain process `var`, and its install calls
-  `dom.process_start.assertInstalling()`: an install after start-up panics outside tests.
+- The hook module's variable is a `dom.Hook(T)` slot (src/dom/hook.zig, 2026-11-03, lane
+  hookfreeze1): readers call `get()`/`read()`, the owner's install calls `install()`/`installing()`,
+  and every write asks `dom.process_start.writer` - only while the process starts, in every build
+  mode. A test installs through `process_hooks.startHooksForTest()` (`process_start.installForTest`)
+  and swaps a slot only with `overrideForTest`, a scoped guard it restores before it ends; the Crane
+  test runner's digest checks `process_start.outstandingOverrides()` is 0 after every test. The
+  registration lists not yet converted (class P-res) still call `dom.process_start.assertInstalling()`.
 - A host starts the process itself (`var process = try crane.Process.init(.{}); defer
   process.deinit();`, as the WPT runner does); `Browser.init` still calls
   `Process.ensureStarted` for hosts that do not (removed in B6).

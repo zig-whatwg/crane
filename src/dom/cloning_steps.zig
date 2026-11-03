@@ -14,7 +14,7 @@
 //! lint-impls: hook for HTMLScriptElement, SVGScriptElement, HTMLTemplateElement, Document, HTMLInputElement, HTMLTextAreaElement, HTMLElement, SVGElement
 
 const std = @import("std");
-const process_start = @import("process_start.zig");
+const hook = @import("hook.zig");
 const runtime = @import("runtime");
 
 /// One specification's cloning steps. They run for every clone, so each set
@@ -25,33 +25,23 @@ pub const Steps = *const fn (node: *runtime.Instance, copy: *runtime.Instance, s
 /// One slot per owning interface; installed for the life of the process.
 /// Eight owners install today (Document, Input, TextArea, Script, Template,
 /// SVGScript, HTMLElement, SVGElement); room for more (row 46 review S1).
-var installed: [16]Steps = undefined;
-var installed_count: usize = 0;
+var installed: hook.Hook(hook.List(Steps, 16)) = .init(.empty);
 
 /// Called by an owning's installHooks, once, at process start (process_start.zig).
 pub fn install(steps: Steps) void {
-    process_start.assertInstalling();
-    for (installed[0..installed_count]) |existing| {
-        if (existing == steps) return;
-    }
-    std.debug.assert(installed_count < installed.len);
-    installed[installed_count] = steps;
-    installed_count += 1;
+    const list = installed.installing();
+    if (list.contains(steps)) return;
+    list.append(steps);
 }
 
 /// "Clone a node" step 3.
 pub fn run(node: *runtime.Instance, copy: *runtime.Instance, subtree: bool) !void {
-    for (installed[0..installed_count]) |steps| try steps(node, copy, subtree);
+    for (installed.read().slice()) |steps| try steps(node, copy, subtree);
 }
 
 test "every installed set runs once per clone, in installation order" {
-    const saved_count = installed_count;
-    const saved = installed;
-    defer {
-        installed = saved;
-        installed_count = saved_count;
-    }
-    installed_count = 0;
+    const override = installed.overrideForTest(.empty);
+    defer override.restore();
 
     const Record = struct {
         var calls: [4]u8 = undefined;
@@ -70,7 +60,7 @@ test "every installed set runs once per clone, in installation order" {
     install(&Record.first);
     install(&Record.second);
     install(&Record.first);
-    try std.testing.expectEqual(@as(usize, 2), installed_count);
+    try std.testing.expectEqual(@as(usize, 2), installed.get().len);
 
     // Never dereferenced: the recorded steps ignore both instances.
     var node: runtime.Instance = undefined;
@@ -81,13 +71,8 @@ test "every installed set runs once per clone, in installation order" {
 }
 
 test "a failing set stops the clone" {
-    const saved_count = installed_count;
-    const saved = installed;
-    defer {
-        installed = saved;
-        installed_count = saved_count;
-    }
-    installed_count = 0;
+    const override = installed.overrideForTest(.empty);
+    defer override.restore();
     install(&struct {
         fn fail(_: *runtime.Instance, _: *runtime.Instance, _: bool) anyerror!void {
             return error.OutOfMemory;

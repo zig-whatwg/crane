@@ -21,6 +21,7 @@
 
 const std = @import("std");
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 const runtime = @import("runtime");
 
 pub const Error = error{ InvalidStateError, OutOfMemory };
@@ -55,50 +56,49 @@ pub const Implementation = struct {
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Document's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// The allocator `document`'s module scripts are made with; null for an
 /// object that is no Document.
 pub fn allocator(document: *runtime.Instance) ?std.mem.Allocator {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.allocator(document);
 }
 
 /// The module stored in `document`'s module map under `key`.
 pub fn getModule(document: *runtime.Instance, key: []const u8) ?*anyopaque {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.get_module(document, key);
 }
 
 /// Store `module` in `document`'s module map under `key`; the map owns it
 /// from here on.
 pub fn setModule(document: *runtime.Instance, key: []const u8, module: *anyopaque) Error!void {
-    const impl = implementation orelse return error.InvalidStateError;
+    const impl = implementation.get() orelse return error.InvalidStateError;
     return impl.set_module(document, key, module);
 }
 
 /// How `document` frees its module map's values when it goes.
 pub fn setModuleDisposeFunction(document: *runtime.Instance, dispose: ?ModuleDisposeFn) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.set_module_dispose_function(document, dispose);
 }
 
 /// The document owns its asynchronous module loader until teardown, before
 /// releasing the module records that the loader's graphs reference.
 pub fn getLoader(document: *runtime.Instance) ?*anyopaque {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     const get = impl.get_loader orelse return null;
     return get(document);
 }
 
 pub fn setLoader(document: *runtime.Instance, loader: *anyopaque, dispose: DisposeFn) Error!void {
-    const impl = implementation orelse return error.InvalidStateError;
+    const impl = implementation.get() orelse return error.InvalidStateError;
     const set = impl.set_loader orelse return error.InvalidStateError;
     try set(document, loader, dispose);
 }
@@ -106,46 +106,46 @@ pub fn setLoader(document: *runtime.Instance, loader: *anyopaque, dispose: Dispo
 /// Includes old documents retained when a Window's realm is reused. The
 /// callback must not run script or mutate the document registry.
 pub fn visitRealmLoaders(realm: runtime.Context, visit: VisitLoaderFn, data: ?*anyopaque) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     const visit_loaders = impl.visit_realm_loaders orelse return;
     visit_loaders(realm, visit, data);
 }
 
 /// Whether `document` already took an import map (later ones are ignored).
 pub fn importMapAcquired(document: *runtime.Instance) bool {
-    const impl = implementation orelse return false;
+    const impl = implementation.get() orelse return false;
     return impl.import_map_acquired(document);
 }
 
 /// Mark `document`'s import map as acquired.
 pub fn acquireImportMap(document: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.acquire_import_map(document);
 }
 
 /// Map `specifier` to `resolved_url` in `document`'s import map.
 pub fn addImportMapping(document: *runtime.Instance, specifier: []const u8, resolved_url: []const u8) Error!void {
-    const impl = implementation orelse return error.InvalidStateError;
+    const impl = implementation.get() orelse return error.InvalidStateError;
     return impl.add_import_mapping(document, specifier, resolved_url);
 }
 
 /// Map `specifier` to `resolved_url` for the scope `scope_prefix` in
 /// `document`'s import map.
 pub fn addScopedImportMapping(document: *runtime.Instance, scope_prefix: []const u8, specifier: []const u8, resolved_url: []const u8) Error!void {
-    const impl = implementation orelse return error.InvalidStateError;
+    const impl = implementation.get() orelse return error.InvalidStateError;
     return impl.add_scoped_import_mapping(document, scope_prefix, specifier, resolved_url);
 }
 
 /// `specifier` resolved through `document`'s import map for a script at
 /// `referrer_url`, or null when no mapping applies. Borrowed from the map.
 pub fn resolveImportSpecifier(document: *runtime.Instance, specifier: []const u8, referrer_url: []const u8) ?[]const u8 {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.resolve_import_specifier(document, specifier, referrer_url);
 }
 
 /// HTML merge existing and new import maps step 5: existing entries win.
 pub fn addIntegrityMapping(document: *runtime.Instance, url: []const u8, integrity: []const u8) Error!void {
-    const impl = implementation orelse return error.InvalidStateError;
+    const impl = implementation.get() orelse return error.InvalidStateError;
     const add = impl.add_integrity_mapping orelse return error.InvalidStateError;
     return add(document, url, integrity);
 }
@@ -153,15 +153,14 @@ pub fn addIntegrityMapping(document: *runtime.Instance, url: []const u8, integri
 /// HTML resolve a module integrity metadata. The slice is borrowed for the
 /// Document's life: entries are never replaced. Null means no entry.
 pub fn resolveModuleIntegrity(document: *runtime.Instance, url: []const u8) ?[]const u8 {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     const resolve = impl.resolve_module_integrity orelse return null;
     return resolve(document, url);
 }
 
 test "without an installed implementation a document has no module map" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with no implementation nothing reads it.
     var document: runtime.Instance = undefined;
     try std.testing.expect(allocator(&document) == null);

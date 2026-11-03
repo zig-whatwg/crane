@@ -13,6 +13,7 @@
 
 const std = @import("std");
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 const runtime = @import("runtime");
 
 /// A visibility state.
@@ -26,33 +27,31 @@ pub const Implementation = struct {
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Document's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// "Update the visibility state" of `document` to `state`. With no Document
 /// made yet there is no document to update.
 pub fn update(document: *runtime.Instance, state: State) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.update(document, state);
 }
 
 test "without an installed implementation updating does nothing" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with no implementation nothing reads the document.
     var document: runtime.Instance = undefined;
     update(&document, .hidden);
 }
 
 test "update forwards to the installed implementation" {
-    const saved = implementation;
-    defer implementation = saved;
+    const override = implementation.overrideForTest(implementation.get());
+    defer override.restore();
     const Fake = struct {
         var last: ?State = null;
         fn update(_: *runtime.Instance, state: State) void {

@@ -16,7 +16,7 @@
 //! lint-impls: hook for HTMLIFrameElement, HTMLScriptElement, HTMLDetailsElement, HTMLLinkElement, HTMLInputElement, HTMLSlotElement, HTMLElement, SVGElement
 
 const std = @import("std");
-const process_start = @import("process_start.zig");
+const hook = @import("hook.zig");
 const runtime = @import("runtime");
 
 /// The attribute change steps of one element type: given the element, the
@@ -53,49 +53,46 @@ const AttributeEntry = struct {
 /// install steps (the slot element made it sixteen); an entry dropped here is
 /// a type whose steps never run, so the bound stays well above the count.
 const max_entries = 32;
-var entries: struct {
-    elements: [max_entries]Entry = undefined,
-    attributes: [8]AttributeEntry = undefined,
-} = .{};
-var count: struct { elements: usize = 0, attributes: usize = 0 } = .{};
+const Tables = struct {
+    elements: hook.List(Entry, max_entries) = .empty,
+    attributes: hook.List(AttributeEntry, 8) = .empty,
+};
+/// Process-wide, written once at start-up (hook.zig).
+var entries: hook.Hook(Tables) = .init(.{});
 
 /// Install `steps` for HTML elements whose local name is `element` (a string
 /// that lives for the program). Idempotent: installing the same steps again
 /// changes nothing; installing different ones replaces them.
 pub fn install(element: []const u8, steps: Steps) void {
-    process_start.assertInstalling();
-    for (entries.elements[0..count.elements]) |*entry| {
+    const tables = entries.installing();
+    for (tables.elements.mutableSlice()) |*entry| {
         if (std.mem.eql(u8, entry.element, element)) {
-            entry.steps = steps;
+            // The same steps again write nothing (hook.zig, Hook.install).
+            if (entry.steps != steps) entry.steps = steps;
             return;
         }
     }
-    std.debug.assert(count.elements < max_entries);
-    if (count.elements == max_entries) return;
-    entries.elements[count.elements] = .{ .element = element, .steps = steps };
-    count.elements += 1;
+    tables.elements.append(.{ .element = element, .steps = steps });
 }
 
 /// Install once, at process start, for an ATTRIBUTE local name on every
 /// element in `namespace`. The strings live for the process.
 pub fn installForAttribute(namespace: []const u8, attribute_local_name: []const u8, steps: AttributeSteps) void {
-    process_start.assertInstalling();
-    for (entries.attributes[0..count.attributes]) |*entry| {
+    const tables = entries.installing();
+    for (tables.attributes.mutableSlice()) |*entry| {
         if (std.mem.eql(u8, entry.attribute, attribute_local_name) and std.mem.eql(u8, entry.element_namespace, namespace)) {
-            entry.steps = steps;
+            if (!std.meta.eql(entry.steps, steps)) entry.steps = steps;
             return;
         }
     }
-    std.debug.assert(count.attributes < entries.attributes.len);
-    entries.attributes[count.attributes] = .{ .element_namespace = namespace, .attribute = attribute_local_name, .steps = steps };
-    count.attributes += 1;
+    tables.attributes.append(.{ .element_namespace = namespace, .attribute = attribute_local_name, .steps = steps });
 }
 
 /// HTML 2.5.6's nonce step applies to both HTML and SVG elements. Compare
 /// the attribute's length and bytes FIRST: ordinary attributes do no
 /// namespace lookup, state lookup or allocation in this hook.
 pub fn runForAttribute(element: *runtime.Instance, element_namespace: []const u8, local_name: []const u8, old_value: ?[]const u8, value: ?[]const u8, namespace: ?[]const u8) void {
-    for (entries.attributes[0..count.attributes]) |entry| {
+    for (entries.read().attributes.slice()) |entry| {
         if (!std.mem.eql(u8, entry.attribute, local_name)) continue;
         if (!std.mem.eql(u8, entry.element_namespace, element_namespace)) continue;
         entry.steps.change(element, local_name, old_value, value, namespace);
@@ -106,7 +103,7 @@ pub fn runForAttribute(element: *runtime.Instance, element_namespace: []const u8
 /// Read the private value installed beside an attribute's change step.
 /// Borrowed until its next change: callers copy anything they keep.
 pub fn readForAttribute(element: *runtime.Instance, element_namespace: []const u8, local_name: []const u8) ?[]const u8 {
-    for (entries.attributes[0..count.attributes]) |entry| {
+    for (entries.read().attributes.slice()) |entry| {
         if (!std.mem.eql(u8, entry.attribute, local_name)) continue;
         if (!std.mem.eql(u8, entry.element_namespace, element_namespace)) continue;
         const read = entry.steps.read orelse return null;
@@ -126,7 +123,7 @@ pub fn run(
     value: ?[]const u8,
     namespace: ?[]const u8,
 ) void {
-    for (entries.elements[0..count.elements]) |entry| {
+    for (entries.read().elements.slice()) |entry| {
         if (std.mem.eql(u8, entry.element, element_local_name)) {
             entry.steps(element, local_name, old_value, value, namespace);
             return;
@@ -135,12 +132,8 @@ pub fn run(
 }
 
 test "steps run only for the element type that installed them, once however often installed" {
-    const saved_count = count;
-    const saved_entries = entries;
-    defer {
-        count = saved_count;
-        entries = saved_entries;
-    }
+    const override = entries.overrideForTest(.{});
+    defer override.restore();
     // The test's steps: their count lives in the test, not in the product.
     const Test = struct {
         var calls: usize = 0;
@@ -148,10 +141,9 @@ test "steps run only for the element type that installed them, once however ofte
             calls += 1;
         }
     };
-    count = .{};
     install("x-test", &Test.steps);
     install("x-test", &Test.steps);
-    try std.testing.expectEqual(@as(usize, 1), count.elements);
+    try std.testing.expectEqual(@as(usize, 1), entries.get().elements.len);
     // Never dereferenced: the steps ignore the element.
     var element: runtime.Instance = undefined;
     run(&element, "x-test", "src", null, "a", null);
@@ -160,19 +152,14 @@ test "steps run only for the element type that installed them, once however ofte
 }
 
 test "attribute steps dispatch by attribute then element namespace, with an independent reader" {
-    const saved_count = count;
-    const saved_entries = entries;
-    defer {
-        count = saved_count;
-        entries = saved_entries;
-    }
+    const override = entries.overrideForTest(.{});
+    defer override.restore();
     const Test = struct {
         var calls: usize = 0;
         fn steps(_: *runtime.Instance, _: []const u8, _: ?[]const u8, _: ?[]const u8, _: ?[]const u8) void {
             calls += 1;
         }
     };
-    count = .{};
     const Read = struct {
         fn read(_: *runtime.Instance) []const u8 {
             return "private slot";
@@ -180,7 +167,7 @@ test "attribute steps dispatch by attribute then element namespace, with an inde
     };
     installForAttribute("urn:a", "nonce", .{ .change = &Test.steps, .read = &Read.read });
     installForAttribute("urn:a", "nonce", .{ .change = &Test.steps, .read = &Read.read });
-    try std.testing.expectEqual(@as(usize, 1), count.attributes);
+    try std.testing.expectEqual(@as(usize, 1), entries.get().attributes.len);
     var element: runtime.Instance = undefined;
     runForAttribute(&element, "urn:a", "nonce", null, "value", null);
     runForAttribute(&element, "urn:a", "class", null, "value", null);

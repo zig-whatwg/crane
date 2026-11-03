@@ -2700,11 +2700,13 @@ pub fn writeRootInstallHooks(writer: anytype, kind: []const u8) !void {
     try writer.writeAll("    }\n");
     try writer.writeAll("\n");
     try writer.writeAll("    /// For a unit test that makes platform objects with no Browser: installs\n");
-    try writer.writeAll("    /// these hooks only - not the engine, not the browser layer's. Production\n");
-    try writer.writeAll("    /// starts through crane.Process. Installing again adds nothing.\n");
+    try writer.writeAll("    /// these hooks only - not the engine, not the browser layer's - through\n");
+    try writer.writeAll("    /// the sanctioned test start (dom.process_start.installForTest), the one\n");
+    try writer.writeAll("    /// way a test installs a hook. Production starts through crane.Process.\n");
+    try writer.writeAll("    /// Installing again adds nothing.\n");
     try writer.writeAll("    pub fn startHooksForTest() void {\n");
     try writer.writeAll("        if (!@import(\"builtin\").is_test) @compileError(\"startHooksForTest is for tests; a host starts crane.Process\");\n");
-    try writer.writeAll("        install();\n");
+    try writer.writeAll("        @import(\"dom\").process_start.installForTest(install);\n");
     try writer.writeAll("    }\n");
     try writer.writeAll("};\n");
     try writer.writeAll("const members = @This();\n");
@@ -6253,6 +6255,9 @@ test "a root's installHooks calls every member's, once, through a comptime loop"
     // One helper for unit tests with no Browser, refused outside tests.
     try testing.expect(std.mem.indexOf(u8, output, "    pub fn startHooksForTest() void {\n") != null);
     try testing.expect(std.mem.indexOf(u8, output, "@compileError(\"startHooksForTest is for tests") != null);
+    // ...installing through the sanctioned test start, which a hook slot
+    // (dom.Hook) lets write whatever the process's phase.
+    try testing.expect(std.mem.indexOf(u8, output, "        @import(\"dom\").process_start.installForTest(install);\n") != null);
     try testing.expect(std.mem.indexOf(u8, output, "if (@TypeOf(member) == type and @hasDecl(member, \"installHooks\")) member.installHooks();") != null);
 }
 

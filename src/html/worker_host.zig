@@ -4119,6 +4119,8 @@ pub const worker_origin_oom_test_cases = if (@import("builtin").is_test) struct 
         };
         // Native settings only: no V8 realm, thread or running worker.
         // The supplied immutable hook accepts only this test's global kind.
+        const override = Harness.settings.overrideForTest();
+        defer override.restore();
         Harness.settings.install(.{
             .owns = Harness.owns,
             .origin = Harness.origin,

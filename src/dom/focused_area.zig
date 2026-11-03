@@ -24,6 +24,7 @@
 
 const std = @import("std");
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 const runtime = @import("runtime");
 
 /// A designated element and its generation when it was designated.
@@ -49,24 +50,23 @@ pub const Implementation = struct {
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Document's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// `document`'s focused area, or null for its viewport. With no Document
 /// made yet nothing has been designated: the viewport.
 pub fn get(document: *runtime.Instance) ?Designation {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.get(document);
 }
 
 /// Designate `element` as `document`'s focused area (null: the viewport).
 pub fn set(document: *runtime.Instance, element: ?*runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.set(document, if (element) |e| .{ .element = e, .generation = runtime.SlabAllocator.generationOf(e) } else null);
     // The focus fixup runs at the next rendering opportunity: a focused
     // element asks for one, and its document is watched
@@ -75,9 +75,8 @@ pub fn set(document: *runtime.Instance, element: ?*runtime.Instance) void {
 }
 
 test "without an installed implementation a document's focused area is its viewport" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with no implementation nothing reads the document.
     var document: runtime.Instance = undefined;
     try std.testing.expect(get(&document) == null);
@@ -86,8 +85,8 @@ test "without an installed implementation a document's focused area is its viewp
 }
 
 test "get and set forward to the installed implementation" {
-    const saved = implementation;
-    defer implementation = saved;
+    const override = implementation.overrideForTest(implementation.get());
+    defer override.restore();
     const Fake = struct {
         var stored: ?Designation = null;
         fn get(_: *runtime.Instance) ?Designation {

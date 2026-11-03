@@ -14,6 +14,7 @@
 //!
 //! lint-impls: hook for EventTarget
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 
@@ -26,18 +27,17 @@ pub const Implementation = struct {
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by EventTarget's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// Dispatch `event` at `target` with isTrusted true. Every target exists, so
 /// EventTarget has installed the implementation.
 pub fn dispatchTrusted(target: *runtime.Instance, event: *runtime.Instance) !bool {
-    const impl = implementation orelse return error.NotSupported;
+    const impl = implementation.get() orelse return error.NotSupported;
     return impl.dispatch_trusted(target, event);
 }
 
@@ -45,13 +45,13 @@ pub fn dispatchTrusted(target: *runtime.Instance, event: *runtime.Instance) !boo
 /// event whose listener is running in that Window's realm, or null
 /// (undefined) when there is none.
 pub fn currentEvent(window: *runtime.Instance) ?*runtime.Instance {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.current_event(window);
 }
 
 /// DOM dispatch with legacyOutputDidListenersThrowFlag, used by IndexedDB.
 /// The boolean return still reports cancellation; did_throw reports throws.
 pub fn dispatchTrustedWithThrows(target: *runtime.Instance, event: *runtime.Instance, did_throw: *bool) !bool {
-    const impl = implementation orelse return error.NotSupported;
+    const impl = implementation.get() orelse return error.NotSupported;
     return impl.dispatch_trusted_with_throws(target, event, did_throw);
 }

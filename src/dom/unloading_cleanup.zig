@@ -19,35 +19,30 @@
 //! lint-impls: hook for URL, EventTarget, CustomElementRegistry
 
 const std = @import("std");
-const process_start = @import("process_start.zig");
+const hook = @import("hook.zig");
 const runtime = @import("runtime");
 
 /// One specification's unloading document cleanup step, for `environment`.
 pub const Step = *const fn (environment: runtime.Context) void;
 
 const max_steps = 24;
-var steps: [max_steps]Step = undefined;
-var count: usize = 0;
+/// Process-wide, written once at start-up (hook.zig).
+var steps: hook.Hook(hook.List(Step, max_steps)) = .init(.empty);
 
 /// Install `step`. Idempotent: the same function installs once.
 pub fn install(step: Step) void {
-    process_start.assertInstalling();
-    for (steps[0..count]) |existing| {
-        if (existing == step) return;
-    }
-    // A step dropped here is cleanup that never runs; there are far fewer
-    // owners than slots.
-    std.debug.assert(count < max_steps);
-    if (count == max_steps) return;
-    steps[count] = step;
-    count += 1;
+    const list = steps.installing();
+    if (list.contains(step)) return;
+    // A step dropped here would be cleanup that never runs: past the
+    // capacity the append panics (there are far fewer owners than slots).
+    list.append(step);
 }
 
 /// Run every installed step for `environment`, in installation order: its
 /// document is being unloaded or destroyed, or its worker has ended. Running
 /// them again for the same environment finds nothing left to do.
 pub fn run(environment: runtime.Context) void {
-    for (steps[0..count]) |step| step(environment);
+    for (steps.read().slice()) |step| step(environment);
 }
 
 test "an installed step runs once per run, for the environment it is given, however often it was installed" {
@@ -60,15 +55,10 @@ test "an installed step runs once per run, for the environment it is given, howe
             last = environment;
         }
     };
-    // Give back the whole table: restoring only the count would leave this
-    // test's step in the first slot of the process's own table.
-    const saved_steps = steps;
-    const saved_count = count;
-    defer {
-        steps = saved_steps;
-        count = saved_count;
-    }
-    count = 0;
+    // The test's own empty table, given back whole at its end: this test's
+    // step must not stay in the process's own table.
+    const override = steps.overrideForTest(.empty);
+    defer override.restore();
 
     var realm: runtime.ContextData = undefined;
     run(&realm);

@@ -9,6 +9,7 @@
 //!
 //! lint-impls: hook for NodeList
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 const NodeBase = @import("node_base.zig").NodeBase;
@@ -33,61 +34,59 @@ pub const Implementation = struct {
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by NodeList's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// Make `list` - a NodeList just created, empty - the static list of
 /// `nodes`, in order.
 pub fn setStatic(list: *runtime.Instance, nodes: []const *runtime.Instance) !void {
-    const impl = implementation orelse return error.NotSupported;
+    const impl = implementation.get() orelse return error.NotSupported;
     try impl.set_static(list, nodes, null);
 }
 
 /// `setStatic`, for nodes that are all descendants of `within`.
 pub fn setStaticWithin(list: *runtime.Instance, nodes: []const *runtime.Instance, within: *runtime.Instance) !void {
-    const impl = implementation orelse return error.NotSupported;
+    const impl = implementation.get() orelse return error.NotSupported;
     try impl.set_static(list, nodes, within);
 }
 
 /// `setStaticWithin`, given the tree nodes (querySelectorAll's walk).
 pub fn setStaticBasesWithin(list: *runtime.Instance, nodes: []const *NodeBase, within: *NodeBase) !void {
-    const impl = implementation orelse return error.NotSupported;
+    const impl = implementation.get() orelse return error.NotSupported;
     try impl.set_static_bases(list, nodes, within);
 }
 
 pub fn labels(list: *runtime.Instance, element: *runtime.Instance) !void {
-    try (implementation orelse return error.NotSupported).labels(list, element);
+    try (implementation.get() orelse return error.NotSupported).labels(list, element);
 }
 
 pub fn namedControls(list: *runtime.Instance, collection: *runtime.Instance, name: []const u8) !void {
-    try (implementation orelse return error.NotSupported).named_controls(list, collection, name);
+    try (implementation.get() orelse return error.NotSupported).named_controls(list, collection, name);
 }
 
 /// HTML form named access: live image candidates, with the form held as root.
 pub fn namedFormImages(list: *runtime.Instance, form: *runtime.Instance, name: []const u8) !void {
-    try (implementation orelse return error.NotSupported).named_form_images(list, form, name);
+    try (implementation.get() orelse return error.NotSupported).named_form_images(list, form, name);
 }
 
 /// DOM childNodes: "a NodeList rooted at this matching only children" - live.
 pub fn childNodes(list: *runtime.Instance, root: *runtime.Instance) !void {
-    try (implementation orelse return error.NotSupported).child_nodes(list, root);
+    try (implementation.get() orelse return error.NotSupported).child_nodes(list, root);
 }
 
 /// HTML getElementsByName: a live NodeList over the document's descendants.
 pub fn elementsByName(list: *runtime.Instance, document: *runtime.Instance, name: []const u8) !void {
-    try (implementation orelse return error.NotSupported).elements_by_name(list, document, name);
+    try (implementation.get() orelse return error.NotSupported).elements_by_name(list, document, name);
 }
 
 test "setStatic without an installed implementation reports NotSupported" {
     const std = @import("std");
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with no implementation the call does not reach it.
     var list: runtime.Instance = undefined;
     try std.testing.expectError(error.NotSupported, elementsByName(&list, &list, ""));

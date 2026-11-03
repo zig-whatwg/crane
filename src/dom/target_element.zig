@@ -10,6 +10,7 @@
 //!
 //! lint-impls: hook for Document
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 
@@ -23,22 +24,21 @@ pub const Implementation = struct {
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Document's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// `document`'s target element.
 pub fn get(document: *runtime.Instance) ?*runtime.Instance {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.get(document);
 }
 
 /// "Set document's target element to" `element`.
 pub fn set(document: *runtime.Instance, element: ?*runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.set(document, element);
 }

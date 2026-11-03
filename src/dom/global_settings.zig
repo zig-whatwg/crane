@@ -16,7 +16,7 @@
 //! lint-impls: hook for Window, WorkerGlobalScope
 
 const std = @import("std");
-const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 const runtime = @import("runtime");
 const cookiestore = @import("cookiestore");
 const fetch = @import("fetch");
@@ -341,7 +341,15 @@ fn isTopLevelWindow(global: *runtime.Instance) bool {
 /// A Window and a WorkerGlobalScope - with room to spare for the next kind.
 const capacity = 4;
 
-var installed: [capacity]?Settings = @splat(null);
+/// Process-wide, written once at start-up (hook.zig).
+var installed: Hook([capacity]?Settings) = .init(@splat(null));
+
+/// A test's own copy of the installed kinds, which the kinds the test
+/// installs (`install`) go into, until the returned guard's `restore()`
+/// takes them away again.
+pub fn overrideForTest() Hook([capacity]?Settings).Override {
+    return installed.overrideForTest(installed.get());
+}
 
 /// Called by each kind of global. Idempotent: a kind is recognised by its
 /// `owns` function and installed once.
@@ -354,8 +362,7 @@ var installed: [capacity]?Settings = @splat(null);
 /// table dispatches to every entry, or keeps the last, keying by one function
 /// is wrong: form_controls, activation, document_fetches.)
 pub fn install(settings: Settings) void {
-    process_start.assertInstalling();
-    for (&installed) |*slot| {
+    for (installed.installing()) |*slot| {
         if (slot.*) |existing| {
             if (existing.owns == settings.owns) return;
             continue;
@@ -368,7 +375,7 @@ pub fn install(settings: Settings) void {
 
 /// The answers for `global`'s kind, or null when no installed kind owns it.
 pub fn of(global: *runtime.Instance) ?Settings {
-    for (installed) |slot| {
+    for (installed.read()) |slot| {
         const settings = slot orelse return null;
         if (settings.owns(global)) return settings;
     }
@@ -393,9 +400,8 @@ fn testTrue(global: *runtime.Instance) bool {
 test "kinds that share an owns check: the first installed answers, as a Debug build's table does" {
     // In a release build two kinds' `owns` checks with the same body are one
     // function. The answer must still be the first kind's.
-    const saved = installed;
-    defer installed = saved;
-    installed = @splat(null);
+    const override = installed.overrideForTest(@splat(null));
+    defer override.restore();
     // The global the test's kind owns: it lives in the test, not in the product.
     const Test = struct {
         var owned: runtime.Instance = undefined;
@@ -411,9 +417,8 @@ test "kinds that share an owns check: the first installed answers, as a Debug bu
 }
 
 test "a global no kind owns has no settings, and a kind installs once" {
-    const saved = installed;
-    defer installed = saved;
-    installed = @splat(null);
+    const override = installed.overrideForTest(@splat(null));
+    defer override.restore();
 
     // Never dereferenced: `owns` compares the address only.
     const Test = struct {
@@ -429,5 +434,5 @@ test "a global no kind owns has no settings, and a kind installs once" {
     install(settings);
     install(settings);
     try std.testing.expect(of(global) != null);
-    try std.testing.expect(installed[1] == null);
+    try std.testing.expect(installed.get()[1] == null);
 }

@@ -1,6 +1,15 @@
 # Workflow: A queued remote job builds the mirror as its slot finds it
 
 **Date**: 2026-10-17
+
+**Status** (2026-11-02, lane hookfreeze1): since the compute pool (2026-10-28) crane-remote.sh syncs
+the worktree when the job is PLACED - after "placed on <host>", before "job pid N" - not when it is
+submitted, so the hand-made rsync below is no longer needed: a queued job builds whatever the
+worktree holds when its slot comes. The flip side bit hookfreeze1: a base runner submitted "at main"
+waited 7 minutes for a slot while the lane started editing, and was built from the half-edited tree
+(caught only because the mirror had one edited file and not the next). **Build a baseline from a
+clean checkout of the base commit, never from the tree you are editing - or edit nothing until its
+"job pid" line has printed.**
 **Lesson**: crane-remote.sh syncs a lane's mirror when the job is submitted, then waits for a build slot; until the slot comes, a plain `rsync` of the worktree into the mirror makes the queued job build the newer tree - no resubmission, no lost place in the queue.
 
 **Why**: Build slots are first-come-first-served tickets (2026-10-17), and with five long-held slots a job can wait an hour. Cancelling a queued job to submit one with newer sources sends it to the back of the queue. The job's command reads the mirror only once it starts.

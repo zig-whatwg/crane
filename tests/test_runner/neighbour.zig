@@ -138,6 +138,24 @@ pub const Neighbour = struct {
         n.cond.broadcast(n.io);
     }
 
+    /// `hold`, as a dom.process_start.OverrideObserver's `first_made`: a
+    /// test's first hook override holds the neighbour before the slot
+    /// changes (`ctx` is the neighbour). An override is a statement about the
+    /// whole process - the neighbour reads the same slot - so it waits, with
+    /// nothing alive, until the override's restore: Chromium's
+    /// ScopedFeatureList, the process-wide override held for its scope.
+    pub fn holdFor(ctx: ?*anyopaque) void {
+        const n: *Neighbour = @ptrCast(@alignCast(ctx.?));
+        n.hold();
+    }
+
+    /// `release`, as the observer's `last_restored`: after the test's last
+    /// restore the neighbour goes on.
+    pub fn releaseFor(ctx: ?*anyopaque) void {
+        const n: *Neighbour = @ptrCast(@alignCast(ctx.?));
+        n.release();
+    }
+
     pub const Taken = struct { failure: ?Failure, more_failures: u64, iterations: u64 };
 
     /// What has failed since the last take, and how many iterations have
@@ -222,6 +240,28 @@ test "the work runs between holds; a hold waits for the iteration in progress an
     n.release();
 
     try waitFor(io, &fake.started, held_at + 2);
+}
+
+test "a hook override's observer pauses the work until the restore, then it goes on" {
+    // What dom.process_start calls (hook.zig pins the order: first_made
+    // before the override's write, last_restored after the restore's).
+    const io = testing.io;
+    var fake: Fake = .{ .io = io };
+    var n: Neighbour = .init(io, fake.work());
+    try n.start();
+    defer n.stop();
+    try waitFor(io, &fake.started, 2);
+
+    Neighbour.holdFor(&n); // the test's first override
+    try testing.expect(!fake.active.load(.seq_cst));
+    const paused_at = fake.started.load(.seq_cst);
+    io.sleep(.fromMilliseconds(40), .awake) catch {};
+    // While the override is outstanding no iteration starts or runs.
+    try testing.expectEqual(paused_at, fake.started.load(.seq_cst));
+    try testing.expect(!fake.active.load(.seq_cst));
+    Neighbour.releaseFor(&n); // its restore
+
+    try waitFor(io, &fake.started, paused_at + 2);
 }
 
 test "a failed iteration is kept, with its error, number and message, until it is taken" {
