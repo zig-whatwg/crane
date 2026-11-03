@@ -394,13 +394,18 @@ test "an indexed read and an `in` check make no handle for the list" {
         \\})()
     ;
     try page.expect(read_all, "210");
+    try page.collect();
+    // What is made is the adapter's count of creations through the entry
+    // point, the process's (so the test runs alone: build.zig v8_alone);
+    // what is left, the agent's own global handles.
     const this_before = try counter("object_globals_from.PropertyCallbackInfo_This");
-    const contexts_before = try counter("live_context_globals");
+    const bytes_before: i64 = @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(page.isolate()));
     try page.expect(read_all, "210");
+    try page.collect();
     const this_made = try counter("object_globals_from.PropertyCallbackInfo_This") - this_before;
-    const contexts_left = try counter("live_context_globals") - contexts_before;
-    if (this_made != 0 or contexts_left != 0) {
-        std.debug.print("384 indexed reads and 384 `in` checks made {d} `this` Globals and left {d} Context Globals\n", .{ this_made, contexts_left });
+    const bytes_left = @as(i64, @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(page.isolate()))) - bytes_before;
+    if (this_made != 0 or bytes_left > 0) {
+        std.debug.print("384 indexed reads and 384 `in` checks made {d} `this` Globals and left {d} global handle bytes\n", .{ this_made, bytes_left });
         return error.HandlesMade;
     }
 }

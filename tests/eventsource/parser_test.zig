@@ -1,19 +1,10 @@
 //! HTML 9.2.5–9.2.6, independent of an engine or network connection.
 const std = @import("std");
-test {
-    _ = @import("retry_test.zig");
-    _ = @import("fetch_test.zig");
-}
 const infra = @import("infra");
 const eventsource = @import("eventsource");
 const Parser = eventsource.Parser;
 const Message = eventsource.Message;
 const allocator = std.testing.allocator;
-
-test {
-    _ = @import("connection_test.zig");
-    _ = @import("registry_test.zig");
-}
 
 fn release(messages: *infra.List(Message)) void {
     for (messages.toSliceMut()) |*message| message.deinit(allocator);

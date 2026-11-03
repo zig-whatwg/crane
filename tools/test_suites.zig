@@ -51,6 +51,34 @@ pub fn dirsWithTests(allocator: std.mem.Allocator, io: std.Io, tests: std.Io.Dir
     return found.toOwnedSlice(allocator);
 }
 
+/// The test files directly in `tests` (opened with iteration), as
+/// "<prefix>/<name>", sorted. No suite collects one: a suite is a directory,
+/// so a test file has to live in one (tests/<dir>/) to be compiled - sixteen
+/// sat at the top of tests/ compiled by nothing, some since 2025-11, until
+/// lane testfix2 (docs/lessons/testing-a-test-file-at-the-top-of-tests-is-
+/// never-built.md). Free with `freeList`.
+pub fn topLevelTestFiles(allocator: std.mem.Allocator, io: std.Io, tests: std.Io.Dir, prefix: []const u8) ![][]u8 {
+    var found: std.ArrayList([]u8) = .empty;
+    // Deferred first, so it runs last: the strings go before the list.
+    defer found.deinit(allocator);
+    errdefer freeList(allocator, found.items);
+
+    var it = tests.iterate();
+    while (try it.next(io)) |entry| {
+        if (entry.kind != .file) continue;
+        if (!isTestFile(entry.name)) continue;
+        const path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ prefix, entry.name });
+        errdefer allocator.free(path);
+        try found.append(allocator, path);
+    }
+    std.mem.sort([]u8, found.items, {}, struct {
+        fn lessThan(_: void, a: []u8, b: []u8) bool {
+            return std.mem.lessThan(u8, a, b);
+        }
+    }.lessThan);
+    return found.toOwnedSlice(allocator);
+}
+
 /// The entries of `dirs` that `suites` lacks, in `dirs`' order. A trailing
 /// "/" on either side does not count. The slice is the caller's to free;
 /// its strings are `dirs`'.
@@ -147,6 +175,43 @@ test "the directories with a test file at any depth, sorted; not the WPT checkou
     try testing.expectEqual(@as(usize, 2), found.len);
     try testing.expectEqualStrings("tests/alpha", found[0]);
     try testing.expectEqualStrings("tests/zeta", found[1]);
+}
+
+test "the test files directly in tests/, sorted: not those in a directory, not other files" {
+    const io = testing.io;
+    var tmp = testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(io, .{ .sub_path = "zeta_test.zig", .data = "test {}\n" });
+    try tmp.dir.writeFile(io, .{ .sub_path = "alpha_test.zig", .data = "test {}\n" });
+    // Not test files: a fixture, the suffix alone, a renamed-away test.
+    try tmp.dir.writeFile(io, .{ .sub_path = "helper.zig", .data = "" });
+    try tmp.dir.writeFile(io, .{ .sub_path = "_test.zig", .data = "" });
+    try tmp.dir.writeFile(io, .{ .sub_path = "old_test.zig.skip", .data = "" });
+    // In a directory: its suite's.
+    try tmp.dir.createDirPath(io, "dom");
+    try tmp.dir.writeFile(io, .{ .sub_path = "dom/x_test.zig", .data = "test {}\n" });
+    // A directory whose name looks like a test file is not a file.
+    try tmp.dir.createDirPath(io, "odd_test.zig");
+
+    const found = try topLevelTestFiles(testing.allocator, io, tmp.dir, "tests");
+    defer {
+        freeList(testing.allocator, found);
+        testing.allocator.free(found);
+    }
+    try testing.expectEqual(@as(usize, 2), found.len);
+    try testing.expectEqualStrings("tests/alpha_test.zig", found[0]);
+    try testing.expectEqualStrings("tests/zeta_test.zig", found[1]);
+}
+
+test "no test file directly in tests/: an empty list" {
+    const io = testing.io;
+    var tmp = testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+    try tmp.dir.createDirPath(io, "infra");
+    try tmp.dir.writeFile(io, .{ .sub_path = "infra/y_test.zig", .data = "test {}\n" });
+    const found = try topLevelTestFiles(testing.allocator, io, tmp.dir, "tests");
+    defer testing.allocator.free(found);
+    try testing.expectEqual(@as(usize, 0), found.len);
 }
 
 test "dirsWithTests frees what it made when an allocation fails" {

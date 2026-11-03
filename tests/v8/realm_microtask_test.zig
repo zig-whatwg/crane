@@ -291,19 +291,22 @@ test "run, dropped by the realm's end, or dropped with the queue: no global hand
     var ends: [3]Continuation = .{ .{}, .{}, .{} };
     try round(&ends);
     collect();
+    // The agent's own global handles - a weak record's handle among them -
+    // not the process's live weak records, which every Browser of the
+    // process moves (beside the many-Browsers variant's busy Browser they
+    // moved while this measured: docs/lessons/testing-a-test-that-measures-
+    // a-process-wide-counter-assumes-it-is-alone.md).
     const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
-    const records_before = ffi.v8_Debug_LiveWeakCallbackData();
     const rounds = 16;
     for (0..rounds) |_| try round(&ends);
     collect();
     const after = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
-    const records_after = ffi.v8_Debug_LiveWeakCallbackData();
     for (ends) |end| try std.testing.expectEqual(@as(usize, rounds + 1), end.total());
     try std.testing.expectEqual(@as(usize, rounds + 1), ends[0].fulfilled);
     try std.testing.expectEqual(@as(usize, rounds + 1), ends[1].dropped);
     try std.testing.expectEqual(@as(usize, rounds + 1), ends[2].dropped);
-    if (after > before or records_after > records_before) {
-        std.debug.print("global handles {d} -> {d} bytes, weak records {d} -> {d}, over {d} rounds\n", .{ before, after, records_before, records_after, rounds });
+    if (after > before) {
+        std.debug.print("the agent's global handles {d} -> {d} bytes over {d} rounds\n", .{ before, after, rounds });
         return error.HandlesLeaked;
     }
 }
