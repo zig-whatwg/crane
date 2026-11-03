@@ -40,7 +40,16 @@
 //!   Browsers, and scopes tests made for themselves.
 //! - `runtime.standalone_runtime` and `runtime.standalone_objects`: whether
 //!   the standalone runtime runs, and how many platform objects its slab
-//!   holds - documents and nodes made outside any Browser among them.
+//!   holds - documents and nodes made outside any Browser among them. The
+//!   standalone runtime is what the process start makes only in a suite whose
+//!   test start makes it (`suite.standalone_runtime`, build.zig's
+//!   StandaloneRuntime: tests-v8's test_process.start); everywhere else each
+//!   test makes and ends its own, so it is held - a test that leaves one
+//!   fails by name, instead of every later test that makes and ends its own,
+//!   replaces it, and ends with none (lane testfix3: two tests/html files
+//!   left one, and 8 later tests failed ORDER-DEPENDENT with
+//!   `runtime.standalone_runtime: 1 -> 0` and `runtime.browsers: N -> N+1`,
+//!   the replaced scope still alive).
 //! - `engine.<counter>` (the engine's diagnostics tier, where the executable
 //!   links the engine): live agents (each with its realms), live Global
 //!   handles by kind, the wrapper-cache entries of this thread, V8's global
@@ -180,16 +189,24 @@ pub fn compare(initial: *const Digest, before_d: *const Digest, after_d: *const 
 }
 
 /// The process's start-up phase (dom.process_start). What the start makes -
-/// hooks, the standalone runtime - may appear in a test that left the
-/// process running, or not started at all: a unit test with no Browser
-/// installs the hooks for itself (`interfaces.process_hooks.startHooksForTest`,
-/// the sanctioned test start). Never with a start left `starting` or an
-/// `ended` process, which every later test of the process inherits.
+/// hooks, and the standalone runtime where the suite's start makes it - may
+/// appear in a test that left the process running, or not started at all: a
+/// unit test with no Browser installs the hooks for itself
+/// (`interfaces.process_hooks.startHooksForTest`, the sanctioned test start).
+/// Never with a start left `starting` or an `ended` process, which every
+/// later test of the process inherits.
 const phase_field = "process_start.phase";
 
 /// Hook overrides not yet restored (dom.process_start.outstandingOverrides):
 /// every test gives back each override it makes (hook.zig).
 const overrides_field = "process_start.outstanding_overrides";
+
+/// How `runtime.standalone_runtime` compares: what the process start makes
+/// where the suite's test start makes it, held everywhere else.
+const standalone_kind: Kind = switch (suite.standalone_runtime) {
+    .process_start => .start,
+    .per_test => .held,
+};
 
 /// A field that is left out when its subject is not there - the standalone
 /// runtime's objects when it does not run - reads as 0 then.
@@ -209,7 +226,7 @@ pub fn take(d: *Digest) void {
         const standalone = runtime.BrowserScope.standalone();
         const scopes: i64 = @intCast(runtime.BrowserScope.liveCount());
         d.put("runtime.browsers", .held, .{ .int = scopes - @intFromBool(standalone != null) });
-        d.put("runtime.standalone_runtime", .start, .{ .int = @intFromBool(standalone != null) });
+        d.put("runtime.standalone_runtime", standalone_kind, .{ .int = @intFromBool(standalone != null) });
         if (standalone) |scope| {
             d.put("runtime.standalone_objects", .held, .{ .int = @intCast(scope.slab.stats().currently_allocated) });
         }
