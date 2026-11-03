@@ -56,7 +56,7 @@ them.
    ```
 
 2. Record the full SHA and its commit date above.
-3. Regenerate from both sources in one invocation (see AGENTS.md, "WebIDL codegen"). If codegen
+3. Regenerate from both sources in one invocation (see src/webidl/AGENTS.md, "WebIDL codegen"). If codegen
    stops with "duplicate definition of X", a name is now defined in more than one file: find
    webref's `curated` branch commit "Curated data generated from raw data at <sha>", read
    `ed/idlnamesparsed/X.json` (`defined.href` names the defining spec) and add X to `definers` in

@@ -314,7 +314,7 @@ not wake waits for the next timer: look for timeouts that move by a timer interv
 
 **Tests**: a tests/runtime test - a post from another thread ends a 10 s wait within 5 ms; a deadline
 ends it on time. Timers x3 (`./zig-out/bin/wpt_runner html/webappapis/timers/ --parallel=3`, crash
-counts, and a same-list comparison for any sweep-only crash per AGENTS.md); a full worklist sweep A/B
+counts, and a same-list comparison for any sweep-only crash per tests/AGENTS.md); a full worklist sweep A/B
 against main (every file's timing moves).
 
 ### 2d. The blocking paths
