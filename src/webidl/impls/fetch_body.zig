@@ -1051,7 +1051,10 @@ const PipeStream = struct {
 const boundary_len = 38;
 
 extern "c" fn getentropy(buf: [*]u8, len: usize) c_int;
-threadlocal var boundary_counter: u64 = 0;
+/// The seed of the boundary's fallback generator, when getentropy fails:
+/// a new one for every boundary.
+// process-wide: a seed counter whose only property is that it differs between calls; written with an atomic fetch-add from every thread that encodes a form, it carries no state of any instance.
+var boundary_counter: std.atomic.Value(u64) = .init(0);
 
 /// A multipart/form-data boundary string: "----formdata-crane-" and 19
 /// random alphanumerics. HTML leaves the string to the user agent; it must
@@ -1066,8 +1069,8 @@ fn multipartBoundary() [boundary_len]u8 {
     // is enough if it fails.
     var random: [boundary_len - prefix.len]u8 = undefined;
     if (getentropy(&random, random.len) != 0) {
-        boundary_counter +%= 0x9E3779B97F4A7C15;
-        var fallback = std.Random.DefaultPrng.init(boundary_counter);
+        const seed = boundary_counter.fetchAdd(0x9E3779B97F4A7C15, .monotonic) +% 0x9E3779B97F4A7C15;
+        var fallback = std.Random.DefaultPrng.init(seed);
         fallback.random().bytes(&random);
     }
     for (out[prefix.len..], random) |*c, r| c.* = alphabet[r % alphabet.len];

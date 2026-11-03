@@ -908,10 +908,6 @@ pub extern fn v8_Debug_ObjSrc(i: c_int) i64;
 /// `v8_Isolate_GetGlobalHandleBytes`, which every build has.
 pub extern fn v8_Debug_CreatedGlobals() i64;
 
-/// Read slot `index` of the Global-creation site histogram. Returns false past the
-/// end. Keyed on the caller's return address; resolve with `atos`.
-pub extern fn v8_Debug_GlobalSite(index: c_int, pc: ?*usize, count: ?*i64) bool;
-
 pub extern fn v8_Isolate_GetHeapUsage(
     isolate: *Isolate,
     used: ?*usize,

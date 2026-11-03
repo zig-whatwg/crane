@@ -309,11 +309,24 @@ pub const CleanupStats = struct {
 // Thread-local Coordinator Storage
 // ============================================================================
 
-/// Thread-local storage for the active cleanup coordinator
-/// Each thread (V8 isolate) has its own coordinator
-/// `pub` only so the Crane test runner's fixture (tests/test_runner_fixture)
-/// can leave it changed; nothing else may name it. It moves when the
-/// coordinator becomes per agent (lane engown1's queue).
+/// The coordinated teardown running on this thread's stack, if any: a realm's
+/// or an agent's end (context_manager) sets it around its phases and puts
+/// back the one it replaced, so a teardown nested in another's restores the
+/// outer one. While it is set, what the collector and the owners release
+/// (gc_integration.releaseOwned and releaseSevered, the wrapper cache's
+/// sweeps) defers its storage until that teardown's last phase.
+///
+/// Its owner is the call stack, not an agent or a realm: two agents on one
+/// thread only nest, and a release must defer to whichever teardown encloses
+/// it - an object of another realm, freed mid-teardown, included (the
+/// nested-coordinator bug, tests/v8/cleanup_coordinator_nested_test.zig).
+/// The readers are the collector's paths, which make no engine call, so it
+/// cannot be found through the isolate either. Blink keeps the same kind of
+/// call-scoped state per thread (ThreadState's GC and sweep flags,
+/// ScriptForbiddenScope). Written only through `setActiveCoordinator`;
+/// `pub` only so the Crane test runner's digest (tests/test_runner/
+/// globals.zig, which reads pub declarations) sees a test that leaves it set.
+// per-thread: a call-stack extent - the coordinated teardown running on this thread's stack, set and restored around its phases (nested teardowns restore the outer one); read by the collector's release paths on the same thread, which make no engine call.
 pub threadlocal var active_coordinator: ?*CleanupCoordinator = null;
 
 /// Set the active coordinator for this thread

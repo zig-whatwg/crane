@@ -839,13 +839,33 @@ read it before adding state.
 2. **A hook is installed once, at process start**, from its owner's `installHooks()` - never lazily
    in `init`, never on first use, never by making a throwaway object.
 3. **Checked by `zig build lint-global-state`** (part of `zig build test`;
-   tools/lint_global_state.zig) against `tools/global_state_baseline.txt`, per file and qualified
-   name. A count that rises fails, a key the baseline lacks fails, and the baseline only goes down
-   (`-- --update` records a lower count). Two narrow exceptions, both reviewed at merge: a NEW key
-   whose declaration has a `// process-wide: <why>` line directly above it (state that genuinely
-   is one per process - say why it holds with many instances on many threads), and
-   `-- --rename '<old>' '<new>'` for a same-file rename with the same kind, declaration and count.
-   Never edit the baseline by hand. Report its total beside the engine-boundary total.
+   tools/lint_global_state.zig) as a HARD rule (lane gstate4, 2026-11-03): every container-level
+   `var` and `threadlocal` in src/ (function statics included) and every C++ global and
+   `thread_local` is one of three things, and anything else fails:
+   - **a hook slot** - `var x: Hook(T) = .init(..)`, `Hook` from the hook module
+     (`@import("dom").Hook`, `@import("process").Hook` or `.hook.Hook`, `@import("hook.zig").Hook`
+     inside src/dom and src/process). Its type is the rule (frozen after the process start): it
+     needs no marker and no inventory entry. Never `threadlocal`, never in src/webidl/impls/, never
+     its `value`/`overrides` assigned or taken by address - write through `install()`,
+     `installing()` or `overrideForTest()`;
+   - **reviewed process state** - a container-level `var` or C++ global with a
+     `// process-wide: <why>` line directly above it: state that genuinely is one per process.
+     Say why it holds with many instances on many threads, and how writes from several threads
+     are safe - atomic, lock or init-once (an id counter whose only property is uniqueness, a
+     diagnostic count, V8's platform);
+   - **reviewed per-thread state** - a `threadlocal` or C++ `thread_local` with a
+     `// per-thread: <why>` line directly above it: state whose owner is the thread. Say what
+     makes the thread the right scope - a call-stack extent (what runs on this thread's stack
+     now), an engine's own thread-local. Rare: a threadlocal is never per instance or per tab.
+   A marker on the wrong kind fails, and so does a broken hook slot. `tools/global_state_baseline.txt`
+   is the INVENTORY - every variable with its class, which the Crane test runner's digest reads -
+   not a debt list: a reviewed variable new to it fails until `-- --update` records it (the
+   integrator reviews each at merge), and `-- --update` refuses unmarked and misplaced ones.
+   `-- --rename '<old>' '<new>'` records a same-file rename with the same kind, declaration and
+   count. Never edit the file by hand. Until lane hookfreeze2 has converted the last registration
+   lists, keys the inventory already records may stay unmarked (`recorded_debt_allowed` in the
+   tool; the integrator turns it off). Report the total and the tool's `by rule:` line beside the
+   engine-boundary total.
 
 ---
 

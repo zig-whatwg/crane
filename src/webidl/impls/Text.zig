@@ -31,11 +31,6 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
-/// Static sentinel for representing "undefined" return values.
-/// Used instead of null to provide a valid pointer that represents
-/// undefined/empty results from operations that return *const anyopaque.
-var undefined_sentinel: u8 = 0;
-
 /// Internal state for Text implementation
 /// Text primarily uses CharacterData's data storage via inheritance
 /// Additional Text-specific state can be added here

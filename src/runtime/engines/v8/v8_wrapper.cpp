@@ -83,6 +83,7 @@ struct PlatformStart {
     /// its process runs with.
     int64_t flag_writes = 0;
 };
+// process-wide: V8's platform - V8::InitializePlatform once per process, never again after V8::Dispose; its start, flags and end are ordered by its own mutex, and `started` is read with acquire.
 static PlatformStart g_platform;
 
 // ============================================================================
@@ -98,6 +99,7 @@ static PlatformStart g_platform;
 // 2. Before calling CreateBlob(), call v8_Snapshot_ClearGlobalHandles() to reset them all
 // 3. This allows V8 to serialize the heap without complaining about Global handles
 
+// process-wide: true only in the snapshot generator (a process of its own, one isolate, one thread), set and cleared by its v8_Snapshot_* calls before and after it builds the blob; every other process reads false.
 static bool g_snapshot_mode = false;
 
 // We store void* pointers along with type-specific reset functions
@@ -105,6 +107,7 @@ struct GlobalHandleEntry {
     void* handle;
     void (*reset_fn)(void*);
 };
+// process-wide: the snapshot generator's outstanding Globals (g_snapshot_mode), written only while it is on - in its process of its own, on its one thread.
 static std::vector<GlobalHandleEntry> g_snapshot_handles;
 
 // Defined with the weak-callback machinery below. Deleting a Global that still
@@ -176,6 +179,7 @@ static void resetGlobalHandle(void* ptr) {
 // covers nearly all of them. Each is a C++ heap allocation AND a slot in V8's
 // global handle table - and the table is not part of `used_heap_size`, which is
 // why a leak here reads as flat V8 heap and climbing RSS.
+// process-wide: a diagnostic count over every isolate of the process (std::atomic, relaxed), read by gc_bench, the WPT runner's per-file deltas and tests that hold the process to themselves (lesson testing-a-test-that-measures-a-process-wide-counter-assumes-it-is-alone); it carries no state any instance reads.
 std::atomic<int64_t> g_live_globals{0};
 
 // extern "C" explicitly: this sits above the file's main extern "C" block, so
@@ -184,16 +188,9 @@ extern "C" int64_t v8_Debug_CreatedGlobals() {
     return g_live_globals.load(std::memory_order_relaxed);
 }
 
-// Where the live handles were created, so the leak can be named rather than
-// counted. Keyed on the caller's return address; a fixed table because this runs
-// on every handle creation and must not allocate.
-static constexpr int kGlobalSiteSlots = 512;
-static std::atomic<uintptr_t> g_site_pc[kGlobalSiteSlots];
-static std::atomic<int64_t> g_site_count[kGlobalSiteSlots];
-
 // OFF unless -DCRANE_TRACK_GLOBALS=1. This runs on EVERY handle creation, and an
-// atomic increment plus a hash probe on that path is a real cost to pay in a
-// browser for a number only the memory benchmark reads.
+// atomic increment on that path is a real cost to pay in a browser for a
+// number only the memory benchmark reads.
 #ifndef CRANE_TRACK_GLOBALS
 #define CRANE_TRACK_GLOBALS 0
 #endif
@@ -215,6 +212,7 @@ static std::atomic<int64_t> g_site_count[kGlobalSiteSlots];
 // does not matter, and an unmarked handle costs one load. A registry of
 // pointers did the same exactly and cost gc_bench 10-20% on string-heavy
 // bodies (a lock and a hash probe on every dispose).
+// process-wide: a diagnostic count over every isolate of the process (std::atomic, relaxed), read by gc_bench, the WPT runner's per-file deltas and tests that hold the process to themselves (lesson testing-a-test-that-measures-a-process-wide-counter-assumes-it-is-alone); it carries no state any instance reads.
 static std::atomic<int64_t> g_live_string_globals{0};
 
 // Nothing else in Crane assigns wrapper class ids.
@@ -243,6 +241,7 @@ static void rememberStringHandle(Global<String>* handle) {
 // handle can reach reads the mark back, whatever type it is released as.
 // A weak handle V8 collects is no longer live: the weak callback reads the
 // mark before it resets the node.
+// process-wide: a diagnostic count over every isolate of the process (std::atomic, relaxed), read by gc_bench, the WPT runner's per-file deltas and tests that hold the process to themselves (lesson testing-a-test-that-measures-a-process-wide-counter-assumes-it-is-alone); it carries no state any instance reads.
 static std::atomic<int64_t> g_live_object_globals{0};
 
 static constexpr uint16_t kCountedObjectClassId = 0x4F42;  // "OB"
@@ -268,53 +267,12 @@ static void forgetCountedHandle(Global<T>* handle) {
 #endif
 }
 
-static void recordGlobalSite(uintptr_t pc) {
-#if !CRANE_TRACK_GLOBALS
-    (void)pc;
-    return;
-#else
-    size_t h = (pc >> 4) % kGlobalSiteSlots;
-    for (int probe = 0; probe < 16; ++probe) {
-        size_t i = (h + probe) % kGlobalSiteSlots;
-        uintptr_t cur = g_site_pc[i].load(std::memory_order_relaxed);
-        if (cur == pc) { g_site_count[i].fetch_add(1, std::memory_order_relaxed); return; }
-        if (cur == 0) {
-            uintptr_t expected = 0;
-            if (g_site_pc[i].compare_exchange_strong(expected, pc)) {
-                g_site_count[i].fetch_add(1, std::memory_order_relaxed);
-                return;
-            }
-            if (g_site_pc[i].load(std::memory_order_relaxed) == pc) {
-                g_site_count[i].fetch_add(1, std::memory_order_relaxed);
-                return;
-            }
-        }
-    }
-    // Table full or heavily contended: drop the sample rather than block.
-#endif
-}
-
-/// Read back the Nth busiest creation site. Returns false when `rank` is past the
-/// end. Sorting happens on the caller's side; this just exposes the raw table.
-extern "C" bool v8_Debug_GlobalSite(int index, uintptr_t* pc, int64_t* count) {
-    if (index < 0 || index >= kGlobalSiteSlots) return false;
-    if (pc) *pc = g_site_pc[index].load(std::memory_order_relaxed);
-    if (count) *count = g_site_count[index].load(std::memory_order_relaxed);
-    return true;
-}
-
 template <typename T>
 static Global<T>* trackHandle(Global<T>* handle) {
     if (handle) {
         if constexpr (std::is_same_v<T, Object>) rememberObjectHandle(handle);
 #if CRANE_TRACK_GLOBALS
         g_live_globals.fetch_add(1, std::memory_order_relaxed);
-        // Frame 0 - inside the `v8_*` wrapper, so this attributes by WHICH V8 entry
-        // point allocated. Frame 1 would name the Zig caller instead, but there are
-        // more distinct Zig call sites than the 512-slot table holds, and the counts
-        // spread too thin to rank. Entry-point attribution plus a targeted read of
-        // the hot path has been the more useful pair.
-        recordGlobalSite(reinterpret_cast<uintptr_t>(__builtin_return_address(0)));
         if constexpr (std::is_same_v<T, String>) rememberStringHandle(handle);
 #endif
     }
@@ -479,7 +437,7 @@ static std::unordered_set<WeakCallbackData*>& detachedWeakData() {
 /// too, so each thread's isolates keep their own (Browsers and workers run on
 /// threads of their own).
 static std::unordered_map<const void*, WeakCallbackData*>& pendingFinalizers() {
-    // process-wide: thread_local - each thread's isolates' pending finalizers, read and written only on the thread that runs those isolates' callbacks.
+    // per-thread: V8 runs an isolate's weak callbacks, both passes, on the thread that holds the isolate - each thread's isolates' pending finalizers, read and written only on that thread.
     static thread_local std::unordered_map<const void*, WeakCallbackData*> map;
     return map;
 }
@@ -487,7 +445,7 @@ static std::unordered_map<const void*, WeakCallbackData*>& pendingFinalizers() {
 /// How deep this thread is in first-pass weak callbacks: what
 /// v8_Debug_InFirstPassWeakCallback reads, so a test can tell that a finalizer
 /// ran outside the collection.
-// process-wide: thread_local - whether THIS thread is inside V8's first-pass weak callbacks (a diagnostic for tests).
+// per-thread: a call-stack extent - whether V8's first-pass weak callbacks are running on this thread's stack (a diagnostic for tests).
 static thread_local int g_first_pass_depth = 0;
 
 extern "C" bool v8_Debug_InFirstPassWeakCallback() {
@@ -499,6 +457,7 @@ extern "C" bool v8_Debug_InFirstPassWeakCallback() {
 /// Cheap enough to leave always on, unlike `CRANE_TRACK_GLOBALS` - it moves once
 /// per weak arm, not once per handle creation, and arming is already doing a V8
 /// global-handle write.
+// process-wide: a diagnostic count over every isolate of the process (std::atomic, relaxed), read by gc_bench, the WPT runner's per-file deltas and tests that hold the process to themselves (lesson testing-a-test-that-measures-a-process-wide-counter-assumes-it-is-alone); it carries no state any instance reads.
 static std::atomic<int64_t> g_live_weak_callback_data{0};
 
 extern "C" int64_t v8_Debug_LiveWeakCallbackData() {
@@ -2907,6 +2866,7 @@ void v8_Isolate_Exit(Isolate* isolate) {
 // cannot distinguish "created 6 per element and released 6" from "created 6 and
 // released none" - and for strings the cumulative number turned out to be almost
 // entirely startup, which made a 4-per-element leak look real when there was none.
+// process-wide: a diagnostic count over every isolate of the process (std::atomic, relaxed), read by gc_bench, the WPT runner's per-file deltas and tests that hold the process to themselves (lesson testing-a-test-that-measures-a-process-wide-counter-assumes-it-is-alone); it carries no state any instance reads.
 static std::atomic<int64_t> g_live_context_globals{0};
 
 // Live Global<Object> handles: g_live_object_globals, kept by handle with the
@@ -2920,6 +2880,7 @@ extern "C" int64_t v8_Debug_LiveObjectGlobals() {
 // Per-entry-point creation counts. The aggregate says one Global<Object> leaks
 // per element but not WHICH of the six mints it, and they all allocate at about
 // the same rate, so the aggregate alone cannot separate them.
+// process-wide: a diagnostic count over every isolate of the process (std::atomic, relaxed), read by gc_bench, the WPT runner's per-file deltas and tests that hold the process to themselves (lesson testing-a-test-that-measures-a-process-wide-counter-assumes-it-is-alone); it carries no state any instance reads.
 static std::atomic<int64_t> g_obj_src[6];
 
 extern "C" int64_t v8_Debug_ObjSrc(int i) {
@@ -3015,6 +2976,7 @@ size_t v8_Isolate_GetGlobalHandleBytes(Isolate* isolate) {
 // snapshot is being built get no id: a snapshot must not carry pointer
 // embedder data, and nothing compacts during generation.
 static constexpr int kCraneContextIdIndex = 1;
+// process-wide: an id counter whose only property is uniqueness in the process (an id is compared only as a key of its agent's realm registry); every agent's thread draws from it with an atomic fetch-add, and it carries no state of any instance.
 static std::atomic<uintptr_t> g_next_context_id{1};
 
 /// `ctx`'s Crane id (v8_Context_GetRawAddress), given it on first use.
@@ -9705,6 +9667,7 @@ Global<Context>* v8_Context_NewFromSnapshotAtWithMicrotaskQueue(
 /// @return New fresh context, or nullptr on failure
 /// Recursion guard for Context::NewWithMicrotaskQueue
 /// This prevents crashes when ShadowRealm callback triggers context creation
+// per-thread: a call-stack extent - whether v8_Context_NewWithMicrotaskQueue is running on this thread's stack (a context made inside it, from a ShadowRealm callback, takes the plain path); set and cleared around the call on the same thread.
 static thread_local bool g_in_context_new = false;
 
 Global<Context>* v8_Context_NewWithMicrotaskQueue(
@@ -12648,6 +12611,7 @@ struct ProtocolResolver {
 /// graph's static imports synchronously inside InstantiateModule, with a
 /// callback that carries no data, so the Link passes its resolver here; a
 /// nested Link (from inside a resolve) saves and restores it.
+// per-thread: a call-stack extent - the resolver of the Link running on this thread's stack (V8's ResolveModuleCallback carries no data), saved and restored around each Link, nested ones included.
 static thread_local ProtocolResolver* t_protocol_resolver = nullptr;
 
 static MaybeLocal<Module> ProtocolResolveModuleCallback(

@@ -117,53 +117,6 @@ pub const WrapperTypeInfo = struct {
     }
 };
 
-/// Global registry of all WrapperTypeInfo instances
-/// Allows looking up type info by tag (for debugging/reflection)
-pub const TypeRegistry = struct {
-    /// Map from tag to WrapperTypeInfo
-    by_tag: std.AutoHashMap(TypeTag, *const WrapperTypeInfo),
-    /// Map from name to WrapperTypeInfo
-    by_name: std.StringHashMap(*const WrapperTypeInfo),
-    /// Allocator for the maps
-    allocator: std.mem.Allocator,
-
-    pub fn init(allocator: std.mem.Allocator) TypeRegistry {
-        return .{
-            .by_tag = std.AutoHashMap(TypeTag, *const WrapperTypeInfo).init(allocator),
-            .by_name = std.StringHashMap(*const WrapperTypeInfo).init(allocator),
-            .allocator = allocator,
-        };
-    }
-
-    pub fn deinit(self: *TypeRegistry) void {
-        self.by_tag.deinit();
-        self.by_name.deinit();
-    }
-
-    pub fn register(self: *TypeRegistry, info: *const WrapperTypeInfo) !void {
-        try self.by_tag.put(info.this_tag, info);
-        try self.by_name.put(info.getName(), info);
-    }
-
-    pub fn getByTag(self: *const TypeRegistry, tag: TypeTag) ?*const WrapperTypeInfo {
-        return self.by_tag.get(tag);
-    }
-
-    pub fn getByName(self: *const TypeRegistry, name: []const u8) ?*const WrapperTypeInfo {
-        return self.by_name.get(name);
-    }
-};
-
-/// Global type registry singleton
-var global_registry: ?TypeRegistry = null;
-
-pub fn getGlobalRegistry() *TypeRegistry {
-    if (global_registry == null) {
-        global_registry = TypeRegistry.init(std.heap.page_allocator);
-    }
-    return &global_registry.?;
-}
-
 // ============================================================================
 // V8 Object Wrapping/Unwrapping
 // ============================================================================

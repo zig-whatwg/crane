@@ -77,9 +77,18 @@ pub const ExternalRef = struct {
     name: []const u8 = "", // For debugging
 };
 
-/// Dynamic collection for runtime registration
-/// Used as a fallback when comptime collection isn't possible
+/// The process's external reference table, null-terminated at
+/// `runtime_ref_count`: what V8 resolves a snapshot's callbacks against, by
+/// index. Filled by `registerAllExternalReferences` - the engine's start
+/// (protocol_agents.initializeEngine, through usableSnapshot) or the snapshot
+/// generator - while no isolate exists, and only read after: every isolate
+/// is made with a pointer to it (V8's CreateParams::external_references,
+/// "must outlive the isolate"). It was written on every isolate's creation
+/// too (the terminator, from whichever thread made the isolate); the
+/// terminator is now written with each registration.
+// process-wide: V8's external reference table - one per process, because the process's one snapshot names every callback by its index in it and every isolate restores against it; written only by the engine's start (or the snapshot generator) while no isolate exists, read-only while any isolate lives.
 var runtime_refs: [MAX_EXTERNAL_REFS]isize = @as([MAX_EXTERNAL_REFS]isize, @splat(0));
+// process-wide: the length of V8's external reference table (runtime_refs); written with it by the engine's start while no isolate exists, read-only after.
 var runtime_ref_count: usize = 0;
 
 /// Register a callback at runtime
@@ -108,12 +117,14 @@ pub fn registerCallbackRuntime(callback: v8.FunctionCallback) void {
 pub fn registerPointer(ptr: usize) void {
     const ptr_value: isize = @intCast(ptr);
 
-    if (runtime_ref_count >= MAX_EXTERNAL_REFS) {
+    // One slot stays for the terminator.
+    if (runtime_ref_count + 1 >= MAX_EXTERNAL_REFS) {
         std.debug.panic("Too many external references - increase MAX_EXTERNAL_REFS", .{});
     }
 
     runtime_refs[runtime_ref_count] = ptr_value;
     runtime_ref_count += 1;
+    runtime_refs[runtime_ref_count] = 0; // null-terminate
 }
 
 /// Register a callback at comptime
@@ -137,21 +148,23 @@ pub fn getRuntimeCount() usize {
     return runtime_ref_count;
 }
 
-/// Get runtime external references array (null-terminated)
+/// Get runtime external references array (null-terminated). Reads only:
+/// the table is terminated as it is filled.
 pub fn getRuntimeExternalReferences() []const isize {
-    runtime_refs[runtime_ref_count] = 0; // null-terminate
     return runtime_refs[0 .. runtime_ref_count + 1];
 }
 
-/// Get a raw pointer to runtime external references
+/// Get a raw pointer to runtime external references (null-terminated).
+/// Reads only - every isolate's creation asks for it, from any thread.
 pub fn getRuntimeExternalReferencesPtr() [*]const isize {
-    runtime_refs[runtime_ref_count] = 0;
     return &runtime_refs;
 }
 
-/// Clear all runtime registrations (for testing)
+/// Empty the table, before it is filled again (the engine's start, with no
+/// isolate alive).
 pub fn clearRuntimeReferences() void {
     runtime_ref_count = 0;
+    runtime_refs[0] = 0;
 }
 
 /// Verify that a callback is registered at runtime

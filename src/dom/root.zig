@@ -149,6 +149,9 @@ pub const blob_partition = @import("blob_partition.zig");
 /// The fetches of a realm's agent, which its event loop pumps.
 pub const agent_fetches = @import("agent_fetches.zig");
 pub const agent_hosts = @import("agent_hosts.zig");
+/// A Browser's lists of its live intersection observers, Navigation objects
+/// and ProcessingInstructions, found from any object's address.
+pub const browser_object_lists = @import("browser_object_lists.zig");
 /// The CookieStores that hear their Browser's cookie jar, on any thread.
 pub const cookie_change_listeners = @import("cookie_change_listeners.zig");
 /// The Performance Timeline: each global's entry buffers and registered
