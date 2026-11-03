@@ -25,7 +25,15 @@
 //! Browser's thread and each of its workers' (docs/instances.md) - so `alloc`,
 //! `free` and `stats` take `mutex`. `generationOf` and the lifecycle flags
 //! read one slot without it: a holder only ever asks about an object of its
-//! own thread, which no other thread frees.
+//! own thread, which no other thread frees. But any thread REISSUES a slot
+//! once its own thread has freed it - the free list is the Browser's, and LIFO,
+//! so the next allocation on any thread takes the slot just freed. So the
+//! stamp is read and written atomically (a holder asking "is it still mine?"
+//! about a slot it freed races the reissue), and a holder reads nothing else
+//! of a slot - its Instance, its node, its state - unless the stamp is still
+//! the generation it recorded (lane tsanfix1: a worker's wrapper cache freed
+//! an instance and then read its slot while the window thread reissued it,
+//! ThreadSanitizer, docs/testing/test-variant-findings-2026-11-02.tsv F2).
 
 const std = @import("std");
 const Instance = @import("instance.zig").Instance;
@@ -51,7 +59,16 @@ pub const SlabAllocator = struct {
         ///
         /// The flags survive the free (a teardown still asks whether a freed
         /// node's cleanup ran) and are cleared when the slot is issued again.
+        /// Atomic (`loadStamp`, `storeStamp`): the module's thread safety note.
         stamp: u64,
+
+        fn loadStamp(self: *const Slot) u64 {
+            return @atomicLoad(u64, &self.stamp, .monotonic);
+        }
+
+        fn storeStamp(self: *Slot, value: u64) void {
+            @atomicStore(u64, &self.stamp, value, .monotonic);
+        }
 
         /// Get this slot as an Instance pointer
         fn asInstance(self: *Slot) *Instance {
@@ -91,7 +108,7 @@ pub const SlabAllocator = struct {
         fn init(self: *Slab, owner: *SlabAllocator) void {
             self.owner = owner;
             // A slot nobody has issued yet reads dead
-            for (&self.slots) |*slot| slot.stamp = dead_generation;
+            for (&self.slots) |*slot| slot.storeStamp(dead_generation);
             // Link all slots together in free list
             var i: usize = 0;
             while (i < SLOTS_PER_SLAB - 1) : (i += 1) {
@@ -207,7 +224,7 @@ pub const SlabAllocator = struct {
     /// Hand `slot` out as a fresh Instance under a generation no earlier
     /// occupant of that address ever carried, with no lifecycle flags.
     fn issue(self: *SlabAllocator, slot: *Slot, vtable: *const VTable) *Instance {
-        slot.stamp = self.next_generation & generation_mask;
+        slot.storeStamp(self.next_generation & generation_mask);
         self.next_generation += 1;
 
         const inst = slot.asInstance();
@@ -228,19 +245,21 @@ pub const SlabAllocator = struct {
     /// its instance.
     pub fn generationOf(inst: *const Instance) u64 {
         const slot: *const Slot = @ptrCast(inst);
-        return slot.stamp & generation_mask;
+        return slot.loadStamp() & generation_mask;
     }
 
     /// The lifecycle flags of the slot holding `inst` (runtime.instance_lifecycle).
     pub fn lifecycleBitsOf(inst: *const Instance) u8 {
         const slot: *const Slot = @ptrCast(inst);
-        return @truncate(slot.stamp >> generation_bits);
+        return @truncate(slot.loadStamp() >> generation_bits);
     }
 
-    /// Set the lifecycle flags of the slot holding `inst`.
+    /// Set the lifecycle flags of the slot holding `inst` - its own thread's
+    /// object, which only that thread frees, so no other thread writes the
+    /// stamp meanwhile.
     pub fn setLifecycleBits(inst: *const Instance, bits: u8) void {
         const slot: *Slot = @ptrCast(@constCast(inst));
-        slot.stamp = (slot.stamp & generation_mask) | (@as(u64, bits) << generation_bits);
+        slot.storeStamp((slot.loadStamp() & generation_mask) | (@as(u64, bits) << generation_bits));
     }
 
     /// Free an Instance (return slot to free list). Its lifecycle flags stay
@@ -249,7 +268,7 @@ pub const SlabAllocator = struct {
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const slot: *Slot = @ptrCast(inst);
-        slot.stamp = (slot.stamp & ~generation_mask) | dead_generation;
+        slot.storeStamp((slot.loadStamp() & ~generation_mask) | dead_generation);
 
         // Add to free list
         slot.setNextFree(self.free_list);

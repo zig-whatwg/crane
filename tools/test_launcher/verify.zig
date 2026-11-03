@@ -137,7 +137,7 @@ pub const Verify = struct {
             _ = v.processes.fetchAdd(1, .monotonic);
             var why: Io.Writer.Allocating = .init(v.gpa);
             defer why.deinit();
-            v.exec.vtable.start(v.exec.ptr, w, &why.writer) catch |err| {
+            v.exec.vtable.start(v.exec.ptr, w, sequence[i..], &why.writer) catch |err| {
                 while (i < sequence.len) : (i += 1) {
                     const msg: []u8 = std.fmt.allocPrint(v.gpa, "launcher: could not start the test process: {s}\n", .{
                         if (why.written().len != 0) why.written() else @errorName(err),
@@ -246,7 +246,7 @@ const Fake = struct {
     fn executor(f: *Fake) sched.Executor {
         return .{ .ptr = f, .vtable = &.{ .start = start, .run = run, .stop = stop } };
     }
-    fn start(ptr: *anyopaque, w: u32, _: *Io.Writer) anyerror!void {
+    fn start(ptr: *anyopaque, w: u32, _: []const u32, _: *Io.Writer) anyerror!void {
         const f: *Fake = @ptrCast(@alignCast(ptr));
         _ = f.starts.fetchAdd(1, .monotonic);
         f.in_process[w] = @splat(0);

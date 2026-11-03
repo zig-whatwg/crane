@@ -272,7 +272,12 @@ pub const Browser = struct {
             .random_seed = if (seeded) random_seed else null,
         }) catch return error.V8InitFailed;
 
-        return initBrowserWithAgent(allocator, agent, agent_host, from_snapshot, config, scope, browser_clock);
+        // What the agent really is: one asked for the snapshot is made without
+        // it while the process's live isolates were made without it (V8 keeps
+        // one read-only heap per process; the engine says so at warn), and
+        // its realms are then made afresh rather than failing a restore each.
+        const restored = engine.agentRestoredFromSnapshot(agent);
+        return initBrowserWithAgent(allocator, agent, agent_host, restored, config, scope, browser_clock);
     }
 
     /// Complete browser initialization with its agent.
