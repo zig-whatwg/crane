@@ -830,8 +830,10 @@ fn recordSuiteDir(b: *std.Build, select: TestSelection, dir: []const u8) void {
 /// Fail the configuration when a tests/<dir>/ holds `*_test.zig` files and no
 /// suite runs them: build.zig compiles a directory's tests only when it names
 /// the directory, so a directory it does not name is silently never compiled
-/// (tests/infra, from 633a1e91df4 to lane flakes2). Run when the whole tree is
-/// configured - no -Dspec, no -Dtest-file - since a selection skips suites.
+/// (tests/infra, from 633a1e91df4 to lane flakes2). And when a `*_test.zig`
+/// sits directly in tests/, where no suite looks (lane testfix2). Run when
+/// the whole tree is configured - no -Dspec, no -Dtest-file - since a
+/// selection skips suites.
 fn checkEveryTestDirectoryIsASuite(b: *std.Build, suite_dirs: []const []const u8) void {
     // A configure-time read of the checkout the configure cache cannot track.
     b.graph.poisonCache();
@@ -842,8 +844,17 @@ fn checkEveryTestDirectoryIsASuite(b: *std.Build, suite_dirs: []const []const u8
     const with_tests = test_suites.dirsWithTests(b.allocator, io, tests_dir, "tests") catch |err|
         std.debug.panic("build.zig: cannot scan tests/ for test files: {s}", .{@errorName(err)});
     const missing = test_suites.missing(b.allocator, with_tests, suite_dirs) catch @panic("OOM");
-    if (missing.len == 0) return;
+    // A test file directly in tests/ is in no directory, so no suite collects
+    // it (lane testfix2: sixteen sat there, compiled by nothing).
+    const top_level = test_suites.topLevelTestFiles(b.allocator, io, tests_dir, "tests") catch |err|
+        std.debug.panic("build.zig: cannot scan tests/ for top-level test files: {s}", .{@errorName(err)});
+    if (missing.len == 0 and top_level.len == 0) return;
     for (missing) |dir| std.debug.print("build.zig: {s}/ holds *_test.zig files that no suite runs\n", .{dir});
+    for (top_level) |file| std.debug.print("build.zig: {s} is directly in tests/, where no suite collects it\n", .{file});
+    if (top_level.len != 0) std.debug.panic(
+        "build.zig: {d} test file{s} directly in tests/ never compiled (listed above): move each into the tests/<dir>/ of its suite",
+        .{ top_level.len, if (top_level.len == 1) "" else "s" },
+    );
     std.debug.panic(
         "build.zig: {d} tests/ director{s} with test files never compiled (listed above): make each a suite with addTestFilesFromDir, or record its hand-made root with recordSuiteDir",
         .{ missing.len, if (missing.len == 1) "y" else "ies" },
@@ -1018,7 +1029,7 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     // each with its reason (`v8_alone`).
     .{ .name = "tests-v8", .config = .{ .batch = 1, .alone = &v8_alone } },
     .{ .name = "src-browser", .config = .{ .batch = 1 } },
-    .{ .name = "test-browser", .config = .{ .batch = 1 } },
+    .{ .name = "tests-browser", .config = .{ .batch = 1 } },
     .{ .name = "lib-exports", .config = .{ .batch = 1 } },
     .{ .name = "tests-codegen", .config = .{ .slow = &codegen_slow } },
 };
@@ -1032,7 +1043,7 @@ const v8_alone = snapshot_first ++ [_]DeclaredTest{
     .{ .name = "async_iterable_release_test.test.an async iterator script drops is collected: values() and for await keep nothing per call", .reason = "TEMPORARY: it compares the process's live weak callback records; measured in its own isolate (global handle bytes against a control round with no iterator) it reads 4 handles left per values() call and 2 per for await - the streams objects its rounds make (the iterator's reader among them), which wrapper_cache.isStreamsGraphObject holds strongly until the realm ends (lane leakcheck1's finding; the streams wrapper lifetime lane) - converted once that is settled" },
     .{ .name = "agents_concurrent_engine_state_test.test.two fresh agents on two threads: for-await, Intl, JSON modules and ObservableArray 200 times at once", .reason = "TEMPORARY: it compares the process's live weak callback records over its two agents' rounds; per isolate, each round's for await makes a stream, and wrapper_cache.isStreamsGraphObject holds a streams object's wrapper strongly until its realm ends (lane leakcheck1's finding; the streams wrapper lifetime lane) - converted once that is settled" },
     .{ .name = "test_process_test.test.a test's agent takes its realms down with it, their context handles too", .reason = "the subject is the process's live Global<Context> count after the agent's end - its isolate is gone, so nothing per isolate is left to read - which the busy Browser's realms move" },
-} ++ ledger_tests ++ v8state1_pending;
+} ++ ledger_tests ++ process_count_subjects;
 
 /// object_global_ledger_test: the subject of each is the adapter's
 /// process-wide live_object_globals ledger itself.
@@ -1070,22 +1081,43 @@ const snapshot_first = [_]DeclaredTest{
     .{ .name = "xw1_exposure_snapshot_test.test.xw1 snapshot Window keeps its scope while workers install their own exposed members", .reason = snapshot_first_reason },
 };
 
-/// TEMPORARY (lane tsanfix1, 2026-11-02): the files whose tests compare
-/// process-wide engine counts the busy Browser moves too
-/// (docs/testing/test-variant-findings-2026-11-02.tsv M2; lane tsanfix1's
-/// -Dmany-browsers run of tests-v8 found more of their tests than tsan1's list
-/// named) - whole files ("<file>.test.", every test of it). Each goes when its
-/// tests read their own isolate's global handle bytes
-/// (ffi.v8_Isolate_GetGlobalHandleBytes) instead, or name the ones whose
-/// subject is the process count itself (queued: lane tsanfix1's handoff).
-const v8state1_pending_reason = "TEMPORARY: its tests compare process-wide v8_Debug_Live* and diagnostic counts; to be converted to the isolate's global handle bytes (lane tsanfix1's handoff)";
-const v8state1_pending = [_]DeclaredTest{
-    .{ .name = "context_counter_test.test.", .reason = v8state1_pending_reason },
-    .{ .name = "indexed_property_semantics_test.test.", .reason = v8state1_pending_reason },
-    .{ .name = "constructor_error_receiver_test.test.", .reason = v8state1_pending_reason },
-    .{ .name = "realm_end_finalize_test.test.", .reason = v8state1_pending_reason },
-    .{ .name = "realm_microtask_test.test.", .reason = v8state1_pending_reason },
-    .{ .name = "refcount_wrapper_link_test.test.", .reason = v8state1_pending_reason },
+/// context_counter_test: the subject of each is the balance of the adapter's
+/// process-wide live_context_globals count itself. The file's other tests
+/// read their own isolate's global handle bytes (lane testfix2).
+const context_count_reason = "the subject is the adapter's process-wide live_context_globals count - every Global<Context> made is counted and every dispose uncounts it - which the busy Browser's realms move too (V8's per-isolate global handle bytes see a leaked context, not a miscounted one)";
+
+/// Tests whose subject is that a binding path makes NO Global for its
+/// receiver: a handle made and disposed leaves the isolate's global handle
+/// bytes as they were, so only the adapter's process-wide creation count per
+/// entry point (object_globals_from.*) sees one (lane testfix2).
+const receiver_creation_reason = "the subject is that the path makes no Global for its receiver - a handle made and disposed leaves the isolate's global handle bytes as they were, so only the adapter's process-wide creation count object_globals_from.* sees it, which the busy Browser's bindings move too";
+
+/// weak_callback_ownership_test: the subject of each is the adapter's
+/// process-wide ledger of live weak callback records itself - "returns to
+/// baseline" is the assertion, and a record freed late or never is invisible
+/// to the isolate's global handle bytes once its handle is reset (lane
+/// testfix2, with the integrator's ruling).
+const weak_record_reason = "the process-wide weak-record ledger is the subject: v8_Debug_LiveWeakCallbackData returning to its baseline is the assertion, and the busy Browser's wrappers arm and free records too";
+
+/// The tests of lane tsanfix1's whole-file entries (2026-11-02) whose
+/// subject is a count the whole process shares; their files' other tests
+/// read their own isolate's global handle bytes (lane testfix2).
+const process_count_subjects = [_]DeclaredTest{
+    .{ .name = "context_counter_test.test.binding getter and method calls leave live_context_globals unchanged", .reason = context_count_reason },
+    .{ .name = "context_counter_test.test.a context made with a global constructor and disposed leaves live_context_globals unchanged", .reason = context_count_reason },
+    .{ .name = "indexed_property_semantics_test.test.an indexed read and an `in` check make no handle for the list", .reason = receiver_creation_reason },
+    .{ .name = "indexed_property_semantics_test.test.an attribute read makes no handle for its receiver and leaves none", .reason = receiver_creation_reason },
+    .{ .name = "weak_callback_ownership_test.test.disarming a handle frees the record V8 hands back", .reason = weak_record_reason },
+    .{ .name = "weak_callback_ownership_test.test.disposing an armed handle ends the arm - the record cannot outlive the Global", .reason = weak_record_reason },
+    .{ .name = "weak_callback_ownership_test.test.re-arming the same handle replaces the record rather than stacking one", .reason = weak_record_reason },
+    .{ .name = "weak_callback_ownership_test.test.a handle that was never armed is unaffected by disarm and dispose", .reason = weak_record_reason },
+    .{ .name = "weak_callback_ownership_test.test.v8_Value_ToWeakGlobal arms the handle it returns, not a null one", .reason = weak_record_reason },
+    .{ .name = "weak_callback_ownership_test.test.disposing an isolate leaves another isolate's detached records alone", .reason = weak_record_reason },
+    .{ .name = "weak_callback_ownership_test.test.a finalizer runs in V8's second pass, after its first-pass unlink, and its record goes with it", .reason = weak_record_reason },
+    .{ .name = "weak_callback_ownership_test.test.disposing a handle before its second pass cancels the finalizer and frees its record", .reason = weak_record_reason },
+    // TEMPORARY until lane hookfreeze2 merges: its Tally counts every wrapper
+    // reference of the process through runtime.lifetime's swapped hooks.
+    .{ .name = "refcount_wrapper_link_test.test.", .reason = "TEMPORARY: its Tally counts every wrapper reference the process takes and lets go through runtime.lifetime's hooks, which it swaps - the busy Browser's wrappers' too; lane hookfreeze2's overrideHooksForTest is a Hook override, which holds the busy Browser while it lasts, and this entry goes when that merges" },
 };
 
 // Slow tests: over 45 s alone on chat.local in Debug (lane tlaunch2,
@@ -2725,27 +2757,23 @@ pub fn build(b: *std.Build) void {
     const check_target_step = b.step("check-target", "Build what -Dtarget can build (libwhatwg, codecs, platform tests); compile crane and wpt_runner without linking");
     if (image_codecs) |codecs| check_target_step.dependOn(&codecs.step);
 
-    // The target, as the testing graph it imports: a host root over target
-    // modules mixes two targets in one compile, and for a Linux target from
-    // macOS std.c is Darwin's under kit/posix's Linux branch
-    // (pthread_setname_np: expected 1 argument(s), found 2).
-    const eventsource_test_mod = b.createModule(.{
-        .root_source_file = b.path("tests/eventsource/parser_test.zig"),
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-    });
-    eventsource_test_mod.addImport("eventsource", testing_graph.eventsource);
-    eventsource_test_mod.addImport("infra", testing_graph.infra);
-    eventsource_test_mod.addImport("fetch", testing_graph.fetch);
-    const eventsource_tests = b.addTest(.{ .root_module = eventsource_test_mod });
-    // parser_test.zig imports the directory's other test files.
-    recordSuiteDir(b, test_selection, "tests/eventsource");
-    const run_eventsource_tests = addSuiteRun(b, launch, eventsource_tests, "tests-eventsource", null);
+    // tests/eventsource/: a directory suite (addTestFilesFromDir), its own
+    // step's and `test`'s. Built for the target, as the testing graph it
+    // imports is: a host root over target modules mixes two targets in one
+    // compile, and for a Linux target from macOS std.c is Darwin's under
+    // kit/posix's Linux branch (pthread_setname_np: expected 1 argument(s),
+    // found 2).
     const eventsource_test_step = b.step("test-eventsource", "Run server-sent event parser and connection tests");
-    eventsource_test_step.dependOn(&run_eventsource_tests.step);
+    const eventsource_test_imports = [_]std.Build.Module.Import{
+        .{ .name = "eventsource", .module = testing_graph.eventsource },
+        .{ .name = "infra", .module = testing_graph.infra },
+        .{ .name = "fetch", .module = testing_graph.fetch },
+    };
+    addTestFilesFromDir(b, eventsource_test_step, "tests/eventsource", target, &eventsource_test_imports, false, test_selection) catch |err| {
+        std.debug.print("Warning: Failed to add eventsource test files: {}\n", .{err});
+    };
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "eventsource")) {
-        test_step.dependOn(&run_eventsource_tests.step);
+        test_step.dependOn(eventsource_test_step);
     }
 
     const webcrypto_tests = b.addTest(.{ .root_module = testing_graph.webcrypto });
@@ -3173,9 +3201,8 @@ pub fn build(b: *std.Build) void {
     // and `addModuleTestWithV8` can clone it without two modules claiming
     // `src/browser/root.zig`.
     //
-    // There is no `tests/browser/` directory; the one file at
-    // `tests/browser_document_test.zig` hangs off the separate `test-browser`
-    // step. Register the directory here if one is ever added.
+    // tests/browser/ is a directory suite of its own, run by the separate
+    // `test-browser` step (below), not by `test`.
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "browser")) {
         const browser_tests = addModuleTestWithV8(b, testing_graph.browser, target);
         const run_browser_tests = addSuiteRun(b, launch, browser_tests, "src-browser", null);
@@ -3700,37 +3727,17 @@ pub fn build(b: *std.Build) void {
     // BROWSER TEST - Standalone browser initialization test
     // ========================================================================
 
-    const test_browser_step = b.step("test-browser", "Run browser initialization tests");
-    const browser_test = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("tests/browser_document_test.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "browser", .module = testing_graph.browser },
-            },
-        }),
-    });
-
-    // Link V8 and libuv for browser tests
-    browser_test.root_module.addCSourceFile(.{
-        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = &.{
-            "-std=c++20",
-            "-fno-exceptions",
-            "-fno-rtti",
-            "-DV8_COMPRESS_POINTERS",
-            "-DV8_ENABLE_SANDBOX",
-        },
-    });
-    browser_test.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
-    browser_test.root_module.addObjectFile(.{ .cwd_relative = v8_monolith_path });
-    browser_test.root_module.addObjectFile(.{ .cwd_relative = v8_libplatform_path });
-    browser_test.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
-    browser_test.root_module.link_libcpp = true; //
-
-    const run_browser_test = addSuiteRun(b, launch, browser_test, "test-browser", null);
-    test_browser_step.dependOn(&run_browser_test.step);
+    // tests/browser/: a directory suite like any (a new file there joins it),
+    // run by its own step rather than by `test` - one more root compile of
+    // the whole engine with V8 linked. Its directory is recorded whatever
+    // -Dspec selects (addTestFilesFromDir), so the configure check counts it.
+    const test_browser_step = b.step("test-browser", "Run browser initialization tests (tests/browser/)");
+    const browser_test_imports = [_]std.Build.Module.Import{
+        .{ .name = "browser", .module = testing_graph.browser },
+    };
+    addTestFilesFromDir(b, test_browser_step, "tests/browser", target, &browser_test_imports, true, test_selection) catch |err| {
+        std.debug.print("Warning: Failed to add browser test files: {}\n", .{err});
+    };
 
     // ========================================================================
     // EXECUTABLE (optional CLI tool)

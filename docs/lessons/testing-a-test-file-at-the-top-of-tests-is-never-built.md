@@ -1,6 +1,9 @@
 # Testing: A test file at the top of tests/ is never built
 
 **Date**: 2026-10-18
+
+**Status** (2026-11-03, lane testfix2): the sixteen are gone - each used an API that no longer exists (a compile run of each in a suite showed the errors) - and tests/browser_document_test.zig, test-browser's only file, moved into tests/browser/, a directory suite. build.zig's configuration now fails on any `*_test.zig` directly in tests/ (`checkEveryTestDirectoryIsASuite`, `test_suites.topLevelTestFiles`), as it fails on a tests/<dir>/ no suite runs (lane flakes2).
+
 **Lesson**: `zig build test` builds `tests/<dir>/` directories; a `*_test.zig` directly under `tests/` is compiled by nothing unless build.zig names it, so it can rot for a year while it looks like coverage.
 
 **Why**: `addTestFilesFromDir` is called once per test directory (`tests/dom`, `tests/streams`, `tests/v8` ...) and walks only that directory. No call walks `tests/` itself, and only one top-level file, `tests/browser_document_test.zig`, is named in build.zig. Zig does not analyse a file nothing imports, so a stale API call in such a file is never an error.
