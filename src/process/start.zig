@@ -58,12 +58,71 @@ pub const State = packed struct(u16) {
 /// (`outstandingOverrides`), both unused outside tests.
 const Start = struct {
     word: std.atomic.Value(State) = .init(.{}),
+    /// The install lock: held by the process start from `begin` to `finish`
+    /// (or to the `end` of a start that failed), and by a test start
+    /// (`installForTest`) while it installs - so the two never install at
+    /// once. Every registry checks for an entry and then appends, and every
+    /// slot compares and then writes: two writers inside that window both
+    /// write (the many-Browsers variant's busy Browser started the process on
+    /// its thread while a test's startHooksForTest() ran the same installs,
+    /// and attribute_change_steps overflowed - lane testfix2's
+    /// om1_preferred_sheets crash). Taken once, uncontended, by a production
+    /// start. NO DEADLOCK: neither holder waits for the other while it holds
+    /// it - the start's steps (platform, engine, curl, installHooks, the UA
+    /// sheets) never wait on a test thread, a test start only installs, and
+    /// a waiter holds nothing either needs (it blocks before it takes
+    /// anything; a test's override, which holds the busy Browser, is never
+    /// made inside a test start).
+    installs: std.Io.Mutex = .init,
     test_installing: std.atomic.Value(u32) = .init(0),
+    /// The thread inside `installForTest` (0: none): a nested test start
+    /// would wait on its own lock, so it panics instead.
+    test_install_thread: std.atomic.Value(std.Thread.Id) = .init(0),
     test_overrides: std.atomic.Value(u32) = .init(0),
     /// Set by the Crane test runner before its first test, read by the test
     /// thread's overrides (`observeOverridesForTest`).
     test_override_observer: ?OverrideObserver = null,
+
+    fn begin(self: *Start) bool {
+        if (self.word.cmpxchgStrong(.{}, .{ .phase = .starting }, .acq_rel, .acquire) != null) return false;
+        // A test start installing now finishes first; none starts until
+        // `finish` (or a failed start's `end`).
+        std.Io.Threaded.mutexLockUncancelable(&self.installs);
+        return true;
+    }
+
+    fn finish(self: *Start, has_snapshot: bool) void {
+        std.debug.assert(self.word.load(.acquire).phase == .starting);
+        self.word.store(.{ .phase = .running, .has_snapshot = has_snapshot }, .release);
+        std.Io.Threaded.mutexUnlock(&self.installs);
+    }
+
+    fn end(self: *Start) void {
+        const before = self.word.swap(.{ .phase = .ended }, .acq_rel);
+        // A start that failed mid-install (crane.Process.init's error paths
+        // end it from .starting) gives the lock back; a finished one gave it
+        // back in `finish`.
+        if (endReleasesInstalls(before.phase)) std.Io.Threaded.mutexUnlock(&self.installs);
+    }
+
+    fn installForTest(self: *Start, comptime install: fn () void) void {
+        const me = std.Thread.getCurrentId();
+        if (self.test_install_thread.load(.acquire) == me) std.debug.panic("installForTest inside installForTest: a test start never nests (it would wait on its own install lock)", .{});
+        std.Io.Threaded.mutexLockUncancelable(&self.installs);
+        defer std.Io.Threaded.mutexUnlock(&self.installs);
+        self.test_install_thread.store(me, .release);
+        defer self.test_install_thread.store(0, .release);
+        _ = self.test_installing.fetchAdd(1, .acq_rel);
+        defer _ = self.test_installing.fetchSub(1, .acq_rel);
+        install();
+    }
 };
+
+/// Whether `end` from `phase` gives the install lock back: only a start that
+/// never finished holds it.
+fn endReleasesInstalls(phase: Phase) bool {
+    return phase == .starting;
+}
 
 // process-wide: crane.Process's start-up phase; every hook slot (Hook(T), hook.zig) is written only while it is .starting
 var state: Start = .{};
@@ -76,18 +135,17 @@ pub fn get() State {
 /// Claim the start: not_started -> starting. False when another caller has
 /// claimed it (or it has run); that caller finishes it.
 pub fn begin() bool {
-    return state.word.cmpxchgStrong(.{}, .{ .phase = .starting }, .acq_rel, .acquire) == null;
+    return state.begin();
 }
 
 /// starting -> running: every hook is installed.
 pub fn finish(has_snapshot: bool) void {
-    std.debug.assert(get().phase == .starting);
-    state.word.store(.{ .phase = .running, .has_snapshot = has_snapshot }, .release);
+    state.finish(has_snapshot);
 }
 
-/// running -> ended.
+/// running -> ended, or starting -> ended for a start that failed.
 pub fn end() void {
-    state.word.store(.{ .phase = .ended }, .release);
+    state.end();
 }
 
 /// Wait until a start another caller claimed has finished (or ended).
@@ -145,12 +203,12 @@ pub fn refuseWrite(slot_type: []const u8) noreturn {
 /// with hooks writable, whatever the phase. A unit test with no Browser
 /// installs the hooks it needs this way (the generated
 /// `process_hooks.startHooksForTest()`); installing again what the process
-/// start installed changes nothing.
+/// start installed changes nothing. Never at once with the process start
+/// (the install lock, `Start.installs`): a test start waits for a start
+/// under way on another thread, and the start waits for it.
 pub fn installForTest(comptime install: fn () void) void {
     if (!builtin.is_test) @compileError("installForTest is for tests; a host starts crane.Process");
-    _ = state.test_installing.fetchAdd(1, .acq_rel);
-    defer _ = state.test_installing.fetchSub(1, .acq_rel);
-    install();
+    state.installForTest(install);
 }
 
 /// Hook overrides made and not yet restored (`Hook.overrideForTest`): 0
@@ -246,4 +304,113 @@ test "a test start makes hooks writable only while it runs" {
     installForTest(Probe.install);
     try std.testing.expectEqual(Writer.start, Probe.seen.?);
     if (get().phase != .starting) try std.testing.expectEqual(Writer.refused, writer(false));
+}
+
+test "a start that fails mid-install gives the install lock back; a finished one gave it back already" {
+    // On a Start of the test's own: the process's is left alone.
+    for ([_]Phase{ .not_started, .starting, .running, .ended }) |phase| {
+        try std.testing.expectEqual(phase == .starting, endReleasesInstalls(phase));
+    }
+    var failed: Start = .{};
+    try std.testing.expect(failed.begin());
+    try std.testing.expect(!failed.installs.tryLock());
+    failed.end(); // crane.Process.init's error path
+    try std.testing.expect(failed.installs.tryLock());
+    std.Io.Threaded.mutexUnlock(&failed.installs);
+
+    var finished: Start = .{};
+    try std.testing.expect(finished.begin());
+    finished.finish(false);
+    try std.testing.expect(finished.installs.tryLock());
+    std.Io.Threaded.mutexUnlock(&finished.installs);
+    finished.end(); // Process.deinit: nothing to give back
+    try std.testing.expect(finished.installs.tryLock());
+    std.Io.Threaded.mutexUnlock(&finished.installs);
+}
+
+test "a test start waits for a process start under way, holding nothing it needs, and then goes in" {
+    const Order = struct {
+        var start: Start = .{};
+        var started_finishing: std.atomic.Value(bool) = .init(false);
+        var test_start_ran: std.atomic.Value(bool) = .init(false);
+        var ran_after_finish: bool = false;
+        fn install() void {
+            ran_after_finish = started_finishing.load(.acquire);
+            test_start_ran.store(true, .release);
+        }
+        fn testStart() void {
+            start.installForTest(install);
+        }
+    };
+    try std.testing.expect(Order.start.begin());
+    const thread = try std.Thread.spawn(.{}, Order.testStart, .{});
+    // The test start is blocked on the start's lock: it has not run.
+    var spins: u32 = 0;
+    while (spins < 100_000) : (spins += 1) std.Thread.yield() catch {};
+    try std.testing.expect(!Order.test_start_ran.load(.acquire));
+    Order.started_finishing.store(true, .release);
+    Order.start.finish(false);
+    thread.join();
+    try std.testing.expect(Order.test_start_ran.load(.acquire));
+    try std.testing.expect(Order.ran_after_finish);
+}
+
+test "a test start and the process start never install at once: a list both install into keeps one copy of each entry" {
+    // The many-Browsers variant's crash (lane testfix2, om1_preferred_sheets):
+    // the busy Browser's first iteration started the process on its thread
+    // while the test's startHooksForTest() re-ran the same installs on the
+    // test thread. Each registry checks for its entry, then appends: two
+    // writers in that window both append, and attribute_change_steps
+    // overflowed its 32 entries. Here the test start stops between its check
+    // and its append, and the process start begins meanwhile.
+    //
+    // It begins the start of this test binary's process (once; finished
+    // here): only where nothing has.
+    if (get().phase != .not_started) return error.SkipZigTest;
+    const hook = @import("hook.zig");
+    const Race = struct {
+        var list: hook.Hook(hook.List(u32, 8)) = .init(.empty);
+        var test_start_checked: std.atomic.Value(bool) = .init(false);
+        var process_start_beginning: std.atomic.Value(bool) = .init(false);
+        var process_start_installed: std.atomic.Value(bool) = .init(false);
+
+        /// The test start's install: check, let the process start begin and
+        /// install if it can (a bounded wait: it cannot while the two
+        /// exclude each other), append.
+        fn testStartInstall() void {
+            const entries = list.installing();
+            if (entries.contains(7)) return;
+            test_start_checked.store(true, .release);
+            while (!process_start_beginning.load(.acquire)) std.Thread.yield() catch {};
+            var spins: u32 = 0;
+            while (!process_start_installed.load(.acquire) and spins < 200_000) : (spins += 1) {
+                std.Thread.yield() catch {};
+            }
+            entries.append(7);
+        }
+
+        fn testStart() void {
+            installForTest(testStartInstall);
+        }
+
+        /// The process start's install, as crane.Process makes it.
+        fn processStartInstall() void {
+            const entries = list.installing();
+            if (!entries.contains(7)) entries.append(7);
+            process_start_installed.store(true, .release);
+        }
+    };
+    const thread = try std.Thread.spawn(.{}, Race.testStart, .{});
+    while (!Race.test_start_checked.load(.acquire)) std.Thread.yield() catch {};
+    // The process start, while the test start is between its check and its
+    // append.
+    Race.process_start_beginning.store(true, .release);
+    if (!begin()) {
+        thread.join();
+        return error.SkipZigTest;
+    }
+    Race.processStartInstall();
+    finish(false);
+    thread.join();
+    try std.testing.expectEqualSlices(u32, &.{7}, Race.list.read().slice());
 }
