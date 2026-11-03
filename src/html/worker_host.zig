@@ -4170,9 +4170,13 @@ pub const worker_origin_oom_test_cases = if (@import("builtin").is_test) struct 
 
 /// A worker realm's host is found from its realm on any thread (lane
 /// gstate4): what a nested worker's owner, a task's end and "report an
-/// exception" ask by realm. Called by tests/html/gs4_worker_scope_lookup_test.zig.
+/// exception" ask by realm. `withRecordedHost` makes a realm whose worker
+/// host is recorded the way the host records it, and hands it to `body`;
+/// tests/html/gs4_worker_scope_lookup_test.zig asks from another thread.
 pub const scope_lookup_test_cases = if (@import("builtin").is_test) struct {
-    pub fn foundFromAnotherThread() !void {
+    pub const worker_url = "https://worker.example.test/worker.js";
+
+    pub fn withRecordedHost(body: *const fn (realm: runtime.Context) anyerror!void) !void {
         const allocator = std.testing.allocator;
         var realm = try runtime.ContextData.init(allocator, .{});
         defer realm.deinit();
@@ -4182,7 +4186,7 @@ pub const scope_lookup_test_cases = if (@import("builtin").is_test) struct {
             .agent = undefined,
             .agent_host = undefined,
             .realm = &realm,
-            .script_url = "https://worker.example.test/worker.js",
+            .script_url = worker_url,
             .worker_type = .classic,
             .policy_container = fetch_mod.internal.PolicyContainer.init(allocator),
             .timer = null,
@@ -4196,14 +4200,6 @@ pub const scope_lookup_test_cases = if (@import("builtin").is_test) struct {
         // How the host records its realm (recordRealm).
         realm.worker_host = &host;
         defer realm.worker_host = null;
-        const Other = struct {
-            fn ask(r: runtime.Context, url: *?[]const u8) void {
-                url.* = if (scopeSettings(r)) |settings| settings.url else null;
-            }
-        };
-        var url: ?[]const u8 = null;
-        const thread = try std.Thread.spawn(.{}, Other.ask, .{ &realm, &url });
-        thread.join();
-        try std.testing.expectEqualStrings("https://worker.example.test/worker.js", url orelse return error.HostNotFoundFromAnotherThread);
+        try body(&realm);
     }
 } else struct {};
