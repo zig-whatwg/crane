@@ -1227,10 +1227,13 @@ const Ticket = struct {
         return @ptrCast(@alignCast(context));
     }
 
+    /// What a ticket names.
+    const Named = struct { navigables: *Navigables, id: u64 };
+
     /// A task's ticket, freed as the task runs: what it named.
-    fn redeem(context: ?*anyopaque) ?struct { navigables: *Navigables, id: u64 } {
+    fn redeem(context: ?*anyopaque) ?Named {
         const self = of(context orelse return null);
-        const named = .{ .navigables = self.navigables, .id = self.id };
+        const named: Named = .{ .navigables = self.navigables, .id = self.id };
         self.destroy();
         return named;
     }

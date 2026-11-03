@@ -57,7 +57,7 @@ fn waitFor(browser: *Browser, source: []const u8) !void {
     return error.TimedOut;
 }
 
-fn turns(browser: *Browser, n: usize) !void {
+fn turnLoop(browser: *Browser, n: usize) !void {
     for (0..n) |_| _ = try browser.runEventLoopBlocking(10);
 }
 
@@ -68,7 +68,7 @@ fn openPage(browser: *Browser, url: []const u8, frames: usize) !void {
     try page.loadHTML("<!doctype html><body></body>", .{ .base_url = url });
     var buffer: [256]u8 = undefined;
     try run(browser, try std.fmt.bufPrint(&buffer, "for (let i = 0; i < {d}; i++) {{ const f = document.createElement('iframe'); f.id = 'f' + i; document.body.append(f); }}", .{frames}));
-    try turns(browser, 2);
+    try turnLoop(browser, 2);
 }
 
 /// The navigations in flight on `browser`'s list.
@@ -105,10 +105,10 @@ test "a frame removed with its fetch in flight ends its navigation, and the fetc
     try waitForRequests(browser, server, "/held.html", before + 1);
     try testing.expectEqual(@as(usize, 1), inFlight(browser));
     try run(browser, "f0.remove()");
-    try turns(browser, 3);
+    try turnLoop(browser, 3);
     try testing.expectEqual(@as(usize, 0), inFlight(browser));
     server.release("/held.html");
-    try turns(browser, 10);
+    try turnLoop(browser, 10);
 }
 
 test "a navigation ended while its task waited is not found when the task runs" {

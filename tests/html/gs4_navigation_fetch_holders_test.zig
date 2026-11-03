@@ -68,7 +68,7 @@ fn arrivingResult(source: *PipeSource) !fetch.algorithms.FetchResult {
     const response = try fetch.internal.InternalResponse.init(testing.allocator);
     errdefer response.deinit();
     response.body = try fetch.internal.Body.fromPipe(testing.allocator, try source.branch());
-    return .{ .response = response, .timing_info = .{ .allocator = testing.allocator } };
+    return .{ .response = response, .timing_info = fetch.internal.FetchTimingInfo.init(testing.allocator) };
 }
 
 test "an arriving response's consumer hears its body until the response is taken, and nothing after" {
