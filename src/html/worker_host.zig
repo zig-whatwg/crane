@@ -4193,3 +4193,42 @@ pub const worker_origin_oom_test_cases = if (@import("builtin").is_test) struct 
         std.debug.print("pm2 hosted worker scope unwinds its own state when a settings copy fails: passed\n", .{});
     }
 } else struct {};
+
+/// A worker realm's host is found from its realm on any thread (lane
+/// gstate4): what a nested worker's owner, a task's end and "report an
+/// exception" ask by realm. Called by tests/html/gs4_worker_scope_lookup_test.zig.
+pub const scope_lookup_test_cases = if (@import("builtin").is_test) struct {
+    pub fn foundFromAnotherThread() !void {
+        const allocator = std.testing.allocator;
+        var realm = try runtime.ContextData.init(allocator, .{});
+        defer realm.deinit();
+        // Only scopeSettings reads this host. It never starts an agent,
+        // task sink, loop or thread; those fields are deliberately unused.
+        var host: WorkerHost = .{
+            .agent = undefined,
+            .agent_host = undefined,
+            .realm = &realm,
+            .script_url = "https://worker.example.test/worker.js",
+            .worker_type = .classic,
+            .policy_container = fetch_mod.internal.PolicyContainer.init(allocator),
+            .timer = null,
+            .task_sink = undefined,
+            .allocator = allocator,
+            .event_loop = undefined,
+            .link = undefined,
+            .owner_is_secure_context = true,
+        };
+        defer host.policy_container.deinit();
+        try live_contexts.append(std.heap.page_allocator, &host);
+        defer removeLive(&host);
+        const Other = struct {
+            fn ask(r: runtime.Context, url: *?[]const u8) void {
+                url.* = if (scopeSettings(r)) |settings| settings.url else null;
+            }
+        };
+        var url: ?[]const u8 = null;
+        const thread = try std.Thread.spawn(.{}, Other.ask, .{ &realm, &url });
+        thread.join();
+        try std.testing.expectEqualStrings("https://worker.example.test/worker.js", url orelse return error.HostNotFoundFromAnotherThread);
+    }
+} else struct {};
