@@ -105,12 +105,6 @@ pub fn printUncaught(allocator: Allocator, realm: Context, value: JSValue, out: 
     try writeIndented(out, line.written(), 0);
 }
 
-/// A line of the console's own text (a count, a timer's elapsed time),
-/// indented by `group_depth` levels, then a newline.
-pub fn printText(text: []const u8, group_depth: usize, out: *Writer) Writer.Error!void {
-    try writeIndented(out, text, group_depth);
-}
-
 /// `text`, every line of it indented by `group_depth` levels of two spaces,
 /// ending in a newline.
 fn writeIndented(out: *Writer, text: []const u8, group_depth: usize) Writer.Error!void {

@@ -43,14 +43,18 @@ fn writeOut(bytes: []const u8) void {
     stderr.file_writer.interface.writeAll(bytes) catch {};
 }
 
-/// Print a message of the console's own, at the group's indentation.
+/// Print a message of the console's own (a count, a timer's warning), at
+/// the group's indentation. Straight to stderr, allocating nothing: it runs
+/// no script, so nothing waits on the lock, and count() and time() on an
+/// existing label allocate nothing even under memory pressure
+/// (tests/v8/console_state_operations_test.zig).
 fn printIndented(ctx: runtime.Context, comptime fmt: []const u8, args: anytype) void {
-    const text = std.fmt.allocPrint(ctx.allocator, fmt, args) catch return;
-    defer ctx.allocator.free(text);
-    var line: std.Io.Writer.Allocating = .init(ctx.allocator);
-    defer line.deinit();
-    printer.printText(text, groupDepth(ctx), &line.writer) catch return;
-    writeOut(line.written());
+    var buffer: [256]u8 = undefined;
+    const stderr = std.debug.lockStderr(&buffer);
+    defer std.debug.unlockStderr();
+    const out = &stderr.file_writer.interface;
+    out.splatByteAll(' ', groupDepth(ctx) * 2) catch return;
+    out.print(fmt ++ "\n", args) catch return;
 }
 
 /// Logger(logLevel, data) (Console 2.1): Formatter, then Printer.
