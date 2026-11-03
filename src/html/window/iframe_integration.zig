@@ -216,6 +216,12 @@ pub const IFrameIntegration = struct {
     /// The nested browsing context (null until element is inserted)
     browsing_context: ?*BrowsingContext,
 
+    /// The Browser's list of live navigables this integration is on
+    /// (`Navigables.integrations`): set by `Navigables.joinIntegration`,
+    /// cleared as it leaves - or as the list ends first, when the
+    /// integration outlived its Browser.
+    navigables: ?*Navigables = null,
+
     /// The WindowProxy for accessing the nested window
     window_proxy: ?WindowProxy,
 

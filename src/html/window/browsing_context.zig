@@ -31,6 +31,7 @@ const clock = @import("clock");
 
 // Import Origin type from window module
 const Origin = @import("window_proxy.zig").Origin;
+const IFrameIntegration = @import("iframe_integration.zig").IFrameIntegration;
 
 /// Opaque type for runtime.Instance pointer storage.
 /// We use *anyopaque instead of importing runtime to avoid module conflicts.
@@ -107,6 +108,14 @@ pub const Navigables = struct {
     /// Contexts discarded by their container while a Window may still point
     /// at them (`BrowsingContext.discard`); freed together by `freeRetired`.
     retired: std.ArrayListUnmanaged(*BrowsingContext) = .empty,
+    /// The Browser's navigables that this engine made content for - an
+    /// iframe's, a popup's, the host page's (`IFrameIntegration`, made and
+    /// driven by HTMLIFrameElement): joined when its context is attached,
+    /// left as the navigable is destroyed or its integration deinit'd. It
+    /// was one list per thread: an integration never deinit'd stayed listed
+    /// past its Browser, and the next Browser on the thread read the freed
+    /// block (lane gstate4).
+    integrations: std.ArrayListUnmanaged(*IFrameIntegration) = .empty,
 
     pub fn init(allocator: Allocator) Navigables {
         return .{ .allocator = allocator };
@@ -120,7 +129,41 @@ pub const Navigables = struct {
         self.freeRetired();
         for (self.live.items) |ctx| ctx.navigables = null;
         self.live.deinit(self.allocator);
+        // An integration still listed outlived its Browser: it leaves no list
+        // when it ends.
+        for (self.integrations.items) |integration| integration.navigables = null;
+        self.integrations.deinit(self.allocator);
         self.* = .{ .allocator = self.allocator };
+    }
+
+    /// `integration` joins this list (once) - the list of its browsing
+    /// context's Browser.
+    pub fn joinIntegration(self: *Navigables, integration: *IFrameIntegration) Allocator.Error!void {
+        if (integration.navigables == self) return;
+        if (integration.navigables != null) leaveIntegration(integration);
+        try self.integrations.append(self.allocator, integration);
+        integration.navigables = self;
+    }
+
+    /// `integration` leaves the list it is on, if any.
+    pub fn leaveIntegration(integration: *IFrameIntegration) void {
+        const self = integration.navigables orelse return;
+        integration.navigables = null;
+        for (self.integrations.items, 0..) |existing, i| {
+            if (existing == integration) {
+                _ = self.integrations.swapRemove(i);
+                return;
+            }
+        }
+    }
+
+    /// Whether `integration` is on this list - its navigable lives. Compares
+    /// only: `integration` may have been freed.
+    pub fn listsIntegration(self: *const Navigables, integration: *const IFrameIntegration) bool {
+        for (self.integrations.items) |existing| {
+            if (existing == integration) return true;
+        }
+        return false;
     }
 
     /// Free every retired context of this Browser. Its teardown only, after

@@ -1057,9 +1057,17 @@ const Navigation = struct {
     }
 };
 
-/// Every navigable this engine made - iframes' and popups' - while it lives:
-/// joined when its context is attached, left as its integration is deinited.
-threadlocal var live_navigables: std.ArrayListUnmanaged(*IFrameIntegration) = .empty;
+/// Every navigable this engine made - iframes', popups' and the host page's
+/// - while it lives is on its Browser's list (`Navigables.integrations`):
+/// joined when its context is attached, left as its integration is
+/// destroyed or deinit'd. It was one list per thread.
+const Navigables = html_core.window.Navigables;
+
+/// The live navigables of the Browser `object` (any of its platform objects)
+/// belongs to.
+fn navigablesOfObject(object: *const runtime.Instance) ?*Navigables {
+    return dom_module.browser_state.existingNavigablesIn(runtime.BrowserScope.ofInstance(object));
+}
 
 /// "Create and initialize a Document object": the about base URL
 /// `document`'s navigable was given for it - an about:blank or about:srcdoc
@@ -1132,17 +1140,18 @@ fn takeNextLastModified(browsing_context: *html_core.BrowsingContext) ?@import("
 
 /// The live navigable whose browsing context is `browsing_context`.
 fn integrationOfBrowsingContext(browsing_context: *html_core.BrowsingContext) ?*IFrameIntegration {
-    for (live_navigables.items) |integration| {
+    const list = browsing_context.navigables orelse return null;
+    for (list.integrations.items) |integration| {
         if (integration.browsing_context == browsing_context) return integration;
     }
     return null;
 }
 
+/// `integration` joins its browsing context's Browser's live navigables.
 fn joinLiveNavigables(integration: *IFrameIntegration) void {
-    for (live_navigables.items) |existing| {
-        if (existing == integration) return;
-    }
-    live_navigables.append(std.heap.page_allocator, integration) catch {};
+    const bc = integration.browsing_context orelse return;
+    const list = bc.navigables orelse return;
+    list.joinIntegration(integration) catch {};
 }
 
 /// IFrameIntegration's `deinit_callback`.
@@ -1151,25 +1160,23 @@ fn leaveLiveNavigables(integration: *IFrameIntegration) void {
     // (Normally gone already: its page's end evicted them while its realm
     // and loop lived - Browser.navigate, Browser.deinit.)
     evictCachedPagesOf(integration);
-    for (live_navigables.items, 0..) |existing, i| {
-        if (existing == integration) {
-            _ = live_navigables.swapRemove(i);
-            return;
-        }
-    }
+    Navigables.leaveIntegration(integration);
 }
 
 /// The navigable whose active document is `document`, if this engine made
 /// it: HTML "node navigable" of a document.
 fn navigableOfDocument(document: *runtime.Instance) ?*IFrameIntegration {
-    for (live_navigables.items) |integration| {
+    const list = navigablesOfObject(document) orelse return null;
+    for (list.integrations.items) |integration| {
         if (activeDocumentOf(integration) == document) return integration;
     }
     return null;
 }
 
-/// Source of navigation IDs: never reused, never zero.
-threadlocal var next_navigation_id: u64 = 1;
+/// Source of navigation IDs: never reused, never zero. An id is looked up
+/// only in its navigable's Browser's navigations.
+// process-wide: an id counter whose only property is uniqueness in the process (an id is looked up only in its Browser's navigations); every Browser's window thread draws from it with an atomic fetch-add, and it carries no state of any instance.
+var next_navigation_id: std.atomic.Value(u64) = .init(1);
 
 /// Every navigation in flight, by ID. A task holds only the ID, so a
 /// navigation ended while its task waited is simply not found.
@@ -1421,8 +1428,7 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
 
     // Step 7's navigation ID, and step 19: set the ongoing navigation - which
     // ends any earlier one.
-    const id = next_navigation_id;
-    next_navigation_id += 1;
+    const id = next_navigation_id.fetchAdd(1, .monotonic);
     if (options.traversal_entry != 0) {
         // A traversal's (or reload's) navigation: "apply the history step"
         // sets the navigable's ongoing navigation itself - not through "set
@@ -4005,7 +4011,11 @@ fn jointHandling(handling: navigate_steps.HistoryHandling) html_core.navigation.
 /// resource, when that is a srcdoc document's markup. The top-level page
 /// cannot be replaced, so only a frame or popup can.
 fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64, waiter: ?dom_module.navigables.TraversalWaiter) bool {
-    for (live_navigables.items) |integration| {
+    const traversed: *html_core.BrowsingContext = @ptrCast(@alignCast(browsing_context_ptr));
+    // The Browser's list outlives the navigation: what traversalInFlight
+    // checks the integration against once the navigation may have ended it.
+    const list = traversed.navigables orelse return false;
+    for (list.integrations.items) |integration| {
         const bc = integration.browsing_context orelse continue;
         if (@as(*anyopaque, @ptrCast(bc)) != browsing_context_ptr) continue;
         // The entry's document is kept in the back/forward cache: shown
@@ -4019,14 +4029,14 @@ fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []con
         // embedder's markup: re-created from it at the entry's URL.
         if (integration.host_realms != null) {
             navigate(integration, url, .{ .history_behavior = .replace, .traversal_entry = entry_id, .traversal_from = from_entry_id, .markup = resource, .traversal_waiter = waiter });
-            return traversalInFlight(integration, waiter);
+            return traversalInFlight(list, integration, waiter);
         }
         const source: ?*runtime.Instance = if (resource != null) blk: {
             const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse break :blk null));
             break :blk @import("Node.zig").getOwnerDocument(element);
         } else null;
         navigate(integration, url, .{ .source_document = source, .history_behavior = .replace, .traversal_entry = entry_id, .traversal_from = from_entry_id, .srcdoc = resource, .traversal_waiter = waiter });
-        return traversalInFlight(integration, waiter);
+        return traversalInFlight(list, integration, waiter);
     }
     return false;
 }
@@ -4035,9 +4045,9 @@ fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []con
 /// waits for, still in flight: it will report its end when its record goes.
 /// `integration` is checked to be live first - the navigation may have
 /// ended its navigable.
-fn traversalInFlight(integration: *IFrameIntegration, waiter: ?dom_module.navigables.TraversalWaiter) bool {
+fn traversalInFlight(list: *const Navigables, integration: *IFrameIntegration, waiter: ?dom_module.navigables.TraversalWaiter) bool {
     const w = waiter orelse return false;
-    if (std.mem.indexOfScalar(*IFrameIntegration, live_navigables.items, integration) == null) return false;
+    if (!list.listsIntegration(integration)) return false;
     const id = switch (integration.ongoing_navigation) {
         .id => |id| id,
         .traversal => integration.traversal_navigation,
@@ -4735,7 +4745,8 @@ fn contentNavigableLoadEventSteps(container: *runtime.Instance) bool {
 
 /// The live content navigable whose container is `container`.
 fn integrationOfContainer(container: *runtime.Instance) ?*IFrameIntegration {
-    for (live_navigables.items) |integration| {
+    const list = navigablesOfObject(container) orelse return null;
+    for (list.integrations.items) |integration| {
         if (integration.iframe_element == @as(?*anyopaque, @ptrCast(container))) return integration;
     }
     return null;
