@@ -3640,3 +3640,28 @@ pub extern fn v8_WasmResponseCompilation_Append(compilation: *WasmResponseCompil
 pub extern fn v8_WasmResponseCompilation_Finish(compilation: *WasmResponseCompilation, url: [*]const u8, url_length: usize) void;
 /// WasmStreaming::Abort with `reason` (borrowed) or none; deletes `compilation`.
 pub extern fn v8_WasmResponseCompilation_Abort(compilation: *WasmResponseCompilation, reason: ?*Value) void;
+// ---- lane: console1 (engine.evaluateReplScript) ----
+/// An agent's console session (v8_wrapper.cpp, CraneReplSession): an
+/// inspector of the agent's isolate and one session of it, through which
+/// console input is evaluated in REPL mode. Owned by the agent's AgentRecord
+/// (protocol_repl.Session); deleted at the agent's end, after its last
+/// microtask checkpoint and before its isolate is disposed. Used only on the
+/// agent's own thread, with its isolate entered.
+pub const ReplSession = opaque {};
+/// What a response of the session came to: `kind` 0 completed (`value` the
+/// completion value), 1 threw (`value` the exception; `incomplete` when it is
+/// the SyntaxError of input that ended too soon), 2 failed (`value` null).
+/// `value` is a new Global the callee owns.
+pub const ReplOutcome = *const fn (host: ?*anyopaque, call_id: c_int, kind: c_int, value: ?*Value, incomplete: bool) callconv(.c) void;
+pub extern fn v8_ReplSession_New(isolate: *Isolate, outcome: ReplOutcome, host: ?*anyopaque) ?*ReplSession;
+pub extern fn v8_ReplSession_Delete(session: ?*ReplSession) void;
+/// The inspector's execution context id for `context`, made known to it on
+/// first use; 0 on failure.
+pub extern fn v8_ReplSession_Register(session: *ReplSession, context: *Context) c_int;
+/// Dispatch one DevTools protocol message (ASCII JSON).
+pub extern fn v8_ReplSession_Dispatch(session: *ReplSession, json: [*]const u8, length: usize) void;
+/// The realm whose context the inspector knows as `context_id` ended.
+pub extern fn v8_ReplSession_ContextEnded(session: *ReplSession, context_id: c_int) void;
+/// Every context the session made known, forgotten.
+pub extern fn v8_ReplSession_DetachContexts(session: *ReplSession) void;
+// ---- end lane: console1 ----

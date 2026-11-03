@@ -975,6 +975,15 @@ pub const Capabilities = struct {
     /// possible by replacing Math.random per global through the public
     /// JSObjectMakeFunctionWithCallback).
     seeded_random: Support,
+    /// REPL mode (`evaluateReplScript`): console input evaluated as Chrome
+    /// DevTools' console evaluates it - top-level `await`, and a `let` or
+    /// `class` declared again replacing the earlier one. Unsupported: the
+    /// console takes its declared fallback, the classic-script evaluation
+    /// (`evaluateClassicScript`) of each input on its own - no top-level
+    /// await, a re-declaration is a SyntaxError, and input is never asked for
+    /// more - and says so (JavaScriptCore's public C API has no REPL mode;
+    /// QuickJS's JS_EVAL_FLAG_ASYNC is not wired).
+    repl_mode: Support,
 };
 
 /// The capabilities of the engine this build selected.
@@ -1303,6 +1312,49 @@ pub inline fn evaluateClassicScript(realm: Context, source: ScriptSource, url: [
 /// throws is reported, and the call fails.
 pub inline fn evaluateClassicScriptToString(realm: Context, source: ScriptSource, url: []const u8, host_defined: ?*anyopaque, allocator: std.mem.Allocator, reporter: Reporter) Error![]u8 {
     return impl.evaluateClassicScriptToString(realm, source, url, host_defined, allocator, reporter);
+}
+
+/// What `evaluateReplScript` did with console input.
+pub const ReplInput = enum {
+    /// The input is being evaluated: exactly one of the steps runs.
+    evaluating,
+    /// The input ends before its syntax does - an unterminated block,
+    /// argument list or template literal: nothing ran, no step runs, and
+    /// `data` stays the caller's. A console reads another line and offers the
+    /// whole input again, as Chrome DevTools and Node's REPL do. The ANSWER
+    /// is engine-neutral; how it is detected is each adapter's (V8: the
+    /// SyntaxError's message, "Unexpected end of input" or "Unterminated
+    /// template literal" - Chrome DevTools' own test).
+    incomplete,
+};
+
+/// [repl_mode] Evaluate `source` (UTF-8) as console input in `realm`'s global
+/// scope, in REPL mode - what Chrome DevTools' console does (the DevTools
+/// protocol's Runtime.evaluate `replMode`: "enables `let` re-declaration and
+/// top-level `await`"; V8 calls such a script a REPL script). The input runs
+/// as script in the realm, as a console's does - its declarations become the
+/// realm's global bindings - and nothing else of the console is put on the
+/// realm's global object.
+///
+/// A REPL script completes asynchronously - it may await - so its outcome
+/// reaches the host as a promise reaction does (`PromiseReactionSteps`):
+/// - `fulfilled`, with the input's completion value (BORROWED for the call;
+///   `retainValue` keeps it). A completion value that is itself a promise or
+///   a thenable is handed over as it is, never adopted: `Promise.resolve(1)`
+///   completes with the promise, as the console shows it;
+/// - `rejected`, with what the input threw, or the rejection of a promise it
+///   awaited (BORROWED) - an uncaught exception, for the console to print;
+/// - `dropped`: it never completed - its realm ended first, the engine
+///   collected what it awaited, or the agent ended. Frees `data`.
+/// Exactly one runs, once, unless the call fails or answers `.incomplete`.
+/// One may run before this returns (a SyntaxError); the others run as
+/// promise jobs, at a microtask checkpoint of the realm's agent - so the
+/// host runs the event loop (Browser.spinEventLoopUntil) until one has.
+/// What the input throws is the host's to show; nothing reports it (no
+/// `error` event), as nothing does for Chrome's console.
+pub inline fn evaluateReplScript(realm: Context, source: []const u8, steps: *const PromiseReactionSteps, data: ?*anyopaque) Error!ReplInput {
+    comptime gate(.repl_mode, "evaluateReplScript");
+    return impl.evaluateReplScript(realm, source, steps, data);
 }
 
 /// HTML "getting the current value of the event handler", step 3: the
