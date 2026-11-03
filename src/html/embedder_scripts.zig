@@ -101,3 +101,28 @@ test "registered, the loader is asked with the frame's realm and may decline" {
     unregister();
     try std.testing.expect(forRealm(realm) == null);
 }
+
+test "a loader registered on one Browser answers for its realms only" {
+    const Fake = struct {
+        fn loader(_: runtime.Context, _: []const u8) ?[]const u8 {
+            return "answered";
+        }
+    };
+    const saved = registered;
+    defer registered = saved;
+    var a = runtime.BrowserScope.init(std.testing.allocator);
+    defer a.deinit();
+    var b = runtime.BrowserScope.init(std.testing.allocator);
+    defer b.deinit();
+    var realm_a = try runtime.ContextData.init(std.testing.allocator, .{});
+    defer realm_a.deinit();
+    realm_a.browser_scope = &a;
+    var realm_b = try runtime.ContextData.init(std.testing.allocator, .{});
+    defer realm_b.deinit();
+    realm_b.browser_scope = &b;
+    // Browser A's embedder registers its loader (base: on the thread).
+    register(&Fake.loader);
+    try std.testing.expect(forRealm(&realm_a) != null);
+    // B's embedder registered none: its frames get no loader.
+    try std.testing.expect(forRealm(&realm_b) == null);
+}
