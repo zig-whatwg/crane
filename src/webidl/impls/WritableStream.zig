@@ -93,14 +93,10 @@ pub fn call_constructor(ctx: runtime.Context, underlyingSink: webidl.Opt(runtime
     // The controller owns the algorithms from here.
     sink = null;
     size = .one;
-    sw.setUpController(realm, instance, controller) catch |err| {
-        // start() threw, after the controller was wrapped and handed to
-        // script: it can still be reached and points at this stream, so the
-        // stream is registered with the wrapper cache too and both live until
-        // teardown instead of being freed under that reference.
-        _ = realm.wrap(instance) catch {};
-        return err;
-    };
+    // start() may throw after the controller was handed to script: both are
+    // the wrapper cache's then - the setup traced the stream from its
+    // controller (which made the stream's wrapper) before start ran.
+    try sw.setUpController(realm, instance, controller);
     return instance;
 }
 

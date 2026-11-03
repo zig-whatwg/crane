@@ -144,7 +144,9 @@ test "a pipe read to its end keeps nothing once script drops it" {
 /// (pipe_to_engine.cc). The next streamslife batch adds the two operations
 /// that make Crane's do the same (reactToPromiseKeeping,
 /// weakenPromiseCapability; design section 5), and this count becomes 0.
-const unread_pipe_through_hold = 42;
+/// It was 42 while every streams object lived as long as its realm; the 3
+/// fewer are values its algorithms keep that are now traced, not strong.
+const unread_pipe_through_hold = 39;
 
 test "DECLARED: an unread pipeThrough is held by its pending pipe until its realm ends" {
     var page: rounds_lib.Page = undefined;

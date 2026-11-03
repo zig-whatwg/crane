@@ -20,10 +20,22 @@
 //!
 //! ## Lifetime of the objects the reactions point at
 //!
-//! Reaction data points at Zig instances (a controller, a stream). Those stay
-//! valid because the wrapper cache holds every streams-graph wrapper strongly
-//! until the realm is torn down (`wrapper_cache.isStreamsGraphObject`) - see
-//! the reasoning there. Blink traces the same edges; this engine cannot.
+//! Streams objects reach each other through Zig pointers, and a streams
+//! object lives exactly as long as its wrapper: the wrappers are weak, as any
+//! platform object's, and the collector frees an instance with its wrapper.
+//! So every pointer that must stay valid is one of two things
+//! (tmp/plans/streams-lifetime-design.md; Blink's core/streams classes
+//! Trace() the same members):
+//! - a traced edge (engine.traceChild): between the objects of one stream - a
+//!   stream and its controller, its reader, a BYOB request - and from a
+//!   controller to what its algorithms close over; peers die together;
+//! - a `Hold` (below): pending work - a reaction, a pipe, a tee, an iterator,
+//!   a network source - keeps what it will touch until it ends, given back
+//!   in exactly one of its ends.
+//! The JavaScript values a controller runs (an underlying source's
+//! callbacks and `this`, a size function) are traced from it too
+//! (`TracedAlgorithms`): a strong handle on a closure that reaches the
+//! controller would keep the whole stream for its realm's life.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -45,10 +57,6 @@ pub const Error = error{
     /// The engine refused to create a value or run a call (termination, no
     /// realm behind the context, out of handles).
     V8Failure,
-    /// `Realm.wrap` of an object the wrapper cache does not hold strongly:
-    /// its wrapper would be made and let go with nothing holding it. Hold
-    /// such an object with `clone` instead.
-    NotAStreamsGraphObject,
 };
 
 /// An engine failure as this file's error: what is pending stays pending,
@@ -116,21 +124,14 @@ pub const Realm = struct {
         return if (value.was_passed) self.fromRuntime(value.value) else self.undefinedValue();
     }
 
-    /// `instance` as a Value, its wrapper made now: the wrapper cache keeps a
-    /// streams-graph object's wrapper, and the instance with it, for the
-    /// realm's life - which is what a Zig pointer to it needs. Borrowed:
+    /// `instance` as a Value - an argument to a call, which the engine
+    /// converts to its wrapper there. Makes no wrapper: one made and let go
+    /// here could be collected before anything held it (lesson "a wrapper
+    /// made and released before you take your hold"); the instance must be
+    /// kept by an edge or a `Hold` while the Value is used. Borrowed:
     /// disposing it does nothing.
-    ///
-    /// Only a streams-graph object (runtime.streams_graph): any other
-    /// wrapper is weak, and made and let go here it can be collected before
-    /// the caller takes its own hold - setUpController did that with its
-    /// AbortController, and a collection in between freed it. So anything
-    /// else is refused (NotAStreamsGraphObject); hold it with `clone`.
-    pub fn wrap(self: Realm, instance: *runtime.Instance) Error!Value {
-        if (!runtime.streams_graph.isStreamsGraphObject(instance.vtable.name)) return error.NotAStreamsGraphObject;
-        const wrapper = engine.retainValue(instance.ctx, .{ .instance = instance }) catch |err| return fromEngineError(err);
-        wrapper.release();
-        return .{ .value = .{ .instance = instance }, .realm = self.ctx };
+    pub fn instanceValue(self: Realm, object: *runtime.Instance) Value {
+        return .{ .value = .{ .instance = object }, .realm = self.ctx };
     }
 
     // ------------------------------------------------------------------
@@ -234,10 +235,11 @@ pub const Realm = struct {
     /// Exactly one of `on_fulfilled`, `on_rejected` and `on_dropped` runs
     /// (engine.PromiseReactionSteps): `on_dropped` when the reaction ends
     /// without a handler - its realm ended first, or the collector took the
-    /// promise unsettled. A `ctx` the reaction owns is freed at the end of
-    /// each handler and by `on_dropped`; one it borrows (an instance the
-    /// wrapper cache owns) passes null. On an error none of them runs: `ctx`
-    /// stays the caller's.
+    /// promise unsettled. Whatever `ctx` owns or holds - its memory, a `Hold`
+    /// on the streams object it points at - is let go at the end of each
+    /// handler and by `on_dropped`. On an error none of them runs: `ctx`
+    /// stays the caller's. A `ctx` that is a streams object itself goes
+    /// through `reactHolding`, which holds it.
     pub fn react(
         self: Realm,
         promise: Value,
@@ -245,13 +247,13 @@ pub const Realm = struct {
         ctx: *Ctx,
         comptime on_fulfilled: fn (*Ctx, Value) void,
         comptime on_rejected: fn (*Ctx, Value) void,
-        comptime on_dropped: ?fn (*Ctx) void,
+        comptime on_dropped: fn (*Ctx) void,
     ) Error!void {
         const Steps = struct {
             const steps: engine.PromiseReactionSteps = .{
                 .fulfilled = fulfilled,
                 .rejected = rejected,
-                .dropped = if (on_dropped != null) dropped else null,
+                .dropped = dropped,
             };
 
             /// The reaction's function was made in the reacting realm, so
@@ -271,12 +273,238 @@ pub const Realm = struct {
             }
 
             fn dropped(data: ?*anyopaque) void {
-                if (on_dropped) |drop| drop(@ptrCast(@alignCast(data.?)));
+                on_dropped(@ptrCast(@alignCast(data.?)));
             }
         };
         engine.reactToPromise(self.ctx, promise.value, &Steps.steps, ctx) catch |err| return fromEngineError(err);
     }
+
+    /// `react` with steps on `object` - a controller, a stream - that the
+    /// reaction HOLDS until it ends: the steps run with it alive however
+    /// little else reaches it, and a reaction that never runs (its promise
+    /// collected unsettled, its realm ended) gives it back. A step is skipped
+    /// for an object its own realm's end freed meanwhile.
+    ///
+    /// The promise is usually script's (a source's start() or pull(), a
+    /// sink's write()): until script settles it nothing else may reach the
+    /// stream, and the step must still find it.
+    ///
+    /// `keeper`, when given, is where `object` keeps the hold while it lasts,
+    /// so that it can give it back early (`ReactionHold.giveEarly`) once the
+    /// steps can do nothing observable - a readable controller's pull and
+    /// start once its algorithms are cleared: a TransformStream's readable
+    /// side pulls on a promise that stays pending after the stream closes.
+    pub fn reactHolding(
+        self: Realm,
+        promise: Value,
+        object: *runtime.Instance,
+        keeper: ?*?*ReactionHold,
+        comptime on_fulfilled: fn (*runtime.Instance, Value) void,
+        comptime on_rejected: fn (*runtime.Instance, Value) void,
+    ) Error!void {
+        const Held = struct {
+            reaction_hold: ReactionHold,
+            allocator: std.mem.Allocator,
+
+            fn finish(held: *@This()) void {
+                const allocator = held.allocator;
+                held.reaction_hold.give();
+                allocator.destroy(held);
+            }
+
+            fn fulfilled(held: *@This(), value: Value) void {
+                defer held.finish();
+                if (held.reaction_hold.hold.alive()) on_fulfilled(held.reaction_hold.hold.instance, value);
+            }
+
+            fn rejected(held: *@This(), reason: Value) void {
+                defer held.finish();
+                if (held.reaction_hold.hold.alive()) on_rejected(held.reaction_hold.hold.instance, reason);
+            }
+        };
+        const held = try self.ctx.allocator.create(Held);
+        held.* = .{ .reaction_hold = .{ .hold = Hold.take(object), .keeper = keeper }, .allocator = self.ctx.allocator };
+        if (keeper) |k| k.* = &held.reaction_hold;
+        self.react(promise, Held, held, Held.fulfilled, Held.rejected, Held.finish) catch |err| {
+            held.finish();
+            return err;
+        };
+    }
 };
+
+/// A reaction's hold (`Realm.reactHolding`) that its object may give back
+/// before the reaction ends. Given exactly once: by the reaction's end, or
+/// earlier by its object - after which the object may be collected, and the
+/// reaction's steps, which check the hold's liveness, skip it.
+pub const ReactionHold = struct {
+    hold: Hold,
+    given: bool = false,
+    /// Where the object keeps this while it is held (a controller's field);
+    /// cleared when it is given. Read only while not given - while the hold
+    /// keeps the object, and the field with it, alive.
+    keeper: ?*?*ReactionHold = null,
+
+    fn give(self: *ReactionHold) void {
+        if (self.given) return;
+        self.given = true;
+        if (self.keeper) |k| {
+            if (k.* == self) k.* = null;
+        }
+        self.hold.give();
+    }
+
+    /// The object's early give of the hold `at` keeps, if one is: the
+    /// reaction's steps can no longer do anything observable.
+    pub fn giveEarly(at: *?*ReactionHold) void {
+        const reaction_hold = at.* orelse return;
+        reaction_hold.give();
+    }
+};
+
+/// The traced edges and values of streams objects (engine.TracedSlot), one
+/// per member - Blink's Trace() of the same members: a ReadableStream visits
+/// readable_stream_controller_ and reader_, a reader its
+/// owner_readable_stream_, a controller its stream and its algorithms
+/// (core/streams). Names are per owner; the namespace is streams code's alone
+/// (no streams interface has a [SameObject] attribute).
+pub const slot = struct {
+    /// A stream's [[controller]]; a TransformStream's [[controller]]; a BYOB
+    /// request's [[controller]].
+    pub const controller: engine.TracedSlot = .{ .name = "streams:controller" };
+    /// A ReadableStream's [[reader]].
+    pub const reader: engine.TracedSlot = .{ .name = "streams:reader" };
+    /// A WritableStream's [[writer]].
+    pub const writer: engine.TracedSlot = .{ .name = "streams:writer" };
+    /// A controller's, a reader's or a writer's [[stream]].
+    pub const stream: engine.TracedSlot = .{ .name = "streams:stream" };
+    /// A byte controller's [[byobRequest]].
+    pub const byob_request: engine.TracedSlot = .{ .name = "streams:byobRequest" };
+    /// The platform object a controller's algorithms close over: a
+    /// TransformStream (both its sides), a tee's source stream (both
+    /// branches), a Blob (its stream()).
+    pub const source: engine.TracedSlot = .{ .name = "streams:source" };
+    /// The TransformStream of a TextDecoderStream, TextEncoderStream,
+    /// CompressionStream or DecompressionStream (their [[transform]]).
+    pub const transform_stream: engine.TracedSlot = .{ .name = "streams:transformStream" };
+    /// A TransformStream's [[readable]] and [[writable]].
+    pub const readable: engine.TracedSlot = .{ .name = "streams:readable" };
+    pub const writable: engine.TracedSlot = .{ .name = "streams:writable" };
+    /// A tee's branches, kept by its source stream (Blink's TeeEngine traces
+    /// both; an unread branch lives as long as its source, as in Chrome).
+    pub const tee_branch1: engine.TracedSlot = .{ .name = "streams:teeBranch1" };
+    pub const tee_branch2: engine.TracedSlot = .{ .name = "streams:teeBranch2" };
+    /// A writable controller's [[abortController]].
+    pub const abort_controller: engine.TracedSlot = .{ .name = "streams:abortController" };
+    /// The algorithms' JavaScript values: the underlying source's, sink's or
+    /// transformer's `this` and callbacks, and the strategy's size function.
+    pub const this: engine.TracedSlot = .{ .name = "streams:algorithms:this" };
+    pub const start: engine.TracedSlot = .{ .name = "streams:algorithms:start" };
+    pub const pull: engine.TracedSlot = .{ .name = "streams:algorithms:pull" };
+    pub const cancel: engine.TracedSlot = .{ .name = "streams:algorithms:cancel" };
+    pub const write: engine.TracedSlot = .{ .name = "streams:algorithms:write" };
+    pub const close: engine.TracedSlot = .{ .name = "streams:algorithms:close" };
+    pub const abort: engine.TracedSlot = .{ .name = "streams:algorithms:abort" };
+    pub const transform: engine.TracedSlot = .{ .name = "streams:algorithms:transform" };
+    pub const flush: engine.TracedSlot = .{ .name = "streams:algorithms:flush" };
+    pub const size: engine.TracedSlot = .{ .name = "streams:algorithms:size" };
+};
+
+/// `owner` and `member` keep each other: two traced edges, `member` in
+/// `owner`'s `to_member` and `owner` in `member`'s `to_owner` - a stream and
+/// its controller, its reader. They are kept whole while anything reaches
+/// either, and collected together otherwise.
+pub fn traceBoth(owner: *runtime.Instance, to_member: engine.TracedSlot, member: *runtime.Instance, to_owner: engine.TracedSlot) void {
+    engine.traceChild(owner, member, to_member);
+    engine.traceChild(member, owner, to_owner);
+}
+
+/// End both edges `traceBoth` drew (a reader released, a BYOB request
+/// invalidated).
+pub fn forgetBoth(owner: *runtime.Instance, to_member: engine.TracedSlot, member: *runtime.Instance, to_owner: engine.TracedSlot) void {
+    engine.forgetTracedChild(owner, to_member);
+    engine.forgetTracedChild(member, to_owner);
+}
+
+/// A counted keep on a streams object (engine.keepPlatformObjectAlive) for
+/// work still pending that will touch it - a reaction, a pipe, a tee, an
+/// async iterator, a network source: its wrapper is held whatever script
+/// holds, so the collector leaves it and everything it traces alone. Exactly
+/// one `give` per `take` (a counted keep: one owner's extra release would end
+/// another's). Blink keeps pending work's objects through traced members of
+/// the reactions themselves (pipe_to_engine.cc); a hold is the root form of
+/// that, given back when the work ends.
+///
+/// A hold keeps its object from the collector, not from its realm's end
+/// (lesson "a traced edge keeps an object from the collector, not from its
+/// realm's end" holds for holds too): work in one realm on another realm's
+/// stream asks `alive` before it touches it, and `give` never reaches a freed
+/// one.
+pub const Hold = struct {
+    instance: *runtime.Instance,
+    generation: u64,
+
+    pub fn take(object: *runtime.Instance) Hold {
+        engine.keepPlatformObjectAlive(object);
+        return .{ .instance = object, .generation = runtime.SlabAllocator.generationOf(object) };
+    }
+
+    /// Still the object `take` held: its realm has not ended and freed it.
+    pub fn alive(self: Hold) bool {
+        return runtime.SlabAllocator.generationOf(self.instance) == self.generation;
+    }
+
+    pub fn give(self: Hold) void {
+        if (self.alive()) engine.releasePlatformObject(self.instance);
+    }
+};
+
+/// Hold `object` until the current turn's microtasks run: for a streams
+/// object a native path has just made (a stream and its controller, a
+/// transform stream and its two sides), which nothing reaches yet - between
+/// its wrapper's making and the binding's handle on it, or its native owner's
+/// edge to it, any allocation could collect it. Script that runs while the
+/// object is made (an underlying source's start()) runs inside the turn too.
+/// The realm's end gives it back if the microtask never runs.
+pub fn holdForTheTurn(object: *runtime.Instance) void {
+    const realm = Realm.ofContext(object.ctx) catch return;
+    const Turn = struct {
+        hold: Hold,
+        allocator: std.mem.Allocator,
+
+        fn end(turn: *@This()) void {
+            const hold = turn.hold;
+            turn.allocator.destroy(turn);
+            hold.give();
+        }
+    };
+    const allocator = object.ctx.allocator;
+    const turn = allocator.create(Turn) catch return;
+    turn.* = .{ .hold = Hold.take(object), .allocator = allocator };
+    queueMicrotask(realm, Turn, turn, Turn.end, Turn.end);
+}
+
+/// Keep `value` - a JavaScript value a streams object runs or hands to
+/// script, such as an underlying source's pull() - as a value traced from
+/// `owner` (engine.traceValue), in slot `at`: it lives as long as `owner` does,
+/// and a value that reaches back to `owner` (a source whose closure keeps its
+/// controller) goes with it. `value` stays its holder's. A strong handle
+/// instead kept the closure, and through it the whole stream, for the
+/// realm's life.
+pub fn keepTraced(owner: *runtime.Instance, at: engine.TracedSlot, value: Value) void {
+    engine.traceValue(owner, value.value, at);
+}
+
+/// The value `keepTraced` keeps in `owner`'s slot `at`, as a Value of `realm`.
+/// Owned (dispose it); null when the slot holds none.
+pub fn readTraced(realm: Realm, owner: *runtime.Instance, at: engine.TracedSlot) ?Value {
+    const held = engine.tracedValue(owner, at) orelse return null;
+    return adopt(realm.ctx, held);
+}
+
+/// End `keepTraced`'s value in `owner`'s slot `at` (ClearAlgorithms).
+pub fn forgetTraced(owner: *runtime.Instance, at: engine.TracedSlot) void {
+    engine.forgetTracedChild(owner, at);
+}
 
 /// Result objects, arrays and microtasks.
 pub const ResultOrder = enum {
@@ -519,10 +747,11 @@ pub const Completion = union(enum) {
 /// released (resolve, reject and deinit leave it alone). The cell stays one
 /// byte: a capability in it put every Deferred in a larger size class of the
 /// allocator, whose buckets the streams' churn mapped and unmapped (lane
-/// leakcheck1's gc_bench: +17-23% instructions per Response.text()). Streams objects keep their promises for their realm's life (a
-/// reader's [[closedPromise]], a writer's [[readyPromise]];
-/// wrapper_cache.isStreamsGraphObject), so the two counted per settled
-/// promise per stream (tests/v8/streams_settled_promise_handles_test.zig).
+/// leakcheck1's gc_bench: +17-23% instructions per Response.text()). Streams
+/// objects keep their promises for as long as they live (a reader's
+/// [[closedPromise]], a writer's [[readyPromise]]), so the two counted per
+/// settled promise per live stream
+/// (tests/v8/streams_settled_promise_handles_test.zig).
 pub const Deferred = struct {
     /// OWNED while the promise is pending; released by the settle that
     /// sets `settled` (or by deinit, if none did).

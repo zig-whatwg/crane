@@ -90,10 +90,10 @@ pub fn call_constructor(ctx: runtime.Context, underlyingSource: webidl.Opt(runti
             return err;
         };
         source = null;
-        srd.setUpByteController(realm, instance, controller) catch |err| {
-            _ = realm.wrap(instance) catch {};
-            return err;
-        };
+        // A start() that throws leaves both to the wrapper cache: the setup
+        // traced the stream from its controller (which made the stream's
+        // wrapper) before start ran.
+        try srd.setUpByteController(realm, instance, controller);
         return instance;
     }
 
@@ -113,12 +113,10 @@ pub fn call_constructor(ctx: runtime.Context, underlyingSource: webidl.Opt(runti
     };
     source = null;
     size = .one;
-    srd.setUpDefaultController(realm, instance, controller) catch |err| {
-        // start() threw after the controller reached script; both stay
-        // registered with the wrapper cache instead of being freed under it.
-        _ = realm.wrap(instance) catch {};
-        return err;
-    };
+    // start() may throw after the controller reached script: both are the
+    // wrapper cache's then - the setup traced the stream from its controller
+    // (which made the stream's wrapper) before start ran.
+    try srd.setUpDefaultController(realm, instance, controller);
     return instance;
 }
 
@@ -204,9 +202,8 @@ pub fn call_tee(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = srd.streamOf(instance) orelse return error.TypeError;
     const realm = try js.Realm.of(instance);
     const branches = try srd.tee(realm, instance, false);
-    const b1 = try realm.wrap(branches[0]);
-    const b2 = try realm.wrap(branches[1]);
-    return sw.give(try js.arrayFrom(realm, &.{ b1, b2 }));
+    // Both branches are kept by this stream (and held for the turn).
+    return sw.give(try js.arrayFrom(realm, &.{ realm.instanceValue(branches[0]), realm.instanceValue(branches[1]) }));
 }
 
 /// `values(options)` - § 4.2.5 async iterator.

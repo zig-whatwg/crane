@@ -39,9 +39,11 @@ pub const Stream = struct {
     state: StreamState = .readable,
     /// [[storedError]], owned.
     stored_error: ?Value = null,
-    /// A ReadableStreamDefaultReader or ReadableStreamBYOBReader instance.
+    /// A ReadableStreamDefaultReader or ReadableStreamBYOBReader instance;
+    /// a traced edge both ways (js.slot.reader, js.slot.stream) while set.
     reader: ?*runtime.Instance = null,
-    /// A ReadableStreamDefaultController or ReadableByteStreamController instance.
+    /// A ReadableStreamDefaultController or ReadableByteStreamController
+    /// instance; a traced edge both ways (js.slot.controller, .stream).
     controller: ?*runtime.Instance = null,
     disturbed: bool = false,
 
@@ -112,6 +114,12 @@ pub const Source = struct {
         pull: *const fn (ctx: ?*anyopaque, realm: Realm, controller: *runtime.Instance) js.Error!Value,
         cancel: *const fn (ctx: ?*anyopaque, realm: Realm, controller: *runtime.Instance, reason: Value) js.Error!Value,
         deinit: *const fn (ctx: ?*anyopaque, allocator: std.mem.Allocator) void,
+        /// The controller takes the algorithms over, before start runs: it
+        /// traces what they close over (js.slot.source; the dictionary's
+        /// values, `UnderlyingSource`), so they live as long as it does and
+        /// no longer than that. Null for algorithms that close over nothing
+        /// script can reach.
+        attach: ?*const fn (ctx: ?*anyopaque, controller: *runtime.Instance) void = null,
     };
 };
 
@@ -120,11 +128,22 @@ pub const QueueItem = struct { value: Value, size: f64 };
 /// § 4.6.2 ReadableStreamDefaultController internal slots.
 pub const DefaultController = struct {
     allocator: std.mem.Allocator,
+    /// The controller these are the slots of: the owner of its traced
+    /// algorithms (ClearAlgorithms ends them).
+    instance: *runtime.Instance,
+    /// Kept by a traced edge (js.slot.stream), as the stream keeps this.
     stream: *runtime.Instance,
     /// [[pullAlgorithm]] and [[cancelAlgorithm]]; null once cleared.
     source: ?Source,
     size_algorithm: sw.SizeAlgorithm = .one,
     strategy_hwm: f64,
+    /// The holds of the pending start and pull reactions (js.ReactionHold):
+    /// given back by ClearAlgorithms if still pending - their steps do
+    /// nothing a closed, errored or canceled stream shows, and a pull may
+    /// wait on a promise that never settles (a TransformStream's readable
+    /// side pulls on its backpressure promise).
+    start_reaction: ?*js.ReactionHold = null,
+    pull_reaction: ?*js.ReactionHold = null,
     queue: std.ArrayList(QueueItem) = .empty,
     queue_total_size: f64 = 0,
     started: bool = false,
@@ -167,9 +186,15 @@ pub const ByteEntry = struct {
 /// § 4.7.2 ReadableByteStreamController internal slots.
 pub const ByteController = struct {
     allocator: std.mem.Allocator,
+    /// The controller these are the slots of (see DefaultController).
+    instance: *runtime.Instance,
+    /// Kept by a traced edge (js.slot.stream), as the stream keeps this.
     stream: *runtime.Instance,
     source: ?Source,
     strategy_hwm: f64,
+    /// As DefaultController's.
+    start_reaction: ?*js.ReactionHold = null,
+    pull_reaction: ?*js.ReactionHold = null,
     queue: std.ArrayList(ByteEntry) = .empty,
     queue_total_size: usize = 0,
     started: bool = false,
@@ -249,6 +274,13 @@ fn readerSlots(instance: *runtime.Instance) *Reader {
 
 /// The UnderlyingSource dictionary (§ 4.2.3), converted, plus the object
 /// itself as the callbacks' "callback this value".
+///
+/// Owned values until a controller takes the algorithms over (`attach`, in
+/// SetUp*Controller before start runs); from then on values traced from that
+/// controller (js.slot.this, .start, .pull, .cancel), read for each call and
+/// let go by ClearAlgorithms. A source whose closure keeps its controller is
+/// the usual shape (`start(c) { this.c = c }`), and a strong handle on it
+/// kept the closure - and through it the stream - for the realm's life.
 pub const UnderlyingSource = struct {
     this: ?Value = null,
     start: ?Value = null,
@@ -257,12 +289,55 @@ pub const UnderlyingSource = struct {
     /// type is "bytes".
     bytes: bool = false,
     auto_allocate_chunk_size: ?u64 = null,
+    /// The controller that traces the values, once attached.
+    controller: ?*runtime.Instance = null,
+
+    const members = [_]Member{ .this, .start, .pull, .cancel };
+
+    const Member = enum { this, start, pull, cancel };
+
+    fn slotOf(member: Member) engine.TracedSlot {
+        return switch (member) {
+            .this => js.slot.this,
+            .start => js.slot.start,
+            .pull => js.slot.pull,
+            .cancel => js.slot.cancel,
+        };
+    }
+
+    fn field(self: *UnderlyingSource, member: Member) *?Value {
+        return switch (member) {
+            .this => &self.this,
+            .start => &self.start,
+            .pull => &self.pull,
+            .cancel => &self.cancel,
+        };
+    }
+
+    /// `member`, owned for one call (dispose it); null when absent.
+    fn get(self: *UnderlyingSource, realm: Realm, member: Member) ?Value {
+        if (self.controller) |controller| return js.readTraced(realm, controller, slotOf(member));
+        const value = self.field(member).* orelse return null;
+        return js.clone(value) catch null;
+    }
 
     fn release(self: *UnderlyingSource) void {
-        js.disposeOptional(&self.this);
-        js.disposeOptional(&self.start);
-        js.disposeOptional(&self.pull);
-        js.disposeOptional(&self.cancel);
+        for (members) |member| {
+            if (self.controller) |controller| js.forgetTraced(controller, slotOf(member)) else js.disposeOptional(self.field(member));
+        }
+        self.controller = null;
+    }
+
+    fn attachErased(ctx: ?*anyopaque, controller: *runtime.Instance) void {
+        const self: *UnderlyingSource = @ptrCast(@alignCast(ctx.?));
+        for (members) |member| {
+            if (self.field(member).*) |value| {
+                js.keepTraced(controller, slotOf(member), value);
+                js.dispose(value);
+                self.field(member).* = null;
+            }
+        }
+        self.controller = controller;
     }
 
     fn deinitErased(ctx: ?*anyopaque, allocator: std.mem.Allocator) void {
@@ -275,21 +350,32 @@ pub const UnderlyingSource = struct {
         const self: *UnderlyingSource = @ptrCast(@alignCast(ctx.?));
         // An algorithm that returns undefined, unless start exists: invoke it
         // with « controller » and callback this value underlyingSource.
-        const start_fn = self.start orelse return .{ .normal = try realm.undefinedValue() };
-        return realm.call(start_fn, self.this, &.{try realm.wrap(controller)});
+        const start_fn = self.get(realm, .start) orelse return .{ .normal = try realm.undefinedValue() };
+        defer js.dispose(start_fn);
+        // Run once: the controller need not keep it past this call.
+        if (self.controller) |c| js.forgetTraced(c, js.slot.start);
+        const this = self.get(realm, .this);
+        defer if (this) |t| js.dispose(t);
+        return realm.call(start_fn, this, &.{realm.instanceValue(controller)});
     }
 
     fn pullErased(ctx: ?*anyopaque, realm: Realm, controller: *runtime.Instance) js.Error!Value {
         const self: *UnderlyingSource = @ptrCast(@alignCast(ctx.?));
-        const pull_fn = self.pull orelse return realm.promiseResolvedWithUndefined();
-        return realm.promiseCall(pull_fn, self.this, &.{try realm.wrap(controller)});
+        const pull_fn = self.get(realm, .pull) orelse return realm.promiseResolvedWithUndefined();
+        defer js.dispose(pull_fn);
+        const this = self.get(realm, .this);
+        defer if (this) |t| js.dispose(t);
+        return realm.promiseCall(pull_fn, this, &.{realm.instanceValue(controller)});
     }
 
     fn cancelErased(ctx: ?*anyopaque, realm: Realm, controller: *runtime.Instance, reason: Value) js.Error!Value {
         _ = controller;
         const self: *UnderlyingSource = @ptrCast(@alignCast(ctx.?));
-        const cancel_fn = self.cancel orelse return realm.promiseResolvedWithUndefined();
-        return realm.promiseCall(cancel_fn, self.this, &.{reason});
+        const cancel_fn = self.get(realm, .cancel) orelse return realm.promiseResolvedWithUndefined();
+        defer js.dispose(cancel_fn);
+        const this = self.get(realm, .this);
+        defer if (this) |t| js.dispose(t);
+        return realm.promiseCall(cancel_fn, this, &.{reason});
     }
 
     const vtable = Source.VTable{
@@ -297,6 +383,7 @@ pub const UnderlyingSource = struct {
         .pull = pullErased,
         .cancel = cancelErased,
         .deinit = deinitErased,
+        .attach = attachErased,
     };
 };
 
@@ -437,8 +524,8 @@ pub fn createReadableStream(realm: Realm, ctx: runtime.Context, source: Source, 
     const stream_instance = try newStream(ctx);
     const stream_generation = runtime.SlabAllocator.generationOf(stream_instance);
     errdefer stream_instance.releaseIfUnwrapped(stream_generation);
-    _ = try realm.wrap(stream_instance);
-    // Steps 6-7: a new controller, set up with the given algorithms.
+    // Steps 6-7: a new controller, set up with the given algorithms (which
+    // wraps the stream, held for the turn).
     const controller = try newDefaultController(ctx, stream_instance, source, hwm, size);
     owns_algorithms = false;
     const controller_generation = runtime.SlabAllocator.generationOf(controller);
@@ -469,7 +556,6 @@ pub fn createReadableByteStream(realm: Realm, ctx: runtime.Context, source: Sour
     const stream_instance = try newStream(ctx);
     const stream_generation = runtime.SlabAllocator.generationOf(stream_instance);
     errdefer stream_instance.releaseIfUnwrapped(stream_generation);
-    _ = try realm.wrap(stream_instance);
     // Step 4: SetUpReadableByteStreamController(..., 0, undefined).
     const controller = try newByteController(ctx, stream_instance, source, 0, null);
     owns_algorithms = false;
@@ -661,9 +747,14 @@ pub fn readerGenericCancel(realm: Realm, reader: *Reader, reason: Value) js.Erro
 fn readerGenericInitialize(realm: Realm, reader_instance: *runtime.Instance, stream_instance: *runtime.Instance) js.Error!void {
     const reader = readerSlots(reader_instance);
     const stream = streamSlots(stream_instance);
-    // Steps 1-2: link them.
+    // Steps 1-2: link them - each keeps the other (Blink: the stream traces
+    // reader_, the reader its owner_readable_stream_). The reader's wrapper is
+    // made here if script has not seen it: a reader a native path acquires
+    // (pipeTo, a tee, a body's consumption) is then the wrapper cache's, kept
+    // by its stream.
     reader.stream = stream_instance;
     stream.reader = reader_instance;
+    js.traceBoth(stream_instance, js.slot.reader, reader_instance, js.slot.stream);
     // Steps 3-5: the closed promise follows the stream's state.
     reader.closed_promise = switch (stream.state) {
         .readable => try Deferred.init(realm),
@@ -698,9 +789,10 @@ fn readerGenericRelease(realm: Realm, reader_instance: *runtime.Instance) void {
     if (reader.closed_promise) |closed| closed.markHandled();
     // Step 7: Perform ! stream.[[controller]].[[ReleaseSteps]]().
     releaseSteps(stream.controller.?);
-    // Steps 8-9: unlink.
+    // Steps 8-9: unlink - and neither keeps the other any more.
     stream.reader = null;
     reader.stream = null;
+    js.forgetBoth(stream_instance, js.slot.reader, reader_instance, js.slot.stream);
 }
 
 /// ReadableStreamBYOBReaderErrorReadIntoRequests(reader, e)
@@ -869,7 +961,7 @@ pub fn newDefaultController(ctx: runtime.Context, stream_instance: *runtime.Inst
     const instance = try interfaces.ReadableStreamDefaultController.init(ctx.allocator, ctx);
     errdefer runtime.Instance.deinit(instance);
     const slots = try ctx.allocator.create(DefaultController);
-    slots.* = .{ .allocator = ctx.allocator, .stream = stream_instance, .source = source, .size_algorithm = size, .strategy_hwm = hwm };
+    slots.* = .{ .allocator = ctx.allocator, .instance = instance, .stream = stream_instance, .source = source, .size_algorithm = size, .strategy_hwm = hwm };
     instance.getState(interfaces.ReadableStreamDefaultController.State).own._internal = slots;
     return instance;
 }
@@ -892,8 +984,9 @@ fn defaultCallPullIfNeeded(realm: Realm, controller_instance: *runtime.Instance)
         break :blk s.vtable.pull(s.ctx, realm, controller_instance);
     } catch return;
     defer js.dispose(pull_promise);
-    // Steps 7-8
-    realm.react(pull_promise, runtime.Instance, controller_instance, onDefaultPullFulfilled, onDefaultPullRejected, null) catch {};
+    // Steps 7-8, holding the controller until the pull's promise settles:
+    // script's pull() may hand back a promise only a timer reaches.
+    realm.reactHolding(pull_promise, controller_instance, &c.pull_reaction, onDefaultPullFulfilled, onDefaultPullRejected) catch {};
 }
 
 fn onDefaultPullFulfilled(controller_instance: *runtime.Instance, _: Value) void {
@@ -929,15 +1022,14 @@ fn defaultShouldCallPull(c: *DefaultController) bool {
 
 /// ReadableStreamDefaultControllerClearAlgorithms(controller)
 fn defaultClearAlgorithms(c: *DefaultController) void {
+    // The pending start and pull reactions keep the controller no longer.
+    js.ReactionHold.giveEarly(&c.start_reaction);
+    js.ReactionHold.giveEarly(&c.pull_reaction);
     // Steps 1-2: drop the pull and cancel algorithms.
     if (c.source) |s| s.vtable.deinit(s.ctx, c.allocator);
     c.source = null;
     // Step 3: drop the size algorithm.
-    switch (c.size_algorithm) {
-        .callback => |f| js.dispose(f),
-        else => {},
-    }
-    c.size_algorithm = .cleared;
+    c.size_algorithm.clear(c.instance);
 }
 
 /// The size callback's result converted to `unrestricted double` (ToNumber),
@@ -989,34 +1081,33 @@ pub fn defaultControllerEnqueueCompletion(realm: Realm, controller_instance: *ru
         fulfillReadRequest(realm, stream, chunk, false);
     } else {
         // 4.1 Let result be the size algorithm's completion for chunk.
-        const chunk_size: f64 = switch (c.size_algorithm) {
-            .one, .cleared => 1,
-            .callback => |f| blk: {
-                const completion = try realm.call(f, null, &.{chunk});
-                defer completion.deinit();
-                switch (completion) {
-                    .normal => |v| {
-                        // The size callback's result converted to `unrestricted
-                        // double` (WebIDL "invoke a callback function" step
-                        // 14): ToNumber, whose abrupt completion - a throwing
-                        // valueOf - is the size algorithm's too.
-                        var conversion = SizeConversion{ .realm = realm.ctx, .value = v };
-                        const abrupt = engine.completionOf(realm.ctx, SizeConversion.steps, &conversion) catch |err| return js.fromEngineError(err);
-                        const reason = abrupt orelse break :blk conversion.number;
-                        defer reason.release();
-                        const thrown = try realm.fromRuntime(reason.value);
-                        // 4.2 An abrupt completion errors the controller and is returned.
-                        defaultControllerError(realm, controller_instance, thrown);
-                        return thrown;
-                    },
+        const size_fn = c.size_algorithm.function(realm, controller_instance);
+        defer if (size_fn) |f| js.dispose(f);
+        const chunk_size: f64 = if (size_fn) |f| blk: {
+            const completion = try realm.call(f, null, &.{chunk});
+            defer completion.deinit();
+            switch (completion) {
+                .normal => |v| {
+                    // The size callback's result converted to `unrestricted
+                    // double` (WebIDL "invoke a callback function" step
+                    // 14): ToNumber, whose abrupt completion - a throwing
+                    // valueOf - is the size algorithm's too.
+                    var conversion = SizeConversion{ .realm = realm.ctx, .value = v };
+                    const abrupt = engine.completionOf(realm.ctx, SizeConversion.steps, &conversion) catch |err| return js.fromEngineError(err);
+                    const reason = abrupt orelse break :blk conversion.number;
+                    defer reason.release();
+                    const thrown = try realm.fromRuntime(reason.value);
                     // 4.2 An abrupt completion errors the controller and is returned.
-                    .thrown => |e| {
-                        defaultControllerError(realm, controller_instance, e);
-                        return try js.clone(e);
-                    },
-                }
-            },
-        };
+                    defaultControllerError(realm, controller_instance, thrown);
+                    return thrown;
+                },
+                // 4.2 An abrupt completion errors the controller and is returned.
+                .thrown => |e| {
+                    defaultControllerError(realm, controller_instance, e);
+                    return try js.clone(e);
+                },
+            }
+        } else 1;
         // 4.4 EnqueueValueWithSize: a size that is not a finite
         // non-negative number is a RangeError.
         if (std.math.isNan(chunk_size) or chunk_size < 0 or std.math.isInf(chunk_size)) {
@@ -1072,13 +1163,18 @@ pub fn defaultCanCloseOrEnqueue(c: *const DefaultController) bool {
 pub fn setUpDefaultController(realm: Realm, stream_instance: *runtime.Instance, controller_instance: *runtime.Instance) js.Error!void {
     const stream = streamSlots(stream_instance);
     const c = defaultControllerOf(controller_instance).?;
-    // The controller's wrapper is what start() receives, and wrapping it
-    // registers it with the wrapper cache.
-    _ = try realm.wrap(controller_instance);
+    // Nothing reaches the new stream yet: it is held until its maker has it.
+    js.holdForTheTurn(stream_instance);
     // Steps 2-7: queue empty, flags false; strategy and algorithms in place.
     defaultResetQueue(c);
-    // Step 8: Set stream.[[controller]] to controller.
+    // Step 8: Set stream.[[controller]] to controller - the two keep each
+    // other (Blink: ReadableStream::Trace visits readable_stream_controller_,
+    // the controller its stream). The controller's wrapper, made here, is
+    // what start() receives.
     stream.controller = controller_instance;
+    js.traceBoth(stream_instance, js.slot.controller, controller_instance, js.slot.stream);
+    takeAlgorithms(c.source, controller_instance);
+    c.size_algorithm.trace(controller_instance);
     // Step 9: Let startResult be the result of performing startAlgorithm.
     const s = c.source.?;
     const start_value = switch (try s.vtable.start(s.ctx, realm, controller_instance)) {
@@ -1092,8 +1188,14 @@ pub fn setUpDefaultController(realm: Realm, stream_instance: *runtime.Instance, 
     // Step 10: Let startPromise be a promise resolved with startResult.
     const start_promise = try realm.promiseResolvedWith(start_value);
     defer js.dispose(start_promise);
-    // Steps 11-12
-    try realm.react(start_promise, runtime.Instance, controller_instance, onDefaultStartFulfilled, onDefaultStartRejected, null);
+    // Steps 11-12, holding the controller until start's promise settles.
+    try realm.reactHolding(start_promise, controller_instance, &c.start_reaction, onDefaultStartFulfilled, onDefaultStartRejected);
+}
+
+/// The controller takes `source`'s algorithms over (Source.attach).
+fn takeAlgorithms(source: ?Source, controller_instance: *runtime.Instance) void {
+    const s = source orelse return;
+    if (s.vtable.attach) |attach| attach(s.ctx, controller_instance);
 }
 
 fn onDefaultStartFulfilled(controller_instance: *runtime.Instance, _: Value) void {
@@ -1121,6 +1223,7 @@ pub fn newByteController(ctx: runtime.Context, stream_instance: *runtime.Instanc
     const slots = try ctx.allocator.create(ByteController);
     slots.* = .{
         .allocator = ctx.allocator,
+        .instance = instance,
         .stream = stream_instance,
         .source = source,
         .strategy_hwm = hwm,
@@ -1135,11 +1238,15 @@ pub fn newByteController(ctx: runtime.Context, stream_instance: *runtime.Instanc
 pub fn setUpByteController(realm: Realm, stream_instance: *runtime.Instance, controller_instance: *runtime.Instance) js.Error!void {
     const stream = streamSlots(stream_instance);
     const c = byteControllerOf(controller_instance).?;
-    _ = try realm.wrap(controller_instance);
+    // Held until its maker has it, as setUpDefaultController's.
+    js.holdForTheTurn(stream_instance);
     // Steps 3-12: flags false, no BYOB request, empty queue and pull-intos.
     byteResetQueue(c);
-    // Step 13: Set stream.[[controller]] to controller.
+    // Step 13: Set stream.[[controller]] to controller; the two keep each
+    // other.
     stream.controller = controller_instance;
+    js.traceBoth(stream_instance, js.slot.controller, controller_instance, js.slot.stream);
+    takeAlgorithms(c.source, controller_instance);
     // Step 14: Let startResult be the result of performing startAlgorithm.
     const s = c.source.?;
     const start_value = switch (try s.vtable.start(s.ctx, realm, controller_instance)) {
@@ -1153,8 +1260,8 @@ pub fn setUpByteController(realm: Realm, stream_instance: *runtime.Instance, con
     // Step 15: Let startPromise be a promise resolved with startResult.
     const start_promise = try realm.promiseResolvedWith(start_value);
     defer js.dispose(start_promise);
-    // Steps 16-17
-    try realm.react(start_promise, runtime.Instance, controller_instance, onByteStartFulfilled, onByteStartRejected, null);
+    // Steps 16-17, holding the controller until start's promise settles.
+    try realm.reactHolding(start_promise, controller_instance, &c.start_reaction, onByteStartFulfilled, onByteStartRejected);
 }
 
 fn onByteStartFulfilled(controller_instance: *runtime.Instance, _: Value) void {
@@ -1190,8 +1297,8 @@ fn byteCallPullIfNeeded(realm: Realm, controller_instance: *runtime.Instance) vo
         break :blk s.vtable.pull(s.ctx, realm, controller_instance);
     } catch return;
     defer js.dispose(pull_promise);
-    // Steps 7-8
-    realm.react(pull_promise, runtime.Instance, controller_instance, onBytePullFulfilled, onBytePullRejected, null) catch {};
+    // Steps 7-8, holding the controller until the pull's promise settles.
+    realm.reactHolding(pull_promise, controller_instance, &c.pull_reaction, onBytePullFulfilled, onBytePullRejected) catch {};
 }
 
 fn onBytePullFulfilled(controller_instance: *runtime.Instance, _: Value) void {
@@ -1213,6 +1320,9 @@ fn onBytePullRejected(controller_instance: *runtime.Instance, e: Value) void {
 
 /// ReadableByteStreamControllerClearAlgorithms(controller)
 fn byteClearAlgorithms(c: *ByteController) void {
+    // The pending start and pull reactions keep the controller no longer.
+    js.ReactionHold.giveEarly(&c.start_reaction);
+    js.ReactionHold.giveEarly(&c.pull_reaction);
     if (c.source) |s| s.vtable.deinit(s.ctx, c.allocator);
     c.source = null;
 }
@@ -1462,6 +1572,9 @@ fn byteFillReadRequestFromQueue(realm: Realm, c: *ByteController, request: ReadR
 
 /// ReadableByteStreamControllerGetBYOBRequest(controller)
 pub fn byteGetByobRequest(realm: Realm, controller_instance: *runtime.Instance) ?*runtime.Instance {
+    // The request's wrapper is made by its edge from the controller, in its
+    // relevant realm.
+    _ = realm;
     const c = byteControllerOf(controller_instance).?;
     // Step 1
     if (c.byob_request == null and c.pending_pull_intos.items.len > 0) {
@@ -1479,8 +1592,10 @@ pub fn byteGetByobRequest(realm: Realm, controller_instance: *runtime.Instance) 
         };
         slots.* = .{ .allocator = c.allocator, .controller = controller_instance, .view = view };
         request.getState(interfaces.ReadableStreamBYOBRequest.State).own._internal = slots;
-        _ = realm.wrap(request) catch {};
+        // The controller and its request keep each other until it is
+        // invalidated; the edge makes the request's wrapper, the cache's.
         c.byob_request = request;
+        js.traceBoth(controller_instance, js.slot.byob_request, request, js.slot.controller);
     }
     // Step 2
     return c.byob_request;
@@ -1516,8 +1631,9 @@ fn byteInvalidateByobRequest(c: *ByteController) void {
         request.controller = null;
         js.disposeOptional(&request.view);
     }
-    // Step 4
+    // Step 4 - and neither keeps the other any more.
     c.byob_request = null;
+    js.forgetBoth(c.instance, js.slot.byob_request, request_instance, js.slot.controller);
 }
 
 /// ReadableByteStreamControllerProcessPullIntoDescriptorsUsingQueue(controller).
@@ -1886,6 +2002,15 @@ const PipeState = struct {
     dest: *runtime.Instance,
     reader: *runtime.Instance,
     writer: *runtime.Instance,
+    /// The pipe's own holds on the four (js.Hold), for as long as this
+    /// state lives: its steps run from reactions, read requests and
+    /// microtasks V8 cannot see into, while script may reach neither stream
+    /// (`src.pipeTo(dest)` with both dropped runs to its end). Blink's
+    /// PipeToEngine traces the same members from its reactions. A pipe whose
+    /// work can never finish - an unread pipeThrough - is held until its realm
+    /// ends; collecting it waits for reactions that trace instead of hold
+    /// (tmp/plans/streams-lifetime-design.md section 5).
+    holds: [4]js.Hold,
     prevent_close: bool,
     prevent_abort: bool,
     prevent_cancel: bool,
@@ -1925,7 +2050,9 @@ const PipeState = struct {
         js.disposeOptional(&self.pending_chunk);
         js.disposeOptional(&self.pending_error);
         self.promise.deinit();
+        const holds = self.holds;
         self.allocator.destroy(self);
+        for (holds) |hold| hold.give();
     }
 };
 
@@ -1947,14 +2074,14 @@ pub fn pipeTo(
         defaultReaderRelease(realm, reader);
         return error.V8Failure;
     };
-    // The pipe holds both through Zig pointers; wrapping registers them with
-    // the wrapper cache, which keeps streams-graph objects for the realm.
-    _ = realm.wrap(reader) catch {};
-    _ = realm.wrap(writer) catch {};
     // Step 11: Set source.[[disturbed]] to true.
     streamSlots(source).disturbed = true;
     // Steps 12-13
-    const state = try allocator.create(PipeState);
+    const promise = try Deferred.init(realm);
+    const state = allocator.create(PipeState) catch |err| {
+        promise.deinit();
+        return err;
+    };
     state.* = .{
         .allocator = allocator,
         .source = source,
@@ -1965,9 +2092,13 @@ pub fn pipeTo(
         .prevent_abort = prevent_abort,
         .prevent_cancel = prevent_cancel,
         .signal = signal,
-        .promise = try Deferred.init(realm),
+        .holds = .{ js.Hold.take(source), js.Hold.take(dest), js.Hold.take(reader), js.Hold.take(writer) },
+        .promise = promise,
     };
-    const result = try js.clone(state.promise.promise);
+    const result = js.clone(state.promise.promise) catch |err| {
+        state.release();
+        return err;
+    };
 
     // Step 14: the signal.
     if (signal) |sig| {
@@ -2432,6 +2563,11 @@ const DefaultTee = struct {
     branch1: ?*runtime.Instance = null,
     branch2: ?*runtime.Instance = null,
     cancel_promise: Deferred,
+    /// The reaction to the reader's [[closedPromise]] holds the source
+    /// stream (and through its edges the reader and both branches) until it
+    /// ends: it errors the branches when the source errors, and the source
+    /// may be reached by nothing else then.
+    closed_hold: ?js.Hold = null,
     /// Holders of this state, each letting go once: each branch's source
     /// (until its algorithms are cleared - closed, errored or cancelled), the
     /// reaction to the reader's closed promise, a read in flight, a chunk's
@@ -2494,7 +2630,16 @@ const TeeBranch = struct {
         if (byte) releaseTee(ByteTee, @ptrCast(@alignCast(state))) else releaseTee(DefaultTee, @ptrCast(@alignCast(state)));
     }
 
-    const vtable = Source.VTable{ .start = start, .pull = pull, .cancel = cancelBranch, .deinit = deinitBranch };
+    /// The branch's controller keeps the tee's source stream, which its pull
+    /// reads (Blink: a branch's algorithms trace the TeeEngine, which traces
+    /// the stream); the source keeps the branches back (`teeBranches`).
+    fn attach(ctx: ?*anyopaque, controller: *runtime.Instance) void {
+        const self: *TeeBranch = @ptrCast(@alignCast(ctx.?));
+        const source = if (self.byte) @as(*ByteTee, @ptrCast(@alignCast(self.tee))).stream else @as(*DefaultTee, @ptrCast(@alignCast(self.tee))).stream;
+        engine.traceChild(controller, source, js.slot.source);
+    }
+
+    const vtable = Source.VTable{ .start = start, .pull = pull, .cancel = cancelBranch, .deinit = deinitBranch, .attach = attach };
 };
 
 /// ReadableStreamTee(stream, cloneForBranch2).
@@ -2510,7 +2655,6 @@ fn defaultTee(realm: Realm, stream_instance: *runtime.Instance, clone_for_branch
     const allocator = streamSlots(stream_instance).allocator;
     // Step 3: Let reader be ? AcquireReadableStreamDefaultReader(stream).
     const reader = try acquireDefaultReader(realm, stream_instance);
-    _ = try realm.wrap(reader);
     // Steps 4-12
     const cancel_promise = try Deferred.init(realm);
     const state = allocator.create(DefaultTee) catch |err| {
@@ -2524,15 +2668,34 @@ fn defaultTee(realm: Realm, stream_instance: *runtime.Instance, clone_for_branch
     // Steps 16-18: the branches.
     state.branch1 = try createReadableStream(realm, stream_instance.ctx, try teeSource(allocator, state, false, false), 1, .one);
     state.branch2 = try createReadableStream(realm, stream_instance.ctx, try teeSource(allocator, state, true, false), 1, .one);
+    teeBranches(stream_instance, state.branch1.?, state.branch2.?);
     // Step 19: upon rejection of reader.[[closedPromise]], error both branches.
     if (readerSlots(reader).closed_promise) |closed| {
+        state.closed_hold = js.Hold.take(stream_instance);
         realm.react(closed.promise, DefaultTee, state.retain(), defaultTeeClosedFulfilled, defaultTeeClosedRejected, defaultTeeDropped) catch |err| {
+            giveClosedHold(state);
             state.release();
             return err;
         };
     }
     // Step 20
     return .{ state.branch1.?, state.branch2.? };
+}
+
+/// The source stream keeps both branches (Blink's TeeEngine traces
+/// branch_[0] and branch_[1]): the tee enqueues into them for as long as the
+/// source lives, and an unread branch lives as long as its source, as in
+/// Chrome. The branches keep the source back (`TeeBranch.attach`).
+fn teeBranches(source: *runtime.Instance, branch1: *runtime.Instance, branch2: *runtime.Instance) void {
+    engine.traceChild(source, branch1, js.slot.tee_branch1);
+    engine.traceChild(source, branch2, js.slot.tee_branch2);
+}
+
+/// End the closed reaction's hold on the source, once.
+fn giveClosedHold(state: *DefaultTee) void {
+    const hold = state.closed_hold orelse return;
+    state.closed_hold = null;
+    hold.give();
 }
 
 /// A branch's source, holding the tee's state until the branch's algorithms
@@ -2544,16 +2707,21 @@ fn teeSource(allocator: std.mem.Allocator, state: anytype, second: bool, byte: b
 }
 
 fn defaultTeeClosedFulfilled(state: *DefaultTee, _: Value) void {
+    giveClosedHold(state);
     state.release();
 }
 
 /// The closed reaction ended without a step: its reference goes.
 fn defaultTeeDropped(state: *DefaultTee) void {
+    giveClosedHold(state);
     state.release();
 }
 
 fn defaultTeeClosedRejected(state: *DefaultTee, r: Value) void {
-    defer state.release();
+    defer {
+        giveClosedHold(state);
+        state.release();
+    }
     const realm = Realm.of(state.stream) catch return;
     // 19.1-19.3
     defaultControllerError(realm, streamSlots(state.branch1.?).controller.?, r);
@@ -2591,14 +2759,19 @@ fn defaultTeeDrop(ctx: *anyopaque) void {
 const TeeChunk = struct {
     state: *DefaultTee,
     chunk: Value,
+    /// The source stream - and through its edges both branches - until the
+    /// microtask has enqueued the chunk into them.
+    hold: js.Hold,
 
     /// Its microtask never ran (js.queueMicrotask): the chunk, the task and
     /// its hold on the tee go.
     fn dropped(task: *TeeChunk) void {
         const state = task.state;
+        const hold = task.hold;
         js.dispose(task.chunk);
         state.allocator.destroy(task);
         state.release();
+        hold.give();
     }
 };
 
@@ -2610,17 +2783,20 @@ fn defaultTeeChunk(ctx: *anyopaque, realm: Realm, chunk: Value) void {
     task.* = .{ .state = state, .chunk = js.clone(chunk) catch {
         state.allocator.destroy(task);
         return state.release();
-    } };
+    }, .hold = js.Hold.take(state.stream) };
     js.queueMicrotask(realm, TeeChunk, task, defaultTeeChunkMicrotask, TeeChunk.dropped);
 }
 
 fn defaultTeeChunkMicrotask(task: *TeeChunk) void {
     const state = task.state;
+    const hold = task.hold;
     defer {
         js.dispose(task.chunk);
         state.allocator.destroy(task);
         state.release();
+        hold.give();
     }
+    if (!hold.alive()) return;
     const realm = Realm.of(state.stream) catch return;
     // 1.1 Set readAgain to false.
     state.read_again = false;
@@ -2754,7 +2930,6 @@ fn byteTee(realm: Realm, stream_instance: *runtime.Instance) ![2]*runtime.Instan
     const allocator = streamSlots(stream_instance).allocator;
     // Step 3
     const reader = try acquireDefaultReader(realm, stream_instance);
-    _ = try realm.wrap(reader);
     // Steps 4-13
     const cancel_promise = try Deferred.init(realm);
     const state = allocator.create(ByteTee) catch |err| {
@@ -2768,6 +2943,7 @@ fn byteTee(realm: Realm, stream_instance: *runtime.Instance) ![2]*runtime.Instan
     // Steps 21-23
     state.branch1 = try createReadableByteStream(realm, stream_instance.ctx, try teeSource(allocator, state, false, true));
     state.branch2 = try createReadableByteStream(realm, stream_instance.ctx, try teeSource(allocator, state, true, true));
+    teeBranches(stream_instance, state.branch1.?, state.branch2.?);
     // Step 24: Perform forwardReaderError, given reader.
     byteTeeForwardReaderError(realm, state, reader);
     // Step 25
@@ -2777,37 +2953,43 @@ fn byteTee(realm: Realm, stream_instance: *runtime.Instance) ![2]*runtime.Instan
 const ForwardError = struct {
     state: *ByteTee,
     this_reader: *runtime.Instance,
+    /// The source stream (and through its edges the branches), and
+    /// thisReader - a reader the tee released may have no other keeper, and
+    /// a freed one's address reissued to the next reader would pass step
+    /// 14.1.1's identity test - until the reaction ends.
+    holds: [2]js.Hold,
+
+    /// The record, its holds and its reference on the tee go.
+    fn finish(ctx: *ForwardError) void {
+        const state = ctx.state;
+        const holds = ctx.holds;
+        state.allocator.destroy(ctx);
+        state.release();
+        for (holds) |hold| hold.give();
+    }
 };
 
 /// Step 14: forwardReaderError(thisReader).
 fn byteTeeForwardReaderError(realm: Realm, state: *ByteTee, this_reader: *runtime.Instance) void {
     const closed = readerSlots(this_reader).closed_promise orelse return;
     const ctx = state.allocator.create(ForwardError) catch return;
-    ctx.* = .{ .state = state.retain(), .this_reader = this_reader };
-    realm.react(closed.promise, ForwardError, ctx, forwardErrorFulfilled, forwardErrorRejected, forwardErrorDropped) catch {
-        state.allocator.destroy(ctx);
-        state.release();
-    };
+    ctx.* = .{ .state = state.retain(), .this_reader = this_reader, .holds = .{ js.Hold.take(state.stream), js.Hold.take(this_reader) } };
+    realm.react(closed.promise, ForwardError, ctx, forwardErrorFulfilled, forwardErrorRejected, forwardErrorDropped) catch ctx.finish();
 }
 
 fn forwardErrorFulfilled(ctx: *ForwardError, _: Value) void {
-    forwardErrorDropped(ctx);
+    ctx.finish();
 }
 
-/// The reaction's record and its reference on the tee go - after a
-/// fulfillment, or when the reaction ended without a step.
+/// The reaction ended without a step: its record goes.
 fn forwardErrorDropped(ctx: *ForwardError) void {
-    const state = ctx.state;
-    state.allocator.destroy(ctx);
-    state.release();
+    ctx.finish();
 }
 
 fn forwardErrorRejected(ctx: *ForwardError, r: Value) void {
     const state = ctx.state;
-    defer {
-        state.allocator.destroy(ctx);
-        state.release();
-    }
+    defer ctx.finish();
+    if (!ctx.holds[0].alive()) return;
     // 14.1.1 If thisReader is not reader, return.
     if (ctx.this_reader != state.reader) return;
     const realm = Realm.of(state.stream) catch return;
@@ -2844,7 +3026,6 @@ fn byteTeePullWithDefaultReader(realm: Realm, state: *ByteTee) void {
         if (r.kind == .byob) {
             byobReaderRelease(realm, state.reader);
             state.reader = acquireDefaultReader(realm, state.stream) catch return;
-            _ = realm.wrap(state.reader) catch {};
             byteTeeForwardReaderError(realm, state, state.reader);
         }
     }
@@ -2869,6 +3050,9 @@ fn byteTeeDrop(ctx: *anyopaque) void {
 const ByteTeeChunk = struct {
     state: *ByteTee,
     chunk: Value,
+    /// The source stream - and through its edges both branches - until the
+    /// microtask has run.
+    hold: js.Hold,
     /// For a BYOB read: which branch it filled.
     for_branch2: bool = false,
     byob: bool = false,
@@ -2877,9 +3061,11 @@ const ByteTeeChunk = struct {
     /// its hold on the tee go.
     fn dropped(task: *ByteTeeChunk) void {
         const state = task.state;
+        const hold = task.hold;
         js.dispose(task.chunk);
         state.allocator.destroy(task);
         state.release();
+        hold.give();
     }
 };
 
@@ -2890,7 +3076,7 @@ fn byteTeeDefaultChunk(ctx: *anyopaque, realm: Realm, chunk: Value) void {
     task.* = .{ .state = state, .chunk = js.clone(chunk) catch {
         state.allocator.destroy(task);
         return state.release();
-    } };
+    }, .hold = js.Hold.take(state.stream) };
     js.queueMicrotask(realm, ByteTeeChunk, task, byteTeeDefaultChunkMicrotask, ByteTeeChunk.dropped);
 }
 
@@ -2911,11 +3097,14 @@ fn cloneAsUint8Array(view: Value) ?Value {
 
 fn byteTeeDefaultChunkMicrotask(task: *ByteTeeChunk) void {
     const state = task.state;
+    const hold = task.hold;
     defer {
         js.dispose(task.chunk);
         state.allocator.destroy(task);
         state.release();
+        hold.give();
     }
+    if (!hold.alive()) return;
     const realm = Realm.of(state.stream) catch return;
     // 1.1-1.2
     state.read_again_for_branch1 = false;
@@ -2974,7 +3163,6 @@ fn byteTeePullWithByobReader(realm: Realm, state: *ByteTee, view: Value, for_bra
         if (r.kind == .default) {
             defaultReaderRelease(realm, state.reader);
             state.reader = acquireByobReader(realm, state.stream) catch return;
-            _ = realm.wrap(state.reader) catch {};
             byteTeeForwardReaderError(realm, state, state.reader);
         }
     }
@@ -3011,17 +3199,20 @@ fn byobTeeChunk(ctx: *anyopaque, realm: Realm, chunk: Value) void {
     task.* = .{ .state = state, .chunk = js.clone(chunk) catch {
         state.allocator.destroy(task);
         return state.release();
-    }, .for_branch2 = for_branch2, .byob = true };
+    }, .hold = js.Hold.take(state.stream), .for_branch2 = for_branch2, .byob = true };
     js.queueMicrotask(realm, ByteTeeChunk, task, byobTeeChunkMicrotask, ByteTeeChunk.dropped);
 }
 
 fn byobTeeChunkMicrotask(task: *ByteTeeChunk) void {
     const state = task.state;
+    const hold = task.hold;
     defer {
         js.dispose(task.chunk);
         state.allocator.destroy(task);
         state.release();
+        hold.give();
     }
+    if (!hold.alive()) return;
     const realm = Realm.of(state.stream) catch return;
     // 1.1-1.2
     state.read_again_for_branch1 = false;
@@ -3092,8 +3283,12 @@ fn byobTeeError(ctx: *anyopaque, _: Realm, _: Value) void {
 
 pub const AsyncIterator = struct {
     allocator: std.mem.Allocator,
-    stream: *runtime.Instance,
     reader: *runtime.Instance,
+    /// The iterator keeps its reader - and through the reader's edge, while
+    /// it is not released, the stream - for as long as the iterator object
+    /// lives (Blink: the IterationSource traces reader_): script may hold
+    /// nothing but the iterator.
+    reader_hold: js.Hold,
     prevent_cancel: bool,
 };
 
@@ -3109,28 +3304,33 @@ pub fn values(realm: Realm, stream_instance: *runtime.Instance, prevent_cancel: 
     const allocator = streamSlots(stream_instance).allocator;
     // Steps 1-2: Let reader be ? AcquireReadableStreamDefaultReader(stream).
     const reader = try acquireDefaultReader(realm, stream_instance);
-    _ = try realm.wrap(reader);
     const it = try allocator.create(AsyncIterator);
     // Steps 3-4
-    it.* = .{ .allocator = allocator, .stream = stream_instance, .reader = reader, .prevent_cancel = prevent_cancel };
+    it.* = .{ .allocator = allocator, .reader = reader, .reader_hold = js.Hold.take(reader), .prevent_cancel = prevent_cancel };
     const object = engine.createAsyncIterator(realm.ctx, &async_iterator_steps, it) catch |err| {
+        it.reader_hold.give();
         allocator.destroy(it);
         return js.fromEngineError(err);
     };
     return .{ .value = object.take(), .realm = realm.ctx };
 }
 
-/// The iterator object was collected. No engine work here: the reader and
-/// stream stay the wrapper cache's.
+/// The iterator object was collected, or its realm ended: its hold on the
+/// reader goes (after the collection - the steps' `finalize` never runs
+/// inside it - so the release may touch the engine).
 fn iteratorFinalize(data: ?*anyopaque) void {
     const it: *AsyncIterator = @ptrCast(@alignCast(data.?));
+    const hold = it.reader_hold;
     it.allocator.destroy(it);
+    hold.give();
 }
 
 /// § 4.2.5 "get the next iteration result": a promise for `{ value, done }`.
 fn iteratorNextSteps(data: ?*anyopaque) engine.Error!engine.Owned {
     const it: *AsyncIterator = @ptrCast(@alignCast(data.?));
-    const realm = Realm.of(it.stream) catch return error.OperationFailed;
+    // The reader is the iterator's (held); its stream only while not released.
+    if (!it.reader_hold.alive()) return error.OperationFailed;
+    const realm = Realm.of(it.reader) catch return error.OperationFailed;
     // Step 3: Let promise be a new promise.
     const deferred = Deferred.init(realm) catch return error.OperationFailed;
     const promise = js.clone(deferred.promise) catch {
@@ -3169,7 +3369,8 @@ fn iteratorNextSteps(data: ?*anyopaque) engine.Error!engine.Owned {
 /// WebIDL then fulfills with `{ value: arg, done: true }`.
 fn iteratorReturnSteps(data: ?*anyopaque, arg: runtime.JSValue) engine.Error!engine.Owned {
     const it: *AsyncIterator = @ptrCast(@alignCast(data.?));
-    const realm = Realm.of(it.stream) catch return error.OperationFailed;
+    if (!it.reader_hold.alive()) return error.OperationFailed;
+    const realm = Realm.of(it.reader) catch return error.OperationFailed;
     // Step 1: Let reader be iterator's reader.
     const reader_instance = it.reader;
     const reader = readerOf(reader_instance) orelse return error.OperationFailed;

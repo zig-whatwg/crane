@@ -94,6 +94,11 @@ pub const Sink = struct {
         abort: *const fn (ctx: ?*anyopaque, realm: Realm, controller: *runtime.Instance, reason: Value) js.Error!Value,
         /// Release what `ctx` owns. Runs once, at ClearAlgorithms or teardown.
         deinit: *const fn (ctx: ?*anyopaque, allocator: std.mem.Allocator) void,
+        /// The controller takes the algorithms over, before start runs: it
+        /// traces what they close over (the dictionary's values; a
+        /// TransformStream). Null for algorithms that close over nothing
+        /// script can reach.
+        attach: ?*const fn (ctx: ?*anyopaque, controller: *runtime.Instance) void = null,
     };
 };
 
@@ -101,10 +106,48 @@ pub const Sink = struct {
 pub const SizeAlgorithm = union(enum) {
     /// ExtractSizeAlgorithm without strategy["size"]: returns 1.
     one,
-    /// strategy["size"], owned.
+    /// strategy["size"], owned - until its controller takes it over
+    /// (`traceSizeAlgorithm`).
     callback: Value,
+    /// strategy["size"], a value traced from its controller (js.slot.size):
+    /// a size function whose closure reaches the stream goes with it, where
+    /// a strong handle kept both for the realm's life.
+    traced,
     /// Set to undefined by ClearAlgorithms.
     cleared,
+
+    /// The controller takes `self` over, when it is set up: a callback
+    /// becomes a value traced from `controller`.
+    pub fn trace(self: *SizeAlgorithm, controller: *runtime.Instance) void {
+        switch (self.*) {
+            .callback => |f| {
+                js.keepTraced(controller, js.slot.size, f);
+                js.dispose(f);
+                self.* = .traced;
+            },
+            else => {},
+        }
+    }
+
+    /// The function to call for a chunk, owned (dispose it); null for an
+    /// algorithm that returns 1 - none given, or cleared.
+    pub fn function(self: SizeAlgorithm, realm: Realm, controller: *runtime.Instance) ?Value {
+        return switch (self) {
+            .one, .cleared => null,
+            .callback => |f| js.clone(f) catch null,
+            .traced => js.readTraced(realm, controller, js.slot.size),
+        };
+    }
+
+    /// ClearAlgorithms' "set [[strategySizeAlgorithm]] to undefined".
+    pub fn clear(self: *SizeAlgorithm, controller: *runtime.Instance) void {
+        switch (self.*) {
+            .callback => |f| js.dispose(f),
+            .traced => js.forgetTraced(controller, js.slot.size),
+            else => {},
+        }
+        self.* = .cleared;
+    }
 };
 
 pub const QueueEntry = union(enum) {
@@ -115,6 +158,10 @@ pub const QueueEntry = union(enum) {
 /// § 5.4.2 WritableStreamDefaultController internal slots.
 pub const Controller = struct {
     allocator: std.mem.Allocator,
+    /// The controller these are the slots of: the owner of its traced
+    /// algorithms and edges.
+    instance: *runtime.Instance,
+    /// Kept by a traced edge (js.slot.stream), as the stream keeps this.
     stream: *runtime.Instance,
     /// Null once ClearAlgorithms has run.
     sink: ?Sink,
@@ -123,18 +170,16 @@ pub const Controller = struct {
     queue: std.ArrayList(QueueEntry) = .empty,
     queue_total_size: f64 = 0,
     started: bool = false,
+    /// [[abortController]], kept by a traced edge (js.slot.abort_controller);
+    /// the AbortController keeps its signal (its own edge once the signal is
+    /// handed out). Two strong handles held them before - for the realm's
+    /// life, with the controller.
     abort_controller: ?*runtime.Instance = null,
-    /// Strong Globals for the AbortController's and its signal's wrappers.
-    /// Neither is a streams-graph object, so without these a collected
-    /// `controller.signal` wrapper would free a signal this controller still
-    /// signals.
-    abort_keepalive: [2]?Value = .{ null, null },
 
     pub fn deinit(self: *Controller) void {
         clearAlgorithms(self);
         resetQueue(self);
         self.queue.deinit(self.allocator);
-        for (&self.abort_keepalive) |*k| js.disposeOptional(k);
         self.allocator.destroy(self);
     }
 };
@@ -179,19 +224,70 @@ pub fn give(value: Value) runtime.JSValue {
 
 /// The UnderlyingSink dictionary (§ 5.2.3), converted, plus the object itself
 /// as the callbacks' "callback this value".
+///
+/// Owned values until the controller takes the algorithms over (`attach`,
+/// setUpController, before start runs); then values traced from it (js.slot),
+/// read for each call and let go by ClearAlgorithms - as the readable side's
+/// UnderlyingSource, for the same reason: a sink whose closure keeps its
+/// controller kept the whole stream for the realm's life through a strong
+/// handle.
 pub const UnderlyingSink = struct {
     this: ?Value = null,
     start: ?Value = null,
     write: ?Value = null,
     close: ?Value = null,
     abort: ?Value = null,
+    /// The controller that traces the values, once attached.
+    controller: ?*runtime.Instance = null,
+
+    const members = [_]Member{ .this, .start, .write, .close, .abort };
+
+    const Member = enum { this, start, write, close, abort };
+
+    fn slotOf(member: Member) engine.TracedSlot {
+        return switch (member) {
+            .this => js.slot.this,
+            .start => js.slot.start,
+            .write => js.slot.write,
+            .close => js.slot.close,
+            .abort => js.slot.abort,
+        };
+    }
+
+    fn field(self: *UnderlyingSink, member: Member) *?Value {
+        return switch (member) {
+            .this => &self.this,
+            .start => &self.start,
+            .write => &self.write,
+            .close => &self.close,
+            .abort => &self.abort,
+        };
+    }
+
+    /// `member`, owned for one call (dispose it); null when absent.
+    fn get(self: *UnderlyingSink, realm: Realm, member: Member) ?Value {
+        if (self.controller) |controller| return js.readTraced(realm, controller, slotOf(member));
+        const value = self.field(member).* orelse return null;
+        return js.clone(value) catch null;
+    }
 
     fn release(self: *UnderlyingSink) void {
-        js.disposeOptional(&self.this);
-        js.disposeOptional(&self.start);
-        js.disposeOptional(&self.write);
-        js.disposeOptional(&self.close);
-        js.disposeOptional(&self.abort);
+        for (members) |member| {
+            if (self.controller) |controller| js.forgetTraced(controller, slotOf(member)) else js.disposeOptional(self.field(member));
+        }
+        self.controller = null;
+    }
+
+    fn attachErased(ctx: ?*anyopaque, controller: *runtime.Instance) void {
+        const self: *UnderlyingSink = @ptrCast(@alignCast(ctx.?));
+        for (members) |member| {
+            if (self.field(member).*) |value| {
+                js.keepTraced(controller, slotOf(member), value);
+                js.dispose(value);
+                self.field(member).* = null;
+            }
+        }
+        self.controller = controller;
     }
 
     fn deinitErased(ctx: ?*anyopaque, allocator: std.mem.Allocator) void {
@@ -203,34 +299,48 @@ pub const UnderlyingSink = struct {
     fn startErased(ctx: ?*anyopaque, realm: Realm, controller: *runtime.Instance) js.Error!js.Completion {
         const self: *UnderlyingSink = @ptrCast(@alignCast(ctx.?));
         // Step 2: an algorithm that returns undefined.
-        const start_fn = self.start orelse return .{ .normal = try realm.undefinedValue() };
+        const start_fn = self.get(realm, .start) orelse return .{ .normal = try realm.undefinedValue() };
+        defer js.dispose(start_fn);
+        // Run once: the controller need not keep it past this call.
+        if (self.controller) |c| js.forgetTraced(c, js.slot.start);
+        const this = self.get(realm, .this);
+        defer if (this) |t| js.dispose(t);
         // Step 6: invoke start with « controller », exception behavior
         // "rethrow", callback this value underlyingSink.
-        return realm.call(start_fn, self.this, &.{try realm.wrap(controller)});
+        return realm.call(start_fn, this, &.{realm.instanceValue(controller)});
     }
 
     fn writeErased(ctx: ?*anyopaque, realm: Realm, controller: *runtime.Instance, chunk: Value) js.Error!Value {
         const self: *UnderlyingSink = @ptrCast(@alignCast(ctx.?));
         // Step 3: an algorithm that returns a promise resolved with undefined.
-        const write_fn = self.write orelse return realm.promiseResolvedWithUndefined();
+        const write_fn = self.get(realm, .write) orelse return realm.promiseResolvedWithUndefined();
+        defer js.dispose(write_fn);
+        const this = self.get(realm, .this);
+        defer if (this) |t| js.dispose(t);
         // Step 7: invoke write with « chunk, controller ».
-        return realm.promiseCall(write_fn, self.this, &.{ chunk, try realm.wrap(controller) });
+        return realm.promiseCall(write_fn, this, &.{ chunk, realm.instanceValue(controller) });
     }
 
     fn closeErased(ctx: ?*anyopaque, realm: Realm, controller: *runtime.Instance) js.Error!Value {
         _ = controller;
         const self: *UnderlyingSink = @ptrCast(@alignCast(ctx.?));
         // Steps 4 and 8: invoke close with « ».
-        const close_fn = self.close orelse return realm.promiseResolvedWithUndefined();
-        return realm.promiseCall(close_fn, self.this, &.{});
+        const close_fn = self.get(realm, .close) orelse return realm.promiseResolvedWithUndefined();
+        defer js.dispose(close_fn);
+        const this = self.get(realm, .this);
+        defer if (this) |t| js.dispose(t);
+        return realm.promiseCall(close_fn, this, &.{});
     }
 
     fn abortErased(ctx: ?*anyopaque, realm: Realm, controller: *runtime.Instance, reason: Value) js.Error!Value {
         _ = controller;
         const self: *UnderlyingSink = @ptrCast(@alignCast(ctx.?));
         // Steps 5 and 9: invoke abort with « reason ».
-        const abort_fn = self.abort orelse return realm.promiseResolvedWithUndefined();
-        return realm.promiseCall(abort_fn, self.this, &.{reason});
+        const abort_fn = self.get(realm, .abort) orelse return realm.promiseResolvedWithUndefined();
+        defer js.dispose(abort_fn);
+        const this = self.get(realm, .this);
+        defer if (this) |t| js.dispose(t);
+        return realm.promiseCall(abort_fn, this, &.{reason});
     }
 
     const vtable = Sink.VTable{
@@ -239,6 +349,7 @@ pub const UnderlyingSink = struct {
         .close = closeErased,
         .abort = abortErased,
         .deinit = deinitErased,
+        .attach = attachErased,
     };
 };
 
@@ -383,8 +494,9 @@ pub fn setUpWriter(realm: Realm, writer_instance: *runtime.Instance, stream_inst
     if (isLocked(stream)) return error.TypeError;
     // Step 2: Set writer.[[stream]] to stream.
     writer.stream = stream_instance;
-    // Step 3: Set stream.[[writer]] to writer.
+    // Step 3: Set stream.[[writer]] to writer. Each keeps the other.
     stream.writer = writer_instance;
+    js.traceBoth(stream_instance, js.slot.writer, writer_instance, js.slot.stream);
     // Step 4: Let state be stream.[[state]].
     switch (stream.state) {
         // Step 5
@@ -557,26 +669,26 @@ fn finishErroring(realm: Realm, stream_instance: *runtime.Instance) void {
         abort_request.promise.deinit();
         return;
     };
-    reaction.* = .{ .stream_instance = stream_instance, .request = abort_request.promise };
-    realm.react(promise, AbortReaction, reaction, AbortReaction.onFulfilled, AbortReaction.onRejected, AbortReaction.dropped) catch {
-        abort_request.promise.deinit();
-        stream.allocator.destroy(reaction);
-    };
+    reaction.* = .{ .hold = js.Hold.take(stream_instance), .request = abort_request.promise, .allocator = stream.allocator };
+    realm.react(promise, AbortReaction, reaction, AbortReaction.onFulfilled, AbortReaction.onRejected, AbortReaction.dropped) catch reaction.dropped();
 }
 
 const AbortReaction = struct {
-    stream_instance: *runtime.Instance,
+    /// The stream, until the abort algorithm's promise settles.
+    hold: js.Hold,
     request: Deferred,
+    /// The stream's: a dropped end must not read the stream for it.
+    allocator: std.mem.Allocator,
 
     fn finish(self: *AbortReaction, outcome: ?Value) void {
-        const stream = streamSlots(self.stream_instance);
-        const realm = Realm.of(self.stream_instance) catch return;
+        if (!self.hold.alive()) return self.dropped();
+        const stream_instance = self.hold.instance;
+        const realm = Realm.of(stream_instance) catch return self.dropped();
         // 13.1 resolve / 14.1 reject the abort request's promise.
         if (outcome) |reason| self.request.reject(realm, reason) else self.request.resolveUndefined(realm);
-        self.request.deinit();
         // 13.2 / 14.2
-        rejectCloseAndClosedPromiseIfNeeded(realm, stream);
-        stream.allocator.destroy(self);
+        rejectCloseAndClosedPromiseIfNeeded(realm, streamSlots(stream_instance));
+        self.dropped();
     }
 
     fn onFulfilled(self: *AbortReaction, _: Value) void {
@@ -588,10 +700,14 @@ const AbortReaction = struct {
     }
 
     /// Ended without a step (its realm ended first, or the promise was
-    /// collected unsettled): only what it holds goes.
+    /// collected unsettled), or after one: what it holds goes. It may run
+    /// in the same collection's second pass as the stream's teardown, so it
+    /// reads nothing of the stream.
     fn dropped(self: *AbortReaction) void {
+        const hold = self.hold;
         self.request.deinit();
-        streamSlots(self.stream_instance).allocator.destroy(self);
+        self.allocator.destroy(self);
+        hold.give();
     }
 };
 
@@ -815,9 +931,12 @@ pub fn writerRelease(realm: Realm, writer_instance: *runtime.Instance) void {
     writerEnsureReadyPromiseRejected(realm, writer, released_error);
     writerEnsureClosedPromiseRejected(realm, writer, released_error);
     // Step 7: Set stream.[[writer]] to undefined.
+    const stream_instance = writer.stream.?;
     stream.writer = null;
-    // Step 8: Set writer.[[stream]] to undefined.
+    // Step 8: Set writer.[[stream]] to undefined - and neither keeps the
+    // other any more.
     writer.stream = null;
+    js.forgetBoth(stream_instance, js.slot.writer, writer_instance, js.slot.stream);
 }
 
 /// WritableStreamDefaultWriterWrite(writer, chunk). Returns an owned promise.
@@ -857,6 +976,7 @@ pub fn newController(ctx: runtime.Context, stream_instance: *runtime.Instance, s
     const slots = try ctx.allocator.create(Controller);
     slots.* = .{
         .allocator = ctx.allocator,
+        .instance = instance,
         .stream = stream_instance,
         .sink = sink,
         .size_algorithm = size,
@@ -874,37 +994,31 @@ pub fn newController(ctx: runtime.Context, stream_instance: *runtime.Instance, s
 pub fn setUpController(realm: Realm, stream_instance: *runtime.Instance, controller_instance: *runtime.Instance) js.Error!void {
     const stream = streamSlots(stream_instance);
     const controller = controllerSlots(controller_instance);
-    // Wrap now: the wrapper is what start() receives, and wrapping registers
-    // the controller with the wrapper cache, which holds it until teardown.
-    _ = try realm.wrap(controller_instance);
-    // Steps 3-4: link stream and controller.
+    // Nothing reaches the new stream yet: it is held until its maker has it.
+    js.holdForTheTurn(stream_instance);
+    // Steps 3-4: link stream and controller - each keeps the other. The
+    // controller's wrapper, made here, is what start() receives.
     stream.controller = controller_instance;
+    js.traceBoth(stream_instance, js.slot.controller, controller_instance, js.slot.stream);
+    if (controller.sink) |sink| if (sink.vtable.attach) |attach| attach(sink.ctx, controller_instance);
+    controller.size_algorithm.trace(controller_instance);
     // Step 5: Perform ! ResetQueue(controller).
     resetQueue(controller);
-    // Step 6: Set controller.[[abortController]] to a new AbortController.
+    // Step 6: Set controller.[[abortController]] to a new AbortController,
+    // kept by an edge from the controller - drawn in the step that makes the
+    // wrapper, which nothing else holds (the worker variant of
+    // encoding/streams/decode-bad-chunks.any.js once crashed on a wrapper
+    // made and let go a step before its hold).
     controller.abort_controller = interfaces.AbortController.call_constructor(controller_instance.ctx) catch null;
     if (controller.abort_controller) |ac| {
-        // Each wrapper is held in the step that makes it. `realm.wrap` makes
-        // a wrapper and lets it go, which holds a streams-graph object (the
-        // wrapper cache keeps those strongly) but not these two: an
-        // AbortController's and an AbortSignal's wrappers are weak, so
-        // between `wrap` and the clone nothing held them, and a collection
-        // there - the clone's own cache-hit path allocates - freed the
-        // controller's AbortController under it (the worker variant of
-        // encoding/streams/decode-bad-chunks.any.js crashed on the next
-        // stream's setup).
         const ac_generation = runtime.SlabAllocator.generationOf(ac);
-        controller.abort_keepalive[0] = js.clone(.{ .value = .{ .instance = ac }, .realm = realm.ctx }) catch null;
-        if (controller.abort_keepalive[0] == null) {
-            // Not held, it cannot stay this controller's: a weak wrapper may
-            // be collected under it. And with no wrapper - a failed wrap
-            // fails the clone (template_registry.wrapInstanceAsV8Object) -
-            // nothing else frees it or its signal.
+        engine.traceChild(controller_instance, ac, js.slot.abort_controller);
+        if (!engine.hasWrapper(ac)) {
+            // No edge without a wrapper (a realm with no engine left): it
+            // cannot stay this controller's, and nothing else frees it.
             controller.abort_controller = null;
             ac.releaseIfUnwrapped(ac_generation);
-        } else if (interfaces.AbortController.get_signal(ac)) |signal| {
-            controller.abort_keepalive[1] = js.clone(.{ .value = .{ .instance = signal }, .realm = realm.ctx }) catch null;
-        } else |_| {}
+        }
     }
     // Step 7: Set controller.[[started]] to false.
     controller.started = false;
@@ -926,8 +1040,8 @@ pub fn setUpController(realm: Realm, stream_instance: *runtime.Instance, control
     // Step 16: Let startPromise be a promise resolved with startResult.
     const start_promise = try realm.promiseResolvedWith(start_value);
     defer js.dispose(start_promise);
-    // Steps 17-18
-    try realm.react(start_promise, runtime.Instance, controller_instance, onStartFulfilled, onStartRejected, null);
+    // Steps 17-18, holding the controller until start's promise settles.
+    try realm.reactHolding(start_promise, controller_instance, null, onStartFulfilled, onStartRejected);
 }
 
 fn onStartFulfilled(controller_instance: *runtime.Instance, _: Value) void {
@@ -979,11 +1093,7 @@ pub fn clearAlgorithms(controller: *Controller) void {
     if (controller.sink) |sink| sink.vtable.deinit(sink.ctx, controller.allocator);
     controller.sink = null;
     // Step 4: drop the size algorithm.
-    switch (controller.size_algorithm) {
-        .callback => |c| js.dispose(c),
-        else => {},
-    }
-    controller.size_algorithm = .cleared;
+    controller.size_algorithm.clear(controller.instance);
 }
 
 /// WritableStreamDefaultControllerClose(controller)
@@ -1019,12 +1129,10 @@ fn getBackpressure(controller: *Controller) bool {
 /// WritableStreamDefaultControllerGetChunkSize(controller, chunk)
 fn getChunkSize(realm: Realm, controller_instance: *runtime.Instance, chunk: Value) f64 {
     const controller = controllerSlots(controller_instance);
-    const size_fn = switch (controller.size_algorithm) {
-        .one => return 1,
-        // Step 1: undefined once cleared; the stream is no longer writable.
-        .cleared => return 1,
-        .callback => |c| c,
-    };
+    // Step 1: undefined once cleared (the stream is no longer writable), and
+    // none given: 1.
+    const size_fn = controller.size_algorithm.function(realm, controller_instance) orelse return 1;
+    defer js.dispose(size_fn);
     // Step 2: Let returnValue be the result of performing the size algorithm,
     // passing in chunk, and interpreting the result as a completion record.
     // The algorithm invokes size() and converts what it returns to
@@ -1092,8 +1200,8 @@ fn processClose(realm: Realm, controller_instance: *runtime.Instance) void {
     defer js.dispose(sink_close_promise);
     // Step 6: Perform ! WritableStreamDefaultControllerClearAlgorithms(controller).
     clearAlgorithms(controller);
-    // Steps 7-8
-    realm.react(sink_close_promise, runtime.Instance, stream_instance, onSinkCloseFulfilled, onSinkCloseRejected, null) catch {};
+    // Steps 7-8, holding the stream until the sink's close settles.
+    realm.reactHolding(sink_close_promise, stream_instance, null, onSinkCloseFulfilled, onSinkCloseRejected) catch {};
 }
 
 fn onSinkCloseFulfilled(stream_instance: *runtime.Instance, _: Value) void {
@@ -1121,8 +1229,8 @@ fn processWrite(realm: Realm, controller_instance: *runtime.Instance, chunk: Val
         break :blk sink.vtable.write(sink.ctx, realm, controller_instance, chunk);
     } catch return;
     defer js.dispose(sink_write_promise);
-    // Steps 4-5
-    realm.react(sink_write_promise, runtime.Instance, controller_instance, onSinkWriteFulfilled, onSinkWriteRejected, null) catch {};
+    // Steps 4-5, holding the controller until the sink's write settles.
+    realm.reactHolding(sink_write_promise, controller_instance, null, onSinkWriteFulfilled, onSinkWriteRejected) catch {};
 }
 
 fn onSinkWriteFulfilled(controller_instance: *runtime.Instance, _: Value) void {
@@ -1235,8 +1343,8 @@ pub fn createWritableStream(realm: Realm, ctx: runtime.Context, sink: Sink, hwm:
     const stream_instance = try newStream(ctx);
     const stream_generation = runtime.SlabAllocator.generationOf(stream_instance);
     errdefer stream_instance.releaseIfUnwrapped(stream_generation);
-    _ = try realm.wrap(stream_instance);
-    // Steps 4-5: a new controller, set up with the given algorithms.
+    // Steps 4-5: a new controller, set up with the given algorithms (which
+    // wraps the stream, held for the turn).
     const controller_instance = try newController(ctx, stream_instance, sink, hwm, size);
     owns_algorithms = false;
     const controller_generation = runtime.SlabAllocator.generationOf(controller_instance);
