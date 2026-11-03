@@ -1032,7 +1032,7 @@ const v8_alone = snapshot_first ++ [_]DeclaredTest{
     .{ .name = "async_iterable_release_test.test.an async iterator script drops is collected: values() and for await keep nothing per call", .reason = "TEMPORARY: it compares the process's live weak callback records; measured in its own isolate (global handle bytes against a control round with no iterator) it reads 4 handles left per values() call and 2 per for await - the streams objects its rounds make (the iterator's reader among them), which wrapper_cache.isStreamsGraphObject holds strongly until the realm ends (lane leakcheck1's finding; the streams wrapper lifetime lane) - converted once that is settled" },
     .{ .name = "agents_concurrent_engine_state_test.test.two fresh agents on two threads: for-await, Intl, JSON modules and ObservableArray 200 times at once", .reason = "TEMPORARY: it compares the process's live weak callback records over its two agents' rounds; per isolate, each round's for await makes a stream, and wrapper_cache.isStreamsGraphObject holds a streams object's wrapper strongly until its realm ends (lane leakcheck1's finding; the streams wrapper lifetime lane) - converted once that is settled" },
     .{ .name = "test_process_test.test.a test's agent takes its realms down with it, their context handles too", .reason = "the subject is the process's live Global<Context> count after the agent's end - its isolate is gone, so nothing per isolate is left to read - which the busy Browser's realms move" },
-} ++ ledger_tests ++ v8state1_pending;
+} ++ ledger_tests ++ process_count_subjects;
 
 /// object_global_ledger_test: the subject of each is the adapter's
 /// process-wide live_object_globals ledger itself.
@@ -1070,22 +1070,28 @@ const snapshot_first = [_]DeclaredTest{
     .{ .name = "xw1_exposure_snapshot_test.test.xw1 snapshot Window keeps its scope while workers install their own exposed members", .reason = snapshot_first_reason },
 };
 
-/// TEMPORARY (lane tsanfix1, 2026-11-02): the files whose tests compare
-/// process-wide engine counts the busy Browser moves too
-/// (docs/testing/test-variant-findings-2026-11-02.tsv M2; lane tsanfix1's
-/// -Dmany-browsers run of tests-v8 found more of their tests than tsan1's list
-/// named) - whole files ("<file>.test.", every test of it). Each goes when its
-/// tests read their own isolate's global handle bytes
-/// (ffi.v8_Isolate_GetGlobalHandleBytes) instead, or name the ones whose
-/// subject is the process count itself (queued: lane tsanfix1's handoff).
-const v8state1_pending_reason = "TEMPORARY: its tests compare process-wide v8_Debug_Live* and diagnostic counts; to be converted to the isolate's global handle bytes (lane tsanfix1's handoff)";
-const v8state1_pending = [_]DeclaredTest{
-    .{ .name = "context_counter_test.test.", .reason = v8state1_pending_reason },
-    .{ .name = "indexed_property_semantics_test.test.", .reason = v8state1_pending_reason },
-    .{ .name = "constructor_error_receiver_test.test.", .reason = v8state1_pending_reason },
-    .{ .name = "realm_end_finalize_test.test.", .reason = v8state1_pending_reason },
-    .{ .name = "realm_microtask_test.test.", .reason = v8state1_pending_reason },
-    .{ .name = "refcount_wrapper_link_test.test.", .reason = v8state1_pending_reason },
+/// context_counter_test: the subject of each is the balance of the adapter's
+/// process-wide live_context_globals count itself. The file's other tests
+/// read their own isolate's global handle bytes (lane testfix2).
+const context_count_reason = "the subject is the adapter's process-wide live_context_globals count - every Global<Context> made is counted and every dispose uncounts it - which the busy Browser's realms move too (V8's per-isolate global handle bytes see a leaked context, not a miscounted one)";
+
+/// Tests whose subject is that a binding path makes NO Global for its
+/// receiver: a handle made and disposed leaves the isolate's global handle
+/// bytes as they were, so only the adapter's process-wide creation count per
+/// entry point (object_globals_from.*) sees one (lane testfix2).
+const receiver_creation_reason = "the subject is that the path makes no Global for its receiver - a handle made and disposed leaves the isolate's global handle bytes as they were, so only the adapter's process-wide creation count object_globals_from.* sees it, which the busy Browser's bindings move too";
+
+/// The tests of lane tsanfix1's whole-file entries (2026-11-02) whose
+/// subject is a count the whole process shares; their files' other tests
+/// read their own isolate's global handle bytes (lane testfix2).
+const process_count_subjects = [_]DeclaredTest{
+    .{ .name = "context_counter_test.test.binding getter and method calls leave live_context_globals unchanged", .reason = context_count_reason },
+    .{ .name = "context_counter_test.test.a context made with a global constructor and disposed leaves live_context_globals unchanged", .reason = context_count_reason },
+    .{ .name = "indexed_property_semantics_test.test.an indexed read and an `in` check make no handle for the list", .reason = receiver_creation_reason },
+    .{ .name = "indexed_property_semantics_test.test.an attribute read makes no handle for its receiver and leaves none", .reason = receiver_creation_reason },
+    // TEMPORARY until lane hookfreeze2 merges: its Tally counts every wrapper
+    // reference of the process through runtime.lifetime's swapped hooks.
+    .{ .name = "refcount_wrapper_link_test.test.", .reason = "TEMPORARY: its Tally counts every wrapper reference the process takes and lets go through runtime.lifetime's hooks, which it swaps - the busy Browser's wrappers' too; lane hookfreeze2's overrideHooksForTest is a Hook override, which holds the busy Browser while it lasts, and this entry goes when that merges" },
 };
 
 // Slow tests: over 45 s alone on chat.local in Debug (lane tlaunch2,
