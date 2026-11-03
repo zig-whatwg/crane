@@ -1114,9 +1114,6 @@ const process_count_subjects = [_]DeclaredTest{
     .{ .name = "weak_callback_ownership_test.test.disposing an isolate leaves another isolate's detached records alone", .reason = weak_record_reason },
     .{ .name = "weak_callback_ownership_test.test.a finalizer runs in V8's second pass, after its first-pass unlink, and its record goes with it", .reason = weak_record_reason },
     .{ .name = "weak_callback_ownership_test.test.disposing a handle before its second pass cancels the finalizer and frees its record", .reason = weak_record_reason },
-    // TEMPORARY until lane hookfreeze2 merges: its Tally counts every wrapper
-    // reference of the process through runtime.lifetime's swapped hooks.
-    .{ .name = "refcount_wrapper_link_test.test.", .reason = "TEMPORARY: its Tally counts every wrapper reference the process takes and lets go through runtime.lifetime's hooks, which it swaps - the busy Browser's wrappers' too; lane hookfreeze2's overrideHooksForTest is a Hook override, which holds the busy Browser while it lasts, and this entry goes when that merges" },
 };
 
 // Slow tests: over 45 s alone on chat.local in Debug (lane tlaunch2,
