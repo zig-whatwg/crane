@@ -51,6 +51,10 @@ test "mixed content settings: null default, captured answers, and callback OOM c
     try std.testing.expect(!absent.request.prohibits_mixed_security_contexts);
 
     // Window + Worker + these two const-vtable test kinds fill capacity 4.
+    // They go into the test's own copy of the installed kinds, taken away at
+    // its end: never left installed for the process's later tests.
+    const override = settings.overrideForTest();
+    defer override.restore();
     settings.install(.{ .owns = &ownsNull, .origin = &originOf, .is_secure_context = &falseSetting, .cross_origin_isolated = &falseSetting });
     settings.install(.{
         .owns = &ownsCallback,

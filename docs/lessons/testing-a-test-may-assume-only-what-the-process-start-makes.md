@@ -1,6 +1,15 @@
 # Testing: A test may assume only what the process start makes, and must leave the process as it found it
 
 **Date**: 2026-11-01
+
+**Status** (2026-11-02, lane hookfreeze1): mechanism 4 is now impossible by construction for every
+class-H hook: a `dom.Hook(T)` slot is written only by the process start, the sanctioned test start
+(`process_hooks.startHooksForTest()`, through `dom.process_start.installForTest`) or a test's own
+`overrideForTest` guard; a start that runs during an override installs UNDER it, and the restore
+brings the install back. The test runner's digest fails a test that leaves an override unrestored
+(`process_start.outstanding_overrides`). Three tests had left a registration behind for every later
+test of their process (ce_post_connection's post-connection callback, mixed_content_settings' and
+worker_host's global kinds).
 **Lesson**: A test helper that caches "started" in a once-flag, enters an isolate for the process, keeps a realm for the process, starts V8 with a bare isolate, or swaps a hook before the process starts makes every later test of its process depend on it; start the process once, as the host does, give each test its own agent, and undo everything else before the test ends.
 
 **Why**: tools/test_launcher runs a suite's tests in any order - a process per test, ten to a process, or the whole suite in one shuffled process. tests-v8 had run in one index-order process for its whole life, so a test could lean on whatever the tests before it left behind, and nothing said so. Process-level state in tests/v8 is the V8 platform and its flags (frozen when V8 starts), the src/dom hooks, the standalone runtime scope (`runtime.initializeRuntime`), each thread's entered isolate, and what the V8 adapter keeps per thread - the context manager, which holds every realm registered on the thread, of every isolate.

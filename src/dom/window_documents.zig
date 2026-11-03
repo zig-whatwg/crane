@@ -11,7 +11,7 @@
 //! The installer is src/browser/Context.zig, not an impl.
 //! lint-impls: hook for Context
 const std = @import("std");
-const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 
@@ -37,19 +37,18 @@ pub const Implementation = struct {
 
 fn noTimers(_: runtime.Context) void {}
 
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by the browser layer. Idempotent: every call installs the same
 /// function.
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// `realm`'s window's document was destroyed. Nothing to end without an
 /// installed implementation (no window operations were installed either).
 pub fn destroyed(realm: runtime.Context) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.destroyed(realm);
 }
 
@@ -64,14 +63,14 @@ pub fn requestRendering(document: *runtime.Instance) void {
 /// Implementation.suspend_timers). Nothing without an installed
 /// implementation.
 pub fn suspendTimers(realm: runtime.Context) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.suspend_timers(realm);
 }
 
 /// HTML "reactivate" step 2 for `realm`'s window (see
 /// Implementation.resume_timers).
 pub fn resumeTimers(realm: runtime.Context) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.resume_timers(realm);
 }
 
@@ -80,6 +79,6 @@ pub fn resumeTimers(realm: runtime.Context) void {
 /// without an installed implementation (no window operations were installed
 /// either, so no timer was set).
 pub fn activeTimerHandles(realm: runtime.Context, allocator: std.mem.Allocator) error{OutOfMemory}![]runtime.TimerId {
-    const impl = implementation orelse return &.{};
+    const impl = implementation.get() orelse return &.{};
     return impl.active_timer_handles(realm, allocator);
 }

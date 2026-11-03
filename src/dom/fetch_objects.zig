@@ -15,6 +15,7 @@
 
 const std = @import("std");
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 const runtime = @import("runtime");
 
 /// A Headers object's guard - fetch.internal.HeaderGuard, restated here
@@ -52,32 +53,30 @@ pub const ResponseSteps = struct {
     response_of: *const fn (response_object: *runtime.Instance) ?*anyopaque,
 };
 
-var request_steps: ?RequestSteps = null;
-var response_steps: ?ResponseSteps = null;
+var request_steps: Hook(?RequestSteps) = .init(null);
+var response_steps: Hook(?ResponseSteps) = .init(null);
 
 /// Called by Request's installHooks, once, at process start (process_start.zig).
 pub fn installRequest(steps: RequestSteps) void {
-    process_start.assertInstalling();
-    request_steps = steps;
+    request_steps.install(steps);
 }
 
 /// Called by Response's installHooks, once, at process start (process_start.zig).
 pub fn installResponse(steps: ResponseSteps) void {
-    process_start.assertInstalling();
-    response_steps = steps;
+    response_steps.install(steps);
 }
 
 /// `request_object`'s request, or null when Request has installed nothing -
 /// which cannot happen for an object Request's impl made.
 pub fn requestOf(request_object: *runtime.Instance) ?*anyopaque {
-    const steps = request_steps orelse return null;
+    const steps = request_steps.get() orelse return null;
     return steps.request_of(request_object);
 }
 
 /// Make `response_object` follow the AbortSignal `signal`. False when
 /// Response has installed nothing.
 pub fn followSignal(response_object: *runtime.Instance, signal: *runtime.Instance) bool {
-    const steps = response_steps orelse return false;
+    const steps = response_steps.get() orelse return false;
     steps.follow(response_object, signal);
     return true;
 }
@@ -85,7 +84,7 @@ pub fn followSignal(response_object: *runtime.Instance, signal: *runtime.Instanc
 /// `request_object`'s body's stream, if its bytes are only in it (see
 /// RequestSteps.body_stream).
 pub fn requestBodyStream(request_object: *runtime.Instance) ?*runtime.Instance {
-    const steps = request_steps orelse return null;
+    const steps = request_steps.get() orelse return null;
     return steps.body_stream(request_object);
 }
 
@@ -93,7 +92,7 @@ pub fn requestBodyStream(request_object: *runtime.Instance) ?*runtime.Instance {
 /// nothing, or on an error (the object's signal could not be made), and
 /// then `request` is still the caller's.
 pub fn adoptRequest(request_object: *runtime.Instance, request: *anyopaque, guard: Guard) anyerror!bool {
-    const steps = request_steps orelse return false;
+    const steps = request_steps.get() orelse return false;
     try steps.adopt(request_object, request, guard);
     return true;
 }
@@ -101,25 +100,23 @@ pub fn adoptRequest(request_object: *runtime.Instance, request: *anyopaque, guar
 /// `response_object`'s response, or null when Response has installed
 /// nothing - which cannot happen for an object Response's impl made.
 pub fn responseOf(response_object: *runtime.Instance) ?*anyopaque {
-    const steps = response_steps orelse return null;
+    const steps = response_steps.get() orelse return null;
     return steps.response_of(response_object);
 }
 
 /// Hand `response` to `response_object`. False when Response has installed
 /// nothing, and then `response` is still the caller's.
 pub fn adoptResponse(response_object: *runtime.Instance, response: *anyopaque, guard: Guard) bool {
-    const steps = response_steps orelse return false;
+    const steps = response_steps.get() orelse return false;
     steps.adopt(response_object, response, guard);
     return true;
 }
 
 test "without installed steps nothing is asked of an object" {
-    const saved_request = request_steps;
-    const saved_response = response_steps;
-    defer request_steps = saved_request;
-    defer response_steps = saved_response;
-    request_steps = null;
-    response_steps = null;
+    const request_override = request_steps.overrideForTest(null);
+    defer request_override.restore();
+    const response_override = response_steps.overrideForTest(null);
+    defer response_override.restore();
     // Never dereferenced: with no steps nothing reads them.
     var object: runtime.Instance = undefined;
     var response: u8 = 0;

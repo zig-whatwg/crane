@@ -56,10 +56,43 @@ var hooks: Hooks = .{};
 
 /// The owner of the counts installs its hooks: once, while the process starts
 /// (its caller asserts it). A field left null keeps what is installed.
+/// Installing what is installed writes nothing (`merged`): a test start's
+/// re-install while another Browser's thread reads the hooks is then no data
+/// race (ThreadSanitizer, the many-Browsers variant: lane tsanfix1's
+/// sc2_shadow_import_drop). The full move onto dom.Hook (src/dom/hook.zig)
+/// is the P-res batch's, once Hook lives in a module below runtime.
 pub fn install(owned: Hooks) void {
-    if (owned.acquire) |f| hooks.acquire = f;
-    if (owned.release) |f| hooks.release = f;
-    if (owned.forget) |f| hooks.forget = f;
+    if (merged(hooks, owned)) |next| hooks = next;
+}
+
+/// `current` with `owned`'s non-null fields, or null when that changes
+/// nothing - the install then writes nothing.
+fn merged(current: Hooks, owned: Hooks) ?Hooks {
+    var next = current;
+    if (owned.acquire) |f| next.acquire = f;
+    if (owned.release) |f| next.release = f;
+    if (owned.forget) |f| next.forget = f;
+    return if (std.meta.eql(next, current)) null else next;
+}
+
+test "installing the hooks already installed writes nothing; a new or changed one is a write" {
+    const T = struct {
+        fn acquire(_: *Instance) ?*anyopaque {
+            return null;
+        }
+        fn release(_: *anyopaque) void {}
+        fn otherRelease(_: *anyopaque) void {}
+    };
+    const installed: Hooks = .{ .acquire = &T.acquire, .release = &T.release };
+    // A test start's re-install - the same functions, or a part of them.
+    try std.testing.expect(merged(installed, installed) == null);
+    try std.testing.expect(merged(installed, .{ .release = &T.release }) == null);
+    try std.testing.expect(merged(installed, .{}) == null);
+    // The process start's first install, and a different function.
+    try std.testing.expect(merged(.{}, installed) != null);
+    const changed = merged(installed, .{ .release = &T.otherRelease }) orelse return error.TestExpectedWrite;
+    try std.testing.expect(changed.release == &T.otherRelease);
+    try std.testing.expect(changed.acquire == &T.acquire);
 }
 
 /// Tests: replace the hooks, returning the ones there were.

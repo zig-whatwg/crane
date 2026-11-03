@@ -16,6 +16,7 @@
 
 const std = @import("std");
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 const runtime = @import("runtime");
 
 /// EventInit's members.
@@ -78,21 +79,19 @@ pub const MouseEventSteps = struct {
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
-var event_steps: ?EventSteps = null;
-var ui_event_steps: ?UIEventSteps = null;
+var event_steps: Hook(?EventSteps) = .init(null);
+var ui_event_steps: Hook(?UIEventSteps) = .init(null);
 // process-wide: an immutable function pointer installed once at process start, before Browsers start; each call acts only on the event it is given.
 var mouse_event_steps: ?MouseEventSteps = null;
 
 /// Called by Event's installHooks, once, at process start (process_start.zig).
 pub fn installEvent(steps: EventSteps) void {
-    process_start.assertInstalling();
-    event_steps = steps;
+    event_steps.install(steps);
 }
 
 /// Called by UIEvent's installHooks, once, at process start (process_start.zig).
 pub fn installUIEvent(steps: UIEventSteps) void {
-    process_start.assertInstalling();
-    ui_event_steps = steps;
+    ui_event_steps.install(steps);
 }
 
 /// Called by MouseEvent's installHooks, once, at process start (process_start.zig).
@@ -111,37 +110,33 @@ pub fn setMouseRelatedTarget(event: *runtime.Instance, target: ?*runtime.Instanc
 /// DOM "inner event creation steps" for `event` - made by its interface's
 /// init, which chains through Event's - then its type.
 pub fn innerEventCreationSteps(event: *runtime.Instance, event_type: runtime.DOMString, init: EventInit) !void {
-    const steps = event_steps orelse return error.NotSupported;
+    const steps = event_steps.get() orelse return error.NotSupported;
     try steps.inner_event_creation_steps(event, event_type, init);
 }
 
 /// Whether `event`'s dispatch flag is set.
 pub fn dispatchFlag(event: *runtime.Instance) bool {
-    const steps = event_steps orelse return false;
+    const steps = event_steps.get() orelse return false;
     return steps.dispatch_flag(event);
 }
 
 /// HTML's direct canceled-flag assignment; not DOM's guarded cancel steps.
 pub fn forceCanceledFlag(event: *runtime.Instance) void {
-    const steps = event_steps orelse return;
+    const steps = event_steps.get() orelse return;
     steps.force_canceled_flag(event);
 }
 
 /// Initialize `event`'s UIEventInit members.
 pub fn initializeUIEvent(event: *runtime.Instance, init: UIEventInit) void {
-    const steps = ui_event_steps orelse return;
+    const steps = ui_event_steps.get() orelse return;
     steps.initialize(event, init);
 }
 
 test "without installed steps, event construction reports NotSupported and does nothing else" {
-    const saved_event = event_steps;
-    const saved_ui = ui_event_steps;
-    defer {
-        event_steps = saved_event;
-        ui_event_steps = saved_ui;
-    }
-    event_steps = null;
-    ui_event_steps = null;
+    const event_override = event_steps.overrideForTest(null);
+    defer event_override.restore();
+    const ui_override = ui_event_steps.overrideForTest(null);
+    defer ui_override.restore();
     // Never dereferenced: with no steps installed nothing reads it.
     var event: runtime.Instance = undefined;
     try std.testing.expectError(error.NotSupported, innerEventCreationSteps(&event, runtime.DOMString.initInterned("x"), .{}));

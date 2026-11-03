@@ -556,12 +556,46 @@ var hooks: Hooks = .{};
 /// Called by Document's and Node's installHooks, once each, at process
 /// start; each installs only its own entry. The wrapper link's two hooks
 /// (runtime.lifetime) are this module's own and go in with them.
+///
+/// Installing what is installed writes nothing (`merged`): a test start's
+/// re-install while another Browser's thread reads the hooks is then no data
+/// race (ThreadSanitizer, the many-Browsers variant: lane tsanfix1's
+/// instances_isolation, parser_stable_activity, rf_url_accessors,
+/// script_delivery_drop and parser_loader_ownership). The full move onto
+/// dom.Hook (hook.zig) is the P-res batch's.
 pub fn install(owned: Hooks) void {
     process_start.assertInstalling();
-    inline for (@typeInfo(Hooks).@"struct".field_names) |field_name| {
-        if (@field(owned, field_name)) |accessor| @field(hooks, field_name) = accessor;
-    }
+    if (merged(hooks, owned)) |next| hooks = next;
     runtime.lifetime.install(.{ .acquire = wrapperAcquire, .release = wrapperRelease });
+}
+
+/// `current` with `owned`'s non-null entries, or null when that changes
+/// nothing - the install then writes nothing.
+fn merged(current: Hooks, owned: Hooks) ?Hooks {
+    var next = current;
+    inline for (@typeInfo(Hooks).@"struct".field_names) |field_name| {
+        if (@field(owned, field_name)) |accessor| @field(next, field_name) = accessor;
+    }
+    return if (std.meta.eql(next, current)) null else next;
+}
+
+test "installing the counts' accessors already installed writes nothing; a new one is a write" {
+    const T = struct {
+        fn counts(_: *runtime.Instance) ?*DocumentCounts {
+            return null;
+        }
+        fn nodeCounts(_: *runtime.Instance) ?*DocumentCounts {
+            return null;
+        }
+    };
+    const installed: Hooks = .{ .document_counts = &T.counts, .node_document_counts = &T.nodeCounts };
+    // A test start's re-install: Document's entry, then Node's, again.
+    try std.testing.expect(merged(installed, .{ .document_counts = &T.counts }) == null);
+    try std.testing.expect(merged(installed, .{ .node_document_counts = &T.nodeCounts }) == null);
+    // The process start's first install of an entry.
+    const first = merged(.{}, .{ .document_counts = &T.counts }) orelse return error.TestExpectedWrite;
+    try std.testing.expect(first.document_counts == &T.counts);
+    try std.testing.expect(first.node_document_counts == null);
 }
 
 // ============================================================================

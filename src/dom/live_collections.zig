@@ -11,6 +11,7 @@
 //!
 //! lint-impls: hook for HTMLCollection
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 const NodeBase = @import("node_base.zig").NodeBase;
@@ -224,18 +225,17 @@ pub const Implementation = struct {
 pub const NamedKind = @import("tree_ordered_map.zig").NamedKind;
 
 /// Process-wide, written once at start-up (process_start.zig).
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by HTMLCollection's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// Make `collection` - just created, empty - the live collection of `root`'s
 /// element children.
 pub fn elementChildren(collection: *runtime.Instance, root: *runtime.Instance) !void {
-    const impl = implementation orelse return error.NotSupported;
+    const impl = implementation.get() orelse return error.NotSupported;
     impl.element_children(collection, root);
 }
 
@@ -245,7 +245,7 @@ pub fn elementChildren(collection: *runtime.Instance, root: *runtime.Instance) !
 ///
 /// Spec: https://dom.spec.whatwg.org/#concept-getelementsbyclassname
 pub fn elementsWithClassNames(collection: *runtime.Instance, root: *runtime.Instance, class_names: []const u8) !void {
-    const impl = implementation orelse return error.NotSupported;
+    const impl = implementation.get() orelse return error.NotSupported;
     try impl.class_names(collection, root, class_names);
 }
 
@@ -257,7 +257,7 @@ pub fn elementsWithClassNames(collection: *runtime.Instance, root: *runtime.Inst
 ///
 /// Spec: https://dom.spec.whatwg.org/#concept-getelementsbytagname
 pub fn elementsWithQualifiedName(collection: *runtime.Instance, root: *runtime.Instance, qualified_name: []const u8) !void {
-    const impl = implementation orelse return error.NotSupported;
+    const impl = implementation.get() orelse return error.NotSupported;
     try impl.qualified_name(collection, root, qualified_name);
 }
 
@@ -267,26 +267,26 @@ pub fn elementsWithQualifiedName(collection: *runtime.Instance, root: *runtime.I
 ///
 /// Spec: https://dom.spec.whatwg.org/#concept-getelementsbytagnamens
 pub fn elementsWithNamespaceAndLocalName(collection: *runtime.Instance, root: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8) !void {
-    const impl = implementation orelse return error.NotSupported;
+    const impl = implementation.get() orelse return error.NotSupported;
     try impl.namespace_local_name(collection, root, namespace, local_name);
 }
 
 /// The live document collection for HTML's corresponding tree accessor.
 pub fn documentElements(collection: *runtime.Instance, document: *runtime.Instance, filter: DocumentFilter) !void {
-    (implementation orelse return error.NotSupported).document_elements(collection, document, filter);
+    (implementation.get() orelse return error.NotSupported).document_elements(collection, document, filter);
 }
 
 pub fn formControls(collection: *runtime.Instance, root: *runtime.Instance, fieldset: bool) !void {
-    (implementation orelse return error.NotSupported).form_controls(collection, root, fieldset);
+    (implementation.get() orelse return error.NotSupported).form_controls(collection, root, fieldset);
 }
 
 /// HTML 4.10.7: the select's live options, optionally only selected options.
 pub fn selectOptions(collection: *runtime.Instance, select: *runtime.Instance, selected_only: bool) !void {
-    (implementation orelse return error.NotSupported).select_options(collection, select, selected_only);
+    (implementation.get() orelse return error.NotSupported).select_options(collection, select, selected_only);
 }
 
 pub fn table(collection: *runtime.Instance, root: *runtime.Instance, filter: TableFilter) !void {
-    (implementation orelse return error.NotSupported).table(collection, root, filter);
+    (implementation.get() orelse return error.NotSupported).table(collection, root, filter);
 }
 
 /// HTML 3.1.7 named getter step 4 ("an HTMLCollection rooted at the
@@ -294,20 +294,19 @@ pub fn table(collection: *runtime.Instance, root: *runtime.Instance, filter: Tab
 /// name") and 7.2.2.3 step 4 (the same, for a Window's named objects):
 /// make `collection` - just created, empty - that live collection.
 pub fn namedItems(collection: *runtime.Instance, document: *runtime.Instance, kind: NamedKind, name: []const u8) !void {
-    const step = (implementation orelse return error.NotSupported).named_items orelse return error.NotSupported;
+    const step = (implementation.get() orelse return error.NotSupported).named_items orelse return error.NotSupported;
     try step(collection, document, kind, name);
 }
 
 /// The owner-checked live root, or null after its native lifetime ends.
 pub fn rootOf(collection: *runtime.Instance) ?*runtime.Instance {
-    return (implementation orelse return null).root(collection);
+    return (implementation.get() orelse return null).root(collection);
 }
 
 test "elementChildren without an installed implementation reports NotSupported" {
     const std = @import("std");
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with no implementation the call does not reach it.
     var object: runtime.Instance = undefined;
     try std.testing.expectError(error.NotSupported, elementChildren(&object, &object));

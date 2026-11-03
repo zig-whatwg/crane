@@ -10,6 +10,7 @@
 //!
 //! lint-impls: hook for MessagePort
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 
@@ -34,37 +35,36 @@ pub const Steps = struct {
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
-var steps: ?Steps = null;
+var steps: Hook(?Steps) = .init(null);
 
 /// Called by MessagePort's installHooks, once, at process start (process_start.zig).
 pub fn install(installed: Steps) void {
-    process_start.assertInstalling();
-    steps = installed;
+    steps.install(installed);
 }
 
 /// Whether `instance` can be transferred. Nothing is a transferable port
 /// before MessagePort has installed its steps - no port exists yet.
 pub fn transferableState(instance: *runtime.Instance) runtime.TransferableState {
-    const installed = steps orelse return .not_transferable;
+    const installed = steps.get() orelse return .not_transferable;
     return installed.transferable_state(instance);
 }
 
 /// Ship the MessagePort `instance`: its end, or null when it is not one.
 pub fn ship(instance: *runtime.Instance) ?*anyopaque {
-    const installed = steps orelse return null;
+    const installed = steps.get() orelse return null;
     return installed.ship(instance);
 }
 
 /// A new MessagePort of `realm` on the shipped `end`.
 pub fn receive(realm: runtime.Context, end: *anyopaque) !*runtime.Instance {
-    const installed = steps orelse return error.NotSupported;
+    const installed = steps.get() orelse return error.NotSupported;
     return installed.receive(realm, end);
 }
 
 /// A new MessagePort of `realm` on `end`, an end of a fresh channel. Takes
 /// `end`.
 pub fn adopt(realm: runtime.Context, end: *anyopaque) !*runtime.Instance {
-    const installed = steps orelse return error.NotSupported;
+    const installed = steps.get() orelse return error.NotSupported;
     return installed.adopt(realm, end);
 }
 
@@ -72,6 +72,6 @@ pub fn adopt(realm: runtime.Context, end: *anyopaque) !*runtime.Instance {
 /// inside end when its worker never started. Nothing to do before MessagePort
 /// has installed its steps: no end exists yet.
 pub fn discard(end: *anyopaque) void {
-    const installed = steps orelse return;
+    const installed = steps.get() orelse return;
     installed.discard(end);
 }

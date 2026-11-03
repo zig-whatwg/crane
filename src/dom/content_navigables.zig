@@ -15,6 +15,7 @@
 //!
 //! lint-impls: hook for HTMLIFrameElement
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 
@@ -36,53 +37,51 @@ pub const Implementation = struct {
     load_delay_may_have_ended: *const fn (document: *runtime.Instance) void,
 };
 
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by the container's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// "The end" step 8: whether anything a navigable container owns still
 /// delays `document`'s load event.
 pub fn delaysLoadEvent(document: *runtime.Instance) bool {
-    const impl = implementation orelse return false;
+    const impl = implementation.get() orelse return false;
     return impl.delays_load_event(document);
 }
 
 /// A child's resource delay ended, including one in a script-created parser
 /// that has not reached EOF. Its container document may now finish loading.
 pub fn loadDelayMayHaveEnded(document: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.load_delay_may_have_ended(document);
 }
 
 /// "Completely finish loading" step 4's task: the load event steps of
 /// `container`. False when no installed container owns it.
 pub fn runLoadEventSteps(container: *runtime.Instance) bool {
-    const impl = implementation orelse return false;
+    const impl = implementation.get() orelse return false;
     return impl.run_load_event_steps(container);
 }
 
 /// HTML "stop loading" `document`'s node navigable, including aborting the
 /// document and its descendants. Window.stop uses this unconditionally.
 pub fn stopLoading(document: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.stop_loading(document);
 }
 
 /// The document open steps, step 8: stop only if this document's node
 /// navigable has an ongoing navigation ID. Ordinary open preserves fetches.
 pub fn stopLoadingIfNavigating(document: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     if (impl.is_navigating(document)) impl.stop_loading(document);
 }
 
 test "without an installed implementation nothing delays a load event" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with no implementation nothing reads it.
     var document: runtime.Instance = undefined;
     try @import("std").testing.expect(!delaysLoadEvent(&document));

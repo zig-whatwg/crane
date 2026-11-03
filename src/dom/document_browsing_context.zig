@@ -15,6 +15,7 @@
 //!
 //! lint-impls: hook for Document
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 
@@ -30,32 +31,30 @@ pub const Implementation = struct {
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Document's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// Make `window` `document`'s window - what its defaultView answers.
 pub fn setWindow(document: *runtime.Instance, window: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     impl.set_window(document, window);
 }
 
 /// `document` was destroyed: its browsing context is null from now on (HTML
 /// "destroy a document" step 8).
 pub fn clearWindow(document: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     const clear = impl.clear_window orelse return;
     clear(document);
 }
 
 test "without an installed implementation setting the window does nothing" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with no implementation nothing reads them.
     var document: runtime.Instance = undefined;
     var window: runtime.Instance = undefined;

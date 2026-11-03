@@ -17,6 +17,7 @@
 
 const std = @import("std");
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 const runtime = @import("runtime");
 const joint_history = @import("html_core").navigation.joint_history;
 const navigation_api = @import("navigation_api.zig");
@@ -90,124 +91,117 @@ pub const Events = struct {
     set_info: *const fn (event: *runtime.Instance, info: runtime.JSValue) anyerror!void,
 };
 
-var destinations: ?Destinations = null;
-var transitions: ?Transitions = null;
-var controllers: ?Controllers = null;
-var activations: ?Activations = null;
-var page_swap_events: ?PageSwapEvents = null;
-var events: ?Events = null;
+var destinations: Hook(?Destinations) = .init(null);
+var transitions: Hook(?Transitions) = .init(null);
+var controllers: Hook(?Controllers) = .init(null);
+var activations: Hook(?Activations) = .init(null);
+var page_swap_events: Hook(?PageSwapEvents) = .init(null);
+var events: Hook(?Events) = .init(null);
 
 /// Called by NavigationDestination's installHooks, once, at process start (process_start.zig).
 pub fn installDestinations(impl: Destinations) void {
-    process_start.assertInstalling();
-    destinations = impl;
+    destinations.install(impl);
 }
 
 /// Called by NavigationTransition's installHooks, once, at process start (process_start.zig).
 pub fn installTransitions(impl: Transitions) void {
-    process_start.assertInstalling();
-    transitions = impl;
+    transitions.install(impl);
 }
 
 /// Called by NavigationPrecommitController's installHooks, once, at process start (process_start.zig).
 pub fn installControllers(impl: Controllers) void {
-    process_start.assertInstalling();
-    controllers = impl;
+    controllers.install(impl);
 }
 
 /// Called by NavigationActivation's installHooks, once, at process start (process_start.zig).
 pub fn installActivations(impl: Activations) void {
-    process_start.assertInstalling();
-    activations = impl;
+    activations.install(impl);
 }
 
 /// Called by PageSwapEvent's installHooks, once, at process start (process_start.zig).
 pub fn installPageSwapEvents(impl: PageSwapEvents) void {
-    process_start.assertInstalling();
-    page_swap_events = impl;
+    page_swap_events.install(impl);
 }
 
 /// Called by NavigateEvent's installHooks, once, at process start (process_start.zig).
 pub fn installEvents(impl: Events) void {
-    process_start.assertInstalling();
-    events = impl;
+    events.install(impl);
 }
 
 /// Whether the owner has installed its implementation: from process start on,
 /// unless a test cleared it.
 pub fn destinationsInstalled() bool {
-    return destinations != null;
+    return destinations.get() != null;
 }
 pub fn transitionsInstalled() bool {
-    return transitions != null;
+    return transitions.get() != null;
 }
 pub fn controllersInstalled() bool {
-    return controllers != null;
+    return controllers.get() != null;
 }
 pub fn eventsInstalled() bool {
-    return events != null;
+    return events.get() != null;
 }
 pub fn activationsInstalled() bool {
-    return activations != null;
+    return activations.get() != null;
 }
 pub fn pageSwapEventsInstalled() bool {
-    return page_swap_events != null;
+    return page_swap_events.get() != null;
 }
 
 pub fn createDestination(realm: runtime.Context, init: DestinationInit) !*runtime.Instance {
-    const impl = destinations orelse return error.NotSupported;
+    const impl = destinations.get() orelse return error.NotSupported;
     return impl.create(realm, init);
 }
 
 pub fn setDestinationUrl(destination: *runtime.Instance, url: []const u8) !void {
-    const impl = destinations orelse return error.NotSupported;
+    const impl = destinations.get() orelse return error.NotSupported;
     return impl.set_url(destination, url);
 }
 
 pub fn setDestinationState(destination: *runtime.Instance, state: joint_history.SerializedState) !void {
-    const impl = destinations orelse return error.NotSupported;
+    const impl = destinations.get() orelse return error.NotSupported;
     return impl.set_state(destination, state);
 }
 
 pub fn destinationEntry(destination: *runtime.Instance) ?*runtime.Instance {
-    const impl = destinations orelse return null;
+    const impl = destinations.get() orelse return null;
     return impl.entry(destination);
 }
 
 pub fn createTransition(realm: runtime.Context, init: TransitionInit) !*runtime.Instance {
-    const impl = transitions orelse return error.NotSupported;
+    const impl = transitions.get() orelse return error.NotSupported;
     return impl.create(realm, init);
 }
 
 pub fn createActivation(realm: runtime.Context, init: ActivationInit) !*runtime.Instance {
-    const impl = activations orelse return error.NotSupported;
+    const impl = activations.get() orelse return error.NotSupported;
     return impl.create(realm, init);
 }
 
 pub fn createPageSwapEvent(realm: runtime.Context, activation: ?*runtime.Instance) !*runtime.Instance {
-    const impl = page_swap_events orelse return error.NotSupported;
+    const impl = page_swap_events.get() orelse return error.NotSupported;
     return impl.create(realm, activation);
 }
 
 pub fn createController(realm: runtime.Context, event: *runtime.Instance) !*runtime.Instance {
-    const impl = controllers orelse return error.NotSupported;
+    const impl = controllers.get() orelse return error.NotSupported;
     return impl.create(realm, event);
 }
 
 pub fn setEventNavigationType(event: *runtime.Instance, kind: navigation_api.Kind) void {
-    const impl = events orelse return;
+    const impl = events.get() orelse return;
     impl.set_navigation_type(event, kind);
 }
 
 pub fn setEventInfo(event: *runtime.Instance, info: runtime.JSValue) !void {
-    const impl = events orelse return error.NotSupported;
+    const impl = events.get() orelse return error.NotSupported;
     return impl.set_info(event, info);
 }
 
 test "without an installed activation part no NavigationActivation is made" {
-    const saved = activations;
-    defer activations = saved;
-    activations = null;
+    const override = activations.overrideForTest(null);
+    defer override.restore();
     try std.testing.expect(!activationsInstalled());
     // Never dereferenced: with no implementation nothing reads them.
     var entry: runtime.Instance = undefined;
@@ -216,9 +210,8 @@ test "without an installed activation part no NavigationActivation is made" {
 }
 
 test "without an installed pageswap part no PageSwapEvent is made" {
-    const saved = page_swap_events;
-    defer page_swap_events = saved;
-    page_swap_events = null;
+    const override = page_swap_events.overrideForTest(null);
+    defer override.restore();
     try std.testing.expect(!pageSwapEventsInstalled());
     const realm: runtime.Context = @ptrFromInt(0x1000);
     try std.testing.expectError(error.NotSupported, createPageSwapEvent(realm, null));

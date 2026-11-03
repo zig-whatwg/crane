@@ -12,6 +12,7 @@
 //!
 //! lint-impls: hook for Document
 const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 const OriginRecord = @import("origin_record.zig").OriginRecord;
@@ -30,26 +31,25 @@ pub const Implementation = struct {
     shareable: *const fn (document: *runtime.Instance) error{OutOfMemory}!?*OriginRecord,
 };
 
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Document's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// `document`'s origin's domain, or null - which it is until the
 /// document.domain setter runs on a document of its origin, and for a
 /// document Document never made.
 pub fn domain(document: *runtime.Instance) ?[]const u8 {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.domain(document);
 }
 
 /// `document`'s origin record (borrowed), or null for a document Document
 /// never made.
 pub fn record(document: *runtime.Instance) ?*OriginRecord {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.record(document);
 }
 
@@ -57,6 +57,6 @@ pub fn record(document: *runtime.Instance) ?*OriginRecord {
 /// give a document made with its origin; null for a document Document never
 /// made.
 pub fn shareable(document: *runtime.Instance) error{OutOfMemory}!?*OriginRecord {
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     return impl.shareable(document);
 }
