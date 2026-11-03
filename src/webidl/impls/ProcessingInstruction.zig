@@ -232,7 +232,7 @@ fn updateStyleSheet(instance: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
     const previous_load = internal.load;
     internal.load = 0;
-    defer if (previous_load != 0) style_sheet_loading.cancel(previous_load);
+    defer if (previous_load != 0) style_sheet_loading.cancel(instance, previous_load);
     removeSheet(instance, internal);
     if (!internal.in_prolog or !std.mem.eql(u8, internal.target, "xml-stylesheet")) return;
     const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return;

@@ -27,12 +27,19 @@ const dictionaries = @import("dictionaries");
 const MutationObserverInit = dictionaries.MutationObserverInit;
 const engine = @import("engine");
 const observer_registrations = @import("observer_registrations.zig");
+const AgentHost = @import("html_core").agent_host.AgentHost;
 
 const log = std.log.scoped(.mutation_observer);
 
-/// Global mutation observer state (per similar-origin window agent)
-/// In a real implementation, this would be per-agent state
-/// For now, we use thread-local state (one agent per thread)
+/// DOM 4.3: "Each similar-origin window agent has a mutation observer
+/// microtask queued (a boolean) ... pending mutation observers (a set of zero
+/// or more MutationObserver objects) ... signal slots (a set of slots)". The
+/// agent's: each agent's host keeps one (html AgentHost.mutation_observers),
+/// found from a realm of it (`agentOf`). It was one per THREAD: with two
+/// agents on a thread, one agent's queued microtask kept the other from
+/// queueing its own, the other's notify ran this agent's observers, and one
+/// Browser's page end dropped every agent's pending observers
+/// (tests/html/gs3_agent_state_one_thread_test.zig).
 pub const MutationObserverAgent = struct {
     /// Whether a mutation observer microtask has been queued
     microtask_queued: bool = false,
@@ -69,6 +76,16 @@ pub const MutationObserverAgent = struct {
         self.signal_slot_set.deinit(self.allocator);
     }
 
+    /// The agent's host ends, after the agent and its DOM: the storage goes,
+    /// and whatever is still listed - which its page's end (`resetAgent`) and
+    /// each object's teardown (`forgetObserver`, `forgetSlot`) left - is
+    /// not touched: its nodes are gone with the agent's DOM.
+    pub fn deinitAfterAgent(self: *MutationObserverAgent) void {
+        self.pending_observers.deinit();
+        self.signal_slots.deinit(self.allocator);
+        self.signal_slot_set.deinit(self.allocator);
+    }
+
     /// Whether `slot` is in the signal slots.
     fn isSignaled(self: *const MutationObserverAgent, slot: *runtime.Instance) bool {
         const generation = self.signal_slot_set.get(slot) orelse return false;
@@ -89,23 +106,22 @@ pub const SignalSlot = struct {
     ref: @import("node_holds.zig").CountedRef = .{},
 };
 
-// Thread-local agent state
-// TODO: Replace with proper agent-per-window mechanism
-threadlocal var global_agent: ?MutationObserverAgent = null;
-
-/// Get the current agent's mutation observer state
-/// Initializes on first access
-pub fn getAgent(allocator: Allocator) !*MutationObserverAgent {
-    if (global_agent == null) {
-        global_agent = MutationObserverAgent.init(allocator);
-    }
-    return &global_agent.?;
+/// The mutation observer state of the agent `realm` belongs to - the
+/// surrounding agent, for an object of the realm - kept on its host (html
+/// AgentHost.mutation_observers). Null for a realm with no agent, or an agent
+/// with no host (an engine-less DOM test's, a bare test agent's): records
+/// still reach their observers' record queues there (takeRecords), and no
+/// notify is queued.
+pub fn agentOf(realm: runtime.Context) ?*MutationObserverAgent {
+    const agent = realm.agent orelse return null;
+    const host: *AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
+    return &host.mutation_observers;
 }
 
 /// A MutationObserver is going away: take it off the surrounding agent's
 /// pending mutation observers, so the notify microtask cannot reach it.
 pub fn forgetObserver(observer: *runtime.Instance) void {
-    const agent = if (global_agent) |*a| a else return;
+    const agent = agentOf(observer.ctx) orelse return;
     var i: usize = 0;
     while (i < agent.pending_observers.len) {
         if (agent.pending_observers.get(i) == observer) {
@@ -120,7 +136,7 @@ pub fn forgetObserver(observer: *runtime.Instance) void {
 ///
 /// Spec: https://dom.spec.whatwg.org/#signal-a-slot-change
 pub fn signalSlotChange(slot: *runtime.Instance) void {
-    const agent = getAgent(slot.ctx.allocator) catch return;
+    const agent = agentOf(slot.ctx) orelse return;
     // Step 1: "Append slot to slot's relevant agent's signal slots." A set:
     // a slot already in it keeps its place.
     if (!agent.isSignaled(slot)) {
@@ -135,7 +151,7 @@ pub fn signalSlotChange(slot: *runtime.Instance) void {
         engine.keepPlatformObjectAlive(slot);
     }
     // Step 2: "Queue a mutation observer microtask."
-    queueMutationObserverMicrotask(slot.ctx.allocator, slot.ctx) catch |err| {
+    queueMutationObserverMicrotask(agent, slot.ctx) catch |err| {
         std.log.scoped(.mutation_observer).warn("slotchange microtask not queued: {}", .{err});
     };
 }
@@ -143,7 +159,7 @@ pub fn signalSlotChange(slot: *runtime.Instance) void {
 /// `slot` is being torn down: take it out of the signal slots, so that
 /// notify cannot reach it, and end the pending activity signaling began.
 pub fn forgetSlot(slot: *runtime.Instance) void {
-    const agent = if (global_agent) |*a| a else return;
+    const agent = agentOf(slot.ctx) orelse return;
     if (!agent.isSignaled(slot)) return;
     _ = agent.signal_slot_set.remove(slot);
     for (agent.signal_slots.items, 0..) |entry, i| {
@@ -177,12 +193,15 @@ fn fireSlotChange(slot: *runtime.Instance) void {
     _ = @import("fire_event.zig").dispatchTrusted(slot, event) catch {};
 }
 
-/// Reset the agent state (for testing)
-pub fn resetAgent() void {
-    if (global_agent) |*agent| {
-        agent.deinit();
-    }
-    global_agent = null;
+/// The page of `realm`'s agent ends (browser Context.deinit, a Browser's page
+/// - every window of its agent): the agent's pending mutation observers and
+/// signal slots go, while their nodes are still alive, and the microtask
+/// queued flag with them - this agent's only, never another's.
+pub fn resetAgent(realm: runtime.Context) void {
+    const agent = agentOf(realm) orelse return;
+    const allocator = agent.allocator;
+    agent.deinit();
+    agent.* = MutationObserverAgent.init(allocator);
 }
 
 /// DOM §7.3 - Queue a mutation record
@@ -307,28 +326,14 @@ pub fn queueMutationRecord(
 
         // Step 4.2: Enqueue record to observer's record queue
         try observer.enqueueRecord(record);
-
-        // Step 4.3: Append observer to the surrounding agent's pending mutation observers
-        const agent = try getAgent(allocator);
-        // Check if observer is already in pending list
-        var already_pending = false;
-        for (agent.pending_observers.items()) |pending| {
-            if (pending == observer) {
-                already_pending = true;
-                break;
-            }
-        }
-        if (!already_pending) {
-            try agent.pending_observers.append(observer);
-        }
     }
 
-    // Step 5: Queue a mutation observer microtask. A legacy `*Node` carries
-    // no realm to name the surrounding agent by, so the notify steps run now.
-    // (Nothing reaches this function: its only caller,
+    // Steps 4.3 and 5 - the surrounding agent's pending mutation observers,
+    // and its microtask - are skipped: a legacy `*Node` carries no realm to
+    // name the surrounding agent by, so the records wait in their observers'
+    // queues (takeRecords). (Nothing reaches this function: its only caller,
     // attribute_algorithms.handleAttributeChanges, is reached only from the
     // unused dom_token_list.zig.)
-    try queueMutationObserverMicrotask(allocator, null);
 }
 
 /// DOM §7.3 - Queue a tree mutation record
@@ -623,8 +628,10 @@ fn queueMutationRecordInternal(
         };
         std.log.debug("[MutationObserver] Record enqueued successfully", .{});
 
-        // Step 4.3: Append observer to the surrounding agent's pending mutation observers
-        const agent = try getAgent(allocator);
+        // Step 4.3: Append observer to the surrounding agent's pending mutation
+        // observers - target's relevant realm's agent's. An agent with no host
+        // keeps no state: the record waits in the observer's queue.
+        const agent = agentOf(target.ctx) orelse continue;
         var already_pending = false;
         for (agent.pending_observers.items()) |pending| {
             if (pending == observer) {
@@ -640,11 +647,11 @@ fn queueMutationRecordInternal(
         }
     }
 
-    std.log.debug("[MutationObserver] queueMutationRecordInternal complete, pending_observers: {}", .{(getAgent(allocator) catch unreachable).pending_observers.len});
-
     // Step 5: Queue a mutation observer microtask, in the agent of target's
     // relevant realm - the surrounding agent.
-    try queueMutationObserverMicrotask(allocator, target.ctx);
+    const agent = agentOf(target.ctx) orelse return;
+    std.log.debug("[MutationObserver] queueMutationRecordInternal complete, pending_observers: {}", .{agent.pending_observers.len});
+    try queueMutationObserverMicrotask(agent, target.ctx);
 }
 
 /// DOM §7.1 - Queue a mutation observer microtask
@@ -653,10 +660,8 @@ fn queueMutationRecordInternal(
 ///
 /// Spec: https://dom.spec.whatwg.org/#queue-a-mutation-observer-compound-microtask
 ///
-/// `realm` names the surrounding agent: a realm of it. Null only where no
-/// realm is known, and then the notify steps run at once.
-fn queueMutationObserverMicrotask(allocator: Allocator, realm: ?runtime.Context) !void {
-    const agent = try getAgent(allocator);
+/// `agent` is the surrounding agent's state, and `realm` a realm of it.
+fn queueMutationObserverMicrotask(agent: *MutationObserverAgent, realm: runtime.Context) !void {
 
     // Step 1: If the surrounding agent's mutation observer microtask queued is true, then return
     if (agent.microtask_queued) return;
@@ -664,31 +669,30 @@ fn queueMutationObserverMicrotask(allocator: Allocator, realm: ?runtime.Context)
     // Step 2: Set the surrounding agent's mutation observer microtask queued to true
     agent.microtask_queued = true;
 
-    const surrounding = realm orelse return notifyMutationObservers(allocator);
-
     // Step 3: Queue a microtask to notify mutation observers
-    queueNotifyMicrotask(allocator, surrounding) catch {
+    queueNotifyMicrotask(agent, realm) catch {
         // If queueing fails, fall back to synchronous execution
         log.warn("the notify microtask could not be queued; notifying now", .{});
-        try notifyMutationObservers(allocator);
+        try notifyMutationObservers(agent);
     };
 }
 
-/// The microtask's steps: notify mutation observers, with the agent's
-/// allocator. It carries no data: the agent's state holds what it needs, so
-/// a microtask the agent's queue discards (a terminated checkpoint) leaves
+/// The microtask's steps: notify mutation observers, for the agent whose
+/// state its data is (BORROWED: the agent's host outlives every microtask of
+/// the agent). It owns no data: the agent's state holds what it needs, so a
+/// microtask the agent's queue discards (a terminated checkpoint) leaves
 /// nothing behind. It used to carry a context holding the allocator, which
 /// leaked whenever the microtask never ran (lane leaks1,
 /// tests/v8/microtask_dropped_end_test.zig). It stays an agent microtask, not
 /// a realm one (engine.queueRealmMicrotask): it notifies every pending
 /// observer of the agent, whichever realm queued it, so the end of that
 /// realm must not drop it.
-fn mutationMicrotask(_: ?*anyopaque) void {
-    const allocator = (global_agent orelse return).allocator;
+fn mutationMicrotask(data: ?*anyopaque) void {
+    const agent: *MutationObserverAgent = @ptrCast(@alignCast(data orelse return));
 
     // Out of memory before any observer was notified: the observers stay
     // pending, and the next mutation's microtask notifies them.
-    notifyMutationObservers(allocator) catch |err| {
+    notifyMutationObservers(agent) catch |err| {
         log.warn("notify mutation observers failed: {s}", .{@errorName(err)});
     };
 }
@@ -698,14 +702,14 @@ fn mutationMicrotask(_: ?*anyopaque) void {
 /// agent, which the caller names by a realm of it.
 ///
 /// Spec: https://dom.spec.whatwg.org/#queue-a-mutation-observer-compound-microtask
-fn queueNotifyMicrotask(allocator: std.mem.Allocator, realm: runtime.Context) !void {
-    const queued: engine.Error!void = if (realm.agent) |agent| engine.queueMicrotask(agent, mutationMicrotask, null) else error.NotSupported;
+fn queueNotifyMicrotask(state: *MutationObserverAgent, realm: runtime.Context) !void {
+    const queued: engine.Error!void = if (realm.agent) |agent| engine.queueMicrotask(agent, mutationMicrotask, state) else error.NotSupported;
     queued catch |err| {
         switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
             // No engine behind the realm (unit tests of the DOM alone), so
             // no microtask queue: notify now.
-            else => try notifyMutationObservers(allocator),
+            else => try notifyMutationObservers(state),
         }
     };
 }
@@ -715,10 +719,9 @@ fn queueNotifyMicrotask(allocator: std.mem.Allocator, realm: runtime.Context) !v
 /// Invoke callbacks for all pending mutation observers.
 ///
 /// Spec: https://dom.spec.whatwg.org/#notify-mutation-observers
-pub fn notifyMutationObservers(allocator: Allocator) !void {
+pub fn notifyMutationObservers(agent: *MutationObserverAgent) !void {
     std.log.debug("[MutationObserver] notifyMutationObservers called", .{});
-
-    const agent = try getAgent(allocator);
+    const allocator = agent.allocator;
 
     // Step 1: Set the surrounding agent's mutation observer microtask queued to false
     agent.microtask_queued = false;

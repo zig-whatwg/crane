@@ -89,8 +89,8 @@ const TombstoneGuard = @import("infra").tombstones.TombstoneGuard;
 // loop, so that copy never runs.
 
 /// The timer nesting state is HTML's, in runtime.timer; these aliases keep
-/// this manager's callers and tests compiling. The level itself is
-/// `runtime.timer.nesting_level` (a threadlocal var cannot be aliased).
+/// this manager's callers and tests compiling. The level itself is the
+/// agent's (html AgentHost.timer_nesting_level).
 pub const nested_min_delay_ms = runtime.timer.nested_min_delay_ms;
 pub const nesting_threshold = runtime.timer.nesting_threshold;
 pub const clampTimeout = runtime.timer.clampTimeout;
@@ -111,7 +111,7 @@ const shrink_floor = 64;
 
 /// A map keyed by timer id that keeps itself fast and small while timers
 /// come and go: the manager's map of armed timers, a window's map of active
-/// timers (src/browser/Context.zig `timer_contexts`) and a worker global's
+/// timers (runtime.ContextData.active_timers, kept by src/browser/Context.zig) and a worker global's
 /// (WorkerHost.timers, src/html/worker_host.zig). Ids only grow, so every
 /// key is one the map never saw, and two things go wrong with a plain std map:
 /// - Its tombstones fill it. std never counts one against the load
@@ -713,12 +713,11 @@ pub const NativeTimerManager = struct {
 
 const testing = std.testing;
 
-var fired: usize = 0;
-var fired_ids: [8]u64 = undefined;
-
+/// Counts its runs in the `usize` its data points at (each test declares its
+/// own count, so no test reads another's); null data counts nowhere.
 fn countingCallback(data: ?*anyopaque) void {
-    _ = data;
-    fired += 1;
+    const fired: *usize = @ptrCast(@alignCast(data orelse return));
+    fired.* += 1;
 }
 
 test "setTimeout ids are non-zero and increasing; 0 is the failure sentinel" {
@@ -732,11 +731,11 @@ test "setTimeout ids are non-zero and increasing; 0 is the failure sentinel" {
 }
 
 test "a due timer fires exactly once and is then gone" {
-    fired = 0;
+    var fired: usize = 0;
     var mgr = try NativeTimerManager.init(testing.allocator);
     defer mgr.deinit();
 
-    _ = mgr.setTimeout(0, countingCallback, null);
+    _ = mgr.setTimeout(0, countingCallback, &fired);
     try testing.expectEqual(@as(usize, 1), mgr.getActiveTimerCount());
 
     try testing.expect(mgr.poll());
@@ -749,21 +748,21 @@ test "a due timer fires exactly once and is then gone" {
 }
 
 test "a not-yet-due timer does not fire" {
-    fired = 0;
+    var fired: usize = 0;
     var mgr = try NativeTimerManager.init(testing.allocator);
     defer mgr.deinit();
 
-    _ = mgr.setTimeout(60_000, countingCallback, null);
+    _ = mgr.setTimeout(60_000, countingCallback, &fired);
     try testing.expect(!mgr.poll());
     try testing.expectEqual(@as(usize, 0), fired);
 }
 
 test "clearTimeout reports whether it actually cancelled something" {
-    fired = 0;
+    var fired: usize = 0;
     var mgr = try NativeTimerManager.init(testing.allocator);
     defer mgr.deinit();
 
-    const id = mgr.setTimeout(60_000, countingCallback, null);
+    const id = mgr.setTimeout(60_000, countingCallback, &fired);
 
     // A live timer: true, and it must not fire afterwards.
     try testing.expect(mgr.clearTimeout(id));
