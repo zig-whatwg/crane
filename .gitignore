@@ -1,4 +1,3 @@
-.cog/
 
 # Zig build artifacts
 .zig-cache/
