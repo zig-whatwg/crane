@@ -126,6 +126,17 @@ const Args = struct {
     verify: []const []const u8 = &.{},
     verify_batched: u32 = 10,
     verify_alone: u32 = 5,
+    /// Groups that keep their own batching (`--group=PREFIX=B`): one
+    /// executable holding several suites' tests (build.zig's one-binary
+    /// layout) batches each suite as its own executable was - B tests per
+    /// process, 0 for the whole group in one - and never puts two groups'
+    /// tests in one process. A test is in the group of the longest prefix
+    /// its name starts with; a test in none is batched with `--batch`.
+    groups: []const Group = &.{},
+    /// Tests that never run beside the busy Browser (`--plain=PREFIX`): a
+    /// suite whose own executable links no V8, so the many-Browsers variant
+    /// never ran one beside it there.
+    plain: []const []const u8 = &.{},
 
     fn parse(arena: std.mem.Allocator, args: []const []const u8) !Args {
         var a: Args = .{};
@@ -133,6 +144,8 @@ const Args = struct {
         var verify: std.ArrayList([]const u8) = .empty;
         var alone: std.ArrayList(Declared) = .empty;
         var tsan_skip: std.ArrayList(Declared) = .empty;
+        var groups: std.ArrayList(Group) = .empty;
+        var plain: std.ArrayList([]const u8) = .empty;
         for (args) |arg| {
             if (value(arg, "--jobs=") orelse value(arg, "--parallel=")) |v| {
                 // --parallel= too: the pool's crane-measure.sh rewrites it to
@@ -194,6 +207,11 @@ const Args = struct {
                 a.verify_batched = try std.fmt.parseUnsigned(u32, v, 10);
             } else if (value(arg, "--verify-alone=")) |v| {
                 a.verify_alone = try std.fmt.parseUnsigned(u32, v, 10);
+            } else if (value(arg, "--group=")) |v| {
+                try groups.append(arena, try Group.parse(v));
+            } else if (value(arg, "--plain=")) |v| {
+                if (v.len == 0) return error.EmptyPlainPrefix;
+                try plain.append(arena, v);
             } else if (std.mem.eql(u8, arg, "--listen=-")) {
                 a.listen = true;
             } else if (std.mem.startsWith(u8, arg, "--")) {
@@ -210,6 +228,8 @@ const Args = struct {
         for (a.alone) |declared| if (declared.reason.len == 0) return error.AloneWithoutReason;
         a.tsan_skip = tsan_skip.items;
         for (a.tsan_skip) |declared| if (declared.reason.len == 0) return error.TsanSkipWithoutReason;
+        a.groups = groups.items;
+        a.plain = plain.items;
         // Verify mode is a run of its own, with its own report: never the
         // build runner's protocol.
         if (a.verify.len != 0 and a.listen) return error.VerifyInServerMode;
@@ -235,6 +255,53 @@ const Args = struct {
         return if (a.listen) .digest else .random;
     }
 };
+
+/// A group of an executable's tests that keeps its own batching
+/// (`--group=PREFIX=B`, Args.groups).
+pub const Group = struct {
+    /// The tests whose names start with it: a suite's, "<dir>." in the
+    /// one-binary layout's names ("html.editing2_join_test.test.joins").
+    prefix: []const u8,
+    /// Tests per process; 0: the whole group in one.
+    batch: u32,
+
+    /// "PREFIX=B": the batch size after the last '='.
+    fn parse(v: []const u8) !Group {
+        const eq = std.mem.lastIndexOfScalar(u8, v, '=') orelse return error.GroupWithoutBatch;
+        if (eq == 0) return error.EmptyGroupPrefix;
+        return .{ .prefix = v[0..eq], .batch = try std.fmt.parseUnsigned(u32, v[eq + 1 ..], 10) };
+    }
+};
+
+/// Each test's group for the plan (`plan.Options.group`): 1 + the index in
+/// `groups` of the longest prefix its name starts with, 0 for none.
+fn assignGroups(arena: std.mem.Allocator, names: []const []const u8, groups: []const Group) ![]u16 {
+    const out = try arena.alloc(u16, names.len);
+    for (names, out) |n, *g| {
+        g.* = 0;
+        var best: usize = 0;
+        for (groups, 1..) |group, i| {
+            if (group.prefix.len > best and std.mem.startsWith(u8, n, group.prefix)) {
+                best = group.prefix.len;
+                g.* = @intCast(i);
+            }
+        }
+    }
+    return out;
+}
+
+/// Whether each test's name starts with one of `prefixes` (`--plain`).
+fn markPrefixed(arena: std.mem.Allocator, names: []const []const u8, prefixes: []const []const u8) ![]bool {
+    const out = try arena.alloc(bool, names.len);
+    for (names, out) |n, *m| {
+        m.* = false;
+        for (prefixes) |p| if (std.mem.startsWith(u8, n, p)) {
+            m.* = true;
+            break;
+        };
+    }
+    return out;
+}
 
 /// A test declared by name with its reason: one that needs its process to
 /// itself (`--alone`), or one excluded from the ThreadSanitizer variant
@@ -282,6 +349,11 @@ const usage =
     \\                    any run that is not a pass fails (defaults 10 and 5)
     \\  --report-only     print and record every verdict, but answer the build runner `pass` for a
     \\                    failure and exit 0 for one: a variant's report mode (a TEMPORARY suite row)
+    \\  --group=PREFIX=B  the tests whose names start with PREFIX are batched B per process (0: all in one),
+    \\                    never with another group's: each suite of one executable keeps its batching
+    \\                    (repeatable; the longest prefix wins; the rest take --batch)
+    \\  --plain=PREFIX    with --many-browsers: the tests whose names start with PREFIX run without the
+    \\                    busy Browser (a suite that links no V8 as an executable of its own; repeatable)
     \\
 ;
 
@@ -345,6 +417,43 @@ test "args: a test declared alone carries its reason, and one without a reason i
     try std.testing.expectEqualStrings("its subject is real time", t.tsan_skip[0].reason);
     try std.testing.expectError(error.TsanSkipWithoutReason, Args.parse(arena, &.{ "x", "--tsan-skip=f.test.t" }));
     try std.testing.expectError(error.TsanSkipReasonWithoutTsanSkip, Args.parse(arena, &.{ "x", "--tsan-skip-reason=why" }));
+}
+
+test "args: groups keep their own batch size, and plain prefixes are listed" {
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const a = try Args.parse(arena, &.{ "tests", "--batch=10", "--group=html.=1", "--group=v8.=1", "--group=css.=0", "--plain=css." });
+    try std.testing.expectEqual(@as(usize, 3), a.groups.len);
+    try std.testing.expectEqualStrings("html.", a.groups[0].prefix);
+    try std.testing.expectEqual(@as(u32, 1), a.groups[0].batch);
+    try std.testing.expectEqual(@as(u32, 0), a.groups[2].batch);
+    try std.testing.expectEqual(@as(usize, 1), a.plain.len);
+    try std.testing.expectEqualStrings("css.", a.plain[0]);
+    // The batch size is after the LAST '=': a prefix may hold one.
+    const e = try Args.parse(arena, &.{ "x", "--group=a=b.=4" });
+    try std.testing.expectEqualStrings("a=b.", e.groups[0].prefix);
+    try std.testing.expectEqual(@as(u32, 4), e.groups[0].batch);
+    try std.testing.expectError(error.GroupWithoutBatch, Args.parse(arena, &.{ "x", "--group=html." }));
+    try std.testing.expectError(error.EmptyGroupPrefix, Args.parse(arena, &.{ "x", "--group==1" }));
+    try std.testing.expectError(error.InvalidCharacter, Args.parse(arena, &.{ "x", "--group=html.=one" }));
+    try std.testing.expectError(error.EmptyPlainPrefix, Args.parse(arena, &.{ "x", "--plain=" }));
+    // None given: no groups, nothing plain.
+    const d = try Args.parse(arena, &.{"x"});
+    try std.testing.expectEqual(@as(usize, 0), d.groups.len);
+    try std.testing.expectEqual(@as(usize, 0), d.plain.len);
+}
+
+test "a test is in the group of the longest prefix its name starts with" {
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const names = [_][]const u8{ "html.a_test.test.one", "html.nav.b_test.test.two", "dom.c_test.test.three", "tests.d.test_0", "htmlx.e_test.test.four" };
+    const groups = [_]Group{ .{ .prefix = "html.", .batch = 1 }, .{ .prefix = "dom.", .batch = 1 }, .{ .prefix = "html.nav.", .batch = 0 } };
+    const g = try assignGroups(arena, &names, &groups);
+    try std.testing.expectEqualSlices(u16, &.{ 1, 3, 2, 0, 0 }, g);
+    const plain = try markPrefixed(arena, &names, &.{ "dom.", "tests." });
+    try std.testing.expectEqualSlices(bool, &.{ false, false, true, true, false }, plain);
 }
 
 test "args: server mode takes the digest seed and ignores the build runner's --seed" {
@@ -556,7 +665,31 @@ pub fn main(init: std.process.Init) !void {
         }
     }
 
-    var plan = try plan_mod.make(gpa, selected.items, .{ .seed = seed, .shuffle = args.shuffle, .batch_size = args.batch, .alone = if (args.many_browsers) alone else &.{} });
+    // Groups (`--group`): each suite of a one-binary executable keeps the
+    // batching it had as an executable of its own.
+    const group_of = try assignGroups(arena, md.names, args.groups);
+    const group_batch = try arena.alloc(u32, args.groups.len);
+    for (args.groups, group_batch) |g, *size| size.* = g.batch;
+    // Plain (`--plain`): the tests of a suite whose own executable links no
+    // V8 never run beside the busy Browser, there or here - named, as an
+    // alone test is.
+    const plain = try markPrefixed(arena, md.names, args.plain);
+    if (args.many_browsers) for (args.plain) |prefix| {
+        var matched: usize = 0;
+        for (md.names, is_selected) |n, sel| {
+            if (sel and std.mem.startsWith(u8, n, prefix)) matched += 1;
+        }
+        try out.print("test_launcher: {s} [many Browsers]: runs WITHOUT the busy Browser: every test of {s} ({d}): its suite links no V8 as an executable of its own\n", .{ name, prefix, matched });
+    };
+
+    var plan = try plan_mod.make(gpa, selected.items, .{
+        .seed = seed,
+        .shuffle = args.shuffle,
+        .batch_size = args.batch,
+        .alone = if (args.many_browsers) alone else &.{},
+        .group = group_of,
+        .group_batch = group_batch,
+    });
     defer plan.deinit(gpa);
 
     // Longest batches first, from an earlier run's durations.
@@ -588,7 +721,10 @@ pub fn main(init: std.process.Init) !void {
     });
     defer alone_environ.deinit();
     executor.alone_environ_map = &alone_environ;
-    executor.alone = alone;
+    // Without the busy Browser: an alone test's process, and a plain one's.
+    const no_busy = try arena.alloc(bool, md.names.len);
+    for (no_busy, alone, plain) |*n, a, p| n.* = a or p;
+    executor.alone = no_busy;
     executor.slow = slow;
     executor.slow_factor = args.slow_factor;
     // The build-wide process cap: the given directory, or in server mode one
@@ -611,9 +747,12 @@ pub fn main(init: std.process.Init) !void {
 
     // A replay runs the same variants: the race or the busy Browser is part
     // of what failed.
-    const replay = try std.fmt.allocPrint(arena, "test_launcher {s} --seed=0x{x} --batch={d}{s}{s}{s}", .{
-        exe,                                                    seed,                                               args.batch, if (args.shuffle) "" else " --no-shuffle",
-        if (args.sanitize_thread) " --sanitize-thread" else "", if (args.many_browsers) " --many-browsers" else "",
+    var replay_groups: Io.Writer.Allocating = .init(arena);
+    for (args.groups) |g| try replay_groups.writer.print(" --group={s}={d}", .{ g.prefix, g.batch });
+    for (args.plain) |p| try replay_groups.writer.print(" --plain={s}", .{p});
+    const replay = try std.fmt.allocPrint(arena, "test_launcher {s} --seed=0x{x} --batch={d}{s}{s}{s}{s}", .{
+        exe,                                                    seed,                                               args.batch,              if (args.shuffle) "" else " --no-shuffle",
+        if (args.sanitize_thread) " --sanitize-thread" else "", if (args.many_browsers) " --many-browsers" else "", replay_groups.written(),
     });
 
     var printer: Printer = .{
