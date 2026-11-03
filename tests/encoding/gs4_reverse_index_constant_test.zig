@@ -18,7 +18,7 @@ test "the reverse indexes are compile-time constants" {
         std.debug.assert(reverse_index.big5.findPointer(0x3000) != null);
         std.debug.assert(reverse_index.jis0212.order.len > 0);
     }
-    try std.testing.expect(@typeInfo(@TypeOf(&reverse_index.jis0208)).pointer.is_const);
+    try std.testing.expect(@typeInfo(@TypeOf(&reverse_index.jis0208)).pointer.attrs.@"const");
 }
 
 test "threads that encode at once read the same tables" {

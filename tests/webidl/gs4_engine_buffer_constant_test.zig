@@ -6,7 +6,7 @@ const std = @import("std");
 const webidl = @import("webidl");
 
 test "an engine view's placeholder buffer is one constant, empty, shared by every view" {
-    try std.testing.expect(@typeInfo(@TypeOf(&webidl.buffer_sources.engine_buffer)).pointer.is_const);
+    try std.testing.expect(@typeInfo(@TypeOf(&webidl.buffer_sources.engine_buffer)).pointer.attrs.@"const");
     // Never dereferenced: fromEngine only records the handle.
     const a = webidl.ArrayBufferView.fromEngine(1, 0, 4, @ptrFromInt(0x1000)).?;
     const b = webidl.ArrayBufferView.fromEngine(11, 2, 3, @ptrFromInt(0x2000)).?;

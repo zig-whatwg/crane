@@ -397,8 +397,8 @@ fn scriptsOfHost(host: ?*anyopaque) ?*ScriptRecords {
 fn scriptIn(scripts: ?*ScriptRecords, host_defined: *anyopaque) ?*ModuleScript {
     const list = scripts orelse return null;
     var it = list.first();
-    while (it) |link| : (it = link.next()) {
-        const script: *ModuleScript = @fieldParentPtr("live", link);
+    while (it) |entry| : (it = entry.next()) {
+        const script: *ModuleScript = @fieldParentPtr("live", entry);
         if (@as(*anyopaque, @ptrCast(script)) == host_defined) return script;
     }
     return null;
