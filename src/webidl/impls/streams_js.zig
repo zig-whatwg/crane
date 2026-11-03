@@ -413,9 +413,17 @@ pub const slot = struct {
 /// `owner`'s `to_member` and `owner` in `member`'s `to_owner` - a stream and
 /// its controller, its reader. They are kept whole while anything reaches
 /// either, and collected together otherwise.
-pub fn traceBoth(owner: *runtime.Instance, to_member: engine.TracedSlot, member: *runtime.Instance, to_owner: engine.TracedSlot) void {
+///
+/// The edges make both wrappers, and the wrapper cache owns both from then
+/// on. A wrapper the engine could not cache (out of memory: the edge is
+/// silently not drawn) leaves its object owned by nobody, so that is
+/// error.OutOfMemory - the caller's failure path frees what is unwrapped,
+/// as a failed `wrap` once made it (tests/v8/sa_transform_setup_oom_test.zig
+/// fails each allocation of a setup in turn).
+pub fn traceBoth(owner: *runtime.Instance, to_member: engine.TracedSlot, member: *runtime.Instance, to_owner: engine.TracedSlot) error{OutOfMemory}!void {
     engine.traceChild(owner, member, to_member);
     engine.traceChild(member, owner, to_owner);
+    if (!engine.hasWrapper(owner) or !engine.hasWrapper(member)) return error.OutOfMemory;
 }
 
 /// End both edges `traceBoth` drew (a reader released, a BYOB request

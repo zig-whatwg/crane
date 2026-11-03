@@ -752,9 +752,9 @@ fn readerGenericInitialize(realm: Realm, reader_instance: *runtime.Instance, str
     // made here if script has not seen it: a reader a native path acquires
     // (pipeTo, a tee, a body's consumption) is then the wrapper cache's, kept
     // by its stream.
+    try js.traceBoth(stream_instance, js.slot.reader, reader_instance, js.slot.stream);
     reader.stream = stream_instance;
     stream.reader = reader_instance;
-    js.traceBoth(stream_instance, js.slot.reader, reader_instance, js.slot.stream);
     // Steps 3-5: the closed promise follows the stream's state.
     reader.closed_promise = switch (stream.state) {
         .readable => try Deferred.init(realm),
@@ -1172,7 +1172,10 @@ pub fn setUpDefaultController(realm: Realm, stream_instance: *runtime.Instance, 
     // the controller its stream). The controller's wrapper, made here, is
     // what start() receives.
     stream.controller = controller_instance;
-    js.traceBoth(stream_instance, js.slot.controller, controller_instance, js.slot.stream);
+    js.traceBoth(stream_instance, js.slot.controller, controller_instance, js.slot.stream) catch |err| {
+        stream.controller = null;
+        return err;
+    };
     takeAlgorithms(c.source, controller_instance);
     c.size_algorithm.trace(controller_instance);
     // Step 9: Let startResult be the result of performing startAlgorithm.
@@ -1245,7 +1248,10 @@ pub fn setUpByteController(realm: Realm, stream_instance: *runtime.Instance, con
     // Step 13: Set stream.[[controller]] to controller; the two keep each
     // other.
     stream.controller = controller_instance;
-    js.traceBoth(stream_instance, js.slot.controller, controller_instance, js.slot.stream);
+    js.traceBoth(stream_instance, js.slot.controller, controller_instance, js.slot.stream) catch |err| {
+        stream.controller = null;
+        return err;
+    };
     takeAlgorithms(c.source, controller_instance);
     // Step 14: Let startResult be the result of performing startAlgorithm.
     const s = c.source.?;
@@ -1593,9 +1599,14 @@ pub fn byteGetByobRequest(realm: Realm, controller_instance: *runtime.Instance) 
         slots.* = .{ .allocator = c.allocator, .controller = controller_instance, .view = view };
         request.getState(interfaces.ReadableStreamBYOBRequest.State).own._internal = slots;
         // The controller and its request keep each other until it is
-        // invalidated; the edge makes the request's wrapper, the cache's.
+        // invalidated; the edge makes the request's wrapper, the cache's -
+        // one the engine could not cache is nobody's, and freed here.
+        const request_generation = runtime.SlabAllocator.generationOf(request);
+        js.traceBoth(controller_instance, js.slot.byob_request, request, js.slot.controller) catch {
+            request.releaseIfUnwrapped(request_generation);
+            return null;
+        };
         c.byob_request = request;
-        js.traceBoth(controller_instance, js.slot.byob_request, request, js.slot.controller);
     }
     // Step 2
     return c.byob_request;

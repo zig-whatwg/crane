@@ -92,8 +92,14 @@ pub fn call_constructor(ctx: runtime.Context, underlyingSource: webidl.Opt(runti
         source = null;
         // A start() that throws leaves both to the wrapper cache: the setup
         // traced the stream from its controller (which made the stream's
-        // wrapper) before start ran.
-        try srd.setUpByteController(realm, instance, controller);
+        // wrapper) before start ran. One the engine could not wrap is
+        // nobody's, and freed here (the controller with its algorithms).
+        const generations = .{ runtime.SlabAllocator.generationOf(instance), runtime.SlabAllocator.generationOf(controller) };
+        srd.setUpByteController(realm, instance, controller) catch |err| {
+            controller.releaseIfUnwrapped(generations[1]);
+            instance.releaseIfUnwrapped(generations[0]);
+            return err;
+        };
         return instance;
     }
 
@@ -115,8 +121,14 @@ pub fn call_constructor(ctx: runtime.Context, underlyingSource: webidl.Opt(runti
     size = .one;
     // start() may throw after the controller reached script: both are the
     // wrapper cache's then - the setup traced the stream from its controller
-    // (which made the stream's wrapper) before start ran.
-    try srd.setUpDefaultController(realm, instance, controller);
+    // (which made the stream's wrapper) before start ran. One the engine
+    // could not wrap is nobody's, and freed here.
+    const generations = .{ runtime.SlabAllocator.generationOf(instance), runtime.SlabAllocator.generationOf(controller) };
+    srd.setUpDefaultController(realm, instance, controller) catch |err| {
+        controller.releaseIfUnwrapped(generations[1]);
+        instance.releaseIfUnwrapped(generations[0]);
+        return err;
+    };
     return instance;
 }
 

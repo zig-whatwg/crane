@@ -492,11 +492,11 @@ pub fn setUpWriter(realm: Realm, writer_instance: *runtime.Instance, stream_inst
     const stream = streamSlots(stream_instance);
     // Step 1: If ! IsWritableStreamLocked(stream) is true, throw a TypeError.
     if (isLocked(stream)) return error.TypeError;
-    // Step 2: Set writer.[[stream]] to stream.
+    // Steps 2-3: Set writer.[[stream]] to stream and stream.[[writer]] to
+    // writer - each keeping the other.
+    try js.traceBoth(stream_instance, js.slot.writer, writer_instance, js.slot.stream);
     writer.stream = stream_instance;
-    // Step 3: Set stream.[[writer]] to writer. Each keeps the other.
     stream.writer = writer_instance;
-    js.traceBoth(stream_instance, js.slot.writer, writer_instance, js.slot.stream);
     // Step 4: Let state be stream.[[state]].
     switch (stream.state) {
         // Step 5
@@ -999,7 +999,10 @@ pub fn setUpController(realm: Realm, stream_instance: *runtime.Instance, control
     // Steps 3-4: link stream and controller - each keeps the other. The
     // controller's wrapper, made here, is what start() receives.
     stream.controller = controller_instance;
-    js.traceBoth(stream_instance, js.slot.controller, controller_instance, js.slot.stream);
+    js.traceBoth(stream_instance, js.slot.controller, controller_instance, js.slot.stream) catch |err| {
+        stream.controller = null;
+        return err;
+    };
     if (controller.sink) |sink| if (sink.vtable.attach) |attach| attach(sink.ctx, controller_instance);
     controller.size_algorithm.trace(controller_instance);
     // Step 5: Perform ! ResetQueue(controller).

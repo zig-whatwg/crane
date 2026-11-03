@@ -304,6 +304,9 @@ pub fn initialize(
     // Steps 6-8: the readable side, whose source is this stream.
     stream.readable = try srd.createReadableStream(realm, stream_instance.ctx, .{ .ctx = stream_instance, .vtable = &source_vtable }, readable_hwm, readable_size);
     engine.traceChild(stream_instance, stream.readable.?, js.slot.readable);
+    // The sides' controllers traced this stream, which made its wrapper; one
+    // the engine could not cache leaves it nobody's (the caller frees it).
+    if (!engine.hasWrapper(stream_instance)) return error.OutOfMemory;
     // Steps 9-10: backpressure starts undefined and is set to true.
     stream.backpressure = null;
     setBackpressure(realm, stream, true);
@@ -368,7 +371,10 @@ pub fn setUpController(realm: Realm, stream_instance: *runtime.Instance, control
     // Steps 3-7: link them - each keeps the other; the algorithms are in the
     // controller's slots, and it takes them over (their values traced).
     streamSlots(stream_instance).controller = controller_instance;
-    js.traceBoth(stream_instance, js.slot.controller, controller_instance, js.slot.stream);
+    js.traceBoth(stream_instance, js.slot.controller, controller_instance, js.slot.stream) catch |err| {
+        streamSlots(stream_instance).controller = null;
+        return err;
+    };
     const c = controllerOf(controller_instance).?;
     if (c.transformer) |t| if (t.vtable.attach) |attach| attach(t.ctx, controller_instance);
 }
