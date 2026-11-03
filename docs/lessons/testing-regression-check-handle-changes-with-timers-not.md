@@ -1,6 +1,6 @@
 # Testing: Regression-check handle changes with timers, not DOM
 
-**Status**: now a rule - "Regression protocol for handle-ownership changes" in AGENTS.md.
+**Status**: now a rule - "Regression protocol for handle-ownership changes" in tests/AGENTS.md.
 
 **Date**: 2026-09-21
 **Lesson**: DOM WPT files do not catch V8 handle-ownership breakage.

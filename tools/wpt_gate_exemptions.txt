@@ -1,7 +1,8 @@
 # The 0.1 gate's exemptions: worklist files omitted from the blocking count
 # because ALL THREE of Chrome, Firefox and Safari intentionally deviate from the
-# spec the file tests (the user, 2026-10-17; AGENTS.md "The 0.1 gate" and golden
-# rule 2's "all three intentionally declined" case).
+# spec the file tests (the user, 2026-10-17; AGENTS.md "The 0.1 gate", in full in
+# .claude/rules/wpt-workflow.md, and golden rule 2's "all three intentionally
+# declined" case).
 #
 # Read by tools/wpt_progress.py (the progress page) and tools/wpt_site/
 # (the public results site). A listed file that would block is counted in its
