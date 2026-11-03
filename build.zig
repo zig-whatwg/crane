@@ -2725,27 +2725,23 @@ pub fn build(b: *std.Build) void {
     const check_target_step = b.step("check-target", "Build what -Dtarget can build (libwhatwg, codecs, platform tests); compile crane and wpt_runner without linking");
     if (image_codecs) |codecs| check_target_step.dependOn(&codecs.step);
 
-    // The target, as the testing graph it imports: a host root over target
-    // modules mixes two targets in one compile, and for a Linux target from
-    // macOS std.c is Darwin's under kit/posix's Linux branch
-    // (pthread_setname_np: expected 1 argument(s), found 2).
-    const eventsource_test_mod = b.createModule(.{
-        .root_source_file = b.path("tests/eventsource/parser_test.zig"),
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-    });
-    eventsource_test_mod.addImport("eventsource", testing_graph.eventsource);
-    eventsource_test_mod.addImport("infra", testing_graph.infra);
-    eventsource_test_mod.addImport("fetch", testing_graph.fetch);
-    const eventsource_tests = b.addTest(.{ .root_module = eventsource_test_mod });
-    // parser_test.zig imports the directory's other test files.
-    recordSuiteDir(b, test_selection, "tests/eventsource");
-    const run_eventsource_tests = addSuiteRun(b, launch, eventsource_tests, "tests-eventsource", null);
+    // tests/eventsource/: a directory suite (addTestFilesFromDir), its own
+    // step's and `test`'s. Built for the target, as the testing graph it
+    // imports is: a host root over target modules mixes two targets in one
+    // compile, and for a Linux target from macOS std.c is Darwin's under
+    // kit/posix's Linux branch (pthread_setname_np: expected 1 argument(s),
+    // found 2).
     const eventsource_test_step = b.step("test-eventsource", "Run server-sent event parser and connection tests");
-    eventsource_test_step.dependOn(&run_eventsource_tests.step);
+    const eventsource_test_imports = [_]std.Build.Module.Import{
+        .{ .name = "eventsource", .module = testing_graph.eventsource },
+        .{ .name = "infra", .module = testing_graph.infra },
+        .{ .name = "fetch", .module = testing_graph.fetch },
+    };
+    addTestFilesFromDir(b, eventsource_test_step, "tests/eventsource", target, &eventsource_test_imports, false, test_selection) catch |err| {
+        std.debug.print("Warning: Failed to add eventsource test files: {}\n", .{err});
+    };
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "eventsource")) {
-        test_step.dependOn(&run_eventsource_tests.step);
+        test_step.dependOn(eventsource_test_step);
     }
 
     const webcrypto_tests = b.addTest(.{ .root_module = testing_graph.webcrypto });
