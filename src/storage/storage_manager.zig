@@ -163,17 +163,17 @@ pub const StorageManager = struct {
         // persisted is false (5.3's note).
         const bucket = shelf.getDefaultBucket() orelse return false;
 
-        // Step 5.3.
-        var persisted = bucket.mode == .persistent;
+        // Step 5.3 ("persisted"; named for the step, not the method).
+        var is_persisted = bucket.mode == .persistent;
 
         // Step 5.4.
-        if (!persisted and granted) {
+        if (!is_persisted and granted) {
             bucket.mode = .persistent;
-            persisted = true;
+            is_persisted = true;
         }
 
         // Step 5.5 (the binding resolves its promise with it).
-        return persisted;
+        return is_persisted;
     }
 
     /// Get storage estimate for this origin
