@@ -4993,6 +4993,7 @@ pub fn build(b: *std.Build) void {
             "tests/wpt_runner/script_deadline.zig",
             "tests/wpt_runner/build_mode.zig",
             "tests/wpt_runner/file_lock.zig",
+            "tests/wpt_runner/work_queue.zig",
         };
         for (harness_sources) |src| {
             const harness_tests = b.addTest(.{
