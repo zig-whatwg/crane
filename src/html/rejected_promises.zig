@@ -343,8 +343,9 @@ fn notifyOne(global: *runtime.Instance, rejected: Rejected) void {
     // 4.1.2: fire unhandledrejection, cancelable, with p and its result.
     const not_canceled = firePromiseRejectionEvent(global, "unhandledrejection", rejected, true);
 
-    // 4.1.3: the user agent may report it to a developer console.
-    if (not_canceled) log.debug("unhandled promise rejection", .{});
+    // 4.1.3: the user agent may report it to a developer console - its
+    // Browser's, when its host shows one (dom.developer_console).
+    if (not_canceled and !reportToDeveloperConsole(realm, rejected)) log.debug("unhandled promise rejection", .{});
 
     // 4.1.4: If p.[[PromiseIsHandled]] is false, append p to the global's
     // outstanding rejected promises weak set.
@@ -352,6 +353,33 @@ fn notifyOne(global: *runtime.Instance, rejected: Rejected) void {
     const t = trackedFor(global, true) orelse return rejected.release();
     if (t.outstanding.items.len >= max_outstanding) t.outstanding.orderedRemove(0).release();
     t.outstanding.append(allocator, rejected) catch rejected.release();
+}
+
+/// Step 4.1.3's report to `realm`'s Browser's developer console, as DevTools
+/// reports an unhandled rejection: "Uncaught (in promise) " and the reason's
+/// message, at the source "extract error information" finds for it (V8's
+/// message for the value: an Error's throw site). Whether one took it (none
+/// is attached: the debug log has it, as before).
+fn reportToDeveloperConsole(realm: runtime.Context, rejected: Rejected) bool {
+    const developer_console = @import("dom").developer_console;
+    if (!developer_console.isAttached(realm)) return false;
+    const reason = rejected.reasonValue() orelse runtime.JSValue.jsUndefined;
+    const info = engine.extractErrorInformation(realm, reason, allocator) catch return false;
+    defer allocator.free(info.message);
+    defer allocator.free(info.filename);
+    // V8 words the message of a thrown value "Uncaught <value>"; DevTools
+    // says where it was not caught.
+    const uncaught = "Uncaught ";
+    const rest = if (std.mem.startsWith(u8, info.message, uncaught)) info.message[uncaught.len..] else info.message;
+    const text = std.mem.concat(allocator, u8, &.{ "Uncaught (in promise) ", rest }) catch return false;
+    defer allocator.free(text);
+    return developer_console.report(&.{
+        .realm = realm,
+        .kind = .rejection,
+        .level = .@"error",
+        .text = text,
+        .location = .{ .url = info.filename, .line = info.lineno, .column = info.colno },
+    });
 }
 
 /// Fire a PromiseRejectionEvent named `event_type` at `global`, with

@@ -81,14 +81,13 @@ fn check(comptime snapshot: bool) !void {
         _ = try file.readPositionalAll(io, bytes, 0);
         // The process first - it starts the engine with no snapshot - and
         // then the engine's snapshot (test_process.zig).
-        test_process.start();
-        try engine.initializeEngine(.{ .snapshot = bytes });
-        defer engine.deinitializeEngine();
+        try test_process.startSnapshot(bytes);
+        defer test_process.endSnapshot();
         const isolate = ffi.v8_Isolate_NewFromSnapshot(bytes.ptr, @intCast(bytes.len), v8.external_references.getRuntimeExternalReferencesPtr()) orelse return error.NoSnapshotIsolate;
         try std.testing.expect(ffi.v8_Isolate_IsFromSnapshot(isolate));
         try exercise(isolate);
     } else {
-        try engine.initializeEngine(.{});
+        test_process.start();
         // Rejected input never allocates an isolate or retains a record.
         try std.testing.expectEqual(@as(?*ffi.Isolate, null), ffi.v8_Isolate_NewFromSnapshot("".ptr, 0, null));
         try exercise(ffi.v8_Isolate_New() orelse return error.NoIsolate);

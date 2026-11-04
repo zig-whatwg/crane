@@ -98,7 +98,6 @@ const Side = struct {
 };
 
 test "each agent keeps its own ObservableArrays, and another agent's end leaves them" {
-    try protocol.initializeEngine(.{});
     test_process.start();
     interfaces.process_hooks.startHooksForTest();
 

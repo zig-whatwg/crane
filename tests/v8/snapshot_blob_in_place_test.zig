@@ -87,10 +87,8 @@ test "agents restored from the snapshot read the engine's blob in place, and all
     defer std.heap.c_allocator.free(bytes);
     // The process first - it starts the engine with no snapshot - and
     // then the engine's snapshot (test_process.zig).
-    test_process.start();
-    try protocol.initializeEngine(.{ .snapshot = bytes });
-    defer protocol.deinitializeEngine();
-    test_process.start();
+    try test_process.startSnapshot(bytes);
+    defer test_process.endSnapshot();
     interfaces.process_hooks.startHooksForTest();
 
     // V8's bytes are the file's less the build stamp at its end

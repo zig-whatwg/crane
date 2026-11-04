@@ -7,6 +7,19 @@
 //! editing/other/join-different-white-space-style-*.html and
 //! join-pre-and-other-block.html, normalized as their
 //! normalizeStyleAttributeValues() does.
+//!
+//! The 720 cases are 12 tests, each on a page of its own: as one test they
+//! took 137 s alone, 245-471 s in a loaded gate (lane onebin1's journals)
+//! and more than the 1,200 s of a test declared slow beside the
+//! many-Browsers variant's busy Browser on a loaded host (lane testfix3). The
+//! cases are independent - each sets its host up afresh - and every 50 took
+//! the same 12-16 s from the first to the last (alone; 16-26 s beside the
+//! busy Browser), so nothing builds up across them: a test per part keeps
+//! every case and gives each part the default 300 s timeout, not slow-listed.
+//! Measured on chat.local with all 13 tests of the file at once: each
+//! paragraph part 34-39 s alone, 63-69 s beside the busy Browser; at the
+//! rate of the run that timed out (over 1.67 s a case) a part of 70 cases
+//! takes about 120 s.
 const std = @import("std");
 const html = @import("html");
 const helpers = @import("edges_node_holders_helpers.zig");
@@ -96,9 +109,11 @@ fn both(r: *Runner, left_open: []const u8, left_text: []const u8, middle: []cons
     try r.check("forwardDelete", forward, expected);
 }
 
-fn paragraphs(r: *Runner) !void {
+/// Every right-hand block after a `left` paragraph, with `between` (nothing,
+/// or a line feed) between the two.
+fn paragraphs(r: *Runner, left: []const u8, between: []const u8) !void {
     const a = r.allocator;
-    for (values) |left| for (values) |right| {
+    for (values) |right| {
         if (std.mem.eql(u8, left, right)) continue;
         const l = try std.fmt.allocPrint(a, "<div style=\"white-space:{s}\">", .{left});
         defer a.free(l);
@@ -106,7 +121,7 @@ fn paragraphs(r: *Runner) !void {
         defer a.free(rs);
         const rdiv = try std.fmt.allocPrint(a, "<div {s}>", .{rs});
         defer a.free(rdiv);
-        for ([_][]const u8{ "", "\n" }) |between| {
+        {
             const middle = try std.fmt.allocPrint(a, "</div>{s}", .{between});
             defer a.free(middle);
             // A text line: a new span.
@@ -154,7 +169,7 @@ fn paragraphs(r: *Runner) !void {
                 a.free(expected);
             }
         }
-    };
+    }
 }
 
 fn lines(r: *Runner) !void {
@@ -196,24 +211,84 @@ fn preBlocks(r: *Runner) !void {
     try both(r, "<div>", "abc", "</div>", "<pre style=\"white-space:pre\">", "def</pre>", "<div>abc<span style=\"white-space:pre\">def</span></div>");
 }
 
-fn whiteSpaceJoins() !void {
-    const page = try helpers.Page.open();
-    defer page.close();
-    try page.run(setup_script);
-    // The case strings live in an arena over the testing allocator, freed
-    // with it.
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    var r: Runner = .{ .page = page, .allocator = arena.allocator() };
-    try paragraphs(&r);
-    try lines(&r);
-    try preBlocks(&r);
-    if (r.failures != 0) std.debug.print("{d} of {d} cases failed\n", .{ r.failures, r.cases });
-    try std.testing.expectEqual(@as(usize, 0), r.failures);
+/// One part of the join cases: the paragraphs after one `left` block with
+/// one `between`, the editing host's own lines, or the pre blocks.
+const Part = union(enum) {
+    paragraphs: struct { left: []const u8, between: []const u8 },
+    lines,
+    pre_blocks,
+};
+
+/// The test body of `part`: a page of its own, its cases, every failure
+/// printed.
+fn joins(comptime part: Part) fn () anyerror!void {
+    return struct {
+        fn run() !void {
+            const page = try helpers.Page.open();
+            defer page.close();
+            try page.run(setup_script);
+            // The case strings live in an arena over the testing allocator,
+            // freed with it.
+            var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+            defer arena.deinit();
+            var r: Runner = .{ .page = page, .allocator = arena.allocator() };
+            switch (part) {
+                .paragraphs => |p| try paragraphs(&r, p.left, p.between),
+                .lines => try lines(&r),
+                .pre_blocks => try preBlocks(&r),
+            }
+            if (r.failures != 0) std.debug.print("{d} of {d} cases failed\n", .{ r.failures, r.cases });
+            try std.testing.expectEqual(@as(usize, 0), r.failures);
+        }
+    }.run;
 }
 
-test "joining blocks keeps the moved line's white-space" {
-    try helpers.onFreshThread(whiteSpaceJoins);
+test "joining blocks keeps the moved line's white-space: after a white-space:normal paragraph" {
+    try helpers.onFreshThread(joins(.{ .paragraphs = .{ .left = "normal", .between = "" } }));
+}
+
+test "joining blocks keeps the moved line's white-space: after a white-space:normal paragraph and a line feed" {
+    try helpers.onFreshThread(joins(.{ .paragraphs = .{ .left = "normal", .between = "\n" } }));
+}
+
+test "joining blocks keeps the moved line's white-space: after a white-space:pre paragraph" {
+    try helpers.onFreshThread(joins(.{ .paragraphs = .{ .left = "pre", .between = "" } }));
+}
+
+test "joining blocks keeps the moved line's white-space: after a white-space:pre paragraph and a line feed" {
+    try helpers.onFreshThread(joins(.{ .paragraphs = .{ .left = "pre", .between = "\n" } }));
+}
+
+test "joining blocks keeps the moved line's white-space: after a white-space:pre-wrap paragraph" {
+    try helpers.onFreshThread(joins(.{ .paragraphs = .{ .left = "pre-wrap", .between = "" } }));
+}
+
+test "joining blocks keeps the moved line's white-space: after a white-space:pre-wrap paragraph and a line feed" {
+    try helpers.onFreshThread(joins(.{ .paragraphs = .{ .left = "pre-wrap", .between = "\n" } }));
+}
+
+test "joining blocks keeps the moved line's white-space: after a white-space:pre-line paragraph" {
+    try helpers.onFreshThread(joins(.{ .paragraphs = .{ .left = "pre-line", .between = "" } }));
+}
+
+test "joining blocks keeps the moved line's white-space: after a white-space:pre-line paragraph and a line feed" {
+    try helpers.onFreshThread(joins(.{ .paragraphs = .{ .left = "pre-line", .between = "\n" } }));
+}
+
+test "joining blocks keeps the moved line's white-space: after a white-space:nowrap paragraph" {
+    try helpers.onFreshThread(joins(.{ .paragraphs = .{ .left = "nowrap", .between = "" } }));
+}
+
+test "joining blocks keeps the moved line's white-space: after a white-space:nowrap paragraph and a line feed" {
+    try helpers.onFreshThread(joins(.{ .paragraphs = .{ .left = "nowrap", .between = "\n" } }));
+}
+
+test "joining blocks keeps the moved line's white-space: a line of the editing host and a paragraph" {
+    try helpers.onFreshThread(joins(.lines));
+}
+
+test "joining blocks keeps the moved line's white-space: pre blocks, styled by the UA sheet or by an author" {
+    try helpers.onFreshThread(joins(.pre_blocks));
 }
 
 fn pressBackspace(page: helpers.Page) void {

@@ -137,7 +137,6 @@ const Page = struct {
 fn startProcess() !void {
     // The engine, the standalone runtime and the hooks start on this thread
     // first, as crane.Process starts them before any Browser.
-    try protocol.initializeEngine(.{});
     test_process.start();
     interfaces.process_hooks.startHooksForTest();
 }

@@ -158,9 +158,8 @@ test "snapshot realm: a Window realm restored from Crane's snapshot takes addres
 
     // The process first - it starts the engine with no snapshot - and then
     // the engine's snapshot, for this test alone.
-    test_process.start();
-    try protocol.initializeEngine(.{ .snapshot = bytes });
-    defer protocol.deinitializeEngine();
+    try test_process.startSnapshot(bytes);
+    defer test_process.endSnapshot();
     const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = true, .hooks = &no_hooks, .host = null });
     defer protocol.destroyAgent(agent);
     // Restored, not made afresh (createAgent falls back to a fresh isolate,

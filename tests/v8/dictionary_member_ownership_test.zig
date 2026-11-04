@@ -30,6 +30,7 @@ const runtime = @import("runtime");
 const engine = @import("engine");
 const webidl = @import("webidl");
 const v8 = @import("v8");
+const test_process = @import("test_process.zig");
 const ffi = v8.ffi;
 
 const owned = v8.conversions.memberValueIsOwned;
@@ -196,7 +197,7 @@ fn withEnv(comptime body: fn (Env) anyerror!void) !void {
         }
 
         fn runBody() anyerror!void {
-            try engine.initializeEngine(.{});
+            test_process.start();
             const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
             defer ffi.v8_Isolate_Dispose(isolate);
             ffi.v8_Isolate_Enter(isolate);
