@@ -1978,6 +1978,31 @@ test "site: wall time is shown for both engines with the harness overhead split 
     try expectHas(index3, "has a result for 2 of the worklist&rsquo;s 5 test files");
 }
 
+test "site: each side's build is named, and the window's runs give pass counts, CPU and memory side by side" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    const a = try std.mem.replaceOwned(u8, gpa, fixture_reference, "\"command\":\"wpt run chrome\",", "\"command\":\"wpt run chrome\",\"build\":\"Chrome for Testing, official release build\",");
+    defer gpa.free(a);
+    const b = try std.mem.replaceOwned(u8, gpa, a, "\"reference\":{\"wall_s\":3600.5,\"user_s\":9000,\"sys_s\":1200}", "\"reference\":{\"wall_s\":3600.5,\"user_s\":9000,\"sys_s\":1200,\"passed\":8,\"reported\":11,\"memory\":{\"samples\":3600,\"engine_peak_mb\":6144,\"engine_mean_mb\":3000.4,\"harness_peak_mb\":900,\"harness_mean_mb\":700,\"groups\":5,\"group_peak_max_mb\":1500,\"group_peak_mean_mb\":1200}}");
+    defer gpa.free(b);
+    const c = try std.mem.replaceOwned(u8, gpa, b, "\"files\":5,\"runner\":\"main-0c228a97aa\"}", "\"files\":5,\"runner\":\"release-0c228a97aa\",\"build\":\"release runner: ReleaseSafe throughout, libc malloc\",\"passed\":5,\"reported\":8,\"memory\":{\"samples\":2400,\"engine_peak_mb\":800,\"engine_mean_mb\":512,\"harness_peak_mb\":250.6,\"harness_mean_mb\":200,\"groups\":330,\"group_peak_max_mb\":400,\"group_peak_mean_mb\":150}}");
+    defer gpa.free(c);
+    _ = try runFixtureRef(gpa, &f, "out", c);
+    const index = try readOut(gpa, &f, "out/index.html");
+    defer gpa.free(index);
+    try expectHas(index, "<tr><th scope=\"row\">WPT subtests passing in this run</th><td class=\"n\"><b>5</b> / 8</td><td class=\"n\"><b>8</b> / 11</td></tr>");
+    try expectHas(index, "<tr><th scope=\"row\">Memory of the engine, peak</th><td class=\"n\">800 MB</td><td class=\"n\">6.0 GB</td></tr>");
+    try expectHas(index, "<tr><th scope=\"row\">Memory of the engine, mean</th><td class=\"n\">512 MB</td><td class=\"n\">2.9 GB</td></tr>");
+    try expectHas(index, "<tr><th scope=\"row\">Memory of the harness, peak</th><td class=\"n\">251 MB</td><td class=\"n\">900 MB</td></tr>");
+    try expectHas(index, "<tr><th scope=\"row\">One runner&rsquo;s engine, largest peak</th><td class=\"n\">400 MB</td><td class=\"n\">1.5 GB</td></tr>");
+    // Each side's build, named.
+    try expectHas(index, "<dt>Chrome</dt><dd>Chrome for Testing <code>150.0.7000.1</code>: Chrome for Testing, official release build</dd>");
+    try expectHas(index, "<dt>Crane</dt><dd>release runner: ReleaseSafe throughout, libc malloc");
+    try expectHas(index, "no ThinLTO and no PGO");
+    try expectHas(index, "phys_footprint");
+}
+
 test "site: a reference run's records are never Crane's" {
     const gpa = testing.allocator;
     var f = try Fixture.init(fixture_stream ++

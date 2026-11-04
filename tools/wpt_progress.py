@@ -3392,6 +3392,35 @@ def _check_harness_split():
     assert measure_cpu({'user_s': 25.5, 'sys_s': 7, 'tree_cpu_s': 30, 'server_cpu_s': 11.5}) == 44
 
 
+def _check_reference_window():
+    """Each side's build is named, and the window's runs give pass counts, CPU and memory side by side."""
+    import tempfile
+    worklist = ['dom/a.html', 'dom/b.html', 'url/never.html', 'url/u.html']
+    records = {'dom/a.html': {'path': 'dom/a.html', 'status': 'OK', 'passed': 2, 'failed': 1, 'timed_out': 0, 'notrun': 0}}
+    ref = _reference_fixture()
+    ref['run']['build'] = 'Chrome for Testing, official release build'
+    ref['timing']['reference'].update(passed=8, reported=11, memory={
+        'samples': 3600, 'engine_peak_mb': 6144, 'engine_mean_mb': 3000.4, 'harness_peak_mb': 900, 'harness_mean_mb': 700,
+        'groups': 5, 'group_peak_max_mb': 1500, 'group_peak_mean_mb': 1200})
+    ref['timing']['crane'].update(runner='release-0c228a97aa', build='release runner: ReleaseSafe throughout, libc malloc',
+                                  passed=5, reported=8, memory={
+        'samples': 2400, 'engine_peak_mb': 800, 'engine_mean_mb': 512, 'harness_peak_mb': 250.6, 'harness_mean_mb': 200,
+        'groups': 330, 'group_peak_max_mb': 400, 'group_peak_mean_mb': 150})
+    areas, _, _ = build(worklist, records)
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, 'p.html')
+        render(areas, worklist, records, [], out, reference=ref)
+        page = open(out).read()
+    assert '<tr><td class="area">WPT subtests passing in this run</td><td class="num">5 / 8</td><td class="num">8 / 11</td></tr>' in page
+    assert '<tr><td class="area">Memory of the engine, peak</td><td class="num">800 MB</td><td class="num">6.0 GB</td></tr>' in page
+    assert '<tr><td class="area">Memory of the engine, mean</td><td class="num">512 MB</td><td class="num">2.9 GB</td></tr>' in page
+    assert '<tr><td class="area">Memory of the harness, peak</td><td class="num">251 MB</td><td class="num">900 MB</td></tr>' in page
+    assert '<tr><td class="area">One runner&rsquo;s engine, largest peak</td><td class="num">400 MB</td><td class="num">1.5 GB</td></tr>' in page
+    assert 'Chrome: Chrome for Testing <code>150.0.7000.1</code>, Chrome for Testing, official release build' in page
+    assert 'Crane: release runner: ReleaseSafe throughout, libc malloc' in page
+    assert 'no ThinLTO and no PGO' in page and 'phys_footprint' in page
+
+
 def _check_reference_render():
     """The page shows the reference beside Crane's numbers, never in them."""
     import tempfile
@@ -3459,6 +3488,7 @@ if __name__ == '__main__':
         _check_reference_load()
         _check_reference_compare()
         _check_harness_split()
+        _check_reference_window()
         _check_reference_render()
         print('wpt_progress self-test: ok')
     else:
