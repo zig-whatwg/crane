@@ -61,6 +61,28 @@ pub fn start() void {
     if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.page_allocator);
 }
 
+/// The engine restoring agents from `snapshot` (stamped, as the snapshot
+/// generator writes it), for a test whose subject is the snapshot: the
+/// process first (`start`, which starts the engine with no snapshot), then the
+/// snapshot, until `endSnapshot` - which every such test calls before it
+/// returns, once the agents it restored have ended (they read the bytes in
+/// place). The engine is started and ended only here: a tests/v8 file that
+/// calls engine.initializeEngine or deinitializeEngine itself fails
+/// test_process_test's check, unless the engine's start is its subject (lane
+/// testfix3: 86 helpers started the engine themselves, each writing the
+/// process's engine state again beside the many-Browsers variant's busy
+/// Browser).
+pub fn startSnapshot(snapshot: []const u8) !void {
+    start();
+    try engine.initializeEngine(.{ .snapshot = snapshot });
+}
+
+/// The end of `startSnapshot`: the engine forgets the snapshot, and restores
+/// no agent from it until the next `startSnapshot`.
+pub fn endSnapshot() void {
+    engine.deinitializeEngine();
+}
+
 /// A standalone runtime of the test's own, so that what it leaves in its
 /// slab and arena is freed - through the test's allocator, which then reports
 /// a leak - when the test ends: `begin` starts the process (`start`) and puts

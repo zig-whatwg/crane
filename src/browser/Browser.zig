@@ -91,10 +91,19 @@ const window_agent_hooks: engine.HostHooks = blk: {
 
 /// Browser configuration options
 pub const BrowserConfig = struct {
-    /// Root directory for persistent storage (default: ~/.whatwg/)
+    /// Root directory of the legacy storage manager (storage/Storage.zig),
+    /// with `persist_storage`; null: ~/.whatwg/.
     storage_root: ?[]const u8 = null,
-    /// Whether to enable storage persistence (default: true)
-    persist_storage: bool = true,
+    /// Whether the legacy storage manager makes its directories under
+    /// `storage_root`. False by default: a Browser is in memory and writes
+    /// nothing to disk (docs/instances.md: "In memory by default; an
+    /// optional profile directory persists the Browser's stores"). It was
+    /// true, and every Browser left at the defaults made empty directories
+    /// in ~/.whatwg/ that nothing ever read: localStorage, cookies,
+    /// IndexedDB, the Cache API and the HTTP cache are all in memory today,
+    /// and persisting them under a profile directory is its own work
+    /// (STORAGE PERSISTENCE, tmp/plans/lane-console-handoff.md).
+    persist_storage: bool = false,
     /// Initial URL to navigate to (optional)
     initial_url: ?[]const u8 = null,
     /// Enable debug logging
@@ -165,6 +174,10 @@ pub const BrowserConfig = struct {
 
 /// Browser instance managing a single V8 isolate
 pub const Browser = struct {
+    /// What a host attached to the Browser's developer console receives
+    /// (`attachDeveloperConsole`).
+    pub const developer_console = @import("dom").developer_console;
+
     allocator: std.mem.Allocator,
     /// The page's agent (engine.createAgent) - lives for the entire browser
     /// lifetime.
@@ -1052,6 +1065,27 @@ pub const Browser = struct {
         var title = interfaces.Document.get_title(d) catch return allocator.dupe(u8, "");
         defer title.deinit(d.ctx.allocator);
         return allocator.dupe(u8, title.asSlice());
+    }
+
+    // ========================================================================
+    // The developer console
+    // ========================================================================
+
+    /// The host shows this Browser's developer console from now on: the
+    /// console output of every realm of it - its pages, their frames and
+    /// popups, its workers - and their unhandled exceptions and rejections
+    /// are reported to `host` (dom.developer_console: on the realm's thread,
+    /// with the console's lock held; it runs no script), and no longer
+    /// printed to stderr. Until `detachDeveloperConsole`, which a host calls
+    /// before it ends.
+    pub fn attachDeveloperConsole(self: *Browser, host_console: developer_console.Host) !void {
+        try developer_console.attach(self.scope, host_console);
+    }
+
+    /// The host no longer shows the console: no report reaches it once this
+    /// returns (one under way on a worker's thread has ended).
+    pub fn detachDeveloperConsole(self: *Browser) void {
+        developer_console.detach(self.scope);
     }
 
     /// Get the current URL

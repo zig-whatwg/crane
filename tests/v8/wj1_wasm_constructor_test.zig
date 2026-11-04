@@ -173,7 +173,7 @@ const Run = struct {
 };
 
 fn check(source: []const u8) !void {
-    try engine.initializeEngine(.{});
+    test_process.start();
     var run: Run = .{ .source = source };
     const thread = try std.Thread.spawn(.{}, Run.thread, .{&run});
     thread.join();
@@ -216,9 +216,8 @@ test "snapshot Window worklet and ShadowRealm use their own wasm adapter intrins
     try std.testing.expectEqual(bytes.len, try file.readPositionalAll(io, bytes, 0));
     // The process first - it starts the engine with no snapshot - and
     // then the engine's snapshot (test_process.zig).
-    test_process.start();
-    try engine.initializeEngine(.{ .snapshot = bytes });
-    defer engine.deinitializeEngine();
+    try test_process.startSnapshot(bytes);
+    defer test_process.endSnapshot();
     const RunSnapshot = struct {
         fn thread(failure: *?anyerror) void {
             const source =
@@ -477,7 +476,7 @@ const LifetimeRun = struct {
 };
 
 test "wasm adapter private intrinsics die with their realm without handle growth" {
-    try engine.initializeEngine(.{});
+    test_process.start();
     var run: LifetimeRun = .{};
     const thread = try std.Thread.spawn(.{}, LifetimeRun.thread, .{&run});
     thread.join();
@@ -887,7 +886,7 @@ fn expectWasmInstalled(global: *ffi.Object, expected: bool) !void {
 }
 
 fn checkLazyWasm(source: []const u8, installed_after: bool) !void {
-    try engine.initializeEngine(.{});
+    test_process.start();
     const LazyRun = struct {
         source: []const u8,
         installed_after: bool,
@@ -1032,7 +1031,7 @@ test "wasm lazy first read from another realm creates adapters in the owning rea
 }
 
 test "wasm module received before namespace access preserves constructor identity" {
-    try engine.initializeEngine(.{});
+    test_process.start();
     const ReceiveRun = struct {
         fn thread(failure: *?anyerror) void {
             inPlatformRealm(
@@ -1166,7 +1165,7 @@ const FirstWasmDelivery = struct {
     }
 
     fn check(comptime kind: Kind) !void {
-        try engine.initializeEngine(.{});
+        test_process.start();
         const RunDelivery = struct {
             fn thread(failure: *?anyerror) void {
                 body(kind) catch |err| {

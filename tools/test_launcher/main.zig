@@ -3,7 +3,7 @@
 //!
 //!   test_launcher <test-exe> [--jobs=N] [--batch=B] [--seed=S] [--no-shuffle]
 //!                 [--timeout=SECONDS] [--alone-runs=R] [--only-batch=K]
-//!                 [--filter=SUBSTRING] [--out=FILE.jsonl] [--list] ...
+//!                 [--filter=PATTERN]... [--out=FILE.jsonl] [--list] ...
 //!
 //! `zig build test` runs every test executable through this, in server mode
 //! (`--listen=-`, server.zig): the build runner talks the Zig test-runner
@@ -38,6 +38,7 @@ const report = @import("report.zig");
 const server_mod = @import("server.zig");
 const Slots = @import("slots.zig").Slots;
 const verify_mod = @import("verify.zig");
+const filter_mod = @import("filter.zig");
 
 test {
     _ = plan_mod;
@@ -47,6 +48,7 @@ test {
     _ = server_mod;
     _ = @import("slots.zig");
     _ = verify_mod;
+    _ = filter_mod;
     _ = Args;
     // Analyse main, so `zig build test` catches what only the executable uses.
     _ = &main;
@@ -89,7 +91,11 @@ const Args = struct {
     slow_factor: u32 = 4,
     alone_runs: u8 = 2,
     only_batch: ?u32 = null,
-    filter: ?[]const u8 = null,
+    /// `--filter=PATTERN`, repeatable: run-time selection (filter.zig) - a
+    /// test runs when any pattern matches its whole name (`*`: any run of
+    /// characters), or in a grouped executable its name without its group's
+    /// prefix. None: every test.
+    filters: []const []const u8 = &.{},
     out: ?[]const u8 = null,
     timings: ?[]const u8 = null,
     slots_dir: ?[]const u8 = null,
@@ -126,6 +132,17 @@ const Args = struct {
     verify: []const []const u8 = &.{},
     verify_batched: u32 = 10,
     verify_alone: u32 = 5,
+    /// Groups that keep their own batching (`--group=PREFIX=B`): one
+    /// executable holding several suites' tests (build.zig's one-binary
+    /// layout) batches each suite as its own executable was - B tests per
+    /// process, 0 for the whole group in one - and never puts two groups'
+    /// tests in one process. A test is in the group of the longest prefix
+    /// its name starts with; a test in none is batched with `--batch`.
+    groups: []const Group = &.{},
+    /// Tests that never run beside the busy Browser (`--plain=PREFIX`): a
+    /// suite whose own executable links no V8, so the many-Browsers variant
+    /// never ran one beside it there.
+    plain: []const []const u8 = &.{},
 
     fn parse(arena: std.mem.Allocator, args: []const []const u8) !Args {
         var a: Args = .{};
@@ -133,6 +150,9 @@ const Args = struct {
         var verify: std.ArrayList([]const u8) = .empty;
         var alone: std.ArrayList(Declared) = .empty;
         var tsan_skip: std.ArrayList(Declared) = .empty;
+        var groups: std.ArrayList(Group) = .empty;
+        var plain: std.ArrayList([]const u8) = .empty;
+        var filters: std.ArrayList([]const u8) = .empty;
         for (args) |arg| {
             if (value(arg, "--jobs=") orelse value(arg, "--parallel=")) |v| {
                 // --parallel= too: the pool's crane-measure.sh rewrites it to
@@ -157,7 +177,8 @@ const Args = struct {
             } else if (value(arg, "--only-batch=")) |v| {
                 a.only_batch = try std.fmt.parseUnsigned(u32, v, 10);
             } else if (value(arg, "--filter=")) |v| {
-                a.filter = v;
+                if (v.len == 0) return error.EmptyFilter;
+                try filters.append(arena, v);
             } else if (value(arg, "--out=")) |v| {
                 a.out = v;
             } else if (value(arg, "--timings=")) |v| {
@@ -194,6 +215,11 @@ const Args = struct {
                 a.verify_batched = try std.fmt.parseUnsigned(u32, v, 10);
             } else if (value(arg, "--verify-alone=")) |v| {
                 a.verify_alone = try std.fmt.parseUnsigned(u32, v, 10);
+            } else if (value(arg, "--group=")) |v| {
+                try groups.append(arena, try Group.parse(v));
+            } else if (value(arg, "--plain=")) |v| {
+                if (v.len == 0) return error.EmptyPlainPrefix;
+                try plain.append(arena, v);
             } else if (std.mem.eql(u8, arg, "--listen=-")) {
                 a.listen = true;
             } else if (std.mem.startsWith(u8, arg, "--")) {
@@ -210,6 +236,9 @@ const Args = struct {
         for (a.alone) |declared| if (declared.reason.len == 0) return error.AloneWithoutReason;
         a.tsan_skip = tsan_skip.items;
         for (a.tsan_skip) |declared| if (declared.reason.len == 0) return error.TsanSkipWithoutReason;
+        a.groups = groups.items;
+        a.plain = plain.items;
+        a.filters = filters.items;
         // Verify mode is a run of its own, with its own report: never the
         // build runner's protocol.
         if (a.verify.len != 0 and a.listen) return error.VerifyInServerMode;
@@ -236,6 +265,53 @@ const Args = struct {
     }
 };
 
+/// A group of an executable's tests that keeps its own batching
+/// (`--group=PREFIX=B`, Args.groups).
+pub const Group = struct {
+    /// The tests whose names start with it: a suite's, "<dir>." in the
+    /// one-binary layout's names ("html.editing2_join_test.test.joins").
+    prefix: []const u8,
+    /// Tests per process; 0: the whole group in one.
+    batch: u32,
+
+    /// "PREFIX=B": the batch size after the last '='.
+    fn parse(v: []const u8) !Group {
+        const eq = std.mem.lastIndexOfScalar(u8, v, '=') orelse return error.GroupWithoutBatch;
+        if (eq == 0) return error.EmptyGroupPrefix;
+        return .{ .prefix = v[0..eq], .batch = try std.fmt.parseUnsigned(u32, v[eq + 1 ..], 10) };
+    }
+};
+
+/// Each test's group for the plan (`plan.Options.group`): 1 + the index in
+/// `groups` of the longest prefix its name starts with, 0 for none.
+fn assignGroups(arena: std.mem.Allocator, names: []const []const u8, groups: []const Group) ![]u16 {
+    const out = try arena.alloc(u16, names.len);
+    for (names, out) |n, *g| {
+        g.* = 0;
+        var best: usize = 0;
+        for (groups, 1..) |group, i| {
+            if (group.prefix.len > best and std.mem.startsWith(u8, n, group.prefix)) {
+                best = group.prefix.len;
+                g.* = @intCast(i);
+            }
+        }
+    }
+    return out;
+}
+
+/// Whether each test's name starts with one of `prefixes` (`--plain`).
+fn markPrefixed(arena: std.mem.Allocator, names: []const []const u8, prefixes: []const []const u8) ![]bool {
+    const out = try arena.alloc(bool, names.len);
+    for (names, out) |n, *m| {
+        m.* = false;
+        for (prefixes) |p| if (std.mem.startsWith(u8, n, p)) {
+            m.* = true;
+            break;
+        };
+    }
+    return out;
+}
+
 /// A test declared by name with its reason: one that needs its process to
 /// itself (`--alone`), or one excluded from the ThreadSanitizer variant
 /// (`--tsan-skip`).
@@ -259,7 +335,10 @@ const usage =
     \\  --slow-factor=F   default 4 (Chromium's and V8's SLOW)
     \\  --alone-runs=R    re-runs of each failed test alone (default 2)
     \\  --only-batch=K    run only batch K of the plan the seed and batch size make
-    \\  --filter=TEXT     only tests whose name contains TEXT (selected at run time)
+    \\  --filter=PATTERN  only the tests PATTERN matches, selected at run time (repeatable: any pattern):
+    \\                    the whole name, `*` any run of characters - `mutation_test*` a file's tests,
+    \\                    `*removes*` any name holding "removes", a full name one test; in a grouped
+    \\                    executable also the name without its group's prefix (filter.zig)
     \\  --out=FILE        the result file, one JSON line per test (+ FILE.log: failures' output)
     \\  --timings=FILE    an earlier result file: claim the longest batches first
     \\  --slots-dir=DIR   share a cap of --jobs test processes with every launcher using DIR
@@ -282,11 +361,19 @@ const usage =
     \\                    any run that is not a pass fails (defaults 10 and 5)
     \\  --report-only     print and record every verdict, but answer the build runner `pass` for a
     \\                    failure and exit 0 for one: a variant's report mode (a TEMPORARY suite row)
+    \\  --group=PREFIX=B  the tests whose names start with PREFIX are batched B per process (0: all in one),
+    \\                    never with another group's: each suite of one executable keeps its batching
+    \\                    (repeatable; the longest prefix wins; the rest take --batch)
+    \\  --plain=PREFIX    with --many-browsers: the tests whose names start with PREFIX run without the
+    \\                    busy Browser (a suite that links no V8 as an executable of its own; repeatable)
     \\
 ;
 
 test "args: options, defaults, and errors" {
-    const arena = testing.allocator;
+    // An arena: a repeatable option's list (--filter) is the arena's.
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
     const a = try Args.parse(arena, &.{ "zig-out/x", "--jobs=4", "--batch=1", "--seed=0x10", "--no-shuffle", "--timeout=5", "--alone-runs=3", "--only-batch=2", "--filter=css", "--out=o.jsonl" });
     try std.testing.expectEqualStrings("zig-out/x", a.exe.?);
     try std.testing.expectEqual(@as(?u32, 4), a.jobs);
@@ -296,7 +383,8 @@ test "args: options, defaults, and errors" {
     try std.testing.expectEqual(@as(u32, 5), a.timeout_s);
     try std.testing.expectEqual(@as(u8, 3), a.alone_runs);
     try std.testing.expectEqual(@as(?u32, 2), a.only_batch);
-    try std.testing.expectEqualStrings("css", a.filter.?);
+    try std.testing.expectEqual(@as(usize, 1), a.filters.len);
+    try std.testing.expectEqualStrings("css", a.filters[0]);
     const d = try Args.parse(arena, &.{"x"});
     try std.testing.expectEqual(@as(u32, 10), d.batch);
     try std.testing.expect(d.shuffle);
@@ -315,6 +403,18 @@ test "args: options, defaults, and errors" {
     try std.testing.expectError(error.MissingExecutable, Args.parse(arena, &.{}));
     try std.testing.expectError(error.UnknownOption, Args.parse(arena, &.{ "x", "--bogus" }));
     try std.testing.expectError(error.UnexpectedArgument, Args.parse(arena, &.{ "x", "y" }));
+}
+
+test "args: --filter repeats, each a pattern; an empty one is refused" {
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const f = try Args.parse(arena, &.{ "x", "--filter=mutation_test*", "--filter=*range*", "--listen=-" });
+    try std.testing.expectEqual(@as(usize, 2), f.filters.len);
+    try std.testing.expectEqualStrings("mutation_test*", f.filters[0]);
+    try std.testing.expectEqualStrings("*range*", f.filters[1]);
+    try std.testing.expectEqual(@as(usize, 0), (try Args.parse(arena, &.{"x"})).filters.len);
+    try std.testing.expectError(error.EmptyFilter, Args.parse(arena, &.{ "x", "--filter=" }));
 }
 
 test "args: verify mode - prefixes, run counts, and never in server mode" {
@@ -345,6 +445,43 @@ test "args: a test declared alone carries its reason, and one without a reason i
     try std.testing.expectEqualStrings("its subject is real time", t.tsan_skip[0].reason);
     try std.testing.expectError(error.TsanSkipWithoutReason, Args.parse(arena, &.{ "x", "--tsan-skip=f.test.t" }));
     try std.testing.expectError(error.TsanSkipReasonWithoutTsanSkip, Args.parse(arena, &.{ "x", "--tsan-skip-reason=why" }));
+}
+
+test "args: groups keep their own batch size, and plain prefixes are listed" {
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const a = try Args.parse(arena, &.{ "tests", "--batch=10", "--group=html.=1", "--group=v8.=1", "--group=css.=0", "--plain=css." });
+    try std.testing.expectEqual(@as(usize, 3), a.groups.len);
+    try std.testing.expectEqualStrings("html.", a.groups[0].prefix);
+    try std.testing.expectEqual(@as(u32, 1), a.groups[0].batch);
+    try std.testing.expectEqual(@as(u32, 0), a.groups[2].batch);
+    try std.testing.expectEqual(@as(usize, 1), a.plain.len);
+    try std.testing.expectEqualStrings("css.", a.plain[0]);
+    // The batch size is after the LAST '=': a prefix may hold one.
+    const e = try Args.parse(arena, &.{ "x", "--group=a=b.=4" });
+    try std.testing.expectEqualStrings("a=b.", e.groups[0].prefix);
+    try std.testing.expectEqual(@as(u32, 4), e.groups[0].batch);
+    try std.testing.expectError(error.GroupWithoutBatch, Args.parse(arena, &.{ "x", "--group=html." }));
+    try std.testing.expectError(error.EmptyGroupPrefix, Args.parse(arena, &.{ "x", "--group==1" }));
+    try std.testing.expectError(error.InvalidCharacter, Args.parse(arena, &.{ "x", "--group=html.=one" }));
+    try std.testing.expectError(error.EmptyPlainPrefix, Args.parse(arena, &.{ "x", "--plain=" }));
+    // None given: no groups, nothing plain.
+    const d = try Args.parse(arena, &.{"x"});
+    try std.testing.expectEqual(@as(usize, 0), d.groups.len);
+    try std.testing.expectEqual(@as(usize, 0), d.plain.len);
+}
+
+test "a test is in the group of the longest prefix its name starts with" {
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const names = [_][]const u8{ "html.a_test.test.one", "html.nav.b_test.test.two", "dom.c_test.test.three", "tests.d.test_0", "htmlx.e_test.test.four" };
+    const groups = [_]Group{ .{ .prefix = "html.", .batch = 1 }, .{ .prefix = "dom.", .batch = 1 }, .{ .prefix = "html.nav.", .batch = 0 } };
+    const g = try assignGroups(arena, &names, &groups);
+    try std.testing.expectEqualSlices(u16, &.{ 1, 3, 2, 0, 0 }, g);
+    const plain = try markPrefixed(arena, &names, &.{ "dom.", "tests." });
+    try std.testing.expectEqualSlices(bool, &.{ false, false, true, true, false }, plain);
 }
 
 test "args: server mode takes the digest seed and ignores the build runner's --seed" {
@@ -483,6 +620,14 @@ pub fn main(init: std.process.Init) !void {
     var index_of: std.StringHashMapUnmanaged(u32) = .empty;
     for (md.names, 0..) |n, i| try index_of.put(arena, n, @intCast(i));
 
+    // Groups (`--group`): each suite of a one-binary executable keeps the
+    // batching it had as an executable of its own; a filter also matches a
+    // test's name without its group's prefix.
+    const group_of = try assignGroups(arena, md.names, args.groups);
+    const filter: filter_mod.Filter = .{ .patterns = args.filters };
+    // What the filter took (all, unfiltered), as the build runner lists it.
+    var listed: std.ArrayList(u32) = .empty;
+
     var selected: std.ArrayList(u32) = .empty;
     const is_selected = try arena.alloc(bool, md.names.len);
     @memset(is_selected, false);
@@ -500,9 +645,10 @@ pub fn main(init: std.process.Init) !void {
             tsan_skipped[i] = true;
         }
     }
-    for (md.names, md.expects_panic, 0..) |n, panics, i| {
+    for (md.names, md.expects_panic, group_of, 0..) |n, panics, g, i| {
+        if (!filter.selects(n, if (g == 0) null else args.groups[g - 1].prefix)) continue;
+        try listed.append(arena, @intCast(i));
         if (panics) continue;
-        if (args.filter) |f| if (std.mem.indexOf(u8, n, f) == null) continue;
         if (tsan_skipped[i]) {
             for (args.tsan_skip) |declared| if (std.mem.eql(u8, declared.name, n)) {
                 try out.print("test_launcher: {s} [ThreadSanitizer]: SKIPPED, not run under ThreadSanitizer: {s}: {s}\n", .{ name, n, declared.reason });
@@ -556,7 +702,28 @@ pub fn main(init: std.process.Init) !void {
         }
     }
 
-    var plan = try plan_mod.make(gpa, selected.items, .{ .seed = seed, .shuffle = args.shuffle, .batch_size = args.batch, .alone = if (args.many_browsers) alone else &.{} });
+    const group_batch = try arena.alloc(u32, args.groups.len);
+    for (args.groups, group_batch) |g, *size| size.* = g.batch;
+    // Plain (`--plain`): the tests of a suite whose own executable links no
+    // V8 never run beside the busy Browser, there or here - named, as an
+    // alone test is.
+    const plain = try markPrefixed(arena, md.names, args.plain);
+    if (args.many_browsers) for (args.plain) |prefix| {
+        var matched: usize = 0;
+        for (md.names, is_selected) |n, sel| {
+            if (sel and std.mem.startsWith(u8, n, prefix)) matched += 1;
+        }
+        try out.print("test_launcher: {s} [many Browsers]: runs WITHOUT the busy Browser: every test of {s} ({d}): its suite links no V8 as an executable of its own\n", .{ name, prefix, matched });
+    };
+
+    var plan = try plan_mod.make(gpa, selected.items, .{
+        .seed = seed,
+        .shuffle = args.shuffle,
+        .batch_size = args.batch,
+        .alone = if (args.many_browsers) alone else &.{},
+        .group = group_of,
+        .group_batch = group_batch,
+    });
     defer plan.deinit(gpa);
 
     // Longest batches first, from an earlier run's durations.
@@ -588,7 +755,10 @@ pub fn main(init: std.process.Init) !void {
     });
     defer alone_environ.deinit();
     executor.alone_environ_map = &alone_environ;
-    executor.alone = alone;
+    // Without the busy Browser: an alone test's process, and a plain one's.
+    const no_busy = try arena.alloc(bool, md.names.len);
+    for (no_busy, alone, plain) |*n, a, p| n.* = a or p;
+    executor.alone = no_busy;
     executor.slow = slow;
     executor.slow_factor = args.slow_factor;
     // The build-wide process cap: the given directory, or in server mode one
@@ -611,9 +781,14 @@ pub fn main(init: std.process.Init) !void {
 
     // A replay runs the same variants: the race or the busy Browser is part
     // of what failed.
-    const replay = try std.fmt.allocPrint(arena, "test_launcher {s} --seed=0x{x} --batch={d}{s}{s}{s}", .{
-        exe,                                                    seed,                                               args.batch, if (args.shuffle) "" else " --no-shuffle",
-        if (args.sanitize_thread) " --sanitize-thread" else "", if (args.many_browsers) " --many-browsers" else "",
+    var replay_groups: Io.Writer.Allocating = .init(arena);
+    for (args.groups) |g| try replay_groups.writer.print(" --group={s}={d}", .{ g.prefix, g.batch });
+    for (args.plain) |p| try replay_groups.writer.print(" --plain={s}", .{p});
+    // The same selection: the plan's batches are made from the selected tests.
+    for (args.filters) |f| try replay_groups.writer.print(" '--filter={s}'", .{f});
+    const replay = try std.fmt.allocPrint(arena, "test_launcher {s} --seed=0x{x} --batch={d}{s}{s}{s}{s}", .{
+        exe,                                                    seed,                                               args.batch,              if (args.shuffle) "" else " --no-shuffle",
+        if (args.sanitize_thread) " --sanitize-thread" else "", if (args.many_browsers) " --many-browsers" else "", replay_groups.written(),
     });
 
     var printer: Printer = .{
@@ -637,6 +812,7 @@ pub fn main(init: std.process.Init) !void {
     if (args.listen) {
         session = try server_mod.Session.init(gpa, io, md.names, md.expects_panic, is_selected, &run, seed);
         session.report_only = args.report_only;
+        if (filter.active()) session.listed = listed.items;
         defer session.deinit(gpa);
         var stdin_buf: [4096]u8 = undefined;
         var stdin_reader = Io.File.stdin().readerStreaming(io, &stdin_buf);
@@ -668,21 +844,31 @@ pub fn main(init: std.process.Init) !void {
         if (args.many_browsers) " [many Browsers]" else "",
         if (args.report_only) " [REPORT-ONLY]" else "",
     });
-    if (args.listen) {
+    // A filtered run says in its line what it took ("filter P: 12 of 642
+    // tests; ..."); one that took nothing says so instead of counts - it ran
+    // nothing, and passes.
+    var note: Io.Writer.Allocating = .init(arena);
+    if (filter.active()) {
+        try filter.writeNote(&note.writer, listed.items.len, md.names.len);
+        try note.writer.writeAll(if (listed.items.len == 0) "" else "; ");
+    }
+    if (filter.active() and listed.items.len == 0) {
+        try out.print("test_launcher: {s}{s}: {s}\n", .{ name, variants, note.written() });
+    } else if (args.listen) {
         // One line per suite: in `zig build test` this is the step's stderr,
         // which prints each suite's seed and its own wall time. The replay
         // command only when something did not pass.
         try out.print(
-            "test_launcher: {s}{s}: seed 0x{x}, batch {d}: PASS {d} SKIP {d} FAIL {d} ORDER-DEPENDENT {d} FLAKY {d} NOT-RUN {d} LAUNCHER-ERROR {d}; wall {d:.1} s, child CPU {d:.1} s, {d} processes, peak child RSS {d} MB\n",
-            .{ name, variants, seed, args.batch, c.pass, c.skip, c.fail, c.order_dependent, c.flaky, c.not_run, c.launcher_error, fmtSeconds(wall_ns), cpu_s, run.processes.load(.monotonic), rss_mb },
+            "test_launcher: {s}{s}: {s}seed 0x{x}, batch {d}: PASS {d} SKIP {d} FAIL {d} ORDER-DEPENDENT {d} FLAKY {d} NOT-RUN {d} LAUNCHER-ERROR {d}; wall {d:.1} s, child CPU {d:.1} s, {d} processes, peak child RSS {d} MB\n",
+            .{ name, variants, note.written(), seed, args.batch, c.pass, c.skip, c.fail, c.order_dependent, c.flaky, c.not_run, c.launcher_error, fmtSeconds(wall_ns), cpu_s, run.processes.load(.monotonic), rss_mb },
         );
         if (c.bad() != 0) try out.print("  replay: {s}\n", .{replay});
         if (exit_failures != 0) try out.print("  {d} test processes exited non-zero after exit\n", .{exit_failures});
     } else try out.print(
-        "test_launcher: {s}{s}: PASS {d}  SKIP {d}  FAIL {d}  ORDER-DEPENDENT {d}  FLAKY {d}  NOT-RUN {d}  LAUNCHER-ERROR {d}  (seed 0x{x}, batch {d}, {d} jobs)\n" ++
+        "test_launcher: {s}{s}: {s}PASS {d}  SKIP {d}  FAIL {d}  ORDER-DEPENDENT {d}  FLAKY {d}  NOT-RUN {d}  LAUNCHER-ERROR {d}  (seed 0x{x}, batch {d}, {d} jobs)\n" ++
             "  wall {d:.1} s, child CPU {d:.1} s, {d} processes, peak child RSS {d} MB, {d} exited non-zero after exit\n",
         .{
-            name,                variants, c.pass,                         c.skip, c.fail,        c.order_dependent, c.flaky, c.not_run, c.launcher_error, seed, args.batch, jobs,
+            name,                variants, note.written(),                 c.pass, c.skip,        c.fail, c.order_dependent, c.flaky, c.not_run, c.launcher_error, seed, args.batch, jobs,
             fmtSeconds(wall_ns), cpu_s,    run.processes.load(.monotonic), rss_mb, exit_failures,
         },
     );

@@ -2,6 +2,7 @@
 const std = @import("std");
 const engine = @import("engine");
 const v8 = @import("v8");
+const test_process = @import("test_process.zig");
 const ffi = v8.ffi;
 const Callback = ?*const fn () void;
 const Strategy = struct { size: Callback = null };
@@ -34,7 +35,7 @@ fn convert(comptime case: Case, isolate: *ffi.Isolate, context: *ffi.Context) !v
 }
 
 fn check(comptime case: Case) !void {
-    try engine.initializeEngine(.{});
+    test_process.start();
     const isolate = ffi.v8_Isolate_New() orelse return error.NoIsolate;
     defer ffi.v8_Isolate_Dispose(isolate);
     ffi.v8_Isolate_Enter(isolate);

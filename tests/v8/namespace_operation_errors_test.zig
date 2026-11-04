@@ -19,6 +19,7 @@ const std = @import("std");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 const engine = @import("engine");
+const test_process = @import("test_process.zig");
 
 /// A hand-written namespace, bound by the generated-namespace binding.
 const Failing = struct {
@@ -76,7 +77,7 @@ fn evalIn(isolate: *ffi.Isolate, context: *ffi.Context, source: []const u8) ![]c
 const Check = struct { source: []const u8, expected: []const u8 };
 
 fn runChecks(checks: []const Check) !void {
-    try engine.initializeEngine(.{});
+    test_process.start();
     const isolate = ffi.v8_Isolate_New() orelse return error.NoIsolate;
     defer ffi.v8_Isolate_Dispose(isolate);
     ffi.v8_Isolate_Enter(isolate);

@@ -45,7 +45,7 @@ const setup =
 const Case = enum { nested_style, container_parent, scope_parent, conditions };
 
 fn exercise(comptime case: Case) !void {
-    try engine.initializeEngine(.{});
+    test_process.start();
     // A standalone runtime of this test's own, the process's given back
     // after (test_process.OwnRuntime).
     const own_runtime = test_process.OwnRuntime.begin(std.testing.allocator);

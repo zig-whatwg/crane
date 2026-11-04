@@ -120,7 +120,6 @@ const Side = struct {
 };
 
 test "each agent's JSON modules wait in its own isolate, and another agent's end leaves them" {
-    try protocol.initializeEngine(.{});
     test_process.start();
     interfaces.process_hooks.startHooksForTest();
 
