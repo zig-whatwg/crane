@@ -23,7 +23,6 @@ const webidl = @import("webidl");
 // The byte stream "get stream" returns.
 const js = @import("streams_js.zig");
 const srd = @import("streams_readable.zig");
-const same_object = @import("same_object.zig");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 pub const State = Blob.State;
@@ -399,11 +398,12 @@ pub fn call_stream(instance: *runtime.Instance) anyerror!*runtime.Instance {
 const chunk_size: usize = 64 * 1024;
 
 /// The underlying source of a Blob's stream. It reads the Blob's own bytes,
-/// so it keeps the Blob alive (`keep`) until the stream is done with it.
+/// so the stream's controller keeps the Blob (a traced edge, `attach`) until
+/// the stream is done with it - an edge, where a strong pin kept the Blob,
+/// and its realm, as long as the source lived.
 const BlobStream = struct {
     allocator: std.mem.Allocator,
     blob: *runtime.Instance,
-    keep: same_object.Pin = .{},
     /// Bytes of the blob already enqueued.
     position: usize = 0,
     /// Every byte is enqueued, or the stream was cancelled: the blob is let
@@ -414,13 +414,18 @@ const BlobStream = struct {
     /// Calls into the stream under way from here: freeing waits for them.
     busy: u32 = 0,
 
-    const vtable = srd.Source.VTable{ .start = start, .pull = pull, .cancel = cancel, .deinit = deinitSource };
+    const vtable = srd.Source.VTable{ .start = start, .pull = pull, .cancel = cancel, .deinit = deinitSource, .attach = attach };
+
+    /// The controller keeps the Blob its pulls read.
+    fn attach(ctx: ?*anyopaque, controller: *runtime.Instance) void {
+        const self: *BlobStream = @ptrCast(@alignCast(ctx.?));
+        engine.traceChild(controller, self.blob, js.slot.source);
+    }
 
     fn create(realm: js.Realm, blob: *runtime.Instance) !*runtime.Instance {
         const allocator = blob.ctx.allocator;
         const self = try allocator.create(BlobStream);
         self.* = .{ .allocator = allocator, .blob = blob };
-        self.keep.hold(blob);
         // A failed setup clears the source's algorithms, which must not free
         // it under this call.
         self.busy += 1;
@@ -460,16 +465,16 @@ const BlobStream = struct {
         if (!self.detached and self.position >= bytes.len) {
             // All of it is enqueued: nothing more to read, so let the blob go.
             self.done = true;
-            self.keep.release();
+            engine.forgetTracedChild(controller, js.slot.source);
             try srd.byteControllerClose(realm, controller);
         }
         return realm.promiseResolvedWithUndefined();
     }
 
-    fn cancel(ctx: ?*anyopaque, realm: js.Realm, _: *runtime.Instance, _: js.Value) js.Error!js.Value {
+    fn cancel(ctx: ?*anyopaque, realm: js.Realm, controller: *runtime.Instance, _: js.Value) js.Error!js.Value {
         const self: *BlobStream = @ptrCast(@alignCast(ctx.?));
         self.done = true;
-        self.keep.release();
+        engine.forgetTracedChild(controller, js.slot.source);
         return realm.promiseResolvedWithUndefined();
     }
 
@@ -481,7 +486,6 @@ const BlobStream = struct {
 
     fn freeIfDone(self: *BlobStream) void {
         if (!self.detached or self.busy > 0) return;
-        self.keep.release();
         self.allocator.destroy(self);
     }
 };

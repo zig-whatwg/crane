@@ -127,6 +127,12 @@ pub const Implementation = struct {
     /// matches about:blank on initial insertion, which fires load at it -
     /// "navigate an iframe or frame".
     process_frame_attributes: *const fn (element: *runtime.Instance, integration: *IFrameIntegration, initial_insertion: bool) void,
+    /// The URL a navigation in flight navigates to (HTML "navigate" step
+    /// 1's url, serialized), given its record - what `Navigables.navigation`
+    /// keeps by the navigation's id. BORROWED: valid while the navigation is
+    /// in flight, read on the Browser's window thread. What a host shows
+    /// ("Navigating to <url>", the browser console); null: not installed.
+    navigation_url: ?*const fn (record: *anyopaque) []const u8 = null,
 };
 
 var implementation: Hook(?Implementation) = .init(null);
@@ -140,6 +146,15 @@ pub fn install(impl: Implementation) void {
 /// unless a test cleared it.
 pub fn isInstalled() bool {
     return implementation.get() != null;
+}
+
+/// The URL navigation `record` (a record `Navigables.navigation` keeps)
+/// navigates to - see Implementation.navigation_url. Null when no owner
+/// installed it.
+pub fn navigationUrl(record: *anyopaque) ?[]const u8 {
+    const impl = implementation.get() orelse return null;
+    const url_of = impl.navigation_url orelse return null;
+    return url_of(record);
 }
 
 /// Choose a navigable for `request.target` from `source_document`'s node

@@ -29,6 +29,10 @@ pub fn init(allocator: std.mem.Allocator, comptime StateType: type, vtable: *con
 
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
+    // [[transform]] is a traced edge, which dies with this object's wrapper;
+    // one made natively and freed unwrapped (dom.text_stream) ends the edge
+    // still waiting for a wrapper.
+    engine.forgetTracedChild(instance, js.slot.transform_stream);
     if (state.own._internal) |internal| {
         // Only the controller owns the codec. Script may retain the stream
         // sides after this API object has been collected.
@@ -49,7 +53,11 @@ pub fn call_constructor(ctx: runtime.Context, format: enums.CompressionFormat) !
         ._brotli_ => if (compression.brotli_supported) .brotli else return error.TypeError,
     });
     // setUp takes ownership at the call, including on failure.
-    instance.getState(State).own._internal.?.transform = try st.setUp(realm, ctx, .{ .ctx = codec, .vtable = &transformer });
+    const transform_stream = try st.setUp(realm, ctx, .{ .ctx = codec, .vtable = &transformer });
+    instance.getState(State).own._internal.?.transform = transform_stream;
+    // This object keeps its TransformStream (Blink: the codec stream traces
+    // its transform_), which its readable and writable keep back.
+    engine.traceChild(instance, transform_stream, js.slot.transform_stream);
     return instance;
 }
 

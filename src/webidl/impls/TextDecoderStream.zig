@@ -32,6 +32,10 @@ pub fn init(allocator: std.mem.Allocator, comptime StateType: type, vtable: *con
 
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
+    // [[transform]] is a traced edge, which dies with this object's wrapper;
+    // one made natively and freed unwrapped (dom.text_stream) ends the edge
+    // still waiting for a wrapper.
+    engine.forgetTracedChild(instance, js.slot.transform_stream);
     if (state.own._internal) |internal| {
         // Codec state belongs to the transform's controller, not this wrapper.
         internal.allocator.destroy(internal);
@@ -56,7 +60,11 @@ pub fn call_constructor(ctx: runtime.Context, label: webidl.Opt(runtime.DOMStrin
     const codec = try ctx.allocator.create(Codec);
     codec.* = Codec.init(ctx.allocator, enc, fatal, ignore_bom);
     // setUp takes ownership at the call, including on failure.
-    internal.transform = try st.setUp(realm, ctx, .{ .ctx = codec, .vtable = &transformer });
+    const transform_stream = try st.setUp(realm, ctx, .{ .ctx = codec, .vtable = &transformer });
+    internal.transform = transform_stream;
+    // This object keeps its TransformStream (Blink: the codec stream traces
+    // its transform_), which its readable and writable keep back.
+    engine.traceChild(instance, transform_stream, js.slot.transform_stream);
     return instance;
 }
 

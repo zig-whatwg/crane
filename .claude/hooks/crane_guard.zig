@@ -151,7 +151,9 @@ fn checkZigBuild(command: []const u8, agent_type: ?[]const u8) Verdict {
         // `a|zig build|b` with no space at the bar is a regex alternation (pgrep -fl, grep -E), not
         // a pipe into or out of a build (2026-11-04).
         if ((at > 0 and command[at - 1] == '|') or (after_at < command.len and command[after_at] == '|')) continue;
-        const start_kind = commandStart(command, at);
+        // Inside a quoted string (a printf or echo argument, a commit message, a pattern, a remote
+        // command) a `;` before it is text, not a command boundary (2026-11-04).
+        const start_kind: StartKind = if (insideQuotes(command, at)) .quote else commandStart(command, at);
         if (start_kind == .none) continue;
 
         var args = ArgIter{ .text = command[after_at..] };
@@ -462,6 +464,23 @@ fn isCommandStart(command: []const u8, pos: usize) bool {
 
 const StartKind = enum { none, plain, quote };
 
+/// Whether byte `pos` lies inside a single- or double-quoted string, as the shell reads the
+/// command from its start (a backslash escapes the next byte outside single quotes).
+fn insideQuotes(command: []const u8, pos: usize) bool {
+    var single = false;
+    var double = false;
+    var i: usize = 0;
+    while (i < pos and i < command.len) : (i += 1) {
+        const c = command[i];
+        if (c == '\\' and !single) {
+            i += 1;
+            continue;
+        }
+        if (c == '\'' and !double) single = !single else if (c == '"' and !single) double = !double;
+    }
+    return single or double;
+}
+
 /// How the word at `pos` starts a command: after the start of the command or
 /// a `;` `&` `|` `(` newline (`.plain`), right after a quote (`.quote`: inside
 /// a quoted string, where it may be a remote command or only a phrase), or
@@ -750,6 +769,9 @@ test "zig build: mentions in text, help and other zig commands are not builds" {
     try expectAllowed("ssh chat.local 'ps -axo etime,command | grep -c zig'; pgrep -fl \"zig build test\" | head -3", null);
     try expectAllowed("ssh h 'bash -c \"pgrep -fl \\\"wpt_runner|zig build|test_launcher\\\" | head -3\"'", null);
     try expectDenied("zig build | tee build.log", null);
+    try expectAllowed("printf -- \"- main: gate = main + lanes; zig build test + crane-check\\n\" >> log.md", null);
+    try expectAllowed("git commit -m \"merge; zig build test 485/485\"", "lane-xhigh");
+    try expectDenied("cd x; zig build test --summary all", null);
 }
 
 test "zig build: a lane builds in the pool, never on the Mac; the main conversation may build locally" {

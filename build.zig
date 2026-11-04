@@ -4437,6 +4437,8 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "engine", .module = engine_mod },
                 .{ .name = "browser", .module = browser_mod },
                 .{ .name = "console", .module = console_mod },
+                // Real time for the console's deadlines (platform.monotonicNow).
+                .{ .name = "platform", .module = platform_mod },
             },
         }),
     });
@@ -4499,6 +4501,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "engine", .module = testing_graph.engine },
                 .{ .name = "browser", .module = testing_graph.browser },
                 .{ .name = "console", .module = testing_graph.console },
+                .{ .name = "platform", .module = testing_graph.platform },
             },
         });
         const console_test_imports = [_]std.Build.Module.Import{
@@ -6809,17 +6812,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         },
     });
 
-    const streams_structured_clone_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/structured_clone.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "common", .module = streams_common_mod },
-            .{ .name = "pull_into_descriptor", .module = streams_pull_into_descriptor_mod },
-            .{ .name = "message_port", .module = streams_message_port_mod },
-        },
-    });
-
     // Main streams module
     const streams_mod = graphModule(b, public, "streams", .{
         .root_source_file = b.path("src/streams/root.zig"),
@@ -6845,7 +6837,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     streams_mod.addImport("read_into_request", streams_read_into_request_mod);
     streams_mod.addImport("pull_into_descriptor", streams_pull_into_descriptor_mod);
     streams_mod.addImport("write_request", streams_write_request_mod);
-    streams_mod.addImport("structured_clone", streams_structured_clone_mod);
     streams_mod.addImport("view_construction", streams_view_construction_mod);
     streams_mod.addImport("async_iterator", streams_async_iterator_mod);
     streams_mod.addImport("message_port", streams_message_port_mod);
