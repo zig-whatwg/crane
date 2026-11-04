@@ -2120,6 +2120,10 @@ def render_reference(worklist, records, ref):
                             f'(<code>tests/wpt/crane/harness-overhead/</code>) with the same {procs} runners: what one '
                             f'costs is the harness alone, and the estimates split each run at that rate over the '
                             f'{urls:,} test URLs of the worklist.</p>')
+        timing_html += ('<p class="dim note">CPU is the larger of what the run&rsquo;s harness waited for (rusage) and a '
+                        'once-a-second sample of its whole process tree, which also counts the browser&rsquo;s processes '
+                        'no parent waited for; Crane&rsquo;s includes its share of the shared WPT server, which it does '
+                        'not start.</p>')
 
     def file_rows(items):
         out = []

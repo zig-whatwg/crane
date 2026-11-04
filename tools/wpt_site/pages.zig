@@ -1585,8 +1585,12 @@ fn writeVersus(w: W, site: *const Site) Error!void {
         try html.num(w, c.urls_expected);
         try w.writeAll(" test URLs.");
     };
+    if (r.timing != null) try w.writeAll(" " ++ cpu_method);
     try w.writeAll("</p>\n</div>\n</section>\n");
 }
+
+/// How a run's CPU is measured (reference.Measure.cpu), as the comparison's note says it.
+const cpu_method = "CPU is the larger of what the run&rsquo;s harness waited for (rusage) and a once-a-second sample of its whole process tree, which also counts the browser&rsquo;s processes no parent waited for; Crane&rsquo;s includes its share of the shared WPT server, which it does not start.";
 
 /// Most severe first, as site.js sorts a standing column.
 fn gateRank(g: model.Gate) u8 {
