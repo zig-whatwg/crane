@@ -3476,6 +3476,15 @@ def _check_reference_window():
         page2 = open(out).read()
     assert 'Crane links V8 <code>13.1.203</code>' in page2 and 'Chrome <code>150.0.7000.1</code> ships V8 <code>15.7.1</code>' in page2
     assert "Chrome&rsquo;s figures are from its run of 2026-11-04, reused beside Crane&rsquo;s: the host and its load matched." in page2
+    # Before Crane's full run, its build is still named.
+    del ref['timing']['crane']
+    ref['run']['crane_build'] = 'release runner, overhead only'
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, 'p.html')
+        render(areas, worklist, records, [], out, reference=ref)
+        page3 = open(out).read()
+    assert 'Crane: release runner, overhead only' in page3
+    assert '<tr><td class="area">The worklist, wall clock</td><td class="num">not measured</td>' in page3
 
 
 def _check_reference_render():

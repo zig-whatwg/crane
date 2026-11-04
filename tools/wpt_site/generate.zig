@@ -2013,6 +2013,17 @@ test "site: each side's build is named, and the window's runs give pass counts, 
     try expectHas(index2, "Crane links V8 <code>13.1.203</code>");
     try expectHas(index2, "Chrome <code>150.0.7000.1</code> ships V8 <code>15.7.1</code>");
     try expectHas(index2, "Chrome&rsquo;s figures are from its run of <span class=\"nowrap\">4 Nov 2026</span>, reused beside Crane&rsquo;s: the host and its load matched.");
+
+    // Before Crane's full run, its build is still named (its overhead runs are on the page).
+    const g = try std.mem.replaceOwned(u8, gpa, fixture_reference, "\"command\":\"wpt run chrome\",", "\"command\":\"wpt run chrome\",\"crane_build\":\"release runner, overhead only\",");
+    defer gpa.free(g);
+    const h = try std.mem.replaceOwned(u8, gpa, g, "\"crane\":{\"wall_s\":2400,\"user_s\":8000,\"sys_s\":400,\"files\":5,\"runner\":\"main-0c228a97aa\"},", "");
+    defer gpa.free(h);
+    _ = try runFixtureRef(gpa, &f, "out3", h);
+    const index3 = try readOut(gpa, &f, "out3/index.html");
+    defer gpa.free(index3);
+    try expectHas(index3, "<dt>Crane</dt><dd>release runner, overhead only</dd>");
+    try expectHas(index3, "<tr><th scope=\"row\">The worklist, wall clock</th><td class=\"n\"><span class=\"quiet\">not measured</span></td>");
 }
 
 test "site: a reference run's records are never Crane's" {
