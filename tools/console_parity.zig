@@ -161,9 +161,18 @@ test "testUrl builds the runner's URLs" {
 /// The console's input: wait for testharness to complete - its completion
 /// callback, or, when it completed before the line ran, the "getmessages"
 /// replay of its "complete" message (testharness.js WindowTestEnvironment) -
-/// then log the results, one line, and end.
+/// then log the results, one line, and end. The line carries each failing
+/// subtest's name and message too, for the logs of a differing run.
+///
+/// The replay is asked for only once the harness has finished - its summary
+/// is on the page (testharness.js Output, section#summary), or 20 s passed
+/// for a page that shows none: the request is a `message` event at the test's
+/// own window, and a test still running that listens for messages
+/// (navigating-across-documents/004.html, choose-_parent-003.html) would take
+/// it for one of its own. After the harness completes, a test's steps are
+/// ignored.
 const collector =
-    \\await new Promise(resolve => { let done = false; const finish = (tests, status) => { if (done) return; done = true; console.log('@@WPT ' + JSON.stringify({status: status ? status.status : -1, tests: Array.from(tests || [], t => t.status)})); resolve(); }; if (typeof add_completion_callback !== 'function') { console.log('@@WPT {"status":-2,"tests":[]}'); return resolve(); } add_completion_callback(finish); addEventListener('message', e => { if (e.data && e.data.type === 'complete') finish(e.data.tests, e.data.status); }); postMessage({type: 'getmessages'}, '*'); }), undefined
+    \\await new Promise(resolve => { let done = false; const finish = (tests, status) => { if (done) return; done = true; console.log('@@WPT ' + JSON.stringify({status: status ? status.status : -1, message: status ? status.message : null, tests: Array.from(tests || [], t => t.status), failures: Array.from(tests || [], t => t.status ? String(t.name).slice(0, 200) + ': ' + String(t.message).slice(0, 300) : null).filter(Boolean)})); resolve(); }; if (typeof add_completion_callback !== 'function') { console.log('@@WPT {"status":-2,"tests":[]}'); return resolve(); } add_completion_callback(finish); addEventListener('message', e => { if (e.data && e.data.type === 'complete') finish(e.data.tests, e.data.status); }); const started = Date.now(); const ask = () => { if (done) return; if (document.querySelector('section#summary') || Date.now() - started > 20000) postMessage({type: 'getmessages'}, '*'); else setTimeout(ask, 250); }; ask(); }), undefined
     \\.exit
     \\
 ;
@@ -317,6 +326,7 @@ fn hintsOf(source: []const u8, out: *std.Io.Writer) !void {
         .{ .needle = "<audio", .name = "media" },
         .{ .needle = "HTMLMediaElement", .name = "media" },
         .{ .needle = "<img", .name = "image" },
+        .{ .needle = "\"img-tag\"", .name = "image" },
         .{ .needle = "createImageBitmap", .name = "image" },
         .{ .needle = "new Image(", .name = "image" },
     };
