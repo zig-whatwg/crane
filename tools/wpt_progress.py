@@ -2013,6 +2013,26 @@ def measure_cpu(m):
     return max(m['user_s'] + m['sys_s'], m.get('tree_cpu_s', 0)) + m.get('server_cpu_s', 0)
 
 
+def fmt_mb(mb):
+    """As the public site says it: "800 MB", "6.0 GB"."""
+    if mb is None or mb != mb or mb < 0:
+        return '&mdash;'
+    if mb >= 1024:
+        return f'{mb / 1024:.1f} GB'
+    return f'{int(mb + 0.5):,} MB'
+
+
+V8_NOTE = ('Crane links a release V8 (<code>is_debug=false</code>, no V8 checks, no heap verification: '
+           '<code>scripts/build-v8-static.sh</code>) but not an official one: no ThinLTO and no PGO, which '
+           'Chrome&rsquo;s V8 is built with.')
+MEMORY_METHOD = ('Memory is each process&rsquo;s phys_footprint (Activity Monitor&rsquo;s Memory: its own dirty pages, '
+                 'anonymous and compressed; the kernel charges a page shared between processes to one owner, so a sum '
+                 'counts it once), sampled every second and summed over the engine&rsquo;s processes - Chrome&rsquo;s '
+                 'browser, renderer, GPU and utility processes; Crane&rsquo;s runner processes that run the files - and, '
+                 'apart, over the harness&rsquo;s: wptrunner&rsquo;s Python, its servers and ChromeDriver; Crane&rsquo;s '
+                 'supervising runner and the shared WPT server.')
+
+
 def fmt_duration(secs):
     """As the public site says it: "250 ms", "1.50 s", "40 min 0 s", "2 h 20 min"."""
     if secs is None or secs != secs or secs < 0:
@@ -2088,9 +2108,21 @@ def render_reference(worklist, records, ref):
     if tm:
         procs = tm['processes']
         c, r = tm.get('crane'), tm['reference']
-        rows = [row('The worklist, wall clock', fmt_duration(c['wall_s']) if c else 'not measured', fmt_duration(r['wall_s'])),
-                row('CPU, user + system', fmt_duration(measure_cpu(c)) if c else 'not measured',
-                    fmt_duration(measure_cpu(r)))]
+        rows = []
+        if (c or {}).get('reported') or r.get('reported'):
+            rows.append(row('WPT subtests passing in this run',
+                            f"{c['passed']:,} / {c['reported']:,}" if (c or {}).get('reported') else 'not recorded',
+                            f"{r['passed']:,} / {r['reported']:,}" if r.get('reported') else 'not recorded'))
+        rows += [row('The worklist, wall clock', fmt_duration(c['wall_s']) if c else 'not measured', fmt_duration(r['wall_s'])),
+                 row('CPU, user + system', fmt_duration(measure_cpu(c)) if c else 'not measured',
+                     fmt_duration(measure_cpu(r)))]
+        cmem, rmem = (c or {}).get('memory'), r.get('memory')
+        if cmem or rmem:
+            for label, key in (('Memory of the engine, peak', 'engine_peak_mb'), ('Memory of the engine, mean', 'engine_mean_mb'),
+                               ('Memory of the harness, peak', 'harness_peak_mb'), ('Memory of the harness, mean', 'harness_mean_mb'),
+                               ('One runner&rsquo;s engine, largest peak', 'group_peak_max_mb'),
+                               ('One runner&rsquo;s engine, mean of the peaks', 'group_peak_mean_mb')):
+                rows.append(row(label, fmt_mb(cmem[key]) if cmem else 'not measured', fmt_mb(rmem[key]) if rmem else 'not measured'))
         o = tm.get('overhead')
         urls = cov.get('urls_expected', 0)
         if o and o.get('files'):
@@ -2123,7 +2155,15 @@ def render_reference(worklist, records, ref):
         timing_html += ('<p class="dim note">CPU is the larger of what the run&rsquo;s harness waited for (rusage) and a '
                         'once-a-second sample of its whole process tree, which also counts the browser&rsquo;s processes '
                         'no parent waited for; Crane&rsquo;s includes its share of the shared WPT server, which it does '
-                        'not start.</p>')
+                        'not start.' + (' ' + MEMORY_METHOD if (cmem or rmem) else '') + '</p>')
+        product = 'Chrome for Testing' if ref['engine'] == 'chrome' else name
+        builds = [f"{name}: {product} <code>{esc(run['browser_version'])}</code>" +
+                  (f", {esc(run['build'])}" if run.get('build') else '')]
+        if c:
+            builds.append('Crane: ' + (esc(c['build']) + '; ' if c.get('build') else '') +
+                          f"runner <code>{esc(c.get('runner', ''))}</code>")
+        builds.append('V8: ' + V8_NOTE)
+        timing_html += '<ul class="samples">' + ''.join(f'<li>{b}</li>' for b in builds) + '</ul>'
 
     def file_rows(items):
         out = []

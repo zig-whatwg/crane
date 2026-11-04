@@ -507,6 +507,10 @@ table.versus tbody th { font-weight: 400; }
 table.versus tbody tr:last-child > * { border-bottom: 0; }
 table.versus .n { text-align: right; white-space: nowrap; }
 table.versus .n b { font-weight: 600; }
+.builds { margin: 0; padding: 0.6rem 1rem 0.9rem; border-top: 1px solid var(--rule); display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.3rem 1rem; font-size: 0.85rem; line-height: 1.45; }
+.builds > div { display: contents; }
+.builds dt { color: var(--ink-2); font-weight: 600; }
+.builds dd { margin: 0; }
 .compare { margin: 0 0 3rem; }
 .compare > p { max-width: var(--measure); }
 .compare h3 { font: 600 1rem/1.3 var(--serif); margin: 1.5rem 0 0.5rem; }

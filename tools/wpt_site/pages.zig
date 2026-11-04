@@ -1424,6 +1424,30 @@ fn sumPassDiff(site: *const Site, list: []const usize, ref_ahead: bool) u64 {
     return n;
 }
 
+/// Megabytes as people read them: "800 MB", "6.0 GB".
+fn writeMB(w: W, mb: f64) Error!void {
+    if (!(mb >= 0)) return w.writeAll("&mdash;");
+    if (mb >= 1024) return w.print("{d:.1} GB", .{mb / 1024});
+    try html.num(w, @intFromFloat(@round(mb)));
+    try w.writeAll(" MB");
+}
+
+fn writeMemRow(w: W, label: []const u8, crane: ?f64, ref: ?f64) Error!void {
+    try w.print("<tr><th scope=\"row\">{s}</th>", .{label});
+    for ([_]?f64{ crane, ref }) |v| {
+        try w.writeAll("<td class=\"n\">");
+        if (v) |x| try writeMB(w, x) else try w.writeAll("<span class=\"quiet\">not measured</span>");
+        try w.writeAll("</td>");
+    }
+    try w.writeAll("</tr>\n");
+}
+
+/// What Crane's V8 is, beside Chrome's (scripts/build-v8-static.sh).
+const v8_note = "Crane links a release V8 (<code>is_debug=false</code>, no V8 checks, no heap verification: <code>scripts/build-v8-static.sh</code>) but not an official one: no ThinLTO and no PGO, which Chrome&rsquo;s V8 is built with.";
+
+/// How memory is measured, as the comparison's note says it.
+const memory_method = "Memory is each process&rsquo;s phys_footprint (Activity Monitor&rsquo;s Memory: its own dirty pages, anonymous and compressed; the kernel charges a page shared between processes to one owner, so a sum counts it once), sampled every second and summed over the engine&rsquo;s processes - Chrome&rsquo;s browser, renderer, GPU and utility processes; Crane&rsquo;s runner processes that run the files - and, apart, over the harness&rsquo;s: wptrunner&rsquo;s Python, its servers and ChromeDriver; Crane&rsquo;s supervising runner and the shared WPT server.";
+
 fn writeTimeRow(w: W, label: []const u8, crane: ?f64, ref: ?f64) Error!void {
     try w.print("<tr><th scope=\"row\">{s}</th>", .{label});
     for ([_]?f64{ crane, ref }) |v| {
@@ -1546,8 +1570,34 @@ fn writeVersus(w: W, site: *const Site) Error!void {
         try w.print("</span></div>\n<table class=\"versus\">\n<thead><tr><td></td><th scope=\"col\" class=\"n\">Crane</th><th scope=\"col\" class=\"n\">{s}</th></tr></thead>\n<tbody>\n", .{name});
         const cw: ?f64 = if (tm.crane) |c| c.wall_s else null;
         const cc: ?f64 = if (tm.crane) |c| c.cpu() else null;
+        // The window's runs' own pass counts, when recorded.
+        const crep: u64 = if (tm.crane) |c| c.reported else 0;
+        if (crep > 0 or tm.reference.reported > 0) {
+            try w.writeAll("<tr><th scope=\"row\">WPT subtests passing in this run</th>");
+            for ([_][2]u64{ .{ if (tm.crane) |c| c.passed else 0, crep }, .{ tm.reference.passed, tm.reference.reported } }) |pr| {
+                try w.writeAll("<td class=\"n\">");
+                if (pr[1] > 0) try writePassOf(w, pr[0], pr[1]) else try w.writeAll("<span class=\"quiet\">not recorded</span>");
+                try w.writeAll("</td>");
+            }
+            try w.writeAll("</tr>\n");
+        }
         try writeTimeRow(w, "The worklist, wall clock", cw, tm.reference.wall_s);
         try writeTimeRow(w, "CPU, user + system", cc, tm.reference.cpu());
+        const cm: ?reference_mod.Memory = if (tm.crane) |c| c.memory else null;
+        const rm = tm.reference.memory;
+        if (cm != null or rm != null) {
+            const Get = struct {
+                fn f(m: ?reference_mod.Memory, comptime field: []const u8) ?f64 {
+                    return if (m) |x| @field(x, field) else null;
+                }
+            };
+            try writeMemRow(w, "Memory of the engine, peak", Get.f(cm, "engine_peak_mb"), Get.f(rm, "engine_peak_mb"));
+            try writeMemRow(w, "Memory of the engine, mean", Get.f(cm, "engine_mean_mb"), Get.f(rm, "engine_mean_mb"));
+            try writeMemRow(w, "Memory of the harness, peak", Get.f(cm, "harness_peak_mb"), Get.f(rm, "harness_peak_mb"));
+            try writeMemRow(w, "Memory of the harness, mean", Get.f(cm, "harness_mean_mb"), Get.f(rm, "harness_mean_mb"));
+            try writeMemRow(w, "One runner&rsquo;s engine, largest peak", Get.f(cm, "group_peak_max_mb"), Get.f(rm, "group_peak_max_mb"));
+            try writeMemRow(w, "One runner&rsquo;s engine, mean of the peaks", Get.f(cm, "group_peak_mean_mb"), Get.f(rm, "group_peak_mean_mb"));
+        }
         const urls = r.coverage.urls_expected;
         if (tm.overhead) |o| if (o.files > 0) {
             const hc = reference_mod.harnessOf(o, true);
@@ -1563,7 +1613,26 @@ fn writeVersus(w: W, site: *const Site) Error!void {
                 try writeTimeRow(w, "Of the wall clock: the tests (estimate)", if (cw) |x| @max(x - hc.of(uc), 0) else null, @max(tm.reference.wall_s - hr.of(ur), 0));
             }
         };
-        try w.writeAll("</tbody>\n</table>\n</div>\n");
+        try w.writeAll("</tbody>\n</table>\n<dl class=\"builds\">");
+        try w.print("<div><dt>{s}</dt><dd>{s} <code>", .{ name, if (std.mem.eql(u8, r.engine, "chrome")) "Chrome for Testing" else name });
+        try html.text(w, r.run.browser_version);
+        try w.writeAll("</code>");
+        if (r.run.build.len > 0) {
+            try w.writeAll(": ");
+            try html.text(w, r.run.build);
+        }
+        try w.writeAll("</dd></div>");
+        if (tm.crane) |c| {
+            try w.writeAll("<div><dt>Crane</dt><dd>");
+            if (c.build.len > 0) {
+                try html.text(w, c.build);
+                try w.writeAll("; ");
+            }
+            try w.writeAll("runner <code>");
+            try html.text(w, c.runner);
+            try w.writeAll("</code></dd></div>");
+        }
+        try w.writeAll("<div><dt>V8</dt><dd>" ++ v8_note ++ "</dd></div></dl>\n</div>\n");
     }
     try w.writeAll("</div>\n<div class=\"note\" role=\"note\">\n<p class=\"note-label\">How the two are compared</p>\n<p>Both counts are per file, over the same test URLs: each global and variant of a file is one test, and a file&rsquo;s URLs are summed as Crane&rsquo;s runner sums them, the worst status winning. ");
     const c = r.coverage;
@@ -1585,7 +1654,11 @@ fn writeVersus(w: W, site: *const Site) Error!void {
         try html.num(w, c.urls_expected);
         try w.writeAll(" test URLs.");
     };
-    if (r.timing != null) try w.writeAll(" " ++ cpu_method);
+    if (r.timing) |tm| {
+        try w.writeAll(" " ++ cpu_method);
+        const has_memory = tm.reference.memory != null or (if (tm.crane) |cm| cm.memory != null else false);
+        if (has_memory) try w.writeAll(" " ++ memory_method);
+    }
     try w.writeAll("</p>\n</div>\n</section>\n");
 }
 

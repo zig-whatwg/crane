@@ -190,6 +190,29 @@ pub const Manifest = struct {
     }
 };
 
+/// The memory of a run's process tree, sampled every second: each process's
+/// phys_footprint (its own dirty pages, anonymous and compressed - Activity
+/// Monitor's "Memory"; the kernel charges a shared page to one owner, so a sum
+/// over processes counts it once) summed into the ENGINE (the browser's
+/// processes; Crane's runner processes that run files) and the HARNESS (the
+/// test runner, its servers, the WebDriver), and the engine per runner group;
+/// RSS summed over everything, for reference (it counts a shared page in every
+/// process that maps it). Megabytes.
+pub const Memory = struct {
+    samples: u64 = 0,
+    engine_peak_mb: f64 = 0,
+    engine_mean_mb: f64 = 0,
+    harness_peak_mb: f64 = 0,
+    harness_mean_mb: f64 = 0,
+    total_peak_mb: f64 = 0,
+    total_mean_mb: f64 = 0,
+    rss_total_peak_mb: f64 = 0,
+    rss_total_mean_mb: f64 = 0,
+    groups: u64 = 0,
+    group_peak_max_mb: f64 = 0,
+    group_peak_mean_mb: f64 = 0,
+};
+
 /// One timed run: wall clock, and the CPU of the run's whole process tree:
 /// the rusage of everything it waited for (`user_s`, `sys_s`), and a sample of
 /// the tree once a second (`tree_cpu_s`), which also sees a process no parent
@@ -205,6 +228,10 @@ pub const Measure = struct {
     tree_cpu_s: f64 = 0,
     /// Test URLs the run ran; zero: not recorded (the worklist's are assumed).
     tests: u64 = 0,
+    /// Subtests passing, and reported, in this run; zero reported: not recorded.
+    passed: u64 = 0,
+    reported: u64 = 0,
+    memory: ?Memory = null,
 
     /// The larger of the rusage and the sampled tree, plus the server share.
     pub fn cpu(m: Measure) f64 {
@@ -220,6 +247,12 @@ pub const CraneMeasure = struct {
     tree_cpu_s: f64 = 0,
     /// Test URLs the run ran; zero: not recorded.
     tests: u64 = 0,
+    /// Subtests passing, and reported, in this run; zero reported: not recorded.
+    passed: u64 = 0,
+    reported: u64 = 0,
+    memory: ?Memory = null,
+    /// How this runner was built, in words ("release runner: ReleaseSafe throughout, ...").
+    build: []const u8 = "",
     /// Worklist files Crane's runner ran.
     files: u64 = 0,
     /// The frozen runner that ran them (its directory or commit).
@@ -293,6 +326,8 @@ pub const RunMeta = struct {
     host: []const u8 = "",
     /// The command line, for the record.
     command: []const u8 = "",
+    /// How the reference engine was built, in words ("official release build").
+    build: []const u8 = "",
     /// ISO 8601 UTC. Taken from the report's time_start when it has one.
     date: []const u8 = "",
 };
