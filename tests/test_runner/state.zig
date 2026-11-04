@@ -43,7 +43,8 @@
 //!   holds - documents and nodes made outside any Browser among them. The
 //!   standalone runtime is what the process start makes only in a suite whose
 //!   test start makes it (`suite.standalone_runtime`, build.zig's
-//!   StandaloneRuntime: tests-v8's test_process.start); everywhere else each
+//!   StandaloneRuntime: tests-v8's test_process.start; in a joined executable,
+//!   the member's row the test's name prefix names); everywhere else each
 //!   test makes and ends its own, so it is held - a test that leaves one
 //!   fails by name, instead of every later test that makes and ends its own,
 //!   replaces it, and ends with none (lane testfix3: two tests/html files
@@ -201,12 +202,32 @@ const phase_field = "process_start.phase";
 /// every test gives back each override it makes (hook.zig).
 const overrides_field = "process_start.outstanding_overrides";
 
-/// How `runtime.standalone_runtime` compares: what the process start makes
-/// where the suite's test start makes it, held everywhere else.
-const standalone_kind: Kind = switch (suite.standalone_runtime) {
-    .process_start => .start,
-    .per_test => .held,
-};
+/// How `runtime.standalone_runtime` compares for the test `test_name`: what
+/// the process start makes where its suite's test start makes it, held
+/// everywhere else. The suite is the executable's own row
+/// (`suite.standalone_runtime`), or in a joined executable (build.zig
+/// -Dtest-binaries=v8) the member whose prefix the test's name starts with -
+/// the longest one: each member keeps its own row there, as it does for its
+/// batch size and its slow, alone and tsan_skip names (lane onebin3: tests-v8's
+/// .process_start was lost in the joined "tests" executable, whose own row is
+/// .per_test, and 10 of its tests failed `runtime.standalone_runtime: 0 -> 1`).
+/// By the running test, not by the process: it holds whichever members'
+/// tests a process runs (the launcher never batches two groups together, but
+/// the check does not depend on it).
+fn standaloneKind(test_name: []const u8) Kind {
+    var best: usize = 0;
+    var who: suite.StandaloneRuntime = suite.standalone_runtime;
+    for (suite.members) |m| {
+        if (m.prefix.len > best and std.mem.startsWith(u8, test_name, m.prefix)) {
+            best = m.prefix.len;
+            who = m.standalone_runtime;
+        }
+    }
+    return switch (who) {
+        .process_start => .start,
+        .per_test => .held,
+    };
+}
 
 /// A field that is left out when its subject is not there - the standalone
 /// runtime's objects when it does not run - reads as 0 then.
@@ -214,8 +235,11 @@ fn absentMeansZero(name: []const u8) bool {
     return std.mem.eql(u8, name, "runtime.standalone_objects");
 }
 
-/// Take the digest of the process now.
-pub fn take(d: *Digest) void {
+/// Take the digest of the process now. `test_name`: the test the digest is
+/// compared for (the one just run), which decides how a field whose kind is
+/// its suite's compares; "" for the digests nothing is judged by (the
+/// initial one and the one before a test: only their values are read).
+pub fn take(d: *Digest, test_name: []const u8) void {
     d.reset();
     if (suite.dom) |dom| {
         d.put(phase_field, .start, .{ .text = @tagName(dom.process_start.get().phase) });
@@ -226,7 +250,7 @@ pub fn take(d: *Digest) void {
         const standalone = runtime.BrowserScope.standalone();
         const scopes: i64 = @intCast(runtime.BrowserScope.liveCount());
         d.put("runtime.browsers", .held, .{ .int = scopes - @intFromBool(standalone != null) });
-        d.put("runtime.standalone_runtime", standalone_kind, .{ .int = @intFromBool(standalone != null) });
+        d.put("runtime.standalone_runtime", standaloneKind(test_name), .{ .int = @intFromBool(standalone != null) });
         if (standalone) |scope| {
             d.put("runtime.standalone_objects", .held, .{ .int = @intCast(scope.slab.stats().currently_allocated) });
         }
@@ -294,7 +318,7 @@ pub fn configure(environ: std.process.Environ) void {
     }
     if (mode == .off) return;
     report_dir = environ.getPosix("CRANE_TEST_STATE_REPORT_DIR");
-    take(&initial_digest);
+    take(&initial_digest, "");
     if (report_dir) |dir| writeFields(dir) catch {};
 }
 
@@ -319,12 +343,12 @@ fn writeFields(dir: []const u8) !void {
 
 pub fn before() void {
     if (mode == .off) return;
-    take(&before_digest);
+    take(&before_digest, "");
 }
 
 pub fn after(index: u32, test_name: []const u8) void {
     if (mode == .off) return;
-    take(&after_digest);
+    take(&after_digest, test_name);
     var found: [64]Violation = undefined;
     const n = compare(&initial_digest, &before_digest, &after_digest, &found);
     if (n == 0) return;
