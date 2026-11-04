@@ -85,6 +85,96 @@ never a path under `zig-out/`.
 
 One file alone, for a quick red/green:
 `zig build test -Dspec=<dir> -Dtest-file=tests/<dir>/foo_test.zig -j2`.
+
+**Some tests, from the cached binaries: `-Dtest-filter=PATTERN`** (lane
+onebin2, 2026-11-04; the user: "rely on zig's own build cache ... then run
+isolated tests by file name or test name"). Each pattern goes to every
+suite's launcher (`--filter`, tools/test_launcher/filter.zig), which runs only
+the tests it matches - selection at RUN time, so no executable changes: Zig's
+cache rebuilds only what an edit touched, every unchanged suite stays cached,
+and only the selected tests run. A pattern matches a test's WHOLE name; `*` is
+any run of characters (none included), every other character is itself. Names
+start with the file's path under its directory, so one pattern covers files and
+tests:
+
+```bash
+zig build test -j2 -Dtest-filter='mutation_test*'                    # every test of tests/<dir>/mutation_test.zig
+zig build test -j2 -Dtest-filter='mutation_test.test.removes*'       # some of them
+zig build test -j2 -Dtest-filter='*removes a child*'                 # any test whose name holds that
+zig build test -j2 -Dtest-filter='a_test*' -Dtest-filter='b_test*'   # repeatable: any pattern
+zig build test -j2 -Dtest-filter='navigation.nav2_sync_*'            # tests/html/navigation/: "<subdir>.<stem>"
+```
+
+A suite with no matching test runs nothing and passes, and its launcher line
+says so (`test_launcher: tests-css: filter mutation_test*: no test of 1674
+matches, nothing run`); a suite with matches says how many (`test_launcher:
+tests-dom: filter mutation_test*: 14 of 642 tests; seed ...`), and the Build
+Summary counts only the selected tests (`14/14 tests passed`). Under `-Dtest-binaries=v8` a pattern also matches a name
+without its directory prefix, so the same pattern selects the same tests in
+both layouts. A filtered run's results go to `tmp/test-launch/<suite>.filtered.jsonl`,
+never over the full run's timings. The run step is cached like any other:
+the same filter on an unchanged tree runs nothing again (add
+`-Dlaunch-seed=random` to rerun). `-Dspec=<dir>` still narrows what is built;
+`-Dtest-file` still builds one file alone (a different binary - the filter
+reuses the cached one).
+
+What it saves, measured on chat2.local, `-Dtest-binaries=dirs`, `-j2`, warm cache
+(lane onebin2, 2026-11-04, tmp/plans/lane-onebin2-handoff.md): the RUN, never the
+compile. One tests/dom file changed: tests-dom recompiles either way (about 3.5
+minutes: Sema and code generation 41%, LLVM Emit Object 58%), then its 642 tests
+take 35-45 s, against 2 s for one file's 9 tests. In all: 258 s for the filtered
+full run (every other suite's launcher also starts its executable once, to list
+its tests, beside the compile), 239 s for a plain `-Dspec=dom` run, 245 s for a
+plain full run (lane onebin1, an earlier tree). One src/dom leaf changed: every
+executable that imports dom recompiles - 1,416 s plain, 1,387 s filtered (the
+wall is the compile chain), but 1,884 s of CPU against 5,204 s, so the host is
+free sooner.
+
+Zig's own speed-ups for this loop, tried in the same window: `--watch` works over
+a pool mirror (crane-remote's rsync renames each file into place, and the host's
+file events see it), but saves only the restart - a tests/dom file 241 s, a
+src/dom leaf 250 s, rebuild and run under `-Dspec=dom`. `-fincremental` cannot
+build anything on aarch64-macos with the pinned Zig (0.17.1-dev+77c319a0f0): each
+compile panics `TODO(MachO2): load archive` (a hello world too) - known and
+expected upstream: `-fincremental` on macOS selects the new Mach-O linker, still
+a stub, and the old one cannot do incremental either (ziglang/zig on Codeberg:
+#37268, closed as expected; #32053 "-fincremental -fllvm crashes self-hosted
+linkers", open). Retry when the pin moves. And it could
+save at most the Sema and code generation share (about 40% of a test binary's
+rebuild): LLVM Emit Object (about 58%) is redone whole either way.
+
+**Test binaries: two layouts (`-Dtest-binaries`)** (lanes onebin1 and onebin2;
+the user chose the hybrid, 2026-11-03):
+
+- **`dirs`, the default:** one executable per tests/<dir>/ (`addTestFilesFromDir`).
+  A change to one test file rebuilds only its directory's executable.
+- **`v8`, for cold full gates** (main's gate, tmp/remote/gate-main.sh, and the
+  final checks): the directories that link V8 join ONE executable, "tests",
+  rooted at the generated tests/.all_tests.zig (`finishOneBinary`): each of their
+  executables analyses and links the whole engine, so one does that work once;
+  the rest keep their cheap executables. Test names carry the directory first
+  ("html.editing2_join_test.test.joins"), and each member keeps its own
+  `suite_configs` row, keyed by that prefix: its batch size (`--group`), its
+  slow, alone and tsan_skip names, `--plain` for a member that links no V8, and
+  test-verify per member. A member whose row the joined executable cannot honour
+  - a process count of its own (`jobs`), index order, a state-check or variant
+  mode other than `.fail` - keeps its own executable, as do tests/runtime (the
+  engine-less tier), tests/codegen (its module root is imported as a file), the
+  src/ module roots and the tool tests. A third layout, every directory in one
+  (`one`), lost to `v8` on every row and was removed.
+
+Measured on chat2.local (8 cores, 24 GB), fixed `-j2`, fresh local and global
+cache per cold run, 18 skipped in each (lane onebin1, tmp/plans/lane-onebin1-handoff.md);
+wall s / CPU s (user+sys) / peak RSS GB:
+
+| `zig build test` | `dirs` | `one` (removed) | `v8` |
+|---|---|---|---|
+| cold | 2,176 / 7,074 / 15.6 | 1,860 / 6,424 / 14.7 | 1,560 / 7,008 / 14.5 |
+| nothing changed | 60 | 58 | 59 |
+| one src/dom leaf changed | 1,621 / 5,260 / 14.2 | 1,320 / 5,596 / 16.0 | 1,097 / 4,648 / 12.2 |
+| one tests/dom file changed | 245 / 460 / 14.6 | 936 / 4,453 / 14.2 | 775 / 3,404 / 16.2 |
+| one tests/v8 file changed | 313 / 638 / 15.3 | 936 | 746 / 3,482 / 15.9 |
+
 Once per merge round the integrator runs the launcher in the two shapes that
 show what sharing a process hides: every suite at batch 1 (`zig build
 test-launch -Dlaunch-batch=1`, every test in a process of its own - a test that

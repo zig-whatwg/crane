@@ -24,6 +24,26 @@ pub const Options = struct {
     /// of its own, after the others, in the shuffled order. Empty: the plan
     /// is exactly what it was without it.
     alone: []const bool = &.{},
+    /// Groups that keep their own batching, for one executable that holds
+    /// several suites' tests (build.zig's one-binary layout, lane onebin1):
+    /// test t is in group `group[t]` (0 when the list is shorter), and group
+    /// g > 0 is batched with `group_batch[g - 1]` tests per process (0: the
+    /// whole group in one) - never in a batch with another group's tests, so
+    /// each suite keeps the processes it had as an executable of its own.
+    /// Group 0 is batched with `batch_size`. The groups follow one another in
+    /// group order, each in the seed's order. Empty: one group, exactly the
+    /// plan without groups.
+    group: []const u16 = &.{},
+    group_batch: []const u32 = &.{},
+
+    fn groupOf(o: Options, t: u32) u16 {
+        return if (t < o.group.len) o.group[t] else 0;
+    }
+
+    /// Group `g`'s tests per process.
+    fn sizeOf(o: Options, g: u16) u32 {
+        return if (g == 0 or g - 1 >= o.group_batch.len) o.batch_size else o.group_batch[g - 1];
+    }
 };
 
 pub const Batch = struct {
@@ -78,20 +98,33 @@ pub fn make(gpa: std.mem.Allocator, selected: []const u32, options: Options) !Pl
         @memcpy(order, moved);
     }
 
-    const size: usize = if (options.batch_size == 0) @max(shared, 1) else options.batch_size;
-    const count = (shared + size - 1) / size + (order.len - shared);
-    const batches = try gpa.alloc(Batch, count);
-    for (batches, 0..) |*b, i| {
-        const start = i * size;
-        if (start < shared) {
-            b.* = .{ .start = @intCast(start), .len = @intCast(@min(size, shared - start)) };
-        } else {
-            // One alone test per batch.
-            const shared_batches = (shared + size - 1) / size;
-            b.* = .{ .start = @intCast(shared + (i - shared_batches)), .len = 1 };
+    // The shared tests by group, each group's order kept (a stable sort: with
+    // no groups, the order is unchanged).
+    std.sort.block(u32, order[0..shared], options, struct {
+        fn lessThan(o: Options, a: u32, b: u32) bool {
+            return o.groupOf(a) < o.groupOf(b);
         }
+    }.lessThan);
+
+    var batches: std.ArrayList(Batch) = .empty;
+    errdefer batches.deinit(gpa);
+    // Each group's run of the shared tests, batched with its own size.
+    var start: usize = 0;
+    while (start < shared) {
+        const g = options.groupOf(order[start]);
+        var end = start + 1;
+        while (end < shared and options.groupOf(order[end]) == g) end += 1;
+        const n = end - start;
+        const size: usize = if (options.sizeOf(g) == 0) n else options.sizeOf(g);
+        var i: usize = 0;
+        while (i < n) : (i += size) {
+            try batches.append(gpa, .{ .start = @intCast(start + i), .len = @intCast(@min(size, n - i)) });
+        }
+        start = end;
     }
-    return .{ .order = order, .batches = batches };
+    // One alone test per batch.
+    for (shared..order.len) |i| try batches.append(gpa, .{ .start = @intCast(i), .len = 1 });
+    return .{ .order = order, .batches = try batches.toOwnedSlice(gpa) };
 }
 
 /// Fisher-Yates, from the last element down: element i swaps with a
@@ -237,6 +270,107 @@ test "alone tests each get a batch of their own, after the others; none declared
     defer s.deinit(testing.allocator);
     try testing.expectEqualSlices(u32, s.order, r.order);
     try testing.expectEqual(s.batches.len, r.batches.len);
+}
+
+/// Every batch of `p` holds tests of one group only, and every selected test
+/// is in exactly one batch.
+fn expectGroupsKeptApart(p: Plan, group: []const u16, n: usize) !void {
+    var seen: [64]bool = @splat(false);
+    for (0..p.batches.len) |i| {
+        const tests = p.batchTests(i);
+        for (tests) |t| {
+            try testing.expectEqual(group[tests[0]], group[t]);
+            try testing.expect(!seen[t]);
+            seen[t] = true;
+        }
+    }
+    for (seen[0..n]) |s| try testing.expect(s);
+}
+
+test "groups: each group is batched with its own size, and no batch mixes two groups" {
+    var buf: [10]u32 = undefined;
+    const all = iota(&buf);
+    // Group 0 (no group named): batch_size 2. Group 1: a process per test.
+    // Group 2: the whole group in one process.
+    const group = [_]u16{ 0, 1, 1, 0, 2, 2, 2, 1, 0, 2 };
+    const p = try make(testing.allocator, all, .{ .seed = 5, .batch_size = 2, .group = &group, .group_batch = &.{ 1, 0 } });
+    defer p.deinit(testing.allocator);
+    // Group 0's three tests in 2 + 1, group 1's three alone, group 2's four in one.
+    try testing.expectEqual(@as(usize, 6), p.batches.len);
+    try expectGroupsKeptApart(p, &group, all.len);
+    var sizes: [3][4]u32 = @splat(@splat(0));
+    var count: [3]usize = @splat(0);
+    for (0..p.batches.len) |i| {
+        const g = group[p.batchTests(i)[0]];
+        sizes[g][count[g]] = p.batches[i].len;
+        count[g] += 1;
+    }
+    try testing.expectEqualSlices(u32, &.{ 2, 1 }, sizes[0][0..count[0]]);
+    try testing.expectEqualSlices(u32, &.{ 1, 1, 1 }, sizes[1][0..count[1]]);
+    try testing.expectEqualSlices(u32, &.{4}, sizes[2][0..count[2]]);
+    // The groups follow one another in group order.
+    try testing.expectEqual(@as(u16, 0), group[p.batchTests(0)[0]]);
+    try testing.expectEqual(@as(u16, 2), group[p.batchTests(p.batches.len - 1)[0]]);
+}
+
+test "groups: each group keeps the seed's order, and the same seed gives the same plan" {
+    var buf: [40]u32 = undefined;
+    const all = iota(&buf);
+    var group: [40]u16 = undefined;
+    for (&group, 0..) |*g, i| g.* = @intCast(i % 3);
+    const a = try make(testing.allocator, all, .{ .seed = 0xC0FFEE, .batch_size = 4, .group = &group, .group_batch = &.{ 1, 10 } });
+    defer a.deinit(testing.allocator);
+    const b = try make(testing.allocator, all, .{ .seed = 0xC0FFEE, .batch_size = 4, .group = &group, .group_batch = &.{ 1, 10 } });
+    defer b.deinit(testing.allocator);
+    try testing.expectEqualSlices(u32, a.order, b.order);
+    try expectGroupsKeptApart(a, &group, all.len);
+    // Within a group, the shuffled order of the plan without groups.
+    const plain = try make(testing.allocator, all, .{ .seed = 0xC0FFEE, .batch_size = 4 });
+    defer plain.deinit(testing.allocator);
+    for (0..3) |g| {
+        var mine: [40]u32 = undefined;
+        var theirs: [40]u32 = undefined;
+        var n: usize = 0;
+        var m: usize = 0;
+        for (a.order) |t| if (group[t] == g) {
+            mine[n] = t;
+            n += 1;
+        };
+        for (plain.order) |t| if (group[t] == g) {
+            theirs[m] = t;
+            m += 1;
+        };
+        try testing.expectEqualSlices(u32, theirs[0..m], mine[0..n]);
+    }
+}
+
+test "groups: every test in group 0 is the plan without groups; alone tests still go last, one a batch" {
+    var buf: [23]u32 = undefined;
+    const all = iota(&buf);
+    const zeros: [23]u16 = @splat(0);
+    const with = try make(testing.allocator, all, .{ .seed = 7, .batch_size = 10, .group = &zeros, .group_batch = &.{ 1, 0 } });
+    defer with.deinit(testing.allocator);
+    const without = try make(testing.allocator, all, .{ .seed = 7, .batch_size = 10 });
+    defer without.deinit(testing.allocator);
+    try testing.expectEqualSlices(u32, without.order, with.order);
+    try testing.expectEqual(without.batches.len, with.batches.len);
+    for (without.batches, with.batches) |x, y| try testing.expectEqual(x, y);
+
+    // Alone tests leave their group: each in a batch of its own, after
+    // every group's batches.
+    var group: [23]u16 = undefined;
+    for (&group, 0..) |*g, i| g.* = @intCast(i % 2);
+    var alone: [23]bool = @splat(false);
+    alone[4] = true;
+    alone[9] = true;
+    const p = try make(testing.allocator, all, .{ .seed = 7, .batch_size = 0, .group = &group, .group_batch = &.{0}, .alone = &alone });
+    defer p.deinit(testing.allocator);
+    // Group 0 (11 others) in one, group 1 (10 others) in one, then 4 and 9.
+    try testing.expectEqual(@as(usize, 4), p.batches.len);
+    try testing.expectEqual(@as(u32, 11), p.batches[0].len);
+    try testing.expectEqual(@as(u32, 10), p.batches[1].len);
+    try testing.expect(alone[p.batchTests(2)[0]] and alone[p.batchTests(3)[0]]);
+    for (0..2) |i| for (p.batchTests(i)) |t| try testing.expect(!alone[t]);
 }
 
 test "an empty selection makes an empty plan" {
