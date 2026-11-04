@@ -4435,11 +4435,12 @@ pub fn build(b: *std.Build) void {
     // -Doptimize's `builtin.mode`. A Debug console was slow to the point of
     // lag: std's Debug allocator captures a stack trace per allocation and
     // free (tools/repl.zig, main, chooses its own allocator too).
-    const repl_optimize = runner_build_mode.runnerModes(
+    const repl_modes = runner_build_mode.runnerModes(
         b.option(std.builtin.OptimizeMode, "repl-optimize", "Optimize mode of the browser console (default: ReleaseSafe, or -Doptimize when given; Debug for a diagnosis)"),
         optimize,
         b.user_input_options.contains("optimize") or b.graph.release_mode != .off,
-    ).root;
+    );
+    const repl_optimize = repl_modes.root;
     const repl_exe = b.addExecutable(.{
         .name = "repl",
         .root_module = b.createModule(.{
@@ -4455,6 +4456,12 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
+
+    // The C libraries it links are built with -Doptimize's mode and its C
+    // sanitizer: a ReleaseSafe root links the full UBSan runtime they call
+    // into (the runner's rule, RunnerModes.sanitize_c), or the link misses
+    // __ubsan_handle_* (libbrotli, a Debug-built C library).
+    if (repl_modes.sanitize_c) |sanitizer| repl_exe.root_module.sanitize_c = sanitizer;
 
     // Add V8 C++ wrapper
     repl_exe.root_module.addCSourceFile(.{
