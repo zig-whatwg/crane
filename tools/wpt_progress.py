@@ -3478,6 +3478,15 @@ def _check_reference_window():
         page2 = open(out).read()
     assert 'Crane links V8 <code>13.1.203</code>' in page2 and 'Chrome <code>150.0.7000.1</code> ships V8 <code>15.7.1</code>' in page2
     assert "Chrome&rsquo;s figures are from its run of 2026-11-04, reused beside Crane&rsquo;s: the host and its load matched." in page2
+    # On the official-style V8, the V8 line says so instead of naming a gap.
+    ref['run']['crane_v8_build'] = 'official'
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, 'p.html')
+        render(areas, worklist, records, [], out, reference=ref)
+        page4 = open(out).read()
+    assert 'Crane links V8 <code>13.1.203</code>, built as Chrome&rsquo;s official build is: ThinLTO and PGO' in page4
+    assert 'no ThinLTO and no PGO' not in page4
+    del ref['run']['crane_v8_build']
     # Before Crane's full run, its build is still named.
     del ref['timing']['crane']
     ref['run']['crane_build'] = 'release runner, overhead only'
