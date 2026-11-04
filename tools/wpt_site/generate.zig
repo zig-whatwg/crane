@@ -15,6 +15,7 @@ const model = @import("model.zig");
 const pages_mod = @import("pages.zig");
 const card = @import("card.zig");
 const png = @import("png.zig");
+const reference = @import("reference.zig");
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
 const Dir = std.Io.Dir;
@@ -26,6 +27,7 @@ test {
     _ = @import("chart.zig");
     _ = pages_mod;
     _ = card;
+    _ = reference;
 }
 
 pub const Revision = pages_mod.Revision;
