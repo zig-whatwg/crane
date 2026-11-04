@@ -643,6 +643,59 @@ pub const Browser = struct {
         return did_work;
     }
 
+    /// The condition `spinEventLoopUntil` waits for: `met(context)` is asked
+    /// between turns of the event loop. It must not run script.
+    pub const SpinGoal = struct {
+        context: *anyopaque,
+        met: *const fn (context: *anyopaque) bool,
+    };
+
+    /// How `spinEventLoopUntil` ended.
+    pub const SpinOutcome = enum {
+        /// The goal was met.
+        met,
+        /// `timeout_ms` passed first.
+        timed_out,
+    };
+
+    /// HTML "spin the event loop" until `goal` is met (8.1.7.3), for a host
+    /// that waits from outside any task - the browser console waiting for an
+    /// evaluation, WebDriver for a script's promise: the event loop's turns
+    /// run - tasks, timers, the network, posted work, microtask checkpoints
+    /// - exactly as `runEventLoopBlocking` runs them, until `goal` is met or
+    /// `timeout_ms` (real time) passes. The goal is asked before the first
+    /// turn and after each, so a goal a checkpoint meets is seen at once; a
+    /// turn waits at most a millisecond for a timer or I/O (native_timer's
+    /// slice), so a goal is seen within about one of being met.
+    ///
+    /// The spec's steps, for a caller with no running task: 1-4 there is no
+    /// task to stop and the JavaScript execution context stack is empty; 5
+    /// "perform a microtask checkpoint" - each turn's first step; 6.1 "wait
+    /// until the condition goal is met" - the turns below; 6.2 the steps
+    /// after the spin are the caller's, which runs them once this returns.
+    /// Unlike runEventLoopBlocking it does not stop when the loop has no
+    /// pending work: what meets the goal may come from outside it (another
+    /// thread's post wakes the loop), and only the deadline ends the wait.
+    ///
+    /// error.Reentrant from inside a turn of this Browser's loop (a task, a
+    /// timer, a microtask): spinning there would run the loop inside itself,
+    /// which runOnceBlocking refuses.
+    pub fn spinEventLoopUntil(self: *Browser, goal: SpinGoal, timeout_ms: u64) !SpinOutcome {
+        const event_loop = self.event_loop orelse return error.NotInitialized;
+        if (event_loop.in_run_once) return error.Reentrant;
+        // Real time, whatever the Browser's clock: a virtual clock stands
+        // still while nothing is due, and a goal nothing will meet must still
+        // end (lesson architecture-a-clock-that-stands-still-must-be-woken-
+        // to-the-exact-deadline.md).
+        const deadline_ns = platform.monotonicNow().ns +| timeout_ms *| std.time.ns_per_ms;
+        while (true) {
+            if (goal.met(goal.context)) return .met;
+            const now_ns = platform.monotonicNow().ns;
+            if (now_ns >= deadline_ns) return .timed_out;
+            _ = event_loop.runOnceBlocking(std.math.divCeil(u64, deadline_ns - now_ns, std.time.ns_per_ms) catch 1);
+        }
+    }
+
     /// Get the current URL
     pub fn getCurrentUrl(self: *Browser) ?[]const u8 {
         const ctx = self.current_context orelse return null;

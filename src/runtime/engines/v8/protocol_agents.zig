@@ -29,6 +29,8 @@ const callback_registry = @import("callback_registry.zig");
 const worker_realm = @import("worker_realm.zig");
 const protocol_realms = @import("protocol_realms.zig");
 const protocol_webassembly = @import("protocol_webassembly.zig");
+/// [repl_mode]: the agent's console session (AgentRecord `repl`).
+const protocol_repl = @import("protocol_repl.zig");
 /// An agent's WebAssembly streaming compilations (AgentRecord
 /// `webassembly_compilations`), named for tests/v8.
 pub const WebAssemblyCompilations = protocol_webassembly.Compilations;
@@ -187,6 +189,13 @@ const AgentRecord = struct {
     /// regExpBuiltinExecCaptures; v8_wrapper.cpp, PatternMatcher): made on
     /// first use, on the agent's thread; deleted by its end.
     pattern_matcher: ?*ffi.PatternMatcher = null,
+    /// [repl_mode]: the agent's console session (protocol_repl.Session) - an
+    /// inspector of this isolate and one session of it, through which
+    /// engine.evaluateReplScript evaluates console input. Made on the
+    /// console's first use (`replSessionOf`), on the agent's thread; ended by
+    /// the agent's end in two steps (endAgent says when). Never made for an
+    /// agent no console evaluates in.
+    repl: ?*protocol_repl.Session = null,
     /// AgentOptions.deferred_teardown: the host's queue a garbage tree's
     /// teardown goes to (dom.refcount_teardown, refcount step 7), BORROWED;
     /// the agent's end drains and closes it.
@@ -287,6 +296,16 @@ pub fn patternMatcherOf(isolate: *ffi.Isolate) ?*ffi.PatternMatcher {
     const record = recordOf(isolate) orelse return null;
     if (record.pattern_matcher == null) record.pattern_matcher = ffi.v8_PatternMatcher_New();
     return record.pattern_matcher;
+}
+
+/// [repl_mode] The agent's console session, made on its first use with the
+/// agent's allocator; null for an isolate createAgent did not make (a test's
+/// own), for an agent whose end has begun, or when V8 could not make one.
+/// Called on the agent's own thread only, with its isolate entered.
+pub fn replSessionOf(isolate: *ffi.Isolate) ?*protocol_repl.Session {
+    const record = recordOf(isolate) orelse return null;
+    if (record.repl == null) record.repl = protocol_repl.Session.create(record.allocator, isolate) catch null;
+    return record.repl;
 }
 
 /// The agent's Intl objects, made on their first use with the agent's
@@ -648,10 +667,24 @@ pub fn endAgent(agent: *Agent) void {
     const deferred_teardown = if (record) |r| r.deferred_teardown else null;
     const intl_objects = if (record) |r| r.intl_objects else null;
     const observable_arrays = if (record) |r| r.observable_arrays else null;
+    const repl = if (record) |r| r.repl else null;
     // The compilations the host never ended: V8's side of each holds a
     // WasmStreaming, which must not outlive the isolate, and its record is
     // the agent's. Ended before the record goes with forgetAgent.
     if (record) |r| r.webassembly_compilations.endAll();
+    // [repl_mode] The console session ends in two steps, in this order:
+    // 1. Now, while the host is still reached: every evaluation still
+    //    waiting is dropped (its host's `dropped` frees its data), and the
+    //    inspector forgets every context it still knows, while the contexts
+    //    exist - so no inspector weak callback is left for the collections
+    //    below to start and the closed task runner never to finish.
+    // 2. Last, after the final microtask checkpoints and before the isolate
+    //    is disposed (`destroy`, below): the inspector is deleted. Not
+    //    sooner: a promise job of the inspector's still queued would run in
+    //    those checkpoints and find no inspector (13.1 injected-script.cc,
+    //    thenCallback reads v8::debug::GetInspector). Answers that arrive in
+    //    between find no evaluation and are released.
+    if (repl) |session| session.end();
     forgetAgent(agent);
     const entered = EnteredIsolate.of(agent);
     defer entered.leave();
@@ -691,6 +724,9 @@ pub fn endAgent(agent: *Agent) void {
     ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
     ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
+    // [repl_mode] Step 2 of the console session's end (above): the
+    // inspector goes, with the isolate still entered and not yet disposed.
+    if (repl) |session| session.destroy();
 }
 
 // ============================================================================

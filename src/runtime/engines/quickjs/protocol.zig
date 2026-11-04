@@ -54,6 +54,9 @@ pub const capabilities: engine.Capabilities = .{
     // time (js_random_init): no hook for either.
     .host_clock = .unsupported,
     .seeded_random = .unsupported,
+    // QuickJS has top-level await for global code (JS_EVAL_FLAG_ASYNC, its
+    // own REPL's), not wired: no engine is linked yet.
+    .repl_mode = .unsupported,
 };
 
 /// No engine is linked yet: every operation answers without one.
@@ -179,6 +182,9 @@ pub fn evaluateClassicScript(_: Context, _: engine.ScriptSource, _: []const u8, 
     return error.NotSupported;
 }
 pub fn evaluateClassicScriptToString(_: Context, _: engine.ScriptSource, _: []const u8, _: ?*anyopaque, _: Allocator, _: engine.Reporter) Error![]u8 {
+    return error.NotSupported;
+}
+pub fn evaluateReplScript(_: Context, _: []const u8, _: *const engine.PromiseReactionSteps, _: ?*anyopaque) Error!engine.ReplInput {
     return error.NotSupported;
 }
 pub fn compileEventHandler(_: Context, _: *const engine.EventHandlerSource, _: engine.Reporter) Error!?Owned {
