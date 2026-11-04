@@ -1513,25 +1513,19 @@ fn writeVersus(w: W, site: *const Site, tot: model.Totals) Error!void {
         }
         try w.print("</span></div>\n<table class=\"versus\">\n<thead><tr><td></td><th scope=\"col\" class=\"n\">Crane</th><th scope=\"col\" class=\"n\">{s}</th></tr></thead>\n<tbody>\n", .{name});
         const cw: ?f64 = if (tm.crane) |c| c.wall_s else null;
-        const cc: ?f64 = if (tm.crane) |c| c.user_s + c.sys_s else null;
+        const cc: ?f64 = if (tm.crane) |c| c.user_s + c.sys_s + c.server_cpu_s else null;
         try writeTimeRow(w, "The worklist, wall clock", cw, tm.reference.wall_s);
-        try writeTimeRow(w, "CPU, user + system", cc, tm.reference.user_s + tm.reference.sys_s);
+        try writeTimeRow(w, "CPU, user + system", cc, tm.reference.cpu());
         const urls = r.coverage.urls_expected;
         if (tm.overhead) |o| if (o.files > 0) {
-            const per = struct {
-                fn f(m: reference_mod.Measure, files: u64, procs: u32) f64 {
-                    return m.wall_s * @as(f64, @floatFromInt(procs)) / @as(f64, @floatFromInt(files));
-                }
-                fn share(m: reference_mod.Measure, files: u64, n: u64) f64 {
-                    return m.wall_s * @as(f64, @floatFromInt(n)) / @as(f64, @floatFromInt(files));
-                }
-            };
-            try writeTimeRow(w, "One empty test, harness alone", per.f(o.crane, o.files, tm.processes), per.f(o.reference, o.files, tm.processes));
+            const hc = reference_mod.harnessOf(o, true);
+            const hr = reference_mod.harnessOf(o, false);
+            const procs: f64 = @floatFromInt(tm.processes);
+            try writeTimeRow(w, "One empty test, harness alone", hc.per_test_s * procs, hr.per_test_s * procs);
+            if (o.small_files > 0) try writeTimeRow(w, "Start-up, before the first test", hc.startup_s, hr.startup_s);
             if (urls > 0) {
-                const hc = per.share(o.crane, o.files, urls);
-                const hr = per.share(o.reference, o.files, urls);
-                try writeTimeRow(w, "Of the wall clock: harness (estimate)", hc, hr);
-                try writeTimeRow(w, "Of the wall clock: the tests (estimate)", if (cw) |x| @max(x - hc, 0) else null, @max(tm.reference.wall_s - hr, 0));
+                try writeTimeRow(w, "Of the wall clock: harness (estimate)", hc.of(urls), hr.of(urls));
+                try writeTimeRow(w, "Of the wall clock: the tests (estimate)", if (cw) |x| @max(x - hc.of(urls), 0) else null, @max(tm.reference.wall_s - hr.of(urls), 0));
             }
         };
         try w.writeAll("</tbody>\n</table>\n</div>\n");

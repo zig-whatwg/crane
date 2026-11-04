@@ -1993,6 +1993,23 @@ def compare_reference(worklist, records, ref):
             'only_ref': only_ref, 'only_crane': only_crane}
 
 
+def harness_split(files, wall, small_files=0, small_wall=None):
+    """(per_test_s, startup_s) from overhead runs of empty tests, as
+    tools/wpt_site/reference.zig harnessSplit: two sizes separate the fixed
+    start-up from the wall clock each test adds to the runner pool."""
+    if not files:
+        return 0.0, 0.0
+    if small_wall is not None and small_files and files > small_files and wall > small_wall:
+        per = (wall - small_wall) / (files - small_files)
+        return per, max(small_wall - per * small_files, 0.0)
+    return wall / files, 0.0
+
+
+def measure_cpu(m):
+    """User + system of the run's process tree, plus its share of a server it did not start."""
+    return m['user_s'] + m['sys_s'] + m.get('server_cpu_s', 0)
+
+
 def fmt_duration(secs):
     """As the public site says it: "250 ms", "1.50 s", "40 min 0 s", "2 h 20 min"."""
     if secs is None or secs != secs or secs < 0:
@@ -2066,16 +2083,21 @@ def render_reference(worklist, records, ref):
         procs = tm['processes']
         c, r = tm.get('crane'), tm['reference']
         rows = [row('The worklist, wall clock', fmt_duration(c['wall_s']) if c else 'not measured', fmt_duration(r['wall_s'])),
-                row('CPU, user + system', fmt_duration(c['user_s'] + c['sys_s']) if c else 'not measured',
-                    fmt_duration(r['user_s'] + r['sys_s']))]
+                row('CPU, user + system', fmt_duration(measure_cpu(c)) if c else 'not measured',
+                    fmt_duration(measure_cpu(r)))]
         o = tm.get('overhead')
         urls = cov.get('urls_expected', 0)
         if o and o.get('files'):
-            rows.append(row('One empty test, harness alone', fmt_duration(o['crane']['wall_s'] * procs / o['files']),
-                            fmt_duration(o['reference']['wall_s'] * procs / o['files'])))
+            def split(side):
+                small = o.get('small_' + side)
+                return harness_split(o['files'], o[side]['wall_s'], o.get('small_files', 0),
+                                     small['wall_s'] if small else None)
+            (pc, sc), (pr, sr) = split('crane'), split('reference')
+            rows.append(row('One empty test, harness alone', fmt_duration(pc * procs), fmt_duration(pr * procs)))
+            if o.get('small_files'):
+                rows.append(row('Start-up, before the first test', fmt_duration(sc), fmt_duration(sr)))
             if urls:
-                hc = o['crane']['wall_s'] * urls / o['files']
-                hr = o['reference']['wall_s'] * urls / o['files']
+                hc, hr = sc + pc * urls, sr + pr * urls
                 rows.append(row('Of the wall clock: harness (estimate)', fmt_duration(hc), fmt_duration(hr)))
                 rows.append(row('Of the wall clock: the tests (estimate)',
                                 fmt_duration(max(c['wall_s'] - hc, 0)) if c else 'not measured',
@@ -3338,6 +3360,16 @@ def _check_reference_compare():
     assert cmp['areas']['url'] == {'pass': 2, 'reported': 5, 'blocking': 1, 'run': 2}, cmp['areas']['url']
 
 
+def _check_harness_split():
+    """Two sizes of overhead run separate the start-up; one size makes everything per test."""
+    assert harness_split(200, 60) == (0.3, 0.0)
+    per, start = harness_split(200, 60, 50, 30)
+    assert abs(per - 0.2) < 1e-9 and abs(start - 20) < 1e-9
+    assert harness_split(200, 60, 50, 61) == (0.3, 0.0)
+    assert harness_split(0, 60) == (0.0, 0.0)
+    assert measure_cpu({'user_s': 1, 'sys_s': 2}) == 3 and measure_cpu({'user_s': 1, 'sys_s': 2, 'server_cpu_s': 4}) == 7
+
+
 def _check_reference_render():
     """The page shows the reference beside Crane's numbers, never in them."""
     import tempfile
@@ -3389,6 +3421,7 @@ if __name__ == '__main__':
         _check_reference_never_crane()
         _check_reference_load()
         _check_reference_compare()
+        _check_harness_split()
         _check_reference_render()
         print('wpt_progress self-test: ok')
     else:

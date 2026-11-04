@@ -190,16 +190,27 @@ pub const Manifest = struct {
     }
 };
 
+/// One timed run: wall clock, and the CPU of the run's whole process tree
+/// (rusage of everything it waited for). Crane's runner uses the host's
+/// shared `wpt serve`, which is not its child, so its share of that server's
+/// CPU over the run is `server_cpu_s`; wptrunner starts its own servers, whose
+/// CPU is already in its user and system time.
 pub const Measure = struct {
     wall_s: f64,
     user_s: f64,
     sys_s: f64,
+    server_cpu_s: f64 = 0,
+
+    pub fn cpu(m: Measure) f64 {
+        return m.user_s + m.sys_s + m.server_cpu_s;
+    }
 };
 
 pub const CraneMeasure = struct {
     wall_s: f64,
     user_s: f64,
     sys_s: f64,
+    server_cpu_s: f64 = 0,
     /// Worklist files Crane's runner ran.
     files: u64 = 0,
     /// The frozen runner that ran them (its directory or commit).
@@ -211,7 +222,41 @@ pub const Overhead = struct {
     files: u64,
     reference: Measure,
     crane: Measure,
+    /// The same run over fewer of those files, which separates a harness's
+    /// fixed start-up (wptrunner loads the manifest and starts its servers
+    /// and browsers) from what each test costs. Zero / null: not measured.
+    small_files: u64 = 0,
+    small_reference: ?Measure = null,
+    small_crane: ?Measure = null,
 };
+
+/// What a harness costs, from its overhead runs: the wall clock each empty
+/// test adds to the whole runner pool, and the fixed start-up before the
+/// first test. With one size of run, everything is per test.
+pub const HarnessSplit = struct {
+    per_test_s: f64,
+    startup_s: f64,
+
+    /// The harness's share of a run of `tests` test URLs.
+    pub fn of(h: HarnessSplit, tests: u64) f64 {
+        return h.startup_s + h.per_test_s * @as(f64, @floatFromInt(tests));
+    }
+};
+
+pub fn harnessSplit(files: u64, wall_s: f64, small_files: u64, small_wall_s: ?f64) HarnessSplit {
+    if (files == 0) return .{ .per_test_s = 0, .startup_s = 0 };
+    if (small_wall_s) |sw| if (small_files > 0 and files > small_files and wall_s > sw) {
+        const per = (wall_s - sw) / @as(f64, @floatFromInt(files - small_files));
+        return .{ .per_test_s = per, .startup_s = @max(sw - per * @as(f64, @floatFromInt(small_files)), 0) };
+    };
+    return .{ .per_test_s = wall_s / @as(f64, @floatFromInt(files)), .startup_s = 0 };
+}
+
+pub fn harnessOf(o: Overhead, crane: bool) HarnessSplit {
+    const m = if (crane) o.crane else o.reference;
+    const sm = if (crane) o.small_crane else o.small_reference;
+    return harnessSplit(o.files, m.wall_s, o.small_files, if (sm) |x| x.wall_s else null);
+}
 
 /// Wall and CPU time of the whole run on one host, with the same runner
 /// count for both engines, and the harness overhead measured beside them.
@@ -622,6 +667,21 @@ fn importFixture(arena: Allocator, report: []const u8, meta: []const u8, diag: *
 fn tallyOf(imp: Imported, path: []const u8) ?Tally {
     for (imp.paths, imp.tallies) |p, t| if (eql(p, path)) return t;
     return null;
+}
+
+test "reference: two sizes of overhead run separate a harness's start-up from what each test costs" {
+    // One size: everything is per test.
+    const one = harnessSplit(200, 60, 0, null);
+    try testing.expectEqual(@as(f64, 0.3), one.per_test_s);
+    try testing.expectEqual(@as(f64, 0), one.startup_s);
+    // 50 tests in 30 s, 200 in 60 s: 0.2 s a test, 20 s before the first.
+    const two = harnessSplit(200, 60, 50, 30);
+    try testing.expectApproxEqAbs(@as(f64, 0.2), two.per_test_s, 1e-9);
+    try testing.expectApproxEqAbs(@as(f64, 20), two.startup_s, 1e-9);
+    try testing.expectApproxEqAbs(@as(f64, 20 + 0.2 * 17663), two.of(17663), 1e-6);
+    // A smaller run that took as long is noise, not a slope.
+    try testing.expectEqual(one, harnessSplit(200, 60, 50, 61));
+    try testing.expectEqual(HarnessSplit{ .per_test_s = 0, .startup_s = 0 }, harnessSplit(0, 60, 0, null));
 }
 
 test "reference: a test URL's status is filed as Crane's runner files it" {
