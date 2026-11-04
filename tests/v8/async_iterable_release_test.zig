@@ -20,27 +20,27 @@
 //!   first test);
 //! - an iterator: nothing - the object is collected, its weak record with it
 //!   (the second test);
-//! - the stream it iterates, and the stream's reader: a DECLARED hold, below.
-//!   A streams-graph object's wrapper is held strongly for its realm's life
-//!   (wrapper_cache.isStreamsGraphObject, runtime/streams_graph.zig: Zig
-//!   pointers V8 cannot trace join a stream, its controller and its reader),
-//!   so every stream a page makes keeps its handles until the page's realm
-//!   ends - which gives back every one (the third test, the bound). Ending
-//!   that hold is the streams lifetime design: refcount design D3, phase 2
-//!   (tmp/plans/refcount-design.md) - traced edges between the streams
-//!   objects, as Blink's core/streams classes Trace() them.
+//! - the stream it iterates, and the stream's reader: nothing either, once
+//!   collected. Until lane streamslife1 (2026-11-03) a streams-graph object's
+//!   wrapper was held strongly for its realm's life (Zig pointers V8 cannot
+//!   trace joined a stream, its controller and its reader), and this test
+//!   DECLARED that hold - 2 handles a stream, 2 a reader. Now the wrappers
+//!   are weak and the pointers are traced edges (tmp/plans/
+//!   streams-lifetime-design.md, Blink's core/streams Trace() model), so the
+//!   hold is 0; a realm's end still gives back everything (the third test).
 
 const std = @import("std");
 const rounds_lib = @import("handle_rounds.zig");
 const protocol = @import("engine");
 const ffi = @import("v8").ffi;
 
-/// The realm hold of a ReadableStream: its wrapper and its controller's.
-const stream_hold = 2;
-/// The realm hold of a reader: its wrapper, and its [[closedPromise]] -
-/// settled, so the promise's own hold alone
-/// (streams_settled_promise_handles_test.zig).
-const reader_hold = 2;
+/// What a ReadableStream script dropped keeps once collected: nothing (it
+/// was its wrapper and its controller's, for the realm's life, before lane
+/// streamslife1).
+const stream_hold = 0;
+/// What a reader script dropped keeps once collected: nothing (it was its
+/// wrapper and its settled [[closedPromise]]'s hold).
+const reader_hold = 0;
 
 const rounds = 100;
 

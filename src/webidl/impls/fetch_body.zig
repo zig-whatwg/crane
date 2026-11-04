@@ -332,8 +332,8 @@ pub fn proxyInto(input: Owner, target: Owner) !void {
         // A body of bytes: `target` has its own copy of them (the request
         // copy carried them), so nothing need flow through a pipe. `input`'s
         // stream is locked and disturbed, as piping it would leave it.
-        const reader = try srd.acquireDefaultReader(realm, stream);
-        _ = try realm.wrap(reader);
+        // The stream keeps its reader (a traced edge), and `input` its stream.
+        _ = try srd.acquireDefaultReader(realm, stream);
         if (srd.streamOf(stream)) |slots| slots.disturbed = true;
         return;
     }
@@ -362,6 +362,10 @@ pub const ReadAll = struct {
     allocator: std.mem.Allocator,
     realm: js.Realm,
     reader: *runtime.Instance,
+    /// The reader - and through its edge the stream - until the read ends:
+    /// fetch() reads a request's body after script may have dropped every
+    /// reference to it.
+    reader_hold: js.Hold,
     bytes: std.ArrayListUnmanaged(u8) = .empty,
     context: *anyopaque,
     done: *const fn (context: *anyopaque, bytes: []const u8) void,
@@ -386,11 +390,8 @@ pub const ReadAll = struct {
         failed: *const fn (context: *anyopaque, e: ?js.Value) void,
     ) !*ReadAll {
         const reader = try srd.acquireDefaultReader(realm, stream);
-        // Held through a Zig pointer: the wrapper cache keeps streams-graph
-        // objects for the realm once they are wrapped.
-        _ = try realm.wrap(reader);
         const self = try allocator.create(ReadAll);
-        self.* = .{ .allocator = allocator, .realm = realm, .reader = reader, .context = context, .done = done, .failed = failed };
+        self.* = .{ .allocator = allocator, .realm = realm, .reader = reader, .reader_hold = js.Hold.take(reader), .context = context, .done = done, .failed = failed };
         return self;
     }
 
@@ -466,8 +467,10 @@ pub const ReadAll = struct {
     }
 
     fn destroy(self: *ReadAll) void {
+        const hold = self.reader_hold;
         self.bytes.deinit(self.allocator);
         self.allocator.destroy(self);
+        hold.give();
     }
 };
 
@@ -516,12 +519,10 @@ pub fn consume(o: Owner, method: Method) anyerror!runtime.JSValue {
         deferred_taken = true;
         return finishReturn(deferred);
     };
+    // The read keeps the object (`keep`), the object its body's stream (its
+    // traced `pin`), and the stream its reader (a traced edge): the reader
+    // lives until the read ends.
     const reader = try srd.acquireDefaultReader(realm, stream);
-    // The read holds it through a Zig pointer; wrapping registers it with the
-    // wrapper cache, which keeps streams-graph objects for the realm and
-    // frees them with it - as ReadableStreamTee and pipeTo do. Unwrapped,
-    // nothing ever freed it.
-    _ = try realm.wrap(reader);
 
     const read = try instance.ctx.allocator.create(FullRead);
     deferred_taken = true;
@@ -818,8 +819,25 @@ const PipeStream = struct {
     detached: bool = false,
     /// Calls into the stream under way from here: freeing waits for them.
     busy: u32 = 0,
+    /// The controller, held while the network can still deliver into it -
+    /// the pipe attached and open (`syncHold`): a body script reaches only
+    /// through a pending read() must not be collected under the bytes still
+    /// arriving. Blink's BodyStreamBuffer keeps itself the same way
+    /// (`keep_alive_ = this` from StartLoading to EndLoading).
+    network_hold: ?js.Hold = null,
 
     const vtable = srd.Source.VTable{ .start = start, .pull = pull, .cancel = cancel, .deinit = deinitSource };
+
+    /// Hold the controller exactly while the pipe can still bring news.
+    fn syncHold(self: *PipeStream) void {
+        const loading = !self.detached and self.controller != null and if (self.pipe) |p| p.state == .open else false;
+        if (loading) {
+            if (self.network_hold == null) self.network_hold = js.Hold.take(self.controller.?);
+        } else if (self.network_hold) |hold| {
+            self.network_hold = null;
+            hold.give();
+        }
+    }
 
     /// CreateReadableByteStream over `pipe`, whose ownership passes in -
     /// on failure too.
@@ -866,6 +884,7 @@ const PipeStream = struct {
     fn start(ctx: ?*anyopaque, realm: js.Realm, controller: *runtime.Instance) js.Error!js.Completion {
         const self: *PipeStream = @ptrCast(@alignCast(ctx.?));
         self.controller = controller;
+        self.syncHold();
         return .{ .normal = try realm.undefinedValue() };
     }
 
@@ -972,6 +991,8 @@ const PipeStream = struct {
         // has nobody to reach, and freeIfDone lets this go.
         engine.runTaskInRealm(self.ctx, taskSteps, self) catch {};
         self.busy -= 1;
+        // The pipe's end delivered: nothing more will arrive.
+        self.syncHold();
         self.freeIfDone();
     }
 
@@ -1022,6 +1043,7 @@ const PipeStream = struct {
         _ = allocator;
         const self: *PipeStream = @ptrCast(@alignCast(ctx.?));
         self.detached = true;
+        self.syncHold();
         self.controller = null;
         self.releasePipe();
         if (self.pending_pull) |d| {
@@ -1036,6 +1058,7 @@ const PipeStream = struct {
         self.pipe = null;
         pipe.consumer = null;
         pipe.release();
+        self.syncHold();
     }
 
     fn freeIfDone(self: *PipeStream) void {

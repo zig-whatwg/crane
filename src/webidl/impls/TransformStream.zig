@@ -104,8 +104,8 @@ pub fn call_constructor(ctx: runtime.Context, transformer: webidl.Opt(runtime.JS
 
     // Steps 12-13: resolve startPromise with the result of start(), or undefined.
     const slots = st.streamOf(instance).?;
-    if (dict.start) |start_fn| {
-        switch (try realm.call(start_fn, dict.this, &.{try realm.wrap(controller)})) {
+    if (try dict.callStart(realm, controller)) |completion| {
+        switch (completion) {
             .normal => |v| {
                 defer js.dispose(v);
                 slots.start_promise.?.resolve(realm, v);
