@@ -1477,6 +1477,20 @@ fn writeRunIdentity(w: W, r: *const reference_mod.Reference) Error!void {
     try w.writeAll("</code></a>, over the worklist of Crane ");
     try commitLink(w, run.worklist_commit);
     try w.writeAll(".");
+    // The Crane runner the window timed beside it (`main-<sha>`, a frozen main).
+    if (r.timing) |tm| if (tm.crane) |c| if (c.runner.len > 0) {
+        try w.writeAll(" In the same window Crane&rsquo;s frozen runner, ");
+        if (model.labelCommit(c.runner)) |sha| {
+            try html.text(w, c.runner[0 .. c.runner.len - sha.len - 1]);
+            try w.writeByte(' ');
+            try commitLink(w, sha);
+        } else {
+            try w.writeAll("<code>");
+            try html.text(w, c.runner);
+            try w.writeAll("</code>");
+        }
+        try w.writeAll(", ran the same files with the same runners.");
+    };
 }
 
 /// The index's comparison with the reference run: both engines' numbers on

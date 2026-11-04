@@ -2065,6 +2065,10 @@ def render_reference(worklist, records, ref):
     channel = f" ({esc(run['channel'])})" if run.get('channel') else ''
     where = f", {esc(run['host'])}" if run.get('host') else ''
     src = os.path.relpath(ref.get('_dir', ''), REPO) if ref.get('_dir') else 'wpt-results/reference/'
+    tm0 = ref.get('timing') or {}
+    runner = ((tm0.get('crane') or {}).get('runner') or '')
+    same_window = (f" In the same window Crane&rsquo;s frozen runner, <code>{esc(runner)}</code>, ran the same files "
+                   "with the same runners." if runner else '')
 
     def row(label, a, b):
         return f'<tr><td class="area">{label}</td><td class="num">{a}</td><td class="num">{b}</td></tr>'
@@ -2156,7 +2160,7 @@ def render_reference(worklist, records, ref):
 <div class="panel">
   <p class="sub2">{name} <code>{esc(run['browser_version'])}</code>{channel} {ran} on {esc(when)} with WPT&rsquo;s own runner (<code>wpt run</code>, headless{driver},
     {run['processes']} processes{where}), on WPT revision <code>{esc(run['wpt_revision'][:10])}</code>, over the
-    worklist of Crane <code>{esc(run['worklist_commit'])}</code>. Read from <code>{esc(src)}</code>;
+    worklist of Crane <code>{esc(run['worklist_commit'])}</code>.{same_window} Read from <code>{esc(src)}</code>;
     never counted as Crane&rsquo;s. Both columns are journal counts: subtests passed of those reported.</p>
   <table class="comp versus"><thead><tr><th></th><th>Crane</th><th>{name}</th></tr></thead>
   <tbody>{nums}</tbody></table>
