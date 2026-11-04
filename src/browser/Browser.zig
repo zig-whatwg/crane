@@ -91,10 +91,19 @@ const window_agent_hooks: engine.HostHooks = blk: {
 
 /// Browser configuration options
 pub const BrowserConfig = struct {
-    /// Root directory for persistent storage (default: ~/.whatwg/)
+    /// Root directory of the legacy storage manager (storage/Storage.zig),
+    /// with `persist_storage`; null: ~/.whatwg/.
     storage_root: ?[]const u8 = null,
-    /// Whether to enable storage persistence (default: true)
-    persist_storage: bool = true,
+    /// Whether the legacy storage manager makes its directories under
+    /// `storage_root`. False by default: a Browser is in memory and writes
+    /// nothing to disk (docs/instances.md: "In memory by default; an
+    /// optional profile directory persists the Browser's stores"). It was
+    /// true, and every Browser left at the defaults made empty directories
+    /// in ~/.whatwg/ that nothing ever read: localStorage, cookies,
+    /// IndexedDB, the Cache API and the HTTP cache are all in memory today,
+    /// and persisting them under a profile directory is its own work
+    /// (STORAGE PERSISTENCE, tmp/plans/lane-console-handoff.md).
+    persist_storage: bool = false,
     /// Initial URL to navigate to (optional)
     initial_url: ?[]const u8 = null,
     /// Enable debug logging
