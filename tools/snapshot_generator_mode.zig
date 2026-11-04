@@ -16,14 +16,19 @@
 //! (the user, 2026-11-04: a ReleaseSafe console "sat at compile exe
 //! snapshot_generator safe native").
 //!
-//! Debug is the fixed mode: its compile is a fraction of an optimized one,
-//! its run takes about a second (lane console3, chat2, 2026-11-04: compile
-//! 3 min over a warm Debug cache, run 1 s), and a default build (no
+//! Debug is the fixed mode (lane console3, chat2, 2026-11-04): its compile
+//! took 3 min over a warm Debug cache against 16 min (13 GB) for a
+//! ReleaseSafe one, and its run 0.20 s against 0.13 s. A default build (no
 //! -Doptimize) already builds it in Debug, so the generator a warm Debug
-//! cache holds is the one every mode uses. The blob is the same whichever
-//! generator writes it: Debug, ReleaseSafe, and Debug over -Doptimize=
-//! ReleaseSafe modules all wrote 6472fd2f... byte for byte.
-//! `-Dsnapshot-generator-optimize` builds another for a diagnosis.
+//! cache holds is the one every mode uses, and its blob is the same whatever
+//! -Doptimize says (6472fd2f..., over Debug and over ReleaseSafe modules,
+//! and main's). It is also the precise one: a ReleaseSafe generator's blob
+//! differs in 46,048 of its 2,645,688 bytes - same size, same 11,539-entry
+//! reference table - because V8 names a callback the optimizer folded into
+//! another (ICF) by the first index of their shared address
+//! (external-reference-encoder.cc), where the Debug generator names every
+//! callback by its own. `-Dsnapshot-generator-optimize` builds another for a
+//! diagnosis.
 //!
 //! std-only, so `zig build test` pins it (tools-snapshot_generator_mode).
 
