@@ -1711,7 +1711,32 @@ pub const WorkerHost = struct {
             defer self.reporting_error = false;
             not_handled = self.fireErrorAtGlobalScope(info);
         }
-        if (not_handled) self.sendErrorToParent(info.message, info.filename, info.lineno, info.colno);
+        if (!not_handled) return;
+        // HTML 10.2.5 "runtime script errors": a dedicated worker's error
+        // goes to its Worker object, and unhandled there the owner's global
+        // reports it - to the developer console, at its step 7. "For shared
+        // and service workers, if the error is still not handled afterwards,
+        // the error may be reported to a developer console": the Browser's,
+        // when its host shows one (dom.developer_console).
+        if (self.shared != null or self.service != null) {
+            self.reportToDeveloperConsole(info);
+            return;
+        }
+        self.sendErrorToParent(info.message, info.filename, info.lineno, info.colno);
+    }
+
+    /// A shared or service worker's unhandled error, to its Browser's
+    /// developer console when its host shows one (the debug log has it
+    /// otherwise, as before).
+    fn reportToDeveloperConsole(self: *Self, info: *const runtime.ErrorInfo) void {
+        const realm = self.realm orelse return;
+        _ = @import("dom").developer_console.report(&.{
+            .realm = realm,
+            .kind = .exception,
+            .level = .@"error",
+            .text = info.message,
+            .location = .{ .url = if (info.filename.len > 0) info.filename else self.script_url, .line = info.lineno, .column = info.colno },
+        });
     }
 
     /// Fire an ErrorEvent named `error` at the global scope; whether it went

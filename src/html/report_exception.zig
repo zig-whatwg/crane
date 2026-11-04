@@ -109,11 +109,27 @@ fn reportExtracted(
     }
 
     // Step 7: If notHandled is true, the user agent may report exception to a
-    // developer console. (Dedicated workers forward to their Worker object
-    // instead; that path lives with the worker.)
-    if (not_handled) log.debug("Uncaught {s} ({s}:{d}:{d})", .{ message, filename, lineno, colno });
+    // developer console - its Browser's, when its host shows one
+    // (dom.developer_console), with the message and the source location
+    // DevTools shows beside it. (Dedicated workers forward to their Worker
+    // object instead; that path lives with the worker.)
+    if (not_handled and !reportToDeveloperConsole(global.ctx, message, filename, lineno, colno)) {
+        log.debug("Uncaught {s} ({s}:{d}:{d})", .{ message, filename, lineno, colno });
+    }
 
     return not_handled;
+}
+
+/// Step 7's report to `realm`'s Browser's developer console: whether one
+/// took it (none is attached: the debug log has it, as before).
+fn reportToDeveloperConsole(realm: runtime.Context, message: []const u8, filename: []const u8, lineno: u32, colno: u32) bool {
+    return @import("dom").developer_console.report(&.{
+        .realm = realm,
+        .kind = .exception,
+        .level = .@"error",
+        .text = message,
+        .location = .{ .url = filename, .line = lineno, .column = colno },
+    });
 }
 
 /// Fire an ErrorEvent named "error" at `global`. Returns false when canceled.
