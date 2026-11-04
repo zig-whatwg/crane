@@ -85,11 +85,17 @@ test "while the console waits for input the page lives: a timer fires and naviga
     // input, and none comes until the timer's navigation is printed.
     console.open(later);
     try console.runUntilReady();
-    try testing.expectEqualStrings("'later'\n", blk: {
-        output.clearRetainingCapacity();
-        _ = try console.feedLine("document.title");
-        break :blk output.written();
-    });
+    // The evaluation reads the page its timer has not left yet, and its
+    // result prints first. The timer may fire while the console waits for
+    // that result (feedLine spins the loop until the evaluation settles): a
+    // slow build takes longer than its 50 ms - under ThreadSanitizer the
+    // navigation printed right after 'later', and an exact match failed.
+    output.clearRetainingCapacity();
+    _ = try console.feedLine("document.title");
+    if (!std.mem.startsWith(u8, output.written(), "'later'\n")) {
+        std.debug.print("printed:\n{s}\n", .{output.written()});
+        return error.TestOldTitleNotRead;
+    }
 
     var pipe = try Pipe.open();
     defer pipe.close();
