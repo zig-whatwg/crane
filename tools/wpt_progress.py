@@ -3349,10 +3349,12 @@ def _check_reference_compare():
         'url/u.html': {'path': 'url/u.html', 'status': 'OK', 'passed': 3, 'failed': 0, 'timed_out': 0, 'notrun': 0},
     }
     cmp = compare_reference(worklist, records, _reference_fixture())
-    assert cmp['crane'] == {'pass': 7, 'reported': 8, 'fail': 1, 'timeout': 0, 'notrun': 0,
-                            'blocking': 1, 'clean': 2, 'run': 4}, cmp['crane']
-    assert cmp['ref'] == {'pass': 6, 'reported': 9, 'fail': 2, 'timeout': 1, 'notrun': 0,
-                          'blocking': 1, 'clean': 2, 'run': 4}, cmp['ref']
+    # Both engines over the files both ran (a, b, u): dom/c.html is Crane's alone, url/never.html Chrome's.
+    assert cmp['common'] == 3
+    assert cmp['crane'] == {'pass': 5, 'reported': 6, 'fail': 1, 'timeout': 0, 'notrun': 0,
+                            'blocking': 1, 'clean': 1, 'run': 3}, cmp['crane']
+    assert cmp['ref'] == {'pass': 5, 'reported': 7, 'fail': 2, 'timeout': 0, 'notrun': 0,
+                          'blocking': 0, 'clean': 2, 'run': 3}, cmp['ref']
     assert [(p, d) for p, d in cmp['ahead_ref']] == [('dom/a.html', 1), ('dom/b.html', 1)], cmp['ahead_ref']
     assert [(p, d) for p, d in cmp['ahead_crane']] == [('url/u.html', 2)], cmp['ahead_crane']
     assert cmp['only_ref'] == ['url/never.html'] and cmp['only_crane'] == ['dom/c.html']
@@ -3390,8 +3392,21 @@ def _check_reference_render():
     assert '<h2 class="section" id="versus">Crane and Chrome' in page
     assert 'Chrome <code>150.0.7000.1</code>' in page and 'ChromeDriver <code>150.0.7000.1</code>' in page
     assert '<code>56d7fe562b</code>' in page and '2026-11-04' in page
-    assert '<tr><td class="area">WPT subtests passing</td><td class="num">5 / 6</td><td class="num">6 / 9</td></tr>' in page
-    assert '<tr><td class="area">Blocking files</td><td class="num">1</td><td class="num">1</td></tr>' in page
+    assert '<tr><td class="area">WPT subtests passing</td><td class="num">5 / 6</td><td class="num">5 / 7</td></tr>' in page
+    assert '<tr><td class="area">Blocking files</td><td class="num">1</td><td class="num">0</td></tr>' in page
+    assert 'over the 3 files both ran' in page and 'Not compared: 1 file with a result from Chrome alone, 0 from Crane alone' in page
+    # Without a test count, a run is split over the worklist's 6 URLs; with one, over its own.
+    assert '<tr><td class="area">Of the wall clock: harness (estimate)</td><td class="num">300 ms</td><td class="num">1.80 s</td></tr>' in page
+    ref3 = _reference_fixture()
+    ref3['timing']['reference']['tests'] = 3
+    ref3['timing']['crane']['tests'] = 3
+    ref3['coverage']['sources_reported'] = 2
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, 'p.html')
+        render(areas, worklist, records, [], out, reference=ref3)
+        page3 = open(out).read()
+    assert '<tr><td class="area">Of the wall clock: harness (estimate)</td><td class="num">150 ms</td><td class="num">900 ms</td></tr>' in page3
+    assert 'has a result for 2 of the 4 worklist files' in page3
     assert '<tr><td class="area">The worklist, wall clock</td><td class="num">40 min 0 s</td><td class="num">1 h 0 min</td></tr>' in page
     assert '<tr><td class="area">One empty test, harness alone</td><td class="num">250 ms</td><td class="num">1.50 s</td></tr>' in page
     assert 'Where Chrome passes subtests Crane does not' in page and 'Where Crane passes subtests Chrome does not' in page

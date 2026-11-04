@@ -1879,10 +1879,14 @@ test "site: a reference run is shown beside Crane's on the same files, never in 
     try expectHas(index, "ChromeDriver <code>150.0.7000.2</code>");
     try expectHas(index, "<code>56d7fe562b</code>");
     try expectHas(index, "4 Nov 2026");
-    // Side by side: subtests passing of reported, and blocking files, for both.
-    try expectHas(index, "<tr><th scope=\"row\">WPT subtests passing</th><td class=\"n\" data-v=\"5\" data-of=\"8\"><b>5</b> / 8</td><td class=\"n\" data-v=\"8\" data-of=\"11\"><b>8</b> / 11</td></tr>");
-    try expectHas(index, "<tr><th scope=\"row\">Blocking files</th><td class=\"n blk\">2</td><td class=\"n blk\">1</td></tr>");
-    try expectHas(index, "<tr><th scope=\"row\">Files with a result</th><td class=\"n\">4</td><td class=\"n\">5</td></tr>");
+    // Side by side over the files both ran (url/never.html is Chrome's alone):
+    // subtests passing of reported, and blocking files, for both.
+    try expectHas(index, "<span class=\"box-sub\">4 test files both ran</span>");
+    try expectHas(index, "<tr><th scope=\"row\">WPT subtests passing</th><td class=\"n\" data-v=\"5\" data-of=\"8\"><b>5</b> / 8</td><td class=\"n\" data-v=\"7\" data-of=\"9\"><b>7</b> / 9</td></tr>");
+    try expectHas(index, "<tr><th scope=\"row\">Blocking files</th><td class=\"n blk\">2</td><td class=\"n\">0</td></tr>");
+    try expectHas(index, "<tr><th scope=\"row\">Clean files</th><td class=\"n\">1</td><td class=\"n\">3</td></tr>");
+    try expectHas(index, "Not compared: <a href=\"chrome.html#only-one\">1 file</a> with a result from Chrome alone, 0 from Crane alone.");
+    try expectHas(index, "ran the worklist&rsquo;s 5 test files");
     // Where they differ, both directions, on the comparison page.
     try expectHas(index, "<a href=\"chrome.html#ahead-ref\">3 files</a> where Chrome passes subtests Crane does not (4 subtests)");
     try expectHas(index, "<a href=\"chrome.html#ahead-crane\">1 file</a> where Crane passes subtests Chrome does not (2 subtests)");
@@ -1941,6 +1945,21 @@ test "site: wall time is shown for both engines with the harness overhead split 
     // 200 trivial files in 10 s and 60 s with 5 runners: 250 ms and 1.50 s each.
     try expectHas(index, "<tr><th scope=\"row\">One empty test, harness alone</th><td class=\"n\">250 ms</td><td class=\"n\">1.50 s</td></tr>");
     try expectHas(index, "5 runners each");
+    // A run that records no test count is read over the worklist's 7 test URLs.
+    try expectHas(index, "<tr><th scope=\"row\">Of the wall clock: harness (estimate)</th><td class=\"n\">350 ms</td><td class=\"n\">2.10 s</td></tr>");
+
+    // A run that ran 3 test URLs is split over those 3, and says what it ran.
+    const partial = try std.mem.replaceOwned(u8, gpa, fixture_reference, "\"reference\":{\"wall_s\":3600.5,", "\"reference\":{\"tests\":3,\"wall_s\":3600.5,");
+    defer gpa.free(partial);
+    const partial2 = try std.mem.replaceOwned(u8, gpa, partial, "\"crane\":{\"wall_s\":2400,", "\"crane\":{\"tests\":3,\"wall_s\":2400,");
+    defer gpa.free(partial2);
+    const partial3 = try std.mem.replaceOwned(u8, gpa, partial2, "\"sources_reported\":5,", "\"sources_reported\":2,");
+    defer gpa.free(partial3);
+    _ = try runFixtureRef(gpa, &f, "out3", partial3);
+    const index3 = try readOut(gpa, &f, "out3/index.html");
+    defer gpa.free(index3);
+    try expectHas(index3, "<tr><th scope=\"row\">Of the wall clock: harness (estimate)</th><td class=\"n\">150 ms</td><td class=\"n\">900 ms</td></tr>");
+    try expectHas(index3, "has a result for 2 of the worklist&rsquo;s 5 test files");
 }
 
 test "site: a reference run's records are never Crane's" {
